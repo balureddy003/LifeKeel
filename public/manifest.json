@@ -1,0 +1,26 @@
+{
+  "name": "Family AI Office",
+  "short_name": "Family",
+  "description": "Your family's financial operating system",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "portrait",
+  "background_color": "#1a1612",
+  "theme_color": "#1a1612",
+  "categories": ["finance", "lifestyle", "utilities"],
+  "dir": "ltr",
+  "lang": "en-GB",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Dashboard", "url": "/" },
+    { "name": "AI Assistant", "url": "/assistant" },
+    { "name": "Simulate Event", "url": "/simulate" }
+  ],
+  "prefer_related_applications": false,
+  "handle_links": "preferred",
+  "launch_handler": { "client_mode": "focus-existing" }
+}
