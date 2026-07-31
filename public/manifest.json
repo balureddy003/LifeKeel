@@ -7,8 +7,8 @@
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"],
   "orientation": "portrait",
-  "background_color": "#1a1612",
-  "theme_color": "#1a1612",
+  "background_color": "#08080c",
+  "theme_color": "#08080c",
   "categories": ["finance", "lifestyle", "utilities"],
   "dir": "ltr",
   "lang": "en-GB",
@@ -18,7 +18,7 @@
   "shortcuts": [
     { "name": "Dashboard", "url": "/" },
     { "name": "AI Assistant", "url": "/assistant" },
-    { "name": "Simulate Event", "url": "/simulate" }
+    { "name": "What If Scenarios", "url": "/events" }
   ],
   "prefer_related_applications": false,
   "handle_links": "preferred",

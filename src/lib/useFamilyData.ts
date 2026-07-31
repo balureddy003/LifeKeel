@@ -86,6 +86,64 @@ export function useFamilyReadinessScore() {
   return { score, loading }
 }
 
+export type HealthDomain = 'protection' | 'wealth' | 'goals' | 'savings'
+
+export interface DomainHealth {
+  score: number
+  hasLiveData: boolean
+  insights: FamilyInsight[]
+}
+
+const DOMAIN_DETECTOR_MAP: Record<HealthDomain, string> = {
+  protection: 'family_protection_gap',
+  wealth: 'family_retirement_gap',
+  goals: 'family_education_shortfall',
+  savings: 'family_emergency_fund_adequacy',
+}
+
+// Fallback scores shown only when the API has no insights yet — labeled as
+// sample/illustrative in the UI rather than presented as real numbers.
+const DOMAIN_FALLBACK_SCORE: Record<HealthDomain, number> = {
+  protection: 90,
+  wealth: 65,
+  goals: 80,
+  savings: 85,
+}
+
+/**
+ * Computes a 0-100 health score per family domain from live detector
+ * insights. A domain's score reflects how resolved its open insights are —
+ * fully resolved (approved/dismissed) insights count as healthy, open ones
+ * pull the score down proportional to their confidence. Falls back to a
+ * labeled sample score when no insights exist for that domain yet.
+ */
+export function useFamilyHealthDomains() {
+  const { insights, loading, error } = useFamilyInsights()
+
+  const domains: Record<HealthDomain, DomainHealth> = {} as Record<HealthDomain, DomainHealth>
+
+  for (const domain of Object.keys(DOMAIN_DETECTOR_MAP) as HealthDomain[]) {
+    const detectorId = DOMAIN_DETECTOR_MAP[domain]
+    const domainInsights = insights.filter((i) => i.detector_id === detectorId)
+
+    if (domainInsights.length === 0) {
+      domains[domain] = { score: DOMAIN_FALLBACK_SCORE[domain], hasLiveData: false, insights: [] }
+      continue
+    }
+
+    const resolved = domainInsights.filter((i) => i.state === 'approved' || i.state === 'dismissed').length
+    const openPenalty = domainInsights
+      .filter((i) => i.state !== 'approved' && i.state !== 'dismissed')
+      .reduce((sum, i) => sum + i.confidence, 0)
+    const score = Math.round(
+      Math.max(0, Math.min(100, (resolved / domainInsights.length) * 100 - openPenalty * 10)),
+    )
+    domains[domain] = { score, hasLiveData: true, insights: domainInsights }
+  }
+
+  return { domains, loading, error }
+}
+
 /**
  * Maps a family life-event id to the detector that would surface insights
  * for that scenario. Used by useEventReadiness to filter API insights.

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { HeartCrack, Heart, Car, Plane, Home, ChevronRight, type LucideIcon } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
 import { LIFE_EVENTS } from '@/lib/life-data'
+import { useFocusTrap } from '@/lib/useFocusTrap'
 
 const EMERGENCY_ICONS: Record<string, LucideIcon> = {
   bereavement: HeartCrack,
@@ -25,6 +26,7 @@ export function EmergencyMode({
   const emergencyEvents = LIFE_EVENTS.filter((e) =>
     ['bereavement', 'medical', 'car', 'property', 'travel'].includes(e.id)
   )
+  const containerRef = useFocusTrap<HTMLDivElement>(active)
 
   return (
     <AnimatePresence>
@@ -35,6 +37,8 @@ export function EmergencyMode({
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-[60] flex flex-col"
           style={{ background: 'rgba(0,0,0,0.95)' }}
+          ref={containerRef}
+          tabIndex={-1}
         >
           {/* Header */}
           <div className="px-6 pt-12 pb-4 safe-area-top">

@@ -1,16 +1,19 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
-import { Network, Activity, Lightbulb, ChevronRight, Hand, Star, Target, Mail, Bot, Phone, User, FileText, Siren, Sparkles } from 'lucide-react'
+import { useState } from 'react'
+import { Network, Activity, Lightbulb, ChevronRight, Hand, Star, Target, Mail, Bot, Phone, User, FileText, Siren, Sparkles, Search, CalendarClock, X } from 'lucide-react'
 import { KnowledgeGraph } from '@/components/KnowledgeGraph'
 import { LifeTimeline } from '@/components/LifeTimeline'
-import { ScoreRing, GlassCard, PageHeader } from '@/components/Glass'
+import { ScoreRing, GlassCard, PageHeader, IfAdvanced, Skeleton } from '@/components/Glass'
 import { ConfidenceScore, TrustLadder, MemoryPrompts } from '@/components/Intelligence'
 import { HealthSummary } from '@/components/HealthSummary'
 import { TIMELINE_EVENTS, FAMILY_STORY, FAMILY_HEALTH_SCORE, CHILD_GOALS, CHILD_MESSAGES } from '@/lib/life-data'
 import { useMode } from '@/lib/mode-context'
 import { useFamilyReadinessScore } from '@/lib/useFamilyData'
+import { useAppStore } from '@/lib/store'
+import { haptic } from '@/lib/haptics'
 
 function ChildHome() {
   return (
@@ -162,9 +165,50 @@ function ElderlyHome() {
   )
 }
 
+function UrgencyBanner() {
+  const [dismissed, setDismissed] = useState(false)
+  const currentYear = new Date().getFullYear()
+  const nextEvent = TIMELINE_EVENTS
+    .filter((e) => e.status === 'future' && e.year > currentYear)
+    .sort((a, b) => a.year - b.year)[0]
+
+  if (!nextEvent || dismissed) return null
+  const yearsUntil = nextEvent.year - currentYear
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0, height: 0 }}
+        animate={{ opacity: 1, height: 'auto' }}
+        exit={{ opacity: 0, height: 0 }}
+      >
+        <GlassCard className="p-3.5 border-family-500/20 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0">
+            <CalendarClock size={16} className="text-family-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-ink-primary truncate">{nextEvent.label}</div>
+            <div className="text-xs text-ink-tertiary">
+              {yearsUntil === 1 ? 'Next year' : `In ${yearsUntil} years`} · {nextEvent.year}
+            </div>
+          </div>
+          <button
+            onClick={() => { setDismissed(true); haptic('light') }}
+            aria-label="Dismiss"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-tertiary active:opacity-60"
+          >
+            <X size={16} />
+          </button>
+        </GlassCard>
+      </motion.div>
+    </AnimatePresence>
+  )
+}
+
 export default function HomePage() {
   const { config } = useMode()
-  const { score: readinessScore } = useFamilyReadinessScore()
+  const { score: readinessScore, loading: scoreLoading } = useFamilyReadinessScore()
+  const setCmdkOpen = useAppStore((s) => s.setCmdkOpen)
 
   if (config.mode === 'child') {
     return <ChildHome />
@@ -180,9 +224,20 @@ export default function HomePage() {
         title="Your Family"
         subtitle="Tap anything to explore"
         action={
-          <span className="text-[10px] text-ink-tertiary glass rounded-md px-2 py-0.5">⌘K</span>
+          <button
+            onClick={() => {
+              haptic('light')
+              setCmdkOpen(true)
+            }}
+            aria-label="Search or run a command"
+            className="w-10 h-10 rounded-full bg-family-500/10 border border-family-500/20 flex items-center justify-center active:opacity-70 transition-opacity"
+          >
+            <Search size={18} className="text-family-400" />
+          </button>
         }
       />
+
+      <UrgencyBanner />
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -191,35 +246,51 @@ export default function HomePage() {
       >
         <GlassCard className="p-5">
           <div className="flex items-center gap-3 mb-3">
-            <ScoreRing score={readinessScore} size={80} />
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-sm font-semibold text-success">You&apos;re on track</span>
-                <motion.span
-                  className="w-2 h-2 rounded-full bg-success"
-                  animate={{ opacity: [1, 0.3, 1] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                />
-              </div>
-              <p className="text-sm text-ink-secondary leading-relaxed">
-                {FAMILY_STORY}
-              </p>
-            </div>
+            {scoreLoading ? (
+              <>
+                <Skeleton className="h-20 w-20 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-3 w-full" />
+                </div>
+              </>
+            ) : (
+              <>
+                <ScoreRing score={readinessScore} size={80} />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-semibold text-success">You&apos;re on track</span>
+                    <motion.span
+                      className="w-2 h-2 rounded-full bg-success"
+                      animate={{ opacity: [1, 0.3, 1] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                    />
+                  </div>
+                  <p className="text-sm text-ink-secondary leading-relaxed">
+                    {FAMILY_STORY}
+                  </p>
+                </div>
+              </>
+            )}
           </div>
         </GlassCard>
       </motion.div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-      >
-        <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-3 px-1">
-          <Network size={16} className="text-family-400" />
-          Knowledge Graph
-        </div>
-        <KnowledgeGraph />
-      </motion.div>
+      <IfAdvanced>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-3 px-1">
+            <Network size={16} className="text-family-400" />
+            Knowledge Graph
+          </div>
+          <div className="h-[420px]">
+            <KnowledgeGraph />
+          </div>
+        </motion.div>
+      </IfAdvanced>
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -241,29 +312,31 @@ export default function HomePage() {
         <LifeTimeline events={TIMELINE_EVENTS} />
       </motion.div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.25 }}
-      >
-        <ConfidenceScore />
-      </motion.div>
+      <IfAdvanced>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+        >
+          <ConfidenceScore />
+        </motion.div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-      >
-        <MemoryPrompts />
-      </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <MemoryPrompts />
+        </motion.div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.35 }}
-      >
-        <TrustLadder />
-      </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+        >
+          <TrustLadder />
+        </motion.div>
+      </IfAdvanced>
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}

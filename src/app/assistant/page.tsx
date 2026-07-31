@@ -16,6 +16,7 @@ interface ChatMessage {
   content: string
   showPerplexity?: boolean
   userQuery?: string
+  isLive?: boolean
 }
 
 function getAIResponse(query: string): string {
@@ -57,13 +58,14 @@ export default function AssistantPage() {
     const hasPerplexity = lower.includes('retire') || lower.includes('protect') || lower.includes('job')
 
     try {
-      const response = await fetchAIResponse(text)
+      const { content, isLive } = await fetchAIResponse(text)
       setMessages((prev) => [...prev, {
         id: `ai-${Date.now()}`,
         role: 'assistant',
-        content: response,
+        content,
         showPerplexity: hasPerplexity,
         userQuery: text,
+        isLive,
       }])
     } catch {
       setMessages((prev) => [...prev, {
@@ -72,6 +74,7 @@ export default function AssistantPage() {
         content: getAIResponse(text),
         showPerplexity: hasPerplexity,
         userQuery: text,
+        isLive: false,
       }])
     } finally {
       setThinking(false)
@@ -106,7 +109,7 @@ export default function AssistantPage() {
               <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
               {msg.showPerplexity && msg.userQuery && (
                 <div className="mt-3">
-                  <AIAnswerCard query={msg.userQuery} />
+                  <AIAnswerCard query={msg.userQuery} isLive={msg.isLive ?? false} />
                 </div>
               )}
             </div>

@@ -82,7 +82,7 @@ const sourceTypeColor: Record<string, string> = {
   calculation: 'rgba(251,191,36,0.15)',
 }
 
-export function AIAnswerCard({ query }: { query: string }) {
+export function AIAnswerCard({ query, isLive = false }: { query: string; isLive?: boolean }) {
   const [showSources, setShowSources] = useState(false)
   const answer = getAnswer(query)
   const color = confidenceColor[answer.confidence]
@@ -107,15 +107,26 @@ export function AIAnswerCard({ query }: { query: string }) {
           <p className="text-sm text-ink-secondary leading-relaxed">{answer.answer}</p>
         </div>
 
-        {/* Confidence */}
+        {/* Confidence / Source label */}
         <div className="flex items-center gap-2 mb-3">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-ink-tertiary">Confidence</span>
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 rounded-full" style={{ background: color }} />
-            <span className="text-xs font-semibold" style={{ color }}>
-              {answer.confidence === 'high' ? 'High — based on your documents' : answer.confidence === 'medium' ? 'Medium — some data missing' : 'Low — please verify'}
-            </span>
-          </div>
+          {isLive ? (
+            <>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-ink-tertiary">Confidence</span>
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+                <span className="text-xs font-semibold" style={{ color }}>
+                  {answer.confidence === 'high' ? 'High — based on your documents' : answer.confidence === 'medium' ? 'Medium — some data missing' : 'Low — please verify'}
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-warning" />
+              <span className="text-xs font-semibold text-warning">
+                Sample answer — connect your data for a personalized response
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Sources */}

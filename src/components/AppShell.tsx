@@ -22,13 +22,24 @@ const NAV_ITEMS = [
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
+// Routes that live under a tab but aren't nested under its path segment,
+// so the prefix match below can't find them on its own.
+const ROUTE_TAB_OVERRIDES: Record<string, string> = {
+  '/member': '/family',
+  '/asset': '/family',
+}
+
 function LiquidTabBar() {
   const pathname = usePathname()
   const [activeIndex, setActiveIndex] = useState(0)
 
   useEffect(() => {
+    const overrideEntry = Object.entries(ROUTE_TAB_OVERRIDES).find(([prefix]) =>
+      pathname.startsWith(prefix)
+    )
+    const effectivePath = overrideEntry ? overrideEntry[1] : pathname
     const idx = NAV_ITEMS.findIndex((item) =>
-      item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
+      item.href === '/' ? effectivePath === '/' : effectivePath.startsWith(item.href)
     )
     setActiveIndex(idx >= 0 ? idx : 0)
   }, [pathname])
@@ -106,6 +117,17 @@ function PwaInit() {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
     navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {})
   }, [])
+  return null
+}
+
+function ModeEffects() {
+  const { config } = useMode()
+  useEffect(() => {
+    document.documentElement.style.fontSize = `${config.fontSize}px`
+    return () => {
+      document.documentElement.style.fontSize = ''
+    }
+  }, [config.fontSize])
   return null
 }
 
@@ -245,6 +267,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen text-ink-primary">
       <MeshGradient />
       <OfflineBanner />
+      <ModeEffects />
       <div className={`max-w-md mx-auto ${bottomPadding} pt-2 relative z-10`}>
         <AuthGate>{children}</AuthGate>
         {showNav && <DisclaimerFooter />}

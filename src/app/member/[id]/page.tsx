@@ -6,7 +6,7 @@ import { ArrowLeft, Check, HelpCircle, Briefcase, Wallet, DollarSign, Home, Shie
 import type { LucideIcon } from 'lucide-react'
 import { FAMILY_MEMBERS } from '@/lib/data'
 import type { FamilyMember } from '@/lib/types'
-import { PageHeader } from '@/components/Glass'
+import { PageHeader, Money, MoneyText } from '@/components/Glass'
 
 function InfoSection({ title, items, icon: Icon }: { title: string; items: string[]; icon: LucideIcon }) {
   return (
@@ -19,7 +19,7 @@ function InfoSection({ title, items, icon: Icon }: { title: string; items: strin
         {items.map((item) => (
           <div key={item} className="flex items-center gap-2">
             <Check size={14} className="text-success" />
-            <span className="text-sm text-ink-primary">{item}</span>
+            <MoneyText text={item} className="text-sm text-ink-primary" />
           </div>
         ))}
       </div>
@@ -34,8 +34,8 @@ function BranchCard({ label, items }: { label: string; items: string[] }) {
       <div className="space-y-1.5">
         {items.map((item) => (
           <div key={item} className="text-sm text-ink-secondary flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-family-400" />
-            {item}
+            <span className="w-1.5 h-1.5 rounded-full bg-family-400 flex-shrink-0" />
+            <MoneyText text={item} />
           </div>
         ))}
       </div>
@@ -75,7 +75,7 @@ export default function MemberProfilePage() {
             <Wallet size={18} className="text-ink-secondary" />
             <span className="text-sm font-semibold text-ink-secondary">Net Worth</span>
           </div>
-          <div className="text-2xl font-bold text-family-400">{member.netWorth}</div>
+          <Money value={member.netWorth} className="text-2xl font-bold text-family-400" />
         </div>
       )}
 
@@ -104,7 +104,7 @@ export default function MemberProfilePage() {
       )}
 
       {/* Simulate life event button */}
-      <Link href="/simulate" className="btn-primary flex items-center justify-center gap-2 w-full">
+      <Link href="/events" className="btn-primary flex items-center justify-center gap-2 w-full">
         <Siren size={18} />
         <span>Simulate Life Event</span>
       </Link>

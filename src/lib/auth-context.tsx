@@ -8,11 +8,11 @@ interface AuthContextValue {
   family: FamilyGroup | null
   isAuthenticated: boolean
   isLoading: boolean
-  signUp: (name: string, email: string) => Promise<void>
+  signUp: (name: string, email: string) => Promise<User>
   signIn: (email: string) => Promise<void>
   signInWithProvider: (provider: 'apple' | 'google') => Promise<void>
   signOut: () => void
-  createFamily: (name: string) => void
+  createFamily: (name: string, forUser?: User) => void
   inviteMember: (name: string, email: string, role: FamilyRole) => void
   removeMember: (id: string) => void
   updateMemberRole: (id: string, role: FamilyRole) => void
@@ -63,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       avatar: '',
     }
     persist(u, null)
+    return u
   }
 
   const signIn = async (email: string) => {
@@ -89,17 +90,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     persist(null, null)
   }
 
-  const createFamily = (name: string) => {
-    if (!user) return
+  const createFamily = (name: string, forUser?: User) => {
+    const owner = forUser ?? user
+    if (!owner) return
     const f: FamilyGroup = {
       id: `family-${Date.now()}`,
       name,
       inviteCode: Math.random().toString(36).substring(2, 8).toUpperCase(),
       members: [
         {
-          id: user.id,
-          name: user.name,
-          email: user.email,
+          id: owner.id,
+          name: owner.name,
+          email: owner.email,
           role: 'organizer',
           emoji: '',
           status: 'active',
@@ -107,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       ],
     }
-    persist(user, f)
+    persist(owner, f)
   }
 
   const inviteMember = (name: string, email: string, role: FamilyRole) => {

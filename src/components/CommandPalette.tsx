@@ -1,12 +1,17 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { Home, Inbox, Users, AlertTriangle, Settings, Bot, Siren, Crown, Shield, Baby, Accessibility, Search, CornerDownLeft, ArrowUpDown } from 'lucide-react'
+import { Home, Inbox, Users, AlertTriangle, Settings, Bot, Siren, Crown, Shield, Baby, Accessibility, Search, CornerDownLeft, ArrowUpDown, User, Heart, Wallet, Target, PiggyBank, House, TrendingUp, Landmark, Map } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
+import { useMode } from '@/lib/mode-context'
 import { haptic } from '@/lib/haptics'
+import { useFocusTrap } from '@/lib/useFocusTrap'
+import { FAMILY_MEMBERS } from '@/lib/data'
+import { LIFE_EVENTS } from '@/lib/life-data'
+import { ASSETS } from '@/lib/assets-data'
 
 interface Command {
   id: string
@@ -14,14 +19,44 @@ interface Command {
   icon: LucideIcon
   shortcut?: string
   action: () => void
-  section: 'navigate' | 'actions' | 'mode'
+  section: 'navigate' | 'actions' | 'mode' | 'content'
 }
 
 export function CommandPalette() {
-  const { cmdkOpen, setCmdkOpen, setMode, setEmergencyOpen } = useAppStore()
+  const { cmdkOpen, setCmdkOpen } = useAppStore()
+  const { setMode, activateEmergency } = useMode()
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const router = useRouter()
+  const containerRef = useFocusTrap<HTMLDivElement>(cmdkOpen)
+
+  const contentCommands: Command[] = useMemo(() => [
+    ...FAMILY_MEMBERS.map((m) => ({
+      id: `member-${m.id}`,
+      label: m.name,
+      icon: User,
+      section: 'content' as const,
+      action: () => router.push(`/member/${m.id}`),
+    })),
+    ...LIFE_EVENTS.map((e) => ({
+      id: `event-${e.id}`,
+      label: e.label,
+      icon: AlertTriangle,
+      section: 'content' as const,
+      action: () => router.push(`/events/${e.id}`),
+    })),
+    ...Object.values(ASSETS).map((a) => ({
+      id: `asset-${a.id}`,
+      label: a.label,
+      icon: a.icon === 'House' ? House : a.icon === 'TrendingUp' ? TrendingUp : Landmark,
+      section: 'content' as const,
+      action: () => router.push(`/asset/${a.id}`),
+    })),
+    { id: 'health-protection', label: 'Health: Protection', icon: Heart, section: 'content' as const, action: () => router.push('/health/protection') },
+    { id: 'health-wealth', label: 'Health: Wealth', icon: Wallet, section: 'content' as const, action: () => router.push('/health/wealth') },
+    { id: 'health-goals', label: 'Health: Goals', icon: Target, section: 'content' as const, action: () => router.push('/health/goals') },
+    { id: 'health-savings', label: 'Health: Savings', icon: PiggyBank, section: 'content' as const, action: () => router.push('/health/savings') },
+  ], [router])
 
   const commands: Command[] = [
     { id: 'home', label: 'Go to Home', icon: Home, shortcut: 'G H', section: 'navigate', action: () => router.push('/') },
@@ -30,14 +65,16 @@ export function CommandPalette() {
     { id: 'events', label: 'What If Scenarios', icon: AlertTriangle, shortcut: 'G E', section: 'navigate', action: () => router.push('/events') },
     { id: 'settings', label: 'Settings', icon: Settings, shortcut: 'G S', section: 'navigate', action: () => router.push('/settings') },
     { id: 'assistant', label: 'Ask AI', icon: Bot, shortcut: 'G A', section: 'navigate', action: () => router.push('/assistant') },
-    { id: 'emergency', label: 'Emergency Mode', icon: Siren, shortcut: 'E', section: 'actions', action: () => { setEmergencyOpen(true); setCmdkOpen(false) } },
+    { id: 'map', label: 'Family Map', icon: Map, shortcut: 'G M', section: 'navigate', action: () => router.push('/map') },
+    { id: 'emergency', label: 'Emergency Mode', icon: Siren, shortcut: 'E', section: 'actions', action: () => { activateEmergency(); setCmdkOpen(false) } },
     { id: 'mode-organizer', label: 'Switch to Organizer Mode', icon: Crown, section: 'mode', action: () => { setMode('organizer'); haptic('success') } },
     { id: 'mode-parent', label: 'Switch to Parent Mode', icon: Shield, section: 'mode', action: () => { setMode('parent'); haptic('success') } },
     { id: 'mode-child', label: 'Switch to Child Mode', icon: Baby, section: 'mode', action: () => { setMode('child'); haptic('success') } },
     { id: 'mode-elderly', label: 'Switch to Elderly Mode', icon: Accessibility, section: 'mode', action: () => { setMode('elderly'); haptic('success') } },
   ]
 
-  const filtered = commands.filter((c) =>
+  const allCommands = [...commands, ...contentCommands]
+  const filtered = allCommands.filter((c) =>
     c.label.toLowerCase().includes(query.toLowerCase())
   )
 
@@ -75,8 +112,8 @@ export function CommandPalette() {
     setSelectedIndex(0)
   }, [query])
 
-  const sections = ['navigate', 'actions', 'mode'] as const
-  const sectionLabels = { navigate: 'Navigate', actions: 'Quick Actions', mode: 'Switch Mode' }
+  const sections = ['navigate', 'content', 'actions', 'mode'] as const
+  const sectionLabels = { navigate: 'Navigate', content: 'Family & Assets', actions: 'Quick Actions', mode: 'Switch Mode' }
 
   return (
     <AnimatePresence>
@@ -95,7 +132,9 @@ export function CommandPalette() {
             exit={{ scale: 0.95, opacity: 0, y: -10 }}
             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
             onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-lg glass-strong rounded-3xl overflow-hidden shadow-2xl"
+            ref={containerRef}
+            tabIndex={-1}
+            className="relative w-full max-w-lg glass-strong rounded-3xl overflow-hidden shadow-2xl outline-none"
           >
             {/* Search input */}
             <div className="flex items-center gap-3 px-5 py-4 border-b border-white/5">

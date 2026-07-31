@@ -77,7 +77,7 @@ export function ConversationalOnboarding() {
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [finished, setFinished] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const { signUp, createFamily } = useAuth()
+  const { user, signUp, createFamily } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
@@ -160,10 +160,15 @@ export function ConversationalOnboarding() {
     setFinished(true)
 
     const name = allAnswers.name || 'User'
-    const email = `${name.toLowerCase().replace(/\s+/g, '.')}@family.ai`
 
-    await signUp(name, email)
-    createFamily(`${name}'s Family`)
+    // If the person already has an account (came from Sign Up or Sign In),
+    // keep their real identity — don't overwrite it with an onboarding-derived one.
+    let owner = user
+    if (!owner) {
+      const email = `${name.toLowerCase().replace(/\s+/g, '.')}@family.ai`
+      owner = await signUp(name, email)
+    }
+    createFamily(`${owner.name}'s Family`, owner)
 
     setTimeout(() => {
       router.push('/')
@@ -292,6 +297,7 @@ export function ConversationalOnboarding() {
                   <motion.button
                     whileTap={{ scale: 0.9 }}
                     onClick={() => setMultiValues([...multiValues, ''])}
+                    aria-label="Add another child"
                     className="w-12 h-12 rounded-full glass flex items-center justify-center"
                   >
                     <Plus size={20} className="text-ink-secondary" />
@@ -323,6 +329,7 @@ export function ConversationalOnboarding() {
               whileTap={{ scale: 0.9 }}
               onClick={handleTextSubmit}
               disabled={!textValue.trim()}
+              aria-label="Send answer"
               className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-30"
               style={{ background: 'linear-gradient(135deg, #7c6ef0, #6b5ce0)' }}
             >

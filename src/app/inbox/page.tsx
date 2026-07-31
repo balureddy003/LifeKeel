@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Bot, Info, Home, Landmark, Wallet, Plane, CreditCard, Car } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { GlassCard, PageHeader } from '@/components/Glass'
+import { GlassCard, PageHeader, EmptyState } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { INBOX_ITEMS } from '@/lib/onboarding-data'
 import type { InboxItem } from '@/lib/onboarding-data'
@@ -88,7 +88,18 @@ export default function InboxPage() {
 
       {/* Inbox items */}
       <div className="space-y-2">
-        {items.map((item, i) => {
+        {items.length === 0 ? (
+          <GlassCard>
+            <EmptyState
+              icon={Bot}
+              title="Inbox zero"
+              description="You're all caught up. Connect your email to automatically receive financial notifications here."
+              actionLabel="Connect email"
+              onAction={() => haptic('light')}
+            />
+          </GlassCard>
+        ) : (
+          items.map((item, i) => {
           const isExpanded = expandedId === item.id
           const color = priorityColor(item.priority)
           return (
@@ -173,7 +184,8 @@ export default function InboxPage() {
               </GlassCard>
             </motion.div>
           )
-        })}
+        })
+        )}
       </div>
 
       {/* Empty state hint */}

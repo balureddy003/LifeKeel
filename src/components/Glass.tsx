@@ -1,10 +1,11 @@
 'use client'
 
-import { motion, MotionStyle, useMotionValue, useTransform, useSpring } from 'framer-motion'
+import { motion, MotionStyle, useMotionValue, useTransform, useSpring, useReducedMotion } from 'framer-motion'
 import { useRef, ReactNode } from 'react'
 import { ChevronRight, ArrowLeft, Bot, type LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import { haptic } from '@/lib/haptics'
+import { useMode } from '@/lib/mode-context'
 
 const springConfig = { type: 'spring' as const, stiffness: 400, damping: 30 }
 
@@ -116,6 +117,18 @@ export function GlassButton({
 }
 
 export function MeshGradient({ className = '' }: { className?: string }) {
+  const reduceMotion = useReducedMotion()
+
+  if (reduceMotion) {
+    return (
+      <div className={`fixed inset-0 -z-10 overflow-hidden ${className}`}>
+        <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-family-500/15 blur-[120px]" />
+        <div className="absolute top-1/3 -right-40 w-96 h-96 rounded-full bg-info/10 blur-[120px]" />
+        <div className="absolute -bottom-40 left-1/3 w-96 h-96 rounded-full bg-success/8 blur-[120px]" />
+      </div>
+    )
+  }
+
   return (
     <div className={`fixed inset-0 -z-10 overflow-hidden ${className}`}>
       <motion.div
@@ -283,6 +296,36 @@ export function ListSection({
   )
 }
 
+export function Money({ value, className = '' }: { value: string; className?: string }) {
+  const { config } = useMode()
+  if (!config.showMoney) {
+    return <span className={className}>•••</span>
+  }
+  return <span className={className}>{value}</span>
+}
+
+const CURRENCY_PATTERN = /\$[\d,]+(?:\.\d+)?[KMB]?/g
+
+/**
+ * Renders free-form text (e.g. an AI insight or income line item) with any
+ * embedded dollar amounts redacted in modes where showMoney is off — Money
+ * only covers standalone values, but income/insight copy is prose that
+ * mentions figures inline, so it needs its own masking pass.
+ */
+export function MoneyText({ text, className = '' }: { text: string; className?: string }) {
+  const { config } = useMode()
+  if (config.showMoney) {
+    return <span className={className}>{text}</span>
+  }
+  return <span className={className}>{text.replace(CURRENCY_PATTERN, '•••')}</span>
+}
+
+export function IfAdvanced({ children }: { children: ReactNode }) {
+  const { config } = useMode()
+  if (!config.showAdvanced) return null
+  return <>{children}</>
+}
+
 export function ListRow({
   label,
   icon: Icon,
@@ -329,4 +372,79 @@ export function ListRow({
   }
 
   return <div className="border-b border-white/[0.04] last:border-0">{content}</div>
+}
+
+export function Skeleton({ className = '' }: { className?: string }) {
+  return <div className={`shimmer rounded-lg ${className}`} />
+}
+
+export function SkeletonCard({ lines = 3 }: { lines?: number }) {
+  return (
+    <div className="rounded-3xl border border-white/[0.05] bg-white/[0.03] p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="h-3 w-40" />
+        </div>
+        <Skeleton className="h-10 w-10 rounded-full" />
+      </div>
+      <div className="flex items-center justify-around py-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="flex flex-col items-center gap-2">
+            <Skeleton className="h-16 w-16 rounded-full" />
+            <Skeleton className="h-2.5 w-12" />
+          </div>
+        ))}
+      </div>
+      {lines > 0 && (
+        <div className="space-y-2 mt-4 pt-4 border-t border-white/5">
+          {Array.from({ length: lines }).map((_, i) => (
+            <div key={i} className="flex items-center justify-between">
+              <Skeleton className="h-3 w-20" />
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-4 w-12" />
+                <Skeleton className="h-3 w-8" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function EmptyState({
+  icon: Icon,
+  title,
+  description,
+  actionLabel,
+  onAction,
+}: {
+  icon: LucideIcon
+  title: string
+  description: string
+  actionLabel?: string
+  onAction?: () => void
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex flex-col items-center text-center py-12 px-6"
+    >
+      <div className="w-16 h-16 rounded-3xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center mb-4">
+        <Icon size={28} className="text-ink-tertiary" strokeWidth={1.5} />
+      </div>
+      <h3 className="text-base font-semibold text-ink-secondary mb-1">{title}</h3>
+      <p className="text-sm text-ink-tertiary leading-relaxed max-w-[260px] mb-4">{description}</p>
+      {actionLabel && onAction && (
+        <button
+          onClick={() => { haptic('light'); onAction() }}
+          className="rounded-full px-5 py-2.5 text-sm font-semibold text-white bg-family-500/80 active:opacity-80 transition-opacity"
+        >
+          {actionLabel}
+        </button>
+      )}
+    </motion.div>
+  )
 }

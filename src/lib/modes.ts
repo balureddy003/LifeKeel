@@ -70,18 +70,6 @@ export const MODE_CONFIGS: Record<AppMode, ModeConfig> = {
   },
 }
 
-export interface LifeNode {
-  id: string
-  label: string
-  emoji: string
-  type: 'family' | 'person' | 'category' | 'detail'
-  status: 'green' | 'yellow' | 'red'
-  children?: LifeNode[]
-  story?: string
-  explanation?: string
-  progress?: number
-}
-
 export interface LifeEvent {
   id: string
   emoji: string
@@ -96,14 +84,4 @@ export interface TimelineEvent {
   label: string
   year: number
   status: 'done' | 'current' | 'future'
-}
-
-export interface RiskArea {
-  id: string
-  label: string
-  emoji: string
-  progress: number
-  status: 'green' | 'yellow' | 'red'
-  story: string
-  detail: string
 }

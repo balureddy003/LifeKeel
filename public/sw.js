@@ -8,14 +8,16 @@
  *   - Push notifications for urgent family alerts
  */
 
-const CACHE_NAME = 'family-office-v1'
-const STATIC_CACHE = 'family-static-v1'
+const CACHE_NAME = 'family-office-v2'
+const STATIC_CACHE = 'family-static-v2'
 
 const APP_SHELL = [
   '/',
-  '/member/balu',
-  '/simulate',
+  '/events',
+  '/inbox',
+  '/family',
   '/assistant',
+  '/map',
   '/manifest.json',
   '/icon.svg',
 ]
@@ -43,7 +45,11 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(request.url)
 
   if (request.method !== 'GET') return
-  if (url.origin !== location.origin) return
+
+  const isApiCall = url.pathname.startsWith('/api/') || url.pathname.startsWith('/engine/')
+
+  // Allow same-origin requests and cross-origin API calls (NEXT_PUBLIC_API_URL host)
+  if (url.origin !== location.origin && !isApiCall) return
 
   // Next.js build assets → network only (versioned URLs)
   if (url.pathname.startsWith('/_next/')) {
@@ -52,7 +58,7 @@ self.addEventListener('fetch', (e) => {
   }
 
   // API calls → Network First, fallback to cache
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/engine/')) {
+  if (isApiCall) {
     e.respondWith(
       fetch(request)
         .then((res) => {

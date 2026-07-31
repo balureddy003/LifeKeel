@@ -2,16 +2,22 @@
 
 import { motion } from 'framer-motion'
 import Link from 'next/link'
-import { BarChart3, Settings, AlertTriangle, Heart, User } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { BarChart3, Settings, AlertTriangle, User } from 'lucide-react'
 import { GlassCard, PageHeader, ListSection, ListRow } from '@/components/Glass'
-import { FAMILY_MEMBERS } from '@/lib/life-data'
-import { useAppStore } from '@/lib/store'
+import { KnowledgeGraph } from '@/components/KnowledgeGraph'
+import { ROLE_LABELS } from '@/lib/auth-types'
+import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 
 export default function FamilyPage() {
-  const storeFamily = useAppStore((s) => s.family)
-  const familyMembers = storeFamily?.members ?? [
+  const { family } = useAuth()
+  const familyMembers = family?.members.map((m) => ({
+    id: m.id,
+    name: m.name,
+    emoji: m.emoji,
+    role: ROLE_LABELS[m.role],
+    completion: m.status === 'active' ? 100 : 40,
+  })) ?? [
     { id: '1', name: 'Balu', emoji: '', role: 'Organizer', completion: 92 },
     { id: '2', name: 'Priya', emoji: '', role: 'Parent', completion: 74 },
     { id: '3', name: 'Emma', emoji: '', role: 'Child', completion: 100 },
@@ -22,82 +28,10 @@ export default function FamilyPage() {
     <div className="px-5 pt-2 space-y-6">
       <PageHeader title="Our Family" />
 
-      {/* Family graph */}
-      <GlassCard className="p-6">
-        <div className="flex flex-col items-center gap-5">
-          {/* Parents */}
-          <div className="flex items-center gap-8">
-            {FAMILY_MEMBERS.filter((m) => m.id === 'dad' || m.id === 'mom').map((member, i) => (
-              <motion.div
-                key={member.id}
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: i * 0.1, type: 'spring', stiffness: 300, damping: 25 }}
-              >
-                <Link href={`/member/${member.id}`} onClick={() => haptic('light')}>
-                  <motion.div
-                    whileTap={{ scale: 0.9 }}
-                    className="flex flex-col items-center gap-1"
-                  >
-                    <div
-                      className="w-20 h-20 rounded-full flex items-center justify-center"
-                      style={{
-                        background: 'rgba(124,110,240,0.08)',
-                        border: '1px solid rgba(124,110,240,0.2)',
-                        backdropFilter: 'blur(20px)',
-                      }}
-                    >
-                      <User size={32} className="text-family-400" strokeWidth={1.5} />
-                    </div>
-                    <span className="text-sm font-semibold">{member.name}</span>
-                    <span className="text-xs text-ink-tertiary">{member.role}</span>
-                  </motion.div>
-                </Link>
-              </motion.div>
-            ))}
-          </div>
-
-          {/* Heart connection */}
-          <motion.div
-            animate={{ scale: [1, 1.1, 1] }}
-            transition={{ duration: 2, repeat: Infinity }}
-          >
-            <Heart size={20} className="text-danger" />
-          </motion.div>
-
-          {/* Children */}
-          <div className="flex gap-6">
-            {FAMILY_MEMBERS.filter((m) => m.id === 'emma' || m.id === 'lucas').map((member, i) => (
-              <motion.div
-                key={member.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 + i * 0.1 }}
-              >
-                <Link href={`/member/${member.id}`} onClick={() => haptic('light')}>
-                  <motion.div
-                    whileTap={{ scale: 0.9 }}
-                    className="flex flex-col items-center gap-1"
-                  >
-                    <div
-                      className="w-16 h-16 rounded-full flex items-center justify-center"
-                      style={{
-                        background: 'rgba(255,255,255,0.04)',
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        backdropFilter: 'blur(20px)',
-                      }}
-                    >
-                      <User size={24} className="text-ink-secondary" strokeWidth={1.5} />
-                    </div>
-                    <span className="text-xs font-semibold">{member.name}</span>
-                    <span className="text-[10px] text-ink-tertiary">{member.role}</span>
-                  </motion.div>
-                </Link>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </GlassCard>
+      {/* Family graph — the real, connected graph (not a static illustration) */}
+      <div className="h-[360px]">
+        <KnowledgeGraph />
+      </div>
 
       {/* Gamified completion */}
       <div>

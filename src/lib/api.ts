@@ -94,11 +94,17 @@ export async function fetchFamilyReadinessScore(): Promise<number> {
  * Fetches an AI-style response for a user query. In production this would
  * call the engine's LLM fusion endpoint; for now it uses the local
  * AI_RESPONSES map with a compliance-safe fallback.
+ *
+ * Returns both the content and an `isLive` flag so the UI can distinguish
+ * real API responses from mock fallbacks and label them accordingly.
  */
-export async function fetchAIResponse(query: string): Promise<string> {
+export async function fetchAIResponse(query: string): Promise<{ content: string; isLive: boolean }> {
   const lower = query.toLowerCase()
   for (const [key, response] of Object.entries(AI_RESPONSES)) {
-    if (lower.includes(key)) return response
+    if (lower.includes(key)) return { content: response, isLive: false }
   }
-  return "Based on the information you've entered, here is a summary from your family's data. This is for informational purposes only — please consult a qualified professional before making financial decisions. Would you like to see the specific numbers from your family's profile?"
+  return {
+    content: "Based on the information you've entered, here is a summary from your family's data. This is for informational purposes only — please consult a qualified professional before making financial decisions. Would you like to see the specific numbers from your family's profile?",
+    isLive: false,
+  }
 }
