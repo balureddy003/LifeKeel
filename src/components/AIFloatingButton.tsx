@@ -11,7 +11,7 @@ function getAIResponse(query: string): string {
   for (const [key, response] of Object.entries(AI_RESPONSES)) {
     if (lower.includes(key)) return response
   }
-  return "I understand you're asking about that. Let me look into your family's data and get back to you with a clear answer. In the meantime, would you like me to show you your family's protection status?"
+  return "I understand you're asking about that. Based on the information you've entered, here is a summary from your family's data. This is for informational purposes only — please consult a qualified professional before making financial decisions. Would you like to see the specific numbers from your family's profile?"
 }
 
 interface Message {
@@ -118,7 +118,7 @@ export function AIFloatingButton() {
                     <Bot size={32} className="text-family-400" />
                   </motion.div>
                   <p className="text-ink-secondary text-sm max-w-xs">
-                    Ask me anything about your family. I know your insurance, savings, goals, and what to do in any situation.
+                    Ask me anything about your family. I can summarize your insurance, savings, goals, and scenarios based on the data you've entered.
                   </p>
                   <div className="mt-6 w-full space-y-2">
                     {AI_SUGGESTIONS.map((s, i) => (

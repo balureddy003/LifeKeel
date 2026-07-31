@@ -24,36 +24,36 @@ interface AIAnswer {
 const MOCK_ANSWERS: Record<string, AIAnswer> = {
   'retire': {
     query: 'Can I retire at 55?',
-    answer: "Yes, you can retire at 55 with adjustments to your savings rate. Your current trajectory puts retirement at 65, but increasing your monthly retirement contributions by $800 would shift that to 55. At 55, you'd have approximately $1.6M saved, giving you $64,000/year in retirement income. Your mortgage would be fully paid off by then.",
+    answer: "A projection based on your data suggests that retiring at 55 may be possible with adjustments to your savings rate. Your current trajectory estimates retirement around 65. One scenario shows that increasing monthly retirement contributions by $800 could shift that to approximately 55. At 55, the projection estimates roughly $1.6M saved, which could translate to about $64,000/year. Your mortgage may also be paid off by then. These are estimates and not guaranteed — consider reviewing with a qualified financial professional.",
     sources: [
       { label: 'Pension Statement (Q3 2026)', type: 'document', icon: FileText },
       { label: 'Investment Account — Vanguard', type: 'account', icon: TrendingUp },
       { label: 'Mortgage — First National', type: 'account', icon: Landmark },
       { label: 'Retirement projection model', type: 'calculation', icon: Calculator },
     ],
-    confidence: 'high',
-    followUps: ['How do I increase my contributions?', 'What about inflation?', 'When is my mortgage paid off?'],
+    confidence: 'medium',
+    followUps: ['What about inflation?', 'When is my mortgage paid off?', 'How do I consult a financial planner?'],
   },
   'protected': {
     query: 'Are my children fully protected?',
-    answer: "Your children are well protected. Life insurance covers $750,000 which would fund their upbringing and education. Emma's university fund is 72% complete ($86,400 of $120,000 target) and Lucas's is 45% complete ($54,000). Both have future goals insurance. One suggestion: consider adding critical illness coverage for Lucas.",
+    answer: "Based on the data you entered, your children appear to have significant coverage. Life insurance lists $750,000 for upbringing and education. Emma's university fund is 72% of the $120,000 target ($86,400) and Lucas's is 45% ($54,000). Both have future goals insurance. One option to consider: critical illness coverage for Lucas. Please consult a licensed insurance professional to evaluate whether this is appropriate.",
     sources: [
       { label: 'Life Insurance Policy #LI-2024-001', type: 'policy', icon: Shield },
       { label: "Emma's Education Fund", type: 'account', icon: GraduationCap },
       { label: "Lucas's Education Fund", type: 'account', icon: GraduationCap },
     ],
-    confidence: 'high',
+    confidence: 'medium',
     followUps: ['What is critical illness coverage?', 'How much is left for Lucas?', 'Show me the insurance policies'],
   },
   'job': {
     query: 'What happens if I lose my job?',
-    answer: "If you lose your job, your family is protected for 14 months. You have $55,000 in emergency savings (14 months of expenses), income protection insurance paying $5,000/month for 2 years, and your wife's salary covers basic expenses. You'd have enough time to find a new job without touching investments or education funds.",
+    answer: "Based on the information you entered, one projection estimates your family may be covered for approximately 14 months. You have $55,000 in emergency savings (estimated 14 months of expenses), income protection insurance listing $5,000/month for up to 2 years, and your wife's salary may cover basic expenses. This is an estimate based on your inputs — consider reviewing with a qualified professional.",
     sources: [
       { label: 'Emergency Savings Account', type: 'account', icon: Wallet },
       { label: 'Income Protection Policy', type: 'policy', icon: Briefcase },
       { label: 'Monthly expense analysis', type: 'calculation', icon: Calculator },
     ],
-    confidence: 'high',
+    confidence: 'medium',
     followUps: ['How long would savings last?', 'What about health insurance?', 'Show me the budget'],
   },
 }
@@ -65,7 +65,7 @@ function getAnswer(query: string): AIAnswer {
   }
   return {
     query,
-    answer: "Based on your family's financial profile, I'd recommend reviewing your current coverage and speaking with your financial advisor. Would you like me to show you specific numbers from your family's data?",
+    answer: "Based on the information you've entered, here is a summary from your family's data. This is for informational purposes only — please consult a qualified professional before making financial decisions. Would you like to see the specific numbers from your family's profile?",
     sources: [
       { label: 'Family Profile', type: 'document', icon: Home },
     ],

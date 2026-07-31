@@ -5,9 +5,10 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Check, Circle, HelpCircle, Wallet, Bot, HeartCrack, Heart, Briefcase, Car, Plane, Home, Baby, GraduationCap, Palmtree, Target } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { RESPONSE_ACTIONS, MONEY_SOURCES, FINANCIAL_STABILITY_SCORE, LIFE_EVENTS } from '@/lib/data'
+import { RESPONSE_ACTIONS, MONEY_SOURCES, LIFE_EVENTS } from '@/lib/data'
 import type { ResponseAction } from '@/lib/types'
 import { PageHeader } from '@/components/Glass'
+import { useFamilyReadinessScore } from '@/lib/useFamilyData'
 
 const EVENT_ICONS: Record<string, LucideIcon> = {
   bereavement: HeartCrack,
@@ -64,6 +65,7 @@ export default function ResponsePlanPage() {
   const params = useParams<{ eventId: string }>()
   const event = LIFE_EVENTS.find((e) => e.id === params.eventId)
   const [actions, setActions] = useState<ResponseAction[]>(RESPONSE_ACTIONS)
+  const { score: readinessScore } = useFamilyReadinessScore()
 
   const toggleAction = (id: string) => {
     setActions((prev) => prev.map((a) => a.id === id ? { ...a, done: !a.done } : a))
@@ -94,17 +96,17 @@ export default function ResponsePlanPage() {
         subtitle="Here's your family's response plan"
       />
 
-      {/* Financial stability score */}
+      {/* Family readiness score */}
       <div className="card">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-semibold text-ink-secondary">Financial Stability</span>
-          <span className="text-2xl font-bold" style={{ color: FINANCIAL_STABILITY_SCORE >= 80 ? '#4ade80' : '#fbbf24' }}>
-            {FINANCIAL_STABILITY_SCORE}%
+          <span className="text-sm font-semibold text-ink-secondary">Family Readiness</span>
+          <span className="text-2xl font-bold" style={{ color: readinessScore >= 80 ? '#4ade80' : '#fbbf24' }}>
+            {readinessScore}%
           </span>
         </div>
-        <StabilityBar score={FINANCIAL_STABILITY_SCORE} />
+        <StabilityBar score={readinessScore} />
         <p className="text-xs text-ink-tertiary mt-2">
-          Your family would remain financially stable in this situation.
+          Based on the data you entered, your family appears to remain financially stable in this situation. This is an estimate — please consult a qualified professional.
         </p>
       </div>
 

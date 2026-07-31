@@ -11,6 +11,7 @@ import { useMode } from '@/lib/mode-context'
 import { MeshGradient } from './Glass'
 import { EmergencyMode } from './EmergencyMode'
 import { CommandPalette } from './CommandPalette'
+import { DisclaimerFooter } from './Disclaimer'
 import { haptic } from '@/lib/haptics'
 
 const NAV_ITEMS = [
@@ -246,6 +247,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <OfflineBanner />
       <div className={`max-w-md mx-auto ${bottomPadding} pt-2 relative z-10`}>
         <AuthGate>{children}</AuthGate>
+        {showNav && <DisclaimerFooter />}
       </div>
       {showNav && <LiquidTabBar />}
       {showEmergency && <EmergencyButton />}

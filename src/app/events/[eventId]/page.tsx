@@ -9,6 +9,7 @@ import type { LucideIcon } from 'lucide-react'
 import { LIFE_EVENTS } from '@/lib/life-data'
 import { GlassCard, GlassButton, PageHeader } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
+import { useEventReadiness } from '@/lib/useFamilyData'
 
 interface Action {
   id: string
@@ -58,9 +59,9 @@ const EVENT_STABILITY: Record<string, number> = {
 }
 
 const EVENT_AI_EXPLANATION: Record<string, string> = {
-  bereavement: "Think of this like a safety net. If something happens to you, your family receives $750,000 from life insurance, $200,000 from employer benefits, and survivor pension payments. Your mortgage is protected, so your family won't lose their home. All key contacts have been notified. Your wife would have everything she needs to continue without financial stress.",
-  medical: "Your health insurance covers most medical emergencies. You'd pay a small amount (the deductible) and the insurance pays the rest — up to $1 million per year. If you need surgery, the hospital may need to confirm with your insurance first. You also have $8,200 in a Health Savings Account for out-of-pocket costs.",
-  'job-loss': "If you lose your job, your family is protected for 14 months. You have $55,000 in savings (that's 14 months of expenses), income protection insurance that pays $5,000/month for 2 years, and your wife's salary covers the basics. You'd have plenty of time to find a new job without touching investments or education funds.",
+  bereavement: "Based on the data you entered, if something were to happen to you, your family's listed benefits include $750,000 from life insurance, $200,000 from employer benefits, and potential survivor pension payments. Your mortgage protection is listed as active. All key contacts have been noted in your profile. This is a summary of your documented coverage — please consult a licensed professional to review the terms.",
+  medical: "Based on your entered policies, your health insurance lists coverage for most medical emergencies. You'd typically pay a deductible and the insurance may cover the rest — up to $1 million per year. For surgery, the hospital may need to confirm with your insurer first. You also have $8,200 listed in a Health Savings Account for out-of-pocket costs. Please verify current terms with your insurance provider.",
+  'job-loss': "Based on the information you entered, one projection estimates your family may be covered for approximately 14 months. You have $55,000 in savings (estimated 14 months of expenses), income protection insurance listing $5,000/month for up to 2 years, and your wife's salary may cover basic expenses. This is an estimate based on your inputs — consider reviewing with a qualified professional.",
 }
 
 const EVENT_ICONS: Record<string, LucideIcon> = {
@@ -103,8 +104,9 @@ export default function EventDetailPage() {
     )
   }
 
-  const stability = EVENT_STABILITY[event.id] ?? 80
-  const explanation = EVENT_AI_EXPLANATION[event.id] ?? "Based on your family's financial profile, you're well prepared for this situation. Your insurance, savings, and investments provide multiple layers of protection."
+  const fallbackStability = EVENT_STABILITY[event.id] ?? 80
+  const fallbackExplanation = EVENT_AI_EXPLANATION[event.id] ?? "Based on the data you entered, your family appears well prepared for this situation. Your listed insurance, savings, and investments may provide multiple layers of coverage. This is informational only — please consult a licensed professional to review your specific terms."
+  const { stability, explanation } = useEventReadiness(event.id, fallbackStability, fallbackExplanation)
   const completedCount = actions.filter((a) => a.done).length
 
   return (
@@ -122,7 +124,7 @@ export default function EventDetailPage() {
       >
         <GlassCard className="p-5">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-semibold text-ink-secondary">Financial Stability</span>
+            <span className="text-sm font-semibold text-ink-secondary">Family Readiness</span>
             <span className="text-2xl font-bold" style={{ color: stability >= 80 ? '#4ade80' : '#fbbf24' }}>
               {stability}%
             </span>

@@ -3,10 +3,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Bot, Send } from 'lucide-react'
-import { AI_SUGGESTIONS, AI_RESPONSES } from '@/lib/life-data'
+import { AI_SUGGESTIONS } from '@/lib/life-data'
 import { AIAnswerCard } from '@/components/AIAnswer'
 import { PageHeader } from '@/components/Glass'
+import { DisclaimerBanner } from '@/components/Disclaimer'
 import { haptic } from '@/lib/haptics'
+import { fetchAIResponse } from '@/lib/api'
 
 interface ChatMessage {
   id: string
@@ -17,11 +19,9 @@ interface ChatMessage {
 }
 
 function getAIResponse(query: string): string {
-  const lower = query.toLowerCase()
-  for (const [key, response] of Object.entries(AI_RESPONSES)) {
-    if (lower.includes(key)) return response
-  }
-  return "I understand you're asking about that. Based on your family's financial profile, I'd recommend reviewing your current coverage and speaking with your financial advisor. Would you like me to show you specific numbers from your family's data?"
+  // Synchronous fallback — the async fetchAIResponse is used in sendMessage.
+  // This is kept for any synchronous call sites that may exist.
+  return "Based on the information you've entered, here is a summary from your family's data. This is for informational purposes only — please consult a qualified professional before making financial decisions. Would you like to see the specific numbers from your family's profile?"
 }
 
 export default function AssistantPage() {
@@ -29,7 +29,7 @@ export default function AssistantPage() {
     {
       id: 'welcome',
       role: 'assistant',
-      content: "Hi! I'm your Family AI. I know your family's full picture — insurance, savings, goals, and what to do in any situation. Just ask me anything.",
+      content: "Hi! I'm your Family AI. I can summarize your family's financial profile — insurance, savings, goals, and scenarios. This is for informational purposes only. Just ask me anything.",
     },
   ])
   const [input, setInput] = useState('')
@@ -40,7 +40,7 @@ export default function AssistantPage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, thinking])
 
-  const sendMessage = (text: string) => {
+  const sendMessage = async (text: string) => {
     if (!text.trim()) return
     haptic('light')
 
@@ -53,10 +53,11 @@ export default function AssistantPage() {
     setInput('')
     setThinking(true)
 
-    setTimeout(() => {
-      const lower = text.toLowerCase()
-      const hasPerplexity = lower.includes('retire') || lower.includes('protect') || lower.includes('job')
-      const response = getAIResponse(text)
+    const lower = text.toLowerCase()
+    const hasPerplexity = lower.includes('retire') || lower.includes('protect') || lower.includes('job')
+
+    try {
+      const response = await fetchAIResponse(text)
       setMessages((prev) => [...prev, {
         id: `ai-${Date.now()}`,
         role: 'assistant',
@@ -64,9 +65,18 @@ export default function AssistantPage() {
         showPerplexity: hasPerplexity,
         userQuery: text,
       }])
+    } catch {
+      setMessages((prev) => [...prev, {
+        id: `ai-${Date.now()}`,
+        role: 'assistant',
+        content: getAIResponse(text),
+        showPerplexity: hasPerplexity,
+        userQuery: text,
+      }])
+    } finally {
       setThinking(false)
       haptic('success')
-    }, 1200)
+    }
   }
 
   return (
@@ -146,6 +156,7 @@ export default function AssistantPage() {
         </div>
       )}
 
+      <DisclaimerBanner compact />
       <div className="px-4 py-3 safe-area-bottom">
         <div className="flex gap-2 items-end">
           <input

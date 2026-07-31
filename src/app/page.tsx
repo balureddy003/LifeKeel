@@ -10,6 +10,7 @@ import { ConfidenceScore, TrustLadder, MemoryPrompts } from '@/components/Intell
 import { HealthSummary } from '@/components/HealthSummary'
 import { TIMELINE_EVENTS, FAMILY_STORY, FAMILY_HEALTH_SCORE, CHILD_GOALS, CHILD_MESSAGES } from '@/lib/life-data'
 import { useMode } from '@/lib/mode-context'
+import { useFamilyReadinessScore } from '@/lib/useFamilyData'
 
 function ChildHome() {
   return (
@@ -90,6 +91,7 @@ function ChildHome() {
 }
 
 function ElderlyHome() {
+  const { score } = useFamilyReadinessScore()
   return (
     <div className="px-4 pt-6 space-y-6">
       <motion.div
@@ -98,7 +100,7 @@ function ElderlyHome() {
         className="text-center"
       >
         <h1 className="text-3xl font-bold mb-2">You're Safe</h1>
-        <p className="text-xl text-ink-tertiary">Your family is protected</p>
+        <p className="text-xl text-ink-tertiary">Your family appears well covered</p>
       </motion.div>
 
       <motion.div
@@ -107,7 +109,7 @@ function ElderlyHome() {
         transition={{ delay: 0.2 }}
         className="flex justify-center"
       >
-        <ScoreRing score={FAMILY_HEALTH_SCORE} size={160} />
+        <ScoreRing score={score} size={160} />
       </motion.div>
 
       <motion.p
@@ -162,6 +164,7 @@ function ElderlyHome() {
 
 export default function HomePage() {
   const { config } = useMode()
+  const { score: readinessScore } = useFamilyReadinessScore()
 
   if (config.mode === 'child') {
     return <ChildHome />
@@ -188,7 +191,7 @@ export default function HomePage() {
       >
         <GlassCard className="p-5">
           <div className="flex items-center gap-3 mb-3">
-            <ScoreRing score={FAMILY_HEALTH_SCORE} size={80} />
+            <ScoreRing score={readinessScore} size={80} />
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-sm font-semibold text-success">You&apos;re on track</span>
@@ -270,10 +273,10 @@ export default function HomePage() {
         <GlassCard className="p-5 border-family-500/20">
           <div className="flex items-center gap-2 mb-2">
             <Lightbulb size={18} className="text-family-400" />
-            <span className="text-sm font-semibold text-family-400">What you should do</span>
+            <span className="text-sm font-semibold text-family-400">One option to consider</span>
           </div>
           <p className="text-sm text-ink-secondary leading-relaxed mb-3">
-            Add $250/month to your retirement savings to stay on track for retirement at 60. Everything else is looking great!
+            One projection suggests adding $250/month to your retirement savings may help you stay on track for retirement around 60. This is an estimate — consider reviewing with a qualified financial professional.
           </p>
           <Link
             href="/events/retirement"
