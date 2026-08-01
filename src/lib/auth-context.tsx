@@ -10,7 +10,7 @@ interface AuthContextValue {
   isLoading: boolean
   signUp: (name: string, email: string) => Promise<User>
   signIn: (email: string) => Promise<void>
-  signInWithProvider: (provider: 'apple' | 'google') => Promise<void>
+  signInWithProvider: (provider: 'google') => Promise<void>
   signOut: () => void
   createFamily: (name: string, forUser?: User) => void
   inviteMember: (name: string, email: string, role: FamilyRole) => void
@@ -76,10 +76,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     persist(u, null)
   }
 
-  const signInWithProvider = async (provider: 'apple' | 'google') => {
+  const signInWithProvider = async (provider: 'google') => {
     const u: User = {
       id: `user-${Date.now()}`,
-      name: provider === 'apple' ? 'Apple User' : 'Google User',
+      name: 'Google User',
       email: `user@${provider}.com`,
       avatar: '',
     }

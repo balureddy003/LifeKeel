@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { Network, Apple } from 'lucide-react'
+import { Network } from 'lucide-react'
+import { GoogleIcon } from '@/components/GoogleIcon'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 
@@ -22,10 +23,10 @@ export default function SignUpPage() {
     router.push('/family-setup')
   }
 
-  const handleProvider = async (provider: 'apple' | 'google') => {
+  const handleGoogle = async () => {
     setLoading(true)
     haptic('medium')
-    await signInWithProvider(provider)
+    await signInWithProvider('google')
     router.push('/family-setup')
   }
 
@@ -42,19 +43,11 @@ export default function SignUpPage() {
       <div className="space-y-3 mb-6">
         <motion.button
           whileTap={{ scale: 0.96 }}
-          onClick={() => handleProvider('apple')}
+          onClick={handleGoogle}
           disabled={loading}
           className="w-full glass rounded-2xl py-4 font-semibold flex items-center justify-center gap-2"
         >
-          <Apple size={20} className="text-ink-secondary" /> Continue with Apple
-        </motion.button>
-        <motion.button
-          whileTap={{ scale: 0.96 }}
-          onClick={() => handleProvider('google')}
-          disabled={loading}
-          className="w-full glass rounded-2xl py-4 font-semibold flex items-center justify-center gap-2"
-        >
-          <span className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-[10px] font-bold text-white">G</span> Continue with Google
+          <GoogleIcon size={20} /> Continue with Google
         </motion.button>
       </div>
 
