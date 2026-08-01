@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { PageHeader, GlassCard, EmptyState } from '@/components/Glass'
@@ -66,6 +66,20 @@ export default function UploadPage() {
     setDocuments(docs)
     setLoaded(true)
   }, [])
+
+  useEffect(() => {
+    loadDocuments()
+  }, [loadDocuments])
+
+  // Poll for OCR status updates on documents that are still processing
+  useEffect(() => {
+    const hasProcessing = documents.some((d) => d.status === 'uploaded' || d.status === 'processing')
+    if (!hasProcessing) return
+    const interval = setInterval(() => {
+      loadDocuments()
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [documents, loadDocuments])
 
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
