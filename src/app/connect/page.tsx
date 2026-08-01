@@ -18,7 +18,7 @@ const CONNECTOR_ICONS: Record<string, LucideIcon> = {
 }
 
 const CONNECTOR_DESCRIPTIONS: Record<string, string> = {
-  gmail: 'AI scans your inbox for financial documents — insurance renewals, bank statements, pension updates — and summarizes them in plain language.',
+  gmail: 'Connect your inbox to import financial documents — insurance renewals, bank statements, pension updates. Free on every plan. AI summaries in plain language are a paid upgrade.',
   'open-banking': 'Securely connect your bank accounts via a regulated AISP aggregator. We see balances and transactions, never move money.',
   trading212: 'Sync your investment portfolio and pension account for real-time net worth tracking.',
   zerodha: 'Sync your Zerodha demat account for holdings, positions, and portfolio tracking.',

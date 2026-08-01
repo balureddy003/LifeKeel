@@ -7,7 +7,7 @@ import { PageHeader, GlassCard, EmptyState } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { uploadDocument, fetchDocuments, type FamilyDocument } from '@/lib/api'
 import { useAppStore } from '@/lib/store'
-import { Camera, FileText, Upload, Check, Loader2, AlertCircle, ChevronRight, ShieldCheck, Landmark, Home, TrendingUp, Receipt, Scale } from 'lucide-react'
+import { Camera, FileText, Upload, Check, Loader2, AlertCircle, ChevronRight, ShieldCheck, Landmark, Home, TrendingUp, Receipt, Scale, Sparkles } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 const CATEGORY_ICONS: Record<string, LucideIcon> = {
@@ -37,6 +37,8 @@ function statusIcon(status: FamilyDocument['status']) {
       return <Loader2 size={14} className="text-warning animate-spin" />
     case 'extracted':
       return <Check size={14} className="text-success" />
+    case 'stored':
+      return <ShieldCheck size={14} className="text-ink-tertiary" />
     case 'error':
       return <AlertCircle size={14} className="text-danger" />
   }
@@ -47,6 +49,7 @@ function statusLabel(status: FamilyDocument['status']) {
     case 'uploaded': return 'Uploading...'
     case 'processing': return 'Processing...'
     case 'extracted': return 'Extracted'
+    case 'stored': return 'Saved'
     case 'error': return 'Failed'
   }
 }
@@ -56,14 +59,16 @@ export default function UploadPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const [documents, setDocuments] = useState<FamilyDocument[]>([])
+  const [aiExtractionEnabled, setAiExtractionEnabled] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const incrementDocumentCount = useAppStore((s) => s.incrementDocumentCount)
 
   const loadDocuments = useCallback(async () => {
-    const docs = await fetchDocuments()
+    const { documents: docs, aiExtractionEnabled: enabled } = await fetchDocuments()
     setDocuments(docs)
+    setAiExtractionEnabled(enabled)
     setLoaded(true)
   }, [])
 
@@ -173,6 +178,16 @@ export default function UploadPage() {
         </div>
       )}
 
+      {/* AI extraction upsell — upload/scan/storage is free, extraction is paid */}
+      {loaded && !aiExtractionEnabled && documents.length > 0 && (
+        <GlassCard className="p-3.5 border-family-500/20 flex items-start gap-2">
+          <Sparkles size={16} className="text-family-400 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-ink-secondary leading-relaxed">
+            Documents are saved and stored for free. Upgrade to have AI automatically pull out the provider, policy number, amounts, and dates.
+          </p>
+        </GlassCard>
+      )}
+
       {/* Document list */}
       <div className="space-y-2">
         <div className="text-sm font-semibold text-ink-secondary px-1">
@@ -184,7 +199,11 @@ export default function UploadPage() {
             <EmptyState
               icon={FileText}
               title="No documents yet"
-              description="Snap a photo of any financial document — insurance policy, pension statement, mortgage letter — and we'll extract the key details for you."
+              description={
+                aiExtractionEnabled
+                  ? "Snap a photo of any financial document — insurance policy, pension statement, mortgage letter — and we'll extract the key details for you."
+                  : "Snap a photo of any financial document to store it securely. Upgrade to have AI extract the key details (provider, policy number, amounts, dates) automatically."
+              }
             />
           </GlassCard>
         ) : (
@@ -208,7 +227,7 @@ export default function UploadPage() {
                         <span className="text-xs text-ink-tertiary">{CATEGORY_LABELS[doc.category] ?? 'Document'}</span>
                         <span className="text-xs text-ink-tertiary">·</span>
                         <span className="text-xs flex items-center gap-1" style={{
-                          color: doc.status === 'extracted' ? '#4ade80' : doc.status === 'error' ? '#f87171' : '#fbbf24'
+                          color: doc.status === 'extracted' ? '#4ade80' : doc.status === 'error' ? '#f87171' : doc.status === 'stored' ? '#9ca3af' : '#fbbf24'
                         }}>
                           {statusIcon(doc.status)} {statusLabel(doc.status)}
                         </span>
