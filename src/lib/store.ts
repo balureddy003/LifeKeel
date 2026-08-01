@@ -61,6 +61,14 @@ interface AppState {
   setCmdkOpen: (open: boolean) => void
   emergencyOpen: boolean
   setEmergencyOpen: (open: boolean) => void
+
+  // Connectors
+  connectedConnectors: string[]
+  setConnectorConnected: (id: string, connected: boolean) => void
+
+  // Documents
+  uploadedDocumentCount: number
+  incrementDocumentCount: () => void
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 11)
@@ -147,6 +155,20 @@ export const useAppStore = create<AppState>()(
       setCmdkOpen: (open) => set({ cmdkOpen: open }),
       emergencyOpen: false,
       setEmergencyOpen: (open) => set({ emergencyOpen: open }),
+
+      // Connectors
+      connectedConnectors: [],
+      setConnectorConnected: (id, connected) =>
+        set((state) => ({
+          connectedConnectors: connected
+            ? [...state.connectedConnectors, id]
+            : state.connectedConnectors.filter((c) => c !== id),
+        })),
+
+      // Documents
+      uploadedDocumentCount: 0,
+      incrementDocumentCount: () =>
+        set((state) => ({ uploadedDocumentCount: state.uploadedDocumentCount + 1 })),
     }),
     {
       name: 'family-ai-store',

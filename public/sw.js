@@ -18,6 +18,8 @@ const APP_SHELL = [
   '/family',
   '/assistant',
   '/map',
+  '/upload',
+  '/connect',
   '/manifest.json',
   '/icon.svg',
 ]

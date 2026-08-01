@@ -1,8 +1,10 @@
 'use client'
 
 import { motion } from 'framer-motion'
+import { useRouter } from 'next/navigation'
 import { GlassCard } from './Glass'
 import { haptic } from '@/lib/haptics'
+import { useAppStore } from '@/lib/store'
 import { CONFIDENCE_AREAS, OVERALL_CONFIDENCE } from '@/lib/onboarding-data'
 import { Brain, TrendingUp, FileText, Landmark, Mail, BarChart3, Scale, Car, Check, AlertTriangle, X, Sparkles, ChevronRight, Users, Heart, Wallet, Target, Shield } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -28,6 +30,7 @@ const statusIcon = (status: 'complete' | 'partial' | 'missing') => {
 }
 
 export function ConfidenceScore() {
+  const router = useRouter()
   return (
     <GlassCard className="p-5">
       <div className="flex items-center justify-between mb-4">
@@ -101,7 +104,7 @@ export function ConfidenceScore() {
 
       <motion.button
         whileTap={{ scale: 0.97 }}
-        onClick={() => haptic('light')}
+        onClick={() => { haptic('light'); router.push('/upload') }}
         className="w-full mt-4 glass rounded-2xl py-3 text-sm font-semibold text-family-400 flex items-center justify-center gap-1"
       >
         Complete your profile <ChevronRight size={14} />
@@ -111,6 +114,28 @@ export function ConfidenceScore() {
 }
 
 export function TrustLadder() {
+  const router = useRouter()
+  const connectedConnectors = useAppStore((s) => s.connectedConnectors)
+  const uploadedDocumentCount = useAppStore((s) => s.uploadedDocumentCount)
+
+  const steps = [
+    { id: 'family', icon: Users, label: 'Add Your Family', timeframe: 'Day 1', desc: 'Tell us who\'s in your household', route: '/family' },
+    { id: 'documents', icon: FileText, label: 'Upload Documents', timeframe: 'Week 1', desc: 'Snap a photo or upload any document', route: '/upload' },
+    { id: 'bank', icon: Landmark, label: 'Connect Bank', timeframe: 'Week 2', desc: 'Securely connect your bank accounts', route: '/connect' },
+    { id: 'email', icon: Mail, label: 'Connect Email', timeframe: 'Week 3', desc: 'AI scans for financial documents only', route: '/connect' },
+    { id: 'investments', icon: BarChart3, label: 'Connect Investments', timeframe: 'Month 2', desc: 'Link your investment and pension accounts', route: '/connect' },
+    { id: 'estate', icon: Scale, label: 'Estate Planning', timeframe: 'Month 3', desc: 'Connect your lawyer for will and estate docs', route: '/connect' },
+  ].map((step) => {
+    let status: 'done' | 'available' | 'locked' = 'locked'
+    if (step.id === 'family') status = 'done'
+    else if (step.id === 'documents') status = uploadedDocumentCount > 0 ? 'done' : 'available'
+    else if (step.id === 'bank') status = connectedConnectors.includes('open-banking') ? 'done' : 'available'
+    else if (step.id === 'email') status = connectedConnectors.includes('gmail') ? 'done' : 'available'
+    else if (step.id === 'investments') status = connectedConnectors.some((c) => ['trading212', 'zerodha'].includes(c)) ? 'done' : 'available'
+    else if (step.id === 'estate') status = 'available'
+    return { ...step, status }
+  })
+
   return (
     <GlassCard className="p-5">
       <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-1">
@@ -120,14 +145,7 @@ export function TrustLadder() {
       <div className="text-xs text-ink-tertiary mb-4">We build your profile step by step — at your pace</div>
 
       <div className="space-y-1">
-        {[
-          { icon: Users, label: 'Add Your Family', timeframe: 'Day 1', status: 'done', desc: 'Tell us who\'s in your household' },
-          { icon: FileText, label: 'Upload Documents', timeframe: 'Week 1', status: 'available', desc: 'Snap a photo or upload any document' },
-          { icon: Landmark, label: 'Connect Bank', timeframe: 'Week 2', status: 'locked', desc: 'Securely connect your bank accounts' },
-          { icon: Mail, label: 'Connect Email', timeframe: 'Week 3', status: 'locked', desc: 'AI scans for financial documents only' },
-          { icon: BarChart3, label: 'Connect Investments', timeframe: 'Month 2', status: 'locked', desc: 'Link your investment and pension accounts' },
-          { icon: Scale, label: 'Estate Planning', timeframe: 'Month 3', status: 'locked', desc: 'Connect your lawyer for will and estate docs' },
-        ].map((step, i) => {
+        {steps.map((step, i) => {
           const Icon = step.icon
           const isDone = step.status === 'done'
           const isAvailable = step.status === 'available'
@@ -178,14 +196,19 @@ export function TrustLadder() {
               </div>
 
               {/* Action */}
-              {isAvailable && (
+              {isAvailable && !isDone && (
                 <motion.button
                   whileTap={{ scale: 0.9 }}
-                  onClick={() => haptic('light')}
+                  onClick={() => { haptic('light'); router.push(step.route) }}
                   className="text-xs font-semibold text-family-400 flex-shrink-0 flex items-center gap-0.5"
                 >
                   Start <ChevronRight size={12} />
                 </motion.button>
+              )}
+              {isDone && (
+                <span className="text-xs font-semibold text-success flex-shrink-0 flex items-center gap-0.5">
+                  <Check size={12} /> Done
+                </span>
               )}
             </motion.div>
           )
@@ -196,6 +219,7 @@ export function TrustLadder() {
 }
 
 export function MemoryPrompts() {
+  const router = useRouter()
   const prompts = [
     {
       id: 'car',
@@ -203,6 +227,7 @@ export function MemoryPrompts() {
       title: 'I noticed something new',
       message: 'I see a new vehicle in your transactions. Would you like to add insurance and update your family profile?',
       action: 'Add vehicle',
+      route: '/family',
     },
     {
       id: 'pension',
@@ -210,6 +235,7 @@ export function MemoryPrompts() {
       title: 'We found a pension statement',
       message: 'I found a pension document in your uploads. Should I add it to your retirement planning?',
       action: 'Review',
+      route: '/upload',
     },
   ]
 
@@ -239,7 +265,7 @@ export function MemoryPrompts() {
                 <div className="flex gap-2">
                   <motion.button
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => haptic('success')}
+                    onClick={() => { haptic('success'); router.push(p.route) }}
                     className="text-xs font-semibold text-family-400 flex items-center gap-0.5"
                   >
                     {p.action} <ChevronRight size={12} />

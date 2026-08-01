@@ -1,13 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bot, Info, Home, Landmark, Wallet, Plane, CreditCard, Car } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Bot, Info, Home, Landmark, Wallet, Plane, CreditCard, Car, Loader2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { GlassCard, PageHeader, EmptyState, MoneyText } from '@/components/Glass'
+import { GlassCard, PageHeader, EmptyState, MoneyText, Skeleton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { INBOX_ITEMS } from '@/lib/onboarding-data'
 import type { InboxItem } from '@/lib/onboarding-data'
+import { fetchInboxItems, dismissInboxItem } from '@/lib/api'
+import { useAppStore } from '@/lib/store'
 
 const INBOX_ICONS: Record<string, LucideIcon> = {
   '1': Home,
@@ -35,8 +38,25 @@ const actionTypeColor = (type: InboxItem['actionType']) => {
 }
 
 export default function InboxPage() {
-  const [items, setItems] = useState(INBOX_ITEMS)
+  const router = useRouter()
+  const connectedConnectors = useAppStore((s) => s.connectedConnectors)
+  const [items, setItems] = useState<InboxItem[]>(INBOX_ITEMS)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [dismissingId, setDismissingId] = useState<string | null>(null)
+  const emailConnected = connectedConnectors.includes('gmail')
+
+  const loadInbox = useCallback(async () => {
+    const { items: apiItems, isLive } = await fetchInboxItems()
+    if (isLive && apiItems.length > 0) {
+      setItems(apiItems)
+    }
+    setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    loadInbox()
+  }, [loadInbox])
 
   const unreadCount = items.filter((i) => !i.read).length
 
@@ -48,6 +68,22 @@ export default function InboxPage() {
 
   const handleAction = (item: InboxItem) => {
     haptic('success')
+    setExpandedId(null)
+    setDismissingId(item.id)
+    dismissInboxItem(item.id).then(() => {
+      setItems((prev) => prev.filter((i) => i.id !== item.id))
+      setDismissingId(null)
+    })
+  }
+
+  const handleDismiss = (id: string) => {
+    haptic('light')
+    setExpandedId(null)
+    setDismissingId(id)
+    dismissInboxItem(id).then(() => {
+      setItems((prev) => prev.filter((i) => i.id !== id))
+      setDismissingId(null)
+    })
   }
 
   return (
@@ -70,6 +106,7 @@ export default function InboxPage() {
       />
 
       {/* AI Summary banner */}
+      {items.length > 0 && (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -85,6 +122,47 @@ export default function InboxPage() {
           </p>
         </GlassCard>
       </motion.div>
+      )}
+
+      {/* Email not connected banner */}
+      {!emailConnected && !loading && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <GlassCard className="p-4 border-family-500/20 flex items-center gap-3">
+            <Bot size={20} className="text-family-400 flex-shrink-0" />
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-family-400">Connect your email</div>
+              <p className="text-xs text-ink-tertiary mt-0.5">Get AI-summarized financial notifications automatically.</p>
+            </div>
+            <button
+              onClick={() => { haptic('light'); router.push('/connect') }}
+              className="text-xs font-semibold text-white px-3 py-2 rounded-xl bg-family-500/80 active:opacity-80"
+            >
+              Connect
+            </button>
+          </GlassCard>
+        </motion.div>
+      )}
+
+      {/* Loading skeleton */}
+      {loading && (
+        <div className="space-y-2">
+          {[0, 1, 2].map((i) => (
+            <GlassCard key={i} className="p-4">
+              <div className="flex items-start gap-3">
+                <Skeleton className="h-10 w-10 rounded-2xl flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-3 w-3/4" />
+                </div>
+              </div>
+            </GlassCard>
+          ))}
+        </div>
+      )}
 
       {/* Inbox items */}
       <div className="space-y-2">
@@ -95,7 +173,7 @@ export default function InboxPage() {
               title="Inbox zero"
               description="You're all caught up. Connect your email to automatically receive financial notifications here."
               actionLabel="Connect email"
-              onAction={() => haptic('light')}
+              onAction={() => { haptic('light'); router.push('/connect') }}
             />
           </GlassCard>
         ) : (
@@ -171,10 +249,11 @@ export default function InboxPage() {
                           </motion.button>
                           <motion.button
                             whileTap={{ scale: 0.95 }}
-                            onClick={() => handleTap(item.id)}
-                            className="glass rounded-2xl px-4 py-3 text-sm font-semibold text-ink-tertiary"
+                            onClick={() => handleDismiss(item.id)}
+                            disabled={dismissingId === item.id}
+                            className="glass rounded-2xl px-4 py-3 text-sm font-semibold text-ink-tertiary disabled:opacity-50"
                           >
-                            Dismiss
+                            {dismissingId === item.id ? <Loader2 size={14} className="animate-spin" /> : 'Dismiss'}
                           </motion.button>
                         </div>
                       </div>

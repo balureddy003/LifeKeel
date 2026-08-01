@@ -7,6 +7,7 @@
  */
 
 import { AI_RESPONSES } from './life-data'
+import type { InboxItem } from './onboarding-data'
 
 export interface FamilyInsight {
   id: string
@@ -107,4 +108,130 @@ export async function fetchAIResponse(query: string): Promise<{ content: string;
     content: "Based on the information you've entered, here is a summary from your family's data. This is for informational purposes only — please consult a qualified professional before making financial decisions. Would you like to see the specific numbers from your family's profile?",
     isLive: false,
   }
+}
+
+// ── Documents ─────────────────────────────────────────────────────────────
+
+export interface FamilyDocument {
+  id: string
+  filename: string
+  category: string
+  status: 'uploaded' | 'processing' | 'extracted' | 'error'
+  uploadedAt: string
+  extractedData?: Record<string, string>
+}
+
+export async function uploadDocument(file: File): Promise<FamilyDocument> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const headers: Record<string, string> = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${base}/documents/upload`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  })
+  if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
+  return (await res.json()) as FamilyDocument
+}
+
+export async function fetchDocuments(): Promise<FamilyDocument[]> {
+  return apiFetch<{ documents: FamilyDocument[] }>(
+    '/documents',
+    { documents: [] },
+  ).then((r) => r.documents ?? [])
+}
+
+// ── Connectors ────────────────────────────────────────────────────────────
+
+export interface ConnectorStatus {
+  id: string
+  name: string
+  category: string
+  connected: boolean
+  lastSync?: string
+  authUrl?: string
+}
+
+const FAMILY_CONNECTORS: { id: string; name: string; category: string }[] = [
+  { id: 'gmail', name: 'Gmail', category: 'email' },
+  { id: 'open-banking', name: 'Open Banking', category: 'bank' },
+  { id: 'trading212', name: 'Trading 212', category: 'investments' },
+  { id: 'zerodha', name: 'Zerodha', category: 'investments' },
+]
+
+export async function fetchConnectorStatuses(): Promise<ConnectorStatus[]> {
+  return apiFetch<{ connectors: ConnectorStatus[] }>(
+    '/connectors/status',
+    { connectors: FAMILY_CONNECTORS.map((c) => ({ ...c, connected: false })) },
+  ).then((r) => r.connectors ?? [])
+}
+
+export async function getConnectorAuthUrl(connectorId: string): Promise<string | null> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const res = await fetch(`${base}/connectors/${connectorId}/auth`, {
+      method: 'POST',
+      headers,
+    })
+    if (!res.ok) return null
+    const data = await res.json() as { authUrl: string }
+    return data.authUrl
+  } catch {
+    return null
+  }
+}
+
+export async function disconnectConnector(connectorId: string): Promise<boolean> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const res = await fetch(`${base}/connectors/${connectorId}/disconnect`, {
+      method: 'POST',
+      headers,
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+// ── Inbox ─────────────────────────────────────────────────────────────────
+
+export async function dismissInboxItem(itemId: string): Promise<boolean> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const res = await fetch(`${base}/inbox/${itemId}/dismiss`, {
+      method: 'POST',
+      headers,
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+export async function fetchInboxItems(): Promise<{ items: InboxItem[]; isLive: boolean }> {
+  return apiFetch<{ items: InboxItem[] }>(
+    '/inbox',
+    { items: [] },
+  ).then((r) => ({
+    items: r.items ?? [],
+    isLive: (r.items?.length ?? 0) > 0,
+  }))
 }

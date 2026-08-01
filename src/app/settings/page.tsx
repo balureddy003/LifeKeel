@@ -9,7 +9,7 @@ import { MODE_CONFIGS } from '@/lib/modes'
 import { haptic } from '@/lib/haptics'
 import type { AppMode } from '@/lib/modes'
 import { ROLE_LABELS } from '@/lib/auth-types'
-import { User, LogOut, Check, Crown, Shield, Baby, Accessibility } from 'lucide-react'
+import { User, LogOut, Check, Crown, Shield, Baby, Accessibility, Plug, ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 const MODE_ICONS: Record<string, LucideIcon> = {
@@ -116,6 +116,18 @@ export default function SettingsPage() {
           <ListRow label={`Invite code: ${family.inviteCode}`} />
         </ListSection>
       )}
+
+      {/* Connected Services */}
+      <ListSection title="Connected Services">
+        <ListRow
+          icon={Plug}
+          onClick={() => { haptic('light'); router.push('/connect') }}
+          chevron
+        >
+          <div className="text-base font-medium">Manage Connections</div>
+          <div className="text-xs text-ink-tertiary mt-0.5">Email, bank, investments</div>
+        </ListRow>
+      </ListSection>
 
       {/* Sign out */}
       <motion.button
