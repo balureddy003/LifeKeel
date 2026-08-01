@@ -10,23 +10,37 @@ import { haptic } from '@/lib/haptics'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const { signIn, signInWithProvider } = useAuth()
   const router = useRouter()
 
   const handleSignIn = async () => {
-    if (!email.trim()) return
+    if (!email.trim() || !password) return
     setLoading(true)
-    haptic('success')
-    await signIn(email)
-    router.push('/')
+    setError(null)
+    try {
+      await signIn(email, password)
+      haptic('success')
+      router.push('/')
+    } catch (err) {
+      haptic('warning')
+      setError(err instanceof Error ? err.message : 'Sign in failed. Please try again.')
+      setLoading(false)
+    }
   }
 
   const handleGoogle = async () => {
-    setLoading(true)
-    haptic('medium')
-    await signInWithProvider('google')
-    router.push('/')
+    setError(null)
+    try {
+      await signInWithProvider('google')
+      haptic('medium')
+      router.push('/')
+    } catch (err) {
+      haptic('warning')
+      setError(err instanceof Error ? err.message : 'Google sign-in failed.')
+    }
   }
 
   return (
@@ -64,12 +78,23 @@ export default function LoginPage() {
           onChange={(e) => setEmail(e.target.value)}
           className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
         />
+        <input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+        />
       </div>
+
+      {error && (
+        <p className="text-sm text-danger text-center mb-4">{error}</p>
+      )}
 
       <motion.button
         whileTap={{ scale: 0.96 }}
         onClick={handleSignIn}
-        disabled={!email.trim() || loading}
+        disabled={!email.trim() || !password || loading}
         className="w-full bg-family-500 text-white font-semibold rounded-2xl py-4 text-base shadow-md shadow-family-500/15 disabled:opacity-40 active:opacity-90 transition-opacity"
       >
         {loading ? 'Signing in...' : 'Sign In'}

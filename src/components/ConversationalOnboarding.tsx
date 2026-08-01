@@ -77,7 +77,7 @@ export function ConversationalOnboarding() {
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [finished, setFinished] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const { user, signUp, createFamily } = useAuth()
+  const { user, signUp, createFamily, inviteMember } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
@@ -165,10 +165,33 @@ export function ConversationalOnboarding() {
     // keep their real identity — don't overwrite it with an onboarding-derived one.
     let owner = user
     if (!owner) {
+      // Reached /family-setup directly without going through /signup first
+      // (it's allowed pre-auth — see AppShell's isAuthRoute). There's no
+      // password field in this flow, so generate one; this account can
+      // still only be recovered by the browser session that created it
+      // until a real "set your password" step is added here.
       const email = `${name.toLowerCase().replace(/\s+/g, '.')}@family.ai`
-      owner = await signUp(name, email)
+      const generatedPassword = crypto.randomUUID()
+      owner = await signUp(name, email, generatedPassword)
     }
-    createFamily(`${owner.name}'s Family`, owner)
+    await createFamily(`${owner.name}'s Family`, owner)
+
+    // createFamily seeds the roster with just the organizer — persist the
+    // partner/children collected during the chat (members state here is
+    // local-only, used for the GrowingGraph animation) as real members too.
+    const draftRoleToFamilyRole: Record<string, 'parent' | 'child'> = {
+      Partner: 'parent',
+      Child: 'child',
+    }
+    for (const draft of members) {
+      const role = draftRoleToFamilyRole[draft.role]
+      if (!role) continue // skips the 'You' (self) entry — already the organizer
+      try {
+        await inviteMember(draft.name, '', role)
+      } catch {
+        // Best-effort — one failed member shouldn't block the rest or onboarding completion.
+      }
+    }
 
     setTimeout(() => {
       router.push('/')

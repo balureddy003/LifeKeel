@@ -11,23 +11,37 @@ import { haptic } from '@/lib/haptics'
 export default function SignUpPage() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const { signUp, signInWithProvider } = useAuth()
   const router = useRouter()
 
   const handleSignUp = async () => {
-    if (!name.trim() || !email.trim()) return
+    if (!name.trim() || !email.trim() || password.length < 8) return
     setLoading(true)
-    haptic('success')
-    await signUp(name, email)
-    router.push('/family-setup')
+    setError(null)
+    try {
+      await signUp(name, email, password)
+      haptic('success')
+      router.push('/family-setup')
+    } catch (err) {
+      haptic('warning')
+      setError(err instanceof Error ? err.message : 'Sign up failed. Please try again.')
+      setLoading(false)
+    }
   }
 
   const handleGoogle = async () => {
-    setLoading(true)
-    haptic('medium')
-    await signInWithProvider('google')
-    router.push('/family-setup')
+    setError(null)
+    try {
+      await signInWithProvider('google')
+      haptic('medium')
+      router.push('/family-setup')
+    } catch (err) {
+      haptic('warning')
+      setError(err instanceof Error ? err.message : 'Google sign-in failed.')
+    }
   }
 
   return (
@@ -72,12 +86,23 @@ export default function SignUpPage() {
           onChange={(e) => setEmail(e.target.value)}
           className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
         />
+        <input
+          type="password"
+          placeholder="Password (min. 8 characters)"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+        />
       </div>
+
+      {error && (
+        <p className="text-sm text-danger text-center mb-4">{error}</p>
+      )}
 
       <motion.button
         whileTap={{ scale: 0.96 }}
         onClick={handleSignUp}
-        disabled={!name.trim() || !email.trim() || loading}
+        disabled={!name.trim() || !email.trim() || password.length < 8 || loading}
         className="w-full bg-family-500 text-white font-semibold rounded-2xl py-4 text-base shadow-md shadow-family-500/15 disabled:opacity-40 active:opacity-90 transition-opacity"
       >
         {loading ? 'Creating...' : 'Create Account'}
