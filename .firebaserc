@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "dyocense-502208"
+  },
+  "targets": {
+    "dyocense-502208": {
+      "hosting": {
+        "family": [
+          "kairos-trellis"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}
