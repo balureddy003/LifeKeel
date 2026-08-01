@@ -1,15 +1,16 @@
 'use client'
 
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { PageHeader, ListSection, ListRow } from '@/components/Glass'
+import { PageHeader, ListSection, ListRow, GlassCard } from '@/components/Glass'
 import { useMode } from '@/lib/mode-context'
 import { useAuth } from '@/lib/auth-context'
 import { MODE_CONFIGS } from '@/lib/modes'
 import { haptic } from '@/lib/haptics'
 import type { AppMode } from '@/lib/modes'
-import { ROLE_LABELS } from '@/lib/auth-types'
-import { User, LogOut, Check, Crown, Shield, Baby, Accessibility, Plug, ChevronRight } from 'lucide-react'
+import { ROLE_LABELS, type FamilyRole } from '@/lib/auth-types'
+import { User, LogOut, Check, Crown, Shield, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 const MODE_ICONS: Record<string, LucideIcon> = {
@@ -27,10 +28,21 @@ const ROLE_ICONS: Record<string, LucideIcon> = {
   child: Baby,
 }
 
+// Organizer is reserved for the account owner (seeded automatically when the
+// family is created) — everyone added afterward picks one of these.
+const INVITABLE_ROLES: FamilyRole[] = ['parent', 'adult', 'child']
+
 export default function SettingsPage() {
   const { mode, setMode } = useMode()
-  const { user, family, signOut, removeMember, updateMemberRole } = useAuth()
+  const { user, family, signOut, inviteMember, removeMember, updateMemberRole } = useAuth()
   const router = useRouter()
+
+  const [showAddMember, setShowAddMember] = useState(false)
+  const [memberName, setMemberName] = useState('')
+  const [memberEmail, setMemberEmail] = useState('')
+  const [memberRole, setMemberRole] = useState<FamilyRole>('adult')
+  const [addingMember, setAddingMember] = useState(false)
+  const [addMemberError, setAddMemberError] = useState<string | null>(null)
 
   const handleSignOut = () => {
     haptic('warning')
@@ -41,6 +53,31 @@ export default function SettingsPage() {
   const handleModeChange = (newMode: AppMode) => {
     haptic('success')
     setMode(newMode)
+  }
+
+  const resetAddMemberForm = () => {
+    setShowAddMember(false)
+    setMemberName('')
+    setMemberEmail('')
+    setMemberRole('adult')
+    setAddMemberError(null)
+  }
+
+  const handleAddMember = async () => {
+    if (!memberName.trim()) return
+    haptic('light')
+    setAddingMember(true)
+    setAddMemberError(null)
+    try {
+      await inviteMember(memberName.trim(), memberEmail.trim(), memberRole)
+      haptic('success')
+      resetAddMemberForm()
+    } catch (err) {
+      haptic('warning')
+      setAddMemberError(err instanceof Error ? err.message : 'Could not add member. Please try again.')
+    } finally {
+      setAddingMember(false)
+    }
   }
 
   return (
@@ -102,7 +139,7 @@ export default function SettingsPage() {
                       onClick={(e) => {
                         e.stopPropagation()
                         haptic('warning')
-                        removeMember(m.id)
+                        removeMember(m.id).catch(() => haptic('warning'))
                       }}
                       className="text-xs text-danger px-2 py-1 rounded-lg bg-danger/10"
                     >
@@ -113,8 +150,86 @@ export default function SettingsPage() {
               </div>
             </ListRow>
           ))}
+          <ListRow
+            icon={UserPlus}
+            onClick={() => setShowAddMember((v) => !v)}
+          >
+            <div className="text-base font-medium text-family-400">Add Member</div>
+          </ListRow>
           <ListRow label={`Invite code: ${family.inviteCode}`} />
         </ListSection>
+      )}
+
+      {/* Add Member form — plain conditional render, no AnimatePresence.
+          Framer Motion's exit animations (including non-height variants)
+          were observed getting stuck mid-transition in this dev environment,
+          leaving the form visually open after Cancel/successful Add even
+          though the underlying state had already reset correctly. Reliability
+          here matters more than a fade transition. */}
+      {showAddMember && (
+        <GlassCard className="p-4 space-y-3">
+          <input
+            type="text"
+            placeholder="Name"
+            value={memberName}
+            onChange={(e) => setMemberName(e.target.value)}
+            className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+          />
+          <input
+            type="email"
+            placeholder="Email (optional)"
+            value={memberEmail}
+            onChange={(e) => setMemberEmail(e.target.value)}
+            className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+          />
+
+          <div className="flex gap-2">
+            {INVITABLE_ROLES.map((role) => {
+              const RoleIcon = ROLE_ICONS[role] ?? User
+              const active = memberRole === role
+              return (
+                <button
+                  key={role}
+                  onClick={() => { haptic('light'); setMemberRole(role) }}
+                  className={`flex-1 rounded-xl py-2.5 flex flex-col items-center gap-1 border transition-colors ${
+                    active
+                      ? 'bg-family-500/15 border-family-500/40 text-family-400'
+                      : 'bg-white/[0.03] border-white/[0.06] text-ink-secondary'
+                  }`}
+                >
+                  <RoleIcon size={16} />
+                  <span className="text-xs font-medium">{ROLE_LABELS[role]}</span>
+                </button>
+              )
+            })}
+          </div>
+
+          {addMemberError && (
+            <div className="flex items-start gap-2 text-xs text-danger">
+              <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
+              <span>{addMemberError}</span>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <motion.button
+              whileTap={{ scale: 0.96 }}
+              onClick={resetAddMemberForm}
+              disabled={addingMember}
+              className="flex-1 glass text-ink-primary font-semibold rounded-xl py-3 text-sm disabled:opacity-40"
+            >
+              Cancel
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.96 }}
+              onClick={handleAddMember}
+              disabled={!memberName.trim() || addingMember}
+              className="flex-1 bg-family-500 text-white font-semibold rounded-xl py-3 text-sm disabled:opacity-40 flex items-center justify-center gap-1.5"
+            >
+              {addingMember ? <Loader2 size={14} className="animate-spin" /> : 'Add'}
+            </motion.button>
+          </div>
+        </GlassCard>
       )}
 
       {/* Connected Services */}

@@ -116,7 +116,10 @@ export interface FamilyDocument {
   id: string
   filename: string
   category: string
-  status: 'uploaded' | 'processing' | 'extracted' | 'error'
+  // 'stored' = uploaded and scanned (free, every plan), AI field
+  // extraction not run. 'uploaded'/'processing'/'extracted'/'error' cover
+  // the paid AI-extraction pipeline.
+  status: 'uploaded' | 'processing' | 'extracted' | 'stored' | 'error'
   uploadedAt: string
   extractedData?: Record<string, string>
 }
@@ -139,11 +142,11 @@ export async function uploadDocument(file: File): Promise<FamilyDocument> {
   return (await res.json()) as FamilyDocument
 }
 
-export async function fetchDocuments(): Promise<FamilyDocument[]> {
-  return apiFetch<{ documents: FamilyDocument[] }>(
+export async function fetchDocuments(): Promise<{ documents: FamilyDocument[]; aiExtractionEnabled: boolean }> {
+  return apiFetch<{ documents: FamilyDocument[]; aiExtractionEnabled: boolean }>(
     '/documents',
-    { documents: [] },
-  ).then((r) => r.documents ?? [])
+    { documents: [], aiExtractionEnabled: false },
+  )
 }
 
 // ── Connectors ────────────────────────────────────────────────────────────
@@ -205,6 +208,72 @@ export async function disconnectConnector(connectorId: string): Promise<boolean>
   } catch {
     return false
   }
+}
+
+// ── Family Group ─────────────────────────────────────────────────────────
+
+export interface ApiFamilyMember {
+  id: string
+  name: string
+  email: string
+  role: 'organizer' | 'parent' | 'adult' | 'child'
+  status: 'active' | 'pending'
+  joinedAt: string
+}
+
+export interface ApiFamilyGroup {
+  id: string
+  name: string
+  inviteCode: string
+  members: ApiFamilyMember[]
+}
+
+async function familyGroupRequest(
+  path: string,
+  method: 'POST' | 'PATCH' | 'DELETE',
+  body?: Record<string, unknown>,
+): Promise<ApiFamilyGroup> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${base}${path}`, {
+    method,
+    headers,
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Request failed')
+  return data.family as ApiFamilyGroup
+}
+
+export async function fetchFamilyGroup(): Promise<ApiFamilyGroup | null> {
+  return apiFetch<{ family: ApiFamilyGroup | null }>('/family', { family: null }).then((r) => r.family ?? null)
+}
+
+export async function createFamilyGroup(name: string): Promise<ApiFamilyGroup> {
+  return familyGroupRequest('/family', 'POST', { name })
+}
+
+export async function renameFamilyGroup(name: string): Promise<ApiFamilyGroup> {
+  return familyGroupRequest('/family', 'PATCH', { name })
+}
+
+export async function addFamilyGroupMember(
+  name: string,
+  email: string,
+  role: ApiFamilyMember['role'],
+): Promise<ApiFamilyGroup> {
+  return familyGroupRequest('/family/members', 'POST', { name, email, role })
+}
+
+export async function updateFamilyGroupMemberRole(id: string, role: ApiFamilyMember['role']): Promise<ApiFamilyGroup> {
+  return familyGroupRequest(`/family/members/${id}`, 'PATCH', { role })
+}
+
+export async function removeFamilyGroupMember(id: string): Promise<ApiFamilyGroup> {
+  return familyGroupRequest(`/family/members/${id}`, 'DELETE')
 }
 
 // ── Inbox ─────────────────────────────────────────────────────────────────
