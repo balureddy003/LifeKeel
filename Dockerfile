@@ -10,6 +10,7 @@ RUN corepack enable && corepack prepare pnpm@8.15.5 --activate
 
 # Copy root workspace files and family app package.json
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches ./patches
 COPY apps/family/package.json ./apps/family/
 
 # Install dependencies (frozen lockfile ensures reproducibility)
@@ -37,6 +38,7 @@ RUN corepack enable && corepack prepare pnpm@8.15.5 --activate
 
 # Copy only what's needed to run
 COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
+COPY --from=builder /app/patches ./patches
 COPY --from=builder /app/apps/family ./apps/family
 
 # Install only production dependencies
