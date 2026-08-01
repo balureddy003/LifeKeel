@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Home, Inbox, Users, AlertTriangle, Settings, WifiOff, Siren, Loader2 } from 'lucide-react'
+import { Home, Inbox, Users, AlertTriangle, Settings, WifiOff, Siren, Loader2, Network } from 'lucide-react'
 import { useNetworkStatus } from '@/lib/useNetworkStatus'
 import { useAuth } from '@/lib/auth-context'
 import { useMode } from '@/lib/mode-context'
@@ -190,11 +190,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         className="flex flex-col items-center justify-center min-h-screen px-6 text-center"
       >
         <div className="w-16 h-16 rounded-2xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-6">
-          <Home size={32} className="text-family-400" />
+          <Network size={32} className="text-family-400" />
         </div>
-        <h1 className="text-3xl font-bold mb-2 text-gradient">Family AI Office</h1>
+        <h1 className="text-3xl font-bold mb-2 text-gradient">Trellis</h1>
         <p className="text-ink-tertiary mb-8 max-w-xs">
-          Your family&apos;s financial operating system. Know the moment. Act with evidence.
+          See how your family&apos;s finances connect. Know the moment. Act with evidence.
         </p>
         <div className="w-full max-w-xs space-y-3">
           <Link href="/welcome" className="block">

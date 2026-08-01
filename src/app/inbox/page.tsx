@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Bot, Info, Home, Landmark, Wallet, Plane, CreditCard, Car } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { GlassCard, PageHeader, EmptyState } from '@/components/Glass'
+import { GlassCard, PageHeader, EmptyState, MoneyText } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { INBOX_ITEMS } from '@/lib/onboarding-data'
 import type { InboxItem } from '@/lib/onboarding-data'
@@ -136,7 +136,7 @@ export default function InboxPage() {
                     </div>
                     {!isExpanded && (
                       <p className="text-xs text-ink-tertiary mt-1 line-clamp-2">
-                        {item.aiSummary}
+                        <MoneyText text={item.aiSummary} />
                       </p>
                     )}
                   </div>
@@ -157,7 +157,7 @@ export default function InboxPage() {
                             <span className="text-xs font-semibold text-family-400">AI explains</span>
                           </div>
                           <p className="text-sm text-ink-secondary leading-relaxed">
-                            {item.aiSummary}
+                            <MoneyText text={item.aiSummary} />
                           </p>
                         </div>
                         <div className="flex items-center gap-2">

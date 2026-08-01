@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useState } from 'react'
 import { Bot, FileText, TrendingUp, Landmark, Calculator, Shield, GraduationCap, Wallet, Briefcase, Home, Paperclip, ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { GlassCard } from './Glass'
+import { GlassCard, MoneyText } from './Glass'
 import { haptic } from '@/lib/haptics'
 
 interface AISource {
@@ -104,7 +104,7 @@ export function AIAnswerCard({ query, isLive = false }: { query: string; isLive?
           <div className="w-7 h-7 rounded-xl bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
             <Bot size={14} className="text-family-400" />
           </div>
-          <p className="text-sm text-ink-secondary leading-relaxed">{answer.answer}</p>
+          <p className="text-sm text-ink-secondary leading-relaxed"><MoneyText text={answer.answer} /></p>
         </div>
 
         {/* Confidence / Source label */}

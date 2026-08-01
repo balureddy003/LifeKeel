@@ -207,7 +207,7 @@ export function CommandPalette() {
                   <kbd className="glass rounded px-1.5 py-0.5 flex items-center"><CornerDownLeft size={10} /></kbd> Select
                 </span>
               </div>
-              <span>Family AI · Cmd+K</span>
+              <span>Trellis · Cmd+K</span>
             </div>
           </motion.div>
         </motion.div>

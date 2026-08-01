@@ -1,7 +1,7 @@
 {
-  "name": "Family AI Office",
-  "short_name": "Family",
-  "description": "Your family's financial operating system",
+  "name": "Trellis",
+  "short_name": "Trellis",
+  "description": "See how your family's finances connect",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -11,7 +11,7 @@
   "theme_color": "#08080c",
   "categories": ["finance", "lifestyle", "utilities"],
   "dir": "ltr",
-  "lang": "en-GB",
+  "lang": "en-US",
   "icons": [
     { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ],

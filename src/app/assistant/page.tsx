@@ -5,7 +5,7 @@ import { motion } from 'framer-motion'
 import { Bot, Send } from 'lucide-react'
 import { AI_SUGGESTIONS } from '@/lib/life-data'
 import { AIAnswerCard } from '@/components/AIAnswer'
-import { PageHeader } from '@/components/Glass'
+import { PageHeader, MoneyText } from '@/components/Glass'
 import { DisclaimerBanner } from '@/components/Disclaimer'
 import { haptic } from '@/lib/haptics'
 import { fetchAIResponse } from '@/lib/api'
@@ -30,7 +30,7 @@ export default function AssistantPage() {
     {
       id: 'welcome',
       role: 'assistant',
-      content: "Hi! I'm your Family AI. I can summarize your family's financial profile — insurance, savings, goals, and scenarios. This is for informational purposes only. Just ask me anything.",
+      content: "Hi! I'm Trellis. I can summarize your family's financial profile — insurance, savings, goals, and scenarios. This is for informational purposes only. Just ask me anything.",
     },
   ])
   const [input, setInput] = useState('')
@@ -84,7 +84,7 @@ export default function AssistantPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-80px)]">
-      <PageHeader title="Family AI" subtitle="Ask me anything about your family" />
+      <PageHeader title="Trellis" subtitle="Ask me anything about your family" />
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-2 space-y-3 no-scrollbar">
         {messages.map((msg) => (
@@ -103,10 +103,12 @@ export default function AssistantPage() {
             >
               {msg.role === 'assistant' && (
                 <div className="text-xs text-family-400 mb-1 flex items-center gap-1">
-                  <Bot size={12} /> Family AI
+                  <Bot size={12} /> Trellis
                 </div>
               )}
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                {msg.role === 'assistant' ? <MoneyText text={msg.content} /> : msg.content}
+              </p>
               {msg.showPerplexity && msg.userQuery && (
                 <div className="mt-3">
                   <AIAnswerCard query={msg.userQuery} isLive={msg.isLive ?? false} />

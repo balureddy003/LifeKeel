@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { Home, Apple } from 'lucide-react'
+import { Network, Apple } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 
@@ -32,7 +32,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex flex-col px-6 pt-12 pb-8">
       <div className="text-center mb-8">
         <div className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-3">
-          <Home size={32} className="text-family-400" />
+          <Network size={32} className="text-family-400" />
         </div>
         <h1 className="text-2xl font-bold">Welcome back</h1>
         <p className="text-sm text-ink-tertiary mt-1">Sign in to your family</p>

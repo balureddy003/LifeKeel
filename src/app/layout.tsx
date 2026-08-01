@@ -5,13 +5,13 @@ import { ModeProvider } from '@/lib/mode-context'
 import { AppShell } from '@/components/AppShell'
 
 export const metadata: Metadata = {
-  title: 'Family AI Office — Your family\'s financial operating system',
+  title: 'Trellis — See how your family\'s finances connect',
   description: 'Know the moment. Act with evidence. Built for families of all ages.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Family AI',
+    title: 'Trellis',
   },
 }
 

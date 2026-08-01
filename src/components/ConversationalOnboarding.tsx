@@ -67,7 +67,7 @@ export function ConversationalOnboarding() {
     {
       id: 'intro',
       role: 'ai',
-      text: "Welcome! Let's build your Family AI Office. I'll ask a few quick questions — it takes about 2 minutes. After each answer, you'll see your family graph grow.",
+      text: "Welcome! Let's build your Trellis. I'll ask a few quick questions — it takes about 2 minutes. After each answer, you'll see your family graph grow.",
     },
   ])
   const [questionIndex, setQuestionIndex] = useState(0)
@@ -156,7 +156,7 @@ export function ConversationalOnboarding() {
 
   const finishOnboarding = async (allAnswers: Record<string, string>) => {
     haptic('success')
-    addAIMessage('Your family graph is ready! Let me set up your Family AI Office now.')
+    addAIMessage('Your family graph is ready! Let me set up your Trellis now.')
     setFinished(true)
 
     const name = allAnswers.name || 'User'
@@ -198,7 +198,7 @@ export function ConversationalOnboarding() {
         >
           <PartyPopper size={32} className="text-family-400" />
         </motion.div>
-        <h1 className="text-2xl font-bold mb-2">Building your Family AI Office...</h1>
+        <h1 className="text-2xl font-bold mb-2">Building your Trellis...</h1>
         <p className="text-sm text-ink-tertiary">Your family profile is taking shape</p>
         <motion.div
           className="mt-6 w-48 h-2 rounded-full bg-white/5 overflow-hidden"
@@ -254,7 +254,7 @@ export function ConversationalOnboarding() {
             >
               {msg.role === 'ai' && (
                 <div className="text-xs text-family-400 mb-1 flex items-center gap-1">
-                  <Bot size={12} /> Family AI
+                  <Bot size={12} /> Trellis
                 </div>
               )}
               <p className="text-sm leading-relaxed">{msg.text}</p>
