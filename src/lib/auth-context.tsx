@@ -24,6 +24,7 @@ interface AuthContextValue {
   inviteMember: (name: string, email: string, role: FamilyRole) => Promise<void>
   removeMember: (id: string) => Promise<void>
   updateMemberRole: (id: string, role: FamilyRole) => Promise<void>
+  refresh: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -177,12 +178,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     persist(u, f)
   }
 
-  // Google sign-in isn't wired to the family app yet: the backend's OAuth
-  // callback (apps/api routes/auth-social.ts) redirects back to Studio's
-  // origin unconditionally and GOOGLE_CLIENT_ID isn't configured in this
-  // environment. Surfacing a clear error beats faking a successful login.
-  const signInWithProvider = async (_provider: 'google') => {
-    throw new Error('Google sign-in isn\'t available yet — please use email instead.')
+  // Google sign-in: redirect to the API's OAuth flow with app=family so the
+  // callback redirects back to the Trellis app after authentication.
+  const signInWithProvider = async (provider: 'google') => {
+    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+    window.location.href = `${apiBase}/auth/${provider}/login?app=family`
   }
 
   const signOut = () => {
@@ -216,6 +216,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     persist(user, toFamilyGroup(apiFamily))
   }
 
+  const refresh = async () => {
+    const token = localStorage.getItem(TOKEN_KEY)
+    if (!token) return
+    try {
+      const res = await fetch(`${getApiBase()}/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) return
+      const me = await res.json()
+      setUser({ id: me.user_id, name: me.name ?? '', email: me.email ?? '', avatar: '' })
+      const apiFamily = await fetchFamilyGroup()
+      setFamily(apiFamily ? toFamilyGroup(apiFamily) : null)
+    } catch {
+      // ignore — keep existing state
+    }
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -231,6 +248,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         inviteMember,
         removeMember,
         updateMemberRole,
+        refresh,
       }}
     >
       {children}
