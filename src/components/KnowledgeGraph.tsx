@@ -19,7 +19,8 @@ import { useRouter } from 'next/navigation'
 import { Home, User, Briefcase, ShieldCheck, HeartPulse, Target, GraduationCap, House, TrendingUp, Landmark, Wallet, Bot, X, ChevronRight, Maximize2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
-import { FAMILY_MEMBERS } from '@/lib/data'
+import { useAuth } from '@/lib/auth-context'
+import type { FamilyMember } from '@/lib/types'
 import { runForceSimulation, type SimNode, type SimEdge } from '@/lib/forceSimulation'
 
 type NodeKind = 'root' | 'person' | 'category' | 'asset'
@@ -94,7 +95,27 @@ interface RawEdge {
   target: string
 }
 
-function buildGraphData(): { rawNodes: RawNode[]; rawEdges: RawEdge[] } {
+const ROLE_BRANCHES: Record<string, { label: string; icon: string; items: string[] }[]> = {
+  organizer: [
+    { label: 'Income', icon: 'Briefcase', items: ['Salary'] },
+    { label: 'Protection', icon: 'ShieldCheck', items: ['Life Insurance', 'Health Insurance'] },
+    { label: 'Assets', icon: 'Home', items: ['Home', 'Investments', 'Pension'] },
+  ],
+  parent: [
+    { label: 'Career & Income', icon: 'Briefcase', items: ['Salary'] },
+    { label: 'Health Cover', icon: 'HeartPulse', items: ['Medical', 'Dental'] },
+    { label: 'Family Goals', icon: 'Target', items: ['Retirement', 'Education'] },
+  ],
+  adult: [
+    { label: 'Income', icon: 'Briefcase', items: ['Salary'] },
+    { label: 'Protection', icon: 'ShieldCheck', items: ['Health Insurance'] },
+  ],
+  child: [
+    { label: 'Future', icon: 'GraduationCap', items: ['Education Fund', 'Future Goals'] },
+  ],
+}
+
+function buildGraphData(members: FamilyMember[]): { rawNodes: RawNode[]; rawEdges: RawEdge[] } {
   const rawNodes: RawNode[] = []
   const rawEdges: RawEdge[] = []
 
@@ -107,7 +128,7 @@ function buildGraphData(): { rawNodes: RawNode[]; rawEdges: RawEdge[] } {
     mass: 3,
   })
 
-  for (const member of FAMILY_MEMBERS) {
+  for (const member of members) {
     rawNodes.push({
       id: member.id,
       label: member.name,
@@ -120,7 +141,7 @@ function buildGraphData(): { rawNodes: RawNode[]; rawEdges: RawEdge[] } {
     })
     rawEdges.push({ source: 'family', target: member.id })
 
-    for (const branch of member.branches ?? []) {
+    for (const branch of member.branches ?? ROLE_BRANCHES[member.role] ?? []) {
       const assetItems = branch.items.filter((item) => ASSET_ITEM_IDS[item])
       if (assetItems.length > 0) {
         for (const item of assetItems) {
@@ -156,8 +177,8 @@ function buildGraphData(): { rawNodes: RawNode[]; rawEdges: RawEdge[] } {
   return { rawNodes, rawEdges }
 }
 
-function buildFamilyGraph(): { nodes: Node<NodeData>[]; edges: Edge[] } {
-  const { rawNodes, rawEdges } = buildGraphData()
+function buildFamilyGraph(members: FamilyMember[]): { nodes: Node<NodeData>[]; edges: Edge[] } {
+  const { rawNodes, rawEdges } = buildGraphData(members)
 
   const simNodes: SimNode[] = rawNodes.map((n) => ({
     id: n.id,
@@ -255,7 +276,20 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
   const [selected, setSelected] = useState<Node<NodeData> | null>(null)
   const [filter, setFilter] = useState<GraphCategory | 'all'>('all')
   const router = useRouter()
-  const { nodes: allNodes, edges: allEdges } = useMemo(() => buildFamilyGraph(), [])
+  const { family } = useAuth()
+
+  const graphMembers: FamilyMember[] = useMemo(() => {
+    if (!family || family.members.length === 0) return []
+    return family.members.map((m) => ({
+      id: m.id,
+      name: m.name,
+      role: m.role,
+      emoji: m.emoji,
+      relation: m.role === 'organizer' ? 'owner' : m.role === 'parent' ? 'spouse' : 'child',
+    }))
+  }, [family])
+
+  const { nodes: allNodes, edges: allEdges } = useMemo(() => buildFamilyGraph(graphMembers), [graphMembers])
 
   const { nodes, edges } = useMemo(() => {
     if (filter === 'all') return { nodes: allNodes, edges: allEdges }
@@ -323,6 +357,22 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
 
       {/* Graph canvas */}
       <div className="flex-1 relative">
+        {graphMembers.length === 0 ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
+            <Home size={32} className="text-ink-tertiary" />
+            <p className="text-sm text-ink-tertiary leading-relaxed">
+              Add family members to see your family graph come to life.
+            </p>
+            <Link
+              href="/family"
+              onClick={() => haptic('light')}
+              className="text-sm text-family-400 font-semibold flex items-center gap-1"
+            >
+              Set up family <ChevronRight size={14} />
+            </Link>
+          </div>
+        ) : (
+        <>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -346,7 +396,8 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
           <MiniMap
             className="!bg-white/5 !backdrop-blur-md !rounded-xl !border-white/10"
             nodeColor={(node) => CATEGORY_COLOR[(node.data?.category as GraphCategory) ?? 'family']}
-            maskColor="rgba(0,0,0,0.5)"
+            nodeStrokeColor="rgba(255,255,255,0.2)"
+            maskColor="rgba(0,0,0,0.3)"
           />
         </ReactFlow>
 
@@ -386,6 +437,8 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
           <Bot size={10} />
           Tap a person or asset to explore
         </div>
+        </>
+        )}
       </div>
     </div>
   )

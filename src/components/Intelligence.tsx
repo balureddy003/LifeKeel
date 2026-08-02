@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation'
 import { GlassCard } from './Glass'
 import { haptic } from '@/lib/haptics'
 import { useAppStore } from '@/lib/store'
-import { CONFIDENCE_AREAS, OVERALL_CONFIDENCE } from '@/lib/onboarding-data'
+import { useAuth } from '@/lib/auth-context'
+import { useFamilyInsights } from '@/lib/useFamilyData'
 import { Brain, TrendingUp, FileText, Landmark, Mail, BarChart3, Scale, Car, Check, AlertTriangle, X, Sparkles, ChevronRight, Users, Heart, Wallet, Target, Shield } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { useMemo } from 'react'
 
 const AREA_ICONS: Record<string, LucideIcon> = {
   family: Users,
@@ -31,6 +33,43 @@ const statusIcon = (status: 'complete' | 'partial' | 'missing') => {
 
 export function ConfidenceScore() {
   const router = useRouter()
+  const { family } = useAuth()
+  const { insights } = useFamilyInsights()
+  const uploadedDocumentCount = useAppStore((s) => s.uploadedDocumentCount)
+  const connectedConnectors = useAppStore((s) => s.connectedConnectors)
+
+  const { areas, overall } = useMemo(() => {
+    const hasFamily = (family?.members?.length ?? 0) > 0
+    const hasInsights = insights.length > 0
+    const protectionInsights = insights.filter((i) => i.detector_id === 'family_protection_gap')
+    const wealthInsights = insights.filter((i) => i.detector_id === 'family_retirement_gap')
+    const goalsInsights = insights.filter((i) => i.detector_id === 'family_education_shortfall')
+
+    const computeStatus = (progress: number): 'complete' | 'partial' | 'missing' => {
+      if (progress >= 80) return 'complete'
+      if (progress > 0) return 'partial'
+      return 'missing'
+    }
+
+    const familyProgress = hasFamily ? 100 : 0
+    const protectionProgress = protectionInsights.length > 0 ? 75 : 0
+    const wealthProgress = wealthInsights.length > 0 ? 60 : 0
+    const goalsProgress = goalsInsights.length > 0 ? 80 : 0
+    const docsProgress = Math.min(uploadedDocumentCount * 20, 100)
+    const estateProgress = 0
+
+    const computedAreas = [
+      { id: 'family', label: 'Family', status: computeStatus(familyProgress), progress: familyProgress, missingItems: hasFamily ? undefined : ['Add family members'] },
+      { id: 'protection', label: 'Protection', status: computeStatus(protectionProgress), progress: protectionProgress, missingItems: protectionInsights.length === 0 ? ['Upload insurance documents'] : undefined },
+      { id: 'wealth', label: 'Wealth', status: computeStatus(wealthProgress), progress: wealthProgress, missingItems: wealthInsights.length === 0 ? ['Connect investment accounts'] : undefined },
+      { id: 'goals', label: 'Goals', status: computeStatus(goalsProgress), progress: goalsProgress, missingItems: goalsInsights.length === 0 ? ['Add education goals'] : undefined },
+      { id: 'documents', label: 'Documents', status: computeStatus(docsProgress), progress: docsProgress, missingItems: uploadedDocumentCount === 0 ? ['Upload documents'] : undefined },
+      { id: 'estate', label: 'Estate Planning', status: computeStatus(estateProgress), progress: estateProgress, missingItems: ['Upload will and estate docs'] },
+    ]
+    const overallScore = Math.round(computedAreas.reduce((sum, a) => sum + a.progress, 0) / computedAreas.length)
+    return { areas: computedAreas, overall: overallScore }
+  }, [family, insights, uploadedDocumentCount])
+
   return (
     <GlassCard className="p-5">
       <div className="flex items-center justify-between mb-4">
@@ -41,12 +80,12 @@ export function ConfidenceScore() {
         <div className="flex items-center gap-2">
           <motion.span
             className="text-3xl font-bold"
-            style={{ color: OVERALL_CONFIDENCE >= 80 ? '#4ade80' : '#fbbf24' }}
+            style={{ color: overall >= 80 ? '#4ade80' : overall > 0 ? '#fbbf24' : '#f87171' }}
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ type: 'spring', stiffness: 300, damping: 20 }}
           >
-            {OVERALL_CONFIDENCE}%
+            {overall}%
           </motion.span>
         </div>
       </div>
@@ -59,13 +98,13 @@ export function ConfidenceScore() {
             boxShadow: '0 0 12px rgba(124,110,240,0.3)',
           }}
           initial={{ width: 0 }}
-          animate={{ width: `${OVERALL_CONFIDENCE}%` }}
+          animate={{ width: `${overall}%` }}
           transition={{ duration: 1, ease: 'easeOut' }}
         />
       </div>
 
       <div className="space-y-2">
-        {CONFIDENCE_AREAS.map((area, i) => {
+        {areas.map((area, i) => {
           const color = statusColor(area.status)
           return (
             <motion.div
@@ -124,7 +163,7 @@ export function TrustLadder() {
     { id: 'bank', icon: Landmark, label: 'Connect Bank', timeframe: 'Week 2', desc: 'Securely connect your bank accounts', route: '/connect' },
     { id: 'email', icon: Mail, label: 'Connect Email', timeframe: 'Week 3', desc: 'AI scans for financial documents only', route: '/connect' },
     { id: 'investments', icon: BarChart3, label: 'Connect Investments', timeframe: 'Month 2', desc: 'Link your investment and pension accounts', route: '/connect' },
-    { id: 'estate', icon: Scale, label: 'Estate Planning', timeframe: 'Month 3', desc: 'Connect your lawyer for will and estate docs', route: '/connect' },
+    { id: 'estate', icon: Scale, label: 'Estate Planning', timeframe: 'Month 3', desc: 'Upload your will and estate documents for secure storage', route: '/upload' },
   ].map((step) => {
     let status: 'done' | 'available' | 'locked' = 'locked'
     if (step.id === 'family') status = 'done'
@@ -225,9 +264,9 @@ export function MemoryPrompts() {
       id: 'car',
       icon: Car,
       title: 'I noticed something new',
-      message: 'I see a new vehicle in your transactions. Would you like to add insurance and update your family profile?',
+      message: 'I see a new vehicle in your transactions. Upload your insurance and registration so I can track it properly.',
       action: 'Add vehicle',
-      route: '/family',
+      route: '/upload',
     },
     {
       id: 'pension',
@@ -235,7 +274,7 @@ export function MemoryPrompts() {
       title: 'We found a pension statement',
       message: 'I found a pension document in your uploads. Should I add it to your retirement planning?',
       action: 'Review',
-      route: '/upload',
+      route: '/upload?category=pension',
     },
   ]
 

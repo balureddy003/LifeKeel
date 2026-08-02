@@ -9,13 +9,16 @@ import { LifeTimeline } from '@/components/LifeTimeline'
 import { ScoreRing, GlassCard, PageHeader, IfAdvanced, Skeleton } from '@/components/Glass'
 import { ConfidenceScore, TrustLadder, MemoryPrompts } from '@/components/Intelligence'
 import { HealthSummary } from '@/components/HealthSummary'
-import { TIMELINE_EVENTS, FAMILY_STORY, FAMILY_HEALTH_SCORE, CHILD_GOALS, CHILD_MESSAGES } from '@/lib/life-data'
+import { CHILD_GOALS, CHILD_MESSAGES } from '@/lib/life-data'
 import { useMode } from '@/lib/mode-context'
-import { useFamilyReadinessScore } from '@/lib/useFamilyData'
+import { useFamilyReadinessScore, useFamilyTimeline } from '@/lib/useFamilyData'
 import { useAppStore } from '@/lib/store'
+import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 
 function ChildHome() {
+  const { user } = useAuth()
+  const childName = user?.name?.split(' ')[0] ?? 'there'
   return (
     <div className="px-4 pt-4 space-y-5">
       <motion.div
@@ -26,7 +29,7 @@ function ChildHome() {
         <div className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-3 mx-auto">
           <Hand size={32} className="text-family-400" />
         </div>
-        <h1 className="text-2xl font-bold">Hi Emma!</h1>
+        <h1 className="text-2xl font-bold">Hi {childName}!</h1>
         <p className="text-sm text-ink-tertiary mt-1 flex items-center justify-center gap-1">
           Your future is looking bright <Star size={12} className="text-family-400" />
         </p>
@@ -121,7 +124,7 @@ function ElderlyHome() {
         transition={{ delay: 0.4 }}
         className="text-lg text-center text-ink-secondary leading-relaxed px-4"
       >
-        {FAMILY_STORY}
+        Welcome back. Your family profile is ready — tap any item below to explore your financial picture.
       </motion.p>
 
       <div className="space-y-3">
@@ -168,7 +171,8 @@ function ElderlyHome() {
 function UrgencyBanner() {
   const [dismissed, setDismissed] = useState(false)
   const currentYear = new Date().getFullYear()
-  const nextEvent = TIMELINE_EVENTS
+  const { events: timelineEvents } = useFamilyTimeline()
+  const nextEvent = timelineEvents
     .filter((e) => e.status === 'future' && e.year > currentYear)
     .sort((a, b) => a.year - b.year)[0]
 
@@ -207,7 +211,8 @@ function UrgencyBanner() {
 
 export default function HomePage() {
   const { config } = useMode()
-  const { score: readinessScore, loading: scoreLoading } = useFamilyReadinessScore()
+  const { score: readinessScore, hasLiveData, loading: scoreLoading } = useFamilyReadinessScore()
+  const { events: timelineEvents, hasData: hasTimelineData } = useFamilyTimeline()
   const setCmdkOpen = useAppStore((s) => s.setCmdkOpen)
 
   if (config.mode === 'child') {
@@ -254,7 +259,7 @@ export default function HomePage() {
                   <Skeleton className="h-3 w-full" />
                 </div>
               </>
-            ) : (
+            ) : hasLiveData ? (
               <>
                 <ScoreRing score={readinessScore} size={80} />
                 <div className="flex-1">
@@ -267,8 +272,23 @@ export default function HomePage() {
                     />
                   </div>
                   <p className="text-sm text-ink-secondary leading-relaxed">
-                    {FAMILY_STORY}
+                    Your family readiness score is based on {readinessScore}% of insights resolved. Connect more data sources for a complete picture.
                   </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <ScoreRing score={0} size={80} />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-semibold text-ink-secondary">No data yet</span>
+                  </div>
+                  <p className="text-sm text-ink-tertiary leading-relaxed">
+                    Connect your accounts and upload documents to see your real family readiness score.
+                  </p>
+                  <Link href="/upload" className="text-sm text-family-400 font-semibold flex items-center gap-1 mt-2">
+                    Get started <ChevronRight size={14} />
+                  </Link>
                 </div>
               </>
             )}
@@ -309,7 +329,22 @@ export default function HomePage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
       >
-        <LifeTimeline events={TIMELINE_EVENTS} />
+        {hasTimelineData ? (
+          <LifeTimeline events={timelineEvents} />
+        ) : (
+          <GlassCard className="p-5">
+            <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-3">
+              <CalendarClock size={16} className="text-family-400" />
+              Life Timeline
+            </div>
+            <p className="text-sm text-ink-tertiary leading-relaxed">
+              Add children to your family profile to see education milestones and future planning events on your timeline.
+            </p>
+            <Link href="/family" className="text-sm text-family-400 font-semibold flex items-center gap-1 mt-2">
+              Set up family <ChevronRight size={14} />
+            </Link>
+          </GlassCard>
+        )}
       </motion.div>
 
       <IfAdvanced>
@@ -348,15 +383,23 @@ export default function HomePage() {
             <Lightbulb size={18} className="text-family-400" />
             <span className="text-sm font-semibold text-family-400">One option to consider</span>
           </div>
-          <p className="text-sm text-ink-secondary leading-relaxed mb-3">
-            One projection suggests adding $250/month to your retirement savings may help you stay on track for retirement around 60. This is an estimate — consider reviewing with a qualified financial professional.
-          </p>
-          <Link
-            href="/events/retirement"
-            className="text-sm text-family-400 font-semibold flex items-center gap-1"
-          >
-            See retirement plan <ChevronRight size={14} />
-          </Link>
+          {hasLiveData ? (
+            <>
+              <p className="text-sm text-ink-secondary leading-relaxed mb-3">
+                Based on your connected data, one projection suggests adding $250/month to your retirement savings may help you stay on track for retirement around 60. This is an estimate — consider reviewing with a qualified financial professional.
+              </p>
+              <Link
+                href="/events/retirement"
+                className="text-sm text-family-400 font-semibold flex items-center gap-1"
+              >
+                See retirement plan <ChevronRight size={14} />
+              </Link>
+            </>
+          ) : (
+            <p className="text-sm text-ink-tertiary leading-relaxed">
+              Connect your accounts and upload documents to receive personalized financial insights and projections.
+            </p>
+          )}
         </GlassCard>
       </motion.div>
     </div>

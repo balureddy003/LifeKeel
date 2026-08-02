@@ -69,6 +69,10 @@ interface AppState {
   // Documents
   uploadedDocumentCount: number
   incrementDocumentCount: () => void
+
+  // Inbox (demo item dismissal persistence)
+  dismissedInboxIds: string[]
+  dismissInboxItemLocal: (id: string) => void
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 11)
@@ -169,6 +173,11 @@ export const useAppStore = create<AppState>()(
       uploadedDocumentCount: 0,
       incrementDocumentCount: () =>
         set((state) => ({ uploadedDocumentCount: state.uploadedDocumentCount + 1 })),
+
+      // Inbox (demo item dismissal persistence)
+      dismissedInboxIds: [],
+      dismissInboxItemLocal: (id) =>
+        set((state) => ({ dismissedInboxIds: [...state.dismissedInboxIds, id] })),
     }),
     {
       name: 'family-ai-store',
@@ -177,6 +186,7 @@ export const useAppStore = create<AppState>()(
         isAuthenticated: state.isAuthenticated,
         family: state.family,
         mode: state.mode,
+        dismissedInboxIds: state.dismissedInboxIds,
       }),
     }
   )

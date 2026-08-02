@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
@@ -9,6 +9,7 @@ import { LIFE_EVENTS } from '@/lib/life-data'
 import { GlassCard, GlassButton, PageHeader } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { useEventReadiness } from '@/lib/useFamilyData'
+import { useAuth } from '@/lib/auth-context'
 
 interface Action {
   id: string
@@ -33,9 +34,9 @@ const EVENT_ACTIONS: Record<string, Action[]> = {
   'job-loss': [
     { id: '1', label: 'Emergency savings: $55,000 (14 months)', done: false },
     { id: '2', label: 'Income protection: $5,000/month for 2 years', done: false },
-    { id: '3', label: "Wife's salary covers basic expenses", done: false },
-    { id: '4', label: 'Review budget and cut non-essential spending', done: false },
-    { id: '5', label: 'Update resume and start job search', done: false },
+    { id: '3', label: 'Review budget and cut non-essential spending', done: false },
+    { id: '4', label: 'Update resume and start job search', done: false },
+    { id: '5', label: 'Check eligibility for unemployment benefits', done: false },
   ],
   retirement: [
     { id: '1', label: 'Pension is 55% of target for retirement at 60', done: false },
@@ -67,7 +68,7 @@ const EVENT_STABILITY: Record<string, number> = {
 const EVENT_AI_EXPLANATION: Record<string, string> = {
   bereavement: "Based on the data you entered, if something were to happen to you, your family's listed benefits include $750,000 from life insurance, $200,000 from employer benefits, and potential survivor pension payments. Your mortgage protection is listed as active. All key contacts have been noted in your profile. This is a summary of your documented coverage — please consult a licensed professional to review the terms.",
   medical: "Based on your entered policies, your health insurance lists coverage for most medical emergencies. You'd typically pay a deductible and the insurance may cover the rest — up to $1 million per year. For surgery, the hospital may need to confirm with your insurer first. You also have $8,200 listed in a Health Savings Account for out-of-pocket costs. Please verify current terms with your insurance provider.",
-  'job-loss': "Based on the information you entered, one projection estimates your family may be covered for approximately 14 months. You have $55,000 in savings (estimated 14 months of expenses), income protection insurance listing $5,000/month for up to 2 years, and your wife's salary may cover basic expenses. This is an estimate based on your inputs — consider reviewing with a qualified professional.",
+  'job-loss': "Based on the information you entered, one projection estimates your family may be covered for approximately 14 months. You have $55,000 in savings (estimated 14 months of expenses) and income protection insurance listing $5,000/month for up to 2 years. This is an estimate based on your inputs — consider reviewing with a qualified professional.",
   retirement: "Based on the data you entered, your pension is currently at 55% of the target needed to retire at 60. Your employer match is fully utilized. One projection suggests adding $300/month would keep you on track for that target. This is an estimate based on your inputs, not a guarantee — consider reviewing your retirement plan with a qualified financial professional.",
 }
 

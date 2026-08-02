@@ -40,16 +40,25 @@ const actionTypeColor = (type: InboxItem['actionType']) => {
 export default function InboxPage() {
   const router = useRouter()
   const connectedConnectors = useAppStore((s) => s.connectedConnectors)
-  const [items, setItems] = useState<InboxItem[]>(INBOX_ITEMS)
+  const dismissedInboxIds = useAppStore((s) => s.dismissedInboxIds)
+  const dismissInboxItemLocal = useAppStore((s) => s.dismissInboxItemLocal)
+  const [items, setItems] = useState<InboxItem[]>(
+    INBOX_ITEMS.filter((item) => !dismissedInboxIds.includes(item.id))
+  )
+  const [isLive, setIsLive] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [dismissingId, setDismissingId] = useState<string | null>(null)
   const emailConnected = connectedConnectors.includes('gmail')
 
   const loadInbox = useCallback(async () => {
-    const { items: apiItems, isLive } = await fetchInboxItems()
-    if (isLive && apiItems.length > 0) {
-      setItems(apiItems)
+    const result = await fetchInboxItems()
+    if (result.isLive && result.items.length > 0) {
+      setItems(result.items)
+      setIsLive(true)
+    } else {
+      setItems(INBOX_ITEMS.filter((item) => !useAppStore.getState().dismissedInboxIds.includes(item.id)))
+      setIsLive(false)
     }
     setLoading(false)
   }, [])
@@ -70,20 +79,32 @@ export default function InboxPage() {
     haptic('success')
     setExpandedId(null)
     setDismissingId(item.id)
-    dismissInboxItem(item.id).then(() => {
+    if (isLive) {
+      dismissInboxItem(item.id).then(() => {
+        setItems((prev) => prev.filter((i) => i.id !== item.id))
+        setDismissingId(null)
+      })
+    } else {
+      dismissInboxItemLocal(item.id)
       setItems((prev) => prev.filter((i) => i.id !== item.id))
       setDismissingId(null)
-    })
+    }
   }
 
   const handleDismiss = (id: string) => {
     haptic('light')
     setExpandedId(null)
     setDismissingId(id)
-    dismissInboxItem(id).then(() => {
+    if (isLive) {
+      dismissInboxItem(id).then(() => {
+        setItems((prev) => prev.filter((i) => i.id !== id))
+        setDismissingId(null)
+      })
+    } else {
+      dismissInboxItemLocal(id)
       setItems((prev) => prev.filter((i) => i.id !== id))
       setDismissingId(null)
-    })
+    }
   }
 
   return (
@@ -116,9 +137,16 @@ export default function InboxPage() {
           <div className="flex items-center gap-2 mb-2">
             <Bot size={18} className="text-family-400" />
             <span className="text-sm font-semibold text-family-400">AI Summary</span>
+            {!isLive && (
+              <span className="text-[10px] text-warning font-semibold px-1.5 py-0.5 rounded-full bg-warning/10">
+                Sample
+              </span>
+            )}
           </div>
           <p className="text-sm text-ink-secondary leading-relaxed">
-            You have {unreadCount} unread items. Two need attention: your <strong>home insurance renews next month</strong> with a 12% price increase, and your <strong>travel insurance expires</strong> before your upcoming trip.
+            {isLive
+              ? `You have ${unreadCount} unread items needing attention.`
+              : `These are sample inbox items. Connect your email to receive AI-summarized financial notifications automatically.`}
           </p>
         </GlassCard>
       </motion.div>

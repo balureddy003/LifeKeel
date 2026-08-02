@@ -14,6 +14,8 @@ import {
   type FamilyGoal,
 } from './api'
 import { FAMILY_HEALTH_SCORE } from './life-data'
+import { useAuth } from './auth-context'
+import type { TimelineEvent } from './modes'
 
 export function useFamilyInsights() {
   const [insights, setInsights] = useState<FamilyInsight[]>([])
@@ -66,7 +68,8 @@ export function useFamilyGoals() {
 }
 
 export function useFamilyReadinessScore() {
-  const [score, setScore] = useState<number>(FAMILY_HEALTH_SCORE)
+  const [score, setScore] = useState<number>(0)
+  const [hasLiveData, setHasLiveData] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -75,7 +78,8 @@ export function useFamilyReadinessScore() {
       setLoading(true)
       const apiScore = await fetchFamilyReadinessScore()
       if (!cancelled) {
-        setScore(apiScore > 0 ? apiScore : FAMILY_HEALTH_SCORE)
+        setScore(apiScore)
+        setHasLiveData(apiScore > 0)
         setLoading(false)
       }
     }
@@ -83,7 +87,7 @@ export function useFamilyReadinessScore() {
     return () => { cancelled = true }
   }, [])
 
-  return { score, loading }
+  return { score, hasLiveData, loading }
 }
 
 export type HealthDomain = 'protection' | 'wealth' | 'goals' | 'savings'
@@ -145,9 +149,50 @@ export function useFamilyHealthDomains() {
 }
 
 /**
- * Maps a family life-event id to the detector that would surface insights
- * for that scenario. Used by useEventReadiness to filter API insights.
+ * Generates timeline events from the real family roster. Without
+ * birthdates (not currently in the family group schema), education
+ * milestones can't be computed — returns an empty array so the UI
+ * can show an honest empty state instead of fabricated events.
  */
+export function useFamilyTimeline() {
+  const { family } = useAuth()
+  const [events, setEvents] = useState<TimelineEvent[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      const members = family?.members ?? []
+      if (members.length === 0) {
+        if (!cancelled) { setEvents([]); setLoading(false) }
+        return
+      }
+
+      const currentYear = new Date().getFullYear()
+      const generated: TimelineEvent[] = []
+
+      for (const member of members) {
+        if (member.role === 'child') {
+          generated.push({
+            id: `${member.id}-university`,
+            emoji: '',
+            label: `${member.name}'s University`,
+            year: currentYear + 6,
+            status: 'future',
+          })
+        }
+      }
+
+      generated.sort((a, b) => a.year - b.year)
+      if (!cancelled) { setEvents(generated); setLoading(false) }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [family])
+
+  return { events, loading, hasData: events.length > 0 }
+}
 const EVENT_DETECTOR_MAP: Record<string, string> = {
   bereavement: 'family_protection_gap',
   medical: 'family_protection_gap',

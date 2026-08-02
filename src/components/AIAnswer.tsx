@@ -47,7 +47,7 @@ const MOCK_ANSWERS: Record<string, AIAnswer> = {
   },
   'job': {
     query: 'What happens if I lose my job?',
-    answer: "Based on the information you entered, one projection estimates your family may be covered for approximately 14 months. You have $55,000 in emergency savings (estimated 14 months of expenses), income protection insurance listing $5,000/month for up to 2 years, and your wife's salary may cover basic expenses. This is an estimate based on your inputs — consider reviewing with a qualified professional.",
+    answer: "Based on the information you entered, one projection estimates your family may be covered for approximately 14 months. You have $55,000 in emergency savings (estimated 14 months of expenses) and income protection insurance listing $5,000/month for up to 2 years. This is an estimate based on your inputs — consider reviewing with a qualified professional.",
     sources: [
       { label: 'Emergency Savings Account', type: 'account', icon: Wallet },
       { label: 'Income Protection Policy', type: 'policy', icon: Briefcase },

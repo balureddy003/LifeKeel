@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { PageHeader, GlassCard, EmptyState } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { uploadDocument, fetchDocuments, type FamilyDocument } from '@/lib/api'
@@ -56,6 +56,8 @@ function statusLabel(status: FamilyDocument['status']) {
 
 export default function UploadPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const categoryFilter = searchParams.get('category')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const [documents, setDocuments] = useState<FamilyDocument[]>([])
@@ -67,10 +69,10 @@ export default function UploadPage() {
 
   const loadDocuments = useCallback(async () => {
     const { documents: docs, aiExtractionEnabled: enabled } = await fetchDocuments()
-    setDocuments(docs)
+    setDocuments(categoryFilter ? docs.filter((d) => d.category === categoryFilter) : docs)
     setAiExtractionEnabled(enabled)
     setLoaded(true)
-  }, [])
+  }, [categoryFilter])
 
   useEffect(() => {
     loadDocuments()
@@ -112,7 +114,7 @@ export default function UploadPage() {
 
   return (
     <div className="px-5 pt-2 space-y-4">
-      <PageHeader title="Upload Documents" backHref="/" />
+      <PageHeader title={categoryFilter ? `${CATEGORY_LABELS[categoryFilter] ?? 'Documents'}` : 'Upload Documents'} backHref="/" />
 
       {/* Upload actions */}
       <div className="grid grid-cols-2 gap-3">

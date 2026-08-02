@@ -94,7 +94,7 @@ export const AI_SUGGESTIONS = [
   'What happens if I lose my job?',
   'Are my children fully protected?',
   'Can we retire at 55?',
-  'What should my wife do if something happens to me?',
+  'What should my family do if something happens to me?',
   "How much do we need for Emma's university?",
 ]
 
@@ -102,12 +102,12 @@ export const AI_RESPONSES: Record<string, string> = {
   'travel insurance':
     'Based on the data you provided, your travel insurance is with GlobalGuard Insurance, Policy #TR-2024-0042. It lists medical emergency coverage up to $500K, trip cancellation up to $10K, and lost baggage up to $3K. The policy expires in 18 days — you may want to set a renewal reminder before your trip.',
   'lose my job':
-    'Based on the information you have entered, one projection shows your family may be covered for approximately 14 months:\n\n• Emergency savings: $55,000 (estimated 14 months of expenses)\n• Income protection policy: $5,000/month for up to 2 years\n• Your wife\'s salary may cover basic expenses\n\nThis is an estimate based on your inputs. Consider reviewing your coverage with a qualified professional.',
+    'Based on the information you have entered, one projection shows your family may be covered for approximately 14 months:\n\n• Emergency savings: $55,000 (estimated 14 months of expenses)\n• Income protection policy: $5,000/month for up to 2 years\n\nThis is an estimate based on your inputs. Consider reviewing your coverage with a qualified professional.',
   'children protected':
     'Based on the data you entered, your children appear to have significant coverage:\n\n• Life insurance: $750,000 (listed for upbringing and education)\n• Emma\'s university fund: 72% of $120K target\n• Lucas\'s university fund: 45% of $120K target\n• Both have future goals insurance\n\nOne option to consider: critical illness coverage for Lucas. Please consult a licensed insurance professional to evaluate whether this is appropriate for your family.',
   'retire at 55':
     'A projection based on your data suggests the following scenarios:\n\n• Current trajectory: retirement around age 65\n• With $500/month more: projected retirement around 60\n• With $800/month more: projected retirement around 55\n\nAt 55, the projection estimates approximately $1.6M saved, which could translate to roughly $64,000/year. Your mortgage may also be paid off by then. These are estimates and not guaranteed. Consider reviewing with a qualified financial professional.',
-  'wife do':
+  'family do':
     'Based on the documents in your family profile, here is a checklist of steps families often consider:\n\n1. Contact your life insurance provider (Policy #LI-2024-001) — listed benefit: $750,000\n\n2. Contact your employer — listed survivor benefits: $200,000\n\n3. Contact the pension provider — survivor pension payments may apply\n\n4. Mortgage protection is listed — review the terms with your lender\n\n5. Consider scheduling a meeting with a financial advisor or attorney\n\nAll contact details are stored in your family profile. This is informational only — please consult licensed professionals before taking action.',
   'emma university':
     'Based on the data you entered, Emma\'s university fund status:\n\n• Current savings: $86,400 (72% of $120K target)\n• Monthly contribution: $600\n\nOne projection suggests the target may be reached by 2030, approximately 2 years before she starts. This is an estimate based on your inputs and not guaranteed. Consider reviewing with a financial professional.',
