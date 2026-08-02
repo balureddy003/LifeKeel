@@ -11,7 +11,7 @@ import { ConfidenceScore, TrustLadder, MemoryPrompts } from '@/components/Intell
 import { HealthSummary } from '@/components/HealthSummary'
 import { CHILD_GOALS, CHILD_MESSAGES } from '@/lib/life-data'
 import { useMode } from '@/lib/mode-context'
-import { useFamilyReadinessScore, useFamilyTimeline } from '@/lib/useFamilyData'
+import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@/lib/useFamilyData'
 import { useAppStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
@@ -213,6 +213,8 @@ export default function HomePage() {
   const { config } = useMode()
   const { score: readinessScore, hasLiveData, loading: scoreLoading } = useFamilyReadinessScore()
   const { events: timelineEvents, hasData: hasTimelineData } = useFamilyTimeline()
+  const { insights } = useFamilyInsights()
+  const retirementInsight = insights.find((i) => i.detector_id === 'family_retirement_gap')
   const setCmdkOpen = useAppStore((s) => s.setCmdkOpen)
 
   if (config.mode === 'child') {
@@ -383,10 +385,10 @@ export default function HomePage() {
             <Lightbulb size={18} className="text-family-400" />
             <span className="text-sm font-semibold text-family-400">One option to consider</span>
           </div>
-          {hasLiveData ? (
+          {hasLiveData && retirementInsight ? (
             <>
               <p className="text-sm text-ink-secondary leading-relaxed mb-3">
-                Based on your connected data, one projection suggests adding $250/month to your retirement savings may help you stay on track for retirement around 60. This is an estimate — consider reviewing with a qualified financial professional.
+                {retirementInsight.reasoning || retirementInsight.hypothesis} This is an estimate — consider reviewing with a qualified financial professional.
               </p>
               <Link
                 href="/events/retirement"
@@ -395,6 +397,10 @@ export default function HomePage() {
                 See retirement plan <ChevronRight size={14} />
               </Link>
             </>
+          ) : hasLiveData ? (
+            <p className="text-sm text-ink-tertiary leading-relaxed">
+              No retirement-specific insight yet — connect a pension or investment account to see a real suggestion here.
+            </p>
           ) : (
             <p className="text-sm text-ink-tertiary leading-relaxed">
               Connect your accounts and upload documents to receive personalized financial insights and projections.

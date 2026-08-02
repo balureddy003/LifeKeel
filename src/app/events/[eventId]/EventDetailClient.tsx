@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Bot, Check, HelpCircle } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Bot, Check, CheckCircle2, HelpCircle } from 'lucide-react'
 import { LIFE_EVENTS } from '@/lib/life-data'
 import { GlassCard, GlassButton, PageHeader } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
@@ -19,30 +19,30 @@ interface Action {
 
 const EVENT_ACTIONS: Record<string, Action[]> = {
   bereavement: [
-    { id: '1', label: 'Call life insurance provider (Policy #LI-2024-001)', done: false },
+    { id: '1', label: 'Call your life insurance provider to start a claim', done: false },
     { id: '2', label: 'Contact employer for survivor benefits', done: false },
     { id: '3', label: 'Notify pension provider for survivor pension', done: false },
-    { id: '4', label: 'Mortgage is protected — no action needed', done: true },
-    { id: '5', label: 'Schedule meeting with financial advisor', done: false },
+    { id: '4', label: 'Check whether your mortgage has protection cover', done: false },
+    { id: '5', label: 'Schedule a meeting with a financial advisor', done: false },
   ],
   medical: [
-    { id: '1', label: 'Health insurance covers up to $1M (deductible: $500)', done: false },
-    { id: '2', label: 'Pre-authorization may be needed for surgery', done: false },
-    { id: '3', label: 'Out-of-pocket max: $5,000/year', done: false },
-    { id: '4', label: 'HSA balance: $8,200 available', done: false },
+    { id: '1', label: 'Review your health insurance coverage details', done: false },
+    { id: '2', label: 'Check if pre-authorization is needed for treatment', done: false },
+    { id: '3', label: 'Confirm your annual out-of-pocket maximum', done: false },
+    { id: '4', label: 'Check your HSA balance for eligible expenses', done: false },
   ],
   'job-loss': [
-    { id: '1', label: 'Emergency savings: $55,000 (14 months)', done: false },
-    { id: '2', label: 'Income protection: $5,000/month for 2 years', done: false },
+    { id: '1', label: 'Review how many months your emergency savings cover', done: false },
+    { id: '2', label: 'Check if you have income protection insurance', done: false },
     { id: '3', label: 'Review budget and cut non-essential spending', done: false },
     { id: '4', label: 'Update resume and start job search', done: false },
     { id: '5', label: 'Check eligibility for unemployment benefits', done: false },
   ],
   retirement: [
-    { id: '1', label: 'Pension is 55% of target for retirement at 60', done: false },
-    { id: '2', label: 'Adding $300/month keeps you on track', done: false },
-    { id: '3', label: 'Employer match is fully utilized — no action needed', done: true },
-    { id: '4', label: 'Check state pension forecast', done: false },
+    { id: '1', label: 'Review your pension progress toward your target', done: false },
+    { id: '2', label: 'See whether increasing monthly contributions helps', done: false },
+    { id: '3', label: 'Confirm your employer match is fully utilized', done: false },
+    { id: '4', label: 'Check your state pension forecast', done: false },
     { id: '5', label: 'Schedule a retirement planning review', done: false },
   ],
   default: [
@@ -66,10 +66,10 @@ const EVENT_STABILITY: Record<string, number> = {
 }
 
 const EVENT_AI_EXPLANATION: Record<string, string> = {
-  bereavement: "Based on the data you entered, if something were to happen to you, your family's listed benefits include $750,000 from life insurance, $200,000 from employer benefits, and potential survivor pension payments. Your mortgage protection is listed as active. All key contacts have been noted in your profile. This is a summary of your documented coverage — please consult a licensed professional to review the terms.",
-  medical: "Based on your entered policies, your health insurance lists coverage for most medical emergencies. You'd typically pay a deductible and the insurance may cover the rest — up to $1 million per year. For surgery, the hospital may need to confirm with your insurer first. You also have $8,200 listed in a Health Savings Account for out-of-pocket costs. Please verify current terms with your insurance provider.",
-  'job-loss': "Based on the information you entered, one projection estimates your family may be covered for approximately 14 months. You have $55,000 in savings (estimated 14 months of expenses) and income protection insurance listing $5,000/month for up to 2 years. This is an estimate based on your inputs — consider reviewing with a qualified professional.",
-  retirement: "Based on the data you entered, your pension is currently at 55% of the target needed to retire at 60. Your employer match is fully utilized. One projection suggests adding $300/month would keep you on track for that target. This is an estimate based on your inputs, not a guarantee — consider reviewing your retirement plan with a qualified financial professional.",
+  bereavement: "This is a sample scenario, not based on your data yet. Families in this situation typically lean on life insurance, employer survivor benefits, and any survivor pension to stay afloat. Connect your policies and documents so we can show your actual coverage instead of this example.",
+  medical: "This is a sample scenario, not based on your data yet. Most health insurance plans cover emergencies after a deductible, up to an annual out-of-pocket maximum, with an HSA sometimes available for extra costs. Connect your insurance documents so we can show your actual coverage instead of this example.",
+  'job-loss': "This is a sample scenario, not based on your data yet. Families typically lean on emergency savings and any income protection insurance to bridge a job loss. Connect your accounts and documents so we can show your actual runway instead of this example.",
+  retirement: "This is a sample scenario, not based on your data yet. Retirement readiness usually comes down to pension progress, employer match, and monthly contributions. Connect your pension and investment accounts so we can show your actual progress instead of this example.",
 }
 
 export default function EventDetailClient() {
@@ -99,8 +99,8 @@ export default function EventDetailClient() {
   }
 
   const fallbackStability = EVENT_STABILITY[event.id] ?? 80
-  const fallbackExplanation = EVENT_AI_EXPLANATION[event.id] ?? "Based on the data you entered, your family appears well prepared for this situation. Your listed insurance, savings, and investments may provide multiple layers of coverage. This is informational only — please consult a licensed professional to review your specific terms."
-  const { stability, explanation } = useEventReadiness(event.id, fallbackStability, fallbackExplanation)
+  const fallbackExplanation = EVENT_AI_EXPLANATION[event.id] ?? "This is a sample scenario, not based on your data yet. Connect your accounts and documents to see a personalized readiness assessment for this situation."
+  const { stability, explanation, hasLiveData } = useEventReadiness(event.id, fallbackStability, fallbackExplanation)
   const completedCount = actions.filter((a) => a.done).length
 
   return (
@@ -140,6 +140,17 @@ export default function EventDetailClient() {
               ? "Your family would remain financially stable in this situation."
               : "Your family would be okay, but there are some gaps to address."}
           </p>
+          {hasLiveData ? (
+            <div className="flex items-center gap-1.5 text-xs text-success mt-2">
+              <CheckCircle2 size={12} />
+              <span>Based on your family's data</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-xs text-warning mt-2">
+              <AlertTriangle size={12} />
+              <span>Sample scenario — connect your data for a real one</span>
+            </div>
+          )}
         </GlassCard>
       </motion.div>
 

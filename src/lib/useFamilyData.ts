@@ -213,6 +213,7 @@ export function useEventReadiness(
 ) {
   const [stability, setStability] = useState(fallbackStability)
   const [explanation, setExplanation] = useState(fallbackExplanation)
+  const [hasLiveData, setHasLiveData] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -224,6 +225,7 @@ export function useEventReadiness(
         if (!cancelled) {
           setStability(fallbackStability)
           setExplanation(fallbackExplanation)
+          setHasLiveData(false)
           setLoading(false)
         }
         return
@@ -233,12 +235,14 @@ export function useEventReadiness(
         const insights = await fetchFamilyInsights()
         const matching = insights.find((i) => i.detector_id === detectorId)
         if (!cancelled) {
-          if (matching) {
+          if (matching && (matching.reasoning || matching.hypothesis)) {
             setStability(matching.confidence > 0 ? Math.round(matching.confidence * 100) : fallbackStability)
             setExplanation(matching.reasoning || matching.hypothesis || fallbackExplanation)
+            setHasLiveData(true)
           } else {
             setStability(fallbackStability)
             setExplanation(fallbackExplanation)
+            setHasLiveData(false)
           }
           setLoading(false)
         }
@@ -246,6 +250,7 @@ export function useEventReadiness(
         if (!cancelled) {
           setStability(fallbackStability)
           setExplanation(fallbackExplanation)
+          setHasLiveData(false)
           setLoading(false)
         }
       }
@@ -254,5 +259,5 @@ export function useEventReadiness(
     return () => { cancelled = true }
   }, [eventId, fallbackStability, fallbackExplanation])
 
-  return { stability, explanation, loading }
+  return { stability, explanation, hasLiveData, loading }
 }
