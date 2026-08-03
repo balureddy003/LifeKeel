@@ -266,9 +266,11 @@ export default function HomePage() {
                 <ScoreRing score={readinessScore} size={80} />
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-semibold text-success">You&apos;re on track</span>
+                    <span className={`text-sm font-semibold ${readinessScore >= 70 ? 'text-success' : 'text-warning'}`}>
+                      {readinessScore >= 70 ? "You're on track" : 'Some insights need review'}
+                    </span>
                     <motion.span
-                      className="w-2 h-2 rounded-full bg-success"
+                      className={`w-2 h-2 rounded-full ${readinessScore >= 70 ? 'bg-success' : 'bg-warning'}`}
                       animate={{ opacity: [1, 0.3, 1] }}
                       transition={{ duration: 2, repeat: Infinity }}
                     />
@@ -388,7 +390,7 @@ export default function HomePage() {
           {hasLiveData && retirementInsight ? (
             <>
               <p className="text-sm text-ink-secondary leading-relaxed mb-3">
-                {retirementInsight.reasoning || retirementInsight.hypothesis} This is an estimate — consider reviewing with a qualified financial professional.
+                {retirementInsight.reasoning || retirementInsight.hypothesis}
               </p>
               <Link
                 href="/events/retirement"

@@ -22,6 +22,41 @@ export interface FamilyInsight {
   created_at: string
 }
 
+// Real engine output (packages/engine's Trigger/Insight schema) has no flat
+// `confidence` field — it lives at confidence_breakdown.combined_score — and
+// its terminal states are 'completed' | 'dismissed' | 'archived', not
+// 'approved'. This adapts that shape to the flat one the rest of this app
+// reads, instead of every call site re-deriving it (or silently getting NaN).
+interface RawInsight {
+  id: string
+  detector_id: string
+  hypothesis: string
+  reasoning: string
+  actions: string[]
+  confidence_breakdown?: { combined_score?: number; or_score?: number }
+  urgency: string
+  category: string
+  state: string
+  created_at: string
+}
+
+export const RESOLVED_INSIGHT_STATES = ['completed', 'dismissed', 'archived']
+
+function adaptInsight(raw: RawInsight): FamilyInsight {
+  return {
+    id: raw.id,
+    detector_id: raw.detector_id,
+    hypothesis: raw.hypothesis,
+    reasoning: raw.reasoning,
+    actions: raw.actions,
+    confidence: raw.confidence_breakdown?.combined_score ?? raw.confidence_breakdown?.or_score ?? 0,
+    urgency: raw.urgency,
+    category: raw.category,
+    state: raw.state,
+    created_at: raw.created_at,
+  }
+}
+
 export interface FamilyGoal {
   id: string
   name: string
@@ -71,10 +106,17 @@ async function apiFetch<T>(path: string, fallback: T): Promise<T> {
 }
 
 export async function fetchFamilyInsights(): Promise<FamilyInsight[]> {
-  return apiFetch<{ insights: FamilyInsight[] }>(
+  // The API's /insights doesn't actually support a `detectors` filter param
+  // (it's silently ignored) — filter client-side so a tenant with insights
+  // from other verticals doesn't pollute the family app's numbers.
+  return apiFetch<{ insights: RawInsight[] }>(
     `/insights?detectors=${FAMILY_DETECTORS.join(',')}`,
     { insights: [] },
-  ).then((r) => r.insights ?? [])
+  ).then((r) =>
+    (r.insights ?? [])
+      .filter((i) => (FAMILY_DETECTORS as readonly string[]).includes(i.detector_id))
+      .map(adaptInsight),
+  )
 }
 
 export async function fetchFamilyGoals(): Promise<FamilyGoal[]> {
@@ -84,11 +126,11 @@ export async function fetchFamilyGoals(): Promise<FamilyGoal[]> {
   ).then((r) => r.goals ?? [])
 }
 
-export async function fetchFamilyReadinessScore(): Promise<number> {
+export async function fetchFamilyReadinessScore(): Promise<{ score: number; hasLiveData: boolean }> {
   const insights = await fetchFamilyInsights()
-  if (insights.length === 0) return 0
-  const resolved = insights.filter((i) => i.state === 'approved' || i.state === 'dismissed').length
-  return Math.round((resolved / insights.length) * 100)
+  if (insights.length === 0) return { score: 0, hasLiveData: false }
+  const resolved = insights.filter((i) => RESOLVED_INSIGHT_STATES.includes(i.state)).length
+  return { score: Math.round((resolved / insights.length) * 100), hasLiveData: true }
 }
 
 /**
@@ -303,4 +345,65 @@ export async function fetchInboxItems(): Promise<{ items: InboxItem[]; isLive: b
     items: r.items ?? [],
     isLive: (r.items?.length ?? 0) > 0,
   }))
+}
+
+// ── Financial profile ────────────────────────────────────────────────────
+// Feeds the family vertical's detectors (protection gap, emergency fund,
+// education shortfall, retirement gap) — without this, those detectors have
+// no real signals to evaluate and every event/home panel stays on sample data.
+
+export interface FinancialProfileEducationFund {
+  child_name: string
+  child_age: number
+  current_savings_minor: number
+  target_savings_minor: number
+  years_remaining: number
+}
+
+export interface FinancialProfile {
+  household: {
+    employed: boolean
+    monthly_salary_minor: number
+    annual_living_expenses_minor: number
+    mortgage_outstanding_minor: number
+    life_cover_minor: number
+    income_protection_monthly_minor: number
+  }
+  emergency_fund: {
+    emergency_savings_minor: number
+    monthly_expenses_minor: number
+    has_high_interest_debt: boolean
+  }
+  retirement: {
+    current_age: number
+    target_retirement_age: number
+    pension_balance_minor: number
+    monthly_contribution_minor: number
+    target_retirement_income_minor: number
+    expected_annual_growth_pct: number
+  }
+  education_funds: FinancialProfileEducationFund[]
+}
+
+export async function fetchFinancialProfile(): Promise<FinancialProfile | null> {
+  return apiFetch<{ profile: FinancialProfile | null }>(
+    '/family/financial-profile',
+    { profile: null },
+  ).then((r) => r.profile ?? null)
+}
+
+export async function submitFinancialProfile(profile: FinancialProfile): Promise<{ insightsGenerated: number }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${base}/family/financial-profile`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(profile),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Request failed')
+  return { insightsGenerated: data.insights_generated ?? 0 }
 }

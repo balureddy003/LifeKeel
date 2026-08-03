@@ -10,7 +10,7 @@ import { MODE_CONFIGS } from '@/lib/modes'
 import { haptic } from '@/lib/haptics'
 import type { AppMode } from '@/lib/modes'
 import { ROLE_LABELS, type FamilyRole } from '@/lib/auth-types'
-import { User, LogOut, Check, Crown, Shield, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle } from 'lucide-react'
+import { User, LogOut, Check, Crown, Shield, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle, Calculator } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 const MODE_ICONS: Record<string, LucideIcon> = {
@@ -241,6 +241,18 @@ export default function SettingsPage() {
         >
           <div className="text-base font-medium">Manage Connections</div>
           <div className="text-xs text-ink-tertiary mt-0.5">Email, bank, investments</div>
+        </ListRow>
+      </ListSection>
+
+      {/* Financial profile */}
+      <ListSection title="Personalized Insights">
+        <ListRow
+          icon={Calculator}
+          onClick={() => { haptic('light'); router.push('/financial-profile') }}
+          chevron
+        >
+          <div className="text-base font-medium">Financial Profile</div>
+          <div className="text-xs text-ink-tertiary mt-0.5">Income, savings, pension — powers your real readiness scores</div>
         </ListRow>
       </ListSection>
 

@@ -10,6 +10,7 @@ import {
   fetchFamilyInsights,
   fetchFamilyGoals,
   fetchFamilyReadinessScore,
+  RESOLVED_INSIGHT_STATES,
   type FamilyInsight,
   type FamilyGoal,
 } from './api'
@@ -76,10 +77,10 @@ export function useFamilyReadinessScore() {
     let cancelled = false
     async function load() {
       setLoading(true)
-      const apiScore = await fetchFamilyReadinessScore()
+      const { score: apiScore, hasLiveData: liveData } = await fetchFamilyReadinessScore()
       if (!cancelled) {
         setScore(apiScore)
-        setHasLiveData(apiScore > 0)
+        setHasLiveData(liveData)
         setLoading(false)
       }
     }
@@ -135,9 +136,9 @@ export function useFamilyHealthDomains() {
       continue
     }
 
-    const resolved = domainInsights.filter((i) => i.state === 'approved' || i.state === 'dismissed').length
+    const resolved = domainInsights.filter((i) => RESOLVED_INSIGHT_STATES.includes(i.state)).length
     const openPenalty = domainInsights
-      .filter((i) => i.state !== 'approved' && i.state !== 'dismissed')
+      .filter((i) => !RESOLVED_INSIGHT_STATES.includes(i.state))
       .reduce((sum, i) => sum + i.confidence, 0)
     const score = Math.round(
       Math.max(0, Math.min(100, (resolved / domainInsights.length) * 100 - openPenalty * 10)),
