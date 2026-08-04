@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Network } from 'lucide-react'
 import { GoogleIcon } from '@/components/GoogleIcon'
 import { useAuth } from '@/lib/auth-context'
@@ -86,6 +87,14 @@ export default function LoginPage() {
           className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
         />
       </div>
+
+      <Link
+        href="/reset-password"
+        className="text-sm text-family-400 font-semibold text-center mb-6 -mt-2"
+        onClick={() => haptic('light')}
+      >
+        Forgot password?
+      </Link>
 
       {error && (
         <p className="text-sm text-danger text-center mb-4">{error}</p>

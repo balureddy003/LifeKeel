@@ -172,7 +172,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const isAuthRoute = pathname.startsWith('/welcome') ||
     pathname.startsWith('/signup') ||
     pathname.startsWith('/login') ||
-    pathname.startsWith('/family-setup')
+    pathname.startsWith('/family-setup') ||
+    pathname.startsWith('/reset-password')
 
   if (isLoading) {
     return (
@@ -256,7 +257,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isAuthRoute = pathname.startsWith('/welcome') ||
     pathname.startsWith('/signup') ||
     pathname.startsWith('/login') ||
-    pathname.startsWith('/family-setup')
+    pathname.startsWith('/family-setup') ||
+    pathname.startsWith('/reset-password')
 
   const showNav = isAuthenticated && family && !isAuthRoute
   const showEmergency = showNav && pathname !== '/assistant' && config.showEmergencyButton

@@ -407,3 +407,25 @@ export async function submitFinancialProfile(profile: FinancialProfile): Promise
   if (!res.ok) throw new Error(data.error || 'Request failed')
   return { insightsGenerated: data.insights_generated ?? 0 }
 }
+
+// ── Password reset ───────────────────────────────────────────────────────
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/auth/request-password-reset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, app: 'family' }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Request failed')
+}
+
+export async function confirmPasswordReset(token: string, newPassword: string): Promise<void> {
+  const res = await fetch(`${getApiBase()}/auth/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, new_password: newPassword }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Request failed')
+}
