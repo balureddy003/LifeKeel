@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import { Loader2, AlertCircle, CheckCircle2, Plus, X } from 'lucide-react'
 import { PageHeader, GlassCard, GlassButton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
+import { useAppStore } from '@/lib/store'
 import {
   fetchFinancialProfile,
   submitFinancialProfile,
@@ -197,6 +198,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 export default function FinancialProfilePage() {
   const router = useRouter()
+  const setFinancialProfileSubmitted = useAppStore((s) => s.setFinancialProfileSubmitted)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [funds, setFunds] = useState<EducationFundForm[]>([])
   const [loading, setLoading] = useState(true)
@@ -244,6 +246,7 @@ export default function FinancialProfilePage() {
       const { insightsGenerated } = await submitFinancialProfile(toPayload(form, funds))
       haptic('success')
       setResult(insightsGenerated)
+      setFinancialProfileSubmitted()
     } catch (err) {
       haptic('warning')
       setError(err instanceof Error ? err.message : 'Could not save your financial profile. Please try again.')

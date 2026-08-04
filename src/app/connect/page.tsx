@@ -8,27 +8,22 @@ import { PageHeader, GlassCard } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { fetchConnectorStatuses, getConnectorAuthUrl, disconnectConnector, type ConnectorStatus } from '@/lib/api'
 import { useAppStore } from '@/lib/store'
-import { Mail, Landmark, TrendingUp, Check, Loader2, Unlink, Shield, Lock, Clock, ChevronRight } from 'lucide-react'
+import { Mail, Landmark, Check, Loader2, Unlink, Shield, Lock, Clock, ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 const CONNECTOR_ICONS: Record<string, LucideIcon> = {
   gmail: Mail,
   'open-banking': Landmark,
-  trading212: TrendingUp,
-  zerodha: TrendingUp,
 }
 
 const CONNECTOR_DESCRIPTIONS: Record<string, string> = {
   gmail: 'Connect your inbox to import financial documents — insurance renewals, bank statements, pension updates. Free on every plan. AI summaries in plain language are a paid upgrade.',
   'open-banking': "We're working on secure bank account connections through a regulated banking partner. In the meantime, add your numbers directly in your Financial Profile to get personalized insights today.",
-  trading212: 'Sync your investment portfolio and pension account for real-time net worth tracking.',
-  zerodha: 'Sync your Zerodha demat account for holdings, positions, and portfolio tracking.',
 }
 
 const CONNECTOR_CATEGORIES: Record<string, { label: string; icon: LucideIcon }> = {
   email: { label: 'Email', icon: Mail },
   bank: { label: 'Banking', icon: Landmark },
-  investments: { label: 'Investments', icon: TrendingUp },
 }
 
 export default function ConnectPage() {

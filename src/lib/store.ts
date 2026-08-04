@@ -70,6 +70,10 @@ interface AppState {
   uploadedDocumentCount: number
   incrementDocumentCount: () => void
 
+  // Financial profile (manual entry — no live investment connector for family app)
+  financialProfileSubmitted: boolean
+  setFinancialProfileSubmitted: () => void
+
   // Inbox (demo item dismissal persistence)
   dismissedInboxIds: string[]
   dismissInboxItemLocal: (id: string) => void
@@ -173,6 +177,10 @@ export const useAppStore = create<AppState>()(
       uploadedDocumentCount: 0,
       incrementDocumentCount: () =>
         set((state) => ({ uploadedDocumentCount: state.uploadedDocumentCount + 1 })),
+
+      // Financial profile
+      financialProfileSubmitted: false,
+      setFinancialProfileSubmitted: () => set({ financialProfileSubmitted: true }),
 
       // Inbox (demo item dismissal persistence)
       dismissedInboxIds: [],

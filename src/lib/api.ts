@@ -203,11 +203,10 @@ export interface ConnectorStatus {
   authUrl?: string
 }
 
+// Trading212/Zerodha deliberately excluded — see family-connectors.ts.
 const FAMILY_CONNECTORS: { id: string; name: string; category: string; comingSoon?: boolean }[] = [
   { id: 'gmail', name: 'Gmail', category: 'email' },
   { id: 'open-banking', name: 'Open Banking', category: 'bank', comingSoon: true },
-  { id: 'trading212', name: 'Trading 212', category: 'investments' },
-  { id: 'zerodha', name: 'Zerodha', category: 'investments' },
 ]
 
 export async function fetchConnectorStatuses(): Promise<ConnectorStatus[]> {

@@ -156,21 +156,24 @@ export function TrustLadder() {
   const router = useRouter()
   const connectedConnectors = useAppStore((s) => s.connectedConnectors)
   const uploadedDocumentCount = useAppStore((s) => s.uploadedDocumentCount)
+  const financialProfileSubmitted = useAppStore((s) => s.financialProfileSubmitted)
 
   const steps = [
     { id: 'family', icon: Users, label: 'Add Your Family', timeframe: 'Day 1', desc: 'Tell us who\'s in your household', route: '/family' },
     { id: 'documents', icon: FileText, label: 'Upload Documents', timeframe: 'Week 1', desc: 'Snap a photo or upload any document', route: '/upload' },
     { id: 'bank', icon: Landmark, label: 'Connect Bank', timeframe: 'Week 2', desc: 'Securely connect your bank accounts', route: '/connect' },
     { id: 'email', icon: Mail, label: 'Connect Email', timeframe: 'Week 3', desc: 'AI scans for financial documents only', route: '/connect' },
-    { id: 'investments', icon: BarChart3, label: 'Connect Investments', timeframe: 'Month 2', desc: 'Link your investment and pension accounts', route: '/connect' },
+    { id: 'investments', icon: BarChart3, label: 'Add Investments', timeframe: 'Month 2', desc: 'Add your pension and investment numbers to your Financial Profile', route: '/financial-profile' },
     { id: 'estate', icon: Scale, label: 'Estate Planning', timeframe: 'Month 3', desc: 'Upload your will and estate documents for secure storage', route: '/upload' },
   ].map((step) => {
     let status: 'done' | 'available' | 'locked' = 'locked'
     if (step.id === 'family') status = 'done'
     else if (step.id === 'documents') status = uploadedDocumentCount > 0 ? 'done' : 'available'
-    else if (step.id === 'bank') status = connectedConnectors.includes('open-banking') ? 'done' : 'available'
+    // Open Banking has no live connect flow yet — the Financial Profile is
+    // the real way to complete this step today, same as investments below.
+    else if (step.id === 'bank') status = (connectedConnectors.includes('open-banking') || financialProfileSubmitted) ? 'done' : 'available'
     else if (step.id === 'email') status = connectedConnectors.includes('gmail') ? 'done' : 'available'
-    else if (step.id === 'investments') status = connectedConnectors.some((c) => ['trading212', 'zerodha'].includes(c)) ? 'done' : 'available'
+    else if (step.id === 'investments') status = financialProfileSubmitted ? 'done' : 'available'
     else if (step.id === 'estate') status = 'available'
     return { ...step, status }
   })
