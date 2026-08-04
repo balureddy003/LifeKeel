@@ -429,3 +429,30 @@ export async function confirmPasswordReset(token: string, newPassword: string): 
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Request failed')
 }
+
+// ── Billing (Trellis Plus) ───────────────────────────────────────────────
+
+export interface BillingSubscription {
+  plan: string
+  status: string
+}
+
+export async function fetchBillingSubscription(): Promise<BillingSubscription | null> {
+  return apiFetch<{ plan: string; status: string } | null>('/billing/subscription', null)
+}
+
+export async function startTrellisPlusCheckout(): Promise<string> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${base}/billing/checkout`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ plan: 'starter', app: 'family' }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Could not start checkout')
+  return data.checkout_url as string
+}

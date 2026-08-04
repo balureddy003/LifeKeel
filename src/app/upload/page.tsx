@@ -182,11 +182,16 @@ export default function UploadPage() {
 
       {/* AI extraction upsell — upload/scan/storage is free, extraction is paid */}
       {loaded && !aiExtractionEnabled && documents.length > 0 && (
-        <GlassCard className="p-3.5 border-family-500/20 flex items-start gap-2">
+        <GlassCard
+          className="p-3.5 border-family-500/20 flex items-start gap-2"
+          interactive
+          onClick={() => { haptic('light'); router.push('/upgrade') }}
+        >
           <Sparkles size={16} className="text-family-400 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-ink-secondary leading-relaxed">
-            Documents are saved and stored for free. Upgrade to have AI automatically pull out the provider, policy number, amounts, and dates.
+          <p className="text-xs text-ink-secondary leading-relaxed flex-1">
+            Documents are saved and stored for free. <span className="text-family-400 font-semibold">Upgrade to Trellis Plus</span> to have AI automatically pull out the provider, policy number, amounts, and dates.
           </p>
+          <ChevronRight size={14} className="text-ink-tertiary flex-shrink-0 mt-0.5" />
         </GlassCard>
       )}
 
