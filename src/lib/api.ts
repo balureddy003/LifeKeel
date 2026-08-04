@@ -198,13 +198,14 @@ export interface ConnectorStatus {
   name: string
   category: string
   connected: boolean
+  comingSoon?: boolean
   lastSync?: string
   authUrl?: string
 }
 
-const FAMILY_CONNECTORS: { id: string; name: string; category: string }[] = [
+const FAMILY_CONNECTORS: { id: string; name: string; category: string; comingSoon?: boolean }[] = [
   { id: 'gmail', name: 'Gmail', category: 'email' },
-  { id: 'open-banking', name: 'Open Banking', category: 'bank' },
+  { id: 'open-banking', name: 'Open Banking', category: 'bank', comingSoon: true },
   { id: 'trading212', name: 'Trading 212', category: 'investments' },
   { id: 'zerodha', name: 'Zerodha', category: 'investments' },
 ]

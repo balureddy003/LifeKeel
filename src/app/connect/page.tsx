@@ -3,11 +3,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { PageHeader, GlassCard } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { fetchConnectorStatuses, getConnectorAuthUrl, disconnectConnector, type ConnectorStatus } from '@/lib/api'
 import { useAppStore } from '@/lib/store'
-import { Mail, Landmark, TrendingUp, Check, Loader2, Unlink, Shield, Lock } from 'lucide-react'
+import { Mail, Landmark, TrendingUp, Check, Loader2, Unlink, Shield, Lock, Clock, ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 const CONNECTOR_ICONS: Record<string, LucideIcon> = {
@@ -19,7 +20,7 @@ const CONNECTOR_ICONS: Record<string, LucideIcon> = {
 
 const CONNECTOR_DESCRIPTIONS: Record<string, string> = {
   gmail: 'Connect your inbox to import financial documents — insurance renewals, bank statements, pension updates. Free on every plan. AI summaries in plain language are a paid upgrade.',
-  'open-banking': 'Securely connect your bank accounts via a regulated AISP aggregator. We see balances and transactions, never move money.',
+  'open-banking': "We're working on secure bank account connections through a regulated banking partner. In the meantime, add your numbers directly in your Financial Profile to get personalized insights today.",
   trading212: 'Sync your investment portfolio and pension account for real-time net worth tracking.',
   zerodha: 'Sync your Zerodha demat account for holdings, positions, and portfolio tracking.',
 }
@@ -156,6 +157,11 @@ export default function ConnectPage() {
                               <Check size={12} /> Connected
                             </span>
                           )}
+                          {!isConnected && connector.comingSoon && (
+                            <span className="flex items-center gap-1 text-xs text-ink-tertiary bg-white/[0.05] px-2 py-0.5 rounded-full">
+                              <Clock size={11} /> Coming soon
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-ink-tertiary mt-1 leading-relaxed">
                           {CONNECTOR_DESCRIPTIONS[connector.id] ?? 'Connect this service to enhance your family profile.'}
@@ -172,6 +178,14 @@ export default function ConnectPage() {
                               {isConnecting ? <Loader2 size={14} className="animate-spin" /> : <Unlink size={14} />}
                               Disconnect
                             </motion.button>
+                          ) : connector.comingSoon ? (
+                            <Link
+                              href="/financial-profile"
+                              onClick={() => haptic('light')}
+                              className="flex items-center gap-1 text-xs font-semibold text-family-400"
+                            >
+                              Add it manually instead <ChevronRight size={12} />
+                            </Link>
                           ) : (
                             <motion.button
                               whileTap={{ scale: 0.96 }}
