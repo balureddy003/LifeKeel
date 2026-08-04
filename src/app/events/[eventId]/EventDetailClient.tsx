@@ -84,6 +84,12 @@ export default function EventDetailClient() {
     setActions((prev) => prev.map((a) => (a.id === id ? { ...a, done: !a.done } : a)))
   }
 
+  const fallbackStability = event ? (EVENT_STABILITY[event.id] ?? 80) : 80
+  const fallbackExplanation = event
+    ? (EVENT_AI_EXPLANATION[event.id] ?? "This is a sample scenario, not based on your data yet. Connect your accounts and documents to see a personalized readiness assessment for this situation.")
+    : 'This event could not be found.'
+  const { stability, explanation, hasLiveData } = useEventReadiness(params.eventId, fallbackStability, fallbackExplanation)
+
   if (!event) {
     return (
       <div className="px-4 pt-8 text-center">
@@ -98,9 +104,6 @@ export default function EventDetailClient() {
     )
   }
 
-  const fallbackStability = EVENT_STABILITY[event.id] ?? 80
-  const fallbackExplanation = EVENT_AI_EXPLANATION[event.id] ?? "This is a sample scenario, not based on your data yet. Connect your accounts and documents to see a personalized readiness assessment for this situation."
-  const { stability, explanation, hasLiveData } = useEventReadiness(event.id, fallbackStability, fallbackExplanation)
   const completedCount = actions.filter((a) => a.done).length
 
   return (
