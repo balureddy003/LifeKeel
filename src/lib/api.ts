@@ -2,8 +2,9 @@
  * Family app API client — bridges the family frontend to the shared Kairos API.
  *
  * Uses the same /insights and /goals endpoints as Studio, filtered by the
- * family vertical's detector ids. Falls back to mock data when the API is
- * unreachable (offline-first, matching the family app's PWA posture).
+ * family vertical's detector ids. Falls back to an empty/null result when
+ * the API is unreachable (offline-first, matching the family app's PWA
+ * posture) rather than fabricated data.
  */
 
 import { AI_RESPONSES } from './life-data'

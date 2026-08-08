@@ -1,6 +1,7 @@
 /**
  * React hooks for fetching family data from the Kairos API.
- * Falls back to local mock data when the API is unreachable.
+ * Returns an honest empty/zero state when the API is unreachable or has
+ * no data yet, rather than falling back to fabricated content.
  */
 
 'use client'
@@ -14,7 +15,6 @@ import {
   type FamilyInsight,
   type FamilyGoal,
 } from './api'
-import { FAMILY_HEALTH_SCORE } from './life-data'
 import { useAuth } from './auth-context'
 import type { TimelineEvent } from './modes'
 

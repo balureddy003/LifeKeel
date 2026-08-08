@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion'
 import Link from 'next/link'
-import { Heart, Wallet, Target, PiggyBank, TrendingUp, TrendingDown } from 'lucide-react'
+import { Heart, Wallet, Target, PiggyBank } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { GlassCard, SkeletonCard } from './Glass'
 import { haptic } from '@/lib/haptics'
@@ -82,55 +82,6 @@ function ActivityRing({
   )
 }
 
-// Sparkline mini chart
-function Sparkline({
-  data,
-  color,
-  width = 60,
-  height = 24,
-}: {
-  data: number[]
-  color: string
-  width?: number
-  height?: number
-}) {
-  const max = Math.max(...data)
-  const min = Math.min(...data)
-  const range = max - min || 1
-  const points = data
-    .map((d, i) => {
-      const x = (i / (data.length - 1)) * width
-      const y = height - ((d - min) / range) * height
-      return `${x},${y}`
-    })
-    .join(' ')
-
-  return (
-    <svg width={width} height={height} className="overflow-visible">
-      <motion.polyline
-        points={points}
-        fill="none"
-        stroke={color}
-        strokeWidth={1.5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        initial={{ pathLength: 0 }}
-        animate={{ pathLength: 1 }}
-        transition={{ duration: 1.5, ease: 'easeOut' }}
-      />
-    </svg>
-  )
-}
-
-// Trend indicator
-function Trend({ value, positive }: { value: string; positive: boolean }) {
-  return (
-    <span className={`text-xs font-bold flex items-center gap-0.5 ${positive ? 'text-success' : 'text-danger'}`}>
-      {positive ? <TrendingUp size={12} /> : <TrendingDown size={12} />} {value}
-    </span>
-  )
-}
-
 const DOMAIN_META: Record<HealthDomain, { color: string; label: string; icon: LucideIcon }> = {
   protection: { color: '#f87171', label: 'Protection', icon: Heart },
   wealth: { color: '#fbbf24', label: 'Wealth', icon: Wallet },
@@ -179,38 +130,6 @@ export function HealthSummary() {
         ))}
       </div>
 
-      {/* Sparkline trends — illustrative until historical time-series is available from the API */}
-      <div className="space-y-2 mt-4 pt-4 border-t border-white/5">
-        <div className="text-[10px] text-ink-tertiary uppercase tracking-wide mb-1">Sample trends</div>
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-ink-secondary">Net Worth</span>
-          <div className="flex items-center gap-2">
-            <Sparkline data={[1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.5]} color="#4ade80" />
-            <Trend value="+12%" positive={true} />
-          </div>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-ink-secondary">Savings Rate</span>
-          <div className="flex items-center gap-2">
-            <Sparkline data={[20, 22, 25, 23, 28, 30, 32]} color="#60a5fa" />
-            <Trend value="+8%" positive={true} />
-          </div>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-ink-secondary">Debt Ratio</span>
-          <div className="flex items-center gap-2">
-            <Sparkline data={[35, 32, 30, 28, 25, 22, 22]} color="#fbbf24" />
-            <Trend value="-13%" positive={true} />
-          </div>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-ink-secondary">Insurance Coverage</span>
-          <div className="flex items-center gap-2">
-            <Sparkline data={[60, 65, 70, 75, 80, 85, 90]} color="#f87171" />
-            <Trend value="+30%" positive={true} />
-          </div>
-        </div>
-      </div>
     </GlassCard>
   )
 }

@@ -2,23 +2,38 @@
 
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
-import { useState } from 'react'
-import { Network, Activity, Lightbulb, ChevronRight, Hand, Star, Target, Mail, Bot, Phone, User, FileText, Siren, Sparkles, Search, CalendarClock, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Network, Activity, Lightbulb, ChevronRight, Hand, Star, Target, Bot, Phone, User, FileText, Siren, Search, CalendarClock, X } from 'lucide-react'
 import { KnowledgeGraph } from '@/components/KnowledgeGraph'
 import { LifeTimeline } from '@/components/LifeTimeline'
-import { ScoreRing, GlassCard, PageHeader, IfAdvanced, Skeleton } from '@/components/Glass'
+import { ScoreRing, GlassCard, PageHeader, IfAdvanced, Skeleton, Money } from '@/components/Glass'
 import { ConfidenceScore, TrustLadder, MemoryPrompts } from '@/components/Intelligence'
 import { HealthSummary } from '@/components/HealthSummary'
-import { CHILD_GOALS, CHILD_MESSAGES } from '@/lib/life-data'
 import { useMode } from '@/lib/mode-context'
 import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@/lib/useFamilyData'
 import { useAppStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
+import { fetchFinancialProfile, type FinancialProfile } from '@/lib/api'
 
 function ChildHome() {
   const { user } = useAuth()
   const childName = user?.name?.split(' ')[0] ?? 'there'
+  const [profile, setProfile] = useState<FinancialProfile | null | undefined>(undefined)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchFinancialProfile().then((p) => { if (!cancelled) setProfile(p) })
+    return () => { cancelled = true }
+  }, [])
+
+  const myFund = profile?.education_funds.find(
+    (f) => f.child_name.toLowerCase() === (user?.name ?? '').toLowerCase(),
+  )
+  const progress = myFund && myFund.target_savings_minor > 0
+    ? Math.round((myFund.current_savings_minor / myFund.target_savings_minor) * 100)
+    : 0
+
   return (
     <div className="px-4 pt-4 space-y-5">
       <motion.div
@@ -35,63 +50,41 @@ function ChildHome() {
         </p>
       </motion.div>
 
-      {CHILD_GOALS.map((goal, i) => (
-        <motion.div
-          key={goal.id}
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: i * 0.1 }}
-        >
-          <GlassCard className="p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-2xl bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0">
-                <Target size={20} className="text-family-400" />
-              </div>
-              <span className="text-base font-semibold flex-1">{goal.label}</span>
-              {goal.progress > 0 && (
-                <span className="text-lg font-bold text-family-400">{goal.progress}%</span>
-              )}
+      <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
+        <GlassCard className="p-4">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-2xl bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0">
+              <Target size={20} className="text-family-400" />
             </div>
-            {goal.progress > 0 && (
+            <span className="text-base font-semibold flex-1">My Education Fund</span>
+            {myFund && (
+              <span className="text-lg font-bold text-family-400">{progress}%</span>
+            )}
+          </div>
+          {myFund ? (
+            <>
               <div className="h-3 rounded-full bg-white/5 overflow-hidden mb-2">
                 <motion.div
                   className="h-full rounded-full bg-gradient-to-r from-family-400 to-family-500"
                   initial={{ width: 0 }}
-                  animate={{ width: `${goal.progress}%` }}
-                  transition={{ delay: i * 0.1 + 0.3, duration: 0.8 }}
+                  animate={{ width: `${progress}%` }}
+                  transition={{ delay: 0.3, duration: 0.8 }}
                 />
               </div>
-            )}
-            <p className="text-sm text-ink-secondary">{goal.story}</p>
-          </GlassCard>
-        </motion.div>
-      ))}
-
-      <div>
-        <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-2 px-1">
-          <Mail size={16} className="text-family-400" />
-          Messages from Family
-        </div>
-        {CHILD_MESSAGES.map((msg, i) => (
-          <motion.div
-            key={msg.id}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-          >
-            <GlassCard className="p-4 mb-2">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-8 h-8 rounded-xl bg-family-500/10 border border-family-500/15 flex items-center justify-center flex-shrink-0">
-                  <Sparkles size={14} className="text-family-400" />
-                </div>
-                <span className="text-sm font-semibold">{msg.from}</span>
-                <span className="text-xs text-ink-tertiary ml-auto">{msg.time}</span>
-              </div>
-              <p className="text-sm text-ink-secondary">{msg.message}</p>
-            </GlassCard>
-          </motion.div>
-        ))}
-      </div>
+              <p className="text-sm text-ink-secondary">
+                <Money value={`$${Math.round(myFund.current_savings_minor / 100).toLocaleString()}`} /> saved
+                toward your <Money value={`$${Math.round(myFund.target_savings_minor / 100).toLocaleString()}`} /> goal
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-ink-secondary">
+              {profile === undefined
+                ? 'Loading...'
+                : "No education fund set up for you yet — ask a parent to add one in the family's Financial Profile."}
+            </p>
+          )}
+        </GlassCard>
+      </motion.div>
     </div>
   )
 }

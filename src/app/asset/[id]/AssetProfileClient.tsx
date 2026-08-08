@@ -1,24 +1,35 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, HelpCircle, House, TrendingUp, Landmark, Wallet, Users, ShieldCheck, Bot, CheckCircle2, AlertTriangle, ChevronRight } from 'lucide-react'
+import { ArrowLeft, HelpCircle, House, TrendingUp, Landmark, Loader2, ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { ASSETS } from '@/lib/assets-data'
-import { PageHeader, Money, MoneyText } from '@/components/Glass'
-import { haptic } from '@/lib/haptics'
+import { PageHeader, Money, GlassCard } from '@/components/Glass'
+import { fetchFinancialProfile, type FinancialProfile } from '@/lib/api'
 
-const ASSET_ICONS: Record<string, LucideIcon> = {
-  House,
-  TrendingUp,
-  Landmark,
+const ASSET_META: Record<string, { label: string; icon: LucideIcon }> = {
+  home: { label: 'Family Home', icon: House },
+  investments: { label: 'Investments', icon: TrendingUp },
+  pension: { label: 'Pension', icon: Landmark },
+}
+
+function money(minor: number): string {
+  return `$${Math.round(minor / 100).toLocaleString()}`
 }
 
 export default function AssetProfileClient() {
   const params = useParams<{ id: string }>()
-  const asset = ASSETS[params.id]
+  const meta = ASSET_META[params.id]
+  const [profile, setProfile] = useState<FinancialProfile | null | undefined>(undefined)
 
-  if (!asset) {
+  useEffect(() => {
+    let cancelled = false
+    fetchFinancialProfile().then((p) => { if (!cancelled) setProfile(p) })
+    return () => { cancelled = true }
+  }, [])
+
+  if (!meta) {
     return (
       <div className="px-4 pt-8 text-center">
         <div className="w-16 h-16 rounded-3xl bg-white/[0.03] border border-white/[0.08] flex items-center justify-center mb-4 mx-auto">
@@ -32,115 +43,82 @@ export default function AssetProfileClient() {
     )
   }
 
-  const Icon = ASSET_ICONS[asset.icon] ?? Wallet
-  const equity = asset.mortgageRemaining !== undefined ? asset.marketValue - asset.mortgageRemaining : undefined
+  const Icon = meta.icon
 
   return (
     <div className="px-5 pt-2 space-y-5 animate-fade-in">
-      <PageHeader title={asset.label} backHref="/family" />
+      <PageHeader title={meta.label} backHref="/family" />
 
-      <Link href="/financial-profile" className="card border-warning/20 flex items-center gap-3 active:opacity-80">
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-ink-primary">Sample figures</span>
-            <span className="text-[10px] text-warning font-semibold px-1.5 py-0.5 rounded-full bg-warning/10">
-              Sample
-            </span>
-          </div>
-          <p className="text-xs text-ink-tertiary mt-0.5">
-            We don&apos;t track individual asset values yet — this shows what&apos;s possible. Add your
-            real numbers in your Financial Profile.
-          </p>
-        </div>
-        <ChevronRight size={16} className="text-ink-tertiary flex-shrink-0" />
-      </Link>
+      {profile === undefined ? (
+        <GlassCard className="p-5 flex items-center justify-center">
+          <Loader2 size={20} className="animate-spin text-ink-tertiary" />
+        </GlassCard>
+      ) : params.id === 'home' ? (
+        <HomeDetail profile={profile} icon={Icon} />
+      ) : params.id === 'pension' || params.id === 'investments' ? (
+        <RetirementDetail profile={profile} icon={Icon} label={meta.label} />
+      ) : null}
+    </div>
+  )
+}
 
-      <div className="card">
-        <div className="flex items-center gap-2 mb-1">
-          <Icon size={18} className="text-ink-secondary" />
-          <span className="text-sm font-semibold text-ink-secondary">Market Value</span>
-        </div>
-        <Money value={`$${asset.marketValue.toLocaleString()}`} className="text-2xl font-bold text-family-400" />
-
-        {equity !== undefined && (
-          <div className="mt-4 pt-4 border-t border-haze/20 grid grid-cols-2 gap-4">
-            <div>
-              <div className="text-xs text-ink-tertiary mb-1">Mortgage Remaining</div>
-              <Money value={`$${asset.mortgageRemaining!.toLocaleString()}`} className="text-lg font-semibold text-ink-primary" />
-            </div>
-            <div>
-              <div className="text-xs text-ink-tertiary mb-1">Equity</div>
-              <Money value={`$${equity.toLocaleString()}`} className="text-lg font-semibold text-success" />
-            </div>
-          </div>
-        )}
+function NoDataPrompt({ text }: { text: string }) {
+  return (
+    <Link href="/financial-profile" className="card flex items-center gap-3 active:opacity-80">
+      <div className="flex-1">
+        <div className="text-sm font-semibold text-ink-primary">Not added yet</div>
+        <p className="text-xs text-ink-tertiary mt-0.5">{text}</p>
       </div>
+      <ChevronRight size={16} className="text-ink-tertiary flex-shrink-0" />
+    </Link>
+  )
+}
 
-      <div className="card">
-        <div className="flex items-center gap-2 mb-3">
-          <Users size={18} className="text-ink-secondary" />
-          <span className="text-sm font-semibold text-ink-secondary">Owners</span>
+function HomeDetail({ profile, icon: Icon }: { profile: FinancialProfile | null; icon: LucideIcon }) {
+  if (!profile) {
+    return <NoDataPrompt text="Add your mortgage details in your Financial Profile to see them here." />
+  }
+  return (
+    <div className="card">
+      <div className="flex items-center gap-2 mb-1">
+        <Icon size={18} className="text-ink-secondary" />
+        <span className="text-sm font-semibold text-ink-secondary">Mortgage Outstanding</span>
+      </div>
+      <Money value={money(profile.household.mortgage_outstanding_minor)} className="text-2xl font-bold text-family-400" />
+      <p className="text-xs text-ink-tertiary mt-3 pt-3 border-t border-haze/20">
+        We don&apos;t track your home&apos;s market value or ownership split yet — only what you&apos;ve
+        entered in your Financial Profile.
+      </p>
+    </div>
+  )
+}
+
+function RetirementDetail({ profile, icon: Icon, label }: { profile: FinancialProfile | null; icon: LucideIcon; label: string }) {
+  if (!profile) {
+    return <NoDataPrompt text="Add your pension balance and contributions in your Financial Profile to see them here." />
+  }
+  return (
+    <div className="card">
+      <div className="flex items-center gap-2 mb-1">
+        <Icon size={18} className="text-ink-secondary" />
+        <span className="text-sm font-semibold text-ink-secondary">Pension Balance</span>
+      </div>
+      <Money value={money(profile.retirement.pension_balance_minor)} className="text-2xl font-bold text-family-400" />
+
+      <div className="mt-4 pt-4 border-t border-haze/20 grid grid-cols-2 gap-4">
+        <div>
+          <div className="text-xs text-ink-tertiary mb-1">Monthly Contribution</div>
+          <Money value={money(profile.retirement.monthly_contribution_minor)} className="text-lg font-semibold text-ink-primary" />
         </div>
-        <div className="flex items-center gap-4">
-          {asset.owners.map((owner) => (
-            <div key={owner.name} className="flex-1 text-center">
-              <div className="text-lg font-bold text-family-400">{owner.share}%</div>
-              <div className="text-xs text-ink-tertiary">{owner.name}</div>
-            </div>
-          ))}
+        <div>
+          <div className="text-xs text-ink-tertiary mb-1">Target Retirement Age</div>
+          <span className="text-lg font-semibold text-ink-primary">{profile.retirement.target_retirement_age}</span>
         </div>
       </div>
-
-      {asset.insurance && (
-        <div className="card">
-          <div className="flex items-center gap-2 mb-3">
-            <ShieldCheck size={18} className="text-ink-secondary" />
-            <span className="text-sm font-semibold text-ink-secondary">Insurance</span>
-          </div>
-          <div className="space-y-2">
-            {asset.insurance.map((item) => (
-              <div key={item.label} className="flex items-center gap-2">
-                <CheckCircle2 size={14} className={item.active ? 'text-success' : 'text-ink-tertiary'} />
-                <span className="text-sm text-ink-primary">{item.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="card">
-        <div className="flex items-center gap-2 mb-3">
-          <Bot size={18} className="text-family-400" />
-          <span className="text-sm font-semibold text-family-400">AI Insights</span>
-        </div>
-        <div className="space-y-2">
-          {asset.insights.map((insight) => (
-            <div key={insight.text} className="flex items-start gap-2">
-              {insight.status === 'good' ? (
-                <CheckCircle2 size={14} className="text-success flex-shrink-0 mt-0.5" />
-              ) : (
-                <AlertTriangle size={14} className="text-warning flex-shrink-0 mt-0.5" />
-              )}
-              <MoneyText text={insight.text} className="text-sm text-ink-secondary" />
-            </div>
-          ))}
-        </div>
-        <p className="text-xs text-ink-tertiary mt-3 pt-3 border-t border-haze/20">
-          This is informational only — please consult a qualified professional before making financial decisions.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2">
-        {asset.actions.map((action) => (
-          <button
-            key={action}
-            onClick={() => haptic('light')}
-            className="btn-secondary text-sm"
-          >
-            {action}
-          </button>
-        ))}
-      </div>
+      <p className="text-xs text-ink-tertiary mt-3 pt-3 border-t border-haze/20">
+        {label} isn&apos;t tracked as a separate account yet — this reflects your pension figures from
+        your Financial Profile.
+      </p>
     </div>
   )
 }
