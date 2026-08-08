@@ -69,6 +69,11 @@ export function ConversationalOnboarding() {
       role: 'ai',
       text: "Welcome! Let's build your Trellis. I'll ask a few quick questions — it takes about 2 minutes. After each answer, you'll see your family graph grow.",
     },
+    {
+      id: 'q-0',
+      role: 'ai',
+      text: ONBOARDING_QUESTIONS[0]!.question,
+    },
   ])
   const [questionIndex, setQuestionIndex] = useState(0)
   const [textValue, setTextValue] = useState('')
@@ -109,7 +114,7 @@ export function ConversationalOnboarding() {
       }])
       addAIMessage(`Nice to meet you, ${answer}! Let's build your family graph.`)
     } else if (currentQuestion.id === 'married' && answer.startsWith('Yes')) {
-      addAIMessage("Great! What's your partner's name?")
+      addAIMessage('Great!')
     } else if (currentQuestion.id === 'married' && answer === 'No, single') {
       addAIMessage('No problem! We can add family members anytime.')
     } else if (currentQuestion.id === 'spouse-name') {
@@ -118,7 +123,7 @@ export function ConversationalOnboarding() {
       }])
       addAIMessage(`Lovely! ${answer} has been added to your family graph.`)
     } else if (currentQuestion.id === 'children' && answer === 'Yes') {
-      addAIMessage("Wonderful! What are their names?")
+      addAIMessage('Wonderful!')
     } else if (currentQuestion.id === 'children' && answer === 'No') {
       addAIMessage('No problem! We can add children later if things change.')
     } else if (currentQuestion.id === 'children-names') {
@@ -150,6 +155,10 @@ export function ConversationalOnboarding() {
     if (nextIndex >= ONBOARDING_QUESTIONS.length) {
       setTimeout(() => finishOnboarding(newAnswers), 800)
     } else {
+      // Always ask the next question explicitly — the reaction above only
+      // acknowledges the previous answer, and several reactions (skips,
+      // generic "Got it!") never restate what's being asked next.
+      setTimeout(() => addAIMessage(ONBOARDING_QUESTIONS[nextIndex]!.question), 300)
       setQuestionIndex(nextIndex)
     }
   }
