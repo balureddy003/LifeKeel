@@ -5,6 +5,7 @@
     "ignore": ["firebase.json", "**/.git", "**/node_modules/**"],
     "rewrites": [
       { "source": "/auth/callback", "destination": "/auth/callback/index.html" },
+      { "source": "/auth/callback/", "destination": "/auth/callback/index.html" },
       { "source": "/member/**", "destination": "/member/placeholder/index.html" },
       { "source": "/asset/**", "destination": "/asset/placeholder/index.html" },
       { "source": "/events/**", "destination": "/events/placeholder/index.html" },
