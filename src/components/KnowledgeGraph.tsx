@@ -393,12 +393,14 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
             showInteractive={false}
             className="!bg-white/5 !border-white/10 !rounded-xl !backdrop-blur-md"
           />
-          <MiniMap
-            className="!bg-white/5 !backdrop-blur-md !rounded-xl !border-white/10"
-            nodeColor={(node) => CATEGORY_COLOR[(node.data?.category as GraphCategory) ?? 'family']}
-            nodeStrokeColor="rgba(255,255,255,0.2)"
-            maskColor="rgba(0,0,0,0.3)"
-          />
+          {fullscreen && (
+            <MiniMap
+              className="!bg-white/5 !backdrop-blur-md !rounded-xl !border-white/10"
+              nodeColor={(node) => CATEGORY_COLOR[(node.data?.category as GraphCategory) ?? 'family']}
+              nodeStrokeColor="rgba(255,255,255,0.2)"
+              maskColor="rgba(0,0,0,0.3)"
+            />
+          )}
         </ReactFlow>
 
         {/* Story panel */}

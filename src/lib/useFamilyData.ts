@@ -170,29 +170,22 @@ export function useFamilyTimeline() {
         return
       }
 
-      const currentYear = new Date().getFullYear()
-      const generated: TimelineEvent[] = []
-
-      for (const member of members) {
-        if (member.role === 'child') {
-          generated.push({
-            id: `${member.id}-university`,
-            emoji: '',
-            label: `${member.name}'s University`,
-            year: currentYear + 6,
-            status: 'future',
-          })
-        }
-      }
-
-      generated.sort((a, b) => a.year - b.year)
-      if (!cancelled) { setEvents(generated); setLoading(false) }
+      // No birthdate field exists on family members yet, so there's no
+      // real basis for computing milestone years (e.g. university) —
+      // leave events empty rather than guessing a year, per the honest
+      // empty-state approach documented above.
+      if (!cancelled) { setEvents([]); setLoading(false) }
     }
     load()
     return () => { cancelled = true }
   }, [family])
 
-  return { events, loading, hasData: events.length > 0 }
+  return {
+    events,
+    loading,
+    hasData: events.length > 0,
+    hasChildren: (family?.members ?? []).some((m) => m.role === 'child'),
+  }
 }
 const EVENT_DETECTOR_MAP: Record<string, string> = {
   bereavement: 'family_protection_gap',

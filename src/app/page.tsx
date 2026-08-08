@@ -212,7 +212,7 @@ function UrgencyBanner() {
 export default function HomePage() {
   const { config } = useMode()
   const { score: readinessScore, hasLiveData, loading: scoreLoading } = useFamilyReadinessScore()
-  const { events: timelineEvents, hasData: hasTimelineData } = useFamilyTimeline()
+  const { events: timelineEvents, hasData: hasTimelineData, hasChildren } = useFamilyTimeline()
   const { insights } = useFamilyInsights()
   const retirementInsight = insights.find((i) => i.detector_id === 'family_retirement_gap')
   const setCmdkOpen = useAppStore((s) => s.setCmdkOpen)
@@ -342,11 +342,15 @@ export default function HomePage() {
               Life Timeline
             </div>
             <p className="text-sm text-ink-tertiary leading-relaxed">
-              Add children to your family profile to see education milestones and future planning events on your timeline.
+              {hasChildren
+                ? "We don't collect birthdates yet, so we can't estimate education milestones for your children."
+                : 'Add children to your family profile to see education milestones and future planning events on your timeline.'}
             </p>
-            <Link href="/family" className="text-sm text-family-400 font-semibold flex items-center gap-1 mt-2">
-              Set up family <ChevronRight size={14} />
-            </Link>
+            {!hasChildren && (
+              <Link href="/family" className="text-sm text-family-400 font-semibold flex items-center gap-1 mt-2">
+                Set up family <ChevronRight size={14} />
+              </Link>
+            )}
           </GlassCard>
         )}
       </motion.div>

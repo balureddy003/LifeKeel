@@ -2,7 +2,7 @@
 
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, HelpCircle, House, TrendingUp, Landmark, Wallet, Users, ShieldCheck, Bot, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, HelpCircle, House, TrendingUp, Landmark, Wallet, Users, ShieldCheck, Bot, CheckCircle2, AlertTriangle, ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { ASSETS } from '@/lib/assets-data'
 import { PageHeader, Money, MoneyText } from '@/components/Glass'
@@ -38,6 +38,22 @@ export default function AssetProfileClient() {
   return (
     <div className="px-5 pt-2 space-y-5 animate-fade-in">
       <PageHeader title={asset.label} backHref="/family" />
+
+      <Link href="/financial-profile" className="card border-warning/20 flex items-center gap-3 active:opacity-80">
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-ink-primary">Sample figures</span>
+            <span className="text-[10px] text-warning font-semibold px-1.5 py-0.5 rounded-full bg-warning/10">
+              Sample
+            </span>
+          </div>
+          <p className="text-xs text-ink-tertiary mt-0.5">
+            We don&apos;t track individual asset values yet — this shows what&apos;s possible. Add your
+            real numbers in your Financial Profile.
+          </p>
+        </div>
+        <ChevronRight size={16} className="text-ink-tertiary flex-shrink-0" />
+      </Link>
 
       <div className="card">
         <div className="flex items-center gap-2 mb-1">

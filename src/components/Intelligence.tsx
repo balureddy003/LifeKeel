@@ -61,7 +61,7 @@ export function ConfidenceScore() {
     const computedAreas = [
       { id: 'family', label: 'Family', status: computeStatus(familyProgress), progress: familyProgress, missingItems: hasFamily ? undefined : ['Add family members'] },
       { id: 'protection', label: 'Protection', status: computeStatus(protectionProgress), progress: protectionProgress, missingItems: protectionInsights.length === 0 ? ['Upload insurance documents'] : undefined },
-      { id: 'wealth', label: 'Wealth', status: computeStatus(wealthProgress), progress: wealthProgress, missingItems: wealthInsights.length === 0 ? ['Connect investment accounts'] : undefined },
+      { id: 'wealth', label: 'Wealth', status: computeStatus(wealthProgress), progress: wealthProgress, missingItems: wealthInsights.length === 0 ? ['Add your investments'] : undefined },
       { id: 'goals', label: 'Goals', status: computeStatus(goalsProgress), progress: goalsProgress, missingItems: goalsInsights.length === 0 ? ['Add education goals'] : undefined },
       { id: 'documents', label: 'Documents', status: computeStatus(docsProgress), progress: docsProgress, missingItems: uploadedDocumentCount === 0 ? ['Upload documents'] : undefined },
       { id: 'estate', label: 'Estate Planning', status: computeStatus(estateProgress), progress: estateProgress, missingItems: ['Upload will and estate docs'] },
@@ -283,10 +283,16 @@ export function MemoryPrompts() {
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-2 px-1">
+      <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-1 px-1">
         <Sparkles size={16} className="text-family-400" />
         AI Memory
+        <span className="text-[10px] text-warning font-semibold px-1.5 py-0.5 rounded-full bg-warning/10">
+          Sample
+        </span>
       </div>
+      <p className="text-xs text-ink-tertiary mb-2 px-1">
+        Examples of what Trellis surfaces once your documents and accounts are connected.
+      </p>
       {prompts.map((p, i) => {
         const Icon = p.icon
         return (

@@ -2,49 +2,15 @@
 
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Check, HelpCircle, Briefcase, Wallet, DollarSign, Home, Shield, ClipboardList, Siren } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
-import { FAMILY_MEMBERS } from '@/lib/data'
-import { PageHeader, Money, MoneyText } from '@/components/Glass'
-
-function InfoSection({ title, items, icon: Icon }: { title: string; items: string[]; icon: LucideIcon }) {
-  return (
-    <div className="card">
-      <div className="flex items-center gap-2 mb-3">
-        <Icon size={18} className="text-ink-secondary" />
-        <span className="text-sm font-semibold text-ink-secondary">{title}</span>
-      </div>
-      <div className="space-y-2">
-        {items.map((item) => (
-          <div key={item} className="flex items-center gap-2">
-            <Check size={14} className="text-success" />
-            <MoneyText text={item} className="text-sm text-ink-primary" />
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function BranchCard({ label, items }: { label: string; items: string[] }) {
-  return (
-    <div className="bg-surface-2 rounded-xl p-3 border border-haze/20">
-      <div className="text-sm font-semibold text-family-400 mb-2">{label}</div>
-      <div className="space-y-1.5">
-        {items.map((item) => (
-          <div key={item} className="text-sm text-ink-secondary flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-family-400 flex-shrink-0" />
-            <MoneyText text={item} />
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
+import { ArrowLeft, HelpCircle, User, ChevronRight, Siren } from 'lucide-react'
+import { useAuth } from '@/lib/auth-context'
+import { ROLE_LABELS } from '@/lib/auth-types'
+import { PageHeader } from '@/components/Glass'
 
 export default function MemberProfileClient() {
   const params = useParams<{ id: string }>()
-  const member = FAMILY_MEMBERS.find((m) => m.id === params.id)
+  const { family } = useAuth()
+  const member = family?.members.find((m) => m.id === params.id)
 
   if (!member) {
     return (
@@ -62,47 +28,36 @@ export default function MemberProfileClient() {
 
   return (
     <div className="px-5 pt-2 space-y-5 animate-fade-in">
-      <PageHeader title={member.name} backHref="/" />
+      <PageHeader title={member.name} backHref="/family" />
 
-      {/* Financial role & net worth — owner only */}
-      {member.financialRole && (
-        <InfoSection title="Financial Role" items={[member.financialRole]} icon={Briefcase} />
-      )}
-      {member.netWorth && (
-        <div className="card">
-          <div className="flex items-center gap-2 mb-1">
-            <Wallet size={18} className="text-ink-secondary" />
-            <span className="text-sm font-semibold text-ink-secondary">Net Worth</span>
+      <div className="card">
+        <div className="flex items-center gap-3">
+          <div className="w-14 h-14 rounded-2xl bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0">
+            <User size={24} className="text-family-400" />
           </div>
-          <Money value={member.netWorth} className="text-2xl font-bold text-family-400" />
-        </div>
-      )}
-
-      {/* Income */}
-      {member.income && <InfoSection title="Income" items={member.income} icon={DollarSign} />}
-
-      {/* Assets */}
-      {member.assets && <InfoSection title="Assets" items={member.assets} icon={Home} />}
-
-      {/* Protection */}
-      {member.protection && <InfoSection title="Protection" items={member.protection} icon={Shield} />}
-
-      {/* Responsibilities */}
-      {member.responsibilities && <InfoSection title="Responsibilities" items={member.responsibilities} icon={ClipboardList} />}
-
-      {/* Branches (visual map for this member) */}
-      {member.branches && (
-        <div className="card">
-          <div className="text-sm font-semibold text-ink-secondary mb-3">Overview</div>
-          <div className="space-y-3">
-            {member.branches.map((branch) => (
-              <BranchCard key={branch.label} label={branch.label} items={branch.items} />
-            ))}
+          <div>
+            <div className="text-base font-semibold text-ink-primary">{member.name}</div>
+            <div className="text-sm text-ink-tertiary">{ROLE_LABELS[member.role]}</div>
           </div>
+          {member.status === 'pending' && (
+            <span className="ml-auto text-xs font-semibold text-warning bg-warning/10 px-2 py-1 rounded-full">
+              Pending
+            </span>
+          )}
         </div>
-      )}
+      </div>
 
-      {/* Simulate life event button */}
+      <Link href="/financial-profile" className="card flex items-center gap-3 active:opacity-80">
+        <div className="flex-1">
+          <div className="text-sm font-semibold text-ink-primary">Add financial details</div>
+          <p className="text-sm text-ink-tertiary mt-0.5">
+            Income, protection, and assets aren&apos;t collected per-member yet — add them to your
+            family&apos;s Financial Profile to power real insights.
+          </p>
+        </div>
+        <ChevronRight size={16} className="text-ink-tertiary flex-shrink-0" />
+      </Link>
+
       <Link href="/events" className="btn-primary flex items-center justify-center gap-2 w-full">
         <Siren size={18} />
         <span>Simulate Life Event</span>
