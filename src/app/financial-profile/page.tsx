@@ -247,9 +247,13 @@ export default function FinancialProfilePage() {
       haptic('success')
       setResult(insightsGenerated)
       setFinancialProfileSubmitted()
+      // The confirmation renders above the form, which is off-screen after
+      // submitting from the bottom of a long form — scroll it into view.
+      window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (err) {
       haptic('warning')
       setError(err instanceof Error ? err.message : 'Could not save your financial profile. Please try again.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
     } finally {
       setSubmitting(false)
     }

@@ -54,16 +54,17 @@ export default function AssistantPage() {
     setInput('')
     setThinking(true)
 
-    const lower = text.toLowerCase()
-    const hasPerplexity = lower.includes('retire') || lower.includes('protect') || lower.includes('job')
-
     try {
       const { content, isLive } = await fetchAIResponse(text)
       setMessages((prev) => [...prev, {
         id: `ai-${Date.now()}`,
         role: 'assistant',
         content,
-        showPerplexity: hasPerplexity,
+        // Non-live answers render through AIAnswerCard, which carries its
+        // own honest "Sample answer" disclosure — the plain bubble below
+        // has no way to label itself, so every canned response needs to
+        // go through the labeled card, not just a handful of keywords.
+        showPerplexity: !isLive,
         userQuery: text,
         isLive,
       }])
@@ -72,7 +73,7 @@ export default function AssistantPage() {
         id: `ai-${Date.now()}`,
         role: 'assistant',
         content: getAIResponse(text),
-        showPerplexity: hasPerplexity,
+        showPerplexity: true,
         userQuery: text,
         isLive: false,
       }])
@@ -106,13 +107,12 @@ export default function AssistantPage() {
                   <Bot size={12} /> Trellis
                 </div>
               )}
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                {msg.role === 'assistant' ? <MoneyText text={msg.content} /> : msg.content}
-              </p>
-              {msg.showPerplexity && msg.userQuery && (
-                <div className="mt-3">
-                  <AIAnswerCard query={msg.userQuery} isLive={msg.isLive ?? false} />
-                </div>
+              {msg.showPerplexity && msg.userQuery ? (
+                <AIAnswerCard query={msg.userQuery} isLive={msg.isLive ?? false} />
+              ) : (
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                  {msg.role === 'assistant' ? <MoneyText text={msg.content} /> : msg.content}
+                </p>
               )}
             </div>
           </motion.div>
