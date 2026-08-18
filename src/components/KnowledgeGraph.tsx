@@ -16,15 +16,15 @@ import 'reactflow/dist/style.css'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Home, User, Briefcase, ShieldCheck, HeartPulse, Target, GraduationCap, House, TrendingUp, Landmark, Wallet, Bot, X, ChevronRight, Maximize2 } from 'lucide-react'
+import { Home, User, Briefcase, Bot, X, ChevronRight, Maximize2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
 import { useAuth } from '@/lib/auth-context'
 import type { FamilyMember } from '@/lib/types'
+import { getMemberSections, CATEGORY_COLOR, type GraphCategory } from '@/lib/familySections'
 import { runForceSimulation, type SimNode, type SimEdge } from '@/lib/forceSimulation'
 
 type NodeKind = 'root' | 'person' | 'category' | 'asset'
-type GraphCategory = 'protection' | 'wealth' | 'goals' | 'family'
 
 interface NodeData {
   label: string
@@ -42,43 +42,6 @@ const KIND_COLOR: Record<NodeKind, string> = {
   asset: '#4ade80',
 }
 
-const CATEGORY_COLOR: Record<GraphCategory, string> = {
-  family: '#7c6ef0',
-  protection: '#f87171',
-  wealth: '#fbbf24',
-  goals: '#4ade80',
-}
-
-const BRANCH_ICONS: Record<string, LucideIcon> = {
-  Briefcase,
-  ShieldCheck,
-  HeartPulse,
-  Target,
-  GraduationCap,
-  Home,
-}
-
-const BRANCH_CATEGORY: Record<string, GraphCategory> = {
-  Briefcase: 'wealth',
-  ShieldCheck: 'protection',
-  HeartPulse: 'protection',
-  Target: 'goals',
-  GraduationCap: 'goals',
-  Home: 'wealth',
-}
-
-const ASSET_ITEM_IDS: Record<string, string> = {
-  Home: 'home',
-  Investments: 'investments',
-  Pension: 'pension',
-}
-
-const ASSET_ITEM_ICONS: Record<string, LucideIcon> = {
-  Home: House,
-  Investments: TrendingUp,
-  Pension: Landmark,
-}
-
 interface RawNode {
   id: string
   label: string
@@ -93,26 +56,6 @@ interface RawNode {
 interface RawEdge {
   source: string
   target: string
-}
-
-const ROLE_BRANCHES: Record<string, { label: string; icon: string; items: string[] }[]> = {
-  organizer: [
-    { label: 'Income', icon: 'Briefcase', items: ['Salary'] },
-    { label: 'Protection', icon: 'ShieldCheck', items: ['Life Insurance', 'Health Insurance'] },
-    { label: 'Assets', icon: 'Home', items: ['Home', 'Investments', 'Pension'] },
-  ],
-  parent: [
-    { label: 'Career & Income', icon: 'Briefcase', items: ['Salary'] },
-    { label: 'Health Cover', icon: 'HeartPulse', items: ['Medical', 'Dental'] },
-    { label: 'Family Goals', icon: 'Target', items: ['Retirement', 'Education'] },
-  ],
-  adult: [
-    { label: 'Income', icon: 'Briefcase', items: ['Salary'] },
-    { label: 'Protection', icon: 'ShieldCheck', items: ['Health Insurance'] },
-  ],
-  child: [
-    { label: 'Future', icon: 'GraduationCap', items: ['Education Fund', 'Future Goals'] },
-  ],
 }
 
 function buildGraphData(members: FamilyMember[]): { rawNodes: RawNode[]; rawEdges: RawEdge[] } {
@@ -141,36 +84,17 @@ function buildGraphData(members: FamilyMember[]): { rawNodes: RawNode[]; rawEdge
     })
     rawEdges.push({ source: 'family', target: member.id })
 
-    for (const branch of member.branches ?? ROLE_BRANCHES[member.role] ?? []) {
-      const assetItems = branch.items.filter((item) => ASSET_ITEM_IDS[item])
-      if (assetItems.length > 0) {
-        for (const item of assetItems) {
-          const assetId = ASSET_ITEM_IDS[item]!
-          const nodeId = `asset-${assetId}`
-          rawNodes.push({
-            id: nodeId,
-            label: item,
-            icon: ASSET_ITEM_ICONS[item] ?? Wallet,
-            kind: 'asset',
-            navId: assetId,
-            category: 'wealth',
-          })
-          rawEdges.push({ source: member.id, target: nodeId })
-        }
-        continue
-      }
-
-      const branchId = `branch-${member.id}-${branch.label}`
-      const cat = BRANCH_CATEGORY[branch.icon] ?? 'wealth'
+    for (const section of getMemberSections(member)) {
       rawNodes.push({
-        id: branchId,
-        label: branch.label,
-        icon: BRANCH_ICONS[branch.icon] ?? Briefcase,
-        kind: 'category',
-        story: `Includes ${branch.items.join(', ')}`,
-        category: cat,
+        id: section.id,
+        label: section.label,
+        icon: section.icon,
+        kind: section.kind,
+        ...(section.navId ? { navId: section.navId } : {}),
+        ...(section.story ? { story: section.story } : {}),
+        category: section.category,
       })
-      rawEdges.push({ source: member.id, target: branchId })
+      rawEdges.push({ source: member.id, target: section.id })
     }
   }
 

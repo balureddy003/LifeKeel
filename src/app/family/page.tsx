@@ -4,36 +4,29 @@ import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { BarChart3, Settings, AlertTriangle, User } from 'lucide-react'
 import { GlassCard, PageHeader, ListSection, ListRow } from '@/components/Glass'
-import { KnowledgeGraph } from '@/components/KnowledgeGraph'
+import { FamilyRoster } from '@/components/FamilyRoster'
 import { ROLE_LABELS } from '@/lib/auth-types'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 
 export default function FamilyPage() {
   const { family } = useAuth()
-  const familyMembers = family?.members.map((m) => ({
+  const familyMembers = (family?.members ?? []).map((m) => ({
     id: m.id,
     name: m.name,
     emoji: m.emoji,
     role: ROLE_LABELS[m.role],
     completion: m.status === 'active' ? 100 : 40,
-  })) ?? [
-    { id: '1', name: 'Balu', emoji: '', role: 'Organizer', completion: 92 },
-    { id: '2', name: 'Priya', emoji: '', role: 'Parent', completion: 74 },
-    { id: '3', name: 'Emma', emoji: '', role: 'Child', completion: 100 },
-    { id: '4', name: 'Lucas', emoji: '', role: 'Child', completion: 100 },
-  ]
+  }))
 
   return (
     <div className="px-5 pt-2 space-y-6">
       <PageHeader title="Our Family" />
 
-      {/* Family graph — the real, connected graph (not a static illustration) */}
-      <div className="h-[360px]">
-        <KnowledgeGraph />
-      </div>
+      <FamilyRoster />
 
       {/* Gamified completion */}
+      {familyMembers.length > 0 && (
       <div>
         <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-3 px-1">
           <BarChart3 size={16} className="text-family-400" />
@@ -75,6 +68,7 @@ export default function FamilyPage() {
           ))}
         </div>
       </div>
+      )}
 
       {/* Quick links */}
       <ListSection>

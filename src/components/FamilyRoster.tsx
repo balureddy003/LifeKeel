@@ -1,0 +1,157 @@
+'use client'
+
+import { useMemo, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { Home as HomeIcon, User, ChevronRight, Maximize2 } from 'lucide-react'
+import { haptic } from '@/lib/haptics'
+import { useAuth } from '@/lib/auth-context'
+import { ROLE_LABELS } from '@/lib/auth-types'
+import { getMemberSections, CATEGORY_COLOR } from '@/lib/familySections'
+
+function initials(name: string): string {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase()
+}
+
+interface FamilyRosterProps {
+  showFullMapLink?: boolean
+}
+
+export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
+  const { family } = useAuth()
+  const router = useRouter()
+  const members = family?.members ?? []
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+
+  const selected = members.length === 0
+    ? null
+    : members.find((m) => m.id === selectedId)
+      ?? members.find((m) => m.role === 'organizer')
+      ?? members[0]!
+
+  const sections = useMemo(() => {
+    if (!selected) return []
+    return getMemberSections({
+      id: selected.id,
+      name: selected.name,
+      role: selected.role,
+      emoji: selected.emoji,
+      relation: selected.role === 'organizer' ? 'owner' : selected.role === 'parent' ? 'spouse' : 'child',
+    })
+  }, [selected])
+
+  if (members.length === 0 || !selected) {
+    return (
+      <div className="glass rounded-3xl p-6 flex flex-col items-center text-center gap-3">
+        <HomeIcon size={32} className="text-ink-tertiary" />
+        <p className="text-sm text-ink-tertiary leading-relaxed">
+          Add family members to see who&apos;s covered.
+        </p>
+        <Link
+          href="/family-setup"
+          onClick={() => haptic('light')}
+          className="text-sm text-family-400 font-semibold flex items-center gap-1"
+        >
+          Set up family <ChevronRight size={14} />
+        </Link>
+      </div>
+    )
+  }
+
+  return (
+    <div className="glass rounded-3xl p-4">
+      {/* Roster row */}
+      <div className="flex gap-2 mb-4">
+        {members.map((m) => {
+          const active = selected.id === m.id
+          const initial = initials(m.name)
+          return (
+            <button
+              key={m.id}
+              onClick={() => { setSelectedId(m.id); haptic('light') }}
+              aria-pressed={active}
+              className={`flex-1 min-w-0 rounded-2xl px-2 py-3 text-center border transition-colors ${
+                active ? 'bg-family-500/10 border-family-500/30' : 'border-white/[0.06]'
+              }`}
+            >
+              <div
+                className={`w-9 h-9 mx-auto mb-1.5 rounded-full flex items-center justify-center text-xs font-bold ${
+                  active ? 'bg-family-500/20 text-family-300' : 'bg-white/5 text-ink-tertiary'
+                }`}
+              >
+                {initial || <User size={16} />}
+              </div>
+              <div className="text-xs font-semibold text-ink-primary truncate">{m.name}</div>
+              <div className="text-[10px] text-ink-tertiary truncate">{ROLE_LABELS[m.role]}</div>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Sections for the selected member */}
+      {sections.length === 0 ? (
+        <p className="text-sm text-ink-tertiary px-1 py-2">
+          Nothing set up for {selected.name.split(' ')[0]} yet.
+        </p>
+      ) : (
+        <div className="space-y-1.5">
+          {sections.map((s) => {
+            const Icon = s.icon
+            const color = CATEGORY_COLOR[s.category]
+            const isAsset = s.kind === 'asset'
+            return (
+              <div
+                key={s.id}
+                onClick={isAsset ? () => { haptic('light'); router.push(`/asset/${s.navId}`) } : undefined}
+                role={isAsset ? 'button' : undefined}
+                tabIndex={isAsset ? 0 : undefined}
+                onKeyDown={isAsset ? (e) => { if (e.key === 'Enter') { haptic('light'); router.push(`/asset/${s.navId}`) } } : undefined}
+                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 bg-white/[0.03] ${isAsset ? 'active:opacity-70 cursor-pointer' : ''}`}
+              >
+                <div
+                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                  style={{ background: `${color}18` }}
+                >
+                  <Icon size={15} color={color} strokeWidth={1.75} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-ink-primary truncate">{s.label}</div>
+                  {s.story && !isAsset && (
+                    <div className="text-[11px] text-ink-tertiary truncate">{s.story}</div>
+                  )}
+                </div>
+                {isAsset && <ChevronRight size={14} className="text-ink-tertiary flex-shrink-0" />}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* View profile + full map */}
+      <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
+        <Link
+          href={`/member/${selected.id}`}
+          onClick={() => haptic('light')}
+          className="text-xs text-family-400 font-semibold flex items-center gap-1"
+        >
+          View {selected.name.split(' ')[0]}&apos;s profile <ChevronRight size={12} />
+        </Link>
+        {showFullMapLink && (
+          <Link
+            href="/map"
+            onClick={() => haptic('light')}
+            className="flex items-center gap-1 text-xs text-ink-tertiary hover:text-ink-secondary transition-colors"
+          >
+            <Maximize2 size={12} /> Full map
+          </Link>
+        )}
+      </div>
+    </div>
+  )
+}

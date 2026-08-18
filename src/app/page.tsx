@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { Network, Activity, Lightbulb, ChevronRight, Hand, Star, Target, Bot, Phone, User, FileText, Siren, Search, CalendarClock, X } from 'lucide-react'
-import { KnowledgeGraph } from '@/components/KnowledgeGraph'
+import { FamilyRoster } from '@/components/FamilyRoster'
 import { LifeTimeline } from '@/components/LifeTimeline'
 import { ScoreRing, GlassCard, PageHeader, IfAdvanced, Skeleton, Money } from '@/components/Glass'
 import { ConfidenceScore, TrustLadder, MemoryPrompts } from '@/components/Intelligence'
@@ -301,11 +301,9 @@ export default function HomePage() {
         >
           <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-3 px-1">
             <Network size={16} className="text-family-400" />
-            Knowledge Graph
+            Family
           </div>
-          <div className="h-[420px]">
-            <KnowledgeGraph />
-          </div>
+          <FamilyRoster />
         </motion.div>
       </IfAdvanced>
 
