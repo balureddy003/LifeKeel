@@ -132,12 +132,6 @@ export function ConversationalOnboarding() {
         id: `child-${i}`, emoji: '', name, role: 'Child', completion: 0,
       }))])
       addAIMessage(`Added ${names.length} ${names.length === 1 ? 'child' : 'children'} to your graph!`)
-    } else if (currentQuestion.id === 'house' && answer.startsWith('Yes')) {
-      addAIMessage('Excellent! I\'ll make sure your home is properly protected.')
-    } else if (currentQuestion.id === 'mortgage' && answer === 'Yes') {
-      addAIMessage('Got it. I\'ll check if your family is protected if something happens to you.')
-    } else if (currentQuestion.id === 'employment') {
-      addAIMessage(`Perfect! That helps me understand your insurance and tax needs.`)
     } else {
       addAIMessage('Got it! Let\'s continue.')
     }

@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { motion } from 'framer-motion'
-import { Loader2, AlertCircle, CheckCircle2, Plus, X } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Loader2, AlertCircle, CheckCircle2, Plus, X, ChevronLeft } from 'lucide-react'
 import { PageHeader, GlassCard, GlassButton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { useAppStore } from '@/lib/store'
@@ -52,8 +52,11 @@ const EMPTY_FORM: FormState = {
   emergencySavings: '',
   monthlyExpenses: '',
   hasHighInterestDebt: false,
-  currentAge: '',
-  targetRetirementAge: '',
+  // Server requires both ages to be positive integers (even on autosave, before
+  // the user has reached this step) — default to plausible values rather than
+  // leaving them blank, same as expectedAnnualGrowthPct's '5' below.
+  currentAge: '30',
+  targetRetirementAge: '65',
   pensionBalance: '',
   monthlyContribution: '',
   targetRetirementIncome: '',
@@ -196,12 +199,26 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <div className="text-sm font-semibold text-family-400 mb-3">{children}</div>
 }
 
+interface Step {
+  key: string
+  title: string
+}
+
+const STEPS: Step[] = [
+  { key: 'household', title: 'Household & Protection' },
+  { key: 'emergency', title: 'Emergency Fund' },
+  { key: 'retirement', title: 'Retirement' },
+  { key: 'education', title: 'Education Funds' },
+]
+
 export default function FinancialProfilePage() {
   const router = useRouter()
   const setFinancialProfileSubmitted = useAppStore((s) => s.setFinancialProfileSubmitted)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [funds, setFunds] = useState<EducationFundForm[]>([])
   const [loading, setLoading] = useState(true)
+  const [stepIndex, setStepIndex] = useState(0)
+  const [saving, setSaving] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<number | null>(null)
@@ -237,6 +254,33 @@ export default function FinancialProfilePage() {
     setFunds((prev) => prev.map((f, idx) => (idx === i ? { ...f, ...patch } : f)))
   }
 
+  const isLastStep = stepIndex === STEPS.length - 1
+
+  // Autosaves whatever's been entered so far whenever the user moves to the
+  // next step — closing the tab mid-form used to lose everything, since the
+  // old single-page form only ever saved on the final submit.
+  const handleContinue = async () => {
+    haptic('light')
+    setError(null)
+    setSaving(true)
+    try {
+      await submitFinancialProfile(toPayload(form, funds))
+    } catch {
+      // Best-effort — don't trap the user on this step if the autosave
+      // fails; the full submit on the last step will surface a real error.
+    } finally {
+      setSaving(false)
+    }
+    setStepIndex((i) => Math.min(i + 1, STEPS.length - 1))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const handleBack = () => {
+    haptic('light')
+    setStepIndex((i) => Math.max(i - 1, 0))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   const handleSubmit = async () => {
     haptic('light')
     setSubmitting(true)
@@ -247,8 +291,6 @@ export default function FinancialProfilePage() {
       haptic('success')
       setResult(insightsGenerated)
       setFinancialProfileSubmitted()
-      // The confirmation renders above the form, which is off-screen after
-      // submitting from the bottom of a long form — scroll it into view.
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (err) {
       haptic('warning')
@@ -269,6 +311,9 @@ export default function FinancialProfilePage() {
       </div>
     )
   }
+
+  const step = STEPS[stepIndex]!
+  const progress = ((stepIndex + 1) / STEPS.length) * 100
 
   return (
     <div className="px-5 pt-2 pb-10 space-y-5">
@@ -298,90 +343,139 @@ export default function FinancialProfilePage() {
         </GlassCard>
       )}
 
-      <GlassCard className="p-5">
-        <SectionTitle>Household & Protection</SectionTitle>
-        <div className="space-y-3">
-          <YesNo label="Are you employed?" value={form.employed} onChange={(v) => set('employed', v)} />
-          <Field label="Monthly salary" value={form.monthlySalary} onChange={(v) => set('monthlySalary', v)} />
-          <Field label="Annual living expenses" value={form.annualLivingExpenses} onChange={(v) => set('annualLivingExpenses', v)} />
-          <Field label="Mortgage outstanding" value={form.mortgageOutstanding} onChange={(v) => set('mortgageOutstanding', v)} placeholder="0 if none" />
-          <Field label="Life insurance cover" value={form.lifeCover} onChange={(v) => set('lifeCover', v)} placeholder="0 if none" />
-          <Field label="Income protection (monthly payout)" value={form.incomeProtectionMonthly} onChange={(v) => set('incomeProtectionMonthly', v)} placeholder="0 if none" />
+      {/* Step progress */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-ink-tertiary font-semibold">
+            Step {stepIndex + 1} of {STEPS.length}
+          </span>
+          <span className="text-xs text-family-400 font-bold">{Math.round(progress)}%</span>
         </div>
-      </GlassCard>
+        <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+          <motion.div
+            className="h-full rounded-full bg-gradient-to-r from-family-400 to-family-500"
+            animate={{ width: `${progress}%` }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+          />
+        </div>
+      </div>
 
-      <GlassCard className="p-5">
-        <SectionTitle>Emergency Fund</SectionTitle>
-        <div className="space-y-3">
-          <Field label="Emergency savings" value={form.emergencySavings} onChange={(v) => set('emergencySavings', v)} />
-          <Field label="Monthly expenses" value={form.monthlyExpenses} onChange={(v) => set('monthlyExpenses', v)} />
-          <YesNo label="Any high-interest debt?" value={form.hasHighInterestDebt} onChange={(v) => set('hasHighInterestDebt', v)} />
-        </div>
-      </GlassCard>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={step.key}
+          initial={{ opacity: 0, x: 16 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -16 }}
+          transition={{ duration: 0.2 }}
+        >
+          {step.key === 'household' && (
+            <GlassCard className="p-5">
+              <SectionTitle>Household & Protection</SectionTitle>
+              <div className="space-y-3">
+                <YesNo label="Are you employed?" value={form.employed} onChange={(v) => set('employed', v)} />
+                <Field label="Monthly salary" value={form.monthlySalary} onChange={(v) => set('monthlySalary', v)} />
+                <Field label="Annual living expenses" value={form.annualLivingExpenses} onChange={(v) => set('annualLivingExpenses', v)} />
+                <Field label="Mortgage outstanding" value={form.mortgageOutstanding} onChange={(v) => set('mortgageOutstanding', v)} placeholder="0 if none" />
+                <Field label="Life insurance cover" value={form.lifeCover} onChange={(v) => set('lifeCover', v)} placeholder="0 if none" />
+                <Field label="Income protection (monthly payout)" value={form.incomeProtectionMonthly} onChange={(v) => set('incomeProtectionMonthly', v)} placeholder="0 if none" />
+              </div>
+            </GlassCard>
+          )}
 
-      <GlassCard className="p-5">
-        <SectionTitle>Retirement</SectionTitle>
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Your current age" value={form.currentAge} onChange={(v) => set('currentAge', v)} />
-            <Field label="Target retirement age" value={form.targetRetirementAge} onChange={(v) => set('targetRetirementAge', v)} />
-          </div>
-          <Field label="Pension balance" value={form.pensionBalance} onChange={(v) => set('pensionBalance', v)} placeholder="0 if none" />
-          <Field label="Monthly pension contribution" value={form.monthlyContribution} onChange={(v) => set('monthlyContribution', v)} placeholder="0 if none" />
-          <Field label="Target annual retirement income" value={form.targetRetirementIncome} onChange={(v) => set('targetRetirementIncome', v)} />
-          <Field label="Assumed annual growth rate" value={form.expectedAnnualGrowthPct} onChange={(v) => set('expectedAnnualGrowthPct', v)} suffix="%" />
-        </div>
-      </GlassCard>
+          {step.key === 'emergency' && (
+            <GlassCard className="p-5">
+              <SectionTitle>Emergency Fund</SectionTitle>
+              <div className="space-y-3">
+                <Field label="Emergency savings" value={form.emergencySavings} onChange={(v) => set('emergencySavings', v)} />
+                <Field label="Monthly expenses" value={form.monthlyExpenses} onChange={(v) => set('monthlyExpenses', v)} />
+                <YesNo label="Any high-interest debt?" value={form.hasHighInterestDebt} onChange={(v) => set('hasHighInterestDebt', v)} />
+              </div>
+            </GlassCard>
+          )}
 
-      <GlassCard className="p-5">
-        <div className="flex items-center justify-between mb-3">
-          <SectionTitle>Education Funds</SectionTitle>
-        </div>
-        <div className="space-y-4">
-          {funds.map((f, i) => (
-            <div key={i} className="rounded-2xl bg-white/[0.02] border border-white/[0.06] p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-ink-tertiary">Child {i + 1}</span>
-                <button type="button" onClick={() => removeChild(i)} aria-label="Remove child" className="w-7 h-7 rounded-full flex items-center justify-center text-ink-tertiary active:opacity-60">
-                  <X size={14} />
+          {step.key === 'retirement' && (
+            <GlassCard className="p-5">
+              <SectionTitle>Retirement</SectionTitle>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Your current age" value={form.currentAge} onChange={(v) => set('currentAge', v)} />
+                  <Field label="Target retirement age" value={form.targetRetirementAge} onChange={(v) => set('targetRetirementAge', v)} />
+                </div>
+                <Field label="Pension balance" value={form.pensionBalance} onChange={(v) => set('pensionBalance', v)} placeholder="0 if none" />
+                <Field label="Monthly pension contribution" value={form.monthlyContribution} onChange={(v) => set('monthlyContribution', v)} placeholder="0 if none" />
+                <Field label="Target annual retirement income" value={form.targetRetirementIncome} onChange={(v) => set('targetRetirementIncome', v)} />
+                <Field label="Assumed annual growth rate" value={form.expectedAnnualGrowthPct} onChange={(v) => set('expectedAnnualGrowthPct', v)} suffix="%" />
+              </div>
+            </GlassCard>
+          )}
+
+          {step.key === 'education' && (
+            <GlassCard className="p-5">
+              <SectionTitle>Education Funds</SectionTitle>
+              <div className="space-y-4">
+                {funds.map((f, i) => (
+                  <div key={i} className="rounded-2xl bg-white/[0.02] border border-white/[0.06] p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-ink-tertiary">Child {i + 1}</span>
+                      <button type="button" onClick={() => removeChild(i)} aria-label="Remove child" className="w-7 h-7 rounded-full flex items-center justify-center text-ink-tertiary active:opacity-60">
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <label className="block">
+                      <div className="text-xs text-ink-tertiary mb-1.5">Child's name</div>
+                      <input
+                        type="text"
+                        value={f.childName}
+                        onChange={(e) => updateChild(i, { childName: e.target.value })}
+                        className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                      />
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Child's age" value={f.childAge} onChange={(v) => updateChild(i, { childAge: v })} />
+                      <Field label="Years until university" value={f.yearsRemaining} onChange={(v) => updateChild(i, { yearsRemaining: v })} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Current savings" value={f.currentSavings} onChange={(v) => updateChild(i, { currentSavings: v })} />
+                      <Field label="Target amount" value={f.targetSavings} onChange={(v) => updateChild(i, { targetSavings: v })} />
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addChild}
+                  className="w-full glass rounded-2xl py-3 text-sm font-semibold text-family-400 flex items-center justify-center gap-1"
+                >
+                  <Plus size={14} /> Add a child's education fund
                 </button>
               </div>
-              <label className="block">
-                <div className="text-xs text-ink-tertiary mb-1.5">Child's name</div>
-                <input
-                  type="text"
-                  value={f.childName}
-                  onChange={(e) => updateChild(i, { childName: e.target.value })}
-                  className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-                />
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Child's age" value={f.childAge} onChange={(v) => updateChild(i, { childAge: v })} />
-                <Field label="Years until university" value={f.yearsRemaining} onChange={(v) => updateChild(i, { yearsRemaining: v })} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Current savings" value={f.currentSavings} onChange={(v) => updateChild(i, { currentSavings: v })} />
-                <Field label="Target amount" value={f.targetSavings} onChange={(v) => updateChild(i, { targetSavings: v })} />
-              </div>
-            </div>
-          ))}
+            </GlassCard>
+          )}
+        </motion.div>
+      </AnimatePresence>
+
+      <div className="flex gap-2">
+        {stepIndex > 0 && (
           <button
             type="button"
-            onClick={addChild}
-            className="w-full glass rounded-2xl py-3 text-sm font-semibold text-family-400 flex items-center justify-center gap-1"
+            onClick={handleBack}
+            className="glass rounded-2xl px-5 py-3.5 flex items-center justify-center text-ink-secondary font-semibold flex-shrink-0"
+            aria-label="Back"
           >
-            <Plus size={14} /> Add a child's education fund
+            <ChevronLeft size={18} />
           </button>
+        )}
+        <div className="flex-1">
+          {isLastStep ? (
+            <GlassButton onClick={handleSubmit} disabled={submitting}>
+              {submitting ? <Loader2 size={18} className="animate-spin" /> : 'Save & Generate Insights'}
+            </GlassButton>
+          ) : (
+            <GlassButton onClick={handleContinue} disabled={saving}>
+              {saving ? <Loader2 size={18} className="animate-spin" /> : 'Continue'}
+            </GlassButton>
+          )}
         </div>
-      </GlassCard>
-
-      <GlassButton onClick={handleSubmit} disabled={submitting}>
-        {submitting ? <Loader2 size={18} className="animate-spin" /> : 'Save & Generate Insights'}
-      </GlassButton>
-
-      <p className="text-xs text-ink-tertiary text-center leading-relaxed">
-        For informational and educational purposes only. Not financial, investment, tax, or insurance advice.
-      </p>
+      </div>
     </div>
   )
 }

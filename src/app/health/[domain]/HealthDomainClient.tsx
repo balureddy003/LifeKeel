@@ -146,12 +146,6 @@ export default function HealthDomainClient() {
           </motion.div>
         ))}
       </motion.div>
-
-      <div className="glass rounded-2xl p-4">
-        <p className="text-xs text-ink-tertiary leading-relaxed">
-          This is informational only — please consult a qualified professional before making financial decisions.
-        </p>
-      </div>
     </div>
   )
 }

@@ -69,34 +69,13 @@ export const ONBOARDING_QUESTIONS: OnboardingQuestion[] = [
     type: 'multi-text',
     followUp: 'children',
   },
-  {
-    id: 'country',
-    question: 'Which country do you live in?',
-    hint: 'This helps us find the right insurance and financial products',
-    type: 'text',
-  },
-  {
-    id: 'house',
-    question: 'Do you own your home?',
-    hint: 'We\'ll check if your home is properly insured',
-    type: 'boolean',
-    choices: ['Yes, I own it', 'No, I rent', 'No, I live with family'],
-  },
-  {
-    id: 'mortgage',
-    question: 'Do you have a mortgage?',
-    hint: 'We\'ll make sure your family is protected if something happens',
-    type: 'boolean',
-    choices: ['Yes', 'No', 'Not sure'],
-  },
-  {
-    id: 'employment',
-    question: 'Are you employed or self-employed?',
-    hint: 'This affects your insurance and tax planning',
-    type: 'choice',
-    choices: ['Employed', 'Self-employed', 'Business owner', 'Retired', 'Not working'],
-  },
 ]
+
+// Country, home ownership, mortgage, and employment used to be asked here
+// too, but the answers were only ever held in local state and discarded —
+// nothing downstream ever read them. Real financial context now belongs in
+// the Financial Profile, which actually powers detectors and insights;
+// asking for it twice (once for nothing, once for real) was the tax.
 
 export interface TrustLadderStep {
   id: string

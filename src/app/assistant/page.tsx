@@ -6,7 +6,6 @@ import { Bot, Send } from 'lucide-react'
 import { AI_SUGGESTIONS } from '@/lib/life-data'
 import { AIAnswerCard } from '@/components/AIAnswer'
 import { PageHeader, MoneyText } from '@/components/Glass'
-import { DisclaimerBanner } from '@/components/Disclaimer'
 import { haptic } from '@/lib/haptics'
 import { fetchAIResponse } from '@/lib/api'
 
@@ -161,7 +160,6 @@ export default function AssistantPage() {
         </div>
       )}
 
-      <DisclaimerBanner compact />
       <div className="px-4 py-3 safe-area-bottom">
         <div className="flex gap-2 items-end">
           <input
