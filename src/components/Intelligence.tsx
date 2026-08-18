@@ -6,14 +6,38 @@ import { useState, useEffect } from 'react'
 import { GlassCard } from './Glass'
 import { haptic } from '@/lib/haptics'
 import { useAppStore } from '@/lib/store'
+import { fetchFinancialProfile, fetchDocuments, fetchConnectorStatuses } from '@/lib/api'
 import { TrendingUp, FileText, Landmark, Mail, BarChart3, Scale, Car, Check, Sparkles, ChevronRight, ChevronDown, Users } from 'lucide-react'
 
 export function TrustLadder() {
   const router = useRouter()
-  const connectedConnectors = useAppStore((s) => s.connectedConnectors)
-  const uploadedDocumentCount = useAppStore((s) => s.uploadedDocumentCount)
-  const financialProfileSubmitted = useAppStore((s) => s.financialProfileSubmitted)
+  // These zustand flags are session-only (not persisted — see store.ts) and
+  // only ever get set the moment an action succeeds in the current tab, so
+  // they're used as an instant UI update but never as the source of truth:
+  // reload the page, or come back tomorrow, and they reset to false even
+  // though the server-side data is still there. Real completion is fetched
+  // below and OR'd in so a step that's genuinely done stays done.
+  const connectedConnectorsLocal = useAppStore((s) => s.connectedConnectors)
+  const uploadedDocumentCountLocal = useAppStore((s) => s.uploadedDocumentCount)
+  const financialProfileSubmittedLocal = useAppStore((s) => s.financialProfileSubmitted)
   const [expanded, setExpanded] = useState(false)
+  const [hasFinancialProfile, setHasFinancialProfile] = useState(false)
+  const [hasDocuments, setHasDocuments] = useState(false)
+  const [connectedIds, setConnectedIds] = useState<string[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchFinancialProfile().then((p) => { if (!cancelled) setHasFinancialProfile(!!p) })
+    fetchDocuments().then((d) => { if (!cancelled) setHasDocuments(d.documents.length > 0) })
+    fetchConnectorStatuses().then((cs) => {
+      if (!cancelled) setConnectedIds(cs.filter((c) => c.connected).map((c) => c.id))
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  const financialProfileSubmitted = financialProfileSubmittedLocal || hasFinancialProfile
+  const uploadedDocumentCount = uploadedDocumentCountLocal || (hasDocuments ? 1 : 0)
+  const connectedConnectors = connectedConnectorsLocal.length > 0 ? connectedConnectorsLocal : connectedIds
 
   const steps = [
     { id: 'family', icon: Users, label: 'Add Your Family', timeframe: 'Day 1', desc: 'Tell us who\'s in your household', route: '/family' },

@@ -107,20 +107,24 @@ export function ConversationalOnboarding() {
     const newAnswers = { ...answers, [currentQuestion.id]: answer }
     setAnswers(newAnswers)
 
-    // Grow the graph based on answers
+    // Grow the graph based on answers. Also track anything this specific
+    // answer adds in a local array — finishOnboarding can run later in this
+    // same handler (when this is the last question), and at that point the
+    // setMembers update above is still only queued, not committed, so a
+    // member added on the final answer would be invisible to a closure over
+    // `members` state. Pass the complete list explicitly instead.
+    let newlyAdded: FamilyMemberDraft[] = []
     if (currentQuestion.id === 'name') {
-      setMembers((prev) => [...prev, {
-        id: 'self', emoji: '', name: answer, role: 'You', completion: 0,
-      }])
+      newlyAdded = [{ id: 'self', emoji: '', name: answer, role: 'You', completion: 0 }]
+      setMembers((prev) => [...prev, ...newlyAdded])
       addAIMessage(`Nice to meet you, ${answer}! Let's build your family graph.`)
     } else if (currentQuestion.id === 'married' && answer.startsWith('Yes')) {
       addAIMessage('Great!')
     } else if (currentQuestion.id === 'married' && answer === 'No, single') {
       addAIMessage('No problem! We can add family members anytime.')
     } else if (currentQuestion.id === 'spouse-name') {
-      setMembers((prev) => [...prev, {
-        id: 'spouse', emoji: '', name: answer, role: 'Partner', completion: 0,
-      }])
+      newlyAdded = [{ id: 'spouse', emoji: '', name: answer, role: 'Partner', completion: 0 }]
+      setMembers((prev) => [...prev, ...newlyAdded])
       addAIMessage(`Lovely! ${answer} has been added to your family graph.`)
     } else if (currentQuestion.id === 'children' && answer === 'Yes') {
       addAIMessage('Wonderful!')
@@ -128,9 +132,8 @@ export function ConversationalOnboarding() {
       addAIMessage('No problem! We can add children later if things change.')
     } else if (currentQuestion.id === 'children-names') {
       const names = answer.split(',').map((n) => n.trim()).filter(Boolean)
-      setMembers((prev) => [...prev, ...names.map((name, i) => ({
-        id: `child-${i}`, emoji: '', name, role: 'Child', completion: 0,
-      }))])
+      newlyAdded = names.map((name, i) => ({ id: `child-${i}`, emoji: '', name, role: 'Child', completion: 0 }))
+      setMembers((prev) => [...prev, ...newlyAdded])
       addAIMessage(`Added ${names.length} ${names.length === 1 ? 'child' : 'children'} to your graph!`)
     } else {
       addAIMessage('Got it! Let\'s continue.')
@@ -147,7 +150,7 @@ export function ConversationalOnboarding() {
     }
 
     if (nextIndex >= ONBOARDING_QUESTIONS.length) {
-      setTimeout(() => finishOnboarding(newAnswers), 800)
+      setTimeout(() => finishOnboarding(newAnswers, [...members, ...newlyAdded]), 800)
     } else {
       // Always ask the next question explicitly — the reaction above only
       // acknowledges the previous answer, and several reactions (skips,
@@ -157,7 +160,7 @@ export function ConversationalOnboarding() {
     }
   }
 
-  const finishOnboarding = async (allAnswers: Record<string, string>) => {
+  const finishOnboarding = async (allAnswers: Record<string, string>, allMembers: FamilyMemberDraft[]) => {
     haptic('success')
     addAIMessage('Your family graph is ready! Let me set up your Trellis now.')
     setFinished(true)
@@ -186,7 +189,7 @@ export function ConversationalOnboarding() {
       Partner: 'parent',
       Child: 'child',
     }
-    for (const draft of members) {
+    for (const draft of allMembers) {
       const role = draftRoleToFamilyRole[draft.role]
       if (!role) continue // skips the 'You' (self) entry — already the organizer
       try {
