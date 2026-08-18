@@ -1,162 +1,19 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { GlassCard } from './Glass'
 import { haptic } from '@/lib/haptics'
 import { useAppStore } from '@/lib/store'
-import { useAuth } from '@/lib/auth-context'
-import { useFamilyInsights } from '@/lib/useFamilyData'
-import { Brain, TrendingUp, FileText, Landmark, Mail, BarChart3, Scale, Car, Check, AlertTriangle, X, Sparkles, ChevronRight, Users, Heart, Wallet, Target, Shield } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
-import { useMemo } from 'react'
-
-const AREA_ICONS: Record<string, LucideIcon> = {
-  family: Users,
-  protection: Heart,
-  wealth: Wallet,
-  goals: Target,
-  documents: FileText,
-  estate: Scale,
-}
-
-const statusColor = (status: 'complete' | 'partial' | 'missing') => {
-  const colors = { complete: '#4ade80', partial: '#fbbf24', missing: '#f87171' }
-  return colors[status]
-}
-
-const statusIcon = (status: 'complete' | 'partial' | 'missing') => {
-  if (status === 'complete') return <Check size={12} color="#4ade80" />
-  if (status === 'partial') return <AlertTriangle size={12} color="#fbbf24" />
-  return <X size={12} color="#f87171" />
-}
-
-export function ConfidenceScore() {
-  const router = useRouter()
-  const { family } = useAuth()
-  const { insights } = useFamilyInsights()
-  const uploadedDocumentCount = useAppStore((s) => s.uploadedDocumentCount)
-  const connectedConnectors = useAppStore((s) => s.connectedConnectors)
-
-  const { areas, overall } = useMemo(() => {
-    const hasFamily = (family?.members?.length ?? 0) > 0
-    const hasInsights = insights.length > 0
-    const protectionInsights = insights.filter((i) => i.detector_id === 'family_protection_gap')
-    const wealthInsights = insights.filter((i) => i.detector_id === 'family_retirement_gap')
-    const goalsInsights = insights.filter((i) => i.detector_id === 'family_education_shortfall')
-
-    const computeStatus = (progress: number): 'complete' | 'partial' | 'missing' => {
-      if (progress >= 80) return 'complete'
-      if (progress > 0) return 'partial'
-      return 'missing'
-    }
-
-    const familyProgress = hasFamily ? 100 : 0
-    const protectionProgress = protectionInsights.length > 0 ? 75 : 0
-    const wealthProgress = wealthInsights.length > 0 ? 60 : 0
-    const goalsProgress = goalsInsights.length > 0 ? 80 : 0
-    const docsProgress = Math.min(uploadedDocumentCount * 20, 100)
-    const estateProgress = 0
-
-    const computedAreas = [
-      { id: 'family', label: 'Family', status: computeStatus(familyProgress), progress: familyProgress, missingItems: hasFamily ? undefined : ['Add family members'] },
-      { id: 'protection', label: 'Protection', status: computeStatus(protectionProgress), progress: protectionProgress, missingItems: protectionInsights.length === 0 ? ['Upload insurance documents'] : undefined },
-      { id: 'wealth', label: 'Wealth', status: computeStatus(wealthProgress), progress: wealthProgress, missingItems: wealthInsights.length === 0 ? ['Add your investments'] : undefined },
-      { id: 'goals', label: 'Goals', status: computeStatus(goalsProgress), progress: goalsProgress, missingItems: goalsInsights.length === 0 ? ['Add education goals'] : undefined },
-      { id: 'documents', label: 'Documents', status: computeStatus(docsProgress), progress: docsProgress, missingItems: uploadedDocumentCount === 0 ? ['Upload documents'] : undefined },
-      { id: 'estate', label: 'Estate Planning', status: computeStatus(estateProgress), progress: estateProgress, missingItems: ['Upload will and estate docs'] },
-    ]
-    const overallScore = Math.round(computedAreas.reduce((sum, a) => sum + a.progress, 0) / computedAreas.length)
-    return { areas: computedAreas, overall: overallScore }
-  }, [family, insights, uploadedDocumentCount])
-
-  return (
-    <GlassCard className="p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <div className="text-sm font-semibold text-ink-secondary">Data Confidence</div>
-          <div className="text-xs text-ink-tertiary mt-0.5">How well we know your family</div>
-        </div>
-        <div className="flex items-center gap-2">
-          <motion.span
-            className="text-3xl font-bold"
-            style={{ color: overall >= 80 ? '#4ade80' : overall > 0 ? '#fbbf24' : '#f87171' }}
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-          >
-            {overall}%
-          </motion.span>
-        </div>
-      </div>
-
-      <div className="h-3 rounded-full bg-white/[0.05] overflow-hidden mb-4">
-        <motion.div
-          className="h-full rounded-full"
-          style={{
-            background: 'linear-gradient(90deg, #4ade80, #fbbf24, #f87171)',
-            boxShadow: '0 0 12px rgba(124,110,240,0.3)',
-          }}
-          initial={{ width: 0 }}
-          animate={{ width: `${overall}%` }}
-          transition={{ duration: 1, ease: 'easeOut' }}
-        />
-      </div>
-
-      <div className="space-y-2">
-        {areas.map((area, i) => {
-          const color = statusColor(area.status)
-          return (
-            <motion.div
-              key={area.id}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.06 }}
-              className="flex items-center gap-3"
-            >
-              <div className="w-8 h-8 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center flex-shrink-0">
-                {(() => {
-                  const AreaIcon = AREA_ICONS[area.id] ?? FileText
-                  return <AreaIcon size={14} className="text-ink-secondary" />
-                })()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold">{area.label}</span>
-                  <span
-                    className="text-xs font-bold flex items-center gap-1"
-                    style={{ color }}
-                  >
-                    {statusIcon(area.status)} {area.progress}%
-                  </span>
-                </div>
-                {area.missingItems && area.missingItems.length > 0 && (
-                  <div className="text-xs text-ink-tertiary mt-0.5">
-                    {area.missingItems.join(' · ')}
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          )
-        })}
-      </div>
-
-      <motion.button
-        whileTap={{ scale: 0.97 }}
-        onClick={() => { haptic('light'); router.push('/upload') }}
-        className="w-full mt-4 glass rounded-2xl py-3 text-sm font-semibold text-family-400 flex items-center justify-center gap-1"
-      >
-        Complete your profile <ChevronRight size={14} />
-      </motion.button>
-    </GlassCard>
-  )
-}
+import { TrendingUp, FileText, Landmark, Mail, BarChart3, Scale, Car, Check, Sparkles, ChevronRight, ChevronDown, Users } from 'lucide-react'
 
 export function TrustLadder() {
   const router = useRouter()
   const connectedConnectors = useAppStore((s) => s.connectedConnectors)
   const uploadedDocumentCount = useAppStore((s) => s.uploadedDocumentCount)
   const financialProfileSubmitted = useAppStore((s) => s.financialProfileSubmitted)
+  const [expanded, setExpanded] = useState(false)
 
   const steps = [
     { id: 'family', icon: Users, label: 'Add Your Family', timeframe: 'Day 1', desc: 'Tell us who\'s in your household', route: '/family' },
@@ -178,84 +35,114 @@ export function TrustLadder() {
     return { ...step, status }
   })
 
+  const doneCount = steps.filter((s) => s.status === 'done').length
+  const incomplete = steps.filter((s) => s.status !== 'done')
+  // Collapsed by default to just what's next — this is the app's one "what
+  // should I do now" list; a fully expanded 6-item wall competed with the
+  // health rings for the same job every time, whether or not there was
+  // anything left to do.
+  const visibleSteps = expanded ? steps : incomplete.slice(0, 2)
+
   return (
     <GlassCard className="p-5">
-      <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-1">
-        <TrendingUp size={16} className="text-family-400" />
-        Trust Ladder
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary">
+          <TrendingUp size={16} className="text-family-400" />
+          Trust Ladder
+        </div>
+        <span className="text-xs text-ink-tertiary">{doneCount}/{steps.length} done</span>
       </div>
       <div className="text-xs text-ink-tertiary mb-4">We build your profile step by step — at your pace</div>
 
-      <div className="space-y-1">
-        {steps.map((step, i) => {
-          const Icon = step.icon
-          const isDone = step.status === 'done'
-          const isAvailable = step.status === 'available'
-          return (
-            <motion.div
-              key={step.label}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.08 }}
-              className="flex items-center gap-3 py-2"
-            >
-              {/* Timeline dot */}
-              <div className="flex flex-col items-center">
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-                  style={{
-                    background: isDone
-                      ? 'rgba(74,222,128,0.15)'
-                      : isAvailable
-                      ? 'rgba(124,110,240,0.15)'
-                      : 'rgba(255,255,255,0.03)',
-                    border: `2px solid ${
-                      isDone ? 'rgba(74,222,128,0.4)'
-                      : isAvailable ? 'rgba(124,110,240,0.4)'
-                      : 'rgba(255,255,255,0.08)'
-                    }`,
-                  }}
-                >
-                  {isDone ? <Check size={14} color="#4ade80" /> : <Icon size={14} className={isAvailable ? 'text-family-400' : 'text-ink-tertiary'} />}
-                </div>
-                {i < 5 && (
+      {incomplete.length === 0 ? (
+        <div className="flex items-center gap-2 text-sm text-success py-2">
+          <Check size={16} /> All caught up — nothing left on the ladder.
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {visibleSteps.map((step, i) => {
+            const Icon = step.icon
+            const isDone = step.status === 'done'
+            const isAvailable = step.status === 'available'
+            return (
+              <motion.div
+                key={step.label}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.08 }}
+                className="flex items-center gap-3 py-2"
+              >
+                {/* Timeline dot */}
+                <div className="flex flex-col items-center">
                   <div
-                    className="w-px h-6"
-                    style={{ background: isDone ? 'rgba(74,222,128,0.2)' : 'rgba(255,255,255,0.05)' }}
-                  />
-                )}
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className={`text-sm font-semibold ${isDone ? 'text-success' : isAvailable ? 'text-family-400' : 'text-ink-tertiary'}`}>
-                    {step.label}
-                  </span>
-                  <span className="text-[10px] text-ink-tertiary">{step.timeframe}</span>
+                    className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{
+                      background: isDone
+                        ? 'rgba(74,222,128,0.15)'
+                        : isAvailable
+                        ? 'rgba(124,110,240,0.15)'
+                        : 'rgba(255,255,255,0.03)',
+                      border: `2px solid ${
+                        isDone ? 'rgba(74,222,128,0.4)'
+                        : isAvailable ? 'rgba(124,110,240,0.4)'
+                        : 'rgba(255,255,255,0.08)'
+                      }`,
+                    }}
+                  >
+                    {isDone ? <Check size={14} color="#4ade80" /> : <Icon size={14} className={isAvailable ? 'text-family-400' : 'text-ink-tertiary'} />}
+                  </div>
+                  {i < visibleSteps.length - 1 && (
+                    <div
+                      className="w-px h-6"
+                      style={{ background: isDone ? 'rgba(74,222,128,0.2)' : 'rgba(255,255,255,0.05)' }}
+                    />
+                  )}
                 </div>
-                <p className="text-xs text-ink-tertiary">{step.desc}</p>
-              </div>
 
-              {/* Action */}
-              {isAvailable && !isDone && (
-                <motion.button
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => { haptic('light'); router.push(step.route) }}
-                  className="text-xs font-semibold text-family-400 flex-shrink-0 flex items-center gap-0.5"
-                >
-                  Start <ChevronRight size={12} />
-                </motion.button>
-              )}
-              {isDone && (
-                <span className="text-xs font-semibold text-success flex-shrink-0 flex items-center gap-0.5">
-                  <Check size={12} /> Done
-                </span>
-              )}
-            </motion.div>
-          )
-        })}
-      </div>
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm font-semibold ${isDone ? 'text-success' : isAvailable ? 'text-family-400' : 'text-ink-tertiary'}`}>
+                      {step.label}
+                    </span>
+                    <span className="text-[10px] text-ink-tertiary">{step.timeframe}</span>
+                  </div>
+                  <p className="text-xs text-ink-tertiary">{step.desc}</p>
+                </div>
+
+                {/* Action */}
+                {isAvailable && !isDone && (
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => { haptic('light'); router.push(step.route) }}
+                    className="text-xs font-semibold text-family-400 flex-shrink-0 flex items-center gap-0.5"
+                  >
+                    Start <ChevronRight size={12} />
+                  </motion.button>
+                )}
+                {isDone && (
+                  <span className="text-xs font-semibold text-success flex-shrink-0 flex items-center gap-0.5">
+                    <Check size={12} /> Done
+                  </span>
+                )}
+              </motion.div>
+            )
+          })}
+        </div>
+      )}
+
+      {steps.length > 2 && (
+        <motion.button
+          whileTap={{ scale: 0.97 }}
+          onClick={() => { haptic('light'); setExpanded((v) => !v) }}
+          className="w-full mt-3 pt-3 border-t border-white/5 text-xs font-semibold text-ink-tertiary flex items-center justify-center gap-1"
+        >
+          {expanded ? 'Show less' : `See all ${steps.length} steps`}
+          <motion.span animate={{ rotate: expanded ? 180 : 0 }}>
+            <ChevronDown size={12} />
+          </motion.span>
+        </motion.button>
+      )}
     </GlassCard>
   )
 }

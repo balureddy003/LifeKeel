@@ -7,7 +7,7 @@ import { Network, Activity, Lightbulb, ChevronRight, Hand, Star, Target, Bot, Ph
 import { FamilyRoster } from '@/components/FamilyRoster'
 import { LifeTimeline } from '@/components/LifeTimeline'
 import { ScoreRing, GlassCard, PageHeader, IfAdvanced, Skeleton, Money } from '@/components/Glass'
-import { ConfidenceScore, TrustLadder, MemoryPrompts } from '@/components/Intelligence'
+import { TrustLadder, MemoryPrompts } from '@/components/Intelligence'
 import { HealthSummary } from '@/components/HealthSummary'
 import { useMode } from '@/lib/mode-context'
 import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@/lib/useFamilyData'
@@ -352,7 +352,7 @@ export default function HomePage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
         >
-          <ConfidenceScore />
+          <TrustLadder />
         </motion.div>
 
         <motion.div
@@ -361,14 +361,6 @@ export default function HomePage() {
           transition={{ delay: 0.3 }}
         >
           <MemoryPrompts />
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.35 }}
-        >
-          <TrustLadder />
         </motion.div>
       </IfAdvanced>
 
