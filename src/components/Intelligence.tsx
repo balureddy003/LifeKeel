@@ -2,7 +2,7 @@
 
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { GlassCard } from './Glass'
 import { haptic } from '@/lib/haptics'
 import { useAppStore } from '@/lib/store'
@@ -147,9 +147,51 @@ export function TrustLadder() {
   )
 }
 
+// Dismissal has no backend endpoint (these are sample cards, not real
+// signals) — persist client-side, scoped by tenant so a shared device
+// doesn't leak one user's dismissals into another's, same pattern as
+// the Events checklist.
+function memoryPromptsStorageKey(): string {
+  const tenant = typeof window !== 'undefined' ? localStorage.getItem('kairos_tenant') ?? 'anon' : 'anon'
+  return `trellis:memory-prompts-dismissed:${tenant}`
+}
+
+function loadDismissedPromptIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set()
+  try {
+    const raw = localStorage.getItem(memoryPromptsStorageKey())
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set()
+  } catch {
+    return new Set()
+  }
+}
+
+function saveDismissedPromptIds(ids: Set<string>): void {
+  try {
+    localStorage.setItem(memoryPromptsStorageKey(), JSON.stringify([...ids]))
+  } catch {
+    // Best-effort — private browsing / storage-full shouldn't break dismissal.
+  }
+}
+
 export function MemoryPrompts() {
   const router = useRouter()
-  const prompts = [
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    setDismissed(loadDismissedPromptIds())
+  }, [])
+
+  const dismiss = (id: string) => {
+    haptic('light')
+    setDismissed((prev) => {
+      const next = new Set(prev).add(id)
+      saveDismissedPromptIds(next)
+      return next
+    })
+  }
+
+  const allPrompts = [
     {
       id: 'car',
       icon: Car,
@@ -167,6 +209,9 @@ export function MemoryPrompts() {
       route: '/upload?category=pension',
     },
   ]
+  const prompts = allPrompts.filter((p) => !dismissed.has(p.id))
+
+  if (prompts.length === 0) return null
 
   return (
     <div className="space-y-2">
@@ -207,7 +252,7 @@ export function MemoryPrompts() {
                   </motion.button>
                   <motion.button
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => haptic('light')}
+                    onClick={() => dismiss(p.id)}
                     className="text-xs text-ink-tertiary"
                   >
                     Not now

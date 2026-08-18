@@ -142,10 +142,14 @@ function EmergencyButton() {
         activateEmergency()
       }}
       whileTap={{ scale: 0.9 }}
-      className="fixed bottom-32 left-4 z-40 w-12 h-12 rounded-full flex items-center justify-center shadow-xl"
+      className="fixed bottom-32 right-4 z-40 w-12 h-12 rounded-full flex items-center justify-center"
       style={{
         background: 'linear-gradient(135deg, #f87171, #dc2626)',
-        boxShadow: '0 8px 32px rgba(248,113,113,0.3)',
+        border: '1px solid rgba(255,255,255,0.2)',
+        // Dark elevation shadow (not just the red glow) so this reads as a
+        // layer floating above the page, not as part of whatever row it
+        // happens to be scrolled over.
+        boxShadow: '0 12px 24px -6px rgba(0,0,0,0.55), 0 8px 20px rgba(248,113,113,0.3)',
       }}
       aria-label="Emergency"
     >

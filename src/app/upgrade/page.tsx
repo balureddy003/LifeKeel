@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Sparkles, CheckCircle2, Loader2, AlertCircle } from 'lucide-react'
+import { Sparkles, CheckCircle2, Loader2, AlertCircle, ScanLine } from 'lucide-react'
 import { PageHeader, GlassCard, GlassButton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { fetchBillingSubscription, startTrellisPlusCheckout } from '@/lib/api'
@@ -12,6 +12,63 @@ const BENEFITS = [
   'AI-summarized inbox — financial emails read and explained in plain language',
   'Priority support',
 ]
+
+const EXTRACTED_FIELDS = [
+  { label: 'Provider', value: 'AllState Insurance' },
+  { label: 'Policy Number', value: 'HO-88213-A' },
+  { label: 'Amount', value: '$1,240/yr' },
+  { label: 'Renews', value: 'Jun 14, 2027' },
+]
+
+// Show, don't tell — the benefits list said "AI reads your documents", so
+// this mocks what that actually looks like before the user reads the copy.
+function ExtractionPreview() {
+  return (
+    <GlassCard className="p-5 border-family-500/20 overflow-hidden">
+      <div className="flex items-center gap-2 mb-4">
+        <ScanLine size={16} className="text-family-400" />
+        <span className="text-sm font-semibold text-family-400">See it in action</span>
+      </div>
+      <div className="flex gap-4 items-start">
+        <div className="relative w-20 h-28 rounded-lg bg-white/[0.04] border border-white/[0.08] flex-shrink-0 overflow-hidden p-2.5 space-y-2">
+          <div className="h-1.5 w-3/4 rounded-full bg-white/10" />
+          <div className="h-1.5 w-full rounded-full bg-white/10" />
+          <div className="h-1.5 w-5/6 rounded-full bg-white/10" />
+          <div className="h-1.5 w-2/3 rounded-full bg-white/10" />
+          <div className="h-1.5 w-full rounded-full bg-white/10" />
+          <div className="h-1.5 w-4/5 rounded-full bg-white/10" />
+          <motion.div
+            className="absolute left-0 right-0 h-10 pointer-events-none"
+            style={{ background: 'linear-gradient(180deg, transparent, rgba(124,110,240,0.4), transparent)' }}
+            initial={{ top: '-25%' }}
+            animate={{ top: '115%' }}
+            transition={{ duration: 1.8, repeat: Infinity, repeatDelay: 1.4, ease: 'easeInOut' }}
+          />
+        </div>
+        <div className="flex-1 space-y-2 min-w-0">
+          {EXTRACTED_FIELDS.map((f, i) => (
+            <motion.div
+              key={f.label}
+              initial={{ opacity: 0, x: 8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.3 + i * 0.15, duration: 0.4 }}
+              className="flex items-center gap-1.5 rounded-lg bg-family-500/[0.06] px-2.5 py-1.5"
+            >
+              <CheckCircle2 size={12} className="text-family-400 flex-shrink-0" />
+              <div className="min-w-0">
+                <div className="text-[10px] text-ink-tertiary leading-none mb-0.5">{f.label}</div>
+                <div className="text-xs font-semibold text-ink-primary truncate">{f.value}</div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+      <p className="text-xs text-ink-tertiary mt-3 leading-relaxed">
+        Illustrative example — upload a real document and Trellis Plus extracts the details automatically.
+      </p>
+    </GlassCard>
+  )
+}
 
 export default function UpgradePage() {
   const [loading, setLoading] = useState(true)
@@ -85,6 +142,8 @@ export default function UpgradePage() {
         </motion.div>
       ) : (
         <>
+          <ExtractionPreview />
+
           <GlassCard className="p-5 border-family-500/20">
             <div className="flex items-center gap-2 mb-3">
               <Sparkles size={18} className="text-family-400" />
