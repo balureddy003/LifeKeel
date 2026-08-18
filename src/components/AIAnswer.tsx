@@ -129,14 +129,15 @@ export function AIAnswerCard({ query, isLive = false }: { query: string; isLive?
           )}
         </div>
 
-        {/* Sources */}
+        {/* Sources — in sample mode there's nothing real to cite yet, so
+            don't invent specific document names, just say so honestly. */}
         <div className="border-t border-white/5 pt-3">
           <button
             onClick={() => { setShowSources(!showSources); haptic('light') }}
             className="flex items-center gap-2 text-xs text-ink-tertiary"
           >
             <span className="font-semibold flex items-center gap-1">
-              <Paperclip size={12} /> Sources ({answer.sources.length})
+              <Paperclip size={12} /> {isLive ? `Sources (${answer.sources.length})` : 'Sources'}
             </span>
             <motion.span animate={{ rotate: showSources ? 90 : 0 }}>
               <ChevronRight size={12} />
@@ -150,22 +151,28 @@ export function AIAnswerCard({ query, isLive = false }: { query: string; isLive?
                 exit={{ height: 0, opacity: 0 }}
                 className="overflow-hidden"
               >
-                <div className="space-y-1.5 pt-2">
-                  {answer.sources.map((source, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.06 }}
-                      className="flex items-center gap-2 rounded-lg px-3 py-2"
-                      style={{ background: sourceTypeColor[source.type] ?? 'rgba(255,255,255,0.03)' }}
-                    >
-                      <source.icon size={14} className="text-ink-secondary flex-shrink-0" />
-                      <span className="text-xs text-ink-secondary flex-1">{source.label}</span>
-                      <span className="text-[10px] text-ink-tertiary uppercase">{source.type}</span>
-                    </motion.div>
-                  ))}
-                </div>
+                {isLive ? (
+                  <div className="space-y-1.5 pt-2">
+                    {answer.sources.map((source, i) => (
+                      <motion.div
+                        key={i}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.06 }}
+                        className="flex items-center gap-2 rounded-lg px-3 py-2"
+                        style={{ background: sourceTypeColor[source.type] ?? 'rgba(255,255,255,0.03)' }}
+                      >
+                        <source.icon size={14} className="text-ink-secondary flex-shrink-0" />
+                        <span className="text-xs text-ink-secondary flex-1">{source.label}</span>
+                        <span className="text-[10px] text-ink-tertiary uppercase">{source.type}</span>
+                      </motion.div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-ink-tertiary pt-2 leading-relaxed">
+                    Sources unlock once your documents and accounts are connected — there's nothing real to cite yet.
+                  </p>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

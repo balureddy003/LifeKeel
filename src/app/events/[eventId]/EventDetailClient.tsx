@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
@@ -72,6 +72,34 @@ const EVENT_AI_EXPLANATION: Record<string, string> = {
   retirement: "This is a sample scenario, not based on your data yet. Retirement readiness usually comes down to pension progress, employer match, and monthly contributions. Connect your pension and investment accounts so we can show your actual progress instead of this example.",
 }
 
+// Checklist completion has no backend endpoint — persist client-side so
+// "your family's response plan" doesn't forget your progress on reload.
+// Scoped by tenant so a shared device doesn't leak one user's checklist
+// state into another's, and by event so action ids (which repeat across
+// events, e.g. '1'-'5') don't bleed into each other.
+function checklistStorageKey(eventId: string): string {
+  const tenant = typeof window !== 'undefined' ? localStorage.getItem('kairos_tenant') ?? 'anon' : 'anon'
+  return `trellis:event-checklist:${tenant}:${eventId}`
+}
+
+function loadDoneIds(eventId: string): Set<string> {
+  if (typeof window === 'undefined') return new Set()
+  try {
+    const raw = localStorage.getItem(checklistStorageKey(eventId))
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set()
+  } catch {
+    return new Set()
+  }
+}
+
+function saveDoneIds(eventId: string, doneIds: Set<string>): void {
+  try {
+    localStorage.setItem(checklistStorageKey(eventId), JSON.stringify([...doneIds]))
+  } catch {
+    // Best-effort — private browsing / storage-full shouldn't break the checklist.
+  }
+}
+
 export default function EventDetailClient() {
   const params = useParams<{ eventId: string }>()
   const event = LIFE_EVENTS.find((e) => e.id === params.eventId)
@@ -79,9 +107,22 @@ export default function EventDetailClient() {
     EVENT_ACTIONS[event?.id ?? 'default'] ?? EVENT_ACTIONS.default!
   )
 
+  // Apply persisted completion after mount (not in useState's initializer)
+  // so server-rendered and first-client-render output match — avoids a
+  // hydration mismatch, at the cost of a brief unchecked-then-checked flash.
+  useEffect(() => {
+    const done = loadDoneIds(params.eventId)
+    if (done.size === 0) return
+    setActions((prev) => prev.map((a) => ({ ...a, done: done.has(a.id) })))
+  }, [params.eventId])
+
   const toggleAction = (id: string) => {
     haptic('light')
-    setActions((prev) => prev.map((a) => (a.id === id ? { ...a, done: !a.done } : a)))
+    setActions((prev) => {
+      const next = prev.map((a) => (a.id === id ? { ...a, done: !a.done } : a))
+      saveDoneIds(params.eventId, new Set(next.filter((a) => a.done).map((a) => a.id)))
+      return next
+    })
   }
 
   const fallbackStability = event ? (EVENT_STABILITY[event.id] ?? 80) : 80
