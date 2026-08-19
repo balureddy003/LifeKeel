@@ -39,6 +39,16 @@ function isHealthDomain(value: string): value is HealthDomain {
   return value === 'protection' || value === 'wealth' || value === 'goals' || value === 'savings'
 }
 
+// insight.hypothesis is the detector rule's internal snake_case id (e.g.
+// "life_insurance_below_household_needs"), not display text — Studio's
+// insight-title.ts hits the same thing and title-cases it as a fallback
+// rather than showing the raw id. Same fix here, scoped to this one render
+// site rather than changing what the shared engine populates the field
+// with (hypothesis is used as a stable value elsewhere, not just display).
+function readableHypothesis(hypothesis: string): string {
+  return hypothesis.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 export default function HealthDomainClient() {
   const params = useParams<{ domain: string }>()
   const { domains, loading } = useFamilyHealthDomains()
@@ -131,7 +141,7 @@ export default function HealthDomainClient() {
             transition={{ delay: i * 0.08 }}
           >
             <GlassCard className="p-4 mb-2">
-              <div className="text-sm font-semibold text-ink-primary mb-1">{insight.hypothesis}</div>
+              <div className="text-sm font-semibold text-ink-primary mb-1">{readableHypothesis(insight.hypothesis)}</div>
               <p className="text-sm text-ink-secondary leading-relaxed mb-2">{insight.reasoning}</p>
               {insight.actions.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">
