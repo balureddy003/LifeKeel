@@ -7,6 +7,7 @@ import { Loader2, AlertCircle, CheckCircle2, Plus, X, ChevronLeft } from 'lucide
 import { PageHeader, GlassCard, GlassButton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { useAppStore } from '@/lib/store'
+import { useAuth } from '@/lib/auth-context'
 import {
   fetchFinancialProfile,
   submitFinancialProfile,
@@ -213,6 +214,7 @@ const STEPS: Step[] = [
 
 export default function FinancialProfilePage() {
   const router = useRouter()
+  const { family } = useAuth()
   const setFinancialProfileSubmitted = useAppStore((s) => s.setFinancialProfileSubmitted)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [funds, setFunds] = useState<EducationFundForm[]>([])
@@ -227,14 +229,29 @@ export default function FinancialProfilePage() {
     let cancelled = false
     fetchFinancialProfile().then((profile) => {
       if (cancelled) return
-      if (profile) {
-        const { form: f, funds: e } = fromProfile(profile)
-        setForm(f)
-        setFunds(e)
-      }
+      const { form: f, funds: e } = profile ? fromProfile(profile) : { form: EMPTY_FORM, funds: [] as EducationFundForm[] }
+      // Pre-fill an education fund entry for each child already on the
+      // family roster (collected once at onboarding) that isn't already
+      // represented here — no reason to make the user retype a name that's
+      // already on file. Only names, since age/savings/target are specific
+      // to this form and weren't collected anywhere else.
+      const existingNames = new Set(e.map((fund) => fund.childName.trim().toLowerCase()))
+      const knownChildren = (family?.members ?? []).filter(
+        (m) => m.role === 'child' && !existingNames.has(m.name.trim().toLowerCase()),
+      )
+      const funds = [
+        ...e,
+        ...knownChildren.map((c) => ({ childName: c.name, childAge: '', currentSavings: '', targetSavings: '', yearsRemaining: '' })),
+      ]
+      setForm(f)
+      setFunds(funds)
       setLoading(false)
     })
     return () => { cancelled = true }
+    // Deliberately mount-once (family is already loaded by the time this
+    // page renders — AuthGate blocks routes until it is) — re-running this
+    // on every family change would overwrite in-progress edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
