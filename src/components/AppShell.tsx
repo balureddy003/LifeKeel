@@ -270,13 +270,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const showEmergency = showNav && pathname !== '/assistant' && config.showEmergencyButton
 
   const bottomPadding = showEmergency ? 'pb-32' : showNav ? 'pb-20' : ''
+  // The Emergency button floats fixed at bottom-32 right-4 (a 48px circle),
+  // independent of scroll position — without a matching permanent gutter,
+  // any list row that happens to render in that band sits underneath it and
+  // gets its text/tap-target covered, not just during a scroll gesture but
+  // at rest on first load. Reserving the space here (rather than hunting
+  // down every list row across every page) guarantees it never happens.
+  const emergencyGutter = showEmergency ? 'pr-16' : ''
 
   return (
     <div className="min-h-screen text-ink-primary">
       <MeshGradient />
       <OfflineBanner />
       <ModeEffects />
-      <div className={`max-w-md mx-auto ${bottomPadding} pt-2 relative z-10`}>
+      <div className={['max-w-md mx-auto', bottomPadding, emergencyGutter, 'pt-2 relative z-10'].filter(Boolean).join(' ')}>
         <AuthGate>{children}</AuthGate>
         {showNav && <DisclaimerFooter />}
       </div>

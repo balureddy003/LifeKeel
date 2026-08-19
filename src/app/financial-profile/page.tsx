@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth-context'
 import {
   fetchFinancialProfile,
   submitFinancialProfile,
+  type EmploymentStatus,
   type FinancialProfile,
   type FinancialProfileEducationFund,
 } from '@/lib/api'
@@ -18,7 +19,7 @@ import {
 // Whole-currency string state, converted to minor units (x100) on submit —
 // the API and detectors work in minor units, but people think in whole amounts.
 interface FormState {
-  employed: boolean
+  employmentStatus: EmploymentStatus
   monthlySalary: string
   annualLivingExpenses: string
   mortgageOutstanding: string
@@ -27,6 +28,7 @@ interface FormState {
   emergencySavings: string
   monthlyExpenses: string
   hasHighInterestDebt: boolean
+  highInterestDebtBalance: string
   currentAge: string
   targetRetirementAge: string
   pensionBalance: string
@@ -44,7 +46,7 @@ interface EducationFundForm {
 }
 
 const EMPTY_FORM: FormState = {
-  employed: true,
+  employmentStatus: 'employed',
   monthlySalary: '',
   annualLivingExpenses: '',
   mortgageOutstanding: '',
@@ -53,6 +55,7 @@ const EMPTY_FORM: FormState = {
   emergencySavings: '',
   monthlyExpenses: '',
   hasHighInterestDebt: false,
+  highInterestDebtBalance: '',
   // Server requires both ages to be positive integers (even on autosave, before
   // the user has reached this step) — default to plausible values rather than
   // leaving them blank, same as expectedAnnualGrowthPct's '5' below.
@@ -76,7 +79,7 @@ function toMinor(whole: string): number {
 function fromProfile(profile: FinancialProfile): { form: FormState; funds: EducationFundForm[] } {
   return {
     form: {
-      employed: profile.household.employed,
+      employmentStatus: profile.household.employment_status,
       monthlySalary: toWhole(profile.household.monthly_salary_minor),
       annualLivingExpenses: toWhole(profile.household.annual_living_expenses_minor),
       mortgageOutstanding: toWhole(profile.household.mortgage_outstanding_minor),
@@ -85,6 +88,7 @@ function fromProfile(profile: FinancialProfile): { form: FormState; funds: Educa
       emergencySavings: toWhole(profile.emergency_fund.emergency_savings_minor),
       monthlyExpenses: toWhole(profile.emergency_fund.monthly_expenses_minor),
       hasHighInterestDebt: profile.emergency_fund.has_high_interest_debt,
+      highInterestDebtBalance: toWhole(profile.emergency_fund.high_interest_debt_balance_minor),
       currentAge: String(profile.retirement.current_age),
       targetRetirementAge: String(profile.retirement.target_retirement_age),
       pensionBalance: toWhole(profile.retirement.pension_balance_minor),
@@ -115,7 +119,7 @@ function toPayload(form: FormState, funds: EducationFundForm[]): FinancialProfil
 
   return {
     household: {
-      employed: form.employed,
+      employment_status: form.employmentStatus,
       monthly_salary_minor: toMinor(form.monthlySalary),
       annual_living_expenses_minor: toMinor(form.annualLivingExpenses),
       mortgage_outstanding_minor: toMinor(form.mortgageOutstanding),
@@ -126,6 +130,7 @@ function toPayload(form: FormState, funds: EducationFundForm[]): FinancialProfil
       emergency_savings_minor: toMinor(form.emergencySavings),
       monthly_expenses_minor: toMinor(form.monthlyExpenses),
       has_high_interest_debt: form.hasHighInterestDebt,
+      high_interest_debt_balance_minor: form.hasHighInterestDebt ? toMinor(form.highInterestDebtBalance) : 0,
     },
     retirement: {
       current_age: Number(form.currentAge) || 0,
@@ -189,6 +194,37 @@ function YesNo({ label, value, onChange }: { label: string; value: boolean; onCh
             }`}
           >
             {opt ? 'Yes' : 'No'}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const EMPLOYMENT_STATUS_OPTIONS: { value: EmploymentStatus; label: string }[] = [
+  { value: 'employed', label: 'Employed' },
+  { value: 'self_employed', label: 'Self-employed' },
+  { value: 'unemployed', label: 'Unemployed' },
+  { value: 'retired', label: 'Retired' },
+]
+
+function EmploymentStatusPicker({ value, onChange }: { value: EmploymentStatus; onChange: (v: EmploymentStatus) => void }) {
+  return (
+    <div>
+      <div className="text-xs text-ink-tertiary mb-1.5">Employment status</div>
+      <div className="grid grid-cols-2 gap-2">
+        {EMPLOYMENT_STATUS_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => { haptic('light'); onChange(opt.value) }}
+            className={`rounded-xl py-2.5 text-sm font-semibold transition-all ${
+              value === opt.value
+                ? 'bg-family-500 text-white'
+                : 'glass text-ink-secondary'
+            }`}
+          >
+            {opt.label}
           </button>
         ))}
       </div>
@@ -389,7 +425,7 @@ export default function FinancialProfilePage() {
             <GlassCard className="p-5">
               <SectionTitle>Household & Protection</SectionTitle>
               <div className="space-y-3">
-                <YesNo label="Are you employed?" value={form.employed} onChange={(v) => set('employed', v)} />
+                <EmploymentStatusPicker value={form.employmentStatus} onChange={(v) => set('employmentStatus', v)} />
                 <Field label="Monthly salary" value={form.monthlySalary} onChange={(v) => set('monthlySalary', v)} />
                 <Field label="Annual living expenses" value={form.annualLivingExpenses} onChange={(v) => set('annualLivingExpenses', v)} />
                 <Field label="Mortgage outstanding" value={form.mortgageOutstanding} onChange={(v) => set('mortgageOutstanding', v)} placeholder="0 if none" />
@@ -406,6 +442,14 @@ export default function FinancialProfilePage() {
                 <Field label="Emergency savings" value={form.emergencySavings} onChange={(v) => set('emergencySavings', v)} />
                 <Field label="Monthly expenses" value={form.monthlyExpenses} onChange={(v) => set('monthlyExpenses', v)} />
                 <YesNo label="Any high-interest debt?" value={form.hasHighInterestDebt} onChange={(v) => set('hasHighInterestDebt', v)} />
+                {form.hasHighInterestDebt && (
+                  <Field
+                    label="Rough outstanding balance"
+                    value={form.highInterestDebtBalance}
+                    onChange={(v) => set('highInterestDebtBalance', v)}
+                    placeholder="e.g. credit cards, payday loans"
+                  />
+                )}
               </div>
             </GlassCard>
           )}

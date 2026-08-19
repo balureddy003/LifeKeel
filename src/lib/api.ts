@@ -382,9 +382,11 @@ export interface FinancialProfileEducationFund {
   years_remaining: number
 }
 
+export type EmploymentStatus = 'employed' | 'self_employed' | 'unemployed' | 'retired'
+
 export interface FinancialProfile {
   household: {
-    employed: boolean
+    employment_status: EmploymentStatus
     monthly_salary_minor: number
     annual_living_expenses_minor: number
     mortgage_outstanding_minor: number
@@ -395,6 +397,7 @@ export interface FinancialProfile {
     emergency_savings_minor: number
     monthly_expenses_minor: number
     has_high_interest_debt: boolean
+    high_interest_debt_balance_minor: number
   }
   retirement: {
     current_age: number
