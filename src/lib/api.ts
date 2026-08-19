@@ -107,9 +107,10 @@ async function apiFetch<T>(path: string, fallback: T): Promise<T> {
 }
 
 export async function fetchFamilyInsights(): Promise<FamilyInsight[]> {
-  // The API's /insights doesn't actually support a `detectors` filter param
-  // (it's silently ignored) — filter client-side so a tenant with insights
-  // from other verticals doesn't pollute the family app's numbers.
+  // The `detectors` param is now filtered server-side (GET /insights), so a
+  // tenant active in other verticals doesn't push family insights off the
+  // page before they even reach here. Still filter client-side too — cheap,
+  // and keeps this honest if the server-side filter is ever relaxed.
   return apiFetch<{ insights: RawInsight[] }>(
     `/insights?detectors=${FAMILY_DETECTORS.join(',')}`,
     { insights: [] },
