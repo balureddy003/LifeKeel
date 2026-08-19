@@ -269,7 +269,7 @@ export default function HomePage() {
                     />
                   </div>
                   <p className="text-sm text-ink-secondary leading-relaxed">
-                    Your family readiness score is based on {readinessScore}% of insights resolved. Connect more data sources for a complete picture.
+                    Your family readiness score reflects the gaps found in your profile so far. Connect more data sources for a complete picture.
                   </p>
                 </div>
               </>

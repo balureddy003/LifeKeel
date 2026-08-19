@@ -128,11 +128,21 @@ export async function fetchFamilyGoals(): Promise<FamilyGoal[]> {
   ).then((r) => r.goals ?? [])
 }
 
+// Starts from 100 (no known gaps) and subtracts a confidence-weighted
+// penalty per currently-open insight, matching useFamilyHealthDomains'
+// per-domain scoring. Previously this was (resolvedCount / totalCount) *
+// 100, which scored exactly 0% for any family with insights and nothing
+// manually resolved yet — the normal state right after submitting a real
+// financial profile, which is the one moment this number is most visible
+// and most likely to be read as "the app found nothing good about my
+// finances" rather than "you haven't clicked dismiss on anything yet".
 export async function fetchFamilyReadinessScore(): Promise<{ score: number; hasLiveData: boolean }> {
   const insights = await fetchFamilyInsights()
   if (insights.length === 0) return { score: 0, hasLiveData: false }
-  const resolved = insights.filter((i) => RESOLVED_INSIGHT_STATES.includes(i.state)).length
-  return { score: Math.round((resolved / insights.length) * 100), hasLiveData: true }
+  const openPenalty = insights
+    .filter((i) => !RESOLVED_INSIGHT_STATES.includes(i.state))
+    .reduce((sum, i) => sum + i.confidence, 0)
+  return { score: Math.round(Math.max(0, Math.min(100, 100 - openPenalty * 10))), hasLiveData: true }
 }
 
 /**
@@ -394,7 +404,13 @@ export async function fetchFinancialProfile(): Promise<FinancialProfile | null> 
   ).then((r) => r.profile ?? null)
 }
 
-export async function submitFinancialProfile(profile: FinancialProfile): Promise<{ insightsGenerated: number }> {
+// generateInsights defaults to false — most calls are the wizard's per-step
+// autosave, which should only persist progress. Detector evaluation against
+// a step the user hasn't reached yet (still at its default/empty value)
+// produces a stale insight that never gets retracted once the real number
+// arrives later in the form, so only the final "Save & Generate Insights"
+// step should pass true.
+export async function submitFinancialProfile(profile: FinancialProfile, generateInsights = false): Promise<{ insightsGenerated: number }> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -403,7 +419,7 @@ export async function submitFinancialProfile(profile: FinancialProfile): Promise
   const res = await fetch(`${base}/family/financial-profile`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(profile),
+    body: JSON.stringify({ ...profile, generate_insights: generateInsights }),
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Request failed')

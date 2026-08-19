@@ -304,7 +304,7 @@ export default function FinancialProfilePage() {
     setError(null)
     setResult(null)
     try {
-      const { insightsGenerated } = await submitFinancialProfile(toPayload(form, funds))
+      const { insightsGenerated } = await submitFinancialProfile(toPayload(form, funds), true)
       haptic('success')
       setResult(insightsGenerated)
       setFinancialProfileSubmitted()

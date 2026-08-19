@@ -117,10 +117,23 @@ const DOMAIN_FALLBACK_SCORE: Record<HealthDomain, number> = {
 
 /**
  * Computes a 0-100 health score per family domain from live detector
- * insights. A domain's score reflects how resolved its open insights are —
- * fully resolved (approved/dismissed) insights count as healthy, open ones
- * pull the score down proportional to their confidence. Falls back to a
- * labeled sample score when no insights exist for that domain yet.
+ * insights. Starts from 100 (no known gaps) and subtracts a confidence-
+ * weighted penalty per currently-open insight — a domain with excellent
+ * real coverage and one open, low-confidence flag should score close to
+ * 100, not 0. Resolved (approved/dismissed) insights carry no penalty,
+ * since they're no longer active problems, but — deliberately — don't add
+ * anything back either: this is a snapshot of current gaps, not a
+ * completed-tasks tally. Falls back to a labeled sample score when no
+ * insights exist for that domain yet.
+ *
+ * Previously this scored (resolvedCount / totalCount) * 100 minus the same
+ * penalty, which meant every domain scored exactly 0% the moment any
+ * insight existed and nothing had been manually resolved yet — the normal
+ * state for a family that just finished submitting a real, honest
+ * financial profile. The one moment this score matters most (right after
+ * connecting real data) was the one moment it was guaranteed to read as
+ * "0% Wealth, 0% Protection" regardless of how well-covered the family
+ * actually was.
  */
 export function useFamilyHealthDomains() {
   const { insights, loading, error } = useFamilyInsights()
@@ -136,13 +149,10 @@ export function useFamilyHealthDomains() {
       continue
     }
 
-    const resolved = domainInsights.filter((i) => RESOLVED_INSIGHT_STATES.includes(i.state)).length
     const openPenalty = domainInsights
       .filter((i) => !RESOLVED_INSIGHT_STATES.includes(i.state))
       .reduce((sum, i) => sum + i.confidence, 0)
-    const score = Math.round(
-      Math.max(0, Math.min(100, (resolved / domainInsights.length) * 100 - openPenalty * 10)),
-    )
+    const score = Math.round(Math.max(0, Math.min(100, 100 - openPenalty * 10)))
     domains[domain] = { score, hasLiveData: true, insights: domainInsights }
   }
 
