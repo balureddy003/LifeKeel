@@ -1,11 +1,12 @@
 'use client'
 
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Bot, FileText, TrendingUp, Landmark, Calculator, Shield, GraduationCap, Wallet, Briefcase, Home, Paperclip, ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { GlassCard, MoneyText } from './Glass'
 import { haptic } from '@/lib/haptics'
+import { fetchFamilyInsights } from '@/lib/api'
 
 interface AISource {
   label: string
@@ -74,6 +75,24 @@ function getAnswer(query: string): AIAnswer {
   }
 }
 
+// Same 3 topics MOCK_ANSWERS covers, mapped to the detector that already
+// computes a real answer for that topic elsewhere in the app (Events pages
+// use the same detectors via useEventReadiness). Letting the Assistant
+// reuse that real, already-computed reasoning — instead of always
+// returning canned text — is what actually delivers on "connect your data
+// for a personalized response," without needing an LLM backend.
+const KEYWORD_DETECTOR: Record<string, string> = {
+  retire: 'family_retirement_gap',
+  protected: 'family_protection_gap',
+  job: 'family_emergency_fund_adequacy',
+}
+
+function confidenceBucket(score: number): 'high' | 'medium' | 'low' {
+  if (score >= 0.75) return 'high'
+  if (score >= 0.45) return 'medium'
+  return 'low'
+}
+
 const confidenceColor = { high: '#4ade80', medium: '#fbbf24', low: '#f87171' }
 const sourceTypeColor: Record<string, string> = {
   policy: 'rgba(248,113,113,0.15)',
@@ -82,10 +101,50 @@ const sourceTypeColor: Record<string, string> = {
   calculation: 'rgba(251,191,36,0.15)',
 }
 
-export function AIAnswerCard({ query, isLive = false }: { query: string; isLive?: boolean }) {
+export function AIAnswerCard({ query }: { query: string }) {
   const [showSources, setShowSources] = useState(false)
-  const answer = getAnswer(query)
+  const [liveAnswer, setLiveAnswer] = useState<AIAnswer | null>(null)
+  const [checkedLive, setCheckedLive] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    const lower = query.toLowerCase()
+    const detectorId = Object.entries(KEYWORD_DETECTOR).find(([key]) => lower.includes(key))?.[1]
+    if (!detectorId) {
+      setCheckedLive(true)
+      return
+    }
+    fetchFamilyInsights()
+      .then((insights) => {
+        if (cancelled) return
+        const match = insights.find((i) => i.detector_id === detectorId)
+        if (match && (match.reasoning || match.hypothesis)) {
+          setLiveAnswer({
+            query,
+            answer: match.reasoning || match.hypothesis,
+            sources: [{ label: 'Your Financial Profile', type: 'document', icon: Home }],
+            confidence: confidenceBucket(match.confidence),
+            followUps: match.actions.slice(0, 3),
+          })
+        }
+      })
+      .finally(() => { if (!cancelled) setCheckedLive(true) })
+    return () => { cancelled = true }
+  }, [query])
+
+  const isLive = !!liveAnswer
+  const answer = liveAnswer ?? getAnswer(query)
   const color = confidenceColor[answer.confidence]
+
+  if (!checkedLive) {
+    return (
+      <GlassCard className="p-5">
+        <div className="shimmer h-4 rounded mb-2 w-2/3" />
+        <div className="shimmer h-3 rounded mb-1.5" />
+        <div className="shimmer h-3 rounded w-5/6" />
+      </GlassCard>
+    )
+  }
 
   return (
     <motion.div

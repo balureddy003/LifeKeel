@@ -107,7 +107,7 @@ export default function AssistantPage() {
                 </div>
               )}
               {msg.showPerplexity && msg.userQuery ? (
-                <AIAnswerCard query={msg.userQuery} isLive={msg.isLive ?? false} />
+                <AIAnswerCard query={msg.userQuery} />
               ) : (
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">
                   {msg.role === 'assistant' ? <MoneyText text={msg.content} /> : msg.content}
