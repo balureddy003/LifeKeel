@@ -11,6 +11,7 @@ import {
   fetchFamilyInsights,
   fetchFamilyGoals,
   fetchFamilyReadinessScore,
+  fetchFinancialProfile,
   RESOLVED_INSIGHT_STATES,
   type FamilyInsight,
   type FamilyGoal,
@@ -134,9 +135,25 @@ const DOMAIN_FALLBACK_SCORE: Record<HealthDomain, number> = {
  * connecting real data) was the one moment it was guaranteed to read as
  * "0% Wealth, 0% Protection" regardless of how well-covered the family
  * actually was.
+ *
+ * A domain with zero insights is ambiguous on its own — it means either
+ * "no data submitted yet" or "data submitted, detector found nothing
+ * wrong" (the ideal outcome), and those need to render differently: the
+ * first is a sample/illustrative number, the second is a real, verified
+ * "all clear". Distinguishes them by also checking whether a financial
+ * profile exists at all — a well-covered family who did everything right
+ * was otherwise shown the exact same "sample data" placeholder as someone
+ * who'd never connected anything.
  */
 export function useFamilyHealthDomains() {
   const { insights, loading, error } = useFamilyInsights()
+  const [hasProfile, setHasProfile] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchFinancialProfile().then((p) => { if (!cancelled) setHasProfile(!!p) })
+    return () => { cancelled = true }
+  }, [])
 
   const domains: Record<HealthDomain, DomainHealth> = {} as Record<HealthDomain, DomainHealth>
 
@@ -145,7 +162,9 @@ export function useFamilyHealthDomains() {
     const domainInsights = insights.filter((i) => i.detector_id === detectorId)
 
     if (domainInsights.length === 0) {
-      domains[domain] = { score: DOMAIN_FALLBACK_SCORE[domain], hasLiveData: false, insights: [] }
+      domains[domain] = hasProfile
+        ? { score: 100, hasLiveData: true, insights: [] }
+        : { score: DOMAIN_FALLBACK_SCORE[domain], hasLiveData: false, insights: [] }
       continue
     }
 

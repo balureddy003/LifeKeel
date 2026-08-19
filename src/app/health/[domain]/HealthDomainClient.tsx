@@ -127,8 +127,9 @@ export default function HealthDomainClient() {
         {!loading && domain.insights.length === 0 && (
           <GlassCard className="p-5">
             <p className="text-sm text-ink-secondary leading-relaxed">
-              No {meta.label.toLowerCase()} insights yet. Once you connect more data, this section will
-              show specific findings about your family's {meta.label.toLowerCase()}.
+              {domain.hasLiveData
+                ? `No gaps found in your ${meta.label.toLowerCase()} data — nice work.`
+                : `No ${meta.label.toLowerCase()} insights yet. Once you connect more data, this section will show specific findings about your family's ${meta.label.toLowerCase()}.`}
             </p>
           </GlassCard>
         )}

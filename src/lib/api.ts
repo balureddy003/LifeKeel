@@ -136,9 +136,19 @@ export async function fetchFamilyGoals(): Promise<FamilyGoal[]> {
 // financial profile, which is the one moment this number is most visible
 // and most likely to be read as "the app found nothing good about my
 // finances" rather than "you haven't clicked dismiss on anything yet".
+//
+// Zero insights is itself ambiguous — "no profile submitted" and "profile
+// submitted, nothing wrong found" (the ideal outcome) both produce an empty
+// array. Checking whether a profile actually exists is what tells a
+// well-covered family "you're verified and clear" instead of showing them
+// the same "No data yet, connect your accounts" prompt as someone who
+// hasn't done anything.
 export async function fetchFamilyReadinessScore(): Promise<{ score: number; hasLiveData: boolean }> {
   const insights = await fetchFamilyInsights()
-  if (insights.length === 0) return { score: 0, hasLiveData: false }
+  if (insights.length === 0) {
+    const profile = await fetchFinancialProfile()
+    return profile ? { score: 100, hasLiveData: true } : { score: 0, hasLiveData: false }
+  }
   const openPenalty = insights
     .filter((i) => !RESOLVED_INSIGHT_STATES.includes(i.state))
     .reduce((sum, i) => sum + i.confidence, 0)

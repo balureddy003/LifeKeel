@@ -388,7 +388,7 @@ export default function HomePage() {
             </>
           ) : hasLiveData ? (
             <p className="text-sm text-ink-tertiary leading-relaxed">
-              No retirement-specific insight yet — connect a pension or investment account to see a real suggestion here.
+              No retirement gap found in your data — your plan looks on track so far.
             </p>
           ) : (
             <p className="text-sm text-ink-tertiary leading-relaxed">
