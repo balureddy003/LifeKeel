@@ -53,7 +53,7 @@ export function TrustLadder() {
     // Open Banking has no live connect flow yet — the Financial Profile is
     // the real way to complete this step today, same as investments below.
     else if (step.id === 'bank') status = (connectedConnectors.includes('open-banking') || financialProfileSubmitted) ? 'done' : 'available'
-    else if (step.id === 'email') status = connectedConnectors.includes('gmail') ? 'done' : 'available'
+    else if (step.id === 'email') status = connectedConnectors.includes('email') ? 'done' : 'available'
     else if (step.id === 'investments') status = financialProfileSubmitted ? 'done' : 'available'
     else if (step.id === 'estate') status = 'available'
     return { ...step, status }

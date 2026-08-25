@@ -9,7 +9,7 @@ import { GlassCard, PageHeader, EmptyState, MoneyText, Skeleton } from '@/compon
 import { haptic } from '@/lib/haptics'
 import { INBOX_ITEMS } from '@/lib/onboarding-data'
 import type { InboxItem } from '@/lib/onboarding-data'
-import { fetchInboxItems, dismissInboxItem } from '@/lib/api'
+import { fetchInboxItems, dismissInboxItem, scanEmailInbox } from '@/lib/api'
 import { useAppStore } from '@/lib/store'
 
 const INBOX_ICONS: Record<string, LucideIcon> = {
@@ -49,7 +49,8 @@ export default function InboxPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [dismissingId, setDismissingId] = useState<string | null>(null)
-  const emailConnected = connectedConnectors.includes('gmail')
+  const [scanning, setScanning] = useState(false)
+  const emailConnected = connectedConnectors.includes('email')
 
   const loadInbox = useCallback(async () => {
     const result = await fetchInboxItems()
@@ -68,6 +69,19 @@ export default function InboxPage() {
   }, [loadInbox])
 
   const unreadCount = items.filter((i) => !i.read).length
+
+  const handleScanNow = async () => {
+    haptic('light')
+    setScanning(true)
+    const result = await scanEmailInbox()
+    if (result) {
+      haptic('success')
+      await loadInbox()
+    } else {
+      haptic('warning')
+    }
+    setScanning(false)
+  }
 
   const handleTap = (id: string) => {
     haptic('light')
@@ -150,6 +164,27 @@ export default function InboxPage() {
           </p>
         </GlassCard>
       </motion.div>
+      )}
+
+      {/* Email connected — manual rescan */}
+      {emailConnected && !loading && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <GlassCard className="p-4 flex items-center gap-3">
+            <Bot size={20} className="text-family-400 flex-shrink-0" />
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-ink-secondary">Email connected</div>
+              <p className="text-xs text-ink-tertiary mt-0.5">Scans automatically every 15 minutes.</p>
+            </div>
+            <button
+              onClick={handleScanNow}
+              disabled={scanning}
+              className="text-xs font-semibold text-family-400 px-3 py-2 rounded-xl bg-family-500/10 active:opacity-80 disabled:opacity-50 flex items-center gap-1.5"
+            >
+              {scanning ? <Loader2 size={12} className="animate-spin" /> : null}
+              {scanning ? 'Scanning...' : 'Scan now'}
+            </button>
+          </GlassCard>
+        </motion.div>
       )}
 
       {/* Email not connected banner */}

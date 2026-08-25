@@ -6,18 +6,18 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { PageHeader, GlassCard } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
-import { fetchConnectorStatuses, getConnectorAuthUrl, disconnectConnector, type ConnectorStatus } from '@/lib/api'
+import { fetchConnectorStatuses, disconnectConnector, type ConnectorStatus } from '@/lib/api'
 import { useAppStore } from '@/lib/store'
 import { Mail, Landmark, Check, Loader2, Unlink, Shield, Lock, Clock, ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 const CONNECTOR_ICONS: Record<string, LucideIcon> = {
-  gmail: Mail,
+  email: Mail,
   'open-banking': Landmark,
 }
 
 const CONNECTOR_DESCRIPTIONS: Record<string, string> = {
-  gmail: 'Connect your inbox to import financial documents — insurance renewals, bank statements, pension updates. Free on every plan. AI summaries in plain language are a paid upgrade.',
+  email: 'Connect any email provider — Gmail, Outlook, Yahoo, iCloud, or a custom domain — to import financial documents automatically. Free on every plan. AI summaries in plain language are a paid upgrade.',
   'open-banking': "We're working on secure bank account connections through a regulated banking partner. In the meantime, add your numbers directly in your Financial Profile to get personalized insights today.",
 }
 
@@ -45,21 +45,13 @@ export default function ConnectPage() {
     loadConnectors()
   }, [loadConnectors])
 
-  const handleConnect = async (connectorId: string) => {
+  const handleConnect = (connectorId: string) => {
     haptic('light')
-    setConnectingId(connectorId)
-    setError(null)
-
-    const authUrl = await getConnectorAuthUrl(connectorId)
-    if (authUrl) {
-      setConnectorConnected(connectorId, true)
-      haptic('success')
-      window.location.href = authUrl
-    } else {
-      setError(`Could not start ${connectorId} connection. The service may be offline — please try again later.`)
-      haptic('warning')
+    if (connectorId === 'email') {
+      router.push('/connect/email')
+      return
     }
-    setConnectingId(null)
+    setError(`${connectorId} isn't available to connect yet.`)
   }
 
   const handleDisconnect = async (connectorId: string) => {

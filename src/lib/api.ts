@@ -269,7 +269,7 @@ export interface ConnectorStatus {
 
 // Trading212/Zerodha deliberately excluded — see family-connectors.ts.
 const FAMILY_CONNECTORS: { id: string; name: string; category: string; comingSoon?: boolean }[] = [
-  { id: 'gmail', name: 'Gmail', category: 'email' },
+  { id: 'email', name: 'Email', category: 'email' },
   { id: 'open-banking', name: 'Open Banking', category: 'bank', comingSoon: true },
 ]
 
@@ -280,23 +280,64 @@ export async function fetchConnectorStatuses(): Promise<ConnectorStatus[]> {
   ).then((r) => r.connectors ?? [])
 }
 
-export async function getConnectorAuthUrl(connectorId: string): Promise<string | null> {
-  try {
-    const base = getApiBase()
-    const token = getAuthToken()
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (token) headers['Authorization'] = `Bearer ${token}`
+// Mirrors apps/api/src/email/providers.ts — host/port stay server-side, the
+// client only needs the id (to send) and label/hint (to display). Picking
+// "Other" leaves host/port to the user, which is what makes this connector
+// generic rather than tied to a fixed provider list.
+export interface EmailProviderOption {
+  id: string
+  name: string
+  passwordHint: string
+}
 
-    const res = await fetch(`${base}/connectors/${connectorId}/auth`, {
-      method: 'POST',
-      headers,
-    })
-    if (!res.ok) return null
-    const data = await res.json() as { authUrl: string }
-    return data.authUrl
-  } catch {
-    return null
-  }
+export const EMAIL_PROVIDER_OPTIONS: EmailProviderOption[] = [
+  { id: 'gmail', name: 'Gmail', passwordHint: 'Use a Google App Password, not your regular password (Google Account → Security → App passwords).' },
+  { id: 'outlook', name: 'Outlook / Microsoft 365', passwordHint: 'Use an app password if your account has multi-factor authentication enabled.' },
+  { id: 'yahoo', name: 'Yahoo Mail', passwordHint: 'Generate an app password from Yahoo Account Security settings.' },
+  { id: 'icloud', name: 'iCloud Mail', passwordHint: 'Use an app-specific password from appleid.apple.com.' },
+  { id: 'custom', name: 'Other / custom', passwordHint: "Check your email provider's IMAP settings page for the server host and port." },
+]
+
+export interface ConnectEmailPayload {
+  provider?: string
+  host?: string
+  port?: number
+  useTls?: boolean
+  username: string
+  password: string
+}
+
+export async function connectEmail(payload: ConnectEmailPayload): Promise<{ ok: true } | { ok: false; error: string }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${base}/connectors/email/credentials`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return { ok: false, error: data.error || 'Could not connect — check your details and try again.' }
+  return { ok: true }
+}
+
+export interface EmailScanResult {
+  scanned: number
+  inboxItemsCreated: number
+  documentsCreated: number
+}
+
+export async function scanEmailInbox(): Promise<EmailScanResult | null> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${base}/connectors/email/scan`, { method: 'POST', headers })
+  if (!res.ok) return null
+  return (await res.json()) as EmailScanResult
 }
 
 export async function disconnectConnector(connectorId: string): Promise<boolean> {
