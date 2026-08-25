@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Network } from 'lucide-react'
 import { GoogleIcon } from '@/components/GoogleIcon'
 import { useAuth } from '@/lib/auth-context'
@@ -109,7 +110,9 @@ export default function SignUpPage() {
       </motion.button>
 
       <p className="text-xs text-ink-tertiary text-center mt-4">
-        By continuing, you agree to our Terms and Privacy Policy.
+        By continuing, you agree to our{' '}
+        <Link href="/terms" className="text-family-400 font-medium">Terms</Link> and{' '}
+        <Link href="/privacy" className="text-family-400 font-medium">Privacy Policy</Link>.
       </p>
     </div>
   )
