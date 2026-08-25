@@ -7,28 +7,8 @@ import { PageHeader, GlassCard, EmptyState } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { uploadDocument, fetchDocuments, type FamilyDocument } from '@/lib/api'
 import { useAppStore } from '@/lib/store'
-import { Camera, FileText, Upload, Check, Loader2, AlertCircle, ChevronRight, ShieldCheck, Landmark, Home, TrendingUp, Receipt, Scale, Sparkles } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
-
-const CATEGORY_ICONS: Record<string, LucideIcon> = {
-  insurance: ShieldCheck,
-  pension: Landmark,
-  mortgage: Home,
-  investment: TrendingUp,
-  tax: Receipt,
-  will: Scale,
-  other: FileText,
-}
-
-const CATEGORY_LABELS: Record<string, string> = {
-  insurance: 'Insurance',
-  pension: 'Pension',
-  mortgage: 'Mortgage',
-  investment: 'Investment',
-  tax: 'Tax',
-  will: 'Will / Estate',
-  other: 'Other',
-}
+import { CATEGORY_ICONS, CATEGORY_LABELS } from '@/lib/document-categories'
+import { Camera, FileText, Upload, Check, Loader2, AlertCircle, ChevronRight, ShieldCheck, Sparkles } from 'lucide-react'
 
 function statusIcon(status: FamilyDocument['status']) {
   switch (status) {
@@ -223,7 +203,13 @@ export default function UploadPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.05 }}
               >
-                <GlassCard className="p-4">
+                <GlassCard
+                  className="p-4"
+                  interactive={doc.status === 'extracted'}
+                  {...(doc.status === 'extracted'
+                    ? { onClick: () => { haptic('light'); router.push(`/documents/${doc.id}`) } }
+                    : {})}
+                >
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-2xl bg-white/[0.05] flex items-center justify-center flex-shrink-0">
                       <Icon size={18} className="text-ink-secondary" />

@@ -213,6 +213,48 @@ export async function fetchDocuments(): Promise<{ documents: FamilyDocument[]; a
   )
 }
 
+export interface FamilyDocumentDetail extends FamilyDocument {
+  rawText: string
+}
+
+export async function fetchDocument(id: string): Promise<FamilyDocumentDetail | null> {
+  return apiFetch<FamilyDocumentDetail | null>(`/documents/${id}`, null)
+}
+
+export interface ProfileSuggestion {
+  path: string
+  label: string
+  valueMinor: number
+  sourceField: string
+  sourceValue: string
+}
+
+export async function fetchProfileSuggestions(documentId: string): Promise<ProfileSuggestion[]> {
+  return apiFetch<{ suggestions: ProfileSuggestion[] }>(
+    `/documents/${documentId}/profile-suggestions`,
+    { suggestions: [] },
+  ).then((r) => r.suggestions)
+}
+
+export async function applyDocumentToProfile(
+  documentId: string,
+  paths?: string[],
+): Promise<{ applied: { path: string; label: string; valueMinor: number }[] }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${base}/documents/${documentId}/apply-to-profile`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ paths }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Could not apply this document to your Financial Profile')
+  return data
+}
+
 // ── Connectors ────────────────────────────────────────────────────────────
 
 export interface ConnectorStatus {

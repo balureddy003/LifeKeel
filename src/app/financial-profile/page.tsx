@@ -76,27 +76,36 @@ function toMinor(whole: string): number {
   return Number.isFinite(n) ? Math.round(n * 100) : 0
 }
 
+// Defensive against a partial document — the "apply a document's extracted
+// field to your profile" flow (documents.ts's /apply-to-profile) can create
+// a profile with, say, only household.life_cover_minor set, months before
+// the user ever opens this wizard. A legacy document predating a schema
+// field addition (e.g. high_interest_debt_balance_minor) is the same shape
+// of gap. Every read here defaults rather than assumes the full shape.
 function fromProfile(profile: FinancialProfile): { form: FormState; funds: EducationFundForm[] } {
+  const household = profile.household ?? ({} as Partial<FinancialProfile['household']>)
+  const emergencyFund = profile.emergency_fund ?? ({} as Partial<FinancialProfile['emergency_fund']>)
+  const retirement = profile.retirement ?? ({} as Partial<FinancialProfile['retirement']>)
   return {
     form: {
-      employmentStatus: profile.household.employment_status,
-      monthlySalary: toWhole(profile.household.monthly_salary_minor),
-      annualLivingExpenses: toWhole(profile.household.annual_living_expenses_minor),
-      mortgageOutstanding: toWhole(profile.household.mortgage_outstanding_minor),
-      lifeCover: toWhole(profile.household.life_cover_minor),
-      incomeProtectionMonthly: toWhole(profile.household.income_protection_monthly_minor),
-      emergencySavings: toWhole(profile.emergency_fund.emergency_savings_minor),
-      monthlyExpenses: toWhole(profile.emergency_fund.monthly_expenses_minor),
-      hasHighInterestDebt: profile.emergency_fund.has_high_interest_debt,
-      highInterestDebtBalance: toWhole(profile.emergency_fund.high_interest_debt_balance_minor),
-      currentAge: String(profile.retirement.current_age),
-      targetRetirementAge: String(profile.retirement.target_retirement_age),
-      pensionBalance: toWhole(profile.retirement.pension_balance_minor),
-      monthlyContribution: toWhole(profile.retirement.monthly_contribution_minor),
-      targetRetirementIncome: toWhole(profile.retirement.target_retirement_income_minor),
-      expectedAnnualGrowthPct: String(profile.retirement.expected_annual_growth_pct),
+      employmentStatus: household.employment_status ?? EMPTY_FORM.employmentStatus,
+      monthlySalary: toWhole(household.monthly_salary_minor ?? 0),
+      annualLivingExpenses: toWhole(household.annual_living_expenses_minor ?? 0),
+      mortgageOutstanding: toWhole(household.mortgage_outstanding_minor ?? 0),
+      lifeCover: toWhole(household.life_cover_minor ?? 0),
+      incomeProtectionMonthly: toWhole(household.income_protection_monthly_minor ?? 0),
+      emergencySavings: toWhole(emergencyFund.emergency_savings_minor ?? 0),
+      monthlyExpenses: toWhole(emergencyFund.monthly_expenses_minor ?? 0),
+      hasHighInterestDebt: emergencyFund.has_high_interest_debt ?? false,
+      highInterestDebtBalance: toWhole(emergencyFund.high_interest_debt_balance_minor ?? 0),
+      currentAge: String(retirement.current_age ?? EMPTY_FORM.currentAge),
+      targetRetirementAge: String(retirement.target_retirement_age ?? EMPTY_FORM.targetRetirementAge),
+      pensionBalance: toWhole(retirement.pension_balance_minor ?? 0),
+      monthlyContribution: toWhole(retirement.monthly_contribution_minor ?? 0),
+      targetRetirementIncome: toWhole(retirement.target_retirement_income_minor ?? 0),
+      expectedAnnualGrowthPct: String(retirement.expected_annual_growth_pct ?? EMPTY_FORM.expectedAnnualGrowthPct),
     },
-    funds: profile.education_funds.map((f) => ({
+    funds: (profile.education_funds ?? []).map((f) => ({
       childName: f.child_name,
       childAge: String(f.child_age),
       currentSavings: toWhole(f.current_savings_minor),
