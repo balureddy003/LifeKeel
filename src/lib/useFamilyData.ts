@@ -146,12 +146,29 @@ const DOMAIN_FALLBACK_SCORE: Record<HealthDomain, number> = {
  * who'd never connected anything.
  */
 export function useFamilyHealthDomains() {
-  const { insights, loading, error } = useFamilyInsights()
+  const { insights, loading: insightsLoading, error } = useFamilyInsights()
   const [hasProfile, setHasProfile] = useState(false)
+  // Two independent fetches (insights, financial profile) feed this hook,
+  // and insights consistently resolves first — the returned `loading` flag
+  // used to reflect only that one, so any domain with zero insights (no
+  // profile-gap detector fired) rendered with the profile fetch's default
+  // `hasProfile: false` for a few real seconds: a lower score, a "some
+  // sample data" label, and the generic AI Memory card instead of a real
+  // insight, all before silently correcting themselves once the slower
+  // fetch caught up. Found by watching a real dashboard load and comparing
+  // against hand-computed expected scores — three of four domains were
+  // already correct while the fourth (whichever had no insights) was
+  // transiently wrong. Gating loading on both fetches removes the flicker.
+  const [profileLoading, setProfileLoading] = useState(true)
+  const loading = insightsLoading || profileLoading
 
   useEffect(() => {
     let cancelled = false
-    fetchFinancialProfile().then((p) => { if (!cancelled) setHasProfile(!!p) })
+    fetchFinancialProfile().then((p) => {
+      if (cancelled) return
+      setHasProfile(!!p)
+      setProfileLoading(false)
+    })
     return () => { cancelled = true }
   }, [])
 
