@@ -76,9 +76,9 @@ export function MarketingLanding() {
   }, [])
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen max-w-3xl mx-auto">
       {/* Hero */}
-      <div className="px-6 pt-14 pb-10">
+      <div className="px-6 sm:px-10 pt-14 pb-10">
         <div className="flex items-center gap-2 text-[11px] font-bold tracking-wide uppercase text-family-400 mb-4">
           <span className="w-1.5 h-1.5 rounded-full bg-success shadow-[0_0_0_3px_rgba(74,222,128,0.18)]" />
           Free to start &middot; no credit card
@@ -110,7 +110,7 @@ export function MarketingLanding() {
       </div>
 
       {/* Proof point */}
-      <div className="px-6 mb-4">
+      <div className="px-6 sm:px-10 mb-4">
         <div className="glass rounded-2xl p-4 flex items-start gap-3">
           <span className="text-2xl font-bold text-family-400 leading-none flex-shrink-0">Only 30%</span>
           <p className="text-[12.5px] text-ink-secondary leading-relaxed">
@@ -122,7 +122,7 @@ export function MarketingLanding() {
       </div>
 
       {/* Health rings demo */}
-      <div className="px-6 mb-4">
+      <div className="px-6 sm:px-10 mb-4">
         <div className="glass rounded-3xl p-5">
           <div className="flex items-center justify-between mb-1">
             <span className="text-[13px] font-semibold text-ink-secondary">Family Health</span>
@@ -141,7 +141,7 @@ export function MarketingLanding() {
       </div>
 
       {/* Honesty section */}
-      <div className="px-6 py-10">
+      <div className="px-6 sm:px-10 py-10">
         <h2 className="text-[1.4rem] font-bold text-center mb-3 leading-tight">
           Most finance apps fake confidence.<br />This one doesn&apos;t.
         </h2>
@@ -163,12 +163,12 @@ export function MarketingLanding() {
       </div>
 
       {/* Feature grid */}
-      <div className="px-6 py-10">
+      <div className="px-6 sm:px-10 py-10">
         <h2 className="text-[1.4rem] font-bold text-center mb-2">What&apos;s actually in it</h2>
         <p className="text-sm text-ink-tertiary text-center mb-7 max-w-xs mx-auto">
           No feature here is aspirational &mdash; everything below is something you can do in the app today.
         </p>
-        <div className="space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           {FEATURES.map((f) => (
             <div key={f.title} className="glass rounded-2xl p-4">
               <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3" style={{ background: `${f.color}22` }}>
@@ -182,7 +182,7 @@ export function MarketingLanding() {
       </div>
 
       {/* Family strip */}
-      <div className="px-6 py-10">
+      <div className="px-6 sm:px-10 py-10">
         <h2 className="text-[1.3rem] font-bold mb-3 leading-tight">
           One household, one picture &mdash; not five separate apps.
         </h2>
@@ -202,7 +202,7 @@ export function MarketingLanding() {
       </div>
 
       {/* Trust strip */}
-      <div className="px-6 py-10">
+      <div className="px-6 sm:px-10 py-10">
         <h2 className="text-[1.3rem] font-bold text-center mb-2">What we actually do to protect your data</h2>
         <p className="text-sm text-ink-tertiary text-center mb-7">Not a compliance-badge wall &mdash; just what&apos;s true.</p>
         <div className="space-y-4">
@@ -231,12 +231,12 @@ export function MarketingLanding() {
       </div>
 
       {/* Pricing */}
-      <div className="px-6 py-10">
+      <div className="px-6 sm:px-10 py-10">
         <h2 className="text-[1.4rem] font-bold text-center mb-2">Free to start. Simple if you upgrade.</h2>
         <p className="text-sm text-ink-tertiary text-center mb-7 max-w-xs mx-auto">
           Every core feature above is free. One paid tier, one thing it does.
         </p>
-        <div className="space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2 items-start">
           <div className="glass rounded-2xl p-5">
             <div className="flex items-baseline justify-between mb-3">
               <span className="text-[15px] font-bold">Free</span>
@@ -275,7 +275,7 @@ export function MarketingLanding() {
       </div>
 
       {/* Final CTA */}
-      <div className="px-6 py-12 text-center">
+      <div className="px-6 sm:px-10 py-12 text-center">
         <h2 className="text-[1.5rem] font-bold mb-2">Be ready, before the emergency happens.</h2>
         <p className="text-sm text-ink-secondary mb-6">Free to start. No credit card. Two minutes to build your family&apos;s response plan.</p>
         <Link href="/welcome" onClick={() => { haptic('light'); track('landing_get_started_click', { location: 'final_cta' }) }} className="block">
@@ -289,7 +289,7 @@ export function MarketingLanding() {
       </div>
 
       {/* Footer */}
-      <div className="px-6 py-8 border-t border-white/[0.06] flex flex-col items-center gap-4">
+      <div className="px-6 sm:px-10 py-8 border-t border-white/[0.06] flex flex-col items-center gap-4">
         <div className="flex gap-5 text-[13px] text-ink-secondary">
           <Link href="/terms">Terms</Link>
           <Link href="/privacy">Privacy</Link>

@@ -293,12 +293,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // down every list row across every page) guarantees it never happens.
   const emergencyGutter = showEmergency ? 'pr-16' : ''
 
+  // Every other screen in this app is deliberately phone-width even in a
+  // desktop browser — that's the right call for an authenticated app shell
+  // with a bottom tab bar. The public marketing page is the one screen most
+  // likely to actually be opened on a laptop (a link from email, a search
+  // result), so it manages its own responsive width instead of inheriting
+  // the phone-width wrapper, which otherwise left it stranded as a narrow
+  // column in a sea of empty space on anything wider than a phone.
+  const isMarketingPage = !isAuthenticated && pathname === '/'
+  const widthClass = isMarketingPage ? '' : 'max-w-md mx-auto'
+
   return (
     <div className="min-h-screen text-ink-primary">
       <MeshGradient />
       <OfflineBanner />
       <ModeEffects />
-      <div className={['max-w-md mx-auto', bottomPadding, emergencyGutter, 'pt-2 relative z-10'].filter(Boolean).join(' ')}>
+      <div className={[widthClass, bottomPadding, emergencyGutter, 'pt-2 relative z-10'].filter(Boolean).join(' ')}>
         <AuthGate>{children}</AuthGate>
         {showNav && <DisclaimerFooter />}
       </div>
