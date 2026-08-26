@@ -1,13 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Loader2, AlertCircle, CheckCircle2, ShieldCheck } from 'lucide-react'
 import { PageHeader, GlassCard, GlassButton } from '@/components/Glass'
+import { GoogleIcon } from '@/components/GoogleIcon'
 import { haptic } from '@/lib/haptics'
 import { useAppStore } from '@/lib/store'
-import { connectEmail, scanEmailInbox, EMAIL_PROVIDER_OPTIONS } from '@/lib/api'
+import { connectEmail, scanEmailInbox, startGmailOAuth, EMAIL_PROVIDER_OPTIONS } from '@/lib/api'
 
 export default function ConnectEmailPage() {
   const router = useRouter()
@@ -18,6 +19,7 @@ export default function ConnectEmailPage() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [connecting, setConnecting] = useState(false)
+  const [googleConnecting, setGoogleConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [connected, setConnected] = useState(false)
   const [scanning, setScanning] = useState(false)
@@ -25,6 +27,38 @@ export default function ConnectEmailPage() {
 
   const provider = EMAIL_PROVIDER_OPTIONS.find((p) => p.id === providerId)
   const isCustom = providerId === 'custom'
+
+  // Round trip from the Gmail OAuth flow (startGmailOAuth → Google's consent
+  // screen → apps/api's /connectors/gmail/oauth/callback) lands back here as
+  // a plain redirect with query params, not a client-side action — read them
+  // via window.location rather than useSearchParams(), which needs a
+  // Suspense boundary on a statically-exported page (see upgrade/page.tsx
+  // for the same pattern already used elsewhere in this app).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('connected') === 'email') {
+      const email = params.get('email')
+      if (email) setUsername(email)
+      setConnectorConnected('email', true)
+      setConnected(true)
+    } else if (params.get('connect') === 'gmail' && params.get('error')) {
+      setError(`Google sign-in didn't complete: ${params.get('error')}`)
+    }
+  }, [setConnectorConnected])
+
+  const handleGoogleConnect = async () => {
+    haptic('light')
+    setError(null)
+    setGoogleConnecting(true)
+    try {
+      const url = await startGmailOAuth()
+      window.location.href = url
+    } catch (err) {
+      haptic('warning')
+      setError(err instanceof Error ? err.message : 'Could not start Google sign-in.')
+      setGoogleConnecting(false)
+    }
+  }
 
   const handleConnect = async () => {
     haptic('light')
@@ -121,6 +155,27 @@ export default function ConnectEmailPage() {
           ))}
         </div>
       </GlassCard>
+
+      <AnimatePresence>
+        {providerId === 'gmail' && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="space-y-4">
+            <button
+              type="button"
+              onClick={handleGoogleConnect}
+              disabled={googleConnecting}
+              className="w-full glass rounded-2xl py-4 flex items-center justify-center gap-2.5 text-base font-semibold text-ink-primary disabled:opacity-60"
+            >
+              {googleConnecting ? <Loader2 size={20} className="animate-spin" /> : <GoogleIcon size={20} />}
+              {googleConnecting ? 'Redirecting to Google…' : 'Continue with Google'}
+            </button>
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-white/[0.08]" />
+              <span className="text-xs text-ink-tertiary">or connect manually</span>
+              <div className="h-px flex-1 bg-white/[0.08]" />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {isCustom && (

@@ -331,6 +331,24 @@ export async function connectEmail(payload: ConnectEmailPayload): Promise<{ ok: 
   return { ok: true }
 }
 
+/** Kicks off the Gmail OAuth flow — resolves to the Google consent-screen
+ * URL to navigate the browser to. On success, the callback lands back on
+ * this same /connect/email page with ?connected=email; on failure, with
+ * ?connect=gmail&error=... (see registerConnectorCredentialRoutes' family
+ * branch in apps/api/src/routes/connector-credentials.ts). */
+export async function startGmailOAuth(): Promise<string> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${base}/connectors/gmail/oauth/start?app=family&mode=json`, { headers })
+  if (!res.ok) throw new Error('Could not start Google sign-in — please try again.')
+  const data = (await res.json()) as { auth_url?: string }
+  if (!data.auth_url) throw new Error('Could not start Google sign-in — please try again.')
+  return data.auth_url
+}
+
 export interface EmailScanResult {
   scanned: number
   inboxItemsCreated: number
