@@ -5,8 +5,8 @@ import { ModeProvider } from '@/lib/mode-context'
 import { AppShell } from '@/components/AppShell'
 
 export const metadata: Metadata = {
-  title: 'Trellis — See how your family\'s finances connect',
-  description: 'Know the moment. Act with evidence. Built for families of all ages.',
+  title: 'Trellis — Your family\'s first responder for financial emergencies',
+  description: 'A guided response plan for job loss, medical crises, and the unexpected — built for families of all ages. Informational only, not financial advice.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,

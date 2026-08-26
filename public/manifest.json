@@ -1,7 +1,7 @@
 {
   "name": "Trellis",
   "short_name": "Trellis",
-  "description": "See how your family's finances connect",
+  "description": "Your family's first responder for financial emergencies",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

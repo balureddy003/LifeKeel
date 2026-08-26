@@ -59,11 +59,11 @@ function Ring({ pct, color, label, sample }: { pct: number; color: string; label
 }
 
 const FEATURES = [
-  { icon: HeartPulse, color: '#f87171', title: 'Four-part health check', body: 'Protection, wealth, goals, and savings, scored from what you’ve actually told Trellis — not a generic benchmark.' },
+  { icon: Siren, color: '#fbbf24', title: 'Emergency Mode', body: 'One tap, always reachable, drops straight into a guided checklist for the situation you’re actually in — no menu hunting under stress.' },
+  { icon: MessageCircle, color: '#4ade80', title: '"What happens if...?" — answered', body: '"What happens if I lose my job?" gets a real, specific answer built from your data — not a canned FAQ, and not advice, just what you told Trellis.' },
+  { icon: HeartPulse, color: '#f87171', title: 'A readiness snapshot, not a score to chase', body: 'Protection, wealth, goals, and savings, read from what you’ve told Trellis — a starting point for your own plan, not a recommendation.' },
   { icon: Wand2, color: '#60a5fa', title: 'Upload a document, skip the retyping', body: 'Photograph an insurance policy or pension statement — Trellis reads the coverage amount and offers to fill in your profile for you.' },
   { icon: Mail, color: '#9c92ff', title: 'Connect any email, not just Gmail', body: 'Gmail, Outlook, Yahoo, iCloud, or your own domain — Trellis scans for financial mail and summarizes it in plain language.' },
-  { icon: MessageCircle, color: '#4ade80', title: 'Ask, instead of hunting for a number', body: '"What happens if I lose my job?" gets a real, specific answer built from your data — not a canned FAQ.' },
-  { icon: Siren, color: '#fbbf24', title: 'Emergency Mode', body: 'One tap, always reachable, drops straight into a guided checklist for the situation you’re actually in — no menu hunting under stress.' },
   { icon: Command, color: '#8b80f8', title: 'A command palette, if you want it', body: 'Cmd+K jumps anywhere in the app instantly. Built for the parent who wants an answer in three seconds, not three taps.' },
 ]
 
@@ -77,11 +77,11 @@ export function MarketingLanding() {
           Free to start &middot; no credit card
         </div>
         <h1 className="text-[2.1rem] leading-[1.08] font-bold tracking-tight mb-4">
-          See how your <span className="text-gradient">family&apos;s finances</span> connect.
+          Your family&apos;s <span className="text-gradient">first responder</span> for financial emergencies.
         </h1>
         <p className="text-[1.05rem] text-ink-secondary leading-relaxed mb-7 max-w-sm">
-          Insurance, savings, retirement, and your kids&apos; education funds &mdash; in one place, for the whole
-          household. Not just your numbers. Your family&apos;s.
+          Job loss. A medical crisis. A parent gone too soon. Trellis builds your household a guided
+          response plan before the emergency &mdash; so the moment you need it, you&apos;re not starting from zero.
         </p>
         <div className="space-y-2.5 mb-4">
           <Link href="/welcome" onClick={() => haptic('light')} className="block">
@@ -97,7 +97,8 @@ export function MarketingLanding() {
           </Link>
         </div>
         <p className="text-[11px] text-ink-tertiary">
-          Works in your browser today. For informational purposes only &mdash; not financial advice.
+          Works in your browser today. Informational and educational only &mdash; not financial, investment,
+          tax, or legal advice, and not a substitute for calling 911 in a real emergency.
         </p>
       </div>
 
@@ -109,7 +110,7 @@ export function MarketingLanding() {
             <span className="text-[15px] font-bold text-success">80</span>
           </div>
           <p className="text-[11px] text-ink-tertiary mb-5">
-            Across protection, wealth &amp; goals &middot; <span className="text-warning">some sample data</span>
+            A readiness snapshot, not advice &middot; <span className="text-warning">some sample data</span>
           </p>
           <div className="flex items-center justify-around">
             <Ring pct={90} color={RING_COLORS.protection} label="Protection" />
@@ -128,6 +129,8 @@ export function MarketingLanding() {
         <p className="text-sm text-ink-secondary text-center leading-relaxed mb-6 max-w-sm mx-auto">
           Before you connect anything, Trellis shows sample numbers so you can see what it does &mdash; clearly
           labeled as samples, not dressed up as yours. The moment real data replaces them, the label disappears.
+          Trellis organizes what you tell it and helps you prepare &mdash; it doesn&apos;t recommend investments
+          or tell you what to buy.
         </p>
         <div className="glass rounded-2xl p-4 max-w-xs mx-auto">
           <div className="flex items-center gap-2 mb-2.5">
@@ -210,8 +213,8 @@ export function MarketingLanding() {
 
       {/* Final CTA */}
       <div className="px-6 py-12 text-center">
-        <h2 className="text-[1.5rem] font-bold mb-2">See your family&apos;s whole picture.</h2>
-        <p className="text-sm text-ink-secondary mb-6">Free to start. No credit card. Two minutes to your first health check.</p>
+        <h2 className="text-[1.5rem] font-bold mb-2">Be ready, before the emergency happens.</h2>
+        <p className="text-sm text-ink-secondary mb-6">Free to start. No credit card. Two minutes to build your family&apos;s response plan.</p>
         <Link href="/welcome" onClick={() => haptic('light')} className="block">
           <motion.div
             whileTap={{ scale: 0.97 }}
@@ -229,8 +232,9 @@ export function MarketingLanding() {
           <Link href="/privacy">Privacy</Link>
         </div>
         <p className="text-[10.5px] text-ink-tertiary text-center leading-relaxed max-w-sm">
-          For informational and educational purposes only. Not financial, investment, tax, or insurance advice.
-          Consult a qualified professional before making financial decisions.
+          For informational and educational purposes only. Not financial, investment, tax, insurance, or legal
+          advice, and not a substitute for professional emergency services &mdash; always call 911 in a real
+          emergency. Consult a qualified professional before making financial decisions.
         </p>
       </div>
     </div>

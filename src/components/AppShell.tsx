@@ -211,7 +211,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         </div>
         <h1 className="text-3xl font-bold mb-2 text-gradient">Trellis</h1>
         <p className="text-ink-tertiary mb-8 max-w-xs">
-          See how your family&apos;s finances connect. Know the moment. Act with evidence.
+          Your family&apos;s first responder for financial emergencies &mdash; ready before you need it.
         </p>
         <div className="w-full max-w-xs space-y-3">
           <Link href="/welcome" className="block">
