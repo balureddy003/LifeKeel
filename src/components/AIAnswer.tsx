@@ -81,10 +81,19 @@ function getAnswer(query: string): AIAnswer {
 // reuse that real, already-computed reasoning — instead of always
 // returning canned text — is what actually delivers on "connect your data
 // for a personalized response," without needing an LLM backend.
-const KEYWORD_DETECTOR: Record<string, string> = {
-  retire: 'family_retirement_gap',
-  protected: 'family_protection_gap',
-  job: 'family_emergency_fund_adequacy',
+//
+// preferredRuleId matters because a detector can fire more than one rule
+// at once — family_emergency_fund_adequacy alone covers both "less than 3
+// months saved" and "unaddressed high-interest debt". Picking the first
+// matching insight regardless of which rule produced it was a real, found
+// bug: asking "what happens if I lose my job?" surfaced the high-interest-
+// debt insight instead of the emergency-fund-coverage one, confidently
+// labeled "based on your documents" while answering a different question
+// than the one asked.
+const KEYWORD_DETECTOR: Record<string, { detectorId: string; preferredRuleId?: string }> = {
+  retire: { detectorId: 'family_retirement_gap' },
+  protected: { detectorId: 'family_protection_gap', preferredRuleId: 'life_insurance_below_household_needs' },
+  job: { detectorId: 'family_emergency_fund_adequacy', preferredRuleId: 'emergency_fund_below_3_months' },
 }
 
 function confidenceBucket(score: number): 'high' | 'medium' | 'low' {
@@ -109,15 +118,16 @@ export function AIAnswerCard({ query }: { query: string }) {
   useEffect(() => {
     let cancelled = false
     const lower = query.toLowerCase()
-    const detectorId = Object.entries(KEYWORD_DETECTOR).find(([key]) => lower.includes(key))?.[1]
-    if (!detectorId) {
+    const mapping = Object.entries(KEYWORD_DETECTOR).find(([key]) => lower.includes(key))?.[1]
+    if (!mapping) {
       setCheckedLive(true)
       return
     }
     fetchFamilyInsights()
       .then((insights) => {
         if (cancelled) return
-        const match = insights.find((i) => i.detector_id === detectorId)
+        const candidates = insights.filter((i) => i.detector_id === mapping.detectorId)
+        const match = candidates.find((i) => i.rule_id === mapping.preferredRuleId) ?? candidates[0]
         if (match && (match.reasoning || match.hypothesis)) {
           setLiveAnswer({
             query,

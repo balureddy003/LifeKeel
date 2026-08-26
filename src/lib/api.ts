@@ -13,6 +13,7 @@ import type { InboxItem } from './onboarding-data'
 export interface FamilyInsight {
   id: string
   detector_id: string
+  rule_id: string
   hypothesis: string
   reasoning: string
   actions: string[]
@@ -31,6 +32,7 @@ export interface FamilyInsight {
 interface RawInsight {
   id: string
   detector_id: string
+  rule_id: string
   hypothesis: string
   reasoning: string
   actions: string[]
@@ -47,6 +49,7 @@ function adaptInsight(raw: RawInsight): FamilyInsight {
   return {
     id: raw.id,
     detector_id: raw.detector_id,
+    rule_id: raw.rule_id,
     hypothesis: raw.hypothesis,
     reasoning: raw.reasoning,
     actions: raw.actions,
