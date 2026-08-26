@@ -12,6 +12,7 @@ import { MeshGradient } from './Glass'
 import { EmergencyMode } from './EmergencyMode'
 import { CommandPalette } from './CommandPalette'
 import { DisclaimerFooter } from './Disclaimer'
+import { MarketingLanding } from './MarketingLanding'
 import { haptic } from '@/lib/haptics'
 
 const NAV_ITEMS = [
@@ -188,6 +189,14 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         <Loader2 size={40} className="animate-spin text-family-400" />
       </div>
     )
+  }
+
+  // The public front door — anyone landing on "/" logged out sees the real
+  // marketing page instead of a bare "Get Started" screen, using the same
+  // real navigation (/welcome, /login, /terms, /privacy) as the rest of the
+  // app rather than a disconnected standalone page with dead-end links.
+  if (!isAuthenticated && pathname === '/') {
+    return <MarketingLanding />
   }
 
   if (!isAuthenticated && !isAuthRoute) {
