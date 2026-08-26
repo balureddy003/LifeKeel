@@ -319,7 +319,15 @@ export async function connectEmail(payload: ConnectEmailPayload): Promise<{ ok: 
     body: JSON.stringify(payload),
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) return { ok: false, error: data.error || 'Could not connect — check your details and try again.' }
+  if (!res.ok) {
+    const base = data.error || 'Could not connect — check your details and try again.'
+    // `detail` carries the mail server's actual reason (e.g. Gmail's real
+    // auth-failure text) — append it when present so the message says more
+    // than "check the host, port, and password" for the exact same error
+    // whether the password was wrong or IMAP is disabled entirely.
+    const error = data.detail && data.detail !== base ? `${base} (${data.detail})` : base
+    return { ok: false, error }
+  }
   return { ok: true }
 }
 
