@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <!-- Monochrome, no container — for a single-color context on a light ground: letterhead, a light-mode favicon, print. -->
+  <g stroke="#16151a" stroke-width="9" stroke-linecap="round">
+    <path d="M96 34 L34 96 L96 158 L158 96 Z" fill="none"/>
+    <path d="M96 34 L96 158"/>
+    <path d="M34 96 L158 96"/>
+  </g>
+  <circle cx="96" cy="34" r="9" fill="#16151a"/>
+  <circle cx="34" cy="96" r="9" fill="#16151a"/>
+  <circle cx="158" cy="96" r="9" fill="#16151a"/>
+  <circle cx="96" cy="158" r="9" fill="#16151a"/>
+  <circle cx="96" cy="96" r="12" fill="#16151a"/>
+</svg>
