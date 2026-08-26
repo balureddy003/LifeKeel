@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { Sparkles, CheckCircle2, Loader2, AlertCircle, ScanLine } from 'lucide-react'
 import { PageHeader, GlassCard, GlassButton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
+import { track } from '@/lib/growth-track'
 import { fetchBillingSubscription, startTrellisPlusCheckout } from '@/lib/api'
 
 const BENEFITS = [
@@ -78,6 +79,7 @@ export default function UpgradePage() {
   const [banner, setBanner] = useState<'success' | 'canceled' | null>(null)
 
   useEffect(() => {
+    track('upgrade_page_view')
     const params = new URLSearchParams(window.location.search)
     if (params.get('success') === 'true') setBanner('success')
     else if (params.get('canceled') === 'true') setBanner('canceled')
@@ -90,6 +92,7 @@ export default function UpgradePage() {
 
   const handleUpgrade = async () => {
     haptic('light')
+    track('upgrade_checkout_start')
     setCheckingOut(true)
     setError(null)
     try {

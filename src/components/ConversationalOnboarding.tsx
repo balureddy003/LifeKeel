@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Send, Bot, User, Baby, Sparkles, PartyPopper, Plus } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
+import { track } from '@/lib/growth-track'
 import { ONBOARDING_QUESTIONS } from '@/lib/onboarding-data'
 import type { FamilyMemberDraft } from '@/lib/onboarding-data'
 
@@ -198,6 +199,8 @@ export function ConversationalOnboarding() {
         // Best-effort — one failed member shouldn't block the rest or onboarding completion.
       }
     }
+
+    track('family_setup_completed', { member_count: allMembers.length })
 
     setTimeout(() => {
       router.push('/')

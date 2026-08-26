@@ -8,6 +8,7 @@ import { Network } from 'lucide-react'
 import { GoogleIcon } from '@/components/GoogleIcon'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
+import { track } from '@/lib/growth-track'
 
 export default function SignUpPage() {
   const [name, setName] = useState('')
@@ -25,6 +26,7 @@ export default function SignUpPage() {
     try {
       await signUp(name, email, password)
       haptic('success')
+      track('signup_completed', { method: 'password' })
       router.push('/family-setup')
     } catch (err) {
       haptic('warning')
@@ -38,6 +40,7 @@ export default function SignUpPage() {
     try {
       await signInWithProvider('google')
       haptic('medium')
+      track('signup_completed', { method: 'google' })
       router.push('/family-setup')
     } catch (err) {
       haptic('warning')

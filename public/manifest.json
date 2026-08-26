@@ -9,7 +9,7 @@
   "orientation": "portrait",
   "background_color": "#08080c",
   "theme_color": "#08080c",
-  "categories": ["finance", "lifestyle", "utilities"],
+  "categories": ["utilities", "lifestyle", "finance"],
   "dir": "ltr",
   "lang": "en-US",
   "icons": [

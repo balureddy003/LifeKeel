@@ -181,7 +181,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/reset-password') ||
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/terms') ||
-    pathname.startsWith('/privacy')
+    pathname.startsWith('/privacy') ||
+    pathname.startsWith('/support')
 
   if (isLoading) {
     return (
@@ -277,7 +278,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/reset-password') ||
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/terms') ||
-    pathname.startsWith('/privacy')
+    pathname.startsWith('/privacy') ||
+    pathname.startsWith('/support')
 
   const showNav = isAuthenticated && family && !isAuthRoute
   const showEmergency = showNav && pathname !== '/assistant' && config.showEmergencyButton

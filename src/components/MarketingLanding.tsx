@@ -10,6 +10,7 @@
  * no feature list, no security claim, is aspirational.
  */
 
+import { useEffect } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import {
@@ -22,8 +23,10 @@ import {
   Lock,
   ShieldCheck,
   Trash2,
+  CheckCircle2,
 } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
+import { track } from '@/lib/growth-track'
 
 const RING_COLORS = {
   protection: '#f87171',
@@ -68,6 +71,10 @@ const FEATURES = [
 ]
 
 export function MarketingLanding() {
+  useEffect(() => {
+    track('landing_view')
+  }, [])
+
   return (
     <div className="min-h-screen">
       {/* Hero */}
@@ -84,7 +91,7 @@ export function MarketingLanding() {
           response plan before the emergency &mdash; so the moment you need it, you&apos;re not starting from zero.
         </p>
         <div className="space-y-2.5 mb-4">
-          <Link href="/welcome" onClick={() => haptic('light')} className="block">
+          <Link href="/welcome" onClick={() => { haptic('light'); track('landing_get_started_click', { location: 'hero' }) }} className="block">
             <motion.div
               whileTap={{ scale: 0.97 }}
               className="w-full bg-family-500 text-white font-semibold rounded-2xl py-4 text-base text-center shadow-md shadow-family-500/15"
@@ -92,7 +99,7 @@ export function MarketingLanding() {
               Get started free
             </motion.div>
           </Link>
-          <Link href="/login" onClick={() => haptic('light')} className="block text-center">
+          <Link href="/login" onClick={() => { haptic('light'); track('landing_signin_click') }} className="block text-center">
             <span className="text-sm text-ink-tertiary">Already have an account? Sign in</span>
           </Link>
         </div>
@@ -100,6 +107,18 @@ export function MarketingLanding() {
           Works in your browser today. Informational and educational only &mdash; not financial, investment,
           tax, or legal advice, and not a substitute for calling 911 in a real emergency.
         </p>
+      </div>
+
+      {/* Proof point */}
+      <div className="px-6 mb-4">
+        <div className="glass rounded-2xl p-4 flex items-start gap-3">
+          <span className="text-2xl font-bold text-family-400 leading-none flex-shrink-0">Only 30%</span>
+          <p className="text-[12.5px] text-ink-secondary leading-relaxed">
+            of U.S. households have the documents they&apos;d actually need ready for an emergency, per FEMA&apos;s
+            2023 National Household Survey on Disaster Preparedness. Trellis exists to close that gap before you
+            need it closed.
+          </p>
+        </div>
       </div>
 
       {/* Health rings demo */}
@@ -211,11 +230,55 @@ export function MarketingLanding() {
         </div>
       </div>
 
+      {/* Pricing */}
+      <div className="px-6 py-10">
+        <h2 className="text-[1.4rem] font-bold text-center mb-2">Free to start. Simple if you upgrade.</h2>
+        <p className="text-sm text-ink-tertiary text-center mb-7 max-w-xs mx-auto">
+          Every core feature above is free. One paid tier, one thing it does.
+        </p>
+        <div className="space-y-3">
+          <div className="glass rounded-2xl p-5">
+            <div className="flex items-baseline justify-between mb-3">
+              <span className="text-[15px] font-bold">Free</span>
+              <span className="text-[13px] text-ink-tertiary">$0</span>
+            </div>
+            <ul className="space-y-2">
+              {['Emergency Mode', '"What happens if...?" scenarios', 'Readiness snapshot', 'Document upload & storage', 'Connect any email', 'Family roster & command palette'].map((f) => (
+                <li key={f} className="flex items-start gap-2 text-[12.5px] text-ink-secondary leading-relaxed">
+                  <CheckCircle2 size={14} className="text-ink-tertiary flex-shrink-0 mt-0.5" />
+                  <span>{f}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="glass rounded-2xl p-5 border-family-500/30">
+            <div className="flex items-baseline justify-between mb-3">
+              <span className="text-[15px] font-bold text-family-400">Trellis Plus</span>
+              <span className="text-[13px] text-ink-tertiary">£7.99<span className="text-[11px]">/mo</span></span>
+            </div>
+            <ul className="space-y-2">
+              {[
+                'Everything in Free',
+                'AI reads your documents — provider, policy number, amount, and dates pulled automatically',
+                'AI-summarized inbox — financial emails read and explained in plain language',
+                'Priority support',
+              ].map((f) => (
+                <li key={f} className="flex items-start gap-2 text-[12.5px] text-ink-secondary leading-relaxed">
+                  <CheckCircle2 size={14} className="text-family-400 flex-shrink-0 mt-0.5" />
+                  {f}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+        <p className="text-[11px] text-ink-tertiary text-center mt-4">Cancel anytime. No credit card to start free.</p>
+      </div>
+
       {/* Final CTA */}
       <div className="px-6 py-12 text-center">
         <h2 className="text-[1.5rem] font-bold mb-2">Be ready, before the emergency happens.</h2>
         <p className="text-sm text-ink-secondary mb-6">Free to start. No credit card. Two minutes to build your family&apos;s response plan.</p>
-        <Link href="/welcome" onClick={() => haptic('light')} className="block">
+        <Link href="/welcome" onClick={() => { haptic('light'); track('landing_get_started_click', { location: 'final_cta' }) }} className="block">
           <motion.div
             whileTap={{ scale: 0.97 }}
             className="w-full bg-family-500 text-white font-semibold rounded-2xl py-4 text-base text-center shadow-md shadow-family-500/15"
@@ -230,6 +293,7 @@ export function MarketingLanding() {
         <div className="flex gap-5 text-[13px] text-ink-secondary">
           <Link href="/terms">Terms</Link>
           <Link href="/privacy">Privacy</Link>
+          <Link href="/support">Support</Link>
         </div>
         <p className="text-[10.5px] text-ink-tertiary text-center leading-relaxed max-w-sm">
           For informational and educational purposes only. Not financial, investment, tax, insurance, or legal
