@@ -233,12 +233,23 @@ export function useFamilyTimeline() {
     hasChildren: (family?.members ?? []).some((m) => m.role === 'child'),
   }
 }
-const EVENT_DETECTOR_MAP: Record<string, string> = {
-  bereavement: 'family_protection_gap',
-  medical: 'family_protection_gap',
-  'job-loss': 'family_emergency_fund_adequacy',
-  university: 'family_education_shortfall',
-  retirement: 'family_retirement_gap',
+// Same detector-can-fire-multiple-rules issue fixed in AIAnswer.tsx's
+// KEYWORD_DETECTOR (see that file's comment) — family_protection_gap and
+// family_emergency_fund_adequacy each cover two distinct concerns, so
+// naively taking "the first insight for this detector" picks whichever
+// happens to sort first, not the one relevant to the scenario. Verified
+// live: without a preferred rule, "Medical emergency" only showed the
+// right one (no_income_protection, relevant to being unable to work due
+// to illness) because it happened to come first in array order — the
+// same pattern would have silently shown the wrong rule for "Family
+// member passed away" (life insurance, not income protection) had that
+// order been different, exactly like the Assistant bug did for "job".
+const EVENT_DETECTOR_MAP: Record<string, { detectorId: string; preferredRuleId?: string }> = {
+  bereavement: { detectorId: 'family_protection_gap', preferredRuleId: 'life_insurance_below_household_needs' },
+  medical: { detectorId: 'family_protection_gap', preferredRuleId: 'no_income_protection' },
+  'job-loss': { detectorId: 'family_emergency_fund_adequacy', preferredRuleId: 'emergency_fund_below_3_months' },
+  university: { detectorId: 'family_education_shortfall', preferredRuleId: 'education_fund_behind_target' },
+  retirement: { detectorId: 'family_retirement_gap' },
 }
 
 /**
@@ -260,8 +271,8 @@ export function useEventReadiness(
     let cancelled = false
     async function load() {
       setLoading(true)
-      const detectorId = EVENT_DETECTOR_MAP[eventId]
-      if (!detectorId) {
+      const mapping = EVENT_DETECTOR_MAP[eventId]
+      if (!mapping) {
         if (!cancelled) {
           setStability(fallbackStability)
           setExplanation(fallbackExplanation)
@@ -273,7 +284,8 @@ export function useEventReadiness(
 
       try {
         const insights = await fetchFamilyInsights()
-        const matching = insights.find((i) => i.detector_id === detectorId)
+        const candidates = insights.filter((i) => i.detector_id === mapping.detectorId)
+        const matching = candidates.find((i) => i.rule_id === mapping.preferredRuleId) ?? candidates[0]
         if (!cancelled) {
           if (matching && (matching.reasoning || matching.hypothesis)) {
             setStability(matching.confidence > 0 ? Math.round(matching.confidence * 100) : fallbackStability)
