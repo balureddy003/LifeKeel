@@ -139,9 +139,13 @@ apps/web (Next.js, static export → Firebase Hosting)
               (YAML detector evaluation — detectors/family/*.yaml)
                   depends on: @agentoak/platform (auth/mongo/telemetry primitives)
 
-              @agentoak/workflows  → connector OAuth schema registry only
-                                     (NOT the workflow/automation engine —
-                                     that routing surface was removed)
+              @agentoak/workflows  → connector OAuth/credential plumbing,
+                                     ConnectorActionExecutor, schema registry
+                                     (the WorkflowEngine/WorkflowLoader
+                                     automation engine and its 25 legacy
+                                     workflow YAMLs were deleted outright on
+                                     2026-09-12, not just left unrouted —
+                                     see SECURITY.md)
               @agentoak/pipeline   → connector event normalization
               @agentoak/mongodb-adapter, @agentoak/runtime, @agentoak/specifications,
               @agentoak/legacy-compat, @agentoak/conformance, @agentoak/outcome-kernel

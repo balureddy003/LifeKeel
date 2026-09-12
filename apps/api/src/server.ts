@@ -34,14 +34,13 @@ import swaggerUi from '@fastify/swagger-ui'
 import { ZodTypeProvider, jsonSchemaTransform } from 'fastify-type-provider-zod'
 import { Engine, type Insight, setSchemaRegistry } from '@agentoak/engine'
 import { ConnectorLoader, EventGenerator } from '@agentoak/pipeline'
-import { AuthService, canPerform, extractBearerToken, enforceQuota, getAllCircuitBreakers, QuotaExceededError, validateLicenseKey, SafeHttpClient, createLogger, initTelemetry, type ProductAction, type ProductResource } from '@agentoak/platform'
+import { AuthService, canPerform, extractBearerToken, enforceQuota, getAllCircuitBreakers, QuotaExceededError, validateLicenseKey, createLogger, initTelemetry, type ProductAction, type ProductResource } from '@agentoak/platform'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { registerInsightRoutes, cleanupStaleInsightsStartup } from './routes/insights.js'
 import { recordApiRequest, registerMetricsRoutes, recordLlmCacheHitMiss, buildFeatureHashScorerMetrics } from './routes/metrics.js'
 import { initAuditLogger } from './audit/audit-log.js'
-import { loadLiveTradingOptIn } from './trading/portfolio-data.js'
 import { registerAuthUserRoutes } from './routes/auth-users.js'
 import { registerSocialAuthRoutes } from './routes/auth-social.js'
 import { createLlmRouterFromEnv, LlmResponseCache, MongoLlmCacheStore, LlmBudgetGuard, LocalEmbeddingProvider } from '@agentoak/platform'
@@ -54,9 +53,8 @@ import { registerConnectorCredentialRoutes } from './routes/connector-credential
 import { DeliveryRouter } from './delivery/delivery-router.js'
 import { createMoveJudge } from './delivery/move-judge.js'
 import { ConnectorSyncEngine, TokenRefreshScheduler } from '@agentoak/pipeline'
-import { WorkflowEngine, WorkflowLoader, type WorkflowDef, type EventPayload, connectorSchemaRegistry } from '@agentoak/workflows'
+import { connectorSchemaRegistry } from '@agentoak/workflows'
 import cron from 'node-cron'
-import { enqueueWorkflowTrigger, startWorker } from './queue/WorkflowQueue.js'
 import { queueManager } from './queue/QueueManager.js'
 import { startWebhookWorker } from './queue/WebhookQueue.js'
 import { ApiReasoningContextBuilder } from './outcomes/reasoning-context-builder.js'
@@ -127,51 +125,17 @@ if (process.env['KAIROS_LICENSE_KEY'] && process.env['KAIROS_LICENSE_PUBLIC_KEY'
 // LLM function available module-wide for the goal compiler and other routes
 const globalLlmFn = createLlmRouterFromEnv()
 
-// Workflow engine — MongoDB-backed (shares the singleton client from db.ts)
+// MongoDB-backed app database (shares the singleton client from db.ts) —
+// "workflowDb" is a legacy name from before the workflow engine was removed;
+// it's really just the app's main Db handle, used throughout this file.
 import { getMongoClient, closeDb } from './db.js'
 let workflowDb!: import('mongodb').Db
-let workflowEngine!: WorkflowEngine
-let workflowLoader!: WorkflowLoader
 let deliveryRouter: DeliveryRouter | undefined
-// Scheduled cron tasks keyed by workflow ID — replaced when workflows hot-reload
-const scheduledCronTasks = new Map<string, ReturnType<typeof cron.schedule>>()
-
-function scheduledConnectors(def: WorkflowDef): string[] {
-  return [...new Set(def.nodes
-    .filter(node => node.type === 'connector_action')
-    .map(node => (node.config as { connector?: unknown }).connector)
-    .filter((connector): connector is string => typeof connector === 'string' && connector.length > 0))]
-}
-
-async function scheduledTenantIds(def: WorkflowDef): Promise<string[]> {
-  const explicitTenantId = (def as unknown as { tenant_id?: string }).tenant_id
-  if (explicitTenantId) return [explicitTenantId]
-
-  const connectors = scheduledConnectors(def)
-  if (connectors.length === 0) return ['system']
-
-  const tenantIds = await workflowDb.collection('connector_credentials').distinct('tenant_id', {
-    connector_id: { $in: connectors },
-  })
-  if (connectors.length === 1) return (tenantIds as string[]).filter(Boolean)
-
-  const readyTenantIds: string[] = []
-  for (const tenantId of tenantIds as string[]) {
-    const connectedCount = await workflowDb.collection('connector_credentials').countDocuments({
-      tenant_id: tenantId,
-      connector_id: { $in: connectors },
-    })
-    if (connectedCount >= connectors.length) readyTenantIds.push(tenantId)
-  }
-  return readyTenantIds
-}
-
 
 try {
   const mongoClient = await getMongoClient()
   workflowDb = mongoClient.db(process.env['MONGODB_DB'] ?? 'kairos')
   deliveryRouter = new DeliveryRouter(workflowDb, createMoveJudge(globalLlmFn, workflowDb))
-  workflowLoader = new WorkflowLoader(path.join(ROOT, 'definitions/workflows'), workflowDb)
 
   // One-time cleanup: archive stale pre-fix insight records (A1/A2/A3
   // patterns) that are still live on Home. Runs in the background —
@@ -180,231 +144,21 @@ try {
     log.error({ err }, 'Startup stale-insight cleanup failed'),
   )
 
-  // LLM router: per-tenant config from DB, falls back to env vars
-  // The factory is called per-run so tenant key changes take effect immediately
-  const envLlmFn = createLlmRouterFromEnv()
-
-  const llmFn = async (system: string, prompt: string, model?: string): Promise<string> => {
-    // tenantId injected into AsyncLocalStorage by WorkflowEngine — not yet wired;
-    // for now fall back to env-based router. Per-tenant routing is done at
-    // the workflow/run level in the /workflows/:id/run handler below.
-    return envLlmFn(system, prompt, model)
-  }
-
-  const safeHttp = new SafeHttpClient()
-  // createPendingTradeFn intentionally omitted (it's optional on
-  // WorkflowEngine) — that hook only fires from a workflow node, and no
-  // workflow routes exist to create a workflow in the first place. See
-  // ARCHITECTURE.md for what was trimmed and why.
-  workflowEngine = new WorkflowEngine({
-    db: workflowDb,
-    llmFn,
-    fetchFn: (url, init) => safeHttp.fetch(url, init),
-    sseBroadcast: (tenantId, _event) => {
-      log.debug({ tenant_id: tenantId }, 'SSE broadcast')
-    },
-  })
-  workflowLoader.loadAll()
-  log.info({ count: workflowLoader.getAll().length }, 'Workflow engine ready')
-
-  // ── Cron scheduler: schedule each workflow directly via node-cron ───────
-  // Replaces the old every-minute polling approach + custom cron parser.
-  // Each workflow with a valid cron schedule gets its own node-cron task.
-  // Hot-reload cancels and reschedules the affected workflow.
-  function scheduleWorkflowCron(def: WorkflowDef): void {
-    if (!def.trigger.schedule || !cron.validate(def.trigger.schedule)) return
-    // Cancel existing task if any (hot-reload)
-    const existing = scheduledCronTasks.get(def.id)
-    if (existing) existing.stop()
-    const task = cron.schedule(def.trigger.schedule, async () => {
-      const now = new Date()
-      try {
-        const tenantIds = await scheduledTenantIds(def)
-        for (const tenantId of tenantIds) {
-          const cronEvent = {
-            event_type: 'schedule',
-            tenant_id: tenantId,
-            data: { scheduled_at: now.toISOString(), cron: def.trigger.schedule, source: 'cron' },
-            id: `cron_${def.id}_${tenantId}_${now.getTime()}`,
-            created_at: now,
-          }
-          await enqueueWorkflowTrigger(def, cronEvent, tenantId)
-          log.info({ workflow_id: def.id, tenant_id: tenantId }, 'Cron enqueued workflow')
-        }
-      } catch (err) {
-        log.error({ workflow_id: def.id, err }, 'Cron failed to start workflow')
-      }
-    }, { missedExecutionTolerance: 30_000, noOverlap: true })
-    scheduledCronTasks.set(def.id, task)
-  }
-
-  // Schedule all initially-loaded workflows
-  for (const def of workflowLoader.getAll()) scheduleWorkflowCron(def)
-  // Re-schedule on hot-reload
-  workflowLoader.watch(id => {
-    const reloaded = workflowLoader.getAll().find(d => d.id === id)
-    if (reloaded) scheduleWorkflowCron(reloaded)
-    log.info({ workflow_id: id }, 'Workflow hot-reloaded')
-  })
-  log.info({ count: scheduledCronTasks.size }, 'Cron scheduler started')
-
-  // ── Goal autonomy scheduler ─────────────────────────────────────────────
-  // Runs the next workflow-backed plan step for active template goals.
-  cron.schedule('*/15 * * * *', async () => {
-    const now = new Date()
-    try {
-      const goals = await workflowDb.collection('goals').find({
-        status: 'active',
-        'execution_plan.enabled': true,
-        'execution_plan.status': 'active',
-        $or: [
-          { 'execution_plan.next_run_at': { $exists: false } },
-          { 'execution_plan.next_run_at': { $lte: now } },
-        ],
-      }).limit(100).toArray()
-
-      for (const goal of goals) {
-        const kpis = Array.isArray(goal['kpis']) ? goal['kpis'] as Array<{
-          current?: number
-          target?: number
-          direction?: 'increase' | 'decrease'
-        }> : []
-        const achieved = kpis.length > 0 && kpis.every(kpi => {
-          const current = Number(kpi.current ?? 0)
-          const target = Number(kpi.target ?? 0)
-          return kpi.direction === 'decrease' ? current <= target : current >= target
-        })
-        if (achieved) {
-          await workflowDb.collection('goals').updateOne(
-            { id: goal['id'], tenant_id: goal['tenant_id'] },
-            {
-              $set: {
-                status: 'achieved',
-                'execution_plan.enabled': false,
-                'execution_plan.status': 'completed',
-                'execution_plan.completed_at': now,
-                updated_at: now,
-              },
-            },
-          )
-          continue
-        }
-
-        const plan = goal['execution_plan'] as {
-          cadence?: 'daily' | 'weekly'
-          cycle_count?: number
-          steps?: Array<{ id: string; workflow_id?: string }>
-        } | undefined
-        const workflowSteps = (plan?.steps ?? []).filter(step => step.workflow_id)
-        if (workflowSteps.length === 0) continue
-
-        const cycleCount = plan?.cycle_count ?? 0
-        const step = workflowSteps[cycleCount % workflowSteps.length]!
-        const def = workflowLoader.get(step.workflow_id!)
-        if (!def) {
-          await workflowDb.collection('goals').updateOne(
-            { id: goal['id'], tenant_id: goal['tenant_id'] },
-            { $set: { 'execution_plan.status': 'blocked', 'execution_plan.blocked_reason': `Workflow ${step.workflow_id} not found`, updated_at: now } },
-          )
-          continue
-        }
-
-        const pendingApproval = await workflowDb.collection('workflow_approvals').findOne({
-          tenant_id: goal['tenant_id'],
-          workflow_id: def.id,
-          status: 'pending',
-        })
-        const cadenceMs = plan?.cadence === 'weekly' ? 7 * 86_400_000 : 86_400_000
-        const nextRunAt = new Date(now.getTime() + cadenceMs)
-
-        if (!pendingApproval) {
-          const event = {
-            event_type: 'goal_plan_cycle',
-            tenant_id: goal['tenant_id'],
-            data: {
-              goal_id: goal['id'],
-              goal_name: goal['name'],
-              goal_description: goal['description'],
-              plan_step_id: step.id,
-              cycle_count: cycleCount + 1,
-              source: 'goal_autonomy',
-            },
-            id: `goal_${goal['id']}_${now.getTime()}`,
-            created_at: now,
-          }
-          await enqueueWorkflowTrigger(def, event, goal['tenant_id'])
-        }
-
-        await workflowDb.collection('goals').updateOne(
-          { id: goal['id'], tenant_id: goal['tenant_id'] },
-          {
-            $set: {
-              'execution_plan.last_run_at': now,
-              'execution_plan.next_run_at': nextRunAt,
-              'execution_plan.last_step_id': step.id,
-              updated_at: now,
-            },
-            ...(!pendingApproval ? { $inc: { 'execution_plan.cycle_count': 1 } } : {}),
-          },
-        )
-      }
-    } catch (err) {
-      log.error({ err }, 'Goal autonomy scheduler failed')
-    }
-  }, { missedExecutionTolerance: 30_000, noOverlap: true })
-  log.info({}, 'Goal autonomy scheduler started')
-
   // ── Connector sync engine — polling + token refresh ───────────────────────
-  // Wires connector-driven insights (e.g. Trading 212 concentration-risk,
-  // rebalance-suggestion) into the same DeliveryRouter used for goal-progress
-  // insights — a live sync now reaches the tenant (WhatsApp/SMS/email, with a
-  // signed approve/dismiss link) without them needing to poll the app. This
-  // is deliberately the same "draft + notify + human approves" shape as the
-  // existing marketing_kairos_x_daily_capability workflow, reusing infra
-  // instead of adding a second bespoke mechanism.
+  // Wires connector-driven insights into the same DeliveryRouter used for
+  // goal-progress insights — a live sync reaches the tenant (WhatsApp/SMS/
+  // email, with a signed approve/dismiss link) without them needing to poll
+  // the app. The workflow-triggering half of this callback (matching an
+  // insight's detector to a workflow YAML and enqueueing it) was removed
+  // 2026-09-12 along with the rest of the dead WorkflowEngine/WorkflowLoader
+  // machinery — see ARCHITECTURE.md.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const syncEngine = new ConnectorSyncEngine(workflowDb as any, eventGenerator, engine,
     async (insights, tenantId) => {
-      // Computed once per callback (one tenant per call) rather than per
-      // insight — feeds the auto_approve_condition bypass in human_approval
-      // nodes (packages/workflows/src/nodes/NodeExecutor.ts) for the two
-      // autonomous-trading-eligible detectors. See the "Autonomous trade
-      // execution" plan for why only concentration-risk/price-drop qualify.
-      const liveTradingOptIn = await loadLiveTradingOptIn(tenantId).catch(() => null)
-      const autoTradingEnabled = liveTradingOptIn?.autoTradingEnabled ?? false
-
-      await Promise.allSettled([
-        ...(deliveryRouter
-          ? insights.map(insight => deliveryRouter!.deliver(insight as unknown as Record<string, unknown>, tenantId))
-          : []),
-        ...insights.flatMap(insight => {
-          const matchingWorkflows = workflowLoader.getByDetector(insight.detector_id)
-          return matchingWorkflows.map(def => {
-            // The template engine (packages/workflows/src/engine/TemplateEngine.ts)
-            // only does dot-path lookups, not arithmetic — so "_minor" (pence/cents)
-            // fields need a precomputed display counterpart, same convention as the
-            // other workflow YAMLs' `_display` fields (e.g. amount_display).
-            const featureSnapshot = insight.feature_snapshot ?? {}
-            const minorFieldDisplays = Object.fromEntries(
-              Object.entries(featureSnapshot)
-                .filter((entry): entry is [string, number] => entry[0].endsWith('_minor') && typeof entry[1] === 'number')
-                .map(([key, value]) => [`${key.slice(0, -'_minor'.length)}_display`, (value / 100).toFixed(2)]),
-            )
-            const event: EventPayload = {
-              id: randomUUID(),
-              tenant_id: tenantId,
-              event_type: 'detector_signal',
-              detector_id: insight.detector_id,
-              insight_id: insight.id,
-              data: { ...featureSnapshot, ...minorFieldDisplays, auto_trading_enabled: autoTradingEnabled },
-              created_at: new Date(),
-            }
-            return enqueueWorkflowTrigger(def, event, tenantId).catch(err =>
-              log.error({ workflow_id: def.id, insight_id: insight.id, err }, 'Failed to enqueue workflow trigger from insight'),
-            )
-          })
-        }),
-      ])
+      if (!deliveryRouter) return
+      await Promise.allSettled(
+        insights.map(insight => deliveryRouter!.deliver(insight as unknown as Record<string, unknown>, tenantId)),
+      )
     },
   )
 
@@ -708,9 +462,8 @@ try {
 
   // ── Queue setup ───────────────────────────────────────────────────────────
   await queueManager.connect()
-  startWorker(workflowEngine, workflowLoader, workflowDb)
   startWebhookWorker(engine, connectorLoader, eventGenerator, workflowDb)
-  log.info({}, 'Workflow queue worker started')
+  log.info({}, 'Queue manager connected')
 
   // ── Score calibration ─────────────────────────────────────────────────────
   // Loads per-detector temperature params into memory; calibrateSync() is then
@@ -1081,7 +834,6 @@ app.addHook('onRequest', async (request, reply) => {
       const tenant = await workflowDb.collection('tenants').findOne({ $or: [{ tenant_id: ctx.tenant_id }, { id: ctx.tenant_id }], status: { $in: ['active', 'trial'] } })
       if (!tenant) return reply.status(403).send({ error: 'Tenant is not provisioned or active' })
       const quotaResource = request.method === 'POST' && request.url.startsWith('/events') ? 'events'
-        : request.method === 'POST' && /^\/workflows\/[^/]+\/run/.test(request.url) ? 'workflows'
         : null
       if (quotaResource) {
         try { await enforceQuota(workflowDb, ctx.tenant_id, quotaResource) }
@@ -1108,7 +860,7 @@ app.addHook('preHandler', async (request, reply) => {
 
 function authorizationResource(url: string): ProductResource | null {
   const segment = url.split('?')[0]?.split('/')[1]
-  const map: Record<string, ProductResource> = { insights: 'insights', goals: 'goals', outcomes: 'goals', workflows: 'workflows', detectors: 'detectors', connectors: 'connectors', analytics: 'analytics', team: 'users', settings: 'settings', export: 'audit' }
+  const map: Record<string, ProductResource> = { insights: 'insights', goals: 'goals', outcomes: 'goals', detectors: 'detectors', connectors: 'connectors', analytics: 'analytics', team: 'users', settings: 'settings', export: 'audit' }
   return segment ? map[segment] ?? null : null
 }
 

@@ -1,64 +1,14 @@
 /**
- * Tests for Decision Support Quality fields (items 02/03):
- * alternatives_template, risk_template, exit_criteria_template in detector
- * YAMLs, and alternatives/risk_assessment/exit_criteria in the Trigger schema.
+ * Tests for Decision Support Quality fields (item 03):
+ * alternatives/risk_assessment/exit_criteria in the Trigger schema.
+ *
+ * The sibling coverage for alternatives_template/risk_template/
+ * exit_criteria_template in the trading detector YAMLs was removed
+ * 2026-09-12 along with detectors/trading/ itself — see ARCHITECTURE.md.
  */
 
 import { describe, it, expect } from 'vitest'
-import fs from 'node:fs/promises'
-import path from 'node:path'
-import yaml from 'js-yaml'
-import { DetectorConfigSchema, TriggerSchema } from '../schemas.js'
-
-const DETECTORS_DIR = path.join(__dirname, '..', '..', '..', '..', 'detectors', 'trading')
-
-const TRADING_DETECTORS = [
-  'concentration-risk.yaml',
-  'price-drop-alert.yaml',
-  'rebalance-suggestion.yaml',
-  'dividend-opportunity.yaml',
-]
-
-describe('Decision Support Quality: detector YAML fields', () => {
-  for (const filename of TRADING_DETECTORS) {
-    describe(filename, () => {
-      it('parses against DetectorConfigSchema with new template fields', async () => {
-        const content = await fs.readFile(path.join(DETECTORS_DIR, filename), 'utf-8')
-        const raw = yaml.load(content)
-        const parsed = DetectorConfigSchema.safeParse(raw)
-        expect(parsed.success, parsed.success ? '' : JSON.stringify(parsed.error.issues, null, 2)).toBe(true)
-      })
-
-      it('has alternatives_template with at least 2 options', async () => {
-        const content = await fs.readFile(path.join(DETECTORS_DIR, filename), 'utf-8')
-        const raw = yaml.load(content) as any
-        for (const rule of raw.rules) {
-          expect(rule.alternatives_template, `${filename} rule ${rule.id} missing alternatives_template`).toBeDefined()
-          expect(rule.alternatives_template.length, `${filename} rule ${rule.id} needs at least 2 alternatives`).toBeGreaterThanOrEqual(2)
-          for (const alt of rule.alternatives_template) {
-            expect(alt.label, `${filename} alternative missing label`).toBeTruthy()
-          }
-        }
-      })
-
-      it('has risk_template', async () => {
-        const content = await fs.readFile(path.join(DETECTORS_DIR, filename), 'utf-8')
-        const raw = yaml.load(content) as any
-        for (const rule of raw.rules) {
-          expect(rule.risk_template, `${filename} rule ${rule.id} missing risk_template`).toBeTruthy()
-        }
-      })
-
-      it('has exit_criteria_template', async () => {
-        const content = await fs.readFile(path.join(DETECTORS_DIR, filename), 'utf-8')
-        const raw = yaml.load(content) as any
-        for (const rule of raw.rules) {
-          expect(rule.exit_criteria_template, `${filename} rule ${rule.id} missing exit_criteria_template`).toBeTruthy()
-        }
-      })
-    })
-  }
-})
+import { TriggerSchema } from '../schemas.js'
 
 describe('Decision Support Quality: Trigger schema', () => {
   it('accepts alternatives, risk_assessment, and exit_criteria', () => {

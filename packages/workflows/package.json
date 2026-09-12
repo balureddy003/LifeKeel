@@ -1,7 +1,7 @@
 {
   "name": "@agentoak/workflows",
   "version": "0.1.0",
-  "description": "Connector OAuth/credential plumbing + event schema registry (the workflow/automation engine itself is unused in this trimmed backend — see ARCHITECTURE.md)",
+  "description": "Connector OAuth/credential plumbing, connector action execution, and the event schema registry — the workflow/automation engine (WorkflowEngine/WorkflowLoader and everything only reachable through them) was removed on 2026-09-12 as dead weight; see ARCHITECTURE.md.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -20,16 +20,10 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@agentoak/runtime": "workspace:*",
     "@agentoak/platform": "workspace:^",
-    "@agentoak/specifications": "workspace:*",
-    "filtrex": "^3.1.0",
-    "js-yaml": "^4.1.0",
-    "mongodb": "^7.3.0",
-    "zod": "^3.23.0"
+    "mongodb": "^7.3.0"
   },
   "devDependencies": {
-    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0",
     "vitest": "^4.1.9"

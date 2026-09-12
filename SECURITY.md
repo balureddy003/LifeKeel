@@ -5,10 +5,10 @@ or contact the repo owner directly rather than filing publicly.
 
 ## Repo layout
 
-- `apps/web` — the Trellis Next.js frontend (static-exported to Firebase Hosting).
+- `apps/web` — the Agent Oak Next.js frontend (static-exported to Firebase Hosting).
 - `apps/api` — kairos-ai's `apps/api` Fastify backend, copied wholesale on
   2026-09-12 (to keep parity with the source repo and minimize risk), then
-  trimmed on the same day to what Trellis actually calls plus the marketing
+  trimmed on the same day to what Agent Oak actually calls plus the marketing
   surfaces (blog, case studies, growth events) that support self-serve
   growth. See "Trimmed from the full copy" below for exactly what was
   removed. Currently NOT deployed — `apps/web` still points at the shared
@@ -18,16 +18,20 @@ or contact the repo owner directly rather than filing publicly.
 - `detectors/`, `connectors/`, `definitions/`, `verticals/`, `detector-evals/`,
   `category-table.yaml`, `scripts/fetch-yfinance.py` — runtime resource files
   `apps/api` reads via `path.join(ROOT, ...)`. Required for the API to boot
-  with real detector/connector/vertical data; copied wholesale alongside it.
-  These still contain non-family verticals' YAML (trading, social, etc.) —
-  harmless (nothing routes to them without the dropped detector/vertical
-  routes) but not pruned in this pass.
+  with real detector/connector/vertical data. Originally copied wholesale
+  alongside `apps/api`; the non-family verticals' YAML (`detectors/trading/`,
+  `detectors/property/`, `detectors/social/`, `detectors/ecommerce/`,
+  `detectors/finance/`, `detectors/saas/`, `detectors/cross-connector/`,
+  `detector-evals/trading_*.yaml`, and `definitions/workflows/`,
+  `definitions/goal-templates/`, `definitions/outcome-packs/`) was pruned in
+  a later pass the same day, once it turned out to be more than static
+  files — see below.
 
 ## Trimmed from the full copy (2026-09-12)
 
 The full copy included kairos-ai's entire multi-vertical SaaS surface —
 trading, property, social, SCIM/enterprise identity, federated learning,
-marketplace, teams, goals/workflows — none of it reachable from Trellis.
+marketplace, teams, goals/workflows — none of it reachable from Agent Oak.
 Trimmed down `apps/api/src/server.ts` from 67 registered route modules to
 13 (auth, connector-credentials, family group/financial-profile/connectors/
 inbox, documents, billing, insights, blog, case-studies, growth-events),
@@ -41,7 +45,7 @@ regardless of vertical). Also removed:
   invoice/payment/portfolio signals). Kept: billing cron, calibration
   drift/fitting, daily digest, retention worker, insight SLA/escalation,
   FeatureHashScorer offline eval, connector sync/health/token-refresh,
-  email-scan — all generic or directly relevant to Trellis's kept features.
+  email-scan — all generic or directly relevant to Agent Oak's kept features.
 - The `@kairos/skills` package entirely (was only referenced in a doc
   comment after its one consumer route was removed).
 - ~18 test files whose target route/job was deleted; kept 10 covering
@@ -50,22 +54,71 @@ regardless of vertical). Also removed:
   growth-events, blog, case-studies, plus generic engine/ML-isolation and
   email-connector coverage).
 
-Left alone deliberately: `trading/trade-confirmation.ts`,
-`trading/portfolio-data.ts`, `trading/broker-execution.ts`,
-`trading/pie-sync.ts`, and the `createPendingTradeFn` callback wired into
-`WorkflowEngine`'s construction in `server.ts` — all inert without a
-workflow engine actually running workflows (no workflow routes exist to
-create one), but removing them cleanly would mean restructuring
-`WorkflowEngine`'s constructor call, which wasn't worth the risk for dead
-code that can never execute. A future pass could remove these along with
-the rest of `src/trading/`, `src/goals/`, `src/outcomes/` if a deeper
-prune is wanted.
+## Removed: the dormant workflow engine and its YAML (2026-09-12)
+
+The paragraph above originally left the non-family detector/workflow YAML
+and the `WorkflowEngine`/`WorkflowLoader` machinery in place as "harmless —
+nothing routes to them." That held for the registered HTTP routes (no
+`/workflows` or `/goals` route was ever registered, so nothing could create
+new work for it), but it undersold the footprint: `apps/api/src/server.ts`
+was still constructing a live `WorkflowEngine`, loading and `node-cron`-
+scheduling all 25 `definitions/workflows/*.yaml` definitions on every boot,
+running a "goal autonomy" scheduler polling every 15 minutes, and — via the
+`ConnectorSyncEngine` callback — checking a live "auto trading opt-in" flag
+and enqueueing workflow triggers for trading-detector insights. None of that
+could actually fire in this deployment (no data ever reaches the `goals`/
+`connector_credentials` collections it needs), but it was real, running,
+scheduled infrastructure with zero product surface to see or manage it, one
+step from firing for real if the surrounding conditions ever changed
+(e.g. this API pointed at a database that also serves kairos-ai's other
+verticals). Given CLAUDE.md's rule that autonomous financial action always
+needs an explicit human gate, this was removed outright rather than left
+disclosed-but-present:
+
+- `WorkflowEngine`, `WorkflowLoader`, and everything only reachable through
+  them (`TemplateEngine`, `NodeExecutor`, `SkillEngine`, `AgentMemory`,
+  `WorkflowVersionStore`, `OutcomeAgent`, `GoalTemplateLoader`,
+  `OutcomePackLoader`, `VerticalLoader`, `ConnectorSandbox`,
+  `AttributionTracker` — not `CausalExperimentTracker`, which is still live)
+  deleted from `packages/workflows/src/`. The package now exports only the
+  connector OAuth/credential plumbing, `ConnectorActionExecutor`, and the
+  schema registry — matching what `ARCHITECTURE.md` already claimed it did.
+- `trading/trade-confirmation.ts`, `trading/broker-execution.ts`,
+  `trading/pie-sync.ts` didn't exist in this repo to begin with (already
+  trimmed in an earlier pass despite this file's prior wording).
+  `trading/portfolio-data.ts` (and the `loadLiveTradingOptIn` callback it
+  fed) is now also deleted — its only consumer was the removed
+  `ConnectorSyncEngine` callback branch.
+- `apps/api/src/approvals/timeout-sweep.ts` deleted — already-orphaned
+  (zero importers; the cron that called it was removed in the original
+  2026-09-12 trim, per this file's cron list above) and typed exclusively
+  against the now-deleted `WorkflowEngine`/`WorkflowLoader`.
+- `detectors/trading/`, `detectors/property/`, `detectors/social/` (+
+  `social_engagement_drop_v2.yaml`, `social_viral_spike.yaml`),
+  `detectors/ecommerce/`, `detectors/finance/`, `detectors/saas/`,
+  `detectors/cross-connector/`, `detector-evals/trading_*.yaml`,
+  `definitions/workflows/`, `definitions/goal-templates/`,
+  `definitions/outcome-packs/` deleted. Only `detectors/family/*.yaml` (4
+  files) remains under `detectors/` — the engine loads whatever's there
+  recursively, so this needed no code change.
+- Test files that read the deleted YAML directly were removed alongside it:
+  `packages/engine/src/__evals__/trading-detectors.eval.test.ts`,
+  `packages/engine/src/__tests__/trading-signal-evaluation.test.ts`,
+  `packages/engine/src/__tests__/social-detectors.test.ts`, plus the
+  matching test files under `packages/workflows/src/__tests__/` for
+  everything deleted from that package.
+
+Left alone (out of scope for this pass, flagged for a future one):
+`apps/api/src/data/sandbox-seed.ts` / `middleware/sandbox.ts` — a broader
+kairos-ai multi-vertical demo/trial "sandbox mode" that's still live and
+reachable, but only *mirrors* detector ids in comments and fabricated demo
+data, not a functional read of the deleted YAML.
 
 ## Known, deliberately deferred issues
 
 - **Auth token in `localStorage`.** `apps/web/src/lib/auth-context.tsx` and
   `apps/web/src/lib/api.ts` store the bearer token in `localStorage`
-  (`kairos_token`), which is readable by any script running on the page (XSS).
+  (`agentoak_token`), which is readable by any script running on the page (XSS).
   The correct fix is for `apps/api` to set an `httpOnly`, `Secure`, `SameSite`
   cookie instead of returning a bearer token. Now that `apps/api` lives in
   this repo, this is fixable here — just not done yet.
