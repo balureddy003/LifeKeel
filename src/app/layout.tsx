@@ -3,6 +3,7 @@ import './globals.css'
 import { AuthProvider } from '@/lib/auth-context'
 import { ModeProvider } from '@/lib/mode-context'
 import { AppShell } from '@/components/AppShell'
+import { Observability } from '@/components/Observability'
 
 export const metadata: Metadata = {
   title: 'Trellis — Your family\'s first responder for financial emergencies',
@@ -34,6 +35,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icon.svg" />
       </head>
       <body>
+        <Observability />
         <AuthProvider>
           <ModeProvider>
             <AppShell>{children}</AppShell>

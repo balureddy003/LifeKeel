@@ -6,6 +6,8 @@
  * against a server-side allowlist.
  */
 
+import { getApiBase } from './env'
+
 const ANON_ID_KEY = 'kairos_anon_id'
 
 function getAnonId(): string {
@@ -17,15 +19,11 @@ function getAnonId(): string {
   return id
 }
 
-function apiBase(): string {
-  return process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
-}
-
 export function track(event: string, meta?: Record<string, unknown>): void {
   if (typeof window === 'undefined') return
   try {
     const token = localStorage.getItem('kairos_token')
-    fetch(`${apiBase()}/growth/events`, {
+    fetch(`${getApiBase()}/growth/events`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

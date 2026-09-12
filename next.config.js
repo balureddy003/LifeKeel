@@ -13,9 +13,9 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001',
   },
-  images: isStaticExport
-    ? { unoptimized: true }
-    : { remotePatterns: [{ protocol: 'https', hostname: '**' }] },
+  // No next/image usage anywhere in this app today — no `images` config to
+  // maintain. Add one deliberately (with specific remotePatterns, not a
+  // wildcard hostname) if/when a remote-image use case shows up.
 }
 
 module.exports = nextConfig

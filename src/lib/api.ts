@@ -9,6 +9,8 @@
 
 import { AI_RESPONSES } from './life-data'
 import type { InboxItem } from './onboarding-data'
+import { getApiBase } from './env'
+import { reportError } from './observability'
 
 export interface FamilyInsight {
   id: string
@@ -83,10 +85,6 @@ const FAMILY_DETECTORS = [
   'family_retirement_gap',
 ] as const
 
-function getApiBase(): string {
-  return process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
-}
-
 function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null
   return localStorage.getItem('kairos_token')
@@ -102,9 +100,19 @@ async function apiFetch<T>(path: string, fallback: T): Promise<T> {
     if (token) headers['Authorization'] = `Bearer ${token}`
 
     const res = await fetch(`${base}${path}`, { headers })
-    if (!res.ok) throw new Error(`API ${res.status}`)
+    if (!res.ok) {
+      // 4xx here is routine — "no family yet", "not signed in yet" — that's
+      // exactly why every caller treats the fallback as a normal empty
+      // state, not an error. Only report what the fallback can't explain
+      // away as a legitimate empty state: a network failure (caught below)
+      // or the server itself erroring.
+      if (res.status >= 500) reportError(new Error(`API ${res.status}`), { path })
+      return fallback
+    }
     return (await res.json()) as T
-  } catch {
+  } catch (err) {
+    // fetch() itself threw — offline or unreachable, not a status code.
+    reportError(err, { path })
     return fallback
   }
 }
@@ -381,7 +389,8 @@ export async function disconnectConnector(connectorId: string): Promise<boolean>
       headers,
     })
     return res.ok
-  } catch {
+  } catch (err) {
+    reportError(err, { connectorId })
     return false
   }
 }
@@ -466,7 +475,8 @@ export async function dismissInboxItem(itemId: string): Promise<boolean> {
       headers,
     })
     return res.ok
-  } catch {
+  } catch (err) {
+    reportError(err, { itemId })
     return false
   }
 }

@@ -10,6 +10,7 @@ import {
   updateFamilyGroupMemberRole,
   type ApiFamilyGroup,
 } from './api'
+import { getApiBase } from './env'
 
 interface AuthContextValue {
   user: User | null
@@ -31,10 +32,6 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 const STORAGE_KEY = 'family-auth'
 const TOKEN_KEY = 'kairos_token'
-
-function getApiBase(): string {
-  return process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
-}
 
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'family'
@@ -181,8 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Google sign-in: redirect to the API's OAuth flow with app=family so the
   // callback redirects back to the Trellis app after authentication.
   const signInWithProvider = async (provider: 'google') => {
-    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
-    window.location.href = `${apiBase}/auth/${provider}/login?app=family`
+    window.location.href = `${getApiBase()}/auth/${provider}/login?app=family`
   }
 
   const signOut = () => {
