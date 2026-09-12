@@ -3,28 +3,22 @@ import './env.js'
 import { randomUUID } from 'node:crypto'
 
 /**
- * Kairos API Server — Fastify
+ * Trellis API Server — Fastify
  *
- * Four packages wired together:
- *   @kairos/engine    — evaluate detectors on incoming events
- *   @kairos/pipeline  — ingest connector data + webhook events
- *   @kairos/skills    — plan/execute/finalize skill decisions
+ * A full copy of kairos-ai's apps/api, trimmed to what Trellis (apps/web)
+ * actually calls plus the marketing surfaces (blog, case studies, growth
+ * events) that support self-serve growth. See SECURITY.md for the full
+ * list of routes/crons/packages removed and why.
+ *
+ * Packages wired together:
+ *   @kairos/engine    — evaluate detectors (family_* only) on incoming events
+ *   @kairos/pipeline  — connector data ingestion (email/Gmail)
+ *   @kairos/workflows — connector credential/OAuth plumbing, schema registry
  *   @kairos/platform  — JWT auth, money utilities, telemetry
  *
- * Route map:
- *   POST /events              — ingest event, run detectors, persist insights
- *   POST /events/stream       — same, streamed via SSE
- *   POST /webhooks/:connector — receive third-party webhook, run pipeline
- *   GET  /insights            — list insights (tenant-scoped, filterable)
- *   GET  /insights/:id        — single insight
- *   GET  /insights/:id/explain — full rule evaluation trace
- *   POST /insights/:id/approve — approve insight actions
- *   POST /insights/:id/dismiss — dismiss insight
- *   GET  /engine/health       — engine liveness + detector count
- *   GET  /engine/metrics      — per-detector hit rates, latency
- *   GET  /engine/detectors    — full detector inventory
- *   GET  /engine/detectors/:id — single detector spec
- *   GET  /connectors          — list available connectors
+ * Route map (registered further down — search "Modular route handlers"):
+ *   /auth/*, /connectors/*, /family*, /documents*, /billing/*, /inbox*,
+ *   /insights, /blog/*, /case-studies, /growth/*, /metrics
  *   GET  /health              — server liveness (unauthenticated)
  */
 
@@ -44,40 +38,21 @@ import { AuthService, canPerform, extractBearerToken, enforceQuota, getAllCircui
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { registerEventRoutes } from './routes/events.js'
 import { registerInsightRoutes, cleanupStaleInsightsStartup } from './routes/insights.js'
+import { recordApiRequest, registerMetricsRoutes, recordLlmCacheHitMiss, buildFeatureHashScorerMetrics } from './routes/metrics.js'
 import { initAuditLogger } from './audit/audit-log.js'
-import { registerEngineRoutes } from './routes/engine.js'
-import { registerWebhookRoutes } from './routes/webhooks.js'
-import { registerAnalyticsRoutes } from './routes/analytics.js'
-import { registerPortfolioRoutes } from './routes/portfolio.js'
-import { registerPropertyRoutes } from './routes/property.js'
-import { registerSocialRoutes } from './routes/social.js'
 import { buildAutoTradeIntent } from './trading/auto-trade.js'
-import { createPendingTrade, runAutoTradeConfirmationSweep, runTradeReconciliationSweep, initTradeFeatureHashScorer, findExistingAutoTradeForToday } from './trading/trade-confirmation.js'
+import { createPendingTrade, initTradeFeatureHashScorer, findExistingAutoTradeForToday } from './trading/trade-confirmation.js'
 import { loadLiveTradingOptIn } from './trading/portfolio-data.js'
-import { runApprovalTimeoutSweep } from './approvals/timeout-sweep.js'
-import { registerControlRoomRoutes } from './routes/control-room.js'
-import { registerDetectorCrudRoutes } from './routes/detectors-crud.js'
 import { registerAuthUserRoutes } from './routes/auth-users.js'
 import { registerSocialAuthRoutes } from './routes/auth-social.js'
-import { registerWorkflowRoutes } from './routes/workflows.js'
-import { registerOutcomePackRoutes } from './routes/outcome-packs.js'
-import { registerVerticalRoutes } from './routes/verticals.js'
-import { registerWorkflowTemplateRoutes } from './routes/workflow-templates.js'
-import { registerDetectorHealthRoutes } from './routes/detector-health.js'
-import { registerSettingsRoutes } from './routes/settings.js'
-import { registerApprovalRoutes } from './routes/approvals.js'
 import { createLlmRouterFromEnv, LlmResponseCache, MongoLlmCacheStore, LlmBudgetGuard, LocalEmbeddingProvider } from '@kairos/platform'
 import {
-  AdaptiveThresholdStore, ScoreCalibrator, IntentClassifier,
+  ScoreCalibrator, IntentClassifier,
   NoveltyTracker, ChangePointDetector, FeatureHashScorer, TenantLevelScorer,
-  FederatedLearningService,
 } from '@kairos/engine'
 import { ApiLlmScorer } from './llm-scorer.js'
 import { registerConnectorCredentialRoutes } from './routes/connector-credentials.js'
-import { registerIngestRoutes } from './routes/ingest.js'
-import { registerDeliveryRoutes } from './routes/delivery.js'
 import { DeliveryRouter } from './delivery/delivery-router.js'
 import { createMoveJudge } from './delivery/move-judge.js'
 import { ConnectorSyncEngine, TokenRefreshScheduler } from '@kairos/pipeline'
@@ -87,61 +62,17 @@ import { enqueueWorkflowTrigger, startWorker } from './queue/WorkflowQueue.js'
 import { queueManager } from './queue/QueueManager.js'
 import { startWebhookWorker } from './queue/WebhookQueue.js'
 import { ApiReasoningContextBuilder } from './outcomes/reasoning-context-builder.js'
-import { GoalSummarisationJob } from './jobs/goal-summarisation-job.js'
-import { registerAttributionRoutes } from './routes/attribution.js'
-import { registerVersionRoutes } from './routes/versions.js'
-import { registerSsoRoutes } from './routes/auth-sso.js'
-import { recordApiRequest, registerMetricsRoutes, recordLlmCacheHitMiss, buildFeatureHashScorerMetrics } from './routes/metrics.js'
-import { registerSkillRoutes } from './routes/skills.js'
-import { registerPromptRoutes } from './routes/prompts.js'
-import { registerPrivacyRoutes } from './routes/privacy.js'
-import { registerEventSchemaRoutes } from './routes/event-schemas.js'
-import { registerIdentityRoutes } from './routes/identity.js'
-import { registerMigrationRoutes } from './routes/migrations.js'
-import { registerMlIsolationHealthRoutes } from './routes/ml-isolation-health.js'
-import { registerScimRoutes } from './routes/scim.js'
-import { registerScimConfigRoutes } from './routes/scim-config.js'
-import { GoalMigrationWorker } from './jobs/goal-migration-worker.js'
-import { registerDesktopSyncRoutes } from './routes/desktop-sync.js'
 import { RetentionWorker } from './jobs/retention-worker.js'
 import { InsightSlaWorker } from './jobs/insight-sla-worker.js'
 import { EscalationWorker } from './jobs/escalation-worker.js'
 import { createCredentialExpiryInsights } from './jobs/connector-health-alert.js'
 import { scanAllConnectedInboxes } from './jobs/email-scan.js'
 import { registerApiVersioning, rewriteVersionedUrl } from './api-versioning.js'
-import { registerOnboardingRoutes } from './routes/onboarding.js'
-import { registerGoalRoutes } from './routes/goals.js'
-import { registerGoalsAIRoutes } from './routes/goals-ai.js'
-import { registerExecutionEventRoutes } from './routes/execution-events.js'
-import { registerAuditTrailRoutes } from './routes/audit-trail.js'
-import { registerAIPersonalityRoutes } from './routes/ai-personality.js'
-import { registerGoalDecompositionRoutes } from './routes/goal-decomposition.js'
-import { registerVisualWorkflowRoutes } from './routes/visual-workflow.js'
-import { registerWorkflowMarketplaceRoutes } from './routes/marketplace-v2.js'
-import { registerFederatedRoutes } from './routes/federated.js'
-import { KpiComputeEngine } from './jobs/kpi-compute-engine.js'
-import { registerGoalCompilerRoutes } from './routes/goal-compiler.js'
-import { registerVerifiedMomentRoutes } from './routes/verified-moments.js'
-import { registerMarketplaceRoutes } from './routes/marketplace.js'
-import { registerAccountantRoutes } from './routes/accountant.js'
-import { registerTenantRoutes } from './routes/tenants.js'
-import { registerAlertRuleRoutes } from './routes/alert-rules.js'
 import { registerBillingRoutes } from './routes/billing.js'
 import { registerBlogRoutes } from './routes/blog.js'
-import { registerEntitlementRoutes } from './routes/entitlements.js'
-import { registerCollaborationRoutes } from './routes/collaboration.js'
-import { registerSearchRoutes } from './routes/search.js'
-import { registerDetectorPromotionRoutes } from './routes/detector-promotions.js'
-import { registerOutcomeRoutes } from './routes/outcomes.js'
-import { registerQueryRoutes } from './routes/query.js'
-import { registerTeamRoutes } from './routes/team.js'
-import { registerCopilotRoutes } from './routes/copilot.js'
-import { registerBenchmarkRoutes } from './routes/benchmarks.js'
 import { persistAndDeliverInsights as persistAndDeliverInsightsCore } from './insights-persist.js'
 import { deploymentConfig, logDeploymentMode } from './config/deployment.js'
 import { addSandboxContext, sandboxMiddleware, sandboxWriteMiddleware } from './middleware/sandbox.js'
-import { registerReportRoutes } from './routes/reports.js'
-import { registerAutoApprovalRulesRoutes } from './routes/auto-approval-rules.js'
 import { registerCaseStudyRoutes } from './routes/case-studies.js'
 import { registerDocumentRoutes } from './routes/documents.js'
 import { registerFamilyConnectorRoutes } from './routes/family-connectors.js'
@@ -166,18 +97,14 @@ const log = createLogger({ service: 'api', version: process.env['npm_package_ver
 // These are instantiated before MongoDB connects — they degrade gracefully
 // when DB is unavailable (calibrator/thresholds use identity/fallback values)
 let scoreCalibrator: ScoreCalibrator | undefined
-let adaptiveThresholds: AdaptiveThresholdStore | undefined
 let intentClassifier: IntentClassifier | undefined
 let noveltyTracker: NoveltyTracker | undefined
 let changePointDetector: ChangePointDetector | undefined
 let featureHashScorer: FeatureHashScorer | undefined
 let tenantLevelScorer: TenantLevelScorer | undefined
-let federatedLearningService: FederatedLearningService | undefined
-let kpiComputeEngine: KpiComputeEngine | undefined
 // Captures persistAndDeliverInsights (defined inside the Mongo-connect try
-// block below, alongside SocialAnalyticsPoller/KpiComputeEngine) so the
-// property/social manual-entry routes — registered later, outside that try
-// block, where `app` exists — can reuse the same persist+deliver hook.
+// block below) so routes registered later, outside that try block, where
+// `app` exists, can reuse the same persist+deliver hook.
 let insightsDeliveryHook: ((insights: Insight[], tenantId: string) => Promise<void>) | undefined
 
 // Engine is created before DB connects — calibrator is set after DB is ready
@@ -576,61 +503,10 @@ try {
   }, { missedExecutionTolerance: 30_000, noOverlap: true })
   log.info({}, 'Email scan cron started')
 
-  // ── Consolidated per-minute sweep ─────────────────────────────────────────
-  // Previously three separate `* * * * *` crons (auto-trade confirmation,
-  // trade reconciliation, approval timeout sweep), each with its own
-  // node-cron heartbeat timer. On a 2-CPU Cloud Run instance the event loop
-  // is intermittently blocked for >1s by ONNX inference, workflow execution,
-  // and GC pauses. node-cron's default `missedExecutionTolerance` is 1000ms,
-  // so when the heartbeat fires >1s late the entire tick is SKIPPED — this
-  // caused a 50-75% miss rate on all three per-minute sweeps (verified in
-  // production logs, pre-existing since at least 2026-07-31).
-  //
-  // Fix: consolidate into a single cron tick that runs all three sweeps
-  // sequentially, with `missedExecutionTolerance: 5000` (5s slack) and
-  // `noOverlap: true` (if a sweep takes >1min, skip the next tick instead
-  // of queuing up overlapping DB queries). This reduces 3 heartbeat timers
-  // to 1 and 3 independent DB connection cycles to 1.
-  cron.schedule('* * * * *', async () => {
-    // Auto-trade confirmation — confirms autonomous pending trades once
-    // their 5-minute human-cancellation window has elapsed. See
-    // apps/api/src/trading/trade-confirmation.ts.
-    try {
-      await runAutoTradeConfirmationSweep()
-    } catch (err) {
-      log.error({ err }, 'Auto-trade confirmation sweep failed')
-    }
-    // Trade reconciliation — handles Gap #13 (orphaned `executing` trades),
-    // Gap #14 (stale manual pending trades), Gap #15 (broker fill prices).
-    try {
-      await runTradeReconciliationSweep()
-    } catch (err) {
-      log.error({ err }, 'Trade reconciliation sweep failed')
-    }
-    // Approval timeout — resolves human-approval gates past their timeout_at
-    // via the node's configured timeout_action. See
-    // apps/api/src/approvals/timeout-sweep.ts.
-    try {
-      await runApprovalTimeoutSweep(workflowDb, workflowEngine, workflowLoader)
-    } catch (err) {
-      log.error({ err }, 'Approval timeout sweep failed')
-    }
-  }, { missedExecutionTolerance: 5_000, noOverlap: true })
-  log.info({}, 'Consolidated per-minute sweep cron started (auto-trade + reconciliation + approval timeout)')
-
-  // Momentum rebalance sweep — hourly during US market hours
-  // (14:00-21:00 UTC / 09:30-16:00 ET, weekdays). The 5-minute
-  // cancellation window still executes pending trades quickly, but
-  // hourly scoring cuts CPU/cost in half compared to every 30 minutes.
-  cron.schedule('0 14-21 * * 1-5', async () => {
-    try {
-      const { runMomentumRebalanceSweep } = await import('./trading/momentum-rebalance.js')
-      await runMomentumRebalanceSweep()
-    } catch (err) {
-      log.error({ err }, 'Momentum rebalance sweep failed')
-    }
-  }, { missedExecutionTolerance: 30_000 })
-  log.info({}, 'Momentum rebalance sweep cron started (hourly, 14:00-21:00 UTC, weekdays)')
+  // Trading (auto-trade confirmation, reconciliation, momentum rebalance)
+  // and workflow-approval-timeout sweeps removed — Trellis has no trading
+  // vertical and no workflow engine to create approval gates in the first
+  // place. See SECURITY.md for the full list of what was trimmed.
 
   // ── Daily digest delivery — batch low/medium insights into a summary ──────
   // Runs at 08:00 daily; sends each tenant their queued insights as one email.
@@ -817,20 +693,9 @@ try {
   }, { missedExecutionTolerance: 60_000 })
   log.info({}, 'Calibration fitting cron started (nightly 3 AM)')
 
-  // ── Federated learning round — weekly Monday 4 AM ─────────────────────────
-  // Collects gradients from all active tenants, aggregates them with
-  // DP noise + secure aggregation + k-anonymity (min 20 tenants), and
-  // stores a global model that new tenants warm-start from.
-  cron.schedule('0 4 * * 1', async () => {
-    if (!federatedLearningService) return
-    try {
-      const result = await federatedLearningService.runWeeklyRound()
-      log.info(result, 'Federated learning weekly round completed')
-    } catch (err) {
-      log.error({ err }, 'Federated learning weekly round failed')
-    }
-  }, { missedExecutionTolerance: 60_000 })
-  log.info({}, 'Federated learning cron started (weekly Monday 4 AM)')
+  // Federated learning round removed — cross-tenant model aggregation isn't
+  // relevant to a single-vertical family app, and requires a min-20-tenant
+  // cohort to run at all.
 
   // ── Billing cron — daily at 4 AM ──────────────────────────────────────────
   // Handles outcome charge settlement (H3), trial expiration (H5),
@@ -846,96 +711,23 @@ try {
   }, { missedExecutionTolerance: 60_000 })
   log.info({}, 'Billing cron started (daily 4 AM)')
 
-  // ── Goal integrity job — daily at 4:30 AM ─────────────────────────────────
-  // EPIC-002: detects duplicate active goals sharing the same template_id+
-  // vertical or name. Flags them for manual review — never auto-merges.
-  cron.schedule('30 4 * * *', async () => {
-    try {
-      const { runGoalIntegrityJob } = await import('./jobs/goal-integrity-job.js')
-      const result = await runGoalIntegrityJob(workflowDb)
-      log.info({ result }, 'Goal integrity job completed')
-    } catch (err) {
-      log.error({ err }, 'Goal integrity job failed')
-    }
-  }, { missedExecutionTolerance: 60_000 })
-  log.info({}, 'Goal integrity job started (daily 4:30 AM)')
+  // Goal integrity job removed — goals are dead code in Trellis's frontend
+  // (useFamilyGoals() is defined but never rendered).
 
-  // ── Social analytics polling — every 6 hours ──────────────────────────────
-  // Fetches LinkedIn/Twitter post metrics 24h after publishing and fires
-  // social.post.performance events so detectors can measure goal progress.
-  const { SocialAnalyticsPoller } = await import('./jobs/social-analytics-poller.js')
+  // Social analytics polling, Universal/Intraday KPI compute, goal
+  // summarisation, goal migration, and adaptive thresholds (Bollinger Band
+  // recompute for invoice/payment/portfolio signal types) all removed —
+  // social/goals/trading-vertical specific, none of it reachable from
+  // Trellis. `persistAndDeliverInsights` stays: registerFamilyFinancialProfileRoutes
+  // (kept) needs it as `insightsDeliveryHook`.
   const persistAndDeliverInsights = async (insights: Insight[], tenantId: string): Promise<void> =>
     persistAndDeliverInsightsCore(workflowDb, insights, tenantId, deliveryRouter)
-
-  const socialPoller = new SocialAnalyticsPoller(workflowDb, engine, persistAndDeliverInsights)
-  cron.schedule('0 */6 * * *', async () => {
-    try {
-      const result = await socialPoller.poll()
-      if (result.fetched > 0) {
-        log.info({ fetched: result.fetched, errors: result.errors }, 'Social analytics poll complete')
-      }
-    } catch (err) {
-      log.error({ err }, 'Social analytics poll failed')
-    }
-  }, { missedExecutionTolerance: 60_000 })
-  log.info({}, 'Social analytics poller started')
   insightsDeliveryHook = persistAndDeliverInsights
 
-  // ── Universal KPI Compute Engine — 1 AM nightly ───────────────────────────
-  // Auto-computes all signal-source KPIs for every active goal.
-  // Eliminates the need for manual metric pushes for any goal backed by
-  // signals already flowing through Kairos (Xero, Stripe, Shopify, etc.)
-  kpiComputeEngine = new KpiComputeEngine(workflowDb, engine, persistAndDeliverInsights)
-  const kpiEngineForCron = kpiComputeEngine
-  cron.schedule('0 1 * * *', async () => {
-    try {
-      const result = await kpiEngineForCron.runAll()
-      log.info({ kpis_updated: result.kpis_updated, goals_processed: result.goals_processed }, 'KPI compute complete')
-    } catch (err) {
-      log.error({ err }, 'KPI compute failed')
-    }
-  }, { missedExecutionTolerance: 60_000 })
-  log.info({}, 'KPI compute engine started')
-
-  // ── Intraday KPI compute for trading tenants ──────────────────────────────
-  // Trading outcomes move fast — a daily 1 AM compute is too slow for
-  // same-day portfolio changes. This runs every 2 hours during market hours
-  // (8 AM - 6 PM UTC, covering LSE 08:00-16:30 and partial US market) but
-  // only for tenants with trading-related goals (vertical = 'trading-investment').
-  cron.schedule('0 8,10,12,14,16,18 * * 1-5', async () => {
-    try {
-      const tradingTenants = await workflowDb.collection('tenants')
-        .find({ active_vertical: 'trading-investment', status: 'active' })
-        .project({ tenant_id: 1 })
-        .toArray()
-      if (tradingTenants.length === 0) return
-
-      const result = await kpiEngineForCron.runAll()
-      log.info({
-        kpis_updated: result.kpis_updated,
-        goals_processed: result.goals_processed,
-        trading_tenants: tradingTenants.length,
-        mode: 'intraday',
-      }, 'Intraday KPI compute complete for trading tenants')
-    } catch (err) {
-      log.error({ err }, 'Intraday KPI compute failed')
-    }
-  }, { missedExecutionTolerance: 60_000 })
-  log.info({}, 'Intraday KPI compute for trading tenants started (every 2h, 8-18 UTC, weekdays)')
-  const goalSummarisationJob = new GoalSummarisationJob(workflowDb, globalLlmFn)
   const retentionWorker = new RetentionWorker(workflowDb)
-  const goalMigrationWorker = new GoalMigrationWorker(workflowDb)
   const insightSlaWorker = new InsightSlaWorker(workflowDb)
   const escalationWorker = new EscalationWorker(workflowDb)
   await retentionWorker.ensureIndexes()
-  cron.schedule('30 1 * * *', async () => {
-    try {
-      const generated = await goalSummarisationJob.run()
-      if (generated > 0) log.info({ generated }, 'Goal evidence summaries generated')
-    } catch (err) {
-      log.error({ err }, 'Goal summarisation failed')
-    }
-  }, { missedExecutionTolerance: 60_000 })
   cron.schedule('0 2 * * *', async () => {
     try {
       await retentionWorker.run()
@@ -947,143 +739,10 @@ try {
     await Promise.allSettled([insightSlaWorker.run(), escalationWorker.run()])
   }, { missedExecutionTolerance: 60_000 })
 
-  // ── Adaptive thresholds nightly recompute ─────────────────────────────────
-  // Recomputes Bollinger Band thresholds for all tenants at 4 AM daily.
-  // Without this, thresholds go stale — detectors keep using last week's
-  // mean/std instead of adapting to recent activity. The recompute also
-  // invalidates the in-memory cache so the next event picks up fresh values.
-  cron.schedule('0 4 * * *', async () => {
-    if (!adaptiveThresholds) return
-    try {
-      const signalTypes = [
-        { signal_type: 'invoice_overdue', fields: ['amount_minor', 'days_late'] },
-        { signal_type: 'payment_failed', fields: ['amount_minor'] },
-        { signal_type: 'portfolio_position', fields: ['quantity', 'current_price', 'avg_price'] },
-        { signal_type: 'portfolio_summary', fields: ['total_value', 'cash'] },
-      ]
-      const { computed, skipped } = await adaptiveThresholds.recomputeAll(signalTypes)
-      adaptiveThresholds.invalidateCache()
-      log.info({ computed, skipped }, 'Adaptive thresholds nightly recompute complete')
-    } catch (err) {
-      log.error({ err }, 'Adaptive thresholds nightly recompute failed')
-    }
-  }, { missedExecutionTolerance: 60_000 })
-  log.info({}, 'Adaptive thresholds nightly recompute scheduled (0 4 * * *)')
+  // Shadow backtest cron removed — trading-vertical only (DTFE engine paper
+  // trading against market price history).
 
-  if (goalMigrationWorker.isEnabled()) {
-    cron.schedule('0 3 * * *', async () => {
-      try {
-        await goalMigrationWorker.runAllTenants()
-      } catch (err) {
-        log.error({ err }, 'Goal migration worker failed')
-      }
-    }, { missedExecutionTolerance: 60_000 })
-    log.info({}, 'Goal migration worker started')
-  } else {
-    log.info({}, 'Goal migration worker disabled')
-  }
-
-  // ── Gap #30: Strategy eval crons ──────────────────────────────────────────
-  // Two weekly jobs that answer "is the strategy actually good" against real
-  // data — the missing automated evaluation layer identified in gap #30.
-
-  // 1. Shadow backtest — runs the DTFE engine in paper mode against real
-  //    market price history, persists the result to `shadow_backtest_reports`.
-  //    Runs at 6 AM every Monday for every active tenant.
-  //
-  //    Data source priority (most efficient free-tier usage):
-  //      1. market_price signals already synced to the DB (by any connector)
-  //      2. yfinance Python bridge (free, 20+ years, no API key)
-  //      3. Alpha Vantage API (fallback, per-tenant connector credentials)
-  //
-  //    Position sizing uses portfolio-tier defaults based on each tenant's
-  //    actual portfolio value, so small portfolios (£1K) get fewer, larger
-  //    positions instead of many tiny ones.
-  cron.schedule('0 6 * * 1', async () => {
-    try {
-      const { runShadowBacktestForReport } = await import('./jobs/shadow-backtest-runner.js')
-      const { decryptIfNeeded } = await import('@kairos/platform')
-      const { buildSnapshotFromSignals } = await import('./trading/portfolio-data.js')
-
-      // Find all active tenants (any tenant with portfolio_summary signals
-      // or any connector credential — they're "active" in the trading vertical)
-      const tenantIdsWithSignals = await workflowDb.collection('signals')
-        .distinct('tenant_id', { signal_type: 'portfolio_summary' })
-      const tenantIdsWithCreds = await workflowDb.collection('connector_credentials')
-        .distinct('tenant_id', {})
-      const allTenantIds = Array.from(new Set([...tenantIdsWithSignals, ...tenantIdsWithCreds]))
-
-      if (allTenantIds.length === 0) {
-        log.warn({}, 'Shadow backtest skipped — no active tenants found.')
-        return
-      }
-
-      // Pre-fetch Alpha Vantage credentials per tenant (for fallback)
-      const avCredsByTenant = new Map<string, string>()
-      const avCreds = await workflowDb.collection('connector_credentials')
-        .find({ connector_id: 'alpha-vantage' })
-        .project({ tenant_id: 1, api_key: 1, _id: 0 })
-        .toArray()
-      for (const cred of avCreds) {
-        try {
-          const apiKey = decryptIfNeeded(cred['api_key'] as string)
-          if (apiKey) avCredsByTenant.set(cred['tenant_id'] as string, apiKey)
-        } catch { /* skip undecryptable */ }
-      }
-
-      let successCount = 0
-      let failCount = 0
-
-      for (const tenantId of allTenantIds) {
-        try {
-          // Fetch the tenant's actual portfolio value for tier-based sizing
-          let portfolioValueMinor: number | undefined
-          try {
-            const recentSignals = await workflowDb.collection('signals')
-              .find({ tenant_id: tenantId, signal_type: { $in: ['portfolio_summary', 'portfolio_position'] } })
-              .sort({ created_at: -1 })
-              .limit(100)
-              .toArray()
-            if (recentSignals.length > 0) {
-              const snapshot = buildSnapshotFromSignals(tenantId, recentSignals as Record<string, unknown>[])
-              if (snapshot.totalValue > 0) portfolioValueMinor = snapshot.totalValue
-            }
-          } catch { /* portfolio value lookup is best-effort */ }
-
-          const report = await runShadowBacktestForReport({
-            db: workflowDb,
-            tenantId,
-            alphaVantageKey: avCredsByTenant.get(tenantId) ?? process.env['ALPHA_VANTAGE_API_KEY'],
-            portfolioValueMinor,
-          })
-          if (report) {
-            await workflowDb.collection('shadow_backtest_reports').insertOne(report)
-            log.info({
-              tenant_id: tenantId,
-              tickers: report.tickers,
-              return_pct: report.total_return_pct,
-              data_source: report.data_source,
-              tier: report.portfolio_tier,
-            }, 'Shadow backtest complete')
-            successCount++
-          } else {
-            log.warn({ tenant_id: tenantId }, 'Shadow backtest returned null — all data sources failed (DB signals, yfinance, Alpha Vantage)')
-            failCount++
-          }
-        } catch (err) {
-          log.error({ err, tenant_id: tenantId }, 'Shadow backtest failed for tenant')
-          failCount++
-        }
-      }
-
-      log.info({ success: successCount, failed: failCount, tenants: allTenantIds.length }, 'Shadow backtest cron sweep complete')
-    } catch (err) {
-      log.error({ err }, 'Shadow backtest cron failed')
-    }
-  }, { missedExecutionTolerance: 60_000 })
-  log.info({}, 'Shadow backtest cron started (weekly Mon 6 AM, per-tenant, multi-source)')
-
-  // 2. FeatureHashScorer offline eval — computes precision/recall/AUC/
+  // FeatureHashScorer offline eval — computes precision/recall/AUC/
   //    calibration for the online-learning layer against held-out
   //    approve/dismiss history. Runs at 7 AM every Monday.
   //    Persists per-detector reports to `feature_hash_eval_reports`.
@@ -1142,11 +801,10 @@ try {
   engine.options.llmScorer = llmScorer
   log.info({}, 'LLM scorer ready (per-tenant opt-in via tenant_settings:llm_scoring_config, with cache + budget guard)')
 
-  // ── Adaptive thresholds ───────────────────────────────────────────────────
-  // Bollinger Band thresholds computed nightly — injected into EvaluationContext
-  // so detector YAML can reference context.adaptive_thresholds["invoice_overdue.amount_minor.2sigma"]
-  adaptiveThresholds = new AdaptiveThresholdStore(workflowDb)
-  log.info({}, 'Adaptive threshold store ready')
+  // Adaptive threshold store removed — never wired into engine.options, and
+  // its only consumer (the invoice/payment/portfolio signal recompute cron)
+  // was trading/accounting-vertical only. No family detector references
+  // context.adaptive_thresholds.
 
   // ── Intent classifier ─────────────────────────────────────────────────────
   // Three-tier (trie → embedding → LLM) classifier loaded at startup.
@@ -1201,15 +859,8 @@ try {
     { maxLoadedTenants: 200 },
   )
 
-  // ── Federated learning service ────────────────────────────────────────────
-  // Wires the FederatedLearning engine into the actual training loop.
-  // Weekly rounds collect gradients from all active tenants, aggregate them
-  // with DP noise + secure aggregation + k-anonymity, and store a global
-  // model that new tenants warm-start from (solving cold-start).
-  federatedLearningService = new FederatedLearningService(
-    workflowDb,
-    tenantLevelScorer,
-  )
+  // Federated learning service removed — cross-tenant gradient aggregation
+  // isn't relevant to a single-vertical family app.
 
   // Wire into engine — options are mutable, set before first evaluate()
   engine.options.noveltyTracker = noveltyTracker
@@ -1706,76 +1357,23 @@ app.get('/pipeline-connectors', async () => ({
 }))
 
 // Modular route handlers
-// Delivery router (created during Mongo startup) wired into the event pipeline
-await registerEventRoutes(app, engine, adaptiveThresholds, intentClassifier, deliveryRouter, featureHashScorer)
+// Trimmed to what Trellis (apps/web) actually calls, plus the marketing
+// surfaces (blog, case studies, growth events) that support self-serve
+// growth. Everything else kairos-ai's apps/api serves — trading/property/
+// social verticals, workflows/goals, SCIM, federated learning, the
+// marketplace, teams — isn't reachable from Trellis and was removed rather
+// than left dead in the route table. See SECURITY.md for the full list of
+// what was dropped and why.
 await registerInsightRoutes(app, engine, featureHashScorer, workflowDb, tenantLevelScorer)
-await registerEngineRoutes(app, engine, scoreCalibrator, noveltyTracker, changePointDetector, featureHashScorer, kpiComputeEngine)
-await registerWebhookRoutes(app, engine, connectorLoader, eventGenerator, workflowDb ?? null)
-await registerAnalyticsRoutes(app, workflowDb)
-await registerPortfolioRoutes(app, engine, insightsDeliveryHook)
-await registerPropertyRoutes(app, engine, insightsDeliveryHook)
-await registerSocialRoutes(app, engine, insightsDeliveryHook)
-await registerControlRoomRoutes(app, workflowDb)
-await registerDetectorCrudRoutes(app, engine, workflowDb)
-await registerVerticalRoutes(app, workflowDb)
 await registerAuthUserRoutes(app, auth)
 if (workflowDb) {
   await registerSocialAuthRoutes(app, auth, workflowDb)
 }
-if (workflowLoader && workflowEngine) {
-  await registerWorkflowRoutes(app, workflowLoader, workflowEngine, workflowDb)
-  registerVersionRoutes(app, workflowDb, workflowLoader)
-  registerOutcomePackRoutes(app, workflowDb, workflowLoader)
-  registerWorkflowTemplateRoutes(app, workflowDb)
-  registerDetectorHealthRoutes(app, workflowDb)
-}
 if (workflowDb) {
-  registerSettingsRoutes(app, workflowDb)
-  registerApprovalRoutes(app, workflowDb, workflowEngine, workflowLoader)
-  registerReportRoutes(app, workflowDb)
-  registerAutoApprovalRulesRoutes(app, workflowDb)
   registerCaseStudyRoutes(app, workflowDb)
-  registerBenchmarkRoutes(app, workflowDb)
   registerConnectorCredentialRoutes(app, workflowDb, connectorLoader, eventGenerator, engine)
-  registerAttributionRoutes(app, workflowDb)
-  await registerIngestRoutes(app, engine, workflowDb)
-  registerDeliveryRoutes(app, workflowDb, deliveryRouter)
-  await registerSkillRoutes(app, workflowDb)
-  registerPromptRoutes(app, workflowDb)
-  registerPrivacyRoutes(app, workflowDb)
-  registerEventSchemaRoutes(app, workflowDb)
-  registerIdentityRoutes(app, workflowDb)
-  registerMigrationRoutes(app, workflowDb)
-  registerMlIsolationHealthRoutes(app, workflowDb)
-  registerScimRoutes(app, workflowDb)
-  registerScimConfigRoutes(app, workflowDb)
-  registerDesktopSyncRoutes(app, workflowDb)
-  registerOnboardingRoutes(app, workflowDb, engine)
-  registerGoalRoutes(app, workflowDb, kpiComputeEngine, engine, deliveryRouter)
-  registerGoalsAIRoutes(app, workflowDb)
-  registerExecutionEventRoutes(app, workflowDb)
-  registerAuditTrailRoutes(app, workflowDb)
-  registerAIPersonalityRoutes(app, workflowDb)
-  registerGoalDecompositionRoutes(app, workflowDb)
-  registerVisualWorkflowRoutes(app, workflowDb)
-  registerWorkflowMarketplaceRoutes(app, workflowDb)
-  registerFederatedRoutes(app, workflowDb, federatedLearningService!.federatedLearning)
-  registerGoalCompilerRoutes(app, workflowDb, engine, globalLlmFn)
-  registerVerifiedMomentRoutes(app, workflowDb)
-  registerMarketplaceRoutes(app, workflowDb)
-  registerAccountantRoutes(app, workflowDb)
-  registerTenantRoutes(app, workflowDb)
   registerBillingRoutes(app, workflowDb)
   registerBlogRoutes(app, workflowDb)
-  registerEntitlementRoutes(app, workflowDb)
-  registerCollaborationRoutes(app, workflowDb)
-  registerSearchRoutes(app, workflowDb)
-  registerDetectorPromotionRoutes(app, workflowDb, engine, path.join(ROOT, 'detector-evals'))
-  registerAlertRuleRoutes(app, workflowDb)
-  registerOutcomeRoutes(app, workflowDb)
-  registerQueryRoutes(app, workflowDb)
-  registerTeamRoutes(app, workflowDb)
-  registerCopilotRoutes(app, workflowDb, corsOrigin)
   registerDocumentRoutes(app, workflowDb)
   registerFamilyConnectorRoutes(app, workflowDb)
   registerFamilyGroupRoutes(app, workflowDb)
@@ -1783,7 +1381,7 @@ if (workflowDb) {
   registerFamilyInboxRoutes(app, workflowDb)
   await registerFamilyFinancialProfileRoutes(app, workflowDb, engine, insightsDeliveryHook)
 }
-registerSsoRoutes(app, auth, workflowDb)
+// Prometheus metrics — generic ops/observability, not vertical-specific.
 await registerMetricsRoutes(app, engine, scoreCalibrator)
 
 // ─── Start ───────────────────────────────────────────────────────────────────

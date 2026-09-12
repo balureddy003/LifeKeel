@@ -30,7 +30,6 @@
     "@kairos/pipeline": "workspace:*",
     "@kairos/platform": "workspace:*",
     "@kairos/runtime": "workspace:*",
-    "@kairos/skills": "workspace:*",
     "@kairos/specifications": "workspace:*",
     "@kairos/workflows": "workspace:*",
     "@sendgrid/mail": "^8.1.6",

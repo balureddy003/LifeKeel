@@ -13,9 +13,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    # apps/api's integration tests (ml-tenant-isolation, scim) connect to a
-    # real Mongo/Redis rather than mongodb-memory-server — matches the
-    # services kairos-ai's own CI provides.
+    # apps/api's ml-tenant-isolation test connects to a real Mongo/Redis
+    # rather than mongodb-memory-server — matches the services kairos-ai's
+    # own CI provides.
     services:
       mongodb:
         image: mongo:7
