@@ -1,0 +1,148 @@
+id: realistic-compound-growth-trading
+name: Realistic Portfolio Growth
+domain: Trading & Investment
+description: >
+  Track a risk-managed compounding objective for a Trading 212 portfolio using
+  a realistic, evidence-based return assumption instead of an aggressive one.
+intent: >
+  Grow a £500 starting capital to roughly £540 in 12 months (an 8% annual
+  return, in line with long-run diversified global equity index averages)
+  while reinvesting profits and respecting concentration and drawdown
+  guardrails.
+cadence: monthly
+required_connectors:
+  - trading-212
+skills:
+  - compare
+  - decide
+  - plan
+plan:
+  - id: monitor_monthly_return
+    label: Monitor monthly return vs target
+    skill: compare
+    approval_required: false
+    description: >
+      Compare the portfolio's month-on-month return against the realistic
+      target and surface alerts when it falls behind.
+  - id: reinvest_excess_cash
+    label: Reinvest excess cash
+    skill: decide
+    approval_required: true
+    description: >
+      Suggest deploying idle cash when it exceeds a safe portion of the
+      portfolio, with a paper-trade preview before any live action.
+  - id: guard_concentration_and_drawdown
+    label: Guard concentration and drawdown
+    skill: plan
+    approval_required: false
+    description: >
+      Keep the largest position below the concentration cap and flag
+      drawdowns that threaten the compounding plan.
+stop_condition: >
+  Stop when the 12-month portfolio value target is reached, or when the
+  maximum tolerated drawdown is breached for 30 consecutive days.
+spec:
+  name: Realistic Portfolio Growth
+  description: >
+    Risk-managed compounding plan for a Trading 212 portfolio. Targets an 8%
+    annual return on a £500 starting capital, reinvesting all profits, while
+    using the same risk guardrails as the aggressive compound-growth template.
+  timeline_days: 365
+  tags: [trading, investment, compound, realistic]
+  confidence: 0.85
+  reasoning: >
+    Same execution plan and risk guardrails as compound-growth-trading, but
+    the return target reflects long-run historical averages for a diversified
+    equity index (Fama-French / AQR data) rather than the 20% monthly figure
+    no diversified, evidence-based strategy sustains.
+  warnings:
+    - >
+      8% annual is a long-run historical average for diversified equity
+      indices, not a guarantee for any single account or year — any given
+      year can be significantly better or worse, including negative.
+    - >
+      This template depends on a Trading 212 connector and a sync job that
+      posts monthly portfolio snapshots. Connect the data source first.
+  detectors:
+    - id: trading_concentration_risk
+      name: Trading concentration risk
+      existing: true
+      reasoning: >
+        Fires when a single position exceeds the 10% cap, protecting the
+        portfolio from single-name risk while compounding.
+    - id: trading_price_drop_alert
+      name: Trading price drop alert
+      existing: true
+      reasoning: >
+        Flags positions that drop through the user's rule threshold so losses
+        can be reviewed quickly.
+    - id: trading_rebalance_suggestion
+      name: Trading rebalance suggestion
+      existing: true
+      reasoning: >
+        Surfaces idle cash that should be reinvested to stay on the
+        compounding path.
+    - id: trading_dividend_opportunity
+      name: Trading dividend opportunity
+      existing: true
+      reasoning: >
+        Surfaces attractive dividend yields, which contribute to realistic
+        long-run diversified returns more than speculative price moves do.
+  kpis:
+    - metric: portfolio_value_minor
+      label: Portfolio value
+      unit: minor_currency
+      target: 54000
+      start_value: 50000
+      current: 50000
+      direction: increase
+      source: signals
+      signal_types: [portfolio_summary]
+      aggregation: last
+      field: data.total_value
+      reasoning: >
+        Tracks total portfolio value over time against the 12-month target of
+        roughly £540 — an 8% annual return on £500.
+    - metric: monthly_return_pct
+      label: Monthly return
+      unit: percent
+      target: 0.64
+      start_value: 0
+      current: 0
+      direction: increase
+      source: signals
+      signal_types: [portfolio_summary]
+      aggregation: last
+      field: data.monthly_return_pct
+      reasoning: >
+        Measures the month-on-month percentage change in portfolio value.
+        0.64% monthly compounds to roughly 8% annually. Requires at least two
+        consecutive monthly snapshots to compute.
+    - metric: cash_deployed_pct
+      label: Cash deployed
+      unit: percent
+      target: 95
+      start_value: 0
+      current: 0
+      direction: increase
+      source: signals
+      signal_types: [portfolio_summary]
+      aggregation: last
+      field: data.cash_pct
+      reasoning: >
+        Tracks how much of the portfolio is invested versus held as idle cash.
+        A high target minimises cash drag.
+    - metric: max_drawdown_pct
+      label: Maximum drawdown
+      unit: percent
+      target: 20
+      start_value: 0
+      current: 0
+      direction: decrease
+      source: signals
+      signal_types: [portfolio_summary]
+      aggregation: last
+      field: data.max_drawdown_pct
+      reasoning: >
+        Monitors the peak-to-trough decline of the portfolio so that
+        compounding is not derailed by large unmanaged losses.

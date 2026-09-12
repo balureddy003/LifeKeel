@@ -1,0 +1,90 @@
+id: ops_cash_flow_alert
+name: Cash Flow Gap Detected → Forecast → Alert Owner
+description: |
+  When the CDD engine detects a cash flow gap signal: AI forecasts the shortfall,
+  identifies which invoices to chase, drafts a chase plan, alerts the owner with
+  options, and optionally triggers the invoice chase workflow for each overdue invoice.
+version: 1.0.0
+template:
+  category: finance
+  required_connectors: [slack, gmail]
+  estimated_roi: "£5,000–£50,000/month from avoided cash flow crises"
+  setup_minutes: 15
+  featured: true
+enabled: true
+trigger:
+  detector: cash_flow_gap
+  condition: "projected_shortfall_pence > 500000"
+
+state:
+  shortfall_analysis: {}
+  chase_plan: ""
+
+nodes:
+  - id: trigger
+    type: trigger
+    label: Cash flow gap detected
+    config: {}
+
+  - id: analyse_shortfall
+    type: skill
+    label: Analyse and forecast shortfall
+    config:
+      skill: enrich
+      data:
+        projected_shortfall: "{{event.projected_shortfall_display}}"
+        days_until_critical: "{{event.days_until_critical}}"
+        overdue_invoices: "{{event.overdue_invoice_count}}"
+        overdue_total: "{{event.overdue_total_display}}"
+        upcoming_bills: "{{event.upcoming_bills_display}}"
+      infer_fields:
+        - name: severity
+          description: "critical / serious / manageable — based on days until critical"
+        - name: fastest_fix
+          description: The single fastest way to close the cash gap
+        - name: invoice_priority_order
+          description: Which invoices to chase first and why
+        - name: should_consider_credit
+          description: Should the owner consider a credit facility? Yes/No with reasoning
+      output_key: shortfall_analysis
+
+  - id: draft_chase_plan
+    type: skill
+    label: Draft action plan
+    config:
+      skill: plan
+      goal: "Close a £{{event.projected_shortfall_display}} cash flow gap within {{event.days_until_critical}} days"
+      constraints: "Available levers: chase {{event.overdue_invoice_count}} overdue invoices totalling {{event.overdue_total_display}}, defer upcoming bills where possible, consider short-term credit if needed."
+      output_key: chase_plan
+
+  - id: alert_owner
+    type: connector_action
+    label: Alert owner on Slack
+    config:
+      connector: slack
+      action: send_message
+      params:
+        channel: "{{tenant.owner_slack_id}}"
+        text: "⚠️ *Cash flow alert* — {{state.shortfall_analysis.severity}}\n\n*Projected shortfall:* £{{event.projected_shortfall_display}}\n*Days until critical:* {{event.days_until_critical}}\n*Fastest fix:* {{state.shortfall_analysis.fastest_fix}}\n\n*Action plan:*\n{{state.chase_plan}}\n\n_{{event.overdue_invoice_count}} overdue invoices totalling {{event.overdue_total_display}} — invoice chase workflows are being queued._"
+
+  - id: email_owner
+    type: connector_action
+    label: Email detailed report to owner
+    config:
+      connector: gmail
+      action: send_email
+      params:
+        to: "{{tenant.owner_email}}"
+        subject: "⚠️ Cash flow alert — action needed in {{event.days_until_critical}} days"
+        body: "<h2>Cash Flow Gap Detected</h2><p><strong>Shortfall:</strong> £{{event.projected_shortfall_display}}</p><p><strong>Severity:</strong> {{state.shortfall_analysis.severity}}</p><p><strong>Fastest fix:</strong> {{state.shortfall_analysis.fastest_fix}}</p><h3>Action Plan</h3><p>{{state.chase_plan}}</p>"
+
+edges:
+  - from: trigger
+    to: [analyse_shortfall, draft_chase_plan]
+  - from: [analyse_shortfall, draft_chase_plan]
+    to: [alert_owner, email_owner]
+
+settings:
+  trust_level: 0
+  timeout_minutes: 15
+  on_error: notify

@@ -1,0 +1,98 @@
+id: trading_concentration_risk
+name: Portfolio Concentration Risk
+description: >
+  Flags when a single position exceeds the concentration cap from the
+  tenant's active goal (portfolio_concentration_max_pct — see
+  diversified-portfolio-yield.yaml), falling back to 10% if no goal sets one.
+version: 1.0.0
+signal_types:
+  - portfolio_position
+industries:
+  - investment
+  - wealth
+
+rules:
+  - id: position_over_threshold_with_loss
+    name: Overweight position that is also losing money
+    condition: data.portfolio_weight_pct > context.goal_kpi_targets.portfolio_concentration_max_pct and data.current_price < data.avg_price
+    confidence: 0.90
+    # Suppress if the position is already recovering (current > 3% above recent low)
+    # and the drop is shallow (< 10%). Avoids false alarms on temporary dips that
+    # recover within days — the LIME_US_EQ pattern where the engine fired 13 times
+    # on a 5-6% dip that recovered to +8%.
+    suppress_if: data.drop_from_avg_pct < 10 and data.is_recovering == 1
+    # 7-day dedup: even after dismissal, don't re-fire for the same ticker for a week.
+    # Without this, the detector fired 20 times in 10 days for the same 2 tickers.
+    dedup_window_ms: 604800000
+    impact_low: 0
+    impact_high: "data.position_value_minor * 0.05"
+    reasoning_template: >
+      {{data.ticker}} makes up {{data.portfolio_weight_pct}}% of the portfolio,
+      above the {{context.goal_kpi_targets.portfolio_concentration_max_pct}}%
+      cap from your goal, and is trading below your average cost of
+      {{data.avg_price_gbp}}. Both concentration and capital loss risk are elevated.
+    actions:
+      - Trim the position to reduce concentration and lock in a manageable loss
+      - Paper-trade a rebalance before any live action
+    alternatives_template:
+      - label: "Trim to cap — sell {{data.excess_shares}} shares of {{data.ticker}}"
+        why_not: "Reduces concentration to the goal's cap immediately and stops further downside on the excess shares."
+        forecast_low: "data.position_value_minor * -0.02"
+        forecast_high: "data.position_value_minor * 0.03"
+      - label: "Sell the entire position — cut the loss"
+        why_not: "Eliminates both concentration and capital loss risk, but locks in the full loss and misses any recovery."
+        forecast_low: "data.position_value_minor * -0.05"
+        forecast_high: "data.position_value_minor * 0.02"
+      - label: "Hold and set a hard stop at -10% from current price"
+        why_not: "Gives the position room to recover while capping downside, but concentration risk remains elevated."
+        forecast_low: "data.position_value_minor * -0.05"
+        forecast_high: "data.position_value_minor * 0.08"
+    risk_template: >
+      Concentration in {{data.ticker}} means a single-stock adverse move of 10%
+      would cost approximately {{data.position_value_minor}} * 0.10 in portfolio value.
+      The position is already underwater — further declines compound both the
+      concentration risk and the capital loss.
+    exit_criteria_template: >
+      Auto-archive when {{data.ticker}} portfolio weight drops below
+      {{context.goal_kpi_targets.portfolio_concentration_max_pct}}% (either via
+      trimming the position or via portfolio growth in other holdings).
+
+  - id: position_over_threshold_profitable
+    name: Overweight position that is profitable
+    condition: data.portfolio_weight_pct > context.goal_kpi_targets.portfolio_concentration_max_pct and data.current_price >= data.avg_price
+    confidence: 0.70
+    # 7-day dedup for the same ticker — avoid re-firing every sync cycle.
+    dedup_window_ms: 604800000
+    impact_low: 0
+    impact_high: "data.position_value_minor * 0.03"
+    reasoning_template: >
+      {{data.ticker}} makes up {{data.portfolio_weight_pct}}% of the portfolio,
+      above the {{context.goal_kpi_targets.portfolio_concentration_max_pct}}%
+      cap from your goal. The position is currently profitable (current price
+      {{data.current_price_gbp}} vs average cost {{data.avg_price_gbp}}), so
+      trimming would lock in gains but may forfeit upside.
+    actions:
+      - Consider trimming to reduce concentration while preserving some upside
+      - Set a trailing stop to protect gains
+    alternatives_template:
+      - label: "Trim to cap — sell {{data.excess_shares}} shares of {{data.ticker}}"
+        why_not: "Reduces concentration to the goal's cap and locks in gains on the excess shares, but forfeits upside if {{data.ticker}} continues to outperform."
+        forecast_low: "data.position_value_minor * -0.01"
+        forecast_high: "data.position_value_minor * 0.03"
+      - label: "Hold and set a trailing stop at -5% from current price"
+        why_not: "No immediate action or tax impact, lets the position run, but concentration risk remains elevated until the stop triggers."
+        forecast_low: "data.position_value_minor * -0.03"
+        forecast_high: "data.position_value_minor * 0.08"
+      - label: "Trim half the excess — reduce concentration gradually"
+        why_not: "Splits the difference: reduces concentration risk while keeping most of the upside exposure."
+        forecast_low: "data.position_value_minor * -0.01"
+        forecast_high: "data.position_value_minor * 0.05"
+    risk_template: >
+      Concentration in {{data.ticker}} means a single-stock adverse move of 10%
+      would cost approximately {{data.position_value_minor}} * 0.10 in portfolio value.
+      The position is profitable now, but a reversal would erase gains quickly
+      given the overweight.
+    exit_criteria_template: >
+      Auto-archive when {{data.ticker}} portfolio weight drops below
+      {{context.goal_kpi_targets.portfolio_concentration_max_pct}}% (either via
+      trimming the position or via portfolio growth in other holdings).

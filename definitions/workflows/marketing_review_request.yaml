@@ -1,0 +1,98 @@
+id: marketing_review_request
+name: Order Fulfilled → Review Request → Follow-up
+description: |
+  3 days after a Shopify order is fulfilled: AI decides if the customer is likely
+  to leave a positive review (based on order value + history), sends a personalised
+  review invite, and if no response in 7 days sends one gentle follow-up.
+version: 1.0.0
+template:
+  category: marketing
+  required_connectors: [gmail]
+  estimated_roi: "£2,000–£15,000/month from increased reviews and social proof"
+  setup_minutes: 5
+  featured: true
+enabled: true
+trigger:
+  event_type: ecommerce.order.fulfilled
+
+state:
+  review_likelihood: {}
+  invite_email: ""
+
+nodes:
+  - id: trigger
+    type: trigger
+    label: Order fulfilled
+    config: {}
+
+  - id: wait_3_days
+    type: wait
+    label: Wait 3 days
+    config:
+      duration: 72h
+
+  - id: score_review_likelihood
+    type: skill
+    label: Score review likelihood
+    config:
+      skill: score
+      subject: "Customer: {{event.customer_name}}, Order value: £{{event.order_value_display}}, Previous orders: {{event.customer_order_count}}, Items: {{event.item_names}}, Delivery on time: {{event.delivered_on_time}}"
+      rubric: "Score 0-100 likelihood of leaving a positive review. High score for repeat customers, high-value orders, on-time delivery, premium products. Low score for first-time buyers with cheap orders or late deliveries."
+      output_key: review_likelihood
+
+  - id: draft_invite
+    type: skill
+    label: Draft review invite
+    config:
+      skill: generate
+      persona: "a warm, genuine small business owner who genuinely cares"
+      tone: "personal, grateful, no pressure. Mention the specific product."
+      max_words: 80
+      prompt: "Write a review request email for {{event.customer_name}} who just received {{event.item_names}} from our store. Be genuine and specific. Include a link placeholder [REVIEW_LINK]. Keep it short."
+      output_key: invite_email
+      fallback: "Hi {{event.customer_name}}, hope you're loving your {{event.item_names}}! We'd be so grateful if you could spare 2 minutes to leave us a review: [REVIEW_LINK] — it makes a huge difference for a small business like ours."
+
+  - id: send_invite
+    type: connector_action
+    label: Send review invite
+    config:
+      connector: gmail
+      action: send_email
+      params:
+        to: "{{event.customer_email}}"
+        subject: "How was your {{event.item_names}}? 😊"
+        body: "{{state.invite_email}}"
+
+  - id: wait_7_days
+    type: wait
+    label: Wait 7 days
+    config:
+      duration: 168h
+
+  - id: send_followup
+    type: connector_action
+    label: Send gentle follow-up
+    config:
+      connector: gmail
+      action: send_email
+      params:
+        to: "{{event.customer_email}}"
+        subject: "Still time to share your thoughts ⭐"
+        body: "Hi {{event.customer_name}}, just a quick follow-up on your recent order. If you have 60 seconds, we'd love your feedback: [REVIEW_LINK]. Thanks so much! 🙏"
+
+edges:
+  - from: trigger
+    to: wait_3_days
+  - from: wait_3_days
+    to: [score_review_likelihood, draft_invite]
+  - from: [score_review_likelihood, draft_invite]
+    to: send_invite
+  - from: send_invite
+    to: wait_7_days
+  - from: wait_7_days
+    to: send_followup
+
+settings:
+  trust_level: 0
+  timeout_minutes: 14400
+  on_error: continue

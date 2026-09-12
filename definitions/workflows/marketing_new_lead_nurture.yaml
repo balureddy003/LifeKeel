@@ -1,0 +1,125 @@
+id: marketing_new_lead_nurture
+name: New Lead → AI Qualify → Nurture Sequence
+description: |
+  When a new lead lands in CRM, AI qualifies them (ICP score), adds to the right
+  Mailchimp audience, sends a personalised welcome email via Gmail, and logs a
+  follow-up task in HubSpot — all automatically.
+version: 1.0.0
+template:
+  category: marketing
+  required_connectors: [mailchimp, gmail, hubspot]
+  estimated_roi: "£1,000–£10,000/month from improved lead conversion"
+  setup_minutes: 10
+  featured: true
+enabled: true
+trigger:
+  event_type: crm.contact.created
+  condition: "source != 'internal'"
+
+state:
+  lead_score: 0
+  lead_tier: ""
+  welcome_email: ""
+
+nodes:
+  - id: trigger
+    type: trigger
+    label: New lead in CRM
+    config: {}
+
+  - id: score_lead
+    type: skill
+    label: Score lead quality
+    description: AI scores the lead 0-100 against ideal customer profile
+    config:
+      skill: score
+      subject: "Name: {{event.first_name}} {{event.last_name}}, Company: {{event.company}}, Role: {{event.job_title}}, Source: {{event.source}}"
+      rubric: "Ideal customer is a UK SMB owner (10-200 employees) in retail, hospitality, or professional services with budget authority. High scores for decision makers at growing companies."
+      output_key: lead_score_result
+
+  - id: set_tier
+    type: transform
+    label: Set lead tier
+    config:
+      mappings:
+        lead_tier: "{{state.lead_score_result.score > 70 ? 'hot' : state.lead_score_result.score > 40 ? 'warm' : 'cold'}}"
+        lead_score: "{{state.lead_score_result.score}}"
+
+  - id: draft_welcome
+    type: skill
+    label: Draft personalised welcome
+    config:
+      skill: generate
+      persona: "a friendly but professional business consultant at a software company"
+      tone: "warm, direct, value-focused. No fluff."
+      max_words: 120
+      prompt: "Write a short welcome email for {{event.first_name}} who works at {{event.company}} as {{event.job_title}}. Mention that we help businesses like theirs save time on operations. Ask one specific question relevant to their industry."
+      output_key: welcome_email
+      fallback: "Hi {{event.first_name}}, welcome! We help businesses like {{event.company}} save time on operations. What's your biggest operational challenge right now?"
+
+  - id: add_to_audience
+    type: connector_action
+    label: Add to Mailchimp audience
+    config:
+      connector: mailchimp
+      action: add_subscriber
+      params:
+        listId: "{{tenant.mailchimp_audience_id}}"
+        email_address: "{{event.email}}"
+        status: subscribed
+        merge_fields:
+          FNAME: "{{event.first_name}}"
+          LNAME: "{{event.last_name}}"
+          COMPANY: "{{event.company}}"
+
+  - id: tag_by_tier
+    type: connector_action
+    label: Tag by lead tier
+    config:
+      connector: mailchimp
+      action: tag_subscriber
+      params:
+        listId: "{{tenant.mailchimp_audience_id}}"
+        email: "{{event.email}}"
+        tags: "{{state.lead_tier}},new-lead"
+
+  - id: send_welcome
+    type: connector_action
+    label: Send welcome email
+    config:
+      connector: gmail
+      action: send_email
+      params:
+        to: "{{event.email}}"
+        subject: "Welcome to Kairos, {{event.first_name}} 👋"
+        body: "{{state.welcome_email}}"
+
+  - id: log_to_crm
+    type: connector_action
+    label: Log activity in HubSpot
+    config:
+      connector: hubspot
+      action: log_activity
+      params:
+        hs_note_body: "Lead scored {{state.lead_score}}/100 ({{state.lead_tier}}). Welcome email sent. AI reasoning: {{state.lead_score_result.reasoning}}"
+        contact_id: "{{event.contact_id}}"
+
+edges:
+  - from: trigger
+    to: score_lead
+  - from: score_lead
+    to: set_tier
+  - from: set_tier
+    to: [draft_welcome, add_to_audience]
+  - from: draft_welcome
+    to: send_welcome
+  - from: add_to_audience
+    to: tag_by_tier
+  - from: [send_welcome, tag_by_tier]
+    to: log_to_crm
+
+settings:
+  trust_level: 0
+  timeout_minutes: 10
+  max_retries: 2
+  on_error: notify

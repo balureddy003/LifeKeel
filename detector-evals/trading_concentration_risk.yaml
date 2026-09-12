@@ -1,0 +1,87 @@
+cases:
+  - id: above-10-pct-cap
+    description: AAPL at 15% portfolio weight should trigger concentration risk
+    event_type: portfolio_position
+    goal_kpi_targets:
+      portfolio_concentration_max_pct: 10
+    data:
+      ticker: AAPL
+      quantity: 100
+      avg_price: 15000
+      current_price: 15000
+      position_value_minor: 1500000
+      portfolio_weight_pct: 15
+    expected_insights:
+      - rule_id: position_over_threshold_profitable
+        min_or_score: 0.7
+
+  - id: below-10-pct-cap
+    description: AAPL at 8% portfolio weight should stay silent
+    event_type: portfolio_position
+    goal_kpi_targets:
+      portfolio_concentration_max_pct: 10
+    data:
+      ticker: AAPL
+      quantity: 100
+      avg_price: 8000
+      current_price: 8000
+      position_value_minor: 800000
+      portfolio_weight_pct: 8
+    expected_silent: true
+
+  - id: exactly-at-10-pct-cap
+    description: AAPL at exactly 10% should not trigger (rule is strict >)
+    event_type: portfolio_position
+    goal_kpi_targets:
+      portfolio_concentration_max_pct: 10
+    data:
+      ticker: AAPL
+      quantity: 100
+      avg_price: 10000
+      current_price: 10000
+      position_value_minor: 1000000
+      portfolio_weight_pct: 10
+    expected_silent: true
+
+  - id: custom-cap-15-pct
+    description: Goal with a 15% cap should allow 12% without firing
+    event_type: portfolio_position
+    goal_kpi_targets:
+      portfolio_concentration_max_pct: 15
+    data:
+      ticker: MSFT
+      quantity: 100
+      avg_price: 12000
+      current_price: 12000
+      position_value_minor: 1200000
+      portfolio_weight_pct: 12
+    expected_silent: true
+
+  - id: just-above-10-pct-cap
+    description: AAPL at 10.1% should trigger concentration risk
+    event_type: portfolio_position
+    goal_kpi_targets:
+      portfolio_concentration_max_pct: 10
+    data:
+      ticker: AAPL
+      quantity: 100
+      avg_price: 10100
+      current_price: 10100
+      position_value_minor: 1010000
+      portfolio_weight_pct: 10.1
+    expected_insights:
+      - rule_id: position_over_threshold_profitable
+        min_or_score: 0.7
+
+  - id: missing-weight-should-silent
+    description: Position without portfolio_weight_pct should not trigger
+    event_type: portfolio_position
+    goal_kpi_targets:
+      portfolio_concentration_max_pct: 10
+    data:
+      ticker: META
+      quantity: 100
+      avg_price: 15000
+      current_price: 15000
+      position_value_minor: 1500000
+    expected_silent: true

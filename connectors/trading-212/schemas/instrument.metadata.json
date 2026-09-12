@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kairos.io/schemas/trading-212/instrument.metadata/v1.0.0",
+  "title": "Trading 212 Instrument Metadata",
+  "description": "Reference metadata for an instrument traded in a Trading 212 account.",
+  "type": "object",
+  "kairos": {
+    "connector_id": "trading-212",
+    "event_type": "instrument.metadata",
+    "schema_version": "1.0.0",
+    "signal_type": "instrument_metadata",
+    "min_schema_version": "1.0.0"
+  },
+  "required": [
+    "ticker",
+    "name",
+    "asset_class"
+  ],
+  "properties": {
+    "ticker": {
+      "type": "string",
+      "description": "Instrument ticker symbol."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable instrument name."
+    },
+    "sector": {
+      "type": "string",
+      "description": "Industry sector (e.g. Technology, Financials)."
+    },
+    "geography": {
+      "type": "string",
+      "description": "Geographic region or country of listing."
+    },
+    "asset_class": {
+      "type": "string",
+      "enum": ["stock", "etf", "cash", "commodity", "cryptocurrency", "forex", "futures", "index", "warrant"],
+      "description": "Asset class mapped from Trading 212's instrument type."
+    },
+    "dividend_yield_pct": {
+      "type": "number",
+      "description": "Indicative dividend yield percentage for the instrument, if available from the data source."
+    }
+  }
+}

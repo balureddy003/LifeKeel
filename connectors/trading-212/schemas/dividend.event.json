@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kairos.io/schemas/trading-212/dividend.event/v1.0.0",
+  "title": "Trading 212 Dividend Event",
+  "description": "Dividend payout event from Trading 212.",
+  "type": "object",
+  "kairos": {
+    "connector_id": "trading-212",
+    "event_type": "dividend.event",
+    "schema_version": "1.0.0",
+    "signal_type": "dividend_event",
+    "min_schema_version": "1.0.0"
+  },
+  "required": [
+    "ticker",
+    "dividend_amount",
+    "quantity",
+    "pay_date"
+  ],
+  "properties": {
+    "ticker": {
+      "type": "string",
+      "description": "Instrument ticker symbol (e.g. AAPL_US_EQ)."
+    },
+    "dividend_amount": {
+      "type": "integer",
+      "description": "Total dividend amount paid in minor currency units."
+    },
+    "quantity": {
+      "type": "number",
+      "description": "Quantity of shares held at ex-dividend date."
+    },
+    "pay_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date the dividend was paid (ISO 8601)."
+    },
+    "dividend_type": {
+      "type": "string",
+      "description": "Dividend type (e.g. ordinary, special)."
+    }
+  }
+}

@@ -1,0 +1,65 @@
+id: family_emergency_fund_adequacy
+name: Emergency Fund Adequacy Detection
+description: >
+  Evaluates whether a family's emergency savings can cover the recommended
+  3-6 months of household expenses. Flags both underfunded and overfunded
+  situations so families can make informed decisions about their cash reserves.
+version: 1.0.0
+signal_types:
+  - family.savings
+  - family.expenses
+  - family.income
+industries: ["family", "finance", "wealth"]
+
+rules:
+  - id: emergency_fund_below_3_months
+    name: Emergency Fund Below 3 Months
+    condition: "data.emergency_savings_minor < data.monthly_expenses_minor * 3"
+    confidence: 0.88
+    impact_low: "data.monthly_expenses_minor * 3 - data.emergency_savings_minor"
+    impact_high: "data.monthly_expenses_minor * 6 - data.emergency_savings_minor"
+    reasoning_template: >
+      Your emergency savings of {{data.emergency_savings_minor}} cover approximately
+      {{(data.emergency_savings_minor / data.monthly_expenses_minor)}} months of expenses. A common guideline is 3-6
+      months. This is an informational estimate — consider reviewing with a qualified financial professional.
+    actions:
+      - Review your monthly budget to identify potential savings opportunities
+      - Consider setting up an automatic transfer to build your emergency fund
+      - Consult a financial advisor about an appropriate emergency fund target
+
+  - id: high_interest_debt_unaddressed
+    name: High-Interest Debt Outstanding
+    # Previously has_high_interest_debt only ever affected scoring inside
+    # emergency_fund_overfunded — a family with high-interest debt and a
+    # thin emergency fund (the more urgent combination) got no signal about
+    # the debt itself at all. This rule fires on the debt independent of
+    # savings level.
+    condition: "data.has_high_interest_debt >= 1 and data.high_interest_debt_balance_minor > 0"
+    confidence: 0.7
+    impact_low: "data.high_interest_debt_balance_minor * 0.15"
+    impact_high: "data.high_interest_debt_balance_minor * 0.25"
+    reasoning_template: >
+      Your profile lists high-interest debt of {{data.high_interest_debt_balance_minor}} outstanding. At typical
+      high-interest rates (15-25% APR), this could cost {{data.high_interest_debt_balance_minor * 0.15}} to
+      {{data.high_interest_debt_balance_minor * 0.25}} per year in interest alone. This is an informational estimate —
+      consider reviewing repayment options with a qualified financial professional.
+    actions:
+      - List all high-interest debts and their interest rates
+      - Consider a debt avalanche (highest rate first) or snowball (smallest balance first) repayment strategy
+      - Consult a financial advisor or credit counselor about consolidation options
+
+  - id: emergency_fund_overfunded
+    name: Emergency Fund Exceeds 12 Months
+    condition: "data.emergency_savings_minor > data.monthly_expenses_minor * 12 and data.has_high_interest_debt >= 1"
+    confidence: 0.72
+    impact_low: "data.emergency_savings_minor - data.monthly_expenses_minor * 6"
+    impact_high: "data.emergency_savings_minor - data.monthly_expenses_minor * 6"
+    reasoning_template: >
+      Your emergency savings of {{data.emergency_savings_minor}} cover approximately
+      {{(data.emergency_savings_minor / data.monthly_expenses_minor)}} months of expenses. With high-interest debt
+      listed in your profile, one option to consider is allocating excess savings above 6 months toward debt repayment.
+      This is informational only — please consult a qualified financial professional.
+    actions:
+      - Review your debt interest rates versus savings interest rates
+      - Consider whether allocating excess savings toward debt repayment may be beneficial
+      - Consult a financial advisor about optimising your cash allocation

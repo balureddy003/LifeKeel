@@ -1,0 +1,59 @@
+id: family_protection_gap
+name: Family Protection Gap Detection
+description: >
+  Identifies gaps in a family's insurance coverage — life, health, income
+  protection, and critical illness — by comparing documented policies against
+  household needs (mortgage, education, living expenses). Surfaces underinsurance
+  before it becomes a problem.
+version: 1.0.0
+signal_types:
+  - family.policy
+  - family.household
+  - family.expenses
+industries: ["family", "insurance", "wealth"]
+
+rules:
+  - id: life_insurance_below_household_needs
+    name: Life Insurance Below Household Needs
+    # No `life_cover_minor > 0` guard — a family with *zero* life insurance
+    # is the most severe case this rule exists to catch, not an edge case to
+    # exclude. The comparison against `need` already self-excludes families
+    # who genuinely don't need cover (no mortgage, no education gap, no
+    # living expenses to replace — need evaluates to 0, so 0 < 0 is false).
+    # Previously any family with literally no life insurance at all produced
+    # zero insight and zero score penalty for it — confirmed live against a
+    # single-parent household with £0 cover, which scored 93% Protection.
+    condition: >
+      data.life_cover_minor < data.mortgage_outstanding_minor + data.education_funding_gap_minor + (data.annual_living_expenses_minor * 5)
+    confidence: 0.82
+    impact_low: "(data.mortgage_outstanding_minor + data.education_funding_gap_minor + (data.annual_living_expenses_minor * 5) - data.life_cover_minor) * 0.3"
+    impact_high: "data.mortgage_outstanding_minor + data.education_funding_gap_minor + (data.annual_living_expenses_minor * 5) - data.life_cover_minor"
+    reasoning_template: >
+      Your listed life insurance cover of {{data.life_cover_minor}} appears below the estimated household need of
+      {{data.mortgage_outstanding_minor + data.education_funding_gap_minor + (data.annual_living_expenses_minor * 5)}}
+      (mortgage + education gap + 5 years of living expenses). This is an informational estimate — please consult a licensed
+      insurance professional to evaluate your coverage needs.
+    actions:
+      - Review your current life insurance policy terms and coverage amount
+      - Consider consulting a licensed insurance broker to assess household coverage needs
+      - Compare quotes from multiple insurers before making any changes
+
+  - id: no_income_protection
+    name: No Income Protection Policy
+    # `employed` here means "has income to protect" — set for both employed
+    # and self-employed households upstream, not just traditional employees.
+    # `years_to_retirement > 1` keeps this from firing for households within
+    # a year of (or past) their target retirement age, where a new income
+    # protection policy isn't a meaningful gap to surface.
+    condition: "data.income_protection_monthly_minor == 0 and data.employed >= 1 and data.years_to_retirement > 1"
+    confidence: 0.75
+    impact_low: "data.monthly_salary_minor * 6"
+    impact_high: "data.monthly_salary_minor * 24"
+    reasoning_template: >
+      No income protection policy is listed in your family profile. If you were unable to work due to illness or injury,
+      the estimated impact over 6-24 months could be {{data.monthly_salary_minor * 6}} to {{data.monthly_salary_minor * 24}}
+      of lost income. This is an informational estimate — please consult a licensed insurance professional.
+    actions:
+      - Research income protection insurance options from licensed providers
+      - Review your employer's sick-pay policy to understand existing coverage
+      - Consider consulting a financial advisor about your protection needs

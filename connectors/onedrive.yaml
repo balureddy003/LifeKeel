@@ -1,0 +1,38 @@
+id: onedrive
+name: OneDrive
+provider: microsoft
+version: 1.0.0
+description: Sync CSV, Excel, and JSON files from OneDrive / SharePoint into the Kairos engine
+category: cloud_storage
+base_url: https://graph.microsoft.com/v1.0
+
+auth:
+  type: oauth2
+  oauth:
+    authorization_url: https://login.microsoftonline.com/common/oauth2/v2.0/authorize
+    token_url: https://login.microsoftonline.com/common/oauth2/v2.0/token
+    scopes:
+      - Files.Read
+      - Files.Read.All
+      - offline_access
+
+resources:
+  - name: Files
+    path: /me/drive/search(q='.csv .xlsx .json')
+    params:
+      select: "id,name,file,lastModifiedDateTime,size,parentReference"
+      top: "100"
+    pagination:
+      type: link
+      response_key: value
+    date_filter_param: null
+
+download_url_template: "https://graph.microsoft.com/v1.0/me/drive/items/{fileId}/content"
+
+signal_types:
+  - data.imported
+  - invoice.created
+  - payment.created
+  - bank.transaction
+
+field_mappings: []

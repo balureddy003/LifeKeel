@@ -1,0 +1,37 @@
+id: dropbox
+name: Dropbox
+provider: dropbox
+version: 1.0.0
+description: Sync CSV, Excel, and JSON files from a Dropbox folder into the Kairos engine
+category: cloud_storage
+base_url: https://api.dropboxapi.com/2
+
+auth:
+  type: oauth2
+  oauth:
+    authorization_url: https://www.dropbox.com/oauth2/authorize
+    token_url: https://api.dropboxapi.com/oauth2/token
+    scopes:
+      - files.content.read
+      - files.metadata.read
+
+resources:
+  - name: Files
+    path: /files/list_folder
+    params:
+      path: ""          # root — tenant can override via settings
+      recursive: "true"
+    pagination:
+      type: cursor
+      param: cursor
+      response_key: entries
+
+download_url_template: null  # Dropbox uses separate download endpoint
+
+signal_types:
+  - data.imported
+  - invoice.created
+  - payment.created
+  - bank.transaction
+
+field_mappings: []

@@ -1,0 +1,51 @@
+id: trading_momentum_trailing_stop
+name: Momentum Trailing Stop
+description: >
+  Fires when a held position's current price has dropped below the trailing
+  stop threshold from its high-water mark, signalling that the trend has
+  reversed and gains should be locked in. Only active when the tenant's
+  strategy is set to 'momentum'.
+version: 1.0.0
+signal_types:
+  - portfolio_position
+  - market_price
+industries:
+  - investment
+  - wealth
+
+rules:
+  - id: trailing_stop_breached
+    name: Price dropped below the trailing stop from high-water mark
+    condition: "(data.high_water_mark - data.current_price) / data.high_water_mark >= context.goal_kpi_targets.trailing_stop_threshold"
+    confidence: 0.85
+    impact_low: 0
+    impact_high: "(data.high_water_mark - data.current_price) * data.quantity"
+    reasoning_template: >
+      {{data.ticker}} has dropped {{data.drop_from_hwm_pct}}% from its high of
+      £{{data.high_water_mark_gbp}}, breaching the
+      {{context.goal_kpi_targets.trailing_stop_threshold}}% trailing stop.
+      The trend has reversed — locking in gains protects against further downside.
+    actions:
+      - Review the trailing stop signal before any live action
+      - Paper-trade the sell decision first
+    alternatives_template:
+      - label: "Sell {{data.quantity}} shares of {{data.ticker}} — lock in gains"
+        why_not: "Stops further downside immediately, but exits a position that may still recover."
+        forecast_low: "(data.high_water_mark - data.current_price) * data.quantity"
+        forecast_high: "(data.high_water_mark - data.current_price) * data.quantity"
+      - label: "Trim 50% — lock in half the gains, let the rest ride"
+        why_not: "Reduces exposure while keeping upside, but the remaining half is still at risk."
+        forecast_low: "(data.high_water_mark - data.current_price) * data.quantity * 0.5"
+        forecast_high: "0"
+      - label: "Hold — widen the trailing stop and give it more room"
+        why_not: "Avoids selling on a normal pullback, but increases potential loss if the trend fully reverses."
+        forecast_low: "(data.high_water_mark - data.current_price) * data.quantity * 1.5"
+        forecast_high: "0"
+    risk_template: >
+      {{data.ticker}} has reversed {{data.drop_from_hwm_pct}}% from its peak.
+      Trailing stops protect gains but can trigger on normal pullbacks in a
+      continuing uptrend — the position may recover after the stop fires.
+      Tighter stops lock in more gains but get stopped out more often.
+    exit_criteria_template: >
+      Auto-archive when {{data.ticker}} is sold or when the price recovers
+      above the high-water mark.

@@ -1,0 +1,43 @@
+id: google_drive
+name: Google Drive
+provider: google
+version: 1.0.0
+description: Sync CSV, Excel, and JSON files from Google Drive folders directly into the Kairos engine
+category: cloud_storage
+base_url: https://www.googleapis.com
+
+auth:
+  type: oauth2
+  oauth:
+    authorization_url: https://accounts.google.com/o/oauth2/v2/auth
+    token_url: https://oauth2.googleapis.com/token
+    scopes:
+      - https://www.googleapis.com/auth/drive.readonly
+      - https://www.googleapis.com/auth/drive.metadata.readonly
+
+# Watched folders — synced every 15 minutes
+# Tenant can configure which folder(s) to watch via settings
+resources:
+  - name: Files
+    path: /drive/v3/files
+    params:
+      q: "mimeType='text/csv' or mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' or mimeType='application/json'"
+      fields: "files(id,name,mimeType,modifiedTime,size,parents)"
+      orderBy: modifiedTime desc
+      pageSize: "100"
+    pagination:
+      type: cursor
+      param: pageToken
+      response_key: files
+    date_filter_param: null   # use modifiedTime filter in query instead
+
+# Download URL pattern (used by CloudStorageSyncEngine)
+download_url_template: "https://www.googleapis.com/drive/v3/files/{fileId}?alt=media"
+
+signal_types:
+  - data.imported
+  - invoice.created
+  - payment.created
+  - bank.transaction
+
+field_mappings: []   # dynamic — set by column mapping wizard after first sync

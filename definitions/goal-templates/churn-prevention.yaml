@@ -1,0 +1,60 @@
+id: churn-prevention
+domain: Customer
+name: Reduce customer churn
+description: Identify at-risk customers and intervene before cancellation.
+intent: Reduce customer churn below 3 percent by identifying risks and taking the next best retention action.
+cadence: weekly
+required_connectors:
+  - stripe
+skills:
+  - classify
+  - prioritize
+  - decide
+  - generate
+plan:
+  - id: detect_risk
+    label: Identify churn risk
+    skill: classify
+    workflow_id: churn_risk_intervention
+    connector_id: stripe
+    approval_required: false
+    description: Classify and prioritize customers showing churn signals.
+  - id: choose_offer
+    label: Choose the next best intervention
+    skill: decide
+    approval_required: true
+    description: Select an appropriate retention action for each high-risk customer.
+  - id: measure_retention
+    label: Measure retained revenue
+    skill: compare
+    approval_required: false
+    description: Attribute renewal and retention outcomes to interventions.
+stop_condition: Stop when churn remains below 3 percent for the target period.
+spec:
+  name: Reduce customer churn
+  description: Identify at-risk customers early and use measured interventions to improve retention.
+  timeline_days: 90
+  tags: [customer, retention]
+  confidence: 0.95
+  reasoning: Curated goal template with measurable KPIs and a repeatable execution plan.
+  warnings: []
+  detectors: []
+  kpis:
+    - metric: customer_churn_rate
+      label: Customer churn rate
+      unit: ratio
+      target: 0.03
+      start_value: 0
+      current: 0
+      direction: decrease
+      source: manual
+      reasoning: Directly measures customer retention performance.
+    - metric: retained_customer_count
+      label: Retained at-risk customers
+      unit: customers
+      target: 20
+      start_value: 0
+      current: 0
+      direction: increase
+      source: manual
+      reasoning: Measures successful interventions.

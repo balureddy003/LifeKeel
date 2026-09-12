@@ -1,0 +1,23 @@
+# B1: Goal-oriented outcome pack — "What do you want to achieve?" → "Find Investment Opportunities"
+# Maps to real Kairos capabilities: alpha-vantage market data, trading-212 portfolio data,
+# dividend + rebalance detectors, diversified-portfolio-yield goal template.
+id: find-opportunities
+name: Find Investment Opportunities
+tagline: Discover investments that match your strategy and goals
+category: opportunity_discovery
+estimated_setup_minutes: 10
+required_connectors:
+  - alpha-vantage
+optional_connectors:
+  - trading-212
+included_workflows:
+  - trading_dividend_action
+  - trading_rebalance_review
+included_detectors:
+  - trading_dividend_opportunity
+  - trading_rebalance_suggestion
+kpi_labels:
+  - Dividend yield
+  - Rebalance opportunity
+  - Cash deployed
+tier_minimum: individual

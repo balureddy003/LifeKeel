@@ -1,0 +1,23 @@
+# STATUS: planned — HM Land Registry publishes open Price Paid Data and a
+# Business Gateway API. This definition fixes the connector contract for the
+# property-wealth vertical; wiring the real ingestion is tracked separately.
+id: land-registry
+name: HM Land Registry
+provider: land-registry
+version: 0.1.0
+status: planned
+description: UK sold-price data and title information
+category: property
+base_url: https://landregistry.data.gov.uk
+
+auth:
+  type: api_key
+  notes: Business Gateway API key; Price Paid Data is open/no-key.
+
+resources:
+  - name: sold_prices
+    description: Historic sold prices for comparable-sales checks
+
+signal_types:
+  - property.sold_price
+  - area.benchmark

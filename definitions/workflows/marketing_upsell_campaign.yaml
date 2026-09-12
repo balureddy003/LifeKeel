@@ -1,0 +1,131 @@
+id: marketing_upsell_campaign
+name: High-Value Customer → AI Upsell Offer → Personalised Outreach
+description: |
+  When a customer reaches a high-value threshold (3+ orders or £500+ LTV):
+  AI identifies the best upsell/cross-sell opportunity, drafts a personalised
+  offer email, gets team approval, then sends and logs the outreach in CRM.
+version: 1.0.0
+template:
+  category: marketing
+  required_connectors: [gmail, hubspot]
+  estimated_roi: "£2,000–£20,000/month from increased customer LTV"
+  setup_minutes: 10
+  featured: true
+enabled: true
+trigger:
+  event_type: ecommerce.order.created
+  condition: "customer_order_count >= 3 OR customer_ltv_pence >= 50000"
+
+state:
+  upsell_recommendation: {}
+  offer_email: ""
+
+nodes:
+  - id: trigger
+    type: trigger
+    label: High-value customer order
+    config: {}
+
+  - id: identify_upsell
+    type: skill
+    label: Identify best upsell opportunity
+    config:
+      skill: route
+      description: "Customer {{event.customer_name}} has ordered {{event.customer_order_count}} times (LTV: £{{event.customer_ltv_display}}). Last purchase: {{event.item_names}}. Category: {{event.product_category}}."
+      routes:
+        - id: premium_upgrade
+          label: Premium tier upgrade
+          when: customer has bought entry-level products multiple times
+        - id: bundle_offer
+          label: Product bundle discount
+          when: customer buys related products separately
+        - id: subscription
+          label: Subscribe and save
+          when: customer has ordered the same product 2+ times
+        - id: complementary_product
+          label: Complementary product
+          when: customer has a clear product gap based on their purchases
+        - id: loyalty_reward
+          label: Loyalty reward / VIP
+          when: very high LTV customer who deserves recognition
+      output_key: upsell_recommendation
+
+  - id: draft_offer
+    type: skill
+    label: Draft personalised offer email
+    config:
+      skill: generate
+      persona: "the founder or a senior team member at the store — not a marketing bot"
+      tone: "personal, grateful, exclusive-feeling. Not pushy. Mention their history with us."
+      max_words: 130
+      prompt: "Write a personalised upsell email for {{event.customer_name}} who has ordered {{event.customer_order_count}} times (LTV: {{event.customer_ltv_display}}). Their most recent purchase was {{event.item_names}}. Recommended offer: {{state.upsell_recommendation}} — {{state.upsell_recommendation_detail.reasoning}}. Make it feel like a genuine personal recommendation, not a mass email."
+      output_key: offer_email
+      fallback: "Hi {{event.customer_name}}, as one of our valued customers, we wanted to share something we think you'd love based on your recent purchase of {{event.item_names}}."
+
+  - id: human_approve
+    type: human_approval
+    label: Approve upsell outreach
+    config:
+      title: "Upsell campaign outreach"
+      urgency: low
+      timeout: 24h
+      timeout_action: skip
+      display:
+        - label: Customer
+          value: "{{event.customer_name}} — {{event.customer_order_count}} orders, {{event.customer_ltv_display}} LTV"
+        - label: Recommended offer
+          value: "{{state.upsell_recommendation}}"
+        - label: Draft email
+          value: "{{state.offer_email}}"
+      actions:
+        - id: approve
+          label: Send this email
+          style: primary
+        - id: edit_approve
+          label: Edit & send
+          style: secondary
+          allow_edit: true
+          edit_field: offer_email
+        - id: reject
+          label: Skip
+          style: danger
+
+  - id: send_offer
+    type: connector_action
+    label: Send personalised offer
+    config:
+      connector: gmail
+      action: send_email
+      params:
+        to: "{{event.customer_email}}"
+        subject: "Something we thought you'd love, {{event.customer_name}} 👋"
+        body: "{{state.offer_email}}"
+
+  - id: log_outreach
+    type: connector_action
+    label: Log outreach in HubSpot
+    config:
+      connector: hubspot
+      action: log_activity
+      params:
+        hs_note_body: "Upsell outreach sent. Offer: {{state.upsell_recommendation}}. Decision: {{state.__outcome}}."
+        contact_id: "{{event.hubspot_contact_id}}"
+
+edges:
+  - from: trigger
+    to: [identify_upsell, draft_offer]
+  - from: [identify_upsell, draft_offer]
+    to: human_approve
+  - from: human_approve
+    to: send_offer
+    condition: "__outcome == 'approve'"
+    label: Approved
+  - from: human_approve
+    to: log_outreach
+  - from: send_offer
+    to: log_outreach
+
+settings:
+  trust_level: 0
+  timeout_minutes: 1440
+  on_error: continue

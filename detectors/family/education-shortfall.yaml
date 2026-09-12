@@ -1,0 +1,46 @@
+id: family_education_shortfall
+name: Education Funding Shortfall Detection
+description: >
+  Flags education savings that are behind the projected target for a child's
+  university timeline. Compares current savings rate and balance against the
+  target amount and years remaining, surfacing gaps early enough to adjust.
+version: 1.0.0
+signal_types:
+  - family.education_fund
+  - family.child
+  - family.savings_rate
+industries: ["family", "education", "wealth"]
+
+rules:
+  - id: education_fund_behind_target
+    name: Education Fund Behind Target
+    condition: >
+      data.current_savings_minor < data.target_savings_minor * 0.5 and
+      data.years_remaining <= 5
+    confidence: 0.78
+    impact_low: "data.target_savings_minor - data.current_savings_minor"
+    impact_high: "data.target_savings_minor - data.current_savings_minor + data.target_savings_minor * 0.1"
+    reasoning_template: >
+      {{data.child_name}}'s education fund is at {{data.current_savings_minor}}, approximately
+      {{(data.current_savings_minor / data.target_savings_minor * 100)}}% of the {{data.target_savings_minor}} target,
+      with {{data.years_remaining}} years remaining. One projection suggests the current savings rate may not reach the
+      target in time. This is an estimate — consider reviewing with a qualified financial professional.
+    actions:
+      - Review your monthly contribution rate and consider whether an increase is feasible
+      - Research tax-advantaged education savings plans available in your country
+      - Consider consulting a financial advisor about your education savings strategy
+
+  - id: education_fund_not_started
+    name: Education Fund Not Started
+    condition: "data.current_savings_minor == 0 and data.years_remaining > 0 and data.child_age < 16"
+    confidence: 0.85
+    impact_low: "data.target_savings_minor * 0.5"
+    impact_high: "data.target_savings_minor"
+    reasoning_template: >
+      No education savings are listed for {{data.child_name}} (age {{data.child_age}}). With {{data.years_remaining}}
+      years remaining, starting now could give more time for compound growth. This is informational only — please
+      consult a qualified financial professional before making decisions.
+    actions:
+      - Research education savings options available in your country
+      - Consider setting up a regular monthly contribution, even a small one
+      - Consult a financial advisor about an appropriate savings plan

@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kairos.io/schemas/stripe/charge.failed/v1.0.0",
+  "title": "Stripe Charge Failed Event",
+  "description": "Schema for Stripe charge.failed webhook events",
+  "type": "object",
+  "kairos": {
+    "connector_id": "stripe",
+    "event_type": "charge.failed",
+    "schema_version": "1.0.0",
+    "signal_type": "payment.failed",
+    "min_schema_version": "1.0.0"
+  },
+  "required": [
+    "id",
+    "object",
+    "created",
+    "amount",
+    "currency",
+    "failure_code",
+    "failure_message"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Charge identifier (ch_...)"
+    },
+    "object": {
+      "type": "string",
+      "const": "charge"
+    },
+    "created": {
+      "type": "integer",
+      "description": "Unix timestamp of charge creation"
+    },
+    "amount": {
+      "type": "integer",
+      "description": "Amount in minor units (cents)"
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[a-z]{3}$",
+      "description": "ISO 4217 currency code"
+    },
+    "customer": {
+      "type": "string",
+      "description": "Customer ID (cus_...)"
+    },
+    "status": {
+      "type": "string",
+      "const": "failed"
+    },
+    "failure_code": {
+      "type": "string",
+      "description": "Machine-readable error code (e.g., card_declined, insufficient_funds)"
+    },
+    "failure_message": {
+      "type": "string",
+      "description": "Human-readable error message"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Key-value metadata attached to the charge"
+    }
+  }
+}

@@ -1,0 +1,71 @@
+id: stripe
+name: Stripe
+provider: stripe
+version: 1.0.0
+description: Payment processing — charges, subscriptions, disputes, refunds
+category: payments
+base_url: https://api.stripe.com/v1
+
+auth:
+  type: bearer
+  header: Authorization
+  prefix: Bearer
+
+resources:
+  - name: charges
+    path: /charges
+    pagination:
+      type: cursor
+      param: starting_after
+      response_key: data
+  - name: subscriptions
+    path: /subscriptions
+    pagination:
+      type: cursor
+      param: starting_after
+      response_key: data
+  - name: invoices
+    path: /invoices
+    pagination:
+      type: cursor
+      param: starting_after
+      response_key: data
+
+webhooks:
+  path: /webhooks/stripe
+  signature_header: stripe-signature
+  signature_algorithm: hmac-sha256
+  event_type_field: type
+
+signal_types:
+  - payment.received
+  - payment.failed
+  - payment.refunded
+  - payment.disputed
+  - subscription.created
+  - subscription.cancelled
+  - invoice.created
+  - invoice.overdue
+  - customer.created
+
+signal_type_map:
+  "charge.succeeded": "payment.received"
+  "charge.failed": "payment.failed"
+  "charge.refunded": "payment.refunded"
+  "charge.dispute.created": "payment.disputed"
+  "customer.subscription.created": "subscription.created"
+  "customer.subscription.deleted": "subscription.cancelled"
+  "invoice.created": "invoice.created"
+  "invoice.payment_failed": "invoice.overdue"
+  "customer.created": "customer.created"
+
+field_mappings:
+  - source_field: amount
+    target_field: amount_minor       # Stripe amounts already in minor units
+  - source_field: currency
+    target_field: currency
+  - source_field: customer
+    target_field: customer_id
+  - source_field: created
+    target_field: event_timestamp
+    transform: iso_date

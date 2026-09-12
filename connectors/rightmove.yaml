@@ -1,0 +1,28 @@
+# STATUS: planned — Rightmove has no open public REST API. Live ingestion is via
+# the Rightmove Real-Time Data Feed (partner agreement) or an approved data
+# provider. This definition fixes the connector contract so the property-wealth
+# vertical is complete; wiring the real feed is tracked separately.
+id: rightmove
+name: Rightmove
+provider: rightmove
+version: 0.1.0
+status: planned
+description: UK property listings — asking prices, price history, days on market
+category: property
+base_url: https://www.rightmove.co.uk
+
+auth:
+  type: partner_feed
+  notes: Requires a Rightmove data-feed partner agreement; no self-serve keys.
+
+resources:
+  - name: listings
+    description: Active and recently changed listings in subscribed areas
+  - name: area_benchmarks
+    description: Area-level price-per-sqm and yield benchmarks
+
+signal_types:
+  - property.listing
+  - property.price_history
+  - area.benchmark
+  - rent.benchmark

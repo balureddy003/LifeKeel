@@ -1,0 +1,56 @@
+id: overdue_invoice_recovery
+name: Overdue Invoice Recovery
+description: Detects invoices past due date and surfaces recovery opportunities ranked by amount and days overdue
+version: 1.0.0
+signal_types:
+  - invoice.overdue
+  - invoice.created
+  - payment.failed
+industries: ["*"]
+
+rules:
+  - id: high_value_overdue
+    name: High-Value Invoice Overdue
+    condition: "data.days_overdue >= 7 and data.amount_minor >= 100000"
+    confidence: 0.92
+    impact_low: "data.amount_minor * 0.5"
+    impact_high: "data.amount_minor * 0.9"
+    reasoning_template: >
+      Invoice of {{data.amount_minor}} is {{data.days_overdue}} days overdue.
+      Historical recovery rate for invoices in this range is 71–90%.
+      Recommended: send personalised payment reminder within 24 hours.
+    actions:
+      - Send personalised payment reminder
+      - Escalate to account manager if no response in 48h
+      - Offer payment plan for invoices > 30 days overdue
+    dedup_window_ms: 86400000  # 24h — don't fire twice for same invoice
+
+  - id: early_warning_overdue
+    name: Early Warning — Invoice Approaching Due
+    condition: "data.days_overdue >= 1 and data.days_overdue < 7 and data.amount_minor >= 50000"
+    confidence: 0.78
+    impact_low: "data.amount_minor * 0.3"
+    impact_high: "data.amount_minor * 0.7"
+    reasoning_template: >
+      Invoice of {{data.amount_minor}} is {{data.days_overdue}} day(s) overdue.
+      Early intervention increases recovery probability by 35%.
+    actions:
+      - Send friendly payment reminder
+      - Update cash flow forecast
+
+  - id: serial_late_payer
+    name: Serial Late Payer Detected
+    condition: "data.days_overdue >= 30 and data.late_invoice_count >= 3"
+    confidence: 0.88
+    impact_low: "data.amount_minor * 0.2"
+    impact_high: "data.amount_minor * 0.6"
+    reasoning_template: >
+      Customer has {{data.late_invoice_count}} late invoices. Current invoice
+      {{data.days_overdue}} days overdue. Credit risk review recommended.
+    actions:
+      - Place account on credit hold
+      - Require upfront payment for future orders
+      - Initiate formal collections process
+    state_enabled: true
+    window_size: 5
+    window_duration_ms: 2592000000  # 30 days

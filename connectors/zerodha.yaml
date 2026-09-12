@@ -1,0 +1,233 @@
+# STATUS: planned — Zerodha (Kite Connect v3) connector for the Indian market.
+# Read-only sync of holdings, positions, funds, orders, and trades. Real order
+# placement is a *write action*, not a sync resource, and lives in
+# packages/workflows/src/connectors/ConnectorRegistry.ts's `zerodha` entry
+# (`place_regular_order`, `cancel_order`, `get_order`), executed via
+# ConnectorActionExecutor — the same generic runtime every other write-capable
+# connector uses. That entry documents the current enablement decision
+# (personal single-tenant use, explicit per-trade approval, opt-in + kill-switch
+# guarded) — this file's `status` stays `planned` since other code keys off it;
+# only the write-action registry changed.
+#
+# Auth note: Kite Connect uses a non-standard 3-legged flow — login redirect
+# returns a one-time `request_token`, exchanged at /session/token for an
+# `access_token` using a SHA-256 checksum (api_key + request_token + api_secret).
+# Subsequent requests sign with `Authorization: token api_key:access_token` +
+# `X-Kite-Version: 3`. The `oauth2_kite` auth type handles this in the sync
+# engine, action executor, and the /connectors/zerodha/oauth/{start,callback}
+# routes. The user's `api_key` is stored in `extra.api_key` so the auth header
+# can be reconstructed on every request.
+id: zerodha
+name: Zerodha (Kite Connect)
+provider: zerodha
+version: 1.0.0
+description: Portfolio sync for Zerodha demat accounts (NSE/BSE/MCX) via Kite Connect v3; live order placement is a separate write action (see ConnectorRegistry.ts)
+status: planned
+category: investment
+supported_countries: ['IN']
+base_url: https://api.kite.trade
+
+auth:
+  type: oauth2_kite
+  notes: |
+    Kite Connect v3 3-legged flow. Each tenant registers their own app at
+    developers.kite.trade to obtain their own api_key + api_secret — these are
+    per-tenant credentials, not server-level env vars. The connection flow is:
+
+    1. Tenant POSTs their api_key + api_secret to
+       /connectors/zerodha/credentials (auth_type: oauth2_kite, stored in
+       extra.api_key plaintext + extra.api_secret encrypted at rest).
+    2. Tenant calls GET /connectors/zerodha/oauth/start — the API server reads
+       the stored api_key and redirects to
+       https://kite.zerodha.com/connect/login?v=3&api_key=...
+    3. Zerodha redirects back with a one-time request_token.
+    4. The callback reads the stored api_secret, computes
+       checksum = SHA-256(api_key + request_token + api_secret), and POSTs to
+       /session/token to obtain the access_token.
+    5. The access_token is stored encrypted; the api_key stays in extra.api_key
+       so the sync engine and action executor can sign every request as
+       `token api_key:access_token` + X-Kite-Version: 3.
+
+    Kite access tokens are session-scoped (no refresh_token) — the tenant
+    re-auths via /connectors/zerodha/oauth/start when the session lapses.
+
+    Order placement endpoints additionally require a static egress IP (NSE
+    retail algo circular) — infra concern, not encoded here. Historical candles
+    and real-time WebSocket data require the ₹500/month Connect plan; account
+    and order APIs are free since March 2025.
+
+resources:
+  - name: Holdings
+    path: /portfolio/holdings
+    method: GET
+    response_shape: list
+    description: >
+      Long-term equity holdings (DEMAT). Each row is a delivery position with
+      average_price, last_price, pnl, quantity, t1_quantity, realised_quantity,
+      isin, exchange, tradingsymbol. Monetary fields are in paise for prices
+      (average_price, last_price, close_price) and in rupees for pnl/day_change
+      — see field_mappings for the per-field to_minor_units decisions.
+
+  - name: Positions
+    path: /portfolio/positions
+    method: GET
+    response_shape: list
+    description: >
+      Short-term intraday and F&O positions for the day. Includes overnight
+      NRML positions. Carries buy_quantity, sell_quantity, buy_price, sell_price,
+      buy_value, sell_value, pnl, realised, unrealised, product (MIS/NRML/CNC),
+      exchange (NSE/NFO/MCX/CDS/BFO).
+
+  - name: Funds
+    path: /user/margins/equity
+    method: GET
+    response_shape: object
+    description: >
+      Equity segment funds and margins — available cash, used margin, total
+      margin. The margins endpoint is segmented (equity, commodity, fno, currency);
+      equity covers the common case. Other segments can be added as separate
+      resources if needed.
+
+  - name: Orders
+    path: /orders
+    method: GET
+    response_shape: list
+    description: >
+      All orders (open and executed) for the current trading day. Note: Kite
+      Connect's order history is per-day, not historical — there is no
+      multi-day order history endpoint. Use the postback webhook for fill
+      events in real time.
+
+  - name: Trades
+    path: /trades
+    method: GET
+    response_shape: list
+    description: >
+      All executed trades for the current trading day. Trade records carry the
+      fill price and quantity; order records above only carry the order-level
+      average price.
+
+signal_types:
+  - portfolio_position
+  - portfolio_summary
+  - order_event
+  - instrument_metadata
+
+signal_type_map:
+  holdings: portfolio_position
+  positions: portfolio_position
+  funds: portfolio_summary
+  orders: order_event
+  trades: order_event
+
+field_mappings:
+  # Holdings + Positions — common fields
+  - source_field: tradingsymbol
+    target_field: ticker
+  - source_field: exchange
+    target_field: exchange
+  - source_field: isin
+    target_field: isin
+  - source_field: product
+    target_field: account_type
+    transform: to_lowercase
+  - source_field: quantity
+    target_field: quantity
+  - source_field: average_price
+    target_field: avg_price
+    transform: to_minor_units
+  - source_field: last_price
+    target_field: current_price
+    transform: to_minor_units
+  # Kite returns pnl in rupees (float), not paise — convert to minor units.
+  - source_field: pnl
+    target_field: unrealised_pnl
+    transform: to_minor_units
+  - source_field: day_change
+    target_field: day_change
+    transform: to_minor_units
+  - source_field: day_change_percentage
+    target_field: day_change_pct
+  # Holdings-specific
+  - source_field: t1_quantity
+    target_field: t1_quantity
+  - source_field: realised_quantity
+    target_field: realised_quantity
+  - source_field: close_price
+    target_field: close_price
+    transform: to_minor_units
+  # Positions-specific
+  - source_field: buy_quantity
+    target_field: buy_quantity
+  - source_field: sell_quantity
+    target_field: sell_quantity
+  - source_field: buy_price
+    target_field: buy_price
+    transform: to_minor_units
+  - source_field: sell_price
+    target_field: sell_price
+    transform: to_minor_units
+  - source_field: buy_value
+    target_field: buy_value
+    transform: to_minor_units
+  - source_field: sell_value
+    target_field: sell_value
+    transform: to_minor_units
+  - source_field: realised
+    target_field: realised_pnl
+    transform: to_minor_units
+  - source_field: unrealised
+    target_field: unrealised_pnl
+    transform: to_minor_units
+  # Funds (/user/margins/equity) — nested under data.net
+  - source_field: net
+    target_field: cash
+    transform: to_minor_units
+  - source_field: available.cash
+    target_field: cash
+    transform: to_minor_units
+  - source_field: utilised.debits
+    target_field: used_margin
+    transform: to_minor_units
+  - source_field: total
+    target_field: total_margin
+    transform: to_minor_units
+  # Orders + Trades
+  - source_field: order_id
+    target_field: order_id
+  - source_field: trade_id
+    target_field: trade_id
+  - source_field: status
+    target_field: status
+    transform: to_lowercase
+  - source_field: transaction_type
+    target_field: type
+    transform: to_lowercase
+  - source_field: variety
+    target_field: variety
+    transform: to_lowercase
+  - source_field: order_type
+    target_field: order_type
+    transform: to_lowercase
+  - source_field: product
+    target_field: product
+    transform: to_lowercase
+  - source_field: filled_quantity
+    target_field: filled_quantity
+  - source_field: pending_quantity
+    target_field: pending_quantity
+  - source_field: average_price
+    target_field: fill_price
+    transform: to_minor_units
+  - source_field: price
+    target_field: limit_price
+    transform: to_minor_units
+  - source_field: exchange_timestamp
+    target_field: timestamp
+    transform: iso_date
+  - source_field: order_timestamp
+    target_field: timestamp
+    transform: iso_date
+  - source_field: trade_timestamp
+    target_field: timestamp
+    transform: iso_date

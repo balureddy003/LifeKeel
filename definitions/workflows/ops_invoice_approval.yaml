@@ -1,0 +1,103 @@
+id: ops_invoice_approval
+name: New Supplier Invoice → AI Review → Human Approve → Pay
+description: |
+  When a new supplier invoice lands in Xero: AI checks for anomalies (duplicate,
+  price spike, unknown vendor), summarises key details for the approver, routes
+  for human sign-off, then marks approved in Xero and notifies accounts.
+version: 1.0.0
+template:
+  category: finance
+  required_connectors: [slack]
+  estimated_roi: "£1,000–£10,000/month from fraud prevention and faster approvals"
+  setup_minutes: 10
+  featured: true
+enabled: true
+trigger:
+  event_type: finance.invoice.created
+  condition: "invoice_type == 'ACCPAY'"
+
+state:
+  anomaly_check: {}
+  invoice_summary: ""
+  approval_notes: ""
+
+nodes:
+  - id: trigger
+    type: trigger
+    label: Supplier invoice in Xero
+    config: {}
+
+  - id: check_anomalies
+    type: skill
+    label: Check for anomalies
+    config:
+      skill: decide
+      question: "Does this supplier invoice have any red flags?"
+      context: "Vendor: {{event.contact_name}}, Amount: £{{event.amount_display}}, Description: {{event.description}}, Previous invoices from this vendor this month: {{event.vendor_invoice_count}}, Average invoice from this vendor: £{{event.vendor_avg_amount_display}}, Due date: {{event.due_date}}"
+      options: [clean_approve, flag_duplicate, flag_price_spike, flag_unknown_vendor, flag_unusual_terms, escalate]
+      output_key: anomaly_check
+
+  - id: summarise_invoice
+    type: skill
+    label: Summarise for approver
+    config:
+      skill: summarize
+      text: "Vendor: {{event.contact_name}} | Amount: £{{event.amount_display}} | Due: {{event.due_date}} | Line items: {{event.line_items_description}} | AI finding: {{state.anomaly_check.decision}} | Reasoning: {{state.anomaly_check.reasoning}}"
+      style: bullets
+      max_sentences: 4
+      output_key: invoice_summary
+
+  - id: human_approve
+    type: human_approval
+    label: Approve invoice payment
+    config:
+      title: "Invoice approval required"
+      urgency: high
+      timeout: 48h
+      timeout_action: escalate
+      display:
+        - label: Vendor
+          value: "{{event.contact_name}}"
+        - label: Amount
+          value: "£{{event.amount_display}}"
+        - label: Due date
+          value: "{{event.due_date}}"
+        - label: AI summary
+          value: "{{state.invoice_summary}}"
+        - label: AI risk flag
+          value: "{{state.anomaly_check.decision}}"
+      actions:
+        - id: approve
+          label: Approve & schedule payment
+          style: primary
+        - id: reject
+          label: Reject invoice
+          style: danger
+        - id: query
+          label: Query with vendor
+          style: secondary
+
+  - id: notify_accounts
+    type: connector_action
+    label: Notify accounts on Slack
+    config:
+      connector: slack
+      action: send_message
+      params:
+        channel: "#finance"
+        text: "✅ Invoice approved: *{{event.contact_name}}* £{{event.amount_display}} due {{event.due_date}}. Decision: {{state.__outcome}}"
+
+edges:
+  - from: trigger
+    to: [check_anomalies, summarise_invoice]
+  - from: [check_anomalies, summarise_invoice]
+    to: human_approve
+  - from: human_approve
+    to: notify_accounts
+    condition: "__outcome == 'approve'"
+    label: Approved
+
+settings:
+  trust_level: 0
+  timeout_minutes: 2880
+  on_error: notify

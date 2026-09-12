@@ -1,0 +1,26 @@
+# STATUS: planned — Zoopla's public API was retired; live ingestion is via a
+# Zoopla/Hometrack data partnership or an approved provider. This definition
+# fixes the connector contract for the property-wealth vertical; wiring the real
+# feed is tracked separately.
+id: zoopla
+name: Zoopla
+provider: zoopla
+version: 0.1.0
+status: planned
+description: UK property valuations and market estimates
+category: property
+base_url: https://www.zoopla.co.uk
+
+auth:
+  type: partner_feed
+  notes: Requires a Zoopla/Hometrack data partnership; no self-serve keys.
+
+resources:
+  - name: valuations
+    description: Automated valuation estimates for tracked properties
+  - name: rent_estimates
+    description: Estimated achievable rent for a property/area
+
+signal_types:
+  - property.valuation
+  - rent.benchmark

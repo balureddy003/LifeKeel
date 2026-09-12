@@ -1,0 +1,102 @@
+id: social_multi_platform_presence
+name: "Multi-Platform Social Presence"
+description: "Generate and publish branded content to YouTube, Instagram and Facebook daily. Measures KPI impact after each run."
+version: "1.0.0"
+enabled: true
+trigger:
+  type: schedule
+  cron: "0 9 * * *"   # 09:00 daily
+
+nodes:
+  - id: generate_video_script
+    type: skill
+    skill: generate
+    label: "Generate YouTube video script"
+    inputs:
+      prompt: |
+        Write a short (60-second) YouTube video script showcasing one Kairos capability.
+        Make it educational, engaging, and end with a call-to-action to try Kairos.
+        Today's focus: {{theme}}
+
+  - id: generate_instagram_caption
+    type: skill
+    skill: generate
+    label: "Generate Instagram caption + hashtags"
+    inputs:
+      prompt: |
+        Write an Instagram caption (max 150 words) for a post about Kairos AI automation.
+        Include 10 relevant hashtags. Make it visual and action-oriented.
+        Today's theme: {{theme}}
+
+  - id: generate_facebook_post
+    type: skill
+    skill: generate
+    label: "Generate Facebook page post"
+    inputs:
+      prompt: |
+        Write a Facebook post (max 200 words) for the Kairos AI page.
+        Focus on a business benefit — how Kairos saves time or grows revenue.
+        Today's theme: {{theme}}
+
+  - id: review_content
+    type: human_approval
+    label: "Review & approve content"
+    timeout_hours: 4
+    actions:
+      - id: approve_all
+        label: "✓ Publish to all platforms"
+        style: primary
+      - id: approve_instagram_facebook
+        label: "Instagram + Facebook only"
+        style: secondary
+      - id: approve_facebook_only
+        label: "Facebook only"
+        style: secondary
+      - id: reject
+        label: "Skip today"
+        style: danger
+
+  - id: post_youtube
+    type: connector_action
+    connector_id: youtube
+    action_id: upload_video
+    label: "Upload to YouTube"
+    condition: "approval.action in ['approve_all']"
+    inputs:
+      title: "Kairos AI — {{theme}}"
+      description: "{{generate_video_script.output}}"
+      tags: ["kairos", "ai", "automation", "productivity"]
+
+  - id: post_instagram
+    type: connector_action
+    connector_id: instagram_business
+    action_id: create_post
+    label: "Post to Instagram"
+    condition: "approval.action in ['approve_all', 'approve_instagram_facebook']"
+    inputs:
+      caption: "{{generate_instagram_caption.output}}"
+
+  - id: post_facebook
+    type: connector_action
+    connector_id: facebook_pages
+    action_id: create_post
+    label: "Post to Facebook"
+    condition: "approval.action in ['approve_all', 'approve_instagram_facebook', 'approve_facebook_only']"
+    inputs:
+      message: "{{generate_facebook_post.output}}"
+
+  - id: record_kpi_snapshot
+    type: skill
+    skill: decide
+    label: "Record KPI snapshot"
+    inputs:
+      prompt: |
+        A social media post was just published. Record a KPI event so Kairos can track progress.
+        Platforms published: {{approved_platforms}}
+        Emit event type: social.post.published
+
+  - id: notify_team
+    type: notify
+    label: "Notify team"
+    inputs:
+      message: "Daily social content published to {{approved_platforms}}. Review engagement in 24h."

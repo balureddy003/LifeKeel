@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kairos.io/schemas/zerodha/portfolio.summary/v1.0.0",
+  "title": "Zerodha Portfolio Summary",
+  "description": "Account-level funds and margins for the equity segment, synced from Zerodha via Kite Connect v3.",
+  "type": "object",
+  "kairos": {
+    "connector_id": "zerodha",
+    "event_type": "portfolio.summary",
+    "schema_version": "1.0.0",
+    "signal_type": "portfolio_summary",
+    "min_schema_version": "1.0.0"
+  },
+  "required": [
+    "cash",
+    "total_margin",
+    "currency",
+    "account_type"
+  ],
+  "properties": {
+    "cash": {
+      "type": "integer",
+      "description": "Available cash balance in paise (minor units of INR)."
+    },
+    "used_margin": {
+      "type": "integer",
+      "description": "Margin utilised by open positions in paise."
+    },
+    "total_margin": {
+      "type": "integer",
+      "description": "Total margin available (cash + collateral) in paise."
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "ISO 4217 currency code. Zerodha accounts are INR-denominated."
+    },
+    "account_type": {
+      "type": "string",
+      "enum": ["equity", "commodity", "fno", "currency"],
+      "description": "Margin segment the summary was fetched from."
+    },
+    "cash_pct": {
+      "type": "number",
+      "description": "Computed cash as a percentage of total portfolio value, derived by the sync job."
+    },
+    "monthly_return_pct": {
+      "type": "number",
+      "description": "Computed month-on-month portfolio return percentage, derived by the sync job from consecutive snapshots."
+    },
+    "max_drawdown_pct": {
+      "type": "number",
+      "description": "Computed peak-to-trough drawdown percentage, derived by the sync job from the portfolio value history."
+    }
+  }
+}

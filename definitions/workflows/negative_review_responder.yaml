@@ -1,0 +1,161 @@
+workflow:
+  id: negative_review_responder
+  name: "Negative Review → AI Reply → Human Approval → Post"
+  description: >
+    When a low-rating review is detected, generate an empathetic AI reply,
+    route it to a human for approval, then post it back to the review platform.
+  version: "1.0.0"
+  enabled: true
+
+  trigger:
+    detector: review_sentiment_detector
+    condition: "rating <= 2"
+
+  state:
+    review_text: ""
+    reviewer_name: ""
+    review_id: ""
+    rating: 0
+    generated_reply: ""
+    approved_reply: ""
+
+  nodes:
+    - id: enrich_review
+      type: http
+      label: "Fetch full review context"
+      config:
+        method: GET
+        url: "http://localhost:3001/connectors/google_reviews/records/{{event_source_id}}"
+        headers:
+          Authorization: "Bearer {{state.__api_token}}"
+        output:
+          review_text: "$.body.text"
+          reviewer_name: "$.body.author_name"
+          review_id: "$.body.id"
+          rating: "$.body.rating"
+
+    - id: generate_reply
+      type: ai_generate
+      label: "Generate empathetic reply"
+      config:
+        model: claude-haiku-4-5
+        system: |
+          You are a customer service specialist. Your goal is to write professional,
+          empathetic replies to customer reviews. Be genuine, acknowledge their experience,
+          offer a concrete next step. Keep under 120 words. Never be defensive.
+        prompt: |
+          Write a reply to this {{state.rating}}-star review left by {{state.reviewer_name}}:
+
+          "{{state.review_text}}"
+
+          The reply should be warm, take responsibility where appropriate,
+          and offer to make it right.
+        output_key: generated_reply
+        fallback: >
+          Thank you for taking the time to share your feedback. We sincerely apologise
+          for your experience and would love the opportunity to make this right.
+          Please reach out to us directly so we can resolve this for you.
+
+    - id: approve_reply
+      type: human_approval
+      label: "Approve AI-generated reply"
+      config:
+        title: "Review reply needs your approval"
+        urgency: high
+        timeout: 24h
+        timeout_action: escalate
+        display:
+          - label: "Reviewer"
+            value: "{{state.reviewer_name}} — {{state.rating}}★"
+          - label: "Their review"
+            value: "{{state.review_text}}"
+          - label: "AI suggested reply"
+            value: "{{state.generated_reply}}"
+        actions:
+          - id: approve
+            label: "Post reply"
+            style: primary
+          - id: edit_approve
+            label: "Edit & post"
+            style: secondary
+            allow_edit: true
+            edit_field: generated_reply
+          - id: reject
+            label: "Skip — don't reply"
+            style: danger
+
+    - id: set_final_reply
+      type: transform
+      label: "Finalise reply text"
+      config:
+        mappings:
+          approved_reply: "{{state.generated_reply}}"
+
+    - id: post_to_google
+      type: connector_action
+      label: "Post reply to Google Reviews"
+      config:
+        connector: google_reviews
+        action: post_reply
+        params:
+          review_id: "{{state.review_id}}"
+          reply_text: "{{state.approved_reply}}"
+
+    - id: notify_team
+      type: notify
+      label: "Notify #customer-success on Slack"
+      config:
+        channel: slack
+        destination: "#customer-success"
+        template: |
+          ✅ *Reply posted* to {{state.reviewer_name}}'s {{state.rating}}★ review.
+          > {{state.approved_reply}}
+
+    - id: log_crm
+      type: http
+      label: "Log interaction to CRM"
+      config:
+        method: POST
+        url: "http://localhost:3001/connectors/hubspot/engagements"
+        body:
+          type: NOTE
+          contact_email: "{{state.reviewer_name}}"
+          content: "Responded to {{state.rating}}★ Google review. Review ID: {{state.review_id}}"
+
+  edges:
+    - from: enrich_review
+      to: generate_reply
+
+    - from: generate_reply
+      to: approve_reply
+
+    - from: approve_reply
+      to: set_final_reply
+      condition: "__outcome == 'approve' || __outcome == 'edit_approve'"
+      label: "Approved ✓"
+
+    - from: approve_reply
+      to: END
+      condition: "__outcome == 'reject'"
+      label: "Rejected ✗"
+
+    - from: set_final_reply
+      to: post_to_google
+
+    - from: post_to_google
+      to:
+        - notify_team
+        - log_crm
+
+    - from:
+        - notify_team
+        - log_crm
+      to: END
+
+  settings:
+    timeout_minutes: 1440
+    max_retries: 3
+    on_error: notify
+
+settings:
+  trust_level: 0

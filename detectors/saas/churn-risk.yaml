@@ -1,0 +1,62 @@
+id: churn_risk_detection
+name: SaaS Churn Risk Detection
+description: >
+  Identifies customers showing behavioural churn signals — login drop-off,
+  feature disengagement, support ticket spikes, billing failures.
+version: 1.0.0
+signal_types:
+  - subscription.usage
+  - login.event
+  - support.ticket
+  - payment.failed
+industries: ["saas", "software", "platform"]
+
+rules:
+  - id: login_dropoff
+    name: Login Drop-Off — Engagement Decline
+    condition: >
+      data.logins_last_30d < data.logins_prev_30d * 0.5 and
+      data.subscription_value_minor >= 50000
+    confidence: 0.82
+    impact_low: "data.subscription_value_minor * 12 * 0.4"
+    impact_high: "data.subscription_value_minor * 12"
+    reasoning_template: >
+      Customer login frequency dropped {{data.logins_last_30d}} vs {{data.logins_prev_30d}}
+      in prior 30 days ({{data.pct_drop}}% decline). Annual contract value at risk:
+      {{data.subscription_value_minor}}/month.
+    actions:
+      - Trigger personalised re-engagement email sequence
+      - Assign customer success manager
+      - Offer product walkthrough session
+
+  - id: payment_failure_churn
+    name: Payment Failure — Involuntary Churn Risk
+    condition: "data.payment_failed_count >= 2 and data.subscription_active == true"
+    confidence: 0.91
+    impact_low: "data.subscription_value_minor * 6"
+    impact_high: "data.subscription_value_minor * 24"
+    reasoning_template: >
+      {{data.payment_failed_count}} consecutive payment failures for active subscription
+      worth {{data.subscription_value_minor}}/month. Involuntary churn
+      probability: 78% if not resolved within 7 days.
+    actions:
+      - Send payment update link immediately
+      - Retry with exponential backoff (3 attempts)
+      - Pause subscription (not cancel) after 3rd failure
+    state_enabled: true
+    window_size: 3
+    window_duration_ms: 604800000  # 7 days
+
+  - id: support_ticket_spike
+    name: Support Ticket Spike — Friction Signal
+    condition: "data.tickets_this_week >= 5 and data.tickets_prev_week <= 1"
+    confidence: 0.76
+    impact_low: "data.subscription_value_minor * 3"
+    impact_high: "data.subscription_value_minor * 12"
+    reasoning_template: >
+      {{data.tickets_this_week}} support tickets this week vs {{data.tickets_prev_week}}
+      last week. Spike indicates product friction or onboarding failure.
+    actions:
+      - Assign senior support agent
+      - Schedule executive business review
+      - Identify root-cause pattern across tickets

@@ -1,0 +1,60 @@
+id: protect-cash-flow
+domain: Finance
+name: Protect cash flow
+description: Detect upcoming shortfalls and act before cash becomes critical.
+intent: Maintain a positive 30-day cash position and resolve projected shortfalls before they become critical.
+cadence: daily
+required_connectors:
+  - xero
+skills:
+  - forecast
+  - plan
+  - prioritize
+  - decide
+plan:
+  - id: forecast
+    label: Forecast the cash position
+    skill: forecast
+    approval_required: false
+    description: Recalculate the expected cash position and identify shortfall drivers.
+  - id: plan
+    label: Create the fastest recovery plan
+    skill: plan
+    workflow_id: ops_cash_flow_alert
+    connector_id: xero
+    approval_required: true
+    description: Propose prioritized actions when a shortfall is detected.
+  - id: verify
+    label: Verify shortfall reduction
+    skill: compare
+    approval_required: false
+    description: Measure whether approved actions improved the forecast.
+stop_condition: Stop when the projected 30-day cash position remains positive for 30 consecutive days.
+spec:
+  name: Protect cash flow
+  description: Maintain a positive 30-day cash position by detecting and resolving projected shortfalls early.
+  timeline_days: 90
+  tags: [finance, cash-flow]
+  confidence: 0.95
+  reasoning: Curated goal template with measurable KPIs and a repeatable execution plan.
+  warnings: []
+  detectors: []
+  kpis:
+    - metric: projected_cash_balance
+      label: Projected 30-day cash balance
+      unit: minor currency units
+      target: 1
+      start_value: 0
+      current: 0
+      direction: increase
+      source: manual
+      reasoning: Shows whether the business is expected to remain cash positive.
+    - metric: cash_shortfall_count
+      label: Projected shortfalls
+      unit: shortfalls
+      target: 0
+      start_value: 0
+      current: 0
+      direction: decrease
+      source: manual
+      reasoning: Measures unresolved cash risks.

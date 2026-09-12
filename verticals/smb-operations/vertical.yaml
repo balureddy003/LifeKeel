@@ -1,0 +1,74 @@
+# SMB Operations — Vertical #2 (proves extensibility)
+#
+# This vertical adds NO engine code and NO new content. It re-bundles the SMB
+# content that already ships in detectors/ and definitions/ under a persona-led
+# identity. It exists to demonstrate the core thesis: a new vertical is a
+# manifest over the shared core. See docs/prd/vertical-template-framework.md.
+
+id: smb-operations
+name: SMB Operations
+tagline: Recover cash, keep customers, run the back office on autopilot
+status: beta
+tier_minimum: smb
+supported_countries: []  # global
+
+theme:
+  accent_token: accent-amber
+  tone: Practical, owner-to-owner, action-first
+  entity_noun: customer
+  outcome_noun: revenue recovered
+
+personas:
+  - id: owner
+    name: Business Owner
+    description: >
+      Runs a small business and wants cash recovered, customers retained, and
+      routine ops handled without hiring — with a clear audit trail.
+    jobs_to_be_done:
+      - Recover overdue invoices without chasing manually
+      - Catch churn signals before customers leave
+      - Keep cash flow visible and act early
+    primary_goal_templates:
+      - invoice-recovery
+      - churn-prevention
+
+  - id: ops-lead
+    name: Operations Lead
+    description: >
+      Owns day-to-day operations and wants failed payments retried, disputes
+      handled, and the weekly digest to run itself — with approval where it matters.
+    jobs_to_be_done:
+      - Retry failed payments automatically
+      - Handle disputes and SLAs before they breach
+    primary_goal_templates:
+      - sla-prevention
+      - trial-conversion
+
+required_connectors:
+  - xero
+  - stripe
+optional_connectors:
+  - shopify
+  - postiz
+
+detectors:
+  - overdue_invoice_recovery
+  - cash_flow_gap
+  - churn_risk_detection
+
+outcome_packs:
+  - cash-recovery
+  - customer-experience
+  - revenue-optimisation
+
+goal_templates:
+  - invoice-recovery
+  - churn-prevention
+  - sla-prevention
+  - trial-conversion
+
+kpi_vocabulary:
+  - Overdue recovery rate
+  - Cash collected
+  - Churn rate
+  - Payment success rate

@@ -1,0 +1,20 @@
+# B1: Goal-oriented outcome pack — "What do you want to achieve?" → "Track My Financial Goals"
+# Maps to real Kairos capabilities: trading-212 connector, social_goal_progress detector
+# (generic goal-progress tracker), diversified-portfolio-yield + realistic-compound-growth
+# goal templates.
+id: track-goals
+name: Track My Financial Goals
+tagline: Turn financial goals into measurable plans
+category: goal_tracking
+estimated_setup_minutes: 5
+required_connectors:
+  - trading-212
+optional_connectors: []
+included_workflows: []
+included_detectors:
+  - social_goal_progress
+kpi_labels:
+  - Goal progress
+  - Portfolio value
+  - ISA allowance used
+tier_minimum: individual

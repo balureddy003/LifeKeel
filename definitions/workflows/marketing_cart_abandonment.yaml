@@ -1,0 +1,114 @@
+id: marketing_cart_abandonment
+name: Cart Abandoned → Wait 1h → AI Recovery Email → Discount
+description: |
+  Shopify cart abandoned → wait 1 hour → AI-crafts personalised recovery email
+  referencing the specific items → sends it → if no purchase in 24h, sends a
+  10% discount code as a second chance.
+version: 1.0.0
+template:
+  category: marketing
+  required_connectors: [shopify, gmail]
+  estimated_roi: "£500–£5,000/month recovered cart revenue"
+  setup_minutes: 5
+  featured: true
+enabled: true
+trigger:
+  event_type: ecommerce.cart.abandoned
+
+state:
+  recovery_email: ""
+  discount_code: ""
+
+nodes:
+  - id: trigger
+    type: trigger
+    label: Cart abandoned
+    config: {}
+
+  - id: wait_1h
+    type: wait
+    label: Wait 1 hour
+    config:
+      duration: 1h
+
+  - id: draft_recovery
+    type: skill
+    label: Draft cart recovery email
+    config:
+      skill: generate
+      persona: "a friendly e-commerce brand voice — upbeat, personal, not salesy"
+      tone: "casual, helpful, light FOMO. Max 2 short paragraphs."
+      max_words: 80
+      prompt: "Write a cart recovery email for {{event.customer_name}} who left {{event.item_count}} items in their cart worth £{{event.cart_value_display}}. Items: {{event.item_names}}. Make it personal and mention the specific items. Include a call-to-action to complete the purchase."
+      output_key: recovery_email
+      fallback: "Hey {{event.customer_name}}, you left something behind! Your cart with {{event.item_names}} is waiting. Complete your order before it sells out."
+
+  - id: send_recovery_email
+    type: connector_action
+    label: Send recovery email
+    config:
+      connector: gmail
+      action: send_email
+      params:
+        to: "{{event.customer_email}}"
+        subject: "{{event.customer_name}}, you forgot something... 🛒"
+        body: "{{state.recovery_email}}"
+
+  - id: wait_24h
+    type: wait
+    label: Wait 24h for purchase
+    config:
+      duration: 24h
+
+  - id: create_discount
+    type: connector_action
+    label: Create 10% discount code
+    config:
+      connector: shopify
+      action: create_discount
+      params:
+        priceRuleId: "{{tenant.shopify_winback_price_rule_id}}"
+
+  - id: draft_discount_email
+    type: skill
+    label: Draft discount offer email
+    config:
+      skill: generate
+      persona: "friendly e-commerce brand"
+      tone: "generous, creating urgency without being pushy"
+      max_words: 70
+      prompt: "Write a last-chance email for {{event.customer_name}} offering 10% off their abandoned cart ({{event.item_names}}). Mention the discount code will expire in 48 hours. Keep it short and punchy."
+      output_key: discount_email
+      fallback: "{{event.customer_name}}, here's 10% off your cart! Use code {{state.discount_code}} at checkout. Expires in 48 hours."
+
+  - id: send_discount_email
+    type: connector_action
+    label: Send discount email
+    config:
+      connector: gmail
+      action: send_email
+      params:
+        to: "{{event.customer_email}}"
+        subject: "Here's 10% off — your cart is still waiting 🎁"
+        body: "{{state.discount_email}}"
+
+edges:
+  - from: trigger
+    to: wait_1h
+  - from: wait_1h
+    to: draft_recovery
+  - from: draft_recovery
+    to: send_recovery_email
+  - from: send_recovery_email
+    to: wait_24h
+  - from: wait_24h
+    to: create_discount
+  - from: create_discount
+    to: draft_discount_email
+  - from: draft_discount_email
+    to: send_discount_email
+
+settings:
+  trust_level: 0
+  timeout_minutes: 2880
+  on_error: continue

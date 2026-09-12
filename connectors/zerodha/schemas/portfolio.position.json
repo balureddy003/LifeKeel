@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kairos.io/schemas/zerodha/portfolio.position/v1.0.0",
+  "title": "Zerodha Portfolio Position",
+  "description": "A holding (long-term DEMAT) or short-term position synced from Zerodha via Kite Connect v3.",
+  "type": "object",
+  "kairos": {
+    "connector_id": "zerodha",
+    "event_type": "portfolio.position",
+    "schema_version": "1.0.0",
+    "signal_type": "portfolio_position",
+    "min_schema_version": "1.0.0"
+  },
+  "required": [
+    "ticker",
+    "quantity",
+    "avg_price",
+    "current_price",
+    "exchange",
+    "account_type"
+  ],
+  "properties": {
+    "ticker": {
+      "type": "string",
+      "description": "Exchange tradingsymbol (e.g. SBIN, INFY)."
+    },
+    "exchange": {
+      "type": "string",
+      "enum": ["NSE", "BSE", "NFO", "BFO", "MCX", "CDS", "BCD"],
+      "description": "Exchange the instrument is listed on."
+    },
+    "isin": {
+      "type": "string",
+      "description": "International Securities Identification Number, where available (equities only)."
+    },
+    "quantity": {
+      "type": "number",
+      "description": "Total quantity held (realised for holdings; net for positions)."
+    },
+    "t1_quantity": {
+      "type": "number",
+      "description": "Quantity pending T+1 settlement (holdings only)."
+    },
+    "realised_quantity": {
+      "type": "number",
+      "description": "Quantity delivered to DEMAT (holdings only)."
+    },
+    "avg_price": {
+      "type": "integer",
+      "description": "Average entry price in paise (minor units of INR)."
+    },
+    "current_price": {
+      "type": "integer",
+      "description": "Last traded price in paise (minor units of INR)."
+    },
+    "close_price": {
+      "type": "integer",
+      "description": "Previous close price in paise (minor units of INR)."
+    },
+    "unrealised_pnl": {
+      "type": "integer",
+      "description": "Unrealised profit/loss in paise (minor units of INR). Kite returns this in rupees; the sync job converts."
+    },
+    "day_change": {
+      "type": "integer",
+      "description": "Day's price change in paise (minor units of INR)."
+    },
+    "day_change_pct": {
+      "type": "number",
+      "description": "Day's percentage change."
+    },
+    "account_type": {
+      "type": "string",
+      "enum": ["cnc", "mis", "nrml"],
+      "description": "Kite product type: CNC (delivery), MIS (intraday), NRML (overnight F&O)."
+    },
+    "buy_quantity": {
+      "type": "number",
+      "description": "Buy-side quantity (positions only)."
+    },
+    "sell_quantity": {
+      "type": "number",
+      "description": "Sell-side quantity (positions only)."
+    },
+    "buy_price": {
+      "type": "integer",
+      "description": "Average buy price in paise (positions only)."
+    },
+    "sell_price": {
+      "type": "integer",
+      "description": "Average sell price in paise (positions only)."
+    },
+    "buy_value": {
+      "type": "integer",
+      "description": "Total buy value in paise (positions only)."
+    },
+    "sell_value": {
+      "type": "integer",
+      "description": "Total sell value in paise (positions only)."
+    },
+    "realised_pnl": {
+      "type": "integer",
+      "description": "Realised profit/loss in paise (positions only)."
+    },
+    "position_value_minor": {
+      "type": "integer",
+      "description": "Computed market value of the position in paise, derived by the sync job as quantity * current_price."
+    },
+    "portfolio_weight_pct": {
+      "type": "number",
+      "description": "Computed weight of this position as a percentage of total portfolio value, derived by the sync job."
+    }
+  }
+}

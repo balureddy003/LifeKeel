@@ -1,0 +1,48 @@
+id: duplicate_payment_detection
+name: Duplicate Payment Detection
+description: >
+  Detects duplicate payments to the same supplier within a rolling window,
+  with confidence scoring based on amount match, timing, and reference similarity.
+version: 1.0.0
+signal_types:
+  - payment.created
+  - payment.processed
+  - bank.transaction
+industries: ["*"]
+
+rules:
+  - id: exact_duplicate
+    name: Exact Duplicate Payment
+    condition: >
+      data.duplicate_amount_minor == data.original_amount_minor and
+      data.hours_since_original <= 168 and
+      data.same_supplier == true
+    confidence: 0.97
+    impact_low: "data.duplicate_amount_minor"
+    impact_high: "data.duplicate_amount_minor"
+    reasoning_template: >
+      Payment of {{data.duplicate_amount_minor}} to {{data.supplier_name}}
+      appears to duplicate payment made {{data.hours_since_original}} hours ago
+      (ref: {{data.original_reference}}). Exact amount match.
+    actions:
+      - Halt duplicate payment immediately
+      - Notify accounts payable team
+      - Raise recovery request with bank
+
+  - id: near_duplicate
+    name: Near-Duplicate Payment Suspicious
+    condition: >
+      data.amount_difference_pct <= 5 and
+      data.hours_since_original <= 72 and
+      data.same_supplier == true and
+      data.same_invoice_ref == true
+    confidence: 0.84
+    impact_low: "data.amount_minor * 0.8"
+    impact_high: "data.amount_minor"
+    reasoning_template: >
+      Payment of {{data.amount_minor}} to {{data.supplier_name}} is
+      within 5% of a payment made {{data.hours_since_original}} hours ago with
+      matching invoice reference. Possible duplicate.
+    actions:
+      - Flag for manual review before processing
+      - Request confirmation from invoice originator

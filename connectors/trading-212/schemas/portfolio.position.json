@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kairos.io/schemas/trading-212/portfolio.position/v1.0.0",
+  "title": "Trading 212 Portfolio Position",
+  "description": "Open position in a Trading 212 Invest or Stocks ISA account.",
+  "type": "object",
+  "kairos": {
+    "connector_id": "trading-212",
+    "event_type": "portfolio.position",
+    "schema_version": "1.0.0",
+    "signal_type": "portfolio_position",
+    "min_schema_version": "1.0.0"
+  },
+  "required": [
+    "ticker",
+    "quantity",
+    "avg_price",
+    "current_price",
+    "currency",
+    "account_type"
+  ],
+  "properties": {
+    "ticker": {
+      "type": "string",
+      "description": "Instrument ticker symbol (e.g. AAPL)."
+    },
+    "quantity": {
+      "type": "number",
+      "description": "Number of units held."
+    },
+    "avg_price": {
+      "type": "integer",
+      "description": "Average entry price in minor units of the instrument currency."
+    },
+    "current_price": {
+      "type": "integer",
+      "description": "Current market price in minor units of the instrument currency."
+    },
+    "unrealised_pnl": {
+      "type": "integer",
+      "description": "Unrealised profit/loss in minor units of the account currency."
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "ISO 4217 currency code of the monetary values."
+    },
+    "account_type": {
+      "type": "string",
+      "enum": ["invest", "isa", "cfd"],
+      "description": "Trading 212 account type the position belongs to."
+    },
+    "position_value_minor": {
+      "type": "integer",
+      "description": "Computed market value of the position in minor units, derived by the sync job as quantity * current_price."
+    },
+    "portfolio_weight_pct": {
+      "type": "number",
+      "description": "Computed weight of this position as a percentage of total portfolio value, derived by the sync job."
+    }
+  }
+}

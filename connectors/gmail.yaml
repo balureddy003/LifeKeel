@@ -1,0 +1,39 @@
+# STATUS: planned — Gmail has a public REST API (Gmail API v1) behind Google
+# OAuth2, but live ingestion is not wired. This definition fixes the connector
+# contract so verticals that send email (branding-marketing, smb-operations,
+# trading-investment) reference a real id; wiring OAuth + send/read is tracked
+# separately. Mirrors the property-wealth vertical's rightmove/zoopla posture:
+# the contract is complete, the feed is not.
+id: gmail
+name: Gmail
+provider: google
+version: 0.1.0
+status: planned
+description: Google Gmail — send transactional email and read inbound messages
+category: generic
+base_url: https://gmail.googleapis.com/gmail/v1
+
+auth:
+  type: oauth2
+  oauth:
+    authorization_url: https://accounts.google.com/o/oauth2/v2/auth
+    token_url: https://oauth2.googleapis.com/token
+    scopes:
+      - https://www.googleapis.com/auth/gmail.send
+      - https://www.googleapis.com/auth/gmail.readonly
+
+resources:
+  - name: messages
+    path: /users/{userId}/messages
+    method: POST
+    description: Send an email message
+  - name: message
+    path: /users/{userId}/messages/{id}
+    method: GET
+    description: Retrieve a specific message
+
+signal_types:
+  - email.sent
+  - email.received
+  - email.opened
+  - email.clicked

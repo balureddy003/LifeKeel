@@ -1,0 +1,44 @@
+# STATUS: planned — Google Trends attention signal connector.
+# Free official API (launched July 2025). Search volume index as a proxy
+# for investor attention. Evidence: rising search volume predicts
+# short-term returns (43/45 stocks in study), edge decays within ~1 week.
+#
+# API: https://trends.googleapis.com/trends/api/ (alpha, REST)
+# Rate limit: 5-year rolling window (1800 days of data)
+# No API key required for basic queries (OAuth for higher limits).
+id: google-trends
+name: Google Trends
+provider: google
+version: 1.0.0
+description: "Google Trends search volume index for investor attention signals. Free official API. Rising searches predict short-term returns."
+status: planned
+category: investment
+base_url: https://trends.googleapis.com/trends/api
+
+auth:
+  type: none
+  notes: |
+    The Google Trends API (alpha, launched July 2025) is free for basic
+    queries. OAuth2 may be required for higher rate limits. No API key
+    needed for the basic /explore endpoint.
+    Documentation: https://developers.google.com/trends (alpha)
+
+resources:
+  - name: SearchVolume
+    path: /explore?hl=en-US&tz=-60&req={\"comparisonItem\":[{\"keyword\":\"{keyword}\",\"geo\":\"\",\"time\":\"today 3-m\"}]}
+    method: GET
+    response_shape: object
+    record_transform: google_trends_search_volume
+    symbols_param: keyword
+    cadence: weekly
+    description: Weekly search volume index for a keyword (ticker symbol or company name). 3-month window.
+
+signal_types:
+  - attention_signal
+
+signal_type_map:
+  searchvolume: attention_signal
+
+field_mappings:
+  - source_field: value
+    target_field: search_volume_ratio

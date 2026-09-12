@@ -1,0 +1,47 @@
+id: cash_flow_gap
+name: Cash Flow Gap Detection
+description: >
+  Identifies approaching cash shortfalls by analysing receivables vs payables
+  timing, with urgency scoring and bridging recommendations.
+version: 1.0.0
+signal_types:
+  - bank.transaction
+  - invoice.created
+  - payment.scheduled
+industries: ["*"]
+
+rules:
+  - id: critical_cash_shortfall
+    name: Critical Cash Shortfall Approaching
+    condition: >
+      data.projected_cash_balance_minor < 0 and
+      data.days_until_shortfall <= 14
+    confidence: 0.93
+    impact_low: "abs(data.projected_cash_balance_minor)"
+    impact_high: "abs(data.projected_cash_balance_minor) * 1.5"
+    reasoning_template: >
+      Projected cash balance turns negative in {{data.days_until_shortfall}} days.
+      Shortfall: {{data.projected_cash_balance_minor}}.
+      Immediate actions required to avoid missed payments.
+    actions:
+      - Accelerate collections on top 5 overdue invoices
+      - Defer non-critical payables by 14 days
+      - Contact bank for emergency credit facility
+      - Review and defer discretionary spend
+
+  - id: receivables_payables_mismatch
+    name: Receivables-Payables Timing Mismatch
+    condition: >
+      data.payables_due_7d_minor > data.receivables_expected_7d_minor * 1.3 and
+      data.current_balance_minor < data.payables_due_7d_minor
+    confidence: 0.84
+    impact_low: "data.payables_due_7d_minor - data.receivables_expected_7d_minor"
+    impact_high: "(data.payables_due_7d_minor - data.receivables_expected_7d_minor) * 1.2"
+    reasoning_template: >
+      Payables of {{data.payables_due_7d_minor}} due in 7 days vs
+      {{data.receivables_expected_7d_minor}} expected receivables.
+      Gap: {{data.payables_due_7d_minor}}. Current balance insufficient.
+    actions:
+      - Send early payment requests to top customers
+      - Negotiate extended payment terms with key suppliers
+      - Draw on revolving credit facility

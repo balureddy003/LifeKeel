@@ -1,0 +1,50 @@
+id: social_post_performance_spike
+name: "Social Post — Engagement Spike"
+description: "Fires when a social post gets significantly higher engagement than your average — signals a content angle worth repeating."
+version: "1.0.0"
+signal_types:
+  - social.post.performance
+industries:
+  - "*"
+
+rules:
+  - id: engagement_spike_2sigma
+    name: "Post engagement above 2σ threshold"
+    # Static fallback threshold, not context.adaptive_thresholds — filtrex's
+    # useDotAccessOperator throws (not "returns undefined") for any missing
+    # nested key, including the ~always-missing per-metric adaptive-threshold
+    # key on a cold-start tenant. That exception is caught by evaluate() and
+    # treated as "no evidence" (false), so threshold(...)'s own fallback
+    # argument is unreachable dead code and this rule never fired. See
+    # docs/prd/audience-growth-vertical.md §4 for the full root-cause writeup.
+    condition: "data.engagement_rate > 0.05"
+    confidence: 0.88
+    impact_low: 0
+    impact_high: 0
+    reasoning_template: |
+      Your {{data.platform}} post achieved {{data.engagement_rate}} engagement rate —
+      significantly above your typical range.
+      Likes: {{data.likes}} | Comments: {{data.comments}} | Shares: {{data.shares}} | Impressions: {{data.impressions}}.
+      This content angle performs well — consider reusing it in future posts.
+    actions:
+      - "Save this content angle to memory"
+      - "Schedule a follow-up post on the same topic"
+    dedup_window_ms: 3600000
+
+  - id: viral_threshold
+    name: "Post went viral (10× average impressions)"
+    # Same fix as engagement_spike_2sigma above — static fallback, not the
+    # broken threshold(context.adaptive_thresholds, ...) pattern.
+    condition: "data.impressions > 10000"
+    confidence: 0.95
+    impact_low: 0
+    impact_high: 0
+    reasoning_template: |
+      Your {{data.platform}} post went viral — {{data.impressions}} impressions is far above your average.
+      Engagement rate: {{data.engagement_rate}} | Shares: {{data.shares}}.
+      Analyse the format, topic, and timing. Replicate immediately.
+    actions:
+      - "Identify what made this post viral"
+      - "Post a follow-up within 24 hours"
+      - "Boost with paid promotion"
+    dedup_window_ms: 86400000

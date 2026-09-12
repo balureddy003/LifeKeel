@@ -1,0 +1,21 @@
+id: property-yield
+name: Property Yield Pack
+tagline: Grow net rental yield with proof
+category: custom
+estimated_setup_minutes: 20
+required_connectors:
+  - rightmove
+  - zoopla
+optional_connectors:
+  - land-registry
+  - open-banking
+included_workflows: []
+included_detectors:
+  - property_yield_gap
+  - property_price_drop
+  - property_refinance_window
+kpi_labels:
+  - Net rental yield
+  - Void rate
+  - Refinance headroom
+tier_minimum: individual

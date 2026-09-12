@@ -1,0 +1,150 @@
+workflow:
+  id: social_multi_platform_presence
+  name: Multi-Platform Social Presence
+  description: Generate and publish branded content to YouTube, Instagram and Facebook daily.
+  version: "1.0.0"
+  enabled: true
+  trigger:
+    schedule: "0 9 * * *"
+
+  state:
+    youtube_script: ""
+    instagram_caption: ""
+    facebook_post: ""
+
+  nodes:
+    - id: generate_video_script
+      type: ai_generate
+      label: Generate YouTube video script
+      config:
+        prompt: Write a 60-second YouTube video script showcasing one Kairos AI capability. Educational, engaging, with CTA.
+        output_key: youtube_script
+
+    - id: generate_instagram_caption
+      type: ai_generate
+      label: Generate Instagram caption
+      config:
+        prompt: >-
+          Write an Instagram caption (max 150 words) about Kairos AI automation. Include 10 hashtags. Visual and
+          action-oriented.
+        output_key: instagram_caption
+
+    - id: generate_facebook_post
+      type: ai_generate
+      label: Generate Facebook post
+      config:
+        prompt: >-
+          Write a Facebook post (max 200 words) for the Kairos AI page. Focus on business benefit — how Kairos saves time or
+          grows revenue.
+        output_key: facebook_post
+
+    - id: review_content
+      type: human_approval
+      label: Review and approve content
+      config:
+        title: "Review and approve content"
+        urgency: medium
+        timeout: "4h"
+        timeout_action: skip
+        display:
+          - label: "YouTube script"
+            key: youtube_script
+            editable: true
+          - label: "Instagram caption"
+            key: instagram_caption
+            editable: true
+          - label: "Facebook post"
+            key: facebook_post
+            editable: true
+        actions:
+          - id: approve_all
+            label: Publish to all platforms
+            style: primary
+          - id: approve_instagram_facebook
+            label: Instagram and Facebook only
+            style: secondary
+          - id: approve_facebook_only
+            label: Facebook only
+            style: secondary
+          - id: reject
+            label: Skip today
+            style: danger
+
+    - id: post_youtube
+      type: connector_action
+      label: Upload to YouTube
+      config:
+        connector: youtube
+        action: upload_video
+        params:
+          title: "Kairos AI Daily"
+          description: "{{state.youtube_script}}"
+
+    - id: post_instagram
+      type: connector_action
+      label: Post to Instagram
+      config:
+        connector: instagram_business
+        action: create_post
+        params:
+          caption: "{{state.instagram_caption}}"
+
+    - id: post_facebook
+      type: connector_action
+      label: Post to Facebook
+      config:
+        connector: facebook_pages
+        action: create_post
+        params:
+          message: "{{state.facebook_post}}"
+
+    - id: notify_team
+      type: notify
+      label: Notify team
+      config:
+        channel: slack
+        destination: "#marketing"
+        template: |
+          ✅ Social content published today.
+
+  edges:
+    - from: generate_video_script
+      to: review_content
+
+    - from: generate_instagram_caption
+      to: review_content
+
+    - from: generate_facebook_post
+      to: review_content
+
+    - from: review_content
+      to: post_youtube
+      condition: "__outcome == 'approve_all'"
+      label: "YouTube approved"
+
+    - from: review_content
+      to: post_instagram
+      condition: "__outcome == 'approve_all' || __outcome == 'approve_instagram_facebook'"
+      label: "Instagram approved"
+
+    - from: review_content
+      to: post_facebook
+      condition: "__outcome == 'approve_all' || __outcome == 'approve_instagram_facebook' || __outcome == 'approve_facebook_only'"
+      label: "Facebook approved"
+
+    - from: post_youtube
+      to: notify_team
+
+    - from: post_instagram
+      to: notify_team
+
+    - from: post_facebook
+      to: notify_team
+
+    - from: review_content
+      to: END
+      condition: "__outcome == 'reject'"
+      label: "Skipped"
+
+  settings:
+    trust_level: 0

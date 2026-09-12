@@ -1,0 +1,38 @@
+{
+  "name": "@kairos/workflows",
+  "version": "0.1.0",
+  "description": "Kairos LangGraph workflow engine — no-code multi-step automations with human-in-the-loop",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@kairos/runtime": "workspace:*",
+    "@kairos/platform": "workspace:^",
+    "@kairos/specifications": "workspace:*",
+    "filtrex": "^3.1.0",
+    "js-yaml": "^4.1.0",
+    "mongodb": "^7.3.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.9"
+  },
+  "license": "BUSL-1.1"
+}

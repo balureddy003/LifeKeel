@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kairos.io/schemas/{{connector_id}}/{{event_type}}/v{{version}}",
+  "title": "{{title}}",
+  "description": "{{description}}",
+  "type": "object",
+  "kairos": {
+    "connector_id": "{{connector_id}}",
+    "event_type": "{{event_type}}",
+    "schema_version": "{{version}}",
+    "signal_type": "{{signal_type}}",
+    "min_schema_version": "1.0.0"
+  },
+  "required": [
+    "id",
+    "event_timestamp",
+    "amount_minor",
+    "currency"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique order identifier"
+    },
+    "event_timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the event"
+    },
+    "amount_minor": {
+      "type": "integer",
+      "description": "Order total in minor units"
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[a-z]{3}$",
+      "description": "ISO 4217 currency code"
+    },
+    "customer_id": {
+      "type": "string",
+      "description": "Customer identifier"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["placed", "cancelled", "refunded", "fulfilled"],
+      "description": "Order status"
+    },
+    "line_items": {
+      "type": "array",
+      "description": "Order line items",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "price_minor": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional provider-specific metadata"
+    }
+  }
+}

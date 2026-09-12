@@ -1,0 +1,36 @@
+# STATUS: planned — Zendesk has a public REST API behind API-token (bearer)
+# auth, but live ingestion is not wired. This definition fixes the connector
+# contract so the customer-experience outcome pack's support_ticket_triage
+# workflow references a real id; wiring is tracked separately.
+id: zendesk
+name: Zendesk
+provider: zendesk
+version: 0.1.0
+status: planned
+description: Zendesk — support tickets, ticket comments, and SLA tracking
+category: crm
+base_url: https://{subdomain}.zendesk.com/api/v2
+
+auth:
+  type: bearer
+  notes: API token via {email}/token:{token} basic-style header, modeled as bearer.
+
+resources:
+  - name: tickets
+    path: /tickets
+    method: GET
+    description: List and create support tickets
+  - name: ticket
+    path: /tickets/{id}
+    method: POST
+    description: Update a ticket (status, assignee, tags)
+  - name: ticket_comments
+    path: /tickets/{id}/comments
+    method: POST
+    description: Add a public or internal comment to a ticket
+
+signal_types:
+  - support.ticket.created
+  - support.ticket.updated
+  - support.ticket.sla_breached
+  - support.ticket.comment_added

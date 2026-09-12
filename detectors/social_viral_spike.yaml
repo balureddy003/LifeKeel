@@ -1,0 +1,20 @@
+id: social_viral_spike
+name: "Social Viral Spike"
+description: "Fires when engagement rate exceeds 10% indicating viral content"
+version: "1.0.0"
+signal_types:
+  - social.analytics.daily
+rules:
+  - id: viral_engagement
+    name: "Viral engagement rate"
+    condition: "engagement_rate > 0.10"
+    confidence: 0.9
+    urgency: low
+    category: marketing
+    impact_low: 0
+    impact_high: 50000
+    reasoning_template: |
+      Engagement rate above 10% indicates viral or highly resonant content.
+    actions:
+      - "Amplify with paid boost"
+      - "Repurpose content across channels"

@@ -1,0 +1,63 @@
+id: sla-prevention
+domain: Operations
+name: Improve support response time
+description: Triage incoming support work and resolve urgent requests faster.
+intent: Resolve urgent support tickets within two hours and reduce the open ticket backlog.
+cadence: daily
+required_connectors: []
+skills:
+  - classify
+  - route
+  - prioritize
+  - generate
+plan:
+  - id: triage
+    label: Triage incoming tickets
+    skill: classify
+    workflow_id: support_ticket_triage
+    approval_required: false
+    description: Classify urgency, topic, and customer impact.
+  - id: route
+    label: Route and prepare response
+    skill: route
+    approval_required: false
+    description: Assign the right owner and prepare a useful first response.
+  - id: escalate
+    label: Escalate missed targets
+    skill: prioritize
+    approval_required: true
+    description: Surface urgent tickets that are approaching the response target.
+stop_condition: Stop when response-time and backlog KPIs are achieved.
+spec:
+  name: Improve support response time
+  description: Triage and resolve urgent support tickets within two hours.
+  timeline_days: 30
+  tags: [operations, support]
+  confidence: 0.95
+  reasoning: Curated goal template with measurable KPIs and a repeatable execution plan.
+  warnings: []
+  detectors: []
+  kpis:
+    - metric: urgent_ticket_response_hours
+      label: Urgent ticket response time
+      unit: hours
+      target: 2
+      start_value: 0
+      current: 0
+      direction: decrease
+      source: signals
+      signal_types: [support.ticket]
+      aggregation: avg
+      field: data.response_hours
+      reasoning: Measures whether urgent customers receive timely help.
+    - metric: open_ticket_count
+      label: Open ticket backlog
+      unit: tickets
+      target: 0
+      start_value: 0
+      current: 0
+      direction: decrease
+      source: signals
+      signal_types: [support.ticket]
+      aggregation: count
+      reasoning: Measures unresolved support work.

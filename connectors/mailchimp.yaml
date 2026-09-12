@@ -1,0 +1,42 @@
+# STATUS: planned — Mailchimp has a public REST API behind OAuth2, but live
+# ingestion is not wired. This definition fixes the connector contract so the
+# branding-marketing vertical's lead-nurture workflow references a real id;
+# wiring OAuth + audience sync is tracked separately.
+id: mailchimp
+name: Mailchimp
+provider: mailchimp
+version: 0.1.0
+status: planned
+description: Mailchimp — email audiences, subscribers, tags, and campaigns
+category: marketing
+base_url: https://{dc}.api.mailchimp.com/3.0
+
+auth:
+  type: oauth2
+  oauth:
+    authorization_url: https://login.mailchimp.com/oauth2/authorize
+    token_url: https://login.mailchimp.com/oauth2/token
+    scopes:
+      - campaign_write
+      - list_write
+
+resources:
+  - name: lists
+    path: /lists
+    method: GET
+    description: List audiences
+  - name: list_members
+    path: /lists/{list_id}/members
+    method: POST
+    description: Add or update a list subscriber
+  - name: list_member_tags
+    path: /lists/{list_id}/members/{subscriber_hash}/tags
+    method: POST
+    description: Tag a subscriber
+
+signal_types:
+  - audience.subscriber.added
+  - audience.subscriber.tagged
+  - campaign.sent
+  - campaign.opened
+  - campaign.clicked

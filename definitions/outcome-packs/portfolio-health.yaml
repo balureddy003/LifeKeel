@@ -1,0 +1,24 @@
+id: portfolio-health
+name: Trading & Investment Portfolio Health
+tagline: Keep a Trading 212 portfolio in shape with risk rules and rebalance signals
+category: custom
+estimated_setup_minutes: 10
+required_connectors:
+  - trading-212
+optional_connectors: []
+included_workflows:
+  - trading_concentration_review
+  - trading_dividend_action
+  - trading_rebalance_review
+  - trading_price_drop_review
+included_detectors:
+  - trading_concentration_risk
+  - trading_price_drop_alert
+  - trading_dividend_opportunity
+  - trading_rebalance_suggestion
+kpi_labels:
+  - Portfolio concentration
+  - Dividend yield
+  - Unrealised P&L
+  - ISA allowance used
+tier_minimum: individual

@@ -1,0 +1,22 @@
+id: revenue-optimisation
+name: Revenue Optimisation Pack
+tagline: Win back churned customers and recover abandoned carts
+category: custom
+estimated_setup_minutes: 15
+required_connectors:
+  - gmail
+  - hubspot
+optional_connectors:
+  - shopify
+included_workflows:
+  - marketing_upsell_campaign
+  - marketing_win_back_churned
+  - marketing_cart_abandonment
+included_detectors:
+  - cart_abandonment_recovery
+  - churn_risk_detection
+kpi_labels:
+  - Revenue recovered
+  - Cart recovery rate
+  - Conversion rate
+tier_minimum: smb

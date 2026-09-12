@@ -1,0 +1,125 @@
+id: social_media_roi_tracker
+name: Social Media ROI Tracker
+description: Track social media performance across platforms and correlate with business metrics to generate actionable insights and detect anomalies
+version: 1.0.0
+enabled: true
+
+trigger:
+  schedule: "0 */6 * * *"  # Run every 6 hours
+  event_type: social_media_roi_check
+
+state:
+  platforms: ["twitter", "youtube", "facebook", "instagram"]
+  time_range: "last_7d"
+  engagement_drop_threshold: 20
+  platform_engagement_threshold: 0.1
+  correlation_threshold: 0.7
+
+nodes:
+  - id: fetch_social_metrics
+    type: detector
+    label: Fetch Social Media Metrics
+    description: Fetch engagement metrics from all configured social media platforms
+    config:
+      detector_id: social_media_metrics_fetcher
+      platforms: ["twitter", "youtube", "facebook", "instagram"]
+      timeRange: last_7d
+      limit: 10
+
+  - id: fetch_business_metrics
+    type: detector
+    label: Fetch Business Metrics
+    description: Fetch revenue, conversions, and traffic from Azure Foundry
+    config:
+      detector_id: azure_foundry_data_fetcher
+      timeRange: last_7d
+      metrics: ["revenue", "conversions", "traffic"]
+
+  - id: analyze_performance
+    type: detector
+    label: Analyze Performance
+    description: Correlate social media metrics with business metrics and calculate ROI
+    config:
+      detector_id: social_media_performance_analyzer
+      social_media_metrics: "{{fetch_social_metrics_signal}}"
+      business_metrics: "{{fetch_business_metrics_signal}}"
+      engagement_weights:
+        likes: 1
+        shares: 2
+        comments: 3
+        views: 0.1
+
+  - id: generate_insights
+    type: detector
+    label: Generate Insights
+    description: Generate actionable insights from performance analysis
+    config:
+      detector_id: insight_generator
+      performance_analysis: "{{analyze_performance_signal}}"
+      business_metrics: "{{fetch_business_metrics_signal}}"
+
+  - id: detect_anomalies
+    type: detector
+    label: Detect Anomalies
+    description: Detect unusual patterns and engagement drops
+    config:
+      detector_id: anomaly_detector
+      current_metrics: "{{fetch_social_metrics_signal}}"
+      performance_analysis: "{{analyze_performance_signal}}"
+      thresholds:
+        engagement_drop_percentage: 20
+        platform_engagement_threshold: 0.1
+        correlation_threshold: 0.7
+
+  - id: check_for_critical_anomalies
+    type: condition
+    label: Check for Critical Anomalies
+    description: Route to alert if critical anomalies are detected
+    config:
+      expression: "detect_anomalies_metadata.critical > 0"
+
+  - id: send_alert
+    type: notify
+    label: Send Alert
+    description: Send notification for critical anomalies
+    config:
+      channel: email
+      destination: "{{tenant.alert_email}}"
+      template: social_media_anomaly_alert
+      subject: "Critical Social Media Anomaly Detected"
+
+  - id: complete
+    type: transform
+    label: Complete
+    description: Finalize workflow results
+    config:
+      mappings:
+        summary: "Social media ROI analysis completed with {{generate_insights_metadata.total_insights}} insights and {{detect_anomalies_metadata.total_anomalies}} anomalies"
+        best_platform: "{{analyze_performance_signal.best_performing_platform}}"
+        total_roi: "{{analyze_performance_signal.total_roi}}"
+
+edges:
+  - from: fetch_social_metrics
+    to: fetch_business_metrics
+  - from: fetch_business_metrics
+    to: analyze_performance
+  - from: analyze_performance
+    to: generate_insights
+  - from: generate_insights
+    to: detect_anomalies
+  - from: detect_anomalies
+    to: check_for_critical_anomalies
+  - from: check_for_critical_anomalies
+    to: send_alert
+    condition: "true"
+  - from: check_for_critical_anomalies
+    to: complete
+    condition: "false"
+  - from: send_alert
+    to: complete
+
+settings:
+  trust_level: 0
+  timeout_minutes: 30
+  max_retries: 2
+  on_error: continue

@@ -1,0 +1,24 @@
+id: cash-recovery
+name: Cash Recovery Pack
+tagline: Recover overdue cash automatically
+category: cash_recovery
+estimated_setup_minutes: 15
+required_connectors:
+  - xero
+  - stripe
+optional_connectors:
+  - hubspot
+  - mailchimp
+included_workflows:
+  - invoice_overdue_chase
+  - ops_failed_payment_retry
+  - ops_cash_flow_alert
+included_detectors:
+  - invoice_overdue
+  - payment_failed
+  - cash_flow_risk
+kpi_labels:
+  - Overdue recovery rate
+  - Cash collected
+  - Payment success rate
+tier_minimum: smb

@@ -1,0 +1,50 @@
+# STATUS: planned — Polygon.io market-data connector (free tier).
+# Free tier: 5 API calls/minute, 2 years of daily aggregated bars, 15-minute
+# delayed quotes. Limited but easy to wire. Good as a secondary source for
+# cross-validation or as a delayed real-time feed.
+#
+# Paid tiers unlock real-time data, 15+ year history, and fundamentals —
+# users who need more can upgrade on their own Polygon account.
+id: polygon
+name: Polygon.io
+provider: polygon
+version: 1.0.0
+description: "US stock market data. Free tier: 5 calls/min, 2 years daily history, 15min delayed."
+status: planned
+category: investment
+base_url: https://api.polygon.io
+
+auth:
+  type: api_key
+  param: apiKey
+  notes: |
+    Free API key required. Register at polygon.io. Free tier allows
+    5 calls/minute, 2 years of daily aggregated bars, and 15-minute
+    delayed quotes. Paid tiers unlock real-time data and 15+ year
+    history — users upgrade on their own Polygon account.
+
+resources:
+  - name: DailyAggs
+    path: /v2/aggs/ticker/{symbol}/range/1/day/{from}/{to}
+    method: GET
+    response_shape: object
+    record_transform: polygon_daily_aggs
+    symbols_param: symbol
+    date_filter_param: from
+    description: Daily aggregated OHLCV bars for a single ticker (2 years on free tier)
+  - name: TickerDetails
+    path: /v3/reference/tickers/{symbol}
+    method: GET
+    response_shape: object
+    record_transform: polygon_ticker_details
+    symbols_param: symbol
+    cadence: quarterly
+    description: Ticker details (name, sector, industry, market cap, share class)
+
+signal_types:
+  - market_price
+  - company_fundamentals
+
+signal_type_map:
+  dailyaggs: market_price
+  tickerdetails: company_fundamentals

@@ -1,0 +1,42 @@
+id: property_price_drop
+name: Property Price Drop Detection
+description: >
+  Flags genuine asking-price drops on tracked listings in a buyer's target
+  areas, filtering out noise by requiring a material drop below the area
+  benchmark price per square metre.
+version: 1.0.0
+signal_types:
+  - property.listing
+  - property.price_history
+  - area.benchmark
+industries: ["property", "real-estate", "wealth"]
+
+rules:
+  - id: material_asking_drop
+    name: Material Asking-Price Drop
+    condition: >
+      data.price_drop_pct >= 5.0 and
+      data.price_per_sqm_minor <= data.area_benchmark_per_sqm_minor
+    confidence: 0.76
+    impact_low: "data.previous_price_minor - data.current_price_minor"
+    impact_high: "(data.previous_price_minor - data.current_price_minor) + (data.area_benchmark_per_sqm_minor - data.price_per_sqm_minor) * data.floor_area_sqm"
+    reasoning_template: >
+      {{data.address}} dropped {{data.price_drop_pct}}% to {{data.current_price_minor}}
+      — now {{data.price_per_sqm_minor}}/sqm vs the {{data.area}} benchmark of
+      {{data.area_benchmark_per_sqm_minor}}/sqm. Genuine below-benchmark opportunity.
+    actions:
+      - Book a viewing before the wider market reacts
+      - Run a comparable-sales check to confirm the discount
+      - Model financing at current rates to confirm the deal works
+
+  - id: repeated_reductions
+    name: Repeated Reductions — Motivated Seller
+    condition: "data.reduction_count >= 2 and data.days_on_market >= 60"
+    confidence: 0.71
+    impact_low: "data.previous_price_minor * 0.02"
+    impact_high: "data.previous_price_minor * 0.08"
+    reasoning_template: >
+      {{data.address}} has been reduced {{data.reduction_count}} times over
+      {{data.days_on_market}} days — a motivated-seller signal with negotiation room.
+    actions:
+      - Open a below-asking offer with evidence of comparable sales

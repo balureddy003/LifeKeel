@@ -1,0 +1,42 @@
+# STATUS: planned — X (Twitter) has a public API v2 behind OAuth2, but live
+# ingestion is not wired. This definition fixes the connector contract so the
+# branding-marketing vertical's daily-content workflows reference a real id;
+# wiring OAuth + post/thread is tracked separately.
+id: twitter_x
+name: X (Twitter)
+provider: twitter
+version: 0.1.0
+status: planned
+description: X (formerly Twitter) — post threads, read engagement metrics
+category: social_media
+base_url: https://api.x.com/2
+
+auth:
+  type: oauth2
+  oauth:
+    authorization_url: https://twitter.com/i/oauth2/authorize
+    token_url: https://api.twitter.com/2/oauth2/token
+    scopes:
+      - tweet.read
+      - tweet.write
+      - users.read
+      - offline.access
+
+resources:
+  - name: tweets
+    path: /tweets
+    method: POST
+    description: Create a tweet or thread
+  - name: tweet
+    path: /tweets/{id}
+    method: GET
+    description: Retrieve a tweet with public metrics
+  - name: me
+    path: /users/me
+    method: GET
+    description: Get the authenticated user
+
+signal_types:
+  - post.published
+  - post.engagement
+  - follower.changed

@@ -1,0 +1,47 @@
+id: trading_dividend_opportunity
+name: Dividend Opportunity
+description: >
+  Surfaces holdings with upcoming or recently announced dividend events that fit
+  the user's income goals. Expects portfolio_position signals to be enriched with
+  dividend_yield_pct from instrument metadata by the upstream sync job.
+version: 1.0.0
+signal_types:
+  - portfolio_position
+industries:
+  - investment
+  - wealth
+
+rules:
+  - id: attractive_dividend_yield
+    name: Holding has attractive dividend yield within actionable window
+    condition: 'data.dividend_yield_pct > 2.0 and (safeGet(data, "days_to_ex_dividend", 999) <= 7 or safeGet(data, "days_since_ex_dividend", 999) <= 30)'
+    confidence: 0.75
+    impact_low: 0
+    impact_high: "data.position_value_minor * (data.dividend_yield_pct / 100)"
+    reasoning_template: >
+      {{data.ticker}} shows a {{data.dividend_yield_pct}}% dividend yield with an
+      actionable ex-dividend window, aligned with income goals.
+    actions:
+      - Confirm ex-dividend date before acting
+      - Paper-trade the dividend-reinvest decision
+    alternatives_template:
+      - label: "Buy before ex-div to capture the payment, then reinvest"
+        why_not: "Captures the dividend immediately, but the share price typically drops by the dividend amount on ex-div day — no free lunch."
+        forecast_low: "0"
+        forecast_high: "data.position_value_minor * (data.dividend_yield_pct / 100)"
+      - label: "Wait until after ex-div to buy at the lower price"
+        why_not: "Avoids the dividend drop illusion, but misses the cash dividend payment and the reinvestment compounding effect."
+        forecast_low: "data.position_value_minor * -0.01"
+        forecast_high: "data.position_value_minor * 0.02"
+      - label: "Skip — invest in a higher-growth holding instead"
+        why_not: "Better for total-return goals, but forgoes the income stream this goal targets."
+        forecast_low: "data.position_value_minor * -0.03"
+        forecast_high: "data.position_value_minor * 0.10"
+    risk_template: >
+      Dividend yields above 5% can signal financial distress — the market may be
+      pricing in a dividend cut. Verify {{data.ticker}}'s payout ratio and free
+      cash flow coverage before acting. A sudden dividend suspension would likely
+      cause a sharp price decline.
+    exit_criteria_template: >
+      Auto-archive when the ex-dividend window passes (days_to_ex_dividend > 7
+      and days_since_ex_dividend > 30) or when the position is closed.

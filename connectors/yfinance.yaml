@@ -1,0 +1,50 @@
+# STATUS: planned — Yahoo Finance market-data connector via yfinance.
+# Yahoo Finance has no official REST API; this connector uses a thin Python
+# bridge (scripts/fetch-yfinance.py) that wraps the yfinance library and
+# emits JSON in the same shape as the other market-data connectors. The
+# pipeline treats it like any other connector: the sync engine invokes the
+# CLI method, parses the JSON output, and stores market_price signals.
+#
+# No API key required — yfinance uses Yahoo's public endpoints. Rate limits
+# are soft (~2000 requests/hour per IP). Suitable for backtesting and
+# research; NOT for production trading (Yahoo can change endpoints anytime).
+id: yfinance
+name: Yahoo Finance (yfinance)
+provider: yfinance
+version: 1.0.0
+description: Free 20+ year daily price history and fundamentals via the yfinance Python library. No API key required.
+status: planned
+category: investment
+base_url: https://query1.finance.yahoo.com
+
+auth:
+  type: none
+  notes: |
+    No API key required — yfinance uses Yahoo Finance's public endpoints.
+    Rate limits are soft (~2000 requests/hour per IP). Requires Python 3.8+
+    with the yfinance package installed (pip install yfinance).
+    Users click "Connect" in the Studio UI to create a placeholder
+    credential record (auth_type: none) — no form fields needed. The
+    sync engine uses the CLI bridge (scripts/fetch-yfinance.py) which
+    doesn't need any credentials.
+
+resources:
+  - name: DailyHistory
+    method: CLI
+    record_transform: yfinance_daily_history
+    symbols_param: symbol
+    description: 20+ years of daily OHLCV history (split/dividend adjusted) for a single symbol
+  - name: Fundamentals
+    method: CLI
+    record_transform: yfinance_fundamentals
+    symbols_param: symbol
+    cadence: quarterly
+    description: Income statement, balance sheet, and key ratios for a single symbol
+
+signal_types:
+  - market_price
+  - company_fundamentals
+
+signal_type_map:
+  dailyhistory: market_price
+  fundamentals: company_fundamentals

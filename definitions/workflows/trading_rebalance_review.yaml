@@ -1,0 +1,93 @@
+id: trading_rebalance_review
+name: Rebalance Suggestion → Draft Note → Human Review → Notify
+description: |
+  When the Rebalance Suggestion detector flags excess cash above the goal's
+  cash allocation cap: AI drafts a short, factual review note, routes it
+  through a human approval gate, and notifies the owner on Slack. No trade
+  is ever placed automatically — the owner decides whether to deploy cash,
+  and any live execution still requires a separate pending-trade confirmation.
+version: 1.0.0
+enabled: true
+trigger:
+  detector: trading_rebalance_suggestion
+
+state:
+  review_note: ""
+
+nodes:
+  - id: trigger
+    type: trigger
+    label: Rebalance suggestion fired
+    config: {}
+
+  - id: draft_review_note
+    type: skill
+    label: Draft rebalance review note
+    config:
+      skill: generate
+      prompt: >
+        Cash in the portfolio is £{{event.cash_gbp}} ({{event.cash_pct}}% of the
+        portfolio), above the configured cash allocation cap. Write a short,
+        factual review note for the owner: note that excess cash may drag on
+        long-term returns, suggest reviewing rebalance options, and remind them
+        that no trade executes without their explicit approval.
+      persona: "a calm, factual portfolio allocator"
+      tone: neutral
+      max_words: 80
+      output_key: review_note
+
+  - id: human_review
+    type: human_approval
+    label: Review rebalance suggestion
+    config:
+      title: "Rebalance Suggestion — review required"
+      urgency: low
+      timeout: 72h
+      timeout_action: escalate
+      display:
+        - label: Cash amount
+          value: "£{{event.cash_gbp}}"
+        - label: Cash % of portfolio
+          value: "{{event.cash_pct}}%"
+        - label: AI review note
+          value: "{{state.review_note}}"
+      actions:
+        - id: paper_trade
+          label: Paper-trade a rebalance
+          style: primary
+        - id: log_reviewed
+          label: Reviewed — no action needed
+          style: secondary
+        - id: dismiss
+          label: Dismiss
+          style: danger
+
+  - id: notify_owner
+    type: connector_action
+    label: Notify owner on Slack
+    config:
+      connector: slack
+      action: send_message
+      params:
+        channel: "{{tenant.owner_slack_id}}"
+        text: >-
+          ⚖️ *Rebalance Suggestion reviewed* — portfolio cash review
+
+
+          {{state.review_note}}
+
+
+          _Decision: {{state.__outcome}}_
+
+edges:
+  - from: trigger
+    to: draft_review_note
+  - from: draft_review_note
+    to: human_review
+  - from: human_review
+    to: notify_owner
+
+settings:
+  trust_level: 0
+  timeout_minutes: 4320
+  on_error: notify

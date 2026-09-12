@@ -1,0 +1,101 @@
+id: ops_dispute_handler
+name: Payment Dispute → AI Response Draft → Human Review → Submit
+description: |
+  When a Stripe chargeback/dispute is created: AI analyses the order history,
+  drafts a dispute response with evidence, routes to human for final review,
+  and logs the outcome in CRM.
+version: 1.0.0
+template:
+  category: finance
+  required_connectors: [slack]
+  estimated_roi: "£1,000–£10,000/month from won payment disputes"
+  setup_minutes: 10
+  featured: true
+enabled: true
+trigger:
+  event_type: payment.dispute
+
+state:
+  dispute_analysis: {}
+  response_draft: ""
+
+nodes:
+  - id: trigger
+    type: trigger
+    label: Dispute / chargeback filed
+    config: {}
+
+  - id: analyse_dispute
+    type: skill
+    label: Analyse dispute validity
+    config:
+      skill: decide
+      question: "Is this chargeback likely to be winnable if we dispute it?"
+      context: "Dispute reason: {{event.reason}}, Amount: £{{event.amount_display}}, Order date: {{event.order_date}}, Delivery status: {{event.delivery_status}}, Customer email: {{event.customer_email}}, Previous disputes from customer: {{event.customer_dispute_count}}"
+      options: [strong_case_dispute, weak_case_accept, needs_more_evidence, escalate_legal]
+      output_key: dispute_analysis
+
+  - id: draft_response
+    type: skill
+    label: Draft dispute response
+    config:
+      skill: generate
+      persona: "an experienced e-commerce fraud analyst who writes clear, factual dispute responses"
+      tone: "formal, evidence-based, professional. No emotional language."
+      max_words: 250
+      prompt: "Draft a chargeback dispute response for Stripe. Dispute reason: {{event.reason}}. Order date: {{event.order_date}}. Delivery confirmed: {{event.delivery_status}}. AI recommendation: {{state.dispute_analysis.decision}}. Reasoning: {{state.dispute_analysis.reasoning}}. Include placeholders for [TRACKING_NUMBER] and [DELIVERY_CONFIRMATION_URL]."
+      output_key: response_draft
+      fallback: "We are disputing this chargeback. The order was placed on {{event.order_date}} and delivered as confirmed. Please see attached evidence."
+
+  - id: human_review
+    type: human_approval
+    label: Review and submit dispute response
+    config:
+      title: "Dispute response ready for review"
+      urgency: critical
+      timeout: 12h
+      timeout_action: escalate
+      display:
+        - label: Dispute amount
+          value: "£{{event.amount_display}}"
+        - label: Dispute reason
+          value: "{{event.reason}}"
+        - label: AI recommendation
+          value: "{{state.dispute_analysis.decision}}"
+        - label: Draft response
+          value: "{{state.response_draft}}"
+      actions:
+        - id: submit
+          label: Submit this response
+          style: primary
+        - id: edit_submit
+          label: Edit & submit
+          style: secondary
+          allow_edit: true
+          edit_field: response_draft
+        - id: accept_loss
+          label: Accept the chargeback
+          style: danger
+
+  - id: notify_team
+    type: connector_action
+    label: Notify team of outcome
+    config:
+      connector: slack
+      action: send_message
+      params:
+        channel: "#finance-alerts"
+        text: "⚖️ Dispute update: {{event.amount_display}} dispute — decision: *{{state.__outcome}}*"
+
+edges:
+  - from: trigger
+    to: [analyse_dispute, draft_response]
+  - from: [analyse_dispute, draft_response]
+    to: human_review
+  - from: human_review
+    to: notify_team
+
+settings:
+  trust_level: 0
+  timeout_minutes: 720
+  on_error: notify

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kairos.io/schemas/trading-212/portfolio.summary/v1.0.0",
+  "title": "Trading 212 Portfolio Summary",
+  "description": "Account-level summary including cash, invested value, and total value.",
+  "type": "object",
+  "kairos": {
+    "connector_id": "trading-212",
+    "event_type": "portfolio.summary",
+    "schema_version": "1.0.0",
+    "signal_type": "portfolio_summary",
+    "min_schema_version": "1.0.0"
+  },
+  "required": [
+    "cash",
+    "invested_value",
+    "total_value",
+    "currency",
+    "account_type"
+  ],
+  "properties": {
+    "cash": {
+      "type": "integer",
+      "description": "Available cash balance in minor units."
+    },
+    "invested_value": {
+      "type": "integer",
+      "description": "Total invested value in minor units."
+    },
+    "total_value": {
+      "type": "integer",
+      "description": "Total account value in minor units."
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "ISO 4217 currency code of the account."
+    },
+    "account_type": {
+      "type": "string",
+      "enum": ["invest", "isa", "cfd"],
+      "description": "Trading 212 account type."
+    },
+    "cash_pct": {
+      "type": "number",
+      "description": "Computed cash as a percentage of total portfolio value, derived by the sync job."
+    },
+    "dividend_yield_pct": {
+      "type": "number",
+      "description": "Computed portfolio-level dividend yield percentage, derived by the sync job from positions and instrument metadata."
+    },
+    "monthly_return_pct": {
+      "type": "number",
+      "description": "Computed month-on-month portfolio return percentage, derived by the sync job from consecutive snapshots."
+    },
+    "max_drawdown_pct": {
+      "type": "number",
+      "description": "Computed peak-to-trough drawdown percentage, derived by the sync job from the portfolio value history."
+    },
+    "isa_allowance_used_pct": {
+      "type": "number",
+      "description": "Percentage of the annual ISA allowance that has been used, if available from the connected account."
+    }
+  }
+}

@@ -1,0 +1,77 @@
+import { describe, expect, it } from 'vitest'
+import { classifyEmail } from '../email/classify.js'
+import type { FetchedEmail } from '../email/imap-client.js'
+import type { LlmFn } from '@kairos/platform'
+
+function makeEmail(overrides: Partial<FetchedEmail> = {}): FetchedEmail {
+  return {
+    uid: 1,
+    messageId: 'msg-1',
+    from: 'noreply@insurer.example',
+    subject: 'Your policy renewal',
+    date: new Date('2026-01-01'),
+    textSnippet: 'Your policy renews on Feb 1 at a new premium of $120/mo.',
+    attachments: [],
+    ...overrides,
+  }
+}
+
+describe('classifyEmail', () => {
+  it('parses a well-formed financial classification', async () => {
+    const llm: LlmFn = async () =>
+      JSON.stringify({
+        is_financial: true,
+        summary: 'Your insurance premium is increasing to $120/mo.',
+        action_label: 'Review coverage',
+        action_type: 'review',
+        priority: 'high',
+      })
+
+    const result = await classifyEmail(llm, makeEmail())
+    expect(result).toEqual({
+      isFinancial: true,
+      summary: 'Your insurance premium is increasing to $120/mo.',
+      actionLabel: 'Review coverage',
+      actionType: 'review',
+      priority: 'high',
+    })
+  })
+
+  it('handles JSON wrapped in prose/markdown fences', async () => {
+    const llm: LlmFn = async () =>
+      'Here is the classification:\n```json\n{"is_financial": true, "summary": "Bill due", "action_label": "Pay bill", "action_type": "update", "priority": "medium"}\n```'
+
+    const result = await classifyEmail(llm, makeEmail())
+    expect(result.isFinancial).toBe(true)
+    expect(result.summary).toBe('Bill due')
+  })
+
+  it('returns not-financial for a non-JSON response instead of throwing', async () => {
+    const llm: LlmFn = async () => 'I cannot classify this email.'
+    const result = await classifyEmail(llm, makeEmail())
+    expect(result.isFinancial).toBe(false)
+  })
+
+  it('returns not-financial when the LLM call itself throws', async () => {
+    const llm: LlmFn = async () => { throw new Error('provider timeout') }
+    const result = await classifyEmail(llm, makeEmail())
+    expect(result.isFinancial).toBe(false)
+  })
+
+  it('falls back to safe defaults for an invalid action_type/priority', async () => {
+    const llm: LlmFn = async () =>
+      JSON.stringify({ is_financial: true, summary: 'x', action_label: 'y', action_type: 'delete_everything', priority: 'urgent' })
+
+    const result = await classifyEmail(llm, makeEmail())
+    expect(result.actionType).toBe('info')
+    expect(result.priority).toBe('low')
+  })
+
+  it('respects a well-formed false classification (marketing/newsletter)', async () => {
+    const llm: LlmFn = async () =>
+      JSON.stringify({ is_financial: false, summary: '', action_label: '', action_type: 'info', priority: 'low' })
+
+    const result = await classifyEmail(llm, makeEmail({ subject: '50% off summer sale!' }))
+    expect(result.isFinancial).toBe(false)
+  })
+})

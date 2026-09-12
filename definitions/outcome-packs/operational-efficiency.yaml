@@ -1,0 +1,20 @@
+id: operational-efficiency
+name: Operational Efficiency Pack
+tagline: Automate invoice approvals and staff onboarding
+category: ops_efficiency
+estimated_setup_minutes: 15
+required_connectors:
+  - slack
+optional_connectors:
+  - gmail
+  - google_calendar
+  - airtable
+included_workflows:
+  - ops_invoice_approval
+  - ops_staff_onboarding
+included_detectors:
+  - duplicate_payment_detection
+kpi_labels:
+  - Manual hours saved
+  - Invoice approval time
+tier_minimum: smb

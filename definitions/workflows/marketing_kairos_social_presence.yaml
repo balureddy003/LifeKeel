@@ -1,0 +1,237 @@
+workflow:
+  id: marketing_kairos_social_presence
+  name: "Kairos Daily Social Media Presence"
+  description: >
+    Runs every weekday at 09:00. Uses AI to generate platform-specific content
+    about Kairos (product updates, use cases, insights, tips) and posts to
+    LinkedIn, Twitter/X, and optionally queues a blog draft to Ghost/Medium.
+    Human approval gate before publishing keeps quality high.
+  version: "1.0.0"
+  enabled: true
+
+  trigger:
+    schedule: "0 9 * * 1-5"   # 09:00 Mon–Fri
+
+  state:
+    brand_context: |
+      Kairos is an AI business intelligence platform for small businesses.
+      It proactively surfaces revenue opportunities and cost savings from
+      connected data (Xero, Stripe, Shopify, Google Reviews, etc.) and
+      delivers them as actionable insights with one-click approval.
+      Tone: confident, helpful, practical. Audience: SMB owners/operators.
+    content_theme: ""
+    linkedin_post: ""
+    twitter_thread: ""
+    blog_draft_title: ""
+    blog_draft_body: ""
+    hashtags: ""
+
+  nodes:
+    - id: pick_theme
+      type: skill
+      label: "Pick today's content theme"
+      config:
+        skill: decide
+        question: >
+          Choose ONE content theme for today's Kairos social media post.
+          Rotate through these themes and pick the best fit for Monday:
+          1. product_feature — highlight a specific Kairos capability
+          2. use_case — real-world example of Kairos saving money/time
+          3. insight_tip — actionable business intelligence tip
+          4. social_proof — customer win / outcome story
+          5. education — explain a concept (cash flow, churn, CAC, etc.)
+        context: "{{state.brand_context}}"
+        options:
+          - product_feature
+          - use_case
+          - insight_tip
+          - social_proof
+          - education
+        output_key: content_theme
+
+    - id: generate_linkedin
+      type: skill
+      label: "Generate LinkedIn post"
+      config:
+        skill: generate
+        prompt: >
+          Write a LinkedIn post for Kairos AI about the theme: {{state.content_theme}}.
+          Brand context: {{state.brand_context}}
+          Requirements:
+          - 150-250 words
+          - Start with a hook (question, bold statement, or surprising stat)
+          - 3-4 short paragraphs with line breaks
+          - End with a clear CTA (comment, DM, try Kairos)
+          - Professional but human tone
+          - Include 3-5 relevant hashtags at the end
+        persona: "Sarah, Head of Marketing at a fast-growing SaaS startup"
+        tone: "confident, practical, conversational"
+        output_key: linkedin_post
+
+    - id: generate_twitter
+      type: skill
+      label: "Generate Twitter/X thread"
+      config:
+        skill: generate
+        prompt: >
+          Write a Twitter/X thread about: {{state.content_theme}} for Kairos AI.
+          Brand context: {{state.brand_context}}
+          Requirements:
+          - 5-7 tweets in a thread
+          - Tweet 1: Hook (max 200 chars, no hashtags)
+          - Tweets 2-5: Each makes one clear point (max 260 chars each)
+          - Final tweet: CTA + link placeholder [link]
+          - Format as numbered list: "1/" "2/" etc.
+          - Punchy, direct, no fluff
+        persona: "Kairos official account"
+        tone: "sharp, insightful, direct"
+        output_key: twitter_thread
+
+    - id: generate_blog
+      type: skill
+      label: "Draft blog post"
+      config:
+        skill: generate
+        prompt: >
+          Write a blog post draft about: {{state.content_theme}} for the Kairos blog.
+          Brand context: {{state.brand_context}}
+          Requirements:
+          - Title: Compelling SEO-friendly headline
+          - 600-900 words
+          - Structure: Intro hook → 3 main sections with subheadings → Conclusion + CTA
+          - Include practical examples and specific numbers where possible
+          - Markdown format
+          - End with a section "Try Kairos free" with CTA
+          Output ONLY the markdown — start with # Title
+        persona: "Kairos content team"
+        tone: "educational, practical, authoritative but approachable"
+        output_key: blog_draft_body
+
+    - id: extract_blog_title
+      type: skill
+      label: "Extract blog title"
+      config:
+        skill: extract
+        text: "{{state.blog_draft_body}}"
+        fields:
+          - title
+        output_key: blog_meta
+
+    - id: review_content
+      type: human_approval
+      label: "Review & approve content"
+      config:
+        title: "Review today's Kairos content"
+        urgency: medium
+        timeout: "4h"
+        timeout_action: skip
+        display:
+          - label: "Theme"
+            key: content_theme
+          - label: "LinkedIn Post"
+            key: linkedin_post
+            editable: true
+          - label: "Twitter Thread"
+            key: twitter_thread
+            editable: true
+        actions:
+          - id: approve
+            label: "✓ Post all channels"
+            style: primary
+          - id: approve_linkedin_only
+            label: "LinkedIn only"
+            style: secondary
+          - id: approve_twitter_only
+            label: "Twitter only"
+            style: secondary
+          - id: reject
+            label: "Skip today"
+            style: danger
+
+    - id: post_linkedin
+      type: connector_action
+      label: "Post to LinkedIn"
+      config:
+        connector: linkedin
+        action: create_post
+        params:
+          text: "{{state.linkedin_post}}"
+          author: "{{tenant.linkedin_author_urn}}"
+
+    - id: post_twitter
+      type: connector_action
+      label: "Post Twitter thread"
+      config:
+        connector: twitter_x
+        action: create_thread
+        params:
+          tweets: "{{state.twitter_thread_array}}"
+
+    - id: draft_blog
+      type: connector_action
+      label: "Save blog draft"
+      config:
+        connector: ghost
+        action: create_post
+        params:
+          title: "{{state.blog_draft_title}}"
+          html: "{{state.blog_draft_body}}"
+          status: draft
+          tags: '[{"name": "Kairos"}, {"name": "Business Intelligence"}, {"name": "SMB"}]'
+
+    - id: notify_team
+      type: notify
+      label: "Notify #marketing channel"
+      config:
+        channel: slack
+        destination: "#marketing"
+        template: >
+          ✅ Kairos daily content posted!
+          Theme: {{state.content_theme}}
+          LinkedIn ✓ | Twitter ✓ | Blog draft saved
+          Review at: https://kairos.ai/blog/drafts
+
+  edges:
+    - from: pick_theme
+      to: generate_linkedin
+
+    - from: pick_theme
+      to: generate_twitter
+
+    - from: pick_theme
+      to: generate_blog
+
+    - from: [generate_linkedin, generate_twitter, generate_blog]
+      to: extract_blog_title
+
+    - from: extract_blog_title
+      to: review_content
+
+    - from: review_content
+      to: post_linkedin
+      condition: "__outcome == 'approve' || __outcome == 'approve_linkedin_only'"
+      label: "Post LinkedIn"
+
+    - from: review_content
+      to: post_twitter
+      condition: "__outcome == 'approve' || __outcome == 'approve_twitter_only'"
+      label: "Post Twitter"
+
+    - from: review_content
+      to: draft_blog
+      condition: "__outcome == 'approve'"
+      label: "Save blog"
+
+    - from: review_content
+      to: END
+      condition: "__outcome == 'reject'"
+      label: "Skipped"
+
+    - from: [post_linkedin, post_twitter, draft_blog]
+      to: notify_team
+
+    - from: notify_team
+      to: END
+
+settings:
+  trust_level: 0

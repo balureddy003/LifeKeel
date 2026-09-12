@@ -1,0 +1,106 @@
+# Family & Household — Vertical #6
+#
+# A vertical for families and households that want a consolidated, informational
+# view of their financial picture — insurance, savings, education goals, and
+# retirement readiness — with scenario simulation and proactive gap detection.
+#
+# This vertical is positioned as an educational and informational tool, not a
+# financial advisory service. All detector outputs use non-directive language
+# and include disclaimers. See docs/prd/family-wealth-intelligence-shelved.md
+# for the original vision and red-team review that shaped this posture.
+#
+# Relationship to other verticals: this is the only vertical focused on the
+# household as the unit of analysis, rather than a business, portfolio, or
+# audience. It composes new family-specific detectors with the shared Kairos
+# engine core — no new engine surface, same as every other vertical.
+
+id: family
+name: Family & Household
+tagline: Understand your family's financial readiness — informational, not advisory
+status: alpha
+tier_minimum: individual
+supported_countries: []  # global
+
+theme:
+  # indigo is already the platform default, but the family app has its own
+  # visual identity (family-* tokens) in apps/family/. For Studio parity,
+  # we use indigo here so the vertical doesn't collide with the 5 claimed
+  # tokens (emerald, amber, fuchsia, sky, violet).
+  accent_token: accent-indigo
+  tone: Warm, plain-English, educational — never directive, always with a disclaimer
+  entity_noun: household
+  outcome_noun: saved toward your goals
+
+personas:
+  - id: family-organizer
+    name: Family Organizer
+    description: >
+      The primary financial decision-maker in the household who wants a
+      consolidated view of insurance, savings, and goals, with scenario
+      simulation to understand what happens if life changes.
+    jobs_to_be_done:
+      - See all insurance policies in one place and understand what each covers
+      - Simulate life events (job loss, illness, bereavement) to understand readiness
+      - Track education and retirement goals against timelines
+      - Know where the gaps are before they become problems
+    primary_goal_templates:
+      - family-protection-review
+
+  - id: working-parent
+    name: Working Parent
+    description: >
+      A parent juggling career and family finances who wants quick, plain-English
+      answers about coverage and goals without becoming a finance expert.
+    jobs_to_be_done:
+      - Quickly check if the family is financially protected
+      - Understand education savings progress for each child
+      - Get a simple readiness score without reading complex statements
+    primary_goal_templates:
+      - family-protection-review
+
+  - id: elderly-household
+    name: Elderly Household Member
+    description: >
+      An older family member who wants simplified, larger-text access to the
+      family's financial picture with voice navigation and plain language.
+    jobs_to_be_done:
+      - See a simple summary of the family's financial readiness
+      - Access information with larger text and voice navigation
+      - Understand what to do in an emergency
+    primary_goal_templates:
+      - family-protection-review
+
+required_connectors: []
+optional_connectors:
+  # Document storage connectors for policy document upload (planned).
+  # The family vault uses these to ingest insurance policy documents
+  # and extract structured fields. All are status: planned — contract
+  # fixed, live ingestion not wired.
+  - google_drive
+  - dropbox
+  - onedrive
+  # Open Banking for mortgage and savings account data (planned).
+  - open-banking
+  # Gmail for policy renewal email ingestion (planned).
+  - gmail
+
+detectors:
+  - family_protection_gap
+  - family_education_shortfall
+  - family_emergency_fund_adequacy
+  - family_retirement_gap
+
+outcome_packs:
+  - family-protection
+
+goal_templates:
+  - family-protection-review
+
+workflows: []
+
+kpi_vocabulary:
+  - Family Readiness Score
+  - Protection coverage
+  - Education funding progress
+  - Emergency fund months
+  - Retirement readiness

@@ -1,0 +1,25 @@
+id: family-protection
+name: Family Protection Pack
+tagline: Understand your family's financial readiness with informational insights
+category: custom
+estimated_setup_minutes: 15
+required_connectors: []
+optional_connectors:
+  - open-banking
+  - gmail
+  - google-drive
+  - dropbox
+  - onedrive
+included_workflows: []
+included_detectors:
+  - family_protection_gap
+  - family_education_shortfall
+  - family_emergency_fund_adequacy
+  - family_retirement_gap
+kpi_labels:
+  - Family Readiness Score
+  - Protection coverage
+  - Education funding progress
+  - Emergency fund months
+  - Retirement readiness
+tier_minimum: individual

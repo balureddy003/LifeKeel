@@ -1,0 +1,24 @@
+# STATUS: planned — Open Banking (via an AISP aggregator such as TrueLayer /
+# Plaid) provides mortgage-account and balance data for refinance detection.
+# This definition fixes the connector contract; wiring a live AISP is tracked
+# separately and requires FCA-regulated aggregator onboarding.
+id: open-banking
+name: Open Banking
+provider: open-banking
+version: 0.1.0
+status: planned
+description: Mortgage accounts, balances, and rates via a regulated AISP aggregator
+category: finance
+base_url: https://openbanking.org.uk
+
+auth:
+  type: oauth2_aisp
+  notes: Requires an FCA-registered AISP aggregator; user-consented access.
+
+resources:
+  - name: mortgage_accounts
+    description: Outstanding balance, rate, and fix-end date for refinance detection
+
+signal_types:
+  - mortgage.account
+  - mortgage.rate

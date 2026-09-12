@@ -1,0 +1,146 @@
+id: compound-growth-trading-inr
+name: Compound Portfolio Growth (INR)
+domain: Trading & Investment
+description: >
+  Track an aggressive compound-growth objective for a Zerodha portfolio.
+  Reinvest all profits, minimise idle cash, and respect concentration and
+  downside guardrails. Denominated in INR with NSE/BSE market hours.
+intent: >
+  Grow a ₹50,000 starting capital to roughly ₹4,46,000 in 12 months by
+  reinvesting all profits monthly while keeping concentration risk below 10%
+  and drawdowns within a guarded limit.
+cadence: monthly
+required_connectors:
+  - zerodha
+skills:
+  - compare
+  - decide
+  - plan
+plan:
+  - id: monitor_monthly_return
+    label: Monitor monthly return vs target
+    skill: compare
+    approval_required: false
+    description: >
+      Compare the portfolio's month-on-month return against the aggressive
+      target and surface alerts when it falls behind.
+  - id: reinvest_excess_cash
+    label: Reinvest excess cash
+    skill: decide
+    approval_required: true
+    description: >
+      Suggest deploying idle cash when it exceeds a safe portion of the
+      portfolio, with a paper-trade preview before any live action.
+  - id: guard_concentration_and_drawdown
+    label: Guard concentration and drawdown
+    skill: plan
+    approval_required: false
+    description: >
+      Keep the largest position below the concentration cap and flag
+      drawdowns that threaten the compounding plan.
+stop_condition: >
+  Stop when the 12-month portfolio value target is reached, or when the
+  maximum tolerated drawdown is breached for 30 consecutive days.
+spec:
+  name: Compound Portfolio Growth (INR)
+  description: >
+    Aggressive compounding plan for a Zerodha portfolio. Targets a 20%
+    monthly return on a ₹50,000 starting capital, reinvesting all profits,
+    while using risk guardrails to surface off-track conditions. This target
+    is high-risk and should be validated in paper mode first.
+  timeline_days: 365
+  tags: [trading, investment, compound, aggressive, india, inr]
+  confidence: 0.5
+  reasoning: >
+    Curated aggressive-compounding template with measurable KPIs and a
+    repeatable execution plan. The 20% monthly target is included for
+    tracking purposes only and is not a guaranteed or recommended return.
+  warnings:
+    - >
+      A 20% monthly compounded return is extremely aggressive and well above
+      typical market returns. Use paper trading to validate feasibility before
+      considering live trades.
+    - >
+      This template depends on a Zerodha (Kite Connect) connector and a sync
+      job that posts monthly portfolio snapshots. Connect the data source
+      first.
+    - >
+      NSE/BSE trading hours are 09:15–15:30 IST, Monday–Friday. Orders placed
+      outside market hours will be queued for the next trading session.
+  detectors:
+    - id: trading_concentration_risk
+      name: Trading concentration risk
+      existing: true
+      reasoning: >
+        Fires when a single position exceeds the 10% cap, protecting the
+        portfolio from single-name risk while compounding.
+    - id: trading_price_drop_alert
+      name: Trading price drop alert
+      existing: true
+      reasoning: >
+        Flags positions that drop through the user's rule threshold so losses
+        can be reviewed quickly.
+    - id: trading_rebalance_suggestion
+      name: Trading rebalance suggestion
+      existing: true
+      reasoning: >
+        Surfaces idle cash that should be reinvested to stay on the
+        compounding path.
+  kpis:
+    - metric: portfolio_value_minor
+      label: Portfolio value
+      unit: minor_currency
+      target: 44600000
+      start_value: 5000000
+      current: 5000000
+      direction: increase
+      source: signals
+      signal_types: [portfolio_summary]
+      aggregation: last
+      field: data.total_value
+      reasoning: >
+        Tracks total portfolio value over time against the 12-month target of
+        roughly ₹4,46,000. Values are in paise (₹4,46,000 = 4,46,00,000 paise
+        = 44,600,000 minor units).
+    - metric: monthly_return_pct
+      label: Monthly return
+      unit: percent
+      target: 20
+      start_value: 0
+      current: 0
+      direction: increase
+      source: signals
+      signal_types: [portfolio_summary]
+      aggregation: last
+      field: data.monthly_return_pct
+      reasoning: >
+        Measures the month-on-month percentage change in portfolio value.
+        Requires at least two consecutive monthly snapshots to compute.
+    - metric: cash_deployed_pct
+      label: Cash deployed
+      unit: percent
+      target: 95
+      start_value: 0
+      current: 0
+      direction: increase
+      source: signals
+      signal_types: [portfolio_summary]
+      aggregation: last
+      field: data.cash_pct
+      reasoning: >
+        Tracks how much of the portfolio is invested versus held as idle cash.
+        A high target minimises cash drag.
+    - metric: max_drawdown_pct
+      label: Maximum drawdown
+      unit: percent
+      target: 20
+      start_value: 0
+      current: 0
+      direction: decrease
+      source: signals
+      signal_types: [portfolio_summary]
+      aggregation: last
+      field: data.max_drawdown_pct
+      reasoning: >
+        Monitors the peak-to-trough decline of the portfolio so that
+        compounding is not derailed by large unmanaged losses.

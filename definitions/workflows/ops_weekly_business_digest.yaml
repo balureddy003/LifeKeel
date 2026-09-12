@@ -1,0 +1,116 @@
+id: ops_weekly_business_digest
+name: Weekly Business Digest (Scheduled)
+description: |
+  Every Monday at 8am: pulls key metrics from Xero and Stripe, AI analyses
+  trends and flags issues, generates an executive summary, and delivers it
+  to the owner via Slack and email.
+version: 1.0.0
+template:
+  category: finance
+  required_connectors: [xero, stripe, slack, gmail]
+  estimated_roi: "£2,000–£20,000/month from better financial decisions"
+  setup_minutes: 15
+  featured: true
+enabled: true
+trigger:
+  schedule: "0 8 * * MON"
+
+state:
+  xero_summary: {}
+  stripe_summary: {}
+  digest_analysis: ""
+  digest_email: ""
+
+nodes:
+  - id: trigger
+    type: trigger
+    label: Every Monday 8am
+    config: {}
+
+  - id: fetch_xero
+    type: connector_action
+    label: Fetch Xero P&L
+    config:
+      connector: xero
+      action: get_account_summary
+      params:
+        fromDate: "{{state.__week_start}}"
+        toDate: "{{state.__week_end}}"
+
+  - id: fetch_stripe
+    type: connector_action
+    label: Fetch Stripe failed payments
+    config:
+      connector: stripe
+      action: list_failed_payments
+      params: {}
+
+  - id: analyse_week
+    type: skill
+    label: Analyse business week
+    config:
+      skill: enrich
+      data:
+        period: "week ending {{state.__week_end}}"
+        xero_data: "{{state.xero_summary}}"
+        stripe_data: "{{state.stripe_summary}}"
+      infer_fields:
+        - name: revenue_trend
+          description: Is revenue trending up, down, or flat vs previous week?
+        - name: top_risk
+          description: The single biggest risk or issue this week
+        - name: top_opportunity
+          description: The single biggest opportunity to act on this week
+        - name: key_numbers
+          description: 3 bullet points of the most important numbers
+        - name: recommended_actions
+          description: 2-3 specific actions the owner should take today
+      output_key: week_analysis
+
+  - id: draft_digest
+    type: skill
+    label: Draft digest email
+    config:
+      skill: generate
+      persona: "a sharp, concise CFO who respects the owner's time"
+      tone: "direct, data-driven, actionable. No filler. Bullets where possible."
+      max_words: 200
+      prompt: "Write a weekly business digest for {{tenant.owner_name}}. Week: {{state.__week_end}}. Revenue trend: {{state.week_analysis.revenue_trend}}. Top risk: {{state.week_analysis.top_risk}}. Top opportunity: {{state.week_analysis.top_opportunity}}. Key numbers: {{state.week_analysis.key_numbers}}. Recommended actions: {{state.week_analysis.recommended_actions}}. Format with clear sections."
+      output_key: digest_email
+      fallback: "Weekly digest for {{state.__week_end}}: Data fetched from Xero and Stripe. Please review your dashboards for details."
+
+  - id: send_slack
+    type: connector_action
+    label: Post digest to Slack
+    config:
+      connector: slack
+      action: send_message
+      params:
+        channel: "{{tenant.owner_slack_id}}"
+        text: "📊 *Weekly Business Digest — {{state.__week_end}}*\n\n{{state.digest_email}}"
+
+  - id: send_email
+    type: connector_action
+    label: Email digest to owner
+    config:
+      connector: gmail
+      action: send_email
+      params:
+        to: "{{tenant.owner_email}}"
+        subject: "📊 Your weekly business digest — {{state.__week_end}}"
+        body: "{{state.digest_email}}"
+
+edges:
+  - from: trigger
+    to: [fetch_xero, fetch_stripe]
+  - from: [fetch_xero, fetch_stripe]
+    to: analyse_week
+  - from: analyse_week
+    to: draft_digest
+  - from: draft_digest
+    to: [send_slack, send_email]
+
+settings:
+  trust_level: 0
+  timeout_minutes: 15
+  on_error: notify

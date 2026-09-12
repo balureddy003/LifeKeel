@@ -1,0 +1,69 @@
+cases:
+  - id: dropped-10-pct
+    description: AAPL down 10% from average purchase price should alert
+    event_type: portfolio_position
+    data:
+      ticker: AAPL
+      quantity: 100
+      avg_price: 10000
+      current_price: 9000
+      position_value_minor: 900000
+    expected_insights:
+      - rule_id: moderate_price_drop
+        min_or_score: 0.7
+
+  - id: dropped-exactly-5-pct
+    description: AAPL down exactly 5% should not trigger (rule is strict <)
+    event_type: portfolio_position
+    data:
+      ticker: AAPL
+      quantity: 100
+      avg_price: 10000
+      current_price: 9500
+      position_value_minor: 950000
+    expected_silent: true
+
+  - id: dropped-3-pct
+    description: AAPL down 3% should stay silent
+    event_type: portfolio_position
+    data:
+      ticker: AAPL
+      quantity: 100
+      avg_price: 10000
+      current_price: 9700
+      position_value_minor: 970000
+    expected_silent: true
+
+  - id: up-from-average
+    description: AAPL above average should stay silent
+    event_type: portfolio_position
+    data:
+      ticker: AAPL
+      quantity: 100
+      avg_price: 10000
+      current_price: 11000
+      position_value_minor: 1100000
+    expected_silent: true
+
+  - id: just-below-5-pct-threshold
+    description: AAPL down 5.1% should trigger the strict < rule
+    event_type: portfolio_position
+    data:
+      ticker: AAPL
+      quantity: 100
+      avg_price: 10000
+      current_price: 9490
+      position_value_minor: 949000
+    expected_insights:
+      - rule_id: moderate_price_drop
+        min_or_score: 0.7
+
+  - id: missing-current-price
+    description: Position without current_price should stay silent
+    event_type: portfolio_position
+    data:
+      ticker: NVDA
+      quantity: 100
+      avg_price: 10000
+      position_value_minor: 1000000
+    expected_silent: true

@@ -1,0 +1,44 @@
+id: property_yield_gap
+name: Property Yield Gap Detection
+description: >
+  Identifies buy-to-let properties whose net rental yield underperforms the
+  local area benchmark — the core opportunity-mining signal for the property
+  investor persona.
+version: 1.0.0
+signal_types:
+  - property.valuation
+  - rent.actual
+  - rent.benchmark
+industries: ["property", "real-estate", "wealth"]
+
+rules:
+  - id: yield_below_benchmark
+    name: Net Yield Below Area Benchmark
+    condition: >
+      data.net_yield_pct < data.area_benchmark_yield_pct - 1.0 and
+      data.property_value_minor >= 15000000
+    confidence: 0.79
+    impact_low: "data.property_value_minor * (data.area_benchmark_yield_pct - data.net_yield_pct) / 100 * 0.5"
+    impact_high: "data.property_value_minor * (data.area_benchmark_yield_pct - data.net_yield_pct) / 100"
+    reasoning_template: >
+      {{data.address}} nets {{data.net_yield_pct}}% vs the {{data.area}} benchmark of
+      {{data.area_benchmark_yield_pct}}% — a {{data.yield_gap_pct}}pt gap on a
+      {{data.property_value_minor}} asset. Closing the gap is worth the
+      estimated annual uplift shown.
+    actions:
+      - Review rent against comparable local listings and re-let at market
+      - Cut void days with a proactive renewal offer before the current tenancy ends
+      - Model a light refurbishment to lift achievable rent
+
+  - id: extended_void
+    name: Extended Void Dragging Yield
+    condition: "data.void_days >= 45 and data.monthly_rent_minor >= 80000"
+    confidence: 0.88
+    impact_low: "data.monthly_rent_minor * 1"
+    impact_high: "data.monthly_rent_minor * 3"
+    reasoning_template: >
+      {{data.address}} has been void for {{data.void_days}} days at
+      {{data.monthly_rent_minor}}/month of foregone rent.
+    actions:
+      - Refresh the listing and widen the marketing channels
+      - Reassess asking rent against current area demand

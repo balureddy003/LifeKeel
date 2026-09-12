@@ -14,3 +14,8 @@ next-env.d.ts
 
 # Firebase CLI local hosting cache
 .firebase/
+
+# apps/api backend build output
+dist/
+.turbo/
+__pycache__/

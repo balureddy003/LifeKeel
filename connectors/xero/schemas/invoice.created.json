@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kairos.io/schemas/xero/invoice.created/v1.0.0",
+  "title": "Xero Invoice Created Event",
+  "description": "Schema for Xero invoice created webhook events",
+  "type": "object",
+  "kairos": {
+    "connector_id": "xero",
+    "event_type": "invoice.created",
+    "schema_version": "1.0.0",
+    "signal_type": "invoice.created",
+    "min_schema_version": "1.0.0"
+  },
+  "required": [
+    "InvoiceID",
+    "InvoiceNumber",
+    "Date",
+    "Total",
+    "CurrencyCode"
+  ],
+  "properties": {
+    "InvoiceID": {
+      "type": "string",
+      "description": "Xero invoice identifier (UUID)"
+    },
+    "InvoiceNumber": {
+      "type": "string",
+      "description": "Invoice number"
+    },
+    "Date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 invoice date"
+    },
+    "Total": {
+      "type": "number",
+      "description": "Invoice total amount"
+    },
+    "CurrencyCode": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "ISO 4217 currency code"
+    },
+    "Contact": {
+      "type": "object",
+      "required": ["ContactID"],
+      "properties": {
+        "ContactID": {
+          "type": "string",
+          "description": "Contact identifier (UUID)"
+        },
+        "Name": {
+          "type": "string"
+        }
+      }
+    },
+    "Status": {
+      "type": "string",
+      "enum": ["DRAFT", "SUBMITTED", "AUTHORISED", "PAID", "VOIDED"],
+      "description": "Invoice status"
+    },
+    "LineItems": {
+      "type": "array",
+      "description": "Invoice line items",
+      "items": {
+        "type": "object",
+        "properties": {
+          "Description": {
+            "type": "string"
+          },
+          "Quantity": {
+            "type": "number"
+          },
+          "UnitAmount": {
+            "type": "number"
+          },
+          "AccountCode": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,48 @@
+id: trading_rebalance_suggestion
+name: Rebalance Suggestion
+description: >
+  Suggests a portfolio rebalance when cash sits above the goal's cash
+  allocation cap (cash_allocation_max_pct, default 5% until a goal sets one),
+  or when concentration rules are breached.
+version: 1.0.0
+signal_types:
+  - portfolio_summary
+industries:
+  - investment
+  - wealth
+
+rules:
+  - id: excess_cash
+    name: Cash exceeds the goal's cash allocation cap
+    condition: data.cash > data.total_value * (context.goal_kpi_targets.cash_allocation_max_pct / 100)
+    confidence: 0.78
+    impact_low: 0
+    impact_high: "data.cash * 0.10"
+    reasoning_template: >
+      Cash is £{{data.cash_gbp}}, {{data.cash_pct}}% of the portfolio —
+      above the {{context.goal_kpi_targets.cash_allocation_max_pct}}% cap.
+      Deploying excess cash may improve long-term returns.
+    actions:
+      - Compare rebalance options against goals
+      - Paper-trade the rebalance before any live action
+    alternatives_template:
+      - label: "Deploy into 2-3 diversified holdings matching your goal's allocation"
+        why_not: "Best long-term return if picks are well-researched, but carries market risk and transaction costs."
+        forecast_low: "data.cash * -0.05"
+        forecast_high: "data.cash * 0.12"
+      - label: "Dollar-cost average into existing positions over 4 weeks"
+        why_not: "Reduces timing risk vs lump-sum, but cash sits idle longer and underperforms in rising markets."
+        forecast_low: "data.cash * -0.02"
+        forecast_high: "data.cash * 0.08"
+      - label: "Move to a 3-month treasury ladder (risk-free yield)"
+        why_not: "Capital-preserving and earns ~5% annualised, but may underperform equities over the goal's timeline."
+        forecast_low: "data.cash * 0.01"
+        forecast_high: "data.cash * 0.04"
+    risk_template: >
+      Holding {{data.cash_pct}}% in cash means an opportunity cost of approximately
+      {{data.cash}} * 0.07 per year (assuming 7% equity returns). The risk of
+      deploying is a market drawdown shortly after entry; the risk of holding is
+      inflation eroding real value.
+    exit_criteria_template: >
+      Auto-archive when cash drops below
+      {{context.goal_kpi_targets.cash_allocation_max_pct}}% of total portfolio value.

@@ -1,0 +1,41 @@
+id: property_refinance_window
+name: Property Refinance Window Detection
+description: >
+  Detects when a mortgage becomes worth refinancing — either the fixed-rate
+  period is ending or improved loan-to-value plus a rate move opens headroom.
+  Serves both the investor and home-owner personas.
+version: 1.0.0
+signal_types:
+  - mortgage.account
+  - mortgage.rate
+  - property.valuation
+industries: ["property", "real-estate", "wealth"]
+
+rules:
+  - id: fix_ending_rate_drop
+    name: Fixed-Rate Ending Into a Lower Market
+    condition: >
+      data.fix_end_days <= 120 and
+      data.current_rate_pct - data.market_rate_pct >= 0.5
+    confidence: 0.84
+    impact_low: "data.outstanding_balance_minor * (data.current_rate_pct - data.market_rate_pct) / 100 * 0.5"
+    impact_high: "data.outstanding_balance_minor * (data.current_rate_pct - data.market_rate_pct) / 100"
+    reasoning_template: >
+      {{data.address}} mortgage fix ends in {{data.fix_end_days}} days. Current rate
+      {{data.current_rate_pct}}% vs market {{data.market_rate_pct}}% on a
+      {{data.outstanding_balance_minor}} balance — refinance headroom.
+    actions:
+      - Compare remortgage products before the fix expires to avoid the SVR
+      - Confirm the latest valuation to lock in the best LTV band
+
+  - id: ltv_band_improved
+    name: LTV Band Improved by Value Growth
+    condition: "data.current_ltv_pct <= data.next_band_threshold_pct and data.value_growth_pct >= 5.0"
+    confidence: 0.77
+    impact_low: "data.outstanding_balance_minor * 0.003"
+    impact_high: "data.outstanding_balance_minor * 0.01"
+    reasoning_template: >
+      {{data.address}} value rose {{data.value_growth_pct}}%, dropping LTV to
+      {{data.current_ltv_pct}}% — into a better rate band.
+    actions:
+      - Request a remortgage quote at the improved LTV band

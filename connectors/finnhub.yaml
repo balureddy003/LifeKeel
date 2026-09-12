@@ -1,0 +1,71 @@
+# STATUS: ga — Finnhub market-data connector.
+# Free tier: 60 calls/minute, real-time quotes (/quote), company
+# profile fundamentals (/stock/profile2), and news sentiment
+# (/news-sentiment). The /stock/candle endpoint (historical OHLCV) is
+# PAID-ONLY and returns 403 on the free tier — use yfinance or HF Data
+# for historical price history.
+#
+# Used for real-time price feeds, fundamentals enrichment, and news
+# sentiment signals that feed into the momentum strategy's composite
+# score. Pair with yfinance (free, 20+ year history) for backtesting.
+id: finnhub
+name: Finnhub
+provider: finnhub
+version: 1.0.0
+description: "Real-time stock quotes, company fundamentals, and news sentiment. Free tier: 60 calls/min. Historical candles require paid plan — use yfinance for history."
+status: ga
+category: investment
+base_url: https://finnhub.io/api/v1
+
+auth:
+  type: api_key
+  param: token
+  notes: |
+    Free API key required. Register at finnhub.io. Free tier allows
+    60 calls/minute for real-time quotes (/quote) and company profile
+    (/stock/profile2). Historical candles (/stock/candle) require a
+    paid plan — use yfinance or HF Data for price history.
+
+resources:
+  - name: RealTimeQuote
+    path: /quote?symbol={symbol}
+    method: GET
+    response_shape: object
+    record_transform: finnhub_realtime_quote
+    symbols_param: symbol
+    description: Real-time quote (current price, OHLC, previous close) for a single US symbol
+  - name: CompanyProfile
+    path: /stock/profile2?symbol={symbol}
+    method: GET
+    response_shape: object
+    record_transform: finnhub_company_profile
+    symbols_param: symbol
+    cadence: quarterly
+    description: Company profile (market cap, industry, share outstanding, IPO date)
+  - name: NewsSentiment
+    path: /news-sentiment?symbol={symbol}
+    method: GET
+    response_shape: object
+    record_transform: finnhub_news_sentiment
+    symbols_param: symbol
+    cadence: daily
+    description: News sentiment score (bullishPercent 0-1) and buzz metrics for a symbol
+  - name: FinancialMetrics
+    path: /stock/metric?symbol={symbol}&metric=all
+    method: GET
+    response_shape: object
+    record_transform: finnhub_financial_metrics
+    symbols_param: symbol
+    cadence: quarterly
+    description: Financial metrics (ROE, gross margin, debt/equity, P/E, P/B) for enhanced quality score
+
+signal_types:
+  - market_price
+  - company_fundamentals
+  - sentiment_score
+
+signal_type_map:
+  realtimequote: market_price
+  companyprofile: company_fundamentals
+  newssentiment: sentiment_score
+  financialmetrics: company_fundamentals

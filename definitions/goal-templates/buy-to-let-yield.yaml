@@ -1,0 +1,63 @@
+id: buy-to-let-yield
+domain: Property & Wealth
+name: Grow Buy-to-Let Net Yield
+description: Lift the portfolio net rental yield by closing per-property yield gaps and catching refinance windows.
+intent: Grow buy-to-let net yield to 6.5% by cutting voids and catching refinance windows.
+cadence: weekly
+required_connectors:
+  - rightmove
+  - zoopla
+skills:
+  - compare
+  - decide
+  - plan
+plan:
+  - id: monitor_yield
+    label: Monitor yield gaps
+    skill: compare
+    approval_required: false
+    description: Compare each property net yield against the target and market benchmarks.
+  - id: refinance
+    label: Flag refinance windows
+    skill: decide
+    approval_required: true
+    description: Alert when market rates suggest a refinancing opportunity.
+  - id: reduce_voids
+    label: Reduce voids
+    skill: plan
+    approval_required: true
+    description: Recommend actions to minimize empty periods.
+stop_condition: Stop when the portfolio net yield reaches 6.5% and is sustained for 90 days.
+spec:
+  name: Grow Buy-to-Let Net Yield
+  description: >
+    Lift the portfolio net rental yield by closing per-property yield gaps,
+    cutting voids, and catching refinance windows.
+  timeline_days: 180
+  tags: [property, wealth, rental]
+  confidence: 0.95
+  reasoning: Curated goal template with measurable KPIs and a repeatable execution plan.
+  warnings: []
+  detectors:
+    - id: property_yield_gap
+      name: Property yield gap
+      existing: true
+      reasoning: Flags properties underperforming the target yield.
+    - id: property_price_drop
+      name: Property price drop
+      existing: true
+      reasoning: Identifies price drops that may create acquisition or refinancing opportunities.
+    - id: property_refinance_window
+      name: Property refinance window
+      existing: true
+      reasoning: Surfaces favourable refinance windows.
+  kpis:
+    - metric: portfolio_net_yield_pct
+      label: Net Rental Yield
+      unit: percent
+      target: 6.5
+      start_value: 0
+      current: 0
+      direction: increase
+      source: manual
+      reasoning: Primary measure of buy-to-let portfolio performance.

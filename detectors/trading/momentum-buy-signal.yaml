@@ -1,0 +1,53 @@
+id: trading_momentum_buy_signal
+name: Momentum Buy Signal
+description: >
+  Fires when a ticker's momentum score (fractional return over the lookback
+  window) crosses the add threshold, signalling strong positive momentum
+  that warrants buying or adding to the position. Only active when the
+  tenant's strategy is set to 'momentum'.
+version: 1.0.0
+signal_types:
+  - market_price
+  - portfolio_position
+industries:
+  - investment
+  - wealth
+
+rules:
+  - id: momentum_above_add_threshold
+    name: Momentum score exceeds the add threshold
+    condition: data.momentum_score >= context.goal_kpi_targets.add_momentum_threshold
+    confidence: 0.85
+    impact_low: 0
+    impact_high: "data.current_price * data.quantity * 0.10"
+    reasoning_template: >
+      {{data.ticker}} has a momentum score of {{data.momentum_score}} over the
+      lookback window — above the {{context.goal_kpi_targets.add_momentum_threshold}}
+      add threshold. Strong positive momentum suggests the trend is likely to
+      continue. The momentum strategy adds to winners rather than trimming them.
+    actions:
+      - Review the momentum signal before any live action
+      - Paper-trade the add decision first
+    alternatives_template:
+      - label: "Add to {{data.ticker}} — ride the momentum"
+        why_not: "Maximises upside if the trend continues, but increases exposure if the trend reverses."
+        forecast_low: "data.current_price * data.quantity * -0.10"
+        forecast_high: "data.current_price * data.quantity * 0.20"
+      - label: "Hold — wait for a pullback before adding"
+        why_not: "Reduces timing risk but may miss the continuation if the trend keeps running."
+        forecast_low: "0"
+        forecast_high: "data.current_price * data.quantity * 0.10"
+      - label: "Take profit — sell into strength"
+        why_not: "Locks in gains but exits a winning position early, capping upside."
+        forecast_low: "0"
+        forecast_high: "data.current_price * data.quantity * 0.05"
+    risk_template: >
+      {{data.ticker}} is trending strongly, but momentum strategies are
+      vulnerable to whipsaw — a sharp reversal after a breakout can trigger
+      the trailing stop at a loss. The wider the trailing stop, the more
+      room the position has to absorb normal pullbacks, but the larger the
+      potential loss if the trend fully reverses.
+    exit_criteria_template: >
+      Auto-archive when {{data.ticker}}'s momentum score drops below
+      {{context.goal_kpi_targets.add_momentum_threshold}} or when the
+      trailing stop is triggered.

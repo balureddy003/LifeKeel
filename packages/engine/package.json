@@ -1,0 +1,46 @@
+{
+  "name": "@kairos/engine",
+  "version": "0.1.0",
+  "description": "Kairos deterministic rules engine — YAML rules + LLM scoring + evidence chains",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@kairos/platform": "workspace:^",
+    "chokidar": "^5.0.0",
+    "filtrex": "^3.1.0",
+    "js-yaml": "^4.1.0",
+    "lru-cache": "^11.5.2",
+    "mongodb": "^7.3.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/chokidar": "^2.1.3",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.9"
+  },
+  "keywords": [
+    "kairos",
+    "rules-engine",
+    "deterministic-ai",
+    "llm",
+    "yaml"
+  ],
+  "license": "MIT"
+}
