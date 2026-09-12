@@ -1,7 +1,7 @@
 {
-  "name": "@kairos/workflows",
+  "name": "@agentoak/workflows",
   "version": "0.1.0",
-  "description": "Kairos LangGraph workflow engine — no-code multi-step automations with human-in-the-loop",
+  "description": "Connector OAuth/credential plumbing + event schema registry (the workflow/automation engine itself is unused in this trimmed backend — see ARCHITECTURE.md)",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -20,9 +20,9 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@kairos/runtime": "workspace:*",
-    "@kairos/platform": "workspace:^",
-    "@kairos/specifications": "workspace:*",
+    "@agentoak/runtime": "workspace:*",
+    "@agentoak/platform": "workspace:^",
+    "@agentoak/specifications": "workspace:*",
     "filtrex": "^3.1.0",
     "js-yaml": "^4.1.0",
     "mongodb": "^7.3.0",

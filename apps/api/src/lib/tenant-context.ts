@@ -8,8 +8,8 @@
  */
 
 import type { Db } from 'mongodb'
-import { getCurrencyForCountry, getLocaleForCountry, getTenantCollection } from '@kairos/platform'
-import type { Currency } from '@kairos/platform'
+import { getCurrencyForCountry, getLocaleForCountry, getTenantCollection } from '@agentoak/platform'
+import type { Currency } from '@agentoak/platform'
 
 /** Cache tenant country/currency lookups in-process for 60s to avoid
  * a MongoDB round-trip on every request that needs the currency. */

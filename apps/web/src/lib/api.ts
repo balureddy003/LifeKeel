@@ -583,7 +583,7 @@ export async function confirmPasswordReset(token: string, newPassword: string): 
   if (!res.ok) throw new Error(data.error || 'Request failed')
 }
 
-// ── Billing (Trellis Plus) ───────────────────────────────────────────────
+// ── Billing (Oak Plus) ───────────────────────────────────────────────────
 
 export interface BillingSubscription {
   plan: string
@@ -594,7 +594,7 @@ export async function fetchBillingSubscription(): Promise<BillingSubscription | 
   return apiFetch<{ plan: string; status: string } | null>('/billing/subscription', null)
 }
 
-export async function startTrellisPlusCheckout(): Promise<string> {
+export async function startOakPlusCheckout(): Promise<string> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }

@@ -13,7 +13,7 @@ import { randomUUID } from 'crypto'
 import { compileExpression } from 'filtrex'
 import type { Collection, Db } from 'mongodb'
 import type { WorkflowDef, WorkflowRun, WorkflowState, EventPayload, ApprovalRequest } from '../types.js'
-import { createLlmRouterFromEnv, createLogger } from '@kairos/platform'
+import { createLlmRouterFromEnv, createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'workflow-engine', version: '0.0.0' })
 import { NodeExecutor, InterruptSignal } from '../nodes/NodeExecutor.js'

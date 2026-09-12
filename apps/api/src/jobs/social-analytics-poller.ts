@@ -28,8 +28,8 @@
  */
 
 import type { Db } from 'mongodb'
-import type { Engine, Insight } from '@kairos/engine'
-import { decryptIfNeeded, createLogger } from '@kairos/platform'
+import type { Engine, Insight } from '@agentoak/engine'
+import { decryptIfNeeded, createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'social-analytics', version: '0.0.0' })
 

@@ -39,7 +39,7 @@
  */
 
 import type { Collection, Db } from 'mongodb'
-import { formatMoney as formatMoneySymbol } from '@kairos/platform'
+import { formatMoney as formatMoneySymbol } from '@agentoak/platform'
 
 export type AttributionOutcome = 'converted' | 'dismissed' | 'expired' | 'pending'
 

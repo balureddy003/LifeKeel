@@ -1,5 +1,5 @@
-import type { EmbeddingProvider } from '@kairos/runtime'
-import { cosineSimilarity } from '@kairos/runtime'
+import type { EmbeddingProvider } from '@agentoak/runtime'
+import { cosineSimilarity } from '@agentoak/runtime'
 
 /**
  * ADR-0069 — on-device embedding provider.
@@ -8,7 +8,7 @@ import { cosineSimilarity } from '@kairos/runtime'
  * so semantic search / cache / RAG run offline with no external services. The
  * model is pinned and loaded lazily on first use; `@huggingface/transformers`
  * is an optional runtime dependency imported dynamically (the same pattern used
- * by `openBetterSqlite3` in `@kairos/sqlite-adapter`) so the library is only
+ * by `openBetterSqlite3` in `@agentoak/sqlite-adapter`) so the library is only
  * required on deployments that actually run local embeddings.
  *
  * `similarity()` delegates to the shared `cosineSimilarity` primitive, so the

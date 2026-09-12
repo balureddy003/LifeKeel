@@ -14,8 +14,8 @@
  * tick) just piled up a near-duplicate insight every cycle, forever.
  */
 import type { Db } from 'mongodb'
-import type { Insight } from '@kairos/engine'
-import { getTenantCollection } from '@kairos/platform'
+import type { Insight } from '@agentoak/engine'
+import { getTenantCollection } from '@agentoak/platform'
 import { ensureVerifiedMoments } from './verified-moments.js'
 import type { DeliveryRouter } from './delivery/delivery-router.js'
 

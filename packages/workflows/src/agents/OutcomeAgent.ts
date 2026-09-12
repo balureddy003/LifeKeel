@@ -1,4 +1,4 @@
-import type { AgentCheckpointer } from '@kairos/runtime'
+import type { AgentCheckpointer } from '@agentoak/runtime'
 
 export interface OutcomeAgentState {
   thread_id: string

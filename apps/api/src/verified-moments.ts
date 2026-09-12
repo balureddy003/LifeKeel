@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 import type { Db } from 'mongodb'
-import type { Insight } from '@kairos/engine'
+import type { Insight } from '@agentoak/engine'
 
 export type VerifiedMomentStatus =
   | 'verified'

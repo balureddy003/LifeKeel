@@ -1,5 +1,5 @@
 /**
- * @kairos/pipeline — unit tests
+ * @agentoak/pipeline — unit tests
  *
  * Tests connector loader, event schema validation, webhook routing basics.
  */

@@ -1,7 +1,7 @@
 {
-  "name": "@kairos/conformance",
+  "name": "@agentoak/conformance",
   "version": "0.1.0",
-  "description": "Conformance contracts and suites for Kairos-compatible implementations",
+  "description": "Conformance contracts and test suites for the outcome-lifecycle runtime ports",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -19,11 +19,11 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@kairos/runtime": "workspace:*",
-    "@kairos/specifications": "workspace:*"
+    "@agentoak/runtime": "workspace:*",
+    "@agentoak/specifications": "workspace:*"
   },
   "devDependencies": {
-    "@kairos/outcome-kernel": "workspace:*",
+    "@agentoak/outcome-kernel": "workspace:*",
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0",
     "vitest": "^4.1.9"

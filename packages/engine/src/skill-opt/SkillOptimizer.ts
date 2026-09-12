@@ -45,7 +45,7 @@
  */
 
 import { randomUUID } from 'crypto'
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'skill-optimizer', version: '0.0.0' })
 
@@ -54,7 +54,7 @@ const REJECTION_MEMORY_LIMIT = 10
 /** Max history documents scanned when rebuilding rejection memory. */
 const REJECTION_MEMORY_DOC_LIMIT = 20
 
-/** LLM function signature — matches @kairos/platform LlmFn */
+/** LLM function signature — matches @agentoak/platform LlmFn */
 type LlmFn = (system: string, prompt: string, model: string) => Promise<string>
 
 // ── MongoDB structural type (no hard dep on mongodb package) ──────────────────

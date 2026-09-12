@@ -4,7 +4,7 @@
  * No bullmq dependency — uses ioredis directly (dynamic import for graceful fallback).
  */
 
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'queue-manager', version: '0.0.0' })
 

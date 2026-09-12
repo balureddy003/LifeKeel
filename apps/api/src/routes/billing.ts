@@ -140,7 +140,7 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
       }
 
       const appUrl = originApp === 'family'
-        ? (process.env['TRELLIS_URL'] ?? 'http://localhost:3002')
+        ? (process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002')
         : (process.env['STUDIO_URL'] ?? 'http://localhost:3000')
       const defaultSuccessUrl = originApp === 'family'
         ? `${appUrl}/upgrade?success=true`

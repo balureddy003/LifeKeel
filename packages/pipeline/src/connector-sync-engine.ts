@@ -36,9 +36,9 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { ConnectorConfig } from './schemas.js'
 import type { EventGenerator } from './event-generator.js'
-import type { Engine, Insight } from '@kairos/engine'
+import type { Engine, Insight } from '@agentoak/engine'
 import { safeFetch } from './safe-fetch.js'
-import { createLogger, buildGoalKpiTargets, buildGoalContext, decryptIfNeeded } from '@kairos/platform'
+import { createLogger, buildGoalKpiTargets, buildGoalContext, decryptIfNeeded } from '@agentoak/platform'
 
 const log = createLogger({ service: 'connector-sync', version: '0.0.0' })
 

@@ -251,7 +251,7 @@ export function PageHeader({
   backHref?: string
   action?: ReactNode
 }) {
-  const assistantAction = title !== 'Trellis' ? (
+  const assistantAction = title !== 'Oak' ? (
     <Link
       href="/assistant"
       onClick={() => haptic('light')}

@@ -4,7 +4,7 @@ import type {
   CapabilityProviderManifest,
   Goal,
   OutcomeContract,
-} from '@kairos/specifications'
+} from '@agentoak/specifications'
 
 export type DeploymentProfile = 'personal' | 'team' | 'edge' | 'cloud' | 'federated'
 

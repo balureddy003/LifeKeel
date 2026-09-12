@@ -10,8 +10,8 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
-import { GoalTemplateSchema, type GoalTemplate } from '@kairos/specifications'
-import { createLogger } from '@kairos/platform'
+import { GoalTemplateSchema, type GoalTemplate } from '@agentoak/specifications'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'goal-template-loader', version: '0.0.0' })
 

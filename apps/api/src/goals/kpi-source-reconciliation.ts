@@ -4,7 +4,7 @@ import type {
   KpiReconciliation,
   KpiSourceContribution,
   KpiSourceType,
-} from '@kairos/specifications'
+} from '@agentoak/specifications'
 
 export const DEFAULT_KPI_DISCREPANCY_THRESHOLD_PCT = 10
 export const DEFAULT_KPI_SOURCE_TYPE_PRIORITIES: Record<KpiSourceType, number> = {

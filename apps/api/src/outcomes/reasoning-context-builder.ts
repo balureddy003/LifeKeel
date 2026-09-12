@@ -1,7 +1,7 @@
 import type { Db } from 'mongodb'
-import { MongoMemoryRepository } from '@kairos/mongodb-adapter'
-import { ContextAssembler } from '@kairos/platform'
-import type { ReasoningContextBuilder } from '@kairos/engine'
+import { MongoMemoryRepository } from '@agentoak/mongodb-adapter'
+import { ContextAssembler } from '@agentoak/platform'
+import type { ReasoningContextBuilder } from '@agentoak/engine'
 
 export class ApiReasoningContextBuilder implements ReasoningContextBuilder {
   private readonly assembler: ContextAssembler

@@ -31,8 +31,8 @@
  */
 
 import type { Db } from 'mongodb'
-import type { Engine, Insight } from '@kairos/engine'
-import { createLogger } from '@kairos/platform'
+import type { Engine, Insight } from '@agentoak/engine'
+import { createLogger } from '@agentoak/platform'
 import { OutcomeCredits, type KpiLike } from '../billing/outcome-credits.js'
 import {
   computeKpiProgress as sharedComputeKpiProgress,

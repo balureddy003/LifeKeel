@@ -13,7 +13,7 @@
  */
 
 import { compileExpression, useDotAccessOperator } from 'filtrex'
-import { formatMoney } from '@kairos/platform'
+import { formatMoney } from '@agentoak/platform'
 
 export class EvaluatorError extends Error {
   constructor(

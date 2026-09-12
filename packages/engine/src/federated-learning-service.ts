@@ -27,7 +27,7 @@
 
 import { FederatedLearning } from './federated/FederatedLearning.js'
 import type { TenantLevelScorer } from './tenant-level-scorer.js'
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'federated-learning-service', version: '1.0.0' })
 

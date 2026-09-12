@@ -1,7 +1,7 @@
 import type { Db } from 'mongodb'
-import type { Trigger } from '@kairos/engine'
-import { CausalExperimentTracker } from '@kairos/workflows'
-import { MongoMemoryRepository } from '@kairos/mongodb-adapter'
+import type { Trigger } from '@agentoak/engine'
+import { CausalExperimentTracker } from '@agentoak/workflows'
+import { MongoMemoryRepository } from '@agentoak/mongodb-adapter'
 import { createHash, randomUUID } from 'node:crypto'
 
 interface GoalWithKpis {

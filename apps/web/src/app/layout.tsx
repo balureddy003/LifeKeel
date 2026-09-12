@@ -6,13 +6,13 @@ import { AppShell } from '@/components/AppShell'
 import { Observability } from '@/components/Observability'
 
 export const metadata: Metadata = {
-  title: 'Trellis — Your family\'s first responder for financial emergencies',
+  title: 'Agent Oak — When life doesn\'t go to plan, Oak knows what to do next',
   description: 'A guided response plan for job loss, medical crises, and the unexpected — built for families of all ages. Informational only, not financial advice.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Trellis',
+    title: 'Agent Oak',
   },
 }
 

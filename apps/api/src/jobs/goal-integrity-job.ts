@@ -11,7 +11,7 @@
  */
 
 import type { Db } from 'mongodb'
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'goal-integrity', version: '0.0.0' })
 

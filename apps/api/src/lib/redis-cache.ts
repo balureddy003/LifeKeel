@@ -6,7 +6,7 @@
  */
 
 import { createClient } from 'redis'
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'redis-cache', version: '0.0.0' })
 

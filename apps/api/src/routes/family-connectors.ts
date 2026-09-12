@@ -25,7 +25,7 @@
 
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { createLogger, getTenantCollection, encryptIfNeeded } from '@kairos/platform'
+import { createLogger, getTenantCollection, encryptIfNeeded } from '@agentoak/platform'
 import { testImapConnection } from '../email/imap-client.js'
 import { findProviderPreset } from '../email/providers.js'
 import { scanTenantInbox } from '../jobs/email-scan.js'

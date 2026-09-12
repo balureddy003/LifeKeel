@@ -19,7 +19,7 @@
  */
 
 import type { Db } from 'mongodb'
-import type { Insight } from '@kairos/engine'
+import type { Insight } from '@agentoak/engine'
 import { randomUUID } from 'node:crypto'
 
 const DETECTOR_ID = 'system_connector_health'

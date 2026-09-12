@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { InMemoryOutcomeRepository } from '@kairos/runtime'
+import { InMemoryOutcomeRepository } from '@agentoak/runtime'
 import { runOutcomeRepositoryConformance } from '../index.js'
 
 describe('reference runtime conformance', () => {

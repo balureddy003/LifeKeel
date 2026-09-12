@@ -1,11 +1,11 @@
 import type { Db } from 'mongodb'
-import type { OutcomeContract } from '@kairos/specifications'
-import type { OutcomeRepository } from '@kairos/runtime'
+import type { OutcomeContract } from '@agentoak/specifications'
+import type { OutcomeRepository } from '@agentoak/runtime'
 import {
   legacyGoalToOutcomeContract,
   type LegacyEvidenceObservation,
   type LegacyGoal,
-} from '@kairos/legacy-compat'
+} from '@agentoak/legacy-compat'
 
 interface GoalKpiSnapshot {
   tenant_id: string

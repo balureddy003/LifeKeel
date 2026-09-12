@@ -10,8 +10,8 @@
 
 import { z } from 'zod'
 import { getDb, getSignalsCollection } from '../db.js'
-import { getTenantCollection } from '@kairos/platform'
-import type { PortfolioSnapshot, MarketData } from '@kairos/engine'
+import { getTenantCollection } from '@agentoak/platform'
+import type { PortfolioSnapshot, MarketData } from '@agentoak/engine'
 
 export const StrategyConfigSchema = z.object({
   enabled: z.boolean().default(true),

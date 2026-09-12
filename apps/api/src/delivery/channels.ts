@@ -15,7 +15,7 @@
 
 import twilio from 'twilio'
 import sgMail from '@sendgrid/mail'
-import { formatMoney } from '@kairos/platform'
+import { formatMoney } from '@agentoak/platform'
 
 // ── Shared types ───────────────────────────────────────────────────────────────
 

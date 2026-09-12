@@ -11,7 +11,7 @@
 
 import type { FastifyInstance } from 'fastify'
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
-import { AuthService, getCurrencyForCountry, getLocaleForCountry } from '@kairos/platform'
+import { AuthService, getCurrencyForCountry, getLocaleForCountry } from '@agentoak/platform'
 import { getDb } from '../db.js'
 import { checkInviteCode, consumeInviteCode } from '../invite-codes.js'
 import { PLAN_QUOTAS, createInitialBilling } from '../billing/billing-constants.js'
@@ -565,7 +565,7 @@ export async function registerAuthUserRoutes(
       // a Studio link here would just be a dead end. Skip sending (keeping
       // prior behavior) until Studio has a matching confirm page.
       if (originApp === 'family') {
-        const appUrl = (process.env['TRELLIS_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
+        const appUrl = (process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
         const resetUrl = `${appUrl}/reset-password/confirm?token=${resetToken}`
         await sendPasswordResetEmail(user.email, user.name, resetUrl)
       } else if (originApp === 'kairos') {

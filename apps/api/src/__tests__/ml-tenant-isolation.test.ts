@@ -9,8 +9,8 @@
 
 import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import { MongoClient, Db } from 'mongodb'
-import { ScoreCalibrator } from '@kairos/engine'
-import { NoveltyTracker } from '@kairos/engine'
+import { ScoreCalibrator } from '@agentoak/engine'
+import { NoveltyTracker } from '@agentoak/engine'
 import { queueManager } from '../queue/QueueManager.js'
 
 describe('ML Tenant Isolation', () => {

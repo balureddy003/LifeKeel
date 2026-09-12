@@ -3,18 +3,18 @@ import './env.js'
 import { randomUUID } from 'node:crypto'
 
 /**
- * Trellis API Server — Fastify
+ * Agent Oak API Server — Fastify
  *
- * A full copy of kairos-ai's apps/api, trimmed to what Trellis (apps/web)
+ * A full copy of kairos-ai's apps/api, trimmed to what Agent Oak (apps/web)
  * actually calls plus the marketing surfaces (blog, case studies, growth
  * events) that support self-serve growth. See SECURITY.md for the full
  * list of routes/crons/packages removed and why.
  *
  * Packages wired together:
- *   @kairos/engine    — evaluate detectors (family_* only) on incoming events
- *   @kairos/pipeline  — connector data ingestion (email/Gmail)
- *   @kairos/workflows — connector credential/OAuth plumbing, schema registry
- *   @kairos/platform  — JWT auth, money utilities, telemetry
+ *   @agentoak/engine    — evaluate detectors (family_* only) on incoming events
+ *   @agentoak/pipeline  — connector data ingestion (email/Gmail)
+ *   @agentoak/workflows — connector credential/OAuth plumbing, schema registry
+ *   @agentoak/platform  — JWT auth, money utilities, telemetry
  *
  * Route map (registered further down — search "Modular route handlers"):
  *   /auth/*, /connectors/*, /family*, /documents*, /billing/*, /inbox*,
@@ -32,9 +32,9 @@ import sensible from '@fastify/sensible'
 import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
 import { ZodTypeProvider, jsonSchemaTransform } from 'fastify-type-provider-zod'
-import { Engine, type Insight, setSchemaRegistry } from '@kairos/engine'
-import { ConnectorLoader, EventGenerator } from '@kairos/pipeline'
-import { AuthService, canPerform, extractBearerToken, enforceQuota, getAllCircuitBreakers, QuotaExceededError, validateLicenseKey, SafeHttpClient, createLogger, initTelemetry, type ProductAction, type ProductResource } from '@kairos/platform'
+import { Engine, type Insight, setSchemaRegistry } from '@agentoak/engine'
+import { ConnectorLoader, EventGenerator } from '@agentoak/pipeline'
+import { AuthService, canPerform, extractBearerToken, enforceQuota, getAllCircuitBreakers, QuotaExceededError, validateLicenseKey, SafeHttpClient, createLogger, initTelemetry, type ProductAction, type ProductResource } from '@agentoak/platform'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -44,17 +44,17 @@ import { initAuditLogger } from './audit/audit-log.js'
 import { loadLiveTradingOptIn } from './trading/portfolio-data.js'
 import { registerAuthUserRoutes } from './routes/auth-users.js'
 import { registerSocialAuthRoutes } from './routes/auth-social.js'
-import { createLlmRouterFromEnv, LlmResponseCache, MongoLlmCacheStore, LlmBudgetGuard, LocalEmbeddingProvider } from '@kairos/platform'
+import { createLlmRouterFromEnv, LlmResponseCache, MongoLlmCacheStore, LlmBudgetGuard, LocalEmbeddingProvider } from '@agentoak/platform'
 import {
   ScoreCalibrator, IntentClassifier,
   NoveltyTracker, ChangePointDetector, FeatureHashScorer, TenantLevelScorer,
-} from '@kairos/engine'
+} from '@agentoak/engine'
 import { ApiLlmScorer } from './llm-scorer.js'
 import { registerConnectorCredentialRoutes } from './routes/connector-credentials.js'
 import { DeliveryRouter } from './delivery/delivery-router.js'
 import { createMoveJudge } from './delivery/move-judge.js'
-import { ConnectorSyncEngine, TokenRefreshScheduler } from '@kairos/pipeline'
-import { WorkflowEngine, WorkflowLoader, type WorkflowDef, type EventPayload, connectorSchemaRegistry } from '@kairos/workflows'
+import { ConnectorSyncEngine, TokenRefreshScheduler } from '@agentoak/pipeline'
+import { WorkflowEngine, WorkflowLoader, type WorkflowDef, type EventPayload, connectorSchemaRegistry } from '@agentoak/workflows'
 import cron from 'node-cron'
 import { enqueueWorkflowTrigger, startWorker } from './queue/WorkflowQueue.js'
 import { queueManager } from './queue/QueueManager.js'
@@ -451,7 +451,7 @@ try {
   log.info({}, 'Email scan cron started')
 
   // Trading (auto-trade confirmation, reconciliation, momentum rebalance)
-  // and workflow-approval-timeout sweeps removed — Trellis has no trading
+  // and workflow-approval-timeout sweeps removed — Agent Oak has no trading
   // vertical and no workflow engine to create approval gates in the first
   // place. See SECURITY.md for the full list of what was trimmed.
 
@@ -658,14 +658,14 @@ try {
   }, { missedExecutionTolerance: 60_000 })
   log.info({}, 'Billing cron started (daily 4 AM)')
 
-  // Goal integrity job removed — goals are dead code in Trellis's frontend
+  // Goal integrity job removed — goals are dead code in Agent Oak's frontend
   // (useFamilyGoals() is defined but never rendered).
 
   // Social analytics polling, Universal/Intraday KPI compute, goal
   // summarisation, goal migration, and adaptive thresholds (Bollinger Band
   // recompute for invoice/payment/portfolio signal types) all removed —
   // social/goals/trading-vertical specific, none of it reachable from
-  // Trellis. `persistAndDeliverInsights` stays: registerFamilyFinancialProfileRoutes
+  // Agent Oak. `persistAndDeliverInsights` stays: registerFamilyFinancialProfileRoutes
   // (kept) needs it as `insightsDeliveryHook`.
   const persistAndDeliverInsights = async (insights: Insight[], tenantId: string): Promise<void> =>
     persistAndDeliverInsightsCore(workflowDb, insights, tenantId, deliveryRouter)
@@ -1301,11 +1301,11 @@ app.get('/pipeline-connectors', async () => ({
 }))
 
 // Modular route handlers
-// Trimmed to what Trellis (apps/web) actually calls, plus the marketing
+// Trimmed to what Agent Oak (apps/web) actually calls, plus the marketing
 // surfaces (blog, case studies, growth events) that support self-serve
 // growth. Everything else kairos-ai's apps/api serves — trading/property/
 // social verticals, workflows/goals, SCIM, federated learning, the
-// marketplace, teams — isn't reachable from Trellis and was removed rather
+// marketplace, teams — isn't reachable from Agent Oak and was removed rather
 // than left dead in the route table. See SECURITY.md for the full list of
 // what was dropped and why.
 await registerInsightRoutes(app, engine, featureHashScorer, workflowDb, tenantLevelScorer)

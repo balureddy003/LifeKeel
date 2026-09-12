@@ -38,7 +38,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import yaml from 'js-yaml'
-import { DEFAULT_GOAL_KPI_TARGETS } from '@kairos/platform'
+import { DEFAULT_GOAL_KPI_TARGETS } from '@agentoak/platform'
 import type { Engine } from './engine.js'
 import type { Insight } from './schemas.js'
 // MongoDB Db is injected at runtime (engine package does not depend on mongodb directly)

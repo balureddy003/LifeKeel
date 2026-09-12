@@ -13,7 +13,7 @@
  */
 
 import sgMail from '@sendgrid/mail'
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'auth-email', version: '0.0.0' })
 

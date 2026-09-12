@@ -1,6 +1,6 @@
 import type { Db } from 'mongodb'
 import { randomUUID } from 'node:crypto'
-import { getTenantCollection, createLogger } from '@kairos/platform'
+import { getTenantCollection, createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'outcome-credits', version: '0.0.0' })
 import { recordMomentOutcome } from '../verified-moments.js'

@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import path from 'node:path'
 import { Engine } from '../engine.js'
-import { DEFAULT_GOAL_KPI_TARGETS } from '@kairos/platform'
+import { DEFAULT_GOAL_KPI_TARGETS } from '@agentoak/platform'
 
 const TRADING_DETECTORS_DIR = path.join(__dirname, '..', '..', '..', '..', 'detectors', 'trading')
 

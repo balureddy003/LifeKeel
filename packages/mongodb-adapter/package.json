@@ -1,7 +1,7 @@
 {
-  "name": "@kairos/mongodb-adapter",
+  "name": "@agentoak/mongodb-adapter",
   "version": "0.1.0",
-  "description": "MongoDB adapters for Kairos runtime ports",
+  "description": "MongoDB adapters for the outcome-lifecycle runtime ports",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -19,12 +19,12 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@kairos/runtime": "workspace:*",
-    "@kairos/specifications": "workspace:*",
+    "@agentoak/runtime": "workspace:*",
+    "@agentoak/specifications": "workspace:*",
     "mongodb": "^7.3.0"
   },
   "devDependencies": {
-    "@kairos/conformance": "workspace:*",
+    "@agentoak/conformance": "workspace:*",
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0",
     "vitest": "^4.1.9"

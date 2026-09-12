@@ -2,9 +2,9 @@ import type {
   EvidenceState,
   Goal,
   OutcomeLifecycleState,
-} from '@kairos/specifications'
+} from '@agentoak/specifications'
 
-/** @deprecated Import Goal from @kairos/specifications in new code. */
+/** @deprecated Import Goal from @agentoak/specifications in new code. */
 export type OutcomeContract = Goal
 
 export interface LegacyKpi {

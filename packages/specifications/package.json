@@ -1,7 +1,7 @@
 {
-  "name": "@kairos/specifications",
+  "name": "@agentoak/specifications",
   "version": "0.1.0",
-  "description": "Portable Kairos outcome specifications and provider contracts",
+  "description": "Portable outcome specifications and provider contracts",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

@@ -11,8 +11,8 @@
  */
 
 import { MongoClient, type Db, type Collection } from 'mongodb'
-import type { Insight } from '@kairos/engine'
-import type { ActionReceipt } from '@kairos/workflows'
+import type { Insight } from '@agentoak/engine'
+import type { ActionReceipt } from '@agentoak/workflows'
 import { initDetectorVersionsCollection } from './db/detector-versions.js'
 
 let client: MongoClient | null = null

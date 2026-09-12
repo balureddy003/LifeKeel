@@ -13,7 +13,7 @@ import dotenv from 'dotenv'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'env', version: '0.0.0' })
 
@@ -64,7 +64,7 @@ const ConfigSchema = z.object({
 
   // URLs
   STUDIO_URL: z.string().default('http://localhost:3000'),
-  TRELLIS_URL: z.string().default('http://localhost:3002'),
+  AGENT_OAK_URL: z.string().default('http://localhost:3002'),
   API_BASE_URL: z.string().default('http://localhost:3001'),
   NEXT_PUBLIC_API_URL: z.string().optional(),
   CORS_ORIGIN: z.string().optional(),

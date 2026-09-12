@@ -10,7 +10,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import yaml from 'js-yaml'
 import { evaluate, evaluateNumeric } from '../evaluator.js'
-import { DEFAULT_GOAL_KPI_TARGETS } from '@kairos/platform'
+import { DEFAULT_GOAL_KPI_TARGETS } from '@agentoak/platform'
 
 const DETECTORS_DIR = path.join(__dirname, '..', '..', '..', '..', 'detectors', 'trading')
 
@@ -30,7 +30,7 @@ async function loadDetector(id: string): Promise<{ rules: Array<{ id: string; co
 
 /**
  * concentration-risk and rebalance-suggestion conditions reference
- * context.goal_kpi_targets (see buildGoalKpiTargets in @kairos/platform) —
+ * context.goal_kpi_targets (see buildGoalKpiTargets in @agentoak/platform) —
  * defaults to the same DEFAULT_GOAL_KPI_TARGETS production always injects,
  * override per-test to verify goal-specific thresholds actually take effect.
  */

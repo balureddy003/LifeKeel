@@ -1,5 +1,5 @@
 /**
- * @kairos/engine
+ * @agentoak/engine
  *
  * Deterministic rules engine for production AI applications.
  * Rules run first. LLMs score second. Evidence always required.

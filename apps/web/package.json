@@ -1,8 +1,8 @@
 {
-  "name": "trellis",
+  "name": "@agentoak/web",
   "version": "0.1.0",
   "private": true,
-  "description": "Trellis — see how your family's finances connect",
+  "description": "Agent Oak web app — the autonomous digital twin for your family",
   "scripts": {
     "dev": "next dev --port 3002",
     "build": "next build",

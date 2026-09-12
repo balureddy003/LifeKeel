@@ -7,11 +7,11 @@
  *   schedule         → 10 (low)
  */
 
-import type { WorkflowDef, EventPayload } from '@kairos/workflows'
-import type { WorkflowEngine, WorkflowLoader } from '@kairos/workflows'
+import type { WorkflowDef, EventPayload } from '@agentoak/workflows'
+import type { WorkflowEngine, WorkflowLoader } from '@agentoak/workflows'
 import type { Db } from 'mongodb'
 import { queueManager } from './QueueManager.js'
-import { createLlmRouter, createLlmRouterFromEnv, retryWithPolicy, createLogger, type LlmProvider } from '@kairos/platform'
+import { createLlmRouter, createLlmRouterFromEnv, retryWithPolicy, createLogger, type LlmProvider } from '@agentoak/platform'
 import { guardLlmBudget } from '../lib/llm-guard.js'
 
 const log = createLogger({ service: 'workflow-queue', version: '0.0.0' })

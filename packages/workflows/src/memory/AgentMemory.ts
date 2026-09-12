@@ -19,7 +19,7 @@
  */
 
 import type { Collection, Db } from 'mongodb'
-import { getCircuitBreaker } from '@kairos/platform'
+import { getCircuitBreaker } from '@agentoak/platform'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 

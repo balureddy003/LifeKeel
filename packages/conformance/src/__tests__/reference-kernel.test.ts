@@ -4,7 +4,7 @@ import {
   canTransition,
   evaluateReadiness,
   transitionOutcome,
-} from '@kairos/outcome-kernel'
+} from '@agentoak/outcome-kernel'
 import { runOutcomeKernelConformance } from '../index.js'
 
 describe('reference outcome kernel conformance', () => {

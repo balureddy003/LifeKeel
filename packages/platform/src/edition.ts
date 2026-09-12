@@ -2,9 +2,9 @@
  * Edition gate — runtime check for Kairos edition.
  *
  * Tier hierarchy:
- *   community  MIT open-source packages (@kairos/engine, @kairos/platform core)
- *   busl       Source-available BUSL-1.1 packages (@kairos/workflows, @kairos/pipeline)
- *   enterprise Enterprise-only packages (@kairos/ee-*)
+ *   community  MIT open-source packages (@agentoak/engine, @agentoak/platform core)
+ *   busl       Source-available BUSL-1.1 packages (@agentoak/workflows, @agentoak/pipeline)
+ *   enterprise Enterprise-only packages (@agentoak/ee-*)
  *
  * Set KAIROS_EDITION=enterprise in env to unlock enterprise features.
  * Do NOT set this unless you have a valid enterprise licence agreement.
@@ -70,7 +70,7 @@ export function getEditionInfo(): EditionInfo {
  * Use this in package constructors/initialisers to fail fast.
  *
  * @example
- * // In @kairos/ee-rbac bootstrap:
+ * // In @agentoak/ee-rbac bootstrap:
  * requireEdition('enterprise', 'RBAC')
  */
 export function requireEdition(required: KairosEdition, featureName: string): void {

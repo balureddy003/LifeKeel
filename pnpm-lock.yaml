@@ -20,6 +20,30 @@ importers:
 
   apps/api:
     dependencies:
+      '@agentoak/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
+      '@agentoak/legacy-compat':
+        specifier: workspace:*
+        version: link:../../packages/legacy-compat
+      '@agentoak/mongodb-adapter':
+        specifier: workspace:*
+        version: link:../../packages/mongodb-adapter
+      '@agentoak/pipeline':
+        specifier: workspace:*
+        version: link:../../packages/pipeline
+      '@agentoak/platform':
+        specifier: workspace:*
+        version: link:../../packages/platform
+      '@agentoak/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      '@agentoak/specifications':
+        specifier: workspace:*
+        version: link:../../packages/specifications
+      '@agentoak/workflows':
+        specifier: workspace:*
+        version: link:../../packages/workflows
       '@fastify/compress':
         specifier: ^9.1.0
         version: 9.2.0
@@ -44,30 +68,6 @@ importers:
       '@fastify/swagger-ui':
         specifier: ^6.1.0
         version: 6.1.1
-      '@kairos/engine':
-        specifier: workspace:*
-        version: link:../../packages/engine
-      '@kairos/legacy-compat':
-        specifier: workspace:*
-        version: link:../../packages/legacy-compat
-      '@kairos/mongodb-adapter':
-        specifier: workspace:*
-        version: link:../../packages/mongodb-adapter
-      '@kairos/pipeline':
-        specifier: workspace:*
-        version: link:../../packages/pipeline
-      '@kairos/platform':
-        specifier: workspace:*
-        version: link:../../packages/platform
-      '@kairos/runtime':
-        specifier: workspace:*
-        version: link:../../packages/runtime
-      '@kairos/specifications':
-        specifier: workspace:*
-        version: link:../../packages/specifications
-      '@kairos/workflows':
-        specifier: workspace:*
-        version: link:../../packages/workflows
       '@sendgrid/mail':
         specifier: ^8.1.6
         version: 8.1.6
@@ -198,7 +198,7 @@ importers:
         version: 4.7.0(vite@5.4.21)
       autoprefixer:
         specifier: ^10.4.0
-        version: 10.5.6(postcss@8.5.28)
+        version: 10.6.0(postcss@8.5.28)
       eslint:
         specifier: ^9
         version: 9.39.5
@@ -226,14 +226,14 @@ importers:
 
   packages/conformance:
     dependencies:
-      '@kairos/runtime':
+      '@agentoak/runtime':
         specifier: workspace:*
         version: link:../runtime
-      '@kairos/specifications':
+      '@agentoak/specifications':
         specifier: workspace:*
         version: link:../specifications
     devDependencies:
-      '@kairos/outcome-kernel':
+      '@agentoak/outcome-kernel':
         specifier: workspace:*
         version: link:../outcome-kernel
       '@types/node':
@@ -248,7 +248,7 @@ importers:
 
   packages/engine:
     dependencies:
-      '@kairos/platform':
+      '@agentoak/platform':
         specifier: workspace:^
         version: link:../platform
       chokidar:
@@ -288,7 +288,7 @@ importers:
 
   packages/legacy-compat:
     dependencies:
-      '@kairos/specifications':
+      '@agentoak/specifications':
         specifier: workspace:*
         version: link:../specifications
     devDependencies:
@@ -304,17 +304,17 @@ importers:
 
   packages/mongodb-adapter:
     dependencies:
-      '@kairos/runtime':
+      '@agentoak/runtime':
         specifier: workspace:*
         version: link:../runtime
-      '@kairos/specifications':
+      '@agentoak/specifications':
         specifier: workspace:*
         version: link:../specifications
       mongodb:
         specifier: ^7.3.0
         version: 7.6.0
     devDependencies:
-      '@kairos/conformance':
+      '@agentoak/conformance':
         specifier: workspace:*
         version: link:../conformance
       '@types/node':
@@ -329,7 +329,7 @@ importers:
 
   packages/outcome-kernel:
     dependencies:
-      '@kairos/specifications':
+      '@agentoak/specifications':
         specifier: workspace:*
         version: link:../specifications
     devDependencies:
@@ -345,10 +345,10 @@ importers:
 
   packages/pipeline:
     dependencies:
-      '@kairos/engine':
+      '@agentoak/engine':
         specifier: workspace:*
         version: link:../engine
-      '@kairos/platform':
+      '@agentoak/platform':
         specifier: workspace:^
         version: link:../platform
       exceljs:
@@ -382,12 +382,12 @@ importers:
 
   packages/platform:
     dependencies:
+      '@agentoak/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       '@anthropic-ai/sdk':
         specifier: ^0.32.0
         version: 0.32.1
-      '@kairos/runtime':
-        specifier: workspace:*
-        version: link:../runtime
       '@opentelemetry/api':
         specifier: ^1.9.0
         version: 1.9.1
@@ -419,7 +419,7 @@ importers:
 
   packages/runtime:
     dependencies:
-      '@kairos/specifications':
+      '@agentoak/specifications':
         specifier: workspace:*
         version: link:../specifications
     devDependencies:
@@ -451,13 +451,13 @@ importers:
 
   packages/workflows:
     dependencies:
-      '@kairos/platform':
+      '@agentoak/platform':
         specifier: workspace:^
         version: link:../platform
-      '@kairos/runtime':
+      '@agentoak/runtime':
         specifier: workspace:*
         version: link:../runtime
-      '@kairos/specifications':
+      '@agentoak/specifications':
         specifier: workspace:*
         version: link:../specifications
       filtrex:
@@ -3730,8 +3730,8 @@ packages:
     engines: {node: '>=8.0.0'}
     dev: false
 
-  /autoprefixer@10.5.6(postcss@8.5.28):
-    resolution: {integrity: sha512-HiH4oYNc5+DQEx/b8FPfMj+WHH/WWUBmbN5r1Uf/ixtfyFkk+wGIlfJT/RD5eAyzlwkeYRtZUCI8qrEi26pl2g==}
+  /autoprefixer@10.6.0(postcss@8.5.28):
+    resolution: {integrity: sha512-A26d6qs9kqGgkmImIXMYvXTzqb4Qv7AVgpY1NXzr9Y659J8qHHnLOO/zE8ewIGFMprOolAoRAQYDgNryXIJKBw==}
     engines: {node: ^10 || ^12 || >=14}
     hasBin: true
     peerDependencies:

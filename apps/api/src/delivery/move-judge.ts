@@ -2,9 +2,9 @@ import {
   JudgeScoresSchema,
   MoveJudge,
   type JudgeInput,
-} from '@kairos/engine'
+} from '@agentoak/engine'
 import type { Db } from 'mongodb'
-import { callStructured, LlmBudgetGuard, createGuardEventSink, type LlmFn, type LlmGovernanceOptions } from '@kairos/platform'
+import { callStructured, LlmBudgetGuard, createGuardEventSink, type LlmFn, type LlmGovernanceOptions } from '@agentoak/platform'
 
 const SYSTEM = `You are the final quality evaluator for a business recommendation.
 Score each rubric dimension from 1 to 5. Be strict about unsupported claims,

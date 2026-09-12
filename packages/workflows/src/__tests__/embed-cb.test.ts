@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createEmbedFn } from '../memory/AgentMemory.js'
-import { getAllCircuitBreakers } from '@kairos/platform'
+import { getAllCircuitBreakers } from '@agentoak/platform'
 
 let originalFetch: any
 

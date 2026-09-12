@@ -266,14 +266,14 @@ export default function SettingsPage() {
         </ListRow>
       </ListSection>
 
-      {/* Trellis Plus */}
+      {/* Oak Plus */}
       <ListSection title="Plan">
         <ListRow
           icon={Sparkles}
           onClick={() => { haptic('light'); router.push('/upgrade') }}
           chevron
         >
-          <div className="text-base font-medium">Trellis Plus</div>
+          <div className="text-base font-medium">Oak Plus</div>
           <div className="text-xs text-ink-tertiary mt-0.5">AI document extraction and inbox summaries</div>
         </ListRow>
       </ListSection>

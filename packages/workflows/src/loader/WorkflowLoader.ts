@@ -4,7 +4,7 @@ import * as yaml from 'js-yaml'
 import { z } from 'zod'
 import type { Db } from 'mongodb'
 import type { WorkflowDef } from '../types.js'
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'workflow-loader', version: '0.0.0' })
 import { WorkflowVersionStore } from '../versioning/WorkflowVersionStore.js'

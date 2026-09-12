@@ -12,7 +12,7 @@
  */
 
 import type { Db } from 'mongodb'
-import { createLogger, getTenantCollection } from '@kairos/platform'
+import { createLogger, getTenantCollection } from '@agentoak/platform'
 
 const log = createLogger({ service: 'low-credit-alerts', version: '0.0.0' })
 

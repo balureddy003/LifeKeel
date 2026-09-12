@@ -23,7 +23,7 @@
 import crypto from 'node:crypto'
 import type { FastifyRequest } from 'fastify'
 import type { Db } from 'mongodb'
-import { decryptIfNeeded } from '@kairos/platform'
+import { decryptIfNeeded } from '@agentoak/platform'
 
 export interface WebhookConfig {
   signature_header?: string

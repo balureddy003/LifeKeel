@@ -25,7 +25,7 @@
  */
 
 import type { Db } from 'mongodb'
-import type { Insight } from '@kairos/engine'
+import type { Insight } from '@agentoak/engine'
 import { randomUUID } from 'node:crypto'
 
 export type ActionType =
@@ -221,7 +221,7 @@ export class ActionExecutor {
     const creds = await this.getCredential(tenantId, 'sendgrid')
     if (!creds?.api_key) throw new Error('SendGrid not connected')
 
-    const { decryptIfNeeded } = await import('@kairos/platform')
+    const { decryptIfNeeded } = await import('@agentoak/platform')
     const apiKey = decryptIfNeeded(creds.api_key as string)
     if (!apiKey) throw new Error('SendGrid API key missing')
 
@@ -247,7 +247,7 @@ export class ActionExecutor {
     const creds = await this.getCredential(tenantId, 'twilio')
     if (!creds?.account_sid || !creds?.auth_token) throw new Error('Twilio not connected')
 
-    const { decryptIfNeeded } = await import('@kairos/platform')
+    const { decryptIfNeeded } = await import('@agentoak/platform')
     const sid = decryptIfNeeded(creds.account_sid as string)
     const token = decryptIfNeeded(creds.auth_token as string)
     const toPhone = creds.whatsapp_to as string | undefined
@@ -269,7 +269,7 @@ export class ActionExecutor {
   private async createXeroCreditNote(_intent: ActionIntent, insight: Insight, tenantId: string): Promise<void> {
     const creds = await this.getCredential(tenantId, 'xero')
     if (!creds?.access_token) throw new Error('Xero not connected')
-    const { decryptIfNeeded } = await import('@kairos/platform')
+    const { decryptIfNeeded } = await import('@agentoak/platform')
     const token = decryptIfNeeded(creds.access_token as string)
     if (!token) throw new Error('Xero access token missing')
     // Post a minimal credit note — in production this would carry line items from the insight's evidence_refs
@@ -296,7 +296,7 @@ export class ActionExecutor {
   private async stripeRefund(_intent: ActionIntent, insight: Insight, tenantId: string): Promise<void> {
     const creds = await this.getCredential(tenantId, 'stripe')
     if (!creds?.api_key) throw new Error('Stripe not connected')
-    const { decryptIfNeeded } = await import('@kairos/platform')
+    const { decryptIfNeeded } = await import('@agentoak/platform')
     const apiKey = decryptIfNeeded(creds.api_key as string)
     if (!apiKey) throw new Error('Stripe key missing')
     // The evidence_refs should contain a charge/payment_intent ID — use first one
@@ -314,7 +314,7 @@ export class ActionExecutor {
   private async stripePause(_intent: ActionIntent, insight: Insight, tenantId: string): Promise<void> {
     const creds = await this.getCredential(tenantId, 'stripe')
     if (!creds?.api_key) throw new Error('Stripe not connected')
-    const { decryptIfNeeded } = await import('@kairos/platform')
+    const { decryptIfNeeded } = await import('@agentoak/platform')
     const apiKey = decryptIfNeeded(creds.api_key as string)
     const subId = insight.confidence_breakdown.evidence_refs[0]
     if (!apiKey || !subId?.startsWith('sub_')) throw new Error('No Stripe subscription ID in evidence_refs')
@@ -330,7 +330,7 @@ export class ActionExecutor {
   private async crmTag(_intent: ActionIntent, insight: Insight, tenantId: string): Promise<void> {
     const creds = await this.getCredential(tenantId, 'hubspot')
     if (!creds?.api_key) throw new Error('HubSpot not connected')
-    const { decryptIfNeeded } = await import('@kairos/platform')
+    const { decryptIfNeeded } = await import('@agentoak/platform')
     const apiKey = decryptIfNeeded(creds.api_key as string)
     const contactId = insight.confidence_breakdown.evidence_refs[0]
     if (!apiKey || !contactId) throw new Error('No HubSpot contact ID in evidence_refs')
@@ -351,7 +351,7 @@ export class ActionExecutor {
   ): Promise<{ external_id: string; external_platform: string }> {
     const creds = await this.getCredential(tenantId, 'linkedin')
     if (!creds?.access_token) throw new Error('LinkedIn not connected')
-    const { decryptIfNeeded } = await import('@kairos/platform')
+    const { decryptIfNeeded } = await import('@agentoak/platform')
     const token = decryptIfNeeded(creds.access_token as string)
     if (!token) throw new Error('LinkedIn access token missing')
 
@@ -391,7 +391,7 @@ export class ActionExecutor {
   ): Promise<{ external_id: string; external_platform: string }> {
     const creds = await this.getCredential(tenantId, 'twitter_x')
     if (!creds?.access_token) throw new Error('Twitter/X not connected')
-    const { decryptIfNeeded } = await import('@kairos/platform')
+    const { decryptIfNeeded } = await import('@agentoak/platform')
     const token = decryptIfNeeded(creds.access_token as string)
     if (!token) throw new Error('Twitter access token missing')
 

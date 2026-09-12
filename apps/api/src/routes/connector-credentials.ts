@@ -18,14 +18,14 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import crypto from 'node:crypto'
-import { ConnectorActionExecutor } from '@kairos/workflows'
-import { connectorRegistry } from '@kairos/workflows'
-import { encryptIfNeeded, decryptIfNeeded, createLogger, getTenantCollection } from '@kairos/platform'
+import { ConnectorActionExecutor } from '@agentoak/workflows'
+import { connectorRegistry } from '@agentoak/workflows'
+import { encryptIfNeeded, decryptIfNeeded, createLogger, getTenantCollection } from '@agentoak/platform'
 
 const log = createLogger({ service: 'connector-credentials', version: '0.0.0' })
-import { ConnectorSyncEngine } from '@kairos/pipeline'
-import type { ConnectorLoader, EventGenerator } from '@kairos/pipeline'
-import type { Engine } from '@kairos/engine'
+import { ConnectorSyncEngine } from '@agentoak/pipeline'
+import type { ConnectorLoader, EventGenerator } from '@agentoak/pipeline'
+import type { Engine } from '@agentoak/engine'
 import { fetchGmailAddress } from '../email/gmail-oauth.js'
 import { scanTenantInbox } from '../jobs/email-scan.js'
 
@@ -96,7 +96,7 @@ function frontendRedirect(returnTo: ReturnTarget, params: Record<string, string>
     // The family app's own Connect Email page, not the generic /connectors
     // dashboard Studio and kairos-web use — it's the one screen a family
     // member would recognize the result on.
-    const url = new URL('/connect/email', process.env['TRELLIS_URL'] ?? 'http://localhost:3002')
+    const url = new URL('/connect/email', process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002')
     for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
     return url.toString()
   }

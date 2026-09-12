@@ -12,7 +12,7 @@
  * and eliminates 401 errors during scheduled syncs.
  */
 import { safeFetch } from './safe-fetch.js'
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'token-refresh', version: '0.0.0' })
 

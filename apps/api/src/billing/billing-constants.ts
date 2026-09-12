@@ -134,7 +134,7 @@ export function getCreditPack(packId: string): CreditPack | undefined {
 
 const PLAN_PRICES: Record<Plan, string | null> = {
   free: null,
-  // Real Stripe test-mode price ("Trellis Plus", £7.99/mo GBP) — created via
+  // Real Stripe test-mode price ("Oak Plus", £7.99/mo GBP) — created via
   // the Stripe API since no products/prices existed in this account at all.
   // growth/enterprise stay placeholders; nothing currently checks out into them.
   starter: 'price_1U0hS5LkkF6tCgs0cSt7ivDx',

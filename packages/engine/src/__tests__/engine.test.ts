@@ -1,5 +1,5 @@
 /**
- * @kairos/engine — unit tests
+ * @agentoak/engine — unit tests
  *
  * Tests: detector loading, event evaluation, rule scoring, multi-tenant isolation.
  */

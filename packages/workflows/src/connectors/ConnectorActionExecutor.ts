@@ -28,7 +28,7 @@ import type { Collection, Db } from 'mongodb'
 import crypto from 'node:crypto'
 import { connectorRegistry } from './ConnectorRegistry.js'
 import type { ConnectorAction, ConnectorDef } from './ConnectorRegistry.js'
-import { decryptIfNeeded, encryptIfNeeded, createLogger } from '@kairos/platform'
+import { decryptIfNeeded, encryptIfNeeded, createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'connector-action-executor', version: '0.0.0' })
 

@@ -5,7 +5,7 @@
  * uploaded documents (insurance policies, pension statements, mortgage
  * letters, etc.). Tries OPENAI_API_KEY first, then falls back to Azure
  * OpenAI (AZURE_OPENAI_*) — the same credentials the rest of the app's LLM
- * calls use via @kairos/platform's createLlmRouter. That router's LlmFn is
+ * calls use via @agentoak/platform's createLlmRouter. That router's LlmFn is
  * text-only (no image content), so it can't be reused directly here; this
  * builds an Azure-pointed OpenAI SDK client the same way llm.ts's callAzure
  * does, but sends vision message content instead of plain text.
@@ -17,7 +17,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { createLogger, getTenantCollection, isValidAzureEndpoint, isAzureFoundryEndpoint } from '@kairos/platform'
+import { createLogger, getTenantCollection, isValidAzureEndpoint, isAzureFoundryEndpoint } from '@agentoak/platform'
 
 const log = createLogger({ service: 'ocr', version: '0.0.0' })
 

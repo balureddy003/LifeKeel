@@ -18,7 +18,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import crypto from 'node:crypto'
-import { AuthService, createLogger } from '@kairos/platform'
+import { AuthService, createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'auth-social', version: '0.0.0' })
 
@@ -77,12 +77,12 @@ export async function registerSocialAuthRoutes(
     return
   }
   const studioUrl = process.env['STUDIO_URL'] ?? 'http://localhost:3000'
-  const trellisUrl = process.env['TRELLIS_URL'] ?? 'http://localhost:3002'
+  const agentOakUrl = process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002'
   const kairosUrl = process.env['KAIROS_URL'] ?? 'http://localhost:3003'
 
   // Remove trailing slashes
   const cleanStudioUrl = studioUrl.replace(/\/$/, '')
-  const cleanTrellisUrl = trellisUrl.replace(/\/$/, '')
+  const cleanAgentOakUrl = agentOakUrl.replace(/\/$/, '')
   const cleanKairosUrl = kairosUrl.replace(/\/$/, '')
 
   // The redirect URI is always the API's own callback endpoint — Google
@@ -101,7 +101,7 @@ export async function registerSocialAuthRoutes(
    * and hands control back to the app with the full URL, fragment included.
    */
   function getCallbackUrl(app?: string): string {
-    if (app === 'family') return `${cleanTrellisUrl}/auth/callback`
+    if (app === 'family') return `${cleanAgentOakUrl}/auth/callback`
     if (app === 'kairos-web') return `${cleanKairosUrl}/auth/callback`
     if (app === 'kairos-mobile') return 'kairos://oauth-callback'
     return `${cleanStudioUrl}/auth/callback`
@@ -110,7 +110,7 @@ export async function registerSocialAuthRoutes(
   /** Same app-keyed resolution as getCallbackUrl, but for the pre-token error path (?error=... instead of #token=...). */
   function getLoginErrorUrl(app: string | undefined, error: string): string {
     if (app === 'kairos-mobile') return `kairos://oauth-callback?error=${error}`
-    const base = app === 'family' ? cleanTrellisUrl : app === 'kairos-web' ? cleanKairosUrl : cleanStudioUrl
+    const base = app === 'family' ? cleanAgentOakUrl : app === 'kairos-web' ? cleanKairosUrl : cleanStudioUrl
     return `${base}/login?error=${error}`
   }
 

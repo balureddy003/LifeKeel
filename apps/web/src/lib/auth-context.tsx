@@ -176,7 +176,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   // Google sign-in: redirect to the API's OAuth flow with app=family so the
-  // callback redirects back to the Trellis app after authentication.
+  // callback redirects back to the Agent Oak app after authentication.
   const signInWithProvider = async (provider: 'google') => {
     window.location.href = `${getApiBase()}/auth/${provider}/login?app=family`
   }

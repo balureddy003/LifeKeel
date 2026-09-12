@@ -1,5 +1,5 @@
 import type { Db } from 'mongodb'
-import { MongoOutcomeRepository } from '@kairos/mongodb-adapter'
+import { MongoOutcomeRepository } from '@agentoak/mongodb-adapter'
 import { LegacyGoalOutcomeBridge } from './legacy-goal-outcome-bridge.js'
 
 export interface OutcomeCompatibilityLayer {

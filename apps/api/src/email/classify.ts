@@ -7,7 +7,7 @@
  * client extract.ts needs for document images.
  */
 
-import type { LlmFn } from '@kairos/platform'
+import type { LlmFn } from '@agentoak/platform'
 import type { FetchedEmail } from './imap-client.js'
 
 export interface EmailClassification {

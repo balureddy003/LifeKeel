@@ -32,7 +32,7 @@ export default function SupportPage() {
 
       <H2>Account or billing questions</H2>
       <P>
-        For anything about your account, a Trellis Plus subscription, or a charge you don&apos;t recognize, email
+        For anything about your account, a Oak Plus subscription, or a charge you don&apos;t recognize, email
         the address above with the email you signed up with.
       </P>
 
@@ -51,7 +51,7 @@ export default function SupportPage() {
 
       <H2>In a real emergency</H2>
       <P>
-        Trellis is not emergency services and can&apos;t dispatch help. If you&apos;re in immediate danger, call
+        Agent Oak is not emergency services and can&apos;t dispatch help. If you&apos;re in immediate danger, call
         911 (or your local emergency number) first.
       </P>
     </div>

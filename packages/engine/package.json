@@ -1,7 +1,7 @@
 {
-  "name": "@kairos/engine",
+  "name": "@agentoak/engine",
   "version": "0.1.0",
-  "description": "Kairos deterministic rules engine — YAML rules + LLM scoring + evidence chains",
+  "description": "Deterministic rules engine — YAML detectors + LLM scoring + evidence chains — powers Agent Oak's Family Intelligence layer",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -20,7 +20,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@kairos/platform": "workspace:^",
+    "@agentoak/platform": "workspace:^",
     "chokidar": "^5.0.0",
     "filtrex": "^3.1.0",
     "js-yaml": "^4.1.0",

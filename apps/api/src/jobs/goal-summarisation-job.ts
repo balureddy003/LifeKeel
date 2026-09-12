@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { Db } from 'mongodb'
 import { z } from 'zod'
-import { callStructured, LlmBudgetGuard, createGuardEventSink, type LlmFn, type LlmGovernanceOptions } from '@kairos/platform'
-import { MongoMemoryRepository } from '@kairos/mongodb-adapter'
-import type { GoalEvidenceSummary } from '@kairos/specifications'
+import { callStructured, LlmBudgetGuard, createGuardEventSink, type LlmFn, type LlmGovernanceOptions } from '@agentoak/platform'
+import { MongoMemoryRepository } from '@agentoak/mongodb-adapter'
+import type { GoalEvidenceSummary } from '@agentoak/specifications'
 
 const SummarySchema = z.object({ summary_text: z.string().max(1600) })
 const DAY_MS = 86_400_000

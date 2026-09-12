@@ -14,7 +14,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { GridFSBucket, type Db } from 'mongodb'
-import { createLogger, getTenantCollection, createLlmRouterFromEnv, encryptIfNeeded, decryptIfNeeded } from '@kairos/platform'
+import { createLogger, getTenantCollection, createLlmRouterFromEnv, encryptIfNeeded, decryptIfNeeded } from '@agentoak/platform'
 import { fetchRecentEmails, type ImapCredentials } from '../email/imap-client.js'
 import { refreshGoogleAccessToken } from '../email/gmail-oauth.js'
 import { classifyEmail } from '../email/classify.js'

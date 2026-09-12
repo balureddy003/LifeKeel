@@ -13,8 +13,8 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
-import { VerticalSchema, type Vertical } from '@kairos/specifications'
-import { createLogger } from '@kairos/platform'
+import { VerticalSchema, type Vertical } from '@agentoak/specifications'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'vertical-loader', version: '0.0.0' })
 

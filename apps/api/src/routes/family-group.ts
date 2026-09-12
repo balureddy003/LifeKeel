@@ -20,7 +20,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { randomUUID, randomBytes } from 'node:crypto'
-import { createLogger, getTenantCollection } from '@kairos/platform'
+import { createLogger, getTenantCollection } from '@agentoak/platform'
 import { getFamilyGroupsCollection } from '../db.js'
 
 const log = createLogger({ service: 'family-group', version: '0.0.0' })

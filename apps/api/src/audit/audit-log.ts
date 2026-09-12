@@ -64,7 +64,7 @@ export interface AuditEntry {
   timestamp: Date
 }
 
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 
 const auditLog = createLogger({ service: 'audit', version: '0.0.0' })
 

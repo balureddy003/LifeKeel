@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { classifyEmail } from '../email/classify.js'
 import type { FetchedEmail } from '../email/imap-client.js'
-import type { LlmFn } from '@kairos/platform'
+import type { LlmFn } from '@agentoak/platform'
 
 function makeEmail(overrides: Partial<FetchedEmail> = {}): FetchedEmail {
   return {

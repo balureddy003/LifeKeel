@@ -210,7 +210,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         <div className="w-16 h-16 rounded-2xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-6">
           <Network size={32} className="text-family-400" />
         </div>
-        <h1 className="text-3xl font-bold mb-2 text-gradient">Trellis</h1>
+        <h1 className="text-3xl font-bold mb-2 text-gradient">Agent Oak</h1>
         <p className="text-ink-tertiary mb-8 max-w-xs">
           Your family&apos;s first responder for financial emergencies &mdash; ready before you need it.
         </p>

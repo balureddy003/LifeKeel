@@ -3,8 +3,8 @@ import type {
   OutcomeContract,
   OutcomeLifecycleState,
   ReadinessCheck,
-} from '@kairos/specifications'
-import type { MemoryRecord, MemoryRepository } from '@kairos/runtime'
+} from '@agentoak/specifications'
+import type { MemoryRecord, MemoryRepository } from '@agentoak/runtime'
 
 export interface OutcomeKernelAdapter {
   canTransition(from: OutcomeLifecycleState, to: OutcomeLifecycleState): boolean

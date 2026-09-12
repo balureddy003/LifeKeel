@@ -20,8 +20,8 @@ vi.mock('../email/classify.js', () => ({
 vi.mock('../ocr/extract.js', () => ({
   processDocument: (...args: unknown[]) => processDocumentMock(...args),
 }))
-vi.mock('@kairos/platform', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@kairos/platform')>()
+vi.mock('@agentoak/platform', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@agentoak/platform')>()
   return { ...actual, createLlmRouterFromEnv: () => async () => '{}' }
 })
 

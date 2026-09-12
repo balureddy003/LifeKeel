@@ -6,7 +6,7 @@
  * KAIROS_DEPLOYMENT_MODE=dev      → default (no restrictions)
  */
 
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'deployment', version: '0.0.0' })
 

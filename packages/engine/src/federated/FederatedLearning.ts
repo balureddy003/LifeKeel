@@ -14,7 +14,7 @@
 import { DifferentialPrivacy, type DPConfig } from './DifferentialPrivacy.js'
 import { PrivacyAccountant, PrivacyBudgetExceededError } from './PrivacyAccountant.js'
 import { SecureAggregationProtocol } from './SecureAggregation.js'
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'federated-learning', version: '1.0.0' })
 

@@ -2,7 +2,7 @@ import { MongoClient, ObjectId, type Db } from 'mongodb'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import yaml from 'js-yaml'
-import { repoRoot } from '@kairos/platform'
+import { repoRoot } from '@agentoak/platform'
 
 interface Migration {
   id: string

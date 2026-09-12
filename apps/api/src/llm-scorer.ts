@@ -38,8 +38,8 @@ import {
   LlmBudgetGuard,
   type LlmResponseCache,
   type LlmCacheConfig,
-} from '@kairos/platform'
-import type { Insight, EvaluationContext, ReasoningContext } from '@kairos/engine'
+} from '@agentoak/platform'
+import type { Insight, EvaluationContext, ReasoningContext } from '@agentoak/engine'
 
 const SCORING_SYSTEM_PROMPT = `You are a financial signal evaluator. Score the given insight's confidence (0.0 to 1.0) based on:
 - How well the evidence supports the conclusion

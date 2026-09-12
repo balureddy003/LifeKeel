@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { OutcomeAgent, type OutcomeAgentState } from '../agents/OutcomeAgent.js'
-import type { AgentCheckpoint, AgentCheckpointer } from '@kairos/runtime'
+import type { AgentCheckpoint, AgentCheckpointer } from '@agentoak/runtime'
 
 describe('OutcomeAgent', () => {
   it('checkpoints observations and interrupts at the iteration limit', async () => {

@@ -20,7 +20,7 @@ let schemaRegistry: any = null
 
 /**
  * Inject the connector schema registry for ADR-0063 compatibility checks.
- * Apps (not the engine) should call this with the registry from @kairos/workflows.
+ * Apps (not the engine) should call this with the registry from @agentoak/workflows.
  */
 export function setSchemaRegistry(registry: unknown): void {
   schemaRegistry = registry

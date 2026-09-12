@@ -2,7 +2,7 @@ import { AlertTriangle } from 'lucide-react'
 import { PageHeader } from '@/components/Glass'
 
 const EFFECTIVE_DATE = '[EFFECTIVE DATE — NOT YET SET]'
-const LEGAL_ENTITY = '[LEGAL ENTITY NAME, e.g. "Trellis, Inc."]'
+const LEGAL_ENTITY = '[LEGAL ENTITY NAME, e.g. "Agent Oak, Inc."]'
 const CONTACT_EMAIL = '[legal@yourdomain.example]'
 const GOVERNING_LAW = '[GOVERNING LAW / JURISDICTION — TBD WITH COUNSEL]'
 
@@ -31,7 +31,7 @@ export default function TermsPage() {
 
       <p className="text-xs text-ink-tertiary mb-1">Effective date: {EFFECTIVE_DATE}</p>
       <p className="text-xs text-ink-tertiary mb-6">
-        These Terms of Service ("Terms") govern your use of the Trellis application and related services
+        These Terms of Service ("Terms") govern your use of the Agent Oak application and related services
         (the "Service"), operated by {LEGAL_ENTITY} ("we," "us," "our").
       </p>
 
@@ -42,15 +42,15 @@ export default function TermsPage() {
         use the Service.
       </P>
 
-      <H2>2. What Trellis is — and isn't</H2>
+      <H2>2. What Agent Oak is — and isn't</H2>
       <P>
-        Trellis helps you see your household's finances in one place: income, savings, insurance, retirement
+        Agent Oak helps you see your household's finances in one place: income, savings, insurance, retirement
         progress, and education funding, based on information you provide and documents or accounts you choose to
-        connect. Trellis surfaces informational estimates, plain-language summaries, and suggestions generated in
+        connect. Agent Oak surfaces informational estimates, plain-language summaries, and suggestions generated in
         part by automated systems, including AI models.
       </P>
       <P>
-        <b className="text-ink-primary">Trellis is not a financial advisor, broker, insurance agent, tax
+        <b className="text-ink-primary">Agent Oak is not a financial advisor, broker, insurance agent, tax
         preparer, or attorney, and nothing in the Service is financial, investment, tax, legal, or insurance
         advice.</b> Estimates and insights are based on the data you provide, may be incomplete or inaccurate, and
         should not be relied on as the sole basis for a financial decision. Always consult a qualified, licensed
@@ -64,7 +64,7 @@ export default function TermsPage() {
         for all activity under your account.
       </P>
       <P>
-        Trellis lets an account holder add other household members to a shared family view (a "roster"). Adding
+        Agent Oak lets an account holder add other household members to a shared family view (a "roster"). Adding
         someone as a family member does not give them their own login or independent account — today, one login
         per household controls the data. Don't add anyone to your roster without their knowledge and consent to
         being represented in your household's data.
@@ -74,14 +74,14 @@ export default function TermsPage() {
       <P>
         You may choose to upload financial documents (which may be processed by an AI service to extract fields
         like provider, amount, or renewal date) or connect an email account (via IMAP, using credentials you
-        provide) so Trellis can scan for financial correspondence. You control what you connect and can disconnect
+        provide) so Agent Oak can scan for financial correspondence. You control what you connect and can disconnect
         at any time in Settings. You're responsible for having the right to share any account or document you
         connect, including anyone else's information it may contain.
       </P>
 
       <H2>5. Subscriptions and billing</H2>
       <P>
-        Trellis offers a free tier and paid tiers with additional features (such as automated document field
+        Agent Oak offers a free tier and paid tiers with additional features (such as automated document field
         extraction and AI email summaries). Paid subscriptions are billed through our payment processor (Stripe)
         on the cycle shown at checkout. You can cancel at any time; cancellation takes effect at the end of the
         current billing period unless stated otherwise. Fees are non-refundable except where required by law.

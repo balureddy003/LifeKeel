@@ -1,5 +1,5 @@
 import type { Db } from 'mongodb'
-import { getTenantCollection } from '@kairos/platform'
+import { getTenantCollection } from '@agentoak/platform'
 import { getPromoCodesCollection, getPromoRedemptionsCollection, getTenantsCollection } from '../db.js'
 import { recordLedgerEntry } from './credit-ledger.js'
 

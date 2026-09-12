@@ -15,7 +15,7 @@
  */
 
 import crypto from 'node:crypto'
-import type { Insight, JudgeVerdict, MoveJudge } from '@kairos/engine'
+import type { Insight, JudgeVerdict, MoveJudge } from '@agentoak/engine'
 import {
   WhatsAppChannel, SmsChannel, EmailChannel, WebPushChannel, MobilePushChannel, RealMobilePushSender,
   type InsightNotification, type DeliveryResult,

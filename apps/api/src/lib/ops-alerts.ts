@@ -8,7 +8,7 @@
  * Never throws — alert failures are logged but never interrupt the caller.
  */
 
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'ops-alerts', version: '0.0.0' })
 

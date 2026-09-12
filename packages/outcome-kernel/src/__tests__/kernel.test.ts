@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { OutcomeContract } from '@kairos/specifications'
+import type { OutcomeContract } from '@agentoak/specifications'
 import {
   InvalidOutcomeTransitionError,
   assessOutcome,

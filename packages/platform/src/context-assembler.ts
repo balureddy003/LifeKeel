@@ -1,4 +1,4 @@
-import type { MemoryRepository, MemoryScopeType, MemoryType } from '@kairos/runtime'
+import type { MemoryRepository, MemoryScopeType, MemoryType } from '@agentoak/runtime'
 
 export interface ContextRequest {
   tenant_id: string

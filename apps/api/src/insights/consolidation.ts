@@ -19,7 +19,7 @@
  */
 
 import type { Db } from 'mongodb'
-import type { Insight } from '@kairos/engine'
+import type { Insight } from '@agentoak/engine'
 
 export interface DetectorPrioritySettings {
   /** Tenant-specific per-detector priority overrides (higher = higher priority). */

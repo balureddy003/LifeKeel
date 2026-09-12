@@ -10,7 +10,7 @@
  * configured, alerts are only logged via pino.
  */
 
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'billing-alerts', version: '0.0.0' })
 

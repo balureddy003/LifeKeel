@@ -1,7 +1,7 @@
 {
-  "name": "@kairos/runtime",
+  "name": "@agentoak/runtime",
   "version": "0.1.0",
-  "description": "Replaceable runtime ports and reference adapters for Kairos",
+  "description": "Replaceable runtime ports and reference adapters for the outcome-lifecycle model",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,7 +20,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@kairos/specifications": "workspace:*"
+    "@agentoak/specifications": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

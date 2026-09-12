@@ -14,7 +14,7 @@ import { registerConnectorCredentialRoutes } from '../routes/connector-credentia
 const backfillMock = vi.fn(async () => [{ records_fetched: 3, insights_triggered: 1, resource: 'Account' }])
 const testConnectionMock = vi.fn(async () => ({ success: true, message: 'ok' }))
 
-vi.mock('@kairos/pipeline', () => ({
+vi.mock('@agentoak/pipeline', () => ({
   ConnectorSyncEngine: class {
     backfill = backfillMock
     testConnection = testConnectionMock

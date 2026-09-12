@@ -1,5 +1,5 @@
 import type { Db } from 'mongodb'
-import { decryptIfNeeded } from '@kairos/platform'
+import { decryptIfNeeded } from '@agentoak/platform'
 
 interface XCredential {
   tenant_id: string

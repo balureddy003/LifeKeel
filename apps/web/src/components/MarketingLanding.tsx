@@ -2,12 +2,15 @@
 
 /**
  * The public marketing page shown at "/" to a logged-out visitor — not the
- * compact "Trellis / Get Started / I already have an account" fallback
+ * compact "Agent Oak / Get Started / I already have an account" fallback
  * AuthGate shows for any OTHER route hit while logged out (a shared link to
  * /inbox, say), which stays as-is; this is specifically the front door.
  *
  * Every claim here is something verified working in the app this session —
- * no feature list, no security claim, is aspirational.
+ * no feature list, no security claim, is aspirational. In particular: this
+ * page does NOT claim Oak acts autonomously on the family's behalf (the
+ * "Agent Oak" product vision's Act/Escalate layer) — that isn't built yet.
+ * See ARCHITECTURE.md for the full vision and what's actually shipped.
  */
 
 import { useEffect } from 'react'
@@ -30,10 +33,10 @@ import { track } from '@/lib/growth-track'
 
 const FEATURES = [
   { icon: Siren, color: '#fbbf24', title: 'Emergency Mode', body: 'One tap, always reachable, drops straight into a guided checklist for the situation you’re actually in — no menu hunting under stress.' },
-  { icon: MessageCircle, color: '#4ade80', title: '"What happens if...?" — answered', body: '"What happens if I lose my job?" gets a real, specific answer built from your data — not a canned FAQ, and not advice, just what you told Trellis.' },
-  { icon: HeartPulse, color: '#f87171', title: 'A readiness snapshot, not a score to chase', body: 'Protection, wealth, goals, and savings, read from what you’ve told Trellis — a starting point for your own plan, not a recommendation.' },
-  { icon: Wand2, color: '#60a5fa', title: 'Upload a document, skip the retyping', body: 'Photograph an insurance policy or pension statement — Trellis reads the coverage amount and offers to fill in your profile for you.' },
-  { icon: Mail, color: '#9c92ff', title: 'Connect any email, not just Gmail', body: 'Gmail, Outlook, Yahoo, iCloud, or your own domain — Trellis scans for financial mail and summarizes it in plain language.' },
+  { icon: MessageCircle, color: '#4ade80', title: '"What happens if...?" — answered', body: '"What happens if I lose my job?" gets a real, specific answer built from your data — not a canned FAQ, and not advice, just what you told Oak.' },
+  { icon: HeartPulse, color: '#f87171', title: 'A readiness snapshot, not a score to chase', body: 'Protection, wealth, goals, and savings, read from what you’ve told Oak — a starting point for your own plan, not a recommendation.' },
+  { icon: Wand2, color: '#60a5fa', title: 'Upload a document, skip the retyping', body: 'Photograph an insurance policy or pension statement — Oak reads the coverage amount and offers to fill in your profile for you.' },
+  { icon: Mail, color: '#9c92ff', title: 'Connect any email, not just Gmail', body: 'Gmail, Outlook, Yahoo, iCloud, or your own domain — Oak scans for financial mail and summarizes it in plain language.' },
   { icon: Command, color: '#8b80f8', title: 'A command palette, if you want it', body: 'Cmd+K jumps anywhere in the app instantly. Built for the parent who wants an answer in three seconds, not three taps.' },
 ]
 
@@ -51,10 +54,10 @@ export function MarketingLanding() {
           Free to start &middot; no credit card
         </div>
         <h1 className="text-[1.85rem] sm:text-[2.1rem] leading-[1.15] font-bold tracking-tight mb-3">
-          Your family&apos;s <span className="text-gradient">first responder</span> for financial emergencies.
+          When life doesn&apos;t go to plan, <span className="text-gradient">Oak knows what to do next</span>.
         </h1>
         <p className="text-[1.05rem] text-ink-secondary leading-relaxed mb-5 max-w-sm">
-          Job loss. A new baby. Retirement. Trellis builds your household a step-by-step playbook
+          Job loss. A new baby. Retirement. Agent Oak builds your household a step-by-step playbook
           for whatever comes &mdash; so you&apos;re never starting from zero.
         </p>
         <div className="space-y-3 mb-4">
@@ -82,7 +85,7 @@ export function MarketingLanding() {
           <span className="text-2xl font-bold text-family-400 leading-none flex-shrink-0">Only 30%</span>
           <p className="text-[12.5px] text-ink-secondary leading-relaxed">
             of U.S. households have the documents they&apos;d actually need ready for an emergency, per FEMA&apos;s
-            2023 National Household Survey on Disaster Preparedness. Trellis exists to close that gap before you
+            2023 National Household Survey on Disaster Preparedness. Agent Oak exists to close that gap before you
             need it closed.
           </p>
         </div>
@@ -124,9 +127,9 @@ export function MarketingLanding() {
           Most finance apps fake confidence.<br />This one doesn&apos;t.
         </h2>
         <p className="text-sm text-ink-secondary text-center leading-relaxed mb-6 max-w-sm mx-auto">
-          Before you connect anything, Trellis shows sample numbers so you can see what it does &mdash; clearly
+          Before you connect anything, Agent Oak shows sample numbers so you can see what it does &mdash; clearly
           labeled as samples, not dressed up as yours. The moment real data replaces them, the label disappears.
-          Trellis organizes what you tell it and helps you prepare &mdash; it doesn&apos;t recommend investments
+          Oak organizes what you tell it and helps you prepare &mdash; it doesn&apos;t recommend investments
           or tell you what to buy.
         </p>
         <div className="glass rounded-2xl p-4 max-w-xs mx-auto">
@@ -232,7 +235,7 @@ export function MarketingLanding() {
           </div>
           <div className="glass rounded-2xl p-5 border-family-500/30">
             <div className="flex items-baseline justify-between mb-3">
-              <span className="text-[15px] font-bold text-family-400">Trellis Plus</span>
+              <span className="text-[15px] font-bold text-family-400">Oak Plus</span>
               <span className="text-[13px] text-ink-tertiary">£7.99<span className="text-[11px]">/mo</span></span>
             </div>
             <ul className="space-y-2">

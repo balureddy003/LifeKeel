@@ -1,7 +1,7 @@
 {
-  "name": "@kairos/pipeline",
+  "name": "@agentoak/pipeline",
   "version": "0.1.0",
-  "description": "Kairos GenAI data pipeline — connect any API, normalize to events, deduplicate via SHA-256",
+  "description": "Connector data pipeline — normalizes any connector's data into events, deduplicates via SHA-256",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -20,8 +20,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@kairos/engine": "workspace:*",
-    "@kairos/platform": "workspace:^",
+    "@agentoak/engine": "workspace:*",
+    "@agentoak/platform": "workspace:^",
     "js-yaml": "^4.1.0",
     "papaparse": "^5.5.3",
     "zod": "^3.23.0",

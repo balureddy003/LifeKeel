@@ -39,7 +39,7 @@
  *   await classifier.confirmClassification(result.id, 'invoice_overdue')
  */
 
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 import { LRUCache } from 'lru-cache'
 
 const log = createLogger({ service: 'intent-classifier', version: '0.0.0' })

@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
-import { repoRoot } from '@kairos/platform'
+import { repoRoot } from '@agentoak/platform'
 
 const ROOT = repoRoot()
 const WORKFLOWS_DIR = path.join(ROOT, 'definitions', 'workflows')

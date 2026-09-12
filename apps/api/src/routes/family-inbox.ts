@@ -13,7 +13,7 @@
 
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'family-inbox', version: '0.0.0' })
 

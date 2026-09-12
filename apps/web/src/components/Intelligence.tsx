@@ -177,7 +177,7 @@ export function TrustLadder() {
 // the Events checklist.
 function memoryPromptsStorageKey(): string {
   const tenant = typeof window !== 'undefined' ? localStorage.getItem('kairos_tenant') ?? 'anon' : 'anon'
-  return `trellis:memory-prompts-dismissed:${tenant}`
+  return `agentoak:memory-prompts-dismissed:${tenant}`
 }
 
 function loadDismissedPromptIds(): Set<string> {
@@ -247,7 +247,7 @@ export function MemoryPrompts() {
         </span>
       </div>
       <p className="text-xs text-ink-tertiary mb-2 px-1">
-        Examples of what Trellis surfaces once your documents and accounts are connected.
+        Examples of what Oak surfaces once your documents and accounts are connected.
       </p>
       {prompts.map((p, i) => {
         const Icon = p.icon

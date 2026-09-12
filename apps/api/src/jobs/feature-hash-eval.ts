@@ -24,7 +24,7 @@
  * Or via the weekly cron in server.ts (see runFeatureHashEval).
  */
 import type { Db } from 'mongodb'
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'feature-hash-eval', version: '0.0.0' })
 
@@ -85,7 +85,7 @@ export async function evaluateFeatureHashScorer(
   // Build a scorer and train it on the train set
   // We use a fresh in-memory scorer (not the persisted one) to get a clean
   // train-on-past evaluation
-  const { FeatureHashScorer } = await import('@kairos/engine')
+  const { FeatureHashScorer } = await import('@agentoak/engine')
   // Use a lightweight in-memory DB mock — we don't need persistence for eval
   const memDb = {
     collection: () => ({

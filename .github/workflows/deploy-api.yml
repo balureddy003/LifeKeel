@@ -67,7 +67,7 @@ jobs:
           env_vars: |
             NODE_ENV=production
             LOG_LEVEL=info
-            TRELLIS_URL=${{ vars.TRELLIS_URL || secrets.TRELLIS_URL }}
+            AGENT_OAK_URL=${{ vars.AGENT_OAK_URL || secrets.AGENT_OAK_URL }}
             API_BASE_URL=${{ vars.API_BASE_URL }}
           secrets: |
             MONGODB_URL=agentoak-mongodb-url:latest

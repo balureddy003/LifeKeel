@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { repoRoot } from '@kairos/platform'
+import { repoRoot } from '@agentoak/platform'
 import { loadGoalTemplates } from '../loader/GoalTemplateLoader.js'
 
 describe('GoalTemplateLoader', () => {

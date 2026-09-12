@@ -18,7 +18,7 @@
 import type { FastifyInstance } from 'fastify'
 import { GridFSBucket, type Db, type ObjectId } from 'mongodb'
 import { randomUUID } from 'node:crypto'
-import { createLogger, getTenantCollection } from '@kairos/platform'
+import { createLogger, getTenantCollection } from '@agentoak/platform'
 import { processDocument } from '../ocr/extract.js'
 import { mapExtractedFieldsToProfileSuggestions, isApplicableProfilePath } from '../ocr/profile-mapping.js'
 import { hasFeature, type Plan } from '../entitlements.js'

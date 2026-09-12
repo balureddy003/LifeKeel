@@ -3,7 +3,7 @@ import type { Db } from 'mongodb'
 import { getDb } from './db.js'
 import { getSchemaRegistry } from './lib/schema-registry.js'
 import { getSignalEnricher } from './lib/signal-enricher.js'
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'signals', version: '0.0.0' })
 

@@ -1,7 +1,7 @@
 import type { Collection, Db } from 'mongodb'
-import type { OutcomeContract } from '@kairos/specifications'
-import type { MemoryQuery, MemoryRecord, MemoryRepository, OutcomeRepository } from '@kairos/runtime'
-import { bruteKnnSearch } from '@kairos/runtime'
+import type { OutcomeContract } from '@agentoak/specifications'
+import type { MemoryQuery, MemoryRecord, MemoryRepository, OutcomeRepository } from '@agentoak/runtime'
+import { bruteKnnSearch } from '@agentoak/runtime'
 
 export class MongoOutcomeRepository implements OutcomeRepository {
   private readonly collection: Collection<OutcomeContract>

@@ -1,7 +1,7 @@
 {
-  "name": "Trellis",
-  "short_name": "Trellis",
-  "description": "Your family's first responder for financial emergencies",
+  "name": "Agent Oak",
+  "short_name": "Agent Oak",
+  "description": "The autonomous digital twin for your family",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -3,7 +3,7 @@ import type {
   ActionReceipt,
   CapabilityProviderManifest,
   OutcomeContract,
-} from '@kairos/specifications'
+} from '@agentoak/specifications'
 import {
   CapabilityRegistry,
   InMemoryActionReceiptRepository,

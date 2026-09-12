@@ -1,7 +1,7 @@
 {
-  "name": "@kairos/outcome-kernel",
+  "name": "@agentoak/outcome-kernel",
   "version": "0.1.0",
-  "description": "Dependency-light reference kernel for Kairos outcome lifecycle semantics",
+  "description": "Dependency-light reference kernel for outcome lifecycle semantics",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -19,7 +19,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@kairos/specifications": "workspace:*"
+    "@agentoak/specifications": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Db } from 'mongodb'
-import type { OutcomeContract } from '@kairos/specifications'
-import { runOutcomeRepositoryConformance } from '@kairos/conformance'
+import type { OutcomeContract } from '@agentoak/specifications'
+import { runOutcomeRepositoryConformance } from '@agentoak/conformance'
 import { MongoOutcomeRepository } from '../index.js'
 
 class FakeCollection {

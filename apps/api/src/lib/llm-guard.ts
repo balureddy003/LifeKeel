@@ -1,5 +1,5 @@
 import type { Db } from 'mongodb'
-import { LlmBudgetGuard } from '@kairos/platform'
+import { LlmBudgetGuard } from '@agentoak/platform'
 
 export async function guardLlmBudget(
   db: Db | undefined,

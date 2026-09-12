@@ -10,9 +10,9 @@
 
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import type { Engine, FeatureHashScorer, TenantLevelScorer, RecentInsight } from '@kairos/engine'
-import type { ActionReceipt } from '@kairos/workflows'
-import { ApprovalSignalHealthMonitor, createLogger } from '@kairos/platform'
+import type { Engine, FeatureHashScorer, TenantLevelScorer, RecentInsight } from '@agentoak/engine'
+import type { ActionReceipt } from '@agentoak/workflows'
+import { ApprovalSignalHealthMonitor, createLogger } from '@agentoak/platform'
 import { getInsightsCollection, getReceiptsCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { ActionExecutor } from '../actions/action-executor.js'
@@ -25,9 +25,9 @@ import {
 } from '../insights/consolidation.js'
 
 const log = createLogger({ service: 'insights', version: '0.0.0' })
-import { MongoMemoryRepository } from '@kairos/mongodb-adapter'
+import { MongoMemoryRepository } from '@agentoak/mongodb-adapter'
 import { createHash, randomUUID } from 'node:crypto'
-import { FreeTierPolicy } from '@kairos/platform'
+import { FreeTierPolicy } from '@agentoak/platform'
 
 /**
  * Fetch recent insights for an entity (last 7 days) — used by the
@@ -183,7 +183,7 @@ export async function registerInsightRoutes(
         .sort({ created_at: -1 })
         .skip(offset)
         .limit(limit)
-        .toArray() as unknown as import('@kairos/engine').Insight[]
+        .toArray() as unknown as import('@agentoak/engine').Insight[]
 
       if (!db) {
         return { groups: [], total: 0, limit, offset, has_more: false }
@@ -228,7 +228,7 @@ export async function registerInsightRoutes(
         .find(filter)
         .sort({ created_at: -1 })
         .limit(limit)
-        .toArray() as unknown as import('@kairos/engine').Insight[]
+        .toArray() as unknown as import('@agentoak/engine').Insight[]
 
       if (!db || insights.length === 0) {
         return { entity_key: entityKey, insights: [], count: 0 }

@@ -7,8 +7,8 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
-import { OutcomePackSchema, type OutcomePack } from '@kairos/specifications'
-import { createLogger } from '@kairos/platform'
+import { OutcomePackSchema, type OutcomePack } from '@agentoak/specifications'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'outcome-pack-loader', version: '0.0.0' })
 

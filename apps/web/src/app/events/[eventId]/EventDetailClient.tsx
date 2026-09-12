@@ -79,7 +79,7 @@ const EVENT_AI_EXPLANATION: Record<string, string> = {
 // events, e.g. '1'-'5') don't bleed into each other.
 function checklistStorageKey(eventId: string): string {
   const tenant = typeof window !== 'undefined' ? localStorage.getItem('kairos_tenant') ?? 'anon' : 'anon'
-  return `trellis:event-checklist:${tenant}:${eventId}`
+  return `agentoak:event-checklist:${tenant}:${eventId}`
 }
 
 function loadDoneIds(eventId: string): Set<string> {

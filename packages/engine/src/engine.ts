@@ -56,7 +56,7 @@ import type { ChangePointDetector } from './change-point.js'
 import type { FeatureHashScorer } from './feature-hash-scorer.js'
 import type { TenantLevelScorer, RecentInsight } from './tenant-level-scorer.js'
 import { CorrelationBuffer } from './correlation-buffer.js'
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 import { CascadeScorer, type CascadePolicy, type ConformalGateProvider, type CascadeTelemetry } from './cascade.js'
 import { DatabaseIndexManager, createIndexManager } from './database-indexes.js'
 

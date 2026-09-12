@@ -7,7 +7,7 @@
 
 import type { Db } from 'mongodb'
 import { ConnectorActionExecutor } from './ConnectorActionExecutor.js'
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'connector-sandbox', version: '0.0.0' })
 

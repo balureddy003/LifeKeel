@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { loadOutcomePacks } from '../loader/OutcomePackLoader.js'
-import { repoRoot } from '@kairos/platform'
+import { repoRoot } from '@agentoak/platform'
 import * as fs from 'fs'
 import * as path from 'path'
 

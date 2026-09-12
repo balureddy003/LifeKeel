@@ -23,8 +23,8 @@
  */
 
 import type { Db } from 'mongodb'
-import type { WorkflowEngine, WorkflowLoader, ApprovalRequest } from '@kairos/workflows'
-import { createLogger } from '@kairos/platform'
+import type { WorkflowEngine, WorkflowLoader, ApprovalRequest } from '@agentoak/workflows'
+import { createLogger } from '@agentoak/platform'
 
 const log = createLogger({ service: 'approval-timeout-sweep', version: '0.0.0' })
 

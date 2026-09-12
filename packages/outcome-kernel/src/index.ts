@@ -4,7 +4,7 @@ import type {
   OutcomeContract,
   OutcomeLifecycleState,
   ReadinessCheck,
-} from '@kairos/specifications'
+} from '@agentoak/specifications'
 
 const TERMINAL_STATES = new Set<OutcomeLifecycleState>(['achieved', 'failed'])
 

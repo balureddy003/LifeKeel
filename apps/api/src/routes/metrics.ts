@@ -24,8 +24,8 @@ import {
   Histogram,
   collectDefaultMetrics,
 } from 'prom-client'
-import type { Engine, ScoreCalibrator } from '@kairos/engine'
-import { getAllCircuitBreakers } from '@kairos/platform'
+import type { Engine, ScoreCalibrator } from '@agentoak/engine'
+import { getAllCircuitBreakers } from '@agentoak/platform'
 
 // ── Singleton registry (created once, reused on hot-reload) ──────────────────
 
@@ -258,7 +258,7 @@ export function recordFeatureHashCacheHitMiss(tenantId: string, detectorId: stri
  * events into Prometheus counters. Pass this to the FeatureHashScorer
  * constructor.
  */
-export function buildFeatureHashScorerMetrics(): import('@kairos/engine').FeatureHashScorerMetrics {
+export function buildFeatureHashScorerMetrics(): import('@agentoak/engine').FeatureHashScorerMetrics {
   return {
     onEviction: (tenantId, detectorId) => recordFeatureHashEviction(tenantId, detectorId),
     onCacheHit: (tenantId, detectorId) => recordFeatureHashCacheHitMiss(tenantId, detectorId, true),

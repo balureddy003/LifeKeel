@@ -15,7 +15,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import { GoalMigrationWorker } from '../jobs/goal-migration-worker.js'
-import { createLogger } from '@kairos/platform'
+import { createLogger } from '@agentoak/platform'
 import {
   DEFAULT_KPI_DISCREPANCY_THRESHOLD_PCT,
   DEFAULT_KPI_SOURCE_TYPE_PRIORITIES,
@@ -719,7 +719,7 @@ export function registerSettingsRoutes(fastify: FastifyInstance, db: Db): void {
         }, 'Azure test config')
       }
       
-      const { createLlmRouter } = await import('@kairos/platform')
+      const { createLlmRouter } = await import('@agentoak/platform')
       const testLlm = createLlmRouter({
         provider: provider as 'anthropic' | 'openai' | 'azure' | 'groq' | 'ollama',
         maxTokens: 10,
