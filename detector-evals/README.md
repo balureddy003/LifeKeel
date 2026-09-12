@@ -14,5 +14,9 @@ cases through `DetectorEvalRunner`; F1 below 0.80 or a regression greater than
 Run a single detector evaluation:
 
 ```bash
-pnpm --filter @kairos/engine test -- src/__evals__/trading-detectors.eval.test.ts
+pnpm --filter @agentoak/engine test -- src/__evals__/trading-detectors.eval.test.ts
 ```
+
+Note: the promotion route this powers (`detector-promotions.ts`) isn't
+registered in this trimmed backend — see `ARCHITECTURE.md`. The family
+detectors (`detectors/family/*.yaml`) have no eval cases here yet.
