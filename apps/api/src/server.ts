@@ -41,8 +41,6 @@ import { fileURLToPath } from 'node:url'
 import { registerInsightRoutes, cleanupStaleInsightsStartup } from './routes/insights.js'
 import { recordApiRequest, registerMetricsRoutes, recordLlmCacheHitMiss, buildFeatureHashScorerMetrics } from './routes/metrics.js'
 import { initAuditLogger } from './audit/audit-log.js'
-import { buildAutoTradeIntent } from './trading/auto-trade.js'
-import { createPendingTrade, initTradeFeatureHashScorer, findExistingAutoTradeForToday } from './trading/trade-confirmation.js'
 import { loadLiveTradingOptIn } from './trading/portfolio-data.js'
 import { registerAuthUserRoutes } from './routes/auth-users.js'
 import { registerSocialAuthRoutes } from './routes/auth-social.js'
@@ -194,67 +192,16 @@ try {
   }
 
   const safeHttp = new SafeHttpClient()
+  // createPendingTradeFn intentionally omitted (it's optional on
+  // WorkflowEngine) — that hook only fires from a workflow node, and no
+  // workflow routes exist to create a workflow in the first place. See
+  // ARCHITECTURE.md for what was trimmed and why.
   workflowEngine = new WorkflowEngine({
     db: workflowDb,
     llmFn,
     fetchFn: (url, init) => safeHttp.fetch(url, init),
     sseBroadcast: (tenantId, _event) => {
       log.debug({ tenant_id: tenantId }, 'SSE broadcast')
-    },
-    // Only ever creates a `pending_trades` record — never calls the broker
-    // directly. That record still goes through the full guarded confirm path
-    // (packages/engine/src/trading/trade-executor.ts's evaluateTradeExecution)
-    // via the per-minute sweep below, same as a manually-confirmed trade.
-    createPendingTradeFn: async ({ tenantId, detectorId, eventData, origin, sourceEventId, sourceInsightId, goalId }) => {
-      const intent = await buildAutoTradeIntent(tenantId, detectorId, eventData)
-      if (!intent) {
-        return { created: false, reason: 'No coherent auto-trade recommendation for this detector/ticker' }
-      }
-      // Concentration-risk and price-drop-alert can both fire for the same
-      // ticker in one detector cycle (e.g. a position that's both over-cap
-      // and down sharply) — two independent workflow runs would otherwise
-      // each reach this closure and create two pending_trades docs for the
-      // same ticker, both eventually confirming as separate trades.
-      //
-      // Gap #21 (TRADING_ENGINE_GAPS.md): the original check only matched
-      // status: 'pending'. The moment a trade transitioned to 'executing'
-      // or 'executed', this check no longer saw it — a second detector
-      // cycle firing for the same ticker later the same day created an
-      // independent duplicate. Now widens to also match 'executing' (in-
-      // flight) and 'executed'/'logged' (completed today), using the same
-      // Europe/London day boundary as countTradesExecutedToday (gap #29
-      // fixed the previous UTC mismatch). Rejected/cancelled/
-      // expired trades don't block — those didn't execute.
-      const existing = await findExistingAutoTradeForToday(workflowDb, tenantId, intent.ticker)
-      if (existing) {
-        return { created: false, reason: `A pending auto-trade for ${intent.ticker} already exists (${existing['trade_id']})` }
-      }
-      // Resolve the goal this trade is helping to achieve. Goals link to
-      // detectors via detector_ids — find the active goal that uses this
-      // detector and link the trade back to it.
-      // Gap #8 (TRADING_ENGINE_GAPS.md): origin distinguishes the autonomous
-      // bypass (origin='auto' → 'auto_workflow') from the human-approved
-      // propose_trim action (origin='manual' → 'manual'). Both go through
-      // the same guarded confirm/cancel path — the only difference is the
-      // audit trail and confirmation window.
-      const tradeOrigin = origin === 'manual' ? 'manual' : 'auto_workflow'
-      const { tradeId } = await createPendingTrade(
-        tenantId,
-        {
-          action: intent.action,
-          ticker: intent.ticker,
-          quantity: intent.quantity,
-          price: intent.price,
-          // Durable link back to the detector event / insight that caused
-          // this trade — see TRADING_ENGINE_GAPS.md gap #25.
-          source_event_id: sourceEventId,
-          source_insight_id: sourceInsightId,
-          // Gap #32: durable link from trade → goal for attribution.
-          ...(goalId && { goal_id: goalId }),
-        },
-        tradeOrigin,
-      )
-      return { created: true, tradeId }
     },
   })
   workflowLoader.loadAll()
@@ -887,9 +834,6 @@ try {
       created_at: d.created_at,
     }))
   }
-  // Also wire into trade-confirmation so auto-trades feed the same positive
-  // signal to online learning that human approval does (gap #4).
-  initTradeFeatureHashScorer(featureHashScorer)
   // Default: track amount_minor + customer_id novelty for all invoice/payment events
   engine.options.noveltyFields = {
     'invoice.overdue':   ['data.amount_minor', 'data.customer_id'],
