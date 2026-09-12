@@ -8,7 +8,7 @@
 
 import { getApiBase } from './env'
 
-const ANON_ID_KEY = 'kairos_anon_id'
+const ANON_ID_KEY = 'agentoak_anon_id'
 
 function getAnonId(): string {
   let id = localStorage.getItem(ANON_ID_KEY)
@@ -22,7 +22,7 @@ function getAnonId(): string {
 export function track(event: string, meta?: Record<string, unknown>): void {
   if (typeof window === 'undefined') return
   try {
-    const token = localStorage.getItem('kairos_token')
+    const token = localStorage.getItem('agentoak_token')
     fetch(`${getApiBase()}/growth/events`, {
       method: 'POST',
       headers: {

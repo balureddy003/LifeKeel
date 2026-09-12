@@ -87,7 +87,7 @@ const FAMILY_DETECTORS = [
 
 function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null
-  return localStorage.getItem('kairos_token')
+  return localStorage.getItem('agentoak_token')
 }
 
 async function apiFetch<T>(path: string, fallback: T): Promise<T> {

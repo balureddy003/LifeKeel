@@ -31,7 +31,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 const STORAGE_KEY = 'family-auth'
-const TOKEN_KEY = 'kairos_token'
+const TOKEN_KEY = 'agentoak_token'
 
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'family'

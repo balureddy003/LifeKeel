@@ -28,7 +28,7 @@ describe('AuthProvider.signUp', () => {
       await result.current.signUp('Jane Doe', 'jane@example.com', 'password123')
     })
 
-    expect(localStorage.getItem('kairos_token')).toBe('tok_123')
+    expect(localStorage.getItem('agentoak_token')).toBe('tok_123')
     expect(result.current.user?.email).toBe('jane@example.com')
 
     const [, requestInit] = fetchMock.mock.calls[0]!
@@ -76,7 +76,7 @@ describe('AuthProvider.signOut', () => {
       return jsonResponse({}, false)
     })
     vi.stubGlobal('fetch', fetchMock)
-    localStorage.setItem('kairos_token', 'existing-token')
+    localStorage.setItem('agentoak_token', 'existing-token')
 
     const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -86,7 +86,7 @@ describe('AuthProvider.signOut', () => {
       result.current.signOut()
     })
 
-    expect(localStorage.getItem('kairos_token')).toBeNull()
+    expect(localStorage.getItem('agentoak_token')).toBeNull()
     expect(localStorage.getItem('family-auth')).toBeNull()
     expect(result.current.isAuthenticated).toBe(false)
   })

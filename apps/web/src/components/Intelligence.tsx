@@ -176,7 +176,7 @@ export function TrustLadder() {
 // doesn't leak one user's dismissals into another's, same pattern as
 // the Events checklist.
 function memoryPromptsStorageKey(): string {
-  const tenant = typeof window !== 'undefined' ? localStorage.getItem('kairos_tenant') ?? 'anon' : 'anon'
+  const tenant = typeof window !== 'undefined' ? localStorage.getItem('agentoak_tenant') ?? 'anon' : 'anon'
   return `agentoak:memory-prompts-dismissed:${tenant}`
 }
 

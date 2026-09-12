@@ -23,8 +23,8 @@ export default function AuthCallbackPage() {
     }
 
     if (token) {
-      localStorage.setItem('kairos_token', token)
-      if (tenant) localStorage.setItem('kairos_tenant', tenant)
+      localStorage.setItem('agentoak_token', token)
+      if (tenant) localStorage.setItem('agentoak_tenant', tenant)
       refresh().then(() => router.push('/'))
     } else {
       router.push('/login')

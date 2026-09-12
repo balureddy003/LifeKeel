@@ -78,7 +78,7 @@ const EVENT_AI_EXPLANATION: Record<string, string> = {
 // state into another's, and by event so action ids (which repeat across
 // events, e.g. '1'-'5') don't bleed into each other.
 function checklistStorageKey(eventId: string): string {
-  const tenant = typeof window !== 'undefined' ? localStorage.getItem('kairos_tenant') ?? 'anon' : 'anon'
+  const tenant = typeof window !== 'undefined' ? localStorage.getItem('agentoak_tenant') ?? 'anon' : 'anon'
   return `agentoak:event-checklist:${tenant}:${eventId}`
 }
 
