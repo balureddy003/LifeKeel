@@ -82,6 +82,13 @@ export function ConversationalOnboarding() {
   const [members, setMembers] = useState<FamilyMemberDraft[]>([])
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [finished, setFinished] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  // setSubmitting alone isn't enough to block a rapid double-fire of the
+  // same handler — React state doesn't update synchronously, so two calls
+  // within the same tick both read the pre-update value. A ref does update
+  // synchronously, which is what the actual re-entrancy guard needs; the
+  // state copy exists only to drive the disabled UI.
+  const submittingRef = useRef(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const { user, signUp, createFamily, inviteMember } = useAuth()
   const router = useRouter()
@@ -102,7 +109,9 @@ export function ConversationalOnboarding() {
   }
 
   const handleAnswer = (answer: string) => {
-    if (!currentQuestion) return
+    if (!currentQuestion || submittingRef.current) return
+    submittingRef.current = true
+    setSubmitting(true)
     haptic('light')
     addUserMessage(answer)
     const newAnswers = { ...answers, [currentQuestion.id]: answer }
@@ -156,7 +165,11 @@ export function ConversationalOnboarding() {
       // Always ask the next question explicitly — the reaction above only
       // acknowledges the previous answer, and several reactions (skips,
       // generic "Got it!") never restate what's being asked next.
-      setTimeout(() => addAIMessage(ONBOARDING_QUESTIONS[nextIndex]!.question), 300)
+      setTimeout(() => {
+        addAIMessage(ONBOARDING_QUESTIONS[nextIndex]!.question)
+        submittingRef.current = false
+        setSubmitting(false)
+      }, 300)
       setQuestionIndex(nextIndex)
     }
   }
@@ -304,7 +317,8 @@ export function ConversationalOnboarding() {
                 key={choice}
                 whileTap={{ scale: 0.97 }}
                 onClick={() => handleAnswer(choice)}
-                className="w-full glass rounded-2xl py-4 text-base font-semibold text-ink-primary"
+                disabled={submitting}
+                className="w-full glass rounded-2xl py-4 text-base font-semibold text-ink-primary disabled:opacity-40"
               >
                 {choice}
               </motion.button>
@@ -340,7 +354,7 @@ export function ConversationalOnboarding() {
             <motion.button
               whileTap={{ scale: 0.96 }}
               onClick={handleMultiSubmit}
-              disabled={!multiValues.some((v) => v.trim())}
+              disabled={!multiValues.some((v) => v.trim()) || submitting}
               className="w-full bg-gradient-to-b from-family-500 to-family-600 text-white font-semibold rounded-2xl py-4 text-base shadow-lg shadow-family-500/25 disabled:opacity-40"
             >
               Continue
@@ -353,14 +367,15 @@ export function ConversationalOnboarding() {
               placeholder={currentQuestion?.hint ?? 'Type your answer...'}
               value={textValue}
               onChange={(e) => setTextValue(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleTextSubmit()}
+              onKeyDown={(e) => e.key === 'Enter' && !submitting && handleTextSubmit()}
+              disabled={submitting}
               autoFocus
-              className="glass-input flex-1 rounded-2xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none min-h-[52px]"
+              className="glass-input flex-1 rounded-2xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none min-h-[52px] disabled:opacity-40"
             />
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={handleTextSubmit}
-              disabled={!textValue.trim()}
+              disabled={!textValue.trim() || submitting}
               aria-label="Send answer"
               className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-30"
               style={{ background: 'linear-gradient(135deg, #7c6ef0, #6b5ce0)' }}

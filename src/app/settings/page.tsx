@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { PageHeader, ListSection, ListRow, GlassCard } from '@/components/Glass'
@@ -43,6 +43,16 @@ export default function SettingsPage() {
   const [memberRole, setMemberRole] = useState<FamilyRole>('adult')
   const [addingMember, setAddingMember] = useState(false)
   const [addMemberError, setAddMemberError] = useState<string | null>(null)
+
+  // Reached from the home dashboard's "Add your partner or a caregiver"
+  // banner (?add=1) — open the form immediately instead of making them
+  // find "Add Member" in the list a second time. Read via window.location
+  // rather than useSearchParams(), matching the workaround already used in
+  // connect/email/page.tsx for the same static-export Suspense issue.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('add') === '1') setShowAddMember(true)
+  }, [])
 
   const handleSignOut = () => {
     haptic('warning')

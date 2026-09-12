@@ -14,6 +14,7 @@ export default function ConnectEmailPage() {
   const router = useRouter()
   const setConnectorConnected = useAppStore((s) => s.setConnectorConnected)
   const [providerId, setProviderId] = useState('gmail')
+  const [showManualGmail, setShowManualGmail] = useState(false)
   const [host, setHost] = useState('')
   const [port, setPort] = useState('993')
   const [username, setUsername] = useState('')
@@ -27,6 +28,10 @@ export default function ConnectEmailPage() {
 
   const provider = EMAIL_PROVIDER_OPTIONS.find((p) => p.id === providerId)
   const isCustom = providerId === 'custom'
+  // Gmail's IMAP fallback needs an App Password — real friction for a
+  // non-technical audience sitting right next to the one-click OAuth button
+  // that makes it unnecessary. Keep it available but opt-in, not default-visible.
+  const showManualForm = providerId !== 'gmail' || showManualGmail
 
   // Round trip from the Gmail OAuth flow (startGmailOAuth → Google's consent
   // screen → apps/api's /connectors/gmail/oauth/callback) lands back here as
@@ -168,11 +173,22 @@ export default function ConnectEmailPage() {
               {googleConnecting ? <Loader2 size={20} className="animate-spin" /> : <GoogleIcon size={20} />}
               {googleConnecting ? 'Redirecting to Google…' : 'Continue with Google'}
             </button>
-            <div className="flex items-center gap-3">
-              <div className="h-px flex-1 bg-white/[0.08]" />
-              <span className="text-xs text-ink-tertiary">or connect manually</span>
-              <div className="h-px flex-1 bg-white/[0.08]" />
-            </div>
+            {!showManualGmail && (
+              <button
+                type="button"
+                onClick={() => { haptic('light'); setShowManualGmail(true) }}
+                className="w-full text-center text-xs text-ink-tertiary underline underline-offset-2"
+              >
+                Trouble signing in with Google? Connect manually instead
+              </button>
+            )}
+            {showManualGmail && (
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-white/[0.08]" />
+                <span className="text-xs text-ink-tertiary">or connect manually</span>
+                <div className="h-px flex-1 bg-white/[0.08]" />
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -207,53 +223,57 @@ export default function ConnectEmailPage() {
         )}
       </AnimatePresence>
 
-      <GlassCard className="p-4 space-y-3">
-        <label className="block">
-          <div className="text-xs text-ink-tertiary mb-1.5">Email address</div>
-          <input
-            type="email"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="you@example.com"
-            className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-          />
-        </label>
-        <label className="block">
-          <div className="text-xs text-ink-tertiary mb-1.5">Password</div>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••••••"
-            className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-          />
-        </label>
-        {provider && (
-          <p className="text-xs text-ink-tertiary leading-relaxed">{provider.passwordHint}</p>
-        )}
-      </GlassCard>
+      {showManualForm && (
+        <>
+          <GlassCard className="p-4 space-y-3">
+            <label className="block">
+              <div className="text-xs text-ink-tertiary mb-1.5">Email address</div>
+              <input
+                type="email"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="you@example.com"
+                className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+              />
+            </label>
+            <label className="block">
+              <div className="text-xs text-ink-tertiary mb-1.5">Password</div>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••••••"
+                className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+              />
+            </label>
+            {provider && (
+              <p className="text-xs text-ink-tertiary leading-relaxed">{provider.passwordHint}</p>
+            )}
+          </GlassCard>
 
-      {error && (
-        <GlassCard className="p-4 border-danger/20 flex items-start gap-3">
-          <AlertCircle size={20} className="text-danger flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-ink-secondary">{error}</div>
-        </GlassCard>
+          {error && (
+            <GlassCard className="p-4 border-danger/20 flex items-start gap-3">
+              <AlertCircle size={20} className="text-danger flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-ink-secondary">{error}</div>
+            </GlassCard>
+          )}
+
+          <div className="glass rounded-2xl p-4 flex items-start gap-2">
+            <ShieldCheck size={16} className="text-ink-tertiary flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-ink-tertiary leading-relaxed">
+              Your password is encrypted at rest and used only to read your inbox over a secure connection (IMAP).
+              We test the connection before saving anything.
+            </p>
+          </div>
+
+          <GlassButton
+            onClick={handleConnect}
+            disabled={connecting || !username || !password || (isCustom && (!host || !port))}
+          >
+            {connecting ? <Loader2 size={18} className="animate-spin" /> : 'Connect'}
+          </GlassButton>
+        </>
       )}
-
-      <div className="glass rounded-2xl p-4 flex items-start gap-2">
-        <ShieldCheck size={16} className="text-ink-tertiary flex-shrink-0 mt-0.5" />
-        <p className="text-xs text-ink-tertiary leading-relaxed">
-          Your password is encrypted at rest and used only to read your inbox over a secure connection (IMAP).
-          We test the connection before saving anything.
-        </p>
-      </div>
-
-      <GlassButton
-        onClick={handleConnect}
-        disabled={connecting || !username || !password || (isCustom && (!host || !port))}
-      >
-        {connecting ? <Loader2 size={18} className="animate-spin" /> : 'Connect'}
-      </GlassButton>
     </div>
   )
 }

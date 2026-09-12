@@ -2,8 +2,9 @@
 
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { Network, Activity, Lightbulb, ChevronRight, Hand, Star, Target, Bot, Phone, User, FileText, Siren, Search, CalendarClock, X } from 'lucide-react'
+import { Network, Activity, Lightbulb, ChevronRight, Hand, Star, Target, Bot, Phone, User, FileText, Siren, Search, CalendarClock, X, UserPlus } from 'lucide-react'
 import { FamilyRoster } from '@/components/FamilyRoster'
 import { LifeTimeline } from '@/components/LifeTimeline'
 import { ScoreRing, GlassCard, PageHeader, IfAdvanced, Skeleton, Money } from '@/components/Glass'
@@ -161,6 +162,52 @@ function ElderlyHome() {
   )
 }
 
+// The invite code that lets a partner or caregiver join lived only as a
+// line of text on the Settings page — the exact referral mechanic that
+// grows family-unit products (Dropbox, Life360) doesn't do much good
+// buried in a menu. Surface it here instead, as soon as there's a family
+// of one to grow.
+function InviteFamilyBanner() {
+  const { family } = useAuth()
+  const [dismissed, setDismissed] = useState(false)
+  const router = useRouter()
+
+  if (!family || family.members.length > 1 || dismissed) return null
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0, height: 0 }}
+        animate={{ opacity: 1, height: 'auto' }}
+        exit={{ opacity: 0, height: 0 }}
+      >
+        <GlassCard className="p-3.5 border-family-500/20 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0">
+            <UserPlus size={16} className="text-family-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-ink-primary truncate">Add your partner or a caregiver</div>
+            <div className="text-xs text-ink-tertiary">Same plan, whole family &middot; invite code {family.inviteCode}</div>
+          </div>
+          <button
+            onClick={() => { haptic('light'); router.push('/settings?add=1') }}
+            className="text-xs font-semibold text-family-400 px-3 py-2 rounded-lg bg-family-500/10 flex-shrink-0"
+          >
+            Invite
+          </button>
+          <button
+            onClick={() => { setDismissed(true); haptic('light') }}
+            aria-label="Dismiss"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-tertiary active:opacity-60 flex-shrink-0"
+          >
+            <X size={16} />
+          </button>
+        </GlassCard>
+      </motion.div>
+    </AnimatePresence>
+  )
+}
+
 function UrgencyBanner() {
   const [dismissed, setDismissed] = useState(false)
   const currentYear = new Date().getFullYear()
@@ -237,6 +284,7 @@ export default function HomePage() {
         }
       />
 
+      <InviteFamilyBanner />
       <UrgencyBanner />
 
       <motion.div

@@ -28,39 +28,6 @@ import {
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
 
-const RING_COLORS = {
-  protection: '#f87171',
-  wealth: '#fbbf24',
-  goals: '#4ade80',
-  savings: '#60a5fa',
-} as const
-
-function Ring({ pct, color, label, sample }: { pct: number; color: string; label: string; sample?: boolean }) {
-  const r = 26
-  const c = 2 * Math.PI * r
-  const offset = c - (pct / 100) * c
-  return (
-    <div className="flex flex-col items-center gap-1.5">
-      <svg width="64" height="64" viewBox="0 0 64 64">
-        <circle cx="32" cy="32" r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
-        <motion.circle
-          cx="32" cy="32" r={r} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round"
-          transform="rotate(-90 32 32)"
-          strokeDasharray={c}
-          initial={{ strokeDashoffset: c }}
-          animate={{ strokeDashoffset: offset }}
-          transition={{ duration: 1.2, ease: 'easeOut' }}
-        />
-      </svg>
-      <span className="font-bold text-[13px]" style={{ color }}>{pct}%</span>
-      <span className="text-[9.5px] font-semibold text-ink-tertiary flex items-center gap-1">
-        {label}
-        {sample && <span className="w-1 h-1 rounded-full bg-warning" />}
-      </span>
-    </div>
-  )
-}
-
 const FEATURES = [
   { icon: Siren, color: '#fbbf24', title: 'Emergency Mode', body: 'One tap, always reachable, drops straight into a guided checklist for the situation you’re actually in — no menu hunting under stress.' },
   { icon: MessageCircle, color: '#4ade80', title: '"What happens if...?" — answered', body: '"What happens if I lose my job?" gets a real, specific answer built from your data — not a canned FAQ, and not advice, just what you told Trellis.' },
@@ -78,19 +45,19 @@ export function MarketingLanding() {
   return (
     <div className="min-h-screen max-w-3xl mx-auto">
       {/* Hero */}
-      <div className="px-6 sm:px-10 pt-14 pb-10">
-        <div className="flex items-center gap-2 text-[11px] font-bold tracking-wide uppercase text-family-400 mb-4">
+      <div className="px-6 sm:px-10 pt-10 sm:pt-14 pb-10">
+        <div className="flex items-center gap-2 text-[11px] font-bold tracking-wide uppercase text-family-400 mb-3">
           <span className="w-1.5 h-1.5 rounded-full bg-success shadow-[0_0_0_3px_rgba(74,222,128,0.18)]" />
           Free to start &middot; no credit card
         </div>
-        <h1 className="text-[2.1rem] leading-[1.08] font-bold tracking-tight mb-4">
+        <h1 className="text-[1.85rem] sm:text-[2.1rem] leading-[1.15] font-bold tracking-tight mb-3">
           Your family&apos;s <span className="text-gradient">first responder</span> for financial emergencies.
         </h1>
-        <p className="text-[1.05rem] text-ink-secondary leading-relaxed mb-7 max-w-sm">
-          Job loss. A medical crisis. A parent gone too soon. Trellis builds your household a guided
-          response plan before the emergency &mdash; so the moment you need it, you&apos;re not starting from zero.
+        <p className="text-[1.05rem] text-ink-secondary leading-relaxed mb-5 max-w-sm">
+          Job loss. A new baby. Retirement. Trellis builds your household a step-by-step playbook
+          for whatever comes &mdash; so you&apos;re never starting from zero.
         </p>
-        <div className="space-y-2.5 mb-4">
+        <div className="space-y-3 mb-4">
           <Link href="/welcome" onClick={() => { haptic('light'); track('landing_get_started_click', { location: 'hero' }) }} className="block">
             <motion.div
               whileTap={{ scale: 0.97 }}
@@ -99,11 +66,11 @@ export function MarketingLanding() {
               Get started free
             </motion.div>
           </Link>
-          <Link href="/login" onClick={() => { haptic('light'); track('landing_signin_click') }} className="block text-center">
+          <Link href="/login" onClick={() => { haptic('light'); track('landing_signin_click') }} className="block text-center py-2.5">
             <span className="text-sm text-ink-tertiary">Already have an account? Sign in</span>
           </Link>
         </div>
-        <p className="text-[11px] text-ink-tertiary">
+        <p className="text-[11px] text-ink-tertiary leading-snug">
           Works in your browser today. Informational and educational only &mdash; not financial, investment,
           tax, or legal advice, and not a substitute for calling 911 in a real emergency.
         </p>
@@ -121,21 +88,32 @@ export function MarketingLanding() {
         </div>
       </div>
 
-      {/* Health rings demo */}
+      {/* Emergency Mode preview — the actual deliverable, not an abstract score.
+          Mirrors the real scenario-detail screen (EventDetailClient) so a
+          visitor sees the same checklist a signed-up user gets. */}
       <div className="px-6 sm:px-10 mb-4">
         <div className="glass rounded-3xl p-5">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[13px] font-semibold text-ink-secondary">Family Health</span>
-            <span className="text-[15px] font-bold text-success">80</span>
+          <div className="flex items-center gap-2 mb-1">
+            <Siren size={14} className="text-danger flex-shrink-0" />
+            <span className="text-[13px] font-semibold text-ink-secondary">Medical emergency &mdash; sample response plan</span>
           </div>
-          <p className="text-[11px] text-ink-tertiary mb-5">
-            A readiness snapshot, not advice &middot; <span className="text-warning">some sample data</span>
+          <p className="text-[11px] text-ink-tertiary mb-4">
+            This is what Emergency Mode hands you &mdash; not a score, a checklist.
           </p>
-          <div className="flex items-center justify-around">
-            <Ring pct={90} color={RING_COLORS.protection} label="Protection" />
-            <Ring pct={65} color={RING_COLORS.wealth} label="Wealth" sample />
-            <Ring pct={80} color={RING_COLORS.goals} label="Goals" />
-            <Ring pct={85} color={RING_COLORS.savings} label="Savings" />
+          <div className="space-y-2.5 mb-4">
+            {[
+              'Review your health insurance coverage details',
+              'Check if pre-authorization is needed for treatment',
+              'Confirm your annual out-of-pocket maximum',
+            ].map((t) => (
+              <div key={t} className="flex items-center gap-2.5">
+                <span className="w-5 h-5 rounded-full border-2 border-white/15 flex-shrink-0" />
+                <span className="text-[12.5px] text-ink-secondary leading-snug">{t}</span>
+              </div>
+            ))}
+          </div>
+          <div className="rounded-lg bg-warning/10 border border-warning/25 px-3 py-2 text-[11px] font-semibold text-warning leading-snug">
+            &#9888; Sample scenario &mdash; connect your data for your family&apos;s real plan
           </div>
         </div>
       </div>
@@ -190,6 +168,7 @@ export function MarketingLanding() {
           Add your partner and kids to your family&apos;s roster and every score, every insight, every &quot;what
           if&quot; scenario accounts for the whole household &mdash; not just the person who happened to sign up.
         </p>
+        <p className="text-[11px] text-ink-tertiary mb-2.5">Sample family, shown for illustration:</p>
         <div className="flex gap-2.5">
           {[{ i: 'AC', n: 'Avery', r: 'Organizer', on: true }, { i: 'JC', n: 'Jordan', r: 'Partner' }, { i: 'SC', n: 'Sam', r: 'Child' }].map((m) => (
             <div key={m.i} className={`flex-1 rounded-2xl p-3.5 text-center border ${m.on ? 'border-family-500 bg-family-500/10' : 'border-white/[0.06] bg-white/[0.02]'}`}>
@@ -295,7 +274,7 @@ export function MarketingLanding() {
           <Link href="/privacy">Privacy</Link>
           <Link href="/support">Support</Link>
         </div>
-        <p className="text-[10.5px] text-ink-tertiary text-center leading-relaxed max-w-sm">
+        <p className="text-[10.5px] text-ink-tertiary text-center leading-snug max-w-sm">
           For informational and educational purposes only. Not financial, investment, tax, insurance, or legal
           advice, and not a substitute for professional emergency services &mdash; always call 911 in a real
           emergency. Consult a qualified professional before making financial decisions.
