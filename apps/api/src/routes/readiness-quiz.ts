@@ -53,81 +53,92 @@ function scoreBand(score: number): string {
 }
 
 export async function registerReadinessQuizRoutes(app: FastifyInstance, db: Db, engine: Engine): Promise<void> {
-  app.post<{ Body: QuizAnswers }>('/readiness-quiz', async (req, reply) => {
-    const parsed = QuizSchema.safeParse(req.body)
-    if (!parsed.success) {
-      return reply.status(400).send({ error: 'Invalid quiz answers', issues: parsed.error.issues })
-    }
-    const answers = parsed.data
+  app.post<{ Body: QuizAnswers }>(
+    '/readiness-quiz',
+    // OAK-026: this route is unauthenticated by design (no tenant_id, so
+    // the global rate limit keys purely off req.ip) — a tighter ceiling
+    // than the shared default limits casual abuse, though it doesn't fully
+    // close the gap: a caller distributing requests across many IPs still
+    // bypasses any purely per-IP limit. Closing that fully would need
+    // something heavier (CAPTCHA, device fingerprinting) that isn't
+    // justified for a Tier 0, no-data-persisted lead-magnet quiz.
+    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const parsed = QuizSchema.safeParse(req.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Invalid quiz answers', issues: parsed.error.issues })
+      }
+      const answers = parsed.data
 
-    try {
-      // A synthetic, per-request, never-logged tenant_id — required by
-      // Engine.evaluate()'s signature but not used for correlation by
-      // either detector below (neither declares `correlation:`).
-      const anonTenantId = crypto.randomUUID()
+      try {
+        // A synthetic, per-request, never-logged tenant_id — required by
+        // Engine.evaluate()'s signature but not used for correlation by
+        // either detector below (neither declares `correlation:`).
+        const anonTenantId = crypto.randomUUID()
 
-      const protectionResult = await engine.evaluate({
-        event_type: 'family.household',
-        tenant_id: anonTenantId,
-        event_id: crypto.randomUUID(),
-        data: {
-          employed: 1,
-          years_to_retirement: 40,
-          monthly_salary_minor: answers.monthly_salary_minor,
-          annual_living_expenses_minor: answers.monthly_expenses_minor * 12,
-          mortgage_outstanding_minor: answers.mortgage_outstanding_minor,
-          life_cover_minor: answers.life_cover_minor,
-          income_protection_monthly_minor: 0,
-          education_funding_gap_minor: 0,
-          has_dependents: Number(answers.dependents > 0),
-          has_health_or_ci_cover: 0,
-          soonest_renewal_days: 9999,
-          soonest_renewal_provider: '',
-          soonest_renewal_type: '',
-        },
-        derived_from_signals: [],
-      })
+        const protectionResult = await engine.evaluate({
+          event_type: 'family.household',
+          tenant_id: anonTenantId,
+          event_id: crypto.randomUUID(),
+          data: {
+            employed: 1,
+            years_to_retirement: 40,
+            monthly_salary_minor: answers.monthly_salary_minor,
+            annual_living_expenses_minor: answers.monthly_expenses_minor * 12,
+            mortgage_outstanding_minor: answers.mortgage_outstanding_minor,
+            life_cover_minor: answers.life_cover_minor,
+            income_protection_monthly_minor: 0,
+            education_funding_gap_minor: 0,
+            has_dependents: Number(answers.dependents > 0),
+            has_health_or_ci_cover: 0,
+            soonest_renewal_days: 9999,
+            soonest_renewal_provider: '',
+            soonest_renewal_type: '',
+          },
+          derived_from_signals: [],
+        })
 
-      const emergencyFundResult = await engine.evaluate({
-        event_type: 'family.savings',
-        tenant_id: anonTenantId,
-        event_id: crypto.randomUUID(),
-        data: {
-          emergency_savings_minor: answers.emergency_savings_minor,
-          monthly_expenses_minor: answers.monthly_expenses_minor,
-          has_high_interest_debt: 0,
-          high_interest_debt_balance_minor: 0,
-        },
-        derived_from_signals: [],
-      })
+        const emergencyFundResult = await engine.evaluate({
+          event_type: 'family.savings',
+          tenant_id: anonTenantId,
+          event_id: crypto.randomUUID(),
+          data: {
+            emergency_savings_minor: answers.emergency_savings_minor,
+            monthly_expenses_minor: answers.monthly_expenses_minor,
+            has_high_interest_debt: 0,
+            high_interest_debt_balance_minor: 0,
+          },
+          derived_from_signals: [],
+        })
 
-      const insights = [...protectionResult.insights, ...emergencyFundResult.insights] as unknown as EngineInsight[]
-      const openPenalty = insights.reduce((sum, i) => sum + confidenceOf(i), 0)
-      const score = Math.round(Math.max(0, Math.min(100, 100 - openPenalty * 10)))
+        const insights = [...protectionResult.insights, ...emergencyFundResult.insights] as unknown as EngineInsight[]
+        const openPenalty = insights.reduce((sum, i) => sum + confidenceOf(i), 0)
+        const score = Math.round(Math.max(0, Math.min(100, 100 - openPenalty * 10)))
 
-      const topInsights = [...insights]
-        .sort((a, b) => confidenceOf(b) - confidenceOf(a))
-        .slice(0, 2)
-        .map((i) => ({
-          hypothesis: i.hypothesis,
-          reasoning: i.reasoning,
-          category: i.category,
-          rule_id: i.rule_id,
-          estimated_impact_low: i.estimated_impact_low,
-          estimated_impact_high: i.estimated_impact_high,
-        }))
+        const topInsights = [...insights]
+          .sort((a, b) => confidenceOf(b) - confidenceOf(a))
+          .slice(0, 2)
+          .map((i) => ({
+            hypothesis: i.hypothesis,
+            reasoning: i.reasoning,
+            category: i.category,
+            rule_id: i.rule_id,
+            estimated_impact_low: i.estimated_impact_low,
+            estimated_impact_high: i.estimated_impact_high,
+          }))
 
-      // Anonymized funnel event — no identifier of any kind, only the
-      // score band (e.g. "60-70") for conversion analysis. A logging
-      // failure must never surface as a broken quiz result.
-      await getGrowthEventsCollection(db)
-        .insertOne({ event: 'readiness_quiz_completed', meta: { score_band: scoreBand(score) }, created_at: new Date() })
-        .catch(() => {})
+        // Anonymized funnel event — no identifier of any kind, only the
+        // score band (e.g. "60-70") for conversion analysis. A logging
+        // failure must never surface as a broken quiz result.
+        await getGrowthEventsCollection(db)
+          .insertOne({ event: 'readiness_quiz_completed', meta: { score_band: scoreBand(score) }, created_at: new Date() })
+          .catch(() => {})
 
-      return reply.send({ score, insights: topInsights })
-    } catch (err) {
-      req.log.warn({ err }, 'Readiness quiz evaluation failed')
-      return reply.send({ score: null, insights: [], error: "Couldn't calculate your score right now — please try again later." })
-    }
-  })
+        return reply.send({ score, insights: topInsights })
+      } catch (err) {
+        req.log.warn({ err }, 'Readiness quiz evaluation failed')
+        return reply.send({ score: null, insights: [], error: "Couldn't calculate your score right now — please try again later." })
+      }
+    },
+  )
 }

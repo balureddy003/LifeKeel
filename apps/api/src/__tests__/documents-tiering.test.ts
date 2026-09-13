@@ -12,25 +12,35 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { EventEmitter } from 'node:events'
 import Fastify from 'fastify'
 import multipart from '@fastify/multipart'
 import { registerDocumentRoutes } from '../routes/documents.js'
 
 const processDocumentMock = vi.fn(async () => {})
+const gridFsDeleteMock = vi.fn(async () => {})
 
 vi.mock('../ocr/extract.js', () => ({
   processDocument: (...args: unknown[]) => processDocumentMock(...args),
 }))
 
+// OAK-019: the real route now awaits the upload stream's 'finish' event
+// (not just calling .end()) before proceeding, and calls bucket.delete()
+// to clean up if the metadata insert that follows fails — this fake needs
+// to behave like the real GridFSBucketWriteStream (a real EventEmitter)
+// for that to exercise anything meaningful, not just avoid throwing.
 vi.mock('mongodb', async (importOriginal) => {
   const actual = await importOriginal<typeof import('mongodb')>()
   return {
     ...actual,
     GridFSBucket: class {
       openUploadStream(filename: string) {
-        return { id: `gridfs-${filename}-${Math.random()}`, end: () => {} }
+        const stream = new EventEmitter() as EventEmitter & { id: string; end: (buf: Buffer) => void }
+        stream.id = `gridfs-${filename}-${Math.random()}`
+        stream.end = () => { queueMicrotask(() => stream.emit('finish')) }
+        return stream
       }
-      async delete() {}
+      async delete(...args: unknown[]) { return gridFsDeleteMock(...args) }
     },
   }
 })

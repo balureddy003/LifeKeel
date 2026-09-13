@@ -144,8 +144,11 @@ export async function registerInsightRoutes(
         offset,
         has_more: offset + limit < total,
       }
-    } catch {
-      // MongoDB not connected — return empty (graceful degradation)
+    } catch (err) {
+      // OAK-008: was a silent catch — a real DB outage looked identical to
+      // "no insights yet" in the response, with nothing to tell them apart
+      // in the logs either.
+      log.warn({ err }, 'GET /insights failed')
       return { insights: [], total: 0, limit, offset, has_more: false }
     }
   })
@@ -207,7 +210,8 @@ export async function registerInsightRoutes(
         offset,
         has_more: offset + limit < total,
       }
-    } catch {
+    } catch (err) {
+      log.warn({ err }, 'GET /insights/consolidated failed')
       return { groups: [], total: 0, limit, offset, has_more: false }
     }
   })
@@ -249,7 +253,8 @@ export async function registerInsightRoutes(
         count: insights.length,
         consolidated: groups[0] ?? null,
       }
-    } catch {
+    } catch (err) {
+      log.warn({ err, entityKey }, 'GET /insights/entity/:entityKey failed')
       return { entity_key: entityKey, insights: [], count: 0, consolidated: null }
     }
   })
@@ -265,7 +270,8 @@ export async function registerInsightRoutes(
 
       if (!insight) return reply.status(404).send({ error: 'Insight not found' })
       return insight
-    } catch {
+    } catch (err) {
+      log.warn({ err, id }, 'GET /insights/:id failed')
       return reply.status(404).send({ error: 'Insight not found' })
     }
   })
@@ -285,7 +291,8 @@ export async function registerInsightRoutes(
         evidence_trail: insight.evidence_trail,
         judge_verdict: insight.judge_verdict,
       }
-    } catch {
+    } catch (err) {
+      log.warn({ err, id: request.params.id }, 'GET /moves/:id/evidence failed')
       return reply.status(404).send({ error: 'Move not found' })
     }
   })
@@ -303,7 +310,8 @@ export async function registerInsightRoutes(
       const col = await getInsightsCollection()
       const insight = await col.findOne({ id, tenant_id }, { projection: { id: 1 } })
       if (!insight) return reply.status(404).send({ error: 'Insight not found' })
-    } catch {
+    } catch (err) {
+      log.warn({ err, id }, 'GET /insights/:id/explain failed')
       return reply.status(404).send({ error: 'Insight not found' })
     }
 
@@ -507,7 +515,8 @@ export async function registerInsightRoutes(
           message: 'Insight approved',
           ...(executionSummary && { actions: executionSummary }),
         }
-      } catch {
+      } catch (err) {
+        log.warn({ err, id }, 'POST /insights/:id/approve failed')
         return reply.status(404).send({ error: 'Insight not found' })
       }
     },
@@ -633,7 +642,8 @@ export async function registerInsightRoutes(
           })
         }
         return { insight: result, message: 'Insight dismissed' }
-      } catch {
+      } catch (err) {
+        log.warn({ err, id }, 'POST /insights/:id/dismiss failed')
         return reply.status(404).send({ error: 'Insight not found' })
       }
     },
@@ -649,32 +659,38 @@ export async function registerInsightRoutes(
    * extend from. Never sends anything: no email/SMS/API call happens
    * here, on purpose (see apps/api/src/insights/generate-draft.ts).
    */
-  app.post<{ Params: { id: string } }>('/insights/:id/prepare', async (request, reply) => {
-    const { tenant_id } = request.authContext
-    const { id } = request.params
-    try {
-      const col = await getInsightsCollection()
-      const insight = await col.findOne({ id, tenant_id })
-      if (!insight) return reply.status(404).send({ error: 'Insight not found' })
+  app.post<{ Params: { id: string } }>(
+    '/insights/:id/prepare',
+    // OAK-015: this route calls an LLM on every request — see the matching
+    // rate-limit note on POST /assistant/ask.
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const { tenant_id } = request.authContext
+      const { id } = request.params
+      try {
+        const col = await getInsightsCollection()
+        const insight = await col.findOne({ id, tenant_id })
+        if (!insight) return reply.status(404).send({ error: 'Insight not found' })
 
-      const content = await generateDraft(prepareLlmFn, {
-        reasoning: insight.reasoning,
-        category: insight.category,
-        detector_id: insight.detector_id,
-      })
-      if (!content) {
-        return reply.send({ draft: null, error: "Couldn't generate a draft right now — please try again later." })
+        const content = await generateDraft(prepareLlmFn, {
+          reasoning: insight.reasoning,
+          category: insight.category,
+          detector_id: insight.detector_id,
+        })
+        if (!content) {
+          return reply.send({ draft: null, error: "Couldn't generate a draft right now — please try again later." })
+        }
+
+        const draft = { content, generated_at: new Date() }
+        await col.updateOne({ id, tenant_id }, { $set: { draft } })
+        getAuditLogger()?.fromRequest(request, 'insight.prepare', 'insight', id, {})
+        return reply.send({ draft })
+      } catch (err) {
+        log.warn({ err, id }, 'Insight prepare failed')
+        return reply.status(404).send({ error: 'Insight not found' })
       }
-
-      const draft = { content, generated_at: new Date() }
-      await col.updateOne({ id, tenant_id }, { $set: { draft } })
-      getAuditLogger()?.fromRequest(request, 'insight.prepare', 'insight', id, {})
-      return reply.send({ draft })
-    } catch (err) {
-      log.warn({ err, id }, 'Insight prepare failed')
-      return reply.status(404).send({ error: 'Insight not found' })
-    }
-  })
+    },
+  )
 
   /**
    * GET /receipts

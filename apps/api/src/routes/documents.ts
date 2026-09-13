@@ -78,7 +78,11 @@ export function registerDocumentRoutes(
     log.info({ documentId, filename, mimeType, size: fileBuffer.length, tenant_id }, 'Uploading document')
 
     try {
-      // Store file in GridFS
+      // Store file in GridFS. OAK-019: previously `.end(fileBuffer)` wasn't
+      // awaited at all — the metadata insert below could race ahead of the
+      // GridFS write actually completing. Waiting on 'finish' (the
+      // documented way to know a GridFS write has fully landed) closes
+      // that race.
       const uploadStream = bucket.openUploadStream(filename, {
         metadata: {
           tenant_id,
@@ -87,22 +91,38 @@ export function registerDocumentRoutes(
           uploaded_at: new Date(),
         },
       })
-      uploadStream.end(fileBuffer)
       const fileId = uploadStream.id as ObjectId
+      await new Promise<void>((resolve, reject) => {
+        uploadStream.once('finish', () => resolve())
+        uploadStream.once('error', reject)
+        uploadStream.end(fileBuffer)
+      })
 
       // Create document metadata record
       const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
       const tenants = getTenantCollection<DocumentRecord>(db, 'tenants', tenant_id)
-      await documents.insertOne({
-        id: documentId,
-        filename,
-        mime_type: mimeType,
-        size: fileBuffer.length,
-        category: 'other',
-        status: 'uploaded',
-        uploaded_at: new Date(),
-        file_id: fileId,
-      })
+      try {
+        await documents.insertOne({
+          id: documentId,
+          filename,
+          mime_type: mimeType,
+          size: fileBuffer.length,
+          category: 'other',
+          status: 'uploaded',
+          uploaded_at: new Date(),
+          file_id: fileId,
+        })
+      } catch (metaErr) {
+        // OAK-019: the GridFS write above already succeeded — without this,
+        // a metadata-insert failure orphaned that blob forever (no
+        // `documents` row exists to ever look it up by again). Best-effort:
+        // if the cleanup delete itself fails, log and still surface the
+        // original error rather than masking it.
+        await bucket.delete(fileId).catch((cleanupErr) =>
+          log.error({ cleanupErr, fileId, documentId }, 'Failed to clean up orphaned GridFS blob after metadata insert failure'),
+        )
+        throw metaErr
+      }
 
       // Upload and storage are free on every plan — AI field extraction
       // (GPT-4o vision, the actual cost driver) is gated to paid plans.

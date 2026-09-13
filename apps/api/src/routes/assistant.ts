@@ -117,37 +117,46 @@ function buildContext(profile: FinancialProfileDoc | null, insights: Array<{ rea
 export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
   const llmFn: LlmFn = createLlmRouterFromEnv()
 
-  app.post<{ Body: { query?: string } }>('/assistant/ask', async (req, reply) => {
-    const parsed = AskSchema.safeParse(req.body)
-    if (!parsed.success) {
-      return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
-    }
-    const { tenant_id } = req.authContext
-    const { query } = parsed.data
+  app.post<{ Body: { query?: string } }>(
+    '/assistant/ask',
+    // OAK-015: this route calls an LLM on every request — the shared
+    // global rate limit (100/min per tenant in cloud mode) was the only
+    // ceiling on it, same as any plain CRUD route. A tighter, dedicated
+    // limit bounds LLM spend/abuse specifically on the routes that
+    // actually invoke one.
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const parsed = AskSchema.safeParse(req.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
+      }
+      const { tenant_id } = req.authContext
+      const { query } = parsed.data
 
-    const [profileDoc, insightDocs] = await Promise.all([
-      getTenantCollection<FinancialProfileDoc>(db, 'family_financial_profile', tenant_id).findOne({}),
-      getInsightsCollection().then((col) =>
-        col
-          .find({ tenant_id, state: { $in: ['identified', 'sent'] } })
-          .sort({ created_at: -1 })
-          .limit(10)
-          .toArray(),
-      ),
-    ])
+      const [profileDoc, insightDocs] = await Promise.all([
+        getTenantCollection<FinancialProfileDoc>(db, 'family_financial_profile', tenant_id).findOne({}),
+        getInsightsCollection().then((col) =>
+          col
+            .find({ tenant_id, state: { $in: ['identified', 'sent'] } })
+            .sort({ created_at: -1 })
+            .limit(10)
+            .toArray(),
+        ),
+      ])
 
-    const context = buildContext(
-      profileDoc,
-      insightDocs.map((i) => ({ reasoning: i.reasoning, category: i.category, detector_id: i.detector_id })),
-    )
-    const prompt = `Family data:\n${context}\n\nQuestion: ${query}`
+      const context = buildContext(
+        profileDoc,
+        insightDocs.map((i) => ({ reasoning: i.reasoning, category: i.category, detector_id: i.detector_id })),
+      )
+      const prompt = `Family data:\n${context}\n\nQuestion: ${query}`
 
-    try {
-      const content = await llmFn(SYSTEM_PROMPT, prompt, 'tier:fast')
-      return reply.send({ content, isLive: true })
-    } catch (err) {
-      req.log.warn({ err }, 'Assistant LLM call failed — falling back')
-      return reply.send({ content: FALLBACK_CONTENT, isLive: false })
-    }
-  })
+      try {
+        const content = await llmFn(SYSTEM_PROMPT, prompt, 'tier:fast')
+        return reply.send({ content, isLive: true })
+      } catch (err) {
+        req.log.warn({ err }, 'Assistant LLM call failed — falling back')
+        return reply.send({ content: FALLBACK_CONTENT, isLive: false })
+      }
+    },
+  )
 }
