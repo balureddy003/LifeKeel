@@ -15,13 +15,25 @@
  *   "send * reminder"   → send_email (via SendGrid)
  *   "send * whatsapp"   → send_whatsapp (via Twilio)
  *   "escalate *"        → send_email with escalation flag
- *   "create * note"     → xero_credit_note
- *   "refund *"          → stripe_refund
  *   "tag customer *"    → crm_tag
- *   "pause subscription*"→ stripe_pause
  *   Anything else       → log_only (recorded but not executed)
  *
  * Dry-run mode: set dryRun=true to record what would happen without executing.
+ *
+ * OAK-002 (2026-09-13): money-moving and public-publishing action types —
+ * stripe_refund, stripe_pause, xero_credit_note, post_linkedin,
+ * post_twitter — were deleted outright. POST /insights/:id/approve called
+ * this executor unconditionally from a generic "Approve" click, with the
+ * action type picked by regex keyword-matching an insight's free-text
+ * label — meaning approving an insight could trigger a real Stripe refund,
+ * cancel a live subscription, or publish publicly to LinkedIn/Twitter with
+ * no per-action confirmation naming the exact side effect, amount, or
+ * recipient. This is precisely the class of risk SECURITY.md already used
+ * to justify deleting the old WorkflowEngine outright; this executor was
+ * left wired into a currently-shipped route. See SECURITY.md for the full
+ * writeup. send_email/send_whatsapp/crm_tag were kept — communication and
+ * CRM-tagging, not money-moving or public-publishing, and not what this
+ * finding was about.
  */
 
 import type { Db } from 'mongodb'
@@ -31,12 +43,7 @@ import { randomUUID } from 'node:crypto'
 export type ActionType =
   | 'send_email'
   | 'send_whatsapp'
-  | 'xero_credit_note'
-  | 'stripe_refund'
-  | 'stripe_pause'
   | 'crm_tag'
-  | 'post_linkedin'
-  | 'post_twitter'
   | 'log_only'
 
 export interface ActionIntent {
@@ -55,14 +62,6 @@ export interface ActionReceipt {
   executed_at: Date
   error?: string
   dry_run: boolean
-  /**
-   * External platform ID returned by the action API.
-   * LinkedIn: urn:li:share:1234567890
-   * Twitter:  tweet_id string
-   * Stored so the analytics polling job can later fetch performance metrics.
-   */
-  external_id?: string
-  external_platform?: string
 }
 
 export interface ExecutionSummary {
@@ -80,12 +79,7 @@ const ACTION_PATTERNS: Array<{ pattern: RegExp; type: ActionType }> = [
   { pattern: /send.*whatsapp|whatsapp.*message/i,               type: 'send_whatsapp' },
   { pattern: /send.*email|email.*remind|personalised.*remind/i, type: 'send_email' },
   { pattern: /escalate|cc.*manager|notify.*team/i,              type: 'send_email' },
-  { pattern: /credit\s*note|xero.*note/i,                       type: 'xero_credit_note' },
-  { pattern: /refund|stripe.*refund/i,                          type: 'stripe_refund' },
-  { pattern: /pause.*subscript|subscript.*pause/i,              type: 'stripe_pause' },
   { pattern: /tag.*customer|crm.*tag|label.*contact/i,          type: 'crm_tag' },
-  { pattern: /post.*linkedin|linkedin.*post|publish.*linkedin/i, type: 'post_linkedin' },
-  { pattern: /post.*twitter|tweet|publish.*twitter|thread/i,     type: 'post_twitter' },
 ]
 
 function classifyAction(label: string): ActionType {
@@ -166,13 +160,8 @@ export class ActionExecutor {
     if (intent.type === 'log_only') return { ...base, status: 'skipped' }
 
     try {
-      const result = await this.dispatch(intent, insight, tenantId)
-      return {
-        ...base,
-        status: 'success',
-        ...(result?.external_id && { external_id: result.external_id }),
-        ...(result?.external_platform && { external_platform: result.external_platform }),
-      }
+      await this.dispatch(intent, insight, tenantId)
+      return { ...base, status: 'success' }
     } catch (err) {
       return { ...base, status: 'failed', error: String(err) }
     }
@@ -184,7 +173,7 @@ export class ActionExecutor {
     intent: ActionIntent,
     insight: Insight,
     tenantId: string,
-  ): Promise<{ external_id?: string; external_platform?: string } | void> {
+  ): Promise<void> {
     switch (intent.type) {
       case 'send_email':
         await this.sendEmail(intent, insight, tenantId)
@@ -192,22 +181,9 @@ export class ActionExecutor {
       case 'send_whatsapp':
         await this.sendWhatsApp(intent, insight, tenantId)
         break
-      case 'xero_credit_note':
-        await this.createXeroCreditNote(intent, insight, tenantId)
-        break
-      case 'stripe_refund':
-        await this.stripeRefund(intent, insight, tenantId)
-        break
-      case 'stripe_pause':
-        await this.stripePause(intent, insight, tenantId)
-        break
       case 'crm_tag':
         await this.crmTag(intent, insight, tenantId)
         break
-      case 'post_linkedin':
-        return this.postLinkedIn(intent, insight, tenantId)
-      case 'post_twitter':
-        return this.postTwitter(intent, insight, tenantId)
       default:
         // log_only — already handled
     }
@@ -266,67 +242,6 @@ export class ActionExecutor {
     if (!res.ok) throw new Error(`Twilio ${res.status}: ${await res.text()}`)
   }
 
-  private async createXeroCreditNote(_intent: ActionIntent, insight: Insight, tenantId: string): Promise<void> {
-    const creds = await this.getCredential(tenantId, 'xero')
-    if (!creds?.access_token) throw new Error('Xero not connected')
-    const { decryptIfNeeded } = await import('@agentoak/platform')
-    const token = decryptIfNeeded(creds.access_token as string)
-    if (!token) throw new Error('Xero access token missing')
-    // Post a minimal credit note — in production this would carry line items from the insight's evidence_refs
-    const res = await fetch('https://api.xero.com/api.xro/2.0/CreditNotes', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({
-        CreditNotes: [{
-          Type: 'ACCREC',
-          Contact: { Name: 'Kairos Auto-action' },
-          Date: new Date().toISOString().split('T')[0],
-          LineAmountTypes: 'Exclusive',
-          LineItems: [{
-            Description: insight.reasoning.slice(0, 200),
-            UnitAmount: insight.estimated_impact_low / 100,
-            AccountCode: '200',
-          }],
-        }],
-      }),
-    })
-    if (!res.ok) throw new Error(`Xero ${res.status}: ${await res.text()}`)
-  }
-
-  private async stripeRefund(_intent: ActionIntent, insight: Insight, tenantId: string): Promise<void> {
-    const creds = await this.getCredential(tenantId, 'stripe')
-    if (!creds?.api_key) throw new Error('Stripe not connected')
-    const { decryptIfNeeded } = await import('@agentoak/platform')
-    const apiKey = decryptIfNeeded(creds.api_key as string)
-    if (!apiKey) throw new Error('Stripe key missing')
-    // The evidence_refs should contain a charge/payment_intent ID — use first one
-    const chargeId = insight.confidence_breakdown.evidence_refs[0]
-    if (!chargeId || !chargeId.startsWith('ch_')) throw new Error('No Stripe charge ID in evidence_refs')
-    const body = new URLSearchParams({ charge: chargeId, amount: String(insight.estimated_impact_low) })
-    const res = await fetch('https://api.stripe.com/v1/refunds', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body,
-    })
-    if (!res.ok) throw new Error(`Stripe ${res.status}: ${await res.text()}`)
-  }
-
-  private async stripePause(_intent: ActionIntent, insight: Insight, tenantId: string): Promise<void> {
-    const creds = await this.getCredential(tenantId, 'stripe')
-    if (!creds?.api_key) throw new Error('Stripe not connected')
-    const { decryptIfNeeded } = await import('@agentoak/platform')
-    const apiKey = decryptIfNeeded(creds.api_key as string)
-    const subId = insight.confidence_breakdown.evidence_refs[0]
-    if (!apiKey || !subId?.startsWith('sub_')) throw new Error('No Stripe subscription ID in evidence_refs')
-    const body = new URLSearchParams({ 'pause_collection[behavior]': 'void' })
-    const res = await fetch(`https://api.stripe.com/v1/subscriptions/${subId}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body,
-    })
-    if (!res.ok) throw new Error(`Stripe ${res.status}: ${await res.text()}`)
-  }
-
   private async crmTag(_intent: ActionIntent, insight: Insight, tenantId: string): Promise<void> {
     const creds = await this.getCredential(tenantId, 'hubspot')
     if (!creds?.api_key) throw new Error('HubSpot not connected')
@@ -340,73 +255,6 @@ export class ActionExecutor {
       body: JSON.stringify({ properties: { kairos_insight: insight.hypothesis, kairos_insight_at: new Date().toISOString() } }),
     })
     if (!res.ok) throw new Error(`HubSpot ${res.status}: ${await res.text()}`)
-  }
-
-  // ── Social publishing — returns external_id for analytics polling ─────────────
-
-  private async postLinkedIn(
-    intent: ActionIntent,
-    insight: Insight,
-    tenantId: string,
-  ): Promise<{ external_id: string; external_platform: string }> {
-    const creds = await this.getCredential(tenantId, 'linkedin')
-    if (!creds?.access_token) throw new Error('LinkedIn not connected')
-    const { decryptIfNeeded } = await import('@agentoak/platform')
-    const token = decryptIfNeeded(creds.access_token as string)
-    if (!token) throw new Error('LinkedIn access token missing')
-
-    const authorUrn = creds.author_urn as string | undefined
-    if (!authorUrn) throw new Error('LinkedIn author URN not configured (set in connector settings)')
-
-    const text = (intent.params['post_text'] as string | undefined) ?? insight.reasoning
-
-    const body = {
-      author: authorUrn,
-      lifecycleState: 'PUBLISHED',
-      specificContent: {
-        'com.linkedin.ugc.ShareContent': {
-          shareCommentary: { text },
-          shareMediaCategory: 'NONE',
-        },
-      },
-      visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' },
-    }
-
-    const res = await fetch('https://api.linkedin.com/v2/ugcPosts', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-Restli-Protocol-Version': '2.0.0' },
-      body: JSON.stringify(body),
-    })
-    if (!res.ok) throw new Error(`LinkedIn ${res.status}: ${await res.text()}`)
-
-    // LinkedIn returns the post URN in the X-RestLi-Id header
-    const postUrn = res.headers.get('x-restli-id') ?? res.headers.get('X-RestLi-Id') ?? ''
-    return { external_id: postUrn, external_platform: 'linkedin' }
-  }
-
-  private async postTwitter(
-    intent: ActionIntent,
-    insight: Insight,
-    tenantId: string,
-  ): Promise<{ external_id: string; external_platform: string }> {
-    const creds = await this.getCredential(tenantId, 'twitter_x')
-    if (!creds?.access_token) throw new Error('Twitter/X not connected')
-    const { decryptIfNeeded } = await import('@agentoak/platform')
-    const token = decryptIfNeeded(creds.access_token as string)
-    if (!token) throw new Error('Twitter access token missing')
-
-    const text = ((intent.params['post_text'] as string | undefined) ?? insight.reasoning).slice(0, 280)
-
-    const res = await fetch('https://api.x.com/2/tweets', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    })
-    if (!res.ok) throw new Error(`Twitter ${res.status}: ${await res.text()}`)
-
-    const data = await res.json() as { data?: { id: string } }
-    const tweetId = data.data?.id ?? ''
-    return { external_id: tweetId, external_platform: 'twitter' }
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────────

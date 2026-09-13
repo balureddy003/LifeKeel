@@ -114,6 +114,40 @@ kairos-ai multi-vertical demo/trial "sandbox mode" that's still live and
 reachable, but only *mirrors* detector ids in comments and fabricated demo
 data, not a functional read of the deleted YAML.
 
+## Removed: the action executor's money-moving and public-publishing action types (2026-09-13)
+
+A go-live readiness audit (OAK-002) found that `apps/api/src/actions/action-executor.ts`
+— reachable, live, and wired into `POST /insights/:id/approve` — keyword-
+matched an insight's free-text action label into 5 real external side
+effects: `stripe_refund` (a real Stripe refund), `stripe_pause` (cancels a
+live subscription), `xero_credit_note` (posts a real accounting credit
+note), `post_linkedin` and `post_twitter` (publish publicly, using the
+insight's own reasoning text as the post body if none was supplied). The
+approve route called this executor unconditionally — a generic "Approve"
+click, not a confirmation naming the exact side effect, amount, or
+recipient. Compounding this, `POST /connectors/:id/credentials` had no
+allowlist, so any authenticated tenant could attach a `stripe`/`linkedin`/
+`twitter_x` credential directly against the API even though the family
+app's UI never offers them — connectors the family vertical doesn't even
+list as optional (`verticals/family/vertical.yaml`). This is exactly the
+class of risk the WorkflowEngine removal above was justified by; this
+executor was left wired into a currently-shipped route instead.
+
+- `ActionType`'s `stripe_refund`, `stripe_pause`, `xero_credit_note`,
+  `post_linkedin`, `post_twitter` members, their `ACTION_PATTERNS` regex
+  rows, their `dispatch()` switch cases, and their implementation methods
+  (`stripeRefund`, `stripePause`, `createXeroCreditNote`, `postLinkedIn`,
+  `postTwitter`) deleted from `apps/api/src/actions/action-executor.ts`.
+  `ActionReceipt`'s now-dead `external_id`/`external_platform` fields
+  (only ever populated by the deleted LinkedIn/Twitter methods) removed
+  alongside them. `send_email`, `send_whatsapp`, and `crm_tag` were kept —
+  communication and CRM-tagging, not money-moving or public-publishing.
+- `POST /connectors/:id/credentials` (`apps/api/src/routes/connector-credentials.ts`)
+  now rejects any connector id outside a hand-written family-app allowlist
+  (`gmail`, `email`, `open-banking`, `google_drive`, `dropbox`, `onedrive`)
+  before doing anything else — matching `verticals/family/vertical.yaml`'s
+  `optional_connectors` list plus what `apps/web/src` actually sends.
+
 ## Known, deliberately deferred issues
 
 - **Auth token in `localStorage`.** `apps/web/src/lib/auth-context.tsx` and

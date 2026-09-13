@@ -1,10 +1,15 @@
 /**
  * Connector credential routes — backfill-on-connect coverage.
  *
- * Covers a real bug: saving API-key credentials (the path Trading 212 uses)
- * never triggered a historical backfill — only the OAuth2 callback did. A
- * tenant could connect Trading 212 and see nothing sync until someone
- * manually called POST /connectors/:id/backfill, which nothing in the UI does.
+ * Covers a real bug: saving API-key credentials never triggered a
+ * historical backfill — only the OAuth2 callback did. A tenant could
+ * connect a connector and see nothing sync until someone manually called
+ * POST /connectors/:id/backfill, which nothing in the UI does. Uses
+ * 'gmail' (one of the family app's own allowed connectors — see OAK-002's
+ * FAMILY_CONNECTOR_ALLOWLIST in connector-credentials.ts) rather than the
+ * original 'trading-212' example, which isn't a connector this app
+ * actually offers and would now be rejected before reaching the backfill
+ * logic this test exists to cover.
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest'
@@ -64,25 +69,25 @@ describe('POST /connectors/:id/credentials', () => {
     const app = await buildApp(true)
     const response = await app.inject({
       method: 'POST',
-      url: '/connectors/trading-212/credentials',
+      url: '/connectors/gmail/credentials',
       payload: { auth_type: 'api_key', api_key: 'secret', extra: { live_mode: 'true' } },
     })
 
     expect(response.statusCode).toBe(200)
     // Backfill is fire-and-forget — flush microtasks so the mocked call registers.
     await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(fakeConnectorLoader.get).toHaveBeenCalledWith('trading-212')
+    expect(fakeConnectorLoader.get).toHaveBeenCalledWith('gmail')
     expect(testConnectionMock).toHaveBeenCalledTimes(1)
-    expect(testConnectionMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'trading-212' }), TEST_TENANT)
+    expect(testConnectionMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'gmail' }), TEST_TENANT)
     expect(backfillMock).toHaveBeenCalledTimes(1)
-    expect(backfillMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'trading-212' }), TEST_TENANT)
+    expect(backfillMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'gmail' }), TEST_TENANT)
   })
 
   it('does not throw when pipeline dependencies are unavailable', async () => {
     const app = await buildApp(false)
     const response = await app.inject({
       method: 'POST',
-      url: '/connectors/trading-212/credentials',
+      url: '/connectors/gmail/credentials',
       payload: { auth_type: 'api_key', api_key: 'secret' },
     })
 
@@ -96,7 +101,7 @@ describe('POST /connectors/:id/credentials', () => {
     const app = await buildApp(true)
     const response = await app.inject({
       method: 'POST',
-      url: '/connectors/trading-212/credentials',
+      url: '/connectors/gmail/credentials',
       payload: { auth_type: 'api_key', api_key: 'secret', extra: { live_mode: 'true' } },
     })
 

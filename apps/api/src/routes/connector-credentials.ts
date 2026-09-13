@@ -29,6 +29,28 @@ import type { Engine } from '@agentoak/engine'
 import { fetchGmailAddress } from '../email/gmail-oauth.js'
 import { scanTenantInbox } from '../jobs/email-scan.js'
 
+// OAK-002: this route accepted any connector id known to the shared,
+// multi-vertical connectorRegistry/connectorLoader (30+ connectors,
+// including stripe, sendgrid, twilio, linkedin, twitter_x) with no
+// allowlist — only a quota count. The family app's UI only ever offers
+// email and open banking (confirmed by grep of apps/web/src for connector
+// id literals), so any authenticated tenant could otherwise attach a
+// stripe/linkedin credential directly against the API and activate real
+// execution the next time an insight's action text happened to match
+// action-executor.ts's keyword patterns. Matches
+// verticals/family/vertical.yaml's optional_connectors list plus what
+// apps/web/src actually sends — hand-written rather than read from that
+// YAML at runtime, since the loader that used to parse it (VerticalLoader)
+// was already removed (see SECURITY.md).
+const FAMILY_CONNECTOR_ALLOWLIST = new Set([
+  'gmail',
+  'email',
+  'open-banking',
+  'google_drive',
+  'dropbox',
+  'onedrive',
+])
+
 /** Which frontend initiated the OAuth flow — determines where the callback sends the user back. */
 type ReturnTarget = 'studio' | 'kairos-web' | 'kairos-mobile' | 'family'
 
@@ -241,6 +263,10 @@ export function registerConnectorCredentialRoutes(
   }>('/connectors/:id/credentials', async (req, reply) => {
     const tenantId = req.authContext.tenant_id
     const { auth_type, token_expires_at, ...rest } = req.body
+
+    if (!FAMILY_CONNECTOR_ALLOWLIST.has(req.params.id)) {
+      return reply.status(403).send({ error: `Connector '${req.params.id}' is not available in this app` })
+    }
 
     if (!auth_type) return reply.status(400).send({ error: 'auth_type required' })
 
