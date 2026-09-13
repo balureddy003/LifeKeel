@@ -76,6 +76,7 @@ import { registerFamilyGroupRoutes } from './routes/family-group.js'
 import { registerGrowthEventRoutes } from './routes/growth-events.js'
 import { registerFamilyFinancialProfileRoutes } from './routes/family-financial-profile.js'
 import { registerFamilyInboxRoutes } from './routes/family-inbox.js'
+import { registerAssistantRoutes } from './routes/assistant.js'
 import { sendOpsAlert } from './lib/ops-alerts.js'
 
 // Inject the connector schema registry so the engine can validate event schema compatibility.
@@ -1075,6 +1076,7 @@ if (workflowDb) {
   registerFamilyGroupRoutes(app, workflowDb)
   registerGrowthEventRoutes(app, workflowDb)
   registerFamilyInboxRoutes(app, workflowDb)
+  registerAssistantRoutes(app, workflowDb)
   await registerFamilyFinancialProfileRoutes(app, workflowDb, engine, insightsDeliveryHook)
 }
 // Prometheus metrics — generic ops/observability, not vertical-specific.

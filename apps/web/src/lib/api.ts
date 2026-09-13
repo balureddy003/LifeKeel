@@ -167,14 +167,39 @@ export async function fetchFamilyReadinessScore(): Promise<{ score: number; hasL
 }
 
 /**
- * Fetches an AI-style response for a user query. In production this would
- * call the engine's LLM fusion endpoint; for now it uses the local
- * AI_RESPONSES map with a compliance-safe fallback.
+ * Fetches an AI-style response for a user query. Calls the backend
+ * assistant endpoint (POST /assistant/ask), which reasons over the
+ * tenant's real financial profile and open insights via an LLM. Falls
+ * back to the local AI_RESPONSES map (compliance-safe, isLive: false)
+ * when the backend is unreachable or returns a non-2xx status — this
+ * keeps the previous behavior as a genuine offline degradation path
+ * rather than the whole feature.
  *
  * Returns both the content and an `isLive` flag so the UI can distinguish
  * real API responses from mock fallbacks and label them accordingly.
  */
 export async function fetchAIResponse(query: string): Promise<{ content: string; isLive: boolean }> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const res = await fetch(`${base}/assistant/ask`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ query }),
+    })
+    if (res.ok) {
+      const data = (await res.json()) as { content?: string; isLive?: boolean }
+      if (typeof data.content === 'string') {
+        return { content: data.content, isLive: Boolean(data.isLive) }
+      }
+    }
+  } catch {
+    // Network failure or unreachable backend — fall through to the local map.
+  }
+
   const lower = query.toLowerCase()
   for (const [key, response] of Object.entries(AI_RESPONSES)) {
     if (lower.includes(key)) return { content: response, isLive: false }

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
+  fetchAIResponse,
   fetchFamilyInsights,
   fetchFamilyReadinessScore,
   RESOLVED_INSIGHT_STATES,
@@ -144,5 +145,27 @@ describe('fetchFamilyReadinessScore', () => {
     expect(RESOLVED_INSIGHT_STATES).toContain('dismissed')
     const result = await fetchFamilyReadinessScore()
     expect(result).toEqual({ score: 100, hasLiveData: true })
+  })
+})
+
+describe('fetchAIResponse', () => {
+  it('returns the backend response as-is when the call succeeds', async () => {
+    mockFetchOnce({ content: 'Your emergency fund covers 0.33 months.', isLive: true })
+    const result = await fetchAIResponse('How is my emergency fund?')
+    expect(result).toEqual({ content: 'Your emergency fund covers 0.33 months.', isLive: true })
+  })
+
+  it('falls back to the local AI_RESPONSES map when the backend is unreachable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
+    const result = await fetchAIResponse('Where is my travel insurance?')
+    expect(result.isLive).toBe(false)
+    expect(result.content.length).toBeGreaterThan(0)
+  })
+
+  it('falls back to the local map when the backend returns a non-2xx status', async () => {
+    mockFetchOnce({ error: 'unauthorized' }, false)
+    const result = await fetchAIResponse('Where is my travel insurance?')
+    expect(result.isLive).toBe(false)
+    expect(result.content.length).toBeGreaterThan(0)
   })
 })
