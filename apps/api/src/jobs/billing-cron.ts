@@ -27,30 +27,10 @@ import {
 import { recordLedgerEntry, reconcileCredits } from '../billing/credit-ledger.js'
 import { isBillingV2Enabled } from '../billing/billing-constants.js'
 import { sendBillingAlert } from '../billing/billing-alerts.js'
+import { acquireCronLock, releaseCronLock } from './cron-lock.js'
 
 const log = createLogger({ service: 'billing-cron', version: '0.0.0' })
-
-// ── Distributed cron lock ──────────────────────────────────────────────────────
-//
-// Prevents multiple API instances from running the billing cron simultaneously.
-// Uses a MongoDB document as a lock — findOneAndUpdate with an expiry timestamp.
-// The lock auto-expires after 5 minutes (in case the process crashes).
-
-const LOCK_TTL_MS = 5 * 60 * 1000
-
-async function acquireCronLock(db: Db): Promise<boolean> {
-  const now = new Date()
-  const result = await db.collection('cron_locks').findOneAndUpdate(
-    { name: 'billing', expires_at: { $lt: now } },
-    { $set: { name: 'billing', acquired_at: now, expires_at: new Date(now.getTime() + LOCK_TTL_MS) } },
-    { upsert: true, returnDocument: 'after' },
-  ) as Record<string, unknown> | null
-  return !!result
-}
-
-async function releaseCronLock(db: Db): Promise<void> {
-  await db.collection('cron_locks').deleteOne({ name: 'billing' }).catch(() => {})
-}
+const LOCK_NAME = 'billing'
 
 // ── H3: Outcome charge settlement ────────────────────────────────────────────
 
@@ -480,7 +460,7 @@ export async function runBillingCron(db: Db): Promise<void> {
   // Distributed lock — prevents multiple instances from running simultaneously.
   // Only active when billing v2 is enabled (v1 runs without lock).
   if (isBillingV2Enabled()) {
-    const acquired = await acquireCronLock(db)
+    const acquired = await acquireCronLock(db, LOCK_NAME)
     if (!acquired) {
       log.info({ reason: 'lock_held' }, 'Billing cron skipped — lock held by another instance')
       return
@@ -519,7 +499,7 @@ export async function runBillingCron(db: Db): Promise<void> {
         })
       })
     } finally {
-      await releaseCronLock(db)
+      await releaseCronLock(db, LOCK_NAME)
     }
   } else {
     // v1 mode: no lock, no reconciliation, no orphaned event cleanup

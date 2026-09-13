@@ -41,6 +41,8 @@ export async function createCredentialExpiryInsights(
   const tradesCol = db.collection('pending_trades')
   const credCol = db.collection('connector_credentials')
   const insightsCol = db.collection('insights')
+  const dedupCol = db.collection('connector_health_dedup')
+  await dedupCol.createIndex({ tenant_id: 1, connector_id: 1 }, { unique: true }).catch(() => {})
 
   const cutoff = new Date(now.getTime() - lookbackMs)
 
@@ -108,17 +110,36 @@ export async function createCredentialExpiryInsights(
     const cred = await credCol.findOne({ tenant_id: tid, connector_id: connectorId })
     const connectorName = (cred?.['name'] as string) ?? connectorId
 
-    // Dedupe: don't create another alert for the same tenant+connector in the
-    // last 24 hours.
-    const existing = await insightsCol.findOne({
-      tenant_id: tid,
-      detector_id: DETECTOR_ID,
-      rule_id: RULE_ID,
-      entity_key: connectorId,
-      state: 'identified',
-      created_at: { $gte: new Date(now.getTime() - DEDUP_WINDOW_MS) },
-    })
-    if (existing) {
+    // OAK-003: dedupe (don't alert for the same tenant+connector within the
+    // 24h window) used to be a findOne-then-insertOne pair — two replicas
+    // of this */15-minute cron could both find no existing alert before
+    // either inserted one, producing duplicate health-alert insights for
+    // the same connector. This atomically "claims" the dedup window first
+    // (findOneAndUpdate against a dedicated marker collection, unique
+    // index on tenant_id+connector_id) and only proceeds to insert the
+    // insight if this call actually won the claim.
+    const dedupWindowStart = new Date(now.getTime() - DEDUP_WINDOW_MS)
+    let claim: Record<string, unknown> | null
+    try {
+      claim = await dedupCol.findOneAndUpdate(
+        { tenant_id: tid, connector_id: connectorId, alerted_at: { $lt: dedupWindowStart } },
+        { $set: { tenant_id: tid, connector_id: connectorId, alerted_at: now } },
+        { upsert: true, returnDocument: 'after' },
+      )
+    } catch (err) {
+      // Duplicate-key error (Mongo code 11000): another concurrent call
+      // won the upsert race on a brand-new marker doc for this
+      // tenant+connector pair (only possible the very first time this
+      // pair is ever alerted on, before the unique index has a document
+      // to enforce uniqueness against) — that other call is the one
+      // proceeding, this one skips.
+      if ((err as { code?: number }).code === 11000) {
+        skipped++
+        continue
+      }
+      throw err
+    }
+    if (!claim || (claim['alerted_at'] as Date)?.getTime() !== now.getTime()) {
       skipped++
       continue
     }

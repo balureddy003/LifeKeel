@@ -5,6 +5,39 @@
 import { describe, expect, it } from 'vitest'
 import { createCredentialExpiryInsights } from '../connector-health-alert.js'
 
+/**
+ * OAK-003: createCredentialExpiryInsights now atomically claims a dedup
+ * marker (connector_health_dedup, unique on tenant_id+connector_id)
+ * before inserting an insight, instead of a plain findOne-then-insertOne
+ * pair. A fresh in-memory store per call, faithful enough to real Mongo's
+ * findOneAndUpdate+upsert semantics for this test file's purposes: no
+ * existing doc → upsert creates one and returns it; existing doc whose
+ * alerted_at satisfies the filter's $lt → updated and returned; existing
+ * doc that doesn't satisfy it → null (already claimed within the window).
+ */
+function makeDedupCol(seed: Array<{ tenant_id: string; connector_id: string; alerted_at: Date }> = []) {
+  const docs = [...seed]
+  return {
+    createIndex: async () => ({}),
+    findOneAndUpdate: async (
+      filter: { tenant_id: string; connector_id: string; alerted_at: { $lt: Date } },
+      update: { $set: { tenant_id: string; connector_id: string; alerted_at: Date } },
+    ) => {
+      const existing = docs.find(d => d.tenant_id === filter.tenant_id && d.connector_id === filter.connector_id)
+      if (!existing) {
+        const doc = { ...update.$set }
+        docs.push(doc)
+        return doc
+      }
+      if (existing.alerted_at < filter.alerted_at.$lt) {
+        existing.alerted_at = update.$set.alerted_at
+        return existing
+      }
+      return null
+    },
+  }
+}
+
 describe('createCredentialExpiryInsights', () => {
   function makeDb({ existingInsight = false, noCreds = false, staleError = false } = {}) {
     const connectorCreds = noCreds
@@ -19,6 +52,12 @@ describe('createCredentialExpiryInsights', () => {
           state: 'identified',
           created_at: new Date(Date.now() - 1 * 60 * 60 * 1000),
         }]
+      : []
+    // OAK-003: dedup now lives in connector_health_dedup, not a findOne
+    // against `insights` — "an alert already exists" means a marker doc
+    // was already claimed for this tenant+connector within the window.
+    const dedupSeed = existingInsight
+      ? [{ tenant_id: 'tenant-1', connector_id: 'trading-212', alerted_at: new Date(Date.now() - 1 * 60 * 60 * 1000) }]
       : []
     const errorAt = staleError
       ? new Date(Date.now() - 60 * 60 * 1000)
@@ -69,6 +108,7 @@ describe('createCredentialExpiryInsights', () => {
             },
           }
         }
+        if (name === 'connector_health_dedup') return makeDedupCol(dedupSeed)
         throw new Error(`Unexpected collection: ${name}`)
       },
     } as any
@@ -143,6 +183,7 @@ describe('createCredentialExpiryInsights', () => {
             },
           }
         }
+        if (name === 'connector_health_dedup') return makeDedupCol()
         throw new Error(`Unexpected collection: ${name}`)
       },
     } as any
@@ -198,6 +239,7 @@ describe('createCredentialExpiryInsights', () => {
             },
           }
         }
+        if (name === 'connector_health_dedup') return makeDedupCol()
         throw new Error(`Unexpected collection: ${name}`)
       },
     } as any

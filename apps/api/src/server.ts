@@ -63,6 +63,7 @@ import { InsightSlaWorker } from './jobs/insight-sla-worker.js'
 import { EscalationWorker } from './jobs/escalation-worker.js'
 import { createCredentialExpiryInsights } from './jobs/connector-health-alert.js'
 import { scanAllConnectedInboxes } from './jobs/email-scan.js'
+import { withCronLock, acquireCronLock, releaseCronLock, ensureCronLockIndex } from './jobs/cron-lock.js'
 import { registerApiVersioning, rewriteVersionedUrl } from './api-versioning.js'
 import { registerBillingRoutes } from './routes/billing.js'
 import { registerBlogRoutes } from './routes/blog.js'
@@ -138,6 +139,11 @@ try {
   const mongoClient = await getMongoClient()
   workflowDb = mongoClient.db(process.env['MONGODB_DB'] ?? 'kairos')
   deliveryRouter = new DeliveryRouter(workflowDb, createMoveJudge(globalLlmFn, workflowDb))
+  // OAK-003: every cron.schedule job below runs under this lock, keyed by
+  // its own name — deploy-api.yml allows up to 4 Cloud Run replicas, and
+  // without this, two replicas racing the same job could both act on the
+  // same overdue insight/expiring credential and double-fire it.
+  await ensureCronLockIndex(workflowDb)
 
   // One-time cleanup: archive stale pre-fix insight records (A1/A2/A3
   // patterns) that are still live on Home. Runs in the background —
@@ -173,7 +179,7 @@ try {
   // Connector poll every 15 minutes — incremental sync of all connected tenants
   cron.schedule('*/15 * * * *', async () => {
     try {
-      await syncEngine.pollAll(connectorLoader.list())
+      await withCronLock(workflowDb, 'connector-sync', () => syncEngine.pollAll(connectorLoader.list()))
     } catch (err) {
       log.error({ err }, 'Connector poll failed')
     }
@@ -185,7 +191,9 @@ try {
   // background. Creates a deduplicated high-urgency insight per tenant+connector.
   cron.schedule('*/15 * * * *', async () => {
     try {
-      await createCredentialExpiryInsights({ db: workflowDb, lookbackMs: 20 * 60 * 1000 })
+      await withCronLock(workflowDb, 'connector-health', async () => {
+        await createCredentialExpiryInsights({ db: workflowDb, lookbackMs: 20 * 60 * 1000 })
+      })
     } catch (err) {
       log.error({ err }, 'Connector health alert failed')
     }
@@ -199,7 +207,7 @@ try {
   // family-connectors.ts) and via POST /connectors/email/scan.
   cron.schedule('*/15 * * * *', async () => {
     try {
-      await scanAllConnectedInboxes(workflowDb)
+      await withCronLock(workflowDb, 'email-scan', () => scanAllConnectedInboxes(workflowDb))
     } catch (err) {
       log.error({ err }, 'Email scan cron failed')
     }
@@ -217,10 +225,12 @@ try {
     const dr = deliveryRouter
     cron.schedule('0 8 * * *', async () => {
       try {
-        const tenants = await workflowDb.collection('digest_queue').distinct('tenant_id', { sent: false })
-        for (const tenantId of tenants) {
-          await dr.sendDigest(tenantId as string)
-        }
+        await withCronLock(workflowDb, 'daily-digest', async () => {
+          const tenants = await workflowDb.collection('digest_queue').distinct('tenant_id', { sent: false })
+          for (const tenantId of tenants) {
+            await dr.sendDigest(tenantId as string)
+          }
+        })
       } catch (err) {
         log.error({ err }, 'Daily digest failed')
       }
@@ -233,6 +243,7 @@ try {
   // increases by > 0.05 since last check.
   cron.schedule('0 2 * * *', async () => {
     if (!scoreCalibrator) return
+    if (!(await acquireCronLock(workflowDb, 'calibration-drift'))) return
     try {
       const histCol   = workflowDb.collection('calibration_ece_history')
       const alertCol  = workflowDb.collection('calibration_alerts')
@@ -270,6 +281,8 @@ try {
       }
     } catch (err) {
       log.error({ err }, 'Calibration drift check failed')
+    } finally {
+      await releaseCronLock(workflowDb, 'calibration-drift')
     }
   }, { missedExecutionTolerance: 60_000 })
   log.info({}, 'Calibration drift cron started')
@@ -291,6 +304,7 @@ try {
   //   policy_blocked, budget_blocked → excluded (not user decisions, no signal)
   cron.schedule('0 3 * * *', async () => {
     if (!scoreCalibrator) return
+    if (!(await acquireCronLock(workflowDb, 'calibration-fit'))) return
     try {
       const receiptsCol = workflowDb.collection('action_receipts')
       const now = Date.now()
@@ -392,6 +406,8 @@ try {
       }
     } catch (err) {
       log.error({ err }, 'Calibration fitting cron failed')
+    } finally {
+      await releaseCronLock(workflowDb, 'calibration-fit')
     }
   }, { missedExecutionTolerance: 60_000 })
   log.info({}, 'Calibration fitting cron started (nightly 3 AM)')
@@ -433,13 +449,29 @@ try {
   await retentionWorker.ensureIndexes()
   cron.schedule('0 2 * * *', async () => {
     try {
-      await retentionWorker.run()
+      await withCronLock(workflowDb, 'retention', () => retentionWorker.run())
     } catch (err) {
       log.error({ err }, 'Retention worker failed')
     }
   }, { missedExecutionTolerance: 60_000 })
   cron.schedule('*/15 * * * *', async () => {
-    await Promise.allSettled([insightSlaWorker.run(), escalationWorker.run()])
+    try {
+      await withCronLock(workflowDb, 'insight-sla-escalation', async () => {
+        // OAK-003: this previously had zero error logging at all — a bare
+        // Promise.allSettled with no per-job check, unlike every other
+        // cron job in this file. A rejection here (e.g. escalationWorker
+        // throwing) was silently swallowed with no way to ever notice.
+        const results = await Promise.allSettled([insightSlaWorker.run(), escalationWorker.run()])
+        const names = ['insightSlaWorker', 'escalationWorker']
+        results.forEach((result, i) => {
+          if (result.status === 'rejected') {
+            log.error({ job: names[i], err: result.reason }, 'Insight SLA/escalation job failed')
+          }
+        })
+      })
+    } catch (err) {
+      log.error({ err }, 'Insight SLA/escalation cron failed')
+    }
   }, { missedExecutionTolerance: 60_000 })
 
   // Shadow backtest cron removed — trading-vertical only (DTFE engine paper
@@ -451,11 +483,13 @@ try {
   //    Persists per-detector reports to `feature_hash_eval_reports`.
   cron.schedule('0 7 * * 1', async () => {
     try {
-      const { runFeatureHashEval } = await import('./jobs/feature-hash-eval.js')
-      const reports = await runFeatureHashEval(workflowDb)
-      if (reports.length > 0) {
-        log.info({ detectors: reports.length }, 'FeatureHashScorer eval complete')
-      }
+      await withCronLock(workflowDb, 'feature-hash-eval', async () => {
+        const { runFeatureHashEval } = await import('./jobs/feature-hash-eval.js')
+        const reports = await runFeatureHashEval(workflowDb)
+        if (reports.length > 0) {
+          log.info({ detectors: reports.length }, 'FeatureHashScorer eval complete')
+        }
+      })
     } catch (err) {
       log.error({ err }, 'FeatureHashScorer eval failed')
     }
