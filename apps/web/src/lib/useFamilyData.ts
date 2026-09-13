@@ -266,6 +266,7 @@ export function useEventReadiness(
   const [explanation, setExplanation] = useState(fallbackExplanation)
   const [hasLiveData, setHasLiveData] = useState(false)
   const [insightId, setInsightId] = useState<string | null>(null)
+  const [ruleId, setRuleId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -279,6 +280,7 @@ export function useEventReadiness(
           setExplanation(fallbackExplanation)
           setHasLiveData(false)
           setInsightId(null)
+          setRuleId(null)
           setLoading(false)
         }
         return
@@ -294,11 +296,13 @@ export function useEventReadiness(
             setExplanation(matching.reasoning || matching.hypothesis || fallbackExplanation)
             setHasLiveData(true)
             setInsightId(matching.id)
+            setRuleId(matching.rule_id)
           } else {
             setStability(fallbackStability)
             setExplanation(fallbackExplanation)
             setHasLiveData(false)
             setInsightId(null)
+            setRuleId(null)
           }
           setLoading(false)
         }
@@ -308,6 +312,7 @@ export function useEventReadiness(
           setExplanation(fallbackExplanation)
           setHasLiveData(false)
           setInsightId(null)
+          setRuleId(null)
           setLoading(false)
         }
       }
@@ -316,5 +321,5 @@ export function useEventReadiness(
     return () => { cancelled = true }
   }, [eventId, fallbackStability, fallbackExplanation])
 
-  return { stability, explanation, hasLiveData, insightId, loading }
+  return { stability, explanation, hasLiveData, insightId, ruleId, loading }
 }

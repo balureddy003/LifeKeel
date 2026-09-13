@@ -667,6 +667,7 @@ export interface ReadinessQuizInsight {
   hypothesis: string
   reasoning: string
   category: string
+  rule_id: string
   estimated_impact_low: number
   estimated_impact_high: number
 }
@@ -687,6 +688,41 @@ export async function submitReadinessQuiz(answers: ReadinessQuizAnswers): Promis
   const data = await res.json().catch(() => ({}))
   if (!res.ok) return { score: null, insights: [], error: data.error || 'Request failed' }
   return { score: data.score ?? null, insights: data.insights ?? [], error: data.error }
+}
+
+// ── Blog / detector-driven content (PRD-202) ────────────────────────────
+
+export interface BlogPostSummary {
+  id: string
+  title: string
+  slug: string
+  excerpt: string
+  category: 'product' | 'tutorial' | 'case-study' | 'news'
+  author: string
+  published: boolean
+  tags: string[]
+  created_at: string
+  updated_at: string
+  published_at?: string
+}
+
+export interface BlogPost extends BlogPostSummary {
+  content: string
+}
+
+/** Public, unauthenticated. */
+export async function fetchBlogPosts(): Promise<BlogPostSummary[]> {
+  const res = await fetch(`${getApiBase()}/blog/posts`)
+  if (!res.ok) return []
+  const data = await res.json().catch(() => ({ posts: [] }))
+  return data.posts ?? []
+}
+
+/** Public, unauthenticated. Returns null on 404 or any failure. */
+export async function fetchBlogPost(slug: string): Promise<BlogPost | null> {
+  const res = await fetch(`${getApiBase()}/blog/posts/${encodeURIComponent(slug)}`)
+  if (!res.ok) return null
+  return res.json().catch(() => null)
 }
 
 // ── Billing (Oak Plus) ───────────────────────────────────────────────────

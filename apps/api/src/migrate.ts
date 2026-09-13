@@ -3,8 +3,9 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import yaml from 'js-yaml'
 import { repoRoot } from '@agentoak/platform'
+import { DETECTOR_CONTENT_POSTS } from './detector-content-posts.js'
 
-interface Migration {
+export interface Migration {
   id: string
   up(db: Db): Promise<void>
 }
@@ -14,7 +15,7 @@ interface CategoryTableEntry {
   category: string
 }
 
-const migrations: Migration[] = [
+export const migrations: Migration[] = [
   {
     id: '20260606000000-initial-indexes',
     up: async db => {
@@ -272,6 +273,35 @@ const migrations: Migration[] = [
       ])
     },
   },
+  {
+    // PRD-202: seed the blog CMS (routes/blog.ts) with one explainer post
+    // per chosen detector rule — see detector-content-posts.ts for the
+    // content and the reasoning behind which six rules were picked.
+    // Upsert-by-slug rather than insertOne so this stays safe to re-run.
+    id: '20260913000000-seed-detector-content-posts',
+    up: async db => {
+      const col = db.collection('blog_posts')
+      const now = new Date()
+      await Promise.all(
+        DETECTOR_CONTENT_POSTS.map(({ rule_id: _ruleId, ...post }) =>
+          col.updateOne(
+            { slug: post.slug },
+            {
+              $set: {
+                ...post,
+                published: true,
+                created_at: now,
+                updated_at: now,
+                published_at: now,
+              },
+              $setOnInsert: { id: post.slug },
+            },
+            { upsert: true },
+          ),
+        ),
+      )
+    },
+  },
 ]
 
 export async function runMigrations(): Promise<void> {
@@ -283,9 +313,20 @@ export async function runMigrations(): Promise<void> {
     await history.createIndex({ id: 1 }, { unique: true })
     for (const migration of migrations) {
       if (await history.findOne({ id: migration.id })) continue
-      await migration.up(db)
-      await history.insertOne({ id: migration.id, applied_at: new Date() })
-      process.stdout.write(`[migration] applied ${migration.id}\n`)
+      // One migration's failure (e.g. an index conflict from data that
+      // predates this migration system) must not silently block every
+      // later migration forever — previously an uncaught throw here left
+      // ALL subsequent migrations unapplied on every single startup, with
+      // no record of which ones actually ran. Each migration now fails on
+      // its own, is retried on the next startup, and doesn't take the
+      // rest of the list down with it.
+      try {
+        await migration.up(db)
+        await history.insertOne({ id: migration.id, applied_at: new Date() })
+        process.stdout.write(`[migration] applied ${migration.id}\n`)
+      } catch (err) {
+        process.stderr.write(`[migration] failed ${migration.id}: ${err instanceof Error ? err.message : String(err)}\n`)
+      }
     }
   } finally {
     await client.close()

@@ -7,6 +7,7 @@ import { ArrowLeft, Heart, Wallet, Target, PiggyBank, HelpCircle, Bot, AlertTria
 import type { LucideIcon } from 'lucide-react'
 import { GlassCard, PageHeader, ScoreRing } from '@/components/Glass'
 import { useFamilyHealthDomains, type HealthDomain } from '@/lib/useFamilyData'
+import { learnMoreHref } from '@/lib/detector-content'
 
 const DOMAIN_META: Record<HealthDomain, { label: string; icon: LucideIcon; color: string; description: string }> = {
   protection: {
@@ -152,6 +153,11 @@ export default function HealthDomainClient() {
                     </span>
                   ))}
                 </div>
+              )}
+              {learnMoreHref(insight.rule_id) && (
+                <Link href={learnMoreHref(insight.rule_id)!} className="text-xs text-family-400 font-semibold mt-2 inline-block">
+                  Learn more →
+                </Link>
               )}
             </GlassCard>
           </motion.div>

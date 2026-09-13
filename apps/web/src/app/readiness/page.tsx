@@ -14,6 +14,7 @@ import { GlassCard, GlassButton, PageHeader, ScoreRing } from '@/components/Glas
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
 import { submitReadinessQuiz, type ReadinessQuizResult } from '@/lib/api'
+import { learnMoreHref } from '@/lib/detector-content'
 
 function toMinor(whole: string): number {
   const n = Number(whole)
@@ -128,6 +129,11 @@ export default function ReadinessQuizPage() {
                     {readableHypothesis(insight.hypothesis)}
                   </div>
                   <p className="text-sm text-ink-secondary leading-relaxed">{insight.reasoning}</p>
+                  {learnMoreHref(insight.rule_id) && (
+                    <Link href={learnMoreHref(insight.rule_id)!} className="text-xs text-family-400 font-semibold mt-2 inline-block">
+                      Learn more →
+                    </Link>
+                  )}
                 </GlassCard>
               ))}
             </div>

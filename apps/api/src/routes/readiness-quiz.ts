@@ -37,6 +37,7 @@ interface EngineInsight {
   hypothesis: string
   reasoning: string
   category: string
+  rule_id: string
   estimated_impact_low: number
   estimated_impact_high: number
   confidence_breakdown?: { combined_score?: number; or_score?: number }
@@ -111,6 +112,7 @@ export async function registerReadinessQuizRoutes(app: FastifyInstance, db: Db, 
           hypothesis: i.hypothesis,
           reasoning: i.reasoning,
           category: i.category,
+          rule_id: i.rule_id,
           estimated_impact_low: i.estimated_impact_low,
           estimated_impact_high: i.estimated_impact_high,
         }))

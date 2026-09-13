@@ -183,7 +183,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/terms') ||
     pathname.startsWith('/privacy') ||
     pathname.startsWith('/support') ||
-    pathname.startsWith('/readiness')
+    pathname.startsWith('/readiness') ||
+    pathname.startsWith('/blog')
 
   if (isLoading) {
     return (
@@ -281,7 +282,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/terms') ||
     pathname.startsWith('/privacy') ||
     pathname.startsWith('/support') ||
-    pathname.startsWith('/readiness')
+    pathname.startsWith('/readiness') ||
+    pathname.startsWith('/blog')
 
   const showNav = isAuthenticated && family && !isAuthRoute
   const showEmergency = showNav && pathname !== '/assistant' && config.showEmergencyButton

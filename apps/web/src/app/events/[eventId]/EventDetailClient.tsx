@@ -11,6 +11,7 @@ import { haptic } from '@/lib/haptics'
 import { useEventReadiness } from '@/lib/useFamilyData'
 import { useAuth } from '@/lib/auth-context'
 import { prepareInsightDraft } from '@/lib/api'
+import { learnMoreHref } from '@/lib/detector-content'
 
 interface Action {
   id: string
@@ -130,7 +131,7 @@ export default function EventDetailClient() {
   const fallbackExplanation = event
     ? (EVENT_AI_EXPLANATION[event.id] ?? "This is a sample scenario, not based on your data yet. Connect your accounts and documents to see a personalized readiness assessment for this situation.")
     : 'This event could not be found.'
-  const { stability, explanation, hasLiveData, insightId } = useEventReadiness(params.eventId, fallbackStability, fallbackExplanation)
+  const { stability, explanation, hasLiveData, insightId, ruleId } = useEventReadiness(params.eventId, fallbackStability, fallbackExplanation)
 
   // Tier 1 "prepare, don't send" (PRD-103) — draftText is editable once
   // generated; the only exits are copy-to-clipboard and a mailto: link,
@@ -280,6 +281,11 @@ export default function EventDetailClient() {
             <span className="text-sm font-semibold text-family-400">AI Explains</span>
           </div>
           <p className="text-sm text-ink-secondary leading-relaxed">{explanation}</p>
+          {learnMoreHref(ruleId) && (
+            <Link href={learnMoreHref(ruleId)!} className="text-xs text-family-400 font-semibold mt-2 inline-block">
+              Learn more →
+            </Link>
+          )}
         </GlassCard>
       </motion.div>
 
