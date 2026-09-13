@@ -385,6 +385,8 @@ export default function FinancialProfilePage() {
   }
 
   const removeChild = (i: number) => {
+    const name = funds[i]?.childName || `Child ${i + 1}`
+    if (!window.confirm(`Remove the education fund for ${name}? This can't be undone.`)) return
     haptic('light')
     setFunds((prev) => prev.filter((_, idx) => idx !== i))
   }
@@ -399,6 +401,8 @@ export default function FinancialProfilePage() {
   }
 
   const removePolicy = (i: number) => {
+    const name = policies[i]?.provider || `Policy ${i + 1}`
+    if (!window.confirm(`Remove ${name}? This can't be undone.`)) return
     haptic('light')
     setPolicies((prev) => prev.filter((_, idx) => idx !== i))
   }

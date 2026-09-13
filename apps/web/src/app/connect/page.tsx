@@ -158,7 +158,10 @@ export default function ConnectPage() {
                           {isConnected ? (
                             <motion.button
                               whileTap={{ scale: 0.96 }}
-                              onClick={() => handleDisconnect(connector.id)}
+                              onClick={() => {
+                                if (!window.confirm(`Disconnect ${connector.name}? You'll need to reconnect it to keep using its data.`)) return
+                                handleDisconnect(connector.id)
+                              }}
                               disabled={isConnecting}
                               className="flex items-center gap-1.5 text-xs font-semibold text-danger px-3 py-2 rounded-xl bg-danger/10 disabled:opacity-50"
                             >

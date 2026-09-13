@@ -62,14 +62,19 @@ export default function RequestPasswordResetPage() {
       </div>
 
       <div className="space-y-3 mb-6">
-        <input
-          type="email"
-          placeholder="Email address"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-          className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-        />
+        <label htmlFor="reset-email" className="block">
+          <div className="text-xs text-ink-tertiary mb-1.5 px-1">Email address</div>
+          <input
+            id="reset-email"
+            type="email"
+            placeholder="Email address"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            autoComplete="email"
+            className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+          />
+        </label>
       </div>
 
       {error && (

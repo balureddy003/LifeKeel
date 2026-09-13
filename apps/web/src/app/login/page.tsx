@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Network } from 'lucide-react'
 import { GoogleIcon } from '@/components/GoogleIcon'
+import { PasswordInput } from '@/components/PasswordInput'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 
@@ -72,20 +73,28 @@ export default function LoginPage() {
       </div>
 
       <div className="space-y-3 mb-6">
-        <input
-          type="email"
-          placeholder="Email address"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-        />
+        <label htmlFor="login-email" className="block">
+          <div className="text-xs text-ink-tertiary mb-1.5 px-1">Email address</div>
+          <input
+            id="login-email"
+            type="email"
+            placeholder="Email address"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+          />
+        </label>
+        <div>
+          <label htmlFor="login-password" className="block text-xs text-ink-tertiary mb-1.5 px-1">Password</label>
+          <PasswordInput
+            id="login-password"
+            placeholder="Password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="current-password"
+          />
+        </div>
       </div>
 
       <Link

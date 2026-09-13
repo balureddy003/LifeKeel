@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Lock, CheckCircle2, AlertCircle } from 'lucide-react'
+import { PasswordInput } from '@/components/PasswordInput'
 import { confirmPasswordReset } from '@/lib/api'
 import { haptic } from '@/lib/haptics'
 
@@ -99,21 +100,27 @@ export default function ConfirmPasswordResetPage() {
       </div>
 
       <div className="space-y-3 mb-6">
-        <input
-          type="password"
-          placeholder="New password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-        />
-        <input
-          type="password"
-          placeholder="Confirm new password"
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-          className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-        />
+        <div>
+          <label htmlFor="confirm-new-password" className="block text-xs text-ink-tertiary mb-1.5 px-1">New password</label>
+          <PasswordInput
+            id="confirm-new-password"
+            placeholder="New password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="new-password"
+          />
+        </div>
+        <div>
+          <label htmlFor="confirm-new-password-repeat" className="block text-xs text-ink-tertiary mb-1.5 px-1">Confirm new password</label>
+          <PasswordInput
+            id="confirm-new-password-repeat"
+            placeholder="Confirm new password"
+            value={confirmPassword}
+            onChange={setConfirmPassword}
+            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            autoComplete="new-password"
+          />
+        </div>
       </div>
 
       {error && (

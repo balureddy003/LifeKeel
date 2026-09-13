@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Network } from 'lucide-react'
 import { GoogleIcon } from '@/components/GoogleIcon'
+import { PasswordInput } from '@/components/PasswordInput'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
@@ -76,27 +77,40 @@ export default function SignUpPage() {
       </div>
 
       <div className="space-y-3 mb-6">
-        <input
-          type="text"
-          placeholder="Your name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-        />
-        <input
-          type="email"
-          placeholder="Email address"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-        />
-        <input
-          type="password"
-          placeholder="Password (min. 8 characters)"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-        />
+        <label htmlFor="signup-name" className="block">
+          <div className="text-xs text-ink-tertiary mb-1.5 px-1">Your name</div>
+          <input
+            id="signup-name"
+            type="text"
+            placeholder="Your name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoComplete="name"
+            className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+          />
+        </label>
+        <label htmlFor="signup-email" className="block">
+          <div className="text-xs text-ink-tertiary mb-1.5 px-1">Email address</div>
+          <input
+            id="signup-email"
+            type="email"
+            placeholder="Email address"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+          />
+        </label>
+        <div>
+          <label htmlFor="signup-password" className="block text-xs text-ink-tertiary mb-1.5 px-1">Password (min. 8 characters)</label>
+          <PasswordInput
+            id="signup-password"
+            placeholder="Password (min. 8 characters)"
+            value={password}
+            onChange={setPassword}
+            autoComplete="new-password"
+          />
+        </div>
       </div>
 
       {error && (

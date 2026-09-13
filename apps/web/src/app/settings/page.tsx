@@ -148,6 +148,7 @@ export default function SettingsPage() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
+                        if (!window.confirm(`Remove ${m.name} from your family? This can't be undone.`)) return
                         haptic('warning')
                         removeMember(m.id).catch(() => haptic('warning'))
                       }}

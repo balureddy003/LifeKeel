@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Loader2, AlertCircle, CheckCircle2, ShieldCheck } from 'lucide-react'
 import { PageHeader, GlassCard, GlassButton } from '@/components/Glass'
 import { GoogleIcon } from '@/components/GoogleIcon'
+import { PasswordInput } from '@/components/PasswordInput'
 import { haptic } from '@/lib/haptics'
 import { useAppStore } from '@/lib/store'
 import { connectEmail, scanEmailInbox, startGmailOAuth, EMAIL_PROVIDER_OPTIONS } from '@/lib/api'
@@ -226,26 +227,29 @@ export default function ConnectEmailPage() {
       {showManualForm && (
         <>
           <GlassCard className="p-4 space-y-3">
-            <label className="block">
+            <label htmlFor="imap-email" className="block">
               <div className="text-xs text-ink-tertiary mb-1.5">Email address</div>
               <input
+                id="imap-email"
                 type="email"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="you@example.com"
+                autoComplete="email"
                 className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
               />
             </label>
-            <label className="block">
-              <div className="text-xs text-ink-tertiary mb-1.5">Password</div>
-              <input
-                type="password"
+            <div>
+              <label htmlFor="imap-password" className="block text-xs text-ink-tertiary mb-1.5">Password</label>
+              <PasswordInput
+                id="imap-password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={setPassword}
                 placeholder="••••••••••••"
-                className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                autoComplete="current-password"
+                inputClassName="glass-input w-full rounded-xl px-4 py-3 pr-11 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
               />
-            </label>
+            </div>
             {provider && (
               <p className="text-xs text-ink-tertiary leading-relaxed">{provider.passwordHint}</p>
             )}
