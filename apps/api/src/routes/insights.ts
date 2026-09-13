@@ -16,6 +16,8 @@ import type { ActionReceipt } from '@agentoak/workflows'
 import { ApprovalSignalHealthMonitor, createLlmRouterFromEnv, createLogger } from '@agentoak/platform'
 import { getInsightsCollection, getReceiptsCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
+import { recordInsightRouteError } from './metrics.js'
+import { sendOpsAlert } from '../lib/ops-alerts.js'
 import { ActionExecutor } from '../actions/action-executor.js'
 import { recordMomentDecision } from '../verified-moments.js'
 import { startGoalExperimentsForApproval } from '../outcomes/causal-experiments.js'
@@ -27,6 +29,23 @@ import {
 } from '../insights/consolidation.js'
 
 const log = createLogger({ service: 'insights', version: '0.0.0' })
+
+// OAK-008: every catch block below only ever runs for a genuine unexpected
+// failure — the legitimate not-found case is always handled by an explicit
+// check inside the try, never a throw. Before this, a real DB outage was
+// indistinguishable from "nothing here" to both the client and to ops.
+// Response shape/status is deliberately unchanged — this only adds the
+// missing internal signal.
+function reportInsightRouteError(route: string, err: unknown, tenantId: string): void {
+  recordInsightRouteError(route)
+  sendOpsAlert({
+    severity: 'critical',
+    title: 'Insight route error',
+    message: `${route} threw: ${err instanceof Error ? err.message : String(err)}`,
+    fingerprint: `insight-route-error:${route}`,
+    tenant_id: tenantId,
+  }).catch(() => {})
+}
 import { MongoMemoryRepository } from '@agentoak/mongodb-adapter'
 import { createHash, randomUUID } from 'node:crypto'
 import { FreeTierPolicy } from '@agentoak/platform'
@@ -149,6 +168,7 @@ export async function registerInsightRoutes(
       // "no insights yet" in the response, with nothing to tell them apart
       // in the logs either.
       log.warn({ err }, 'GET /insights failed')
+      reportInsightRouteError('GET /insights', err, tenant_id)
       return { insights: [], total: 0, limit, offset, has_more: false }
     }
   })
@@ -212,6 +232,7 @@ export async function registerInsightRoutes(
       }
     } catch (err) {
       log.warn({ err }, 'GET /insights/consolidated failed')
+      reportInsightRouteError('GET /insights/consolidated', err, tenant_id)
       return { groups: [], total: 0, limit, offset, has_more: false }
     }
   })
@@ -255,6 +276,7 @@ export async function registerInsightRoutes(
       }
     } catch (err) {
       log.warn({ err, entityKey }, 'GET /insights/entity/:entityKey failed')
+      reportInsightRouteError('GET /insights/entity/:entityKey', err, tenant_id)
       return { entity_key: entityKey, insights: [], count: 0, consolidated: null }
     }
   })
@@ -272,6 +294,7 @@ export async function registerInsightRoutes(
       return insight
     } catch (err) {
       log.warn({ err, id }, 'GET /insights/:id failed')
+      reportInsightRouteError('GET /insights/:id', err, tenant_id)
       return reply.status(404).send({ error: 'Insight not found' })
     }
   })
@@ -293,6 +316,7 @@ export async function registerInsightRoutes(
       }
     } catch (err) {
       log.warn({ err, id: request.params.id }, 'GET /moves/:id/evidence failed')
+      reportInsightRouteError('GET /moves/:id/evidence', err, tenant_id)
       return reply.status(404).send({ error: 'Move not found' })
     }
   })
@@ -312,6 +336,7 @@ export async function registerInsightRoutes(
       if (!insight) return reply.status(404).send({ error: 'Insight not found' })
     } catch (err) {
       log.warn({ err, id }, 'GET /insights/:id/explain failed')
+      reportInsightRouteError('GET /insights/:id/explain', err, tenant_id)
       return reply.status(404).send({ error: 'Insight not found' })
     }
 
@@ -517,6 +542,7 @@ export async function registerInsightRoutes(
         }
       } catch (err) {
         log.warn({ err, id }, 'POST /insights/:id/approve failed')
+        reportInsightRouteError('POST /insights/:id/approve', err, tenant_id)
         return reply.status(404).send({ error: 'Insight not found' })
       }
     },
@@ -644,6 +670,7 @@ export async function registerInsightRoutes(
         return { insight: result, message: 'Insight dismissed' }
       } catch (err) {
         log.warn({ err, id }, 'POST /insights/:id/dismiss failed')
+        reportInsightRouteError('POST /insights/:id/dismiss', err, tenant_id)
         return reply.status(404).send({ error: 'Insight not found' })
       }
     },
@@ -687,6 +714,7 @@ export async function registerInsightRoutes(
         return reply.send({ draft })
       } catch (err) {
         log.warn({ err, id }, 'Insight prepare failed')
+        reportInsightRouteError('POST /insights/:id/prepare', err, tenant_id)
         return reply.status(404).send({ error: 'Insight not found' })
       }
     },

@@ -14,6 +14,7 @@
  *   kairos_billing_credits_consumed_total counter (tenant_id)
  *   kairos_billing_payment_failures_total counter (tenant_id)
  *   kairos_billing_webhook_errors_total   counter (event_type)
+ *   kairos_insight_route_errors_total     counter (route)
  */
 
 import type { FastifyInstance } from 'fastify'
@@ -57,6 +58,7 @@ let llmCacheMisses: Counter | null = null
 let billingCreditsConsumed: Counter | null = null
 let billingPaymentFailures: Counter | null = null
 let billingWebhookErrors: Counter | null = null
+let insightRouteErrors: Counter | null = null
 let featureHashEvictions: Counter | null = null
 let featureHashCacheHits: Counter | null = null
 let featureHashCacheMisses: Counter | null = null
@@ -165,6 +167,17 @@ function initMetrics(registry: Registry): void {
     labelNames: ['event_type'],
     registers: [registry],
   })
+  // OAK-008: insights.ts's catch blocks only ever run for a genuine
+  // unexpected failure (DB outage, timeout, driver bug) — legitimate
+  // not-found is always handled by an explicit check inside the try, never
+  // a throw. Without this, that failure looked identical to "no insights
+  // yet" to both the client and ops.
+  insightRouteErrors = new Counter({
+    name: 'kairos_insight_route_errors_total',
+    help: 'Insight route errors that reached the catch block (never a legitimate not-found) by route',
+    labelNames: ['route'],
+    registers: [registry],
+  })
   // ML layer: FeatureHashScorer LRU cache metrics
   featureHashEvictions = new Counter({
     name: 'kairos_feature_hash_evictions_total',
@@ -202,6 +215,12 @@ export function recordPaymentFailure(tenantId: string): void {
 export function recordWebhookError(eventType: string): void {
   initMetrics(getRegistry())
   billingWebhookErrors!.inc({ event_type: eventType })
+}
+
+/** OAK-008: Record an insight route error for Prometheus metrics. */
+export function recordInsightRouteError(route: string): void {
+  initMetrics(getRegistry())
+  insightRouteErrors!.inc({ route })
 }
 
 export function recordApiRequest(method: string, route: string, statusCode: number, durationSeconds: number): void {
