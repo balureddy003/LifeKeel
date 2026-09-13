@@ -1,39 +1,41 @@
 import { describe, expect, it, vi } from 'vitest'
-import { signUpWithCollisionRetry } from '../ConversationalOnboarding'
+import { attemptOnboardingSignup } from '../ConversationalOnboarding'
 
-describe('OAK-017: signUpWithCollisionRetry', () => {
-  it('returns the first signUp result when there is no collision', async () => {
+describe('OAK-017: attemptOnboardingSignup', () => {
+  it('returns ok:true with the signed-up user on success', async () => {
     const signUp = vi.fn(async (_name: string, email: string) => ({ email }))
-    const result = await signUpWithCollisionRetry('Alex', 'alex@family.ai', 'pw', signUp)
-    expect(result).toEqual({ email: 'alex@family.ai' })
+    const outcome = await attemptOnboardingSignup('Alex', 'alex@example.com', 'pw', signUp)
+    expect(outcome).toEqual({ ok: true, user: { email: 'alex@example.com' } })
     expect(signUp).toHaveBeenCalledTimes(1)
   })
 
-  it('retries once with a suffixed email on an "Email already registered" collision', async () => {
-    const signUp = vi.fn()
-      .mockRejectedValueOnce(new Error('Email already registered'))
-      .mockResolvedValueOnce({ email: 'retried' })
-
-    const result = await signUpWithCollisionRetry('Alex', 'alex@family.ai', 'pw', signUp)
-
-    expect(result).toEqual({ email: 'retried' })
-    expect(signUp).toHaveBeenCalledTimes(2)
-    const secondCallEmail = signUp.mock.calls[1]![1] as string
-    expect(secondCallEmail).toMatch(/^alex\.[a-z0-9]+@family\.ai$/)
-    expect(secondCallEmail).not.toBe('alex@family.ai')
+  it('classifies an "Email already registered" error as a collision', async () => {
+    const signUp = vi.fn(async () => { throw new Error('Email already registered') })
+    const outcome = await attemptOnboardingSignup('Alex', 'alex@example.com', 'pw', signUp)
+    expect(outcome).toEqual({ ok: false, reason: 'collision', message: 'Email already registered' })
   })
 
-  it('does not retry and rethrows for any other error', async () => {
-    const signUp = vi.fn().mockRejectedValueOnce(new Error('Network error'))
-    await expect(signUpWithCollisionRetry('Alex', 'alex@family.ai', 'pw', signUp)).rejects.toThrow('Network error')
+  it('classifies any other error as "other"', async () => {
+    const signUp = vi.fn(async () => { throw new Error('Network error') })
+    const outcome = await attemptOnboardingSignup('Alex', 'alex@example.com', 'pw', signUp)
+    expect(outcome).toEqual({ ok: false, reason: 'other', message: 'Network error' })
+  })
+
+  it('does not retry with a mutated email on collision — unlike the old synthetic-email behavior', async () => {
+    const signUp = vi.fn(async () => { throw new Error('Email already registered') })
+    await attemptOnboardingSignup('Alex', 'alex@example.com', 'pw', signUp)
+
+    // A real, user-provided email collision means they already have an
+    // account — silently retrying with a suffixed variant would create a
+    // second, unreachable account, so this must call signUp exactly once
+    // with the original email, never a mutated one.
     expect(signUp).toHaveBeenCalledTimes(1)
+    expect(signUp).toHaveBeenCalledWith('Alex', 'alex@example.com', 'pw')
   })
 
-  it('propagates a second collision on the retry instead of looping forever', async () => {
-    const signUp = vi.fn()
-      .mockRejectedValueOnce(new Error('Email already registered'))
-      .mockRejectedValueOnce(new Error('Email already registered'))
-    await expect(signUpWithCollisionRetry('Alex', 'alex@family.ai', 'pw', signUp)).rejects.toThrow('Email already registered')
-    expect(signUp).toHaveBeenCalledTimes(2)
+  it('falls back to a generic message for a non-Error throw', async () => {
+    const signUp = vi.fn(async () => { throw 'weird non-error throw' })
+    const outcome = await attemptOnboardingSignup('Alex', 'alex@example.com', 'pw', signUp)
+    expect(outcome).toEqual({ ok: false, reason: 'other', message: 'Something went wrong creating your account.' })
   })
 })

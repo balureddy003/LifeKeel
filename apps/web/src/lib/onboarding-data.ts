@@ -42,6 +42,12 @@ export const ONBOARDING_QUESTIONS: OnboardingQuestion[] = [
     type: 'text',
   },
   {
+    id: 'email',
+    question: "What's your email? In case you ever need to get back in.",
+    hint: 'We only use this for account recovery',
+    type: 'text',
+  },
+  {
     id: 'married',
     question: 'Are you married or in a partnership?',
     hint: 'This helps us understand your family structure',

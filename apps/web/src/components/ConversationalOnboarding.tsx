@@ -16,23 +16,34 @@ interface ChatMsg {
   text: string
 }
 
-// OAK-017: the generated email is deterministic from the name alone, so
-// two "Alex" onboardings collide. Retries once with a short random suffix
-// on that specific collision rather than failing onboarding outright.
-// Exported standalone so the retry behavior can be unit tested without
-// mounting the whole chat flow.
-export async function signUpWithCollisionRetry<T>(
+export type SignupOutcome<T> =
+  | { ok: true; user: T }
+  | { ok: false; reason: 'collision'; message: string }
+  | { ok: false; reason: 'other'; message: string }
+
+// OAK-017: onboarding used to generate a synthetic, unreceivable
+// `@family.ai` email and silently retry with a random suffix on collision
+// — that account could never be recovered via the existing password-reset
+// flow, since nothing lives at that domain. Now takes the family's real
+// email (collected earlier in the chat) and signs up directly. A genuine
+// collision here means they already have an account — silently retrying
+// with a mutated version of their real email would create a second,
+// unreachable account and defeat the whole point of the fix, so the
+// caller is expected to point them to sign in instead.
+// Exported standalone so this stays unit-testable without mounting the
+// whole chat flow.
+export async function attemptOnboardingSignup<T>(
   name: string,
-  baseEmail: string,
+  email: string,
   password: string,
   signUp: (name: string, email: string, password: string) => Promise<T>,
-): Promise<T> {
+): Promise<SignupOutcome<T>> {
   try {
-    return await signUp(name, baseEmail, password)
+    const signedUpUser = await signUp(name, email, password)
+    return { ok: true, user: signedUpUser }
   } catch (err) {
-    if (!(err instanceof Error) || err.message !== 'Email already registered') throw err
-    const suffixedEmail = baseEmail.replace('@family.ai', `.${Math.random().toString(36).slice(2, 8)}@family.ai`)
-    return signUp(name, suffixedEmail, password)
+    const message = err instanceof Error ? err.message : 'Something went wrong creating your account.'
+    return { ok: false, reason: message === 'Email already registered' ? 'collision' : 'other', message }
   }
 }
 
@@ -148,6 +159,8 @@ export function ConversationalOnboarding() {
       newlyAdded = [{ id: 'self', emoji: '', name: answer, role: 'You', completion: 0 }]
       setMembers((prev) => [...prev, ...newlyAdded])
       addAIMessage(`Nice to meet you, ${answer}! Let's build your family graph.`)
+    } else if (currentQuestion.id === 'email') {
+      addAIMessage("Got it — that's your key back in if you ever need it.")
     } else if (currentQuestion.id === 'married' && answer.startsWith('Yes')) {
       addAIMessage('Great!')
     } else if (currentQuestion.id === 'married' && answer === 'No, single') {
@@ -195,10 +208,6 @@ export function ConversationalOnboarding() {
   }
 
   const finishOnboarding = async (allAnswers: Record<string, string>, allMembers: FamilyMemberDraft[]) => {
-    haptic('success')
-    addAIMessage('Your family graph is ready! Let me grow your Oak now.')
-    setFinished(true)
-
     const name = allAnswers.name || 'User'
 
     // If the person already has an account (came from Sign Up or Sign In),
@@ -207,13 +216,30 @@ export function ConversationalOnboarding() {
     if (!owner) {
       // Reached /family-setup directly without going through /signup first
       // (it's allowed pre-auth — see AppShell's isAuthRoute). There's no
-      // password field in this flow, so generate one; this account can
-      // still only be recovered by the browser session that created it
-      // until a real "set your password" step is added here.
-      const baseEmail = `${name.toLowerCase().replace(/\s+/g, '.')}@family.ai`
+      // password field in this flow, so generate one — the account stays
+      // recoverable via the real email collected in the 'email' question
+      // above and the existing password-reset flow.
+      const email = allAnswers.email?.trim() ?? ''
       const generatedPassword = crypto.randomUUID()
-      owner = await signUpWithCollisionRetry(name, baseEmail, generatedPassword, signUp)
+      const outcome = await attemptOnboardingSignup(name, email, generatedPassword, signUp)
+      if (!outcome.ok) {
+        if (outcome.reason === 'collision') {
+          addAIMessage(`Looks like ${email} already has an account with us — taking you to sign in.`)
+          setTimeout(() => router.push('/login'), 2000)
+        } else {
+          addAIMessage(`Hmm, that didn't go through: ${outcome.message}`)
+        }
+        submittingRef.current = false
+        setSubmitting(false)
+        return
+      }
+      owner = outcome.user
     }
+
+    haptic('success')
+    addAIMessage('Your family graph is ready! Let me grow your Oak now.')
+    setFinished(true)
+
     await createFamily(`${owner.name}'s Family`, owner)
 
     // createFamily seeds the roster with just the organizer — persist the
@@ -242,6 +268,11 @@ export function ConversationalOnboarding() {
 
   const handleTextSubmit = () => {
     if (!textValue.trim()) return
+    if (currentQuestion?.id === 'email' && !textValue.includes('@')) {
+      addAIMessage("That doesn't look like a valid email — mind trying again?")
+      setTextValue('')
+      return
+    }
     handleAnswer(textValue)
     setTextValue('')
   }
