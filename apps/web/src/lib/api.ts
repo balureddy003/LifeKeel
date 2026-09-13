@@ -601,11 +601,25 @@ export interface FinancialProfile {
   policies: FinancialProfilePolicy[]
 }
 
-export async function fetchFinancialProfile(): Promise<FinancialProfile | null> {
-  return apiFetch<{ profile: FinancialProfile | null }>(
+async function fetchFinancialProfileRaw(): Promise<{ profile: FinancialProfile | null; version: number }> {
+  return apiFetch<{ profile: FinancialProfile | null; version?: number }>(
     '/family/financial-profile',
     { profile: null },
-  ).then((r) => r.profile ?? null)
+  ).then((r) => ({ profile: r.profile ?? null, version: r.version ?? 0 }))
+}
+
+export async function fetchFinancialProfile(): Promise<FinancialProfile | null> {
+  return fetchFinancialProfileRaw().then((r) => r.profile)
+}
+
+/**
+ * Same as fetchFinancialProfile, plus the document's current version —
+ * OAK-006: the wizard needs this to detect (rather than silently overwrite)
+ * a concurrent edit from another tab/device. Only the wizard needs the
+ * version; every other caller keeps using the plain fetchFinancialProfile.
+ */
+export async function fetchFinancialProfileWithVersion(): Promise<{ profile: FinancialProfile | null; version: number }> {
+  return fetchFinancialProfileRaw()
 }
 
 // generateInsights defaults to false — most calls are the wizard's per-step
@@ -614,7 +628,14 @@ export async function fetchFinancialProfile(): Promise<FinancialProfile | null> 
 // produces a stale insight that never gets retracted once the real number
 // arrives later in the form, so only the final "Save & Generate Insights"
 // step should pass true.
-export async function submitFinancialProfile(profile: FinancialProfile, generateInsights = false): Promise<{ insightsGenerated: number }> {
+//
+// `version`, when passed, is sent so the server can detect a concurrent
+// edit from another tab/device (OAK-006) — omit it for a first-ever save.
+export async function submitFinancialProfile(
+  profile: FinancialProfile,
+  generateInsights = false,
+  version?: number,
+): Promise<{ insightsGenerated: number; version: number }> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -623,11 +644,14 @@ export async function submitFinancialProfile(profile: FinancialProfile, generate
   const res = await fetch(`${base}/family/financial-profile`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ ...profile, generate_insights: generateInsights }),
+    body: JSON.stringify({ ...profile, generate_insights: generateInsights, ...(version !== undefined ? { version } : {}) }),
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || 'Request failed')
-  return { insightsGenerated: data.insights_generated ?? 0 }
+  if (!res.ok) {
+    if (res.status === 409) throw new Error(data.error || 'This profile was updated elsewhere — reload and try again.')
+    throw new Error(data.error || 'Request failed')
+  }
+  return { insightsGenerated: data.insights_generated ?? 0, version: data.version ?? version ?? 0 }
 }
 
 // ── Password reset ───────────────────────────────────────────────────────

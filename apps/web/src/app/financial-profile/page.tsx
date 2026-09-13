@@ -9,7 +9,7 @@ import { haptic } from '@/lib/haptics'
 import { useAppStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
 import {
-  fetchFinancialProfile,
+  fetchFinancialProfileWithVersion,
   submitFinancialProfile,
   type EmploymentStatus,
   type FinancialProfile,
@@ -337,11 +337,17 @@ export default function FinancialProfilePage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<number | null>(null)
+  // OAK-006: tracked from the initial GET and updated after every
+  // successful save — sent back on the next save so the server can tell
+  // a concurrent edit from another tab/device apart from this tab's own
+  // sequential autosaves, instead of silently last-writer-wins overwriting.
+  const [version, setVersion] = useState<number | undefined>(undefined)
 
   useEffect(() => {
     let cancelled = false
-    fetchFinancialProfile().then((profile) => {
+    fetchFinancialProfileWithVersion().then(({ profile, version: v }) => {
       if (cancelled) return
+      setVersion(v)
       const { form: f, funds: e, policies: p } = profile
         ? fromProfile(profile)
         : { form: EMPTY_FORM, funds: [] as EducationFundForm[], policies: [] as PolicyForm[] }
@@ -411,10 +417,17 @@ export default function FinancialProfilePage() {
     setError(null)
     setSaving(true)
     try {
-      await submitFinancialProfile(toPayload(form, funds, policies))
-    } catch {
+      const { version: newVersion } = await submitFinancialProfile(toPayload(form, funds, policies), false, version)
+      setVersion(newVersion)
+    } catch (err) {
       // Best-effort — don't trap the user on this step if the autosave
       // fails; the full submit on the last step will surface a real error.
+      // The one exception: a 409 conflict means someone else's edits are
+      // sitting in this profile right now — silently continuing would let
+      // the final submit clobber them, so surface it immediately instead.
+      if (err instanceof Error && err.message.includes('updated elsewhere')) {
+        setError(err.message)
+      }
     } finally {
       setSaving(false)
     }
@@ -434,7 +447,8 @@ export default function FinancialProfilePage() {
     setError(null)
     setResult(null)
     try {
-      const { insightsGenerated } = await submitFinancialProfile(toPayload(form, funds, policies), true)
+      const { insightsGenerated, version: newVersion } = await submitFinancialProfile(toPayload(form, funds, policies), true, version)
+      setVersion(newVersion)
       haptic('success')
       setResult(insightsGenerated)
       setFinancialProfileSubmitted()

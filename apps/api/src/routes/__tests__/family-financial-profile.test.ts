@@ -28,9 +28,15 @@ function makeDb() {
   let stored: Record<string, unknown> | null = null
   const col = {
     findOne: vi.fn(async () => stored),
-    findOneAndUpdate: vi.fn(async (_filter: unknown, update: { $set: Record<string, unknown> }) => {
-      stored = { ...(stored ?? {}), ...update.$set }
-      return { value: stored }
+    // OAK-006: mirrors the real MongoDB driver's findOneAndUpdate — returns
+    // the matched-and-updated document directly (not wrapped in `.value`),
+    // or null when the filter (e.g. a version match) doesn't match anything
+    // existing, which is exactly the conflict case the route now checks for.
+    findOneAndUpdate: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown>; $inc?: Record<string, number> }) => {
+      if ('version' in filter && (stored?.['version'] ?? 0) !== filter['version']) return null
+      const currentVersion = (stored?.['version'] as number | undefined) ?? 0
+      stored = { ...(stored ?? {}), ...update.$set, version: currentVersion + (update.$inc?.['version'] ?? 0) }
+      return stored
     }),
     createIndex: vi.fn(async () => ({})),
   }
@@ -165,5 +171,53 @@ describe('PRD-102: policies[] and the new protection-domain rules', () => {
     })
     expect(insights.some((i) => i.rule_id === 'life_insurance_below_household_needs')).toBe(true)
     expect(insights.some((i) => i.rule_id === 'no_income_protection')).toBe(true)
+  })
+})
+
+describe('OAK-006: optimistic concurrency on POST /family/financial-profile', () => {
+  let engine: Engine
+
+  beforeEach(async () => {
+    engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
+    await engine.load()
+  })
+
+  it('first-ever save (no version) succeeds and returns version 1', async () => {
+    const { app } = await buildApp(engine)
+    const res = await app.inject({ method: 'POST', url: '/family/financial-profile', payload: BASE_PROFILE })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().version).toBe(1)
+  })
+
+  it('a save carrying the current version succeeds and bumps it', async () => {
+    const { app } = await buildApp(engine)
+    const first = await app.inject({ method: 'POST', url: '/family/financial-profile', payload: BASE_PROFILE })
+    const v1 = first.json().version
+
+    const second = await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, version: v1 } })
+    expect(second.statusCode).toBe(200)
+    expect(second.json().version).toBe(v1 + 1)
+  })
+
+  it('a save carrying a stale version is rejected with 409, not silently overwritten', async () => {
+    const { app } = await buildApp(engine)
+    const first = await app.inject({ method: 'POST', url: '/family/financial-profile', payload: BASE_PROFILE })
+    const v1 = first.json().version
+
+    // Simulate a second tab saving first, advancing the version...
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, version: v1 } })
+
+    // ...then the first tab, still holding the stale v1, tries to save.
+    const stale = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, household: { ...BASE_PROFILE.household, monthly_salary_minor: 1 }, version: v1 },
+    })
+    expect(stale.statusCode).toBe(409)
+    expect(stale.json().error).toMatch(/updated elsewhere/i)
+
+    // The stale write's field never landed.
+    const get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    expect(get.json().profile.household.monthly_salary_minor).not.toBe(1)
   })
 })

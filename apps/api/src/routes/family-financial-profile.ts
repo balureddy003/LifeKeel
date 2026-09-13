@@ -196,7 +196,7 @@ export async function registerFamilyFinancialProfileRoutes(
   rawProfiles.createIndex({ tenant_id: 1 }, { unique: true }).catch(() => {})
 
   const profileFor = (tenantId: string) =>
-    getTenantCollection<FinancialProfile & { tenant_id: string; updated_at: Date }>(
+    getTenantCollection<FinancialProfile & { tenant_id: string; updated_at: Date; version?: number }>(
       db,
       'family_financial_profile',
       tenantId,
@@ -206,12 +206,12 @@ export async function registerFamilyFinancialProfileRoutes(
     const { tenant_id } = req.authContext
     const doc = await profileFor(tenant_id).findOne({})
     if (!doc) return { profile: null }
-    const { tenant_id: _tenantId, updated_at, ...profile } = doc
-    return { profile, updatedAt: updated_at }
+    const { tenant_id: _tenantId, updated_at, version, ...profile } = doc
+    return { profile, updatedAt: updated_at, version: version ?? 0 }
   })
 
-  app.post<{ Body: FinancialProfile & { generate_insights?: boolean } }>('/family/financial-profile', async (req, reply) => {
-    const { generate_insights, ...body } = req.body
+  app.post<{ Body: FinancialProfile & { generate_insights?: boolean; version?: number } }>('/family/financial-profile', async (req, reply) => {
+    const { generate_insights, version: clientVersion, ...body } = req.body
     const parsed = FinancialProfileSchema.safeParse(body)
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Invalid financial profile', issues: parsed.error.issues })
@@ -219,11 +219,25 @@ export async function registerFamilyFinancialProfileRoutes(
     const { tenant_id } = req.authContext
     const profile = parsed.data
 
-    await profileFor(tenant_id).findOneAndUpdate(
-      {},
-      { $set: { ...profile, updated_at: new Date() } },
-      { upsert: true },
+    // OAK-006: optimistic concurrency. The multi-step wizard autosaves
+    // after every step, and two tabs/devices editing the same profile
+    // used to silently last-writer-wins overwrite each other's fields —
+    // the whole document is $set wholesale with no merge. A client that
+    // has read a version (every GET/POST response includes one) sends it
+    // back; if another write already moved the version on, this filter
+    // matches nothing and the caller gets a 409 instead of silently
+    // clobbering someone else's edits. A client on its first-ever save
+    // (no version yet) omits it and always succeeds.
+    const filter = clientVersion !== undefined ? { version: clientVersion } : {}
+    const result = await profileFor(tenant_id).findOneAndUpdate(
+      filter,
+      { $set: { ...profile, updated_at: new Date() }, $inc: { version: 1 } },
+      { upsert: true, returnDocument: 'after' },
     )
+    if (clientVersion !== undefined && !result) {
+      return reply.status(409).send({ error: 'This profile was updated elsewhere — reload and try again.' })
+    }
+    const newVersion = (result as unknown as { version?: number } | null)?.version ?? (clientVersion ?? 0) + 1
 
     // The multi-step form autosaves after every step (Continue), not just
     // the final "Save & Generate Insights" — evaluating detectors on every
@@ -234,7 +248,7 @@ export async function registerFamilyFinancialProfileRoutes(
     // caller-declared final submit generates insights; earlier steps just
     // persist progress so closing the tab mid-form doesn't lose it.
     if (!generate_insights) {
-      return reply.send({ ok: true, insights_generated: 0 })
+      return reply.send({ ok: true, insights_generated: 0, version: newVersion })
     }
 
     const educationGap = educationFundingGapMinor(profile.education_funds)
@@ -377,6 +391,6 @@ export async function registerFamilyFinancialProfileRoutes(
       await onInsightsGenerated(generatedInsights, tenant_id)
     }
 
-    return reply.send({ ok: true, insights_generated: generatedInsights.length })
+    return reply.send({ ok: true, insights_generated: generatedInsights.length, version: newVersion })
   })
 }

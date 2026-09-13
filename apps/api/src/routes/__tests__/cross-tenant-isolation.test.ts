@@ -70,14 +70,22 @@ function makeFakeCollection() {
       if (doc && update.$set) Object.assign(doc, update.$set)
       return { acknowledged: true, matchedCount: doc ? 1 : 0 }
     }),
-    findOneAndUpdate: vi.fn(async (filter: Record<string, unknown>, update: { $set?: Record<string, unknown> }, options?: { upsert?: boolean }) => {
+    // Returns the document directly (not wrapped in `.value`) and null on
+    // no match — matches the real MongoDB driver's shape, which
+    // family-financial-profile.ts's OAK-006 optimistic-concurrency check
+    // depends on.
+    findOneAndUpdate: vi.fn(async (filter: Record<string, unknown>, update: { $set?: Record<string, unknown>; $inc?: Record<string, number> }, options?: { upsert?: boolean }) => {
       let doc = docs.find((d) => matchesFilter(d, filter))
       if (!doc && options?.upsert) {
         doc = { ...filter }
         docs.push(doc)
       }
-      if (doc && update.$set) Object.assign(doc, update.$set)
-      return doc ? { value: doc } : null
+      if (!doc) return null
+      if (update.$set) Object.assign(doc, update.$set)
+      if (update.$inc) {
+        for (const [k, v] of Object.entries(update.$inc)) doc[k] = ((doc[k] as number) ?? 0) + v
+      }
+      return doc
     }),
     _docs: docs,
   }
