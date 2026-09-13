@@ -652,6 +652,43 @@ export async function confirmPasswordReset(token: string, newPassword: string): 
   if (!res.ok) throw new Error(data.error || 'Request failed')
 }
 
+// ── Public readiness quiz (PRD-201) ─────────────────────────────────────
+
+export interface ReadinessQuizAnswers {
+  monthly_salary_minor: number
+  emergency_savings_minor: number
+  monthly_expenses_minor: number
+  mortgage_outstanding_minor: number
+  life_cover_minor: number
+  dependents: number
+}
+
+export interface ReadinessQuizInsight {
+  hypothesis: string
+  reasoning: string
+  category: string
+  estimated_impact_low: number
+  estimated_impact_high: number
+}
+
+export interface ReadinessQuizResult {
+  score: number | null
+  insights: ReadinessQuizInsight[]
+  error?: string
+}
+
+/** Public, unauthenticated — no token, nothing tied to an identity. */
+export async function submitReadinessQuiz(answers: ReadinessQuizAnswers): Promise<ReadinessQuizResult> {
+  const res = await fetch(`${getApiBase()}/readiness-quiz`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(answers),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return { score: null, insights: [], error: data.error || 'Request failed' }
+  return { score: data.score ?? null, insights: data.insights ?? [], error: data.error }
+}
+
 // ── Billing (Oak Plus) ───────────────────────────────────────────────────
 
 export interface BillingSubscription {

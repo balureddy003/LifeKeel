@@ -77,6 +77,7 @@ import { registerGrowthEventRoutes } from './routes/growth-events.js'
 import { registerFamilyFinancialProfileRoutes } from './routes/family-financial-profile.js'
 import { registerFamilyInboxRoutes } from './routes/family-inbox.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
+import { registerReadinessQuizRoutes } from './routes/readiness-quiz.js'
 import { sendOpsAlert } from './lib/ops-alerts.js'
 
 // Inject the connector schema registry so the engine can validate event schema compatibility.
@@ -781,7 +782,7 @@ app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (request, bo
 // ─── Auth middleware ──────────────────────────────────────────────────────────
 
 app.addHook('onRequest', async (request, reply) => {
-  const open = ['/health', '/engine/health', '/metrics', '/auth/token', '/auth/demo-token', '/auth/signup', '/auth/login', '/auth/sso/', '/auth/google/', '/auth/github/', '/auth/request-password-reset', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/entitlements/plans', '/blog/posts', '/a/', '/why/', '/verify/', '/webhooks/', '/inbound/', '/insights/cleanup-stale-all', '/billing/webhook', '/documentation', '/documentation/json', '/documentation/uiOptions', '/documentation/static', '/growth/events']
+  const open = ['/health', '/engine/health', '/metrics', '/auth/token', '/auth/demo-token', '/auth/signup', '/auth/login', '/auth/sso/', '/auth/google/', '/auth/github/', '/auth/request-password-reset', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/entitlements/plans', '/blog/posts', '/a/', '/why/', '/verify/', '/webhooks/', '/inbound/', '/insights/cleanup-stale-all', '/billing/webhook', '/documentation', '/documentation/json', '/documentation/uiOptions', '/documentation/static', '/growth/events', '/readiness-quiz']
   if (/^\/connectors\/[^/]+\/oauth\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/exchange/.test(request.url)) return
@@ -1077,6 +1078,7 @@ if (workflowDb) {
   registerGrowthEventRoutes(app, workflowDb)
   registerFamilyInboxRoutes(app, workflowDb)
   registerAssistantRoutes(app, workflowDb)
+  registerReadinessQuizRoutes(app, workflowDb, engine)
   await registerFamilyFinancialProfileRoutes(app, workflowDb, engine, insightsDeliveryHook)
 }
 // Prometheus metrics — generic ops/observability, not vertical-specific.

@@ -89,6 +89,13 @@ export function MarketingLanding() {
             need it closed.
           </p>
         </div>
+        <Link
+          href="/readiness"
+          onClick={() => haptic('light')}
+          className="mt-2 block text-center text-[12.5px] font-semibold text-family-400"
+        >
+          Find your own number in 60 seconds →
+        </Link>
       </div>
 
       {/* Emergency Mode preview — the actual deliverable, not an abstract score.
