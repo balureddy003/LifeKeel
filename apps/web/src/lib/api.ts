@@ -486,6 +486,35 @@ export async function removeFamilyGroupMember(id: string): Promise<ApiFamilyGrou
   return familyGroupRequest(`/family/members/${id}`, 'DELETE')
 }
 
+// ── Insight drafts (Tier 1 "prepare, don't send" — PRD-103) ────────────────
+
+export interface InsightDraft {
+  content: string
+  generated_at: string
+}
+
+// Copy-to-clipboard / open-in-email-client only — there is no "send"
+// endpoint anywhere in this app, on purpose. See docs/prd/103-tier1-prepare-actions.md.
+export async function prepareInsightDraft(insightId: string): Promise<InsightDraft | null> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const res = await fetch(`${base}/insights/${insightId}/prepare`, {
+      method: 'POST',
+      headers,
+    })
+    if (!res.ok) return null
+    const data = await res.json().catch(() => null) as { draft?: InsightDraft | null } | null
+    return data?.draft ?? null
+  } catch (err) {
+    reportError(err, { insightId })
+    return null
+  }
+}
+
 // ── Inbox ─────────────────────────────────────────────────────────────────
 
 export async function dismissInboxItem(itemId: string): Promise<boolean> {

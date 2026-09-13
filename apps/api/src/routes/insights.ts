@@ -6,18 +6,20 @@
  * GET  /insights/:id/explain      — full rule evaluation trace
  * POST /insights/:id/approve      — approve + schedule actions
  * POST /insights/:id/dismiss      — dismiss insight
+ * POST /insights/:id/prepare      — draft an outreach message (Tier 1 — never sends)
  */
 
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import type { Engine, FeatureHashScorer, TenantLevelScorer, RecentInsight } from '@agentoak/engine'
 import type { ActionReceipt } from '@agentoak/workflows'
-import { ApprovalSignalHealthMonitor, createLogger } from '@agentoak/platform'
+import { ApprovalSignalHealthMonitor, createLlmRouterFromEnv, createLogger } from '@agentoak/platform'
 import { getInsightsCollection, getReceiptsCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { ActionExecutor } from '../actions/action-executor.js'
 import { recordMomentDecision } from '../verified-moments.js'
 import { startGoalExperimentsForApproval } from '../outcomes/causal-experiments.js'
+import { generateDraft } from '../insights/generate-draft.js'
 import {
   consolidateInsights,
   getDetectorPrioritySettings,
@@ -67,6 +69,9 @@ export async function registerInsightRoutes(
   tenantLevelScorer?: TenantLevelScorer,
 ): Promise<void> {
   const actionExecutor = db ? new ActionExecutor(db) : null
+  // Independent instance for insight.prepare (Tier 1 drafting) — same
+  // pattern as apps/api/src/routes/assistant.ts, no shared global needed.
+  const prepareLlmFn = createLlmRouterFromEnv()
   /**
    * GET /insights
    * Query params: category, urgency, state, goal_id, detectors (comma-separated
@@ -633,6 +638,43 @@ export async function registerInsightRoutes(
       }
     },
   )
+
+  /**
+   * POST /insights/:id/prepare
+   * Tier 1 "prepare, don't send" (docs/prd/103-tier1-prepare-actions.md):
+   * drafts an outreach message grounded in this insight for the family to
+   * review and send themselves. Deliberately minimal — no quota/credit
+   * gates, no ActionReceipt, no scorer updates — those belong to the
+   * heavier insight.approve/insight.dismiss flow this route does not
+   * extend from. Never sends anything: no email/SMS/API call happens
+   * here, on purpose (see apps/api/src/insights/generate-draft.ts).
+   */
+  app.post<{ Params: { id: string } }>('/insights/:id/prepare', async (request, reply) => {
+    const { tenant_id } = request.authContext
+    const { id } = request.params
+    try {
+      const col = await getInsightsCollection()
+      const insight = await col.findOne({ id, tenant_id })
+      if (!insight) return reply.status(404).send({ error: 'Insight not found' })
+
+      const content = await generateDraft(prepareLlmFn, {
+        reasoning: insight.reasoning,
+        category: insight.category,
+        detector_id: insight.detector_id,
+      })
+      if (!content) {
+        return reply.send({ draft: null, error: "Couldn't generate a draft right now — please try again later." })
+      }
+
+      const draft = { content, generated_at: new Date() }
+      await col.updateOne({ id, tenant_id }, { $set: { draft } })
+      getAuditLogger()?.fromRequest(request, 'insight.prepare', 'insight', id, {})
+      return reply.send({ draft })
+    } catch (err) {
+      log.warn({ err, id }, 'Insight prepare failed')
+      return reply.status(404).send({ error: 'Insight not found' })
+    }
+  })
 
   /**
    * GET /receipts

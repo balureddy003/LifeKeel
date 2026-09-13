@@ -4,12 +4,13 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { AlertTriangle, ArrowLeft, Bot, Check, CheckCircle2, HelpCircle } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Bot, Check, CheckCircle2, Copy, HelpCircle, Loader2, Mail, PenLine } from 'lucide-react'
 import { LIFE_EVENTS } from '@/lib/life-data'
 import { GlassCard, GlassButton, PageHeader } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { useEventReadiness } from '@/lib/useFamilyData'
 import { useAuth } from '@/lib/auth-context'
+import { prepareInsightDraft } from '@/lib/api'
 
 interface Action {
   id: string
@@ -129,7 +130,39 @@ export default function EventDetailClient() {
   const fallbackExplanation = event
     ? (EVENT_AI_EXPLANATION[event.id] ?? "This is a sample scenario, not based on your data yet. Connect your accounts and documents to see a personalized readiness assessment for this situation.")
     : 'This event could not be found.'
-  const { stability, explanation, hasLiveData } = useEventReadiness(params.eventId, fallbackStability, fallbackExplanation)
+  const { stability, explanation, hasLiveData, insightId } = useEventReadiness(params.eventId, fallbackStability, fallbackExplanation)
+
+  // Tier 1 "prepare, don't send" (PRD-103) — draftText is editable once
+  // generated; the only exits are copy-to-clipboard and a mailto: link,
+  // never a send call from this app.
+  const [drafting, setDrafting] = useState(false)
+  const [draftText, setDraftText] = useState<string | null>(null)
+  const [draftError, setDraftError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const handleDraft = async () => {
+    if (!insightId) return
+    haptic('light')
+    setDrafting(true)
+    setDraftError(null)
+    const draft = await prepareInsightDraft(insightId)
+    setDraftText(draft?.content ?? null)
+    if (!draft) setDraftError("Couldn't generate a draft right now — please try again later.")
+    setDrafting(false)
+  }
+
+  const handleCopy = async () => {
+    if (!draftText) return
+    try {
+      await navigator.clipboard.writeText(draftText)
+      haptic('success')
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Clipboard access can fail (permissions, insecure context) — the
+      // mailto: fallback below still works, so this is non-fatal.
+    }
+  }
 
   if (!event) {
     return (
@@ -249,6 +282,63 @@ export default function EventDetailClient() {
           <p className="text-sm text-ink-secondary leading-relaxed">{explanation}</p>
         </GlassCard>
       </motion.div>
+
+      {hasLiveData && insightId && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.45 }}
+        >
+          <GlassCard className="p-5 border-family-500/20">
+            <div className="flex items-center gap-2 mb-2">
+              <PenLine size={18} className="text-family-400" />
+              <span className="text-sm font-semibold text-family-400">Draft a message</span>
+            </div>
+            {!draftText ? (
+              <>
+                <p className="text-sm text-ink-tertiary leading-relaxed mb-3">
+                  Oak can draft an email based on this — you review and send it yourself. Oak never sends anything on your behalf.
+                </p>
+                <GlassButton variant="secondary" onClick={handleDraft} disabled={drafting}>
+                  {drafting ? <Loader2 size={18} className="animate-spin" /> : <PenLine size={18} />}
+                  <span>{drafting ? 'Drafting…' : 'Draft this for me'}</span>
+                </GlassButton>
+                {draftError && (
+                  <p className="text-sm text-ink-tertiary leading-relaxed mt-3">{draftError}</p>
+                )}
+              </>
+            ) : (
+              <div className="space-y-3">
+                <textarea
+                  value={draftText}
+                  onChange={(e) => setDraftText(e.target.value)}
+                  rows={6}
+                  className="glass-input w-full rounded-xl px-4 py-3 text-sm text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                />
+                <p className="text-xs text-ink-tertiary">
+                  This is a draft only — copy it or open it in your own email client. Oak never sends it for you.
+                </p>
+                <div className="flex gap-2">
+                  <GlassButton variant="secondary" onClick={handleCopy}>
+                    <Copy size={16} />
+                    <span>{copied ? 'Copied' : 'Copy'}</span>
+                  </GlassButton>
+                  <a
+                    href={`mailto:?body=${encodeURIComponent(draftText)}`}
+                    onClick={() => haptic('light')}
+                    className="flex-1"
+                  >
+                    <GlassButton variant="secondary">
+                      <Mail size={16} />
+                      <span>Open in email</span>
+                    </GlassButton>
+                  </a>
+                </div>
+              </div>
+            )}
+          </GlassCard>
+        </motion.div>
+      )}
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}

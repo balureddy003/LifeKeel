@@ -265,6 +265,7 @@ export function useEventReadiness(
   const [stability, setStability] = useState(fallbackStability)
   const [explanation, setExplanation] = useState(fallbackExplanation)
   const [hasLiveData, setHasLiveData] = useState(false)
+  const [insightId, setInsightId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -277,6 +278,7 @@ export function useEventReadiness(
           setStability(fallbackStability)
           setExplanation(fallbackExplanation)
           setHasLiveData(false)
+          setInsightId(null)
           setLoading(false)
         }
         return
@@ -291,10 +293,12 @@ export function useEventReadiness(
             setStability(matching.confidence > 0 ? Math.round(matching.confidence * 100) : fallbackStability)
             setExplanation(matching.reasoning || matching.hypothesis || fallbackExplanation)
             setHasLiveData(true)
+            setInsightId(matching.id)
           } else {
             setStability(fallbackStability)
             setExplanation(fallbackExplanation)
             setHasLiveData(false)
+            setInsightId(null)
           }
           setLoading(false)
         }
@@ -303,6 +307,7 @@ export function useEventReadiness(
           setStability(fallbackStability)
           setExplanation(fallbackExplanation)
           setHasLiveData(false)
+          setInsightId(null)
           setLoading(false)
         }
       }
@@ -311,5 +316,5 @@ export function useEventReadiness(
     return () => { cancelled = true }
   }, [eventId, fallbackStability, fallbackExplanation])
 
-  return { stability, explanation, hasLiveData, loading }
+  return { stability, explanation, hasLiveData, insightId, loading }
 }
