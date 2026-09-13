@@ -97,6 +97,9 @@ export default function ReadinessQuizPage() {
 
       {!result && (
         <div className="mt-4">
+          <p className="text-xs text-ink-tertiary mb-4">
+            Used only to calculate your score right now — nothing is saved or linked to you.
+          </p>
           <Field label="Monthly household income ($)" value={form.monthlySalary} onChange={set('monthlySalary')} />
           <Field label="Monthly living expenses ($)" value={form.monthlyExpenses} onChange={set('monthlyExpenses')} />
           <Field label="Emergency savings on hand ($)" value={form.emergencySavings} onChange={set('emergencySavings')} />

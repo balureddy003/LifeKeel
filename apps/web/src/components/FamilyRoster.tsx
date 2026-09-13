@@ -121,7 +121,13 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
                 onClick={isAsset ? () => { haptic('light'); router.push(`/asset/${s.navId}`) } : undefined}
                 role={isAsset ? 'button' : undefined}
                 tabIndex={isAsset ? 0 : undefined}
-                onKeyDown={isAsset ? (e) => { if (e.key === 'Enter') { haptic('light'); router.push(`/asset/${s.navId}`) } } : undefined}
+                onKeyDown={isAsset ? (e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    if (e.key === ' ') e.preventDefault()
+                    haptic('light')
+                    router.push(`/asset/${s.navId}`)
+                  }
+                } : undefined}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 bg-white/[0.03] ${isAsset ? 'active:opacity-70 cursor-pointer' : ''}`}
               >
                 <div

@@ -13,6 +13,26 @@ const POLICY_TYPE_LABELS: Record<PolicyType, string> = {
   critical_illness: 'Critical Illness',
 }
 
+const RENEWAL_WINDOW_DAYS = 60
+
+// OAK-013: client-side mirror of family-financial-profile.ts's
+// soonestPolicyRenewal — surfaces the same "days until renewal" data the
+// policy_renewal_window detector already computes server-side, as a badge
+// on the Protection story instead of leaving it uncomputed on the client.
+function soonestRenewalWithinWindow(policies: FinancialProfilePolicy[]): number | null {
+  const now = Date.now()
+  let soonest: number | null = null
+  for (const policy of policies) {
+    if (!policy.renewal_date) continue
+    const renewalMs = new Date(policy.renewal_date).getTime()
+    if (Number.isNaN(renewalMs)) continue
+    const days = Math.ceil((renewalMs - now) / 86_400_000)
+    if (days < 0 || days > RENEWAL_WINDOW_DAYS) continue
+    if (soonest === null || days < soonest) soonest = days
+  }
+  return soonest
+}
+
 export type GraphCategory = 'protection' | 'wealth' | 'goals' | 'family'
 
 export interface MemberSection {
@@ -116,8 +136,9 @@ export function getMemberSections(member: FamilyMember, policies: FinancialProfi
 
     const cat = BRANCH_CATEGORY[branch.icon] ?? 'wealth'
     const isProtectionBranch = branch.icon === 'ShieldCheck'
+    const renewalDays = isProtectionBranch ? soonestRenewalWithinWindow(policies) : null
     const story = isProtectionBranch && policies.length > 0
-      ? `${policies.length} ${policies.length === 1 ? 'policy' : 'policies'}: ${[...new Set(policies.map((p) => POLICY_TYPE_LABELS[p.type]))].join(', ')}`
+      ? `${policies.length} ${policies.length === 1 ? 'policy' : 'policies'}: ${[...new Set(policies.map((p) => POLICY_TYPE_LABELS[p.type]))].join(', ')}${renewalDays !== null ? ` · renews in ${renewalDays} ${renewalDays === 1 ? 'day' : 'days'}` : ''}`
       : `Includes ${branch.items.join(', ')}`
     sections.push({
       id: `branch-${member.id}-${branch.label}`,

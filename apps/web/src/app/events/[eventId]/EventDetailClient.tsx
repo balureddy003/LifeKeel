@@ -10,25 +10,43 @@ import { GlassCard, GlassButton, PageHeader } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { useEventReadiness } from '@/lib/useFamilyData'
 import { useAuth } from '@/lib/auth-context'
-import { prepareInsightDraft } from '@/lib/api'
+import { prepareInsightDraft, fetchFinancialProfile, type FinancialProfilePolicy, type PolicyType } from '@/lib/api'
 import { learnMoreHref } from '@/lib/detector-content'
 
-interface Action {
+export interface Action {
   id: string
   label: string
   done: boolean
+  // OAK-014: when set, and a policy of one of these types exists on the
+  // household's financial profile, personalize() replaces the generic
+  // label with one naming the real provider — otherwise the generic label
+  // (above) renders unchanged.
+  policyTypes?: PolicyType[]
+  personalize?: (provider: string) => string
 }
 
-const EVENT_ACTIONS: Record<string, Action[]> = {
+export const EVENT_ACTIONS: Record<string, Action[]> = {
   bereavement: [
-    { id: '1', label: 'Call your life insurance provider to start a claim', done: false },
+    {
+      id: '1',
+      label: 'Call your life insurance provider to start a claim',
+      done: false,
+      policyTypes: ['life'],
+      personalize: (provider) => `Call ${provider} about your life insurance claim`,
+    },
     { id: '2', label: 'Contact employer for survivor benefits', done: false },
     { id: '3', label: 'Notify pension provider for survivor pension', done: false },
     { id: '4', label: 'Check whether your mortgage has protection cover', done: false },
     { id: '5', label: 'Schedule a meeting with a financial advisor', done: false },
   ],
   medical: [
-    { id: '1', label: 'Review your health insurance coverage details', done: false },
+    {
+      id: '1',
+      label: 'Review your health insurance coverage details',
+      done: false,
+      policyTypes: ['health', 'critical_illness'],
+      personalize: (provider) => `Review your ${provider} coverage details`,
+    },
     { id: '2', label: 'Check if pre-authorization is needed for treatment', done: false },
     { id: '3', label: 'Confirm your annual out-of-pocket maximum', done: false },
     { id: '4', label: 'Check your HSA balance for eligible expenses', done: false },
@@ -102,12 +120,23 @@ function saveDoneIds(eventId: string, doneIds: Set<string>): void {
   }
 }
 
+// OAK-014: the checklist used to be 100% generic strings even when the
+// family had already told Oak who their real provider is — this swaps in
+// that real name wherever a matching policy exists, leaving the generic
+// text alone otherwise.
+export function personalizeAction(action: Action, policies: FinancialProfilePolicy[]): string {
+  if (!action.policyTypes || !action.personalize) return action.label
+  const match = policies.find((p) => action.policyTypes!.includes(p.type))
+  return match ? action.personalize(match.provider) : action.label
+}
+
 export default function EventDetailClient() {
   const params = useParams<{ eventId: string }>()
   const event = LIFE_EVENTS.find((e) => e.id === params.eventId)
   const [actions, setActions] = useState<Action[]>(
     EVENT_ACTIONS[event?.id ?? 'default'] ?? EVENT_ACTIONS.default!
   )
+  const [policies, setPolicies] = useState<FinancialProfilePolicy[]>([])
 
   // Apply persisted completion after mount (not in useState's initializer)
   // so server-rendered and first-client-render output match — avoids a
@@ -117,6 +146,14 @@ export default function EventDetailClient() {
     if (done.size === 0) return
     setActions((prev) => prev.map((a) => ({ ...a, done: done.has(a.id) })))
   }, [params.eventId])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchFinancialProfile().then((profile) => {
+      if (!cancelled) setPolicies(profile?.policies ?? [])
+    })
+    return () => { cancelled = true }
+  }, [])
 
   const toggleAction = (id: string) => {
     haptic('light')
@@ -263,7 +300,7 @@ export default function EventDetailClient() {
                 {action.done && <Check size={14} color="#08080c" />}
               </motion.div>
               <span className={`text-sm text-left flex-1 ${action.done ? 'text-ink-tertiary line-through' : 'text-ink-primary'}`}>
-                {action.label}
+                {personalizeAction(action, policies)}
               </span>
             </motion.button>
           ))}

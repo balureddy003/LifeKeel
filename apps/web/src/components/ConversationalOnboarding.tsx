@@ -16,6 +16,26 @@ interface ChatMsg {
   text: string
 }
 
+// OAK-017: the generated email is deterministic from the name alone, so
+// two "Alex" onboardings collide. Retries once with a short random suffix
+// on that specific collision rather than failing onboarding outright.
+// Exported standalone so the retry behavior can be unit tested without
+// mounting the whole chat flow.
+export async function signUpWithCollisionRetry<T>(
+  name: string,
+  baseEmail: string,
+  password: string,
+  signUp: (name: string, email: string, password: string) => Promise<T>,
+): Promise<T> {
+  try {
+    return await signUp(name, baseEmail, password)
+  } catch (err) {
+    if (!(err instanceof Error) || err.message !== 'Email already registered') throw err
+    const suffixedEmail = baseEmail.replace('@family.ai', `.${Math.random().toString(36).slice(2, 8)}@family.ai`)
+    return signUp(name, suffixedEmail, password)
+  }
+}
+
 function GrowingGraph({ members }: { members: FamilyMemberDraft[] }) {
   return (
     <div className="flex flex-col items-center gap-1 py-2">
@@ -190,9 +210,9 @@ export function ConversationalOnboarding() {
       // password field in this flow, so generate one; this account can
       // still only be recovered by the browser session that created it
       // until a real "set your password" step is added here.
-      const email = `${name.toLowerCase().replace(/\s+/g, '.')}@family.ai`
+      const baseEmail = `${name.toLowerCase().replace(/\s+/g, '.')}@family.ai`
       const generatedPassword = crypto.randomUUID()
-      owner = await signUp(name, email, generatedPassword)
+      owner = await signUpWithCollisionRetry(name, baseEmail, generatedPassword, signUp)
     }
     await createFamily(`${owner.name}'s Family`, owner)
 
