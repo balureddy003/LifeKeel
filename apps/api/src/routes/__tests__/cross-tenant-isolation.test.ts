@@ -207,7 +207,7 @@ describe('OAK-009: HTTP-level cross-tenant isolation', () => {
       const app = Fastify()
       app.addHook('onRequest', authHook(tenantId))
       await registerInsightRoutes(app, {} as any)
-      return app
+      return { app, col: insightsCol }
     }
 
     const tenantAInsight = {
@@ -223,7 +223,7 @@ describe('OAK-009: HTTP-level cross-tenant isolation', () => {
     }
 
     it('tenant B cannot list or fetch-by-id tenant A\'s insight', async () => {
-      const app = await buildInsightsApp(TENANT_B, [tenantAInsight])
+      const { app } = await buildInsightsApp(TENANT_B, [tenantAInsight])
 
       const list = await app.inject({ method: 'GET', url: '/insights' })
       expect(list.json().insights).toHaveLength(0)
@@ -234,7 +234,7 @@ describe('OAK-009: HTTP-level cross-tenant isolation', () => {
     })
 
     it('sanity check: tenant A can see their own insight via the same setup', async () => {
-      const app = await buildInsightsApp(TENANT_A, [tenantAInsight])
+      const { app } = await buildInsightsApp(TENANT_A, [tenantAInsight])
 
       const byId = await app.inject({ method: 'GET', url: '/insights/insight-a-1' })
       expect(byId.statusCode).toBe(200)
@@ -242,6 +242,43 @@ describe('OAK-009: HTTP-level cross-tenant isolation', () => {
 
       const list = await app.inject({ method: 'GET', url: '/insights' })
       expect(list.json().total).toBe(1)
+    })
+
+    // OAK-009: the tests above only cover GET routes. approve/dismiss are
+    // the state-mutating endpoints closest to the original exploit chain
+    // (a tenant acting on data that isn't theirs), and had zero HTTP-level
+    // isolation coverage — both already filter correctly
+    // (`{ id, tenant_id, state }` in findOneAndUpdate), this closes the gap
+    // between "correct" and "proven correct by a real request."
+    it('tenant B cannot approve tenant A\'s insight via POST /insights/:id/approve', async () => {
+      const { app, col } = await buildInsightsApp(TENANT_B, [{ ...tenantAInsight }])
+
+      const res = await app.inject({ method: 'POST', url: '/insights/insight-a-1/approve', payload: {} })
+      expect(res.statusCode).toBe(404)
+
+      const doc = col._docs.find((d) => d['id'] === 'insight-a-1')
+      expect(doc?.['state']).toBe('identified')
+    })
+
+    it('tenant B cannot dismiss tenant A\'s insight via POST /insights/:id/dismiss', async () => {
+      const { app, col } = await buildInsightsApp(TENANT_B, [{ ...tenantAInsight }])
+
+      const res = await app.inject({ method: 'POST', url: '/insights/insight-a-1/dismiss', payload: {} })
+      expect(res.statusCode).toBe(404)
+
+      const doc = col._docs.find((d) => d['id'] === 'insight-a-1')
+      expect(doc?.['state']).toBe('identified')
+    })
+
+    it('sanity check: tenant A can approve their own insight', async () => {
+      const { app, col } = await buildInsightsApp(TENANT_A, [{ ...tenantAInsight }])
+
+      const res = await app.inject({ method: 'POST', url: '/insights/insight-a-1/approve', payload: {} })
+      expect(res.statusCode).toBe(200)
+      expect(res.json().insight.state).toBe('completed')
+
+      const doc = col._docs.find((d) => d['id'] === 'insight-a-1')
+      expect(doc?.['state']).toBe('completed')
     })
   })
 })
