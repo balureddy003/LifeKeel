@@ -215,16 +215,23 @@ export async function registerSocialAuthRoutes(
         email: string
         name: string
         picture?: string
+        verified_email?: boolean
       }
 
       // Find or create user
       const usersCol = db.collection('users')
-      let user: any = await usersCol.findOne({ 
+      let user: any = await usersCol.findOne({
         $or: [
           { email: googleUser.email.toLowerCase() },
           { external_id: googleUser.id, external_provider: 'google' }
         ]
       })
+      // OAK-005: computed from the pre-update `user` doc, before any write —
+      // if the external_id+provider $or clause matched, this is definitionally
+      // true (same OAuth identity re-authenticating, safe regardless of
+      // verified_email); if false, only the email clause could have matched,
+      // meaning this is a merge onto an account by email alone.
+      const matchedByExternalId = user?.external_id === googleUser.id && user?.external_provider === 'google'
 
       if (!user) {
         const tenantId = googleUser.email.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
@@ -291,6 +298,16 @@ export async function registerSocialAuthRoutes(
           updated_at: new Date(),
         })
       } else {
+        // OAK-005: a merge onto an existing account by email match alone
+        // (not an already-linked identity re-authenticating) requires the
+        // provider to attest the email as verified — otherwise anyone who
+        // creates an OAuth account with an unverified copy of someone
+        // else's email address could get silently linked into that
+        // person's existing account.
+        if (!matchedByExternalId && !googleUser.verified_email) {
+          return reply.redirect(getLoginErrorUrl(app, 'email_not_verified'))
+        }
+
         // Update existing user with Google info if needed
         await usersCol.updateOne(
           { _id: user._id },
@@ -406,16 +423,18 @@ export async function registerSocialAuthRoutes(
         email: string
         name: string
         picture?: string
+        verified_email?: boolean
       }
 
       // Find or create user
       const usersCol = db.collection('users')
-      let user: any = await usersCol.findOne({ 
+      let user: any = await usersCol.findOne({
         $or: [
           { email: googleUser.email.toLowerCase() },
           { external_id: googleUser.id, external_provider: 'google' }
         ]
       })
+      const matchedByExternalId = user?.external_id === googleUser.id && user?.external_provider === 'google'
 
       if (!user) {
         const tenantId = googleUser.email.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
@@ -474,16 +493,23 @@ export async function registerSocialAuthRoutes(
           updated_at: new Date(),
         })
       } else {
+        // OAK-005 — see the matching Google callback guard for the full
+        // explanation. This route is JSON-only, so it rejects with 403
+        // rather than a redirect.
+        if (!matchedByExternalId && !googleUser.verified_email) {
+          return reply.status(403).send({ error: 'This email is not verified with the OAuth provider — sign in with your existing account instead.' })
+        }
+
         // Update existing user with Google info if needed
         await usersCol.updateOne(
           { _id: user._id },
           {
-            $set: { 
+            $set: {
               external_id: googleUser.id,
               external_provider: 'google',
               email_verified: true,
               updated_at: new Date(),
-            } 
+            }
           }
         )
       }
@@ -606,27 +632,34 @@ export async function registerSocialAuthRoutes(
         avatar_url?: string
       }
 
-      // Get primary email if not provided
+      // OAK-005: previously only fetched when `/user` didn't already
+      // return an email — meaning for the common case (public email set),
+      // no verification signal was ever available at the merge-decision
+      // point below. Now always fetched so `emailVerified` is meaningful
+      // regardless of which path produced `email`.
       let email = githubUser.email
-      if (!email) {
-        const emailsRes = await fetch('https://api.github.com/user/emails', {
-          headers: { Authorization: `Bearer ${tokenData.access_token}` },
-        })
-        if (emailsRes.ok) {
-          const emails = await emailsRes.json() as Array<{ email: string; primary: boolean; verified: boolean }>
+      let emailVerified = false
+      const emailsRes = await fetch('https://api.github.com/user/emails', {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      })
+      if (emailsRes.ok) {
+        const emails = await emailsRes.json() as Array<{ email: string; primary: boolean; verified: boolean }>
+        if (!email) {
           const primaryEmail = emails.find(e => e.primary && e.verified)
           email = primaryEmail?.email || `${githubUser.login}@users.noreply.github.com`
         }
+        emailVerified = emails.some(e => e.email.toLowerCase() === email!.toLowerCase() && e.verified)
       }
 
       // Find or create user
       const usersCol = db.collection('users')
-      let user: any = await usersCol.findOne({ 
+      let user: any = await usersCol.findOne({
         $or: [
           { email: email!.toLowerCase() },
           { external_id: String(githubUser.id), external_provider: 'github' }
         ]
       })
+      const matchedByExternalId = user?.external_id === String(githubUser.id) && user?.external_provider === 'github'
 
       if (!user) {
         const tenantId = email!.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
@@ -687,6 +720,12 @@ export async function registerSocialAuthRoutes(
           updated_at: new Date(),
         })
       } else {
+        // OAK-005 — see the matching Google callback guard for the full
+        // explanation.
+        if (!matchedByExternalId && !emailVerified) {
+          return reply.redirect(`${studioUrl}/login?error=email_not_verified`)
+        }
+
         // Update existing user with GitHub info if needed
         await usersCol.updateOne(
           { _id: user._id },
@@ -794,27 +833,34 @@ export async function registerSocialAuthRoutes(
         avatar_url?: string
       }
 
-      // Get primary email if not provided
+      // OAK-005: previously only fetched when `/user` didn't already
+      // return an email — meaning for the common case (public email set),
+      // no verification signal was ever available at the merge-decision
+      // point below. Now always fetched so `emailVerified` is meaningful
+      // regardless of which path produced `email`.
       let email = githubUser.email
-      if (!email) {
-        const emailsRes = await fetch('https://api.github.com/user/emails', {
-          headers: { Authorization: `Bearer ${tokenData.access_token}` },
-        })
-        if (emailsRes.ok) {
-          const emails = await emailsRes.json() as Array<{ email: string; primary: boolean; verified: boolean }>
+      let emailVerified = false
+      const emailsRes = await fetch('https://api.github.com/user/emails', {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      })
+      if (emailsRes.ok) {
+        const emails = await emailsRes.json() as Array<{ email: string; primary: boolean; verified: boolean }>
+        if (!email) {
           const primaryEmail = emails.find(e => e.primary && e.verified)
           email = primaryEmail?.email || `${githubUser.login}@users.noreply.github.com`
         }
+        emailVerified = emails.some(e => e.email.toLowerCase() === email!.toLowerCase() && e.verified)
       }
 
       // Find or create user
       const usersCol = db.collection('users')
-      let user: any = await usersCol.findOne({ 
+      let user: any = await usersCol.findOne({
         $or: [
           { email: email!.toLowerCase() },
           { external_id: String(githubUser.id), external_provider: 'github' }
         ]
       })
+      const matchedByExternalId = user?.external_id === String(githubUser.id) && user?.external_provider === 'github'
 
       if (!user) {
         const tenantId = email!.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
@@ -873,6 +919,12 @@ export async function registerSocialAuthRoutes(
           updated_at: new Date(),
         })
       } else {
+        // OAK-005 — see the matching Google guard for the full
+        // explanation. This route is JSON-only, so it rejects with 403.
+        if (!matchedByExternalId && !emailVerified) {
+          return reply.status(403).send({ error: 'This email is not verified with the OAuth provider — sign in with your existing account instead.' })
+        }
+
         // Update existing user with GitHub info if needed
         await usersCol.updateOne(
           { _id: user._id },

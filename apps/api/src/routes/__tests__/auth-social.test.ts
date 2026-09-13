@@ -5,6 +5,12 @@
  * before this fix, silently admitted a brand-new admin user into whatever
  * tenant already existed there. No test existed for this route at all
  * before this file.
+ *
+ * OAK-005: a login that matches an EXISTING user by email alone (not by an
+ * already-linked external_id+provider) must not be silently merged into
+ * that account unless the provider attests the email as verified —
+ * otherwise anyone who signs up with an unverified copy of someone else's
+ * email address could get linked into that person's account.
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
@@ -25,8 +31,8 @@ function matchesClause(doc: Record<string, unknown>, clause: Record<string, unkn
   return Object.entries(clause).every(([k, v]) => doc[k] === v)
 }
 
-function makeDb(existingTenantIds: string[] = []) {
-  const users: Record<string, unknown>[] = []
+function makeDb(existingTenantIds: string[] = [], existingUsers: Record<string, unknown>[] = []) {
+  const users: Record<string, unknown>[] = existingUsers.map((u) => ({ _id: u['id'], ...u }))
   const tenants: Record<string, unknown>[] = existingTenantIds.map((tenant_id) => ({ tenant_id }))
 
   const usersCol = {
@@ -37,7 +43,13 @@ function makeDb(existingTenantIds: string[] = []) {
       users.push(doc)
       return { insertedId: 'stub' }
     }),
-    updateOne: vi.fn(async () => ({ acknowledged: true })),
+    // Mutates the stored doc — OAK-005's merge tests assert the persisted
+    // email_verified/external_id after a merge, not just insert counts.
+    updateOne: vi.fn(async (filter: { _id: unknown }, update: { $set: Record<string, unknown> }) => {
+      const doc = users.find((u) => u['_id'] === filter._id)
+      if (doc) Object.assign(doc, update.$set)
+      return { acknowledged: true }
+    }),
   }
   const tenantsCol = {
     findOne: vi.fn(async (filter: { tenant_id: string }) => tenants.find((t) => t['tenant_id'] === filter.tenant_id) ?? null),
@@ -61,7 +73,7 @@ function jsonResponse(body: unknown, ok = true, status = 200) {
   return { ok, status, json: async () => body, text: async () => JSON.stringify(body) } as Response
 }
 
-async function buildApp(existingTenantIds: string[] = []) {
+async function buildApp(existingTenantIds: string[] = [], existingUsers: Record<string, unknown>[] = []) {
   process.env['JWT_SECRET'] = JWT_SECRET
   process.env['GOOGLE_CLIENT_ID'] = 'g-client'
   process.env['GOOGLE_CLIENT_SECRET'] = 'g-secret'
@@ -70,24 +82,38 @@ async function buildApp(existingTenantIds: string[] = []) {
 
   const app = Fastify()
   const auth = new AuthService(JWT_SECRET)
-  const { db, users, tenants } = makeDb(existingTenantIds)
+  const { db, users, tenants } = makeDb(existingTenantIds, existingUsers)
   await registerSocialAuthRoutes(app, auth, db)
   return { app, users, tenants }
 }
 
+// Module-level so per-test overrides (googleVerifiedEmail/githubEmailVerified)
+// can vary the mocked userinfo/emails responses without redefining the whole stub.
+let googleVerifiedEmail = true
+let githubEmailVerified = true
+
+function stubFetch() {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url === 'https://oauth2.googleapis.com/token') return jsonResponse({ access_token: 'g-tok' })
+    if (url === 'https://www.googleapis.com/oauth2/v2/userinfo') {
+      return jsonResponse({ id: 'google-1', email: 'sarah@gmail.com', name: 'Sarah', verified_email: googleVerifiedEmail })
+    }
+    if (url === 'https://github.com/login/oauth/access_token') return jsonResponse({ access_token: 'gh-tok' })
+    if (url === 'https://api.github.com/user') {
+      return jsonResponse({ id: 99, email: 'sarah@users.example', login: 'sarah', name: 'Sarah' })
+    }
+    if (url === 'https://api.github.com/user/emails') {
+      return jsonResponse([{ email: 'sarah@users.example', primary: true, verified: githubEmailVerified }])
+    }
+    throw new Error(`unexpected fetch: ${url}`)
+  }))
+}
+
 describe('OAK-001: OAuth signup rejects a colliding tenant_id', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      if (url === 'https://oauth2.googleapis.com/token') return jsonResponse({ access_token: 'g-tok' })
-      if (url === 'https://www.googleapis.com/oauth2/v2/userinfo') {
-        return jsonResponse({ id: 'google-1', email: 'sarah@gmail.com', name: 'Sarah' })
-      }
-      if (url === 'https://github.com/login/oauth/access_token') return jsonResponse({ access_token: 'gh-tok' })
-      if (url === 'https://api.github.com/user') {
-        return jsonResponse({ id: 99, email: 'sarah@users.example', login: 'sarah', name: 'Sarah' })
-      }
-      throw new Error(`unexpected fetch: ${url}`)
-    }))
+    googleVerifiedEmail = true
+    githubEmailVerified = true
+    stubFetch()
   })
 
   afterEach(() => {
@@ -151,5 +177,102 @@ describe('OAK-001: OAuth signup rejects a colliding tenant_id', () => {
     const githubRes = await githubApp.inject({ method: 'POST', url: '/auth/github/exchange', payload: { code: 'c', state: githubState } })
     expect(githubRes.statusCode).toBe(200)
     expect(githubUsers).toHaveLength(1)
+  })
+})
+
+describe('OAK-005: OAuth merge onto an existing account requires a verified email', () => {
+  beforeEach(() => {
+    googleVerifiedEmail = true
+    githubEmailVerified = true
+    stubFetch()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const existingUserByEmail = { id: 'existing-1', email: 'sarah@gmail.com', tenant_id: 'sarah-family', roles: ['admin'] }
+  const existingUserByExternalId = { id: 'existing-2', email: 'someone-else@example.com', tenant_id: 'other-family', roles: ['admin'], external_id: 'google-1', external_provider: 'google' }
+
+  it('Google: unverified email matched by email alone is rejected (409), user untouched', async () => {
+    googleVerifiedEmail = false
+    const { app, users } = await buildApp([], [existingUserByEmail])
+    const state = signState({ provider: 'google' })
+
+    const res = await app.inject({ method: 'POST', url: '/auth/google/exchange', payload: { code: 'c', state } })
+
+    expect(res.statusCode).toBe(403)
+    expect(res.json().error).toMatch(/not verified/i)
+    expect(users[0]?.['external_id']).toBeUndefined()
+  })
+
+  it('Google: verified email matched by email alone merges successfully', async () => {
+    googleVerifiedEmail = true
+    const { app, users } = await buildApp([], [existingUserByEmail])
+    const state = signState({ provider: 'google' })
+
+    const res = await app.inject({ method: 'POST', url: '/auth/google/exchange', payload: { code: 'c', state } })
+
+    expect(res.statusCode).toBe(200)
+    expect(users[0]?.['external_id']).toBe('google-1')
+    expect(users[0]?.['email_verified']).toBe(true)
+  })
+
+  it('Google: match via already-linked external_id+provider merges regardless of verified_email', async () => {
+    googleVerifiedEmail = false
+    const { app } = await buildApp([], [existingUserByExternalId])
+    const state = signState({ provider: 'google' })
+
+    const res = await app.inject({ method: 'POST', url: '/auth/google/exchange', payload: { code: 'c', state } })
+
+    expect(res.statusCode).toBe(200)
+  })
+
+  it('Google: GET /auth/google/callback redirects with error=email_not_verified when unverified', async () => {
+    googleVerifiedEmail = false
+    const { app, users } = await buildApp([], [existingUserByEmail])
+    const state = signState({ provider: 'google', app: 'family' })
+
+    const res = await app.inject({ method: 'GET', url: `/auth/google/callback?code=c&state=${encodeURIComponent(state)}` })
+
+    expect(res.statusCode).toBe(302)
+    expect(res.headers.location).toMatch(/error=email_not_verified/)
+    expect(users[0]?.['external_id']).toBeUndefined()
+  })
+
+  it('GitHub: unverified email matched by email alone is rejected (403), user untouched', async () => {
+    githubEmailVerified = false
+    const existingGithubUser = { id: 'existing-3', email: 'sarah@users.example', tenant_id: 'sarah-family', roles: ['admin'] }
+    const { app, users } = await buildApp([], [existingGithubUser])
+    const state = signState({ provider: 'github' })
+
+    const res = await app.inject({ method: 'POST', url: '/auth/github/exchange', payload: { code: 'c', state } })
+
+    expect(res.statusCode).toBe(403)
+    expect(res.json().error).toMatch(/not verified/i)
+    expect(users[0]?.['external_id']).toBeUndefined()
+  })
+
+  it('GitHub: verified email matched by email alone merges successfully', async () => {
+    githubEmailVerified = true
+    const existingGithubUser = { id: 'existing-4', email: 'sarah@users.example', tenant_id: 'sarah-family', roles: ['admin'] }
+    const { app, users } = await buildApp([], [existingGithubUser])
+    const state = signState({ provider: 'github' })
+
+    const res = await app.inject({ method: 'POST', url: '/auth/github/exchange', payload: { code: 'c', state } })
+
+    expect(res.statusCode).toBe(200)
+    expect(users[0]?.['external_id']).toBe('99')
+  })
+
+  it('GitHub: match via already-linked external_id+provider merges regardless of verified flag', async () => {
+    githubEmailVerified = false
+    const existingGithubUser = { id: 'existing-5', email: 'someone-else@example.com', tenant_id: 'other-family', roles: ['admin'], external_id: '99', external_provider: 'github' }
+    const { app } = await buildApp([], [existingGithubUser])
+    const state = signState({ provider: 'github' })
+
+    const res = await app.inject({ method: 'POST', url: '/auth/github/exchange', payload: { code: 'c', state } })
+
+    expect(res.statusCode).toBe(200)
   })
 })
