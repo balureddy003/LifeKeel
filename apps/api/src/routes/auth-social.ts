@@ -227,10 +227,28 @@ export async function registerSocialAuthRoutes(
       })
 
       if (!user) {
+        const tenantId = googleUser.email.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
+
+        // OAK-001: without this check, anyone whose OAuth email's local-part
+        // happens to collide with an already-claimed tenant slug (e.g. any
+        // "sarah@<any domain>" after tenant_id "sarah" is taken) was silently
+        // admitted as a brand-new admin of that existing tenant — full
+        // read/write on someone else's family. Mirrors the guard
+        // auth-users.ts's password-signup path already has (409 "workspace
+        // taken") — the OAuth path just never got it. This is a check-then-
+        // insert, not a DB-level unique constraint (tenants.tenant_id has no
+        // unique index today — see migrate.ts's first migration, which fails
+        // on a pre-existing non-unique index of the same auto-generated
+        // name), so it's the same level of protection auth-users.ts itself
+        // relies on, not stronger.
+        const existingTenant = await db.collection('tenants').findOne({ tenant_id: tenantId })
+        if (existingTenant) {
+          return reply.redirect(getLoginErrorUrl(app, 'workspace_taken'))
+        }
+
         // Create new user
         const userId = crypto.randomBytes(8).toString('hex')
-        const tenantId = googleUser.email.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
-        
+
         user = {
           id: userId,
           email: googleUser.email.toLowerCase(),
@@ -256,37 +274,33 @@ export async function registerSocialAuthRoutes(
 
         await usersCol.insertOne(user)
 
-        // Create tenant if it doesn't exist
-        const tenantExists = await db.collection('tenants').findOne({ tenant_id: tenantId })
-        if (!tenantExists) {
-          await db.collection('tenants').insertOne({
-            tenant_id: tenantId,
-            name: googleUser.name,
-            plan: 'free',
-            quotas: {
-              events_per_month: 10_000,
-              workflows_per_month: 3,
-              detectors_max: 10,
-              connectors_max: 1,
-              users_max: 1,
-              llm_tokens_per_month: 100_000,
-            },
-            status: 'active',
-            created_at: new Date(),
-            updated_at: new Date(),
-          })
-        }
+        await db.collection('tenants').insertOne({
+          tenant_id: tenantId,
+          name: googleUser.name,
+          plan: 'free',
+          quotas: {
+            events_per_month: 10_000,
+            workflows_per_month: 3,
+            detectors_max: 10,
+            connectors_max: 1,
+            users_max: 1,
+            llm_tokens_per_month: 100_000,
+          },
+          status: 'active',
+          created_at: new Date(),
+          updated_at: new Date(),
+        })
       } else {
         // Update existing user with Google info if needed
         await usersCol.updateOne(
           { _id: user._id },
-          { 
-            $set: { 
+          {
+            $set: {
               external_id: googleUser.id,
               external_provider: 'google',
               email_verified: true,
               updated_at: new Date(),
-            } 
+            }
           }
         )
       }
@@ -404,10 +418,20 @@ export async function registerSocialAuthRoutes(
       })
 
       if (!user) {
+        const tenantId = googleUser.email.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
+
+        // OAK-001 — see the same guard in GET /auth/google/callback above
+        // for the full explanation. This route is JSON-only (called
+        // directly by the frontend, no browser redirect), so it rejects
+        // with the same 409 shape auth-users.ts's password signup uses.
+        const existingTenant = await db.collection('tenants').findOne({ tenant_id: tenantId })
+        if (existingTenant) {
+          return reply.status(409).send({ error: 'That workspace name is already taken. Choose another.' })
+        }
+
         // Create new user
         const userId = crypto.randomBytes(8).toString('hex')
-        const tenantId = googleUser.email.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
-        
+
         user = {
           id: userId,
           email: googleUser.email.toLowerCase(),
@@ -433,31 +457,27 @@ export async function registerSocialAuthRoutes(
 
         await usersCol.insertOne(user)
 
-        // Create tenant if it doesn't exist
-        const tenantExists = await db.collection('tenants').findOne({ tenant_id: tenantId })
-        if (!tenantExists) {
-          await db.collection('tenants').insertOne({
-            tenant_id: tenantId,
-            name: googleUser.name,
-            plan: 'free',
-            quotas: {
-              events_per_month: 10_000,
-              workflows_per_month: 3,
-              detectors_max: 10,
-              connectors_max: 1,
-              users_max: 1,
-              llm_tokens_per_month: 100_000,
-            },
-            status: 'active',
-            created_at: new Date(),
-            updated_at: new Date(),
-          })
-        }
+        await db.collection('tenants').insertOne({
+          tenant_id: tenantId,
+          name: googleUser.name,
+          plan: 'free',
+          quotas: {
+            events_per_month: 10_000,
+            workflows_per_month: 3,
+            detectors_max: 10,
+            connectors_max: 1,
+            users_max: 1,
+            llm_tokens_per_month: 100_000,
+          },
+          status: 'active',
+          created_at: new Date(),
+          updated_at: new Date(),
+        })
       } else {
         // Update existing user with Google info if needed
         await usersCol.updateOne(
           { _id: user._id },
-          { 
+          {
             $set: { 
               external_id: googleUser.id,
               external_provider: 'google',
@@ -609,10 +629,22 @@ export async function registerSocialAuthRoutes(
       })
 
       if (!user) {
+        const tenantId = email!.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
+
+        // OAK-001 — see the matching Google guard earlier in this file for
+        // the full explanation. This callback redirects the browser, so it
+        // rejects via redirect (a JSON body here would just render as text
+        // mid redirect chain), matching this handler's existing
+        // `${studioUrl}/login?error=...` convention (GitHub's callback has
+        // no multi-app `app` param support, unlike Google's).
+        const existingTenant = await db.collection('tenants').findOne({ tenant_id: tenantId })
+        if (existingTenant) {
+          return reply.redirect(`${studioUrl}/login?error=workspace_taken`)
+        }
+
         // Create new user
         const userId = crypto.randomBytes(8).toString('hex')
-        const tenantId = email!.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
-        
+
         user = {
           id: userId,
           email: email!.toLowerCase(),
@@ -638,37 +670,33 @@ export async function registerSocialAuthRoutes(
 
         await usersCol.insertOne(user)
 
-        // Create tenant if it doesn't exist
-        const tenantExists = await db.collection('tenants').findOne({ tenant_id: tenantId })
-        if (!tenantExists) {
-          await db.collection('tenants').insertOne({
-            tenant_id: tenantId,
-            name: githubUser.name || githubUser.login,
-            plan: 'free',
-            quotas: {
-              events_per_month: 10_000,
-              workflows_per_month: 3,
-              detectors_max: 10,
-              connectors_max: 1,
-              users_max: 1,
-              llm_tokens_per_month: 100_000,
-            },
-            status: 'active',
-            created_at: new Date(),
-            updated_at: new Date(),
-          })
-        }
+        await db.collection('tenants').insertOne({
+          tenant_id: tenantId,
+          name: githubUser.name || githubUser.login,
+          plan: 'free',
+          quotas: {
+            events_per_month: 10_000,
+            workflows_per_month: 3,
+            detectors_max: 10,
+            connectors_max: 1,
+            users_max: 1,
+            llm_tokens_per_month: 100_000,
+          },
+          status: 'active',
+          created_at: new Date(),
+          updated_at: new Date(),
+        })
       } else {
         // Update existing user with GitHub info if needed
         await usersCol.updateOne(
           { _id: user._id },
-          { 
-            $set: { 
+          {
+            $set: {
               external_id: String(githubUser.id),
               external_provider: 'github',
               email_verified: true,
               updated_at: new Date(),
-            } 
+            }
           }
         )
       }
@@ -789,10 +817,20 @@ export async function registerSocialAuthRoutes(
       })
 
       if (!user) {
+        const tenantId = email!.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
+
+        // OAK-001 — see the matching Google guard earlier in this file for
+        // the full explanation. This route is JSON-only (called directly by
+        // the frontend, no browser redirect), so it rejects with the same
+        // 409 shape auth-users.ts's password signup uses.
+        const existingTenant = await db.collection('tenants').findOne({ tenant_id: tenantId })
+        if (existingTenant) {
+          return reply.status(409).send({ error: 'That workspace name is already taken. Choose another.' })
+        }
+
         // Create new user
         const userId = crypto.randomBytes(8).toString('hex')
-        const tenantId = email!.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
-        
+
         user = {
           id: userId,
           email: email!.toLowerCase(),
@@ -818,37 +856,33 @@ export async function registerSocialAuthRoutes(
 
         await usersCol.insertOne(user)
 
-        // Create tenant if it doesn't exist
-        const tenantExists = await db.collection('tenants').findOne({ tenant_id: tenantId })
-        if (!tenantExists) {
-          await db.collection('tenants').insertOne({
-            tenant_id: tenantId,
-            name: githubUser.name || githubUser.login,
-            plan: 'free',
-            quotas: {
-              events_per_month: 10_000,
-              workflows_per_month: 3,
-              detectors_max: 10,
-              connectors_max: 1,
-              users_max: 1,
-              llm_tokens_per_month: 100_000,
-            },
-            status: 'active',
-            created_at: new Date(),
-            updated_at: new Date(),
-          })
-        }
+        await db.collection('tenants').insertOne({
+          tenant_id: tenantId,
+          name: githubUser.name || githubUser.login,
+          plan: 'free',
+          quotas: {
+            events_per_month: 10_000,
+            workflows_per_month: 3,
+            detectors_max: 10,
+            connectors_max: 1,
+            users_max: 1,
+            llm_tokens_per_month: 100_000,
+          },
+          status: 'active',
+          created_at: new Date(),
+          updated_at: new Date(),
+        })
       } else {
         // Update existing user with GitHub info if needed
         await usersCol.updateOne(
           { _id: user._id },
-          { 
-            $set: { 
+          {
+            $set: {
               external_id: String(githubUser.id),
               external_provider: 'github',
               email_verified: true,
               updated_at: new Date(),
-            } 
+            }
           }
         )
       }
