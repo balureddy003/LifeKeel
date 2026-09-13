@@ -41,21 +41,30 @@ function adminAuthorized(headers: Record<string, unknown>): boolean {
 
 // ── Webhook idempotency ──────────────────────────────────────────────────────
 //
-// C3 fix: Store every processed Stripe event ID so retries don't re-process.
+// C3 fix: store every processed Stripe event ID so retries don't re-process.
+//
+// OAK-007: this used to be read-then-process-then-write — isWebhookProcessed
+// checked first, the full side-effect switch ran, and only then did
+// markWebhookProcessed record the event id (itself .catch(()=>{})-swallowed).
+// A crash, or any transient failure on that final insert, between the side
+// effects and the mark meant a Stripe retry of the same event would
+// re-apply it — double credits, double ledger entry. Now claim-first:
+// insertOne happens before any side effect runs, relying on the unique
+// index on event_id to make a concurrent/replayed claim fail atomically
+// (duplicate-key error) rather than needing a separate read step at all.
 
-async function isWebhookProcessed(db: Db, eventId: string): Promise<boolean> {
-  const existing = await db.collection('stripe_webhook_events').findOne({ event_id: eventId })
-  return !!existing
-}
-
-async function markWebhookProcessed(db: Db, eventId: string, eventType: string): Promise<void> {
-  await db.collection('stripe_webhook_events').insertOne({
-    event_id: eventId,
-    event_type: eventType,
-    processed_at: new Date(),
-  }).catch(() => {})
-  // Create index on first call
-  await db.collection('stripe_webhook_events').createIndex({ event_id: 1 }, { unique: true }).catch(() => {})
+async function claimWebhookEvent(db: Db, eventId: string, eventType: string): Promise<boolean> {
+  try {
+    await db.collection('stripe_webhook_events').insertOne({
+      event_id: eventId,
+      event_type: eventType,
+      processed_at: new Date(),
+    })
+    return true
+  } catch (err) {
+    if ((err as { code?: number }).code === 11000) return false
+    throw err
+  }
 }
 
 // ── Promo code rate limiting (M8) ────────────────────────────────────────────
@@ -103,6 +112,9 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
   const stripe = process.env['STRIPE_SECRET_KEY']
     ? new Stripe(process.env['STRIPE_SECRET_KEY'])
     : null
+  // OAK-007: created once at registration, not on every webhook request —
+  // claimWebhookEvent's atomicity depends on this index existing.
+  db.collection('stripe_webhook_events').createIndex({ event_id: 1 }, { unique: true }).catch(() => {})
 
   /**
    * POST /billing/checkout
@@ -364,8 +376,17 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
         const rawBody = (req as any).rawBody || JSON.stringify(req.body)
         const event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret)
 
-        // C3 fix: Idempotency check — skip if already processed
-        if (await isWebhookProcessed(db, event.id)) {
+        // OAK-007: claim before any side effect runs — see claimWebhookEvent's
+        // doc comment. A false return means either a genuine replay or a
+        // concurrent delivery of the same event; either way, this call
+        // must not re-apply the switch below. Trade-off, deliberate: if the
+        // switch below throws partway through, the event is already
+        // claimed, so Stripe's automatic retry will be treated as a no-op
+        // duplicate rather than reprocessing — a stuck event needs manual
+        // investigation instead of silently retrying. For billing, a stuck
+        // webhook that pages someone is preferable to one that might
+        // silently double-grant credits or double-record a ledger entry.
+        if (!(await claimWebhookEvent(db, event.id, event.type))) {
           return { received: true, duplicate: true }
         }
 
@@ -598,9 +619,6 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
             break
           }
         }
-
-        // C3: Mark as processed
-        await markWebhookProcessed(db, event.id, event.type)
 
         return { received: true }
       } catch (error) {
