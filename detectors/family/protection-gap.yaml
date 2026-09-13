@@ -57,3 +57,43 @@ rules:
       - Research income protection insurance options from licensed providers
       - Review your employer's sick-pay policy to understand existing coverage
       - Consider consulting a financial advisor about your protection needs
+
+  - id: policy_renewal_window
+    name: Policy Renewal Approaching
+    # soonest_renewal_days defaults to the 9999 sentinel (see
+    # soonestPolicyRenewal in family-financial-profile.ts) when no policy
+    # has a parseable future renewal_date — this condition then never
+    # fires, the same "absence of data means the rule can't fire" shape as
+    # `employed` gating no_income_protection above. Lower confidence than
+    # the two rules above: a timing nudge, not a coverage-adequacy gap.
+    condition: "data.soonest_renewal_days <= 60"
+    confidence: 0.7
+    impact_low: 0
+    impact_high: 0
+    reasoning_template: >
+      Your {{data.soonest_renewal_type}} policy with {{data.soonest_renewal_provider}} renews in
+      {{data.soonest_renewal_days}} days. This is a good time to review whether the coverage amount
+      and terms still match your household's needs — please consult a licensed insurance professional
+      before making any changes.
+    actions:
+      - Review the renewal terms and any premium change
+      - Compare against current market quotes before renewing automatically
+      - Confirm the coverage amount still matches your household's needs
+
+  - id: no_health_or_critical_illness_cover
+    name: No Health or Critical Illness Cover Listed
+    # has_dependents is derived from education_funds.length > 0 — reuses
+    # the existing "does this household have kids on file" signal rather
+    # than a new family-roster lookup (see family-financial-profile.ts).
+    condition: "data.has_dependents >= 1 and data.has_health_or_ci_cover == 0"
+    confidence: 0.7
+    impact_low: 0
+    impact_high: 0
+    reasoning_template: >
+      No health or critical illness policy is listed for your household, even though dependents are
+      on file. This is informational only — consider reviewing your options with a licensed insurance
+      professional.
+    actions:
+      - Research health and critical-illness insurance options
+      - Review any employer-provided health coverage for gaps
+      - Consult a licensed insurance professional about your family's needs

@@ -69,6 +69,25 @@ const FinancialProfileSchema = z.object({
       }),
     )
     .default([]),
+  // Additive, not a replacement for household.life_cover_minor /
+  // income_protection_monthly_minor — those two fields still feed the
+  // original two protection-gap rules directly. This is a separate,
+  // policy-level model (PRD-102) that powers the renewal-window and
+  // coverage-type-gap rules without touching the existing data contract.
+  policies: z
+    .array(
+      z.object({
+        type: z.enum(['life', 'income_protection', 'health', 'critical_illness']),
+        provider: z.string().min(1),
+        coverage_amount_minor: z.number().int().nonnegative().default(0),
+        monthly_premium_minor: z.number().int().nonnegative().default(0),
+        // ISO date string (e.g. "2027-03-01"), optional — a policy with no
+        // known renewal date simply never contributes to the renewal-window
+        // rule, rather than being rejected.
+        renewal_date: z.string().optional(),
+      }),
+    )
+    .default([]),
 })
 
 type FinancialProfile = z.infer<typeof FinancialProfileSchema>
@@ -141,6 +160,32 @@ function educationFundingGapMinor(funds: FinancialProfile['education_funds']): n
   return funds.reduce((sum, f) => sum + Math.max(0, f.target_savings_minor - f.current_savings_minor), 0)
 }
 
+/**
+ * Finds the policy with the nearest future renewal_date. Returns the 9999
+ * sentinel (not an error, not 0) when no policy has a parseable, future
+ * renewal date — the policy_renewal_window rule's condition
+ * (`soonest_renewal_days <= 60`) simply never fires against it, the same
+ * "absence of data means the rule can't fire" pattern the existing
+ * no_income_protection rule already relies on for `employed`.
+ */
+function soonestPolicyRenewal(policies: FinancialProfile['policies']): {
+  days: number
+  provider: string
+  type: string
+} {
+  const now = Date.now()
+  let best: { days: number; provider: string; type: string } | null = null
+  for (const policy of policies) {
+    if (!policy.renewal_date) continue
+    const renewalMs = new Date(policy.renewal_date).getTime()
+    if (Number.isNaN(renewalMs)) continue
+    const days = Math.ceil((renewalMs - now) / 86_400_000)
+    if (days < 0) continue
+    if (!best || days < best.days) best = { days, provider: policy.provider, type: policy.type }
+  }
+  return best ?? { days: 9999, provider: '', type: '' }
+}
+
 export async function registerFamilyFinancialProfileRoutes(
   app: FastifyInstance,
   db: Db,
@@ -204,6 +249,7 @@ export async function registerFamilyFinancialProfileRoutes(
       const hasIncomeToProtect =
         profile.household.employment_status === 'employed' ||
         profile.household.employment_status === 'self_employed'
+      const soonestRenewal = soonestPolicyRenewal(profile.policies)
       const data = {
         employed: Number(hasIncomeToProtect),
         // Gates no_income_protection off for households within a year of
@@ -216,6 +262,13 @@ export async function registerFamilyFinancialProfileRoutes(
         life_cover_minor: profile.household.life_cover_minor,
         income_protection_monthly_minor: profile.household.income_protection_monthly_minor,
         education_funding_gap_minor: educationGap,
+        // PRD-102: derived from the independent policies[] array, additive
+        // to the fields above — see soonestPolicyRenewal's doc comment.
+        has_dependents: Number(profile.education_funds.length > 0),
+        has_health_or_ci_cover: Number(profile.policies.some((p) => p.type === 'health' || p.type === 'critical_illness')),
+        soonest_renewal_days: soonestRenewal.days,
+        soonest_renewal_provider: soonestRenewal.provider,
+        soonest_renewal_type: soonestRenewal.type,
       }
       const signalId = await persistSignal({
         tenant_id,

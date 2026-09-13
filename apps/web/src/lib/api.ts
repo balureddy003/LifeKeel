@@ -531,6 +531,20 @@ export interface FinancialProfileEducationFund {
 
 export type EmploymentStatus = 'employed' | 'self_employed' | 'unemployed' | 'retired'
 
+export type PolicyType = 'life' | 'income_protection' | 'health' | 'critical_illness'
+
+// Additive to household.life_cover_minor / income_protection_monthly_minor
+// below, not a replacement — those two fields still feed the original
+// protection-gap rules directly. This is the policy-level model (PRD-102)
+// that powers renewal tracking and coverage-type-gap detection.
+export interface FinancialProfilePolicy {
+  type: PolicyType
+  provider: string
+  coverage_amount_minor: number
+  monthly_premium_minor: number
+  renewal_date?: string
+}
+
 export interface FinancialProfile {
   household: {
     employment_status: EmploymentStatus
@@ -555,6 +569,7 @@ export interface FinancialProfile {
     expected_annual_growth_pct: number
   }
   education_funds: FinancialProfileEducationFund[]
+  policies: FinancialProfilePolicy[]
 }
 
 export async function fetchFinancialProfile(): Promise<FinancialProfile | null> {

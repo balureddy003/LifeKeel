@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Home as HomeIcon, User, ChevronRight, Maximize2 } from 'lucide-react'
@@ -8,6 +8,7 @@ import { haptic } from '@/lib/haptics'
 import { useAuth } from '@/lib/auth-context'
 import { ROLE_LABELS } from '@/lib/auth-types'
 import { getMemberSections, CATEGORY_COLOR } from '@/lib/familySections'
+import { fetchFinancialProfile, type FinancialProfilePolicy } from '@/lib/api'
 
 function initials(name: string): string {
   return name
@@ -28,6 +29,15 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
   const router = useRouter()
   const members = family?.members ?? []
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [policies, setPolicies] = useState<FinancialProfilePolicy[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchFinancialProfile().then((profile) => {
+      if (!cancelled) setPolicies(profile?.policies ?? [])
+    })
+    return () => { cancelled = true }
+  }, [])
 
   const selected = members.length === 0
     ? null
@@ -43,8 +53,8 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
       role: selected.role,
       emoji: selected.emoji,
       relation: selected.role === 'organizer' ? 'owner' : selected.role === 'parent' ? 'spouse' : 'child',
-    })
-  }, [selected])
+    }, policies)
+  }, [selected, policies])
 
   if (members.length === 0 || !selected) {
     return (

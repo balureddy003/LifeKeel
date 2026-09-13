@@ -14,6 +14,8 @@ import {
   type EmploymentStatus,
   type FinancialProfile,
   type FinancialProfileEducationFund,
+  type FinancialProfilePolicy,
+  type PolicyType,
 } from '@/lib/api'
 
 // Whole-currency string state, converted to minor units (x100) on submit —
@@ -43,6 +45,29 @@ interface EducationFundForm {
   currentSavings: string
   targetSavings: string
   yearsRemaining: string
+}
+
+interface PolicyForm {
+  type: PolicyType
+  provider: string
+  coverageAmount: string
+  monthlyPremium: string
+  renewalDate: string
+}
+
+const EMPTY_POLICY: PolicyForm = {
+  type: 'life',
+  provider: '',
+  coverageAmount: '',
+  monthlyPremium: '',
+  renewalDate: '',
+}
+
+const POLICY_TYPE_LABELS: Record<PolicyType, string> = {
+  life: 'Life',
+  income_protection: 'Income Protection',
+  health: 'Health',
+  critical_illness: 'Critical Illness',
 }
 
 const EMPTY_FORM: FormState = {
@@ -82,7 +107,7 @@ function toMinor(whole: string): number {
 // the user ever opens this wizard. A legacy document predating a schema
 // field addition (e.g. high_interest_debt_balance_minor) is the same shape
 // of gap. Every read here defaults rather than assumes the full shape.
-function fromProfile(profile: FinancialProfile): { form: FormState; funds: EducationFundForm[] } {
+function fromProfile(profile: FinancialProfile): { form: FormState; funds: EducationFundForm[]; policies: PolicyForm[] } {
   const household = profile.household ?? ({} as Partial<FinancialProfile['household']>)
   const emergencyFund = profile.emergency_fund ?? ({} as Partial<FinancialProfile['emergency_fund']>)
   const retirement = profile.retirement ?? ({} as Partial<FinancialProfile['retirement']>)
@@ -112,10 +137,17 @@ function fromProfile(profile: FinancialProfile): { form: FormState; funds: Educa
       targetSavings: toWhole(f.target_savings_minor),
       yearsRemaining: String(f.years_remaining),
     })),
+    policies: (profile.policies ?? []).map((p) => ({
+      type: p.type,
+      provider: p.provider,
+      coverageAmount: toWhole(p.coverage_amount_minor),
+      monthlyPremium: toWhole(p.monthly_premium_minor),
+      renewalDate: p.renewal_date ?? '',
+    })),
   }
 }
 
-function toPayload(form: FormState, funds: EducationFundForm[]): FinancialProfile {
+function toPayload(form: FormState, funds: EducationFundForm[], policies: PolicyForm[]): FinancialProfile {
   const education_funds: FinancialProfileEducationFund[] = funds
     .filter((f) => f.childName.trim())
     .map((f) => ({
@@ -124,6 +156,16 @@ function toPayload(form: FormState, funds: EducationFundForm[]): FinancialProfil
       current_savings_minor: toMinor(f.currentSavings),
       target_savings_minor: Math.max(1, toMinor(f.targetSavings)),
       years_remaining: Number(f.yearsRemaining) || 0,
+    }))
+
+  const policyPayloads: FinancialProfilePolicy[] = policies
+    .filter((p) => p.provider.trim())
+    .map((p) => ({
+      type: p.type,
+      provider: p.provider.trim(),
+      coverage_amount_minor: toMinor(p.coverageAmount),
+      monthly_premium_minor: toMinor(p.monthlyPremium),
+      ...(p.renewalDate ? { renewal_date: p.renewalDate } : {}),
     }))
 
   return {
@@ -150,6 +192,7 @@ function toPayload(form: FormState, funds: EducationFundForm[]): FinancialProfil
       expected_annual_growth_pct: Number(form.expectedAnnualGrowthPct) || 5,
     },
     education_funds,
+    policies: policyPayloads,
   }
 }
 
@@ -241,6 +284,30 @@ function EmploymentStatusPicker({ value, onChange }: { value: EmploymentStatus; 
   )
 }
 
+function PolicyTypePicker({ value, onChange }: { value: PolicyType; onChange: (v: PolicyType) => void }) {
+  return (
+    <div>
+      <div className="text-xs text-ink-tertiary mb-1.5">Policy type</div>
+      <div className="grid grid-cols-2 gap-2">
+        {(Object.keys(POLICY_TYPE_LABELS) as PolicyType[]).map((opt) => (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => { haptic('light'); onChange(opt) }}
+            className={`rounded-xl py-2.5 text-sm font-semibold transition-all ${
+              value === opt
+                ? 'bg-family-500 text-white'
+                : 'glass text-ink-secondary'
+            }`}
+          >
+            {POLICY_TYPE_LABELS[opt]}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <div className="text-sm font-semibold text-family-400 mb-3">{children}</div>
 }
@@ -263,6 +330,7 @@ export default function FinancialProfilePage() {
   const setFinancialProfileSubmitted = useAppStore((s) => s.setFinancialProfileSubmitted)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [funds, setFunds] = useState<EducationFundForm[]>([])
+  const [policies, setPolicies] = useState<PolicyForm[]>([])
   const [loading, setLoading] = useState(true)
   const [stepIndex, setStepIndex] = useState(0)
   const [saving, setSaving] = useState(false)
@@ -274,7 +342,9 @@ export default function FinancialProfilePage() {
     let cancelled = false
     fetchFinancialProfile().then((profile) => {
       if (cancelled) return
-      const { form: f, funds: e } = profile ? fromProfile(profile) : { form: EMPTY_FORM, funds: [] as EducationFundForm[] }
+      const { form: f, funds: e, policies: p } = profile
+        ? fromProfile(profile)
+        : { form: EMPTY_FORM, funds: [] as EducationFundForm[], policies: [] as PolicyForm[] }
       // Pre-fill an education fund entry for each child already on the
       // family roster (collected once at onboarding) that isn't already
       // represented here — no reason to make the user retype a name that's
@@ -290,6 +360,7 @@ export default function FinancialProfilePage() {
       ]
       setForm(f)
       setFunds(funds)
+      setPolicies(p)
       setLoading(false)
     })
     return () => { cancelled = true }
@@ -316,6 +387,20 @@ export default function FinancialProfilePage() {
     setFunds((prev) => prev.map((f, idx) => (idx === i ? { ...f, ...patch } : f)))
   }
 
+  const addPolicy = () => {
+    haptic('light')
+    setPolicies((prev) => [...prev, { ...EMPTY_POLICY }])
+  }
+
+  const removePolicy = (i: number) => {
+    haptic('light')
+    setPolicies((prev) => prev.filter((_, idx) => idx !== i))
+  }
+
+  const updatePolicy = (i: number, patch: Partial<PolicyForm>) => {
+    setPolicies((prev) => prev.map((p, idx) => (idx === i ? { ...p, ...patch } : p)))
+  }
+
   const isLastStep = stepIndex === STEPS.length - 1
 
   // Autosaves whatever's been entered so far whenever the user moves to the
@@ -326,7 +411,7 @@ export default function FinancialProfilePage() {
     setError(null)
     setSaving(true)
     try {
-      await submitFinancialProfile(toPayload(form, funds))
+      await submitFinancialProfile(toPayload(form, funds, policies))
     } catch {
       // Best-effort — don't trap the user on this step if the autosave
       // fails; the full submit on the last step will surface a real error.
@@ -349,7 +434,7 @@ export default function FinancialProfilePage() {
     setError(null)
     setResult(null)
     try {
-      const { insightsGenerated } = await submitFinancialProfile(toPayload(form, funds), true)
+      const { insightsGenerated } = await submitFinancialProfile(toPayload(form, funds, policies), true)
       haptic('success')
       setResult(insightsGenerated)
       setFinancialProfileSubmitted()
@@ -440,6 +525,54 @@ export default function FinancialProfilePage() {
                 <Field label="Mortgage outstanding" value={form.mortgageOutstanding} onChange={(v) => set('mortgageOutstanding', v)} placeholder="0 if none" />
                 <Field label="Life insurance cover" value={form.lifeCover} onChange={(v) => set('lifeCover', v)} placeholder="0 if none" />
                 <Field label="Income protection (monthly payout)" value={form.incomeProtectionMonthly} onChange={(v) => set('incomeProtectionMonthly', v)} placeholder="0 if none" />
+              </div>
+            </GlassCard>
+          )}
+
+          {step.key === 'household' && (
+            <GlassCard className="p-5 mt-4">
+              <SectionTitle>Insurance Policies</SectionTitle>
+              <div className="space-y-4">
+                {policies.map((p, i) => (
+                  <div key={i} className="rounded-2xl bg-white/[0.02] border border-white/[0.06] p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-ink-tertiary">Policy {i + 1}</span>
+                      <button type="button" onClick={() => removePolicy(i)} aria-label="Remove policy" className="w-7 h-7 rounded-full flex items-center justify-center text-ink-tertiary active:opacity-60">
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <PolicyTypePicker value={p.type} onChange={(v) => updatePolicy(i, { type: v })} />
+                    <label className="block">
+                      <div className="text-xs text-ink-tertiary mb-1.5">Provider</div>
+                      <input
+                        type="text"
+                        value={p.provider}
+                        onChange={(e) => updatePolicy(i, { provider: e.target.value })}
+                        className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                      />
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Coverage amount" value={p.coverageAmount} onChange={(v) => updatePolicy(i, { coverageAmount: v })} placeholder="0 if none" />
+                      <Field label="Monthly premium" value={p.monthlyPremium} onChange={(v) => updatePolicy(i, { monthlyPremium: v })} placeholder="0 if none" />
+                    </div>
+                    <label className="block">
+                      <div className="text-xs text-ink-tertiary mb-1.5">Renewal date (if known)</div>
+                      <input
+                        type="date"
+                        value={p.renewalDate}
+                        onChange={(e) => updatePolicy(i, { renewalDate: e.target.value })}
+                        className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                      />
+                    </label>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addPolicy}
+                  className="w-full glass rounded-2xl py-3 text-sm font-semibold text-family-400 flex items-center justify-center gap-1"
+                >
+                  <Plus size={14} /> Add a policy
+                </button>
               </div>
             </GlassCard>
           )}

@@ -1,0 +1,169 @@
+/**
+ * PRD-102: policies[] round-trips, and the two new detector rules
+ * (policy_renewal_window, no_health_or_critical_illness_cover) fire
+ * correctly without disturbing the two existing protection-gap rules.
+ */
+
+import { describe, expect, it, vi, beforeEach } from 'vitest'
+import Fastify from 'fastify'
+import { Engine, type Insight } from '@agentoak/engine'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { registerFamilyFinancialProfileRoutes } from '../family-financial-profile.js'
+
+vi.mock('../../signals.js', () => ({
+  persistSignal: vi.fn(async () => 'stub-signal-id'),
+}))
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const DETECTORS_DIR = path.resolve(__dirname, '../../../../../detectors')
+
+const TENANT = 'tenant-protection-domain-test'
+
+function daysFromNow(days: number): string {
+  return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10)
+}
+
+function makeDb() {
+  let stored: Record<string, unknown> | null = null
+  const col = {
+    findOne: vi.fn(async () => stored),
+    findOneAndUpdate: vi.fn(async (_filter: unknown, update: { $set: Record<string, unknown> }) => {
+      stored = { ...(stored ?? {}), ...update.$set }
+      return { value: stored }
+    }),
+    createIndex: vi.fn(async () => ({})),
+  }
+  return { collection: () => col } as any
+}
+
+async function buildApp(engine: Engine): Promise<{ app: ReturnType<typeof Fastify>; insights: Insight[] }> {
+  const app = Fastify()
+  app.addHook('onRequest', async (request) => {
+    ;(request as any).authContext = { tenant_id: TENANT, user_id: 'user-1' }
+  })
+  const db = makeDb()
+  const insights: Insight[] = []
+  await registerFamilyFinancialProfileRoutes(app, db, engine, async (generated) => {
+    insights.push(...generated)
+  })
+  return { app, insights }
+}
+
+const BASE_PROFILE = {
+  household: {
+    employment_status: 'employed',
+    monthly_salary_minor: 400000,
+    annual_living_expenses_minor: 3600000,
+    mortgage_outstanding_minor: 0,
+    life_cover_minor: 10_000_000,
+    income_protection_monthly_minor: 400000,
+  },
+  emergency_fund: {
+    emergency_savings_minor: 3_600_000,
+    monthly_expenses_minor: 300000,
+    has_high_interest_debt: false,
+    high_interest_debt_balance_minor: 0,
+  },
+  retirement: {
+    current_age: 30,
+    target_retirement_age: 65,
+    pension_balance_minor: 5_000_000,
+    monthly_contribution_minor: 50000,
+    target_retirement_income_minor: 3_000_000,
+    expected_annual_growth_pct: 5,
+  },
+  education_funds: [
+    { child_name: 'Sam', child_age: 8, current_savings_minor: 2_000_000, target_savings_minor: 2_000_000, years_remaining: 10 },
+  ],
+}
+
+describe('PRD-102: policies[] and the new protection-domain rules', () => {
+  let engine: Engine
+
+  beforeEach(async () => {
+    engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
+    await engine.load()
+  })
+
+  it('round-trips policies[] through POST then GET', async () => {
+    const { app } = await buildApp(engine)
+    const policies = [{ type: 'life', provider: 'Acme Insurance', coverage_amount_minor: 10_000_000, monthly_premium_minor: 2000 }]
+
+    const post = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, policies },
+    })
+    expect(post.statusCode).toBe(200)
+
+    const get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    expect(get.statusCode).toBe(200)
+    expect(get.json().profile.policies).toEqual(policies)
+  })
+
+  it('fires policy_renewal_window for a policy renewing within 60 days, not for one renewing in 200', async () => {
+    const { app, insights } = await buildApp(engine)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        policies: [{ type: 'life', provider: 'Acme', coverage_amount_minor: 100, monthly_premium_minor: 0, renewal_date: daysFromNow(30) }],
+        generate_insights: true,
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(insights.some((i) => i.rule_id === 'policy_renewal_window')).toBe(true)
+
+    const { app: app2, insights: insights2 } = await buildApp(engine)
+    await app2.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        policies: [{ type: 'life', provider: 'Acme', coverage_amount_minor: 100, monthly_premium_minor: 0, renewal_date: daysFromNow(200) }],
+        generate_insights: true,
+      },
+    })
+    expect(insights2.some((i) => i.rule_id === 'policy_renewal_window')).toBe(false)
+  })
+
+  it('fires no_health_or_critical_illness_cover for dependents with no health/CI policy, not when one exists', async () => {
+    const { app, insights } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, policies: [], generate_insights: true },
+    })
+    expect(insights.some((i) => i.rule_id === 'no_health_or_critical_illness_cover')).toBe(true)
+
+    const { app: app2, insights: insights2 } = await buildApp(engine)
+    await app2.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        policies: [{ type: 'critical_illness', provider: 'Acme', coverage_amount_minor: 100, monthly_premium_minor: 0 }],
+        generate_insights: true,
+      },
+    })
+    expect(insights2.some((i) => i.rule_id === 'no_health_or_critical_illness_cover')).toBe(false)
+  })
+
+  it('leaves the two existing protection-gap rules unaffected by an empty policies[]', async () => {
+    const { app, insights } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        household: { ...BASE_PROFILE.household, life_cover_minor: 0, income_protection_monthly_minor: 0 },
+        policies: [],
+        generate_insights: true,
+      },
+    })
+    expect(insights.some((i) => i.rule_id === 'life_insurance_below_household_needs')).toBe(true)
+    expect(insights.some((i) => i.rule_id === 'no_income_protection')).toBe(true)
+  })
+})

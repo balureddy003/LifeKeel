@@ -1,6 +1,17 @@
 import { Home, Briefcase, ShieldCheck, HeartPulse, Target, GraduationCap, House, TrendingUp, Landmark, Wallet } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { FamilyMember } from './types'
+import type { FinancialProfilePolicy, PolicyType } from './api'
+
+// Duplicated from financial-profile/page.tsx rather than shared — this repo
+// has no shared types package between call sites, matching the existing
+// hand-mirrored-type convention elsewhere in apps/web.
+const POLICY_TYPE_LABELS: Record<PolicyType, string> = {
+  life: 'Life',
+  income_protection: 'Income Protection',
+  health: 'Health',
+  critical_illness: 'Critical Illness',
+}
 
 export type GraphCategory = 'protection' | 'wealth' | 'goals' | 'family'
 
@@ -76,8 +87,14 @@ export const ROLE_BRANCHES: Record<string, { label: string; icon: string; items:
  * the sections shown for them — asset sections link to a real /asset/[id]
  * page, category sections are informational only (no dedicated page exists
  * per category yet).
+ *
+ * `policies` (PRD-102) overrides the Protection branch's static
+ * "Includes Life Insurance, Health Insurance" label with the household's
+ * real policy data when any exists — an honest empty state (today's static
+ * label, unchanged) when it doesn't, rather than a regression for
+ * households that haven't filled the financial profile in yet.
  */
-export function getMemberSections(member: FamilyMember): MemberSection[] {
+export function getMemberSections(member: FamilyMember, policies: FinancialProfilePolicy[] = []): MemberSection[] {
   const sections: MemberSection[] = []
 
   for (const branch of member.branches ?? ROLE_BRANCHES[member.role] ?? []) {
@@ -98,12 +115,16 @@ export function getMemberSections(member: FamilyMember): MemberSection[] {
     }
 
     const cat = BRANCH_CATEGORY[branch.icon] ?? 'wealth'
+    const isProtectionBranch = branch.icon === 'ShieldCheck'
+    const story = isProtectionBranch && policies.length > 0
+      ? `${policies.length} ${policies.length === 1 ? 'policy' : 'policies'}: ${[...new Set(policies.map((p) => POLICY_TYPE_LABELS[p.type]))].join(', ')}`
+      : `Includes ${branch.items.join(', ')}`
     sections.push({
       id: `branch-${member.id}-${branch.label}`,
       label: branch.label,
       icon: BRANCH_ICONS[branch.icon] ?? Briefcase,
       kind: 'category',
-      story: `Includes ${branch.items.join(', ')}`,
+      story,
       category: cat,
     })
   }
