@@ -398,6 +398,16 @@ export function registerConnectorCredentialRoutes(
     // possibly minutes later) still knows. Defaults to Studio.
     const returnTo: ReturnTarget = isReturnTarget(req.query.app) ? req.query.app : 'studio'
 
+    // Defense-in-depth follow-up to OAK-002: the allowlist above only ever
+    // gated POST /connectors/:id/credentials — this route could still walk
+    // the full OAuth handshake for any of the 30+ registered connectors
+    // (twitter_x included) with zero gating. Scoped to `family` only —
+    // Studio and the other frontends legitimately use connectors (like
+    // twitter_x) this app never offers.
+    if (returnTo === 'family' && !FAMILY_CONNECTOR_ALLOWLIST.has(req.params.id)) {
+      return reply.status(403).send({ error: `Connector '${req.params.id}' is not available in this app` })
+    }
+
     // Kite Connect v3 — each tenant brings their own api_key (registered at
     // developers.kite.trade). The api_key is stored in extra.api_key via
     // POST /connectors/zerodha/credentials before starting the OAuth flow.
@@ -525,6 +535,14 @@ export function registerConnectorCredentialRoutes(
       codeVerifier = stateData.codeVerifier
     } catch {
       return reply.redirect(frontendRedirect(peekReturnTo(req.query.state), { connect: req.params.id, error: 'invalid_oauth_state' }))
+    }
+
+    // Defense-in-depth mirror of the same check on oauth/start — a
+    // correctly gated /start should make this unreachable going forward,
+    // but a signed state from before this fix deploys stays valid for up
+    // to its 10-minute expiry, so this closes that window too.
+    if (returnTo === 'family' && !FAMILY_CONNECTOR_ALLOWLIST.has(req.params.id)) {
+      return reply.redirect(frontendRedirect(returnTo, { connect: req.params.id, error: 'connector_not_available' }))
     }
 
     // ── Kite Connect v3 — non-standard per-tenant token exchange ──────────

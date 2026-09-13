@@ -66,3 +66,40 @@ describe('OAK-002: connector allowlist on POST /connectors/:id/credentials', () 
     },
   )
 })
+
+// Follow-up finding: the allowlist above was only ever wired into
+// POST /connectors/:id/credentials — GET /connectors/:id/oauth/start could
+// still walk the full OAuth handshake for any of the 30+ registered
+// connectors (twitter_x included) with zero gating, reachable via a direct
+// API call even though no in-repo UI ever requests it. Studio/kairos-web/
+// kairos-mobile legitimately use connectors this app doesn't (twitter_x for
+// real social actions), so the fix is scoped to `?app=family` only.
+describe('follow-up: connector allowlist on GET /connectors/:id/oauth/start', () => {
+  it('rejects twitter_x with 403 when the request claims to be the family app', async () => {
+    const app = await buildApp()
+    const res = await app.inject({ method: 'GET', url: '/connectors/twitter_x/oauth/start?app=family' })
+    expect(res.statusCode).toBe(403)
+    expect(res.json().error).toContain('twitter_x')
+  })
+
+  it('still accepts gmail (a real family-app connector) with ?app=family', async () => {
+    const app = await buildApp()
+    const res = await app.inject({ method: 'GET', url: '/connectors/gmail/oauth/start?app=family' })
+    expect(res.statusCode).not.toBe(403)
+  })
+
+  it('does not block twitter_x for the studio frontend — only `family` is gated', async () => {
+    const app = await buildApp()
+    const res = await app.inject({ method: 'GET', url: '/connectors/twitter_x/oauth/start?app=studio' })
+    // Still may fail for unrelated reasons (no OAuth client configured in
+    // this test env) — the point is proving it's not blocked by *this*
+    // allowlist check specifically.
+    expect(res.statusCode).not.toBe(403)
+  })
+
+  it('does not block twitter_x when no `app` param is given (defaults to studio)', async () => {
+    const app = await buildApp()
+    const res = await app.inject({ method: 'GET', url: '/connectors/twitter_x/oauth/start' })
+    expect(res.statusCode).not.toBe(403)
+  })
+})
