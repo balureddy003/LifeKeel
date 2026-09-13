@@ -92,6 +92,39 @@ function ChildHome() {
 
 function ElderlyHome() {
   const { score } = useFamilyReadinessScore()
+  const { activateEmergency } = useMode()
+  const router = useRouter()
+
+  // OAK-004: every tile here was a dead button — no onClick anywhere, on
+  // the persona this large-target, simplified UI was explicitly designed
+  // for, and the tile most likely to be tapped in a real crisis
+  // (Emergency Help) was one of them. No phone number is captured
+  // anywhere in the data model (no field on a family member or an
+  // insurance policy/provider) — a fake tel: link to a number that
+  // doesn't exist would be worse than a dead button, so the two "call"
+  // tiles route to the real page where that contact would actually be
+  // found once it's captured (a fast-follow, not invented here).
+  function handleTileTap(action: string) {
+    haptic('medium')
+    switch (action) {
+      case 'ask':
+        router.push('/assistant')
+        break
+      case 'call-insurance':
+        router.push('/financial-profile')
+        break
+      case 'call-son':
+        router.push('/family')
+        break
+      case 'docs':
+        router.push('/upload')
+        break
+      case 'emergency':
+        activateEmergency()
+        break
+    }
+  }
+
   return (
     <div className="px-4 pt-6 space-y-6">
       <motion.div
@@ -133,6 +166,7 @@ function ElderlyHome() {
           return (
           <motion.button
             key={item.action}
+            onClick={() => handleTileTap(item.action)}
             whileTap={{ scale: 0.97 }}
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
