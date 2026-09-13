@@ -16,6 +16,7 @@ import { useAppStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 import { fetchFinancialProfile, type FinancialProfile } from '@/lib/api'
+import { elderlyHomeCopy } from '@/lib/elderlyHomeCopy'
 
 function ChildHome() {
   const { user } = useAuth()
@@ -91,9 +92,10 @@ function ChildHome() {
 }
 
 function ElderlyHome() {
-  const { score } = useFamilyReadinessScore()
+  const { score, hasLiveData, loading } = useFamilyReadinessScore()
   const { activateEmergency } = useMode()
   const router = useRouter()
+  const { headline, subheadline } = elderlyHomeCopy({ loading, hasLiveData, score })
 
   // OAK-004: every tile here was a dead button — no onClick anywhere, on
   // the persona this large-target, simplified UI was explicitly designed
@@ -132,8 +134,8 @@ function ElderlyHome() {
         animate={{ opacity: 1, y: 0 }}
         className="text-center"
       >
-        <h1 className="text-3xl font-bold mb-2">You're Safe</h1>
-        <p className="text-xl text-ink-tertiary">Your family appears well covered</p>
+        <h1 className="text-3xl font-bold mb-2">{headline}</h1>
+        <p className="text-xl text-ink-tertiary">{subheadline}</p>
       </motion.div>
 
       <motion.div
