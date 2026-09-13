@@ -63,8 +63,12 @@ export async function classifyEmail(llm: LlmFn, email: FetchedEmail): Promise<Em
 
     return {
       isFinancial: Boolean(parsed.is_financial),
-      summary: parsed.summary ?? '',
-      actionLabel: parsed.action_label ?? '',
+      // OAK-016: the model's output is otherwise unbounded — a malicious or
+      // malformed email could push back an arbitrarily long "summary" that
+      // then renders as an inbox item. Clamped generously beyond what the
+      // prompt actually asks for (one sentence / a 2-4 word action).
+      summary: (parsed.summary ?? '').slice(0, 300),
+      actionLabel: (parsed.action_label ?? '').slice(0, 80),
       actionType,
       priority,
     }

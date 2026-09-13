@@ -277,6 +277,11 @@ export default function InboxPage() {
                     </div>
                     {!isExpanded && (
                       <p className="text-xs text-ink-tertiary mt-1 line-clamp-2">
+                        {/* OAK-016: every item here is an LLM's read of an inbound
+                            email — a small always-visible marker so that's clear
+                            before the user ever taps in, not just in the expanded
+                            "AI explains" panel below. */}
+                        <Bot size={11} className="inline-block mr-1 -mt-0.5 text-ink-tertiary/70" />
                         <MoneyText text={item.aiSummary} />
                       </p>
                     )}

@@ -100,4 +100,17 @@ describe('classifyEmail', () => {
     expect(capturedSystemPrompt.toLowerCase()).toContain('untrusted')
     expect(capturedSystemPrompt.toLowerCase()).toContain('never instructions')
   })
+
+  it('OAK-016: clamps an oversized summary/action_label instead of returning them unbounded', async () => {
+    const longSummary = 'x'.repeat(1000)
+    const longActionLabel = 'y'.repeat(500)
+    const llm: LlmFn = async () =>
+      JSON.stringify({ is_financial: true, summary: longSummary, action_label: longActionLabel, action_type: 'review', priority: 'high' })
+
+    const result = await classifyEmail(llm, makeEmail())
+    expect(result.summary.length).toBe(300)
+    expect(result.actionLabel.length).toBe(80)
+    expect(result.summary).toBe(longSummary.slice(0, 300))
+    expect(result.actionLabel).toBe(longActionLabel.slice(0, 80))
+  })
 })
