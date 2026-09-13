@@ -166,6 +166,15 @@ executor was left wired into a currently-shipped route instead.
   `apps/web/src/lib/observability.ts` — this app displays household
   financial data on screen, and Replay would capture it. Don't add it
   without a specific masking/redaction plan.
+- **No multi-factor authentication.** `apps/api/src/routes/auth-users.ts`
+  authenticates with email + password only — no TOTP enrollment, no backup
+  codes, no recovery flow for a lost second factor. This is a real security
+  gap for accounts holding a family's full financial picture, but it's not
+  a quick patch: a correct implementation needs enrollment UX, backup-code
+  generation and safe storage, and a recovery path that doesn't itself
+  become the weak link — not just a checkbox on the login form. Per an
+  external go-live audit (2026-09), this is the recommended next security
+  investment post-GA, roadmapped rather than rushed in ahead of it.
 - **Mixed license terms across `packages/*`.** Copied as-is from kairos-ai:
   MIT (`engine`, `platform`), Apache-2.0 (`specifications`, `runtime`,
   `legacy-compat`, `mongodb-adapter`, `conformance`, `outcome-kernel`), and

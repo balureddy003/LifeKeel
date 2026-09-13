@@ -15,6 +15,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { createLlmRouterFromEnv, getTenantCollection, type LlmFn } from '@agentoak/platform'
 import { getInsightsCollection } from '../db.js'
+import { getAuditLogger } from '../audit/audit-log.js'
 
 const AskSchema = z.object({
   query: z.string().min(1).max(2000),
@@ -152,9 +153,11 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
 
       try {
         const content = await llmFn(SYSTEM_PROMPT, prompt, 'tier:fast')
+        getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', { is_live: true })
         return reply.send({ content, isLive: true })
       } catch (err) {
         req.log.warn({ err }, 'Assistant LLM call failed — falling back')
+        getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', { is_live: false })
         return reply.send({ content: FALLBACK_CONTENT, isLive: false })
       }
     },

@@ -87,146 +87,155 @@ export async function registerAuthUserRoutes(
   }))
 
   /** POST /auth/signup */
-  app.post<{ Body: SignupBody }>('/auth/signup', async (request, reply) => {
-    const { email, password, name, workspace, external_id, external_provider, tier_hint, invite_code, country } = request.body
+  app.post<{ Body: SignupBody }>(
+    '/auth/signup',
+    // OAK-025: the 409 on an existing email is a genuine UX need (a user
+    // needs to know why signup failed) — making it generic would break
+    // that without meaningfully stopping a determined attacker. This
+    // route-level limit raises the cost of a bulk enumeration sweep
+    // without changing the honest per-request error message.
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const { email, password, name, workspace, external_id, external_provider, tier_hint, invite_code, country } = request.body
 
-    if (!email?.includes('@')) return reply.status(400).send({ error: 'Valid email required' })
-    if (!password || password.length < 8) return reply.status(400).send({ error: 'Password must be at least 8 characters' })
-    if (!name?.trim()) return reply.status(400).send({ error: 'Name required' })
+      if (!email?.includes('@')) return reply.status(400).send({ error: 'Valid email required' })
+      if (!password || password.length < 8) return reply.status(400).send({ error: 'Password must be at least 8 characters' })
+      if (!name?.trim()) return reply.status(400).send({ error: 'Name required' })
 
-    const db = await getDb()
+      const db = await getDb()
 
-    // Validate invite code early, but do not consume it until we know the signup will succeed.
-    const inviteCheck = await checkInviteCode(db, invite_code)
-    if (!inviteCheck.ok) {
-      return reply.status(400).send({ error: inviteCheck.reason ?? 'Invalid invite code' })
-    }
+      // Validate invite code early, but do not consume it until we know the signup will succeed.
+      const inviteCheck = await checkInviteCode(db, invite_code)
+      if (!inviteCheck.ok) {
+        return reply.status(400).send({ error: inviteCheck.reason ?? 'Invalid invite code' })
+      }
 
-    const col = await getUsersCollection()
+      const col = await getUsersCollection()
 
-    // Check for existing user by email or external ID before consuming the invite code.
-    const existingByEmail = await col.findOne({ email: email.toLowerCase() })
-    if (existingByEmail) return reply.status(409).send({ error: 'Email already registered' })
+      // Check for existing user by email or external ID before consuming the invite code.
+      const existingByEmail = await col.findOne({ email: email.toLowerCase() })
+      if (existingByEmail) return reply.status(409).send({ error: 'Email already registered' })
 
-    if (external_id && external_provider) {
-      const existingByExternal = await col.findOne({ external_id, external_provider })
-      if (existingByExternal) return reply.status(409).send({ error: 'External ID already registered' })
-    }
+      if (external_id && external_provider) {
+        const existingByExternal = await col.findOne({ external_id, external_provider })
+        if (existingByExternal) return reply.status(409).send({ error: 'External ID already registered' })
+      }
 
-    // Security: the workspace slug is a shared, guessable identifier (e.g.
-    // "acme-corp") — nothing about self-serve signup implies authorization to
-    // join a workspace someone else already created. There is no invite
-    // mechanism scoped to a specific tenant (checkInviteCode/consumeInviteCode
-    // above are platform-wide, gating signup at all, not which tenant you
-    // land in) and no admin-approval step, so an unclaimed collision must be
-    // rejected outright rather than silently admitting a second, unrelated
-    // admin into an existing tenant.
-    const tenant_id = workspace ? slugify(workspace) : slugify(email.split('@')[0]!)
-    const existingTenant = await db.collection('tenants').findOne({ tenant_id })
-    if (existingTenant) {
-      return reply.status(409).send({ error: 'That workspace name is already taken. Choose another.' })
-    }
+      // Security: the workspace slug is a shared, guessable identifier (e.g.
+      // "acme-corp") — nothing about self-serve signup implies authorization to
+      // join a workspace someone else already created. There is no invite
+      // mechanism scoped to a specific tenant (checkInviteCode/consumeInviteCode
+      // above are platform-wide, gating signup at all, not which tenant you
+      // land in) and no admin-approval step, so an unclaimed collision must be
+      // rejected outright rather than silently admitting a second, unrelated
+      // admin into an existing tenant.
+      const tenant_id = workspace ? slugify(workspace) : slugify(email.split('@')[0]!)
+      const existingTenant = await db.collection('tenants').findOne({ tenant_id })
+      if (existingTenant) {
+        return reply.status(409).send({ error: 'That workspace name is already taken. Choose another.' })
+      }
 
-    // Now that the signup is valid, consume the invite code.
-    const invite = await consumeInviteCode(db, invite_code)
-    if (!invite.ok) {
-      return reply.status(400).send({ error: invite.reason ?? 'Invalid invite code' })
-    }
+      // Now that the signup is valid, consume the invite code.
+      const invite = await consumeInviteCode(db, invite_code)
+      if (!invite.ok) {
+        return reply.status(400).send({ error: invite.reason ?? 'Invalid invite code' })
+      }
 
-    const salt = randomBytes(16).toString('hex')
-    const avatar_color = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!
+      const salt = randomBytes(16).toString('hex')
+      const avatar_color = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!
 
-    const user: User = {
-      id: randomBytes(8).toString('hex'),
-      email: email.toLowerCase(),
-      name: name.trim(),
-      tenant_id,
-      password_hash: hashPassword(password, salt),
-      salt,
-      created_at: new Date(),
-      avatar_color,
-      roles: ['admin'],
-      status: undefined,
-      failed_login_attempts: 0,
-      locked_until: undefined,
-      external_id,
-      external_provider,
-      email_verified: !EMAIL_VERIFICATION_ENABLED, // Auto-verify if verification disabled
-      email_verification_token: undefined,
-      email_verification_expires: undefined,
-      password_reset_token: undefined,
-      password_reset_expires: undefined,
-      updated_at: undefined,
-    }
+      const user: User = {
+        id: randomBytes(8).toString('hex'),
+        email: email.toLowerCase(),
+        name: name.trim(),
+        tenant_id,
+        password_hash: hashPassword(password, salt),
+        salt,
+        created_at: new Date(),
+        avatar_color,
+        roles: ['admin'],
+        status: undefined,
+        failed_login_attempts: 0,
+        locked_until: undefined,
+        external_id,
+        external_provider,
+        email_verified: !EMAIL_VERIFICATION_ENABLED, // Auto-verify if verification disabled
+        email_verification_token: undefined,
+        email_verification_expires: undefined,
+        password_reset_token: undefined,
+        password_reset_expires: undefined,
+        updated_at: undefined,
+      }
 
-    // Generate email verification token if enabled
-    if (EMAIL_VERIFICATION_ENABLED) {
-      user.email_verification_token = generateEmailVerificationToken()
-      user.email_verification_expires = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
-      // TODO: Send verification email here
-    }
+      // Generate email verification token if enabled
+      if (EMAIL_VERIFICATION_ENABLED) {
+        user.email_verification_token = generateEmailVerificationToken()
+        user.email_verification_expires = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+        // TODO: Send verification email here
+      }
 
-    await col.insertOne(user)
+      await col.insertOne(user)
 
-    // Create the tenant record — existingTenant was already confirmed null
-    // above, so this always creates a fresh tenant here (the tenants.tenant_id
-    // unique index is the last-resort guard against the narrow race of two
-    // concurrent signups claiming the same slug at the same instant).
-    const billing = createInitialBilling({
-      currency: getCurrencyForCountry(country),
-      inviteGrantCredits: invite.grant_credits,
-    })
-    await db.collection('tenants').insertOne({
-      tenant_id,
-      name: workspace || email.split('@')[0],
-      plan: 'free',
-      tier_hint: tier_hint ?? 'business',
-      quotas: PLAN_QUOTAS['free'],
-      billing: {
-        ...billing,
-        invite_code: invite_code?.trim().toUpperCase() ?? null,
-      },
-      country: country?.trim().toUpperCase() || 'GB',
-      locale: getLocaleForCountry(country),
-      status: 'active',
-      created_at: new Date(),
-      updated_at: new Date(),
-    })
+      // Create the tenant record — existingTenant was already confirmed null
+      // above, so this always creates a fresh tenant here (the tenants.tenant_id
+      // unique index is the last-resort guard against the narrow race of two
+      // concurrent signups claiming the same slug at the same instant).
+      const billing = createInitialBilling({
+        currency: getCurrencyForCountry(country),
+        inviteGrantCredits: invite.grant_credits,
+      })
+      await db.collection('tenants').insertOne({
+        tenant_id,
+        name: workspace || email.split('@')[0],
+        plan: 'free',
+        tier_hint: tier_hint ?? 'business',
+        quotas: PLAN_QUOTAS['free'],
+        billing: {
+          ...billing,
+          invite_code: invite_code?.trim().toUpperCase() ?? null,
+        },
+        country: country?.trim().toUpperCase() || 'GB',
+        locale: getLocaleForCountry(country),
+        status: 'active',
+        created_at: new Date(),
+        updated_at: new Date(),
+      })
 
-    // Record trial grant in the append-only credit ledger
-    if (billing.credits_balance > 0) {
-      await recordLedgerEntry(db, {
-        tenantId: tenant_id,
-        type: 'trial_grant',
-        amount: billing.credits_balance,
-        reference: 'signup',
-        reason: `Trial credits granted at signup${invite.grant_credits ? ' + invite code bonus' : ''}`,
-        actor: 'system',
-      }).catch(() => {})
-    }
+      // Record trial grant in the append-only credit ledger
+      if (billing.credits_balance > 0) {
+        await recordLedgerEntry(db, {
+          tenantId: tenant_id,
+          type: 'trial_grant',
+          amount: billing.credits_balance,
+          reference: 'signup',
+          reason: `Trial credits granted at signup${invite.grant_credits ? ' + invite code bonus' : ''}`,
+          actor: 'system',
+        }).catch(() => {})
+      }
 
-    const token = await auth.sign({ sub: user.id, tenant_id: user.tenant_id, roles: user.roles })
+      const token = await auth.sign({ sub: user.id, tenant_id: user.tenant_id, roles: user.roles })
 
-    // New users have no active_vertical yet — null is correct here (they
-    // should see onboarding). Include it explicitly so the client's user
-    // object shape matches /auth/me and the login response.
-    const settings = await db.collection('tenant_settings').findOne({ tenant_id: user.tenant_id })
+      // New users have no active_vertical yet — null is correct here (they
+      // should see onboarding). Include it explicitly so the client's user
+      // object shape matches /auth/me and the login response.
+      const settings = await db.collection('tenant_settings').findOne({ tenant_id: user.tenant_id })
 
-    return reply.status(201).send({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        tenant_id: user.tenant_id,
-        avatar_color: user.avatar_color,
-        email_verified: user.email_verified,
-        requires_verification: EMAIL_VERIFICATION_ENABLED && !user.email_verified,
-        active_vertical: (settings?.['active_vertical'] as string | undefined) ?? null,
-        onboarding_skipped: (settings?.['onboarding_skipped'] as boolean | undefined) ?? false,
-      },
-    })
-  })
+      return reply.status(201).send({
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          tenant_id: user.tenant_id,
+          avatar_color: user.avatar_color,
+          email_verified: user.email_verified,
+          requires_verification: EMAIL_VERIFICATION_ENABLED && !user.email_verified,
+          active_vertical: (settings?.['active_vertical'] as string | undefined) ?? null,
+          onboarding_skipped: (settings?.['onboarding_skipped'] as boolean | undefined) ?? false,
+        },
+      })
+    },
+  )
 
   /** POST /auth/login */
   app.post<{ Body: LoginBody }>('/auth/login', async (request, reply) => {

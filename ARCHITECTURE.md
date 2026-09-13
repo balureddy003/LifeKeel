@@ -47,12 +47,12 @@ a fallback, because it's what makes the rest of this trustworthy.
 
 | Layer | Vision | What's actually built |
 |---|---|---|
-| **Family Twin** | People, health, protection, financial life, life & assets, context, preferences — six rich domains | One domain, real: family roster (`family-group.ts`) + a financial-profile schema (household, emergency fund, retirement, education funds — `family-financial-profile.ts`). Nothing yet for health, protection-as-its-own-domain, physical assets, travel/context, or explicit decision-rights preferences. |
-| **Family Intelligence** | Understand + predict across all domains | Real, for the financial domain only: 4 deterministic YAML detectors (`detectors/family/*.yaml`) evaluated by `@agentoak/engine` — protection gap, education shortfall, emergency-fund adequacy, retirement gap. This *is* genuine Understand/Predict, just single-domain. |
-| **Agent Oak (agent layer)** | Decide, act, escalate | Barely exists. Insights surface in an inbox (Decide/Escalate-shaped: "here's what we found, dismiss or act on it yourself") but nothing autonomous happens. The in-app assistant is currently **a hardcoded response map**, not live reasoning — a known, honest gap (see `apps/web/src/lib/api.ts`'s `fetchAIResponse`). |
+| **Family Twin** | People, health, protection, financial life, life & assets, context, preferences — six rich domains | Two domains, real: family roster (`family-group.ts`) + a financial-profile schema (household, emergency fund, retirement, education funds, and a policy-level `policies[]` model for insurance coverage/renewal tracking, PRD-102 — `family-financial-profile.ts`). Nothing yet for health, physical assets, travel/context, or explicit decision-rights preferences. |
+| **Family Intelligence** | Understand + predict across all domains | Real, for the financial + protection domains: 4 deterministic YAML detectors (`detectors/family/*.yaml`) evaluated by `@agentoak/engine` — protection gap (including a `policy_renewal_window` rule off the real `policies[]` data), education shortfall, emergency-fund adequacy, retirement gap. This *is* genuine Understand/Predict, just two domains so far. |
+| **Agent Oak (agent layer)** | Decide, act, escalate | Decide is real: insights surface in an inbox (Decide/Escalate-shaped: "here's what we found, dismiss or act on it yourself"). The in-app assistant (`POST /assistant/ask`, PRD-101) now does live, grounded LLM reasoning over the family's real financial-profile and open-insight data — no longer the hardcoded response map this doc used to describe — falling back honestly (`isLive: false`) if the LLM call fails. Tier 1 "prepare, don't send" (PRD-103) has shipped: `POST /insights/:id/prepare` drafts an email a human reviews, copies, or opens in their own client — Oak never sends anything itself. Nothing beyond Tier 1 exists; no autonomous Act. |
 | **Action Network** | Insurers, airlines, hospitals, banks as real integrations | Doesn't exist. Only generic connector plumbing (email/Gmail scanning) and a dormant Stripe billing integration. |
 
-This isn't a gap to be embarrassed about — it's exactly what a one-domain,
+This isn't a gap to be embarrassed about — it's exactly what a two-domain,
 pre-Act-layer digital twin looks like on the way to the full vision. The
 roadmap below is about closing it deliberately, not all at once.
 
@@ -66,12 +66,14 @@ that touches the Act layer must be classified into one of these tiers, and
 implemented no higher than the tier it's actually earned:
 
 - **Tier 0 — Observe/Understand/Predict.** Pure analysis. Zero external
-  side effects. Everything shipped today lives here.
+  side effects. Most of what's shipped lives here: detectors, the family
+  roster/financial-profile Twin, the grounded assistant's Q&A.
 - **Tier 1 — Decide + Prepare.** Oak drafts something — a checklist, a
   pre-filled form, a draft email — but a human sends/submits it. Still zero
-  external side effects. This is the natural next step (e.g., insight →
-  inbox item already has this shape; extending it to "draft a claim
-  email you can review and send" stays Tier 1).
+  external side effects. **Shipped** (PRD-103): `POST /insights/:id/prepare`
+  drafts an email from an insight's reasoning; the user edits, copies, or
+  opens it in their own mail client — the only exits, never a send call
+  from this app.
 - **Tier 2 — Act with narrow, named, revocable consent.** Oak performs one
   specific, previously-agreed action ("contact your insurer's assistance
   line for travel disruptions") — never a blanket "act for me" grant.
@@ -96,17 +98,22 @@ as new domains get added.
 
 ## Roadmap (sequencing, not a committed timeline)
 
-1. **Deepen the financial domain.** Prove Understand→Predict→Decide works
-   well in one domain before going wide — richer financial-profile fields,
-   better detector coverage, real (not hardcoded) LLM reasoning for the
-   assistant, before adding new domains.
-2. **Extend into Protection (insurance).** The natural neighbor to
-   financial — coverage, gaps, exclusions. Still Tier 0/1: understand and
-   prepare, no autonomous claims filing yet.
-3. **Introduce Tier 1 "prepare" actions.** Drafts, pre-filled forms,
-   comparison options a human reviews and sends. This is where "Agent Oak"
-   starts to feel meaningfully different from a dashboard, without crossing
-   into liability the product isn't ready for.
+1. **Deepen the financial domain.** ~~Prove Understand→Predict→Decide works
+   well in one domain before going wide~~ — **done**: real (not hardcoded)
+   LLM reasoning now grounds the in-app assistant (PRD-101), and a public,
+   unauthenticated readiness-score quiz (PRD-201) runs the same detector
+   engine as a growth loop. Next: richer financial-profile fields and
+   deeper detector coverage within the domain, ahead of adding new ones.
+2. **Extend into Protection (insurance).** **Shipped**: policy-level
+   coverage, provider, and renewal-date tracking (`policies[]`, PRD-102),
+   with a `policy_renewal_window` detector rule surfacing upcoming
+   renewals. Still Tier 0/1: understand and prepare, no autonomous claims
+   filing yet.
+3. **Introduce Tier 1 "prepare" actions.** **Shipped** (PRD-103): an
+   insight can generate a draft email a human reviews and sends
+   themselves — Oak never sends on the family's behalf. Next: extend
+   "prepare" beyond insights (e.g. event-response checklists) and cover
+   more action types.
 4. **Health & Life/Assets domains.** Later, deliberately — health data is
    GDPR special-category and carries the highest sensitivity of any domain
    in the vision; sequence it after the trust/consent model is proven
@@ -130,9 +137,14 @@ apps/web (Next.js, static export → Firebase Hosting)
               ├─ connector-credentials.ts              │  Generic OAuth plumbing
               ├─ documents.ts + ocr/*.ts                │  Document upload + GPT-4o OCR
               ├─ insights.ts                            │  Family Intelligence output
+              │    └─ POST /insights/:id/prepare        │  Tier 1 "prepare" draft (PRD-103)
+              ├─ assistant.ts                           │  Live, grounded LLM Q&A (PRD-101)
               ├─ family-inbox.ts                        │  Decide/Escalate surface
+              ├─ readiness-quiz.ts                      │  Public lead-magnet quiz (PRD-201),
+              │                                         │  same engine, no auth/signup
               ├─ billing.ts                             │  Stripe (Oak Plus)
-              ├─ blog.ts, case-studies.ts, growth-events.ts   Marketing/growth
+              ├─ blog.ts, case-studies.ts, growth-events.ts   Marketing/growth —
+              │    detector-content-posts.ts                 detector-driven blog content (PRD-202)
               └─ metrics.ts                             Prometheus ops metrics
                                                           │
               @agentoak/engine ◄────────────────────────┘

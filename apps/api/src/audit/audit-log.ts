@@ -26,6 +26,7 @@ export type AuditAction =
   | 'insight.approve'
   | 'insight.dismiss'
   | 'insight.prepare'
+  | 'assistant.ask'
   | 'detector.create'
   | 'detector.update'
   | 'detector.delete'
