@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { HeartCrack, Heart, Car, Plane, Home, ChevronRight, type LucideIcon } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
@@ -27,6 +28,7 @@ export function EmergencyMode({
     ['bereavement', 'medical', 'car', 'property', 'travel'].includes(e.id)
   )
   const containerRef = useFocusTrap<HTMLDivElement>(active)
+  const router = useRouter()
 
   return (
     <AnimatePresence>
@@ -84,6 +86,24 @@ export function EmergencyMode({
                 <ChevronRight size={24} className="text-ink-tertiary" />
               </motion.button>
             ))}
+          </div>
+
+          {/* PRD-108: this is really happening, not a hypothetical to explore
+              — a distinct path into the real, declared-event playbook flow
+              (/life-events), separate from the "What If?" scenarios above. */}
+          <div className="px-6 pt-2 pb-4">
+            <motion.button
+              onClick={() => {
+                haptic('heavy')
+                onDeactivate()
+                router.push('/life-events')
+              }}
+              whileTap={{ scale: 0.97 }}
+              className="w-full py-4 rounded-2xl font-semibold text-base text-danger border border-danger/30"
+              style={{ background: 'rgba(248,113,113,0.08)' }}
+            >
+              This is actually happening
+            </motion.button>
           </div>
 
           {/* Close */}

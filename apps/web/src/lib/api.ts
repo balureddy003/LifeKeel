@@ -671,6 +671,90 @@ export async function submitFinancialProfile(
   return { insightsGenerated: data.insights_generated ?? 0, version: data.version ?? version ?? 0 }
 }
 
+// ── Life events (PRD-108) ────────────────────────────────────────────────
+// A life event is a fact the family declares happened ("I lost my job"),
+// distinct from /events' hypothetical "What If?" simulator (life-data.ts's
+// LIFE_EVENTS/EVENT_ACTIONS) — that stays a sample scenario explorer;
+// this reports a real event and gets back a playbook personalized against
+// the real financial profile, re-rendered live on every fetch rather than
+// frozen at report time.
+
+export type LifeEventType = 'job_loss' | 'bereavement' | 'disability'
+
+export interface LifeEventPlaybookStep {
+  id: string
+  title: string
+  body: string
+  // Eligible for the same Tier 1 "prepare, don't send" draft affordance
+  // insight cards use (PRD-103) — see prepareLifeEventStepDraft below.
+  contact: boolean
+}
+
+export interface LifeEventPlaybook {
+  event_type: LifeEventType
+  title: string
+  intro: string
+  steps: LifeEventPlaybookStep[]
+}
+
+export interface LifeEvent {
+  id: string
+  event_type: LifeEventType
+  affected_member_id: string | null
+  reported_at: string
+  playbook: LifeEventPlaybook | null
+}
+
+export async function fetchLifeEvents(): Promise<LifeEvent[]> {
+  return apiFetch<{ events: LifeEvent[] }>('/family/life-events', { events: [] }).then((r) => r.events ?? [])
+}
+
+export async function reportLifeEvent(eventType: LifeEventType, affectedMemberId?: string): Promise<LifeEvent | null> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const res = await fetch(`${base}/family/life-events`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        event_type: eventType,
+        ...(affectedMemberId ? { affected_member_id: affectedMemberId } : {}),
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'Request failed')
+    return data as LifeEvent
+  } catch (err) {
+    reportError(err, { eventType })
+    return null
+  }
+}
+
+// Same copy-to-clipboard / open-in-email-client-only posture as
+// prepareInsightDraft above — there is no "send" endpoint here either.
+export async function prepareLifeEventStepDraft(eventId: string, stepId: string): Promise<InsightDraft | null> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const res = await fetch(`${base}/family/life-events/${eventId}/steps/${stepId}/prepare`, {
+      method: 'POST',
+      headers,
+    })
+    if (!res.ok) return null
+    const data = await res.json().catch(() => null) as { draft?: InsightDraft | null } | null
+    return data?.draft ?? null
+  } catch (err) {
+    reportError(err, { eventId, stepId })
+    return null
+  }
+}
+
 // ── Password reset ───────────────────────────────────────────────────────
 
 export async function requestPasswordReset(email: string): Promise<void> {

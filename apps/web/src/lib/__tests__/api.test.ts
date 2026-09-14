@@ -3,6 +3,9 @@ import {
   fetchAIResponse,
   fetchFamilyInsights,
   fetchFamilyReadinessScore,
+  fetchLifeEvents,
+  reportLifeEvent,
+  prepareLifeEventStepDraft,
   RESOLVED_INSIGHT_STATES,
 } from '../api'
 
@@ -167,5 +170,55 @@ describe('fetchAIResponse', () => {
     const result = await fetchAIResponse('Where is my travel insurance?')
     expect(result.isLive).toBe(false)
     expect(result.content.length).toBeGreaterThan(0)
+  })
+})
+
+describe('PRD-108: life events', () => {
+  it('fetchLifeEvents returns the reported events list', async () => {
+    mockFetchOnce({
+      events: [
+        { id: '1', event_type: 'job_loss', affected_member_id: null, reported_at: '2026-01-01', playbook: { event_type: 'job_loss', title: 't', intro: 'i', steps: [] } },
+      ],
+    })
+    const events = await fetchLifeEvents()
+    expect(events).toHaveLength(1)
+    expect(events[0]?.event_type).toBe('job_loss')
+  })
+
+  it('fetchLifeEvents falls back to an empty list when the API is unreachable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
+    const events = await fetchLifeEvents()
+    expect(events).toEqual([])
+  })
+
+  it('reportLifeEvent returns the created event with its rendered playbook', async () => {
+    mockFetchOnce({
+      id: 'evt-1',
+      event_type: 'bereavement',
+      affected_member_id: null,
+      reported_at: '2026-01-01',
+      playbook: { event_type: 'bereavement', title: 't', intro: 'i', steps: [{ id: 'notify_insurers', title: 'Notify', body: 'Aviva', contact: true }] },
+    })
+    const event = await reportLifeEvent('bereavement')
+    expect(event?.id).toBe('evt-1')
+    expect(event?.playbook?.steps[0]?.body).toBe('Aviva')
+  })
+
+  it('reportLifeEvent returns null when the request fails', async () => {
+    mockFetchOnce({ error: 'Submit a financial profile before reporting a life event' }, false)
+    const event = await reportLifeEvent('job_loss')
+    expect(event).toBeNull()
+  })
+
+  it('prepareLifeEventStepDraft returns the generated draft', async () => {
+    mockFetchOnce({ draft: { content: 'Dear Aviva,', generated_at: '2026-01-01' } })
+    const draft = await prepareLifeEventStepDraft('evt-1', 'notify_insurers')
+    expect(draft?.content).toBe('Dear Aviva,')
+  })
+
+  it('prepareLifeEventStepDraft returns null on a non-2xx response', async () => {
+    mockFetchOnce({ error: 'not found' }, false)
+    const draft = await prepareLifeEventStepDraft('evt-1', 'notify_insurers')
+    expect(draft).toBeNull()
   })
 })

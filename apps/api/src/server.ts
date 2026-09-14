@@ -76,6 +76,7 @@ import { registerFamilyConnectorRoutes } from './routes/family-connectors.js'
 import { registerFamilyGroupRoutes } from './routes/family-group.js'
 import { registerGrowthEventRoutes } from './routes/growth-events.js'
 import { registerFamilyFinancialProfileRoutes } from './routes/family-financial-profile.js'
+import { registerLifeEventRoutes } from './routes/life-events.js'
 import { registerFamilyInboxRoutes } from './routes/family-inbox.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
 import { registerReadinessQuizRoutes } from './routes/readiness-quiz.js'
@@ -1114,6 +1115,7 @@ if (workflowDb) {
   registerAssistantRoutes(app, workflowDb)
   registerReadinessQuizRoutes(app, workflowDb, engine)
   await registerFamilyFinancialProfileRoutes(app, workflowDb, engine, insightsDeliveryHook)
+  registerLifeEventRoutes(app, workflowDb)
 }
 // Prometheus metrics — generic ops/observability, not vertical-specific.
 await registerMetricsRoutes(app, engine, scoreCalibrator)

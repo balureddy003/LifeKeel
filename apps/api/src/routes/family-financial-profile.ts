@@ -131,7 +131,7 @@ const FinancialProfileSchema = z.object({
     .default([]),
 })
 
-type FinancialProfile = z.infer<typeof FinancialProfileSchema>
+export type FinancialProfile = z.infer<typeof FinancialProfileSchema>
 
 /**
  * Projects pension balance forward year-by-year (annual compounding) against

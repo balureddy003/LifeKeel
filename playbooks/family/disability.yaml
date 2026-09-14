@@ -1,0 +1,37 @@
+# PRD-108: life-event response playbook — disability / critical-illness
+# diagnosis. Personalizes only against existing *insurance* data
+# (policies[].type === 'critical_illness', income_protection_monthly_minor)
+# — never collects or stores a diagnosis or any other health-record-shaped
+# field, per the PRD's explicit scope boundary.
+event_type: disability
+title: Disability / Critical-Illness Response Plan
+intro: >
+  Here's what to look at first, based on the cover your family already has
+  on file — not a generic checklist.
+steps:
+  - id: check_cover
+    title: Check your cover
+    computed: true
+    contact: true
+  - id: notify_employer
+    title: Notify your employer
+    body: >
+      Let your employer's HR department know as soon as you're able —
+      many offer sick pay, disability accommodations, or a phased return
+      that only kicks in once they know.
+    contact: true
+  - id: review_expenses
+    title: Review your expenses
+    body: >
+      If your income is reduced while you're unable to work, go through
+      your monthly expenses now and flag anything non-essential you can
+      pause — the same review that helps with any income gap.
+    contact: false
+  - id: state_disability_benefits
+    title: Check government disability benefit eligibility
+    body: >
+      Most countries offer some form of disability benefit independent of
+      any private cover you hold. Check your eligibility even if you
+      expect your private cover to be enough — it costs a few minutes to
+      rule out.
+    contact: false

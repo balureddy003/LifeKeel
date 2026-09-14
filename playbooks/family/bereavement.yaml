@@ -1,0 +1,39 @@
+# PRD-108: life-event response playbook — bereavement.
+# Content, not code — see job-loss.yaml's header comment for the format.
+event_type: bereavement
+title: Bereavement Response Plan
+intro: >
+  We're sorry for your loss. This is a sequenced list of the financial
+  steps that tend to matter first, personalized against your family's real
+  policies and cover where we have them on file.
+steps:
+  - id: notify_insurers
+    title: Notify your insurers
+    computed: true
+    contact: true
+  - id: employer_survivor_benefits
+    title: Contact the employer for survivor benefits
+    body: >
+      If the person who passed away was employed, their employer's HR
+      department may owe survivor benefits, a final paycheck, or continued
+      benefits for a period. Reach out even if you're not sure what
+      applies.
+    contact: true
+  - id: pension_survivor_benefit
+    title: Notify the pension provider
+    body: >
+      Most pensions have a survivor or death benefit — notify the provider
+      as soon as you're able so they can tell you what applies and confirm
+      nothing needs to happen before a deadline.
+    contact: true
+  - id: mortgage_protection_check
+    title: Check your mortgage protection
+    computed: true
+    contact: false
+  - id: financial_advisor
+    title: Schedule a meeting with a financial advisor
+    body: >
+      A lot changes at once after a loss — a single meeting with a
+      qualified financial advisor can help you see the full picture and
+      avoid rushed decisions in the first few weeks.
+    contact: false

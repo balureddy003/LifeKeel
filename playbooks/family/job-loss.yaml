@@ -1,0 +1,41 @@
+# PRD-108: life-event response playbook — job loss.
+# Content, not code (same spirit as detectors/family/*.yaml) — loaded and
+# rendered by apps/api/src/life-events/render-playbook.ts. Steps marked
+# `computed: true` are personalized in code against the family's real
+# financial profile rather than by simple {{field}} substitution, since a
+# couple of them need real branching logic (e.g. whether a mortgage is on
+# file at all), not just filling in a number.
+event_type: job_loss
+title: Job Loss Response Plan
+intro: >
+  Losing a job is one of the moments researched guidance says the first-week
+  decisions matter most. Here's what to look at first, based on your
+  family's real numbers where we have them.
+steps:
+  - id: runway
+    title: Calculate your runway
+    computed: true
+    contact: false
+  - id: income_protection
+    title: Check for income protection cover
+    computed: true
+    contact: false
+  - id: unemployment_benefits
+    title: Check eligibility for unemployment benefits
+    body: >
+      Most countries offer some form of unemployment benefit. Check your
+      government's eligibility rules even if you don't think you'll
+      qualify — it takes a few minutes to rule out and can meaningfully
+      extend your runway if you do.
+    contact: false
+  - id: budget_review
+    title: Review your budget
+    body: >
+      Go through your monthly expenses and flag anything non-essential you
+      can pause while your income is down. Every month you extend your
+      runway buys more time to find the right next role, not just any role.
+    contact: false
+  - id: notify_mortgage_lender
+    title: Contact your mortgage lender
+    computed: true
+    contact: true

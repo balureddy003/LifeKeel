@@ -379,6 +379,27 @@ export default function HomePage() {
         </GlassCard>
       </motion.div>
 
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.08 }}
+      >
+        <Link href="/life-events" onClick={() => haptic('light')}>
+          <GlassCard className="p-4" interactive>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-danger/10 border border-danger/20 flex items-center justify-center flex-shrink-0">
+                <Siren size={18} className="text-danger" strokeWidth={1.5} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-ink-primary">Report a life event</div>
+                <div className="text-xs text-ink-tertiary">Job loss, bereavement, or disability — get a plan based on your real data</div>
+              </div>
+              <ChevronRight size={16} className="text-ink-tertiary" />
+            </div>
+          </GlassCard>
+        </Link>
+      </motion.div>
+
       <IfAdvanced>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
