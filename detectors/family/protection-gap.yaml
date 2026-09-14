@@ -23,7 +23,15 @@ rules:
     # Previously any family with literally no life insurance at all produced
     # zero insight and zero score penalty for it — confirmed live against a
     # single-parent household with £0 cover, which scored 93% Protection.
+    # PRD-105: gated on has_dependents/mortgage_outstanding_minor, matching
+    # no_health_or_critical_illness_cover's existing has_dependents gate
+    # below — confirmed live that a 23-year-old single renter, a childless
+    # 63-year-old, and a retired 70-year-old with no dependents all got a
+    # large-figure life-insurance nudge despite nobody depending on their
+    # income and no mortgage to cover. Both fields are already computed and
+    # passed into this rule's data object — no new signal required.
     condition: >
+      (data.has_dependents >= 1 or data.mortgage_outstanding_minor > 0) and
       data.life_cover_minor < data.mortgage_outstanding_minor + data.education_funding_gap_minor + (data.annual_living_expenses_minor * 5)
     confidence: 0.82
     impact_low: "(data.mortgage_outstanding_minor + data.education_funding_gap_minor + (data.annual_living_expenses_minor * 5) - data.life_cover_minor) * 0.3"

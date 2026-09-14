@@ -105,7 +105,12 @@ const FinancialProfileSchema = z.object({
   policies: z
     .array(
       z.object({
-        type: z.enum(['life', 'income_protection', 'health', 'critical_illness']),
+        // PRD-105: car and home are two of the most commonly held household
+        // policies and had no way to be recorded at all — confirmed live,
+        // both the wizard's picker and this endpoint rejected them. No new
+        // coverage-adequacy detector for either type yet (see PRD-105's own
+        // "Out of scope") — recordable today, reasoned-about later.
+        type: z.enum(['life', 'income_protection', 'health', 'critical_illness', 'car', 'home']),
         provider: z.string().min(1),
         coverage_amount_minor: z.number().int().nonnegative().default(0),
         monthly_premium_minor: z.number().int().nonnegative().default(0),

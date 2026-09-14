@@ -560,7 +560,9 @@ export interface FinancialProfileEducationFund {
 
 export type EmploymentStatus = 'employed' | 'self_employed' | 'unemployed' | 'retired'
 
-export type PolicyType = 'life' | 'income_protection' | 'health' | 'critical_illness'
+// PRD-105: car/home added — recordable now, coverage-adequacy reasoning
+// for either is a separate, later PRD (see PRD-105's "Out of scope").
+export type PolicyType = 'life' | 'income_protection' | 'health' | 'critical_illness' | 'car' | 'home'
 
 // Additive to household.life_cover_minor / income_protection_monthly_minor
 // below, not a replacement — those two fields still feed the original

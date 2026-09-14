@@ -11,6 +11,8 @@ const POLICY_TYPE_LABELS: Record<PolicyType, string> = {
   income_protection: 'Income Protection',
   health: 'Health',
   critical_illness: 'Critical Illness',
+  car: 'Car',
+  home: 'Home',
 }
 
 const RENEWAL_WINDOW_DAYS = 60

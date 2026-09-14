@@ -174,6 +174,77 @@ describe('PRD-102: policies[] and the new protection-domain rules', () => {
   })
 })
 
+describe('PRD-105: car/home policy types, and gating life_insurance_below_household_needs on real dependency', () => {
+  let engine: Engine
+
+  beforeEach(async () => {
+    engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
+    await engine.load()
+  })
+
+  it('accepts and round-trips type: "car" and type: "home" — previously a 400 invalid_enum_value', async () => {
+    const { app } = await buildApp(engine)
+    const policies = [
+      { type: 'car', provider: 'Acme Motor', coverage_amount_minor: 2_000_000, monthly_premium_minor: 3000 },
+      { type: 'home', provider: 'Acme Home', coverage_amount_minor: 30_000_000, monthly_premium_minor: 5000 },
+    ]
+
+    const post = await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, policies } })
+    expect(post.statusCode).toBe(200)
+
+    const get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    expect(get.json().profile.policies).toEqual(policies)
+  })
+
+  it('does not fire life_insurance_below_household_needs for a household with no dependents and no mortgage, even with £0 cover', async () => {
+    const { app, insights } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        household: { ...BASE_PROFILE.household, life_cover_minor: 0, mortgage_outstanding_minor: 0 },
+        education_funds: [], // no children on file -> has_dependents: 0
+        policies: [],
+        generate_insights: true,
+      },
+    })
+    expect(insights.some((i) => i.rule_id === 'life_insurance_below_household_needs')).toBe(false)
+  })
+
+  it('still fires for a household with a mortgage and no dependents — the gate is an "or", not an "and" on dependents alone', async () => {
+    const { app, insights } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        household: { ...BASE_PROFILE.household, life_cover_minor: 0, mortgage_outstanding_minor: 20_000_000 },
+        education_funds: [],
+        policies: [],
+        generate_insights: true,
+      },
+    })
+    expect(insights.some((i) => i.rule_id === 'life_insurance_below_household_needs')).toBe(true)
+  })
+
+  it('still fires for a household with dependents and no mortgage, under-covered — regression against the existing dependents-only scenario', async () => {
+    const { app, insights } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        household: { ...BASE_PROFILE.household, life_cover_minor: 0, mortgage_outstanding_minor: 0 },
+        // BASE_PROFILE already carries one child (Sam) -> has_dependents: 1
+        policies: [],
+        generate_insights: true,
+      },
+    })
+    expect(insights.some((i) => i.rule_id === 'life_insurance_below_household_needs')).toBe(true)
+  })
+})
+
 describe('PRD-104: household.members[]', () => {
   let engine: Engine
 
