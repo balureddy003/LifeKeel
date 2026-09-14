@@ -39,6 +39,14 @@ interface FinancialProfileDoc extends Record<string, unknown> {
     mortgage_outstanding_minor?: number
     life_cover_minor?: number
     income_protection_monthly_minor?: number
+    // PRD-104: per-member earners, linked to the family roster — see
+    // FamilyGroupDoc below and its use in buildContext().
+    members?: Array<{
+      member_id?: string
+      employment_status?: string
+      monthly_salary_minor?: number
+      income_protection_monthly_minor?: number
+    }>
   }
   emergency_fund?: {
     emergency_savings_minor?: number
@@ -61,11 +69,25 @@ interface FinancialProfileDoc extends Record<string, unknown> {
   }>
 }
 
+// PRD-104: minimal local mirror of the family roster (owned by
+// family-group.ts) — same established pattern as FinancialProfileDoc
+// above, a route reading another route's collection directly (see also
+// documents.ts's direct family_financial_profile read) rather than a
+// shared/exported accessor. Only what buildContext needs to resolve a
+// member_id to a real name.
+interface FamilyGroupDoc extends Record<string, unknown> {
+  members: Array<{ id: string; name: string; role: string }>
+}
+
 function toMajor(minor: number | undefined): string {
   return typeof minor === 'number' ? (minor / 100).toFixed(2) : 'not provided'
 }
 
-function buildContext(profile: FinancialProfileDoc | null, insights: Array<{ reasoning: string; category: string; detector_id: string }>): string {
+function buildContext(
+  profile: FinancialProfileDoc | null,
+  family: FamilyGroupDoc | null,
+  insights: Array<{ reasoning: string; category: string; detector_id: string }>,
+): string {
   const parts: string[] = []
 
   if (!profile) {
@@ -80,6 +102,16 @@ function buildContext(profile: FinancialProfileDoc | null, insights: Array<{ rea
         `annual living expenses £${toMajor(h.annual_living_expenses_minor)}, mortgage outstanding £${toMajor(h.mortgage_outstanding_minor)}, ` +
         `life insurance cover £${toMajor(h.life_cover_minor)}, income protection £${toMajor(h.income_protection_monthly_minor)}/month.`,
       )
+      // PRD-104: resolve each member_id to their real roster name so the
+      // assistant can answer "does my husband have income protection?"
+      // about a specific person, not just the household total.
+      for (const member of h.members ?? []) {
+        const name = family?.members.find((m) => m.id === member.member_id)?.name ?? 'another household member'
+        parts.push(
+          `Household member ${name}: employment status ${member.employment_status ?? 'unknown'}, ` +
+          `monthly salary £${toMajor(member.monthly_salary_minor)}, income protection £${toMajor(member.income_protection_monthly_minor)}/month.`,
+        )
+      }
     }
     if (ef) {
       parts.push(
@@ -134,8 +166,9 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
       const { tenant_id } = req.authContext
       const { query } = parsed.data
 
-      const [profileDoc, insightDocs] = await Promise.all([
+      const [profileDoc, familyDoc, insightDocs] = await Promise.all([
         getTenantCollection<FinancialProfileDoc>(db, 'family_financial_profile', tenant_id).findOne({}),
+        getTenantCollection<FamilyGroupDoc>(db, 'family_groups', tenant_id).findOne({}),
         getInsightsCollection().then((col) =>
           col
             .find({ tenant_id, state: { $in: ['identified', 'sent'] } })
@@ -147,6 +180,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
 
       const context = buildContext(
         profileDoc,
+        familyDoc,
         insightDocs.map((i) => ({ reasoning: i.reasoning, category: i.category, detector_id: i.detector_id })),
       )
       const prompt = `Family data:\n${context}\n\nQuestion: ${query}`

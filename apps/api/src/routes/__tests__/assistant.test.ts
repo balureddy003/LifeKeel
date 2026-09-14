@@ -31,11 +31,19 @@ const TENANT_A = 'tenant-assistant-a'
 const TENANT_B = 'tenant-assistant-b'
 
 let profileFixture: Record<string, unknown> | null = null
+let familyFixture: Record<string, unknown> | null = null
 let insightsFixture: Array<{ reasoning: string; category: string; detector_id: string }> = []
 
 function makeDb() {
-  const col = { findOne: vi.fn(async () => profileFixture) }
-  return { collection: () => col } as any
+  return {
+    // PRD-104: buildContext() now also reads the family roster
+    // (family_groups) to resolve a member_id to a name — the mock needs
+    // to serve a different fixture per collection name, unlike before
+    // when this route only ever read one collection.
+    collection: (name: string) => ({
+      findOne: vi.fn(async () => (name === 'family_groups' ? familyFixture : profileFixture)),
+    }),
+  } as any
 }
 
 async function buildApp(tenantId: string) {
@@ -52,6 +60,7 @@ describe('POST /assistant/ask', () => {
     llmMock.mockClear()
     llmMock.mockImplementation(async (_system: string, prompt: string) => `LLM saw: ${prompt}`)
     profileFixture = null
+    familyFixture = null
     insightsFixture = []
   })
 
@@ -73,6 +82,29 @@ describe('POST /assistant/ask', () => {
     expect(body.isLive).toBe(true)
     expect(body.content).toContain('4000.00') // monthly_salary_minor 400000 -> £4000.00
     expect(body.content).toContain('No income protection policy is listed.')
+  })
+
+  it('PRD-104: resolves a household member_id to their real roster name and figures', async () => {
+    profileFixture = {
+      household: {
+        employment_status: 'retired',
+        monthly_salary_minor: 0,
+        members: [{ member_id: 'm2', employment_status: 'employed', monthly_salary_minor: 250000, income_protection_monthly_minor: 0 }],
+      },
+    }
+    familyFixture = { members: [{ id: 'm2', name: 'Alex', role: 'parent' }] }
+
+    const app = await buildApp(TENANT_A)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/assistant/ask',
+      payload: { query: 'Does Alex have income protection?' },
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.content).toContain('Alex')
+    expect(body.content).toContain('2500.00') // monthly_salary_minor 250000 -> £2500.00
   })
 
   it('sends different context for two tenants with different profile data', async () => {

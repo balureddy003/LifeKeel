@@ -174,7 +174,7 @@ describe('PRD-102: policies[] and the new protection-domain rules', () => {
   })
 })
 
-describe('OAK-029: household.second_earner', () => {
+describe('PRD-104: household.members[]', () => {
   let engine: Engine
 
   beforeEach(async () => {
@@ -182,7 +182,7 @@ describe('OAK-029: household.second_earner', () => {
     await engine.load()
   })
 
-  it('fires a second, distinct no_income_protection insight for a second earner who lacks protection, without duplicating the joint rules', async () => {
+  it('fires a second, distinct no_income_protection insight (attributed to the real roster member_id) for a member who lacks protection, without duplicating the joint rules', async () => {
     const { app, insights } = await buildApp(engine)
     const res = await app.inject({
       method: 'POST',
@@ -192,8 +192,8 @@ describe('OAK-029: household.second_earner', () => {
         household: {
           ...BASE_PROFILE.household,
           // BASE_PROFILE's primary earner already has income_protection_monthly_minor: 400000,
-          // so only the second earner's lack of protection should fire here.
-          second_earner: { employment_status: 'employed', monthly_salary_minor: 350000, income_protection_monthly_minor: 0 },
+          // so only this member's lack of protection should fire here.
+          members: [{ member_id: 'member-2', employment_status: 'employed', monthly_salary_minor: 350000, income_protection_monthly_minor: 0 }],
         },
         generate_insights: true,
       },
@@ -203,17 +203,19 @@ describe('OAK-029: household.second_earner', () => {
     const noIncomeProtectionInsights = insights.filter((i) => i.rule_id === 'no_income_protection')
     expect(noIncomeProtectionInsights).toHaveLength(1)
     expect(noIncomeProtectionInsights[0]?.feature_snapshot?.monthly_salary_minor).toBe(350000)
+    // Proves the id actually threads through the engine, not just the numbers.
+    expect(noIncomeProtectionInsights[0]?.feature_snapshot?.member_id).toBe('member-2')
 
     // The regression this test exists to catch: the household event fired
     // twice (once per earner), but the 3 joint/shared rules must not
     // duplicate — they're evaluated once, correctly, from the primary
-    // earner's event; the second event neutralizes them.
+    // earner's event; the member event neutralizes them.
     for (const ruleId of ['life_insurance_below_household_needs', 'policy_renewal_window', 'no_health_or_critical_illness_cover']) {
       expect(insights.filter((i) => i.rule_id === ruleId).length).toBeLessThanOrEqual(1)
     }
   })
 
-  it('fires no_income_protection independently for both earners when both lack protection', async () => {
+  it('fires no_income_protection independently for both the primary earner and a member when both lack protection', async () => {
     const { app, insights } = await buildApp(engine)
     await app.inject({
       method: 'POST',
@@ -223,7 +225,7 @@ describe('OAK-029: household.second_earner', () => {
         household: {
           ...BASE_PROFILE.household,
           income_protection_monthly_minor: 0,
-          second_earner: { employment_status: 'self_employed', monthly_salary_minor: 250000, income_protection_monthly_minor: 0 },
+          members: [{ member_id: 'member-2', employment_status: 'self_employed', monthly_salary_minor: 250000, income_protection_monthly_minor: 0 }],
         },
         generate_insights: true,
       },
@@ -231,7 +233,7 @@ describe('OAK-029: household.second_earner', () => {
     expect(insights.filter((i) => i.rule_id === 'no_income_protection')).toHaveLength(2)
   })
 
-  it('does not fire no_income_protection for a retired second earner, even with a real monthly_salary_minor — no income to protect via this policy type', async () => {
+  it('does not fire no_income_protection for a retired member, even with a real monthly_salary_minor — no income to protect via this policy type', async () => {
     const { app, insights } = await buildApp(engine)
     await app.inject({
       method: 'POST',
@@ -241,7 +243,7 @@ describe('OAK-029: household.second_earner', () => {
         household: {
           ...BASE_PROFILE.household,
           // Primary earner already has protection in BASE_PROFILE.
-          second_earner: { employment_status: 'retired', monthly_salary_minor: 600000, income_protection_monthly_minor: 0 },
+          members: [{ member_id: 'member-2', employment_status: 'retired', monthly_salary_minor: 600000, income_protection_monthly_minor: 0 }],
         },
         generate_insights: true,
       },
@@ -249,22 +251,22 @@ describe('OAK-029: household.second_earner', () => {
     expect(insights.some((i) => i.rule_id === 'no_income_protection')).toBe(false)
   })
 
-  it('round-trips second_earner through POST then GET, and leaves it absent for profiles that never had one', async () => {
+  it('round-trips members[] through POST then GET, and leaves it empty for profiles that never had any', async () => {
     const { app } = await buildApp(engine)
-    const second_earner = { employment_status: 'employed' as const, monthly_salary_minor: 350000, income_protection_monthly_minor: 0 }
+    const members = [{ member_id: 'member-2', employment_status: 'employed' as const, monthly_salary_minor: 350000, income_protection_monthly_minor: 0 }]
 
     await app.inject({
       method: 'POST',
       url: '/family/financial-profile',
-      payload: { ...BASE_PROFILE, household: { ...BASE_PROFILE.household, second_earner } },
+      payload: { ...BASE_PROFILE, household: { ...BASE_PROFILE.household, members } },
     })
     const get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
-    expect(get.json().profile.household.second_earner).toEqual(second_earner)
+    expect(get.json().profile.household.members).toEqual(members)
 
     const { app: app2 } = await buildApp(engine)
     await app2.inject({ method: 'POST', url: '/family/financial-profile', payload: BASE_PROFILE })
     const get2 = await app2.inject({ method: 'GET', url: '/family/financial-profile' })
-    expect(get2.json().profile.household.second_earner).toBeUndefined()
+    expect(get2.json().profile.household.members).toEqual([])
   })
 })
 

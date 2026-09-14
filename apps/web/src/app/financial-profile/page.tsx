@@ -27,12 +27,15 @@ interface FormState {
   mortgageOutstanding: string
   lifeCover: string
   incomeProtectionMonthly: string
-  // OAK-029: optional second earner — a mixed-earner household (one
-  // partner retired, one still working) had no way to be represented by
-  // the single employmentStatus/monthlySalary pair above. Excluded from
-  // the submit payload entirely unless hasSecondEarner is true — see
-  // toPayload() below.
+  // PRD-104: optional second earner, linked to a real family-roster
+  // member — a mixed-earner household (one partner retired, one still
+  // working) had no way to be represented by the single
+  // employmentStatus/monthlySalary pair above. Excluded from the submit
+  // payload entirely unless hasSecondEarner is true — see toPayload()
+  // below. secondEarnerMemberId is a FamilyMemberUser.id from the
+  // roster (useAuth().family.members), not free text.
   hasSecondEarner: boolean
+  secondEarnerMemberId: string
   secondEarnerEmploymentStatus: EmploymentStatus
   secondEarnerMonthlySalary: string
   secondEarnerIncomeProtectionMonthly: string
@@ -87,6 +90,7 @@ const EMPTY_FORM: FormState = {
   lifeCover: '',
   incomeProtectionMonthly: '',
   hasSecondEarner: false,
+  secondEarnerMemberId: '',
   secondEarnerEmploymentStatus: 'employed',
   secondEarnerMonthlySalary: '',
   secondEarnerIncomeProtectionMonthly: '',
@@ -132,10 +136,12 @@ function fromProfile(profile: FinancialProfile): { form: FormState; funds: Educa
       mortgageOutstanding: toWhole(household.mortgage_outstanding_minor ?? 0),
       lifeCover: toWhole(household.life_cover_minor ?? 0),
       incomeProtectionMonthly: toWhole(household.income_protection_monthly_minor ?? 0),
-      hasSecondEarner: household.second_earner != null,
-      secondEarnerEmploymentStatus: household.second_earner?.employment_status ?? EMPTY_FORM.secondEarnerEmploymentStatus,
-      secondEarnerMonthlySalary: toWhole(household.second_earner?.monthly_salary_minor ?? 0),
-      secondEarnerIncomeProtectionMonthly: toWhole(household.second_earner?.income_protection_monthly_minor ?? 0),
+      // This UI only ever writes one members[] entry — see toPayload().
+      hasSecondEarner: (household.members?.length ?? 0) > 0,
+      secondEarnerMemberId: household.members?.[0]?.member_id ?? '',
+      secondEarnerEmploymentStatus: household.members?.[0]?.employment_status ?? EMPTY_FORM.secondEarnerEmploymentStatus,
+      secondEarnerMonthlySalary: toWhole(household.members?.[0]?.monthly_salary_minor ?? 0),
+      secondEarnerIncomeProtectionMonthly: toWhole(household.members?.[0]?.income_protection_monthly_minor ?? 0),
       emergencySavings: toWhole(emergencyFund.emergency_savings_minor ?? 0),
       monthlyExpenses: toWhole(emergencyFund.monthly_expenses_minor ?? 0),
       hasHighInterestDebt: emergencyFund.has_high_interest_debt ?? false,
@@ -193,15 +199,17 @@ function toPayload(form: FormState, funds: EducationFundForm[], policies: Policy
       mortgage_outstanding_minor: toMinor(form.mortgageOutstanding),
       life_cover_minor: toMinor(form.lifeCover),
       income_protection_monthly_minor: toMinor(form.incomeProtectionMonthly),
-      ...(form.hasSecondEarner
-        ? {
-            second_earner: {
-              employment_status: form.secondEarnerEmploymentStatus,
-              monthly_salary_minor: toMinor(form.secondEarnerMonthlySalary),
-              income_protection_monthly_minor: toMinor(form.secondEarnerIncomeProtectionMonthly),
-            },
-          }
-        : {}),
+      members:
+        form.hasSecondEarner && form.secondEarnerMemberId
+          ? [
+              {
+                member_id: form.secondEarnerMemberId,
+                employment_status: form.secondEarnerEmploymentStatus,
+                monthly_salary_minor: toMinor(form.secondEarnerMonthlySalary),
+                income_protection_monthly_minor: toMinor(form.secondEarnerIncomeProtectionMonthly),
+              },
+            ]
+          : [],
     },
     emergency_fund: {
       emergency_savings_minor: toMinor(form.emergencySavings),
@@ -352,7 +360,11 @@ const STEPS: Step[] = [
 
 export default function FinancialProfilePage() {
   const router = useRouter()
-  const { family } = useAuth()
+  const { family, user } = useAuth()
+  // PRD-104: adults on the roster other than the signed-in user — the
+  // Second Earner section only makes sense, and is only shown, when at
+  // least one exists (i.e. the household has more than one adult).
+  const otherAdults = (family?.members ?? []).filter((m) => m.role !== 'child' && m.id !== user?.id)
   const setFinancialProfileSubmitted = useAppStore((s) => s.setFinancialProfileSubmitted)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [funds, setFunds] = useState<EducationFundForm[]>([])
@@ -573,17 +585,34 @@ export default function FinancialProfilePage() {
             </GlassCard>
           )}
 
-          {step.key === 'household' && (
+          {step.key === 'household' && otherAdults.length > 0 && (
             <GlassCard className="p-5 mt-4">
               <SectionTitle>Second Earner</SectionTitle>
               <div className="space-y-3">
                 <YesNo
                   label="Does your household have a second earner?"
                   value={form.hasSecondEarner}
-                  onChange={(v) => set('hasSecondEarner', v)}
+                  onChange={(v) => {
+                    // Pre-populate from the family roster rather than
+                    // asking for a name — PRD-104.
+                    if (v && !form.secondEarnerMemberId) set('secondEarnerMemberId', otherAdults[0]!.id)
+                    set('hasSecondEarner', v)
+                  }}
                 />
                 {form.hasSecondEarner && (
                   <>
+                    <label className="block">
+                      <div className="text-xs text-ink-tertiary mb-1.5">Who?</div>
+                      <select
+                        value={form.secondEarnerMemberId}
+                        onChange={(e) => set('secondEarnerMemberId', e.target.value)}
+                        className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                      >
+                        {otherAdults.map((m) => (
+                          <option key={m.id} value={m.id}>{m.name}</option>
+                        ))}
+                      </select>
+                    </label>
                     <EmploymentStatusPicker
                       value={form.secondEarnerEmploymentStatus}
                       onChange={(v) => set('secondEarnerEmploymentStatus', v)}

@@ -43,23 +43,34 @@ const FinancialProfileSchema = z.object({
     mortgage_outstanding_minor: z.number().int().nonnegative().default(0),
     life_cover_minor: z.number().int().nonnegative().default(0),
     income_protection_monthly_minor: z.number().int().nonnegative().default(0),
-    // OAK-029: the fields above are single-valued for the whole household —
-    // a genuinely common shape (one partner retired, one still working; one
-    // salaried, one self-employed) had no way to be entered as what it
-    // actually is, so the family had to pick one arbitrary label, and that
-    // choice — not the real underlying finances — decided whether
-    // no_income_protection could ever fire. Optional and additive: when
-    // absent, behavior is byte-for-byte unchanged from before this field
-    // existed. See the two-event evaluation in the route below for how
-    // this avoids double-firing the household detector's other, genuinely
-    // joint rules (life cover, renewal window, health cover).
-    second_earner: z
-      .object({
-        employment_status: z.enum(['employed', 'self_employed', 'unemployed', 'retired']),
-        monthly_salary_minor: z.number().int().nonnegative(),
-        income_protection_monthly_minor: z.number().int().nonnegative().default(0),
-      })
-      .optional(),
+    // PRD-104: the fields above are single-valued for the whole
+    // household — a genuinely common shape (one partner retired, one
+    // still working; one salaried, one self-employed) had no way to be
+    // entered as what it actually is, so the family had to pick one
+    // arbitrary label, and that choice — not the real underlying
+    // finances — decided whether no_income_protection could ever fire
+    // (OAK-029). Each entry links to a real family-roster member
+    // (member_id — see FamilyMemberDoc in family-group.ts) rather than
+    // an anonymous second earner, which is what lets the wizard
+    // pre-populate names and the assistant resolve "does my husband have
+    // income protection?" to a real person. Additive and optional: when
+    // empty, behavior is byte-for-byte unchanged from before this field
+    // existed. See the multi-event evaluation in the route below for how
+    // this avoids double-firing the household detector's other,
+    // genuinely joint rules (life cover, renewal window, health cover).
+    // Scoped to income + income protection only — not retirement or
+    // emergency-fund, which stay household-level (see PRD-104's own
+    // "Out of scope").
+    members: z
+      .array(
+        z.object({
+          member_id: z.string().min(1),
+          employment_status: z.enum(['employed', 'self_employed', 'unemployed', 'retired']),
+          monthly_salary_minor: z.number().int().nonnegative(),
+          income_protection_monthly_minor: z.number().int().nonnegative().default(0),
+        }),
+      )
+      .default([]),
   }),
   emergency_fund: z.object({
     emergency_savings_minor: z.number().int().nonnegative(),
@@ -323,7 +334,7 @@ export async function registerFamilyFinancialProfileRoutes(
       }
 
       const evaluateHouseholdEarner = async (
-        earner: { employment_status: string; monthly_salary_minor: number; income_protection_monthly_minor: number },
+        earner: { employment_status: string; monthly_salary_minor: number; income_protection_monthly_minor: number; member_id?: string },
         shared: typeof sharedHouseholdData,
       ) => {
         // Both employed and self-employed earners have income to protect
@@ -335,6 +346,12 @@ export async function registerFamilyFinancialProfileRoutes(
           employed: Number(hasIncomeToProtect),
           monthly_salary_minor: earner.monthly_salary_minor,
           income_protection_monthly_minor: earner.income_protection_monthly_minor,
+          // PRD-104: carried through to feature_snapshot so a fired
+          // insight can be attributed back to a real roster member, not
+          // just an anonymous "second earner" — doesn't affect dedup,
+          // ENTITY_KEY_FIELDS in packages/engine/src/detector.ts doesn't
+          // include it.
+          ...(earner.member_id ? { member_id: earner.member_id } : {}),
           ...shared,
         }
         const signalId = await persistSignal({
@@ -355,8 +372,8 @@ export async function registerFamilyFinancialProfileRoutes(
       }
 
       await evaluateHouseholdEarner(profile.household, sharedHouseholdData)
-      if (profile.household.second_earner) {
-        await evaluateHouseholdEarner(profile.household.second_earner, neutralSharedHouseholdData)
+      for (const member of profile.household.members) {
+        await evaluateHouseholdEarner(member, neutralSharedHouseholdData)
       }
     }
 
