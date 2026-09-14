@@ -18,6 +18,14 @@ import { PLAN_QUOTAS, createInitialBilling } from '../billing/billing-constants.
 import { sendPasswordResetEmail } from '../auth-email.js'
 import { recordLedgerEntry } from '../billing/credit-ledger.js'
 
+// Pragmatic (not full RFC 5322) format check for signup specifically —
+// unlike login/reset-request, which only ever do a lookup and return a
+// generic response either way, a malformed address here becomes a real,
+// permanently unreachable account marked email_verified. Requires a local
+// part, one '@', and a domain with a dot — catches the obvious cases
+// (missing '@', no domain, a second '@') without over-validating.
+const EMAIL_FORMAT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 interface User {
   id: string
   email: string
@@ -98,7 +106,7 @@ export async function registerAuthUserRoutes(
     async (request, reply) => {
       const { email, password, name, workspace, external_id, external_provider, tier_hint, invite_code, country } = request.body
 
-      if (!email?.includes('@')) return reply.status(400).send({ error: 'Valid email required' })
+      if (!email || !EMAIL_FORMAT_RE.test(email.trim())) return reply.status(400).send({ error: 'Valid email required' })
       if (!password || password.length < 8) return reply.status(400).send({ error: 'Password must be at least 8 characters' })
       if (!name?.trim()) return reply.status(400).send({ error: 'Name required' })
 
@@ -459,6 +467,8 @@ export async function registerAuthUserRoutes(
     if (avatar_color) updateData.avatar_color = avatar_color
     
     if (email && email !== user.email) {
+      if (!EMAIL_FORMAT_RE.test(email.trim())) return reply.status(400).send({ error: 'Valid email required' })
+
       // Check if new email is already taken
       const existing = await col.findOne({ email: email.toLowerCase(), tenant_id })
       if (existing) return reply.status(409).send({ error: 'Email already in use' })
