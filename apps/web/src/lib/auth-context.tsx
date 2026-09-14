@@ -19,6 +19,7 @@ interface AuthContextValue {
   isLoading: boolean
   signUp: (name: string, email: string, password: string) => Promise<User>
   signIn: (email: string, password: string) => Promise<void>
+  updateEmail: (email: string) => Promise<User>
   signInWithProvider: (provider: 'google') => Promise<void>
   signOut: () => void
   createFamily: (name: string, forUser?: User) => Promise<void>
@@ -158,6 +159,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return u
   }
 
+  // OAK-017 follow-up: links a real email to an already-authenticated
+  // account (PUT /auth/profile) — used when onboarding's recovery-email
+  // question is answered by someone who signed up first, whose account
+  // therefore already exists and isn't touched by signUp() above.
+  const updateEmail = async (email: string): Promise<User> => {
+    const token = localStorage.getItem(TOKEN_KEY)
+    const res = await fetch(`${getApiBase()}/auth/profile`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ email }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      throw new Error(data.error || 'Could not update email.')
+    }
+    const u: User = { id: data.user.id, name: data.user.name, email: data.user.email, avatar: '' }
+    persist(u, family)
+    return u
+  }
+
   const signIn = async (email: string, password: string) => {
     const { token, user: apiUser } = await apiAuthRequest('/auth/login', { email, password })
     localStorage.setItem(TOKEN_KEY, token)
@@ -238,6 +262,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         signUp,
         signIn,
+        updateEmail,
         signInWithProvider,
         signOut,
         createFamily,

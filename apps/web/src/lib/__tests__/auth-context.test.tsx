@@ -64,6 +64,52 @@ describe('AuthProvider.signIn', () => {
   })
 })
 
+describe('AuthProvider.updateEmail', () => {
+  it('PUTs to /auth/profile with the Authorization header and persists the returned user', async () => {
+    localStorage.setItem('agentoak_token', 'existing-token')
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      // /auth/me must succeed here — the mount-time rehydrate effect wipes
+      // the stored token on a failed /auth/me, which would defeat this
+      // test's whole point (asserting the Authorization header is sent).
+      if (url.endsWith('/auth/me')) return jsonResponse({ user_id: 'u1', email: 'original@example.com', name: 'Jane' })
+      if (url.endsWith('/family')) return jsonResponse({}, false)
+      if (url.endsWith('/auth/profile')) {
+        return jsonResponse({ user: { id: 'u1', email: 'new@example.com', name: 'Jane', tenant_id: 't1' } })
+      }
+      return jsonResponse({}, false)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    await act(async () => {
+      await result.current.updateEmail('new@example.com')
+    })
+
+    expect(result.current.user?.email).toBe('new@example.com')
+    const profileCall = fetchMock.mock.calls.find((call: unknown[]) => (call[0] as string).endsWith('/auth/profile'))!
+    const [, requestInit] = profileCall
+    expect(requestInit.method).toBe('PUT')
+    expect(requestInit.headers.Authorization).toBe('Bearer existing-token')
+    expect(JSON.parse(requestInit.body)).toEqual({ email: 'new@example.com' })
+  })
+
+  it('throws with the server error message on failure (e.g. a collision with another account) without changing local state', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith('/auth/profile')) return jsonResponse({ error: 'Email already in use' }, false)
+      return jsonResponse({}, false)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    await expect(result.current.updateEmail('taken@example.com')).rejects.toThrow('Email already in use')
+    expect(result.current.user).toBeNull()
+  })
+})
+
 describe('AuthProvider.signOut', () => {
   it('clears both the token and the persisted auth cache', async () => {
     const fetchMock = vi.fn().mockImplementation((url: string) => {

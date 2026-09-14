@@ -10,6 +10,15 @@ import { track } from '@/lib/growth-track'
 import { ONBOARDING_QUESTIONS } from '@/lib/onboarding-data'
 import type { FamilyMemberDraft } from '@/lib/onboarding-data'
 
+// Pragmatic (not full RFC 5322) format check — catches the obvious typos
+// this question is guarding against: missing '@', no domain, stray
+// whitespace, a second '@'. Matches the check on POST /auth/signup.
+const EMAIL_FORMAT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+export function isValidEmailFormat(value: string): boolean {
+  return EMAIL_FORMAT_RE.test(value.trim())
+}
+
 interface ChatMsg {
   id: string
   role: 'ai' | 'user'
@@ -45,6 +54,20 @@ export async function attemptOnboardingSignup<T>(
     const message = err instanceof Error ? err.message : 'Something went wrong creating your account.'
     return { ok: false, reason: message === 'Email already registered' ? 'collision' : 'other', message }
   }
+}
+
+// Live-verification finding: for anyone who signed up first (the app's
+// main entry point), `owner` is already set by the time finishOnboarding
+// runs, so the email this question collects was never linked to the
+// account — "that's your key back in" (said right after they answer) was
+// false. Returns the email to link via updateEmail(), or null when there's
+// nothing to do — no answer given, or it already matches the account.
+// Exported standalone for the same reason attemptOnboardingSignup is.
+export function onboardingRecoveryEmailToLink(owner: { email: string } | null, rawAnswer: string | undefined): string | null {
+  if (!owner) return null
+  const trimmed = rawAnswer?.trim()
+  if (!trimmed || trimmed === owner.email) return null
+  return trimmed
 }
 
 function GrowingGraph({ members }: { members: FamilyMemberDraft[] }) {
@@ -121,7 +144,7 @@ export function ConversationalOnboarding() {
   // state copy exists only to drive the disabled UI.
   const submittingRef = useRef(false)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const { user, signUp, createFamily, inviteMember } = useAuth()
+  const { user, signUp, createFamily, inviteMember, updateEmail } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
@@ -234,6 +257,18 @@ export function ConversationalOnboarding() {
         return
       }
       owner = outcome.user
+    } else {
+      const recoveryEmail = onboardingRecoveryEmailToLink(owner, allAnswers.email)
+      if (recoveryEmail) {
+        // Best-effort — a collision with someone else's account shouldn't
+        // block finishing onboarding, it just leaves the original signup
+        // email as the recovery address.
+        try {
+          owner = await updateEmail(recoveryEmail)
+        } catch {
+          // ignore
+        }
+      }
     }
 
     haptic('success')
@@ -268,7 +303,7 @@ export function ConversationalOnboarding() {
 
   const handleTextSubmit = () => {
     if (!textValue.trim()) return
-    if (currentQuestion?.id === 'email' && !textValue.includes('@')) {
+    if (currentQuestion?.id === 'email' && !isValidEmailFormat(textValue)) {
       addAIMessage("That doesn't look like a valid email — mind trying again?")
       setTextValue('')
       return

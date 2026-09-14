@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { attemptOnboardingSignup } from '../ConversationalOnboarding'
+import { attemptOnboardingSignup, isValidEmailFormat, onboardingRecoveryEmailToLink } from '../ConversationalOnboarding'
 
 describe('OAK-017: attemptOnboardingSignup', () => {
   it('returns ok:true with the signed-up user on success', async () => {
@@ -37,5 +37,45 @@ describe('OAK-017: attemptOnboardingSignup', () => {
     const signUp = vi.fn(async () => { throw 'weird non-error throw' })
     const outcome = await attemptOnboardingSignup('Alex', 'alex@example.com', 'pw', signUp)
     expect(outcome).toEqual({ ok: false, reason: 'other', message: 'Something went wrong creating your account.' })
+  })
+})
+
+describe('isValidEmailFormat', () => {
+  it.each([
+    'a@ea@example.comxample.com', // the exact malformed shape found during manual testing
+    'not-an-email',
+    'missing-domain@',
+    '@missing-local.com',
+    'no-dot-in-domain@example',
+  ])('rejects %s', (value) => {
+    expect(isValidEmailFormat(value)).toBe(false)
+  })
+
+  it('accepts a well-formed email', () => {
+    expect(isValidEmailFormat('real.person@example.com')).toBe(true)
+  })
+
+  it('trims surrounding whitespace before checking', () => {
+    expect(isValidEmailFormat('  real.person@example.com  ')).toBe(true)
+  })
+})
+
+describe('live-verification finding: onboardingRecoveryEmailToLink', () => {
+  it('returns null when there is no already-authenticated owner (the signup-first-time path handles email separately)', () => {
+    expect(onboardingRecoveryEmailToLink(null, 'someone@example.com')).toBeNull()
+  })
+
+  it('returns null when no email answer was given', () => {
+    expect(onboardingRecoveryEmailToLink({ email: 'original@example.com' }, undefined)).toBeNull()
+  })
+
+  it('returns null when the answer already matches the account email — nothing to link', () => {
+    expect(onboardingRecoveryEmailToLink({ email: 'same@example.com' }, 'same@example.com')).toBeNull()
+  })
+
+  it('returns the trimmed email to link when it differs from the account email — the bug this fixes: this used to be silently discarded for anyone who signed up before onboarding', () => {
+    expect(onboardingRecoveryEmailToLink({ email: 'signup-address@example.com' }, '  recovery-address@example.com  ')).toBe(
+      'recovery-address@example.com',
+    )
   })
 })
