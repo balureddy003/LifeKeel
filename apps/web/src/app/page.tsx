@@ -17,6 +17,7 @@ import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 import { fetchFinancialProfile, type FinancialProfile } from '@/lib/api'
 import { elderlyHomeCopy } from '@/lib/elderlyHomeCopy'
+import { childHomeCopy } from '@/lib/childHomeCopy'
 
 function ChildHome() {
   const { user } = useAuth()
@@ -35,6 +36,7 @@ function ChildHome() {
   const progress = myFund && myFund.target_savings_minor > 0
     ? Math.round((myFund.current_savings_minor / myFund.target_savings_minor) * 100)
     : 0
+  const { subheadline } = childHomeCopy({ loading: profile === undefined, hasLiveData: profile !== null && profile !== undefined })
 
   return (
     <div className="px-4 pt-4 space-y-5">
@@ -48,7 +50,7 @@ function ChildHome() {
         </div>
         <h1 className="text-2xl font-bold">Hi {childName}!</h1>
         <p className="text-sm text-ink-tertiary mt-1 flex items-center justify-center gap-1">
-          Your future is looking bright <Star size={12} className="text-family-400" />
+          {subheadline} <Star size={12} className="text-family-400" />
         </p>
       </motion.div>
 
