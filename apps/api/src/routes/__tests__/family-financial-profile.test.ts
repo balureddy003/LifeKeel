@@ -388,3 +388,84 @@ describe('OAK-006: optimistic concurrency on POST /family/financial-profile', ()
     expect(get.json().profile.household.monthly_salary_minor).not.toBe(1)
   })
 })
+
+describe('PRD-106: retirement projection correctness at and past target age', () => {
+  let engine: Engine
+
+  beforeEach(async () => {
+    engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
+    await engine.load()
+  })
+
+  it("this session's exact repro — a retired 70-year-old (target 65, real shortfall) gets a sustainability insight, never a projected retirement age", async () => {
+    const { app, insights } = await buildApp(engine)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        retirement: {
+          ...BASE_PROFILE.retirement,
+          current_age: 70,
+          target_retirement_age: 65,
+          pension_balance_minor: 500_000, // achievable ~£200/yr at 4% SWR
+          target_retirement_income_minor: 2_000_000, // £20,000/yr target — a real, severe shortfall
+        },
+        generate_insights: true,
+      },
+    })
+    expect(res.statusCode).toBe(200)
+
+    expect(insights.some((i) => i.rule_id === 'retirement_behind_target_age')).toBe(false)
+
+    const shortfall = insights.find((i) => i.rule_id === 'retirement_gap_unaffordable_by_contributions')
+    expect(shortfall).toBeDefined()
+    expect(shortfall!.reasoning).not.toMatch(/age/i)
+    expect(shortfall!.reasoning).not.toContain('130')
+  })
+
+  it('a genuinely on-track retiree (balance covers the target income) gets no shortfall insight at all', async () => {
+    const { app, insights } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        retirement: {
+          ...BASE_PROFILE.retirement,
+          current_age: 70,
+          target_retirement_age: 65,
+          pension_balance_minor: 100_000_000, // achievable = 4,000,000/yr, well above target
+          target_retirement_income_minor: 2_000_000,
+        },
+        generate_insights: true,
+      },
+    })
+    expect(insights.some((i) => i.rule_id === 'retirement_behind_target_age')).toBe(false)
+    expect(insights.some((i) => i.rule_id === 'retirement_gap_unaffordable_by_contributions')).toBe(false)
+  })
+
+  it('a 63-year-old with a severe pre-target shortfall gets a sustainability insight, never "retire around age 111"', async () => {
+    const { app, insights } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        household: { ...BASE_PROFILE.household, monthly_salary_minor: 400_000 },
+        retirement: {
+          current_age: 63,
+          target_retirement_age: 65,
+          pension_balance_minor: 100_000,
+          monthly_contribution_minor: 10_000,
+          target_retirement_income_minor: 3_000_000,
+          expected_annual_growth_pct: 5,
+        },
+        generate_insights: true,
+      },
+    })
+    const shortfall = insights.find((i) => i.rule_id === 'retirement_gap_unaffordable_by_contributions')
+    expect(shortfall).toBeDefined()
+    expect(shortfall!.reasoning).not.toMatch(/age/i)
+  })
+})

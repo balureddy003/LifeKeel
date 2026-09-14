@@ -54,6 +54,7 @@ describe('Family & Household detectors', () => {
           mortgage_outstanding_minor: 1_200_000,
           education_funding_gap_minor: 300_000,
           annual_living_expenses_minor: 480_000,
+          has_dependents: 0,
         },
       })
       expect(fired).toBe(true)
@@ -68,6 +69,7 @@ describe('Family & Household detectors', () => {
           mortgage_outstanding_minor: 1_200_000,
           education_funding_gap_minor: 300_000,
           annual_living_expenses_minor: 480_000,
+          has_dependents: 0,
         },
       })
       expect(fired).toBe(false)
@@ -82,6 +84,7 @@ describe('Family & Household detectors', () => {
           mortgage_outstanding_minor: 1_200_000,
           education_funding_gap_minor: 300_000,
           annual_living_expenses_minor: 480_000,
+          has_dependents: 0,
         },
       })
       expect(fired).toBe(true)
@@ -96,9 +99,25 @@ describe('Family & Household detectors', () => {
           mortgage_outstanding_minor: 0,
           education_funding_gap_minor: 0,
           annual_living_expenses_minor: 0,
+          has_dependents: 0,
         },
       })
       expect(fired).toBe(false)
+    })
+
+    it('PRD-105: fires when there is no mortgage but a dependent exists (the gate is an "or")', async () => {
+      const detector = await loadDetector('family_protection_gap')
+      const rule = ruleById(detector, 'life_insurance_below_household_needs')
+      const fired = evaluate(rule.condition, {
+        data: {
+          life_cover_minor: 0,
+          mortgage_outstanding_minor: 0,
+          education_funding_gap_minor: 300_000,
+          annual_living_expenses_minor: 480_000,
+          has_dependents: 1,
+        },
+      })
+      expect(fired).toBe(true)
     })
 
     it('fires no_income_protection when employed with zero income protection', async () => {
@@ -407,6 +426,7 @@ describe('Family & Household detectors', () => {
       const rule = ruleById(detector, 'retirement_gap_unaffordable_by_contributions')
       const fired = evaluate(rule.condition, {
         data: {
+          current_age: 63,
           projected_retirement_age: 90,
           target_retirement_age: 67,
           pension_balance_minor: 100_000,
@@ -422,11 +442,46 @@ describe('Family & Household detectors', () => {
       const rule = ruleById(detector, 'retirement_gap_unaffordable_by_contributions')
       const fired = evaluate(rule.condition, {
         data: {
+          current_age: 60,
           projected_retirement_age: 70,
           target_retirement_age: 65,
           pension_balance_minor: 100_000,
           additional_monthly_contribution_needed_minor: 50_000,
           monthly_salary_minor: 400_000,
+        },
+      })
+      expect(fired).toBe(false)
+    })
+
+    it('PRD-106: fires retirement_gap_unaffordable_by_contributions for a past-target-age household whose balance falls short of the target income', async () => {
+      const detector = await loadDetector('family_retirement_gap')
+      const rule = ruleById(detector, 'retirement_gap_unaffordable_by_contributions')
+      const fired = evaluate(rule.condition, {
+        data: {
+          current_age: 70,
+          target_retirement_age: 65,
+          pension_balance_minor: 500_000,
+          // Sentinel projectRetirement() now sets for this population —
+          // must NOT be what gates this branch (see condition comment).
+          additional_monthly_contribution_needed_minor: Number.MAX_SAFE_INTEGER,
+          achievable_retirement_income_minor: 20_000,
+          target_retirement_income_minor: 200_000,
+        },
+      })
+      expect(fired).toBe(true)
+    })
+
+    it('PRD-106: does not fire for a past-target-age household whose balance genuinely covers the target income', async () => {
+      const detector = await loadDetector('family_retirement_gap')
+      const rule = ruleById(detector, 'retirement_gap_unaffordable_by_contributions')
+      const fired = evaluate(rule.condition, {
+        data: {
+          current_age: 70,
+          target_retirement_age: 65,
+          pension_balance_minor: 6_000_000,
+          additional_monthly_contribution_needed_minor: Number.MAX_SAFE_INTEGER,
+          achievable_retirement_income_minor: 250_000,
+          target_retirement_income_minor: 200_000,
         },
       })
       expect(fired).toBe(false)

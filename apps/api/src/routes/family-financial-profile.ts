@@ -144,13 +144,43 @@ type FinancialProfile = z.infer<typeof FinancialProfileSchema>
  * age (achievable_retirement_income_minor — the same growing-annuity math,
  * solved forward at the *current* contribution rate instead of solving
  * backward for a required one).
+ *
+ * PRD-106: all of the above only applies pre-target-age
+ * (current_age < target_retirement_age) — see the early return below for
+ * current_age >= target_retirement_age, which reports today's real
+ * sustainability instead of compounding forward as if still accumulating.
  */
 function projectRetirement(r: FinancialProfile['retirement']) {
   const rate = r.expected_annual_growth_pct / 100
   const requiredCorpusMinor = r.target_retirement_income_minor * 25
   const annualContribution = r.monthly_contribution_minor * 12
-  const yearsToTarget = Math.max(0, r.target_retirement_age - r.current_age)
 
+  // PRD-106: current_age >= target_retirement_age means there's no future
+  // "keep contributing until X" timeline left to project forward — the
+  // old code ran the compounding loop below anyway and produced a literal
+  // "your projected retirement age is approximately 130" for a genuinely
+  // retired 70-year-old. Report today's real sustainability instead: what
+  // income the CURRENT balance supports right now, at the same 4%-SWR
+  // heuristic (divide by 25) used everywhere else in this function — not
+  // a fictional future date reached by compounding forward as if still
+  // accumulating.
+  if (r.current_age >= r.target_retirement_age) {
+    return {
+      projected_retirement_age: r.current_age,
+      // Sentinel, not a real "contribution to close the gap" figure — a
+      // retiree can't out-contribute their way to a bigger pot on a
+      // timeline that's already ended. Deliberately larger than any real
+      // monthly_salary_minor * 0.5 so retirement_behind_target_age's
+      // existing gate (retirement-gap.yaml) can never fire for this
+      // population — retirement_gap_unaffordable_by_contributions's
+      // extended condition is the rule for this population instead.
+      additional_monthly_contribution_needed_minor: Number.MAX_SAFE_INTEGER,
+      achievable_retirement_income_minor: Math.max(0, Math.round(r.pension_balance_minor / 25)),
+      requiredCorpusMinor,
+    }
+  }
+
+  const yearsToTarget = r.target_retirement_age - r.current_age
   let balance = r.pension_balance_minor
   let age = r.current_age
   const maxAge = r.current_age + 60
@@ -160,26 +190,24 @@ function projectRetirement(r: FinancialProfile['retirement']) {
   }
   const projected_retirement_age = age
 
-  let additional_monthly_contribution_needed_minor = 0
-  let achievable_retirement_income_minor = r.target_retirement_income_minor
-  if (yearsToTarget > 0) {
-    const growthFactor = Math.pow(1 + rate, yearsToTarget)
-    const futureValueOfCurrentBalance = r.pension_balance_minor * growthFactor
-    const annuityFactor = rate > 0 ? (growthFactor - 1) / rate : yearsToTarget
-    const futureValueOfContributions = annualContribution * annuityFactor
+  // yearsToTarget is always > 0 here — the current_age >= target_retirement_age
+  // case already returned above.
+  const growthFactor = Math.pow(1 + rate, yearsToTarget)
+  const futureValueOfCurrentBalance = r.pension_balance_minor * growthFactor
+  const annuityFactor = rate > 0 ? (growthFactor - 1) / rate : yearsToTarget
+  const futureValueOfContributions = annualContribution * annuityFactor
 
-    const requiredAnnualContribution = annuityFactor > 0
-      ? (requiredCorpusMinor - futureValueOfCurrentBalance) / annuityFactor
-      : 0
-    const requiredMonthlyContribution = requiredAnnualContribution / 12
-    additional_monthly_contribution_needed_minor = Math.max(
-      0,
-      Math.round(requiredMonthlyContribution - r.monthly_contribution_minor),
-    )
+  const requiredAnnualContribution = annuityFactor > 0
+    ? (requiredCorpusMinor - futureValueOfCurrentBalance) / annuityFactor
+    : 0
+  const requiredMonthlyContribution = requiredAnnualContribution / 12
+  const additional_monthly_contribution_needed_minor = Math.max(
+    0,
+    Math.round(requiredMonthlyContribution - r.monthly_contribution_minor),
+  )
 
-    const achievableCorpusMinor = futureValueOfCurrentBalance + futureValueOfContributions
-    achievable_retirement_income_minor = Math.max(0, Math.round(achievableCorpusMinor / 25))
-  }
+  const achievableCorpusMinor = futureValueOfCurrentBalance + futureValueOfContributions
+  const achievable_retirement_income_minor = Math.max(0, Math.round(achievableCorpusMinor / 25))
 
   return {
     projected_retirement_age,

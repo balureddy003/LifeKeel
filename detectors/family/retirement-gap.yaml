@@ -21,6 +21,14 @@ rules:
     # instead — verified against a real near-retiree scenario this session
     # where this rule's old, ungated version suggested increasing monthly
     # contributions by an amount larger than the household's entire income.
+    # PRD-106: this same gate also structurally excludes anyone already at
+    # or past target_retirement_age — projectRetirement() sets
+    # additional_monthly_contribution_needed_minor to a sentinel
+    # (Number.MAX_SAFE_INTEGER) for that population specifically so this
+    # condition can never be true for them, no explicit age check needed
+    # here. Confirmed live: a retired 70-year-old previously got "your
+    # projected retirement age is approximately 130... increasing monthly
+    # contributions by £0.00 could close the gap" from this rule.
     condition: >
       data.projected_retirement_age > data.target_retirement_age and
       data.pension_balance_minor > 0 and
@@ -41,25 +49,40 @@ rules:
   - id: retirement_gap_unaffordable_by_contributions
     name: Retirement Gap Too Large For Contributions Alone
     # The complement of retirement_behind_target_age's gate — same underlying
-    # gap, but here "just contribute more" isn't a realistic single fix, so
-    # this surfaces the two levers that actually are: delaying retirement, or
-    # accepting a lower income at the original target age. Both numbers come
-    # from the same projection the other rule uses, just read differently.
+    # gap, but here "just contribute more" isn't a realistic single fix.
+    # Two branches: pre-target-age (same as before — projected retirement
+    # age has slipped past target and the needed contribution increase
+    # isn't realistic), or PRD-106's past-target-age case (current_age >=
+    # target_retirement_age, where additional_monthly_contribution_needed_minor
+    # is a sentinel — see projectRetirement in family-financial-profile.ts —
+    # so this branch checks achievable_retirement_income_minor against the
+    # target directly instead: a genuine shortfall in what today's balance
+    # can sustain, not "any balance below infinity"). Confirmed live: a
+    # retired 70-year-old with a real shortfall previously got a literal
+    # "your projected retirement age is approximately 130" from the other
+    # rule; a 63-year-old severe pre-target gap got "retire around age
+    # 111" from this rule's own old copy — both fixed by dropping every
+    # age reference from the template below, which reads correctly for
+    # either branch without needing to know which one fired.
     condition: >
-      data.projected_retirement_age > data.target_retirement_age and
-      data.pension_balance_minor > 0 and
-      data.additional_monthly_contribution_needed_minor > data.monthly_salary_minor * 0.5
+      data.pension_balance_minor > 0 and (
+        (data.current_age < data.target_retirement_age and
+         data.projected_retirement_age > data.target_retirement_age and
+         data.additional_monthly_contribution_needed_minor > data.monthly_salary_minor * 0.5)
+        or
+        (data.current_age >= data.target_retirement_age and
+         data.achievable_retirement_income_minor < data.target_retirement_income_minor)
+      )
     confidence: 0.76
     impact_low: "(data.target_retirement_income_minor - data.achievable_retirement_income_minor) * 10"
     impact_high: "(data.target_retirement_income_minor - data.achievable_retirement_income_minor) * 25"
     reasoning_template: >
-      Based on the data you entered, closing this gap through higher contributions alone would need more than half
-      your monthly income — not a realistic single fix. Two other paths worth considering: at your current
-      contribution rate, you're on track to retire around age {{data.projected_retirement_age}} instead of
-      {{data.target_retirement_age}}. Or, retiring at {{data.target_retirement_age}} as planned, your current
-      trajectory could sustain roughly {{data.achievable_retirement_income_minor}} a year instead of your
-      {{data.target_retirement_income_minor}} target. These are estimates, not guarantees — a financial professional
-      can help weigh which trade-off fits your family.
+      Based on the data you entered, your pension trajectory falls short of your target — it could sustain roughly
+      {{data.achievable_retirement_income_minor}} a year instead of your {{data.target_retirement_income_minor}}
+      target, and closing that gap through higher contributions alone would need more than half your monthly
+      income, not a realistic single fix. Two paths worth considering: delaying when you start drawing on this
+      money, or adjusting your target income. These are estimates, not guarantees — a financial professional can
+      help weigh which trade-off fits your family.
     actions:
       - Consider whether delaying retirement by a few years is workable for your family
       - Consider whether a lower target retirement income is workable
