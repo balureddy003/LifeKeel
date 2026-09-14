@@ -15,6 +15,15 @@ competitive landscape (AI money apps, family life-admin platforms,
 insurance-gap tools) and the "world-class bar" each PRD below is written
 against. Read this first; other PRDs cite it instead of repeating it.
 
+[007-life-stage-and-crisis-response-research.md](007-life-stage-and-crisis-response-research.md) —
+second shared reference, added alongside the 00x backfill set since it
+grounds PRD-104 through PRD-108 the same way 000 grounds everything else:
+the financial life-cycle framework, seven researched crisis-response
+playbooks (job loss, bereavement, divorce, disability, recession,
+aging-parent care, self-employed income shock), and why per-person
+reasoning inside a shared household is still an open gap across every
+competitor researched.
+
 ## 00x — backfilled: what's already shipped
 
 Retroactive PRDs for live functionality, written against the same
@@ -53,6 +62,29 @@ domain before going wide, prepare-only actions before anything that acts.
 3. [103-tier1-prepare-actions.md](103-tier1-prepare-actions.md) — Oak
    drafts an outreach message for an insight; a human copies/sends it
    themselves. Tier 1, and deliberately stops there.
+4. [104-per-member-financial-identity.md](104-per-member-financial-identity.md) —
+   the Family Twin already models multiple people by name/role; the
+   financial profile doesn't extend that to income/protection per person.
+   Fixes a proven live gap where a mixed-earner household's single
+   employment-status label can hide a real, quantified protection gap.
+   Tier 0.
+5. [105-protection-coverage-gaps.md](105-protection-coverage-gaps.md) —
+   deepens PRD-102's Protection domain: adds car/home as recordable
+   policy types, and gates the life-insurance-shortfall rule on genuine
+   dependency (has_dependents or a mortgage), matching its sibling rule.
+   Tier 0.
+6. [106-retirement-past-target-age-correctness.md](106-retirement-past-target-age-correctness.md) —
+   fixes a proven live bug where an already-retired household receives a
+   nonsensical "projected retirement age" (observed: age 130) instead of
+   an honest sustainability read. Tier 0.
+7. [107-insight-lifecycle-retraction.md](107-insight-lifecycle-retraction.md) —
+   insights are never retracted once the family fixes the underlying gap;
+   proven live with a gap-free profile that left two stale insights
+   untouched. A trust precondition for PRD-108. Tier 0.
+8. [108-life-event-response-playbooks.md](108-life-event-response-playbooks.md) —
+   the roadmap's own "next" after PRD-103: personalized checklists for
+   job loss, bereavement, and disability, reusing PRD-103's draft
+   mechanism for any step that involves outside contact. Tier 0/1.
 
 ## 20x — marketing: the same engine as the growth mechanic
 
@@ -74,11 +106,33 @@ engineering PRD:
 
 - **Health & Life/Assets domains** — GDPR special-category data; the
   architecture doc says to sequence this after the trust/consent model is
-  proven on lower-stakes domains, not before.
+  proven on lower-stakes domains, not before. This is also why PRD-108's
+  disability playbook personalizes against insurance *policy* data only,
+  never a diagnosis or other health record.
 - **Action Network partnerships** (bank/insurer/airline API integrations) —
   "mostly a business-development problem wearing an engineering costume."
   Nothing here to write a technical PRD against until a partner exists.
+  This is also why a "continuously research the market and suggest a
+  better policy" capability — the natural next step after PRD-105/108,
+  and the clearest path to the "consistently researches the market"
+  framing in the product vision — isn't written as a PRD yet: it needs a
+  real market-rate data source or partner underneath it, not just an
+  engineering slice.
 - **Any Tier 2+ autonomous action** (auto-filing a claim, moving money) — not
   proposed until PRD-103's Tier 1 pattern has shipped and been trusted in
   production, and even then needs its own named trust-tier decision per
   CLAUDE.md's rule, not a default next step.
+- **Divorce, recession, aging-parent-care, and self-employed-income-shock
+  playbooks** — drafted in full in
+  [007](007-life-stage-and-crisis-response-research.md) alongside the
+  three PRD-108 ships, but held back as v2: better to validate the
+  life-event mechanism (declaration → personalized playbook → prepare
+  action) against three well-scoped events before committing to seven at
+  once.
+- **Full per-family-member reasoning in the assistant and every detector**
+  (not just protection, as PRD-104 scopes it) — the "personalized Oak for
+  every family member" end state the product vision names, but PRD-104
+  deliberately ships the income/protection slice first and leaves
+  per-member retirement, education, and emergency-fund reasoning for a
+  follow-up once that slice is proven, rather than redesigning every
+  detector's data model in one PRD.
