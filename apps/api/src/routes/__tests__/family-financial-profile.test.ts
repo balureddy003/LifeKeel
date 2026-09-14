@@ -24,9 +24,20 @@ function daysFromNow(days: number): string {
   return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10)
 }
 
+// Mongo-filter matcher just capable enough for what resolveStaleInsights
+// actually sends (equality + $in) — not a general Mongo emulator.
+function matchesFilter(doc: Record<string, unknown>, filter: Record<string, unknown>): boolean {
+  return Object.entries(filter).every(([key, cond]) => {
+    if (cond && typeof cond === 'object' && '$in' in (cond as Record<string, unknown>)) {
+      return ((cond as { $in: unknown[] }).$in).includes(doc[key])
+    }
+    return doc[key] === cond
+  })
+}
+
 function makeDb() {
   let stored: Record<string, unknown> | null = null
-  const col = {
+  const profileCol = {
     findOne: vi.fn(async () => stored),
     // OAK-006: mirrors the real MongoDB driver's findOneAndUpdate — returns
     // the matched-and-updated document directly (not wrapped in `.value`),
@@ -40,10 +51,31 @@ function makeDb() {
     }),
     createIndex: vi.fn(async () => ({})),
   }
-  return { collection: () => col } as any
+  // PRD-107: a minimal in-memory stand-in for the real 'insights' collection
+  // resolveStaleInsights writes to — this test harness otherwise never
+  // persists insights to Mongo (fired insights only reach the onInsightsGenerated
+  // callback below), so tests that seed a pre-existing open insight and assert
+  // it transitions to 'resolved' need somewhere real for that write to land.
+  const insightDocs: Record<string, unknown>[] = []
+  const insightsCol = {
+    updateMany: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
+      let modifiedCount = 0
+      for (const doc of insightDocs) {
+        if (matchesFilter(doc, filter)) {
+          Object.assign(doc, update.$set)
+          modifiedCount++
+        }
+      }
+      return { modifiedCount }
+    }),
+  }
+  return {
+    collection: (name: string) => (name === 'insights' ? insightsCol : profileCol),
+    _insightDocs: insightDocs,
+  } as any
 }
 
-async function buildApp(engine: Engine): Promise<{ app: ReturnType<typeof Fastify>; insights: Insight[] }> {
+async function buildApp(engine: Engine): Promise<{ app: ReturnType<typeof Fastify>; insights: Insight[]; insightDocs: Record<string, unknown>[] }> {
   const app = Fastify()
   app.addHook('onRequest', async (request) => {
     ;(request as any).authContext = { tenant_id: TENANT, user_id: 'user-1' }
@@ -53,7 +85,7 @@ async function buildApp(engine: Engine): Promise<{ app: ReturnType<typeof Fastif
   await registerFamilyFinancialProfileRoutes(app, db, engine, async (generated) => {
     insights.push(...generated)
   })
-  return { app, insights }
+  return { app, insights, insightDocs: db._insightDocs }
 }
 
 const BASE_PROFILE = {
@@ -467,5 +499,118 @@ describe('PRD-106: retirement projection correctness at and past target age', ()
     const shortfall = insights.find((i) => i.rule_id === 'retirement_gap_unaffordable_by_contributions')
     expect(shortfall).toBeDefined()
     expect(shortfall!.reasoning).not.toMatch(/age/i)
+  })
+})
+
+describe('PRD-107: insight resolution', () => {
+  let engine: Engine
+
+  beforeEach(async () => {
+    engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
+    await engine.load()
+  })
+
+  function seedOpenInsight(
+    insightDocs: Record<string, unknown>[],
+    detectorId: string,
+    ruleId: string,
+    state: 'identified' | 'sent' = 'identified',
+  ) {
+    insightDocs.push({
+      id: `${ruleId}-seed`,
+      tenant_id: TENANT,
+      detector_id: detectorId,
+      rule_id: ruleId,
+      state,
+    })
+  }
+
+  it("this session's exact repro — two genuinely-open insights both resolve when a gap-free profile no longer reproduces either condition", async () => {
+    const { app, insightDocs } = await buildApp(engine)
+    seedOpenInsight(insightDocs, 'family_protection_gap', 'no_income_protection')
+    seedOpenInsight(insightDocs, 'family_protection_gap', 'life_insurance_below_household_needs')
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        // Gap-free: full income protection, full life cover, no mortgage,
+        // no dependents (education_funds empty) so neither rule's condition
+        // can hold.
+        household: {
+          ...BASE_PROFILE.household,
+          mortgage_outstanding_minor: 0,
+          life_cover_minor: 10_000_000,
+          income_protection_monthly_minor: 400000,
+        },
+        education_funds: [],
+        generate_insights: true,
+      },
+    })
+    expect(res.statusCode).toBe(200)
+
+    const protectionInsight = insightDocs.find((d) => d['rule_id'] === 'no_income_protection')
+    const lifeInsuranceInsight = insightDocs.find((d) => d['rule_id'] === 'life_insurance_below_household_needs')
+    expect(protectionInsight?.['state']).toBe('resolved')
+    expect(lifeInsuranceInsight?.['state']).toBe('resolved')
+  })
+
+  it('a rule that still fires does not get spuriously resolved-then-refired — no duplicate, no state churn', async () => {
+    const { app, insights, insightDocs } = await buildApp(engine)
+    seedOpenInsight(insightDocs, 'family_retirement_gap', 'no_retirement_savings')
+
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        retirement: { ...BASE_PROFILE.retirement, pension_balance_minor: 0 },
+        generate_insights: true,
+      },
+    })
+
+    // The still-firing rule's original seeded insight is untouched...
+    const seeded = insightDocs.find((d) => d['rule_id'] === 'no_retirement_savings')
+    expect(seeded?.['state']).toBe('identified')
+    // ...and the route's own dedup/generation path is unaware of it (this
+    // harness's onInsightsGenerated doesn't dedup against the seed at all —
+    // it only proves resolveStaleInsights itself didn't touch a rule id
+    // that's present in firedRuleIds this cycle).
+    expect(insights.some((i) => i.rule_id === 'no_retirement_savings')).toBe(true)
+  })
+
+  it('known limitation: a rule still firing for one household member blocks resolution for the whole detector/rule pair, even if it genuinely resolved for another member (entity_key is always empty for family events)', async () => {
+    const { app, insightDocs } = await buildApp(engine)
+    seedOpenInsight(insightDocs, 'family_protection_gap', 'no_income_protection')
+
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        // Primary earner now has full income protection (their own gap
+        // resolved), but a second household member still has none.
+        household: {
+          ...BASE_PROFILE.household,
+          income_protection_monthly_minor: 400000,
+          members: [
+            {
+              member_id: 'member-1',
+              employment_status: 'employed',
+              monthly_salary_minor: 300000,
+              income_protection_monthly_minor: 0,
+            },
+          ],
+        },
+        generate_insights: true,
+      },
+    })
+
+    // Still fired (for the member), so the pre-existing seeded insight is
+    // deliberately left open rather than resolved — under-resolves, never
+    // spuriously resolves.
+    const seeded = insightDocs.find((d) => d['rule_id'] === 'no_income_protection')
+    expect(seeded?.['state']).toBe('identified')
   })
 })

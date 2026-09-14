@@ -28,9 +28,11 @@ export interface FamilyInsight {
 
 // Real engine output (packages/engine's Trigger/Insight schema) has no flat
 // `confidence` field — it lives at confidence_breakdown.combined_score — and
-// its terminal states are 'completed' | 'dismissed' | 'archived', not
-// 'approved'. This adapts that shape to the flat one the rest of this app
-// reads, instead of every call site re-deriving it (or silently getting NaN).
+// its terminal states are 'completed' | 'dismissed' | 'archived' | 'resolved'
+// (PRD-107 — auto-retracted when a later evaluation no longer reproduces the
+// condition, distinct from an explicit dismiss/approve), not 'approved'.
+// This adapts that shape to the flat one the rest of this app reads, instead
+// of every call site re-deriving it (or silently getting NaN).
 interface RawInsight {
   id: string
   detector_id: string
@@ -45,7 +47,7 @@ interface RawInsight {
   created_at: string
 }
 
-export const RESOLVED_INSIGHT_STATES = ['completed', 'dismissed', 'archived']
+export const RESOLVED_INSIGHT_STATES = ['completed', 'dismissed', 'archived', 'resolved']
 
 function adaptInsight(raw: RawInsight): FamilyInsight {
   return {

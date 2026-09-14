@@ -8,6 +8,7 @@ import type { LucideIcon } from 'lucide-react'
 import { GlassCard, PageHeader, ScoreRing } from '@/components/Glass'
 import { useFamilyHealthDomains, type HealthDomain } from '@/lib/useFamilyData'
 import { learnMoreHref } from '@/lib/detector-content'
+import type { FamilyInsight } from '@/lib/api'
 
 const DOMAIN_META: Record<HealthDomain, { label: string; icon: LucideIcon; color: string; description: string }> = {
   protection: {
@@ -50,6 +51,20 @@ function readableHypothesis(hypothesis: string): string {
   return hypothesis.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
+// PRD-107: resolved insights (the condition no longer holds, auto-retracted
+// by a later evaluation) get their own quiet section rather than sitting
+// undifferentiated among open ones. Exported so the split logic is testable
+// without rendering the component.
+export function splitInsightsByResolution(insights: FamilyInsight[]): {
+  open: FamilyInsight[]
+  resolved: FamilyInsight[]
+} {
+  return {
+    open: insights.filter((i) => i.state !== 'resolved'),
+    resolved: insights.filter((i) => i.state === 'resolved'),
+  }
+}
+
 export default function HealthDomainClient() {
   const params = useParams<{ domain: string }>()
   const { domains, loading } = useFamilyHealthDomains()
@@ -71,6 +86,7 @@ export default function HealthDomainClient() {
   const meta = DOMAIN_META[params.domain]
   const domain = domains[params.domain]
   const Icon = meta.icon
+  const { open: openInsights, resolved: resolvedInsights } = splitInsightsByResolution(domain.insights)
 
   return (
     <div className="px-5 pt-2 space-y-5">
@@ -125,7 +141,7 @@ export default function HealthDomainClient() {
           </GlassCard>
         )}
 
-        {!loading && domain.insights.length === 0 && (
+        {!loading && openInsights.length === 0 && (
           <GlassCard className="p-5">
             <p className="text-sm text-ink-secondary leading-relaxed">
               {domain.hasLiveData
@@ -135,7 +151,7 @@ export default function HealthDomainClient() {
           </GlassCard>
         )}
 
-        {!loading && domain.insights.map((insight, i) => (
+        {!loading && openInsights.map((insight, i) => (
           <motion.div
             key={insight.id}
             initial={{ opacity: 0, x: -20 }}
@@ -162,6 +178,22 @@ export default function HealthDomainClient() {
             </GlassCard>
           </motion.div>
         ))}
+
+        {!loading && resolvedInsights.length > 0 && (
+          <div className="mt-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-ink-tertiary mb-3 px-1">
+              <CheckCircle2 size={16} className="text-success" />
+              Resolved
+            </div>
+            {resolvedInsights.map((insight) => (
+              <GlassCard key={insight.id} className="p-4 mb-2 opacity-70">
+                <p className="text-sm text-ink-secondary">
+                  {readableHypothesis(insight.hypothesis)} — this is now covered.
+                </p>
+              </GlassCard>
+            ))}
+          </div>
+        )}
       </motion.div>
     </div>
   )

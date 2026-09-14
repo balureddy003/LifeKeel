@@ -26,6 +26,14 @@ import type { Engine, Insight } from '@agentoak/engine'
 import { getTenantCollection } from '@agentoak/platform'
 import { getFamilyFinancialProfileCollection } from '../db.js'
 import { persistSignal } from '../signals.js'
+import { resolveStaleInsights } from '../insights-persist.js'
+
+const FAMILY_DETECTOR_IDS = [
+  'family_protection_gap',
+  'family_emergency_fund_adequacy',
+  'family_retirement_gap',
+  'family_education_shortfall',
+] as const
 
 const FinancialProfileSchema = z.object({
   household: z.object({
@@ -498,6 +506,21 @@ export async function registerFamilyFinancialProfileRoutes(
 
     if (generatedInsights.length > 0 && onInsightsGenerated) {
       await onInsightsGenerated(generatedInsights, tenant_id)
+    }
+
+    // PRD-107: this handler is the one place that just re-evaluated a
+    // detector's entire rule set for this tenant in one pass (one
+    // engine.evaluate() call per earner/child, aggregated into
+    // generatedInsights above) — the only call site with a complete
+    // enough picture to safely retract insights the fresh data no longer
+    // reproduces. See resolveStaleInsights's own doc comment for why this
+    // resolves per-detector-per-rule rather than per-entity.
+    const inventory = engine.inventory()
+    for (const detectorId of FAMILY_DETECTOR_IDS) {
+      const checkedRuleIds = inventory.find((d) => d.id === detectorId)?.rules.map((r) => r.id) ?? []
+      if (checkedRuleIds.length === 0) continue
+      const firedRuleIds = generatedInsights.filter((i) => i.detector_id === detectorId).map((i) => i.rule_id)
+      await resolveStaleInsights(db, tenant_id, detectorId, checkedRuleIds, firedRuleIds)
     }
 
     return reply.send({ ok: true, insights_generated: generatedInsights.length, version: newVersion })

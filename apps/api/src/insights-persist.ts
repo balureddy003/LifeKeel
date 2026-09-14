@@ -76,3 +76,40 @@ export async function persistAndDeliverInsights(
     )
   }
 }
+
+/**
+ * PRD-107: an insight otherwise only closes via explicit approve/dismiss,
+ * or the dedup window elapsing (after which a still-true condition just
+ * re-fires the same insight, never actually resolving it) — so a family
+ * that fixes a real gap and updates their profile keeps seeing the old
+ * alert forever. Call once per detector, per evaluation cycle, with the
+ * rule ids that detector's full YAML rule set includes (engine.inventory())
+ * and the ones that actually fired this cycle across all of that
+ * detector's sub-evaluations. Any previously-open ('identified'/'sent')
+ * insight for a rule id in the first set but not the second no longer
+ * reproduces, so it's marked 'resolved'.
+ *
+ * entity_key is '' for every family detector event, so this can't tell
+ * "child A's insight" from "child B's" when one rule covers multiple
+ * entities under the same detector — it only resolves a rule id when NONE
+ * of this cycle's sub-evaluations fired it, which can under-resolve in
+ * that multi-instance case but never spuriously resolves a still-valid
+ * insight. Known, disclosed limitation of the entity_key scheme, not
+ * introduced by this function.
+ */
+export async function resolveStaleInsights(
+  db: Db,
+  tenantId: string,
+  detectorId: string,
+  checkedRuleIds: string[],
+  firedRuleIds: string[],
+): Promise<void> {
+  const staleRuleIds = checkedRuleIds.filter((id) => !firedRuleIds.includes(id))
+  if (staleRuleIds.length === 0) return
+
+  const insightsCol = getTenantCollection<Insight>(db, 'insights', tenantId)
+  await insightsCol.updateMany(
+    { detector_id: detectorId, rule_id: { $in: staleRuleIds }, state: { $in: ['identified', 'sent'] } },
+    { $set: { state: 'resolved', resolved_at: new Date() } },
+  )
+}

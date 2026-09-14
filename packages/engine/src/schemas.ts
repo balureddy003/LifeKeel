@@ -94,8 +94,16 @@ export const TriggerSchema = z.object({
   confidence_breakdown: ConfidenceBreakdownSchema,
   detector_id: z.string(),
   rule_id: z.string(),
-  state: z.enum(['identified', 'sent', 'completed', 'dismissed', 'archived', 'snoozed']).default('identified'),
+  state: z.enum(['identified', 'sent', 'completed', 'dismissed', 'archived', 'resolved', 'snoozed']).default('identified'),
   created_at: z.date().default(() => new Date()),
+  /**
+   * PRD-107: set when a later detector evaluation no longer reproduces
+   * this insight's condition and it transitions to state: 'resolved' —
+   * distinct from an explicit dismiss/approve, so analytics and the UI
+   * can tell "the user acted" apart from "the data changed and the gap
+   * went away on its own." Absent for every other state.
+   */
+  resolved_at: z.date().optional(),
   /**
    * Signal IDs / event IDs this insight was derived from.
    * Used by lightweight truth maintenance: when a signal in this set arrives,
