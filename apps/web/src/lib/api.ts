@@ -582,6 +582,16 @@ export interface FinancialProfile {
     mortgage_outstanding_minor: number
     life_cover_minor: number
     income_protection_monthly_minor: number
+    // OAK-029: optional, additive — a mixed-earner household (one partner
+    // retired, one still working; one salaried, one self-employed) couldn't
+    // be represented at all before this, so the arbitrary single status
+    // picked for the household decided whether a real protection gap was
+    // ever surfaced. See family-financial-profile.ts's two-event evaluation.
+    second_earner?: {
+      employment_status: EmploymentStatus
+      monthly_salary_minor: number
+      income_protection_monthly_minor: number
+    }
   }
   emergency_fund: {
     emergency_savings_minor: number

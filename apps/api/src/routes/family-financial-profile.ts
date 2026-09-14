@@ -43,6 +43,23 @@ const FinancialProfileSchema = z.object({
     mortgage_outstanding_minor: z.number().int().nonnegative().default(0),
     life_cover_minor: z.number().int().nonnegative().default(0),
     income_protection_monthly_minor: z.number().int().nonnegative().default(0),
+    // OAK-029: the fields above are single-valued for the whole household —
+    // a genuinely common shape (one partner retired, one still working; one
+    // salaried, one self-employed) had no way to be entered as what it
+    // actually is, so the family had to pick one arbitrary label, and that
+    // choice — not the real underlying finances — decided whether
+    // no_income_protection could ever fire. Optional and additive: when
+    // absent, behavior is byte-for-byte unchanged from before this field
+    // existed. See the two-event evaluation in the route below for how
+    // this avoids double-firing the household detector's other, genuinely
+    // joint rules (life cover, renewal window, health cover).
+    second_earner: z
+      .object({
+        employment_status: z.enum(['employed', 'self_employed', 'unemployed', 'retired']),
+        monthly_salary_minor: z.number().int().nonnegative(),
+        income_protection_monthly_minor: z.number().int().nonnegative().default(0),
+      })
+      .optional(),
   }),
   emergency_fund: z.object({
     emergency_savings_minor: z.number().int().nonnegative(),
@@ -256,25 +273,20 @@ export async function registerFamilyFinancialProfileRoutes(
 
     // ── family_protection_gap ────────────────────────────────────────────
     {
-      const eventId = crypto.randomUUID()
-      // Both employed and self-employed households have income to protect
-      // (self-employed arguably more so, with no employer sick pay) — only
-      // unemployed/retired genuinely have none via this policy type.
-      const hasIncomeToProtect =
-        profile.household.employment_status === 'employed' ||
-        profile.household.employment_status === 'self_employed'
       const soonestRenewal = soonestPolicyRenewal(profile.policies)
-      const data = {
-        employed: Number(hasIncomeToProtect),
-        // Gates no_income_protection off for households within a year of
-        // their target retirement age — a new income protection policy
-        // isn't a meaningful gap to flag that close to (or past) retiring.
-        years_to_retirement: Math.max(0, profile.retirement.target_retirement_age - profile.retirement.current_age),
-        monthly_salary_minor: profile.household.monthly_salary_minor,
+      // Gates no_income_protection off for households within a year of
+      // their target retirement age — a new income protection policy isn't
+      // a meaningful gap to flag that close to (or past) retiring.
+      const yearsToRetirement = Math.max(0, profile.retirement.target_retirement_age - profile.retirement.current_age)
+      // These 4 fields are genuinely joint/household-level (one mortgage,
+      // one life policy, one household's dependents and soonest renewal) —
+      // shared by both evaluate() calls below so a second-earner event
+      // never re-derives them from scratch.
+      const sharedHouseholdData = {
+        years_to_retirement: yearsToRetirement,
         annual_living_expenses_minor: profile.household.annual_living_expenses_minor,
         mortgage_outstanding_minor: profile.household.mortgage_outstanding_minor,
         life_cover_minor: profile.household.life_cover_minor,
-        income_protection_monthly_minor: profile.household.income_protection_monthly_minor,
         education_funding_gap_minor: educationGap,
         // PRD-102: derived from the independent policies[] array, additive
         // to the fields above — see soonestPolicyRenewal's doc comment.
@@ -284,21 +296,68 @@ export async function registerFamilyFinancialProfileRoutes(
         soonest_renewal_provider: soonestRenewal.provider,
         soonest_renewal_type: soonestRenewal.type,
       }
-      const signalId = await persistSignal({
-        tenant_id,
-        signal_type: 'family.household',
-        source: 'manual-entry',
-        external_id: eventId,
-        data,
-      })
-      const result = await engine.evaluate({
-        event_type: 'family.household',
-        tenant_id,
-        event_id: eventId,
-        data,
-        derived_from_signals: [signalId],
-      })
-      generatedInsights.push(...result.insights)
+      // OAK-029: neutralizes protection-gap.yaml's other 3 rules
+      // (life_insurance_below_household_needs, policy_renewal_window,
+      // no_health_or_critical_illness_cover) for the second-earner event
+      // below, so they cannot mathematically fire a second time — they
+      // already evaluated once, correctly, against the real shared data in
+      // the primary-earner event. Insight dedup only catches duplicates
+      // already persisted from a *previous* submission (see
+      // insights-persist.ts), not duplicates generated within the same
+      // batch, so without this a second household event would double-fire
+      // every joint rule and double-penalize the readiness score. Only
+      // no_income_protection can fire from this event, since it's the only
+      // rule whose condition depends on fields that actually differ (employed
+      // / monthly_salary_minor / income_protection_monthly_minor).
+      const neutralSharedHouseholdData = {
+        years_to_retirement: yearsToRetirement,
+        annual_living_expenses_minor: 0,
+        mortgage_outstanding_minor: 0,
+        life_cover_minor: Number.MAX_SAFE_INTEGER,
+        education_funding_gap_minor: 0,
+        has_dependents: 0,
+        has_health_or_ci_cover: 1,
+        soonest_renewal_days: 9999,
+        soonest_renewal_provider: '',
+        soonest_renewal_type: '',
+      }
+
+      const evaluateHouseholdEarner = async (
+        earner: { employment_status: string; monthly_salary_minor: number; income_protection_monthly_minor: number },
+        shared: typeof sharedHouseholdData,
+      ) => {
+        // Both employed and self-employed earners have income to protect
+        // (self-employed arguably more so, with no employer sick pay) —
+        // only unemployed/retired genuinely have none via this policy type.
+        const hasIncomeToProtect = earner.employment_status === 'employed' || earner.employment_status === 'self_employed'
+        const eventId = crypto.randomUUID()
+        const data = {
+          employed: Number(hasIncomeToProtect),
+          monthly_salary_minor: earner.monthly_salary_minor,
+          income_protection_monthly_minor: earner.income_protection_monthly_minor,
+          ...shared,
+        }
+        const signalId = await persistSignal({
+          tenant_id,
+          signal_type: 'family.household',
+          source: 'manual-entry',
+          external_id: eventId,
+          data,
+        })
+        const result = await engine.evaluate({
+          event_type: 'family.household',
+          tenant_id,
+          event_id: eventId,
+          data,
+          derived_from_signals: [signalId],
+        })
+        generatedInsights.push(...result.insights)
+      }
+
+      await evaluateHouseholdEarner(profile.household, sharedHouseholdData)
+      if (profile.household.second_earner) {
+        await evaluateHouseholdEarner(profile.household.second_earner, neutralSharedHouseholdData)
+      }
     }
 
     // ── family_emergency_fund_adequacy ───────────────────────────────────

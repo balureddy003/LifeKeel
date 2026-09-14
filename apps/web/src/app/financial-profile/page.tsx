@@ -27,6 +27,15 @@ interface FormState {
   mortgageOutstanding: string
   lifeCover: string
   incomeProtectionMonthly: string
+  // OAK-029: optional second earner — a mixed-earner household (one
+  // partner retired, one still working) had no way to be represented by
+  // the single employmentStatus/monthlySalary pair above. Excluded from
+  // the submit payload entirely unless hasSecondEarner is true — see
+  // toPayload() below.
+  hasSecondEarner: boolean
+  secondEarnerEmploymentStatus: EmploymentStatus
+  secondEarnerMonthlySalary: string
+  secondEarnerIncomeProtectionMonthly: string
   emergencySavings: string
   monthlyExpenses: string
   hasHighInterestDebt: boolean
@@ -77,6 +86,10 @@ const EMPTY_FORM: FormState = {
   mortgageOutstanding: '',
   lifeCover: '',
   incomeProtectionMonthly: '',
+  hasSecondEarner: false,
+  secondEarnerEmploymentStatus: 'employed',
+  secondEarnerMonthlySalary: '',
+  secondEarnerIncomeProtectionMonthly: '',
   emergencySavings: '',
   monthlyExpenses: '',
   hasHighInterestDebt: false,
@@ -119,6 +132,10 @@ function fromProfile(profile: FinancialProfile): { form: FormState; funds: Educa
       mortgageOutstanding: toWhole(household.mortgage_outstanding_minor ?? 0),
       lifeCover: toWhole(household.life_cover_minor ?? 0),
       incomeProtectionMonthly: toWhole(household.income_protection_monthly_minor ?? 0),
+      hasSecondEarner: household.second_earner != null,
+      secondEarnerEmploymentStatus: household.second_earner?.employment_status ?? EMPTY_FORM.secondEarnerEmploymentStatus,
+      secondEarnerMonthlySalary: toWhole(household.second_earner?.monthly_salary_minor ?? 0),
+      secondEarnerIncomeProtectionMonthly: toWhole(household.second_earner?.income_protection_monthly_minor ?? 0),
       emergencySavings: toWhole(emergencyFund.emergency_savings_minor ?? 0),
       monthlyExpenses: toWhole(emergencyFund.monthly_expenses_minor ?? 0),
       hasHighInterestDebt: emergencyFund.has_high_interest_debt ?? false,
@@ -176,6 +193,15 @@ function toPayload(form: FormState, funds: EducationFundForm[], policies: Policy
       mortgage_outstanding_minor: toMinor(form.mortgageOutstanding),
       life_cover_minor: toMinor(form.lifeCover),
       income_protection_monthly_minor: toMinor(form.incomeProtectionMonthly),
+      ...(form.hasSecondEarner
+        ? {
+            second_earner: {
+              employment_status: form.secondEarnerEmploymentStatus,
+              monthly_salary_minor: toMinor(form.secondEarnerMonthlySalary),
+              income_protection_monthly_minor: toMinor(form.secondEarnerIncomeProtectionMonthly),
+            },
+          }
+        : {}),
     },
     emergency_fund: {
       emergency_savings_minor: toMinor(form.emergencySavings),
@@ -543,6 +569,38 @@ export default function FinancialProfilePage() {
                 <Field label="Mortgage outstanding" value={form.mortgageOutstanding} onChange={(v) => set('mortgageOutstanding', v)} placeholder="0 if none" />
                 <Field label="Life insurance cover" value={form.lifeCover} onChange={(v) => set('lifeCover', v)} placeholder="0 if none" />
                 <Field label="Income protection (monthly payout)" value={form.incomeProtectionMonthly} onChange={(v) => set('incomeProtectionMonthly', v)} placeholder="0 if none" />
+              </div>
+            </GlassCard>
+          )}
+
+          {step.key === 'household' && (
+            <GlassCard className="p-5 mt-4">
+              <SectionTitle>Second Earner</SectionTitle>
+              <div className="space-y-3">
+                <YesNo
+                  label="Does your household have a second earner?"
+                  value={form.hasSecondEarner}
+                  onChange={(v) => set('hasSecondEarner', v)}
+                />
+                {form.hasSecondEarner && (
+                  <>
+                    <EmploymentStatusPicker
+                      value={form.secondEarnerEmploymentStatus}
+                      onChange={(v) => set('secondEarnerEmploymentStatus', v)}
+                    />
+                    <Field
+                      label="Their monthly salary"
+                      value={form.secondEarnerMonthlySalary}
+                      onChange={(v) => set('secondEarnerMonthlySalary', v)}
+                    />
+                    <Field
+                      label="Their income protection (monthly payout)"
+                      value={form.secondEarnerIncomeProtectionMonthly}
+                      onChange={(v) => set('secondEarnerIncomeProtectionMonthly', v)}
+                      placeholder="0 if none"
+                    />
+                  </>
+                )}
               </div>
             </GlassCard>
           )}

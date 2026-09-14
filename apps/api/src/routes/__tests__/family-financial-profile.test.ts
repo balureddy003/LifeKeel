@@ -174,6 +174,100 @@ describe('PRD-102: policies[] and the new protection-domain rules', () => {
   })
 })
 
+describe('OAK-029: household.second_earner', () => {
+  let engine: Engine
+
+  beforeEach(async () => {
+    engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
+    await engine.load()
+  })
+
+  it('fires a second, distinct no_income_protection insight for a second earner who lacks protection, without duplicating the joint rules', async () => {
+    const { app, insights } = await buildApp(engine)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        household: {
+          ...BASE_PROFILE.household,
+          // BASE_PROFILE's primary earner already has income_protection_monthly_minor: 400000,
+          // so only the second earner's lack of protection should fire here.
+          second_earner: { employment_status: 'employed', monthly_salary_minor: 350000, income_protection_monthly_minor: 0 },
+        },
+        generate_insights: true,
+      },
+    })
+    expect(res.statusCode).toBe(200)
+
+    const noIncomeProtectionInsights = insights.filter((i) => i.rule_id === 'no_income_protection')
+    expect(noIncomeProtectionInsights).toHaveLength(1)
+    expect(noIncomeProtectionInsights[0]?.feature_snapshot?.monthly_salary_minor).toBe(350000)
+
+    // The regression this test exists to catch: the household event fired
+    // twice (once per earner), but the 3 joint/shared rules must not
+    // duplicate — they're evaluated once, correctly, from the primary
+    // earner's event; the second event neutralizes them.
+    for (const ruleId of ['life_insurance_below_household_needs', 'policy_renewal_window', 'no_health_or_critical_illness_cover']) {
+      expect(insights.filter((i) => i.rule_id === ruleId).length).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('fires no_income_protection independently for both earners when both lack protection', async () => {
+    const { app, insights } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        household: {
+          ...BASE_PROFILE.household,
+          income_protection_monthly_minor: 0,
+          second_earner: { employment_status: 'self_employed', monthly_salary_minor: 250000, income_protection_monthly_minor: 0 },
+        },
+        generate_insights: true,
+      },
+    })
+    expect(insights.filter((i) => i.rule_id === 'no_income_protection')).toHaveLength(2)
+  })
+
+  it('does not fire no_income_protection for a retired second earner, even with a real monthly_salary_minor — no income to protect via this policy type', async () => {
+    const { app, insights } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        household: {
+          ...BASE_PROFILE.household,
+          // Primary earner already has protection in BASE_PROFILE.
+          second_earner: { employment_status: 'retired', monthly_salary_minor: 600000, income_protection_monthly_minor: 0 },
+        },
+        generate_insights: true,
+      },
+    })
+    expect(insights.some((i) => i.rule_id === 'no_income_protection')).toBe(false)
+  })
+
+  it('round-trips second_earner through POST then GET, and leaves it absent for profiles that never had one', async () => {
+    const { app } = await buildApp(engine)
+    const second_earner = { employment_status: 'employed' as const, monthly_salary_minor: 350000, income_protection_monthly_minor: 0 }
+
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, household: { ...BASE_PROFILE.household, second_earner } },
+    })
+    const get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    expect(get.json().profile.household.second_earner).toEqual(second_earner)
+
+    const { app: app2 } = await buildApp(engine)
+    await app2.inject({ method: 'POST', url: '/family/financial-profile', payload: BASE_PROFILE })
+    const get2 = await app2.inject({ method: 'GET', url: '/family/financial-profile' })
+    expect(get2.json().profile.household.second_earner).toBeUndefined()
+  })
+})
+
 describe('OAK-006: optimistic concurrency on POST /family/financial-profile', () => {
   let engine: Engine
 
