@@ -102,6 +102,9 @@ Then extract all relevant fields you can identify. Common fields include:
 - interest_rate
 - beneficiary
 - period (e.g. "Q3 2024", "January 2025")
+- policy_type (insurance documents only — exactly one of: life, income_protection,
+  critical_illness, health, car, home — pick whichever this policy actually
+  covers; omit this field entirely if you're not confident)
 
 Return ONLY a JSON object with this shape:
 {"category":"<category>","fields":{"<key>":"<value>",...},"rawText":"<brief summary of the document>"}

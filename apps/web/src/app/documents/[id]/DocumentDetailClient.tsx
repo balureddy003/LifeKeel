@@ -8,12 +8,16 @@ import { Loader2, AlertCircle, CheckCircle2, Sparkles, FileQuestion } from 'luci
 import { PageHeader, GlassCard, GlassButton, EmptyState, Skeleton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { CATEGORY_ICONS, CATEGORY_LABELS } from '@/lib/document-categories'
+import { POLICY_TYPE_LABELS, POLICY_TYPES } from '@/lib/policyTypes'
 import {
   fetchDocument,
   fetchProfileSuggestions,
   applyDocumentToProfile,
+  applyPolicySuggestion,
   type FamilyDocumentDetail,
   type ProfileSuggestion,
+  type DocumentPolicySuggestion,
+  type PolicyType,
 } from '@/lib/api'
 
 function money(minor: number): string {
@@ -24,13 +28,37 @@ function fieldLabel(key: string): string {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
+interface PolicyDraft {
+  type: PolicyType
+  provider: string
+  coverageAmount: string
+  monthlyPremium: string
+  renewalDate: string
+  policyNumber: string
+}
+
+function toPolicyDraft(s: DocumentPolicySuggestion): PolicyDraft {
+  return {
+    type: s.type ?? 'life',
+    provider: s.provider,
+    coverageAmount: s.coverageAmountMinor != null ? String(Math.round(s.coverageAmountMinor / 100)) : '',
+    monthlyPremium: s.monthlyPremiumMinor != null ? String(Math.round(s.monthlyPremiumMinor / 100)) : '',
+    renewalDate: s.renewalDate ?? '',
+    policyNumber: s.policyNumber ?? '',
+  }
+}
+
 export default function DocumentDetailClient() {
   const params = useParams<{ id: string }>()
   const [doc, setDoc] = useState<FamilyDocumentDetail | null | undefined>(undefined)
   const [suggestions, setSuggestions] = useState<ProfileSuggestion[]>([])
+  const [policyDraft, setPolicyDraft] = useState<PolicyDraft | null>(null)
   const [applying, setApplying] = useState(false)
   const [applied, setApplied] = useState<string[] | null>(null)
+  const [policyApplying, setPolicyApplying] = useState(false)
+  const [policyApplied, setPolicyApplied] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [policyError, setPolicyError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const [d, s] = await Promise.all([
@@ -38,7 +66,8 @@ export default function DocumentDetailClient() {
       fetchProfileSuggestions(params.id),
     ])
     setDoc(d)
-    setSuggestions(s)
+    setSuggestions(s.suggestions)
+    setPolicyDraft(s.policySuggestion ? toPolicyDraft(s.policySuggestion) : null)
   }, [params.id])
 
   useEffect(() => {
@@ -58,6 +87,30 @@ export default function DocumentDetailClient() {
       setError(err instanceof Error ? err.message : 'Could not apply this document to your Financial Profile')
     } finally {
       setApplying(false)
+    }
+  }
+
+  const handleApplyPolicy = async () => {
+    if (!policyDraft) return
+    haptic('light')
+    setPolicyApplying(true)
+    setPolicyError(null)
+    try {
+      await applyPolicySuggestion(params.id, {
+        type: policyDraft.type,
+        provider: policyDraft.provider.trim(),
+        coverageAmountMinor: Math.round((Number(policyDraft.coverageAmount) || 0) * 100),
+        monthlyPremiumMinor: Math.round((Number(policyDraft.monthlyPremium) || 0) * 100),
+        ...(policyDraft.renewalDate ? { renewalDate: policyDraft.renewalDate } : {}),
+        ...(policyDraft.policyNumber.trim() ? { policyNumber: policyDraft.policyNumber.trim() } : {}),
+      })
+      haptic('success')
+      setPolicyApplied(true)
+    } catch (err) {
+      haptic('warning')
+      setPolicyError(err instanceof Error ? err.message : 'Could not add this policy to your Financial Profile')
+    } finally {
+      setPolicyApplying(false)
     }
   }
 
@@ -172,7 +225,110 @@ export default function DocumentDetailClient() {
         ) : null}
       </AnimatePresence>
 
-      {fields.length === 0 && suggestions.length === 0 && (
+      <AnimatePresence mode="wait">
+        {policyApplied ? (
+          <motion.div key="policy-applied" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} role="status" aria-live="polite">
+            <GlassCard className="p-4 border-success/20 flex items-start gap-3">
+              <CheckCircle2 size={20} className="text-success flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-ink-secondary flex-1">
+                Added as a policy on your Financial Profile.{' '}
+                <Link href="/financial-profile" className="text-family-400 font-semibold">
+                  Review and save to generate insights
+                </Link>
+                .
+              </div>
+            </GlassCard>
+          </motion.div>
+        ) : policyDraft ? (
+          <motion.div key="policy-suggestion" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}>
+            <GlassCard className="p-4 border-family-500/20">
+              <div className="flex items-start gap-2 mb-3">
+                <Sparkles size={16} className="text-family-400 flex-shrink-0 mt-0.5" />
+                <div className="text-sm font-semibold text-family-400">Add as an insurance policy?</div>
+              </div>
+              <div className="text-xs text-ink-tertiary mb-3">
+                Found on this document — check these before adding, especially the policy type.
+              </div>
+              <div className="space-y-3 mb-4">
+                <label className="block">
+                  <div className="text-xs text-ink-tertiary mb-1.5">Policy type</div>
+                  <select
+                    value={policyDraft.type}
+                    onChange={(e) => setPolicyDraft({ ...policyDraft, type: e.target.value as PolicyType })}
+                    className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                  >
+                    {POLICY_TYPES.map((t) => (
+                      <option key={t} value={t}>{POLICY_TYPE_LABELS[t]}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <div className="text-xs text-ink-tertiary mb-1.5">Provider</div>
+                  <input
+                    type="text"
+                    value={policyDraft.provider}
+                    onChange={(e) => setPolicyDraft({ ...policyDraft, provider: e.target.value })}
+                    className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                  />
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block">
+                    <div className="text-xs text-ink-tertiary mb-1.5">Coverage amount</div>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={policyDraft.coverageAmount}
+                      onChange={(e) => setPolicyDraft({ ...policyDraft, coverageAmount: e.target.value })}
+                      placeholder="0 if none"
+                      className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                    />
+                  </label>
+                  <label className="block">
+                    <div className="text-xs text-ink-tertiary mb-1.5">Monthly premium</div>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={policyDraft.monthlyPremium}
+                      onChange={(e) => setPolicyDraft({ ...policyDraft, monthlyPremium: e.target.value })}
+                      placeholder="0 if none"
+                      className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                    />
+                  </label>
+                </div>
+                <label className="block">
+                  <div className="text-xs text-ink-tertiary mb-1.5">Policy number (if known)</div>
+                  <input
+                    type="text"
+                    value={policyDraft.policyNumber}
+                    onChange={(e) => setPolicyDraft({ ...policyDraft, policyNumber: e.target.value })}
+                    className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                  />
+                </label>
+                <label className="block">
+                  <div className="text-xs text-ink-tertiary mb-1.5">Renewal date (if known)</div>
+                  <input
+                    type="date"
+                    value={policyDraft.renewalDate}
+                    onChange={(e) => setPolicyDraft({ ...policyDraft, renewalDate: e.target.value })}
+                    className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                  />
+                </label>
+              </div>
+              {policyError && (
+                <div role="status" aria-live="polite" className="flex items-start gap-2 mb-3 text-xs text-danger">
+                  <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
+                  {policyError}
+                </div>
+              )}
+              <GlassButton onClick={handleApplyPolicy} disabled={policyApplying || !policyDraft.provider.trim()}>
+                {policyApplying ? <Loader2 size={18} className="animate-spin" /> : 'Add to Financial Profile'}
+              </GlassButton>
+            </GlassCard>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      {fields.length === 0 && suggestions.length === 0 && !policyDraft && (
         <GlassCard>
           <EmptyState icon={FileQuestion} title="No details extracted" description="This document was stored but no fields could be read from it." />
         </GlassCard>

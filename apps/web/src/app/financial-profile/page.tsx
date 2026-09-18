@@ -18,6 +18,7 @@ import {
   type FinancialProfilePolicy,
   type PolicyType,
 } from '@/lib/api'
+import { POLICY_TYPE_LABELS } from '@/lib/policyTypes'
 
 // Whole-currency string state, converted to minor units (x100) on submit —
 // the API and detectors work in minor units, but people think in whole amounts.
@@ -66,6 +67,7 @@ interface PolicyForm {
   coverageAmount: string
   monthlyPremium: string
   renewalDate: string
+  policyNumber: string
 }
 
 const EMPTY_POLICY: PolicyForm = {
@@ -74,15 +76,7 @@ const EMPTY_POLICY: PolicyForm = {
   coverageAmount: '',
   monthlyPremium: '',
   renewalDate: '',
-}
-
-const POLICY_TYPE_LABELS: Record<PolicyType, string> = {
-  life: 'Life',
-  income_protection: 'Income Protection',
-  health: 'Health',
-  critical_illness: 'Critical Illness',
-  car: 'Car',
-  home: 'Home',
+  policyNumber: '',
 }
 
 const EMPTY_FORM: FormState = {
@@ -169,6 +163,7 @@ function fromProfile(profile: FinancialProfile): { form: FormState; funds: Educa
       coverageAmount: toWhole(p.coverage_amount_minor),
       monthlyPremium: toWhole(p.monthly_premium_minor),
       renewalDate: p.renewal_date ?? '',
+      policyNumber: p.policy_number ?? '',
     })),
   }
 }
@@ -192,6 +187,7 @@ function toPayload(form: FormState, funds: EducationFundForm[], policies: Policy
       coverage_amount_minor: toMinor(p.coverageAmount),
       monthly_premium_minor: toMinor(p.monthlyPremium),
       ...(p.renewalDate ? { renewal_date: p.renewalDate } : {}),
+      ...(p.policyNumber.trim() ? { policy_number: p.policyNumber.trim() } : {}),
     }))
 
   return {
@@ -734,6 +730,15 @@ export default function FinancialProfilePage() {
                         type="text"
                         value={p.provider}
                         onChange={(e) => updatePolicy(i, { provider: e.target.value })}
+                        className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                      />
+                    </label>
+                    <label className="block">
+                      <div className="text-xs text-ink-tertiary mb-1.5">Policy number (if known)</div>
+                      <input
+                        type="text"
+                        value={p.policyNumber}
+                        onChange={(e) => updatePolicy(i, { policyNumber: e.target.value })}
                         className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
                       />
                     </label>

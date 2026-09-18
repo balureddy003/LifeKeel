@@ -126,6 +126,11 @@ const FinancialProfileSchema = z.object({
         // known renewal date simply never contributes to the renewal-window
         // rule, rather than being rejected.
         renewal_date: z.string().optional(),
+        // Not read by any detector — purely a reference field so a family
+        // (or Oak, drafting a message on their behalf) can quote the right
+        // number back to the insurer without digging out the original
+        // document again.
+        policy_number: z.string().optional(),
       }),
     )
     .default([]),

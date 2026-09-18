@@ -5,9 +5,18 @@
  * of an uploaded document, but nothing ever did anything with them — they
  * sat on the document record while the Financial Profile form asked the
  * user to retype the same numbers by hand. This is deliberately
- * conservative: at most one suggestion per document, gated to fields we
- * have reasonable confidence about (a plain money amount), always
+ * conservative: at most one scalar suggestion per document, gated to fields
+ * we have reasonable confidence about (a plain money amount), always
  * surfaced for the user to confirm rather than applied silently.
+ *
+ * mapExtractedFieldsToPolicySuggestion() below is the same idea applied to
+ * `policies[]` (PRD-102/105): an insurance document's provider/policy
+ * number/coverage/renewal-date sat in `extracted_data` right alongside the
+ * three scalar paths above, correctly OCR'd, with nothing that ever turned
+ * them into a policy record — every policy had to be hand-typed in the
+ * wizard regardless of what was uploaded or scanned from email. This closes
+ * that gap: a best-effort, editable suggestion the user reviews before it's
+ * added, never applied silently — same posture as the scalar suggestions.
  */
 
 const APPLICABLE_PATHS = [
@@ -46,7 +55,7 @@ export function parseMoneyToMinorUnits(raw: string | undefined): number | null {
   return Math.round(value * 100)
 }
 
-function findMoneyField(
+function findField(
   fields: Record<string, string>,
   patterns: RegExp[],
 ): { key: string; raw: string } | null {
@@ -55,6 +64,13 @@ function findMoneyField(
     if (entry) return { key: entry[0], raw: entry[1] }
   }
   return null
+}
+
+function findMoneyField(
+  fields: Record<string, string>,
+  patterns: RegExp[],
+): { key: string; raw: string } | null {
+  return findField(fields, patterns)
 }
 
 /**
@@ -101,4 +117,62 @@ export function mapExtractedFieldsToProfileSuggestions(
   if (!valueMinor) return []
 
   return [{ path: rule.path, label: rule.label, valueMinor, sourceField: found.key, sourceValue: found.raw }]
+}
+
+// Mirrors family-financial-profile.ts's policies[].type enum exactly — kept
+// as an independent literal union rather than importing the zod-inferred
+// type, so this module has no compile-time dependency on the routes layer.
+export type PolicyType = 'life' | 'income_protection' | 'health' | 'critical_illness' | 'car' | 'home'
+
+const POLICY_TYPES: readonly PolicyType[] = ['life', 'income_protection', 'health', 'critical_illness', 'car', 'home']
+
+export interface PolicySuggestion {
+  /** null when OCR's policy_type guess doesn't match a known type — the user picks it in the review card. */
+  type: PolicyType | null
+  provider: string
+  coverageAmountMinor: number | null
+  monthlyPremiumMinor: number | null
+  /** ISO "YYYY-MM-DD" only — anything OCR returned in a different format is left for the user to re-type, never guess-parsed. */
+  renewalDate: string | null
+  policyNumber: string | null
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+
+function normalizePolicyType(raw: string | undefined): PolicyType | null {
+  if (!raw) return null
+  const normalized = raw.toLowerCase().trim().replace(/[\s-]+/g, '_')
+  return (POLICY_TYPES as readonly string[]).includes(normalized) ? (normalized as PolicyType) : null
+}
+
+/**
+ * Turns an OCR'd insurance document into an editable policies[] suggestion.
+ * Provider is the minimum bar for a usable suggestion (same "reasonable
+ * confidence" standard as the scalar suggestions above) — everything else
+ * is filled in where found and left blank/null otherwise, for the user to
+ * complete in the review card rather than being silently omitted or guessed.
+ */
+export function mapExtractedFieldsToPolicySuggestion(
+  category: string,
+  fields: Record<string, string>,
+): PolicySuggestion | null {
+  if (category !== 'insurance') return null
+
+  const provider = findField(fields, [/^provider$/i, /insurer/i, /company/i])?.raw.trim()
+  if (!provider) return null
+
+  const type = normalizePolicyType(findField(fields, [/^policy.?type$/i])?.raw)
+
+  const policyNumber = findField(fields, [/policy.?number/i, /policy.?no\b/i, /account.?number/i])?.raw ?? null
+
+  const renewalRaw = findField(fields, [/renewal.?date/i, /maturity.?date/i, /due.?date/i, /expiry.?date/i])?.raw.trim()
+  const renewalDate = renewalRaw && ISO_DATE.test(renewalRaw) ? renewalRaw : null
+
+  const coverageMoney = findField(fields, [/coverage.?amount/i, /sum.?assured/i, /death.?benefit/i, /balance/i])
+  const coverageAmountMinor = coverageMoney ? parseMoneyToMinorUnits(coverageMoney.raw) : null
+
+  const premiumMoney = findField(fields, [/premium/i, /monthly.?amount/i])
+  const monthlyPremiumMinor = premiumMoney ? parseMoneyToMinorUnits(premiumMoney.raw) : null
+
+  return { type, provider, coverageAmountMinor, monthlyPremiumMinor, renewalDate, policyNumber }
 }

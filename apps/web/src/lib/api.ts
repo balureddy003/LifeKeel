@@ -278,11 +278,29 @@ export interface ProfileSuggestion {
   sourceValue: string
 }
 
-export async function fetchProfileSuggestions(documentId: string): Promise<ProfileSuggestion[]> {
-  return apiFetch<{ suggestions: ProfileSuggestion[] }>(
+// A best-effort, editable policies[] suggestion from an OCR'd insurance
+// document — see apps/api/src/ocr/profile-mapping.ts's
+// mapExtractedFieldsToPolicySuggestion for what's populated vs. left null
+// for the user to fill in.
+export interface DocumentPolicySuggestion {
+  type: PolicyType | null
+  provider: string
+  coverageAmountMinor: number | null
+  monthlyPremiumMinor: number | null
+  renewalDate: string | null
+  policyNumber: string | null
+}
+
+export interface DocumentSuggestions {
+  suggestions: ProfileSuggestion[]
+  policySuggestion: DocumentPolicySuggestion | null
+}
+
+export async function fetchProfileSuggestions(documentId: string): Promise<DocumentSuggestions> {
+  return apiFetch<DocumentSuggestions>(
     `/documents/${documentId}/profile-suggestions`,
-    { suggestions: [] },
-  ).then((r) => r.suggestions)
+    { suggestions: [], policySuggestion: null },
+  )
 }
 
 export async function applyDocumentToProfile(
@@ -301,6 +319,34 @@ export async function applyDocumentToProfile(
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Could not apply this document to your Financial Profile')
+  return data
+}
+
+export interface ApplyPolicyInput {
+  type: PolicyType
+  provider: string
+  coverageAmountMinor: number
+  monthlyPremiumMinor: number
+  renewalDate?: string
+  policyNumber?: string
+}
+
+export async function applyPolicySuggestion(
+  documentId: string,
+  policy: ApplyPolicyInput,
+): Promise<{ applied: FinancialProfilePolicy }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${base}/documents/${documentId}/apply-policy`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(policy),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Could not add this policy to your Financial Profile')
   return data
 }
 
@@ -587,6 +633,7 @@ export interface FinancialProfilePolicy {
   coverage_amount_minor: number
   monthly_premium_minor: number
   renewal_date?: string
+  policy_number?: string
 }
 
 export interface FinancialProfile {

@@ -85,6 +85,12 @@ domain before going wide, prepare-only actions before anything that acts.
    the roadmap's own "next" after PRD-103: personalized checklists for
    job loss, bereavement, and disability, reusing PRD-103's draft
    mechanism for any step that involves outside contact. Tier 0/1.
+9. [109-policy-extraction-profile-bridge.md](109-policy-extraction-profile-bridge.md) —
+   OCR already extracted the right insurance fields and email scanning
+   already ran attachments through it; nothing ever turned that into a
+   `policies[]` entry, so every policy had to be hand-typed regardless of
+   what was uploaded or scanned. Closes the one gap upstream of the whole
+   protection-gap detector story. Tier 0.
 
 ## 20x — marketing: the same engine as the growth mechanic
 

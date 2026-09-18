@@ -20,7 +20,12 @@ import { GridFSBucket, type Db, type ObjectId } from 'mongodb'
 import { randomUUID } from 'node:crypto'
 import { createLogger, getTenantCollection } from '@agentoak/platform'
 import { processDocument } from '../ocr/extract.js'
-import { mapExtractedFieldsToProfileSuggestions, isApplicableProfilePath } from '../ocr/profile-mapping.js'
+import {
+  mapExtractedFieldsToProfileSuggestions,
+  isApplicableProfilePath,
+  mapExtractedFieldsToPolicySuggestion,
+  type PolicyType,
+} from '../ocr/profile-mapping.js'
 import { hasFeature, type Plan } from '../entitlements.js'
 
 const log = createLogger({ service: 'documents', version: '0.0.0' })
@@ -235,11 +240,11 @@ export function registerDocumentRoutes(
     if (!doc) {
       return reply.status(404).send({ error: 'Document not found' })
     }
-    const suggestions = mapExtractedFieldsToProfileSuggestions(
-      (doc['category'] as string) ?? 'other',
-      (doc['extracted_data'] as Record<string, string>) ?? {},
-    )
-    return { suggestions }
+    const category = (doc['category'] as string) ?? 'other'
+    const extractedData = (doc['extracted_data'] as Record<string, string>) ?? {}
+    const suggestions = mapExtractedFieldsToProfileSuggestions(category, extractedData)
+    const policySuggestion = mapExtractedFieldsToPolicySuggestion(category, extractedData)
+    return { suggestions, policySuggestion }
   })
 
   // ── POST /documents/:id/apply-to-profile ────────────────────────────────
@@ -280,6 +285,64 @@ export function registerDocumentRoutes(
       )
 
       return { applied: toApply.map((s) => ({ path: s.path, label: s.label, valueMinor: s.valueMinor })) }
+    },
+  )
+
+  // ── POST /documents/:id/apply-policy ────────────────────────────────────
+  // Separate from apply-to-profile above: that endpoint only ever $sets one
+  // of 3 whitelisted scalar paths, structurally incapable of appending an
+  // array element. This pushes a full policies[] entry — reviewed/editable
+  // by the user in the document-detail card, never applied from raw OCR
+  // output without a chance to correct it (same "surfaced to confirm, never
+  // applied silently" posture as apply-to-profile). Same as that endpoint,
+  // this never triggers detector evaluation itself — "Save & Generate
+  // Insights" on the Financial Profile page stays the one place that does.
+  const POLICY_TYPES = new Set<PolicyType>(['life', 'income_protection', 'health', 'critical_illness', 'car', 'home'])
+  interface ApplyPolicyBody {
+    type?: string
+    provider?: string
+    coverageAmountMinor?: number
+    monthlyPremiumMinor?: number
+    renewalDate?: string
+    policyNumber?: string
+  }
+  fastify.post<{ Params: { id: string }; Body: ApplyPolicyBody }>(
+    '/documents/:id/apply-policy',
+    async (req, reply) => {
+      const { tenant_id } = req.authContext
+      const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
+      const doc = await documents.findOne({ id: req.params.id })
+      if (!doc) {
+        return reply.status(404).send({ error: 'Document not found' })
+      }
+
+      const { type, provider, coverageAmountMinor, monthlyPremiumMinor, renewalDate, policyNumber } = req.body
+      if (!type || !POLICY_TYPES.has(type as PolicyType)) {
+        return reply.status(400).send({ error: 'A valid policy type is required' })
+      }
+      if (!provider || !provider.trim()) {
+        return reply.status(400).send({ error: 'A provider name is required' })
+      }
+
+      const policy: Record<string, unknown> = {
+        type,
+        provider: provider.trim(),
+        coverage_amount_minor: Number.isFinite(coverageAmountMinor) && (coverageAmountMinor as number) >= 0 ? coverageAmountMinor : 0,
+        monthly_premium_minor: Number.isFinite(monthlyPremiumMinor) && (monthlyPremiumMinor as number) >= 0 ? monthlyPremiumMinor : 0,
+      }
+      if (renewalDate) policy['renewal_date'] = renewalDate
+      if (policyNumber) policy['policy_number'] = policyNumber
+
+      const profiles = getTenantCollection<Record<string, unknown>>(db, 'family_financial_profile', tenant_id)
+      await profiles.updateOne(
+        {},
+        { $push: { policies: policy }, $set: { updated_at: new Date() } },
+        { upsert: true },
+      )
+
+      log.info({ documentId: req.params.id, tenant_id, policyType: type, provider }, 'Applied document as a financial-profile policy')
+
+      return { applied: policy }
     },
   )
 
