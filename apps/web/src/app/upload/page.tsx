@@ -154,7 +154,7 @@ export default function UploadPage() {
           whileTap={{ scale: 0.96 }}
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
-          className="rounded-2xl p-4 flex flex-col items-center gap-2 bg-white/[0.04] border border-white/[0.06] disabled:opacity-50"
+          className="rounded-2xl p-4 flex flex-col items-center gap-2 bg-tint/[0.04] border border-tint/[0.06] disabled:opacity-50"
         >
           <Upload size={24} className="text-ink-secondary" />
           <span className="text-sm font-semibold text-ink-secondary">Choose File</span>
@@ -266,7 +266,7 @@ export default function UploadPage() {
                     : {})}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-white/[0.05] flex items-center justify-center flex-shrink-0">
+                    <div className="w-10 h-10 rounded-2xl bg-tint/[0.05] flex items-center justify-center flex-shrink-0">
                       <Icon size={18} className="text-ink-secondary" />
                     </div>
                     <div className="flex-1 min-w-0">

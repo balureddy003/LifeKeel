@@ -5,8 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { Map, MessageSquare, ShieldQuestion, Users, ArrowLeft } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
-import { FAMILY_ACCENT } from '@/lib/familySections'
-
 const SLIDES = [
   {
     icon: Map,
@@ -122,7 +120,7 @@ export default function WelcomePage() {
             animate={{
               width: i === slide ? 24 : 8,
               height: 8,
-              backgroundColor: i === slide ? FAMILY_ACCENT : 'rgba(255,255,255,0.15)',
+              backgroundColor: i === slide ? 'rgb(var(--family-accent))' : 'rgb(var(--tint) / 0.15)',
             }}
           />
         ))}

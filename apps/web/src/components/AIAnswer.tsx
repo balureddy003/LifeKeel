@@ -204,7 +204,7 @@ export function AIAnswerCard({ query }: { query: string }) {
 
         {/* Sources — in sample mode there's nothing real to cite yet, so
             don't invent specific document names, just say so honestly. */}
-        <div className="border-t border-white/5 pt-3">
+        <div className="border-t border-tint/5 pt-3">
           <button
             onClick={() => { setShowSources(!showSources); haptic('light') }}
             aria-expanded={showSources}
@@ -236,7 +236,7 @@ export function AIAnswerCard({ query }: { query: string }) {
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: i * 0.06 }}
                         className="flex items-center gap-2 rounded-lg px-3 py-2"
-                        style={{ background: sourceTypeColor[source.type] ?? 'rgba(255,255,255,0.03)' }}
+                        style={{ background: sourceTypeColor[source.type] ?? 'rgb(var(--tint) / 0.03)' }}
                       >
                         <source.icon size={14} className="text-ink-secondary flex-shrink-0" />
                         <span className="text-xs text-ink-secondary flex-1">{source.label}</span>
@@ -255,7 +255,7 @@ export function AIAnswerCard({ query }: { query: string }) {
         </div>
 
         {/* Follow-ups */}
-        <div className="border-t border-white/5 pt-3 mt-3">
+        <div className="border-t border-tint/5 pt-3 mt-3">
           <div className="text-caption font-bold uppercase tracking-wider text-ink-tertiary mb-2">Related questions</div>
           <div className="flex flex-wrap gap-2">
             {answer.followUps.map((q) => (

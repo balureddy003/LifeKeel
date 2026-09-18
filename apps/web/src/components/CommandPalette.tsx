@@ -142,7 +142,7 @@ export function CommandPalette() {
             className="relative w-full max-w-lg glass-strong rounded-3xl overflow-hidden shadow-2xl outline-none"
           >
             {/* Search input */}
-            <div className="flex items-center gap-3 px-5 py-4 border-b border-white/5">
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-tint/5">
               <Search size={18} className="text-ink-tertiary" />
               <input
                 autoFocus
@@ -192,7 +192,7 @@ export function CommandPalette() {
                           }}
                           onMouseEnter={() => setSelectedIndex(idx)}
                           className={`w-full px-5 py-2.5 flex items-center gap-3 text-left transition-colors ${
-                            isActive ? 'bg-white/[0.06]' : ''
+                            isActive ? 'bg-tint/[0.06]' : ''
                           }`}
                         >
                           <cmd.icon size={18} className="text-ink-tertiary flex-shrink-0" />
@@ -211,7 +211,7 @@ export function CommandPalette() {
             </div>
 
             {/* Footer */}
-            <div className="px-5 py-2.5 border-t border-white/5 flex items-center justify-between text-caption text-ink-tertiary">
+            <div className="px-5 py-2.5 border-t border-tint/5 flex items-center justify-between text-caption text-ink-tertiary">
               <div className="flex items-center gap-3">
                 <span className="flex items-center gap-1">
                   <kbd className="glass rounded px-1.5 py-0.5 flex items-center"><ArrowUpDown size={10} /></kbd> Navigate

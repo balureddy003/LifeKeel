@@ -67,9 +67,9 @@ export default function LoginPage() {
       </div>
 
       <div className="flex items-center gap-3 mb-6">
-        <div className="flex-1 h-px bg-white/10" />
+        <div className="flex-1 h-px bg-tint/10" />
         <span className="text-xs text-ink-tertiary">or use email</span>
-        <div className="flex-1 h-px bg-white/10" />
+        <div className="flex-1 h-px bg-tint/10" />
       </div>
 
       <div className="space-y-3 mb-6">

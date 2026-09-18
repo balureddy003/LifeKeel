@@ -9,8 +9,6 @@ import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
 import { ONBOARDING_QUESTIONS } from '@/lib/onboarding-data'
 import type { FamilyMemberDraft } from '@/lib/onboarding-data'
-import { FAMILY_ACCENT } from '@/lib/familySections'
-
 // Pragmatic (not full RFC 5322) format check — catches the obvious typos
 // this question is guarding against: missing '@', no domain, stray
 // whitespace, a second '@'. Matches the check on POST /auth/signup.
@@ -129,8 +127,8 @@ function GrowingGraph({ members }: { members: FamilyMemberDraft[] }) {
               <div
                 className="w-14 h-14 rounded-full flex items-center justify-center"
                 style={{
-                  background: 'rgba(124,110,240,0.1)',
-                  border: '2px solid rgba(124,110,240,0.3)',
+                  background: 'rgb(var(--family-accent) / 0.1)',
+                  border: '2px solid rgb(var(--family-accent) / 0.3)',
                 }}
               >
                 <User size={24} className="text-family-400" strokeWidth={1.5} />
@@ -460,7 +458,7 @@ export function ConversationalOnboarding() {
         <h1 className="text-2xl font-bold mb-2">Growing your Oak...</h1>
         <p className="text-sm text-ink-tertiary">Your family profile is taking shape</p>
         <motion.div
-          className="mt-6 w-48 h-2 rounded-full bg-white/5 overflow-hidden"
+          className="mt-6 w-48 h-2 rounded-full bg-tint/5 overflow-hidden"
         >
           <motion.div
             className="h-full rounded-full bg-gradient-to-r from-family-400 to-family-500"
@@ -481,7 +479,7 @@ export function ConversationalOnboarding() {
           <span className="text-xs text-ink-tertiary font-semibold">Building your digital twin</span>
           <span className="text-xs text-family-400 font-bold">{Math.round(progress)}%</span>
         </div>
-        <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+        <div className="h-2 rounded-full bg-tint/5 overflow-hidden">
           <motion.div
             className="h-full rounded-full bg-gradient-to-r from-family-400 to-family-500"
             animate={{ width: `${progress}%` }}
@@ -598,7 +596,7 @@ export function ConversationalOnboarding() {
               disabled={!textValue.trim() || submitting}
               aria-label="Send answer"
               className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-30"
-              style={{ background: `linear-gradient(135deg, ${FAMILY_ACCENT}, #6b5ce0)` }}
+              style={{ background: 'linear-gradient(135deg, rgb(var(--family-accent)), #6b5ce0)' }}
             >
               <Send size={18} color="#fff" />
             </motion.button>

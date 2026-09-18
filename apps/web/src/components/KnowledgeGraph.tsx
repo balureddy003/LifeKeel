@@ -183,7 +183,7 @@ function GraphNode({ data }: NodeProps<NodeData>) {
           <data.icon size={isRoot ? 28 : isPerson ? 22 : 18} color={color} strokeWidth={1.5} />
           {isAsset && <ChevronRight size={12} color={color} strokeWidth={2} />}
         </div>
-        <div className="text-xs font-semibold text-white whitespace-nowrap">
+        <div className="text-xs font-semibold text-ink-primary whitespace-nowrap">
           {data.label}
         </div>
       </motion.div>
@@ -298,14 +298,14 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
   return (
     <div ref={containerRef} className="relative w-full h-full rounded-3xl overflow-hidden glass flex flex-col">
       {/* Filter chips */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/5 flex-shrink-0">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-tint/5 flex-shrink-0">
         {FILTER_OPTIONS.map((opt) => (
           <button
             key={opt.key}
             onClick={() => { setFilter(opt.key); haptic('light') }}
             className={`rounded-full px-3 py-1 text-xs font-semibold transition-all ${
               filter === opt.key
-                ? 'text-white'
+                ? 'text-ink-primary'
                 : 'text-ink-tertiary hover:text-ink-secondary'
             }`}
             style={filter === opt.key ? { background: `${opt.color}25`, border: `1px solid ${opt.color}50` } : { border: '1px solid transparent' }}
@@ -333,7 +333,7 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
           it was covering 3 real nodes on a real phone-width viewport). A
           row above the canvas can never overlap graph content, regardless
           of viewport size or how fitView lays anything out. */}
-      <div className="flex items-center gap-1.5 px-4 py-1.5 text-caption text-ink-tertiary border-b border-white/5 flex-shrink-0">
+      <div className="flex items-center gap-1.5 px-4 py-1.5 text-caption text-ink-tertiary border-b border-tint/5 flex-shrink-0">
         <Bot size={10} />
         Tap a person or asset to explore
       </div>
@@ -380,10 +380,10 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
           edgesFocusable={false}
           proOptions={{ hideAttribution: true }}
         >
-          <Background variant={BackgroundVariant.Dots} color="rgba(255,255,255,0.04)" gap={20} />
+          <Background variant={BackgroundVariant.Dots} color="rgb(var(--tint) / 0.04)" gap={20} />
           <Controls
             showInteractive={false}
-            className="!bg-white/5 !border-white/10 !rounded-xl !backdrop-blur-md"
+            className="!bg-tint/5 !border-tint/10 !rounded-xl !backdrop-blur-md"
           />
           {fullscreen && (
             // Live-verification finding: react-flow's default MiniMap
@@ -395,10 +395,10 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
             // summarizing; shrinking it cuts collision risk without
             // touching the main graph's own zoom/fit behavior.
             <MiniMap
-              className="!bg-white/5 !backdrop-blur-md !rounded-xl !border-white/10"
+              className="!bg-tint/5 !backdrop-blur-md !rounded-xl !border-tint/10"
               style={{ width: 96, height: 72 }}
               nodeColor={(node) => CATEGORY_COLOR[(node.data?.category as GraphCategory) ?? 'family']}
-              nodeStrokeColor="rgba(255,255,255,0.2)"
+              nodeStrokeColor="rgb(var(--tint) / 0.2)"
               maskColor="rgba(0,0,0,0.3)"
             />
           )}
@@ -418,7 +418,7 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
                   <selected.data.icon size={18} color={KIND_COLOR[selected.data.kind]} strokeWidth={1.5} />
                 </div>
                 <div className="flex-1">
-                  <div className="text-sm font-bold text-white">{selected.data.label}</div>
+                  <div className="text-sm font-bold text-ink-primary">{selected.data.label}</div>
                   <p className="text-xs text-ink-secondary mt-1 leading-relaxed">
                     {selected.data.story}
                   </p>

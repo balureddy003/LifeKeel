@@ -235,7 +235,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         <SkeletonCard lines={2} />
         <div className="space-y-2">
           {[0, 1].map((i) => (
-            <div key={i} className="rounded-2xl border border-white/[0.05] bg-white/[0.03] p-4 flex items-center gap-3">
+            <div key={i} className="rounded-2xl border border-tint/[0.05] bg-tint/[0.03] p-4 flex items-center gap-3">
               <Skeleton className="h-10 w-10 rounded-2xl flex-shrink-0" />
               <div className="flex-1 space-y-2">
                 <Skeleton className="h-3.5 w-2/3" />

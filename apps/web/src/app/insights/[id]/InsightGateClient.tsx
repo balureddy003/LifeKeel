@@ -155,7 +155,7 @@ export default function InsightGateClient() {
   if (!preview) {
     return (
       <div className="px-5 pt-8 text-center">
-        <div className="w-16 h-16 rounded-3xl bg-white/[0.03] border border-white/[0.08] flex items-center justify-center mb-4 mx-auto">
+        <div className="w-16 h-16 rounded-3xl bg-tint/[0.03] border border-tint/[0.08] flex items-center justify-center mb-4 mx-auto">
           <AlertTriangle size={28} className="text-ink-tertiary" />
         </div>
         <p className="text-ink-secondary">{error ?? 'Insight not found.'}</p>
@@ -185,9 +185,9 @@ export default function InsightGateClient() {
 
       {preview.dry_run && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <GlassCard className="p-4 border border-amber-400/30">
+          <GlassCard className="p-4 border border-warning/30">
             <div className="flex items-start gap-3">
-              <ShieldCheck size={18} className="text-amber-300 shrink-0 mt-0.5" />
+              <ShieldCheck size={18} className="text-warning shrink-0 mt-0.5" />
               <p className="text-sm text-ink-secondary leading-relaxed">
                 <span className="font-semibold text-ink-primary">Dry-run mode is on.</span>{' '}
                 Approving records the decision and what would have run — nothing is actually sent or changed.
@@ -202,7 +202,7 @@ export default function InsightGateClient() {
           <GlassCard className="p-5">
             <div className="flex items-start gap-3">
               {outcome.kind === 'completed' && <CheckCircle2 size={20} className="text-success shrink-0 mt-0.5" />}
-              {outcome.kind === 'execution_failed' && <AlertTriangle size={20} className="text-amber-300 shrink-0 mt-0.5" />}
+              {outcome.kind === 'execution_failed' && <AlertTriangle size={20} className="text-warning shrink-0 mt-0.5" />}
               {outcome.kind === 'dismissed' && <XCircle size={20} className="text-ink-tertiary shrink-0 mt-0.5" />}
               <div className="flex-1">
                 <p className="text-sm text-ink-primary leading-relaxed">{outcome.message}</p>
@@ -252,10 +252,10 @@ export default function InsightGateClient() {
                 return (
                   <GlassCard key={action.label} className="p-4">
                     <div className="flex items-start gap-3">
-                      <Icon size={16} className={action.external ? 'text-amber-300' : 'text-ink-tertiary'} />
+                      <Icon size={16} className={action.external ? 'text-warning' : 'text-ink-tertiary'} />
                       <div className="flex-1">
                         <p className="text-sm text-ink-primary leading-relaxed">{action.label}</p>
-                        <p className={`text-xs mt-1 leading-relaxed ${action.external ? 'text-amber-300/90 font-semibold' : 'text-ink-tertiary'}`}>
+                        <p className={`text-xs mt-1 leading-relaxed ${action.external ? 'text-warning/90 font-semibold' : 'text-ink-tertiary'}`}>
                           {action.summary}
                         </p>
                       </div>
@@ -265,7 +265,7 @@ export default function InsightGateClient() {
               })}
             </div>
             {hasExternalActions && !preview.dry_run && (
-              <p className="text-xs text-amber-300/90 leading-relaxed mt-3 px-1">
+              <p className="text-xs text-warning/90 leading-relaxed mt-3 px-1">
                 Approving runs the actions marked above — real messages are sent to your own contact details via your connected providers.
               </p>
             )}
@@ -279,7 +279,7 @@ export default function InsightGateClient() {
               rows={2}
               className="w-full glass rounded-2xl px-4 py-3 text-sm text-ink-primary placeholder:text-ink-tertiary resize-none focus:outline-none focus:ring-1 focus:ring-family-400"
             />
-            {error && <p className="text-sm text-red-400 mt-2 px-1">{error}</p>}
+            {error && <p className="text-sm text-danger mt-2 px-1">{error}</p>}
 
             <div className="mt-3 space-y-2">
               <GlassButton onClick={handleApprove} disabled={acting !== null}>
@@ -307,7 +307,7 @@ export default function InsightGateClient() {
                 />
               </GlassCard>
             )}
-            {draftError && <p className="text-sm text-red-400 mt-2 px-1">{draftError}</p>}
+            {draftError && <p className="text-sm text-danger mt-2 px-1">{draftError}</p>}
           </motion.div>
         </>
       )}

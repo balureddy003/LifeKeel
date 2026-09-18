@@ -59,7 +59,7 @@ export function NavRail() {
         background: 'rgba(8, 8, 12, 0.78)',
         backdropFilter: 'blur(24px) saturate(120%)',
         WebkitBackdropFilter: 'blur(24px) saturate(120%)',
-        borderRight: '1px solid rgba(255, 255, 255, 0.05)',
+        borderRight: '1px solid rgb(var(--tint) / 0.05)',
       }}
       aria-label="Primary"
     >

@@ -10,29 +10,32 @@ import { useFamilyHealthDomains, type HealthDomain } from '@/lib/useFamilyData'
 import { learnMoreHref } from '@/lib/detector-content'
 import { RESOLVED_INSIGHT_STATES, type FamilyInsight } from '@/lib/api'
 
+// Domain accent colors come from the semantic vars (same hues) rather
+// than the pastel literals — they're used as label text and icon colors
+// here, which would fail WCAG AA on the light theme's background.
 const DOMAIN_META: Record<HealthDomain, { label: string; icon: LucideIcon; color: string; description: string }> = {
   protection: {
     label: 'Protection',
     icon: Heart,
-    color: '#f87171',
+    color: 'rgb(var(--danger))',
     description: 'Life insurance, income protection, and coverage for your family.',
   },
   wealth: {
     label: 'Wealth',
     icon: Wallet,
-    color: '#fbbf24',
+    color: 'rgb(var(--warning))',
     description: 'Retirement savings and long-term wealth building.',
   },
   goals: {
     label: 'Goals',
     icon: Target,
-    color: '#4ade80',
+    color: 'rgb(var(--success))',
     description: "Education funding and your family's savings goals.",
   },
   savings: {
     label: 'Savings',
     icon: PiggyBank,
-    color: '#60a5fa',
+    color: 'rgb(var(--info))',
     description: 'Emergency fund adequacy and short-term liquidity.',
   },
 }
@@ -75,7 +78,7 @@ export default function HealthDomainClient() {
   if (!isHealthDomain(params.domain)) {
     return (
       <div className="px-4 pt-8 text-center">
-        <div className="w-16 h-16 rounded-3xl bg-white/[0.03] border border-white/[0.08] flex items-center justify-center mb-4 mx-auto">
+        <div className="w-16 h-16 rounded-3xl bg-tint/[0.03] border border-tint/[0.08] flex items-center justify-center mb-4 mx-auto">
           <HelpCircle size={32} className="text-ink-tertiary" />
         </div>
         <p className="text-ink-secondary">Unknown health area</p>

@@ -14,6 +14,7 @@ function ActivityRing({
   size = 80,
   strokeWidth = 8,
   color,
+  textColor,
   label,
   icon: Icon,
   href,
@@ -23,6 +24,7 @@ function ActivityRing({
   size?: number
   strokeWidth?: number
   color: string
+  textColor: string
   label: string
   icon: LucideIcon
   href?: string
@@ -41,7 +43,7 @@ function ActivityRing({
             cy={size / 2}
             r={radius}
             fill="none"
-            stroke="rgba(255,255,255,0.05)"
+            stroke="rgb(var(--tint) / 0.05)"
             strokeWidth={strokeWidth}
           />
           <motion.circle
@@ -60,8 +62,8 @@ function ActivityRing({
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <Icon size={16} color={color} strokeWidth={2} />
-          <span className="text-xs font-bold" style={{ color }}>
+          <Icon size={16} color={textColor} strokeWidth={2} />
+          <span className="text-xs font-bold" style={{ color: textColor }}>
             {progress}%
           </span>
         </div>
@@ -82,11 +84,16 @@ function ActivityRing({
   )
 }
 
-const DOMAIN_META: Record<HealthDomain, { color: string; label: string; icon: LucideIcon }> = {
-  protection: { color: '#f87171', label: 'Protection', icon: Heart },
-  wealth: { color: '#fbbf24', label: 'Wealth', icon: Wallet },
-  goals: { color: '#4ade80', label: 'Goals', icon: Target },
-  savings: { color: '#60a5fa', label: 'Savings', icon: PiggyBank },
+// `color` stays a hex literal — it feeds `${color}80` alpha math for the
+// ring glow, which a var() string can't survive. `textColor` is the
+// theme-aware twin used for the percentage text and icon: the pastel
+// literals are decorative on dark but fail WCAG AA as text on the light
+// background, so they come from the semantic vars instead (same hues).
+const DOMAIN_META: Record<HealthDomain, { color: string; textColor: string; label: string; icon: LucideIcon }> = {
+  protection: { color: '#f87171', textColor: 'rgb(var(--danger))', label: 'Protection', icon: Heart },
+  wealth: { color: '#fbbf24', textColor: 'rgb(var(--warning))', label: 'Wealth', icon: Wallet },
+  goals: { color: '#4ade80', textColor: 'rgb(var(--success))', label: 'Goals', icon: Target },
+  savings: { color: '#60a5fa', textColor: 'rgb(var(--info))', label: 'Savings', icon: PiggyBank },
 }
 
 export function HealthSummary() {
@@ -122,6 +129,7 @@ export function HealthSummary() {
             key={d}
             progress={domains[d].score}
             color={DOMAIN_META[d].color}
+            textColor={DOMAIN_META[d].textColor}
             label={DOMAIN_META[d].label}
             icon={DOMAIN_META[d].icon}
             href={`/health/${d}`}

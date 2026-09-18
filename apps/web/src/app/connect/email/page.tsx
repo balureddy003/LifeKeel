@@ -203,9 +203,9 @@ export default function ConnectEmailPage() {
             )}
             {showManualGmail && (
               <div className="flex items-center gap-3">
-                <div className="h-px flex-1 bg-white/[0.08]" />
+                <div className="h-px flex-1 bg-tint/[0.08]" />
                 <span className="text-xs text-ink-tertiary">or connect manually</span>
-                <div className="h-px flex-1 bg-white/[0.08]" />
+                <div className="h-px flex-1 bg-tint/[0.08]" />
               </div>
             )}
           </motion.div>

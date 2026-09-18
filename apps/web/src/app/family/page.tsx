@@ -84,7 +84,7 @@ export default function FamilyPage() {
                       {m.completion}%
                     </span>
                   </div>
-                  <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                  <div className="h-2 rounded-full bg-tint/5 overflow-hidden">
                     <motion.div
                       className="h-full rounded-full"
                       style={{

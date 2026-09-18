@@ -2,11 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Theme tokens. Colors that take Tailwind alpha modifiers (bg-x/10,
+   border-y/[0.05]) are stored as space-separated RGB triplets and consumed
+   via `rgb(var(--x) / <alpha>)` — a hex var can't take an opacity suffix.
+   :root holds the dark theme (the established default, so it also covers
+   no-JS/first-paint); [data-theme='light'] overrides. The `tint` var is the
+   key move: dark theme's "white at low opacity" surfaces become "black at
+   low opacity" in light theme, so a bg-tint/5 card reads correctly in both
+   without the component knowing which theme is active. */
 :root {
   color-scheme: dark;
   /* --font-sans is owned by next/font in layout.tsx (it sets the variable
      to the self-hosted Inter family + fallbacks on <html>). Declaring it
      here too would race on specificity — leave it out. */
+
+  /* Surface overlay color — "the thing layered on the background".
+     Dark theme: white. Light theme: near-black slate. */
+  --tint: 255 255 255;
+
+  --surface-0: 8 8 12;
+  --surface-1: 15 15 21;
+  --surface-2: 22 22 30;
+  --surface-3: 29 29 40;
+
+  --ink-1: 245 245 247;
+  --ink-2: 160 160 176;
+  --ink-3: 123 123 145;
+
+  --haze: 42 42 53;
+  --haze-light: 58 58 72;
+
+  /* Sticky nav/header chrome (distinct from surface-0 so light mode can
+     use a translucent white bar rather than a gray one). */
+  --nav-bg: 8 8 12;
 
   /* The lighter brand purple for FOREGROUND accents on dark surfaces —
      icons, dots, gradients, active nav states. Deliberately different from
@@ -15,7 +43,50 @@
      dark background. JS color-math that can't consume var() (hex-alpha
      suffixes like `${color}14`) imports FAMILY_ACCENT from
      lib/familySections.ts instead — keep the two literals in sync. */
-  --family-accent: #7c6ef0;
+  --family-accent: 124 110 240;
+
+  /* family-400 as a text/link color — lighter than 500 on dark, darker on
+     light. Stored as a triplet for alpha-composable uses (bg-family-400/10). */
+  --family-400: 139 128 248;
+
+  /* Semantic colors — the bright variants are tuned for dark backgrounds;
+     light theme needs deeper shades to keep WCAG AA as text. */
+  --success: 74 222 128;
+  --warning: 251 191 36;
+  --danger: 248 113 113;
+  --info: 96 165 250;
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+
+  --tint: 17 17 26;
+
+  --surface-0: 242 242 247;
+  --surface-1: 255 255 255;
+  --surface-2: 250 250 252;
+  --surface-3: 237 237 243;
+
+  --ink-1: 24 24 34;
+  --ink-2: 72 72 90;
+  --ink-3: 98 98 118;
+
+  --haze: 213 213 226;
+  --haze-light: 225 225 236;
+
+  --nav-bg: 255 255 255;
+
+  /* family-600 — on the light background, #7c6ef0 only reaches ~3.6:1.
+     #6b5ce0 clears AA for text/icons (~5.1:1). */
+  --family-accent: 107 92 224;
+  --family-400: 107 92 224;
+
+  /* Deeper shades — the dark-theme values are pastel-on-white failures
+     (green-400 on white is ~1.9:1). These are the tailwind -600/-700s. */
+  --success: 21 128 61;
+  --warning: 180 83 9;
+  --danger: 220 38 38;
+  --info: 37 99 235;
 }
 
 * {
@@ -29,8 +100,8 @@ html {
 }
 
 body {
-  background: #08080c;
-  color: #f5f5f7;
+  background: rgb(var(--surface-0));
+  color: rgb(var(--ink-1));
   font-family: var(--font-sans);
   overscroll-behavior-y: none;
   touch-action: manipulation;
@@ -64,42 +135,42 @@ button.flat, a.flat, .no-min-h {
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.12);
+    background: rgb(var(--tint) / 0.12);
     border-radius: 4px;
   }
-  ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+  ::-webkit-scrollbar-thumb:hover { background: rgb(var(--tint) / 0.2); }
 }
 
 .glass {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgb(var(--tint) / 0.04);
   backdrop-filter: blur(28px) saturate(140%);
   -webkit-backdrop-filter: blur(28px) saturate(140%);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgb(var(--tint) / 0.06);
 }
 
 .glass-strong {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgb(var(--tint) / 0.05);
   backdrop-filter: blur(40px) saturate(160%);
   -webkit-backdrop-filter: blur(40px) saturate(160%);
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  border: 1px solid rgb(var(--tint) / 0.09);
 }
 
 .glass-nav {
-  background: rgba(8, 8, 12, 0.78);
+  background: rgb(var(--nav-bg) / 0.78);
   backdrop-filter: blur(24px) saturate(120%);
   -webkit-backdrop-filter: blur(24px) saturate(120%);
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid rgb(var(--tint) / 0.05);
 }
 
 .glass-input {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgb(var(--tint) / 0.04);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgb(var(--tint) / 0.06);
 }
 
 .text-gradient {
-  background: linear-gradient(135deg, var(--family-accent) 0%, #a8a0ff 50%, var(--family-accent) 100%);
+  background: linear-gradient(135deg, rgb(var(--family-accent)) 0%, rgb(var(--family-400)) 50%, rgb(var(--family-accent)) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -108,9 +179,9 @@ button.flat, a.flat, .no-min-h {
 .shimmer {
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.08) 50%,
-    rgba(255, 255, 255, 0) 100%
+    rgb(var(--tint) / 0) 0%,
+    rgb(var(--tint) / 0.08) 50%,
+    rgb(var(--tint) / 0) 100%
   );
   background-size: 200% 100%;
   animation: shimmer 2s infinite;
@@ -134,7 +205,7 @@ button.flat, a.flat, .no-min-h {
 }
 
 :focus-visible {
-  outline: 2px solid rgba(124,110,240,0.5);
+  outline: 2px solid rgb(var(--family-accent) / 0.5);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -146,13 +217,13 @@ button.flat, a.flat, .no-min-h {
    doesn't clash with per-input border styles. */
 input:focus-visible, textarea:focus-visible, select:focus-visible {
   outline: none;
-  border-color: rgba(139, 128, 248, 0.6);
-  box-shadow: 0 0 0 3px rgba(112, 97, 239, 0.3);
+  border-color: rgb(var(--family-400) / 0.6);
+  box-shadow: 0 0 0 3px rgb(var(--family-accent) / 0.3);
 }
 
 .card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgb(var(--tint) / 0.03);
+  border: 1px solid rgb(var(--tint) / 0.06);
   border-radius: 1.25rem;
   padding: 1rem;
   backdrop-filter: blur(28px) saturate(140%);
@@ -186,9 +257,9 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  color: #f5f5f7;
+  background: rgb(var(--tint) / 0.04);
+  border: 1px solid rgb(var(--tint) / 0.06);
+  color: rgb(var(--ink-1));
   font-weight: 600;
   border-radius: 1rem;
   padding: 1rem 1.25rem;
@@ -209,10 +280,10 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   opacity: 0.8;
 }
 
-/* ReactFlow dark theme overrides */
+/* ReactFlow theme overrides */
 .react-flow__controls {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background: rgb(var(--tint) / 0.05) !important;
+  border: 1px solid rgb(var(--tint) / 0.1) !important;
   border-radius: 0.75rem !important;
   backdrop-filter: blur(20px) saturate(140%);
   -webkit-backdrop-filter: blur(20px) saturate(140%);
@@ -221,22 +292,22 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 
 .react-flow__controls-button {
   background: transparent !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
-  color: rgba(255, 255, 255, 0.7) !important;
-  fill: rgba(255, 255, 255, 0.7) !important;
+  border-bottom: 1px solid rgb(var(--tint) / 0.06) !important;
+  color: rgb(var(--tint) / 0.7) !important;
+  fill: rgb(var(--tint) / 0.7) !important;
 }
 
 .react-flow__controls-button:hover {
-  background: rgba(255, 255, 255, 0.08) !important;
+  background: rgb(var(--tint) / 0.08) !important;
 }
 
 .react-flow__controls-button svg {
-  fill: rgba(255, 255, 255, 0.7) !important;
+  fill: rgb(var(--tint) / 0.7) !important;
 }
 
 .react-flow__minimap {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background: rgb(var(--tint) / 0.05) !important;
+  border: 1px solid rgb(var(--tint) / 0.1) !important;
   border-radius: 0.75rem !important;
   backdrop-filter: blur(20px) saturate(140%);
   -webkit-backdrop-filter: blur(20px) saturate(140%);

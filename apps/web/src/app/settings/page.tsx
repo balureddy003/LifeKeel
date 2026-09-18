@@ -13,8 +13,9 @@ import type { AppMode } from '@/lib/modes'
 import { ROLE_LABELS, type FamilyRole } from '@/lib/auth-types'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
 import { isValidEmailFormat } from '@/components/ConversationalOnboarding'
-import { User, LogOut, Check, Crown, Shield, ShieldCheck, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle, Calculator, Sparkles, HelpCircle, ScrollText, Bot, Download, Trash2 } from 'lucide-react'
+import { User, LogOut, Check, Crown, Shield, ShieldCheck, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle, Calculator, Sparkles, HelpCircle, ScrollText, Bot, Download, Trash2, Sun, Moon, MonitorSmartphone } from 'lucide-react'
 import { exportAccountData, deleteAccount } from '@/lib/api'
+import { useThemePreference, type ThemePreference } from '@/lib/theme'
 import type { LucideIcon } from 'lucide-react'
 
 const MODE_ICONS: Record<string, LucideIcon> = {
@@ -24,6 +25,12 @@ const MODE_ICONS: Record<string, LucideIcon> = {
   child: Baby,
   elderly: Accessibility,
 }
+
+const THEME_OPTIONS: { value: ThemePreference; label: string; icon: LucideIcon }[] = [
+  { value: 'system', label: 'System', icon: MonitorSmartphone },
+  { value: 'dark', label: 'Dark', icon: Moon },
+  { value: 'light', label: 'Light', icon: Sun },
+]
 
 const ROLE_ICONS: Record<string, LucideIcon> = {
   organizer: Crown,
@@ -38,6 +45,7 @@ const INVITABLE_ROLES: FamilyRole[] = ['parent', 'adult', 'child']
 
 export default function SettingsPage() {
   const { mode, setMode } = useMode()
+  const [theme, setTheme] = useThemePreference()
   const { user, family, signOut, inviteMember, removeMember, updateMemberRole, updateProfile } = useAuth()
   const router = useRouter()
   const confirm = useConfirm()
@@ -248,6 +256,25 @@ export default function SettingsPage() {
         })}
       </ListSection>
 
+      {/* Appearance — dark stays the default; 'system' follows the OS
+          live via prefers-color-scheme (see lib/theme.ts). */}
+      <ListSection title="Appearance">
+        {THEME_OPTIONS.map(({ value, label, icon: ThemeIcon }) => {
+          const active = theme === value
+          return (
+            <ListRow
+              key={value}
+              icon={ThemeIcon}
+              onClick={() => { haptic('light'); setTheme(value) }}
+              pressed={active}
+              value={active ? <Check size={18} className="text-family-400" /> : null}
+            >
+              <div className="text-base font-medium">{label}</div>
+            </ListRow>
+          )
+        })}
+      </ListSection>
+
       {/* Family Members */}
       {family && (
         <ListSection title="Family Members">
@@ -331,7 +358,7 @@ export default function SettingsPage() {
                   className={`flex-1 rounded-xl py-2.5 flex flex-col items-center gap-1 border transition-colors ${
                     active
                       ? 'bg-family-500/15 border-family-500/40 text-family-400'
-                      : 'bg-white/[0.03] border-white/[0.06] text-ink-secondary'
+                      : 'bg-tint/[0.03] border-tint/[0.06] text-ink-secondary'
                   }`}
                 >
                   <RoleIcon size={16} />
@@ -434,7 +461,7 @@ export default function SettingsPage() {
           </div>
         </ListRow>
         {exportError && (
-          <div className="px-4 pb-2 text-sm text-red-400 flex items-center gap-2">
+          <div className="px-4 pb-2 text-sm text-danger flex items-center gap-2">
             <AlertCircle size={14} /> {exportError}
           </div>
         )}

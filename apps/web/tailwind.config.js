@@ -12,7 +12,9 @@ module.exports = {
           100: '#e0e0ff',
           200: '#c4c0ff',
           300: '#a8a0ff',
-          400: '#8b80f8',
+          // Text/link purple on the page surface — reads from the CSS var
+          // so it stays AA-legible in both themes (light theme darkens it).
+          400: 'rgb(var(--family-400) / <alpha-value>)',
           // Was #7c6ef0 — 3.93:1 for white text on this, the app's
           // primary CTA fill (GlassButton, Continue, Send, Save &
           // Generate Insights, etc. — 15 files), below WCAG AA's 4.5:1
@@ -22,45 +24,52 @@ module.exports = {
           // darkening it can't regress contrast the other direction.
           // Same hue/saturation, darkened just enough for 4.52:1.
           500: '#7061ef',
-          // Foreground accent on dark surfaces (icons, active states,
-          // gradients) — reads from the CSS var so it can never drift from
-          // the value components use in inline styles. Deliberately lighter
-          // than 500: this shade passes AA as a text/icon color on the dark
-          // background, where 500 is tuned for white text on a purple fill.
-          accent: 'var(--family-accent)',
+          // Foreground accent on the page surface (icons, active states,
+          // gradients) — reads from the CSS var so it stays AA-legible in
+          // both themes (light theme darkens it) and can never drift from
+          // the value components use in inline styles.
+          accent: 'rgb(var(--family-accent) / <alpha-value>)',
           600: '#6b5ce0',
           700: '#5a4dd0',
           800: '#4a3eb0',
           900: '#3a2e90',
         },
-        // Surface tokens — deeper, cooler dark (Linear-inspired)
+        // The one token every white-alpha surface goes through. Dark theme
+        // maps it to white; light theme to near-black — so bg-tint/5 is the
+        // same "subtle card on the page background" in both.
+        tint: 'rgb(var(--tint) / <alpha-value>)',
+        // Surface tokens — flip to the light palette under
+        // [data-theme='light']; deeper, cooler dark remains the default.
         surface: {
-          0: '#08080c',
-          1: '#0f0f15',
-          2: '#16161e',
-          3: '#1d1d28',
+          0: 'rgb(var(--surface-0) / <alpha-value>)',
+          1: 'rgb(var(--surface-1) / <alpha-value>)',
+          2: 'rgb(var(--surface-2) / <alpha-value>)',
+          3: 'rgb(var(--surface-3) / <alpha-value>)',
         },
+        // Sticky nav/header chrome — dark surface or white, by theme.
+        navbg: 'rgb(var(--nav-bg) / <alpha-value>)',
         ink: {
-          primary: '#f5f5f7',
-          secondary: '#a0a0b0',
+          primary: 'rgb(var(--ink-1) / <alpha-value>)',
+          secondary: 'rgb(var(--ink-2) / <alpha-value>)',
           // Was #6b6b80 — 3.85:1 against surface-0 (#08080c), below WCAG AA's
           // 4.5:1 for normal text. ink-tertiary is used almost exclusively
           // at text-xs/text-sm (captions, timestamps, disclaimers) across
           // the whole app, well under the "large text" size that would
           // allow the lower 3:1 threshold, so this was a real, systemic
           // failure, not a borderline judgment call. Same hue/saturation,
-          // lightened just enough for 4.84:1.
-          tertiary: '#7b7b91',
+          // lightened just enough for 4.84:1. Both themes now hold AA.
+          tertiary: 'rgb(var(--ink-3) / <alpha-value>)',
         },
         haze: {
-          DEFAULT: '#2a2a35',
-          light: '#3a3a48',
+          DEFAULT: 'rgb(var(--haze) / <alpha-value>)',
+          light: 'rgb(var(--haze-light) / <alpha-value>)',
         },
-        // Semantic
-        success: '#4ade80',
-        warning: '#fbbf24',
-        danger: '#f87171',
-        info: '#60a5fa',
+        // Semantic — flip to deeper shades in light theme so status text
+        // keeps AA on the light background.
+        success: 'rgb(var(--success) / <alpha-value>)',
+        warning: 'rgb(var(--warning) / <alpha-value>)',
+        danger: 'rgb(var(--danger) / <alpha-value>)',
+        info: 'rgb(var(--info) / <alpha-value>)',
       },
       fontFamily: {
         sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],

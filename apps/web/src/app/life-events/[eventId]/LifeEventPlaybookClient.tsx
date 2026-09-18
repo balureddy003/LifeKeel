@@ -94,7 +94,7 @@ function StepDraft({ eventId, step }: { eventId: string; step: LifeEventPlaybook
   }
 
   return (
-    <div className="mt-3 pt-3 border-t border-white/5">
+    <div className="mt-3 pt-3 border-t border-tint/5">
       {!draftText ? (
         <>
           <GlassButton variant="secondary" onClick={handleDraft} disabled={drafting}>
@@ -197,7 +197,7 @@ export default function LifeEventPlaybookClient() {
   if (!event || !event.playbook) {
     return (
       <div className="px-4 pt-8 text-center">
-        <div className="w-16 h-16 rounded-3xl bg-white/[0.03] border border-white/[0.08] flex items-center justify-center mb-4 mx-auto">
+        <div className="w-16 h-16 rounded-3xl bg-tint/[0.03] border border-tint/[0.08] flex items-center justify-center mb-4 mx-auto">
           <HelpCircle size={32} className="text-ink-tertiary" />
         </div>
         <p className="text-ink-secondary">This life event couldn't be found</p>
@@ -252,8 +252,8 @@ export default function LifeEventPlaybookClient() {
                   <motion.div
                     className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
                     animate={{
-                      backgroundColor: done ? '#4ade80' : 'rgba(255,255,255,0.05)',
-                      borderColor: done ? '#4ade80' : 'rgba(255,255,255,0.1)',
+                      backgroundColor: done ? '#4ade80' : 'rgb(var(--tint) / 0.05)',
+                      borderColor: done ? '#4ade80' : 'rgb(var(--tint) / 0.1)',
                     }}
                     style={{ border: '2px solid' }}
                   >

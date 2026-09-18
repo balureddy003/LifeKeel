@@ -46,7 +46,7 @@ export default function BlogPostClient() {
   if (!post) {
     return (
       <div className="px-4 pt-8 text-center">
-        <div className="w-16 h-16 rounded-3xl bg-white/[0.03] border border-white/[0.08] flex items-center justify-center mb-4 mx-auto">
+        <div className="w-16 h-16 rounded-3xl bg-tint/[0.03] border border-tint/[0.08] flex items-center justify-center mb-4 mx-auto">
           <HelpCircle size={32} className="text-ink-tertiary" />
         </div>
         <h1 className="text-lg font-semibold text-ink-primary mb-1">Post not found</h1>

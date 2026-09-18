@@ -55,11 +55,20 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
+  // themeColor is a static export — it can't track data-theme, so it stays
+  // the dark palette (the default, and what OS chrome hints show while the
+  // inline script below is still resolving the stored preference).
   themeColor: '#08080c',
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
 }
+
+// Runs before first paint so a light-mode user never sees a dark flash —
+// the CSS tokens flip off [data-theme] on <html>, and SSR can't know the
+// localStorage preference, so the client has to set it in <head>. Keep the
+// storage key and resolution logic identical to lib/theme.ts.
+const THEME_INIT = `(function(){try{var p=localStorage.getItem('agentoak-theme');document.documentElement.dataset.theme=p==='light'?'light':p==='dark'?'dark':(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark')}catch(e){document.documentElement.dataset.theme='dark'}})()`
 
 export default function RootLayout({
   children,
@@ -67,8 +76,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
       <head>
+        {/* Dark is the default stylesheet assumption; this flips the html
+            attribute before first paint for stored/system light. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
         <link rel="icon" href="/icon.svg" type="image/svg+xml" />
         {/* iOS Safari's Add to Home Screen ignores SVG here and falls back
             to a screenshot of the page — a real 180x180 PNG is required. */}

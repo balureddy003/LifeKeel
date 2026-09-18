@@ -47,7 +47,7 @@ const FEATURES = [
   { icon: HeartPulse, color: '#f87171', title: 'A readiness snapshot, not a score to chase', body: 'Protection, wealth, goals, and savings, read from what you’ve told Oak — a starting point for your own plan, not a recommendation.' },
   { icon: Wand2, color: '#60a5fa', title: 'Upload a document, skip the retyping', body: 'Photograph an insurance policy or pension statement to store it securely, free. Oak Plus reads the provider, policy number, amount, and dates for you automatically.', plus: true },
   { icon: Mail, color: '#9c92ff', title: 'Connect any email, not just Gmail', body: 'Gmail, Outlook, Yahoo, iCloud, or your own domain — free to connect. Oak Plus summarizes every financial email in plain language as it arrives.', plus: true },
-  { icon: Command, color: '#8b80f8', title: 'A command palette, if you want it', body: 'Cmd+K jumps anywhere in the app instantly. Built for the parent who wants an answer in three seconds, not three taps.' },
+  { icon: Command, color: 'rgb(var(--family-400))', title: 'A command palette, if you want it', body: 'Cmd+K jumps anywhere in the app instantly. Built for the parent who wants an answer in three seconds, not three taps.' },
 ]
 
 // A real product mockup, not another icon tile — reuses the same ScoreRing
@@ -86,7 +86,7 @@ function HeroPreview() {
           </div>
         ))}
       </div>
-      <div className="rounded-2xl bg-white/[0.02] border border-white/[0.05] p-3.5">
+      <div className="rounded-2xl bg-tint/[0.02] border border-tint/[0.05] p-3.5">
         <div className="flex items-center gap-2 mb-2.5">
           <Siren size={13} className="text-danger flex-shrink-0" />
           <span className="text-footnote font-semibold text-ink-secondary">Medical emergency &mdash; response plan</span>
@@ -94,7 +94,7 @@ function HeroPreview() {
         <div className="space-y-2">
           {checklist.map((t) => (
             <div key={t} className="flex items-center gap-2">
-              <span className="w-4 h-4 rounded-full border-2 border-white/15 flex-shrink-0" />
+              <span className="w-4 h-4 rounded-full border-2 border-tint/15 flex-shrink-0" />
               <span className="text-footnote text-ink-secondary leading-snug">{t}</span>
             </div>
           ))}
@@ -163,7 +163,7 @@ function OakPlusSpotlight() {
 
 function MarketingNav() {
   return (
-    <header className="sticky top-0 z-nav border-b border-white/[0.06] bg-[#08080c]/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-nav border-b border-tint/[0.06] bg-navbg/80 backdrop-blur-xl">
       <div className="max-w-6xl mx-auto px-6 sm:px-10 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2 min-h-0">
           <img src="/icon.svg" alt="" width={30} height={30} className="rounded-[7px] flex-shrink-0" />
@@ -324,8 +324,8 @@ export function MarketingLanding() {
           <p className="text-footnote text-ink-tertiary mb-2.5">Sample family, shown for illustration:</p>
           <div className="flex gap-2.5 max-w-sm">
             {[{ i: 'AC', n: 'Avery', r: 'Organizer', on: true }, { i: 'JC', n: 'Jordan', r: 'Partner' }, { i: 'SC', n: 'Sam', r: 'Child' }].map((m) => (
-              <div key={m.i} className={`flex-1 rounded-2xl p-3.5 text-center border ${m.on ? 'border-family-500 bg-family-500/10' : 'border-white/[0.06] bg-white/[0.02]'}`}>
-                <div className="w-8 h-8 rounded-full bg-white/[0.06] mx-auto mb-2 flex items-center justify-center text-caption font-bold text-family-400">{m.i}</div>
+              <div key={m.i} className={`flex-1 rounded-2xl p-3.5 text-center border ${m.on ? 'border-family-500 bg-family-500/10' : 'border-tint/[0.06] bg-tint/[0.02]'}`}>
+                <div className="w-8 h-8 rounded-full bg-tint/[0.06] mx-auto mb-2 flex items-center justify-center text-caption font-bold text-family-400">{m.i}</div>
                 <div className="text-footnote font-bold">{m.n}</div>
                 <div className="text-caption text-ink-tertiary">{m.r}</div>
               </div>
@@ -392,7 +392,7 @@ export function MarketingLanding() {
             >
               <motion.div
                 whileTap={{ scale: 0.97 }}
-                className="w-full text-center rounded-xl py-3 text-subhead font-semibold border border-white/[0.08] text-ink-primary"
+                className="w-full text-center rounded-xl py-3 text-subhead font-semibold border border-tint/[0.08] text-ink-primary"
               >
                 Get started free
               </motion.div>
@@ -452,7 +452,7 @@ export function MarketingLanding() {
       </div>
 
       {/* Footer */}
-      <div className="max-w-6xl mx-auto px-6 sm:px-10 py-8 border-t border-white/[0.06] flex flex-col items-center gap-4">
+      <div className="max-w-6xl mx-auto px-6 sm:px-10 py-8 border-t border-tint/[0.06] flex flex-col items-center gap-4">
         <div className="flex gap-5 text-subhead text-ink-secondary">
           <Link href="/blog">Blog</Link>
           <Link href="/terms">Terms</Link>

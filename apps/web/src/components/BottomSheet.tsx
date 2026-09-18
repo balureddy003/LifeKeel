@@ -66,7 +66,7 @@ export function BottomSheet({ open, onClose, children, label }: BottomSheetProps
             className="relative w-full max-w-lg glass-strong rounded-t-3xl overflow-hidden shadow-2xl outline-none pb-[env(safe-area-inset-bottom)]"
           >
             <div className="flex justify-center pt-3 pb-1 cursor-grab active:cursor-grabbing">
-              <div className="w-9 h-1.5 rounded-full bg-white/15" />
+              <div className="w-9 h-1.5 rounded-full bg-tint/15" />
             </div>
             {children}
           </motion.div>

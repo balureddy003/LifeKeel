@@ -16,7 +16,6 @@ import { useAppStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 import { fetchFinancialProfile, RESOLVED_INSIGHT_STATES, type FinancialProfile } from '@/lib/api'
-import { FAMILY_ACCENT } from '@/lib/familySections'
 import { elderlyHomeCopy } from '@/lib/elderlyHomeCopy'
 import { childHomeCopy } from '@/lib/childHomeCopy'
 import { simpleHomeCopy } from '@/lib/simpleHomeCopy'
@@ -69,7 +68,7 @@ function ChildHome() {
           </div>
           {myFund ? (
             <>
-              <div className="h-3 rounded-full bg-white/5 overflow-hidden mb-2">
+              <div className="h-3 rounded-full bg-tint/5 overflow-hidden mb-2">
                 <motion.div
                   className="h-full rounded-full bg-gradient-to-r from-family-400 to-family-500"
                   initial={{ width: 0 }}
@@ -189,14 +188,14 @@ function ElderlyHome() {
               minHeight: 80,
               background: item.danger
                 ? 'linear-gradient(135deg, #f87171, #dc2626)'
-                : 'rgba(255,255,255,0.03)',
-              border: item.danger ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                : 'rgb(var(--tint) / 0.03)',
+              border: item.danger ? 'none' : '1px solid rgb(var(--tint) / 0.08)',
               backdropFilter: item.danger ? 'none' : 'blur(40px)',
               WebkitBackdropFilter: item.danger ? 'none' : 'blur(40px)',
             }}
           >
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: item.danger ? 'rgba(255,255,255,0.15)' : 'rgba(124,110,240,0.1)' }}>
-              <Icon size={24} color={item.danger ? '#fff' : FAMILY_ACCENT} />
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: item.danger ? 'rgba(255,255,255,0.15)' : 'rgb(var(--family-accent) / 0.1)' }}>
+              <Icon size={24} color={item.danger ? '#fff' : 'rgb(var(--family-accent))'} />
             </div>
             <span className="text-xl font-semibold" style={{ color: item.danger ? '#fff' : undefined }}>
               {item.label}

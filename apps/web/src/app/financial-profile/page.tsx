@@ -672,7 +672,7 @@ export default function FinancialProfilePage() {
           </span>
           <span className="text-xs text-family-400 font-bold">{Math.round(progress)}%</span>
         </div>
-        <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+        <div className="h-2 rounded-full bg-tint/5 overflow-hidden">
           <motion.div
             className="h-full rounded-full bg-gradient-to-r from-family-400 to-family-500"
             animate={{ width: `${progress}%` }}
@@ -765,7 +765,7 @@ export default function FinancialProfilePage() {
               <SectionTitle>Insurance Policies</SectionTitle>
               <div className="space-y-4">
                 {policies.map((p, i) => (
-                  <div key={i} className="rounded-2xl bg-white/[0.02] border border-white/[0.06] p-4 space-y-3">
+                  <div key={i} className="rounded-2xl bg-tint/[0.02] border border-tint/[0.06] p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-ink-tertiary">Policy {i + 1}</span>
                       <button type="button" onClick={() => removePolicy(i)} aria-label="Remove policy" className="w-7 h-7 rounded-full flex items-center justify-center text-ink-tertiary active:opacity-60">
@@ -873,7 +873,7 @@ export default function FinancialProfilePage() {
               <SectionTitle>Education Funds</SectionTitle>
               <div className="space-y-4">
                 {funds.map((f, i) => (
-                  <div key={i} className="rounded-2xl bg-white/[0.02] border border-white/[0.06] p-4 space-y-3">
+                  <div key={i} className="rounded-2xl bg-tint/[0.02] border border-tint/[0.06] p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-ink-tertiary">Child {i + 1}</span>
                       <button type="button" onClick={() => removeChild(i)} aria-label="Remove child" className="w-7 h-7 rounded-full flex items-center justify-center text-ink-tertiary active:opacity-60">
@@ -917,7 +917,7 @@ export default function FinancialProfilePage() {
           sit wherever the form happened to end, so reaching it meant
           scrolling all the way down first. A fixed thumb-reachable footer
           is the standard mobile-form pattern for exactly this reason. */}
-      <div className="sticky bottom-0 -mx-5 px-5 pt-3 pb-3 mt-2 flex gap-2 bg-[#08080c]/90 backdrop-blur-xl border-t border-white/[0.05] safe-area-bottom">
+      <div className="sticky bottom-0 -mx-5 px-5 pt-3 pb-3 mt-2 flex gap-2 bg-navbg/90 backdrop-blur-xl border-t border-tint/[0.05] safe-area-bottom">
         {stepIndex > 0 && (
           <button
             type="button"

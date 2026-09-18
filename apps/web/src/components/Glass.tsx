@@ -64,9 +64,9 @@ export function GlassCard({
         transformPerspective: 800,
         ...style,
       } as MotionStyle}
-      className={`relative rounded-3xl border border-white/[0.05] bg-white/[0.03] backdrop-blur-2xl overflow-hidden ${className}`}
+      className={`relative rounded-3xl border border-tint/[0.05] bg-tint/[0.03] backdrop-blur-2xl overflow-hidden ${className}`}
     >
-      <div className="absolute inset-0 bg-gradient-to-b from-white/[0.03] to-transparent pointer-events-none rounded-3xl" />
+      <div className="absolute inset-0 bg-gradient-to-b from-tint/[0.03] to-transparent pointer-events-none rounded-3xl" />
       <div className="relative z-raised">{children}</div>
     </motion.div>
   )
@@ -88,7 +88,7 @@ export function GlassButton({
   const baseClass = 'relative w-full flex items-center justify-center gap-2 rounded-2xl font-semibold text-base min-h-[56px] overflow-hidden transition-all active:opacity-90'
   const variantClass = {
     primary: 'bg-family-500 text-white shadow-md shadow-family-500/15',
-    secondary: 'border border-white/[0.06] bg-white/[0.04] backdrop-blur-xl text-ink-primary',
+    secondary: 'border border-tint/[0.06] bg-tint/[0.04] backdrop-blur-xl text-ink-primary',
     ghost: 'text-ink-secondary',
   }
 
@@ -189,6 +189,11 @@ export function ScoreRing({ score, size = 140 }: { score: number; size?: number 
   const circumference = 2 * Math.PI * radius
   const offset = circumference - (score / 100) * circumference
   const color = score >= 80 ? '#4ade80' : score >= 60 ? '#fbbf24' : '#f87171'
+  // The ring/glow keep the literal (it feeds `${color}80` alpha math);
+  // the score NUMBER is text, so it goes through the semantic vars —
+  // the pastel literals would fail AA on the light background.
+  const textColor =
+    score >= 80 ? 'rgb(var(--success))' : score >= 60 ? 'rgb(var(--warning))' : 'rgb(var(--danger))'
   // Number/caption were fixed at text-4xl/text-xs regardless of `size` —
   // fine at the 140/160 call sites, but Home's compact widget passes
   // size={80}, where a 36px number plus a 12px caption don't fit inside an
@@ -204,7 +209,7 @@ export function ScoreRing({ score, size = 140 }: { score: number; size?: number 
   return (
     <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
       <svg className="absolute inset-0 -rotate-90" viewBox={`0 0 ${size} ${size}`}>
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="10" />
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgb(var(--tint) / 0.05)" strokeWidth="10" />
         <motion.circle
           cx={size / 2}
           cy={size / 2}
@@ -223,7 +228,7 @@ export function ScoreRing({ score, size = 140 }: { score: number; size?: number 
       <div className="flex flex-col items-center">
         <motion.span
           className="font-bold leading-none"
-          style={{ color, fontSize: numberPx }}
+          style={{ color: textColor, fontSize: numberPx }}
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.3, type: 'spring', stiffness: 300, damping: 20 }}
@@ -237,7 +242,12 @@ export function ScoreRing({ score, size = 140 }: { score: number; size?: number 
 }
 
 export function PulseDot({ status }: { status: 'green' | 'yellow' | 'red' }) {
-  const color = status === 'green' ? '#4ade80' : status === 'yellow' ? '#fbbf24' : '#f87171'
+  const color =
+    status === 'green'
+      ? 'rgb(var(--success))'
+      : status === 'yellow'
+        ? 'rgb(var(--warning))'
+        : 'rgb(var(--danger))'
   return (
     <span className="relative inline-flex w-3 h-3">
       <motion.span
@@ -279,7 +289,7 @@ export function PageHeader({
     // all ~30 consumers; the assistant page, which pads at px-4, renders
     // its own header). Change the shared page gutter and this has to move
     // with it.
-    <header className="sticky top-0 z-sticky safe-area-top bg-[#08080c]/80 backdrop-blur-xl -mx-5 px-5 py-3 border-b border-white/[0.05]">
+    <header className="sticky top-0 z-sticky safe-area-top bg-navbg/80 backdrop-blur-xl -mx-5 px-5 py-3 border-b border-tint/[0.05]">
       <div className="flex items-center justify-between h-11">
         {backHref ? (
           <Link href={backHref} className="flex items-center gap-1 text-ink-tertiary active:opacity-60">
@@ -307,7 +317,7 @@ export function ListSection({
   return (
     <div className="space-y-2">
       {title && <div className="px-1.5 text-sm font-semibold text-ink-tertiary uppercase tracking-wide">{title}</div>}
-      <div className="rounded-2xl overflow-hidden border border-white/[0.05] bg-white/[0.03]">{children}</div>
+      <div className="rounded-2xl overflow-hidden border border-tint/[0.05] bg-tint/[0.03]">{children}</div>
     </div>
   )
 }
@@ -373,7 +383,7 @@ export function ListRow({
   const content = (
     <div className="flex items-center gap-3 px-4 py-3.5 min-h-[52px]">
       {Icon && (
-        <div className="w-8 h-8 rounded-lg bg-white/[0.05] flex items-center justify-center flex-shrink-0">
+        <div className="w-8 h-8 rounded-lg bg-tint/[0.05] flex items-center justify-center flex-shrink-0">
           <Icon size={18} className="text-ink-secondary" strokeWidth={2} />
         </div>
       )}
@@ -394,14 +404,14 @@ export function ListRow({
           onClick()
         }}
         aria-pressed={pressed}
-        className="w-full text-left border-b border-white/[0.04] last:border-0 active:opacity-80"
+        className="w-full text-left border-b border-tint/[0.04] last:border-0 active:opacity-80"
       >
         {content}
       </motion.button>
     )
   }
 
-  return <div className="border-b border-white/[0.04] last:border-0">{content}</div>
+  return <div className="border-b border-tint/[0.04] last:border-0">{content}</div>
 }
 
 export function Skeleton({ className = '' }: { className?: string }) {
@@ -410,7 +420,7 @@ export function Skeleton({ className = '' }: { className?: string }) {
 
 export function SkeletonCard({ lines = 3 }: { lines?: number }) {
   return (
-    <div className="rounded-3xl border border-white/[0.05] bg-white/[0.03] p-5">
+    <div className="rounded-3xl border border-tint/[0.05] bg-tint/[0.03] p-5">
       <div className="flex items-center justify-between mb-4">
         <div className="space-y-2">
           <Skeleton className="h-4 w-28" />
@@ -427,7 +437,7 @@ export function SkeletonCard({ lines = 3 }: { lines?: number }) {
         ))}
       </div>
       {lines > 0 && (
-        <div className="space-y-2 mt-4 pt-4 border-t border-white/5">
+        <div className="space-y-2 mt-4 pt-4 border-t border-tint/5">
           {Array.from({ length: lines }).map((_, i) => (
             <div key={i} className="flex items-center justify-between">
               <Skeleton className="h-3 w-20" />
@@ -462,7 +472,7 @@ export function EmptyState({
       animate={{ opacity: 1, y: 0 }}
       className="flex flex-col items-center text-center py-12 px-6"
     >
-      <div className="w-16 h-16 rounded-3xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center mb-4">
+      <div className="w-16 h-16 rounded-3xl bg-tint/[0.04] border border-tint/[0.06] flex items-center justify-center mb-4">
         <Icon size={28} className="text-ink-tertiary" strokeWidth={1.5} />
       </div>
       <h3 className="text-base font-semibold text-ink-secondary mb-1">{title}</h3>

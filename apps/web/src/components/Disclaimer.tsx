@@ -15,7 +15,7 @@ export function DisclaimerBanner({ compact = false }: { compact?: boolean }) {
   }
 
   return (
-    <div className="mx-4 mb-3 rounded-2xl bg-white/[0.02] border border-white/[0.05] px-4 py-3 flex items-start gap-2">
+    <div className="mx-4 mb-3 rounded-2xl bg-tint/[0.02] border border-tint/[0.05] px-4 py-3 flex items-start gap-2">
       <Info size={14} className="text-ink-tertiary flex-shrink-0 mt-0.5" />
       <p className="text-xs leading-relaxed text-ink-tertiary">{DISCLAIMER_TEXT}</p>
     </div>
