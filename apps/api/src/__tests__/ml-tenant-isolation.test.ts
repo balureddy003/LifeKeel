@@ -7,7 +7,7 @@
  * ADR-0019: Tenant ML Isolation
  */
 
-import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
+import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest'
 import { MongoClient, Db } from 'mongodb'
 import { ScoreCalibrator } from '@agentoak/engine'
 import { NoveltyTracker } from '@agentoak/engine'
@@ -194,10 +194,9 @@ describe('ML Tenant Isolation', () => {
       await queueManager.publish(TEST_QUEUE, jobA)
       await queueManager.publish(TEST_QUEUE, jobB)
 
-      // Wait for jobs to be processed
-      await new Promise(resolve => setTimeout(resolve, 300))
-
-      expect(receivedJobs).toHaveLength(2)
+      // Wait for jobs to be processed — poll, don't sleep: the subscriber's
+      // duplicate() connection takes >300ms to establish on a cold CI Redis.
+      await vi.waitFor(() => expect(receivedJobs).toHaveLength(2), { timeout: 15_000, interval: 50 })
       expect((receivedJobs[0] as { tenant_id: string }).tenant_id).toBe(TENANT_A)
       expect((receivedJobs[1] as { tenant_id: string }).tenant_id).toBe(TENANT_B)
     })
@@ -218,9 +217,10 @@ describe('ML Tenant Isolation', () => {
       await queueManager.publish(TEST_QUEUE, { tenant_id: TENANT_A, data: 'test' })
       await queueManager.publish(TEST_QUEUE, { tenant_id: TENANT_B, data: 'test' })
 
-      await new Promise(resolve => setTimeout(resolve, 300))
-
-      expect(processedTenants).toEqual(expect.arrayContaining([TENANT_A, TENANT_B]))
+      await vi.waitFor(
+        () => expect(processedTenants).toEqual(expect.arrayContaining([TENANT_A, TENANT_B])),
+        { timeout: 15_000, interval: 50 },
+      )
     })
   })
 

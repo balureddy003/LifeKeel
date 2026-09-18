@@ -67,6 +67,19 @@ interface FinancialProfileDoc extends Record<string, unknown> {
     target_savings_minor?: number
     years_remaining?: number
   }>
+  // PRD-110: individual policies were invisible to the assistant entirely —
+  // "does my husband's car insurance renew soon?" couldn't be answered even
+  // after the policy was recorded. member_id resolves to a roster name the
+  // same way household.members does below; car/home are household-wide and
+  // carry no member_id.
+  policies?: Array<{
+    type?: string
+    provider?: string
+    coverage_amount_minor?: number
+    monthly_premium_minor?: number
+    renewal_date?: string
+    member_id?: string
+  }>
 }
 
 // PRD-104: minimal local mirror of the family roster (owned by
@@ -131,6 +144,16 @@ function buildContext(
         `Education fund for ${fund.child_name ?? 'a child'} (age ${fund.child_age ?? 'unknown'}): ` +
         `£${toMajor(fund.current_savings_minor)} saved against a £${toMajor(fund.target_savings_minor)} target, ` +
         `${fund.years_remaining ?? 'unknown'} years remaining.`,
+      )
+    }
+    for (const policy of profile.policies ?? []) {
+      const holder = policy.member_id
+        ? (family?.members.find((m) => m.id === policy.member_id)?.name ?? 'a household member')
+        : 'the household'
+      parts.push(
+        `${policy.type ?? 'Insurance'} policy with ${policy.provider ?? 'unknown provider'} held by ${holder}: ` +
+        `cover £${toMajor(policy.coverage_amount_minor)}, premium £${toMajor(policy.monthly_premium_minor)}/month` +
+        `${policy.renewal_date ? `, renews ${policy.renewal_date}` : ''}.`,
       )
     }
   }

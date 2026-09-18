@@ -45,6 +45,11 @@ export default function UploadPage() {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
+  // Files that failed to upload, kept in memory so "we'll retry when you're
+  // back online" is a real mechanism (auto-retry on the browser's `online`
+  // event + a manual Retry button), not a promise the app couldn't keep.
+  // In-memory only — closing the page drops the queue.
+  const [failedFiles, setFailedFiles] = useState<File[]>([])
   const incrementDocumentCount = useAppStore((s) => s.incrementDocumentCount)
 
   const loadDocuments = useCallback(async () => {
@@ -68,6 +73,40 @@ export default function UploadPage() {
     return () => clearInterval(interval)
   }, [documents, loadDocuments])
 
+  const uploadOne = useCallback(async (file: File): Promise<boolean> => {
+    try {
+      const doc = await uploadDocument(file)
+      setDocuments((prev) => [doc, ...prev])
+      incrementDocumentCount()
+      return true
+    } catch {
+      return false
+    }
+  }, [incrementDocumentCount])
+
+  const retryFailed = useCallback(async (files: File[]) => {
+    const stillFailed: File[] = []
+    for (const file of files) {
+      if (await uploadOne(file)) haptic('success')
+      else stillFailed.push(file)
+    }
+    setFailedFiles(stillFailed)
+    setError(
+      stillFailed.length === 0
+        ? null
+        : `Couldn't upload ${stillFailed.length === 1 ? `"${stillFailed[0]!.name}"` : `${stillFailed.length} documents`} — we'll retry when you're back online.`,
+    )
+    if (stillFailed.length > 0) haptic('warning')
+  }, [uploadOne])
+
+  // Auto-retry the failed-upload queue when connectivity comes back.
+  useEffect(() => {
+    if (failedFiles.length === 0) return
+    const onOnline = () => { retryFailed(failedFiles) }
+    window.addEventListener('online', onOnline)
+    return () => window.removeEventListener('online', onOnline)
+  }, [failedFiles, retryFailed])
+
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
@@ -76,21 +115,25 @@ export default function UploadPage() {
     setError(null)
     haptic('light')
 
+    const failedNow: File[] = []
     for (const file of Array.from(files)) {
-      try {
-        const doc = await uploadDocument(file)
-        setDocuments((prev) => [doc, ...prev])
-        incrementDocumentCount()
+      if (await uploadOne(file)) {
         haptic('success')
-      } catch {
-        setError(`Failed to upload ${file.name}. The service may be offline — your document will sync when reconnected.`)
+      } else {
+        failedNow.push(file)
         haptic('warning')
       }
+    }
+    if (failedNow.length > 0) {
+      setFailedFiles((prev) => [...prev, ...failedNow])
+      setError(
+        `Couldn't upload ${failedNow.length === 1 ? `"${failedNow[0]!.name}"` : `${failedNow.length} documents`} — we'll retry when you're back online.`,
+      )
     }
 
     setUploading(false)
     e.target.value = ''
-  }, [incrementDocumentCount])
+  }, [uploadOne])
 
   return (
     <div className="px-5 pt-2 space-y-4">
@@ -148,7 +191,17 @@ export default function UploadPage() {
           >
             <GlassCard className="p-3.5 border-danger/20 flex items-start gap-2">
               <AlertCircle size={16} className="text-danger flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-ink-secondary leading-relaxed">{error}</p>
+              <div className="flex-1">
+                <p className="text-xs text-ink-secondary leading-relaxed">{error}</p>
+                {failedFiles.length > 0 && (
+                  <button
+                    onClick={() => { haptic('light'); retryFailed(failedFiles) }}
+                    className="mt-1.5 text-xs font-semibold text-family-400"
+                  >
+                    Retry now
+                  </button>
+                )}
+              </div>
             </GlassCard>
           </motion.div>
         )}

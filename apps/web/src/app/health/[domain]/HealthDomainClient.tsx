@@ -8,7 +8,7 @@ import type { LucideIcon } from 'lucide-react'
 import { GlassCard, PageHeader, ScoreRing } from '@/components/Glass'
 import { useFamilyHealthDomains, type HealthDomain } from '@/lib/useFamilyData'
 import { learnMoreHref } from '@/lib/detector-content'
-import type { FamilyInsight } from '@/lib/api'
+import { RESOLVED_INSIGHT_STATES, type FamilyInsight } from '@/lib/api'
 
 const DOMAIN_META: Record<HealthDomain, { label: string; icon: LucideIcon; color: string; description: string }> = {
   protection: {
@@ -53,14 +53,17 @@ function readableHypothesis(hypothesis: string): string {
 
 // PRD-107: resolved insights (the condition no longer holds, auto-retracted
 // by a later evaluation) get their own quiet section rather than sitting
-// undifferentiated among open ones. Exported so the split logic is testable
-// without rendering the component.
+// undifferentiated among open ones. Insights a human already actioned —
+// approved/completed/dismissed/archived — drop out of the list entirely
+// (they're not "now covered", they're handled); the readiness score's
+// RESOLVED_INSIGHT_STATES is the same boundary. Exported so the split logic
+// is testable without rendering the component.
 export function splitInsightsByResolution(insights: FamilyInsight[]): {
   open: FamilyInsight[]
   resolved: FamilyInsight[]
 } {
   return {
-    open: insights.filter((i) => i.state !== 'resolved'),
+    open: insights.filter((i) => !RESOLVED_INSIGHT_STATES.includes(i.state)),
     resolved: insights.filter((i) => i.state === 'resolved'),
   }
 }
@@ -170,11 +173,19 @@ export default function HealthDomainClient() {
                   ))}
                 </div>
               )}
-              {learnMoreHref(insight.rule_id) && (
-                <Link href={learnMoreHref(insight.rule_id)!} className="text-xs text-family-400 font-semibold mt-2 inline-block">
-                  Learn more →
+              <div className="flex items-center gap-4 mt-2">
+                {learnMoreHref(insight.rule_id) && (
+                  <Link href={learnMoreHref(insight.rule_id)!} className="text-xs text-family-400 font-semibold inline-block">
+                    Learn more →
+                  </Link>
+                )}
+                {/* Act-layer gate (remediation item 25): approving runs the
+                    insight's actions — the gate screen shows what each one
+                    actually does before the human confirms. */}
+                <Link href={`/insights/${insight.id}`} className="text-xs text-family-400 font-semibold inline-block">
+                  Review & approve →
                 </Link>
-              )}
+              </div>
             </GlassCard>
           </motion.div>
         ))}

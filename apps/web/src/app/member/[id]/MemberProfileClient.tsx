@@ -19,8 +19,8 @@ export default function MemberProfileClient() {
           <HelpCircle size={32} className="text-ink-tertiary" />
         </div>
         <p className="text-ink-secondary">Family member not found</p>
-        <Link href="/" className="btn-secondary mt-4 inline-flex items-center gap-1">
-          <ArrowLeft size={14} /> Back to Home
+        <Link href="/family" className="btn-secondary mt-4 inline-flex items-center gap-1">
+          <ArrowLeft size={14} /> Back to Family
         </Link>
       </div>
     )

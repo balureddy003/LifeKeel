@@ -51,6 +51,25 @@ vi.mock('../../db.js', () => ({
       signalsStore.find(
         (s) => s.tenant_id === filter['tenant_id'] && s.signal_type === filter['signal_type'] && s.id === filter['id'],
       ) ?? null,
+    // Just enough of the driver's updateOne for the complete endpoint —
+    // handles the two ops it actually sends ($addToSet / $pull on
+    // data.completed_step_ids).
+    updateOne: async (filter: Record<string, unknown>, update: Record<string, Record<string, unknown>>) => {
+      const doc = signalsStore.find(
+        (s) => s.tenant_id === filter['tenant_id'] && s.signal_type === filter['signal_type'] && s.id === filter['id'],
+      )
+      if (!doc) return { matchedCount: 0, modifiedCount: 0 }
+      if (update['$addToSet']) {
+        const ids = (doc.data['completed_step_ids'] as string[] | undefined) ?? []
+        for (const v of Object.values(update['$addToSet'])) if (!ids.includes(v as string)) ids.push(v as string)
+        doc.data['completed_step_ids'] = ids
+      }
+      if (update['$pull']) {
+        const remove = new Set(Object.values(update['$pull']) as string[])
+        doc.data['completed_step_ids'] = ((doc.data['completed_step_ids'] as string[] | undefined) ?? []).filter((v) => !remove.has(v))
+      }
+      return { matchedCount: 1, modifiedCount: 1 }
+    },
   })),
 }))
 
@@ -196,6 +215,79 @@ describe('PRD-108: POST /family/life-events', () => {
   })
 })
 
+describe('Emergency-Mode taxonomy: medical / car / property / travel', () => {
+  beforeEach(() => {
+    signalsStore = []
+  })
+
+  it.each(['medical', 'car', 'property', 'travel'] as const)(
+    'accepts %s and returns a rendered playbook — the full crisis-tile taxonomy now has a real flow',
+    async (eventType) => {
+      const { app } = await buildApp()
+      const res = await app.inject({ method: 'POST', url: '/family/life-events', payload: { event_type: eventType } })
+      expect(res.statusCode).toBe(201)
+      const playbook = res.json().playbook
+      expect(playbook.event_type).toBe(eventType)
+      expect(playbook.steps.length).toBeGreaterThan(0)
+    },
+  )
+
+  it('car: names the real car policy provider and policy number', async () => {
+    const profile = {
+      ...BASE_PROFILE,
+      policies: [{ type: 'car', provider: 'Admiral', coverage_amount_minor: 5_000_000, monthly_premium_minor: 3000, policy_number: 'CAR-991' }],
+    }
+    const { app } = await buildApp(profile)
+    const res = await app.inject({ method: 'POST', url: '/family/life-events', payload: { event_type: 'car' } })
+    const step = res.json().playbook.steps.find((s: { id: string }) => s.id === 'check_car_insurance')
+    expect(step.body).toContain('Admiral')
+    expect(step.body).toContain('CAR-991')
+  })
+
+  it('car: honest no-policy-on-file line when no car policy exists', async () => {
+    const { app } = await buildApp(BASE_PROFILE)
+    const res = await app.inject({ method: 'POST', url: '/family/life-events', payload: { event_type: 'car' } })
+    const step = res.json().playbook.steps.find((s: { id: string }) => s.id === 'check_car_insurance')
+    expect(step.body).toMatch(/don't have a car insurance policy on file/i)
+  })
+
+  it('medical: names real health cover and income protection', async () => {
+    const profile = {
+      ...BASE_PROFILE,
+      policies: [{ type: 'health', provider: 'Bupa', coverage_amount_minor: 3_000_000, monthly_premium_minor: 2500 }],
+    }
+    const { app } = await buildApp(profile)
+    const res = await app.inject({ method: 'POST', url: '/family/life-events', payload: { event_type: 'medical' } })
+    const step = res.json().playbook.steps.find((s: { id: string }) => s.id === 'check_health_cover')
+    expect(step.body).toContain('Bupa')
+    expect(step.body).toContain('income protection')
+  })
+
+  it('property: names the home insurer and flags the outstanding mortgage', async () => {
+    const profile = {
+      ...BASE_PROFILE,
+      policies: [{ type: 'home', provider: 'Aviva', coverage_amount_minor: 30_000_000, monthly_premium_minor: 4000 }],
+    }
+    const { app } = await buildApp(profile)
+    const res = await app.inject({ method: 'POST', url: '/family/life-events', payload: { event_type: 'property' } })
+    const step = res.json().playbook.steps.find((s: { id: string }) => s.id === 'check_home_cover')
+    expect(step.body).toContain('Aviva')
+    expect(step.body).toContain('mortgage')
+  })
+
+  it('travel: honest about untracked travel insurance, points at the real health policy', async () => {
+    const profile = {
+      ...BASE_PROFILE,
+      policies: [{ type: 'health', provider: 'Bupa', coverage_amount_minor: 3_000_000, monthly_premium_minor: 2500 }],
+    }
+    const { app } = await buildApp(profile)
+    const res = await app.inject({ method: 'POST', url: '/family/life-events', payload: { event_type: 'travel' } })
+    const step = res.json().playbook.steps.find((s: { id: string }) => s.id === 'check_travel_cover')
+    expect(step.body).toMatch(/don't track travel insurance/i)
+    expect(step.body).toContain('Bupa')
+  })
+})
+
 describe('PRD-108: GET /family/life-events', () => {
   beforeEach(() => {
     signalsStore = []
@@ -270,5 +362,96 @@ describe('PRD-108: POST /family/life-events/:id/steps/:stepId/prepare', () => {
       expect(source).not.toMatch(/from\s+['"]@sendgrid\/mail['"]/)
       expect(source).not.toMatch(/process\.env(\.SENDGRID_API_KEY|\[['"]SENDGRID_API_KEY['"]\])/)
     }
+  })
+})
+
+describe('Remediation item 19: POST /family/life-events/:id/steps/:stepId/complete', () => {
+  beforeEach(() => {
+    signalsStore = []
+    llmMock.mockClear()
+  })
+
+  const reportEvent = async (app: any): Promise<string> => {
+    const res = await app.inject({ method: 'POST', url: '/family/life-events', payload: { event_type: 'job_loss' } })
+    return res.json().id
+  }
+
+  it('persists a completed step and returns it in subsequent GETs', async () => {
+    const { app } = await buildApp()
+    const id = await reportEvent(app)
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/family/life-events/${id}/steps/runway/complete`,
+      payload: { done: true },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().completed_step_ids).toEqual(['runway'])
+
+    const get = await app.inject({ method: 'GET', url: '/family/life-events' })
+    const event = get.json().events.find((e: any) => e.id === id)
+    expect(event.completed_step_ids).toEqual(['runway'])
+  })
+
+  it('is idempotent — marking the same step done twice never duplicates it', async () => {
+    const { app } = await buildApp()
+    const id = await reportEvent(app)
+
+    await app.inject({ method: 'POST', url: `/family/life-events/${id}/steps/runway/complete`, payload: { done: true } })
+    const second = await app.inject({ method: 'POST', url: `/family/life-events/${id}/steps/runway/complete`, payload: { done: true } })
+    expect(second.json().completed_step_ids).toEqual(['runway'])
+    expect(signalsStore.find((s) => s.id === id)?.data['completed_step_ids']).toEqual(['runway'])
+  })
+
+  it('done:false removes a previously-completed step (cross-device converge-on-value, not a blind toggle)', async () => {
+    const { app } = await buildApp()
+    const id = await reportEvent(app)
+
+    await app.inject({ method: 'POST', url: `/family/life-events/${id}/steps/runway/complete`, payload: { done: true } })
+    const res = await app.inject({ method: 'POST', url: `/family/life-events/${id}/steps/runway/complete`, payload: { done: false } })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().completed_step_ids).toEqual([])
+  })
+
+  it('404s for a step id the rendered playbook does not contain', async () => {
+    const { app } = await buildApp()
+    const id = await reportEvent(app)
+    const res = await app.inject({
+      method: 'POST',
+      url: `/family/life-events/${id}/steps/not_a_real_step/complete`,
+      payload: { done: true },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('404s for a non-existent life event id', async () => {
+    const { app } = await buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/life-events/does-not-exist/steps/runway/complete',
+      payload: { done: true },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('400s when "done" is missing or not a boolean', async () => {
+    const { app } = await buildApp()
+    const id = await reportEvent(app)
+
+    const missing = await app.inject({ method: 'POST', url: `/family/life-events/${id}/steps/runway/complete`, payload: {} })
+    expect(missing.statusCode).toBe(400)
+
+    const wrongType = await app.inject({ method: 'POST', url: `/family/life-events/${id}/steps/runway/complete`, payload: { done: 'yes' } })
+    expect(wrongType.statusCode).toBe(400)
+  })
+
+  it('filters stored ids that no longer exist in the rendered playbook out of reads', async () => {
+    const { app } = await buildApp()
+    const id = await reportEvent(app)
+    signalsStore.find((s) => s.id === id)!.data['completed_step_ids'] = ['runway', 'stale_step_from_old_playbook']
+
+    const get = await app.inject({ method: 'GET', url: '/family/life-events' })
+    const event = get.json().events.find((e: any) => e.id === id)
+    expect(event.completed_step_ids).toEqual(['runway'])
   })
 })

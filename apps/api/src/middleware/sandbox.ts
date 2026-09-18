@@ -169,6 +169,27 @@ export async function sandboxMiddleware(
     return reply.send({ ok: true, id: insightId, state: action === 'approve' ? 'completed' : 'dismissed' })
   }
 
+  // GET /insights/:id/action-preview — the approval-gate read the real
+  // route serves (routes/insights.ts). Sandbox insights have no real
+  // insights-collection row, so without this branch the generic /insights
+  // GET intercept below would answer with a list-shaped response the gate
+  // screen can't render. Classifies with the same previewActions the real
+  // route uses, so the demo gate describes the same effects a real approve
+  // would.
+  const actionPreviewMatch = url.match(/^\/insights\/([^/]+)\/action-preview(\?.*)?$/)
+  if (actionPreviewMatch && req.method === 'GET') {
+    const insightId = actionPreviewMatch[1]
+    const insights = getSandboxData('insights', context.active_vertical)
+    const insight = insights.find(i => i.id === insightId)
+    if (!insight) return reply.status(404).send({ error: 'Insight not found' })
+    const { previewActions } = await import('../actions/action-executor.js')
+    return reply.send({
+      insight,
+      actions: previewActions((insight as { actions?: string[] }).actions ?? []),
+      dry_run: false,
+    })
+  }
+
   // Insights — respect ?state= the same way the real /insights route does,
   // so a caller asking for 'identified' (Home, Positions) doesn't silently
   // get dismissed/completed sample rows mixed in ahead of the live ones.

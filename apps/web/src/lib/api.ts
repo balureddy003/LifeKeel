@@ -208,9 +208,14 @@ export async function fetchAIResponse(query: string): Promise<{ content: string;
       if (typeof data.content === 'string') {
         return { content: data.content, isLive: Boolean(data.isLive) }
       }
+    } else if (res.status >= 500) {
+      reportError(new Error(`API ${res.status}`), { path: '/assistant/ask' })
     }
-  } catch {
-    // Network failure or unreachable backend — fall through to the local map.
+  } catch (err) {
+    // Network failure or unreachable backend — report it (this function
+    // predates apiFetch's reporting convention and was a blind spot), then
+    // fall through to the labeled local map.
+    reportError(err, { path: '/assistant/ask' })
   }
 
   const lower = query.toLowerCase()
@@ -306,7 +311,7 @@ export async function fetchProfileSuggestions(documentId: string): Promise<Docum
 export async function applyDocumentToProfile(
   documentId: string,
   paths?: string[],
-): Promise<{ applied: { path: string; label: string; valueMinor: number }[] }> {
+): Promise<{ applied: { path: string; label: string; valueMinor: number }[]; insightsGenerated: number }> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -319,7 +324,7 @@ export async function applyDocumentToProfile(
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Could not apply this document to your Financial Profile')
-  return data
+  return { applied: data.applied ?? [], insightsGenerated: data.insights_generated ?? 0 }
 }
 
 export interface ApplyPolicyInput {
@@ -329,12 +334,14 @@ export interface ApplyPolicyInput {
   monthlyPremiumMinor: number
   renewalDate?: string
   policyNumber?: string
+  // Optional roster-member attribution (PRD-110) — user-picked only.
+  memberId?: string
 }
 
 export async function applyPolicySuggestion(
   documentId: string,
   policy: ApplyPolicyInput,
-): Promise<{ applied: FinancialProfilePolicy }> {
+): Promise<{ applied: FinancialProfilePolicy; insightsGenerated: number }> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -347,7 +354,7 @@ export async function applyPolicySuggestion(
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Could not add this policy to your Financial Profile')
-  return data
+  return { applied: data.applied, insightsGenerated: data.insights_generated ?? 0 }
 }
 
 // ── Connectors ────────────────────────────────────────────────────────────
@@ -461,6 +468,40 @@ export async function scanEmailInbox(): Promise<EmailScanResult | null> {
   return (await res.json()) as EmailScanResult
 }
 
+export interface ConnectorSyncResource {
+  resource: string
+  last_synced_at: string | null
+  backfill_complete: boolean
+  total_records_synced: number
+  last_error: { status: number; status_text: string; at: string } | null
+}
+
+// Server-side sync state per resource (POST /connectors/:id/backfill and
+// GET /connectors/:id/sync/status existed with no frontend caller — see
+// remediation item 21). Empty resources just means "nothing synced yet".
+export async function fetchConnectorSyncStatus(connectorId: string): Promise<ConnectorSyncResource[]> {
+  return apiFetch<{ resources: ConnectorSyncResource[] }>(
+    `/connectors/${connectorId}/sync/status`,
+    { resources: [] },
+  ).then((r) => r.resources ?? [])
+}
+
+// Fire-and-forget backfill — the server runs it in the background (202);
+// callers poll fetchConnectorSyncStatus for progress.
+export async function triggerConnectorBackfill(connectorId: string): Promise<boolean> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(`${base}/connectors/${connectorId}/backfill`, { method: 'POST', headers })
+    return res.ok || res.status === 202
+  } catch (err) {
+    reportError(err, { connectorId })
+    return false
+  }
+}
+
 export async function disconnectConnector(connectorId: string): Promise<boolean> {
   try {
     const base = getApiBase()
@@ -518,7 +559,29 @@ async function familyGroupRequest(
 }
 
 export async function fetchFamilyGroup(): Promise<ApiFamilyGroup | null> {
-  return apiFetch<{ family: ApiFamilyGroup | null }>('/family', { family: null }).then((r) => r.family ?? null)
+  // Deliberately not apiFetch: "no family yet" is a successful 200 with
+  // {family: null}, while a network failure or 5xx means "couldn't check"
+  // — callers (signIn especially) have to tell those apart. Swallowing
+  // both into null used to drop a returning user into onboarding on a
+  // flaky connection, which reads as account loss.
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  let res: Response
+  try {
+    res = await fetch(`${base}/family`, { headers })
+  } catch (err) {
+    reportError(err, { path: '/family' })
+    throw err
+  }
+  if (!res.ok) {
+    if (res.status >= 500) reportError(new Error(`API ${res.status}`), { path: '/family' })
+    throw new Error(`API ${res.status}`)
+  }
+  const data = (await res.json()) as { family: ApiFamilyGroup | null }
+  return data.family ?? null
 }
 
 export async function createFamilyGroup(name: string): Promise<ApiFamilyGroup> {
@@ -571,6 +634,169 @@ export async function prepareInsightDraft(insightId: string): Promise<InsightDra
   } catch (err) {
     reportError(err, { insightId })
     return null
+  }
+}
+
+// ── Approval gate (Act layer — remediation item 25) ──────────────────────────
+// POST /insights/:id/approve executes an insight's recommended actions via the
+// ActionExecutor — send_email / send_whatsapp / crm_tag dispatch to real
+// external providers. The gate screen (app/insights/[id]) always renders
+// fetchInsightActionPreview before approveInsight is callable, so a human sees
+// the classified effect of every action first. Approve is atomic server-side
+// (only from state 'identified'), so a double-click can't double-dispatch.
+
+export interface InsightActionPreviewItem {
+  label: string
+  type: 'send_email' | 'send_whatsapp' | 'crm_tag' | 'log_only'
+  /** true when approval dispatches to an external provider. */
+  external: boolean
+  /** Plain-language consequence rendered on the gate. */
+  summary: string
+}
+
+export interface InsightActionPreview {
+  insight: FamilyInsight
+  actions: InsightActionPreviewItem[]
+  /** Tenant dry-run mode — nothing is actually sent when true. */
+  dry_run: boolean
+}
+
+export async function fetchInsightActionPreview(insightId: string): Promise<InsightActionPreview | null> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const res = await fetch(`${base}/insights/${insightId}/action-preview`, { headers })
+    if (!res.ok) return null
+    const data = (await res.json()) as { insight: RawInsight; actions: InsightActionPreviewItem[]; dry_run: boolean }
+    return {
+      insight: adaptInsight(data.insight),
+      actions: data.actions ?? [],
+      dry_run: data.dry_run === true,
+    }
+  } catch (err) {
+    reportError(err, { insightId })
+    return null
+  }
+}
+
+export interface ApproveInsightResult {
+  ok: boolean
+  /** 'completed' | 'execution_failed' | other insight state after the call. */
+  state?: string | undefined
+  message?: string | undefined
+  error?: string | undefined
+}
+
+async function insightActionPost(insightId: string, action: string, body?: Record<string, unknown>): Promise<ApproveInsightResult> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const res = await fetch(`${base}/insights/${insightId}/${action}`, {
+      method: 'POST',
+      headers,
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    })
+    const data = await res.json().catch(() => ({})) as { insight?: { state?: string }; message?: string; error?: string }
+    if (!res.ok) return { ok: false, error: data.error ?? `Request failed (${res.status})` }
+    return { ok: true, state: data.insight?.state, message: data.message }
+  } catch (err) {
+    reportError(err, { insightId, action })
+    return { ok: false, error: 'Network error — please try again' }
+  }
+}
+
+export function approveInsight(insightId: string, notes?: string): Promise<ApproveInsightResult> {
+  return insightActionPost(insightId, 'approve', notes?.trim() ? { notes: notes.trim() } : undefined)
+}
+
+// Recovery path for an approved insight whose actions failed to execute —
+// idempotent server-side (receipts dedupe by payload_hash); safe to retry.
+export function retryInsightExecution(insightId: string): Promise<ApproveInsightResult> {
+  return insightActionPost(insightId, 'retry-execution')
+}
+
+export async function dismissInsight(insightId: string, reason?: string): Promise<boolean> {
+  const result = await insightActionPost(insightId, 'dismiss', reason?.trim() ? { reason: reason.trim() } : undefined)
+  return result.ok
+}
+
+export interface AutomationSettings {
+  dry_run_mode: boolean
+  trust_level_by_workflow: Record<string, number>
+}
+
+export async function fetchAutomationSettings(): Promise<AutomationSettings | null> {
+  return apiFetch<AutomationSettings | null>('/settings/automation', null)
+}
+
+export async function updateAutomationSettings(dryRunMode: boolean): Promise<AutomationSettings | null> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const res = await fetch(`${base}/settings/automation`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ dry_run_mode: dryRunMode }),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as AutomationSettings
+  } catch (err) {
+    reportError(err, { path: '/settings/automation' })
+    return null
+  }
+}
+
+// ── Account data rights (export / delete — remediation item 26) ─────────────
+
+// Returns the parsed bundle; the caller turns it into a downloaded file —
+// keeping fetch here and DOM work at the call site so this stays testable.
+export async function exportAccountData(): Promise<Record<string, unknown> | null> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const res = await fetch(`${base}/account/export`, { headers })
+    if (!res.ok) return null
+    return (await res.json()) as Record<string, unknown>
+  } catch (err) {
+    reportError(err, { path: '/account/export' })
+    return null
+  }
+}
+
+// confirmation must be the account's own email, typed — the server's check,
+// not just a client formality.
+export async function deleteAccount(confirmation: string): Promise<{ ok: boolean; error?: string | undefined }> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const res = await fetch(`${base}/account/delete`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ confirmation }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({})) as { error?: string }
+      return { ok: false, error: data.error ?? `Request failed (${res.status})` }
+    }
+    return { ok: true }
+  } catch (err) {
+    reportError(err, { path: '/account/delete' })
+    return { ok: false, error: 'Network error — please try again' }
   }
 }
 
@@ -634,6 +860,10 @@ export interface FinancialProfilePolicy {
   monthly_premium_minor: number
   renewal_date?: string
   policy_number?: string
+  // PRD-110: optional roster-member attribution — person-scoped policies
+  // (life, income protection, health, critical illness) can name whose
+  // policy it is; car/home stay unset (household-wide by nature).
+  member_id?: string
 }
 
 export interface FinancialProfile {
@@ -737,7 +967,7 @@ export async function submitFinancialProfile(
 // the real financial profile, re-rendered live on every fetch rather than
 // frozen at report time.
 
-export type LifeEventType = 'job_loss' | 'bereavement' | 'disability'
+export type LifeEventType = 'job_loss' | 'bereavement' | 'disability' | 'medical' | 'car' | 'property' | 'travel'
 
 export interface LifeEventPlaybookStep {
   id: string
@@ -760,6 +990,9 @@ export interface LifeEvent {
   event_type: LifeEventType
   affected_member_id: string | null
   reported_at: string
+  // Server-persisted checklist completion (was localStorage-only — see the
+  // complete endpoint below). Only ids the current playbook contains.
+  completed_step_ids: string[]
   playbook: LifeEventPlaybook | null
 }
 
@@ -811,6 +1044,49 @@ export async function prepareLifeEventStepDraft(eventId: string, stepId: string)
     reportError(err, { eventId, stepId })
     return null
   }
+}
+
+// Persists checklist completion server-side (an explicit done flag, not a
+// toggle — see the route's comment on cross-device convergence). Returns
+// the server's authoritative id list, or null on failure so the caller can
+// revert its optimistic update.
+export async function setLifeEventStepDone(eventId: string, stepId: string, done: boolean): Promise<string[] | null> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const res = await fetch(`${base}/family/life-events/${eventId}/steps/${stepId}/complete`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ done }),
+    })
+    if (!res.ok) return null
+    const data = await res.json().catch(() => null) as { completed_step_ids?: string[] } | null
+    return data?.completed_step_ids ?? []
+  } catch (err) {
+    reportError(err, { eventId, stepId, done })
+    return null
+  }
+}
+
+// ── Audit log (read-only — remediation item 22) ─────────────────────────
+
+export interface AuditLogEntry {
+  action: string
+  resource_type: string
+  resource_id: string
+  user_id: string
+  timestamp: string
+  metadata: Record<string, unknown>
+}
+
+// `before` is the cursor for pagination — pass the oldest entry's
+// timestamp from the previous page.
+export async function fetchAuditLog(before?: string): Promise<AuditLogEntry[]> {
+  const qs = before ? `?before=${encodeURIComponent(before)}` : ''
+  return apiFetch<{ entries: AuditLogEntry[] }>(`/audit-log${qs}`, { entries: [] }).then((r) => r.entries ?? [])
 }
 
 // ── Password reset ───────────────────────────────────────────────────────

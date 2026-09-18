@@ -100,6 +100,37 @@ function classifyAction(label: string): ActionType {
   return 'log_only'
 }
 
+// ── Action preview ────────────────────────────────────────────────────────────
+// The human-facing "what will actually happen" description of each action on an
+// insight. GET /insights/:id/action-preview renders this on the approval-gate
+// screen before a human approves — it MUST stay the same classification the
+// executor itself uses (both call classifyAction), or the gate would be
+// describing a different action than the one that runs.
+
+export interface ActionPreview {
+  label: string
+  type: ActionType
+  /** true when approval dispatches to an external provider (SendGrid/Twilio/CRM). */
+  external: boolean
+  /** Plain-language consequence shown on the approval gate. */
+  summary: string
+}
+
+const ACTION_TYPE_EFFECTS: Record<ActionType, { external: boolean; summary: string }> = {
+  send_email:    { external: true,  summary: 'Sends a real email to your account address via SendGrid' },
+  send_whatsapp: { external: true,  summary: 'Sends a real WhatsApp message via Twilio' },
+  crm_tag:       { external: true,  summary: 'Adds a tag to a contact in your connected CRM' },
+  log_only:      { external: false, summary: 'Recorded as done — nothing is sent or changed automatically' },
+}
+
+export function previewActions(labels: string[]): ActionPreview[] {
+  return labels.map((label) => {
+    const type = classifyAction(label)
+    const effect = ACTION_TYPE_EFFECTS[type]
+    return { label, type, external: effect.external, summary: effect.summary }
+  })
+}
+
 // ── ActionExecutor ────────────────────────────────────────────────────────────
 
 export class ActionExecutor {

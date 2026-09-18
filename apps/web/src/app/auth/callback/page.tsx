@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
+import { reportError } from '@/lib/observability'
 
 export default function AuthCallbackPage() {
   const router = useRouter()
@@ -17,8 +18,10 @@ export default function AuthCallbackPage() {
     const err = params.get('error')
 
     if (err) {
+      // Keep the real error on screen — auto-redirecting after 2s discarded
+      // it before the user could read or report what actually failed.
+      reportError(new Error(`OAuth callback error: ${err}`), { path: '/auth/callback' })
       setError(err)
-      setTimeout(() => router.push('/login'), 2000)
       return
     }
 
@@ -34,9 +37,14 @@ export default function AuthCallbackPage() {
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center px-6">
-        <div className="text-center">
-          <p className="text-sm text-red-400 mb-2">Sign-in failed: {error}</p>
-          <p className="text-xs text-ink-tertiary">Redirecting to login…</p>
+        <div className="text-center max-w-xs">
+          <p className="text-sm text-red-400 mb-4">Sign-in failed: {error}</p>
+          <button
+            onClick={() => router.push('/login')}
+            className="w-full bg-family-500 text-white font-semibold rounded-2xl py-3 text-sm"
+          >
+            Back to sign in
+          </button>
         </div>
       </div>
     )

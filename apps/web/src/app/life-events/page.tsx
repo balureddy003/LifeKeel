@@ -1,19 +1,24 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Briefcase, HeartCrack, Activity, ChevronRight, Loader2 } from 'lucide-react'
+import { Briefcase, HeartCrack, Activity, HeartPulse, Car, Home, Plane, ChevronRight, Loader2, AlertCircle } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { GlassCard, GlassButton, PageHeader } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { useAuth } from '@/lib/auth-context'
-import { reportLifeEvent, type LifeEventType } from '@/lib/api'
+import { reportLifeEvent, fetchLifeEvents, type LifeEvent, type LifeEventType } from '@/lib/api'
 
 const EVENT_TYPES: { id: LifeEventType; label: string; description: string; icon: LucideIcon }[] = [
   { id: 'job_loss', label: 'Job loss', description: 'See your real runway and what to do first', icon: Briefcase },
   { id: 'bereavement', label: 'Bereavement', description: "Notify your family's real insurers and providers", icon: HeartCrack },
   { id: 'disability', label: 'Disability / critical illness', description: 'See whether your real cover applies', icon: Activity },
+  { id: 'medical', label: 'Medical emergency', description: 'Check your real health cover and what to notify', icon: HeartPulse },
+  { id: 'car', label: 'Car accident', description: 'Your real car policy and claim deadlines', icon: Car },
+  { id: 'property', label: 'Property damage', description: 'Your real home cover and what to document', icon: Home },
+  { id: 'travel', label: 'Travel emergency', description: 'Cover checks, receipts, embassy steps', icon: Plane },
 ]
 
 export default function LifeEventsPage() {
@@ -23,8 +28,34 @@ export default function LifeEventsPage() {
   const [affectedMemberId, setAffectedMemberId] = useState<string>('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Most recent already-reported event of the picked type, if any — the
+  // de-dupe check. A double-tap in a crisis shouldn't silently create a
+  // second record of the same event.
+  const [existingSameType, setExistingSameType] = useState<LifeEvent | null>(null)
 
   const otherMembers = (family?.members ?? []).filter((m) => m.role !== 'child')
+
+  // ?type= carried through from Emergency Mode — the picked crisis type
+  // survives into the real flow (straight to confirm) instead of forcing
+  // a re-pick from a differently-labeled list. Read via window.location,
+  // same static-export convention as financial-profile's ?step=.
+  useEffect(() => {
+    const type = new URLSearchParams(window.location.search).get('type')
+    if (type && EVENT_TYPES.some((e) => e.id === type)) {
+      setSelectedType(type as LifeEventType)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!selectedType) { setExistingSameType(null); return }
+    let cancelled = false
+    fetchLifeEvents().then((events) => {
+      if (cancelled) return
+      // API returns most recent first — first match is the latest report.
+      setExistingSameType(events.find((e) => e.event_type === selectedType) ?? null)
+    })
+    return () => { cancelled = true }
+  }, [selectedType])
 
   const handleSubmit = async () => {
     if (!selectedType) return
@@ -85,6 +116,20 @@ export default function LifeEventsPage() {
               {EVENT_TYPES.find((e) => e.id === selectedType)?.label}
             </div>
 
+            {existingSameType && (
+              <div className="rounded-xl bg-warning/10 border border-warning/20 px-3.5 py-3 mb-4 flex items-start gap-2">
+                <AlertCircle size={15} className="text-warning flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-ink-secondary leading-relaxed">
+                  An event of this type was already reported on{' '}
+                  {new Date(existingSameType.reported_at).toLocaleDateString()}.{' '}
+                  <Link href={`/life-events/${existingSameType.id}`} className="text-family-400 font-semibold">
+                    Open it
+                  </Link>{' '}
+                  — or report a new one below if this is a separate incident.
+                </p>
+              </div>
+            )}
+
             {otherMembers.length > 0 && (
               <div className="mb-4">
                 <label className="text-xs text-ink-tertiary mb-2 block">Who does this affect? (optional)</label>
@@ -103,7 +148,7 @@ export default function LifeEventsPage() {
 
             <GlassButton onClick={handleSubmit} disabled={submitting}>
               {submitting ? <Loader2 size={18} className="animate-spin" /> : null}
-              <span>{submitting ? 'Building your plan…' : 'Get my plan'}</span>
+              <span>{submitting ? 'Building your plan…' : existingSameType ? 'Report anyway' : 'Get my plan'}</span>
             </GlassButton>
             {error && <p role="status" aria-live="polite" className="text-sm text-danger mt-3">{error}</p>}
 

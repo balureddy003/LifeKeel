@@ -1,0 +1,36 @@
+# Life-event response playbook — medical emergency.
+# Content, not code — see job-loss.yaml's header comment for the format.
+event_type: medical
+title: Medical Emergency Response Plan
+intro: >
+  A health crisis hits fast — this is a sequenced list of the financial
+  and insurance steps that tend to matter first, personalized against your
+  family's real policies and cover where we have them on file.
+steps:
+  - id: check_health_cover
+    title: Check your real health cover
+    computed: true
+    contact: false
+  - id: notify_health_insurer
+    title: Notify your health insurer
+    body: >
+      Contact your health insurer as soon as you can — many policies
+      require pre-authorization before planned treatment or notification
+      within a set number of days after an emergency admission. Missing
+      the window can mean a refused claim even on a valid policy.
+    contact: true
+  - id: keep_documents
+    title: Keep every document and receipt
+    body: >
+      Collect discharge summaries, invoices, prescriptions, and receipts
+      as you go — insurers reimburse against documents, and reconstructing
+      them later from the hospital is slow and often incomplete.
+    contact: false
+  - id: income_impact
+    title: Check the income impact
+    body: >
+      If the person affected is an earner, check what sick pay their
+      employer covers and for how long — and whether an income-protection
+      policy applies. Knowing the real income gap early changes which of
+      the other steps are urgent.
+    contact: false

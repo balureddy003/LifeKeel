@@ -4,6 +4,14 @@
  * GET /case-studies — list published case studies
  * POST /case-studies — submit new case study for review
  * POST /case-studies/:id/approve — approve and publish case study
+ *
+ * Orphaned-surface decision (remediation item 24): PARKED, not deleted.
+ * No shipped UI calls any of these today, but GET /case-studies is on
+ * the public open-paths list — a marketing surface like /blog/posts —
+ * and the whole file is ~120 lines. Deleting it removes a public-facing
+ * endpoint on spec rather than dead code. If the marketing site never
+ * renders case studies, delete the file and its open-paths entry
+ * together.
  */
 
 import type { FastifyInstance } from 'fastify'

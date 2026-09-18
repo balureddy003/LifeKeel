@@ -1,11 +1,16 @@
 'use client'
 
 /**
- * Public, unauthenticated "Family Readiness Score" quiz (PRD-201) — the
+ * Public, unauthenticated "Family Readiness Check" quiz (PRD-201) — the
  * detector engine as a growth loop. Six quick questions run through the
  * exact same rules a real account's data would, via POST /readiness-quiz.
  * No signup, no lead-capture gate before the score renders: the score and
  * reasoning show first, the signup CTA comes after.
+ *
+ * Named "Check", not "Score", on purpose: the in-app Family Readiness
+ * Score is a different metric computed from a real account's linked data
+ * and open insights — sharing the name invited "why is my score different
+ * here?" confusion.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -24,7 +29,7 @@ const QUIZ_URL = 'https://kairos-trellis.web.app/readiness/'
 // it, so a shared link never leaks the household finances that produced it.
 function ShareScore({ score }: { score: number }) {
   const [copied, setCopied] = useState(false)
-  const shareText = `I scored ${score}/100 on Agent Oak's Family Readiness Score. What's yours?`
+  const shareText = `I scored ${score}/100 on Agent Oak's Family Readiness Check. What's yours?`
 
   async function handleShare() {
     haptic('light')
@@ -181,7 +186,7 @@ export default function ReadinessQuizPage() {
   return (
     <div className="px-5 pt-2 pb-12">
       <PageHeader
-        title="Family Readiness Score"
+        title="Family Readiness Check"
         subtitle="Six quick questions. No signup, no email required."
         action={<></>}
       />
@@ -205,7 +210,7 @@ export default function ReadinessQuizPage() {
       )}
 
       {result && result.score !== null && (
-        <div ref={resultRef} tabIndex={-1} aria-label={`Your Family Readiness Score: ${result.score} out of 100`} className="mt-6 flex flex-col items-center outline-none">
+        <div ref={resultRef} tabIndex={-1} aria-label={`Your Family Readiness Check result: ${result.score} out of 100`} className="mt-6 flex flex-col items-center outline-none">
           <ScoreRing score={result.score} size={160} />
           <ShareScore score={result.score} />
 
@@ -236,8 +241,9 @@ export default function ReadinessQuizPage() {
 
           <GlassCard className="p-4 mt-4 w-full">
             <p className="text-sm text-ink-secondary leading-relaxed mb-3">
-              This is based on 2 of Oak&apos;s 6 signals — protection and emergency-fund coverage. See your full
-              picture, including retirement and education funding, free.
+              This quick check is based on 2 of Oak&apos;s 6 signals — protection and emergency-fund coverage.
+              Your in-app Family Readiness Score reads your real linked data and covers retirement and
+              education funding too. See your full picture, free.
             </p>
             <Link href="/welcome" onClick={() => { haptic('light'); track('landing_get_started_click', { location: 'readiness_quiz' }) }}>
               <GlassButton>Get my full picture</GlassButton>
@@ -249,9 +255,20 @@ export default function ReadinessQuizPage() {
       {result && result.score === null && (
         <div ref={resultRef} tabIndex={-1} role="status" aria-live="polite" className="outline-none">
           <GlassCard className="p-4 mt-6">
-            <p className="text-sm text-ink-secondary leading-relaxed">
+            <p className="text-sm text-ink-secondary leading-relaxed mb-3">
               {result.error ?? "Couldn't calculate your score right now — please try again later."}
             </p>
+            <div className="flex gap-2">
+              <GlassButton onClick={handleSubmit} disabled={submitting} className="flex-1">
+                {submitting ? 'Calculating…' : 'Try again'}
+              </GlassButton>
+              <button
+                onClick={() => { haptic('light'); setResult(null) }}
+                className="flex-1 rounded-xl py-3 text-sm font-semibold bg-white/[0.04] border border-white/[0.08] text-ink-secondary"
+              >
+                Edit answers
+              </button>
+            </div>
           </GlassCard>
         </div>
       )}

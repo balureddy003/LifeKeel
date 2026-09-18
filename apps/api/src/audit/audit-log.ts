@@ -54,6 +54,8 @@ export type AuditAction =
   | 'billing.credits_adjusted'
   | 'billing.credit_reversed'
   | 'billing.credit_pack_purchased'
+  | 'account.exported'
+  | 'account.deleted'
 
 export interface AuditEntry {
   tenant_id: string

@@ -13,3 +13,13 @@ export const POLICY_TYPE_LABELS: Record<PolicyType, string> = {
 }
 
 export const POLICY_TYPES = Object.keys(POLICY_TYPE_LABELS) as PolicyType[]
+
+// PRD-110: person-scoped policy types get a "who is this for?" member
+// picker; car/home are household-wide and never prompt. Shared by the
+// wizard card and the document-review card so the two never drift.
+export const PERSON_SCOPED_POLICY_TYPES: ReadonlySet<PolicyType> = new Set([
+  'life',
+  'income_protection',
+  'health',
+  'critical_illness',
+])

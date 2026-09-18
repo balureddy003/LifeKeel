@@ -18,8 +18,10 @@
 import type { FastifyInstance } from 'fastify'
 import { GridFSBucket, type Db, type ObjectId } from 'mongodb'
 import { randomUUID } from 'node:crypto'
+import type { Engine, Insight } from '@agentoak/engine'
 import { createLogger, getTenantCollection } from '@agentoak/platform'
 import { processDocument } from '../ocr/extract.js'
+import { evaluateProfileAndGenerateInsights, FinancialProfileSchema } from './family-financial-profile.js'
 import {
   mapExtractedFieldsToProfileSuggestions,
   isApplicableProfilePath,
@@ -51,8 +53,29 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB — matches multipart limit in s
 export function registerDocumentRoutes(
   fastify: FastifyInstance,
   db: Db,
+  engine?: Engine,
+  onInsightsGenerated?: (insights: Insight[], tenantId: string) => Promise<void>,
 ): void {
   const bucket = new GridFSBucket(db, { bucketName: 'documents' })
+
+  // Applying extracted data is an explicit, user-reviewed profile mutation —
+  // the document-detail card makes the user confirm every suggestion before
+  // it lands. The remediation review flagged that the mutation used to stop
+  // there: nothing surfaced until the user separately re-submitted the
+  // Financial Profile wizard's "Save & Generate Insights". So a successful
+  // apply now re-runs the detector pass in-request — but only when the
+  // stored document parses as a complete FinancialProfile. An upsert-created
+  // skeleton of a couple of OCR fields fails schema validation, which keeps
+  // first-time profile creation (and its generation boundary) in the wizard.
+  const regenerateInsights = async (tenantId: string): Promise<number> => {
+    if (!engine) return 0
+    const profiles = getTenantCollection<Record<string, unknown>>(db, 'family_financial_profile', tenantId)
+    const doc = await profiles.findOne({})
+    if (!doc) return 0
+    const parsed = FinancialProfileSchema.safeParse(doc)
+    if (!parsed.success) return 0
+    return evaluateProfileAndGenerateInsights(parsed.data, tenantId, engine, db, onInsightsGenerated)
+  }
 
   // ── POST /documents/upload ──────────────────────────────────────────────
   fastify.post('/documents/upload', async (req, reply) => {
@@ -250,10 +273,10 @@ export function registerDocumentRoutes(
   // ── POST /documents/:id/apply-to-profile ────────────────────────────────
   // Applies one or more of the suggestions above to the tenant's Financial
   // Profile. A scoped $set on an explicit whitelist of dotted paths — never
-  // accepts arbitrary paths from the client — and never triggers detector
-  // evaluation itself; that stays an explicit action on the Financial
-  // Profile page (Save & Generate Insights), consistent with the wizard's
-  // existing autosave-doesn't-generate-insights design.
+  // accepts arbitrary paths from the client. Because the apply is itself an
+  // explicit user-confirmed submit (not an autosave), it re-runs detector
+  // evaluation via regenerateInsights() once the profile has been mutated —
+  // see the helper's comment for the complete-profile gate.
   fastify.post<{ Params: { id: string }; Body: { paths?: string[] } }>(
     '/documents/:id/apply-to-profile',
     async (req, reply) => {
@@ -279,12 +302,17 @@ export function registerDocumentRoutes(
       for (const s of toApply) update[s.path] = s.valueMinor
       await profiles.updateOne({}, { $set: update }, { upsert: true })
 
+      const insightsGenerated = await regenerateInsights(tenant_id)
+
       log.info(
-        { documentId: req.params.id, tenant_id, applied: toApply.map((s) => s.path) },
+        { documentId: req.params.id, tenant_id, applied: toApply.map((s) => s.path), insights_generated: insightsGenerated },
         'Applied document fields to financial profile',
       )
 
-      return { applied: toApply.map((s) => ({ path: s.path, label: s.label, valueMinor: s.valueMinor })) }
+      return {
+        applied: toApply.map((s) => ({ path: s.path, label: s.label, valueMinor: s.valueMinor })),
+        insights_generated: insightsGenerated,
+      }
     },
   )
 
@@ -294,9 +322,10 @@ export function registerDocumentRoutes(
   // array element. This pushes a full policies[] entry — reviewed/editable
   // by the user in the document-detail card, never applied from raw OCR
   // output without a chance to correct it (same "surfaced to confirm, never
-  // applied silently" posture as apply-to-profile). Same as that endpoint,
-  // this never triggers detector evaluation itself — "Save & Generate
-  // Insights" on the Financial Profile page stays the one place that does.
+  // applied silently" posture as apply-to-profile). And like that endpoint,
+  // the user-confirmed apply re-runs detector evaluation in-request via
+  // regenerateInsights() — a new policy is exactly the kind of change
+  // (renewal windows, cover gaps) the detectors reason about.
   const POLICY_TYPES = new Set<PolicyType>(['life', 'income_protection', 'health', 'critical_illness', 'car', 'home'])
   interface ApplyPolicyBody {
     type?: string
@@ -305,6 +334,9 @@ export function registerDocumentRoutes(
     monthlyPremiumMinor?: number
     renewalDate?: string
     policyNumber?: string
+    // PRD-110: optional roster-member attribution — only ever user-picked
+    // in the review card, never guessed from the document.
+    memberId?: string
   }
   fastify.post<{ Params: { id: string }; Body: ApplyPolicyBody }>(
     '/documents/:id/apply-policy',
@@ -316,7 +348,7 @@ export function registerDocumentRoutes(
         return reply.status(404).send({ error: 'Document not found' })
       }
 
-      const { type, provider, coverageAmountMinor, monthlyPremiumMinor, renewalDate, policyNumber } = req.body
+      const { type, provider, coverageAmountMinor, monthlyPremiumMinor, renewalDate, policyNumber, memberId } = req.body
       if (!type || !POLICY_TYPES.has(type as PolicyType)) {
         return reply.status(400).send({ error: 'A valid policy type is required' })
       }
@@ -332,6 +364,7 @@ export function registerDocumentRoutes(
       }
       if (renewalDate) policy['renewal_date'] = renewalDate
       if (policyNumber) policy['policy_number'] = policyNumber
+      if (typeof memberId === 'string' && memberId.trim()) policy['member_id'] = memberId.trim()
 
       const profiles = getTenantCollection<Record<string, unknown>>(db, 'family_financial_profile', tenant_id)
       await profiles.updateOne(
@@ -340,9 +373,14 @@ export function registerDocumentRoutes(
         { upsert: true },
       )
 
-      log.info({ documentId: req.params.id, tenant_id, policyType: type, provider }, 'Applied document as a financial-profile policy')
+      const insightsGenerated = await regenerateInsights(tenant_id)
 
-      return { applied: policy }
+      log.info(
+        { documentId: req.params.id, tenant_id, policyType: type, provider, insights_generated: insightsGenerated },
+        'Applied document as a financial-profile policy',
+      )
+
+      return { applied: policy, insights_generated: insightsGenerated }
     },
   )
 

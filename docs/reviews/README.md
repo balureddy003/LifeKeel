@@ -18,6 +18,15 @@ here indefinitely.
    trust & safety, secondary family member, SRE) on the six highest-stakes
    journeys, plus a condensed autonomy-ladder/family-value pass on every
    other journey. Builds on document 1's findings.
+3. [remediation-plan.md](remediation-plan.md) — every gap from documents 1
+   and 2, sized XS through XL and ordered smallest to largest, with two
+   explicit risk-overrides-size call-outs (Emergency Mode routing, the
+   Act-layer approval gate). The engineering-facing "what do we actually
+   do about this" companion to the first two, which are diagnostic.
 
-Both were produced by a full read of the current codebase (no live
-testing), as of 2026-09-18.
+All three were produced by a full read of the current codebase (no live
+testing), as of 2026-09-18. The remediation plan has since been
+implemented end-to-end — every item except #28 (family sharing, XL),
+which the plan itself defers to a dedicated PRD. PRD-109 (policy
+extraction → profile bridge) had already shipped before the pass — see
+`docs/prd/109-*.md`.

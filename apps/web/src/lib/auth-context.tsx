@@ -197,13 +197,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const u: User = { id: apiUser.id, name: apiUser.name, email: apiUser.email, avatar: '' }
     // Restore the real family roster on login, same as the mount rehydration
     // path — a returning user who already built a household shouldn't be
-    // routed back through family-setup.
+    // routed back through family-setup. A failed fetch used to be
+    // indistinguishable from "no family yet" (both ended at family=null and
+    // AuthGate's "Set up your family" screen, which reads as account loss);
+    // now it throws so the login page surfaces a retryable error instead.
     let f: FamilyGroup | null = null
     try {
       const apiFamily = await fetchFamilyGroup()
       f = apiFamily ? toFamilyGroup(apiFamily) : null
     } catch {
-      // ignore — falls through to family-setup, same as any first-time user
+      throw new Error("Signed in, but we couldn't load your family. Check your connection and try again.")
     }
     persist(u, f)
   }

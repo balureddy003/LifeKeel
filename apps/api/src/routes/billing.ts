@@ -139,6 +139,15 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
         return reply.status(400).send({ error: 'Free plan does not require checkout' })
       }
 
+      // Remediation item 23: only `starter` ("Oak Plus") is actually for
+      // sale — growth/enterprise entries in PLAN_PRICES are placeholder
+      // strings, so a checkout request for either used to sail past the
+      // getStripePriceId lookup and die inside Stripe with a 500. Reject
+      // them explicitly until real products exist for those tiers.
+      if (plan !== 'starter') {
+        return reply.status(400).send({ error: `The ${plan} plan isn't available for purchase` })
+      }
+
       const tenant = await db.collection('tenants').findOne({ tenant_id })
       if (!tenant) {
         return reply.status(404).send({ error: 'Tenant not found' })

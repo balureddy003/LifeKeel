@@ -1,0 +1,36 @@
+# Life-event response playbook — property damage.
+# Content, not code — see job-loss.yaml's header comment for the format.
+event_type: property
+title: Property Damage Response Plan
+intro: >
+  Fire, flood, or structural damage — the insurance clock starts
+  immediately, and what you document in the first hours decides how the
+  claim goes. Sequenced list, personalized against your family's real
+  home policies and mortgage where we have them on file.
+steps:
+  - id: check_home_cover
+    title: Check your real home cover
+    computed: true
+    contact: false
+  - id: notify_insurer
+    title: Report to your insurer before repairs
+    body: >
+      Contact your insurer before authorizing non-emergency repairs —
+      many want to send an assessor first, and work done before their
+      visit can be disputed. Emergency mitigation (stopping a leak,
+      boarding a window) is usually allowed and expected.
+    contact: true
+  - id: document_damage
+    title: Document everything before cleanup
+    body: >
+      Photos and video of all damage before anything is moved or cleaned
+      up; keep damaged items until the insurer confirms they can be
+      discarded; start an inventory list while memory is fresh.
+    contact: false
+  - id: prevent_further_damage
+    title: Mitigate and keep the receipts
+    body: >
+      You're usually required to prevent further damage — tarps, water
+      shutoff, temporary boarding. Keep every receipt for emergency work:
+      reasonable mitigation costs are typically reimbursable.
+    contact: false

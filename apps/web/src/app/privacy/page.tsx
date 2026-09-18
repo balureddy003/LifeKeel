@@ -80,16 +80,19 @@ export default function PrivacyPage() {
 
       <H2>5. Data retention and deletion</H2>
       <P>
-        We keep your data for as long as your account is active. To request deletion of your account and
-        associated data, email {CONTACT_EMAIL}. <b className="text-ink-primary">A self-service "delete my account"
-        option inside the app doesn't exist yet</b> — until it does, deletion is a manual request we'll act on
-        directly. We'll confirm once it's done.
+        We keep your data for as long as your account is active. You can delete your account and its
+        associated data yourself from Settings → Delete Account — deletion is immediate and removes your
+        family's profile, documents, insights, and sign-in. One exception: the security activity log is
+        retained on its documented schedule as the record of what happened on the account, and billing
+        records are kept as required for financial reporting. You can also email {CONTACT_EMAIL} to ask
+        us to do it for you.
       </P>
 
       <H2>6. Your rights</H2>
       <P>
-        Depending on where you live, you may have the right to access, correct, export, or delete your personal
-        data, and to object to certain processing. Contact {CONTACT_EMAIL} to exercise any of these rights.
+        Depending on where you live, you may have the right to access, correct, export, or delete your
+        personal data, and to object to certain processing. Export and deletion are self-service in
+        Settings; contact {CONTACT_EMAIL} for anything else.
       </P>
 
       <H2>7. Children's privacy</H2>

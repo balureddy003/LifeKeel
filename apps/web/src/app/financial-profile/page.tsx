@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Loader2, AlertCircle, CheckCircle2, Plus, X, ChevronLeft } from 'lucide-react'
@@ -18,7 +19,7 @@ import {
   type FinancialProfilePolicy,
   type PolicyType,
 } from '@/lib/api'
-import { POLICY_TYPE_LABELS } from '@/lib/policyTypes'
+import { POLICY_TYPE_LABELS, PERSON_SCOPED_POLICY_TYPES } from '@/lib/policyTypes'
 
 // Whole-currency string state, converted to minor units (x100) on submit —
 // the API and detectors work in minor units, but people think in whole amounts.
@@ -68,6 +69,9 @@ interface PolicyForm {
   monthlyPremium: string
   renewalDate: string
   policyNumber: string
+  // PRD-110: roster member this policy belongs to — '' means unset
+  // (household-wide; the only option for car/home).
+  memberId: string
 }
 
 const EMPTY_POLICY: PolicyForm = {
@@ -77,7 +81,9 @@ const EMPTY_POLICY: PolicyForm = {
   monthlyPremium: '',
   renewalDate: '',
   policyNumber: '',
+  memberId: '',
 }
+
 
 const EMPTY_FORM: FormState = {
   employmentStatus: 'employed',
@@ -164,6 +170,7 @@ function fromProfile(profile: FinancialProfile): { form: FormState; funds: Educa
       monthlyPremium: toWhole(p.monthly_premium_minor),
       renewalDate: p.renewal_date ?? '',
       policyNumber: p.policy_number ?? '',
+      memberId: p.member_id ?? '',
     })),
   }
 }
@@ -188,6 +195,7 @@ function toPayload(form: FormState, funds: EducationFundForm[], policies: Policy
       monthly_premium_minor: toMinor(p.monthlyPremium),
       ...(p.renewalDate ? { renewal_date: p.renewalDate } : {}),
       ...(p.policyNumber.trim() ? { policy_number: p.policyNumber.trim() } : {}),
+      ...(PERSON_SCOPED_POLICY_TYPES.has(p.type) && p.memberId ? { member_id: p.memberId } : {}),
     }))
 
   return {
@@ -388,6 +396,20 @@ export default function FinancialProfilePage() {
   // a concurrent edit from another tab/device apart from this tab's own
   // sequential autosaves, instead of silently last-writer-wins overwriting.
   const [version, setVersion] = useState<number | undefined>(undefined)
+  // Set when a step-autosave fails for any reason other than a 409
+  // conflict (which already surfaces as `error`) — the catch used to be
+  // fully silent, so a user could walk through every step believing their
+  // answers were persisted when nothing was. Cleared on the next
+  // successful save.
+  const [autosaveFailed, setAutosaveFailed] = useState(false)
+
+  // Remediation item 27: reached straight from onboarding — the flow ends
+  // on this form instead of a blank dashboard, because saving it is what
+  // generates the family's first real insight. Read via window.location —
+  // same static-export workaround as the ?add=1 handling in settings.
+  const [fromOnboarding] = useState(
+    () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('source') === 'onboarding',
+  )
 
   // Live-verification finding: advancing/going back a step only scrolled
   // the page to top — no aria-live announcement and no focus movement, so
@@ -512,14 +534,20 @@ export default function FinancialProfilePage() {
     try {
       const { version: newVersion } = await submitFinancialProfile(toPayload(form, funds, policies), false, version)
       setVersion(newVersion)
+      setAutosaveFailed(false)
     } catch (err) {
       // Best-effort — don't trap the user on this step if the autosave
       // fails; the full submit on the last step will surface a real error.
       // The one exception: a 409 conflict means someone else's edits are
       // sitting in this profile right now — silently continuing would let
       // the final submit clobber them, so surface it immediately instead.
+      // Every other failure still gets a persistent "not saved" indicator
+      // (below the progress bar) so silent data loss can't masquerade as a
+      // saved draft.
       if (err instanceof Error && err.message.includes('updated elsewhere')) {
         setError(err.message)
+      } else {
+        setAutosaveFailed(true)
       }
     } finally {
       setSaving(false)
@@ -542,6 +570,7 @@ export default function FinancialProfilePage() {
     try {
       const { insightsGenerated, version: newVersion } = await submitFinancialProfile(toPayload(form, funds, policies), true, version)
       setVersion(newVersion)
+      setAutosaveFailed(false)
       haptic('success')
       setResult(insightsGenerated)
       setFinancialProfileSubmitted()
@@ -590,9 +619,18 @@ export default function FinancialProfilePage() {
     <div className="px-5 pt-2 pb-10 space-y-5">
       <PageHeader
         title="Financial Profile"
-        backHref="/settings"
+        backHref={fromOnboarding ? '/' : '/settings'}
         subtitle="This replaces sample scenarios with real, personalized readiness scores"
       />
+
+      {fromOnboarding && result === null && (
+        <GlassCard className="p-4 border-family-500/20">
+          <p className="text-sm text-ink-secondary leading-relaxed">
+            Last step — this is what turns the family you just set up into your first real insight.
+            The names you gave us are already filled in.
+          </p>
+        </GlassCard>
+      )}
 
       {result !== null && (
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} role="status" aria-live="polite">
@@ -602,6 +640,11 @@ export default function FinancialProfilePage() {
               Saved. {result > 0
                 ? `${result} personalized insight${result === 1 ? '' : 's'} generated — check Home and your Events.`
                 : 'No gaps found in what you entered — nice work.'}
+              {fromOnboarding && (
+                <Link href="/" className="block mt-2 font-semibold text-family-400">
+                  {result > 0 ? 'See your first insights →' : 'Continue to Home →'}
+                </Link>
+              )}
             </div>
           </GlassCard>
         </motion.div>
@@ -636,6 +679,12 @@ export default function FinancialProfilePage() {
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
           />
         </div>
+        {autosaveFailed && (
+          <div role="status" aria-live="polite" className="flex items-center gap-1.5 mt-2 text-xs text-warning">
+            <AlertCircle size={12} className="flex-shrink-0" />
+            <span>Couldn&apos;t save the previous step — your answers are still here and will be saved when you continue.</span>
+          </div>
+        )}
       </div>
 
       <AnimatePresence mode="wait">
@@ -724,6 +773,21 @@ export default function FinancialProfilePage() {
                       </button>
                     </div>
                     <PolicyTypePicker value={p.type} onChange={(v) => updatePolicy(i, { type: v })} />
+                    {PERSON_SCOPED_POLICY_TYPES.has(p.type) && (family?.members ?? []).length > 0 && (
+                      <label className="block">
+                        <div className="text-xs text-ink-tertiary mb-1.5">Who is this policy for?</div>
+                        <select
+                          value={p.memberId}
+                          onChange={(e) => updatePolicy(i, { memberId: e.target.value })}
+                          className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all bg-transparent"
+                        >
+                          <option value="">The whole household / not sure</option>
+                          {(family?.members ?? []).map((m) => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     <label className="block">
                       <div className="text-xs text-ink-tertiary mb-1.5">Provider</div>
                       <input

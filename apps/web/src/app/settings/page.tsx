@@ -13,7 +13,8 @@ import type { AppMode } from '@/lib/modes'
 import { ROLE_LABELS, type FamilyRole } from '@/lib/auth-types'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
 import { isValidEmailFormat } from '@/components/ConversationalOnboarding'
-import { User, LogOut, Check, Crown, Shield, ShieldCheck, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle, Calculator, Sparkles } from 'lucide-react'
+import { User, LogOut, Check, Crown, Shield, ShieldCheck, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle, Calculator, Sparkles, HelpCircle, ScrollText, Bot, Download, Trash2 } from 'lucide-react'
+import { exportAccountData, deleteAccount } from '@/lib/api'
 import type { LucideIcon } from 'lucide-react'
 
 const MODE_ICONS: Record<string, LucideIcon> = {
@@ -54,6 +55,16 @@ export default function SettingsPage() {
   const [savingProfile, setSavingProfile] = useState(false)
   const [editProfileError, setEditProfileError] = useState<string | null>(null)
 
+  // Data rights (remediation item 26): export downloads the tenant's own
+  // data as JSON; delete is immediate and irreversible, confirmed by typing
+  // the account email — the server enforces the same check.
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [showDelete, setShowDelete] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
   // Reached from the home dashboard's "Add your partner or a caregiver"
   // banner (?add=1) — open the form immediately instead of making them
   // find "Add Member" in the list a second time. Read via window.location
@@ -67,7 +78,7 @@ export default function SettingsPage() {
   const handleSignOut = () => {
     haptic('warning')
     signOut()
-    router.push('/welcome')
+    router.push('/login')
   }
 
   const handleModeChange = (newMode: AppMode) => {
@@ -110,6 +121,45 @@ export default function SettingsPage() {
     } finally {
       setSavingProfile(false)
     }
+  }
+
+  const handleExport = async () => {
+    haptic('light')
+    setExporting(true)
+    setExportError(null)
+    const bundle = await exportAccountData()
+    setExporting(false)
+    if (!bundle) {
+      setExportError("Couldn't export right now — please try again.")
+      return
+    }
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `agentoak-export-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    haptic('success')
+  }
+
+  const handleDelete = async () => {
+    if (deleteConfirm.trim().toLowerCase() !== (user?.email ?? '').toLowerCase()) {
+      setDeleteError('Type your account email exactly to confirm.')
+      return
+    }
+    haptic('warning')
+    setDeleting(true)
+    setDeleteError(null)
+    const result = await deleteAccount(deleteConfirm.trim())
+    setDeleting(false)
+    if (!result.ok) {
+      setDeleteError(result.error ?? "Couldn't delete your account — please try again.")
+      return
+    }
+    // The account and its data are gone — local session cleanup then out.
+    signOut()
+    router.push('/welcome')
   }
 
   const resetAddMemberForm = () => {
@@ -355,6 +405,61 @@ export default function SettingsPage() {
         </ListRow>
       </ListSection>
 
+      {/* Privacy & activity */}
+      <ListSection title="Privacy & Activity">
+        <ListRow
+          icon={Bot}
+          onClick={() => { haptic('light'); router.push('/settings/automation') }}
+          chevron
+        >
+          <div className="text-base font-medium">Automation & Approvals</div>
+          <div className="text-xs text-ink-tertiary mt-0.5">Dry-run mode and the trust Oak earns from your approvals</div>
+        </ListRow>
+        <ListRow
+          icon={ScrollText}
+          onClick={() => { haptic('light'); router.push('/audit-log') }}
+          chevron
+        >
+          <div className="text-base font-medium">Activity Log</div>
+          <div className="text-xs text-ink-tertiary mt-0.5">Every security-relevant action on your family's account</div>
+        </ListRow>
+        <ListRow
+          icon={Download}
+          onClick={handleExport}
+          chevron={!exporting}
+        >
+          <div className="text-base font-medium">Export Your Data</div>
+          <div className="text-xs text-ink-tertiary mt-0.5">
+            {exporting ? 'Preparing your download…' : 'Download everything we hold about your family'}
+          </div>
+        </ListRow>
+        {exportError && (
+          <div className="px-4 pb-2 text-sm text-red-400 flex items-center gap-2">
+            <AlertCircle size={14} /> {exportError}
+          </div>
+        )}
+        <ListRow
+          icon={Trash2}
+          onClick={() => { haptic('light'); setDeleteConfirm(''); setDeleteError(null); setShowDelete(true) }}
+          chevron
+        >
+          <div className="text-base font-medium text-danger">Delete Account</div>
+          <div className="text-xs text-ink-tertiary mt-0.5">Permanently remove your family's data</div>
+        </ListRow>
+      </ListSection>
+
+      {/* Help & Support */}
+      <ListSection title="Help">
+        <ListRow
+          icon={HelpCircle}
+          onClick={() => { haptic('light'); router.push('/support') }}
+          chevron
+        >
+          <div className="text-base font-medium">Help & Support</div>
+          <div className="text-xs text-ink-tertiary mt-0.5">Contact us, report a problem</div>
+        </ListRow>
+      </ListSection>
+
       {/* Sign out */}
       <motion.button
         whileTap={{ scale: 0.96 }}
@@ -415,6 +520,53 @@ export default function SettingsPage() {
               className="flex-1 bg-family-500 text-white font-semibold rounded-xl py-3 text-sm disabled:opacity-40 flex items-center justify-center gap-1.5"
             >
               {savingProfile ? <Loader2 size={14} className="animate-spin" /> : 'Save'}
+            </motion.button>
+          </div>
+        </div>
+      </BottomSheet>
+
+      <BottomSheet open={showDelete} onClose={() => !deleting && setShowDelete(false)} label="Delete account">
+        <div className="px-5 pb-6 pt-2">
+          <div className="text-base font-bold text-ink-primary mb-2">Delete your account?</div>
+          <p className="text-sm text-ink-secondary leading-relaxed mb-4">
+            This permanently removes your family's profile, documents, insights, goals, and account
+            sign-in. It can't be undone. The activity log is retained as a record of what happened,
+            per our data-retention policy.
+          </p>
+          <label className="block">
+            <div className="text-xs text-ink-tertiary mb-1.5">
+              Type <span className="font-semibold text-ink-primary">{user?.email}</span> to confirm
+            </div>
+            <input
+              type="email"
+              value={deleteConfirm}
+              onChange={(e) => setDeleteConfirm(e.target.value)}
+              autoComplete="off"
+              className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-danger/40 focus:border-danger/30 transition-all"
+            />
+          </label>
+          {deleteError && (
+            <div role="status" aria-live="polite" className="flex items-start gap-2 text-xs text-danger mt-3">
+              <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
+              <span>{deleteError}</span>
+            </div>
+          )}
+          <div className="flex gap-2 mt-5">
+            <motion.button
+              whileTap={{ scale: 0.96 }}
+              onClick={() => { haptic('light'); setShowDelete(false) }}
+              disabled={deleting}
+              className="flex-1 glass text-ink-primary font-semibold rounded-xl py-3 text-sm disabled:opacity-40"
+            >
+              Cancel
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.96 }}
+              onClick={handleDelete}
+              disabled={deleting || !deleteConfirm.trim()}
+              className="flex-1 bg-danger text-white font-semibold rounded-xl py-3 text-sm disabled:opacity-40 flex items-center justify-center gap-1.5"
+            >
+              {deleting ? <Loader2 size={14} className="animate-spin" /> : 'Delete permanently'}
             </motion.button>
           </div>
         </div>

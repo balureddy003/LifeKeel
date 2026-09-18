@@ -163,6 +163,16 @@ describe('POST /insights/:id/approve', () => {
     expect(res.json().insight.state).toBe('execution_failed')
   })
 
+  it('attributes the approval to the approving user (approved_by / approved_at)', async () => {
+    const { app, col } = await buildApp({ ...BASE_INSIGHT })
+    const res = await app.inject({ method: 'POST', url: `/insights/${INSIGHT_ID}/approve`, payload: {} })
+
+    expect(res.statusCode).toBe(200)
+    const approveSet = col.findOneAndUpdate.mock.calls[0]![1].$set as Record<string, unknown>
+    expect(approveSet['approved_by']).toBe('user-1')
+    expect(approveSet['approved_at']).toBeInstanceOf(Date)
+  })
+
   it('returns 404 when the insight is not in identified state', async () => {
     const { app } = await buildApp({ ...BASE_INSIGHT, state: 'completed' })
     const res = await app.inject({ method: 'POST', url: `/insights/${INSIGHT_ID}/approve`, payload: {} })

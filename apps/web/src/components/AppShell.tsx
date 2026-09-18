@@ -189,8 +189,8 @@ function EmergencyButton() {
 // header search icon opening a Cmd+K-style command palette that displays
 // desktop keyboard-shortcut hints ("G A") to a touch-only mobile user who
 // can't use either. A component for exactly this (AIFloatingButton.tsx)
-// already existed in the repo — unused, imported by nothing — but it
-// answered from a local hardcoded lookup table, not the real grounded
+// existed in the repo — unused, imported by nothing, since deleted — but
+// it answered from a local hardcoded lookup table, not the real grounded
 // PRD-101 endpoint /assistant/page.tsx correctly calls. Rather than
 // resurrect a second, wrong chat implementation, this reuses the one real
 // implementation by linking straight to it.
@@ -411,7 +411,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <EmergencyMode
         active={emergencyActive}
         onDeactivate={deactivateEmergency}
-        onSelectEvent={(eventId) => router.push(`/events/${eventId}`)}
+        // Crisis tiles go to the REAL tracked flow (/life-events) with the
+        // picked type carried through — they used to land on the
+        // hypothetical /events simulator, and car/property/travel had no
+        // real flow at all. ?type= preselects on the confirm screen.
+        onSelectEvent={(eventId) => router.push(`/life-events?type=${eventId}`)}
       />
       <CommandPalette />
       <PwaInit />

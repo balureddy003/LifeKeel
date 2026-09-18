@@ -558,7 +558,9 @@ describe('Defensive Trend Following backtest', () => {
 
     expect(result.strategyValues.length).toBe(6)
     expect(result.benchmarkValues.length).toBe(6)
-    expect(elapsedMs).toBeLessThan(500)
+    // Perf smoke guard against pathological blowups — shared CI runners
+    // routinely run ~1.5-3x slower than local, so the budget relaxes there.
+    expect(elapsedMs).toBeLessThan(process.env.CI ? 2000 : 500)
   })
 
   it('ingests Alpha Vantage-shaped daily time series and backtests without errors', () => {

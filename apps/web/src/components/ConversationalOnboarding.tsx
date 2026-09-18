@@ -13,6 +13,42 @@ import type { FamilyMemberDraft } from '@/lib/onboarding-data'
 // Pragmatic (not full RFC 5322) format check — catches the obvious typos
 // this question is guarding against: missing '@', no domain, stray
 // whitespace, a second '@'. Matches the check on POST /auth/signup.
+// Remediation item 27: when onboarding hits a signup collision we redirect
+// to /login — the collected chat state (answers + family graph) is stashed
+// here first so signing in resumes the flow instead of discarding the two
+// minutes of answers the user just gave. sessionStorage, not localStorage:
+// it's a single interrupted flow, not a preference.
+const ONBOARDING_DRAFT_KEY = 'agentoak_onboarding_draft'
+
+interface OnboardingDraft {
+  answers: Record<string, string>
+  members: FamilyMemberDraft[]
+}
+
+function saveOnboardingDraft(draft: OnboardingDraft): void {
+  try { sessionStorage.setItem(ONBOARDING_DRAFT_KEY, JSON.stringify(draft)) } catch { /* private mode — resume just won't happen */ }
+}
+
+function takeOnboardingDraft(): OnboardingDraft | null {
+  try {
+    const raw = sessionStorage.getItem(ONBOARDING_DRAFT_KEY)
+    if (!raw) return null
+    sessionStorage.removeItem(ONBOARDING_DRAFT_KEY)
+    return JSON.parse(raw) as OnboardingDraft
+  } catch {
+    return null
+  }
+}
+
+function peekOnboardingDraft(): OnboardingDraft | null {
+  try {
+    const raw = sessionStorage.getItem(ONBOARDING_DRAFT_KEY)
+    return raw ? (JSON.parse(raw) as OnboardingDraft) : null
+  } catch {
+    return null
+  }
+}
+
 const EMAIL_FORMAT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export function isValidEmailFormat(value: string): boolean {
@@ -145,8 +181,33 @@ export function ConversationalOnboarding() {
   const submittingRef = useRef(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const textInputRef = useRef<HTMLInputElement>(null)
-  const { user, signUp, createFamily, inviteMember, updateEmail } = useAuth()
+  const { user, family, isLoading, signUp, createFamily, inviteMember, updateEmail } = useAuth()
   const router = useRouter()
+
+  // Resume after a signup-collision detour through /login: the draft saved
+  // just before redirecting is still in sessionStorage. If the signed-in
+  // account turns out to already have a family (an established user who
+  // typed the same email), the draft is irrelevant — drop it so it can't
+  // resurrect a stale setup later. If they're authenticated with no family
+  // yet, they're exactly the person the draft belongs to — finish their
+  // setup directly instead of re-asking everything. Waits for isLoading to
+  // settle first: restore() sets user before family, so checking family
+  // while it's still fetching would resume into a duplicate createFamily.
+  const resumeAttempted = useRef(false)
+  useEffect(() => {
+    if (resumeAttempted.current || isLoading || !user) return
+    const draft = peekOnboardingDraft()
+    if (!draft) return
+    resumeAttempted.current = true
+    if (family) {
+      takeOnboardingDraft() // discard — this account is already set up
+      return
+    }
+    takeOnboardingDraft()
+    addAIMessage(`Welcome back, ${draft.answers['name'] ?? 'friend'} — picking up right where we left off.`)
+    void finishOnboarding(draft.answers, draft.members)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, family, isLoading])
 
   // Live-verification finding: the text input only had autoFocus, which
   // fires once on mount — this same <input> element is reused for every
@@ -304,8 +365,11 @@ export function ConversationalOnboarding() {
       const outcome = await attemptOnboardingSignup(name, email, generatedPassword, signUp)
       if (!outcome.ok) {
         if (outcome.reason === 'collision') {
-          addAIMessage(`Looks like ${email} already has an account with us — taking you to sign in.`)
-          setTimeout(() => router.push('/login'), 2000)
+          // Keep the chat state — signing in resumes right here instead of
+          // throwing away everything they just told us (item 27).
+          saveOnboardingDraft({ answers: allAnswers, members: allMembers })
+          addAIMessage(`Looks like ${email} already has an account with us — taking you to sign in. Your answers are saved; we'll pick up right where we left off.`)
+          setTimeout(() => router.push('/login'), 2500)
         } else {
           addAIMessage(`Hmm, that didn't go through: ${outcome.message}`)
         }
@@ -319,11 +383,12 @@ export function ConversationalOnboarding() {
       if (recoveryEmail) {
         // Best-effort — a collision with someone else's account shouldn't
         // block finishing onboarding, it just leaves the original signup
-        // email as the recovery address.
+        // email as the recovery address. Still tell the user, so "didn't
+        // save" isn't silent — they can fix it later from Settings.
         try {
           owner = await updateEmail(recoveryEmail)
         } catch {
-          // ignore
+          addAIMessage(`Couldn't save ${recoveryEmail} as your recovery email — you can add it later in Settings.`)
         }
       }
     }
@@ -353,8 +418,13 @@ export function ConversationalOnboarding() {
 
     track('family_setup_completed', { member_count: allMembers.length })
 
+    // Remediation item 27: onboarding used to end on a blank 0-state home
+    // dashboard — no detector can honestly fire a real insight from names
+    // alone, so the flow now continues straight into the Financial Profile
+    // (which the roster they just built already pre-fills). Saving it is
+    // what generates the family's first real, specific insight.
     setTimeout(() => {
-      router.push('/')
+      router.push('/financial-profile?source=onboarding')
     }, 2000)
   }
 
