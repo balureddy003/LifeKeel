@@ -66,7 +66,7 @@ function ActivityRing({
           </span>
         </div>
       </div>
-      <span className="text-[10px] text-ink-tertiary font-semibold flex items-center gap-1">
+      <span className="text-caption text-ink-tertiary font-semibold flex items-center gap-1">
         {label}
         {isSample && <span className="w-1 h-1 rounded-full bg-warning" aria-label="Sample data" />}
       </span>

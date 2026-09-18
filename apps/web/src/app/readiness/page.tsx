@@ -70,7 +70,7 @@ function ShareScore({ score }: { score: number }) {
           className="w-12 flex items-center justify-center rounded-xl bg-white/[0.04] border border-white/[0.08] text-ink-secondary flex-shrink-0"
           aria-label="Share on WhatsApp"
         >
-          <span className="text-[11px] font-bold">WA</span>
+          <span className="text-footnote font-bold">WA</span>
         </a>
         <a
           href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(QUIZ_URL)}`}
@@ -80,7 +80,7 @@ function ShareScore({ score }: { score: number }) {
           className="w-12 flex items-center justify-center rounded-xl bg-white/[0.04] border border-white/[0.08] text-ink-secondary flex-shrink-0"
           aria-label="Share on X"
         >
-          <span className="text-[13px] font-bold">𝕏</span>
+          <span className="text-subhead font-bold">𝕏</span>
         </a>
       </div>
     </div>

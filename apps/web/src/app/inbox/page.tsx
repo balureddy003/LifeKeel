@@ -176,7 +176,7 @@ export default function InboxPage() {
             <Bot size={18} className="text-family-400" />
             <span className="text-sm font-semibold text-family-400">AI Summary</span>
             {!isLive && (
-              <span className="text-[10px] text-warning font-semibold px-1.5 py-0.5 rounded-full bg-warning/10">
+              <span className="text-caption text-warning font-semibold px-1.5 py-0.5 rounded-full bg-warning/10">
                 Sample
               </span>
             )}

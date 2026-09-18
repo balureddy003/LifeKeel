@@ -16,6 +16,7 @@ import { useAppStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 import { fetchFinancialProfile, RESOLVED_INSIGHT_STATES, type FinancialProfile } from '@/lib/api'
+import { FAMILY_ACCENT } from '@/lib/familySections'
 import { elderlyHomeCopy } from '@/lib/elderlyHomeCopy'
 import { childHomeCopy } from '@/lib/childHomeCopy'
 import { simpleHomeCopy } from '@/lib/simpleHomeCopy'
@@ -195,7 +196,7 @@ function ElderlyHome() {
             }}
           >
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: item.danger ? 'rgba(255,255,255,0.15)' : 'rgba(124,110,240,0.1)' }}>
-              <Icon size={24} color={item.danger ? '#fff' : '#7c6ef0'} />
+              <Icon size={24} color={item.danger ? '#fff' : FAMILY_ACCENT} />
             </div>
             <span className="text-xl font-semibold" style={{ color: item.danger ? '#fff' : undefined }}>
               {item.label}
@@ -430,12 +431,19 @@ export default function HomePage() {
       />
       <UrgencyBanner />
 
+      {/* At lg+ (max-w-2xl container, NavRail layout) the score card and
+          the life-event link pair up 2:1 — the phone-first single column
+          stays unchanged below that. Only unconditional sections are
+          paired this way; conditional banners/cards keep full width so a
+          hidden sibling never leaves a half-empty row. */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05 }}
+        className="lg:col-span-2"
       >
-        <GlassCard className="p-5">
+        <GlassCard className="p-5 h-full">
           <div className="flex items-center gap-3 mb-3">
             {scoreLoading ? (
               <>
@@ -497,8 +505,8 @@ export default function HomePage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.08 }}
       >
-        <Link href="/life-events" onClick={() => haptic('light')}>
-          <GlassCard className="p-4" interactive>
+        <Link href="/life-events" onClick={() => haptic('light')} className="h-full block">
+          <GlassCard className="p-4 h-full flex flex-col justify-center" interactive>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-danger/10 border border-danger/20 flex items-center justify-center flex-shrink-0">
                 <Siren size={18} className="text-danger" strokeWidth={1.5} />
@@ -512,6 +520,7 @@ export default function HomePage() {
           </GlassCard>
         </Link>
       </motion.div>
+      </div>
 
       <IfAdvanced>
         <motion.div
@@ -567,21 +576,25 @@ export default function HomePage() {
       </motion.div>
 
       <IfAdvanced>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
-        >
-          <TrustLadder />
-        </motion.div>
+        {/* lg+ two-column pair — same pairing rule as the score/life-event
+            grid above (both always render together inside IfAdvanced). */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+          >
+            <TrustLadder />
+          </motion.div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <MemoryPrompts />
-        </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+          >
+            <MemoryPrompts />
+          </motion.div>
+        </div>
       </IfAdvanced>
 
       <motion.div

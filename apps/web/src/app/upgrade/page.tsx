@@ -57,7 +57,7 @@ function ExtractionPreview() {
             >
               <CheckCircle2 size={12} className="text-family-400 flex-shrink-0" />
               <div className="min-w-0">
-                <div className="text-[10px] text-ink-tertiary leading-none mb-0.5">{f.label}</div>
+                <div className="text-caption text-ink-tertiary leading-none mb-0.5">{f.label}</div>
                 <div className="text-xs font-semibold text-ink-primary truncate">{f.value}</div>
               </div>
             </motion.div>

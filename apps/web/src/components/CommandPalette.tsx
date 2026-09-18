@@ -124,7 +124,7 @@ export function CommandPalette() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] px-4"
+          className="fixed inset-0 z-modal flex items-start justify-center pt-[15vh] px-4"
           onClick={() => setCmdkOpen(false)}
         >
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
@@ -157,7 +157,7 @@ export function CommandPalette() {
                 aria-activedescendant={filtered[selectedIndex] ? `cmdk-option-${filtered[selectedIndex].id}` : undefined}
                 className="flex-1 bg-transparent text-base text-ink-primary placeholder:text-ink-tertiary outline-none"
               />
-              <kbd className="text-[10px] text-ink-tertiary glass rounded-md px-2 py-1">ESC</kbd>
+              <kbd className="text-caption text-ink-tertiary glass rounded-md px-2 py-1">ESC</kbd>
             </div>
 
             {/* Results */}
@@ -172,7 +172,7 @@ export function CommandPalette() {
                 if (items.length === 0) return null
                 return (
                   <div key={section}>
-                    <div className="px-5 py-1.5 text-[10px] font-bold text-ink-tertiary uppercase tracking-wider">
+                    <div className="px-5 py-1.5 text-caption font-bold text-ink-tertiary uppercase tracking-wider">
                       {sectionLabels[section]}
                     </div>
                     {items.map((cmd) => {
@@ -198,7 +198,7 @@ export function CommandPalette() {
                           <cmd.icon size={18} className="text-ink-tertiary flex-shrink-0" />
                           <span className="text-sm text-ink-primary flex-1">{cmd.label}</span>
                           {cmd.shortcut && (
-                            <kbd className="text-[10px] text-ink-tertiary glass rounded-md px-2 py-0.5 font-mono">
+                            <kbd className="text-caption text-ink-tertiary glass rounded-md px-2 py-0.5 font-mono">
                               {cmd.shortcut}
                             </kbd>
                           )}
@@ -211,7 +211,7 @@ export function CommandPalette() {
             </div>
 
             {/* Footer */}
-            <div className="px-5 py-2.5 border-t border-white/5 flex items-center justify-between text-[10px] text-ink-tertiary">
+            <div className="px-5 py-2.5 border-t border-white/5 flex items-center justify-between text-caption text-ink-tertiary">
               <div className="flex items-center gap-3">
                 <span className="flex items-center gap-1">
                   <kbd className="glass rounded px-1.5 py-0.5 flex items-center"><ArrowUpDown size={10} /></kbd> Navigate

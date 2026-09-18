@@ -42,7 +42,7 @@ export default function BlogPage() {
         {posts.map((post) => (
           <Link key={post.id} href={`/blog/${post.slug}`}>
             <GlassCard className="p-4" interactive>
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-family-400">{post.category}</span>
+              <span className="text-footnote font-semibold uppercase tracking-wide text-family-400">{post.category}</span>
               <div className="text-base font-semibold text-ink-primary mt-1 mb-1">{post.title}</div>
               <p className="text-sm text-ink-secondary leading-relaxed">{post.excerpt}</p>
             </GlassCard>

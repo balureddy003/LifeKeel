@@ -184,7 +184,7 @@ export function AIAnswerCard({ query }: { query: string }) {
         <div className="flex items-center gap-2 mb-3">
           {isLive ? (
             <>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-ink-tertiary">Confidence</span>
+              <span className="text-caption font-bold uppercase tracking-wider text-ink-tertiary">Confidence</span>
               <div className="flex items-center gap-1">
                 <div className="w-2 h-2 rounded-full" style={{ background: color }} />
                 <span className="text-xs font-semibold" style={{ color }}>
@@ -240,7 +240,7 @@ export function AIAnswerCard({ query }: { query: string }) {
                       >
                         <source.icon size={14} className="text-ink-secondary flex-shrink-0" />
                         <span className="text-xs text-ink-secondary flex-1">{source.label}</span>
-                        <span className="text-[10px] text-ink-tertiary uppercase">{source.type}</span>
+                        <span className="text-caption text-ink-tertiary uppercase">{source.type}</span>
                       </motion.div>
                     ))}
                   </div>
@@ -256,7 +256,7 @@ export function AIAnswerCard({ query }: { query: string }) {
 
         {/* Follow-ups */}
         <div className="border-t border-white/5 pt-3 mt-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-ink-tertiary mb-2">Related questions</div>
+          <div className="text-caption font-bold uppercase tracking-wider text-ink-tertiary mb-2">Related questions</div>
           <div className="flex flex-wrap gap-2">
             {answer.followUps.map((q) => (
               <button

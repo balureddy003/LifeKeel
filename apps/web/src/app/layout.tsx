@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next'
+import { Inter } from 'next/font/google'
 import { MotionConfig } from 'framer-motion'
 import './globals.css'
 import { AuthProvider } from '@/lib/auth-context'
@@ -6,6 +7,18 @@ import { ModeProvider } from '@/lib/mode-context'
 import { AppShell } from '@/components/AppShell'
 import { Observability } from '@/components/Observability'
 import { ConfirmSheetProvider } from '@/components/ConfirmSheetProvider'
+
+// globals.css's --font-sans was always 'Inter' by declaration, but no font
+// was ever loaded — every visitor actually got system-ui. next/font self-
+// hosts at build time, so this works with the static export (no runtime
+// Google Fonts dependency, no FOIT) and keeps the cross-platform look
+// consistent — system-ui means Roboto on Android, SF on iOS, Segoe on
+// Windows, three different apps' worth of text rendering.
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-sans',
+  display: 'swap',
+})
 
 const TITLE = 'Agent Oak — When life doesn\'t go to plan, Oak knows what to do next'
 const DESCRIPTION = 'A guided response plan for job loss, medical crises, and the unexpected — built for families of all ages. Informational only, not financial advice.'
@@ -54,7 +67,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={inter.variable}>
       <head>
         <link rel="icon" href="/icon.svg" type="image/svg+xml" />
         {/* iOS Safari's Add to Home Screen ignores SVG here and falls back

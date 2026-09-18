@@ -67,7 +67,7 @@ export function GlassCard({
       className={`relative rounded-3xl border border-white/[0.05] bg-white/[0.03] backdrop-blur-2xl overflow-hidden ${className}`}
     >
       <div className="absolute inset-0 bg-gradient-to-b from-white/[0.03] to-transparent pointer-events-none rounded-3xl" />
-      <div className="relative z-10">{children}</div>
+      <div className="relative z-raised">{children}</div>
     </motion.div>
   )
 }
@@ -111,7 +111,7 @@ export function GlassButton({
           transition={{ duration: 0.6 }}
         />
       )}
-      <span className="relative z-10 flex items-center gap-2">{children}</span>
+      <span className="relative z-raised flex items-center gap-2">{children}</span>
     </motion.button>
   )
 }
@@ -121,7 +121,7 @@ export function MeshGradient({ className = '' }: { className?: string }) {
 
   if (reduceMotion) {
     return (
-      <div className={`fixed inset-0 -z-10 overflow-hidden ${className}`}>
+      <div className={`fixed inset-0 z-behind overflow-hidden ${className}`}>
         <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-family-500/15 blur-[120px]" />
         <div className="absolute top-1/3 -right-40 w-96 h-96 rounded-full bg-info/10 blur-[120px]" />
         <div className="absolute -bottom-40 left-1/3 w-96 h-96 rounded-full bg-success/8 blur-[120px]" />
@@ -130,7 +130,7 @@ export function MeshGradient({ className = '' }: { className?: string }) {
   }
 
   return (
-    <div className={`fixed inset-0 -z-10 overflow-hidden ${className}`}>
+    <div className={`fixed inset-0 z-behind overflow-hidden ${className}`}>
       <motion.div
         className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-family-500/15 blur-[120px]"
         animate={{
@@ -274,11 +274,16 @@ export function PageHeader({
   ) : null
 
   return (
-    <header className="sticky top-0 z-20 safe-area-top bg-[#08080c]/80 backdrop-blur-xl -mx-5 px-5 py-3 border-b border-white/[0.05]">
+    // -mx-5 bleeds the sticky bar to the page edges — this is a contract:
+    // it only aligns because every page root uses `px-5` (verified across
+    // all ~30 consumers; the assistant page, which pads at px-4, renders
+    // its own header). Change the shared page gutter and this has to move
+    // with it.
+    <header className="sticky top-0 z-sticky safe-area-top bg-[#08080c]/80 backdrop-blur-xl -mx-5 px-5 py-3 border-b border-white/[0.05]">
       <div className="flex items-center justify-between h-11">
         {backHref ? (
           <Link href={backHref} className="flex items-center gap-1 text-ink-tertiary active:opacity-60">
-            <ArrowLeft size={20} strokeWidth={2.2} />
+            <ArrowLeft size={20} strokeWidth={2} />
             <span className="text-base font-medium">Back</span>
           </Link>
         ) : (
@@ -286,7 +291,7 @@ export function PageHeader({
         )}
         <div className="flex items-center">{action ?? assistantAction}</div>
       </div>
-      <h1 className="text-[1.85rem] leading-tight font-bold tracking-tight pt-1 pb-1">{title}</h1>
+      <h1 className="text-title-lg leading-tight font-bold tracking-tight pt-1 pb-1">{title}</h1>
       {subtitle && <p className="text-sm text-ink-tertiary pb-1">{subtitle}</p>}
     </header>
   )
@@ -369,7 +374,7 @@ export function ListRow({
     <div className="flex items-center gap-3 px-4 py-3.5 min-h-[52px]">
       {Icon && (
         <div className="w-8 h-8 rounded-lg bg-white/[0.05] flex items-center justify-center flex-shrink-0">
-          <Icon size={18} className="text-ink-secondary" strokeWidth={1.8} />
+          <Icon size={18} className="text-ink-secondary" strokeWidth={2} />
         </div>
       )}
       <div className="flex-1 min-w-0">

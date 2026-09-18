@@ -9,6 +9,7 @@ import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
 import { ONBOARDING_QUESTIONS } from '@/lib/onboarding-data'
 import type { FamilyMemberDraft } from '@/lib/onboarding-data'
+import { FAMILY_ACCENT } from '@/lib/familySections'
 
 // Pragmatic (not full RFC 5322) format check — catches the obvious typos
 // this question is guarding against: missing '@', no domain, stray
@@ -135,7 +136,7 @@ function GrowingGraph({ members }: { members: FamilyMemberDraft[] }) {
                 <User size={24} className="text-family-400" strokeWidth={1.5} />
               </div>
               <span className="text-xs font-semibold">{m.name}</span>
-              <span className="text-[10px] text-ink-tertiary">{m.role}</span>
+              <span className="text-caption text-ink-tertiary">{m.role}</span>
             </motion.div>
           </div>
         ))}
@@ -597,7 +598,7 @@ export function ConversationalOnboarding() {
               disabled={!textValue.trim() || submitting}
               aria-label="Send answer"
               className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-30"
-              style={{ background: 'linear-gradient(135deg, #7c6ef0, #6b5ce0)' }}
+              style={{ background: `linear-gradient(135deg, ${FAMILY_ACCENT}, #6b5ce0)` }}
             >
               <Send size={18} color="#fff" />
             </motion.button>

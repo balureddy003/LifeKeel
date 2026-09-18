@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Home, Inbox, Users, AlertTriangle, Settings } from 'lucide-react'
+import { Home, Inbox, Users, CalendarClock, Settings } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
 
 // Kept in sync with LiquidTabBar's NAV_ITEMS/ROUTE_TAB_OVERRIDES in
@@ -16,7 +16,7 @@ const NAV_ITEMS = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/inbox', label: 'Inbox', icon: Inbox },
   { href: '/family', label: 'Family', icon: Users },
-  { href: '/events', label: 'Events', icon: AlertTriangle },
+  { href: '/events', label: 'Events', icon: CalendarClock },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
@@ -54,7 +54,7 @@ export function NavRail() {
 
   return (
     <nav
-      className="hidden md:flex fixed top-0 left-0 bottom-0 z-30 w-[88px] flex-col items-center safe-area-top"
+      className="hidden md:flex fixed top-0 left-0 bottom-0 z-nav w-[88px] flex-col items-center safe-area-top"
       style={{
         background: 'rgba(8, 8, 12, 0.78)',
         backdropFilter: 'blur(24px) saturate(120%)',
@@ -91,19 +91,15 @@ export function NavRail() {
                   transition={{ type: 'spring', stiffness: 400, damping: 32 }}
                 />
               )}
+              {/* Token classes, not literals — same drift fix as
+                  AppShell's bottom nav. See its comment / tailwind.config.js. */}
               <item.icon
                 size={22}
                 strokeWidth={active ? 2.5 : 2}
-                // Same fix as AppShell's bottom nav — a hardcoded literal
-                // duplicating ink.tertiary's pre-fix value (3.85:1 against
-                // the dark surface, below WCAG AA). Active color left as-is;
-                // it already passes and isn't this token.
-                color={active ? '#7c6ef0' : '#7b7b91'}
-                className="relative z-10"
+                className={`relative z-raised ${active ? 'text-family-accent' : 'text-ink-tertiary'}`}
               />
               <span
-                className="relative z-10 text-[10px] font-semibold"
-                style={{ color: active ? '#7c6ef0' : '#7b7b91' }}
+                className={`relative z-raised text-caption font-semibold ${active ? 'text-family-accent' : 'text-ink-tertiary'}`}
               >
                 {item.label}
               </span>

@@ -129,7 +129,7 @@ export function TrustLadder() {
                     <span className={`text-sm font-semibold ${isDone ? 'text-success' : isAvailable ? 'text-family-400' : 'text-ink-tertiary'}`}>
                       {step.label}
                     </span>
-                    <span className="text-[10px] text-ink-tertiary">{step.timeframe}</span>
+                    <span className="text-caption text-ink-tertiary">{step.timeframe}</span>
                   </div>
                   <p className="text-xs text-ink-tertiary">{step.desc}</p>
                 </div>
@@ -244,7 +244,7 @@ export function MemoryPrompts() {
       <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-1 px-1">
         <Sparkles size={16} className="text-family-400" />
         AI Memory
-        <span className="text-[10px] text-warning font-semibold px-1.5 py-0.5 rounded-full bg-warning/10">
+        <span className="text-caption text-warning font-semibold px-1.5 py-0.5 rounded-full bg-warning/10">
           Sample
         </span>
       </div>

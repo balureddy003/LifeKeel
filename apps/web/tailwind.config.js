@@ -22,6 +22,12 @@ module.exports = {
           // darkening it can't regress contrast the other direction.
           // Same hue/saturation, darkened just enough for 4.52:1.
           500: '#7061ef',
+          // Foreground accent on dark surfaces (icons, active states,
+          // gradients) — reads from the CSS var so it can never drift from
+          // the value components use in inline styles. Deliberately lighter
+          // than 500: this shade passes AA as a text/icon color on the dark
+          // background, where 500 is tuned for white text on a purple fill.
+          accent: 'var(--family-accent)',
           600: '#6b5ce0',
           700: '#5a4dd0',
           800: '#4a3eb0',
@@ -58,6 +64,39 @@ module.exports = {
       },
       fontFamily: {
         sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
+      },
+      // Named type ramp — replaces the ~20 one-off text-[Npx]/text-[Nrem]
+      // literals that had accreted across the app (10px, 10.5px, 11px,
+      // 11.5px, 12px, 12.5px, 13px, 13.5px, 14.5px, 15px, 1.05rem–2.6rem).
+      // Sizes collapse to the nearest step (±0.5px) — the half-pixel noise
+      // was never intentional, just unscaled. html is 17px so rem steps
+      // resolve slightly larger than a stock Tailwind setup.
+      fontSize: {
+        caption:      ['10px',   '13px'],  // tab labels, badges
+        footnote:     ['12px',   '16px'],  // fine print, timestamps, card meta
+        subhead:      ['13.5px', '18px'],  // secondary body, list subtitles
+        callout:      ['15px',   '20px'],  // emphasized body, card titles
+        lead:         ['1.05rem','1.5'],   // hero/intro paragraphs
+        'title-sm':   ['1.3rem', '1.2'],   // section headings
+        'title-md':   ['1.5rem', '1.2'],   // page-section headings
+        'title-lg':   ['1.8rem', '1.15'],  // page titles (PageHeader)
+        'display-sm': ['2.1rem', '1.15'],  // marketing hero
+        'display':    ['2.6rem', '1.1'],   // marketing hero, lg+
+      },
+      // Named stacking scale — replaces ad-hoc z-10/20/30/40/50/[60]/[100]/
+      // [200] literals that only held order by coincidence. Layers read
+      // bottom→top: backdrop < content < sticky headers < nav < FABs <
+      // banners < overlays < modals < skip link (always topmost).
+      zIndex: {
+        behind: '-10',   // MeshGradient page backdrop
+        raised: '10',    // in-component stacking above sibling layers
+        sticky: '20',    // sticky page headers (PageHeader)
+        nav: '30',       // primary navigation (tab bar, rail, marketing nav)
+        fab: '40',       // floating action buttons (Ask Oak, Emergency)
+        banner: '50',    // status banners (OfflineBanner)
+        overlay: '60',   // EmergencyMode full-screen overlay
+        modal: '100',    // BottomSheet, CommandPalette
+        skip: '200',     // skip-to-content link — nothing goes above this
       },
       animation: {
         'slide-up': 'slideUp 0.3s ease-out',

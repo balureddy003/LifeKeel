@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { Map, MessageSquare, ShieldQuestion, Users, ArrowLeft } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
+import { FAMILY_ACCENT } from '@/lib/familySections'
 
 const SLIDES = [
   {
@@ -96,13 +97,13 @@ export default function WelcomePage() {
             >
               {(() => {
                 const Icon = SLIDES[slide]?.icon ?? Map
-                return <Icon size={40} className="text-family-400" strokeWidth={1.4} />
+                return <Icon size={40} className="text-family-400" strokeWidth={1.5} />
               })()}
             </motion.div>
-            <h1 className="text-[1.75rem] leading-tight font-bold tracking-tight mb-4 max-w-[14rem]">
+            <h1 className="text-title-lg leading-tight font-bold tracking-tight mb-4 max-w-[14rem]">
               {SLIDES[slide]?.title ?? ''}
             </h1>
-            <p className="text-[1.05rem] text-ink-secondary leading-relaxed max-w-[17rem]">
+            <p className="text-lead text-ink-secondary leading-relaxed max-w-[17rem]">
               {SLIDES[slide]?.subtitle ?? ''}
             </p>
           </motion.div>
@@ -121,7 +122,7 @@ export default function WelcomePage() {
             animate={{
               width: i === slide ? 24 : 8,
               height: 8,
-              backgroundColor: i === slide ? '#7c6ef0' : 'rgba(255,255,255,0.15)',
+              backgroundColor: i === slide ? FAMILY_ACCENT : 'rgba(255,255,255,0.15)',
             }}
           />
         ))}

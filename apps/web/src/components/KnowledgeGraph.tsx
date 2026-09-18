@@ -21,7 +21,7 @@ import type { LucideIcon } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
 import { useAuth } from '@/lib/auth-context'
 import type { FamilyMember } from '@/lib/types'
-import { getMemberSections, CATEGORY_COLOR, type GraphCategory } from '@/lib/familySections'
+import { getMemberSections, CATEGORY_COLOR, FAMILY_ACCENT, type GraphCategory } from '@/lib/familySections'
 import { runForceSimulation, type SimNode, type SimEdge } from '@/lib/forceSimulation'
 
 type NodeKind = 'root' | 'person' | 'category' | 'asset'
@@ -36,7 +36,7 @@ interface NodeData {
 }
 
 const KIND_COLOR: Record<NodeKind, string> = {
-  root: '#7c6ef0',
+  root: FAMILY_ACCENT,
   person: '#60a5fa',
   category: '#8a8070',
   asset: '#4ade80',
@@ -195,7 +195,7 @@ function GraphNode({ data }: NodeProps<NodeData>) {
 const nodeTypes = { graphNode: GraphNode }
 
 const FILTER_OPTIONS: { key: GraphCategory | 'all'; label: string; color: string }[] = [
-  { key: 'all', label: 'All', color: '#7c6ef0' },
+  { key: 'all', label: 'All', color: FAMILY_ACCENT },
   { key: 'protection', label: 'Protection', color: '#f87171' },
   { key: 'wealth', label: 'Wealth', color: '#fbbf24' },
   { key: 'goals', label: 'Goals', color: '#4ade80' },
@@ -333,7 +333,7 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
           it was covering 3 real nodes on a real phone-width viewport). A
           row above the canvas can never overlap graph content, regardless
           of viewport size or how fitView lays anything out. */}
-      <div className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] text-ink-tertiary border-b border-white/5 flex-shrink-0">
+      <div className="flex items-center gap-1.5 px-4 py-1.5 text-caption text-ink-tertiary border-b border-white/5 flex-shrink-0">
         <Bot size={10} />
         Tap a person or asset to explore
       </div>
@@ -411,7 +411,7 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
-              className="absolute bottom-4 left-4 right-4 glass-strong rounded-2xl p-4 z-10"
+              className="absolute bottom-4 left-4 right-4 glass-strong rounded-2xl p-4 z-raised"
             >
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: `${KIND_COLOR[selected.data.kind]}15`, border: `1px solid ${KIND_COLOR[selected.data.kind]}30` }}>

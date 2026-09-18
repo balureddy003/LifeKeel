@@ -8,7 +8,7 @@ const DISCLAIMER_TEXT =
 export function DisclaimerBanner({ compact = false }: { compact?: boolean }) {
   if (compact) {
     return (
-      <p className="text-[10px] leading-relaxed text-ink-tertiary px-4 py-2 text-center">
+      <p className="text-caption leading-relaxed text-ink-tertiary px-4 py-2 text-center">
         {DISCLAIMER_TEXT}
       </p>
     )
@@ -25,7 +25,7 @@ export function DisclaimerBanner({ compact = false }: { compact?: boolean }) {
 export function DisclaimerFooter() {
   return (
     <footer className="px-4 py-3 text-center safe-area-bottom">
-      <p className="text-[10px] leading-relaxed text-ink-tertiary/60">
+      <p className="text-caption leading-relaxed text-ink-tertiary/60">
         {DISCLAIMER_TEXT}
       </p>
     </footer>

@@ -4,7 +4,18 @@
 
 :root {
   color-scheme: dark;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  /* --font-sans is owned by next/font in layout.tsx (it sets the variable
+     to the self-hosted Inter family + fallbacks on <html>). Declaring it
+     here too would race on specificity — leave it out. */
+
+  /* The lighter brand purple for FOREGROUND accents on dark surfaces —
+     icons, dots, gradients, active nav states. Deliberately different from
+     family-500 (#7061ef), which is darkened for white-text-on-fill contrast;
+     this lighter value is what passes 4.5:1 as text/icon color against the
+     dark background. JS color-math that can't consume var() (hex-alpha
+     suffixes like `${color}14`) imports FAMILY_ACCENT from
+     lib/familySections.ts instead — keep the two literals in sync. */
+  --family-accent: #7c6ef0;
 }
 
 * {
@@ -40,9 +51,24 @@ button.flat, a.flat, .no-min-h {
   min-width: unset;
 }
 
-::-webkit-scrollbar { width: 0px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: transparent; }
+/* Hidden scrollbars are a mobile affordance — scroll position is implied
+   by content under the thumb. On desktop (md+, the NavRail layout) hiding
+   them makes scrollable regions undiscoverable, so a thin themed one
+   appears instead. .no-scrollbar below still hides it per-container. */
+@media (max-width: 767px) {
+  ::-webkit-scrollbar { width: 0px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: transparent; }
+}
+@media (min-width: 768px) {
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+}
 
 .glass {
   background: rgba(255, 255, 255, 0.04);
@@ -73,7 +99,7 @@ button.flat, a.flat, .no-min-h {
 }
 
 .text-gradient {
-  background: linear-gradient(135deg, #7c6ef0 0%, #a8a0ff 50%, #7c6ef0 100%);
+  background: linear-gradient(135deg, var(--family-accent) 0%, #a8a0ff 50%, var(--family-accent) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -113,8 +139,15 @@ button.flat, a.flat, .no-min-h {
   border-radius: 4px;
 }
 
-input:focus-visible, textarea:focus-visible {
+/* Inputs swap the generic outline for a themed focus ring — the old
+   `outline: none` left every text field with zero visible focus, a WCAG
+   2.4.7 failure: keyboard users couldn't tell which field was active.
+   Box-shadow (not outline) so it follows the field's border-radius and
+   doesn't clash with per-input border styles. */
+input:focus-visible, textarea:focus-visible, select:focus-visible {
   outline: none;
+  border-color: rgba(139, 128, 248, 0.6);
+  box-shadow: 0 0 0 3px rgba(112, 97, 239, 0.3);
 }
 
 .card {
@@ -127,7 +160,11 @@ input:focus-visible, textarea:focus-visible {
 }
 
 .btn-primary {
-  background: #7c6ef0;
+  /* Was #7c6ef0 — 3.93:1 for the white label, below WCAG AA's 4.5:1.
+     This is the same bug family-500 was darkened to fix (see
+     tailwind.config.js) — the utility class just never got the memo.
+     #7061ef = current family-500, 4.52:1. */
+  background: #7061ef;
   color: #fff;
   font-weight: 600;
   border-radius: 1rem;

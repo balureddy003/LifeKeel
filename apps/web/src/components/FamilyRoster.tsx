@@ -107,7 +107,7 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
                 )}
               </div>
               <div className="text-xs font-semibold text-ink-primary truncate">{m.name}</div>
-              <div className={`text-[10px] truncate ${m.status === 'pending' ? 'text-warning font-medium' : 'text-ink-tertiary'}`}>
+              <div className={`text-caption truncate ${m.status === 'pending' ? 'text-warning font-medium' : 'text-ink-tertiary'}`}>
                 {m.status === 'pending' ? 'Pending' : ROLE_LABELS[m.role]}
               </div>
             </button>
@@ -151,12 +151,12 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
                   className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
                   style={{ background: `${color}18` }}
                 >
-                  <Icon size={15} color={color} strokeWidth={1.75} />
+                  <Icon size={15} color={color} strokeWidth={2} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold text-ink-primary truncate">{s.label}</div>
                   {s.story && !isAsset && (
-                    <div className="text-[11px] text-ink-tertiary line-clamp-2">{s.story}</div>
+                    <div className="text-footnote text-ink-tertiary line-clamp-2">{s.story}</div>
                   )}
                 </div>
                 {dest && <ChevronRight size={14} className="text-ink-tertiary flex-shrink-0" />}

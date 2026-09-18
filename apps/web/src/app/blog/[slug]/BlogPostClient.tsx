@@ -58,7 +58,7 @@ export default function BlogPostClient() {
   return (
     <div className="px-5 pt-2 pb-12">
       <PageHeader title={post.title} backHref="/blog" action={<></>} />
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-family-400">{post.category}</span>
+      <span className="text-footnote font-semibold uppercase tracking-wide text-family-400">{post.category}</span>
       <div className="mt-3">
         <ReactMarkdown components={MARKDOWN_COMPONENTS}>{post.content}</ReactMarkdown>
       </div>
