@@ -8,6 +8,7 @@ import { Home, Inbox, Users, CalendarClock, Settings, WifiOff, Siren, Network, B
 import { useNetworkStatus } from '@/lib/useNetworkStatus'
 import { useAuth } from '@/lib/auth-context'
 import { useMode } from '@/lib/mode-context'
+import { useAppStore } from '@/lib/store'
 import { MeshGradient, Skeleton, SkeletonCard } from './Glass'
 import { EmergencyMode } from './EmergencyMode'
 import { CommandPalette } from './CommandPalette'
@@ -34,6 +35,7 @@ const ROUTE_TAB_OVERRIDES: Record<string, string> = {
 function LiquidTabBar() {
   const pathname = usePathname()
   const [activeIndex, setActiveIndex] = useState(0)
+  const inboxUnreadCount = useAppStore((s) => s.inboxUnreadCount)
 
   useEffect(() => {
     const overrideEntry = Object.entries(ROUTE_TAB_OVERRIDES).find(([prefix]) =>
@@ -82,6 +84,15 @@ function LiquidTabBar() {
                     strokeWidth={active ? 2.5 : 2}
                     className={active ? 'text-family-accent' : 'text-ink-tertiary'}
                   />
+                  {item.href === '/inbox' && inboxUnreadCount > 0 && (
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="absolute -top-1.5 -right-2.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-danger text-white text-[10px] font-bold px-1 leading-none"
+                    >
+                      {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
+                    </motion.span>
+                  )}
                 </motion.div>
                 <motion.span
                   className={`text-caption font-semibold relative z-raised ${active ? 'text-family-accent' : 'text-ink-tertiary'}`}
@@ -223,7 +234,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/privacy') ||
     pathname.startsWith('/support') ||
     pathname.startsWith('/readiness') ||
-    pathname.startsWith('/blog')
+    pathname.startsWith('/blog') ||
+    pathname.startsWith('/invite')
 
   if (isLoading) {
     return (
@@ -337,7 +349,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/privacy') ||
     pathname.startsWith('/support') ||
     pathname.startsWith('/readiness') ||
-    pathname.startsWith('/blog')
+    pathname.startsWith('/blog') ||
+    pathname.startsWith('/invite')
 
   const showNav = isAuthenticated && family && !isAuthRoute
   const showEmergency = showNav && pathname !== '/assistant' && config.showEmergencyButton

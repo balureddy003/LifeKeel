@@ -77,6 +77,11 @@ interface AppState {
   // Inbox (demo item dismissal persistence)
   dismissedInboxIds: string[]
   dismissInboxItemLocal: (id: string) => void
+
+  // Inbox badge — set by the inbox page on load/dismiss so the tab bar
+  // can show a badge without fetching inbox items on every page.
+  inboxUnreadCount: number
+  setInboxUnreadCount: (count: number) => void
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 11)
@@ -186,6 +191,10 @@ export const useAppStore = create<AppState>()(
       dismissedInboxIds: [],
       dismissInboxItemLocal: (id) =>
         set((state) => ({ dismissedInboxIds: [...state.dismissedInboxIds, id] })),
+
+      // Inbox badge
+      inboxUnreadCount: 0,
+      setInboxUnreadCount: (count) => set({ inboxUnreadCount: count }),
     }),
     {
       name: 'family-ai-store',

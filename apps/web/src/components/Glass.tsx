@@ -292,7 +292,7 @@ export function PageHeader({
     <header className="sticky top-0 z-sticky safe-area-top bg-navbg/80 backdrop-blur-xl -mx-5 px-5 py-3 border-b border-tint/[0.05]">
       <div className="flex items-center justify-between h-11">
         {backHref ? (
-          <Link href={backHref} className="flex items-center gap-1 text-ink-tertiary active:opacity-60">
+          <Link href={backHref} onClick={() => haptic('light')} className="flex items-center gap-1 text-ink-tertiary active:opacity-60">
             <ArrowLeft size={20} strokeWidth={2} />
             <span className="text-base font-medium">Back</span>
           </Link>

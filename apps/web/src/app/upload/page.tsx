@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { PageHeader, GlassCard, EmptyState } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
+import { useToast } from '@/components/Toast'
 import { uploadDocument, fetchDocuments, type FamilyDocument } from '@/lib/api'
 import { useAppStore } from '@/lib/store'
 import { CATEGORY_ICONS, CATEGORY_LABELS } from '@/lib/document-categories'
@@ -36,6 +37,7 @@ function statusLabel(status: FamilyDocument['status']) {
 
 export default function UploadPage() {
   const router = useRouter()
+  const toast = useToast()
   const searchParams = useSearchParams()
   const categoryFilter = searchParams.get('category')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -129,11 +131,14 @@ export default function UploadPage() {
       setError(
         `Couldn't upload ${failedNow.length === 1 ? `"${failedNow[0]!.name}"` : `${failedNow.length} documents`} — we'll retry when you're back online.`,
       )
+    } else {
+      const count = Array.from(files).length
+      toast({ message: count === 1 ? 'Document uploaded' : `${count} documents uploaded` })
     }
 
     setUploading(false)
     e.target.value = ''
-  }, [uploadOne])
+  }, [uploadOne, toast])
 
   return (
     <div className="px-5 pt-2 space-y-4">

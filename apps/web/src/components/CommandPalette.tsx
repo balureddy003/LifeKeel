@@ -198,7 +198,7 @@ export function CommandPalette() {
                           <cmd.icon size={18} className="text-ink-tertiary flex-shrink-0" />
                           <span className="text-sm text-ink-primary flex-1">{cmd.label}</span>
                           {cmd.shortcut && (
-                            <kbd className="text-caption text-ink-tertiary glass rounded-md px-2 py-0.5 font-mono">
+                            <kbd className="hidden md:inline-block text-caption text-ink-tertiary glass rounded-md px-2 py-0.5 font-mono">
                               {cmd.shortcut}
                             </kbd>
                           )}
@@ -210,8 +210,8 @@ export function CommandPalette() {
               })}
             </div>
 
-            {/* Footer */}
-            <div className="px-5 py-2.5 border-t border-tint/5 flex items-center justify-between text-caption text-ink-tertiary">
+            {/* Footer — keyboard hints are irrelevant on touch devices */}
+            <div className="hidden md:flex px-5 py-2.5 border-t border-tint/5 items-center justify-between text-caption text-ink-tertiary">
               <div className="flex items-center gap-3">
                 <span className="flex items-center gap-1">
                   <kbd className="glass rounded px-1.5 py-0.5 flex items-center"><ArrowUpDown size={10} /></kbd> Navigate

@@ -45,6 +45,7 @@ export default function InboxPage() {
   const connectedConnectors = useAppStore((s) => s.connectedConnectors)
   const dismissedInboxIds = useAppStore((s) => s.dismissedInboxIds)
   const dismissInboxItemLocal = useAppStore((s) => s.dismissInboxItemLocal)
+  const setInboxUnreadCount = useAppStore((s) => s.setInboxUnreadCount)
   const [items, setItems] = useState<InboxItem[]>(
     INBOX_ITEMS.filter((item) => !dismissedInboxIds.includes(item.id))
   )
@@ -88,6 +89,12 @@ export default function InboxPage() {
   }, [loadInbox])
 
   const unreadCount = items.filter((i) => !i.read).length
+
+  // Keep the global store in sync so the tab bar badge updates without
+  // fetching inbox items on every page navigation.
+  useEffect(() => {
+    setInboxUnreadCount(unreadCount)
+  }, [unreadCount, setInboxUnreadCount])
 
   const handleScanNow = async () => {
     haptic('light')

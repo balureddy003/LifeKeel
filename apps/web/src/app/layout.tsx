@@ -7,6 +7,7 @@ import { ModeProvider } from '@/lib/mode-context'
 import { AppShell } from '@/components/AppShell'
 import { Observability } from '@/components/Observability'
 import { ConfirmSheetProvider } from '@/components/ConfirmSheetProvider'
+import { ToastProvider } from '@/components/Toast'
 
 // globals.css's --font-sans was always 'Inter' by declaration, but no font
 // was ever loaded — every visitor actually got system-ui. next/font self-
@@ -178,7 +179,9 @@ export default function RootLayout({
           <AuthProvider>
             <ModeProvider>
               <ConfirmSheetProvider>
-                <AppShell>{children}</AppShell>
+                <ToastProvider>
+                  <AppShell>{children}</AppShell>
+                </ToastProvider>
               </ConfirmSheetProvider>
             </ModeProvider>
           </AuthProvider>

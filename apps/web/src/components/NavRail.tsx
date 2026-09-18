@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Home, Inbox, Users, CalendarClock, Settings } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
+import { useAppStore } from '@/lib/store'
 
 // Kept in sync with LiquidTabBar's NAV_ITEMS/ROUTE_TAB_OVERRIDES in
 // AppShell.tsx by hand — both read the same five destinations, but living
@@ -40,6 +41,7 @@ const ROUTE_TAB_OVERRIDES: Record<string, string> = {
 export function NavRail() {
   const pathname = usePathname()
   const [activeIndex, setActiveIndex] = useState(0)
+  const inboxUnreadCount = useAppStore((s) => s.inboxUnreadCount)
 
   useEffect(() => {
     const overrideEntry = Object.entries(ROUTE_TAB_OVERRIDES).find(([prefix]) =>
@@ -93,11 +95,22 @@ export function NavRail() {
               )}
               {/* Token classes, not literals — same drift fix as
                   AppShell's bottom nav. See its comment / tailwind.config.js. */}
-              <item.icon
-                size={22}
-                strokeWidth={active ? 2.5 : 2}
-                className={`relative z-raised ${active ? 'text-family-accent' : 'text-ink-tertiary'}`}
-              />
+              <span className="relative z-raised">
+                <item.icon
+                  size={22}
+                  strokeWidth={active ? 2.5 : 2}
+                  className={active ? 'text-family-accent' : 'text-ink-tertiary'}
+                />
+                {item.href === '/inbox' && inboxUnreadCount > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute -top-1.5 -right-2.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-danger text-white text-[10px] font-bold px-1 leading-none"
+                  >
+                    {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
+                  </motion.span>
+                )}
+              </span>
               <span
                 className={`relative z-raised text-caption font-semibold ${active ? 'text-family-accent' : 'text-ink-tertiary'}`}
               >

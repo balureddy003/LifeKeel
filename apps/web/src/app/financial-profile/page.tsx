@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Loader2, AlertCircle, CheckCircle2, Plus, X, ChevronLeft } from 'lucide-react'
 import { PageHeader, GlassCard, GlassButton, Skeleton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
+import { useToast } from '@/components/Toast'
 import { useAppStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
@@ -382,6 +383,7 @@ export default function FinancialProfilePage() {
   // least one exists (i.e. the household has more than one adult).
   const otherAdults = (family?.members ?? []).filter((m) => m.role !== 'child' && m.id !== user?.id)
   const setFinancialProfileSubmitted = useAppStore((s) => s.setFinancialProfileSubmitted)
+  const toast = useToast()
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [funds, setFunds] = useState<EducationFundForm[]>([])
   const [policies, setPolicies] = useState<PolicyForm[]>([])
@@ -572,6 +574,7 @@ export default function FinancialProfilePage() {
       setVersion(newVersion)
       setAutosaveFailed(false)
       haptic('success')
+      toast({ message: insightsGenerated ? 'Profile saved — new insights generated' : 'Financial profile saved' })
       setResult(insightsGenerated)
       setFinancialProfileSubmitted()
       window.scrollTo({ top: 0, behavior: 'smooth' })

@@ -12,9 +12,10 @@ import { haptic } from '@/lib/haptics'
 import type { AppMode } from '@/lib/modes'
 import { ROLE_LABELS, type FamilyRole } from '@/lib/auth-types'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
+import { useToast } from '@/components/Toast'
 import { isValidEmailFormat } from '@/components/ConversationalOnboarding'
-import { User, LogOut, Check, Crown, Shield, ShieldCheck, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle, Calculator, Sparkles, HelpCircle, ScrollText, Bot, Download, Trash2, Sun, Moon, MonitorSmartphone } from 'lucide-react'
-import { exportAccountData, deleteAccount } from '@/lib/api'
+import { User, LogOut, Check, X, Crown, Shield, ShieldCheck, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle, Calculator, Sparkles, HelpCircle, ScrollText, Bot, Download, Trash2, Sun, Moon, MonitorSmartphone, RefreshCw } from 'lucide-react'
+import { exportAccountData, deleteAccount, fetchAccessRequests, approveAccessRequest, denyAccessRequest, resetInviteCode, type AccessRequest } from '@/lib/api'
 import { useThemePreference, type ThemePreference } from '@/lib/theme'
 import type { LucideIcon } from 'lucide-react'
 
@@ -49,6 +50,7 @@ export default function SettingsPage() {
   const { user, family, signOut, inviteMember, removeMember, updateMemberRole, updateProfile } = useAuth()
   const router = useRouter()
   const confirm = useConfirm()
+  const toast = useToast()
 
   const [showAddMember, setShowAddMember] = useState(false)
   const [memberName, setMemberName] = useState('')
@@ -56,6 +58,74 @@ export default function SettingsPage() {
   const [memberRole, setMemberRole] = useState<FamilyRole>('adult')
   const [addingMember, setAddingMember] = useState(false)
   const [addMemberError, setAddMemberError] = useState<string | null>(null)
+
+  // Family sharing (PRD-110) — only the organizer can see or act on these;
+  // the same check the backend enforces (a roster entry whose id matches
+  // this user's real id, with role 'organizer').
+  const isOrganizer = family?.members.find((m) => m.id === user?.id)?.role === 'organizer'
+  const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([])
+  const [actingOnRequestId, setActingOnRequestId] = useState<string | null>(null)
+  const [accessRequestError, setAccessRequestError] = useState<string | null>(null)
+  const [resettingCode, setResettingCode] = useState(false)
+  const [inviteCodeOverride, setInviteCodeOverride] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!isOrganizer) return
+    fetchAccessRequests().then(setAccessRequests)
+  }, [isOrganizer])
+
+  const handleApproveRequest = async (id: string) => {
+    haptic('light')
+    setActingOnRequestId(id)
+    setAccessRequestError(null)
+    try {
+      await approveAccessRequest(id)
+      haptic('success')
+      setAccessRequests((prev) => prev.filter((r) => r.id !== id))
+    } catch (err) {
+      haptic('warning')
+      setAccessRequestError(err instanceof Error ? err.message : 'Could not approve this request.')
+    } finally {
+      setActingOnRequestId(null)
+    }
+  }
+
+  const handleDenyRequest = async (id: string) => {
+    haptic('light')
+    setActingOnRequestId(id)
+    setAccessRequestError(null)
+    try {
+      await denyAccessRequest(id)
+      haptic('success')
+      setAccessRequests((prev) => prev.filter((r) => r.id !== id))
+    } catch (err) {
+      haptic('warning')
+      setAccessRequestError(err instanceof Error ? err.message : 'Could not deny this request.')
+    } finally {
+      setActingOnRequestId(null)
+    }
+  }
+
+  const handleResetInviteCode = async () => {
+    const ok = await confirm({
+      title: 'Reset invite code?',
+      message: 'The old code stops working for new join requests. Anyone you already shared it with will need the new one.',
+      confirmLabel: 'Reset',
+      destructive: true,
+    })
+    if (!ok) return
+    haptic('warning')
+    setResettingCode(true)
+    try {
+      const newCode = await resetInviteCode()
+      setInviteCodeOverride(newCode)
+      haptic('success')
+    } catch {
+      haptic('warning')
+    } finally {
+      setResettingCode(false)
+    }
+  }
 
   const [showEditProfile, setShowEditProfile] = useState(false)
   const [editName, setEditName] = useState('')
@@ -122,6 +192,7 @@ export default function SettingsPage() {
       if (email !== user?.email) patch.email = email
       if (Object.keys(patch).length > 0) await updateProfile(patch)
       haptic('success')
+      toast({ message: 'Profile updated' })
       setShowEditProfile(false)
     } catch (err) {
       haptic('warning')
@@ -149,6 +220,7 @@ export default function SettingsPage() {
     a.click()
     URL.revokeObjectURL(url)
     haptic('success')
+    toast({ message: 'Data exported' })
   }
 
   const handleDelete = async () => {
@@ -186,6 +258,7 @@ export default function SettingsPage() {
     try {
       await inviteMember(memberName.trim(), memberEmail.trim(), memberRole)
       haptic('success')
+      toast({ message: `${memberName.trim()} added to family` })
       resetAddMemberForm()
     } catch (err) {
       haptic('warning')
@@ -318,7 +391,63 @@ export default function SettingsPage() {
           >
             <div className="text-base font-medium text-family-400">Add Member</div>
           </ListRow>
-          <ListRow label={`Invite code: ${family.inviteCode}`} />
+          <ListRow
+            label={`Invite code: ${inviteCodeOverride ?? family.inviteCode}`}
+            value={
+              isOrganizer ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleResetInviteCode() }}
+                  disabled={resettingCode}
+                  className="text-xs text-family-400 font-semibold px-2 py-1 rounded-lg bg-family-500/10 flex items-center gap-1"
+                >
+                  {resettingCode ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                  Reset
+                </button>
+              ) : null
+            }
+          />
+        </ListSection>
+      )}
+
+      {/* Access requests (PRD-110) — organizer-only. A pending request never
+          grants any access by itself; this is the one place that does. */}
+      {isOrganizer && accessRequests.length > 0 && (
+        <ListSection title="Join Requests">
+          {accessRequestError && (
+            <p role="status" aria-live="polite" className="text-xs text-danger px-4 py-2">{accessRequestError}</p>
+          )}
+          {accessRequests.map((r) => (
+            <ListRow key={r.id} icon={UserPlus}>
+              <div className="flex items-center justify-between w-full gap-3">
+                <div className="text-left min-w-0">
+                  <div className="text-base font-medium truncate">{r.name}</div>
+                  <div className="text-xs text-ink-tertiary mt-0.5 truncate">{r.email}</div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {actingOnRequestId === r.id ? (
+                    <Loader2 size={16} className="animate-spin text-ink-tertiary" />
+                  ) : (
+                    <>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleApproveRequest(r.id) }}
+                        aria-label={`Approve ${r.name}`}
+                        className="w-8 h-8 rounded-lg bg-success/10 text-success flex items-center justify-center"
+                      >
+                        <Check size={16} />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDenyRequest(r.id) }}
+                        aria-label={`Deny ${r.name}`}
+                        className="w-8 h-8 rounded-lg bg-danger/10 text-danger flex items-center justify-center"
+                      >
+                        <X size={16} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </ListRow>
+          ))}
         </ListSection>
       )}
 
