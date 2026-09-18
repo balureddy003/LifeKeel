@@ -246,3 +246,90 @@ a first real insight, since no detector can fire on names alone.
 by design — the plan itself requires a dedicated PRD first (invite
 acceptance flow, organizer confirmation, second real login, per-member
 permissions cut).
+
+## Validation pass — 2026-09-19 (Claude)
+
+Re-ran the full gate independently (`pnpm typecheck && pnpm lint && pnpm
+test`, both apps) rather than trusting the implementation log above at face
+value — clean: 24/24 typecheck tasks, lint clean (2 pre-existing unrelated
+warnings only), 379/389 API tests passing (the 10 failures are the
+documented `ml-tenant-isolation` suite, which needs a real MongoDB and is
+expected to fail locally per CLAUDE.md), 58/58 web tests.
+
+Spot-checked the two highest-stakes implementations directly against their
+code, not just their tests: **#25's approve endpoint** genuinely respects
+`dry_run_mode` (blocks real execution when set) and the `/insights/[id]`
+screen structurally cannot render an Approve button before loading the same
+`action-preview` classification the executor itself uses — the screen can't
+drift from what actually runs. **#26's account deletion** sequences GridFS
+blob deletion before metadata (avoiding orphaned blobs on partial failure),
+documents exactly why `audit_log` is retained rather than wiped, and kills
+outstanding JWTs via tenant status rather than attempting server-side token
+revocation. Both read as genuinely load-bearing, not just tests-passing.
+
+Then went deeper on the two items that matter most for a family in an
+actual crisis (#18, #19) and found and fixed real gaps beyond what the
+implementation log claimed:
+
+- **No path in Emergency Mode or the life-event flow ever told a user to
+  call emergency services.** A family opening "Emergency Mode" for a
+  medical crisis or car accident was walked straight into insurance/
+  financial admin steps — correct scope for a financial assistant, but
+  missing the one line that has to outrank everything else when someone
+  may be in physical danger. Added a life-safety notice ("If anyone is in
+  immediate danger, call 911 now") to: the Emergency Mode overlay itself
+  (shown unconditionally, above every tile, before any selection), and the
+  `/life-events` report screen + playbook detail screen for the four
+  physically-urgent types (medical, car, property, travel) — since both
+  pages are reachable directly, not only through Emergency Mode.
+- **Stale button copy.** "This is actually happening" made sense when it
+  was the *only* path into the real, tracked flow (vs. the tiles going to
+  the hypothetical simulator) — now that #18 routes every tile into the
+  real flow too, the button's old wording was confusing residue. Reworded
+  to "Something else — see all event types," its actual remaining purpose
+  (job loss, disability, or a full picker).
+- **No Escape-key handler on the Emergency Mode overlay.** `useFocusTrap`
+  only handles Tab-cycling, not Escape — confirmed by reading the hook
+  directly, and confirmed `CommandPalette` (the app's other full-screen
+  overlay) already has its own separate Escape handler for the same
+  reason. Added the same pattern to `EmergencyMode.tsx` rather than baking
+  it into the shared hook (which would have double-fired for
+  CommandPalette).
+- **Minor drift risk removed, not just cosmetic:** `LifeEventPlaybookClient`
+  carried a 3-entry hardcoded title map that silently fell back to
+  `playbook.title` for the 4 newer event types. Confirmed the hardcoded
+  strings were byte-identical to the YAML titles for all 3 covered types,
+  then deleted the map — one source of truth, no "remember to update this
+  too" trap for the next event type added.
+
+**The most consequential finding of this pass**, from checking whether
+#20 (PRD-110's `policies[].member_id`) is actually *used* anywhere, not
+just stored: it isn't. `render-playbook.ts` never reads `member_id` for
+any event type — including bereavement, the single highest-stakes
+playbook in the product. `renderBereavementStep` didn't even receive
+`affectedMemberId` as a parameter, so `notify_insurers` dumped every
+household policy into one undifferentiated, urgent-sounding instruction —
+meaning a family who just lost one parent could be told to "contact" the
+*surviving* parent's own, unrelated life insurance policy in the same
+breath as the actual death claim, during the worst week of their life.
+Fixed: `renderBereavementStep` now takes `affectedMemberId`, splits
+policies into the deceased's own (the real, urgent instruction), other
+family members' (explicitly marked "don't need to be touched for this"),
+and unattributed (flagged to confirm rather than silently guessed either
+way) — falling back to the original undifferentiated list whenever no
+policy has a `member_id` on file at all, so households with older data
+see no regression. 3 new tests added (`render-playbook.test.ts`), all
+passing; full typecheck/lint clean. Car/property/medical/travel weren't
+touched — those types are naturally household-wide (car, home never ask
+for a member in the wizard) or already use `resolveEarner`'s separate,
+pre-existing per-member income-protection path, so the same fix doesn't
+apply the same way; worth a follow-up look but not the same severity as
+bereavement.
+
+All changes this pass verified via a full re-run of typecheck/lint/test
+(unchanged: clean). Live browser verification was not possible this pass —
+port 3002 was occupied by another session's dev server whose assets
+weren't reachable from this session's browser tooling; correctness was
+instead verified by matching the exact Tailwind/component patterns already
+proven elsewhere in the same files (the `existingSameType` warning banner's
+styling, `CommandPalette`'s Escape handler).

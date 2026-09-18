@@ -72,6 +72,12 @@ belongs one tier lower than you think it does.
   '@agentoak/x'" errors if that sibling package's `dist/` doesn't exist yet.
   Always verify via the root `pnpm typecheck`/`pnpm test` (turbo-orchestrated)
   before concluding something is actually broken.
+- **Don't run `pnpm typecheck`/`pnpm build` while `next dev` is running.**
+  Turbo's typecheck task runs `next build`, which overwrites
+  `apps/web/.next` underneath the dev server — the served HTML then
+  references chunks that don't exist (page renders unstyled, e.g. only the
+  "Skip to content" link shows). Recovery: stop the dev server, delete
+  `apps/web/.next`, restart `pnpm --filter @agentoak/web dev`.
 - `apps/api`'s integration tests that hit a real MongoDB/Redis (currently
   just `ml-tenant-isolation.test.ts`) will fail locally without one running —
   that's expected, not a regression. CI provisions both via service

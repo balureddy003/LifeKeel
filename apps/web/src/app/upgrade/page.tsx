@@ -31,16 +31,16 @@ function ExtractionPreview() {
         <span className="text-sm font-semibold text-family-400">See it in action</span>
       </div>
       <div className="flex gap-4 items-start">
-        <div className="relative w-20 h-28 rounded-lg bg-white/[0.04] border border-white/[0.08] flex-shrink-0 overflow-hidden p-2.5 space-y-2">
-          <div className="h-1.5 w-3/4 rounded-full bg-white/10" />
-          <div className="h-1.5 w-full rounded-full bg-white/10" />
-          <div className="h-1.5 w-5/6 rounded-full bg-white/10" />
-          <div className="h-1.5 w-2/3 rounded-full bg-white/10" />
-          <div className="h-1.5 w-full rounded-full bg-white/10" />
-          <div className="h-1.5 w-4/5 rounded-full bg-white/10" />
+        <div className="relative w-20 h-28 rounded-lg bg-tint/[0.04] border border-tint/[0.08] flex-shrink-0 overflow-hidden p-2.5 space-y-2">
+          <div className="h-1.5 w-3/4 rounded-full bg-tint/10" />
+          <div className="h-1.5 w-full rounded-full bg-tint/10" />
+          <div className="h-1.5 w-5/6 rounded-full bg-tint/10" />
+          <div className="h-1.5 w-2/3 rounded-full bg-tint/10" />
+          <div className="h-1.5 w-full rounded-full bg-tint/10" />
+          <div className="h-1.5 w-4/5 rounded-full bg-tint/10" />
           <motion.div
             className="absolute left-0 right-0 h-10 pointer-events-none"
-            style={{ background: 'linear-gradient(180deg, transparent, rgba(124,110,240,0.4), transparent)' }}
+            style={{ background: 'linear-gradient(180deg, transparent, rgb(var(--family-accent) / 0.4), transparent)' }}
             initial={{ top: '-25%' }}
             animate={{ top: '115%' }}
             transition={{ duration: 1.8, repeat: Infinity, repeatDelay: 1.4, ease: 'easeInOut' }}
@@ -57,7 +57,7 @@ function ExtractionPreview() {
             >
               <CheckCircle2 size={12} className="text-family-400 flex-shrink-0" />
               <div className="min-w-0">
-                <div className="text-[10px] text-ink-tertiary leading-none mb-0.5">{f.label}</div>
+                <div className="text-caption text-ink-tertiary leading-none mb-0.5">{f.label}</div>
                 <div className="text-xs font-semibold text-ink-primary truncate">{f.value}</div>
               </div>
             </motion.div>

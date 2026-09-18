@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next'
+import { Inter } from 'next/font/google'
 import { MotionConfig } from 'framer-motion'
 import './globals.css'
 import { AuthProvider } from '@/lib/auth-context'
@@ -6,6 +7,19 @@ import { ModeProvider } from '@/lib/mode-context'
 import { AppShell } from '@/components/AppShell'
 import { Observability } from '@/components/Observability'
 import { ConfirmSheetProvider } from '@/components/ConfirmSheetProvider'
+import { ToastProvider } from '@/components/Toast'
+
+// globals.css's --font-sans was always 'Inter' by declaration, but no font
+// was ever loaded — every visitor actually got system-ui. next/font self-
+// hosts at build time, so this works with the static export (no runtime
+// Google Fonts dependency, no FOIT) and keeps the cross-platform look
+// consistent — system-ui means Roboto on Android, SF on iOS, Segoe on
+// Windows, three different apps' worth of text rendering.
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-sans',
+  display: 'swap',
+})
 
 const TITLE = 'Agent Oak — When life doesn\'t go to plan, Oak knows what to do next'
 const DESCRIPTION = 'A guided response plan for job loss, medical crises, and the unexpected — built for families of all ages. Informational only, not financial advice.'
@@ -42,11 +56,20 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
+  // themeColor is a static export — it can't track data-theme, so it stays
+  // the dark palette (the default, and what OS chrome hints show while the
+  // inline script below is still resolving the stored preference).
   themeColor: '#08080c',
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
 }
+
+// Runs before first paint so a light-mode user never sees a dark flash —
+// the CSS tokens flip off [data-theme] on <html>, and SSR can't know the
+// localStorage preference, so the client has to set it in <head>. Keep the
+// storage key and resolution logic identical to lib/theme.ts.
+const THEME_INIT = `(function(){try{var p=localStorage.getItem('agentoak-theme');document.documentElement.dataset.theme=p==='light'?'light':p==='dark'?'dark':(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark')}catch(e){document.documentElement.dataset.theme='dark'}})()`
 
 export default function RootLayout({
   children,
@@ -54,8 +77,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
       <head>
+        {/* Dark is the default stylesheet assumption; this flips the html
+            attribute before first paint for stored/system light. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
         <link rel="icon" href="/icon.svg" type="image/svg+xml" />
         {/* iOS Safari's Add to Home Screen ignores SVG here and falls back
             to a screenshot of the page — a real 180x180 PNG is required. */}
@@ -153,7 +179,9 @@ export default function RootLayout({
           <AuthProvider>
             <ModeProvider>
               <ConfirmSheetProvider>
-                <AppShell>{children}</AppShell>
+                <ToastProvider>
+                  <AppShell>{children}</AppShell>
+                </ToastProvider>
               </ConfirmSheetProvider>
             </ModeProvider>
           </AuthProvider>

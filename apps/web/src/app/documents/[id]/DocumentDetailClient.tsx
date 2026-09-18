@@ -167,7 +167,7 @@ export default function DocumentDetailClient() {
       <PageHeader title={doc.filename} backHref="/upload" subtitle={CATEGORY_LABELS[doc.category] ?? 'Document'} />
 
       <GlassCard className="p-4 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-2xl bg-white/[0.05] flex items-center justify-center flex-shrink-0">
+        <div className="w-10 h-10 rounded-2xl bg-tint/[0.05] flex items-center justify-center flex-shrink-0">
           <Icon size={18} className="text-ink-secondary" />
         </div>
         <div className="flex-1 min-w-0">
@@ -227,7 +227,7 @@ export default function DocumentDetailClient() {
               </div>
               <div className="space-y-2 mb-4">
                 {suggestions.map((s) => (
-                  <div key={s.path} className="flex items-center justify-between text-sm rounded-xl bg-white/[0.03] px-3 py-2.5">
+                  <div key={s.path} className="flex items-center justify-between text-sm rounded-xl bg-tint/[0.03] px-3 py-2.5">
                     <span className="text-ink-secondary">{s.label}</span>
                     <span className="font-semibold text-ink-primary">{money(s.valueMinor)}</span>
                   </div>

@@ -5,10 +5,11 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { Bot, Info, Home, Landmark, Wallet, Plane, CreditCard, Car, Loader2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { GlassCard, PageHeader, EmptyState, MoneyText, Skeleton } from '@/components/Glass'
+import { GlassCard, PageHeader, EmptyState, MoneyText, Skeleton, PageTransition } from '@/components/Glass'
 import { PullToRefresh } from '@/components/PullToRefresh'
 import { SwipeableRow } from '@/components/SwipeableRow'
 import { haptic } from '@/lib/haptics'
+import { useToast } from '@/components/Toast'
 import { INBOX_ITEMS } from '@/lib/onboarding-data'
 import type { InboxItem } from '@/lib/onboarding-data'
 import { fetchInboxItems, dismissInboxItem, scanEmailInbox } from '@/lib/api'
@@ -45,6 +46,10 @@ export default function InboxPage() {
   const connectedConnectors = useAppStore((s) => s.connectedConnectors)
   const dismissedInboxIds = useAppStore((s) => s.dismissedInboxIds)
   const dismissInboxItemLocal = useAppStore((s) => s.dismissInboxItemLocal)
+  const setInboxUnreadCount = useAppStore((s) => s.setInboxUnreadCount)
+  const toast = useToast()
+  // Pending undo timers — cleared if the user taps "Undo" before they fire.
+  const undoTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const [items, setItems] = useState<InboxItem[]>(
     INBOX_ITEMS.filter((item) => !dismissedInboxIds.includes(item.id))
   )
@@ -66,10 +71,10 @@ export default function InboxPage() {
   // EmptyState takes over below it).
   const announceRef = useRef<HTMLDivElement>(null)
   const [announcement, setAnnouncement] = useState('')
-  const announceDismissal = (subject: string) => {
+  const announceDismissal = useCallback((subject: string) => {
     setAnnouncement(`${subject} dismissed.`)
     announceRef.current?.focus()
-  }
+  }, [])
 
   const loadInbox = useCallback(async () => {
     const result = await fetchInboxItems()
@@ -88,6 +93,12 @@ export default function InboxPage() {
   }, [loadInbox])
 
   const unreadCount = items.filter((i) => !i.read).length
+
+  // Keep the global store in sync so the tab bar badge updates without
+  // fetching inbox items on every page navigation.
+  useEffect(() => {
+    setInboxUnreadCount(unreadCount)
+  }, [unreadCount, setInboxUnreadCount])
 
   const handleScanNow = async () => {
     haptic('light')
@@ -108,43 +119,60 @@ export default function InboxPage() {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, read: true } : i)))
   }
 
-  const handleAction = (item: InboxItem) => {
-    haptic('success')
+  // Shared dismiss logic: remove the item visually, then buffer the
+  // server-side/store commit behind an undo window.  If the user taps
+  // "Undo" before the timer fires, the item comes back as if nothing
+  // happened.
+  const dismissWithUndo = useCallback((item: InboxItem, feedbackLevel: 'success' | 'light') => {
+    haptic(feedbackLevel)
     setExpandedId(null)
-    setDismissingId(item.id)
-    if (isLive) {
-      dismissInboxItem(item.id).then(() => {
-        setItems((prev) => prev.filter((i) => i.id !== item.id))
-        setDismissingId(null)
-        announceDismissal(item.subject)
-      })
-    } else {
-      dismissInboxItemLocal(item.id)
-      setItems((prev) => prev.filter((i) => i.id !== item.id))
-      setDismissingId(null)
-      announceDismissal(item.subject)
-    }
+
+    // Visually remove immediately
+    setItems((prev) => prev.filter((i) => i.id !== item.id))
+    announceDismissal(item.subject)
+
+    // Schedule the permanent commit after the undo window
+    const timer = setTimeout(() => {
+      undoTimers.current.delete(item.id)
+      if (isLive) {
+        dismissInboxItem(item.id)
+      } else {
+        dismissInboxItemLocal(item.id)
+      }
+    }, 5000)
+    undoTimers.current.set(item.id, timer)
+
+    toast({
+      message: 'Dismissed',
+      duration: 5000,
+      onUndo: () => {
+        clearTimeout(timer)
+        undoTimers.current.delete(item.id)
+        // Restore the item
+        setItems((prev) => {
+          if (prev.some((i) => i.id === item.id)) return prev
+          return [...prev, item].sort((a, b) => {
+            // Maintain original order by id (demo) or date
+            const aIdx = INBOX_ITEMS.findIndex((d) => d.id === a.id)
+            const bIdx = INBOX_ITEMS.findIndex((d) => d.id === b.id)
+            return aIdx - bIdx
+          })
+        })
+        haptic('light')
+      },
+    })
+  }, [isLive, dismissInboxItemLocal, toast, announceDismissal])
+
+  const handleAction = (item: InboxItem) => {
+    dismissWithUndo(item, 'success')
   }
 
   const handleDismiss = (item: InboxItem) => {
-    haptic('light')
-    setExpandedId(null)
-    setDismissingId(item.id)
-    if (isLive) {
-      dismissInboxItem(item.id).then(() => {
-        setItems((prev) => prev.filter((i) => i.id !== item.id))
-        setDismissingId(null)
-        announceDismissal(item.subject)
-      })
-    } else {
-      dismissInboxItemLocal(item.id)
-      setItems((prev) => prev.filter((i) => i.id !== item.id))
-      setDismissingId(null)
-      announceDismissal(item.subject)
-    }
+    dismissWithUndo(item, 'light')
   }
 
   return (
+    <PageTransition>
     <PullToRefresh onRefresh={loadInbox}>
     <div className="px-5 pt-2 space-y-4">
       <PageHeader
@@ -176,7 +204,7 @@ export default function InboxPage() {
             <Bot size={18} className="text-family-400" />
             <span className="text-sm font-semibold text-family-400">AI Summary</span>
             {!isLive && (
-              <span className="text-[10px] text-warning font-semibold px-1.5 py-0.5 rounded-full bg-warning/10">
+              <span className="text-caption text-warning font-semibold px-1.5 py-0.5 rounded-full bg-warning/10">
                 Sample
               </span>
             )}
@@ -382,5 +410,6 @@ export default function InboxPage() {
       </div>
     </div>
     </PullToRefresh>
+    </PageTransition>
   )
 }

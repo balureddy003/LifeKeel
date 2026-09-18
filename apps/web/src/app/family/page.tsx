@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { BarChart3, Settings, AlertTriangle, User } from 'lucide-react'
-import { GlassCard, PageHeader, ListSection, ListRow } from '@/components/Glass'
+import { GlassCard, PageHeader, ListSection, ListRow, PageTransition } from '@/components/Glass'
 import { FamilyRoster } from '@/components/FamilyRoster'
 import { PullToRefresh } from '@/components/PullToRefresh'
 import { ROLE_LABELS } from '@/lib/auth-types'
@@ -52,6 +52,7 @@ export default function FamilyPage() {
   }))
 
   return (
+    <PageTransition>
     <PullToRefresh onRefresh={loadProfile}>
     <div className="px-5 pt-2 space-y-6">
       <PageHeader title="Our Family" />
@@ -84,7 +85,7 @@ export default function FamilyPage() {
                       {m.completion}%
                     </span>
                   </div>
-                  <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                  <div className="h-2 rounded-full bg-tint/5 overflow-hidden">
                     <motion.div
                       className="h-full rounded-full"
                       style={{
@@ -114,5 +115,6 @@ export default function FamilyPage() {
       </ListSection>
     </div>
     </PullToRefresh>
+    </PageTransition>
   )
 }

@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Loader2, AlertCircle, CheckCircle2, Plus, X, ChevronLeft } from 'lucide-react'
+import { Loader2, AlertCircle, CheckCircle2, Plus, X, ChevronLeft, Sparkles } from 'lucide-react'
 import { PageHeader, GlassCard, GlassButton, Skeleton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
+import { useToast } from '@/components/Toast'
 import { useAppStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
@@ -373,6 +374,30 @@ const STEPS: Step[] = [
   { key: 'education', title: 'Education Funds' },
 ]
 
+// Lightweight completeness estimate — counts how many of the key input
+// fields have meaningful (non-default, non-zero) values.  Used to show
+// a progress ring on Home and Settings without re-fetching the profile.
+function computeCompleteness(form: FormState, funds: EducationFundForm[]): number {
+  const fields: boolean[] = [
+    form.monthlySalary !== '' && form.monthlySalary !== '0',
+    form.annualLivingExpenses !== '' && form.annualLivingExpenses !== '0',
+    form.lifeCover !== '' && form.lifeCover !== '0',
+    form.incomeProtectionMonthly !== '' && form.incomeProtectionMonthly !== '0',
+    form.emergencySavings !== '' && form.emergencySavings !== '0',
+    form.monthlyExpenses !== '' && form.monthlyExpenses !== '0',
+    form.currentAge !== '' && form.currentAge !== '0',
+    form.targetRetirementAge !== '' && form.targetRetirementAge !== '0',
+    form.pensionBalance !== '' && form.pensionBalance !== '0',
+    form.monthlyContribution !== '' && form.monthlyContribution !== '0',
+  ]
+  // Education funds: count at least one child with savings entered
+  if (funds.length > 0) {
+    fields.push(funds.some((f) => f.currentSavings !== '' && f.currentSavings !== '0'))
+  }
+  const filled = fields.filter(Boolean).length
+  return Math.round((filled / fields.length) * 100)
+}
+
 export default function FinancialProfilePage() {
   const router = useRouter()
   const { family, user } = useAuth()
@@ -382,6 +407,8 @@ export default function FinancialProfilePage() {
   // least one exists (i.e. the household has more than one adult).
   const otherAdults = (family?.members ?? []).filter((m) => m.role !== 'child' && m.id !== user?.id)
   const setFinancialProfileSubmitted = useAppStore((s) => s.setFinancialProfileSubmitted)
+  const setProfileCompleteness = useAppStore((s) => s.setProfileCompleteness)
+  const toast = useToast()
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [funds, setFunds] = useState<EducationFundForm[]>([])
   const [policies, setPolicies] = useState<PolicyForm[]>([])
@@ -454,6 +481,7 @@ export default function FinancialProfilePage() {
       setForm(f)
       setFunds(funds)
       setPolicies(p)
+      setProfileCompleteness(computeCompleteness(f, funds))
       setLoading(false)
     })
     return () => { cancelled = true }
@@ -572,8 +600,10 @@ export default function FinancialProfilePage() {
       setVersion(newVersion)
       setAutosaveFailed(false)
       haptic('success')
+      toast({ message: insightsGenerated ? 'Profile saved — new insights generated' : 'Financial profile saved' })
       setResult(insightsGenerated)
       setFinancialProfileSubmitted()
+      setProfileCompleteness(computeCompleteness(form, funds))
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (err) {
       haptic('warning')
@@ -624,12 +654,19 @@ export default function FinancialProfilePage() {
       />
 
       {fromOnboarding && result === null && (
-        <GlassCard className="p-4 border-family-500/20">
-          <p className="text-sm text-ink-secondary leading-relaxed">
-            Last step — this is what turns the family you just set up into your first real insight.
-            The names you gave us are already filled in.
-          </p>
-        </GlassCard>
+        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
+          <GlassCard className="p-4 border-family-500/20 flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Sparkles size={16} className="text-family-400" />
+            </div>
+            <div>
+              <div className="text-sm font-semibold text-ink-primary mb-0.5">This powers your readiness score</div>
+              <p className="text-xs text-ink-tertiary leading-relaxed">
+                The more you share, the more specific Oak&apos;s insights become — your family names are already filled in. You can skip steps and come back later.
+              </p>
+            </div>
+          </GlassCard>
+        </motion.div>
       )}
 
       {result !== null && (
@@ -672,7 +709,7 @@ export default function FinancialProfilePage() {
           </span>
           <span className="text-xs text-family-400 font-bold">{Math.round(progress)}%</span>
         </div>
-        <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+        <div className="h-2 rounded-full bg-tint/5 overflow-hidden">
           <motion.div
             className="h-full rounded-full bg-gradient-to-r from-family-400 to-family-500"
             animate={{ width: `${progress}%` }}
@@ -765,7 +802,7 @@ export default function FinancialProfilePage() {
               <SectionTitle>Insurance Policies</SectionTitle>
               <div className="space-y-4">
                 {policies.map((p, i) => (
-                  <div key={i} className="rounded-2xl bg-white/[0.02] border border-white/[0.06] p-4 space-y-3">
+                  <div key={i} className="rounded-2xl bg-tint/[0.02] border border-tint/[0.06] p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-ink-tertiary">Policy {i + 1}</span>
                       <button type="button" onClick={() => removePolicy(i)} aria-label="Remove policy" className="w-7 h-7 rounded-full flex items-center justify-center text-ink-tertiary active:opacity-60">
@@ -873,7 +910,7 @@ export default function FinancialProfilePage() {
               <SectionTitle>Education Funds</SectionTitle>
               <div className="space-y-4">
                 {funds.map((f, i) => (
-                  <div key={i} className="rounded-2xl bg-white/[0.02] border border-white/[0.06] p-4 space-y-3">
+                  <div key={i} className="rounded-2xl bg-tint/[0.02] border border-tint/[0.06] p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-ink-tertiary">Child {i + 1}</span>
                       <button type="button" onClick={() => removeChild(i)} aria-label="Remove child" className="w-7 h-7 rounded-full flex items-center justify-center text-ink-tertiary active:opacity-60">
@@ -917,7 +954,7 @@ export default function FinancialProfilePage() {
           sit wherever the form happened to end, so reaching it meant
           scrolling all the way down first. A fixed thumb-reachable footer
           is the standard mobile-form pattern for exactly this reason. */}
-      <div className="sticky bottom-0 -mx-5 px-5 pt-3 pb-3 mt-2 flex gap-2 bg-[#08080c]/90 backdrop-blur-xl border-t border-white/[0.05] safe-area-bottom">
+      <div className="sticky bottom-0 -mx-5 px-5 pt-3 pb-3 mt-2 flex gap-2 bg-navbg/90 backdrop-blur-xl border-t border-tint/[0.05] safe-area-bottom">
         {stepIndex > 0 && (
           <button
             type="button"

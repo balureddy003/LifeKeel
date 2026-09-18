@@ -90,7 +90,7 @@ export default function AutomationSettingsPage() {
                       onClick={handleToggle}
                       disabled={saving || settings === null}
                       className={`relative w-12 h-7 rounded-full transition-colors disabled:opacity-40 ${
-                        settings?.dry_run_mode ? 'bg-family-500' : 'bg-white/10'
+                        settings?.dry_run_mode ? 'bg-family-500' : 'bg-tint/10'
                       }`}
                     >
                       <span
@@ -100,7 +100,7 @@ export default function AutomationSettingsPage() {
                       />
                     </button>
                   </div>
-                  {saveError && <p className="text-sm text-red-400 mt-2">{saveError}</p>}
+                  {saveError && <p className="text-sm text-danger mt-2">{saveError}</p>}
                   {saving && <Loader2 size={14} className="animate-spin text-ink-tertiary mt-2" />}
                 </div>
               </div>
@@ -130,7 +130,7 @@ export default function AutomationSettingsPage() {
                             {Array.from({ length: 5 }).map((_, i) => (
                               <span
                                 key={i}
-                                className={`w-2 h-2 rounded-full ${i < level ? 'bg-family-400' : 'bg-white/10'}`}
+                                className={`w-2 h-2 rounded-full ${i < level ? 'bg-family-400' : 'bg-tint/10'}`}
                               />
                             ))}
                           </div>

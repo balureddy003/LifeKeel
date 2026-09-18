@@ -235,7 +235,7 @@ export default function ConnectPage() {
                 >
                   <GlassCard className="p-4">
                     <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-white/[0.05] flex items-center justify-center flex-shrink-0">
+                      <div className="w-10 h-10 rounded-2xl bg-tint/[0.05] flex items-center justify-center flex-shrink-0">
                         <Icon size={18} className={isConnected ? 'text-success' : 'text-ink-secondary'} />
                       </div>
                       <div className="flex-1 min-w-0">
@@ -247,7 +247,7 @@ export default function ConnectPage() {
                             </span>
                           )}
                           {!isConnected && connector.comingSoon && (
-                            <span className="flex items-center gap-1 text-xs text-ink-tertiary bg-white/[0.05] px-2 py-0.5 rounded-full">
+                            <span className="flex items-center gap-1 text-xs text-ink-tertiary bg-tint/[0.05] px-2 py-0.5 rounded-full">
                               <Clock size={11} /> Coming soon
                             </span>
                           )}

@@ -39,7 +39,7 @@ export function BottomSheet({ open, onClose, children, label }: BottomSheetProps
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] flex items-end justify-center"
+          className="fixed inset-0 z-modal flex items-end justify-center"
           onClick={onClose}
         >
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
@@ -66,7 +66,7 @@ export function BottomSheet({ open, onClose, children, label }: BottomSheetProps
             className="relative w-full max-w-lg glass-strong rounded-t-3xl overflow-hidden shadow-2xl outline-none pb-[env(safe-area-inset-bottom)]"
           >
             <div className="flex justify-center pt-3 pb-1 cursor-grab active:cursor-grabbing">
-              <div className="w-9 h-1.5 rounded-full bg-white/15" />
+              <div className="w-9 h-1.5 rounded-full bg-tint/15" />
             </div>
             {children}
           </motion.div>

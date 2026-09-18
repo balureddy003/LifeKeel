@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { PageHeader, GlassCard, EmptyState } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
+import { useToast } from '@/components/Toast'
 import { uploadDocument, fetchDocuments, type FamilyDocument } from '@/lib/api'
 import { useAppStore } from '@/lib/store'
 import { CATEGORY_ICONS, CATEGORY_LABELS } from '@/lib/document-categories'
@@ -36,6 +37,7 @@ function statusLabel(status: FamilyDocument['status']) {
 
 export default function UploadPage() {
   const router = useRouter()
+  const toast = useToast()
   const searchParams = useSearchParams()
   const categoryFilter = searchParams.get('category')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -129,11 +131,14 @@ export default function UploadPage() {
       setError(
         `Couldn't upload ${failedNow.length === 1 ? `"${failedNow[0]!.name}"` : `${failedNow.length} documents`} — we'll retry when you're back online.`,
       )
+    } else {
+      const count = Array.from(files).length
+      toast({ message: count === 1 ? 'Document uploaded' : `${count} documents uploaded` })
     }
 
     setUploading(false)
     e.target.value = ''
-  }, [uploadOne])
+  }, [uploadOne, toast])
 
   return (
     <div className="px-5 pt-2 space-y-4">
@@ -154,7 +159,7 @@ export default function UploadPage() {
           whileTap={{ scale: 0.96 }}
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
-          className="rounded-2xl p-4 flex flex-col items-center gap-2 bg-white/[0.04] border border-white/[0.06] disabled:opacity-50"
+          className="rounded-2xl p-4 flex flex-col items-center gap-2 bg-tint/[0.04] border border-tint/[0.06] disabled:opacity-50"
         >
           <Upload size={24} className="text-ink-secondary" />
           <span className="text-sm font-semibold text-ink-secondary">Choose File</span>
@@ -266,7 +271,7 @@ export default function UploadPage() {
                     : {})}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-white/[0.05] flex items-center justify-center flex-shrink-0">
+                    <div className="w-10 h-10 rounded-2xl bg-tint/[0.05] flex items-center justify-center flex-shrink-0">
                       <Icon size={18} className="text-ink-secondary" />
                     </div>
                     <div className="flex-1 min-w-0">

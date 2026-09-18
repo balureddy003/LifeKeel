@@ -73,10 +73,17 @@ interface AppState {
   // Financial profile (manual entry — no live investment connector for family app)
   financialProfileSubmitted: boolean
   setFinancialProfileSubmitted: () => void
+  profileCompleteness: number
+  setProfileCompleteness: (pct: number) => void
 
   // Inbox (demo item dismissal persistence)
   dismissedInboxIds: string[]
   dismissInboxItemLocal: (id: string) => void
+
+  // Inbox badge — set by the inbox page on load/dismiss so the tab bar
+  // can show a badge without fetching inbox items on every page.
+  inboxUnreadCount: number
+  setInboxUnreadCount: (count: number) => void
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 11)
@@ -181,11 +188,17 @@ export const useAppStore = create<AppState>()(
       // Financial profile
       financialProfileSubmitted: false,
       setFinancialProfileSubmitted: () => set({ financialProfileSubmitted: true }),
+      profileCompleteness: 0,
+      setProfileCompleteness: (pct: number) => set({ profileCompleteness: pct }),
 
       // Inbox (demo item dismissal persistence)
       dismissedInboxIds: [],
       dismissInboxItemLocal: (id) =>
         set((state) => ({ dismissedInboxIds: [...state.dismissedInboxIds, id] })),
+
+      // Inbox badge
+      inboxUnreadCount: 0,
+      setInboxUnreadCount: (count) => set({ inboxUnreadCount: count }),
     }),
     {
       name: 'family-ai-store',
@@ -195,6 +208,8 @@ export const useAppStore = create<AppState>()(
         family: state.family,
         mode: state.mode,
         dismissedInboxIds: state.dismissedInboxIds,
+        profileCompleteness: state.profileCompleteness,
+        financialProfileSubmitted: state.financialProfileSubmitted,
       }),
     }
   )

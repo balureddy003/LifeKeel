@@ -67,20 +67,20 @@ function ShareScore({ score }: { score: number }) {
           target="_blank"
           rel="noopener noreferrer"
           onClick={() => { haptic('light'); track('readiness_share_click', { method: 'whatsapp' }) }}
-          className="w-12 flex items-center justify-center rounded-xl bg-white/[0.04] border border-white/[0.08] text-ink-secondary flex-shrink-0"
+          className="w-12 flex items-center justify-center rounded-xl bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary flex-shrink-0"
           aria-label="Share on WhatsApp"
         >
-          <span className="text-[11px] font-bold">WA</span>
+          <span className="text-footnote font-bold">WA</span>
         </a>
         <a
           href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(QUIZ_URL)}`}
           target="_blank"
           rel="noopener noreferrer"
           onClick={() => { haptic('light'); track('readiness_share_click', { method: 'x' }) }}
-          className="w-12 flex items-center justify-center rounded-xl bg-white/[0.04] border border-white/[0.08] text-ink-secondary flex-shrink-0"
+          className="w-12 flex items-center justify-center rounded-xl bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary flex-shrink-0"
           aria-label="Share on X"
         >
-          <span className="text-[13px] font-bold">𝕏</span>
+          <span className="text-subhead font-bold">𝕏</span>
         </a>
       </div>
     </div>
@@ -264,7 +264,7 @@ export default function ReadinessQuizPage() {
               </GlassButton>
               <button
                 onClick={() => { haptic('light'); setResult(null) }}
-                className="flex-1 rounded-xl py-3 text-sm font-semibold bg-white/[0.04] border border-white/[0.08] text-ink-secondary"
+                className="flex-1 rounded-xl py-3 text-sm font-semibold bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary"
               >
                 Edit answers
               </button>

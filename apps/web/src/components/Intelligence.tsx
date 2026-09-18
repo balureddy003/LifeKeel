@@ -104,21 +104,21 @@ export function TrustLadder() {
                       background: isDone
                         ? 'rgba(74,222,128,0.15)'
                         : isAvailable
-                        ? 'rgba(124,110,240,0.15)'
-                        : 'rgba(255,255,255,0.03)',
+                        ? 'rgb(var(--family-accent) / 0.15)'
+                        : 'rgb(var(--tint) / 0.03)',
                       border: `2px solid ${
                         isDone ? 'rgba(74,222,128,0.4)'
-                        : isAvailable ? 'rgba(124,110,240,0.4)'
-                        : 'rgba(255,255,255,0.08)'
+                        : isAvailable ? 'rgb(var(--family-accent) / 0.4)'
+                        : 'rgb(var(--tint) / 0.08)'
                       }`,
                     }}
                   >
-                    {isDone ? <Check size={14} color="#4ade80" /> : <Icon size={14} className={isAvailable ? 'text-family-400' : 'text-ink-tertiary'} />}
+                    {isDone ? <Check size={14} color="rgb(var(--success))" /> : <Icon size={14} className={isAvailable ? 'text-family-400' : 'text-ink-tertiary'} />}
                   </div>
                   {i < visibleSteps.length - 1 && (
                     <div
                       className="w-px h-6"
-                      style={{ background: isDone ? 'rgba(74,222,128,0.2)' : 'rgba(255,255,255,0.05)' }}
+                      style={{ background: isDone ? 'rgba(74,222,128,0.2)' : 'rgb(var(--tint) / 0.05)' }}
                     />
                   )}
                 </div>
@@ -129,7 +129,7 @@ export function TrustLadder() {
                     <span className={`text-sm font-semibold ${isDone ? 'text-success' : isAvailable ? 'text-family-400' : 'text-ink-tertiary'}`}>
                       {step.label}
                     </span>
-                    <span className="text-[10px] text-ink-tertiary">{step.timeframe}</span>
+                    <span className="text-caption text-ink-tertiary">{step.timeframe}</span>
                   </div>
                   <p className="text-xs text-ink-tertiary">{step.desc}</p>
                 </div>
@@ -161,7 +161,7 @@ export function TrustLadder() {
           onClick={() => { haptic('light'); setExpanded((v) => !v) }}
           aria-expanded={expanded}
           aria-controls="trust-ladder-steps"
-          className="w-full mt-3 pt-3 border-t border-white/5 text-xs font-semibold text-ink-tertiary flex items-center justify-center gap-1"
+          className="w-full mt-3 pt-3 border-t border-tint/5 text-xs font-semibold text-ink-tertiary flex items-center justify-center gap-1"
         >
           {expanded ? 'Show less' : `See all ${steps.length} steps`}
           <motion.span animate={{ rotate: expanded ? 180 : 0 }}>
@@ -244,7 +244,7 @@ export function MemoryPrompts() {
       <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-1 px-1">
         <Sparkles size={16} className="text-family-400" />
         AI Memory
-        <span className="text-[10px] text-warning font-semibold px-1.5 py-0.5 rounded-full bg-warning/10">
+        <span className="text-caption text-warning font-semibold px-1.5 py-0.5 rounded-full bg-warning/10">
           Sample
         </span>
       </div>

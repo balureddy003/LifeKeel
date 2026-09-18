@@ -87,27 +87,27 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
               onClick={() => { setSelectedId(m.id); haptic('light') }}
               aria-pressed={active}
               className={`flex-1 min-w-0 rounded-2xl px-2 py-3 text-center border transition-colors ${
-                active ? 'bg-family-500/10 border-family-500/30' : 'border-white/[0.06]'
+                active ? 'bg-family-500/10 border-family-500/30' : 'border-tint/[0.06]'
               }`}
             >
               <div className="relative w-9 h-9 mx-auto mb-1.5">
                 <div
                   className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold ${
-                    active ? 'bg-family-500/20 text-family-300' : 'bg-white/5 text-ink-tertiary'
+                    active ? 'bg-family-500/20 text-family-400' : 'bg-tint/5 text-ink-tertiary'
                   }`}
                 >
                   {initial || <User size={16} />}
                 </div>
                 {m.status === 'pending' && (
                   <div
-                    className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-warning border-2 border-[#08080c]"
+                    className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-warning border-2 border-surface-0"
                     title="Invite pending"
                     aria-label="Invite pending"
                   />
                 )}
               </div>
               <div className="text-xs font-semibold text-ink-primary truncate">{m.name}</div>
-              <div className={`text-[10px] truncate ${m.status === 'pending' ? 'text-warning font-medium' : 'text-ink-tertiary'}`}>
+              <div className={`text-caption truncate ${m.status === 'pending' ? 'text-warning font-medium' : 'text-ink-tertiary'}`}>
                 {m.status === 'pending' ? 'Pending' : ROLE_LABELS[m.role]}
               </div>
             </button>
@@ -145,18 +145,18 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
                     router.push(dest)
                   }
                 } : undefined}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 bg-white/[0.03] ${dest ? 'active:opacity-70 cursor-pointer' : ''}`}
+                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 bg-tint/[0.03] ${dest ? 'active:opacity-70 cursor-pointer' : ''}`}
               >
                 <div
                   className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
                   style={{ background: `${color}18` }}
                 >
-                  <Icon size={15} color={color} strokeWidth={1.75} />
+                  <Icon size={15} color={color} strokeWidth={2} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold text-ink-primary truncate">{s.label}</div>
                   {s.story && !isAsset && (
-                    <div className="text-[11px] text-ink-tertiary line-clamp-2">{s.story}</div>
+                    <div className="text-footnote text-ink-tertiary line-clamp-2">{s.story}</div>
                   )}
                 </div>
                 {dest && <ChevronRight size={14} className="text-ink-tertiary flex-shrink-0" />}
@@ -167,7 +167,7 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
       )}
 
       {/* View profile + full map */}
-      <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
+      <div className="flex items-center justify-between mt-3 pt-3 border-t border-tint/5">
         <Link
           href={`/member/${selected.id}`}
           onClick={() => haptic('light')}

@@ -115,7 +115,7 @@ export default function AuditLogPage() {
               transition={{ delay: Math.min(i, 8) * 0.03 }}
             >
               <GlassCard className="p-4 flex items-start gap-3">
-                <div className="w-8 h-8 rounded-xl bg-white/[0.05] flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 rounded-xl bg-tint/[0.05] flex items-center justify-center flex-shrink-0">
                   <ScrollText size={14} className="text-ink-tertiary" />
                 </div>
                 <div className="flex-1 min-w-0">

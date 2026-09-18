@@ -608,6 +608,72 @@ export async function removeFamilyGroupMember(id: string): Promise<ApiFamilyGrou
   return familyGroupRequest(`/family/members/${id}`, 'DELETE')
 }
 
+// ── Family sharing (PRD-110) ────────────────────────────────────────────────
+// Submitting a join request never creates a login or grants any access by
+// itself — only an explicit organizer approval does (see the PRD's Trust
+// tier section). This mirrors the Act layer's "prepare, don't auto-execute"
+// discipline, applied here to account access instead of financial actions.
+
+export interface AccessRequest {
+  id: string
+  name: string
+  email: string
+  requestedAt: string
+}
+
+// Public — no auth token exists yet for the person submitting this.
+export async function joinFamily(
+  inviteCode: string,
+  name: string,
+  email: string,
+  password: string,
+): Promise<{ familyName: string }> {
+  const base = getApiBase()
+  const res = await fetch(`${base}/family/join`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ invite_code: inviteCode, name, email, password }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || "Couldn't submit your request")
+  return { familyName: data.family_name as string }
+}
+
+export async function fetchAccessRequests(): Promise<AccessRequest[]> {
+  return apiFetch<{ requests: AccessRequest[] }>('/family/access-requests', { requests: [] }).then((r) => r.requests)
+}
+
+async function accessRequestAction(id: string, action: 'approve' | 'deny'): Promise<Record<string, unknown>> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const res = await fetch(`${base}/family/access-requests/${id}/${action}`, { method: 'POST', headers })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Request failed')
+  return data
+}
+
+export async function approveAccessRequest(id: string): Promise<{ name: string; email: string }> {
+  const data = await accessRequestAction(id, 'approve')
+  return { name: data['name'] as string, email: data['email'] as string }
+}
+
+export async function denyAccessRequest(id: string): Promise<void> {
+  await accessRequestAction(id, 'deny')
+}
+
+export async function resetInviteCode(): Promise<string> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const res = await fetch(`${base}/family/invite-code/reset`, { method: 'POST', headers })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || "Couldn't reset the invite code")
+  return data.inviteCode as string
+}
+
 // ── Insight drafts (Tier 1 "prepare, don't send" — PRD-103) ────────────────
 
 export interface InsightDraft {

@@ -34,9 +34,9 @@ export function LifeTimeline({ events }: { events: TimelineEvent[] }) {
       >
         {/* NOW marker */}
         <div className="flex flex-col items-center min-w-[80px] relative">
-          <div className="w-px h-full absolute left-1/2 -translate-x-1/2 bg-gradient-to-b from-family-500/40 to-white/5" />
+          <div className="w-px h-full absolute left-1/2 -translate-x-1/2 bg-gradient-to-b from-family-500/40 to-tint/5" />
           <motion.div
-            className="relative z-10 w-3 h-3 rounded-full bg-family-500"
+            className="relative z-raised w-3 h-3 rounded-full bg-family-500"
             animate={{ scale: [1, 1.4, 1], opacity: [1, 0.6, 1] }}
             transition={{ duration: 2, repeat: Infinity }}
           />
@@ -53,7 +53,7 @@ export function LifeTimeline({ events }: { events: TimelineEvent[] }) {
             className="flex flex-col items-center min-w-[100px] cursor-pointer"
             style={{ scrollSnapAlign: 'start' }}
           >
-            <div className="w-px h-8 bg-white/10" />
+            <div className="w-px h-8 bg-tint/10" />
             <motion.div
               whileTap={{ scale: 0.9 }}
               className="glass rounded-2xl p-3 flex flex-col items-center gap-1 min-w-[90px]"
@@ -65,15 +65,15 @@ export function LifeTimeline({ events }: { events: TimelineEvent[] }) {
                 })()}
               </div>
               <span className="text-xs font-semibold text-center">{event.label}</span>
-              <span className="text-[10px] text-ink-tertiary">{event.year}</span>
+              <span className="text-caption text-ink-tertiary">{event.year}</span>
             </motion.div>
           </motion.div>
         ))}
 
         {/* End marker */}
         <div className="flex flex-col items-center min-w-[40px]">
-          <div className="w-px h-8 bg-white/5" />
-          <div className="w-3 h-3 rounded-full bg-white/10" />
+          <div className="w-px h-8 bg-tint/5" />
+          <div className="w-3 h-3 rounded-full bg-tint/10" />
         </div>
       </div>
     </div>

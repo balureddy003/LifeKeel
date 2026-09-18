@@ -4,10 +4,29 @@ import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Check, Copy, HelpCircle, Loader2, Mail, PenLine } from 'lucide-react'
+import { ArrowLeft, Check, Copy, HelpCircle, Loader2, Mail, PenLine, ShieldAlert } from 'lucide-react'
 import { GlassCard, GlassButton, PageHeader } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
-import { fetchLifeEvents, prepareLifeEventStepDraft, setLifeEventStepDone, type LifeEvent, type LifeEventPlaybookStep } from '@/lib/api'
+import { fetchLifeEvents, prepareLifeEventStepDraft, setLifeEventStepDone, type LifeEvent, type LifeEventPlaybookStep, type LifeEventType } from '@/lib/api'
+
+// Same reasoning as /life-events's own notice: a user can land here directly
+// (a shared link, a return visit) without ever seeing Emergency Mode's
+// banner, and for these four types everything on this screen is insurance/
+// financial admin, not first response.
+const URGENT_TYPES = new Set<LifeEventType>(['medical', 'car', 'property', 'travel'])
+
+function LifeSafetyNotice() {
+  return (
+    <div className="rounded-xl border border-danger/30 px-3.5 py-3 flex items-start gap-2" style={{ background: 'rgba(248,113,113,0.08)' }}>
+      <ShieldAlert size={15} className="text-danger flex-shrink-0 mt-0.5" />
+      <p className="text-xs leading-relaxed text-ink-secondary">
+        <span className="font-semibold text-ink-primary">If anyone is in immediate danger, call 911</span> (or your
+        local emergency number) now — the steps below are insurance and financial admin, not first response.
+      </p>
+    </div>
+  )
+}
+
 
 // Checklist completion is now server-persisted (remediation item 19) —
 // localStorage remains only as an instant-paint cache while the server
@@ -34,12 +53,6 @@ function saveDoneIds(eventId: string, doneIds: Set<string>): void {
   } catch {
     // Best-effort — private browsing / storage-full shouldn't break the checklist.
   }
-}
-
-const EVENT_TYPE_LABELS: Record<string, string> = {
-  job_loss: 'Job Loss Response Plan',
-  bereavement: 'Bereavement Response Plan',
-  disability: 'Disability / Critical-Illness Response Plan',
 }
 
 // Tier 1 "prepare, don't send" (PRD-103), reused per-step — a playbook can
@@ -82,7 +95,7 @@ function StepDraft({ eventId, step }: { eventId: string; step: LifeEventPlaybook
   }
 
   return (
-    <div className="mt-3 pt-3 border-t border-white/5">
+    <div className="mt-3 pt-3 border-t border-tint/5">
       {!draftText ? (
         <>
           <GlassButton variant="secondary" onClick={handleDraft} disabled={drafting}>
@@ -185,7 +198,7 @@ export default function LifeEventPlaybookClient() {
   if (!event || !event.playbook) {
     return (
       <div className="px-4 pt-8 text-center">
-        <div className="w-16 h-16 rounded-3xl bg-white/[0.03] border border-white/[0.08] flex items-center justify-center mb-4 mx-auto">
+        <div className="w-16 h-16 rounded-3xl bg-tint/[0.03] border border-tint/[0.08] flex items-center justify-center mb-4 mx-auto">
           <HelpCircle size={32} className="text-ink-tertiary" />
         </div>
         <p className="text-ink-secondary">This life event couldn't be found</p>
@@ -202,10 +215,12 @@ export default function LifeEventPlaybookClient() {
   return (
     <div className="px-5 pt-2 space-y-5">
       <PageHeader
-        title={EVENT_TYPE_LABELS[event.event_type] ?? playbook.title}
+        title={playbook.title}
         backHref="/life-events"
         subtitle="Based on your family's real data"
       />
+
+      {URGENT_TYPES.has(event.event_type) && <LifeSafetyNotice />}
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <GlassCard className="p-5 border-family-500/20">
@@ -238,8 +253,8 @@ export default function LifeEventPlaybookClient() {
                   <motion.div
                     className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
                     animate={{
-                      backgroundColor: done ? '#4ade80' : 'rgba(255,255,255,0.05)',
-                      borderColor: done ? '#4ade80' : 'rgba(255,255,255,0.1)',
+                      backgroundColor: done ? '#4ade80' : 'rgb(var(--tint) / 0.05)',
+                      borderColor: done ? '#4ade80' : 'rgb(var(--tint) / 0.1)',
                     }}
                     style={{ border: '2px solid' }}
                   >

@@ -38,7 +38,7 @@ export default function AuthCallbackPage() {
     return (
       <div className="min-h-screen flex items-center justify-center px-6">
         <div className="text-center max-w-xs">
-          <p className="text-sm text-red-400 mb-4">Sign-in failed: {error}</p>
+          <p className="text-sm text-danger mb-4">Sign-in failed: {error}</p>
           <button
             onClick={() => router.push('/login')}
             className="w-full bg-family-500 text-white font-semibold rounded-2xl py-3 text-sm"

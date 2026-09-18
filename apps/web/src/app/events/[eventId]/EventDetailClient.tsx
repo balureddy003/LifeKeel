@@ -216,7 +216,7 @@ export default function EventDetailClient() {
   if (!event) {
     return (
       <div className="px-4 pt-8 text-center">
-        <div className="w-16 h-16 rounded-3xl bg-white/[0.03] border border-white/[0.08] flex items-center justify-center mb-4 mx-auto">
+        <div className="w-16 h-16 rounded-3xl bg-tint/[0.03] border border-tint/[0.08] flex items-center justify-center mb-4 mx-auto">
           <HelpCircle size={32} className="text-ink-tertiary" />
         </div>
         <p className="text-ink-secondary">Event not found</p>
@@ -249,7 +249,7 @@ export default function EventDetailClient() {
               {stability}%
             </span>
           </div>
-          <div className="h-3 rounded-full bg-white/5 overflow-hidden">
+          <div className="h-3 rounded-full bg-tint/5 overflow-hidden">
             <motion.div
               className="h-full rounded-full"
               style={{
@@ -304,8 +304,8 @@ export default function EventDetailClient() {
               <motion.div
                 className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
                 animate={{
-                  backgroundColor: action.done ? '#4ade80' : 'rgba(255,255,255,0.05)',
-                  borderColor: action.done ? '#4ade80' : 'rgba(255,255,255,0.1)',
+                  backgroundColor: action.done ? '#4ade80' : 'rgb(var(--tint) / 0.05)',
+                  borderColor: action.done ? '#4ade80' : 'rgb(var(--tint) / 0.1)',
                 }}
                 style={{ border: '2px solid' }}
               >

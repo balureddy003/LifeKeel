@@ -9,7 +9,6 @@ import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
 import { ONBOARDING_QUESTIONS } from '@/lib/onboarding-data'
 import type { FamilyMemberDraft } from '@/lib/onboarding-data'
-
 // Pragmatic (not full RFC 5322) format check — catches the obvious typos
 // this question is guarding against: missing '@', no domain, stray
 // whitespace, a second '@'. Matches the check on POST /auth/signup.
@@ -128,14 +127,14 @@ function GrowingGraph({ members }: { members: FamilyMemberDraft[] }) {
               <div
                 className="w-14 h-14 rounded-full flex items-center justify-center"
                 style={{
-                  background: 'rgba(124,110,240,0.1)',
-                  border: '2px solid rgba(124,110,240,0.3)',
+                  background: 'rgb(var(--family-accent) / 0.1)',
+                  border: '2px solid rgb(var(--family-accent) / 0.3)',
                 }}
               >
                 <User size={24} className="text-family-400" strokeWidth={1.5} />
               </div>
               <span className="text-xs font-semibold">{m.name}</span>
-              <span className="text-[10px] text-ink-tertiary">{m.role}</span>
+              <span className="text-caption text-ink-tertiary">{m.role}</span>
             </motion.div>
           </div>
         ))}
@@ -172,6 +171,11 @@ export function ConversationalOnboarding() {
   const [members, setMembers] = useState<FamilyMemberDraft[]>([])
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [finished, setFinished] = useState(false)
+  // Two-phase completion: `finished` shows the loading animation while
+  // createFamily/inviteMember calls run; `setupDone` flips once those
+  // calls resolve, swapping the loader for a brief celebration moment
+  // before navigating — so the user sees "success", not just a redirect.
+  const [setupDone, setSetupDone] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   // setSubmitting alone isn't enough to block a rapid double-fire of the
   // same handler — React state doesn't update synchronously, so two calls
@@ -418,14 +422,13 @@ export function ConversationalOnboarding() {
 
     track('family_setup_completed', { member_count: allMembers.length })
 
-    // Remediation item 27: onboarding used to end on a blank 0-state home
-    // dashboard — no detector can honestly fire a real insight from names
-    // alone, so the flow now continues straight into the Financial Profile
-    // (which the roster they just built already pre-fills). Saving it is
-    // what generates the family's first real, specific insight.
+    // Show the success celebration for 1.5s before navigating — so the
+    // user sees "Your family is set up!" rather than a silent redirect.
+    setSetupDone(true)
+    haptic('success')
     setTimeout(() => {
       router.push('/financial-profile?source=onboarding')
-    }, 2000)
+    }, 1800)
   }
 
   const handleTextSubmit = () => {
@@ -449,25 +452,69 @@ export function ConversationalOnboarding() {
   if (finished) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
-        <motion.div
-          className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-4 mx-auto"
-          animate={{ scale: [1, 1.1, 1], rotate: [0, 10, -10, 0] }}
-          transition={{ duration: 2, repeat: Infinity }}
-        >
-          <PartyPopper size={32} className="text-family-400" />
-        </motion.div>
-        <h1 className="text-2xl font-bold mb-2">Growing your Oak...</h1>
-        <p className="text-sm text-ink-tertiary">Your family profile is taking shape</p>
-        <motion.div
-          className="mt-6 w-48 h-2 rounded-full bg-white/5 overflow-hidden"
-        >
-          <motion.div
-            className="h-full rounded-full bg-gradient-to-r from-family-400 to-family-500"
-            initial={{ width: 0 }}
-            animate={{ width: '100%' }}
-            transition={{ duration: 1.5 }}
-          />
-        </motion.div>
+        <AnimatePresence mode="wait">
+          {setupDone ? (
+            <motion.div
+              key="done"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+              className="flex flex-col items-center"
+            >
+              <motion.div
+                className="w-16 h-16 rounded-full bg-success/15 border border-success/25 flex items-center justify-center mb-4"
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 20, delay: 0.1 }}
+              >
+                <motion.svg
+                  viewBox="0 0 24 24"
+                  className="w-8 h-8 text-success"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2.5}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <motion.path
+                    d="M5 13l4 4L19 7"
+                    initial={{ pathLength: 0 }}
+                    animate={{ pathLength: 1 }}
+                    transition={{ duration: 0.4, delay: 0.2 }}
+                  />
+                </motion.svg>
+              </motion.div>
+              <h1 className="text-2xl font-bold mb-2">Your family is set up!</h1>
+              <p className="text-sm text-ink-tertiary">Now let&apos;s build your readiness score</p>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="loading"
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="flex flex-col items-center"
+            >
+              <motion.div
+                className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-4 mx-auto"
+                animate={{ scale: [1, 1.1, 1], rotate: [0, 10, -10, 0] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              >
+                <PartyPopper size={32} className="text-family-400" />
+              </motion.div>
+              <h1 className="text-2xl font-bold mb-2">Growing your Oak...</h1>
+              <p className="text-sm text-ink-tertiary">Your family profile is taking shape</p>
+              <motion.div
+                className="mt-6 w-48 h-2 rounded-full bg-tint/5 overflow-hidden"
+              >
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-family-400 to-family-500"
+                  initial={{ width: 0 }}
+                  animate={{ width: '100%' }}
+                  transition={{ duration: 1.5 }}
+                />
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     )
   }
@@ -480,7 +527,7 @@ export function ConversationalOnboarding() {
           <span className="text-xs text-ink-tertiary font-semibold">Building your digital twin</span>
           <span className="text-xs text-family-400 font-bold">{Math.round(progress)}%</span>
         </div>
-        <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+        <div className="h-2 rounded-full bg-tint/5 overflow-hidden">
           <motion.div
             className="h-full rounded-full bg-gradient-to-r from-family-400 to-family-500"
             animate={{ width: `${progress}%` }}
@@ -597,7 +644,7 @@ export function ConversationalOnboarding() {
               disabled={!textValue.trim() || submitting}
               aria-label="Send answer"
               className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-30"
-              style={{ background: 'linear-gradient(135deg, #7c6ef0, #6b5ce0)' }}
+              style={{ background: 'linear-gradient(135deg, rgb(var(--family-accent)), #6b5ce0)' }}
             >
               <Send size={18} color="#fff" />
             </motion.button>

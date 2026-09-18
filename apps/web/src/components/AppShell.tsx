@@ -4,14 +4,17 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Home, Inbox, Users, AlertTriangle, Settings, WifiOff, Siren, Network, Bot } from 'lucide-react'
+import { Home, Inbox, Users, CalendarClock, Settings, WifiOff, Siren, Network, Bot } from 'lucide-react'
 import { useNetworkStatus } from '@/lib/useNetworkStatus'
 import { useAuth } from '@/lib/auth-context'
 import { useMode } from '@/lib/mode-context'
+import { useAppStore } from '@/lib/store'
 import { MeshGradient, Skeleton, SkeletonCard } from './Glass'
 import { EmergencyMode } from './EmergencyMode'
 import { CommandPalette } from './CommandPalette'
 import { DisclaimerFooter } from './Disclaimer'
+import { fetchInboxItems } from '@/lib/api'
+import { INBOX_ITEMS } from '@/lib/onboarding-data'
 import { MarketingLanding } from './MarketingLanding'
 import { NavRail } from './NavRail'
 import { haptic } from '@/lib/haptics'
@@ -20,7 +23,7 @@ const NAV_ITEMS = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/inbox', label: 'Inbox', icon: Inbox },
   { href: '/family', label: 'Family', icon: Users },
-  { href: '/events', label: 'Events', icon: AlertTriangle },
+  { href: '/events', label: 'Events', icon: CalendarClock },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
@@ -34,6 +37,7 @@ const ROUTE_TAB_OVERRIDES: Record<string, string> = {
 function LiquidTabBar() {
   const pathname = usePathname()
   const [activeIndex, setActiveIndex] = useState(0)
+  const inboxUnreadCount = useAppStore((s) => s.inboxUnreadCount)
 
   useEffect(() => {
     const overrideEntry = Object.entries(ROUTE_TAB_OVERRIDES).find(([prefix]) =>
@@ -47,7 +51,7 @@ function LiquidTabBar() {
   }, [pathname])
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 glass-nav safe-area-bottom">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-nav glass-nav safe-area-bottom">
       <div className="max-w-md mx-auto px-4 pb-1 pt-1.5 relative">
         <div className="flex items-center justify-around h-16 relative">
           {NAV_ITEMS.map((item, i) => {
@@ -58,7 +62,7 @@ function LiquidTabBar() {
                 href={item.href}
                 aria-label={item.label}
                 onClick={() => haptic('light')}
-                className="flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 relative z-10"
+                className="flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 relative z-raised"
               >
                 {active && (
                   <motion.div
@@ -70,28 +74,30 @@ function LiquidTabBar() {
                 <motion.div
                   animate={{ scale: active ? 1.05 : 1 }}
                   transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                  className="relative z-10"
+                  className="relative z-raised"
                 >
+                  {/* Token classes, not literals — the previous hardcoded
+                      hexes drifted out of sync with ink.tertiary's contrast
+                      fix once already. family.accent is deliberately lighter
+                      than family-500 for icon/text-on-dark contrast; see
+                      tailwind.config.js. */}
                   <item.icon
                     size={22}
                     strokeWidth={active ? 2.5 : 2}
-                    // Inactive color is a hardcoded literal (not the
-                    // text-ink-tertiary Tailwind class) so it silently drifted
-                    // out of sync when ink.tertiary was fixed for contrast
-                    // elsewhere — confirmed live via a contrast sweep on this
-                    // exact nav: 3.85:1 against the dark surface, below WCAG
-                    // AA's 4.5:1. Matches ink.tertiary's current value now.
-                    // (Active color is a separate literal, not this token —
-                    // left as-is: it already passes at 5.09:1, and syncing it
-                    // to the current, deliberately-darkened family-500 token
-                    // would drop it to 4.42:1, since that token was tuned for
-                    // white-text-on-purple-background, a different pairing.)
-                    color={active ? '#7c6ef0' : '#7b7b91'}
+                    className={active ? 'text-family-accent' : 'text-ink-tertiary'}
                   />
+                  {item.href === '/inbox' && inboxUnreadCount > 0 && (
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="absolute -top-1.5 -right-2.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-danger text-white text-[10px] font-bold px-1 leading-none"
+                    >
+                      {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
+                    </motion.span>
+                  )}
                 </motion.div>
                 <motion.span
-                  className="text-[10px] font-semibold relative z-10"
-                  animate={{ color: active ? '#7c6ef0' : '#7b7b91' }}
+                  className={`text-caption font-semibold relative z-raised ${active ? 'text-family-accent' : 'text-ink-tertiary'}`}
                 >
                   {item.label}
                 </motion.span>
@@ -115,7 +121,7 @@ function OfflineBanner() {
           exit={{ y: -60, opacity: 0 }}
           role="status"
           aria-live="polite"
-          className="fixed top-0 left-0 right-0 z-50 glass safe-area-top px-4 py-2 flex items-center justify-center gap-2"
+          className="fixed top-0 left-0 right-0 z-banner glass safe-area-top px-4 py-2 flex items-center justify-center gap-2"
         >
           <WifiOff size={16} className="text-warning flex-shrink-0" />
           <span className="text-sm text-warning font-medium">
@@ -157,7 +163,7 @@ function EmergencyButton() {
         activateEmergency()
       }}
       whileTap={{ scale: 0.9 }}
-      className="fixed bottom-32 right-4 z-40 w-12 h-12 rounded-full flex items-center justify-center"
+      className="fixed bottom-32 right-4 z-fab w-12 h-12 rounded-full flex items-center justify-center"
       style={{
         background: 'linear-gradient(135deg, #f87171, #dc2626)',
         border: '1px solid rgba(255,255,255,0.2)',
@@ -194,16 +200,16 @@ function EmergencyButton() {
 // PRD-101 endpoint /assistant/page.tsx correctly calls. Rather than
 // resurrect a second, wrong chat implementation, this reuses the one real
 // implementation by linking straight to it.
-function AskOakButton({ stacked }: { stacked: boolean }) {
+function AskOakButton({ stacked, context }: { stacked: boolean; context?: string }) {
   const router = useRouter()
   return (
     <motion.button
       onClick={() => {
         haptic('light')
-        router.push('/assistant')
+        router.push(context ? `/assistant?context=${encodeURIComponent(context)}` : '/assistant')
       }}
       whileTap={{ scale: 0.9 }}
-      className={`fixed right-4 z-40 w-12 h-12 rounded-full flex items-center justify-center ${stacked ? 'bottom-52' : 'bottom-32'}`}
+      className={`fixed right-4 z-fab w-12 h-12 rounded-full flex items-center justify-center ${stacked ? 'bottom-52' : 'bottom-32'}`}
       style={{
         background: 'linear-gradient(135deg, #8b80f8, #6b5ce0)',
         border: '1px solid rgba(255,255,255,0.2)',
@@ -230,7 +236,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/privacy') ||
     pathname.startsWith('/support') ||
     pathname.startsWith('/readiness') ||
-    pathname.startsWith('/blog')
+    pathname.startsWith('/blog') ||
+    pathname.startsWith('/invite')
 
   if (isLoading) {
     return (
@@ -242,7 +249,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         <SkeletonCard lines={2} />
         <div className="space-y-2">
           {[0, 1].map((i) => (
-            <div key={i} className="rounded-2xl border border-white/[0.05] bg-white/[0.03] p-4 flex items-center gap-3">
+            <div key={i} className="rounded-2xl border border-tint/[0.05] bg-tint/[0.03] p-4 flex items-center gap-3">
               <Skeleton className="h-10 w-10 rounded-2xl flex-shrink-0" />
               <div className="flex-1 space-y-2">
                 <Skeleton className="h-3.5 w-2/3" />
@@ -333,6 +340,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, family } = useAuth()
   const { config, emergencyActive, deactivateEmergency } = useMode()
   const router = useRouter()
+  const setInboxUnreadCount = useAppStore((s) => s.setInboxUnreadCount)
+  const dismissedInboxIds = useAppStore((s) => s.dismissedInboxIds)
+
+  // Pre-seed the inbox unread badge so it shows from the first page load
+  // (not only after visiting Inbox).  The Inbox page later overrides this
+  // with the precise count from its loaded/filtered items.
+  useEffect(() => {
+    if (!isAuthenticated || !family) return
+    let cancelled = false
+    fetchInboxItems().then(({ items, isLive }) => {
+      if (cancelled) return
+      if (isLive) {
+        setInboxUnreadCount(items.filter((i) => !i.read).length)
+      } else {
+        // Demo mode — filter out locally dismissed items
+        const remaining = INBOX_ITEMS.filter((i) => !dismissedInboxIds.includes(i.id))
+        setInboxUnreadCount(remaining.filter((i) => !i.read).length)
+      }
+    })
+    return () => { cancelled = true }
+    // Only on mount (auth state changing triggers a re-render anyway).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, !!family])
 
   const isAuthRoute = pathname.startsWith('/welcome') ||
     pathname.startsWith('/signup') ||
@@ -344,7 +374,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/privacy') ||
     pathname.startsWith('/support') ||
     pathname.startsWith('/readiness') ||
-    pathname.startsWith('/blog')
+    pathname.startsWith('/blog') ||
+    pathname.startsWith('/invite')
 
   const showNav = isAuthenticated && family && !isAuthRoute
   const showEmergency = showNav && pathname !== '/assistant' && config.showEmergencyButton
@@ -391,7 +422,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           straight to the content landmark below. */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[200] focus:rounded-xl focus:bg-family-500 focus:px-4 focus:py-2.5 focus:text-sm focus:font-semibold focus:text-white"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-skip focus:rounded-xl focus:bg-family-500 focus:px-4 focus:py-2.5 focus:text-sm focus:font-semibold focus:text-white"
       >
         Skip to content
       </a>
@@ -400,14 +431,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <ModeEffects />
       {showNav && <NavRail />}
       <div className={[railGutter, 'min-h-screen'].filter(Boolean).join(' ')}>
-        <div id="main-content" tabIndex={-1} className={[widthClass, bottomPadding, emergencyGutter, 'pt-2 relative z-10 outline-none'].filter(Boolean).join(' ')}>
+        <div id="main-content" tabIndex={-1} className={[widthClass, bottomPadding, emergencyGutter, 'pt-2 relative z-raised outline-none'].filter(Boolean).join(' ')}>
           <AuthGate>{children}</AuthGate>
           {showNav && <DisclaimerFooter />}
         </div>
       </div>
       {showNav && <LiquidTabBar />}
       {showEmergency && <EmergencyButton />}
-      {showAskOak && <AskOakButton stacked={!!showEmergency} />}
+      {showAskOak && <AskOakButton stacked={!!showEmergency} context={pathname} />}
       <EmergencyMode
         active={emergencyActive}
         onDeactivate={deactivateEmergency}

@@ -1,16 +1,15 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, HelpCircle, House, TrendingUp, Landmark, ChevronRight } from 'lucide-react'
+import { ArrowLeft, HelpCircle, House, Landmark, ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { PageHeader, Money, Skeleton } from '@/components/Glass'
 import { fetchFinancialProfile, type FinancialProfile } from '@/lib/api'
 
 const ASSET_META: Record<string, { label: string; icon: LucideIcon }> = {
   home: { label: 'Family Home', icon: House },
-  investments: { label: 'Investments', icon: TrendingUp },
   pension: { label: 'Pension', icon: Landmark },
 }
 
@@ -20,6 +19,7 @@ function money(minor: number): string {
 
 export default function AssetProfileClient() {
   const params = useParams<{ id: string }>()
+  const router = useRouter()
   const meta = ASSET_META[params.id]
   const [profile, setProfile] = useState<FinancialProfile | null | undefined>(undefined)
 
@@ -29,10 +29,20 @@ export default function AssetProfileClient() {
     return () => { cancelled = true }
   }, [])
 
+  // 'investments' was removed as a distinct asset (see assets-data.ts) — it
+  // showed the exact same pension-backed data as /asset/pension under a
+  // different label. A redirect (not a 404) so a stale bookmark or old
+  // in-app link still lands somewhere real instead of a dead end.
+  useEffect(() => {
+    if (params.id === 'investments') router.replace('/asset/pension')
+  }, [params.id, router])
+
+  if (params.id === 'investments') return null
+
   if (!meta) {
     return (
       <div className="px-4 pt-8 text-center">
-        <div className="w-16 h-16 rounded-3xl bg-white/[0.03] border border-white/[0.08] flex items-center justify-center mb-4 mx-auto">
+        <div className="w-16 h-16 rounded-3xl bg-tint/[0.03] border border-tint/[0.08] flex items-center justify-center mb-4 mx-auto">
           <HelpCircle size={32} className="text-ink-tertiary" />
         </div>
         <p className="text-ink-secondary">Asset not found</p>
@@ -63,8 +73,8 @@ export default function AssetProfileClient() {
         </div>
       ) : params.id === 'home' ? (
         <HomeDetail profile={profile} icon={Icon} />
-      ) : params.id === 'pension' || params.id === 'investments' ? (
-        <RetirementDetail profile={profile} icon={Icon} label={meta.label} />
+      ) : params.id === 'pension' ? (
+        <RetirementDetail profile={profile} icon={Icon} />
       ) : null}
     </div>
   )
@@ -101,7 +111,7 @@ function HomeDetail({ profile, icon: Icon }: { profile: FinancialProfile | null;
   )
 }
 
-function RetirementDetail({ profile, icon: Icon, label }: { profile: FinancialProfile | null; icon: LucideIcon; label: string }) {
+function RetirementDetail({ profile, icon: Icon }: { profile: FinancialProfile | null; icon: LucideIcon }) {
   if (!profile) {
     return <NoDataPrompt text="Add your pension balance and contributions in your Financial Profile to see them here." />
   }
@@ -124,8 +134,7 @@ function RetirementDetail({ profile, icon: Icon, label }: { profile: FinancialPr
         </div>
       </div>
       <p className="text-xs text-ink-tertiary mt-3 pt-3 border-t border-haze/20">
-        {label} isn&apos;t tracked as a separate account yet — this reflects your pension figures from
-        your Financial Profile.
+        These figures come from your Financial Profile.
       </p>
     </div>
   )

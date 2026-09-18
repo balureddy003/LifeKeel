@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Home, Inbox, Users, AlertTriangle, Settings } from 'lucide-react'
+import { Home, Inbox, Users, CalendarClock, Settings } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
+import { useAppStore } from '@/lib/store'
 
 // Kept in sync with LiquidTabBar's NAV_ITEMS/ROUTE_TAB_OVERRIDES in
 // AppShell.tsx by hand — both read the same five destinations, but living
@@ -16,7 +17,7 @@ const NAV_ITEMS = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/inbox', label: 'Inbox', icon: Inbox },
   { href: '/family', label: 'Family', icon: Users },
-  { href: '/events', label: 'Events', icon: AlertTriangle },
+  { href: '/events', label: 'Events', icon: CalendarClock },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
@@ -40,6 +41,7 @@ const ROUTE_TAB_OVERRIDES: Record<string, string> = {
 export function NavRail() {
   const pathname = usePathname()
   const [activeIndex, setActiveIndex] = useState(0)
+  const inboxUnreadCount = useAppStore((s) => s.inboxUnreadCount)
 
   useEffect(() => {
     const overrideEntry = Object.entries(ROUTE_TAB_OVERRIDES).find(([prefix]) =>
@@ -54,12 +56,12 @@ export function NavRail() {
 
   return (
     <nav
-      className="hidden md:flex fixed top-0 left-0 bottom-0 z-30 w-[88px] flex-col items-center safe-area-top"
+      className="hidden md:flex fixed top-0 left-0 bottom-0 z-nav w-[88px] flex-col items-center safe-area-top"
       style={{
         background: 'rgba(8, 8, 12, 0.78)',
         backdropFilter: 'blur(24px) saturate(120%)',
         WebkitBackdropFilter: 'blur(24px) saturate(120%)',
-        borderRight: '1px solid rgba(255, 255, 255, 0.05)',
+        borderRight: '1px solid rgb(var(--tint) / 0.05)',
       }}
       aria-label="Primary"
     >
@@ -91,19 +93,26 @@ export function NavRail() {
                   transition={{ type: 'spring', stiffness: 400, damping: 32 }}
                 />
               )}
-              <item.icon
-                size={22}
-                strokeWidth={active ? 2.5 : 2}
-                // Same fix as AppShell's bottom nav — a hardcoded literal
-                // duplicating ink.tertiary's pre-fix value (3.85:1 against
-                // the dark surface, below WCAG AA). Active color left as-is;
-                // it already passes and isn't this token.
-                color={active ? '#7c6ef0' : '#7b7b91'}
-                className="relative z-10"
-              />
+              {/* Token classes, not literals — same drift fix as
+                  AppShell's bottom nav. See its comment / tailwind.config.js. */}
+              <span className="relative z-raised">
+                <item.icon
+                  size={22}
+                  strokeWidth={active ? 2.5 : 2}
+                  className={active ? 'text-family-accent' : 'text-ink-tertiary'}
+                />
+                {item.href === '/inbox' && inboxUnreadCount > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute -top-1.5 -right-2.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-danger text-white text-[10px] font-bold px-1 leading-none"
+                  >
+                    {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
+                  </motion.span>
+                )}
+              </span>
               <span
-                className="relative z-10 text-[10px] font-semibold"
-                style={{ color: active ? '#7c6ef0' : '#7b7b91' }}
+                className={`relative z-raised text-caption font-semibold ${active ? 'text-family-accent' : 'text-ink-tertiary'}`}
               >
                 {item.label}
               </span>
