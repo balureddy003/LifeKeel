@@ -13,6 +13,8 @@ import { MeshGradient, Skeleton, SkeletonCard } from './Glass'
 import { EmergencyMode } from './EmergencyMode'
 import { CommandPalette } from './CommandPalette'
 import { DisclaimerFooter } from './Disclaimer'
+import { fetchInboxItems } from '@/lib/api'
+import { INBOX_ITEMS } from '@/lib/onboarding-data'
 import { MarketingLanding } from './MarketingLanding'
 import { NavRail } from './NavRail'
 import { haptic } from '@/lib/haptics'
@@ -198,13 +200,13 @@ function EmergencyButton() {
 // PRD-101 endpoint /assistant/page.tsx correctly calls. Rather than
 // resurrect a second, wrong chat implementation, this reuses the one real
 // implementation by linking straight to it.
-function AskOakButton({ stacked }: { stacked: boolean }) {
+function AskOakButton({ stacked, context }: { stacked: boolean; context?: string }) {
   const router = useRouter()
   return (
     <motion.button
       onClick={() => {
         haptic('light')
-        router.push('/assistant')
+        router.push(context ? `/assistant?context=${encodeURIComponent(context)}` : '/assistant')
       }}
       whileTap={{ scale: 0.9 }}
       className={`fixed right-4 z-fab w-12 h-12 rounded-full flex items-center justify-center ${stacked ? 'bottom-52' : 'bottom-32'}`}
@@ -338,6 +340,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, family } = useAuth()
   const { config, emergencyActive, deactivateEmergency } = useMode()
   const router = useRouter()
+  const setInboxUnreadCount = useAppStore((s) => s.setInboxUnreadCount)
+  const dismissedInboxIds = useAppStore((s) => s.dismissedInboxIds)
+
+  // Pre-seed the inbox unread badge so it shows from the first page load
+  // (not only after visiting Inbox).  The Inbox page later overrides this
+  // with the precise count from its loaded/filtered items.
+  useEffect(() => {
+    if (!isAuthenticated || !family) return
+    let cancelled = false
+    fetchInboxItems().then(({ items, isLive }) => {
+      if (cancelled) return
+      if (isLive) {
+        setInboxUnreadCount(items.filter((i) => !i.read).length)
+      } else {
+        // Demo mode — filter out locally dismissed items
+        const remaining = INBOX_ITEMS.filter((i) => !dismissedInboxIds.includes(i.id))
+        setInboxUnreadCount(remaining.filter((i) => !i.read).length)
+      }
+    })
+    return () => { cancelled = true }
+    // Only on mount (auth state changing triggers a re-render anyway).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, !!family])
 
   const isAuthRoute = pathname.startsWith('/welcome') ||
     pathname.startsWith('/signup') ||
@@ -413,7 +438,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
       {showNav && <LiquidTabBar />}
       {showEmergency && <EmergencyButton />}
-      {showAskOak && <AskOakButton stacked={!!showEmergency} />}
+      {showAskOak && <AskOakButton stacked={!!showEmergency} context={pathname} />}
       <EmergencyMode
         active={emergencyActive}
         onDeactivate={deactivateEmergency}

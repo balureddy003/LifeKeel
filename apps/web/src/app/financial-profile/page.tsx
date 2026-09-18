@@ -374,6 +374,30 @@ const STEPS: Step[] = [
   { key: 'education', title: 'Education Funds' },
 ]
 
+// Lightweight completeness estimate — counts how many of the key input
+// fields have meaningful (non-default, non-zero) values.  Used to show
+// a progress ring on Home and Settings without re-fetching the profile.
+function computeCompleteness(form: FormState, funds: EducationFundForm[]): number {
+  const fields: boolean[] = [
+    form.monthlySalary !== '' && form.monthlySalary !== '0',
+    form.annualLivingExpenses !== '' && form.annualLivingExpenses !== '0',
+    form.lifeCover !== '' && form.lifeCover !== '0',
+    form.incomeProtectionMonthly !== '' && form.incomeProtectionMonthly !== '0',
+    form.emergencySavings !== '' && form.emergencySavings !== '0',
+    form.monthlyExpenses !== '' && form.monthlyExpenses !== '0',
+    form.currentAge !== '' && form.currentAge !== '0',
+    form.targetRetirementAge !== '' && form.targetRetirementAge !== '0',
+    form.pensionBalance !== '' && form.pensionBalance !== '0',
+    form.monthlyContribution !== '' && form.monthlyContribution !== '0',
+  ]
+  // Education funds: count at least one child with savings entered
+  if (funds.length > 0) {
+    fields.push(funds.some((f) => f.currentSavings !== '' && f.currentSavings !== '0'))
+  }
+  const filled = fields.filter(Boolean).length
+  return Math.round((filled / fields.length) * 100)
+}
+
 export default function FinancialProfilePage() {
   const router = useRouter()
   const { family, user } = useAuth()
@@ -383,6 +407,7 @@ export default function FinancialProfilePage() {
   // least one exists (i.e. the household has more than one adult).
   const otherAdults = (family?.members ?? []).filter((m) => m.role !== 'child' && m.id !== user?.id)
   const setFinancialProfileSubmitted = useAppStore((s) => s.setFinancialProfileSubmitted)
+  const setProfileCompleteness = useAppStore((s) => s.setProfileCompleteness)
   const toast = useToast()
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [funds, setFunds] = useState<EducationFundForm[]>([])
@@ -456,6 +481,7 @@ export default function FinancialProfilePage() {
       setForm(f)
       setFunds(funds)
       setPolicies(p)
+      setProfileCompleteness(computeCompleteness(f, funds))
       setLoading(false)
     })
     return () => { cancelled = true }
@@ -577,6 +603,7 @@ export default function FinancialProfilePage() {
       toast({ message: insightsGenerated ? 'Profile saved — new insights generated' : 'Financial profile saved' })
       setResult(insightsGenerated)
       setFinancialProfileSubmitted()
+      setProfileCompleteness(computeCompleteness(form, funds))
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (err) {
       haptic('warning')

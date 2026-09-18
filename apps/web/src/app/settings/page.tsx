@@ -9,6 +9,7 @@ import { useMode } from '@/lib/mode-context'
 import { useAuth } from '@/lib/auth-context'
 import { MODE_CONFIGS } from '@/lib/modes'
 import { haptic } from '@/lib/haptics'
+import { useAppStore } from '@/lib/store'
 import type { AppMode } from '@/lib/modes'
 import { ROLE_LABELS, type FamilyRole } from '@/lib/auth-types'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
@@ -51,6 +52,7 @@ export default function SettingsPage() {
   const router = useRouter()
   const confirm = useConfirm()
   const toast = useToast()
+  const profileCompleteness = useAppStore((s) => s.profileCompleteness)
 
   const [showAddMember, setShowAddMember] = useState(false)
   const [memberName, setMemberName] = useState('')
@@ -545,7 +547,12 @@ export default function SettingsPage() {
           onClick={() => { haptic('light'); router.push('/financial-profile') }}
           chevron
         >
-          <div className="text-base font-medium">Financial Profile</div>
+          <div className="text-base font-medium flex items-center gap-2">
+            Financial Profile
+            {profileCompleteness > 0 && profileCompleteness < 100 && (
+              <span className="text-xs font-semibold text-family-400">{profileCompleteness}%</span>
+            )}
+          </div>
           <div className="text-xs text-ink-tertiary mt-0.5">Income, savings, pension — powers your real readiness scores</div>
         </ListRow>
       </ListSection>

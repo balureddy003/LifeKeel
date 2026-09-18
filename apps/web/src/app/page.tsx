@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { Network, Activity, Lightbulb, ChevronRight, Hand, Star, Target, Bot, Phone, User, FileText, Siren, Search, CalendarClock, X, UserPlus, Sparkles, Check, Upload, Plug, Calculator } from 'lucide-react'
+import { Network, Activity, Lightbulb, ChevronRight, Hand, Star, Target, Bot, Phone, User, FileText, Siren, Search, CalendarClock, X, UserPlus, Sparkles, Check, Upload, Plug, Calculator, Zap } from 'lucide-react'
 import { FamilyRoster } from '@/components/FamilyRoster'
 import { LifeTimeline } from '@/components/LifeTimeline'
 import { ScoreRing, GlassCard, PageHeader, IfAdvanced, Skeleton, Money } from '@/components/Glass'
@@ -428,6 +428,79 @@ function UrgencyBanner() {
   )
 }
 
+// Rotating feature-discovery tip — one per visit, never repeated, dismissible.
+// Stored in localStorage so it persists across sessions.
+const FEATURE_TIPS = [
+  { text: 'Ask Oak anything about your family finances — tap the purple button.', href: '/assistant', cta: 'Try it' },
+  { text: 'Swipe left on an inbox item to dismiss it — you can undo within 5 seconds.', href: '/inbox', cta: 'Open Inbox' },
+  { text: 'Oak can scan your email for renewals and policy changes.', href: '/connect/email', cta: 'Connect email' },
+  { text: 'Upload a will, insurance policy, or bank statement to get insights.', href: '/upload', cta: 'Upload' },
+  { text: 'Run a "What If?" scenario to see how your cover holds up.', href: '/events', cta: 'Explore' },
+  { text: 'Switch to Light mode in Settings under Appearance.', href: '/settings', cta: 'Settings' },
+]
+
+function tipStorageKey(): string {
+  const tenant = typeof window !== 'undefined' ? localStorage.getItem('agentoak_tenant') ?? 'anon' : 'anon'
+  return `agentoak:dismissed-tips:${tenant}`
+}
+
+function FeatureTip() {
+  const [tip, setTip] = useState<typeof FEATURE_TIPS[0] | null>(null)
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(tipStorageKey())
+      const dismissed: number[] = raw ? JSON.parse(raw) : []
+      const available = FEATURE_TIPS.map((t, i) => ({ ...t, idx: i })).filter((t) => !dismissed.includes(t.idx))
+      if (available.length === 0) return
+      setTip(available[0]!)
+    } catch { /* best effort */ }
+  }, [])
+
+  if (!tip) return null
+
+  const dismiss = () => {
+    haptic('light')
+    try {
+      const raw = localStorage.getItem(tipStorageKey())
+      const dismissed: number[] = raw ? JSON.parse(raw) : []
+      const idx = FEATURE_TIPS.indexOf(tip)
+      if (idx >= 0 && !dismissed.includes(idx)) {
+        localStorage.setItem(tipStorageKey(), JSON.stringify([...dismissed, idx]))
+      }
+    } catch { /* best effort */ }
+    setTip(null)
+  }
+
+  return (
+    <AnimatePresence>
+      {tip && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+        >
+          <GlassCard className="p-3.5 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0">
+              <Zap size={16} className="text-family-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-semibold text-ink-tertiary mb-0.5">Did you know?</div>
+              <div className="text-sm text-ink-primary leading-snug">{tip.text}</div>
+              <Link href={tip.href} onClick={() => haptic('light')} className="text-xs font-semibold text-family-400 mt-1 inline-block">
+                {tip.cta}
+              </Link>
+            </div>
+            <button onClick={dismiss} aria-label="Dismiss tip" className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-tertiary active:opacity-60 flex-shrink-0">
+              <X size={16} />
+            </button>
+          </GlassCard>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
 // Apple-style "Getting Started" checklist — replaces the generic empty
 // state when the user has no live data yet.  Each step maps to a real
 // store signal so progress is honest, not decorative.
@@ -511,6 +584,7 @@ export default function HomePage() {
   const retirementInsight = insights.find((i) => i.detector_id === 'family_retirement_gap')
   const openInsightCount = insights.filter((i) => !RESOLVED_INSIGHT_STATES.includes(i.state)).length
   const setCmdkOpen = useAppStore((s) => s.setCmdkOpen)
+  const profileCompleteness = useAppStore((s) => s.profileCompleteness)
 
   if (config.mode === 'child') {
     return <ChildHome />
@@ -594,6 +668,14 @@ export default function HomePage() {
                       ? simpleHomeCopy({ hasLiveData, onTrack: readinessScore >= 70 }).body
                       : 'Your family readiness score reflects the gaps found in your profile so far. Connect more data sources for a complete picture.'}
                   </p>
+                  {profileCompleteness > 0 && profileCompleteness < 100 && (
+                    <Link href="/financial-profile" className="flex items-center gap-2 mt-2 group" onClick={() => haptic('light')}>
+                      <div className="w-16 h-1.5 rounded-full bg-tint/10 overflow-hidden">
+                        <div className="h-full rounded-full bg-family-400 transition-all" style={{ width: `${profileCompleteness}%` }} />
+                      </div>
+                      <span className="text-xs font-semibold text-family-400 group-active:opacity-70">Profile {profileCompleteness}%</span>
+                    </Link>
+                  )}
                 </div>
               </>
             )}
@@ -732,6 +814,8 @@ export default function HomePage() {
           )}
         </GlassCard>
       </motion.div>
+
+      <FeatureTip />
     </div>
   )
 }

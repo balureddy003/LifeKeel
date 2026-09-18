@@ -73,6 +73,8 @@ interface AppState {
   // Financial profile (manual entry — no live investment connector for family app)
   financialProfileSubmitted: boolean
   setFinancialProfileSubmitted: () => void
+  profileCompleteness: number
+  setProfileCompleteness: (pct: number) => void
 
   // Inbox (demo item dismissal persistence)
   dismissedInboxIds: string[]
@@ -186,6 +188,8 @@ export const useAppStore = create<AppState>()(
       // Financial profile
       financialProfileSubmitted: false,
       setFinancialProfileSubmitted: () => set({ financialProfileSubmitted: true }),
+      profileCompleteness: 0,
+      setProfileCompleteness: (pct: number) => set({ profileCompleteness: pct }),
 
       // Inbox (demo item dismissal persistence)
       dismissedInboxIds: [],
@@ -204,6 +208,8 @@ export const useAppStore = create<AppState>()(
         family: state.family,
         mode: state.mode,
         dismissedInboxIds: state.dismissedInboxIds,
+        profileCompleteness: state.profileCompleteness,
+        financialProfileSubmitted: state.financialProfileSubmitted,
       }),
     }
   )

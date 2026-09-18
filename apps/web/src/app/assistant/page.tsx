@@ -24,7 +24,32 @@ function getAIResponse(query: string): string {
   return "Based on the information you've entered, here is a summary from your family's data. This is for informational purposes only — please consult a qualified professional before making financial decisions. Would you like to see the specific numbers from your family's profile?"
 }
 
+// Page-context-aware suggestions — when the user arrives from a specific
+// page, lead with questions relevant to what they were just looking at.
+const CONTEXT_SUGGESTIONS: Record<string, string[]> = {
+  '/inbox': ['Summarize my notifications', 'Any renewals coming up?'],
+  '/family': ['How complete is our family profile?', 'Who still needs to fill in their details?'],
+  '/financial-profile': ['How does my profile compare to recommended coverage?', 'What gaps should I address first?'],
+  '/upload': ['What documents have I uploaded?', 'What documents should I upload next?'],
+  '/events': ['What would happen if I lost my job today?', 'Am I covered for a medical emergency?'],
+  '/life-events': ['What would happen if I lost my job today?', 'Am I covered for a medical emergency?'],
+  '/settings': ['What data does Oak have about my family?'],
+}
+
+function getContextSuggestions(context: string | null): string[] {
+  if (!context) return AI_SUGGESTIONS
+  // Match the longest prefix — /life-events/123 → /life-events
+  const match = Object.keys(CONTEXT_SUGGESTIONS)
+    .filter((k) => context.startsWith(k))
+    .sort((a, b) => b.length - a.length)[0]
+  if (!match) return AI_SUGGESTIONS
+  return [...CONTEXT_SUGGESTIONS[match]!, ...AI_SUGGESTIONS.slice(0, 2)]
+}
+
 export default function AssistantPage() {
+  const [pageContext] = useState<string | null>(
+    () => typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('context') : null,
+  )
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome',
@@ -163,7 +188,7 @@ export default function AssistantPage() {
         <div className="px-4 py-2">
           <div className="text-xs text-ink-tertiary mb-2">Try asking:</div>
           <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar -mx-4 px-4">
-            {AI_SUGGESTIONS.map((s, i) => (
+            {getContextSuggestions(pageContext).map((s, i) => (
               <motion.button
                 key={s}
                 onClick={() => sendMessage(s)}
