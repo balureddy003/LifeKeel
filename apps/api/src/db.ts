@@ -160,6 +160,14 @@ export function getFamilyGroupsCollection(database: Db) {
   return database.collection<Record<string, unknown>>('family_groups')
 }
 
+// PRD-110: a join request exists before the requester has any tenant
+// context (they aren't authenticated yet), so it's looked up directly by
+// id/tenant_id rather than through the tenant-scoped wrapper — same
+// reasoning as family_groups' own raw accessor above.
+export function getFamilyJoinRequestsCollection(database: Db) {
+  return database.collection<Record<string, unknown>>('family_join_requests')
+}
+
 export function getFamilyFinancialProfileCollection(database: Db) {
   return database.collection<Record<string, unknown>>('family_financial_profile')
 }

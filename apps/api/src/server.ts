@@ -77,6 +77,7 @@ import { registerAutomationSettingsRoutes } from './routes/automation-settings.j
 import { registerAccountRoutes } from './routes/account.js'
 import { registerFamilyConnectorRoutes } from './routes/family-connectors.js'
 import { registerFamilyGroupRoutes } from './routes/family-group.js'
+import { registerFamilyJoinRoutes } from './routes/family-join.js'
 import { registerGrowthEventRoutes } from './routes/growth-events.js'
 import { registerFamilyFinancialProfileRoutes } from './routes/family-financial-profile.js'
 import { registerLifeEventRoutes } from './routes/life-events.js'
@@ -820,7 +821,10 @@ app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (request, bo
 // ─── Auth middleware ──────────────────────────────────────────────────────────
 
 app.addHook('onRequest', async (request, reply) => {
-  const open = ['/health', '/engine/health', '/metrics', '/auth/token', '/auth/demo-token', '/auth/signup', '/auth/login', '/auth/sso/', '/auth/google/', '/auth/github/', '/auth/request-password-reset', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/entitlements/plans', '/blog/posts', '/a/', '/why/', '/verify/', '/webhooks/', '/inbound/', '/insights/cleanup-stale-all', '/billing/webhook', '/documentation', '/documentation/json', '/documentation/uiOptions', '/documentation/static', '/growth/events', '/readiness-quiz']
+  // PRD-110: '/family/join' is deliberately NOT a prefix of the organizer-only
+  // '/family/access-requests*' endpoints below — this array is matched by
+  // startsWith, so '/family/join-requests' would have made those public too.
+  const open = ['/health', '/engine/health', '/metrics', '/auth/token', '/auth/demo-token', '/auth/signup', '/auth/login', '/auth/sso/', '/auth/google/', '/auth/github/', '/auth/request-password-reset', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/entitlements/plans', '/blog/posts', '/a/', '/why/', '/verify/', '/webhooks/', '/inbound/', '/insights/cleanup-stale-all', '/billing/webhook', '/documentation', '/documentation/json', '/documentation/uiOptions', '/documentation/static', '/growth/events', '/readiness-quiz', '/family/join']
   if (/^\/connectors\/[^/]+\/oauth\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/exchange/.test(request.url)) return
@@ -1116,6 +1120,7 @@ if (workflowDb) {
   registerAccountRoutes(app, workflowDb)
   registerFamilyConnectorRoutes(app, workflowDb)
   registerFamilyGroupRoutes(app, workflowDb)
+  registerFamilyJoinRoutes(app, workflowDb)
   registerGrowthEventRoutes(app, workflowDb)
   registerFamilyInboxRoutes(app, workflowDb)
   registerAssistantRoutes(app, workflowDb)

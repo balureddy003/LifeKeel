@@ -25,7 +25,7 @@ import { getFamilyGroupsCollection } from '../db.js'
 
 const log = createLogger({ service: 'family-group', version: '0.0.0' })
 
-type FamilyRole = 'organizer' | 'parent' | 'adult' | 'child'
+export type FamilyRole = 'organizer' | 'parent' | 'adult' | 'child'
 // Neither POST /family/members nor PATCH /family/members/:id runtime-checked
 // this — `role` was only ever TypeScript-typed, which doesn't exist at
 // request time, so any string round-tripped straight into the stored
@@ -35,7 +35,13 @@ type FamilyRole = 'organizer' | 'parent' | 'adult' | 'child'
 // exactly the failure mode a clean 400 here should have prevented.
 const VALID_ROLES: readonly FamilyRole[] = ['organizer', 'parent', 'adult', 'child']
 
-interface FamilyMemberDoc {
+// Exported for family-join.ts (PRD-110) — an approved join request pushes a
+// member here with `id` set to the new user's real `users.id`, exactly
+// mirroring how the organizer's own entry is `id: user_id` at family
+// creation below. That's what lets a single "does this authenticated
+// user's id match a roster entry with role 'organizer'" check work for
+// both, with no separate role-linking field needed.
+export interface FamilyMemberDoc {
   id: string
   name: string
   email: string
@@ -44,7 +50,7 @@ interface FamilyMemberDoc {
   joined_at: string
 }
 
-interface FamilyGroupDoc extends Record<string, unknown> {
+export interface FamilyGroupDoc extends Record<string, unknown> {
   id: string
   tenant_id: string
   name: string
@@ -76,7 +82,9 @@ function toResponse(doc: FamilyGroupDoc) {
   }
 }
 
-function generateInviteCode(): string {
+// Exported for family-join.ts (PRD-110): resetting the invite code reuses
+// the exact same generator, not a second drifting implementation.
+export function generateInviteCode(): string {
   return randomBytes(4).toString('hex').toUpperCase().slice(0, 6)
 }
 

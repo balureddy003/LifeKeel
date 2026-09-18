@@ -242,10 +242,45 @@ sign-in), the wizard's roster pre-fill covers the chat answers, and
 onboarding now continues into the Financial Profile — the honest path to
 a first real insight, since no detector can fire on names alone.
 
-**XL 28 — DEFERRED.** Family sharing / secondary-user access: not started,
-by design — the plan itself requires a dedicated PRD first (invite
-acceptance flow, organizer confirmation, second real login, per-member
-permissions cut).
+**XL 28 — SHIPPED.** Family sharing / secondary-user access — scoped as
+[110-family-sharing-secondary-user-access.md](../prd/110-family-sharing-secondary-user-access.md)
+and then implemented end to end. Deliberately narrower than the original
+4-part sketch above: adults only for v1 (child accounts flagged as their
+own, separate consent surface, not bundled in), full-access-only (no
+per-field permission cut yet), and reuses the family's existing,
+already-displayed `invite_code` as a durable, revocable family code
+rather than a parallel single-use-token system — the organizer-approval
+step is what makes it safe, not the code's single-use-ness.
+
+Grounded in the actual schema throughout, not assumed: the `users`
+collection's only uniqueness constraint is on `email`, not `tenant_id` —
+confirmed directly in `auth-users.ts` before writing a line of the new
+route — and the organizer-only guard on the new endpoints is a genuinely
+new check, not a reused one: every existing `/family/*` write (add member,
+remove member, change role) only ever checked `tenant_id`, never role,
+because there was never a second real login in a tenant to distinguish
+from the organizer. `POST /family/join` never creates a `users` row or
+grants any access by itself, no matter what code was entered — only an
+explicit organizer approval does; this is the one property the whole PRD
+exists to have, and it's the first thing the test suite (`family-join.test.ts`,
+14 tests) asserts.
+
+One naming deviation from the original PRD draft, caught and fixed before
+shipping: the draft's `/family/join-requests` would have shared a prefix
+with the public `/family/join` in the server's auth allowlist (which
+matches by `startsWith`), making the organizer-only list/approve/deny
+endpoints public too. Renamed to `/family/access-requests` — zero prefix
+collision, and documented in the PRD itself so the record matches what
+actually shipped.
+
+Verified via the full gate: typecheck (24/24 tasks), lint (clean), and the
+full API suite (only the same pre-existing, Mongo-dependent
+`ml-tenant-isolation` failures — one apparent extra failure mid-session
+traced to a `mongodb-memory-server` port collision with a concurrently-
+running session, confirmed as a flake by re-running that file in
+isolation, not a regression). The Settings UI now makes the existing
+"lets a partner or caregiver join" copy true rather than aspirational —
+the specific gap this whole item was opened to close.
 
 ## Validation pass — 2026-09-19 (Claude)
 
@@ -319,12 +354,23 @@ and unattributed (flagged to confirm rather than silently guessed either
 way) — falling back to the original undifferentiated list whenever no
 policy has a `member_id` on file at all, so households with older data
 see no regression. 3 new tests added (`render-playbook.test.ts`), all
-passing; full typecheck/lint clean. Car/property/medical/travel weren't
-touched — those types are naturally household-wide (car, home never ask
-for a member in the wizard) or already use `resolveEarner`'s separate,
-pre-existing per-member income-protection path, so the same fix doesn't
-apply the same way; worth a follow-up look but not the same severity as
-bereavement.
+passing; full typecheck/lint clean.
+
+Deliberately did **not** apply the same split to `medical`'s
+`check_health_cover`, after checking rather than assuming: bereavement's
+action ("notify the insurer of a death") is intrinsically tied to one
+person's own policy, so excluding others is a pure improvement. Medical's
+health/critical-illness cover often covers *dependents* under one
+policyholder's plan — if the affected person is a child, the relevant
+policy structurally belongs to a parent, not them, so filtering to "only
+the affected member's own attributed policy" would risk hiding the exact
+cover that actually applies. `resolveEarner` already correctly threads
+`affectedMemberId` through this same step for the income-protection part;
+the policy-listing part is right to stay household-wide. Car and
+property/home policies were never in scope for this either — the wizard
+never asks for a member on those types, by design (PRD-110's own
+acceptance criteria). No change made to any of the three; recorded here so
+it reads as a checked-and-declined decision, not an unexamined gap.
 
 All changes this pass verified via a full re-run of typecheck/lint/test
 (unchanged: clean). Live browser verification was not possible this pass —
@@ -333,3 +379,85 @@ weren't reachable from this session's browser tooling; correctness was
 instead verified by matching the exact Tailwind/component patterns already
 proven elsewhere in the same files (the `existingSameType` warning banner's
 styling, `CommandPalette`'s Escape handler).
+
+## Validation pass 2 — 2026-09-19 (Claude)
+
+Swept #17, #27, and the S-tier (8–16), checking each against the actual
+code rather than the implementation log's summary.
+
+**#17 (one-step document-to-insight) and #27 (onboarding continuity)** —
+both solid, no changes needed. #17: `regenerateInsights()` is correctly
+gated on the stored profile parsing as a *complete* `FinancialProfile`
+(never crashes or fires on an upsert-created skeleton), the real `engine`
+is wired at boot (`server.ts`), and the frontend surfaces a clean "N new
+insights generated" with a sensible 0-case fallback. #27: the
+sessionStorage draft-resume correctly discards itself when the signed-in
+account turns out to already have a family (no stale-draft resurrection),
+and the wizard's onboarding pre-fill only carries over the child's *name*
+— never a guessed numeric value, exactly the conservative-pre-fill bar
+set for this item.
+
+**S-tier 8–14, 16**: all confirmed solid on inspection — env-configurable
+support email with an honest not-live-yet fallback (#8), a real
+subscription-status poll after Stripe return (#9), `reportError` wired
+into both `fetchAIResponse` failure paths (#10), `signIn()` now correctly
+throws (not silently swallows) on a genuine family-fetch failure while
+`fetchFamilyGroup()` itself distinguishes "no family yet" from "couldn't
+check" at the source (#11), the OAuth callback keeps the real error
+visible instead of a 2s auto-redirect and reports it (#12), a real
+in-memory retry queue with an `online`-event listener plus a manual retry
+button (#13), a persistent autosave-failure indicator (#14), and the
+public quiz now branded distinctly as "Family Readiness Check," separate
+from the in-app "readiness score" (#16).
+
+**#15 (Investments/Pension merge) — found genuinely incomplete, fixed.**
+The navigation-level fix was real (`familySections.ts`'s `ROLE_BRANCHES`
+no longer lists "Investments" as a clickable row), but the underlying
+`/asset/investments` *route* still fully rendered — same `RetirementDetail`
+component, same data, under a different label — for anyone who reached it
+directly (a stale bookmark, an old in-app link, a search-indexed URL). The
+"two rows, one dataset" problem this item exists to close was still there,
+one layer down. Fixed: `/asset/investments` now redirects to
+`/asset/pension` instead of rendering a duplicate; removed the now-dead
+`investments` entry from `ASSET_META` and its unused `TrendingUp` icon
+import; updated the stale code comment in `assets-data.ts` that claimed
+"nothing navigates there anymore" without accounting for direct URL access.
+
+Verified via a full typecheck/lint/test re-run — a build failure hit
+mid-check (`Cannot read properties of undefined (reading 'call')` while
+prerendering `/`) turned out to be stale `.next` build-cache corruption,
+most likely from the other session's concurrently-running dev server
+writing to the same directory, not a real regression — confirmed by
+clearing `.next` and rebuilding clean. 58/58 web tests still passing.
+
+**#21 (connector sync UI), #22 (audit log viewer), #23 (billing tier
+decision), #24 (orphaned backend cleanup)** — all solid, all genuinely
+"decide and document" rather than silent accumulation. #21: real polling
+while a backfill is in flight, a last-sync-failed banner surfaced from
+`GET /connectors/:id/sync/status`. #22: `GET /audit-log` registered at
+boot, a real paginated viewer translating raw action ids
+(`insight.approve`, `billing.plan_upgraded`, …) into plain-English labels.
+#23: `POST /billing/checkout` now explicitly rejects `growth`/`enterprise`
+with a clear 400 instead of the previous silent path to a Stripe 500 from
+an unconfigured placeholder price id. #24: `settings.ts` (~970 unused
+lines) genuinely deleted; `blog.ts`'s and `case-studies.ts`'s write
+surfaces deliberately parked, not deleted, each with a documented reason
+(blog: `KAIROS_ADMIN_KEY`-gated, unusable without the env var set —
+verified directly, `Boolean(undefined && ...)` short-circuits false
+regardless of header; case-studies: `GET /case-studies` is a live public
+marketing endpoint, deleting the file on spec would remove more than dead
+code).
+
+Found one more real defect while re-reading my own #15 fix from the first
+pass: `RetirementDetail`'s trailing disclaimer ("{label} isn't tracked as
+a separate account yet") made sense when `label` could be "Investments"
+(the actual point being made: "this isn't a real separate account, we're
+reusing pension data") — now that the `investments` branch is gone and
+`label` is always "Pension", the sentence read as self-contradictory
+directly under a "Pension Balance" heading. Simplified to a plain "These
+figures come from your Financial Profile," and dropped the now-unused
+`label` prop entirely. Re-verified clean: typecheck, lint, and 58/58 web
+tests.
+
+This closes out the validation pass on every implemented item (1–27).
+Only #28 (family sharing) remains, deferred by the plan's own design.

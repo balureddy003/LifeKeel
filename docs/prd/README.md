@@ -91,6 +91,15 @@ domain before going wide, prepare-only actions before anything that acts.
    `policies[]` entry, so every policy had to be hand-typed regardless of
    what was uploaded or scanned. Closes the one gap upstream of the whole
    protection-gap detector story. Tier 0.
+10. [110-family-sharing-secondary-user-access.md](110-family-sharing-secondary-user-access.md) —
+    "family" today is one login with a roster attached; the `invite_code`
+    already shown in Settings redeems nowhere. Deliberately narrow v1:
+    adults only (child accounts are their own, separate consent surface),
+    full-access only (no per-field permissions yet), organizer-approval
+    gated the same "prepare, don't auto-execute" way the Act layer's own
+    trust-tier rule requires. The single highest-value, least-built gap
+    in the product — a multiplier on every other journey, not just its
+    own feature.
 
 ## 20x — marketing: the same engine as the growth mechanic
 

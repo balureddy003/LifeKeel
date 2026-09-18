@@ -56,6 +56,10 @@ export type AuditAction =
   | 'billing.credit_pack_purchased'
   | 'account.exported'
   | 'account.deleted'
+  | 'family.join_requested'
+  | 'family.join_approved'
+  | 'family.join_denied'
+  | 'family.invite_code_reset'
 
 export interface AuditEntry {
   tenant_id: string

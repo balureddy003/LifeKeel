@@ -24,9 +24,12 @@ import { recordLedgerEntry } from '../billing/credit-ledger.js'
 // permanently unreachable account marked email_verified. Requires a local
 // part, one '@', and a domain with a dot — catches the obvious cases
 // (missing '@', no domain, a second '@') without over-validating.
-const EMAIL_FORMAT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+export const EMAIL_FORMAT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-interface User {
+// Exported for family-join.ts (PRD-110): approving a join request creates a
+// real users row with this exact shape — password hashing especially must
+// never have a second, drifting implementation.
+export interface User {
   id: string
   email: string
   name: string
@@ -56,7 +59,7 @@ interface ChangePasswordBody { current_password: string; new_password: string }
 interface RequestResetBody { email: string; app?: 'family' | 'studio' | 'kairos' }
 interface ResetPasswordBody { token: string; new_password: string }
 
-const AVATAR_COLORS = ['#f59e0b','#10b981','#3b82f6','#8b5cf6','#ef4444','#06b6d4','#f97316']
+export const AVATAR_COLORS = ['#f59e0b','#10b981','#3b82f6','#8b5cf6','#ef4444','#06b6d4','#f97316']
 
 // Security configuration
 const MAX_FAILED_LOGIN_ATTEMPTS = 5
@@ -67,7 +70,7 @@ function slugify(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'workspace'
 }
 
-function hashPassword(password: string, salt: string): string {
+export function hashPassword(password: string, salt: string): string {
   return scryptSync(password, salt, 32).toString('hex')
 }
 
@@ -75,7 +78,7 @@ function generateEmailVerificationToken(): string {
   return randomBytes(32).toString('hex')
 }
 
-async function getUsersCollection() {
+export async function getUsersCollection() {
   const db = await getDb()
   const col = db.collection<User>('users')
   await col.createIndex({ email: 1 }, { unique: true })

@@ -49,8 +49,8 @@ export const ASSETS: Record<string, AssetProfile> = {
   },
   // 'investments' was removed — it was a second entry over the same
   // pension-backed data /asset/pension already shows, presented as a
-  // distinct account. /asset/investments URLs still resolve (see
-  // AssetProfileClient) but nothing navigates there anymore.
+  // distinct account. /asset/investments now redirects to /asset/pension
+  // (see AssetProfileClient) rather than rendering a duplicate.
   pension: {
     id: 'pension',
     label: 'Pension',
