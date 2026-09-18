@@ -136,6 +136,7 @@ export default function LifeEventsPage() {
 
             {URGENT_TYPES.has(selectedType) && <LifeSafetyNotice />}
 
+
             {existingSameType && (
               <div className="rounded-xl bg-warning/10 border border-warning/20 px-3.5 py-3 mb-4 flex items-start gap-2">
                 <AlertCircle size={15} className="text-warning flex-shrink-0 mt-0.5" />

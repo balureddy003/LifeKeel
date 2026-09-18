@@ -27,6 +27,7 @@ function LifeSafetyNotice() {
   )
 }
 
+
 // Checklist completion is now server-persisted (remediation item 19) —
 // localStorage remains only as an instant-paint cache while the server
 // state loads, and as a last-seen snapshot if the request fails. The
