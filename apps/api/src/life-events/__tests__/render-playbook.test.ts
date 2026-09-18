@@ -69,7 +69,7 @@ describe('PRD-108: renderPlaybook', () => {
     expect(stepWithout).toMatch(/don't have a mortgage on file/i)
   })
 
-  it("bereavement's notify_insurers step lists every policy by provider and type", () => {
+  it("bereavement's notify_insurers step lists every policy by provider and type when nothing is member-attributed", () => {
     const playbook = renderPlaybook('bereavement', makeProfile({
       policies: [
         { type: 'life', provider: 'Aviva', coverage_amount_minor: 10_000_000, monthly_premium_minor: 2000 },
@@ -79,6 +79,41 @@ describe('PRD-108: renderPlaybook', () => {
     const body = playbook.steps.find((s) => s.id === 'notify_insurers')!.body
     expect(body).toContain('Aviva')
     expect(body).toContain('Direct Line')
+  })
+
+  // PRD-110 regression: before this fix, renderBereavementStep didn't even
+  // receive affectedMemberId — a household where one parent's own,
+  // unrelated life insurance existed alongside the deceased's policy would
+  // tell the family to "contact" both in one undifferentiated, urgent-
+  // sounding instruction during the worst week of their life.
+  it("bereavement's notify_insurers step separates the deceased's own policies from other family members' when member_id is on file", () => {
+    const playbook = renderPlaybook('bereavement', makeProfile({
+      policies: [
+        { type: 'life', provider: 'Aviva', coverage_amount_minor: 10_000_000, monthly_premium_minor: 2000, member_id: 'deceased-1' },
+        { type: 'life', provider: 'Legal & General', coverage_amount_minor: 5_000_000, monthly_premium_minor: 1500, member_id: 'surviving-spouse-1' },
+        { type: 'home', provider: 'Direct Line', coverage_amount_minor: 2_000_000, monthly_premium_minor: 500 },
+      ],
+    }), 'deceased-1')
+    const body = playbook.steps.find((s) => s.id === 'notify_insurers')!.body
+
+    // The deceased's own policy reads as the urgent, "contact this" instruction.
+    expect(body).toMatch(/policies on file for the person who passed away.*Aviva/i)
+    // The surviving spouse's own life policy is explicitly called out as NOT needing action.
+    expect(body).toContain("don't need to be touched")
+    expect(body).toContain('Legal & General')
+    // A policy with no member_id at all (home, never asks for one) is flagged
+    // to confirm rather than silently folded into either group.
+    expect(body).toMatch(/not yet linked to a specific person.*Direct Line/i)
+  })
+
+  it("bereavement's notify_insurers step falls back to the undifferentiated list when an affected member is named but no policy is attributed to anyone", () => {
+    const playbook = renderPlaybook('bereavement', makeProfile({
+      policies: [
+        { type: 'life', provider: 'Aviva', coverage_amount_minor: 10_000_000, monthly_premium_minor: 2000 },
+      ],
+    }), 'deceased-1')
+    const body = playbook.steps.find((s) => s.id === 'notify_insurers')!.body
+    expect(body).toBe('Based on your real data, your family\'s policies on file are: Aviva (life). Contact each provider to start a claim or notify them of the death.')
   })
 
   it("disability's check_cover branches correctly on income_protection and critical_illness cover", () => {

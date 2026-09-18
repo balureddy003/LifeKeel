@@ -4,10 +4,28 @@ import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Check, Copy, HelpCircle, Loader2, Mail, PenLine } from 'lucide-react'
+import { ArrowLeft, Check, Copy, HelpCircle, Loader2, Mail, PenLine, ShieldAlert } from 'lucide-react'
 import { GlassCard, GlassButton, PageHeader } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
-import { fetchLifeEvents, prepareLifeEventStepDraft, setLifeEventStepDone, type LifeEvent, type LifeEventPlaybookStep } from '@/lib/api'
+import { fetchLifeEvents, prepareLifeEventStepDraft, setLifeEventStepDone, type LifeEvent, type LifeEventPlaybookStep, type LifeEventType } from '@/lib/api'
+
+// Same reasoning as /life-events's own notice: a user can land here directly
+// (a shared link, a return visit) without ever seeing Emergency Mode's
+// banner, and for these four types everything on this screen is insurance/
+// financial admin, not first response.
+const URGENT_TYPES = new Set<LifeEventType>(['medical', 'car', 'property', 'travel'])
+
+function LifeSafetyNotice() {
+  return (
+    <div className="rounded-xl border border-danger/30 px-3.5 py-3 flex items-start gap-2" style={{ background: 'rgba(248,113,113,0.08)' }}>
+      <ShieldAlert size={15} className="text-danger flex-shrink-0 mt-0.5" />
+      <p className="text-xs leading-relaxed text-ink-secondary">
+        <span className="font-semibold text-ink-primary">If anyone is in immediate danger, call 911</span> (or your
+        local emergency number) now — the steps below are insurance and financial admin, not first response.
+      </p>
+    </div>
+  )
+}
 
 // Checklist completion is now server-persisted (remediation item 19) —
 // localStorage remains only as an instant-paint cache while the server
@@ -34,12 +52,6 @@ function saveDoneIds(eventId: string, doneIds: Set<string>): void {
   } catch {
     // Best-effort — private browsing / storage-full shouldn't break the checklist.
   }
-}
-
-const EVENT_TYPE_LABELS: Record<string, string> = {
-  job_loss: 'Job Loss Response Plan',
-  bereavement: 'Bereavement Response Plan',
-  disability: 'Disability / Critical-Illness Response Plan',
 }
 
 // Tier 1 "prepare, don't send" (PRD-103), reused per-step — a playbook can
@@ -202,10 +214,12 @@ export default function LifeEventPlaybookClient() {
   return (
     <div className="px-5 pt-2 space-y-5">
       <PageHeader
-        title={EVENT_TYPE_LABELS[event.event_type] ?? playbook.title}
+        title={playbook.title}
         backHref="/life-events"
         subtitle="Based on your family's real data"
       />
+
+      {URGENT_TYPES.has(event.event_type) && <LifeSafetyNotice />}
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <GlassCard className="p-5 border-family-500/20">

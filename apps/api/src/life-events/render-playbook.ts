@@ -144,15 +144,51 @@ function renderJobLossStep(
   return ''
 }
 
-function renderBereavementStep(stepId: string, profile: FinancialProfile): string {
+function renderBereavementStep(
+  stepId: string,
+  profile: FinancialProfile,
+  affectedMemberId: string | undefined,
+): string {
   if (stepId === 'notify_insurers') {
     if (profile.policies.length === 0) {
       return "We don't have any policies on file for your family yet — if the person who passed away held any life insurance, health cover, or other policies, gather the provider details and contact each one to start a claim or notify them of the death."
     }
-    const list = profile.policies
-      .map((p) => `${p.provider} (${p.type.replace('_', ' ')})`)
-      .join(', ')
-    return `Based on your real data, your family's policies on file are: ${list}. Contact each provider to start a claim or notify them of the death.`
+
+    const describe = (list: FinancialProfile['policies']) =>
+      list.map((p) => `${p.provider} (${p.type.replace('_', ' ')})`).join(', ')
+
+    // PRD-110's policies[].member_id lets this step separate "notify this
+    // one, it's a death claim" from "this is a different family member's
+    // own policy, leave it alone" — without it, every household policy got
+    // dumped into one urgent-sounding instruction, which meant a family
+    // could be told to "contact" a surviving parent's own unrelated life
+    // insurance in the same breath as the actual claim. Only splits when
+    // an affected member is named AND at least one policy is actually
+    // attributed — otherwise (the common case for older data, or a
+    // household-level report with no specific person) falls back to the
+    // original undifferentiated list rather than guessing.
+    const hasAttribution = affectedMemberId && profile.policies.some((p) => p.member_id)
+    if (!hasAttribution) {
+      return `Based on your real data, your family's policies on file are: ${describe(profile.policies)}. Contact each provider to start a claim or notify them of the death.`
+    }
+
+    const theirs = profile.policies.filter((p) => p.member_id === affectedMemberId)
+    const others = profile.policies.filter((p) => p.member_id && p.member_id !== affectedMemberId)
+    const unattributed = profile.policies.filter((p) => !p.member_id)
+
+    const parts: string[] = []
+    if (theirs.length > 0) {
+      parts.push(`The policies on file for the person who passed away: ${describe(theirs)}. Contact each one to start a claim or notify them of the death.`)
+    } else {
+      parts.push("We don't have any policies on file specifically linked to the person who passed away — if they held life insurance, health cover, or other policies we don't know about, gather the provider details and contact each one.")
+    }
+    if (unattributed.length > 0) {
+      parts.push(`Also on file, not yet linked to a specific person — confirm whether these were theirs: ${describe(unattributed)}.`)
+    }
+    if (others.length > 0) {
+      parts.push(`Other household policies on file (${describe(others)}) belong to other family members and don't need to be touched for this.`)
+    }
+    return parts.join(' ')
   }
 
   if (stepId === 'mortgage_protection_check') {
@@ -266,7 +302,7 @@ function renderComputedStep(
   affectedMemberId: string | undefined,
 ): string {
   if (eventType === 'job_loss') return renderJobLossStep(stepId, profile, affectedMemberId)
-  if (eventType === 'bereavement') return renderBereavementStep(stepId, profile)
+  if (eventType === 'bereavement') return renderBereavementStep(stepId, profile, affectedMemberId)
   if (eventType === 'medical') return renderMedicalStep(stepId, profile, affectedMemberId)
   if (eventType === 'car') return renderCarStep(stepId, profile)
   if (eventType === 'property') return renderPropertyStep(stepId, profile)

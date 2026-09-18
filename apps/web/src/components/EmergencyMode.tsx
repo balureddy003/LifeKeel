@@ -1,8 +1,9 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { HeartCrack, Heart, Car, Plane, Home, ChevronRight, type LucideIcon } from 'lucide-react'
+import { HeartCrack, Heart, Car, Plane, Home, ChevronRight, ShieldAlert, type LucideIcon } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
 import { LIFE_EVENTS } from '@/lib/life-data'
 import { useFocusTrap } from '@/lib/useFocusTrap'
@@ -30,6 +31,20 @@ export function EmergencyMode({
   const containerRef = useFocusTrap<HTMLDivElement>(active)
   const router = useRouter()
 
+  // useFocusTrap only handles Tab-cycling and focus restoration, not
+  // Escape — CommandPalette (the app's other full-screen overlay) has its
+  // own Escape handler for the same reason, so this mirrors that pattern
+  // rather than baking Escape into the shared hook (which would double-fire
+  // there). A stressed user's instinct to hit Escape should work here too.
+  useEffect(() => {
+    if (!active) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onDeactivate()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [active, onDeactivate])
+
   return (
     <AnimatePresence>
       {active && (
@@ -37,13 +52,35 @@ export function EmergencyMode({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[60] flex flex-col"
+          className="fixed inset-0 z-overlay flex flex-col"
           style={{ background: 'rgba(0,0,0,0.95)' }}
           ref={containerRef}
           tabIndex={-1}
         >
+          {/* Life-safety notice — this screen is Oak's crisis entry point, but
+              Oak is a financial/insurance assistant, not emergency services.
+              Every tile below leads into insurance and financial admin steps;
+              a family in real physical danger needs this line before any of
+              that, not after. Shown unconditionally, above the fold, on every
+              entry (Siren button, Cmd+K, elderly tile) — never gated behind a
+              tile choice. */}
+          <div className="px-6 pt-6 safe-area-top">
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-2xl border border-danger/30 px-4 py-3 flex items-start gap-2.5"
+              style={{ background: 'rgba(248,113,113,0.1)' }}
+            >
+              <ShieldAlert size={18} className="text-danger flex-shrink-0 mt-0.5" />
+              <p className="text-sm leading-relaxed text-ink-primary">
+                <span className="font-semibold">If anyone is in immediate danger, call 911 (or your local
+                emergency number) now.</span> Oak can help with the insurance and financial steps after.
+              </p>
+            </motion.div>
+          </div>
+
           {/* Header */}
-          <div className="px-6 pt-12 pb-4 safe-area-top">
+          <div className="px-6 pt-8 pb-4">
             <motion.h1
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -88,9 +125,11 @@ export function EmergencyMode({
             ))}
           </div>
 
-          {/* PRD-108: this is really happening, not a hypothetical to explore
-              — a distinct path into the real, declared-event playbook flow
-              (/life-events), separate from the "What If?" scenarios above. */}
+          {/* Every tile above already leads into the real, tracked /life-events
+              flow (remediation item 18) — so this is no longer "the one real
+              path vs. 5 fake ones," it's the catch-all for something that
+              doesn't fit the 5 tiles above (job loss, disability, or just
+              picking from the full list). Worded accordingly. */}
           <div className="px-6 pt-2 pb-4">
             <motion.button
               onClick={() => {
@@ -102,7 +141,7 @@ export function EmergencyMode({
               className="w-full py-4 rounded-2xl font-semibold text-base text-danger border border-danger/30"
               style={{ background: 'rgba(248,113,113,0.08)' }}
             >
-              This is actually happening
+              Something else — see all event types
             </motion.button>
           </div>
 
