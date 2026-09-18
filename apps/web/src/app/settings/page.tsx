@@ -4,13 +4,16 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { PageHeader, ListSection, ListRow, GlassCard } from '@/components/Glass'
+import { BottomSheet } from '@/components/BottomSheet'
 import { useMode } from '@/lib/mode-context'
 import { useAuth } from '@/lib/auth-context'
 import { MODE_CONFIGS } from '@/lib/modes'
 import { haptic } from '@/lib/haptics'
 import type { AppMode } from '@/lib/modes'
 import { ROLE_LABELS, type FamilyRole } from '@/lib/auth-types'
-import { User, LogOut, Check, Crown, Shield, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle, Calculator, Sparkles } from 'lucide-react'
+import { useConfirm } from '@/components/ConfirmSheetProvider'
+import { isValidEmailFormat } from '@/components/ConversationalOnboarding'
+import { User, LogOut, Check, Crown, Shield, ShieldCheck, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle, Calculator, Sparkles } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 const MODE_ICONS: Record<string, LucideIcon> = {
@@ -34,8 +37,9 @@ const INVITABLE_ROLES: FamilyRole[] = ['parent', 'adult', 'child']
 
 export default function SettingsPage() {
   const { mode, setMode } = useMode()
-  const { user, family, signOut, inviteMember, removeMember, updateMemberRole } = useAuth()
+  const { user, family, signOut, inviteMember, removeMember, updateMemberRole, updateProfile } = useAuth()
   const router = useRouter()
+  const confirm = useConfirm()
 
   const [showAddMember, setShowAddMember] = useState(false)
   const [memberName, setMemberName] = useState('')
@@ -43,6 +47,12 @@ export default function SettingsPage() {
   const [memberRole, setMemberRole] = useState<FamilyRole>('adult')
   const [addingMember, setAddingMember] = useState(false)
   const [addMemberError, setAddMemberError] = useState<string | null>(null)
+
+  const [showEditProfile, setShowEditProfile] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [savingProfile, setSavingProfile] = useState(false)
+  const [editProfileError, setEditProfileError] = useState<string | null>(null)
 
   // Reached from the home dashboard's "Add your partner or a caregiver"
   // banner (?add=1) — open the form immediately instead of making them
@@ -63,6 +73,43 @@ export default function SettingsPage() {
   const handleModeChange = (newMode: AppMode) => {
     haptic('success')
     setMode(newMode)
+  }
+
+  const openEditProfile = () => {
+    haptic('light')
+    setEditName(user?.name ?? '')
+    setEditEmail(user?.email ?? '')
+    setEditProfileError(null)
+    setShowEditProfile(true)
+  }
+
+  const handleSaveProfile = async () => {
+    const name = editName.trim()
+    const email = editEmail.trim()
+    if (!name) {
+      setEditProfileError('Name is required.')
+      return
+    }
+    if (!isValidEmailFormat(email)) {
+      setEditProfileError("That doesn't look like a valid email.")
+      return
+    }
+    haptic('light')
+    setSavingProfile(true)
+    setEditProfileError(null)
+    try {
+      const patch: { name?: string; email?: string } = {}
+      if (name !== user?.name) patch.name = name
+      if (email !== user?.email) patch.email = email
+      if (Object.keys(patch).length > 0) await updateProfile(patch)
+      haptic('success')
+      setShowEditProfile(false)
+    } catch (err) {
+      haptic('warning')
+      setEditProfileError(err instanceof Error ? err.message : 'Could not save your profile. Please try again.')
+    } finally {
+      setSavingProfile(false)
+    }
   }
 
   const resetAddMemberForm = () => {
@@ -99,11 +146,31 @@ export default function SettingsPage() {
         <ListRow
           icon={User}
           value={user?.email}
-          onClick={() => {}}
+          chevron
+          onClick={openEditProfile}
         >
           <div className="text-base font-medium">{user?.name ?? 'User'}</div>
         </ListRow>
       </ListSection>
+
+      {/* How Oak acts on your behalf — the app's own trust-tier model
+          (ARCHITECTURE.md: Tier 1 "prepare, don't send" today, nothing
+          beyond it) was previously only a developer-facing concept. An
+          app pitched as a family's "digital twin" that can draft things on
+          your behalf should say what that boundary actually is, not leave
+          the user to infer it from never having seen it act any other way. */}
+      <GlassCard className="p-4 border-family-500/20 flex items-start gap-3">
+        <div className="w-9 h-9 rounded-xl bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0">
+          <ShieldCheck size={18} className="text-family-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-ink-primary mb-1">How Oak acts on your behalf</div>
+          <p className="text-xs text-ink-tertiary leading-relaxed">
+            Oak can draft messages, checklists, and next steps from your family&apos;s data — but it never sends
+            anything, changes your accounts, or takes action on its own. You always review and approve first.
+          </p>
+        </div>
+      </GlassCard>
 
       {/* Experience Mode */}
       <ListSection title="Experience Mode">
@@ -116,6 +183,7 @@ export default function SettingsPage() {
               key={m}
               icon={ModeIcon}
               onClick={() => handleModeChange(m)}
+              pressed={active}
               value={active ? <Check size={18} className="text-family-400" /> : null}
             >
               <div className="text-left">
@@ -146,9 +214,15 @@ export default function SettingsPage() {
                   </span>
                   {m.role !== 'organizer' && (
                     <button
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation()
-                        if (!window.confirm(`Remove ${m.name} from your family? This can't be undone.`)) return
+                        const ok = await confirm({
+                          title: `Remove ${m.name}?`,
+                          message: `They'll lose access to the family's financial profile. This can't be undone.`,
+                          confirmLabel: 'Remove',
+                          destructive: true,
+                        })
+                        if (!ok) return
                         haptic('warning')
                         removeMember(m.id).catch(() => haptic('warning'))
                       }}
@@ -184,6 +258,7 @@ export default function SettingsPage() {
             placeholder="Name"
             value={memberName}
             onChange={(e) => setMemberName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
             className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
           />
           <input
@@ -191,6 +266,7 @@ export default function SettingsPage() {
             placeholder="Email (optional)"
             value={memberEmail}
             onChange={(e) => setMemberEmail(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
             className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
           />
 
@@ -216,7 +292,7 @@ export default function SettingsPage() {
           </div>
 
           {addMemberError && (
-            <div className="flex items-start gap-2 text-xs text-danger">
+            <div role="status" aria-live="polite" className="flex items-start gap-2 text-xs text-danger">
               <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
               <span>{addMemberError}</span>
             </div>
@@ -289,6 +365,60 @@ export default function SettingsPage() {
         <LogOut size={18} />
         Sign Out
       </motion.button>
+
+      <BottomSheet open={showEditProfile} onClose={() => setShowEditProfile(false)} label="Edit profile">
+        <div className="px-5 pb-6 pt-2">
+          <div className="text-base font-bold text-ink-primary mb-4">Edit profile</div>
+          <div className="space-y-3">
+            <label className="block">
+              <div className="text-xs text-ink-tertiary mb-1.5">Name</div>
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && !savingProfile && handleSaveProfile()}
+                className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+              />
+            </label>
+            <label className="block">
+              <div className="text-xs text-ink-tertiary mb-1.5">Email</div>
+              <input
+                type="email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && !savingProfile && handleSaveProfile()}
+                className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+              />
+            </label>
+          </div>
+
+          {editProfileError && (
+            <div role="status" aria-live="polite" className="flex items-start gap-2 text-xs text-danger mt-3">
+              <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
+              <span>{editProfileError}</span>
+            </div>
+          )}
+
+          <div className="flex gap-2 mt-5">
+            <motion.button
+              whileTap={{ scale: 0.96 }}
+              onClick={() => { haptic('light'); setShowEditProfile(false) }}
+              disabled={savingProfile}
+              className="flex-1 glass text-ink-primary font-semibold rounded-xl py-3 text-sm disabled:opacity-40"
+            >
+              Cancel
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.96 }}
+              onClick={handleSaveProfile}
+              disabled={!editName.trim() || savingProfile}
+              className="flex-1 bg-family-500 text-white font-semibold rounded-xl py-3 text-sm disabled:opacity-40 flex items-center justify-center gap-1.5"
+            >
+              {savingProfile ? <Loader2 size={14} className="animate-spin" /> : 'Save'}
+            </motion.button>
+          </div>
+        </div>
+      </BottomSheet>
     </div>
   )
 }

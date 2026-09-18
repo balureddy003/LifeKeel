@@ -90,15 +90,26 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
                 active ? 'bg-family-500/10 border-family-500/30' : 'border-white/[0.06]'
               }`}
             >
-              <div
-                className={`w-9 h-9 mx-auto mb-1.5 rounded-full flex items-center justify-center text-xs font-bold ${
-                  active ? 'bg-family-500/20 text-family-300' : 'bg-white/5 text-ink-tertiary'
-                }`}
-              >
-                {initial || <User size={16} />}
+              <div className="relative w-9 h-9 mx-auto mb-1.5">
+                <div
+                  className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold ${
+                    active ? 'bg-family-500/20 text-family-300' : 'bg-white/5 text-ink-tertiary'
+                  }`}
+                >
+                  {initial || <User size={16} />}
+                </div>
+                {m.status === 'pending' && (
+                  <div
+                    className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-warning border-2 border-[#08080c]"
+                    title="Invite pending"
+                    aria-label="Invite pending"
+                  />
+                )}
               </div>
               <div className="text-xs font-semibold text-ink-primary truncate">{m.name}</div>
-              <div className="text-[10px] text-ink-tertiary truncate">{ROLE_LABELS[m.role]}</div>
+              <div className={`text-[10px] truncate ${m.status === 'pending' ? 'text-warning font-medium' : 'text-ink-tertiary'}`}>
+                {m.status === 'pending' ? 'Pending' : ROLE_LABELS[m.role]}
+              </div>
             </button>
           )
         })}
@@ -115,20 +126,26 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
             const Icon = s.icon
             const color = CATEGORY_COLOR[s.category]
             const isAsset = s.kind === 'asset'
+            // Every row here is a drill-down into real data — asset rows
+            // into /asset/[id], category rows into the Financial Profile
+            // step that edits them — so every row gets the same tappable
+            // treatment and chevron instead of some looking identical to
+            // others but silently not responding to a tap.
+            const dest = isAsset ? `/asset/${s.navId}` : s.href
             return (
               <div
                 key={s.id}
-                onClick={isAsset ? () => { haptic('light'); router.push(`/asset/${s.navId}`) } : undefined}
-                role={isAsset ? 'button' : undefined}
-                tabIndex={isAsset ? 0 : undefined}
-                onKeyDown={isAsset ? (e) => {
+                onClick={dest ? () => { haptic('light'); router.push(dest) } : undefined}
+                role={dest ? 'button' : undefined}
+                tabIndex={dest ? 0 : undefined}
+                onKeyDown={dest ? (e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     if (e.key === ' ') e.preventDefault()
                     haptic('light')
-                    router.push(`/asset/${s.navId}`)
+                    router.push(dest)
                   }
                 } : undefined}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 bg-white/[0.03] ${isAsset ? 'active:opacity-70 cursor-pointer' : ''}`}
+                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 bg-white/[0.03] ${dest ? 'active:opacity-70 cursor-pointer' : ''}`}
               >
                 <div
                   className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
@@ -139,10 +156,10 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold text-ink-primary truncate">{s.label}</div>
                   {s.story && !isAsset && (
-                    <div className="text-[11px] text-ink-tertiary truncate">{s.story}</div>
+                    <div className="text-[11px] text-ink-tertiary line-clamp-2">{s.story}</div>
                   )}
                 </div>
-                {isAsset && <ChevronRight size={14} className="text-ink-tertiary flex-shrink-0" />}
+                {dest && <ChevronRight size={14} className="text-ink-tertiary flex-shrink-0" />}
               </div>
             )
           })}

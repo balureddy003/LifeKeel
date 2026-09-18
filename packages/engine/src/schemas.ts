@@ -94,7 +94,16 @@ export const TriggerSchema = z.object({
   confidence_breakdown: ConfidenceBreakdownSchema,
   detector_id: z.string(),
   rule_id: z.string(),
-  state: z.enum(['identified', 'sent', 'completed', 'dismissed', 'archived', 'resolved', 'snoozed']).default('identified'),
+  /**
+   * 'approved': a human has approved this insight's actions but execution
+   * hasn't been confirmed to have finished yet — durable, so a crash
+   * between approval and execution still records the decision.
+   * 'execution_failed': execution ran and definitively/ambiguously failed
+   * (see ActionReceipt.outcome_reason) — stays open/actionable so a human
+   * sees it and can retry via POST /insights/:id/retry-execution, unlike
+   * 'completed' which only applies once execution actually finishes.
+   */
+  state: z.enum(['identified', 'sent', 'approved', 'completed', 'execution_failed', 'dismissed', 'archived', 'resolved', 'snoozed']).default('identified'),
   created_at: z.date().default(() => new Date()),
   /**
    * PRD-107: set when a later detector evaluation no longer reproduces

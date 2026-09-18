@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, HelpCircle, House, TrendingUp, Landmark, Loader2, ChevronRight } from 'lucide-react'
+import { ArrowLeft, HelpCircle, House, TrendingUp, Landmark, ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { PageHeader, Money, GlassCard } from '@/components/Glass'
+import { PageHeader, Money, Skeleton } from '@/components/Glass'
 import { fetchFinancialProfile, type FinancialProfile } from '@/lib/api'
 
 const ASSET_META: Record<string, { label: string; icon: LucideIcon }> = {
@@ -15,7 +15,7 @@ const ASSET_META: Record<string, { label: string; icon: LucideIcon }> = {
 }
 
 function money(minor: number): string {
-  return `$${Math.round(minor / 100).toLocaleString()}`
+  return `£${Math.round(minor / 100).toLocaleString()}`
 }
 
 export default function AssetProfileClient() {
@@ -50,9 +50,17 @@ export default function AssetProfileClient() {
       <PageHeader title={meta.label} backHref="/family" />
 
       {profile === undefined ? (
-        <GlassCard className="p-5 flex items-center justify-center">
-          <Loader2 size={20} className="animate-spin text-ink-tertiary" />
-        </GlassCard>
+        <div className="card">
+          <div className="flex items-center gap-2 mb-1">
+            <Icon size={18} className="text-ink-secondary" />
+            <Skeleton className="h-3.5 w-32" />
+          </div>
+          <Skeleton className="h-7 w-40 mt-1" />
+          <div className="mt-3 pt-3 border-t border-haze/20 space-y-1.5">
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-2/3" />
+          </div>
+        </div>
       ) : params.id === 'home' ? (
         <HomeDetail profile={profile} icon={Icon} />
       ) : params.id === 'pension' || params.id === 'investments' ? (

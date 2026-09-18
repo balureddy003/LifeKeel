@@ -1,7 +1,7 @@
 'use client'
 
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useId } from 'react'
 import { Bot, FileText, TrendingUp, Landmark, Calculator, Shield, GraduationCap, Wallet, Briefcase, Home, Paperclip, ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { GlassCard, MoneyText } from './Glass'
@@ -112,6 +112,10 @@ const sourceTypeColor: Record<string, string> = {
 
 export function AIAnswerCard({ query }: { query: string }) {
   const [showSources, setShowSources] = useState(false)
+  // Multiple AIAnswerCards render on one page (each chat message gets its
+  // own) — a static id would collide across instances and break
+  // aria-controls resolution to just the first one on the page.
+  const sourcesPanelId = useId()
   const [liveAnswer, setLiveAnswer] = useState<AIAnswer | null>(null)
   const [checkedLive, setCheckedLive] = useState(false)
 
@@ -203,6 +207,8 @@ export function AIAnswerCard({ query }: { query: string }) {
         <div className="border-t border-white/5 pt-3">
           <button
             onClick={() => { setShowSources(!showSources); haptic('light') }}
+            aria-expanded={showSources}
+            aria-controls={sourcesPanelId}
             className="flex items-center gap-2 text-xs text-ink-tertiary"
           >
             <span className="font-semibold flex items-center gap-1">
@@ -215,6 +221,7 @@ export function AIAnswerCard({ query }: { query: string }) {
           <AnimatePresence>
             {showSources && (
               <motion.div
+                id={sourcesPanelId}
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}

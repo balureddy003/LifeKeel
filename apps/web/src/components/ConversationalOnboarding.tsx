@@ -144,8 +144,25 @@ export function ConversationalOnboarding() {
   // state copy exists only to drive the disabled UI.
   const submittingRef = useRef(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const textInputRef = useRef<HTMLInputElement>(null)
   const { user, signUp, createFamily, inviteMember, updateEmail } = useAuth()
   const router = useRouter()
+
+  // Live-verification finding: the text input only had autoFocus, which
+  // fires once on mount — this same <input> element is reused for every
+  // question in the conversation (no key forcing a remount), so it never
+  // regained focus after the first answer. Confirmed live: after
+  // submitting "What's your name?", document.activeElement fell to <body>
+  // even though the next question had already appeared — every subsequent
+  // answer required manually re-clicking back into the input, breaking a
+  // keyboard-only flow through what's meant to read as a continuous chat.
+  // Re-focusing whenever `submitting` drops back to false covers both the
+  // disabled-during-submit -> enabled cycle and the very first render
+  // (submitting starts false), so autoFocus below is now redundant but
+  // harmless to leave as a fallback for the instant before this effect runs.
+  useEffect(() => {
+    if (!submitting) textInputRef.current?.focus()
+  }, [submitting])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -153,6 +170,46 @@ export function ConversationalOnboarding() {
 
   const currentQuestion = ONBOARDING_QUESTIONS[questionIndex]
   const progress = (questionIndex / ONBOARDING_QUESTIONS.length) * 100
+
+  // Same focus-loss bug as the text input above, for the other input type:
+  // 'boolean'/'choice' questions render a fresh set of buttons per
+  // question (different choices, so a fresh key each time) — the button
+  // just clicked unmounts and focus fell back to <body>. Confirmed live
+  // answering "married" -> "No, single" straight into the next boolean
+  // question ("Do you have children?"): document.activeElement was <body>
+  // even though the new Yes/No buttons had already rendered. Unlike the
+  // text input (one persistent element to refocus), each question's
+  // choices are genuinely new, so this focuses the first one — the same
+  // "new required input" category as the financial-profile wizard fix.
+  //
+  // Second live-verification finding, on the first version of this fix:
+  // questionIndex updates synchronously in handleAnswer, but submitting
+  // only flips back to false ~300ms later — so this effect fired while
+  // the choice buttons were still disabled={submitting} and .focus() on a
+  // disabled button is a silent no-op. Depending on `submitting` too (and
+  // gating on !submitting) makes it retry once the buttons are actually
+  // focusable, instead of firing once too early and never again.
+  const firstChoiceRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (!submitting && (currentQuestion?.type === 'boolean' || currentQuestion?.type === 'choice')) {
+      firstChoiceRef.current?.focus()
+    }
+  }, [questionIndex, currentQuestion?.type, submitting])
+
+  // Same category as firstChoiceRef above, for the third input type:
+  // 'multi-text' (children's names) also renders fresh on arrival with
+  // nothing auto-focused — confirmed live transitioning children=Yes into
+  // "What are your children's names?": document.activeElement was <body>
+  // even though the "Child 1 name" input had already rendered. Only
+  // focuses the FIRST input on question arrival, not on every keystroke —
+  // multiValues changes on every character typed, so this intentionally
+  // does not depend on multiValues (that would fight the user's own typing).
+  const firstMultiInputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (!submitting && currentQuestion?.type === 'multi-text') {
+      firstMultiInputRef.current?.focus()
+    }
+  }, [questionIndex, currentQuestion?.type, submitting])
 
   const addAIMessage = (text: string) => {
     setMessages((prev) => [...prev, { id: `ai-${Date.now()}`, role: 'ai', text }])
@@ -367,8 +424,11 @@ export function ConversationalOnboarding() {
         <GrowingGraph members={members} />
       </div>
 
-      {/* Chat messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-2 space-y-3 no-scrollbar">
+      {/* Chat messages — role="log" (same fix as /assistant) so a screen
+          reader announces each new question/confirmation as it arrives,
+          instead of the conversation silently advancing underneath the
+          user. */}
+      <div ref={scrollRef} role="log" aria-label="Onboarding conversation with Oak" className="flex-1 overflow-y-auto px-4 py-2 space-y-3 no-scrollbar">
         {messages.map((msg) => (
           <motion.div
             key={msg.id}
@@ -398,9 +458,10 @@ export function ConversationalOnboarding() {
       <div className="px-4 py-3 safe-area-bottom">
         {currentQuestion?.type === 'boolean' || currentQuestion?.type === 'choice' ? (
           <div className="space-y-2">
-            {currentQuestion.choices?.map((choice) => (
+            {currentQuestion.choices?.map((choice, i) => (
               <motion.button
                 key={choice}
+                ref={i === 0 ? firstChoiceRef : undefined}
                 whileTap={{ scale: 0.97 }}
                 onClick={() => handleAnswer(choice)}
                 disabled={submitting}
@@ -415,6 +476,7 @@ export function ConversationalOnboarding() {
             {multiValues.map((val, i) => (
               <div key={i} className="flex gap-2">
                 <input
+                  ref={i === 0 ? firstMultiInputRef : undefined}
                   type="text"
                   placeholder={`Child ${i + 1} name`}
                   value={val}
@@ -449,6 +511,7 @@ export function ConversationalOnboarding() {
         ) : (
           <div className="flex gap-2 items-end">
             <input
+              ref={textInputRef}
               type="text"
               placeholder={currentQuestion?.hint ?? 'Type your answer...'}
               value={textValue}

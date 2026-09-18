@@ -136,6 +136,9 @@ export function CommandPalette() {
             onClick={(e) => e.stopPropagation()}
             ref={containerRef}
             tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Command palette"
             className="relative w-full max-w-lg glass-strong rounded-3xl overflow-hidden shadow-2xl outline-none"
           >
             {/* Search input */}
@@ -147,13 +150,18 @@ export function CommandPalette() {
                 placeholder="Type a command or search..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                role="combobox"
+                aria-expanded={filtered.length > 0}
+                aria-controls="cmdk-listbox"
+                aria-autocomplete="list"
+                aria-activedescendant={filtered[selectedIndex] ? `cmdk-option-${filtered[selectedIndex].id}` : undefined}
                 className="flex-1 bg-transparent text-base text-ink-primary placeholder:text-ink-tertiary outline-none"
               />
               <kbd className="text-[10px] text-ink-tertiary glass rounded-md px-2 py-1">ESC</kbd>
             </div>
 
             {/* Results */}
-            <div className="max-h-[50vh] overflow-y-auto no-scrollbar py-2">
+            <div id="cmdk-listbox" role="listbox" aria-label="Command results" className="max-h-[50vh] overflow-y-auto no-scrollbar py-2">
               {filtered.length === 0 && (
                 <div className="px-5 py-8 text-center text-sm text-ink-tertiary">
                   No results for "{query}"
@@ -173,6 +181,9 @@ export function CommandPalette() {
                       return (
                         <button
                           key={cmd.id}
+                          id={`cmdk-option-${cmd.id}`}
+                          role="option"
+                          aria-selected={isActive}
                           onClick={() => {
                             cmd.action()
                             setCmdkOpen(false)

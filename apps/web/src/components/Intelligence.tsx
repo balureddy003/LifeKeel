@@ -83,7 +83,7 @@ export function TrustLadder() {
           <Check size={16} /> All caught up — nothing left on the ladder.
         </div>
       ) : (
-        <div className="space-y-1">
+        <div id="trust-ladder-steps" className="space-y-1">
           {visibleSteps.map((step, i) => {
             const Icon = step.icon
             const isDone = step.status === 'done'
@@ -159,6 +159,8 @@ export function TrustLadder() {
         <motion.button
           whileTap={{ scale: 0.97 }}
           onClick={() => { haptic('light'); setExpanded((v) => !v) }}
+          aria-expanded={expanded}
+          aria-controls="trust-ladder-steps"
           className="w-full mt-3 pt-3 border-t border-white/5 text-xs font-semibold text-ink-tertiary flex items-center justify-center gap-1"
         >
           {expanded ? 'Show less' : `See all ${steps.length} steps`}

@@ -26,6 +26,14 @@ import { getFamilyGroupsCollection } from '../db.js'
 const log = createLogger({ service: 'family-group', version: '0.0.0' })
 
 type FamilyRole = 'organizer' | 'parent' | 'adult' | 'child'
+// Neither POST /family/members nor PATCH /family/members/:id runtime-checked
+// this — `role` was only ever TypeScript-typed, which doesn't exist at
+// request time, so any string round-tripped straight into the stored
+// member. Confirmed live: a member persisted with an out-of-enum role value
+// has no ROLE_LABELS/ROLE_BRANCHES entry on the frontend, so their card
+// silently renders with no label and no sections ("Nothing set up") —
+// exactly the failure mode a clean 400 here should have prevented.
+const VALID_ROLES: readonly FamilyRole[] = ['organizer', 'parent', 'adult', 'child']
 
 interface FamilyMemberDoc {
   id: string
@@ -152,6 +160,9 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
       const { tenant_id } = req.authContext
       const { name, email, role } = req.body ?? ({} as { name: string; email: string; role: FamilyRole })
       if (!name?.trim() || !role) return reply.status(400).send({ error: 'Member name and role required' })
+      if (!VALID_ROLES.includes(role)) {
+        return reply.status(400).send({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` })
+      }
 
       const member: FamilyMemberDoc = {
         id: randomUUID(),
@@ -179,6 +190,9 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
       const { tenant_id } = req.authContext
       const { role } = req.body ?? ({} as { role: FamilyRole })
       if (!role) return reply.status(400).send({ error: 'Role required' })
+      if (!VALID_ROLES.includes(role)) {
+        return reply.status(400).send({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` })
+      }
 
       const result = (await groupsFor(tenant_id).findOneAndUpdate(
         { 'members.id': req.params.id },

@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Loader2, AlertCircle, CheckCircle2, Sparkles, FileQuestion } from 'lucide-react'
-import { PageHeader, GlassCard, GlassButton, EmptyState } from '@/components/Glass'
+import { PageHeader, GlassCard, GlassButton, EmptyState, Skeleton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { CATEGORY_ICONS, CATEGORY_LABELS } from '@/lib/document-categories'
 import {
@@ -17,7 +17,7 @@ import {
 } from '@/lib/api'
 
 function money(minor: number): string {
-  return `$${Math.round(minor / 100).toLocaleString()}`
+  return `£${Math.round(minor / 100).toLocaleString()}`
 }
 
 function fieldLabel(key: string): string {
@@ -63,11 +63,24 @@ export default function DocumentDetailClient() {
 
   if (doc === undefined) {
     return (
-      <div className="px-5 pt-2">
+      <div className="px-5 pt-2 pb-10 space-y-4">
         <PageHeader title="Document" backHref="/upload" />
-        <div className="flex justify-center py-16">
-          <Loader2 size={28} className="animate-spin text-family-400" />
-        </div>
+        <GlassCard className="p-4 flex items-center gap-3">
+          <Skeleton className="h-10 w-10 rounded-2xl flex-shrink-0" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-3.5 w-40" />
+            <Skeleton className="h-3 w-28" />
+          </div>
+        </GlassCard>
+        <GlassCard className="p-4 space-y-2.5">
+          <Skeleton className="h-3.5 w-32 mb-1" />
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex items-center justify-between gap-3">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+          ))}
+        </GlassCard>
       </div>
     )
   }
@@ -118,7 +131,7 @@ export default function DocumentDetailClient() {
 
       <AnimatePresence mode="wait">
         {applied ? (
-          <motion.div key="applied" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}>
+          <motion.div key="applied" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} role="status" aria-live="polite">
             <GlassCard className="p-4 border-success/20 flex items-start gap-3">
               <CheckCircle2 size={20} className="text-success flex-shrink-0 mt-0.5" />
               <div className="text-sm text-ink-secondary flex-1">
@@ -146,7 +159,7 @@ export default function DocumentDetailClient() {
                 ))}
               </div>
               {error && (
-                <div className="flex items-start gap-2 mb-3 text-xs text-danger">
+                <div role="status" aria-live="polite" className="flex items-start gap-2 mb-3 text-xs text-danger">
                   <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
                   {error}
                 </div>

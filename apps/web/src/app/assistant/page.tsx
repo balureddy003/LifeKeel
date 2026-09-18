@@ -34,11 +34,24 @@ export default function AssistantPage() {
   ])
   const [input, setInput] = useState('')
   const [thinking, setThinking] = useState(false)
+  // Live-verification finding: a real answer can take 30+ seconds and the
+  // only feedback was three static dots — long enough that a real user
+  // (and this agent, at first) reads it as a dead button. Rotating text
+  // makes the wait legible without promising a specific time.
+  const [thinkingText, setThinkingText] = useState('Oak is thinking...')
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, thinking])
+
+  useEffect(() => {
+    if (!thinking) return
+    setThinkingText('Oak is thinking...')
+    const t1 = setTimeout(() => setThinkingText('Checking your family’s financial profile...'), 5000)
+    const t2 = setTimeout(() => setThinkingText('Still working — this can take a little longer for detailed questions...'), 15000)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  }, [thinking])
 
   const sendMessage = async (text: string) => {
     if (!text.trim()) return
@@ -86,7 +99,13 @@ export default function AssistantPage() {
     <div className="flex flex-col h-[calc(100vh-80px)]">
       <PageHeader title="Oak" subtitle="Ask me anything about your family" />
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-2 space-y-3 no-scrollbar">
+      {/* Live-verification finding: new messages appeared with no signal
+          to screen readers — a blind/low-vision user had no way to know
+          Oak had answered unless they manually re-navigated to this list.
+          role="log" is the ARIA role built for exactly this (a chronological
+          message transcript), implying a polite live-region announcement
+          of each addition without needing separate aria-live plumbing. */}
+      <div ref={scrollRef} role="log" aria-label="Conversation with Oak" className="flex-1 overflow-y-auto px-5 py-2 space-y-3 no-scrollbar">
         {messages.map((msg) => (
           <motion.div
             key={msg.id}
@@ -123,8 +142,8 @@ export default function AssistantPage() {
             animate={{ opacity: 1 }}
             className="flex justify-start"
           >
-            <div className="glass rounded-2xl px-4 py-3">
-              <div className="flex gap-1">
+            <div className="glass rounded-2xl px-4 py-3 flex items-center gap-3">
+              <div className="flex gap-1 flex-shrink-0">
                 {[0, 1, 2].map((i) => (
                   <motion.span
                     key={i}
@@ -134,6 +153,7 @@ export default function AssistantPage() {
                   />
                 ))}
               </div>
+              <span className="text-xs text-ink-tertiary">{thinkingText}</span>
             </div>
           </motion.div>
         )}

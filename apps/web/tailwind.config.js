@@ -13,7 +13,15 @@ module.exports = {
           200: '#c4c0ff',
           300: '#a8a0ff',
           400: '#8b80f8',
-          500: '#7c6ef0',
+          // Was #7c6ef0 — 3.93:1 for white text on this, the app's
+          // primary CTA fill (GlassButton, Continue, Send, Save &
+          // Generate Insights, etc. — 15 files), below WCAG AA's 4.5:1
+          // for normal-size text. Only ever used as a background/border
+          // (text-family-500 doesn't exist in the app; text uses the
+          // lighter family-400 against dark surfaces instead), so
+          // darkening it can't regress contrast the other direction.
+          // Same hue/saturation, darkened just enough for 4.52:1.
+          500: '#7061ef',
           600: '#6b5ce0',
           700: '#5a4dd0',
           800: '#4a3eb0',
@@ -29,7 +37,14 @@ module.exports = {
         ink: {
           primary: '#f5f5f7',
           secondary: '#a0a0b0',
-          tertiary: '#6b6b80',
+          // Was #6b6b80 — 3.85:1 against surface-0 (#08080c), below WCAG AA's
+          // 4.5:1 for normal text. ink-tertiary is used almost exclusively
+          // at text-xs/text-sm (captions, timestamps, disclaimers) across
+          // the whole app, well under the "large text" size that would
+          // allow the lower 3:1 threshold, so this was a real, systemic
+          // failure, not a borderline judgment call. Same hue/saturation,
+          // lightened just enough for 4.84:1.
+          tertiary: '#7b7b91',
         },
         haze: {
           DEFAULT: '#2a2a35',

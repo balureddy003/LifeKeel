@@ -76,7 +76,11 @@ export const LIFE_EVENTS: LifeEvent[] = [
 ]
 
 export const AI_SUGGESTIONS = [
-  'Where is my travel insurance?',
+  // Was "Where is my travel insurance?" — travel isn't a recordable policy
+  // type anywhere in the product (policies[].type is life/income_protection/
+  // health/critical_illness/car/home), so the one suggestion most likely to
+  // be tapped first promised an answer Oak structurally can't give.
+  "What's my emergency fund status?",
   'What happens if I lose my job?',
   'Are my children fully protected?',
   'Can we retire at 55?',

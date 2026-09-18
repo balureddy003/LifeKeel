@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { Mail, CheckCircle2, ArrowLeft } from 'lucide-react'
@@ -12,6 +12,17 @@ export default function RequestPasswordResetPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
+
+  // Submitting swaps the entire page content — form to a "Check your
+  // email" confirmation screen — with nothing else on the page for a
+  // screen-reader user to anchor on (the button they just activated is
+  // gone along with everything around it). Moving focus to the new
+  // heading gives both an announcement and a stable landmark, the same
+  // pattern used for financial-profile's step transitions.
+  const sentHeadingRef = useRef<HTMLHeadingElement>(null)
+  useEffect(() => {
+    if (sent) sentHeadingRef.current?.focus()
+  }, [sent])
 
   const handleSubmit = async () => {
     if (!email.trim()) return
@@ -40,7 +51,7 @@ export default function RequestPasswordResetPage() {
         >
           <CheckCircle2 size={32} className="text-success" />
         </motion.div>
-        <h1 className="text-2xl font-bold mb-2">Check your email</h1>
+        <h1 ref={sentHeadingRef} tabIndex={-1} className="text-2xl font-bold mb-2 outline-none">Check your email</h1>
         <p className="text-sm text-ink-tertiary max-w-xs mb-8">
           If an account exists for <span className="text-ink-primary font-medium">{email}</span>, we&apos;ve sent a link to reset your password. It expires in 1 hour.
         </p>
@@ -78,7 +89,7 @@ export default function RequestPasswordResetPage() {
       </div>
 
       {error && (
-        <p className="text-sm text-danger text-center mb-4">{error}</p>
+        <p role="status" aria-live="polite" className="text-sm text-danger text-center mb-4">{error}</p>
       )}
 
       <motion.button

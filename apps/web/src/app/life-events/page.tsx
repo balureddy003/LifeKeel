@@ -105,7 +105,7 @@ export default function LifeEventsPage() {
               {submitting ? <Loader2 size={18} className="animate-spin" /> : null}
               <span>{submitting ? 'Building your plan…' : 'Get my plan'}</span>
             </GlassButton>
-            {error && <p className="text-sm text-danger mt-3">{error}</p>}
+            {error && <p role="status" aria-live="polite" className="text-sm text-danger mt-3">{error}</p>}
 
             <button
               onClick={() => { setSelectedType(null); setAffectedMemberId('') }}

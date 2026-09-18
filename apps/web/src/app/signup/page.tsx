@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Network } from 'lucide-react'
+import { Network, Check, X } from 'lucide-react'
 import { GoogleIcon } from '@/components/GoogleIcon'
 import { PasswordInput } from '@/components/PasswordInput'
 import { useAuth } from '@/lib/auth-context'
@@ -85,6 +85,7 @@ export default function SignUpPage() {
             placeholder="Your name"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSignUp()}
             autoComplete="name"
             className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
           />
@@ -97,6 +98,7 @@ export default function SignUpPage() {
             placeholder="Email address"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSignUp()}
             autoComplete="email"
             className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
           />
@@ -108,13 +110,30 @@ export default function SignUpPage() {
             placeholder="Password (min. 8 characters)"
             value={password}
             onChange={setPassword}
+            onKeyDown={(e) => e.key === 'Enter' && handleSignUp()}
             autoComplete="new-password"
           />
+          {/* Live-verification finding: the only feedback for a too-short
+              password was the Create Account button staying disabled, with
+              no visible reason beyond the static label — easy to miss,
+              especially for a first-time or less tech-savvy user. This
+              updates as they type instead of only failing silently at
+              submit. */}
+          {password.length > 0 && (
+            <div
+              role="status"
+              aria-live="polite"
+              className={`flex items-center gap-1.5 mt-1.5 px-1 text-xs ${password.length >= 8 ? 'text-success' : 'text-ink-tertiary'}`}
+            >
+              {password.length >= 8 ? <Check size={12} /> : <X size={12} />}
+              {password.length >= 8 ? 'Password length looks good' : `${8 - password.length} more character${8 - password.length === 1 ? '' : 's'} needed`}
+            </div>
+          )}
         </div>
       </div>
 
       {error && (
-        <p className="text-sm text-danger text-center mb-4">{error}</p>
+        <p role="status" aria-live="polite" className="text-sm text-danger text-center mb-4">{error}</p>
       )}
 
       <motion.button

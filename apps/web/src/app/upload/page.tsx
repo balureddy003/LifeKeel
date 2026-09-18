@@ -143,6 +143,8 @@ export default function UploadPage() {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
+            role="status"
+            aria-live="polite"
           >
             <GlassCard className="p-3.5 border-danger/20 flex items-start gap-2">
               <AlertCircle size={16} className="text-danger flex-shrink-0 mt-0.5" />

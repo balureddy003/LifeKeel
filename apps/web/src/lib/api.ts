@@ -28,11 +28,16 @@ export interface FamilyInsight {
 
 // Real engine output (packages/engine's Trigger/Insight schema) has no flat
 // `confidence` field — it lives at confidence_breakdown.combined_score — and
-// its terminal states are 'completed' | 'dismissed' | 'archived' | 'resolved'
-// (PRD-107 — auto-retracted when a later evaluation no longer reproduces the
-// condition, distinct from an explicit dismiss/approve), not 'approved'.
-// This adapts that shape to the flat one the rest of this app reads, instead
-// of every call site re-deriving it (or silently getting NaN).
+// its resolved (no-longer-open) states are 'approved' | 'completed' |
+// 'dismissed' | 'archived' | 'resolved' ('resolved' is PRD-107 — auto-retracted
+// when a later evaluation no longer reproduces the condition, distinct from an
+// explicit dismiss/approve; 'approved' means a human has decided even while
+// action execution is still pending/in-flight). This adapts that shape to the
+// flat one the rest of this app reads, instead of every call site re-deriving
+// it (or silently getting NaN). Deliberately excludes 'execution_failed' — an
+// insight whose approved actions failed to execute should keep surfacing as
+// open/actionable so a human notices and can retry via
+// POST /insights/:id/retry-execution.
 interface RawInsight {
   id: string
   detector_id: string
@@ -47,7 +52,7 @@ interface RawInsight {
   created_at: string
 }
 
-export const RESOLVED_INSIGHT_STATES = ['completed', 'dismissed', 'archived', 'resolved']
+export const RESOLVED_INSIGHT_STATES = ['approved', 'completed', 'dismissed', 'archived', 'resolved']
 
 function adaptInsight(raw: RawInsight): FamilyInsight {
   return {
@@ -187,10 +192,16 @@ export async function fetchAIResponse(query: string): Promise<{ content: string;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = `Bearer ${token}`
 
+    // Live-verification finding: an Azure OpenAI-backed answer can take
+    // 40+ seconds with no server-side timeout, during which the UI had
+    // nothing to show but static dots — reads as a dead button. This caps
+    // the wait so a slow provider degrades to the labeled local fallback
+    // instead of hanging indefinitely.
     const res = await fetch(`${base}/assistant/ask`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ query }),
+      signal: AbortSignal.timeout(30_000),
     })
     if (res.ok) {
       const data = (await res.json()) as { content?: string; isLive?: boolean }

@@ -43,6 +43,7 @@ export interface MemberSection {
   icon: LucideIcon
   kind: 'asset' | 'category'
   navId?: string
+  href?: string
   story?: string
   category: GraphCategory
 }
@@ -70,6 +71,18 @@ const BRANCH_CATEGORY: Record<string, GraphCategory> = {
   Target: 'goals',
   GraduationCap: 'goals',
   Home: 'wealth',
+}
+
+// Which Financial Profile step edits this branch's data — lets every
+// category row link somewhere real instead of some rows being tappable
+// (asset rows, which link to /asset/[id]) and others just sitting inert
+// with no visual cue why, which read as an unexplained inconsistency.
+const BRANCH_STEP: Record<string, string> = {
+  Briefcase: 'household',
+  ShieldCheck: 'household',
+  HeartPulse: 'household',
+  Target: 'retirement',
+  GraduationCap: 'education',
 }
 
 const ASSET_ITEM_IDS: Record<string, string> = {
@@ -142,11 +155,13 @@ export function getMemberSections(member: FamilyMember, policies: FinancialProfi
     const story = isProtectionBranch && policies.length > 0
       ? `${policies.length} ${policies.length === 1 ? 'policy' : 'policies'}: ${[...new Set(policies.map((p) => POLICY_TYPE_LABELS[p.type]))].join(', ')}${renewalDays !== null ? ` · renews in ${renewalDays} ${renewalDays === 1 ? 'day' : 'days'}` : ''}`
       : `Includes ${branch.items.join(', ')}`
+    const step = BRANCH_STEP[branch.icon]
     sections.push({
       id: `branch-${member.id}-${branch.label}`,
       label: branch.label,
       icon: BRANCH_ICONS[branch.icon] ?? Briefcase,
       kind: 'category',
+      href: step ? `/financial-profile?step=${step}` : '/financial-profile',
       story,
       category: cat,
     })

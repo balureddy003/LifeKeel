@@ -94,7 +94,12 @@ export async function getReceiptsCollection(): Promise<Collection<ActionReceipt>
   await receipts.createIndex({ executed_at: -1 })
   await receipts.createIndex({ outcome: 1 })
   await receipts.createIndex({ tenant_id: 1, executed_at: -1 })
-  
+  // Idempotency key for per-action execution receipts (action-executor.ts):
+  // payload_hash is derived from {insight_id, action_label, action_type}, so
+  // re-executing the same insight (e.g. via POST /insights/:id/retry-execution)
+  // can never double-dispatch an action that already succeeded.
+  await receipts.createIndex({ tenant_id: 1, insight_id: 1, payload_hash: 1 }, { unique: true }).catch(() => {})
+
   return receipts
 }
 

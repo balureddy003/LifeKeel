@@ -8,7 +8,7 @@
  * — not just that a `config` object with the right shape exists.
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import Fastify from 'fastify'
 import rateLimit from '@fastify/rate-limit'
 import { Engine } from '@agentoak/engine'
@@ -16,6 +16,22 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { registerReadinessQuizRoutes } from '../readiness-quiz.js'
 import { registerAssistantRoutes } from '../assistant.js'
+
+// assistant.ts reads insights via the global db.ts singleton (getInsightsCollection),
+// not the `db` passed into registerAssistantRoutes — without this mock it tries a
+// real MongoDB connection and hangs for serverSelectionTimeoutMS (5s), timing out
+// the test. Same pattern as assistant.test.ts.
+vi.mock('../../db.js', () => ({
+  getInsightsCollection: vi.fn(async () => ({
+    find: () => ({
+      sort: () => ({
+        limit: () => ({
+          toArray: async () => [],
+        }),
+      }),
+    }),
+  })),
+}))
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DETECTORS_DIR = path.resolve(__dirname, '../../../../../detectors')

@@ -4,15 +4,16 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Home, Inbox, Users, AlertTriangle, Settings, WifiOff, Siren, Loader2, Network } from 'lucide-react'
+import { Home, Inbox, Users, AlertTriangle, Settings, WifiOff, Siren, Network, Bot } from 'lucide-react'
 import { useNetworkStatus } from '@/lib/useNetworkStatus'
 import { useAuth } from '@/lib/auth-context'
 import { useMode } from '@/lib/mode-context'
-import { MeshGradient } from './Glass'
+import { MeshGradient, Skeleton, SkeletonCard } from './Glass'
 import { EmergencyMode } from './EmergencyMode'
 import { CommandPalette } from './CommandPalette'
 import { DisclaimerFooter } from './Disclaimer'
 import { MarketingLanding } from './MarketingLanding'
+import { NavRail } from './NavRail'
 import { haptic } from '@/lib/haptics'
 
 const NAV_ITEMS = [
@@ -46,7 +47,7 @@ function LiquidTabBar() {
   }, [pathname])
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-30 glass-nav safe-area-bottom">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 glass-nav safe-area-bottom">
       <div className="max-w-md mx-auto px-4 pb-1 pt-1.5 relative">
         <div className="flex items-center justify-around h-16 relative">
           {NAV_ITEMS.map((item, i) => {
@@ -74,12 +75,23 @@ function LiquidTabBar() {
                   <item.icon
                     size={22}
                     strokeWidth={active ? 2.5 : 2}
-                    color={active ? '#7c6ef0' : '#6b6b80'}
+                    // Inactive color is a hardcoded literal (not the
+                    // text-ink-tertiary Tailwind class) so it silently drifted
+                    // out of sync when ink.tertiary was fixed for contrast
+                    // elsewhere — confirmed live via a contrast sweep on this
+                    // exact nav: 3.85:1 against the dark surface, below WCAG
+                    // AA's 4.5:1. Matches ink.tertiary's current value now.
+                    // (Active color is a separate literal, not this token —
+                    // left as-is: it already passes at 5.09:1, and syncing it
+                    // to the current, deliberately-darkened family-500 token
+                    // would drop it to 4.42:1, since that token was tuned for
+                    // white-text-on-purple-background, a different pairing.)
+                    color={active ? '#7c6ef0' : '#7b7b91'}
                   />
                 </motion.div>
                 <motion.span
                   className="text-[10px] font-semibold relative z-10"
-                  animate={{ color: active ? '#7c6ef0' : '#6b6b80' }}
+                  animate={{ color: active ? '#7c6ef0' : '#7b7b91' }}
                 >
                   {item.label}
                 </motion.span>
@@ -101,6 +113,8 @@ function OfflineBanner() {
           initial={{ y: -60, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -60, opacity: 0 }}
+          role="status"
+          aria-live="polite"
           className="fixed top-0 left-0 right-0 z-50 glass safe-area-top px-4 py-2 flex items-center justify-center gap-2"
         >
           <WifiOff size={16} className="text-warning flex-shrink-0" />
@@ -170,6 +184,38 @@ function EmergencyButton() {
   )
 }
 
+// The AI assistant — one of the product's two named differentiators — had
+// no persistent entry point anywhere in the app. The only way in was the
+// header search icon opening a Cmd+K-style command palette that displays
+// desktop keyboard-shortcut hints ("G A") to a touch-only mobile user who
+// can't use either. A component for exactly this (AIFloatingButton.tsx)
+// already existed in the repo — unused, imported by nothing — but it
+// answered from a local hardcoded lookup table, not the real grounded
+// PRD-101 endpoint /assistant/page.tsx correctly calls. Rather than
+// resurrect a second, wrong chat implementation, this reuses the one real
+// implementation by linking straight to it.
+function AskOakButton({ stacked }: { stacked: boolean }) {
+  const router = useRouter()
+  return (
+    <motion.button
+      onClick={() => {
+        haptic('light')
+        router.push('/assistant')
+      }}
+      whileTap={{ scale: 0.9 }}
+      className={`fixed right-4 z-40 w-12 h-12 rounded-full flex items-center justify-center ${stacked ? 'bottom-52' : 'bottom-32'}`}
+      style={{
+        background: 'linear-gradient(135deg, #8b80f8, #6b5ce0)',
+        border: '1px solid rgba(255,255,255,0.2)',
+        boxShadow: '0 12px 24px -6px rgba(0,0,0,0.55), 0 8px 20px rgba(139,128,248,0.3)',
+      }}
+      aria-label="Ask Oak"
+    >
+      <Bot size={20} color="#fff" />
+    </motion.button>
+  )
+}
+
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, family } = useAuth()
   const pathname = usePathname()
@@ -188,8 +234,23 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 size={40} className="animate-spin text-family-400" />
+      <div className="max-w-md md:max-w-xl lg:max-w-2xl mx-auto px-5 pt-6 pb-20 space-y-5">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-6 w-32" />
+          <Skeleton className="h-9 w-9 rounded-full" />
+        </div>
+        <SkeletonCard lines={2} />
+        <div className="space-y-2">
+          {[0, 1].map((i) => (
+            <div key={i} className="rounded-2xl border border-white/[0.05] bg-white/[0.03] p-4 flex items-center gap-3">
+              <Skeleton className="h-10 w-10 rounded-2xl flex-shrink-0" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-3.5 w-2/3" />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     )
   }
@@ -287,37 +348,66 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const showNav = isAuthenticated && family && !isAuthRoute
   const showEmergency = showNav && pathname !== '/assistant' && config.showEmergencyButton
+  const showAskOak = showNav && pathname !== '/assistant'
 
-  const bottomPadding = showEmergency ? 'pb-32' : showNav ? 'pb-20' : ''
-  // The Emergency button floats fixed at bottom-32 right-4 (a 48px circle),
-  // independent of scroll position — without a matching permanent gutter,
-  // any list row that happens to render in that band sits underneath it and
-  // gets its text/tap-target covered, not just during a scroll gesture but
-  // at rest on first load. Reserving the space here (rather than hunting
-  // down every list row across every page) guarantees it never happens.
-  const emergencyGutter = showEmergency ? 'pr-16' : ''
+  // Below md, LiquidTabBar owns the bottom band and this reserves scroll
+  // room for it. At md+ NavRail replaces it (a left rail, no bottom band),
+  // so only a small resting gutter is needed there — not the full
+  // bottom-bar-sized one. When both floating buttons stack (Ask Oak above
+  // Emergency), the reserved band needs to be taller than either alone.
+  const bottomPadding =
+    showEmergency && showAskOak ? 'pb-56 md:pb-10' :
+    showEmergency || showAskOak ? 'pb-32 md:pb-10' :
+    showNav ? 'pb-20 md:pb-10' : ''
+  // The floating button(s) sit fixed bottom-right, independent of scroll
+  // position — without a matching permanent gutter, any list row that
+  // happens to render in that band sits underneath and gets its text/tap
+  // target covered, not just during a scroll gesture but at rest on first
+  // load. Reserving the space here (rather than hunting down every list row
+  // across every page) guarantees it never happens.
+  const emergencyGutter = showEmergency || showAskOak ? 'pr-16' : ''
 
-  // Every other screen in this app is deliberately phone-width even in a
-  // desktop browser — that's the right call for an authenticated app shell
-  // with a bottom tab bar. The public marketing page is the one screen most
-  // likely to actually be opened on a laptop (a link from email, a search
-  // result), so it manages its own responsive width instead of inheriting
-  // the phone-width wrapper, which otherwise left it stranded as a narrow
-  // column in a sea of empty space on anything wider than a phone.
+  // The public marketing page manages its own responsive width (it's the
+  // screen most likely to actually be opened on a laptop — a link from
+  // email, a search result) rather than inheriting the phone-width wrapper.
+  // The authenticated app stays phone-width at compact, but widens in step
+  // with NavRail appearing at md+ — a deliberately modest scale-up (not
+  // "use all the space"), so existing pages built at phone-width proportions
+  // don't suddenly stretch into unreadably wide line lengths. railGutter
+  // reserves NavRail's own width so the content centers in what's left of
+  // the viewport, not in the full viewport underneath the rail.
   const isMarketingPage = !isAuthenticated && pathname === '/'
-  const widthClass = isMarketingPage ? '' : 'max-w-md mx-auto'
+  const widthClass = isMarketingPage ? '' : 'max-w-md md:max-w-xl lg:max-w-2xl mx-auto'
+  const railGutter = showNav ? 'md:pl-[88px]' : ''
 
   return (
     <div className="min-h-screen text-ink-primary">
+      {/* Live-verification finding: at md+ widths NavRail renders before
+          page content in DOM order, so a keyboard user tabs through the
+          logo + all 5 nav links (6 stops) on every single page before
+          reaching anything the page actually says — confirmed by tracing
+          real Tab presses. Standard fix (WCAG 2.4.1 Bypass Blocks): a
+          link, first in tab order, hidden until focused, that jumps
+          straight to the content landmark below. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[200] focus:rounded-xl focus:bg-family-500 focus:px-4 focus:py-2.5 focus:text-sm focus:font-semibold focus:text-white"
+      >
+        Skip to content
+      </a>
       <MeshGradient />
       <OfflineBanner />
       <ModeEffects />
-      <div className={[widthClass, bottomPadding, emergencyGutter, 'pt-2 relative z-10'].filter(Boolean).join(' ')}>
-        <AuthGate>{children}</AuthGate>
-        {showNav && <DisclaimerFooter />}
+      {showNav && <NavRail />}
+      <div className={[railGutter, 'min-h-screen'].filter(Boolean).join(' ')}>
+        <div id="main-content" tabIndex={-1} className={[widthClass, bottomPadding, emergencyGutter, 'pt-2 relative z-10 outline-none'].filter(Boolean).join(' ')}>
+          <AuthGate>{children}</AuthGate>
+          {showNav && <DisclaimerFooter />}
+        </div>
       </div>
       {showNav && <LiquidTabBar />}
       {showEmergency && <EmergencyButton />}
+      {showAskOak && <AskOakButton stacked={!!showEmergency} />}
       <EmergencyMode
         active={emergencyActive}
         onDeactivate={deactivateEmergency}

@@ -8,7 +8,12 @@
  *   1. Parse each action string into an ActionIntent (type + params)
  *   2. Look up the tenant's connected connector for that action type
  *   3. Execute via ConnectorActionExecutor (already wired in platform)
- *   4. Record each execution as an ActionReceipt in MongoDB
+ *   4. Record each execution as an ActionReceipt in MongoDB — idempotently:
+ *      a receipt's payload_hash (insight + action content) is unique per
+ *      tenant+insight, so re-running execute() for the same insight (e.g.
+ *      via POST /insights/:id/retry-execution after a partial failure)
+ *      skips any action that already has an 'executed'/'execution_skipped'
+ *      receipt and only re-dispatches the ones that previously failed.
  *   5. Return a summary of succeeded / failed actions
  *
  * Supported action types (keyword → intent):
@@ -36,9 +41,10 @@
  * finding was about.
  */
 
-import type { Db } from 'mongodb'
+import type { Db, Collection } from 'mongodb'
 import type { Insight } from '@agentoak/engine'
-import { randomUUID } from 'node:crypto'
+import type { ActionReceipt, ActionReceiptOutcome } from '@agentoak/workflows'
+import { randomUUID, createHash } from 'node:crypto'
 
 export type ActionType =
   | 'send_email'
@@ -52,17 +58,7 @@ export interface ActionIntent {
   params: Record<string, unknown>
 }
 
-export interface ActionReceipt {
-  id: string
-  insight_id: string
-  tenant_id: string
-  action_label: string
-  action_type: ActionType
-  status: 'success' | 'failed' | 'skipped' | 'dry_run'
-  executed_at: Date
-  error?: string
-  dry_run: boolean
-}
+export type { ActionReceipt }
 
 export interface ExecutionSummary {
   insight_id: string
@@ -70,6 +66,21 @@ export interface ExecutionSummary {
   succeeded: number
   failed: number
   skipped: number
+}
+
+/**
+ * Classifies a dispatch failure by retryability, mirroring the distinction
+ * ConnectorActionExecutor (@agentoak/workflows) already models for
+ * connector calls: a 4xx or a "not connected"/config error is definite —
+ * retrying won't help until the underlying cause is fixed — while a 5xx,
+ * timeout, or network error is ambiguous and may be worth retrying as-is.
+ */
+function classifyDispatchError(err: unknown): Extract<ActionReceiptOutcome, 'execution_failed' | 'execution_ambiguous'> {
+  const message = err instanceof Error ? err.message : String(err)
+  const statusMatch = message.match(/\b([1-5]\d{2})\b/)
+  if (statusMatch) return Number(statusMatch[1]) >= 500 ? 'execution_ambiguous' : 'execution_failed'
+  if (/timeout|ETIMEDOUT|ECONNRESET|network/i.test(message)) return 'execution_ambiguous'
+  return 'execution_failed'
 }
 
 // ── Action intent classifier ──────────────────────────────────────────────────
@@ -92,13 +103,16 @@ function classifyAction(label: string): ActionType {
 // ── ActionExecutor ────────────────────────────────────────────────────────────
 
 export class ActionExecutor {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private col: any
+  private col: Collection<ActionReceipt>
 
   constructor(private readonly db: Db) {
-    this.col = db.collection('action_receipts')
+    this.col = db.collection<ActionReceipt>('action_receipts')
     this.col.createIndex({ insight_id: 1 }).catch(() => {})
     this.col.createIndex({ tenant_id: 1, executed_at: -1 }).catch(() => {})
+    // Idempotency key — see db.ts's getReceiptsCollection for the canonical
+    // creation; duplicated here defensively since ActionExecutor can be
+    // constructed with its own injected Db before that path ever runs.
+    this.col.createIndex({ tenant_id: 1, insight_id: 1, payload_hash: 1 }, { unique: true }).catch(() => {})
   }
 
   async execute(
@@ -118,17 +132,14 @@ export class ActionExecutor {
         dryRun,
       })
       receipts.push(receipt)
-      // Awaited — a receipt that only exists in the HTTP response and never
-      // reaches the DB is an audit-trail gap, not just a slow write.
-      await this.col.insertOne(receipt)
     }
 
     return {
       insight_id: insight.id,
       receipts,
-      succeeded: receipts.filter(r => r.status === 'success' || r.status === 'dry_run').length,
-      failed:    receipts.filter(r => r.status === 'failed').length,
-      skipped:   receipts.filter(r => r.status === 'skipped').length,
+      succeeded: receipts.filter(r => r.outcome === 'executed' || r.outcome === 'execution_skipped').length,
+      failed:    receipts.filter(r => r.outcome === 'execution_failed' || r.outcome === 'execution_ambiguous').length,
+      skipped:   receipts.filter(r => r.outcome === 'execution_skipped').length,
     }
   }
 
@@ -146,7 +157,24 @@ export class ActionExecutor {
     dryRun: boolean
   }): Promise<ActionReceipt> {
     const { insight, tenantId, intent, dryRun } = opts
-    const base: Omit<ActionReceipt, 'status' | 'error'> = {
+    const payloadHash = createHash('sha256')
+      .update(JSON.stringify({ insight_id: insight.id, action_label: intent.label, action_type: intent.type }))
+      .digest('hex')
+
+    // Idempotency check: an 'executed'/'execution_skipped' receipt for this
+    // exact action already exists (e.g. this is a retry-execution call) —
+    // don't re-dispatch a side effect that already happened. A prior
+    // 'execution_failed'/'execution_ambiguous' receipt is superseded below,
+    // since that's exactly the case this retry path exists to resolve.
+    const existing = await this.col.findOne({ tenant_id: tenantId, insight_id: insight.id, payload_hash: payloadHash })
+    if (existing && (existing.outcome === 'executed' || existing.outcome === 'execution_skipped')) {
+      return existing
+    }
+    if (existing) {
+      await this.col.deleteOne({ id: existing.id })
+    }
+
+    const base: Omit<ActionReceipt, 'outcome' | 'outcome_reason'> = {
       id:           randomUUID(),
       insight_id:   insight.id,
       tenant_id:    tenantId,
@@ -154,17 +182,37 @@ export class ActionExecutor {
       action_type:  intent.type,
       executed_at:  new Date(),
       dry_run:      dryRun,
+      payload_hash: payloadHash,
     }
 
-    if (dryRun) return { ...base, status: 'dry_run' }
-    if (intent.type === 'log_only') return { ...base, status: 'skipped' }
+    let receipt: ActionReceipt
+    if (dryRun) {
+      receipt = { ...base, outcome: 'execution_skipped', outcome_reason: 'dry_run' }
+    } else if (intent.type === 'log_only') {
+      receipt = { ...base, outcome: 'execution_skipped', outcome_reason: 'log_only' }
+    } else {
+      try {
+        await this.dispatch(intent, insight, tenantId)
+        receipt = { ...base, outcome: 'executed' }
+      } catch (err) {
+        receipt = { ...base, outcome: classifyDispatchError(err), outcome_reason: String(err) }
+      }
+    }
 
+    // Awaited — a receipt that only exists in the HTTP response and never
+    // reaches the DB is an audit-trail gap, not just a slow write. A
+    // duplicate-key race here (concurrent retry) means another call already
+    // recorded this action — defer to whatever it wrote.
     try {
-      await this.dispatch(intent, insight, tenantId)
-      return { ...base, status: 'success' }
+      await this.col.insertOne(receipt)
     } catch (err) {
-      return { ...base, status: 'failed', error: String(err) }
+      if ((err as { code?: number }).code === 11000) {
+        const winner = await this.col.findOne({ tenant_id: tenantId, insight_id: insight.id, payload_hash: payloadHash })
+        if (winner) return winner
+      }
+      throw err
     }
+    return receipt
   }
 
   // ── Dispatch to connector ─────────────────────────────────────────────────────

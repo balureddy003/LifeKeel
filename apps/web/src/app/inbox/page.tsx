@@ -1,16 +1,19 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { Bot, Info, Home, Landmark, Wallet, Plane, CreditCard, Car, Loader2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { GlassCard, PageHeader, EmptyState, MoneyText, Skeleton } from '@/components/Glass'
+import { PullToRefresh } from '@/components/PullToRefresh'
+import { SwipeableRow } from '@/components/SwipeableRow'
 import { haptic } from '@/lib/haptics'
 import { INBOX_ITEMS } from '@/lib/onboarding-data'
 import type { InboxItem } from '@/lib/onboarding-data'
 import { fetchInboxItems, dismissInboxItem, scanEmailInbox } from '@/lib/api'
 import { useAppStore } from '@/lib/store'
+import { formatRelativeDate } from '@/lib/format'
 
 const INBOX_ICONS: Record<string, LucideIcon> = {
   '1': Home,
@@ -51,6 +54,22 @@ export default function InboxPage() {
   const [dismissingId, setDismissingId] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
   const emailConnected = connectedConnectors.includes('email')
+
+  // Live-verification finding: "Dismiss" (and the expanded panel's action
+  // button) removes the row the user just pressed — including the button
+  // itself — from the DOM entirely. Confirmed live with a real click:
+  // document.activeElement fell to <body> afterward, with nothing telling
+  // a keyboard/screen-reader user where the dismissed item went or that
+  // anything happened. A stable, always-present live region that both
+  // receives focus and announces which item was dismissed covers this
+  // regardless of how many items remain (including down to zero, where
+  // EmptyState takes over below it).
+  const announceRef = useRef<HTMLDivElement>(null)
+  const [announcement, setAnnouncement] = useState('')
+  const announceDismissal = (subject: string) => {
+    setAnnouncement(`${subject} dismissed.`)
+    announceRef.current?.focus()
+  }
 
   const loadInbox = useCallback(async () => {
     const result = await fetchInboxItems()
@@ -97,31 +116,36 @@ export default function InboxPage() {
       dismissInboxItem(item.id).then(() => {
         setItems((prev) => prev.filter((i) => i.id !== item.id))
         setDismissingId(null)
+        announceDismissal(item.subject)
       })
     } else {
       dismissInboxItemLocal(item.id)
       setItems((prev) => prev.filter((i) => i.id !== item.id))
       setDismissingId(null)
+      announceDismissal(item.subject)
     }
   }
 
-  const handleDismiss = (id: string) => {
+  const handleDismiss = (item: InboxItem) => {
     haptic('light')
     setExpandedId(null)
-    setDismissingId(id)
+    setDismissingId(item.id)
     if (isLive) {
-      dismissInboxItem(id).then(() => {
-        setItems((prev) => prev.filter((i) => i.id !== id))
+      dismissInboxItem(item.id).then(() => {
+        setItems((prev) => prev.filter((i) => i.id !== item.id))
         setDismissingId(null)
+        announceDismissal(item.subject)
       })
     } else {
-      dismissInboxItemLocal(id)
-      setItems((prev) => prev.filter((i) => i.id !== id))
+      dismissInboxItemLocal(item.id)
+      setItems((prev) => prev.filter((i) => i.id !== item.id))
       setDismissingId(null)
+      announceDismissal(item.subject)
     }
   }
 
   return (
+    <PullToRefresh onRefresh={loadInbox}>
     <div className="px-5 pt-2 space-y-4">
       <PageHeader
         title="Inbox"
@@ -227,6 +251,10 @@ export default function InboxPage() {
         </div>
       )}
 
+      <div ref={announceRef} tabIndex={-1} role="status" aria-live="polite" className="sr-only outline-none">
+        {announcement}
+      </div>
+
       {/* Inbox items */}
       <div className="space-y-2">
         {items.length === 0 ? (
@@ -250,12 +278,20 @@ export default function InboxPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.15 + i * 0.06 }}
             >
+              {/* Not `interactive` — that prop's own whileTap gesture on
+                  this GlassCard's motion.div, nested directly inside
+                  SwipeableRow's drag="x" motion.div, was winning Framer's
+                  gesture-recognition race and blocking the parent's drag
+                  from ever registering (confirmed live: taps worked, drags
+                  never did, on a plain, correctly-configured drag prop). */}
+              <SwipeableRow onDismiss={() => handleDismiss(item)} disabled={isExpanded || dismissingId === item.id}>
               <GlassCard
                 className="overflow-hidden"
-                interactive
               >
                 <button
                   onClick={() => handleTap(item.id)}
+                  aria-expanded={isExpanded}
+                  aria-controls={`inbox-item-${item.id}-panel`}
                   className="w-full p-4 flex items-start gap-3 text-left"
                 >
                   <div className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: `${priorityColor(item.priority)}15` }}>
@@ -270,7 +306,7 @@ export default function InboxPage() {
                       {!item.read && (
                         <span className="w-2 h-2 rounded-full" style={{ background: color }} />
                       )}
-                      <span className="text-xs text-ink-tertiary ml-auto">{item.date}</span>
+                      <span className="text-xs text-ink-tertiary ml-auto">{formatRelativeDate(item.date)}</span>
                     </div>
                     <div className={`text-sm font-semibold ${item.read ? 'text-ink-secondary' : 'text-ink-primary'}`}>
                       {item.subject}
@@ -291,6 +327,7 @@ export default function InboxPage() {
                 <AnimatePresence>
                   {isExpanded && (
                     <motion.div
+                      id={`inbox-item-${item.id}-panel`}
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
@@ -317,7 +354,7 @@ export default function InboxPage() {
                           </motion.button>
                           <motion.button
                             whileTap={{ scale: 0.95 }}
-                            onClick={() => handleDismiss(item.id)}
+                            onClick={() => handleDismiss(item)}
                             disabled={dismissingId === item.id}
                             className="glass rounded-2xl px-4 py-3 text-sm font-semibold text-ink-tertiary disabled:opacity-50"
                           >
@@ -329,6 +366,7 @@ export default function InboxPage() {
                   )}
                 </AnimatePresence>
               </GlassCard>
+              </SwipeableRow>
             </motion.div>
           )
         })
@@ -343,5 +381,6 @@ export default function InboxPage() {
         </p>
       </div>
     </div>
+    </PullToRefresh>
   )
 }

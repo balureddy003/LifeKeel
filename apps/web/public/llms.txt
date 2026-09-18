@@ -1,0 +1,52 @@
+# Agent Oak
+
+> Agent Oak is a family finance and preparedness app: a guided, step-by-step
+> response plan for job loss, medical emergencies, retirement, and other life
+> events — built from a family's own data, not generic advice. Informational
+> and educational only; not financial, investment, tax, or legal advice, and
+> not a substitute for professional emergency services.
+
+Agent Oak is free to start, with no credit card required. It is not an
+autonomous financial agent — it does not move money, execute trades, or take
+action on a family's behalf without a human approving each step.
+
+## Core features (free)
+
+- Emergency Mode — a one-tap, guided checklist for a specific crisis (medical
+  emergency, job loss, bereavement, disability), not a generic FAQ.
+- "What happens if...?" scenarios — a specific answer built from what the
+  family has told Oak, not a canned response.
+- Family Readiness Score — a snapshot across protection, wealth, goals, and
+  savings, read from the family's own data: https://kairos-trellis.web.app/readiness
+- Document upload and secure storage for insurance policies, pension
+  statements, and other financial documents.
+- Connect any email provider (Gmail, Outlook, Yahoo, iCloud, or a custom
+  domain) so Oak can watch for financial mail.
+- A multi-person family roster — one household's data, not five separate
+  accounts.
+
+## Oak Plus (paid, £7.99/month)
+
+- AI reads uploaded documents and extracts the provider, policy number,
+  amount, and dates automatically.
+- AI-summarized inbox — financial emails explained in plain language as they
+  arrive.
+- Priority support.
+
+## Trust and data handling
+
+- Connector passwords and access tokens are encrypted at rest, not just in
+  transit.
+- Financial data is never sold and is not used to train models beyond the
+  request that needs it.
+- Users can ask to have their account and data deleted; this is currently
+  handled by a person, not a self-serve flow.
+
+## Pages
+
+- Marketing / product overview: https://kairos-trellis.web.app/
+- Family Readiness Score (free quiz, no signup): https://kairos-trellis.web.app/readiness
+- Blog (plain-language explainers): https://kairos-trellis.web.app/blog
+- Terms: https://kairos-trellis.web.app/terms
+- Privacy: https://kairos-trellis.web.app/privacy
+- Support: https://kairos-trellis.web.app/support

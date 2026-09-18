@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { Network, Activity, Lightbulb, ChevronRight, Hand, Star, Target, Bot, Phone, User, FileText, Siren, Search, CalendarClock, X, UserPlus } from 'lucide-react'
+import { Network, Activity, Lightbulb, ChevronRight, Hand, Star, Target, Bot, Phone, User, FileText, Siren, Search, CalendarClock, X, UserPlus, Sparkles } from 'lucide-react'
 import { FamilyRoster } from '@/components/FamilyRoster'
 import { LifeTimeline } from '@/components/LifeTimeline'
 import { ScoreRing, GlassCard, PageHeader, IfAdvanced, Skeleton, Money } from '@/components/Glass'
@@ -15,9 +15,10 @@ import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@
 import { useAppStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
-import { fetchFinancialProfile, type FinancialProfile } from '@/lib/api'
+import { fetchFinancialProfile, RESOLVED_INSIGHT_STATES, type FinancialProfile } from '@/lib/api'
 import { elderlyHomeCopy } from '@/lib/elderlyHomeCopy'
 import { childHomeCopy } from '@/lib/childHomeCopy'
+import { simpleHomeCopy } from '@/lib/simpleHomeCopy'
 
 function ChildHome() {
   const { user } = useAuth()
@@ -76,8 +77,8 @@ function ChildHome() {
                 />
               </div>
               <p className="text-sm text-ink-secondary">
-                <Money value={`$${Math.round(myFund.current_savings_minor / 100).toLocaleString()}`} /> saved
-                toward your <Money value={`$${Math.round(myFund.target_savings_minor / 100).toLocaleString()}`} /> goal
+                <Money value={`£${Math.round(myFund.current_savings_minor / 100).toLocaleString()}`} /> saved
+                toward your <Money value={`£${Math.round(myFund.target_savings_minor / 100).toLocaleString()}`} /> goal
               </p>
             </>
           ) : (
@@ -130,14 +131,14 @@ function ElderlyHome() {
   }
 
   return (
-    <div className="px-4 pt-6 space-y-6">
+    <div className="px-4 pt-5 space-y-4">
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         className="text-center"
       >
-        <h1 className="text-3xl font-bold mb-2">{headline}</h1>
-        <p className="text-xl text-ink-tertiary">{subheadline}</p>
+        <h1 className="text-2xl font-bold mb-1">{headline}</h1>
+        <p className="text-lg text-ink-tertiary">{subheadline}</p>
       </motion.div>
 
       <motion.div
@@ -146,19 +147,26 @@ function ElderlyHome() {
         transition={{ delay: 0.2 }}
         className="flex justify-center"
       >
-        <ScoreRing score={score} size={160} />
+        {/* Was size 160 — on a real device that, plus the headline and the
+            welcome paragraph below, pushed every action tile (including
+            Emergency Help) below the fold on first load. This is Elderly
+            mode: the whole point is large, simple, one-tap access, not a
+            hero moment that costs the tiles their visibility. Still a
+            generous, easily-read size — 120 is well above the size=100
+            threshold where ScoreRing keeps its "out of N" caption. */}
+        <ScoreRing score={score} size={120} />
       </motion.div>
 
       <motion.p
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.4 }}
-        className="text-lg text-center text-ink-secondary leading-relaxed px-4"
+        className="text-base text-center text-ink-secondary leading-snug px-4"
       >
-        Welcome back. Your family profile is ready — tap any item below to explore your financial picture.
+        Welcome back. Tap any item below to explore your financial picture.
       </motion.p>
 
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         {[
           { icon: Bot, label: 'Ask Anything', action: 'ask' },
           { icon: Phone, label: 'Call Insurance', action: 'call-insurance' },
@@ -246,6 +254,96 @@ function InviteFamilyBanner() {
   )
 }
 
+// Scoped by tenant so a shared device doesn't leak one user's history into
+// another's, same pattern as the AI Memory dismissals below.
+function lastVisitStorageKey(): string {
+  const tenant = typeof window !== 'undefined' ? localStorage.getItem('agentoak_tenant') ?? 'anon' : 'anon'
+  return `agentoak:last-visit-snapshot:${tenant}`
+}
+
+interface VisitSnapshot {
+  score: number
+  openInsightCount: number
+}
+
+function loadLastVisitSnapshot(): VisitSnapshot | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(lastVisitStorageKey())
+    return raw ? (JSON.parse(raw) as VisitSnapshot) : null
+  } catch {
+    return null
+  }
+}
+
+function saveLastVisitSnapshot(snapshot: VisitSnapshot): void {
+  try {
+    localStorage.setItem(lastVisitStorageKey(), JSON.stringify(snapshot))
+  } catch {
+    // Best-effort — private browsing / storage-full shouldn't block the page.
+  }
+}
+
+// The "what changed since I last looked" moment — the biggest gap versus
+// competitors like Copilot/Monarch, who lead with a delta, not a dashboard
+// the user has to re-scan themselves to find what's new. Built entirely from
+// real, already-fetched data (score + open insight count) diffed against the
+// prior visit's snapshot in localStorage — never fabricated, and silent on
+// a first visit or a no-change visit rather than forcing something to say.
+function SinceLastVisit({
+  score,
+  hasLiveData,
+  openInsightCount,
+  loading,
+}: {
+  score: number
+  hasLiveData: boolean
+  openInsightCount: number
+  loading: boolean
+}) {
+  const [previous, setPrevious] = useState<VisitSnapshot | null>(null)
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    if (loading || !hasLiveData) return
+    setPrevious(loadLastVisitSnapshot())
+    saveLastVisitSnapshot({ score, openInsightCount })
+    setReady(true)
+    // Snapshot only once per page load — re-running this on every score/count
+    // change would overwrite "previous" before the user ever saw the delta.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, hasLiveData])
+
+  if (!ready || !previous) return null
+  const scoreDelta = score - previous.score
+  const insightDelta = openInsightCount - previous.openInsightCount
+  if (scoreDelta === 0 && insightDelta === 0) return null
+
+  const parts: string[] = []
+  if (scoreDelta !== 0) {
+    parts.push(`Readiness score ${scoreDelta > 0 ? 'up' : 'down'} ${Math.abs(scoreDelta)} point${Math.abs(scoreDelta) === 1 ? '' : 's'}`)
+  }
+  if (insightDelta > 0) {
+    parts.push(`${insightDelta} new insight${insightDelta === 1 ? '' : 's'} to review`)
+  } else if (insightDelta < 0) {
+    parts.push(`${Math.abs(insightDelta)} insight${Math.abs(insightDelta) === 1 ? '' : 's'} resolved`)
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
+      <GlassCard className="p-3.5 border-family-500/20 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-xl bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0">
+          <Sparkles size={16} className="text-family-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-semibold text-ink-tertiary mb-0.5">Since your last visit</div>
+          <div className="text-sm font-semibold text-ink-primary">{parts.join(' · ')}</div>
+        </div>
+      </GlassCard>
+    </motion.div>
+  )
+}
+
 function UrgencyBanner() {
   const [dismissed, setDismissed] = useState(false)
   const currentYear = new Date().getFullYear()
@@ -291,8 +389,9 @@ export default function HomePage() {
   const { config } = useMode()
   const { score: readinessScore, hasLiveData, loading: scoreLoading } = useFamilyReadinessScore()
   const { events: timelineEvents, hasData: hasTimelineData, hasChildren } = useFamilyTimeline()
-  const { insights } = useFamilyInsights()
+  const { insights, loading: insightsLoading } = useFamilyInsights()
   const retirementInsight = insights.find((i) => i.detector_id === 'family_retirement_gap')
+  const openInsightCount = insights.filter((i) => !RESOLVED_INSIGHT_STATES.includes(i.state)).length
   const setCmdkOpen = useAppStore((s) => s.setCmdkOpen)
 
   if (config.mode === 'child') {
@@ -323,6 +422,12 @@ export default function HomePage() {
       />
 
       <InviteFamilyBanner />
+      <SinceLastVisit
+        score={readinessScore}
+        hasLiveData={hasLiveData}
+        openInsightCount={openInsightCount}
+        loading={scoreLoading || insightsLoading}
+      />
       <UrgencyBanner />
 
       <motion.div
@@ -346,7 +451,9 @@ export default function HomePage() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <span className={`text-sm font-semibold ${readinessScore >= 70 ? 'text-success' : 'text-warning'}`}>
-                      {readinessScore >= 70 ? "You're on track" : 'Some insights need review'}
+                      {config.simpleLanguage
+                        ? simpleHomeCopy({ hasLiveData, onTrack: readinessScore >= 70 }).status
+                        : readinessScore >= 70 ? "You're on track" : 'Some insights need review'}
                     </span>
                     <motion.span
                       className={`w-2 h-2 rounded-full ${readinessScore >= 70 ? 'bg-success' : 'bg-warning'}`}
@@ -355,7 +462,9 @@ export default function HomePage() {
                     />
                   </div>
                   <p className="text-sm text-ink-secondary leading-relaxed">
-                    Your family readiness score reflects the gaps found in your profile so far. Connect more data sources for a complete picture.
+                    {config.simpleLanguage
+                      ? simpleHomeCopy({ hasLiveData, onTrack: readinessScore >= 70 }).body
+                      : 'Your family readiness score reflects the gaps found in your profile so far. Connect more data sources for a complete picture.'}
                   </p>
                 </div>
               </>
@@ -364,10 +473,14 @@ export default function HomePage() {
                 <ScoreRing score={0} size={80} />
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-semibold text-ink-secondary">No data yet</span>
+                    <span className="text-sm font-semibold text-ink-secondary">
+                      {config.simpleLanguage ? simpleHomeCopy({ hasLiveData, onTrack: false }).status : 'No data yet'}
+                    </span>
                   </div>
                   <p className="text-sm text-ink-tertiary leading-relaxed">
-                    Connect your accounts and upload documents to see your real family readiness score.
+                    {config.simpleLanguage
+                      ? simpleHomeCopy({ hasLiveData, onTrack: false }).body
+                      : 'Connect your accounts and upload documents to see your real family readiness score.'}
                   </p>
                   <Link href="/upload" className="text-sm text-family-400 font-semibold flex items-center gap-1 mt-2">
                     Get started <ChevronRight size={14} />

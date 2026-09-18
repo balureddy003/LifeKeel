@@ -4,9 +4,10 @@
  * GET  /insights                  — list with filters
  * GET  /insights/:id              — single insight
  * GET  /insights/:id/explain      — full rule evaluation trace
- * POST /insights/:id/approve      — approve + schedule actions
- * POST /insights/:id/dismiss      — dismiss insight
- * POST /insights/:id/prepare      — draft an outreach message (Tier 1 — never sends)
+ * POST /insights/:id/approve         — approve + execute recommended actions
+ * POST /insights/:id/retry-execution — retry actions that failed on approve (idempotent)
+ * POST /insights/:id/dismiss         — dismiss insight
+ * POST /insights/:id/prepare         — draft an outreach message (Tier 1 — never sends)
  */
 
 import type { FastifyInstance } from 'fastify'
@@ -383,11 +384,16 @@ export async function registerInsightRoutes(
           }
         }
         const col = await getInsightsCollection()
+        // Durable propose→commit: 'approved' records the human decision
+        // immediately (survives a crash before execution below even starts);
+        // a second atomic transition after execution flips to 'completed' or
+        // 'execution_failed' so state always reflects whether the side
+        // effect actually happened, not just whether a human clicked approve.
         const result = await col.findOneAndUpdate(
           { id, tenant_id, state: 'identified' },
           {
             $set: {
-              state: 'completed',
+              state: 'approved',
               approved_at: new Date(),
               approved_by: request.authContext.user_id,
               ...(notes !== undefined && { approval_notes: notes }),
@@ -524,6 +530,23 @@ export async function registerInsightRoutes(
             }).catch((err) => { app.log.error({ err, insight_id: id }, 'Action execution failed'); return null })
           : null
 
+        // Write back the real outcome: 'execution_failed' when the executor
+        // threw entirely, or any action came back 'execution_failed'/
+        // 'execution_ambiguous' — this is the missing half of propose/commit
+        // that used to leave 'completed' set regardless of whether execution
+        // ever ran. Insights with no configured executor (db-less deployments,
+        // most unit tests) have nothing to execute, so they complete immediately.
+        const executionFailed = actionExecutor !== null && (
+          executionSummary === null ||
+          executionSummary.receipts.some(r => r.outcome === 'execution_failed' || r.outcome === 'execution_ambiguous')
+        )
+        const finalUpdate = await col.findOneAndUpdate(
+          { id, tenant_id, state: 'approved' },
+          { $set: { state: executionFailed ? 'execution_failed' : 'completed' } },
+          { returnDocument: 'after' },
+        )
+        const finalResult = finalUpdate ?? result
+
         if (db) {
           const actionReceiptIds = executionSummary?.receipts.map(receipt => receipt.id) ?? []
           await recordMomentDecision(db, {
@@ -536,13 +559,75 @@ export async function registerInsightRoutes(
         }
 
         return {
-          insight: result,
-          message: 'Insight approved',
+          insight: finalResult,
+          message: executionFailed
+            ? 'Insight approved; one or more actions failed to execute — see actions for details'
+            : 'Insight approved',
           ...(executionSummary && { actions: executionSummary }),
         }
       } catch (err) {
         log.warn({ err, id }, 'POST /insights/:id/approve failed')
         reportInsightRouteError('POST /insights/:id/approve', err, tenant_id)
+        return reply.status(404).send({ error: 'Insight not found' })
+      }
+    },
+  )
+
+  /**
+   * POST /insights/:id/retry-execution
+   * Re-runs action execution for an insight stuck in 'execution_failed'
+   * (approve ran, but one or more recommended actions definitively or
+   * ambiguously failed to execute). Safe to call repeatedly: ActionExecutor's
+   * own idempotency (payload_hash per action) skips anything that already
+   * succeeded and only re-dispatches the actions that previously failed.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/insights/:id/retry-execution',
+    async (request, reply) => {
+      const { tenant_id } = request.authContext
+      const { id } = request.params
+
+      if (!actionExecutor) {
+        return reply.status(501).send({ error: 'Action execution is not configured' })
+      }
+
+      try {
+        const col = await getInsightsCollection()
+        const result = await col.findOneAndUpdate(
+          { id, tenant_id, state: 'execution_failed' },
+          { $set: { state: 'approved' } },
+          { returnDocument: 'after' },
+        )
+        if (!result) {
+          return reply.status(404).send({ error: 'Insight not found or not in execution_failed state' })
+        }
+
+        const tenantSettings = db ? await db.collection('tenant_settings').findOne({ tenant_id }) : null
+        const tenantDryRun = tenantSettings?.['automation']?.dry_run_mode === true
+        const dryRun = (request.query as Record<string, string>)['dry_run'] === '1' || tenantDryRun
+
+        const executionSummary = await actionExecutor
+          .execute(result as never, tenant_id, { dryRun, approvedBy: request.authContext.user_id })
+          .catch((err) => { app.log.error({ err, insight_id: id }, 'Retry action execution failed'); return null })
+
+        const executionFailed = executionSummary === null ||
+          executionSummary.receipts.some(r => r.outcome === 'execution_failed' || r.outcome === 'execution_ambiguous')
+        const finalUpdate = await col.findOneAndUpdate(
+          { id, tenant_id, state: 'approved' },
+          { $set: { state: executionFailed ? 'execution_failed' : 'completed' } },
+          { returnDocument: 'after' },
+        )
+
+        getAuditLogger()?.fromRequest(request, 'insight.retry_execution', 'insight', id, {})
+
+        return {
+          insight: finalUpdate ?? result,
+          message: executionFailed ? 'Retry attempted; one or more actions are still failing' : 'All actions completed',
+          actions: executionSummary,
+        }
+      } catch (err) {
+        log.warn({ err, id }, 'POST /insights/:id/retry-execution failed')
+        reportInsightRouteError('POST /insights/:id/retry-execution', err, tenant_id)
         return reply.status(404).send({ error: 'Insight not found' })
       }
     },

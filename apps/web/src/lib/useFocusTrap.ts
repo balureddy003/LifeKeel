@@ -10,11 +10,32 @@ import { useEffect, useRef, useCallback } from 'react'
 export function useFocusTrap<T extends HTMLElement>(active: boolean) {
   const containerRef = useRef<T>(null)
   const previousFocus = useRef<HTMLElement | null>(null)
+  const wasActive = useRef(false)
+
+  // Live-verification finding: capturing this in a useEffect (a passive
+  // effect) ran too late whenever the trapped content itself contains an
+  // autoFocus element (e.g. CommandPalette's search input) — React applies
+  // autoFocus during commit, before passive effects run, so the effect
+  // observed the element that had *just* stolen focus instead of the real
+  // trigger. Confirmed live via a focus() trace: previousFocus.current was
+  // captured as the search input, not the button that opened the palette,
+  // so Escape restored focus to nothing useful. Capturing during render
+  // (on the false->true transition) runs before any child in the trap
+  // subtree even mounts, so it can't lose the race.
+  if (active && !wasActive.current) {
+    previousFocus.current = document.activeElement as HTMLElement | null
+  }
+  wasActive.current = active
 
   useEffect(() => {
     if (!active) return
-    previousFocus.current = document.activeElement as HTMLElement | null
+    return () => {
+      previousFocus.current?.focus()
+    }
+  }, [active])
 
+  useEffect(() => {
+    if (!active) return
     const container = containerRef.current
     if (!container) return
 
@@ -45,7 +66,6 @@ export function useFocusTrap<T extends HTMLElement>(active: boolean) {
     container.addEventListener('keydown', handler)
     return () => {
       container.removeEventListener('keydown', handler)
-      previousFocus.current?.focus()
     }
   }, [active])
 

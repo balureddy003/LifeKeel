@@ -8,13 +8,79 @@
  * reasoning show first, the signup CTA comes after.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { Share2, Check } from 'lucide-react'
 import { GlassCard, GlassButton, PageHeader, ScoreRing } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
 import { submitReadinessQuiz, type ReadinessQuizResult } from '@/lib/api'
 import { learnMoreHref } from '@/lib/detector-content'
+
+const QUIZ_URL = 'https://kairos-trellis.web.app/readiness/'
+
+// The quiz's own pitch is "no signup, no email required" — sharing has to
+// hold to that: only the score itself, never any of the six numbers behind
+// it, so a shared link never leaks the household finances that produced it.
+function ShareScore({ score }: { score: number }) {
+  const [copied, setCopied] = useState(false)
+  const shareText = `I scored ${score}/100 on Agent Oak's Family Readiness Score. What's yours?`
+
+  async function handleShare() {
+    haptic('light')
+    track('readiness_share_click', { method: 'native' })
+    if (navigator.share) {
+      try {
+        await navigator.share({ text: shareText, url: QUIZ_URL })
+      } catch {
+        // User dismissed the share sheet — not an error worth surfacing.
+      }
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(`${shareText} ${QUIZ_URL}`)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Clipboard API can be unavailable (older browsers, non-secure
+      // context) — the buttons below still work without it.
+    }
+  }
+
+  return (
+    <div className="w-full mt-3">
+      <div className="flex gap-2">
+        <button
+          onClick={handleShare}
+          className="flex-1 flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold bg-family-500/10 border border-family-500/20 text-family-400"
+        >
+          {copied ? <Check size={16} /> : <Share2 size={16} />}
+          {copied ? 'Copied' : 'Share your score'}
+        </button>
+        <a
+          href={`https://wa.me/?text=${encodeURIComponent(`${shareText} ${QUIZ_URL}`)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => { haptic('light'); track('readiness_share_click', { method: 'whatsapp' }) }}
+          className="w-12 flex items-center justify-center rounded-xl bg-white/[0.04] border border-white/[0.08] text-ink-secondary flex-shrink-0"
+          aria-label="Share on WhatsApp"
+        >
+          <span className="text-[11px] font-bold">WA</span>
+        </a>
+        <a
+          href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(QUIZ_URL)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => { haptic('light'); track('readiness_share_click', { method: 'x' }) }}
+          className="w-12 flex items-center justify-center rounded-xl bg-white/[0.04] border border-white/[0.08] text-ink-secondary flex-shrink-0"
+          aria-label="Share on X"
+        >
+          <span className="text-[13px] font-bold">𝕏</span>
+        </a>
+      </div>
+    </div>
+  )
+}
 
 function toMinor(whole: string): number {
   const n = Number(whole)
@@ -30,24 +96,31 @@ function Field({
   value,
   onChange,
   placeholder,
+  prefix,
 }: {
   label: string
   value: string
   onChange: (v: string) => void
   placeholder?: string
+  prefix?: string
 }) {
   return (
     <label className="block mb-4">
       <div className="text-xs text-ink-tertiary mb-1.5">{label}</div>
-      <input
-        type="number"
-        inputMode="decimal"
-        min={0}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder ?? '0'}
-        className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-      />
+      <div className="relative">
+        {prefix && (
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-base text-ink-tertiary">{prefix}</span>
+        )}
+        <input
+          type="number"
+          inputMode="decimal"
+          min={0}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder ?? '0'}
+          className={`glass-input w-full rounded-xl py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all ${prefix ? 'pl-8 pr-4' : 'px-4'}`}
+        />
+      </div>
     </label>
   )
 }
@@ -70,6 +143,18 @@ export default function ReadinessQuizPage() {
     track('readiness_quiz_started')
   }, [])
 
+  // Submitting replaces the entire form (all 6 fields plus "See my score")
+  // with a completely different results view — same silent-transition shape
+  // fixed elsewhere this session, but on a public, unauthenticated growth
+  // page where it's likely to see real, unpredictable traffic. Moving focus
+  // to the results region gives a screen-reader user both an announcement
+  // and a stable landmark instead of leaving focus on a button that no
+  // longer exists.
+  const resultRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (result) resultRef.current?.focus()
+  }, [result])
+
   const set = (key: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [key]: v }))
 
   async function handleSubmit() {
@@ -85,6 +170,12 @@ export default function ReadinessQuizPage() {
     })
     setResult(res)
     setSubmitting(false)
+    // Backend has carried this event in its allowlist since PRD-201, but
+    // nothing ever called it — the funnel could see the quiz start, never
+    // whether anyone actually got a score out of it.
+    if (res.score !== null) {
+      track('readiness_quiz_completed', { score: res.score })
+    }
   }
 
   return (
@@ -100,11 +191,11 @@ export default function ReadinessQuizPage() {
           <p className="text-xs text-ink-tertiary mb-4">
             Used only to calculate your score right now — nothing is saved or linked to you.
           </p>
-          <Field label="Monthly household income ($)" value={form.monthlySalary} onChange={set('monthlySalary')} />
-          <Field label="Monthly living expenses ($)" value={form.monthlyExpenses} onChange={set('monthlyExpenses')} />
-          <Field label="Emergency savings on hand ($)" value={form.emergencySavings} onChange={set('emergencySavings')} />
-          <Field label="Mortgage still outstanding ($)" value={form.mortgageOutstanding} onChange={set('mortgageOutstanding')} />
-          <Field label="Life insurance coverage ($)" value={form.lifeCover} onChange={set('lifeCover')} />
+          <Field label="Monthly household income" value={form.monthlySalary} onChange={set('monthlySalary')} prefix="£" />
+          <Field label="Monthly living expenses" value={form.monthlyExpenses} onChange={set('monthlyExpenses')} prefix="£" />
+          <Field label="Emergency savings on hand" value={form.emergencySavings} onChange={set('emergencySavings')} prefix="£" />
+          <Field label="Mortgage still outstanding" value={form.mortgageOutstanding} onChange={set('mortgageOutstanding')} prefix="£" />
+          <Field label="Life insurance coverage" value={form.lifeCover} onChange={set('lifeCover')} prefix="£" />
           <Field label="Number of dependents" value={form.dependents} onChange={set('dependents')} placeholder="0" />
 
           <GlassButton onClick={handleSubmit} disabled={submitting}>
@@ -114,8 +205,9 @@ export default function ReadinessQuizPage() {
       )}
 
       {result && result.score !== null && (
-        <div className="mt-6 flex flex-col items-center">
+        <div ref={resultRef} tabIndex={-1} aria-label={`Your Family Readiness Score: ${result.score} out of 100`} className="mt-6 flex flex-col items-center outline-none">
           <ScoreRing score={result.score} size={160} />
+          <ShareScore score={result.score} />
 
           {result.insights.length === 0 ? (
             <GlassCard className="p-4 mt-6 w-full">
@@ -155,11 +247,13 @@ export default function ReadinessQuizPage() {
       )}
 
       {result && result.score === null && (
-        <GlassCard className="p-4 mt-6">
-          <p className="text-sm text-ink-secondary leading-relaxed">
-            {result.error ?? "Couldn't calculate your score right now — please try again later."}
-          </p>
-        </GlassCard>
+        <div ref={resultRef} tabIndex={-1} role="status" aria-live="polite" className="outline-none">
+          <GlassCard className="p-4 mt-6">
+            <p className="text-sm text-ink-secondary leading-relaxed">
+              {result.error ?? "Couldn't calculate your score right now — please try again later."}
+            </p>
+          </GlassCard>
+        </div>
       )}
     </div>
   )

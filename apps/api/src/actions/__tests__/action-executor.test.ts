@@ -41,6 +41,7 @@ function makeDb() {
   const col = {
     createIndex: vi.fn(async () => ({})),
     insertOne: vi.fn(async () => ({ acknowledged: true })),
+    deleteOne: vi.fn(async () => ({ acknowledged: true })),
     findOne: vi.fn(async () => null),
     find: vi.fn(() => ({ sort: () => ({ toArray: async () => [] }) })),
   }
@@ -75,7 +76,7 @@ describe('OAK-002: dangerous action types deleted', () => {
       const summary = await executor.execute(makeInsight(['Refund the customer immediately']), 'tenant-1', {})
 
       expect(summary.receipts).toHaveLength(1)
-      expect(summary.receipts[0]!.status).toBe('skipped')
+      expect(summary.receipts[0]!.outcome).toBe('execution_skipped')
       expect(summary.receipts[0]!.action_type).toBe('log_only')
       expect(fetch).not.toHaveBeenCalled()
     })
@@ -88,7 +89,7 @@ describe('OAK-002: dangerous action types deleted', () => {
         {},
       )
 
-      expect(summary.receipts.every((r) => r.action_type === 'log_only' && r.status === 'skipped')).toBe(true)
+      expect(summary.receipts.every((r) => r.action_type === 'log_only' && r.outcome === 'execution_skipped')).toBe(true)
       expect(fetch).not.toHaveBeenCalled()
     })
 
@@ -114,14 +115,111 @@ describe('OAK-002: dangerous action types deleted', () => {
       db.collection = ((name: string) => {
         if (name === 'connector_credentials') return { findOne: vi.fn(async () => ({ api_key: 'sg-key' })) }
         if (name === 'tenant_settings') return { findOne: vi.fn(async () => null) }
-        return { createIndex: vi.fn(async () => ({})), insertOne: vi.fn(async () => ({})) }
+        return {
+          createIndex: vi.fn(async () => ({})),
+          insertOne: vi.fn(async () => ({})),
+          findOne: vi.fn(async () => null),
+          deleteOne: vi.fn(async () => ({})),
+        }
       }) as any
       const executor = new ActionExecutor(db)
       const summary = await executor.execute(makeInsight(['Send an email reminder']), 'tenant-1', {})
 
       expect(summary.receipts[0]!.action_type).toBe('send_email')
-      expect(summary.receipts[0]!.status).toBe('success')
+      expect(summary.receipts[0]!.outcome).toBe('executed')
       expect(fetch).toHaveBeenCalledWith('https://api.sendgrid.com/v3/mail/send', expect.anything())
+    })
+  })
+
+  describe('idempotency (durable retry support)', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    it('skips re-dispatch when a receipt for the same insight+action already succeeded', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('should not be called — already executed') }))
+      const existingReceipt = {
+        id: 'prior-receipt', tenant_id: 'tenant-1', insight_id: 'insight-1',
+        action_type: 'send_email', action_label: 'Send an email reminder',
+        outcome: 'executed', executed_at: new Date(), dry_run: false, payload_hash: 'irrelevant-in-mock',
+      }
+      const db = makeDb()
+      db.collection = (() => ({
+        createIndex: vi.fn(async () => ({})),
+        insertOne: vi.fn(async () => ({ acknowledged: true })),
+        deleteOne: vi.fn(async () => ({ acknowledged: true })),
+        findOne: vi.fn(async () => existingReceipt),
+        find: vi.fn(() => ({ sort: () => ({ toArray: async () => [] }) })),
+      })) as any
+
+      const executor = new ActionExecutor(db)
+      const summary = await executor.execute(makeInsight(['Send an email reminder']), 'tenant-1', {})
+
+      expect(summary.receipts[0]).toEqual(existingReceipt)
+      expect(fetch).not.toHaveBeenCalled()
+    })
+
+    it('re-dispatches (retries) when the existing receipt for the same action previously failed', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, text: async () => '', json: async () => ({}) })))
+      const staleFailedReceipt = {
+        id: 'prior-receipt', tenant_id: 'tenant-1', insight_id: 'insight-1',
+        action_type: 'send_email', action_label: 'Send an email reminder',
+        outcome: 'execution_failed', executed_at: new Date(), dry_run: false, payload_hash: 'irrelevant-in-mock',
+      }
+      const db = makeDb()
+      const deleteOne = vi.fn(async () => ({ acknowledged: true }))
+      db.collection = ((name: string) => {
+        if (name === 'connector_credentials') return { findOne: vi.fn(async () => ({ api_key: 'sg-key' })) }
+        if (name === 'tenant_settings') return { findOne: vi.fn(async () => null) }
+        return {
+          createIndex: vi.fn(async () => ({})),
+          insertOne: vi.fn(async () => ({ acknowledged: true })),
+          deleteOne,
+          findOne: vi.fn(async () => staleFailedReceipt),
+          find: vi.fn(() => ({ sort: () => ({ toArray: async () => [] }) })),
+        }
+      }) as any
+
+      const executor = new ActionExecutor(db)
+      const summary = await executor.execute(makeInsight(['Send an email reminder']), 'tenant-1', {})
+
+      expect(deleteOne).toHaveBeenCalledWith({ id: 'prior-receipt' })
+      expect(summary.receipts[0]!.outcome).toBe('executed')
+      expect(fetch).toHaveBeenCalled()
+    })
+  })
+
+  describe('failure classification', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    it('a 4xx SendGrid response classifies as execution_failed (definite, not worth blind retry)', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 422, text: async () => 'bad request' })))
+      const db = makeDb()
+      const fallback = db.collection
+      db.collection = ((name: string) => {
+        if (name === 'connector_credentials') return { findOne: vi.fn(async () => ({ api_key: 'sg-key' })) }
+        if (name === 'tenant_settings') return { findOne: vi.fn(async () => null) }
+        return fallback()
+      }) as any
+      const executor = new ActionExecutor(db)
+      const summary = await executor.execute(makeInsight(['Send an email reminder']), 'tenant-1', {})
+      expect(summary.receipts[0]!.outcome).toBe('execution_failed')
+    })
+
+    it('a 5xx SendGrid response classifies as execution_ambiguous (may be worth retrying)', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 503, text: async () => 'unavailable' })))
+      const db = makeDb()
+      const fallback = db.collection
+      db.collection = ((name: string) => {
+        if (name === 'connector_credentials') return { findOne: vi.fn(async () => ({ api_key: 'sg-key' })) }
+        if (name === 'tenant_settings') return { findOne: vi.fn(async () => null) }
+        return fallback()
+      }) as any
+      const executor = new ActionExecutor(db)
+      const summary = await executor.execute(makeInsight(['Send an email reminder']), 'tenant-1', {})
+      expect(summary.receipts[0]!.outcome).toBe('execution_ambiguous')
     })
   })
 })

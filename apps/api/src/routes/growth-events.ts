@@ -30,6 +30,7 @@ const KNOWN_EVENTS = new Set([
   'upgrade_checkout_start',
   'readiness_quiz_started',
   'readiness_quiz_completed',
+  'readiness_share_click',
 ])
 
 export async function registerGrowthEventRoutes(app: FastifyInstance, db: Db): Promise<void> {

@@ -37,7 +37,13 @@ export function formatMoney(minorUnits: number, currency: Currency = 'GBP'): str
     GBP: '£', USD: '$', EUR: '€', AUD: 'A$', CAD: 'C$', INR: '₹', SGD: 'S$', AED: 'د.إ', ZAR: 'R', NZD: 'NZ$', CHF: 'Fr', JPY: '¥', BRL: 'R$', MXN: 'Mex$',
   }
   const symbol = symbols[currency] ?? currency
-  return `${symbol}${fromMinorUnits(minorUnits)}`
+  // Every detector-generated insight/playbook/notification renders money
+  // through this function (via @agentoak/engine's template interpolation) —
+  // without a grouping separator, a real figure like a life-cover shortfall
+  // reads as "£200000.00", genuinely harder to parse at a glance than
+  // "£200,000.00" and working against this app's any-age-accessible goal.
+  const major = (minorUnits / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return `${symbol}${major}`
 }
 
 export interface MoneyDisplay {

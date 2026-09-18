@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
@@ -178,6 +178,17 @@ export default function EventDetailClient() {
   const [draftError, setDraftError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
+  // "Draft this for me" is replaced entirely by a <textarea> once the draft
+  // arrives — same silent-transition shape as every other "button swapped
+  // for new content" case fixed this session: the button the user just
+  // clicked unmounts along with everything around it, so without this,
+  // focus would fall to <body>. Moving it to the new textarea both restores
+  // a sane focus position and puts the cursor right where editing happens.
+  const draftTextareaRef = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    if (draftText) draftTextareaRef.current?.focus()
+  }, [draftText])
+
   const handleDraft = async () => {
     if (!insightId) return
     haptic('light')
@@ -283,6 +294,7 @@ export default function EventDetailClient() {
             <motion.button
               key={action.id}
               onClick={() => toggleAction(action.id)}
+              aria-pressed={action.done}
               whileTap={{ scale: 0.97 }}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -347,12 +359,13 @@ export default function EventDetailClient() {
                   <span>{drafting ? 'Drafting…' : 'Draft this for me'}</span>
                 </GlassButton>
                 {draftError && (
-                  <p className="text-sm text-ink-tertiary leading-relaxed mt-3">{draftError}</p>
+                  <p role="status" aria-live="polite" className="text-sm text-ink-tertiary leading-relaxed mt-3">{draftError}</p>
                 )}
               </>
             ) : (
               <div className="space-y-3">
                 <textarea
+                  ref={draftTextareaRef}
                   value={draftText}
                   onChange={(e) => setDraftText(e.target.value)}
                   rows={6}

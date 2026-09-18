@@ -4,10 +4,11 @@ import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { PageHeader, GlassCard } from '@/components/Glass'
+import { PageHeader, GlassCard, Skeleton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { fetchConnectorStatuses, disconnectConnector, type ConnectorStatus } from '@/lib/api'
 import { useAppStore } from '@/lib/store'
+import { useConfirm } from '@/components/ConfirmSheetProvider'
 import { Mail, Landmark, Check, Loader2, Unlink, Shield, Lock, Clock, ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -28,6 +29,7 @@ const CONNECTOR_CATEGORIES: Record<string, { label: string; icon: LucideIcon }> 
 
 export default function ConnectPage() {
   const router = useRouter()
+  const confirm = useConfirm()
   const [connectors, setConnectors] = useState<ConnectorStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [connectingId, setConnectingId] = useState<string | null>(null)
@@ -99,8 +101,19 @@ export default function ConnectPage() {
 
       {/* Loading */}
       {loading && (
-        <div className="flex items-center justify-center py-8">
-          <Loader2 size={24} className="animate-spin text-ink-tertiary" />
+        <div className="space-y-2">
+          {[0, 1, 2].map((i) => (
+            <GlassCard key={i} className="p-4">
+              <div className="flex items-start gap-3">
+                <Skeleton className="h-10 w-10 rounded-2xl flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-3.5 w-28" />
+                  <Skeleton className="h-3 w-full" />
+                  <Skeleton className="h-7 w-24 mt-1" />
+                </div>
+              </div>
+            </GlassCard>
+          ))}
         </div>
       )}
 
@@ -158,8 +171,14 @@ export default function ConnectPage() {
                           {isConnected ? (
                             <motion.button
                               whileTap={{ scale: 0.96 }}
-                              onClick={() => {
-                                if (!window.confirm(`Disconnect ${connector.name}? You'll need to reconnect it to keep using its data.`)) return
+                              onClick={async () => {
+                                const ok = await confirm({
+                                  title: `Disconnect ${connector.name}?`,
+                                  message: `You'll need to reconnect it to keep using its data.`,
+                                  confirmLabel: 'Disconnect',
+                                  destructive: true,
+                                })
+                                if (!ok) return
                                 handleDisconnect(connector.id)
                               }}
                               disabled={isConnecting}

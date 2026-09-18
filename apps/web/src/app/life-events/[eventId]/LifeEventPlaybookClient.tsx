@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
@@ -51,6 +51,14 @@ function StepDraft({ eventId, step }: { eventId: string; step: LifeEventPlaybook
   const [draftError, setDraftError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
+  // Same silent-transition shape as /events/[eventId]'s equivalent draft
+  // flow — the button that was just clicked is replaced entirely by a
+  // <textarea>, so without moving focus it would fall to <body>.
+  const draftTextareaRef = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    if (draftText) draftTextareaRef.current?.focus()
+  }, [draftText])
+
   const handleDraft = async () => {
     haptic('light')
     setDrafting(true)
@@ -81,11 +89,12 @@ function StepDraft({ eventId, step }: { eventId: string; step: LifeEventPlaybook
             {drafting ? <Loader2 size={16} className="animate-spin" /> : <PenLine size={16} />}
             <span>{drafting ? 'Drafting…' : 'Draft a message for me'}</span>
           </GlassButton>
-          {draftError && <p className="text-xs text-ink-tertiary mt-2">{draftError}</p>}
+          {draftError && <p role="status" aria-live="polite" className="text-xs text-ink-tertiary mt-2">{draftError}</p>}
         </>
       ) : (
         <div className="space-y-2">
           <textarea
+            ref={draftTextareaRef}
             value={draftText}
             onChange={(e) => setDraftText(e.target.value)}
             rows={5}
@@ -197,7 +206,7 @@ export default function LifeEventPlaybookClient() {
                 transition={{ delay: 0.15 + i * 0.06 }}
                 className="glass rounded-2xl p-4"
               >
-                <button onClick={() => toggleStep(step.id)} className="w-full flex items-start gap-3 text-left">
+                <button onClick={() => toggleStep(step.id)} aria-pressed={done} className="w-full flex items-start gap-3 text-left">
                   <motion.div
                     className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
                     animate={{

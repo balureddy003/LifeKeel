@@ -460,10 +460,16 @@ importers:
       mongodb:
         specifier: ^7.3.0
         version: 7.6.0
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.2
+      mongodb-memory-server:
+        specifier: ^11.2.0
+        version: 11.2.0
       typescript:
         specifier: ^5.6.0
         version: 5.9.3

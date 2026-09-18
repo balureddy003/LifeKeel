@@ -20,6 +20,7 @@ interface AuthContextValue {
   signUp: (name: string, email: string, password: string) => Promise<User>
   signIn: (email: string, password: string) => Promise<void>
   updateEmail: (email: string) => Promise<User>
+  updateProfile: (patch: { name?: string; email?: string }) => Promise<User>
   signInWithProvider: (provider: 'google') => Promise<void>
   signOut: () => void
   createFamily: (name: string, forUser?: User) => Promise<void>
@@ -159,11 +160,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return u
   }
 
-  // OAK-017 follow-up: links a real email to an already-authenticated
-  // account (PUT /auth/profile) — used when onboarding's recovery-email
-  // question is answered by someone who signed up first, whose account
-  // therefore already exists and isn't touched by signUp() above.
-  const updateEmail = async (email: string): Promise<User> => {
+  // PUT /auth/profile accepts name and/or email — the backend has
+  // supported both since this route was built, but until now the only
+  // frontend caller (updateEmail below) only ever sent email, and nothing
+  // in the app let a user change their own name at all: the Settings
+  // profile row rendered as a tappable button (haptic + press animation)
+  // whose onClick did literally nothing.
+  const updateProfile = async (patch: { name?: string; email?: string }): Promise<User> => {
     const token = localStorage.getItem(TOKEN_KEY)
     const res = await fetch(`${getApiBase()}/auth/profile`, {
       method: 'PUT',
@@ -171,16 +174,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify(patch),
     })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
-      throw new Error(data.error || 'Could not update email.')
+      throw new Error(data.error || 'Could not update profile.')
     }
     const u: User = { id: data.user.id, name: data.user.name, email: data.user.email, avatar: '' }
     persist(u, family)
     return u
   }
+
+  // OAK-017 follow-up: links a real email to an already-authenticated
+  // account — used when onboarding's recovery-email question is answered
+  // by someone who signed up first, whose account therefore already
+  // exists and isn't touched by signUp() above.
+  const updateEmail = (email: string): Promise<User> => updateProfile({ email })
 
   const signIn = async (email: string, password: string) => {
     const { token, user: apiUser } = await apiAuthRequest('/auth/login', { email, password })
@@ -263,6 +272,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signUp,
         signIn,
         updateEmail,
+        updateProfile,
         signInWithProvider,
         signOut,
         createFamily,

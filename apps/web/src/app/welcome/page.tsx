@@ -67,7 +67,19 @@ export default function WelcomePage() {
         </Link>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center px-2">
+      {/* Live-verification finding: unlike a form wizard, this carousel's
+          "Continue" button stays put (never unmounts), so focus is never
+          lost the way it was on the Gmail manual-fallback reveal — but the
+          slide content underneath changed silently, with nothing telling a
+          screen-reader user the title/subtitle they just heard is now
+          stale. Moving focus to each new slide (the wizard's fix) would be
+          wrong here: it'd force re-navigating back to Continue every
+          single slide in a flow that's meant to be "keep pressing the same
+          button." The standard carousel pattern instead announces without
+          stealing focus — aria-live on a stable wrapper (not the
+          remounting AnimatePresence child, so it's read as a mutation of
+          existing content rather than a brand-new, unannounced element). */}
+      <div className="flex-1 flex flex-col items-center justify-center px-2" aria-live="polite" aria-atomic="true">
         <AnimatePresence mode="wait">
           <motion.div
             key={slide}
@@ -99,11 +111,13 @@ export default function WelcomePage() {
 
       {/* Dots */}
       <div className="flex justify-center gap-2 mb-8">
-        {SLIDES.map((_, i) => (
+        {SLIDES.map((s, i) => (
           <motion.button
             key={i}
             onClick={() => goToSlide(i)}
             className="rounded-full"
+            aria-label={`Slide ${i + 1} of ${SLIDES.length}: ${s.title}`}
+            aria-current={i === slide ? 'true' : undefined}
             animate={{
               width: i === slide ? 24 : 8,
               height: 8,

@@ -24,6 +24,7 @@ import type { FastifyRequest } from 'fastify'
 
 export type AuditAction =
   | 'insight.approve'
+  | 'insight.retry_execution'
   | 'insight.dismiss'
   | 'insight.prepare'
   | 'assistant.ask'

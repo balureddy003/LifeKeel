@@ -1,13 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Loader2, AlertCircle, CheckCircle2, Plus, X, ChevronLeft } from 'lucide-react'
-import { PageHeader, GlassCard, GlassButton } from '@/components/Glass'
+import { PageHeader, GlassCard, GlassButton, Skeleton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { useAppStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
+import { useConfirm } from '@/components/ConfirmSheetProvider'
 import {
   fetchFinancialProfileWithVersion,
   submitFinancialProfile,
@@ -238,24 +239,29 @@ function Field({
   onChange,
   placeholder,
   suffix,
+  prefix,
 }: {
   label: string
   value: string
   onChange: (v: string) => void
   placeholder?: string
   suffix?: string
+  prefix?: string
 }) {
   return (
     <label className="block">
       <div className="text-xs text-ink-tertiary mb-1.5">{label}</div>
       <div className="relative">
+        {prefix && (
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-base text-ink-tertiary">{prefix}</span>
+        )}
         <input
           type="number"
           inputMode="decimal"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder ?? '0'}
-          className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+          className={`glass-input w-full rounded-xl py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all ${prefix ? 'pl-8 pr-4' : 'px-4'}`}
         />
         {suffix && (
           <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-ink-tertiary">{suffix}</span>
@@ -275,6 +281,7 @@ function YesNo({ label, value, onChange }: { label: string; value: boolean; onCh
             key={String(opt)}
             type="button"
             onClick={() => { haptic('light'); onChange(opt) }}
+            aria-pressed={value === opt}
             className={`flex-1 rounded-xl py-2.5 text-sm font-semibold transition-all ${
               value === opt
                 ? 'bg-family-500 text-white'
@@ -306,6 +313,7 @@ function EmploymentStatusPicker({ value, onChange }: { value: EmploymentStatus; 
             key={opt.value}
             type="button"
             onClick={() => { haptic('light'); onChange(opt.value) }}
+            aria-pressed={value === opt.value}
             className={`rounded-xl py-2.5 text-sm font-semibold transition-all ${
               value === opt.value
                 ? 'bg-family-500 text-white'
@@ -330,6 +338,7 @@ function PolicyTypePicker({ value, onChange }: { value: PolicyType; onChange: (v
             key={opt}
             type="button"
             onClick={() => { haptic('light'); onChange(opt) }}
+            aria-pressed={value === opt}
             className={`rounded-xl py-2.5 text-sm font-semibold transition-all ${
               value === opt
                 ? 'bg-family-500 text-white'
@@ -363,6 +372,7 @@ const STEPS: Step[] = [
 export default function FinancialProfilePage() {
   const router = useRouter()
   const { family, user } = useAuth()
+  const confirm = useConfirm()
   // PRD-104: adults on the roster other than the signed-in user — the
   // Second Earner section only makes sense, and is only shown, when at
   // least one exists (i.e. the household has more than one adult).
@@ -382,6 +392,25 @@ export default function FinancialProfilePage() {
   // a concurrent edit from another tab/device apart from this tab's own
   // sequential autosaves, instead of silently last-writer-wins overwriting.
   const [version, setVersion] = useState<number | undefined>(undefined)
+
+  // Live-verification finding: advancing/going back a step only scrolled
+  // the page to top — no aria-live announcement and no focus movement, so
+  // a keyboard/screen-reader user got no indication a step change happened
+  // at all (the visible "Step X of Y" label updated, but silently to
+  // anyone not looking at the screen). Making this label a live region and
+  // moving focus to it on every step change (skipping the very first
+  // render, so initial page load isn't affected) gives both an
+  // announcement and a stable, findable landmark — the standard pattern
+  // for a multi-step wizard.
+  const stepLabelRef = useRef<HTMLSpanElement>(null)
+  const isFirstStepRender = useRef(true)
+  useEffect(() => {
+    if (isFirstStepRender.current) {
+      isFirstStepRender.current = false
+      return
+    }
+    stepLabelRef.current?.focus()
+  }, [stepIndex])
 
   useEffect(() => {
     let cancelled = false
@@ -416,6 +445,18 @@ export default function FinancialProfilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    // ?step=household etc. — lets links from Family (the category rows
+    // for Income/Protection/Health Cover/etc.) land directly on the step
+    // that edits that data instead of always starting at step 1. Read via
+    // window.location rather than useSearchParams to match this app's
+    // existing convention (see upgrade/page.tsx) for a static export with
+    // no Suspense boundary requirement.
+    const step = new URLSearchParams(window.location.search).get('step')
+    const idx = STEPS.findIndex((s) => s.key === step)
+    if (idx >= 0) setStepIndex(idx)
+  }, [])
+
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }))
 
@@ -424,9 +465,15 @@ export default function FinancialProfilePage() {
     setFunds((prev) => [...prev, { childName: '', childAge: '', currentSavings: '', targetSavings: '', yearsRemaining: '' }])
   }
 
-  const removeChild = (i: number) => {
+  const removeChild = async (i: number) => {
     const name = funds[i]?.childName || `Child ${i + 1}`
-    if (!window.confirm(`Remove the education fund for ${name}? This can't be undone.`)) return
+    const ok = await confirm({
+      title: `Remove ${name}'s education fund?`,
+      message: `This can't be undone.`,
+      confirmLabel: 'Remove',
+      destructive: true,
+    })
+    if (!ok) return
     haptic('light')
     setFunds((prev) => prev.filter((_, idx) => idx !== i))
   }
@@ -440,9 +487,15 @@ export default function FinancialProfilePage() {
     setPolicies((prev) => [...prev, { ...EMPTY_POLICY }])
   }
 
-  const removePolicy = (i: number) => {
+  const removePolicy = async (i: number) => {
     const name = policies[i]?.provider || `Policy ${i + 1}`
-    if (!window.confirm(`Remove ${name}? This can't be undone.`)) return
+    const ok = await confirm({
+      title: `Remove ${name}?`,
+      message: `This can't be undone.`,
+      confirmLabel: 'Remove',
+      destructive: true,
+    })
+    if (!ok) return
     haptic('light')
     setPolicies((prev) => prev.filter((_, idx) => idx !== i))
   }
@@ -508,11 +561,28 @@ export default function FinancialProfilePage() {
 
   if (loading) {
     return (
-      <div className="px-5 pt-2">
-        <PageHeader title="Financial Profile" backHref="/settings" />
-        <div className="flex justify-center py-16">
-          <Loader2 size={28} className="animate-spin text-family-400" />
+      <div className="px-5 pt-2 pb-10 space-y-5">
+        <PageHeader
+          title="Financial Profile"
+          backHref="/settings"
+          subtitle="This replaces sample scenarios with real, personalized readiness scores"
+        />
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-3 w-8" />
+          </div>
+          <Skeleton className="h-2 w-full rounded-full" />
         </div>
+        <GlassCard className="p-4 space-y-4">
+          <Skeleton className="h-4 w-36" />
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="space-y-1.5">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-11 w-full rounded-xl" />
+            </div>
+          ))}
+        </GlassCard>
       </div>
     )
   }
@@ -529,7 +599,7 @@ export default function FinancialProfilePage() {
       />
 
       {result !== null && (
-        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} role="status" aria-live="polite">
           <GlassCard className="p-4 border-success/20 flex items-start gap-3">
             <CheckCircle2 size={20} className="text-success flex-shrink-0 mt-0.5" />
             <div className="text-sm text-ink-secondary">
@@ -542,17 +612,24 @@ export default function FinancialProfilePage() {
       )}
 
       {error && (
-        <GlassCard className="p-4 border-danger/20 flex items-start gap-3">
-          <AlertCircle size={20} className="text-danger flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-ink-secondary">{error}</div>
-        </GlassCard>
+        <div role="status" aria-live="polite">
+          <GlassCard className="p-4 border-danger/20 flex items-start gap-3">
+            <AlertCircle size={20} className="text-danger flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-ink-secondary">{error}</div>
+          </GlassCard>
+        </div>
       )}
 
       {/* Step progress */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-ink-tertiary font-semibold">
-            Step {stepIndex + 1} of {STEPS.length}
+          <span
+            ref={stepLabelRef}
+            tabIndex={-1}
+            aria-live="polite"
+            className="text-xs text-ink-tertiary font-semibold outline-none"
+          >
+            Step {stepIndex + 1} of {STEPS.length}: {step.title}
           </span>
           <span className="text-xs text-family-400 font-bold">{Math.round(progress)}%</span>
         </div>
@@ -578,11 +655,11 @@ export default function FinancialProfilePage() {
               <SectionTitle>Household & Protection</SectionTitle>
               <div className="space-y-3">
                 <EmploymentStatusPicker value={form.employmentStatus} onChange={(v) => set('employmentStatus', v)} />
-                <Field label="Monthly salary" value={form.monthlySalary} onChange={(v) => set('monthlySalary', v)} />
-                <Field label="Annual living expenses" value={form.annualLivingExpenses} onChange={(v) => set('annualLivingExpenses', v)} />
-                <Field label="Mortgage outstanding" value={form.mortgageOutstanding} onChange={(v) => set('mortgageOutstanding', v)} placeholder="0 if none" />
-                <Field label="Life insurance cover" value={form.lifeCover} onChange={(v) => set('lifeCover', v)} placeholder="0 if none" />
-                <Field label="Income protection (monthly payout)" value={form.incomeProtectionMonthly} onChange={(v) => set('incomeProtectionMonthly', v)} placeholder="0 if none" />
+                <Field label="Monthly salary" value={form.monthlySalary} onChange={(v) => set('monthlySalary', v)} prefix="£" />
+                <Field label="Annual living expenses" value={form.annualLivingExpenses} onChange={(v) => set('annualLivingExpenses', v)} prefix="£" />
+                <Field label="Mortgage outstanding" value={form.mortgageOutstanding} onChange={(v) => set('mortgageOutstanding', v)} placeholder="0 if none" prefix="£" />
+                <Field label="Life insurance cover" value={form.lifeCover} onChange={(v) => set('lifeCover', v)} placeholder="0 if none" prefix="£" />
+                <Field label="Income protection (monthly payout)" value={form.incomeProtectionMonthly} onChange={(v) => set('incomeProtectionMonthly', v)} placeholder="0 if none" prefix="£" />
               </div>
             </GlassCard>
           )}
@@ -623,12 +700,14 @@ export default function FinancialProfilePage() {
                       label="Their monthly salary"
                       value={form.secondEarnerMonthlySalary}
                       onChange={(v) => set('secondEarnerMonthlySalary', v)}
+                      prefix="£"
                     />
                     <Field
                       label="Their income protection (monthly payout)"
                       value={form.secondEarnerIncomeProtectionMonthly}
                       onChange={(v) => set('secondEarnerIncomeProtectionMonthly', v)}
                       placeholder="0 if none"
+                      prefix="£"
                     />
                   </>
                 )}
@@ -659,8 +738,8 @@ export default function FinancialProfilePage() {
                       />
                     </label>
                     <div className="grid grid-cols-2 gap-3">
-                      <Field label="Coverage amount" value={p.coverageAmount} onChange={(v) => updatePolicy(i, { coverageAmount: v })} placeholder="0 if none" />
-                      <Field label="Monthly premium" value={p.monthlyPremium} onChange={(v) => updatePolicy(i, { monthlyPremium: v })} placeholder="0 if none" />
+                      <Field label="Coverage amount" value={p.coverageAmount} onChange={(v) => updatePolicy(i, { coverageAmount: v })} placeholder="0 if none" prefix="£" />
+                      <Field label="Monthly premium" value={p.monthlyPremium} onChange={(v) => updatePolicy(i, { monthlyPremium: v })} placeholder="0 if none" prefix="£" />
                     </div>
                     <label className="block">
                       <div className="text-xs text-ink-tertiary mb-1.5">Renewal date (if known)</div>
@@ -688,8 +767,8 @@ export default function FinancialProfilePage() {
             <GlassCard className="p-5">
               <SectionTitle>Emergency Fund</SectionTitle>
               <div className="space-y-3">
-                <Field label="Emergency savings" value={form.emergencySavings} onChange={(v) => set('emergencySavings', v)} />
-                <Field label="Monthly expenses" value={form.monthlyExpenses} onChange={(v) => set('monthlyExpenses', v)} />
+                <Field label="Emergency savings" value={form.emergencySavings} onChange={(v) => set('emergencySavings', v)} prefix="£" />
+                <Field label="Monthly expenses" value={form.monthlyExpenses} onChange={(v) => set('monthlyExpenses', v)} prefix="£" />
                 <YesNo label="Any high-interest debt?" value={form.hasHighInterestDebt} onChange={(v) => set('hasHighInterestDebt', v)} />
                 {form.hasHighInterestDebt && (
                   <Field
@@ -697,6 +776,7 @@ export default function FinancialProfilePage() {
                     value={form.highInterestDebtBalance}
                     onChange={(v) => set('highInterestDebtBalance', v)}
                     placeholder="e.g. credit cards, payday loans"
+                    prefix="£"
                   />
                 )}
               </div>
@@ -711,9 +791,9 @@ export default function FinancialProfilePage() {
                   <Field label="Your current age" value={form.currentAge} onChange={(v) => set('currentAge', v)} />
                   <Field label="Target retirement age" value={form.targetRetirementAge} onChange={(v) => set('targetRetirementAge', v)} />
                 </div>
-                <Field label="Pension balance" value={form.pensionBalance} onChange={(v) => set('pensionBalance', v)} placeholder="0 if none" />
-                <Field label="Monthly pension contribution" value={form.monthlyContribution} onChange={(v) => set('monthlyContribution', v)} placeholder="0 if none" />
-                <Field label="Target annual retirement income" value={form.targetRetirementIncome} onChange={(v) => set('targetRetirementIncome', v)} />
+                <Field label="Pension balance" value={form.pensionBalance} onChange={(v) => set('pensionBalance', v)} placeholder="0 if none" prefix="£" />
+                <Field label="Monthly pension contribution" value={form.monthlyContribution} onChange={(v) => set('monthlyContribution', v)} placeholder="0 if none" prefix="£" />
+                <Field label="Target annual retirement income" value={form.targetRetirementIncome} onChange={(v) => set('targetRetirementIncome', v)} prefix="£" />
                 <Field label="Assumed annual growth rate" value={form.expectedAnnualGrowthPct} onChange={(v) => set('expectedAnnualGrowthPct', v)} suffix="%" />
               </div>
             </GlassCard>
@@ -745,8 +825,8 @@ export default function FinancialProfilePage() {
                       <Field label="Years until university" value={f.yearsRemaining} onChange={(v) => updateChild(i, { yearsRemaining: v })} />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <Field label="Current savings" value={f.currentSavings} onChange={(v) => updateChild(i, { currentSavings: v })} />
-                      <Field label="Target amount" value={f.targetSavings} onChange={(v) => updateChild(i, { targetSavings: v })} />
+                      <Field label="Current savings" value={f.currentSavings} onChange={(v) => updateChild(i, { currentSavings: v })} prefix="£" />
+                      <Field label="Target amount" value={f.targetSavings} onChange={(v) => updateChild(i, { targetSavings: v })} prefix="£" />
                     </div>
                   </div>
                 ))}
@@ -763,7 +843,12 @@ export default function FinancialProfilePage() {
         </motion.div>
       </AnimatePresence>
 
-      <div className="flex gap-2">
+      {/* Sticky rather than inline-after-the-form — on a long step (Insurance
+          Policies, with several policy cards), the primary action used to
+          sit wherever the form happened to end, so reaching it meant
+          scrolling all the way down first. A fixed thumb-reachable footer
+          is the standard mobile-form pattern for exactly this reason. */}
+      <div className="sticky bottom-0 -mx-5 px-5 pt-3 pb-3 mt-2 flex gap-2 bg-[#08080c]/90 backdrop-blur-xl border-t border-white/[0.05] safe-area-bottom">
         {stepIndex > 0 && (
           <button
             type="button"

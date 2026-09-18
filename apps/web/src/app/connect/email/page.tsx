@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Loader2, AlertCircle, CheckCircle2, ShieldCheck } from 'lucide-react'
@@ -16,6 +16,19 @@ export default function ConnectEmailPage() {
   const setConnectorConnected = useAppStore((s) => s.setConnectorConnected)
   const [providerId, setProviderId] = useState('gmail')
   const [showManualGmail, setShowManualGmail] = useState(false)
+  const manualEmailRef = useRef<HTMLInputElement>(null)
+
+  // Live-verification finding: "Trouble signing in?" is a one-shot reveal —
+  // clicking it removes the button itself from the DOM (replaced by a
+  // divider) while the manual form appears further down. React doesn't
+  // move focus when a focused element unmounts, so it silently fell back
+  // to <body>: a keyboard/screen-reader user lost their place entirely and
+  // had no way to discover the form that just appeared without re-exploring
+  // the whole page from the top. Move focus to the form's first field
+  // instead, the same way a newly-opened dialog would.
+  useEffect(() => {
+    if (showManualGmail) manualEmailRef.current?.focus()
+  }, [showManualGmail])
   const [host, setHost] = useState('')
   const [port, setPort] = useState('993')
   const [username, setUsername] = useState('')
@@ -116,12 +129,14 @@ export default function ConnectEmailPage() {
         </GlassCard>
 
         {scanResult ? (
-          <GlassCard className="p-4">
-            <div className="text-sm text-ink-secondary">
-              Scanned {scanResult.scanned} message{scanResult.scanned === 1 ? '' : 's'}, found{' '}
-              {scanResult.inboxItemsCreated} financially relevant.
-            </div>
-          </GlassCard>
+          <div role="status" aria-live="polite">
+            <GlassCard className="p-4">
+              <div className="text-sm text-ink-secondary">
+                Scanned {scanResult.scanned} message{scanResult.scanned === 1 ? '' : 's'}, found{' '}
+                {scanResult.inboxItemsCreated} financially relevant.
+              </div>
+            </GlassCard>
+          </div>
         ) : (
           <GlassButton onClick={handleScanNow} disabled={scanning} variant="secondary">
             {scanning ? <Loader2 size={18} className="animate-spin" /> : 'Scan now'}
@@ -129,10 +144,12 @@ export default function ConnectEmailPage() {
         )}
 
         {error && (
-          <GlassCard className="p-4 border-danger/20 flex items-start gap-3">
-            <AlertCircle size={20} className="text-danger flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-ink-secondary">{error}</div>
-          </GlassCard>
+          <div role="status" aria-live="polite">
+            <GlassCard className="p-4 border-danger/20 flex items-start gap-3">
+              <AlertCircle size={20} className="text-danger flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-ink-secondary">{error}</div>
+            </GlassCard>
+          </div>
         )}
 
         <GlassButton onClick={() => router.push('/inbox')}>Go to Inbox</GlassButton>
@@ -152,6 +169,7 @@ export default function ConnectEmailPage() {
               key={p.id}
               type="button"
               onClick={() => { haptic('light'); setProviderId(p.id) }}
+              aria-pressed={providerId === p.id}
               className={`rounded-xl py-2.5 px-3 text-sm font-semibold text-left transition-all ${
                 providerId === p.id ? 'bg-family-500 text-white' : 'glass text-ink-secondary'
               }`}
@@ -231,9 +249,11 @@ export default function ConnectEmailPage() {
               <div className="text-xs text-ink-tertiary mb-1.5">Email address</div>
               <input
                 id="imap-email"
+                ref={manualEmailRef}
                 type="email"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
                 placeholder="you@example.com"
                 autoComplete="email"
                 className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
@@ -245,6 +265,7 @@ export default function ConnectEmailPage() {
                 id="imap-password"
                 value={password}
                 onChange={setPassword}
+                onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
                 placeholder="••••••••••••"
                 autoComplete="current-password"
                 inputClassName="glass-input w-full rounded-xl px-4 py-3 pr-11 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
@@ -256,10 +277,12 @@ export default function ConnectEmailPage() {
           </GlassCard>
 
           {error && (
-            <GlassCard className="p-4 border-danger/20 flex items-start gap-3">
-              <AlertCircle size={20} className="text-danger flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-ink-secondary">{error}</div>
-            </GlassCard>
+            <div role="status" aria-live="polite">
+              <GlassCard className="p-4 border-danger/20 flex items-start gap-3">
+                <AlertCircle size={20} className="text-danger flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-ink-secondary">{error}</div>
+              </GlassCard>
+            </div>
           )}
 
           <div className="glass rounded-2xl p-4 flex items-start gap-2">

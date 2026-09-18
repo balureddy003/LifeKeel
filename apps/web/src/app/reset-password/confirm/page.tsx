@@ -124,7 +124,7 @@ export default function ConfirmPasswordResetPage() {
       </div>
 
       {error && (
-        <p className="text-sm text-danger text-center mb-4">{error}</p>
+        <p role="status" aria-live="polite" className="text-sm text-danger text-center mb-4">{error}</p>
       )}
 
       <motion.button

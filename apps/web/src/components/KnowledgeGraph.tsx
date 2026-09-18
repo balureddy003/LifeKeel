@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactFlow, {
   Background,
   Controls,
@@ -114,11 +114,20 @@ function buildFamilyGraph(members: FamilyMember[]): { nodes: Node<NodeData>[]; e
   }))
   const simEdges: SimEdge[] = rawEdges
 
+  // Live-verification finding: the original constants (repulsion 10000,
+  // centerStrength 0.015) converged to a world-space layout too tight for
+  // fitView to spread across a real phone-width container without nodes
+  // overlapping — measured live via getBoundingClientRect() on a real
+  // 2-member family graph, several node pairs rendered with negative
+  // effective gaps (e.g. "Our Family" and a person node ~45px apart
+  // center-to-center while both are 40-80px wide). Stronger repulsion and
+  // much weaker centering gives fitView enough room to compress into a
+  // narrow viewport without nodes colliding.
   const positions = runForceSimulation(simNodes, simEdges, {
-    repulsion: 10000,
+    repulsion: 40000,
     springLength: 100,
     springStrength: 0.05,
-    centerStrength: 0.015,
+    centerStrength: 0.005,
     iterations: 300,
   })
 
@@ -237,7 +246,11 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
     return { nodes: visibleNodes, edges: finalEdges }
   }, [allNodes, allEdges, filter])
 
-  const onNodeClick = useCallback((_: React.MouseEvent, node: Node<NodeData>) => {
+  // Shared by mouse (onNodeClick below) and keyboard (the container
+  // keydown listener further down) so both input methods activate a node
+  // identically — see that listener's comment for why keyboard needs its
+  // own handling at all.
+  const handleNodeActivate = useCallback((node: Node<NodeData>) => {
     haptic('light')
     if (node.data.kind === 'person' && node.data.navId) {
       router.push(`/member/${node.data.navId}`)
@@ -248,8 +261,42 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
     }
   }, [router])
 
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node<NodeData>) => {
+    handleNodeActivate(node)
+  }, [handleNodeActivate])
+
+  // Live-verification finding: every node is keyboard-focusable and
+  // announced as a button (tabIndex=0, role="button", both react-flow
+  // defaults) — but Enter/Space did nothing. react-flow's own onKeyDown
+  // updates its internal selection state (the node visibly gains the
+  // .selected class) without ever calling onNodeClick, and — confirmed via
+  // a diagnostic log — onSelectionChange doesn't fire for a
+  // keyboard-triggered selection either, even though it fires correctly
+  // for a mouse-triggered one. Rather than depend on that internal
+  // selection plumbing, this listens for Enter/Space directly on whichever
+  // node currently has real DOM focus (each node wrapper carries
+  // react-flow's own data-id) and calls the exact same activation handler
+  // a mouse click uses.
+  const containerRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return
+      const active = document.activeElement
+      if (!active || !container.contains(active) || !active.classList.contains('react-flow__node')) return
+      const dataId = active.getAttribute('data-id')
+      const node = nodes.find((n) => n.id === dataId)
+      if (!node) return
+      e.preventDefault()
+      handleNodeActivate(node)
+    }
+    container.addEventListener('keydown', handler)
+    return () => container.removeEventListener('keydown', handler)
+  }, [nodes, handleNodeActivate])
+
   return (
-    <div className="relative w-full h-full rounded-3xl overflow-hidden glass flex flex-col">
+    <div ref={containerRef} className="relative w-full h-full rounded-3xl overflow-hidden glass flex flex-col">
       {/* Filter chips */}
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/5 flex-shrink-0">
         {FILTER_OPTIONS.map((opt) => (
@@ -277,6 +324,18 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
             Full map
           </Link>
         )}
+      </div>
+
+      {/* Hint — a real row in the layout, not an absolutely-positioned
+          overlay: fitView scales the graph to use the whole canvas area,
+          so an overlay pinned to a corner ends up sitting on top of
+          whichever nodes fitView happens to place there (confirmed live —
+          it was covering 3 real nodes on a real phone-width viewport). A
+          row above the canvas can never overlap graph content, regardless
+          of viewport size or how fitView lays anything out. */}
+      <div className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] text-ink-tertiary border-b border-white/5 flex-shrink-0">
+        <Bot size={10} />
+        Tap a person or asset to explore
       </div>
 
       {/* Graph canvas */}
@@ -310,6 +369,15 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
           panOnDrag
           nodesConnectable={false}
           elementsSelectable
+          // React Flow makes edges keyboard-focusable by default, each
+          // with its own "Edge from X to Y" announcement — but nothing in
+          // this app responds to activating an edge (no onEdgeClick), so
+          // they're pure Tab-order noise between real content. Confirmed
+          // live via a real keyboard sweep: with 9 edges and 10 nodes in a
+          // typical family graph, a keyboard/screen-reader user had to tab
+          // through all 9 inert edges before ever reaching the first real,
+          // interactive node.
+          edgesFocusable={false}
           proOptions={{ hideAttribution: true }}
         >
           <Background variant={BackgroundVariant.Dots} color="rgba(255,255,255,0.04)" gap={20} />
@@ -318,8 +386,17 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
             className="!bg-white/5 !border-white/10 !rounded-xl !backdrop-blur-md"
           />
           {fullscreen && (
+            // Live-verification finding: react-flow's default MiniMap
+            // footprint (~200x150) took up nearly a third of this canvas's
+            // own height — measured live overlapping 2-4 real nodes at
+            // several viewport sizes, including a realistic 812px-tall
+            // phone, not just this pane's own unusually short default. A
+            // corner overview is supposed to sit clear of the content it's
+            // summarizing; shrinking it cuts collision risk without
+            // touching the main graph's own zoom/fit behavior.
             <MiniMap
               className="!bg-white/5 !backdrop-blur-md !rounded-xl !border-white/10"
+              style={{ width: 96, height: 72 }}
               nodeColor={(node) => CATEGORY_COLOR[(node.data?.category as GraphCategory) ?? 'family']}
               nodeStrokeColor="rgba(255,255,255,0.2)"
               maskColor="rgba(0,0,0,0.3)"
@@ -358,11 +435,6 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
           )}
         </AnimatePresence>
 
-        {/* Hint */}
-        <div className="absolute top-3 right-3 glass rounded-full px-3 py-1 text-[10px] text-ink-tertiary pointer-events-none flex items-center gap-1">
-          <Bot size={10} />
-          Tap a person or asset to explore
-        </div>
         </>
         )}
       </div>

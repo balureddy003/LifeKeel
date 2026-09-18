@@ -65,7 +65,7 @@ describe('PRD-108: renderPlaybook', () => {
 
     const stepWith = withMortgage.steps.find((s) => s.id === 'notify_mortgage_lender')!.body
     const stepWithout = withoutMortgage.steps.find((s) => s.id === 'notify_mortgage_lender')!.body
-    expect(stepWith).toContain('£250000.00') // 25,000,000 minor units
+    expect(stepWith).toContain('£250,000.00') // 25,000,000 minor units
     expect(stepWithout).toMatch(/don't have a mortgage on file/i)
   })
 

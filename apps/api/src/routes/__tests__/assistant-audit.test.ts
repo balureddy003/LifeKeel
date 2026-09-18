@@ -12,6 +12,22 @@ import Fastify from 'fastify'
 import { initAuditLogger } from '../../audit/audit-log.js'
 import { registerAssistantRoutes } from '../assistant.js'
 
+// assistant.ts reads insights via the global db.ts singleton (getInsightsCollection),
+// not the `db` passed into registerAssistantRoutes — without this mock it tries a
+// real MongoDB connection and hangs for serverSelectionTimeoutMS (5s), timing out
+// the test. Same pattern as assistant.test.ts.
+vi.mock('../../db.js', () => ({
+  getInsightsCollection: vi.fn(async () => ({
+    find: () => ({
+      sort: () => ({
+        limit: () => ({
+          toArray: async () => [],
+        }),
+      }),
+    }),
+  })),
+}))
+
 function makeFakeDb() {
   const col = { findOne: async () => null, insertOne: async () => ({}), createIndex: async () => ({}) }
   return { collection: () => col } as any

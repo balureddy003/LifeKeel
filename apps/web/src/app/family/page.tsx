@@ -1,25 +1,58 @@
 'use client'
 
+import { useCallback, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { BarChart3, Settings, AlertTriangle, User } from 'lucide-react'
 import { GlassCard, PageHeader, ListSection, ListRow } from '@/components/Glass'
 import { FamilyRoster } from '@/components/FamilyRoster'
+import { PullToRefresh } from '@/components/PullToRefresh'
 import { ROLE_LABELS } from '@/lib/auth-types'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
+import { fetchFinancialProfile, type FinancialProfile } from '@/lib/api'
 
 export default function FamilyPage() {
   const { family } = useAuth()
+  // Was `m.status === 'active' ? 100 : 40` — a number that read as "how
+  // complete is this person's financial picture" but was actually just
+  // whether they'd accepted their invite yet, completely disconnected from
+  // whether any real data existed for them. Confirmed live: a member with a
+  // fully-populated PRD-104 members[] entry (real salary, real protection
+  // figures) still showed 40% for no reason other than a pending invite.
+  // Real completeness instead: the organizer's data lives in the flat
+  // household fields; everyone else's lives in household.members[] — 100
+  // if either is genuinely populated, 0 if not. Binary, not a finer-grained
+  // score, so it never implies partial progress that isn't real.
+  const [profile, setProfile] = useState<FinancialProfile | null>(null)
+  const loadProfile = useCallback(async () => {
+    const p = await fetchFinancialProfile()
+    setProfile(p)
+  }, [])
+  useEffect(() => {
+    let cancelled = false
+    fetchFinancialProfile().then((p) => { if (!cancelled) setProfile(p) })
+    return () => { cancelled = true }
+  }, [])
+
+  function completionFor(memberId: string, role: string): number {
+    if (!profile) return 0
+    if (role === 'organizer') {
+      return profile.household.monthly_salary_minor > 0 || profile.household.employment_status !== 'unemployed' ? 100 : 0
+    }
+    return profile.household.members.some((m) => m.member_id === memberId) ? 100 : 0
+  }
+
   const familyMembers = (family?.members ?? []).map((m) => ({
     id: m.id,
     name: m.name,
     emoji: m.emoji,
     role: ROLE_LABELS[m.role],
-    completion: m.status === 'active' ? 100 : 40,
+    completion: completionFor(m.id, m.role),
   }))
 
   return (
+    <PullToRefresh onRefresh={loadProfile}>
     <div className="px-5 pt-2 space-y-6">
       <PageHeader title="Our Family" />
 
@@ -80,5 +113,6 @@ export default function FamilyPage() {
         </Link>
       </ListSection>
     </div>
+    </PullToRefresh>
   )
 }

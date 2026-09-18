@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Sparkles, CheckCircle2, Loader2, AlertCircle, ScanLine } from 'lucide-react'
-import { PageHeader, GlassCard, GlassButton } from '@/components/Glass'
+import { PageHeader, GlassCard, GlassButton, Skeleton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
 import { fetchBillingSubscription, startOakPlusCheckout } from '@/lib/api'
@@ -17,7 +17,7 @@ const BENEFITS = [
 const EXTRACTED_FIELDS = [
   { label: 'Provider', value: 'AllState Insurance' },
   { label: 'Policy Number', value: 'HO-88213-A' },
-  { label: 'Amount', value: '$1,240/yr' },
+  { label: 'Amount', value: '£1,240/yr' },
   { label: 'Renews', value: 'Jun 14, 2027' },
 ]
 
@@ -107,11 +107,21 @@ export default function UpgradePage() {
 
   if (loading) {
     return (
-      <div className="px-5 pt-2">
-        <PageHeader title="Oak Plus" backHref="/settings" />
-        <div className="flex justify-center py-16">
-          <Loader2 size={28} className="animate-spin text-family-400" />
-        </div>
+      <div className="px-5 pt-2 pb-10 space-y-5">
+        <PageHeader title="Oak Plus" backHref="/settings" subtitle="AI that does the reading for you" />
+        <GlassCard className="p-5">
+          <Skeleton className="h-4 w-28 mb-3" />
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex items-center gap-2 py-1.5">
+              <Skeleton className="h-4 w-4 rounded-full flex-shrink-0" />
+              <Skeleton className="h-3 w-full" />
+            </div>
+          ))}
+        </GlassCard>
+        <GlassCard className="p-5 text-center">
+          <Skeleton className="h-8 w-28 mx-auto" />
+          <Skeleton className="h-3 w-20 mx-auto mt-2" />
+        </GlassCard>
       </div>
     )
   }
@@ -169,7 +179,7 @@ export default function UpgradePage() {
             <p className="text-xs text-ink-tertiary mt-1">Cancel anytime</p>
           </GlassCard>
 
-          {error && <p className="text-sm text-danger text-center">{error}</p>}
+          {error && <p role="status" aria-live="polite" className="text-sm text-danger text-center">{error}</p>}
 
           <GlassButton onClick={handleUpgrade} disabled={checkingOut}>
             {checkingOut ? <Loader2 size={18} className="animate-spin" /> : 'Upgrade to Oak Plus'}

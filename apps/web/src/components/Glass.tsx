@@ -189,6 +189,17 @@ export function ScoreRing({ score, size = 140 }: { score: number; size?: number 
   const circumference = 2 * Math.PI * radius
   const offset = circumference - (score / 100) * circumference
   const color = score >= 80 ? '#4ade80' : score >= 60 ? '#fbbf24' : '#f87171'
+  // Number/caption were fixed at text-4xl/text-xs regardless of `size` —
+  // fine at the 140/160 call sites, but Home's compact widget passes
+  // size={80}, where a 36px number plus a 12px caption don't fit inside an
+  // ~50px inner clear area (size minus the ring's own stroke) and visibly
+  // overlap the ring's glow. Scale the number with the ring instead, and
+  // below a threshold where two stacked lines genuinely can't fit legibly,
+  // drop the caption rather than shrink it into something unreadable —
+  // the same choice compact stat rings (e.g. Apple Watch activity rings)
+  // make at small sizes.
+  const numberPx = Math.round(size * 0.26)
+  const showCaption = size >= 100
 
   return (
     <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
@@ -211,15 +222,15 @@ export function ScoreRing({ score, size = 140 }: { score: number; size?: number 
       </svg>
       <div className="flex flex-col items-center">
         <motion.span
-          className="text-4xl font-bold"
-          style={{ color }}
+          className="font-bold leading-none"
+          style={{ color, fontSize: numberPx }}
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.3, type: 'spring', stiffness: 300, damping: 20 }}
         >
           {score}
         </motion.span>
-        <span className="text-xs text-ink-tertiary mt-0.5">out of 100</span>
+        {showCaption && <span className="text-xs text-ink-tertiary mt-0.5">out of 100</span>}
       </div>
     </div>
   )
@@ -304,13 +315,21 @@ export function Money({ value, className = '' }: { value: string; className?: st
   return <span className={className}>{value}</span>
 }
 
-const CURRENCY_PATTERN = /\$[\d,]+(?:\.\d+)?[KMB]?/g
+// Live-verification finding: this only matched $-prefixed amounts, but the
+// AI assistant's real responses (apps/api/src/routes/assistant.ts) and the
+// real subscription price on /upgrade are both £ — this app's actual
+// currency, confirmed by the billing system's own GBP default. A £ amount
+// in assistant prose was passing through completely unredacted in modes
+// with showMoney off (e.g. Child), silently defeating the one feature this
+// component exists for. Matches both symbols — $ still appears in sample/
+// mock copy elsewhere that isn't live data.
+const CURRENCY_PATTERN = /[£$][\d,]+(?:\.\d+)?[KMB]?/g
 
 /**
  * Renders free-form text (e.g. an AI insight or income line item) with any
- * embedded dollar amounts redacted in modes where showMoney is off — Money
- * only covers standalone values, but income/insight copy is prose that
- * mentions figures inline, so it needs its own masking pass.
+ * embedded currency amounts redacted in modes where showMoney is off —
+ * Money only covers standalone values, but income/insight copy is prose
+ * that mentions figures inline, so it needs its own masking pass.
  */
 export function MoneyText({ text, className = '' }: { text: string; className?: string }) {
   const { config } = useMode()
@@ -332,6 +351,7 @@ export function ListRow({
   value,
   chevron,
   onClick,
+  pressed,
   children,
 }: {
   label?: string
@@ -339,6 +359,10 @@ export function ListRow({
   value?: ReactNode
   chevron?: boolean
   onClick?: () => void
+  /** For a row that's one of several mutually-exclusive options (e.g. a
+   * mode switcher) — sets aria-pressed so the selection state carried by
+   * the `value` checkmark isn't visual-only. */
+  pressed?: boolean
   children?: ReactNode
 }) {
   const content = (
@@ -364,6 +388,7 @@ export function ListRow({
           haptic('light')
           onClick()
         }}
+        aria-pressed={pressed}
         className="w-full text-left border-b border-white/[0.04] last:border-0 active:opacity-80"
       >
         {content}
