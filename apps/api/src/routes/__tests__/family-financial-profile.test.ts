@@ -167,6 +167,29 @@ describe('PRD-102: policies[] and the new protection-domain rules', () => {
     expect(insights2.some((i) => i.rule_id === 'policy_renewal_window')).toBe(false)
   })
 
+  it('PRD-110: member_id on a policy round-trips and attributes the renewal insight to that roster member', async () => {
+    const { app, insights } = await buildApp(engine)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        policies: [
+          { type: 'health', provider: 'Bupa', coverage_amount_minor: 0, monthly_premium_minor: 9000, renewal_date: daysFromNow(30), member_id: 'member-7' },
+        ],
+        generate_insights: true,
+      },
+    })
+    expect(res.statusCode).toBe(200)
+
+    const get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    expect(get.json().profile.policies[0].member_id).toBe('member-7')
+
+    const renewal = insights.find((i) => i.rule_id === 'policy_renewal_window')
+    expect(renewal).toBeDefined()
+    expect(renewal?.feature_snapshot?.['soonest_renewal_member_id']).toBe('member-7')
+  })
+
   it('fires no_health_or_critical_illness_cover for dependents with no health/CI policy, not when one exists', async () => {
     const { app, insights } = await buildApp(engine)
     await app.inject({

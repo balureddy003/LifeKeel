@@ -169,8 +169,8 @@ function ElderlyHome() {
       <div className="space-y-2.5">
         {[
           { icon: Bot, label: 'Ask Anything', action: 'ask' },
-          { icon: Phone, label: 'Call Insurance', action: 'call-insurance' },
-          { icon: User, label: 'Call Son', action: 'call-son' },
+          { icon: Phone, label: 'View Insurance', action: 'call-insurance' },
+          { icon: User, label: 'View Son', action: 'call-son' },
           { icon: FileText, label: 'Important Documents', action: 'docs' },
           { icon: Siren, label: 'Emergency Help', action: 'emergency', danger: true },
         ].map((item, i) => {

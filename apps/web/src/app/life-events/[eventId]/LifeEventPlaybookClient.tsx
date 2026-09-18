@@ -7,12 +7,12 @@ import Link from 'next/link'
 import { ArrowLeft, Check, Copy, HelpCircle, Loader2, Mail, PenLine } from 'lucide-react'
 import { GlassCard, GlassButton, PageHeader } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
-import { fetchLifeEvents, prepareLifeEventStepDraft, type LifeEvent, type LifeEventPlaybookStep } from '@/lib/api'
+import { fetchLifeEvents, prepareLifeEventStepDraft, setLifeEventStepDone, type LifeEvent, type LifeEventPlaybookStep } from '@/lib/api'
 
-// Checklist completion has no backend endpoint (PRD-108 keeps this
-// client-side, matching /events/[eventId]'s existing convention) — scoped
-// by tenant + event id so action ids (which repeat across event types)
-// don't bleed into each other.
+// Checklist completion is now server-persisted (remediation item 19) —
+// localStorage remains only as an instant-paint cache while the server
+// state loads, and as a last-seen snapshot if the request fails. The
+// server is authoritative; nothing here decides truth.
 function checklistStorageKey(eventId: string): string {
   const tenant = typeof window !== 'undefined' ? localStorage.getItem('agentoak_tenant') ?? 'anon' : 'anon'
   return `agentoak:life-event-checklist:${tenant}:${eventId}`
@@ -125,12 +125,21 @@ export default function LifeEventPlaybookClient() {
   const params = useParams<{ eventId: string }>()
   const [event, setEvent] = useState<LifeEvent | null | undefined>(undefined)
   const [doneIds, setDoneIds] = useState<Set<string>>(new Set())
+  const [syncError, setSyncError] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     fetchLifeEvents().then((events) => {
       if (cancelled) return
-      setEvent(events.find((e) => e.id === params.eventId) ?? null)
+      const found = events.find((e) => e.id === params.eventId) ?? null
+      setEvent(found)
+      if (found) {
+        // Server is authoritative — overrides the localStorage snapshot
+        // used for instant paint below.
+        const serverIds = new Set(found.completed_step_ids ?? [])
+        setDoneIds(serverIds)
+        saveDoneIds(params.eventId, serverIds)
+      }
     })
     return () => { cancelled = true }
   }, [params.eventId])
@@ -141,12 +150,26 @@ export default function LifeEventPlaybookClient() {
 
   const toggleStep = (stepId: string) => {
     haptic('light')
-    setDoneIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(stepId)) next.delete(stepId)
-      else next.add(stepId)
-      saveDoneIds(params.eventId, next)
-      return next
+    const next = new Set(doneIds)
+    const done = !next.has(stepId)
+    if (done) next.add(stepId)
+    else next.delete(stepId)
+    setDoneIds(next)
+    saveDoneIds(params.eventId, next)
+    setSyncError(false)
+    setLifeEventStepDone(params.eventId, stepId, done).then((serverIds) => {
+      if (serverIds === null) {
+        // Revert to the pre-toggle state — the optimistic change didn't land.
+        setDoneIds((current) => {
+          const reverted = new Set(current)
+          if (done) reverted.delete(stepId)
+          else reverted.add(stepId)
+          return reverted
+        })
+        setSyncError(true)
+      } else {
+        setDoneIds(new Set(serverIds))
+      }
     })
   }
 
@@ -195,6 +218,11 @@ export default function LifeEventPlaybookClient() {
           <span className="text-sm font-semibold text-ink-secondary">Steps</span>
           <span className="text-xs text-ink-tertiary">{completedCount}/{playbook.steps.length} done</span>
         </div>
+        {syncError && (
+          <p role="status" aria-live="polite" className="text-xs text-danger mb-3">
+            Couldn't save that change — check your connection and try again.
+          </p>
+        )}
         <div className="space-y-2">
           {playbook.steps.map((step, i) => {
             const done = doneIds.has(step.id)

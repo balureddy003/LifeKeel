@@ -9,6 +9,7 @@
       { "source": "/member/**", "destination": "/member/placeholder/index.html" },
       { "source": "/asset/**", "destination": "/asset/placeholder/index.html" },
       { "source": "/documents/**", "destination": "/documents/placeholder/index.html" },
+      { "source": "/insights/**", "destination": "/insights/placeholder/index.html" },
       { "source": "/events/**", "destination": "/events/placeholder/index.html" },
       { "source": "/life-events/**", "destination": "/life-events/placeholder/index.html" },
       { "source": "/health/**", "destination": "/health/placeholder/index.html" },

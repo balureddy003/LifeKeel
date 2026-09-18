@@ -19,7 +19,7 @@ import yaml from 'js-yaml'
 import { repoRoot, formatMoney } from '@agentoak/platform'
 import type { FinancialProfile } from '../routes/family-financial-profile.js'
 
-export type LifeEventType = 'job_loss' | 'bereavement' | 'disability'
+export type LifeEventType = 'job_loss' | 'bereavement' | 'disability' | 'medical' | 'car' | 'property' | 'travel'
 
 export interface PlaybookStep {
   id: string
@@ -61,6 +61,10 @@ const PLAYBOOK_FILES: Record<LifeEventType, string> = {
   job_loss: 'job-loss.yaml',
   bereavement: 'bereavement.yaml',
   disability: 'disability.yaml',
+  medical: 'medical.yaml',
+  car: 'car.yaml',
+  property: 'property.yaml',
+  travel: 'travel.yaml',
 }
 
 // Loaded once per process, same pattern as category-table.yaml's load in
@@ -190,6 +194,71 @@ function renderDisabilityStep(
   return ''
 }
 
+function renderMedicalStep(
+  stepId: string,
+  profile: FinancialProfile,
+  affectedMemberId: string | undefined,
+): string {
+  if (stepId === 'check_health_cover') {
+    const earner = resolveEarner(profile, affectedMemberId)
+    const parts: string[] = []
+    const health = profile.policies.filter((p) => p.type === 'health')
+    const critical = profile.policies.filter((p) => p.type === 'critical_illness')
+    if (health.length > 0) parts.push(`health insurance with ${health.map((p) => p.provider).join(', ')}`)
+    if (critical.length > 0) parts.push(`critical-illness cover with ${critical.map((p) => p.provider).join(', ')}`)
+    if (earner.income_protection_monthly_minor > 0) {
+      parts.push(`${formatMoney(earner.income_protection_monthly_minor)}/month of income protection`)
+    }
+    if (parts.length > 0) {
+      return `Based on your real data, you have ${parts.join(' and ')} on file. Contact the provider(s) now — many health policies require notification within days of an emergency admission.`
+    }
+    return "We don't have health insurance or income protection on file for your family. If a policy exists that we don't know about, find its emergency number now — and once things stabilize, add your policies to the financial profile so this step is grounded in real data next time."
+  }
+  return ''
+}
+
+function renderCarStep(stepId: string, profile: FinancialProfile): string {
+  if (stepId === 'check_car_insurance') {
+    const car = profile.policies.filter((p) => p.type === 'car')
+    if (car.length > 0) {
+      const list = car.map((p) => p.provider + (p.policy_number ? ` (policy ${p.policy_number})` : '')).join(', ')
+      return `Based on your real data, your car insurance on file: ${list}. Report the accident to the insurer within their notification window — have the policy number and the other party's details ready.`
+    }
+    return "We don't have a car insurance policy on file for your family. If you're covered, find the policy number and the insurer's claim line now — and add the policy to your financial profile later so Oak can quote it back to you here."
+  }
+  return ''
+}
+
+function renderPropertyStep(stepId: string, profile: FinancialProfile): string {
+  if (stepId === 'check_home_cover') {
+    const home = profile.policies.filter((p) => p.type === 'home')
+    const parts: string[] = []
+    if (home.length > 0) parts.push(`home insurance with ${home.map((p) => p.provider).join(', ')}`)
+    if (profile.household.mortgage_outstanding_minor > 0) {
+      parts.push(`a mortgage of ${formatMoney(profile.household.mortgage_outstanding_minor)} outstanding — your lender may need to be notified of major damage too`)
+    }
+    if (parts.length > 0) {
+      return `Based on your real data, you have ${parts.join(' and ')} on file. Report the damage to the insurer before authorizing non-emergency repairs.`
+    }
+    return "We don't have home insurance on file for your family. If a policy exists, find the claim line now — and add it to your financial profile later so this step is grounded in real data next time."
+  }
+  return ''
+}
+
+function renderTravelStep(stepId: string, profile: FinancialProfile): string {
+  if (stepId === 'check_travel_cover') {
+    // No 'travel' policy type exists in the schema (PRD-105 added car/home
+    // only) — the honest check: health policies sometimes cover emergency
+    // treatment abroad, and that's all we can see.
+    const health = profile.policies.filter((p) => p.type === 'health')
+    if (health.length > 0) {
+      return `We don't track travel insurance yet, but you have health insurance with ${health.map((p) => p.provider).join(', ')} on file — some health policies cover emergency treatment abroad, check yours. Also check whether a credit card or employer benefit includes travel cover.`
+    }
+    return "We don't track travel insurance yet and have no health policies on file either. Check whether your health policy, credit card, or employer benefits include travel cover — that's where emergency assistance usually hides."
+  }
+  return ''
+}
+
 function renderComputedStep(
   eventType: LifeEventType,
   stepId: string,
@@ -198,6 +267,10 @@ function renderComputedStep(
 ): string {
   if (eventType === 'job_loss') return renderJobLossStep(stepId, profile, affectedMemberId)
   if (eventType === 'bereavement') return renderBereavementStep(stepId, profile)
+  if (eventType === 'medical') return renderMedicalStep(stepId, profile, affectedMemberId)
+  if (eventType === 'car') return renderCarStep(stepId, profile)
+  if (eventType === 'property') return renderPropertyStep(stepId, profile)
+  if (eventType === 'travel') return renderTravelStep(stepId, profile)
   return renderDisabilityStep(stepId, profile, affectedMemberId)
 }
 

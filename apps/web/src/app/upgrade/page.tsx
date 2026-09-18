@@ -6,7 +6,7 @@ import { Sparkles, CheckCircle2, Loader2, AlertCircle, ScanLine } from 'lucide-r
 import { PageHeader, GlassCard, GlassButton, Skeleton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
-import { fetchBillingSubscription, startOakPlusCheckout } from '@/lib/api'
+import { fetchBillingSubscription, startOakPlusCheckout, type BillingSubscription } from '@/lib/api'
 
 const BENEFITS = [
   'AI reads your documents and pulls out the provider, policy number, amounts, and dates automatically',
@@ -81,13 +81,37 @@ export default function UpgradePage() {
   useEffect(() => {
     track('upgrade_page_view')
     const params = new URLSearchParams(window.location.search)
-    if (params.get('success') === 'true') setBanner('success')
+    const success = params.get('success') === 'true'
+    if (success) setBanner('success')
     else if (params.get('canceled') === 'true') setBanner('canceled')
 
+    const isActive = (sub: BillingSubscription | null) =>
+      !!sub && sub.plan !== 'free' && sub.status !== 'canceled'
+
+    let cancelled = false
     fetchBillingSubscription().then((sub) => {
-      setIsPlus(!!sub && sub.plan !== 'free' && sub.status !== 'canceled')
+      if (cancelled) return
+      setIsPlus(isActive(sub))
       setLoading(false)
     })
+
+    // Stripe's webhook can lag the checkout redirect by several seconds —
+    // after a ?success=true return, keep polling briefly rather than
+    // leaving "refresh if it doesn't update" on a page that never does.
+    if (!success) return () => { cancelled = true }
+    const startedAt = Date.now()
+    const interval = setInterval(async () => {
+      if (Date.now() - startedAt > 30_000) {
+        clearInterval(interval)
+        return
+      }
+      const sub = await fetchBillingSubscription()
+      if (!cancelled && isActive(sub)) {
+        setIsPlus(true)
+        clearInterval(interval)
+      }
+    }, 3000)
+    return () => { cancelled = true; clearInterval(interval) }
   }, [])
 
   const handleUpgrade = async () => {
@@ -133,7 +157,7 @@ export default function UpgradePage() {
       {banner === 'success' && !isPlus && (
         <GlassCard className="p-4 border-success/20 flex items-start gap-3">
           <CheckCircle2 size={20} className="text-success flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-ink-secondary">Payment received — activating Oak Plus. This can take a few seconds; refresh if it doesn't update.</p>
+          <p className="text-sm text-ink-secondary">Payment received — activating Oak Plus. This usually takes a few seconds and updates here automatically.</p>
         </GlassCard>
       )}
       {banner === 'canceled' && (

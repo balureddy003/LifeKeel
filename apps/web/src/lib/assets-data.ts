@@ -47,19 +47,10 @@ export const ASSETS: Record<string, AssetProfile> = {
     ],
     actions: ['Sell', 'Refinance', 'Insurance', 'Inheritance'],
   },
-  investments: {
-    id: 'investments',
-    label: 'Investments',
-    icon: 'TrendingUp',
-    marketValue: 245000,
-    owners: [{ name: 'Dad', share: 100 }],
-    insights: [
-      { text: 'Grew 12% this year — $45,000 in gains', status: 'good' },
-      { text: 'Diversified across index funds and bonds', status: 'good' },
-      { text: 'No rebalancing in the last 18 months', status: 'warning' },
-    ],
-    actions: ['Rebalance', 'Withdraw', 'Add Funds', 'Inheritance'],
-  },
+  // 'investments' was removed — it was a second entry over the same
+  // pension-backed data /asset/pension already shows, presented as a
+  // distinct account. /asset/investments URLs still resolve (see
+  // AssetProfileClient) but nothing navigates there anymore.
   pension: {
     id: 'pension',
     label: 'Pension',

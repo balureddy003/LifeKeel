@@ -4,6 +4,7 @@
  * GET  /insights                  — list with filters
  * GET  /insights/:id              — single insight
  * GET  /insights/:id/explain      — full rule evaluation trace
+ * GET  /insights/:id/action-preview — per-action effects for the approval gate
  * POST /insights/:id/approve         — approve + execute recommended actions
  * POST /insights/:id/retry-execution — retry actions that failed on approve (idempotent)
  * POST /insights/:id/dismiss         — dismiss insight
@@ -19,7 +20,7 @@ import { getInsightsCollection, getReceiptsCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { recordInsightRouteError } from './metrics.js'
 import { sendOpsAlert } from '../lib/ops-alerts.js'
-import { ActionExecutor } from '../actions/action-executor.js'
+import { ActionExecutor, previewActions } from '../actions/action-executor.js'
 import { recordMomentDecision } from '../verified-moments.js'
 import { startGoalExperimentsForApproval } from '../outcomes/causal-experiments.js'
 import { generateDraft } from '../insights/generate-draft.js'
@@ -296,6 +297,39 @@ export async function registerInsightRoutes(
     } catch (err) {
       log.warn({ err, id }, 'GET /insights/:id failed')
       reportInsightRouteError('GET /insights/:id', err, tenant_id)
+      return reply.status(404).send({ error: 'Insight not found' })
+    }
+  })
+
+  /**
+   * GET /insights/:id/action-preview
+   * The approval-gate read: returns the insight plus a per-action preview of
+   * what POST /insights/:id/approve would actually run — the SAME
+   * classification ActionExecutor dispatches on (previewActions shares
+   * classifyAction), so the screen a human approves from can't drift from
+   * the side effects that execute. Includes the tenant's dry_run flag so the
+   * gate can say "nothing will actually send" when that's true.
+   */
+  app.get<{ Params: { id: string } }>('/insights/:id/action-preview', async (request, reply) => {
+    const { tenant_id } = request.authContext
+    const { id } = request.params
+
+    try {
+      const col = await getInsightsCollection()
+      const insight = await col.findOne({ id, tenant_id }) // tenant_id guard
+      if (!insight) return reply.status(404).send({ error: 'Insight not found' })
+
+      const tenantSettings = db ? await db.collection('tenant_settings').findOne({ tenant_id }) : null
+      const dryRun = tenantSettings?.['automation']?.dry_run_mode === true
+
+      return {
+        insight,
+        actions: previewActions((insight as unknown as { actions?: string[] }).actions ?? []),
+        dry_run: dryRun,
+      }
+    } catch (err) {
+      log.warn({ err, id }, 'GET /insights/:id/action-preview failed')
+      reportInsightRouteError('GET /insights/:id/action-preview', err, tenant_id)
       return reply.status(404).send({ error: 'Insight not found' })
     }
   })

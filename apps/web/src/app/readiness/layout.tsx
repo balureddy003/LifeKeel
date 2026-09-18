@@ -8,18 +8,18 @@ import type { Metadata } from 'next'
 // quiz's result is (see ShareScore in page.tsx) — everywhere else, the root
 // layout's site-wide metadata is the right default.
 export const metadata: Metadata = {
-  title: 'Family Readiness Score — Agent Oak',
-  description: 'Six quick questions, no signup. See your Family Readiness Score and what Oak would flag for your household — free, in about a minute.',
+  title: 'Family Readiness Check — Agent Oak',
+  description: 'Six quick questions, no signup. See your Family Readiness Check result and what Oak would flag for your household — free, in about a minute.',
   openGraph: {
-    title: 'Family Readiness Score — Agent Oak',
-    description: 'Six quick questions, no signup. See your Family Readiness Score in about a minute.',
+    title: 'Family Readiness Check — Agent Oak',
+    description: 'Six quick questions, no signup. See your Family Readiness Check result in about a minute.',
     url: 'https://kairos-trellis.web.app/readiness',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Family Readiness Score — Agent Oak',
-    description: 'Six quick questions, no signup. See your Family Readiness Score in about a minute.',
+    title: 'Family Readiness Check — Agent Oak',
+    description: 'Six quick questions, no signup. See your Family Readiness Check result in about a minute.',
   },
 }
 

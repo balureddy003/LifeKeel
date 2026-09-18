@@ -145,6 +145,25 @@ describe('POST /documents/:id/apply-policy', () => {
     expect('policy_number' in stored).toBe(false)
   })
 
+  it('stores member_id only when the review card supplies one (PRD-110) — never guessed', async () => {
+    const app = await buildApp(db)
+    const { status, body } = await applyPolicy(app, 'family-1', 'doc-1', {
+      type: 'life',
+      provider: 'Aviva',
+      coverageAmountMinor: 10_000_000,
+      monthlyPremiumMinor: 1200,
+      memberId: 'member-42',
+    })
+
+    expect(status).toBe(200)
+    expect(body.applied.member_id).toBe('member-42')
+    expect(db._profiles[0].policies[0].member_id).toBe('member-42')
+
+    const second = await applyPolicy(app, 'family-1', 'doc-1', { type: 'car', provider: 'Admiral' })
+    expect(second.status).toBe(200)
+    expect('member_id' in db._profiles[0].policies[1]).toBe(false)
+  })
+
   it('rejects a missing or invalid policy type', async () => {
     const app = await buildApp(db)
     const missing = await applyPolicy(app, 'family-1', 'doc-1', { provider: 'Aviva' })

@@ -6,10 +6,10 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { PageHeader, GlassCard, Skeleton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
-import { fetchConnectorStatuses, disconnectConnector, type ConnectorStatus } from '@/lib/api'
+import { fetchConnectorStatuses, disconnectConnector, fetchConnectorSyncStatus, triggerConnectorBackfill, type ConnectorStatus, type ConnectorSyncResource } from '@/lib/api'
 import { useAppStore } from '@/lib/store'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
-import { Mail, Landmark, Check, Loader2, Unlink, Shield, Lock, Clock, ChevronRight } from 'lucide-react'
+import { Mail, Landmark, Check, Loader2, Unlink, Shield, Lock, Clock, ChevronRight, RefreshCw } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 const CONNECTOR_ICONS: Record<string, LucideIcon> = {
@@ -25,6 +25,95 @@ const CONNECTOR_DESCRIPTIONS: Record<string, string> = {
 const CONNECTOR_CATEGORIES: Record<string, { label: string; icon: LucideIcon }> = {
   email: { label: 'Email', icon: Mail },
   bank: { label: 'Banking', icon: Landmark },
+}
+
+function timeAgo(iso: string | null): string {
+  if (!iso) return 'never'
+  const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
+  if (seconds < 60) return 'just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
+}
+
+/**
+ * Sync/backfill status for a connected connector (remediation item 21) —
+ * POST /connectors/:id/backfill and GET /connectors/:id/sync/status
+ * already existed server-side with no caller, so a stalled or failed sync
+ * was invisible to the user. Polls while a backfill is in flight.
+ */
+function ConnectorSyncPanel({ connectorId }: { connectorId: string }) {
+  const [resources, setResources] = useState<ConnectorSyncResource[] | null>(null)
+  const [triggering, setTriggering] = useState(false)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    const poll = async () => {
+      const next = await fetchConnectorSyncStatus(connectorId)
+      if (cancelled) return
+      setResources(next)
+      // Keep polling while any resource reports an unfinished backfill.
+      if (next.length > 0 && next.some((r) => !r.backfill_complete)) {
+        timer = setTimeout(poll, 5000)
+      }
+    }
+    poll()
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [connectorId, triggering])
+
+  const handleResync = async () => {
+    haptic('light')
+    setTriggering(true)
+    setFailed(false)
+    const ok = await triggerConnectorBackfill(connectorId)
+    if (!ok) setFailed(true)
+    // Toggling `triggering` re-runs the effect above, restarting the poll.
+    setTriggering(false)
+  }
+
+  if (resources === null) return null
+
+  const totalSynced = resources.reduce((sum, r) => sum + (r.total_records_synced ?? 0), 0)
+  const lastSync = resources.map((r) => r.last_synced_at).filter(Boolean).sort().at(-1) ?? null
+  const inProgress = resources.some((r) => !r.backfill_complete)
+  const lastError = resources.map((r) => r.last_error).filter(Boolean).at(-1)
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      {resources.length === 0 ? (
+        <p className="text-xs text-ink-tertiary">No documents synced yet.</p>
+      ) : (
+        <p className="text-xs text-ink-tertiary">
+          {inProgress ? 'Syncing… ' : ''}{totalSynced} record{totalSynced === 1 ? '' : 's'} synced · last sync {timeAgo(lastSync)}
+        </p>
+      )}
+      {lastError && (
+        <p role="status" aria-live="polite" className="text-xs text-danger">
+          Last sync failed{lastError.status_text ? `: ${lastError.status_text}` : ''} ({timeAgo(lastError.at)})
+        </p>
+      )}
+      {failed && (
+        <p role="status" aria-live="polite" className="text-xs text-danger">Couldn't start a re-sync — try again.</p>
+      )}
+      <button
+        type="button"
+        onClick={handleResync}
+        disabled={triggering || inProgress}
+        className="flex items-center gap-1.5 text-xs font-semibold text-family-400 disabled:opacity-50"
+      >
+        {triggering || inProgress ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+        {inProgress ? 'Sync in progress' : 'Re-sync now'}
+      </button>
+    </div>
+  )
 }
 
 export default function ConnectPage() {
@@ -207,6 +296,8 @@ export default function ConnectPage() {
                             </motion.button>
                           )}
                         </div>
+
+                        {isConnected && <ConnectorSyncPanel connectorId={connector.id} />}
                       </div>
                     </div>
                   </GlassCard>

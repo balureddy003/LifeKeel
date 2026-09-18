@@ -32,16 +32,21 @@ describe('PRD-107: splitInsightsByResolution', () => {
     expect(resolved.map((i) => i.id)).toEqual(['b'])
   })
 
-  it('keeps dismissed/completed/archived insights in the open bucket — only resolved gets its own section', () => {
+  it('drops dismissed/completed/archived insights from both buckets — actioned is not "open" and not "now covered"', () => {
+    // Once the approval gate exists, an already-approved insight still
+    // rendering as "open" would offer a Review & approve link into a
+    // decision that's already been made. RESOLVED_INSIGHT_STATES is the
+    // same boundary the readiness score uses.
     const insights = [
       makeInsight({ id: 'a', state: 'dismissed' }),
       makeInsight({ id: 'b', state: 'completed' }),
       makeInsight({ id: 'c', state: 'archived' }),
+      makeInsight({ id: 'd', state: 'approved' }),
     ]
 
     const { open, resolved } = splitInsightsByResolution(insights)
 
-    expect(open.map((i) => i.id)).toEqual(['a', 'b', 'c'])
+    expect(open).toEqual([])
     expect(resolved).toEqual([])
   })
 

@@ -35,7 +35,7 @@ const FAMILY_DETECTOR_IDS = [
   'family_education_shortfall',
 ] as const
 
-const FinancialProfileSchema = z.object({
+export const FinancialProfileSchema = z.object({
   household: z.object({
     // A strict yes/no "employed" boolean meant self-employed and gig-income
     // households always answered "no" (they don't have an employer), which
@@ -131,6 +131,12 @@ const FinancialProfileSchema = z.object({
         // number back to the insurer without digging out the original
         // document again.
         policy_number: z.string().optional(),
+        // PRD-110: which roster member this policy belongs to. Optional and
+        // additive — policies recorded before this field exist simply have
+        // no attribution (car/home are household-wide by nature and stay
+        // unset deliberately). Never guessed from OCR: attribution only ever
+        // comes from an explicit user pick in the wizard or document review.
+        member_id: z.string().min(1).optional(),
       }),
     )
     .default([]),
@@ -246,18 +252,246 @@ function soonestPolicyRenewal(policies: FinancialProfile['policies']): {
   days: number
   provider: string
   type: string
+  member_id?: string
 } {
   const now = Date.now()
-  let best: { days: number; provider: string; type: string } | null = null
+  let best: { days: number; provider: string; type: string; member_id?: string } | null = null
   for (const policy of policies) {
     if (!policy.renewal_date) continue
     const renewalMs = new Date(policy.renewal_date).getTime()
     if (Number.isNaN(renewalMs)) continue
     const days = Math.ceil((renewalMs - now) / 86_400_000)
     if (days < 0) continue
-    if (!best || days < best.days) best = { days, provider: policy.provider, type: policy.type }
+    if (!best || days < best.days) {
+      best = { days, provider: policy.provider, type: policy.type, ...(policy.member_id ? { member_id: policy.member_id } : {}) }
+    }
   }
   return best ?? { days: 9999, provider: '', type: '' }
+}
+
+/**
+ * Runs the full detector pass against a complete financial profile and
+ * returns how many insights were generated. Extracted from the POST
+ * handler so the document-apply endpoints (PRD-109 bridge) can regenerate
+ * insights in the same request that mutates the profile — applying
+ * extracted fields used to require a second manual "Save & Generate
+ * Insights" for anything to change.
+ */
+export async function evaluateProfileAndGenerateInsights(
+  profile: FinancialProfile,
+  tenantId: string,
+  engine: Engine,
+  db: Db,
+  onInsightsGenerated?: (insights: Insight[], tenantId: string) => Promise<void>,
+): Promise<number> {
+  const educationGap = educationFundingGapMinor(profile.education_funds)
+  const generatedInsights: Insight[] = []
+
+  // ── family_protection_gap ────────────────────────────────────────────
+  {
+    const soonestRenewal = soonestPolicyRenewal(profile.policies)
+    // Gates no_income_protection off for households within a year of
+    // their target retirement age — a new income protection policy isn't
+    // a meaningful gap to flag that close to (or past) retiring.
+    const yearsToRetirement = Math.max(0, profile.retirement.target_retirement_age - profile.retirement.current_age)
+    // These 4 fields are genuinely joint/household-level (one mortgage,
+    // one life policy, one household's dependents and soonest renewal) —
+    // shared by both evaluate() calls below so a second-earner event
+    // never re-derives them from scratch.
+    const sharedHouseholdData = {
+      years_to_retirement: yearsToRetirement,
+      annual_living_expenses_minor: profile.household.annual_living_expenses_minor,
+      mortgage_outstanding_minor: profile.household.mortgage_outstanding_minor,
+      life_cover_minor: profile.household.life_cover_minor,
+      education_funding_gap_minor: educationGap,
+      // PRD-102: derived from the independent policies[] array, additive
+      // to the fields above — see soonestPolicyRenewal's doc comment.
+      has_dependents: Number(profile.education_funds.length > 0),
+      has_health_or_ci_cover: Number(profile.policies.some((p) => p.type === 'health' || p.type === 'critical_illness')),
+      soonest_renewal_days: soonestRenewal.days,
+      soonest_renewal_provider: soonestRenewal.provider,
+      soonest_renewal_type: soonestRenewal.type,
+      // PRD-110: attributes the renewal insight to a roster member in the
+      // feature snapshot when the policy carries one — same additive,
+      // non-dedup-affecting pattern as member_id on household earner events.
+      ...(soonestRenewal.member_id ? { soonest_renewal_member_id: soonestRenewal.member_id } : {}),
+    }
+    // OAK-029: neutralizes protection-gap.yaml's other 3 rules
+    // (life_insurance_below_household_needs, policy_renewal_window,
+    // no_health_or_critical_illness_cover) for the second-earner event
+    // below, so they cannot mathematically fire a second time — they
+    // already evaluated once, correctly, against the real shared data in
+    // the primary-earner event. Insight dedup only catches duplicates
+    // already persisted from a *previous* submission (see
+    // insights-persist.ts), not duplicates generated within the same
+    // batch, so without this a second household event would double-fire
+    // every joint rule and double-penalize the readiness score. Only
+    // no_income_protection can fire from this event, since it's the only
+    // rule whose condition depends on fields that actually differ (employed
+    // / monthly_salary_minor / income_protection_monthly_minor).
+    const neutralSharedHouseholdData = {
+      years_to_retirement: yearsToRetirement,
+      annual_living_expenses_minor: 0,
+      mortgage_outstanding_minor: 0,
+      life_cover_minor: Number.MAX_SAFE_INTEGER,
+      education_funding_gap_minor: 0,
+      has_dependents: 0,
+      has_health_or_ci_cover: 1,
+      soonest_renewal_days: 9999,
+      soonest_renewal_provider: '',
+      soonest_renewal_type: '',
+    }
+
+    const evaluateHouseholdEarner = async (
+      earner: { employment_status: string; monthly_salary_minor: number; income_protection_monthly_minor: number; member_id?: string },
+      shared: typeof sharedHouseholdData,
+    ) => {
+      // Both employed and self-employed earners have income to protect
+      // (self-employed arguably more so, with no employer sick pay) —
+      // only unemployed/retired genuinely have none via this policy type.
+      const hasIncomeToProtect = earner.employment_status === 'employed' || earner.employment_status === 'self_employed'
+      const eventId = crypto.randomUUID()
+      const data = {
+        employed: Number(hasIncomeToProtect),
+        monthly_salary_minor: earner.monthly_salary_minor,
+        income_protection_monthly_minor: earner.income_protection_monthly_minor,
+        // PRD-104: carried through to feature_snapshot so a fired
+        // insight can be attributed back to a real roster member, not
+        // just an anonymous "second earner" — doesn't affect dedup,
+        // ENTITY_KEY_FIELDS in packages/engine/src/detector.ts doesn't
+        // include it.
+        ...(earner.member_id ? { member_id: earner.member_id } : {}),
+        ...shared,
+      }
+      const signalId = await persistSignal({
+        tenant_id: tenantId,
+        signal_type: 'family.household',
+        source: 'manual-entry',
+        external_id: eventId,
+        data,
+      })
+      const result = await engine.evaluate({
+        event_type: 'family.household',
+        tenant_id: tenantId,
+        event_id: eventId,
+        data,
+        derived_from_signals: [signalId],
+      })
+      generatedInsights.push(...result.insights)
+    }
+
+    await evaluateHouseholdEarner(profile.household, sharedHouseholdData)
+    for (const member of profile.household.members) {
+      await evaluateHouseholdEarner(member, neutralSharedHouseholdData)
+    }
+  }
+
+  // ── family_emergency_fund_adequacy ───────────────────────────────────
+  {
+    const eventId = crypto.randomUUID()
+    const data = {
+      emergency_savings_minor: profile.emergency_fund.emergency_savings_minor,
+      monthly_expenses_minor: profile.emergency_fund.monthly_expenses_minor,
+      has_high_interest_debt: Number(profile.emergency_fund.has_high_interest_debt),
+      high_interest_debt_balance_minor: profile.emergency_fund.high_interest_debt_balance_minor,
+    }
+    const signalId = await persistSignal({
+      tenant_id: tenantId,
+      signal_type: 'family.savings',
+      source: 'manual-entry',
+      external_id: eventId,
+      data,
+    })
+    const result = await engine.evaluate({
+      event_type: 'family.savings',
+      tenant_id: tenantId,
+      event_id: eventId,
+      data,
+      derived_from_signals: [signalId],
+    })
+    generatedInsights.push(...result.insights)
+  }
+
+  // ── family_retirement_gap ─────────────────────────────────────────────
+  {
+    const projection = projectRetirement(profile.retirement)
+    const eventId = crypto.randomUUID()
+    const data = {
+      current_age: profile.retirement.current_age,
+      target_retirement_age: profile.retirement.target_retirement_age,
+      pension_balance_minor: profile.retirement.pension_balance_minor,
+      target_retirement_income_minor: profile.retirement.target_retirement_income_minor,
+      projected_retirement_age: projection.projected_retirement_age,
+      additional_monthly_contribution_needed_minor: projection.additional_monthly_contribution_needed_minor,
+      achievable_retirement_income_minor: projection.achievable_retirement_income_minor,
+      // Only signal this detector has of income, to judge whether the
+      // contribution increase above is a realistic single lever or not.
+      monthly_salary_minor: profile.household.monthly_salary_minor,
+    }
+    const signalId = await persistSignal({
+      tenant_id: tenantId,
+      signal_type: 'family.pension',
+      source: 'manual-entry',
+      external_id: eventId,
+      data,
+    })
+    const result = await engine.evaluate({
+      event_type: 'family.pension',
+      tenant_id: tenantId,
+      event_id: eventId,
+      data,
+      derived_from_signals: [signalId],
+    })
+    generatedInsights.push(...result.insights)
+  }
+
+  // ── family_education_shortfall (one event per child) ─────────────────
+  for (const fund of profile.education_funds) {
+    const eventId = crypto.randomUUID()
+    const data = {
+      child_name: fund.child_name,
+      child_age: fund.child_age,
+      current_savings_minor: fund.current_savings_minor,
+      target_savings_minor: fund.target_savings_minor,
+      years_remaining: fund.years_remaining,
+    }
+    const signalId = await persistSignal({
+      tenant_id: tenantId,
+      signal_type: 'family.education_fund',
+      source: 'manual-entry',
+      external_id: eventId,
+      data,
+    })
+    const result = await engine.evaluate({
+      event_type: 'family.education_fund',
+      tenant_id: tenantId,
+      event_id: eventId,
+      data,
+      derived_from_signals: [signalId],
+    })
+    generatedInsights.push(...result.insights)
+  }
+
+  if (generatedInsights.length > 0 && onInsightsGenerated) {
+    await onInsightsGenerated(generatedInsights, tenantId)
+  }
+
+  // PRD-107: this handler is the one place that just re-evaluated a
+  // detector's entire rule set for this tenant in one pass (one
+  // engine.evaluate() call per earner/child, aggregated into
+  // generatedInsights above) — the only call site with a complete
+  // enough picture to safely retract insights the fresh data no longer
+  // reproduces. See resolveStaleInsights's own doc comment for why this
+  // resolves per-detector-per-rule rather than per-entity.
+  const inventory = engine.inventory()
+  for (const detectorId of FAMILY_DETECTOR_IDS) {
+    const checkedRuleIds = inventory.find((d) => d.id === detectorId)?.rules.map((r) => r.id) ?? []
+    if (checkedRuleIds.length === 0) continue
+    const firedRuleIds = generatedInsights.filter((i) => i.detector_id === detectorId).map((i) => i.rule_id)
+    await resolveStaleInsights(db, tenantId, detectorId, checkedRuleIds, firedRuleIds)
+  }
+
+  return generatedInsights.length
 }
 
 export async function registerFamilyFinancialProfileRoutes(
@@ -325,209 +559,7 @@ export async function registerFamilyFinancialProfileRoutes(
       return reply.send({ ok: true, insights_generated: 0, version: newVersion })
     }
 
-    const educationGap = educationFundingGapMinor(profile.education_funds)
-    const generatedInsights: Insight[] = []
-
-    // ── family_protection_gap ────────────────────────────────────────────
-    {
-      const soonestRenewal = soonestPolicyRenewal(profile.policies)
-      // Gates no_income_protection off for households within a year of
-      // their target retirement age — a new income protection policy isn't
-      // a meaningful gap to flag that close to (or past) retiring.
-      const yearsToRetirement = Math.max(0, profile.retirement.target_retirement_age - profile.retirement.current_age)
-      // These 4 fields are genuinely joint/household-level (one mortgage,
-      // one life policy, one household's dependents and soonest renewal) —
-      // shared by both evaluate() calls below so a second-earner event
-      // never re-derives them from scratch.
-      const sharedHouseholdData = {
-        years_to_retirement: yearsToRetirement,
-        annual_living_expenses_minor: profile.household.annual_living_expenses_minor,
-        mortgage_outstanding_minor: profile.household.mortgage_outstanding_minor,
-        life_cover_minor: profile.household.life_cover_minor,
-        education_funding_gap_minor: educationGap,
-        // PRD-102: derived from the independent policies[] array, additive
-        // to the fields above — see soonestPolicyRenewal's doc comment.
-        has_dependents: Number(profile.education_funds.length > 0),
-        has_health_or_ci_cover: Number(profile.policies.some((p) => p.type === 'health' || p.type === 'critical_illness')),
-        soonest_renewal_days: soonestRenewal.days,
-        soonest_renewal_provider: soonestRenewal.provider,
-        soonest_renewal_type: soonestRenewal.type,
-      }
-      // OAK-029: neutralizes protection-gap.yaml's other 3 rules
-      // (life_insurance_below_household_needs, policy_renewal_window,
-      // no_health_or_critical_illness_cover) for the second-earner event
-      // below, so they cannot mathematically fire a second time — they
-      // already evaluated once, correctly, against the real shared data in
-      // the primary-earner event. Insight dedup only catches duplicates
-      // already persisted from a *previous* submission (see
-      // insights-persist.ts), not duplicates generated within the same
-      // batch, so without this a second household event would double-fire
-      // every joint rule and double-penalize the readiness score. Only
-      // no_income_protection can fire from this event, since it's the only
-      // rule whose condition depends on fields that actually differ (employed
-      // / monthly_salary_minor / income_protection_monthly_minor).
-      const neutralSharedHouseholdData = {
-        years_to_retirement: yearsToRetirement,
-        annual_living_expenses_minor: 0,
-        mortgage_outstanding_minor: 0,
-        life_cover_minor: Number.MAX_SAFE_INTEGER,
-        education_funding_gap_minor: 0,
-        has_dependents: 0,
-        has_health_or_ci_cover: 1,
-        soonest_renewal_days: 9999,
-        soonest_renewal_provider: '',
-        soonest_renewal_type: '',
-      }
-
-      const evaluateHouseholdEarner = async (
-        earner: { employment_status: string; monthly_salary_minor: number; income_protection_monthly_minor: number; member_id?: string },
-        shared: typeof sharedHouseholdData,
-      ) => {
-        // Both employed and self-employed earners have income to protect
-        // (self-employed arguably more so, with no employer sick pay) —
-        // only unemployed/retired genuinely have none via this policy type.
-        const hasIncomeToProtect = earner.employment_status === 'employed' || earner.employment_status === 'self_employed'
-        const eventId = crypto.randomUUID()
-        const data = {
-          employed: Number(hasIncomeToProtect),
-          monthly_salary_minor: earner.monthly_salary_minor,
-          income_protection_monthly_minor: earner.income_protection_monthly_minor,
-          // PRD-104: carried through to feature_snapshot so a fired
-          // insight can be attributed back to a real roster member, not
-          // just an anonymous "second earner" — doesn't affect dedup,
-          // ENTITY_KEY_FIELDS in packages/engine/src/detector.ts doesn't
-          // include it.
-          ...(earner.member_id ? { member_id: earner.member_id } : {}),
-          ...shared,
-        }
-        const signalId = await persistSignal({
-          tenant_id,
-          signal_type: 'family.household',
-          source: 'manual-entry',
-          external_id: eventId,
-          data,
-        })
-        const result = await engine.evaluate({
-          event_type: 'family.household',
-          tenant_id,
-          event_id: eventId,
-          data,
-          derived_from_signals: [signalId],
-        })
-        generatedInsights.push(...result.insights)
-      }
-
-      await evaluateHouseholdEarner(profile.household, sharedHouseholdData)
-      for (const member of profile.household.members) {
-        await evaluateHouseholdEarner(member, neutralSharedHouseholdData)
-      }
-    }
-
-    // ── family_emergency_fund_adequacy ───────────────────────────────────
-    {
-      const eventId = crypto.randomUUID()
-      const data = {
-        emergency_savings_minor: profile.emergency_fund.emergency_savings_minor,
-        monthly_expenses_minor: profile.emergency_fund.monthly_expenses_minor,
-        has_high_interest_debt: Number(profile.emergency_fund.has_high_interest_debt),
-        high_interest_debt_balance_minor: profile.emergency_fund.high_interest_debt_balance_minor,
-      }
-      const signalId = await persistSignal({
-        tenant_id,
-        signal_type: 'family.savings',
-        source: 'manual-entry',
-        external_id: eventId,
-        data,
-      })
-      const result = await engine.evaluate({
-        event_type: 'family.savings',
-        tenant_id,
-        event_id: eventId,
-        data,
-        derived_from_signals: [signalId],
-      })
-      generatedInsights.push(...result.insights)
-    }
-
-    // ── family_retirement_gap ─────────────────────────────────────────────
-    {
-      const projection = projectRetirement(profile.retirement)
-      const eventId = crypto.randomUUID()
-      const data = {
-        current_age: profile.retirement.current_age,
-        target_retirement_age: profile.retirement.target_retirement_age,
-        pension_balance_minor: profile.retirement.pension_balance_minor,
-        target_retirement_income_minor: profile.retirement.target_retirement_income_minor,
-        projected_retirement_age: projection.projected_retirement_age,
-        additional_monthly_contribution_needed_minor: projection.additional_monthly_contribution_needed_minor,
-        achievable_retirement_income_minor: projection.achievable_retirement_income_minor,
-        // Only signal this detector has of income, to judge whether the
-        // contribution increase above is a realistic single lever or not.
-        monthly_salary_minor: profile.household.monthly_salary_minor,
-      }
-      const signalId = await persistSignal({
-        tenant_id,
-        signal_type: 'family.pension',
-        source: 'manual-entry',
-        external_id: eventId,
-        data,
-      })
-      const result = await engine.evaluate({
-        event_type: 'family.pension',
-        tenant_id,
-        event_id: eventId,
-        data,
-        derived_from_signals: [signalId],
-      })
-      generatedInsights.push(...result.insights)
-    }
-
-    // ── family_education_shortfall (one event per child) ─────────────────
-    for (const fund of profile.education_funds) {
-      const eventId = crypto.randomUUID()
-      const data = {
-        child_name: fund.child_name,
-        child_age: fund.child_age,
-        current_savings_minor: fund.current_savings_minor,
-        target_savings_minor: fund.target_savings_minor,
-        years_remaining: fund.years_remaining,
-      }
-      const signalId = await persistSignal({
-        tenant_id,
-        signal_type: 'family.education_fund',
-        source: 'manual-entry',
-        external_id: eventId,
-        data,
-      })
-      const result = await engine.evaluate({
-        event_type: 'family.education_fund',
-        tenant_id,
-        event_id: eventId,
-        data,
-        derived_from_signals: [signalId],
-      })
-      generatedInsights.push(...result.insights)
-    }
-
-    if (generatedInsights.length > 0 && onInsightsGenerated) {
-      await onInsightsGenerated(generatedInsights, tenant_id)
-    }
-
-    // PRD-107: this handler is the one place that just re-evaluated a
-    // detector's entire rule set for this tenant in one pass (one
-    // engine.evaluate() call per earner/child, aggregated into
-    // generatedInsights above) — the only call site with a complete
-    // enough picture to safely retract insights the fresh data no longer
-    // reproduces. See resolveStaleInsights's own doc comment for why this
-    // resolves per-detector-per-rule rather than per-entity.
-    const inventory = engine.inventory()
-    for (const detectorId of FAMILY_DETECTOR_IDS) {
-      const checkedRuleIds = inventory.find((d) => d.id === detectorId)?.rules.map((r) => r.id) ?? []
-      if (checkedRuleIds.length === 0) continue
-      const firedRuleIds = generatedInsights.filter((i) => i.detector_id === detectorId).map((i) => i.rule_id)
-      await resolveStaleInsights(db, tenant_id, detectorId, checkedRuleIds, firedRuleIds)
-    }
-
-    return reply.send({ ok: true, insights_generated: generatedInsights.length, version: newVersion })
+    const insightsGenerated = await evaluateProfileAndGenerateInsights(profile, tenant_id, engine, db, onInsightsGenerated)
+    return reply.send({ ok: true, insights_generated: insightsGenerated, version: newVersion })
   })
 }

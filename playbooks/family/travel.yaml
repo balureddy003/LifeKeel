@@ -1,0 +1,36 @@
+# Life-event response playbook — travel emergency.
+# Content, not code — see job-loss.yaml's header comment for the format.
+event_type: travel
+title: Travel Emergency Response Plan
+intro: >
+  Something went wrong away from home — medical, lost documents, or a
+  cancelled trip. Sequenced list of what tends to matter first; travel
+  insurance isn't tracked in the financial profile yet, so the cover
+  check below is honest about what we can't see.
+steps:
+  - id: check_travel_cover
+    title: Check what cover may apply
+    computed: true
+    contact: false
+  - id: emergency_assistance
+    title: Call your insurer's assistance line
+    body: >
+      If you hold travel insurance — standalone, through a credit card,
+      or bundled with a health policy — it almost always has a 24/7
+      assistance number. Call it before paying for treatment or
+      rearranging travel: many insurers only cover what they coordinate.
+    contact: true
+  - id: keep_receipts
+    title: Keep every receipt and record
+    body: >
+      Medical bills, rebooked tickets, hotel nights, taxi fares — travel
+      claims are reimbursed against paper. Photograph each receipt on the
+      spot; paper lost abroad is paper gone.
+    contact: false
+  - id: embassy_consulate
+    title: Embassy or consulate for lost documents
+    body: >
+      For a lost or stolen passport abroad, the embassy or consulate is
+      the path to an emergency travel document. Report the theft to local
+      police first — most consulates and insurers want the report number.
+    contact: false

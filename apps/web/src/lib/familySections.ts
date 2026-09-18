@@ -101,7 +101,12 @@ export const ROLE_BRANCHES: Record<string, { label: string; icon: string; items:
   organizer: [
     { label: 'Income', icon: 'Briefcase', items: ['Salary'] },
     { label: 'Protection', icon: 'ShieldCheck', items: ['Life Insurance', 'Health Insurance'] },
-    { label: 'Assets', icon: 'Home', items: ['Home', 'Investments', 'Pension'] },
+    // 'Investments' was removed as a separate row — it linked to
+    // /asset/investments, which rendered the exact same pension-backed
+    // RetirementDetail as 'Pension' under a different label (two rows, one
+    // dataset). Reintroduce it only when real investment accounts exist in
+    // the data model.
+    { label: 'Assets', icon: 'Home', items: ['Home', 'Pension'] },
   ],
   parent: [
     { label: 'Career & Income', icon: 'Briefcase', items: ['Salary'] },

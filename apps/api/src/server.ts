@@ -72,6 +72,9 @@ import { deploymentConfig, logDeploymentMode } from './config/deployment.js'
 import { addSandboxContext, sandboxMiddleware, sandboxWriteMiddleware } from './middleware/sandbox.js'
 import { registerCaseStudyRoutes } from './routes/case-studies.js'
 import { registerDocumentRoutes } from './routes/documents.js'
+import { registerAuditLogRoutes } from './routes/audit-log.js'
+import { registerAutomationSettingsRoutes } from './routes/automation-settings.js'
+import { registerAccountRoutes } from './routes/account.js'
 import { registerFamilyConnectorRoutes } from './routes/family-connectors.js'
 import { registerFamilyGroupRoutes } from './routes/family-group.js'
 import { registerGrowthEventRoutes } from './routes/growth-events.js'
@@ -897,7 +900,7 @@ app.addHook('preHandler', async (request, reply) => {
 
 function authorizationResource(url: string): ProductResource | null {
   const segment = url.split('?')[0]?.split('/')[1]
-  const map: Record<string, ProductResource> = { insights: 'insights', goals: 'goals', outcomes: 'goals', detectors: 'detectors', connectors: 'connectors', analytics: 'analytics', team: 'users', settings: 'settings', export: 'audit' }
+  const map: Record<string, ProductResource> = { insights: 'insights', goals: 'goals', outcomes: 'goals', detectors: 'detectors', connectors: 'connectors', analytics: 'analytics', team: 'users', settings: 'settings', account: 'settings', export: 'audit', 'audit-log': 'audit' }
   return segment ? map[segment] ?? null : null
 }
 
@@ -1107,7 +1110,10 @@ if (workflowDb) {
   registerConnectorCredentialRoutes(app, workflowDb, connectorLoader, eventGenerator, engine)
   registerBillingRoutes(app, workflowDb)
   registerBlogRoutes(app, workflowDb)
-  registerDocumentRoutes(app, workflowDb)
+  registerDocumentRoutes(app, workflowDb, engine, insightsDeliveryHook)
+  registerAuditLogRoutes(app, workflowDb)
+  registerAutomationSettingsRoutes(app, workflowDb)
+  registerAccountRoutes(app, workflowDb)
   registerFamilyConnectorRoutes(app, workflowDb)
   registerFamilyGroupRoutes(app, workflowDb)
   registerGrowthEventRoutes(app, workflowDb)

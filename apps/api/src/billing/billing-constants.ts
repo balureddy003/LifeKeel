@@ -4,6 +4,19 @@
  * and the outcome-credits module.
  *
  * Never duplicate these values in route handlers — always import from here.
+ *
+ * ── Dormancy decision (remediation item 23, 2026-09) ──────────────────────
+ * The 4-tier model (free/starter/growth/enterprise), credit packs, and
+ * outcome-based pricing were inherited from kairos-ai's B2B billing system.
+ * Agent Oak only ever sells ONE plan: "Oak Plus" (starter, £7.99/mo).
+ * Decision: KEEP the scaffolding, deliberately — the Plan type, quotas,
+ * credits, and webhook/checkout code paths all iterate these tables, so
+ * deleting the unused tiers means churning entitlements, the Stripe
+ * webhook, and half the billing tests for zero user-facing gain. The
+ * pieces that are live vs dormant are noted inline below; checkout
+ * hard-blocks non-starter plans at the route level (billing.ts) so a
+ * dormant tier can't be accidentally purchased. If a B2B/multi-tier
+ * offering ever ships, this file is where the tiers get real prices.
  */
 
 import { z } from 'zod'

@@ -3,6 +3,16 @@
  * 
  * Manages blog posts for the marketing landing page.
  * Supports CRUD operations for blog posts with markdown content.
+ *
+ * Orphaned-surface decision (remediation item 24): the public GETs
+ * (/blog/posts, /blog/posts/:slug, /blog/posts/category/:category) are
+ * live — apps/web calls them. The write surface (POST/PUT/DELETE and
+ * /admin/blog/posts) has no caller in any shipped UI; it is PARKED, not
+ * deleted: it's auth-gated via x-kairos-admin-key (absent the env var it
+ * can never authorize), it's how blog content plausibly gets managed
+ * out-of-band today, and removing it buys nothing — ~100 lines, already
+ * small. If an admin UI is never built, the write surface can go in a
+ * later cleanup without touching the public GETs.
  */
 
 import type { FastifyInstance } from 'fastify'

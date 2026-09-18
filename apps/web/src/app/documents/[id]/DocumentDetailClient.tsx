@@ -7,8 +7,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Loader2, AlertCircle, CheckCircle2, Sparkles, FileQuestion } from 'lucide-react'
 import { PageHeader, GlassCard, GlassButton, EmptyState, Skeleton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
+import { useAuth } from '@/lib/auth-context'
 import { CATEGORY_ICONS, CATEGORY_LABELS } from '@/lib/document-categories'
-import { POLICY_TYPE_LABELS, POLICY_TYPES } from '@/lib/policyTypes'
+import { POLICY_TYPE_LABELS, POLICY_TYPES, PERSON_SCOPED_POLICY_TYPES } from '@/lib/policyTypes'
 import {
   fetchDocument,
   fetchProfileSuggestions,
@@ -35,6 +36,8 @@ interface PolicyDraft {
   monthlyPremium: string
   renewalDate: string
   policyNumber: string
+  // PRD-110: '' until the user picks — never prefilled from the document.
+  memberId: string
 }
 
 function toPolicyDraft(s: DocumentPolicySuggestion): PolicyDraft {
@@ -45,18 +48,22 @@ function toPolicyDraft(s: DocumentPolicySuggestion): PolicyDraft {
     monthlyPremium: s.monthlyPremiumMinor != null ? String(Math.round(s.monthlyPremiumMinor / 100)) : '',
     renewalDate: s.renewalDate ?? '',
     policyNumber: s.policyNumber ?? '',
+    memberId: '',
   }
 }
 
 export default function DocumentDetailClient() {
   const params = useParams<{ id: string }>()
+  const { family } = useAuth()
   const [doc, setDoc] = useState<FamilyDocumentDetail | null | undefined>(undefined)
   const [suggestions, setSuggestions] = useState<ProfileSuggestion[]>([])
   const [policyDraft, setPolicyDraft] = useState<PolicyDraft | null>(null)
   const [applying, setApplying] = useState(false)
   const [applied, setApplied] = useState<string[] | null>(null)
+  const [appliedInsights, setAppliedInsights] = useState(0)
   const [policyApplying, setPolicyApplying] = useState(false)
   const [policyApplied, setPolicyApplied] = useState(false)
+  const [policyAppliedInsights, setPolicyAppliedInsights] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [policyError, setPolicyError] = useState<string | null>(null)
 
@@ -82,6 +89,7 @@ export default function DocumentDetailClient() {
       const result = await applyDocumentToProfile(params.id)
       haptic('success')
       setApplied(result.applied.map((a) => a.label))
+      setAppliedInsights(result.insightsGenerated)
     } catch (err) {
       haptic('warning')
       setError(err instanceof Error ? err.message : 'Could not apply this document to your Financial Profile')
@@ -96,16 +104,18 @@ export default function DocumentDetailClient() {
     setPolicyApplying(true)
     setPolicyError(null)
     try {
-      await applyPolicySuggestion(params.id, {
+      const result = await applyPolicySuggestion(params.id, {
         type: policyDraft.type,
         provider: policyDraft.provider.trim(),
         coverageAmountMinor: Math.round((Number(policyDraft.coverageAmount) || 0) * 100),
         monthlyPremiumMinor: Math.round((Number(policyDraft.monthlyPremium) || 0) * 100),
         ...(policyDraft.renewalDate ? { renewalDate: policyDraft.renewalDate } : {}),
         ...(policyDraft.policyNumber.trim() ? { policyNumber: policyDraft.policyNumber.trim() } : {}),
+        ...(PERSON_SCOPED_POLICY_TYPES.has(policyDraft.type) && policyDraft.memberId ? { memberId: policyDraft.memberId } : {}),
       })
       haptic('success')
       setPolicyApplied(true)
+      setPolicyAppliedInsights(result.insightsGenerated)
     } catch (err) {
       haptic('warning')
       setPolicyError(err instanceof Error ? err.message : 'Could not add this policy to your Financial Profile')
@@ -189,10 +199,22 @@ export default function DocumentDetailClient() {
               <CheckCircle2 size={20} className="text-success flex-shrink-0 mt-0.5" />
               <div className="text-sm text-ink-secondary flex-1">
                 Applied {applied.join(', ')} to your Financial Profile.{' '}
-                <Link href="/financial-profile" className="text-family-400 font-semibold">
-                  Review and save to generate insights
-                </Link>
-                .
+                {appliedInsights > 0 ? (
+                  <>
+                    {appliedInsights} new insight{appliedInsights === 1 ? '' : 's'} generated —{' '}
+                    <Link href="/" className="text-family-400 font-semibold">
+                      see them on your home feed
+                    </Link>
+                    .
+                  </>
+                ) : (
+                  <>
+                    <Link href="/financial-profile" className="text-family-400 font-semibold">
+                      Review your profile
+                    </Link>
+                    .
+                  </>
+                )}
               </div>
             </GlassCard>
           </motion.div>
@@ -232,10 +254,22 @@ export default function DocumentDetailClient() {
               <CheckCircle2 size={20} className="text-success flex-shrink-0 mt-0.5" />
               <div className="text-sm text-ink-secondary flex-1">
                 Added as a policy on your Financial Profile.{' '}
-                <Link href="/financial-profile" className="text-family-400 font-semibold">
-                  Review and save to generate insights
-                </Link>
-                .
+                {policyAppliedInsights > 0 ? (
+                  <>
+                    {policyAppliedInsights} new insight{policyAppliedInsights === 1 ? '' : 's'} generated —{' '}
+                    <Link href="/" className="text-family-400 font-semibold">
+                      see them on your home feed
+                    </Link>
+                    .
+                  </>
+                ) : (
+                  <>
+                    <Link href="/financial-profile" className="text-family-400 font-semibold">
+                      Review your profile
+                    </Link>
+                    .
+                  </>
+                )}
               </div>
             </GlassCard>
           </motion.div>
@@ -262,6 +296,21 @@ export default function DocumentDetailClient() {
                     ))}
                   </select>
                 </label>
+                {PERSON_SCOPED_POLICY_TYPES.has(policyDraft.type) && (family?.members ?? []).length > 0 && (
+                  <label className="block">
+                    <div className="text-xs text-ink-tertiary mb-1.5">Who is this policy for?</div>
+                    <select
+                      value={policyDraft.memberId}
+                      onChange={(e) => setPolicyDraft({ ...policyDraft, memberId: e.target.value })}
+                      className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                    >
+                      <option value="">The whole household / not sure</option>
+                      {(family?.members ?? []).map((m) => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label className="block">
                   <div className="text-xs text-ink-tertiary mb-1.5">Provider</div>
                   <input

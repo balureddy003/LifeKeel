@@ -1,0 +1,36 @@
+# Life-event response playbook — car accident.
+# Content, not code — see job-loss.yaml's header comment for the format.
+event_type: car
+title: Car Accident Response Plan
+intro: >
+  Right after an accident the admin steps feel secondary — but insurers
+  set hard notification deadlines. This is a sequenced list, personalized
+  against your family's real car policies where we have them on file.
+steps:
+  - id: check_car_insurance
+    title: Check your real car insurance
+    computed: true
+    contact: false
+  - id: notify_insurer
+    title: Report to your insurer promptly
+    body: >
+      Most motor policies require notification within a fixed window —
+      often 24–72 hours — even if you're not at fault and even if you
+      don't plan to claim. Late notification is one of the most common
+      reasons for a refused claim.
+    contact: true
+  - id: document_scene
+    title: Document the scene and the other party
+    body: >
+      Photos of the vehicles, positions, and damage; the other driver's
+      name, insurer, and policy number; witnesses; and a police report
+      reference if one was made. This is what the insurer will ask for
+      first.
+    contact: false
+  - id: dont_admit_fault
+    title: Don't admit fault at the scene
+    body: >
+      Be cooperative, but don't accept or assign liability — that's the
+      insurers' determination, not yours. Even a casual "sorry, my fault"
+      at the scene can be used in the claim.
+    contact: false
