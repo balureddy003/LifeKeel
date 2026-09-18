@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Loader2, AlertCircle, CheckCircle2, Plus, X, ChevronLeft } from 'lucide-react'
+import { Loader2, AlertCircle, CheckCircle2, Plus, X, ChevronLeft, Sparkles } from 'lucide-react'
 import { PageHeader, GlassCard, GlassButton, Skeleton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { useToast } from '@/components/Toast'
@@ -627,12 +627,19 @@ export default function FinancialProfilePage() {
       />
 
       {fromOnboarding && result === null && (
-        <GlassCard className="p-4 border-family-500/20">
-          <p className="text-sm text-ink-secondary leading-relaxed">
-            Last step — this is what turns the family you just set up into your first real insight.
-            The names you gave us are already filled in.
-          </p>
-        </GlassCard>
+        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
+          <GlassCard className="p-4 border-family-500/20 flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Sparkles size={16} className="text-family-400" />
+            </div>
+            <div>
+              <div className="text-sm font-semibold text-ink-primary mb-0.5">This powers your readiness score</div>
+              <p className="text-xs text-ink-tertiary leading-relaxed">
+                The more you share, the more specific Oak&apos;s insights become — your family names are already filled in. You can skip steps and come back later.
+              </p>
+            </div>
+          </GlassCard>
+        </motion.div>
       )}
 
       {result !== null && (

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { Network, Activity, Lightbulb, ChevronRight, Hand, Star, Target, Bot, Phone, User, FileText, Siren, Search, CalendarClock, X, UserPlus, Sparkles } from 'lucide-react'
+import { Network, Activity, Lightbulb, ChevronRight, Hand, Star, Target, Bot, Phone, User, FileText, Siren, Search, CalendarClock, X, UserPlus, Sparkles, Check, Upload, Plug, Calculator } from 'lucide-react'
 import { FamilyRoster } from '@/components/FamilyRoster'
 import { LifeTimeline } from '@/components/LifeTimeline'
 import { ScoreRing, GlassCard, PageHeader, IfAdvanced, Skeleton, Money } from '@/components/Glass'
@@ -290,6 +290,12 @@ function saveLastVisitSnapshot(snapshot: VisitSnapshot): void {
 // real, already-fetched data (score + open insight count) diffed against the
 // prior visit's snapshot in localStorage — never fabricated, and silent on
 // a first visit or a no-change visit rather than forcing something to say.
+function timeOfDayGreeting(name: string): string {
+  const h = new Date().getHours()
+  const time = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening'
+  return `Good ${time}, ${name}`
+}
+
 function SinceLastVisit({
   score,
   hasLiveData,
@@ -301,6 +307,7 @@ function SinceLastVisit({
   openInsightCount: number
   loading: boolean
 }) {
+  const { user } = useAuth()
   const [previous, setPrevious] = useState<VisitSnapshot | null>(null)
   const [ready, setReady] = useState(false)
 
@@ -314,10 +321,46 @@ function SinceLastVisit({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, hasLiveData])
 
-  if (!ready || !previous) return null
+  if (!ready) return null
+
+  const firstName = user?.name?.split(' ')[0] ?? 'there'
+
+  // No previous visit or no delta — show a calm time-of-day greeting
+  // instead of silence.  Apple-style: acknowledge the human, don't
+  // manufacture urgency.
+  if (!previous) {
+    return (
+      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
+        <GlassCard className="p-3.5 border-family-500/20 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0">
+            <Sparkles size={16} className="text-family-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-ink-primary">{timeOfDayGreeting(firstName)}</div>
+            <div className="text-xs text-ink-tertiary">Everything looks stable.</div>
+          </div>
+        </GlassCard>
+      </motion.div>
+    )
+  }
+
   const scoreDelta = score - previous.score
   const insightDelta = openInsightCount - previous.openInsightCount
-  if (scoreDelta === 0 && insightDelta === 0) return null
+  if (scoreDelta === 0 && insightDelta === 0) {
+    return (
+      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
+        <GlassCard className="p-3.5 border-family-500/20 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0">
+            <Sparkles size={16} className="text-family-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-ink-primary">{timeOfDayGreeting(firstName)}</div>
+            <div className="text-xs text-ink-tertiary">No changes since your last visit.</div>
+          </div>
+        </GlassCard>
+      </motion.div>
+    )
+  }
 
   const parts: string[] = []
   if (scoreDelta !== 0) {
@@ -385,6 +428,81 @@ function UrgencyBanner() {
   )
 }
 
+// Apple-style "Getting Started" checklist — replaces the generic empty
+// state when the user has no live data yet.  Each step maps to a real
+// store signal so progress is honest, not decorative.
+function GettingStarted() {
+  const docCount = useAppStore((s) => s.uploadedDocumentCount)
+  const profileDone = useAppStore((s) => s.financialProfileSubmitted)
+  const connectors = useAppStore((s) => s.connectedConnectors)
+
+  const steps = [
+    { label: 'Upload a document', description: 'Insurance policy, will, or bank statement', href: '/upload', icon: Upload, done: docCount > 0 },
+    { label: 'Fill in your financial profile', description: 'Income, protection, savings — powers your score', href: '/financial-profile', icon: Calculator, done: profileDone },
+    { label: 'Connect a service', description: 'Email, bank, or insurance provider', href: '/connect', icon: Plug, done: connectors.length > 0 },
+  ]
+
+  const doneCount = steps.filter((s) => s.done).length
+  if (doneCount === steps.length) return null // all done — live score card takes over
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+      <GlassCard className="p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="text-sm font-semibold text-ink-primary">Get your readiness score</div>
+            <div className="text-xs text-ink-tertiary mt-0.5">{doneCount} of {steps.length} done</div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {steps.map((s, i) => (
+              <motion.div
+                key={i}
+                className={`w-2.5 h-2.5 rounded-full ${s.done ? 'bg-success' : 'bg-tint/10'}`}
+                initial={false}
+                animate={s.done ? { scale: [1, 1.3, 1] } : {}}
+                transition={{ duration: 0.3 }}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="h-1.5 rounded-full bg-tint/5 overflow-hidden mb-4">
+          <motion.div
+            className="h-full rounded-full bg-gradient-to-r from-family-400 to-success"
+            initial={{ width: 0 }}
+            animate={{ width: `${(doneCount / steps.length) * 100}%` }}
+            transition={{ duration: 0.6, ease: 'easeOut' }}
+          />
+        </div>
+
+        <div className="space-y-2">
+          {steps.map((step, i) => (
+            <Link
+              key={i}
+              href={step.href}
+              onClick={() => haptic('light')}
+              className={`flex items-center gap-3 rounded-xl p-3 transition-colors ${step.done ? 'opacity-60' : 'bg-tint/[0.03] active:bg-tint/[0.06]'}`}
+            >
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${step.done ? 'bg-success/15' : 'bg-family-500/10 border border-family-500/20'}`}>
+                {step.done ? (
+                  <Check size={16} className="text-success" />
+                ) : (
+                  <step.icon size={16} className="text-family-400" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className={`text-sm font-semibold ${step.done ? 'line-through text-ink-tertiary' : 'text-ink-primary'}`}>{step.label}</div>
+                <div className="text-xs text-ink-tertiary truncate">{step.description}</div>
+              </div>
+              {!step.done && <ChevronRight size={14} className="text-ink-tertiary flex-shrink-0" />}
+            </Link>
+          ))}
+        </div>
+      </GlassCard>
+    </motion.div>
+  )
+}
+
 export default function HomePage() {
   const { config } = useMode()
   const { score: readinessScore, hasLiveData, loading: scoreLoading } = useFamilyReadinessScore()
@@ -430,12 +548,15 @@ export default function HomePage() {
       />
       <UrgencyBanner />
 
+      {!hasLiveData && !scoreLoading && <GettingStarted />}
+
       {/* At lg+ (max-w-2xl container, NavRail layout) the score card and
           the life-event link pair up 2:1 — the phone-first single column
           stays unchanged below that. Only unconditional sections are
           paired this way; conditional banners/cards keep full width so a
           hidden sibling never leaves a half-empty row. */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {(scoreLoading || hasLiveData) && (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -452,7 +573,7 @@ export default function HomePage() {
                   <Skeleton className="h-3 w-full" />
                 </div>
               </>
-            ) : hasLiveData ? (
+            ) : (
               <>
                 <ScoreRing score={readinessScore} size={80} />
                 <div className="flex-1">
@@ -475,29 +596,11 @@ export default function HomePage() {
                   </p>
                 </div>
               </>
-            ) : (
-              <>
-                <ScoreRing score={0} size={80} />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-semibold text-ink-secondary">
-                      {config.simpleLanguage ? simpleHomeCopy({ hasLiveData, onTrack: false }).status : 'No data yet'}
-                    </span>
-                  </div>
-                  <p className="text-sm text-ink-tertiary leading-relaxed">
-                    {config.simpleLanguage
-                      ? simpleHomeCopy({ hasLiveData, onTrack: false }).body
-                      : 'Connect your accounts and upload documents to see your real family readiness score.'}
-                  </p>
-                  <Link href="/upload" className="text-sm text-family-400 font-semibold flex items-center gap-1 mt-2">
-                    Get started <ChevronRight size={14} />
-                  </Link>
-                </div>
-              </>
             )}
           </div>
         </GlassCard>
       </motion.div>
+      )}
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}

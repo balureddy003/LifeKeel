@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ChevronRight, Info, Heart, Wallet, Target, Plane, Car, Home, Baby, HeartCrack, Briefcase, GraduationCap, Palmtree } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { LIFE_EVENTS } from '@/lib/life-data'
-import { GlassCard, PageHeader } from '@/components/Glass'
+import { GlassCard, PageHeader, PageTransition } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 
 const categoryColors: Record<string, string> = {
@@ -30,6 +30,7 @@ const EVENT_ICONS: Record<string, LucideIcon> = {
 
 export default function EventsPage() {
   return (
+    <PageTransition>
     <div className="px-5 pt-2 space-y-5">
       <PageHeader
         title="What If?"
@@ -77,5 +78,6 @@ export default function EventsPage() {
         </p>
       </div>
     </div>
+    </PageTransition>
   )
 }

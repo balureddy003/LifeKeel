@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { PageHeader, ListSection, ListRow, GlassCard } from '@/components/Glass'
+import { PageHeader, ListSection, ListRow, GlassCard, PageTransition } from '@/components/Glass'
 import { BottomSheet } from '@/components/BottomSheet'
 import { useMode } from '@/lib/mode-context'
 import { useAuth } from '@/lib/auth-context'
@@ -269,6 +269,7 @@ export default function SettingsPage() {
   }
 
   return (
+    <PageTransition>
     <div className="px-5 pt-2 space-y-6">
       <PageHeader title="Settings" />
 
@@ -728,5 +729,6 @@ export default function SettingsPage() {
         </div>
       </BottomSheet>
     </div>
+    </PageTransition>
   )
 }
