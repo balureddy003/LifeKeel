@@ -289,7 +289,7 @@ export function PageHeader({
     // all ~30 consumers; the assistant page, which pads at px-4, renders
     // its own header). Change the shared page gutter and this has to move
     // with it.
-    <header className="sticky top-0 z-sticky safe-area-top bg-navbg/80 backdrop-blur-xl -mx-5 px-5 py-3 border-b border-tint/[0.05]">
+    <header className="sticky top-0 z-sticky safe-area-top bg-navbg/80 backdrop-blur-xl -mx-5 px-5 py-4 border-b border-tint/[0.05]">
       <div className="flex items-center justify-between h-11">
         {backHref ? (
           <Link href={backHref} onClick={() => haptic('light')} className="flex items-center gap-1 text-ink-tertiary active:opacity-60">
@@ -301,15 +301,24 @@ export function PageHeader({
         )}
         <div className="flex items-center">{action ?? assistantAction}</div>
       </div>
-      {/* User-reported finding: text-title-lg (1.8rem on this app's 17px
-          root, ~30.6px) read as too large on a real mobile screen — every
-          page uses this same header, so the fix belongs here once rather
-          than per-page. Steps down to title-md (~25.5px) below md, where
-          the screen is narrowest and a title that size crowds the content
-          right beneath it; full size returns once there's room to justify
-          it. */}
-      <h1 className="text-title-md md:text-title-lg leading-tight font-bold tracking-tight pt-1 pb-1">{title}</h1>
-      {subtitle && <p className="text-sm text-ink-tertiary pb-1">{subtitle}</p>}
+      {/* User-reported findings, both addressed here once since every page
+          shares this header:
+          1. text-title-lg (1.8rem on this app's 17px root, ~30.6px) read
+             as too large on a real mobile screen — steps down to title-md
+             (~25.5px) below md, where the screen is narrowest and a title
+             that size crowds the content right beneath it; full size
+             returns once there's room to justify it.
+          2. "not modern" — semibold instead of bold (a heavy 700 black
+             title reads as dated next to this app's otherwise light,
+             glass-material UI), the same purple gradient the readiness
+             score bar already uses (from-family-400 to-family-500) carried
+             into the title itself rather than confined to icons/buttons,
+             and more vertical room (py-3->py-4, pt-1/pb-1->pt-2/pb-2) so
+             the title doesn't feel crowded against the header's own edges. */}
+      <h1 className="text-title-md md:text-title-lg leading-tight font-semibold tracking-tight pt-2 pb-2 bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">
+        {title}
+      </h1>
+      {subtitle && <p className="text-sm text-ink-tertiary pb-2">{subtitle}</p>}
     </header>
   )
 }
