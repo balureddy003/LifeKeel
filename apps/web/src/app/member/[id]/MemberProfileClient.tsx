@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ArrowLeft, HelpCircle, User, ChevronRight, Siren } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { ROLE_LABELS } from '@/lib/auth-types'
-import { PageHeader } from '@/components/Glass'
+import { PageHeader, PageTransition } from '@/components/Glass'
 
 export default function MemberProfileClient() {
   const params = useParams<{ id: string }>()
@@ -27,6 +27,7 @@ export default function MemberProfileClient() {
   }
 
   return (
+    <PageTransition>
     <div className="px-5 pt-2 space-y-5 animate-fade-in">
       <PageHeader title={member.name} backHref="/family" />
 
@@ -63,5 +64,6 @@ export default function MemberProfileClient() {
         <span>Simulate Life Event</span>
       </Link>
     </div>
+    </PageTransition>
   )
 }

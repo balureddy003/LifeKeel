@@ -46,7 +46,7 @@ export default function ConfirmPasswordResetPage() {
       setTimeout(() => router.push('/login'), 2000)
     } catch (err) {
       haptic('warning')
-      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+      setError(err instanceof Error ? err.message : "That didn't work — your password is unchanged. Try again in a moment.")
     } finally {
       setLoading(false)
     }

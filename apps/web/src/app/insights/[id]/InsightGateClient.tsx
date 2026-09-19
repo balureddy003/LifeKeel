@@ -23,7 +23,9 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  ChevronDown,
   ExternalLink,
+  HelpCircle,
   Loader2,
   Mail,
   MessageSquareText,
@@ -31,7 +33,7 @@ import {
   Tag,
   XCircle,
 } from 'lucide-react'
-import { GlassButton, GlassCard, PageHeader } from '@/components/Glass'
+import { GlassButton, GlassCard, PageHeader, PageTransition } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import {
   approveInsight,
@@ -40,6 +42,7 @@ import {
   prepareInsightDraft,
   retryInsightExecution,
   RESOLVED_INSIGHT_STATES,
+  type FamilyInsight,
   type InsightActionPreview,
   type InsightActionPreviewItem,
 } from '@/lib/api'
@@ -56,6 +59,61 @@ function readableHypothesis(h: string): string {
   // snake_case rule text.
   const spaced = h.replace(/_/g, ' ')
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
+// Plain-English answer to "where did this come from" per detector — the
+// trust primitive the audit trail already proves internally, surfaced in
+// the family's language at the exact moment they're deciding.
+const DETECTOR_DATA_SOURCES: Record<string, string> = {
+  family_protection_gap: "your household income, who's in the family, and the life and income-protection cover on file",
+  family_education_shortfall: "each child's education fund balance and target",
+  family_emergency_fund_adequacy: 'your emergency savings compared to monthly living expenses',
+  family_retirement_gap: 'your pension balance, monthly contributions, and retirement target',
+}
+
+function WhyThisInsight({ insight }: { insight: FamilyInsight }) {
+  const [open, setOpen] = useState(false)
+  const source = DETECTOR_DATA_SOURCES[insight.detector_id]
+  return (
+    <GlassCard className="p-4">
+      <button
+        onClick={() => { haptic('light'); setOpen(!open) }}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between text-left"
+      >
+        <span className="text-sm font-semibold text-family-400 flex items-center gap-1.5">
+          <HelpCircle size={14} /> Why is Oak suggesting this?
+        </span>
+        <ChevronDown size={14} className={`text-ink-tertiary transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="overflow-hidden">
+          <div className="pt-3 space-y-2.5">
+            {source && (
+              <div>
+                <div className="text-xs font-semibold text-ink-tertiary mb-0.5">What it looked at</div>
+                <p className="text-sm text-ink-secondary leading-relaxed">This check ran against {source}.</p>
+              </div>
+            )}
+            <div>
+              <div className="text-xs font-semibold text-ink-tertiary mb-0.5">When it ran</div>
+              <p className="text-sm text-ink-secondary leading-relaxed">
+                {new Date(insight.created_at).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })} — Oak re-checks automatically whenever your profile changes.
+              </p>
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-ink-tertiary mb-0.5">What Oak gets from this</div>
+              <p className="text-sm text-ink-secondary leading-relaxed">
+                Nothing — Oak earns no commission from any insurer or provider. This is information
+                from your own data, not a recommendation to buy anything. A licensed professional
+                can help you decide what to do with it.
+              </p>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </GlassCard>
+  )
 }
 
 export default function InsightGateClient() {
@@ -92,7 +150,7 @@ export default function InsightGateClient() {
     const result = await approveInsight(params.id, note || undefined)
     setActing(null)
     if (!result.ok) {
-      setError(result.error ?? 'Approval failed — please try again.')
+      setError(result.error ?? "That approval didn't go through — nothing changed on our end. Try again when you're ready.")
       return
     }
     haptic('success')
@@ -108,7 +166,7 @@ export default function InsightGateClient() {
     const result = await retryInsightExecution(params.id)
     setActing(null)
     if (!result.ok) {
-      setError(result.error ?? 'Retry failed — please try again.')
+      setError(result.error ?? "The retry didn't work — your insight is still here. Try again in a moment.")
       return
     }
     haptic('success')
@@ -125,7 +183,7 @@ export default function InsightGateClient() {
     const ok = await dismissInsight(params.id, note || undefined)
     setActing(null)
     if (!ok) {
-      setError("Couldn't dismiss this insight — please try again.")
+      setError("That didn't dismiss — it's still here if you want to look again later.")
       return
     }
     haptic('light')
@@ -138,7 +196,7 @@ export default function InsightGateClient() {
     const draft = await prepareInsightDraft(params.id)
     setActing(null)
     setDraftText(draft?.content ?? null)
-    if (!draft) setDraftError("Couldn't generate a draft right now — please try again later.")
+    if (!draft) setDraftError("Oak couldn't write that draft just now — nothing was lost, try again in a moment.")
   }
 
   if (loading) {
@@ -169,6 +227,7 @@ export default function InsightGateClient() {
   const { insight } = preview
 
   return (
+    <PageTransition>
     <div className="px-5 pt-2 pb-8 space-y-5">
       <PageHeader
         title="Review before Oak acts"
@@ -181,6 +240,10 @@ export default function InsightGateClient() {
           <div className="text-sm font-semibold text-ink-primary mb-1">{readableHypothesis(insight.hypothesis)}</div>
           <p className="text-sm text-ink-secondary leading-relaxed">{insight.reasoning}</p>
         </GlassCard>
+      </motion.div>
+
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+        <WhyThisInsight insight={insight} />
       </motion.div>
 
       {preview.dry_run && (
@@ -312,5 +375,6 @@ export default function InsightGateClient() {
         </>
       )}
     </div>
+    </PageTransition>
   )
 }

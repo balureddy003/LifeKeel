@@ -145,6 +145,37 @@ export class DeliveryRouter {
     )
   }
 
+  /**
+   * Same opt-in-by-registration logic as enableMobilePush — granting the
+   * browser notification permission is the explicit gesture, so subscribing
+   * surgically enables 'web_push' for the tenant without touching any other
+   * delivery preference.
+   */
+  async enableWebPush(tenantId: string): Promise<void> {
+    await this.db.collection('delivery_preferences').updateOne(
+      { tenant_id: tenantId },
+      {
+        $addToSet: { channels: 'web_push' },
+        $set: { web_push_enabled: true, enabled: true, updated_at: new Date() },
+        $setOnInsert: { tenant_id: tenantId, min_urgency: 'high' },
+      },
+      { upsert: true },
+    )
+  }
+
+  /** Turn web_push off only when the tenant's last subscription is gone. */
+  async disableWebPushIfNoSubscriptions(tenantId: string): Promise<void> {
+    const remaining = await this.getPushSubscriptions(tenantId)
+    if (remaining.length > 0) return
+    await this.db.collection('delivery_preferences').updateOne(
+      { tenant_id: tenantId },
+      {
+        $pull: { channels: 'web_push' },
+        $set: { web_push_enabled: false, updated_at: new Date() },
+      },
+    )
+  }
+
   // ─── Signed action tokens (no login required) ──────────────────────────────
 
   /**

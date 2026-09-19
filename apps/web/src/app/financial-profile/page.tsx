@@ -607,7 +607,7 @@ export default function FinancialProfilePage() {
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (err) {
       haptic('warning')
-      setError(err instanceof Error ? err.message : 'Could not save your financial profile. Please try again.')
+      setError(err instanceof Error ? err.message : "Your answers didn't save — they're still on this screen. Try again in a moment.")
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } finally {
       setSubmitting(false)

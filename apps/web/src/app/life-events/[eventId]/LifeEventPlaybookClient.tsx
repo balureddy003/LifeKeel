@@ -4,8 +4,8 @@ import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Check, Copy, HelpCircle, Loader2, Mail, PenLine, ShieldAlert } from 'lucide-react'
-import { GlassCard, GlassButton, PageHeader } from '@/components/Glass'
+import { ArrowLeft, Check, Copy, HelpCircle, Loader2, Mail, PenLine, Printer, ShieldAlert } from 'lucide-react'
+import { GlassCard, GlassButton, PageHeader, PageTransition } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { fetchLifeEvents, prepareLifeEventStepDraft, setLifeEventStepDone, type LifeEvent, type LifeEventPlaybookStep, type LifeEventType } from '@/lib/api'
 
@@ -78,7 +78,7 @@ function StepDraft({ eventId, step }: { eventId: string; step: LifeEventPlaybook
     setDraftError(null)
     const draft = await prepareLifeEventStepDraft(eventId, step.id)
     setDraftText(draft?.content ?? null)
-    if (!draft) setDraftError("Couldn't generate a draft right now — please try again later.")
+    if (!draft) setDraftError("Oak couldn't write that draft just now — nothing was lost, try again in a moment.")
     setDrafting(false)
   }
 
@@ -213,6 +213,7 @@ export default function LifeEventPlaybookClient() {
   const completedCount = playbook.steps.filter((s) => doneIds.has(s.id)).length
 
   return (
+    <PageTransition>
     <div className="px-5 pt-2 space-y-5">
       <PageHeader
         title={playbook.title}
@@ -231,11 +232,20 @@ export default function LifeEventPlaybookClient() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
         <div className="flex items-center justify-between mb-3">
           <span className="text-sm font-semibold text-ink-secondary">Steps</span>
-          <span className="text-xs text-ink-tertiary">{completedCount}/{playbook.steps.length} done</span>
+          <span className="flex items-center gap-3">
+            <button
+              onClick={() => { haptic('light'); window.print() }}
+              className="text-xs font-semibold text-family-400 flex items-center gap-1 print:hidden"
+              aria-label="Print this plan"
+            >
+              <Printer size={12} /> Print
+            </button>
+            <span className="text-xs text-ink-tertiary">{completedCount}/{playbook.steps.length} done</span>
+          </span>
         </div>
         {syncError && (
           <p role="status" aria-live="polite" className="text-xs text-danger mb-3">
-            Couldn't save that change — check your connection and try again.
+            That change didn't save — the step is back how it was. Check your connection and try again.
           </p>
         )}
         <div className="space-y-2">
@@ -274,5 +284,6 @@ export default function LifeEventPlaybookClient() {
         </div>
       </motion.div>
     </div>
+    </PageTransition>
   )
 }

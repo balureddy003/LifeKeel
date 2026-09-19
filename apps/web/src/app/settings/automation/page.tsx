@@ -39,14 +39,18 @@ export default function AutomationSettingsPage() {
 
   const handleToggle = async () => {
     if (!settings || saving) return
+    const previous = settings
     const next = !settings.dry_run_mode
     haptic('light')
+    // Optimistic: flip the switch instantly; roll back if the save fails.
+    setSettings({ ...settings, dry_run_mode: next })
     setSaving(true)
     setSaveError(null)
     const updated = await updateAutomationSettings(next)
     setSaving(false)
     if (!updated) {
-      setSaveError("Couldn't save — please try again.")
+      setSettings(previous)
+      setSaveError("That didn't save — your previous setting is still in place. Try again in a moment.")
       return
     }
     setSettings(updated)

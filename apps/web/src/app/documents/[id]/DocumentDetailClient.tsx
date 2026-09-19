@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Loader2, AlertCircle, CheckCircle2, Sparkles, FileQuestion } from 'lucide-react'
-import { PageHeader, GlassCard, GlassButton, EmptyState, Skeleton } from '@/components/Glass'
+import { PageHeader, GlassCard, GlassButton, EmptyState, Skeleton, PageTransition } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { useAuth } from '@/lib/auth-context'
 import { CATEGORY_ICONS, CATEGORY_LABELS } from '@/lib/document-categories'
@@ -163,6 +163,7 @@ export default function DocumentDetailClient() {
   const fields = Object.entries(doc.extractedData ?? {})
 
   return (
+    <PageTransition>
     <div className="px-5 pt-2 pb-10 space-y-4">
       <PageHeader title={doc.filename} backHref="/upload" subtitle={CATEGORY_LABELS[doc.category] ?? 'Document'} />
 
@@ -383,5 +384,6 @@ export default function DocumentDetailClient() {
         </GlassCard>
       )}
     </div>
+    </PageTransition>
   )
 }

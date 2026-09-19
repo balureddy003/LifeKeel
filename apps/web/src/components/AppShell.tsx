@@ -364,6 +364,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, !!family])
 
+  // Mirror the unread count onto the installed-PWA app icon badge — the
+  // same signal iOS/Android show on a native app's icon. No-ops in
+  // browsers that don't support it (iOS Safari before 16.4, most desktop).
+  const inboxUnreadCount = useAppStore((s) => s.inboxUnreadCount)
+  useEffect(() => {
+    if (!('setAppBadge' in navigator)) return
+    const nav = navigator as Navigator & { setAppBadge?: (n: number) => Promise<void>; clearAppBadge?: () => Promise<void> }
+    if (inboxUnreadCount > 0) {
+      nav.setAppBadge?.(inboxUnreadCount).catch(() => {})
+    } else {
+      nav.clearAppBadge?.().catch(() => {})
+    }
+  }, [inboxUnreadCount])
+
   const isAuthRoute = pathname.startsWith('/welcome') ||
     pathname.startsWith('/signup') ||
     pathname.startsWith('/login') ||

@@ -802,6 +802,10 @@ export default function HomePage() {
               >
                 See retirement plan <ChevronRight size={14} />
               </Link>
+              <p className="text-xs text-ink-tertiary mt-3 leading-relaxed">
+                Oak earns no commission from any insurer or provider — this is information
+                from your own data, not a recommendation to buy anything.
+              </p>
             </>
           ) : hasLiveData ? (
             <p className="text-sm text-ink-tertiary leading-relaxed">

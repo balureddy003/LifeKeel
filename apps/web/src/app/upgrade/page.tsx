@@ -124,7 +124,7 @@ export default function UpgradePage() {
       window.location.href = url
     } catch (err) {
       haptic('warning')
-      setError(err instanceof Error ? err.message : 'Could not start checkout. Please try again.')
+      setError(err instanceof Error ? err.message : "Checkout didn't start — you haven't been charged anything. Try again in a moment.")
       setCheckingOut(false)
     }
   }

@@ -83,7 +83,7 @@ export default function LifeEventsPage() {
     const event = await reportLifeEvent(selectedType, affectedMemberId || undefined)
     setSubmitting(false)
     if (!event) {
-      setError("Couldn't report this right now — please try again.")
+      setError("That didn't go through — nothing was recorded. You can try again whenever you're ready.")
       return
     }
     router.push(`/life-events/${event.id}`)

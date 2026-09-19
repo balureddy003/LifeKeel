@@ -256,7 +256,7 @@ export default function ReadinessQuizPage() {
         <div ref={resultRef} tabIndex={-1} role="status" aria-live="polite" className="outline-none">
           <GlassCard className="p-4 mt-6">
             <p className="text-sm text-ink-secondary leading-relaxed mb-3">
-              {result.error ?? "Couldn't calculate your score right now — please try again later."}
+              {result.error ?? "Your score couldn't be calculated just now — your answers are saved. Try again in a moment."}
             </p>
             <div className="flex gap-2">
               <GlassButton onClick={handleSubmit} disabled={submitting} className="flex-1">
