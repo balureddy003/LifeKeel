@@ -385,7 +385,18 @@ export class DeliveryRouter {
       }
       lastResult = result
 
-      if (result.success) return result  // stop at first success
+      if (result.success) {
+        // Mark the insight delivered — the escalation worker's
+        // {state:'sent', delivered_at<=cutoff} filter needs this to know
+        // a notification went out and nobody acted. Only transitions from
+        // 'identified': a human approve/dismiss wins over delivery state,
+        // and an earlier delivered_at is never overwritten.
+        await this.db.collection('insights').updateOne(
+          { id: notification.insight_id, tenant_id: tenantId, state: 'identified' },
+          { $set: { state: 'sent', delivered_at: new Date() } },
+        )
+        return result  // stop at first success
+      }
       // else fall through to next channel
     }
 
@@ -403,17 +414,19 @@ export class DeliveryRouter {
     prefs: DeliveryPreferences,
     tenantId: string,
     notification: InsightNotification,
+    opts?: { skipDedup?: boolean; target?: string },
   ): Promise<DeliveryResult | null> {
-    if (await this.alreadyDelivered(notification.insight_id, channel)) return null
+    if (!opts?.skipDedup && await this.alreadyDelivered(notification.insight_id, channel)) return null
 
-    if (channel === 'whatsapp' && prefs.whatsapp_to) {
-      return this.whatsapp.send(prefs.whatsapp_to, notification)
+    const to = opts?.target
+    if (channel === 'whatsapp' && (to ?? prefs.whatsapp_to)) {
+      return this.whatsapp.send((to ?? prefs.whatsapp_to) as string, notification)
     }
-    if (channel === 'sms' && prefs.sms_to) {
-      return this.sms.send(prefs.sms_to, notification)
+    if (channel === 'sms' && (to ?? prefs.sms_to)) {
+      return this.sms.send((to ?? prefs.sms_to) as string, notification)
     }
-    if (channel === 'email' && prefs.email_to) {
-      return this.email.send(prefs.email_to, prefs.business_name ?? 'Agent Oak', notification)
+    if (channel === 'email' && (to ?? prefs.email_to)) {
+      return this.email.send((to ?? prefs.email_to) as string, prefs.business_name ?? 'Agent Oak', notification)
     }
     if (channel === 'web_push' && this.webPush && prefs.web_push_enabled) {
       const subs = await this.getPushSubscriptions(tenantId)
@@ -487,6 +500,77 @@ export class DeliveryRouter {
       if (result.success) return 'sent'
     }
     return attempted ? 'failed' : 'no_channel'
+  }
+
+  /**
+   * Drain `delivery_queue` — the consumer the EscalationWorker's writes
+   * were missing. The worker claims the insight and queues a row naming
+   * the escalation channel/target; this pass actually sends it.
+   *
+   * Escalations deliberately bypass per-channel dedup, the urgency floor,
+   * and quiet hours: the normal path already ran and nobody acted — that
+   * IS the escalation trigger. Rows claimed 'sending' longer than 10 min
+   * crashed mid-dispatch and are reclaimed here.
+   */
+  async drainDeliveryQueue(limit = 50): Promise<{ sent: number; failed: number }> {
+    const col = this.db.collection('delivery_queue')
+    const staleBefore = new Date(Date.now() - 10 * 60 * 1000)
+    const jobs = await col
+      .find({
+        $or: [
+          { status: 'queued' },
+          { status: 'sending', claimed_at: { $lte: staleBefore } },
+        ],
+      })
+      .sort({ created_at: 1 })
+      .limit(limit)
+      .toArray()
+
+    let sent = 0
+    let failed = 0
+    for (const job of jobs) {
+      const claimed = await col.findOneAndUpdate(
+        { _id: job['_id'], $or: [{ status: 'queued' }, { status: 'sending', claimed_at: { $lte: staleBefore } }] },
+        { $set: { status: 'sending', claimed_at: new Date() } },
+      )
+      if (!claimed) continue
+
+      const tenantId = job['tenant_id'] as string
+      const finish = async (patch: Record<string, unknown>) =>
+        col.updateOne({ _id: job['_id'] }, { $set: { ...patch, updated_at: new Date() } })
+
+      const insight = await this.db.collection('insights').findOne({ id: job['insight_id'], tenant_id: tenantId })
+      if (!insight) {
+        await finish({ status: 'failed', error: 'insight_not_found' })
+        failed++
+        continue
+      }
+
+      const prefs = await this.getPreferences(tenantId)
+      const notification = this.buildNotification(insight as unknown as Record<string, unknown>, tenantId)
+      const result = prefs
+        ? await this.sendOnChannel(
+            job['channel'] as Channel,
+            prefs,
+            tenantId,
+            notification,
+            { skipDedup: true, target: job['target'] as string | undefined },
+          )
+        : null
+
+      if (result?.success) {
+        await finish({ status: 'sent', sent_at: new Date() })
+        await this.recordReceipt(notification.insight_id, tenantId, result)
+        sent++
+      } else {
+        // Marked failed rather than re-queued: an escalation is
+        // time-sensitive, and a row stuck retrying for hours would arrive
+        // stale. The row stays for operator inspection.
+        await finish({ status: 'failed', error: result?.error ?? 'channel_not_configured' })
+        failed++
+      }
+    }
+    return { sent, failed }
   }
 
   private async passesMoveJudge(insight: Record<string, unknown>, tenantId: string): Promise<boolean> {

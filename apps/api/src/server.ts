@@ -501,6 +501,20 @@ try {
             log.error({ job: names[i], err: result.reason }, 'Insight SLA/escalation job failed')
           }
         })
+        // The escalation worker only claims insights and queues
+        // delivery_queue rows — drainDeliveryQueue is the missing consumer
+        // that actually sends them. Runs in the same lock cycle so an
+        // escalation queued this tick goes out this tick.
+        if (deliveryRouter) {
+          try {
+            const drained = await deliveryRouter.drainDeliveryQueue()
+            if (drained.sent > 0 || drained.failed > 0) {
+              log.info({ ...drained }, 'Delivery queue drained')
+            }
+          } catch (err) {
+            log.error({ err }, 'Delivery queue drain failed')
+          }
+        }
       })
     } catch (err) {
       log.error({ err }, 'Insight SLA/escalation cron failed')
@@ -1132,7 +1146,7 @@ app.get('/pipeline-connectors', async () => ({
 // marketplace, teams — isn't reachable from Agent Oak and was removed rather
 // than left dead in the route table. See SECURITY.md for the full list of
 // what was dropped and why.
-await registerInsightRoutes(app, engine, featureHashScorer, workflowDb, tenantLevelScorer)
+await registerInsightRoutes(app, engine, featureHashScorer, workflowDb, tenantLevelScorer, deliveryRouter)
 await registerAuthUserRoutes(app, auth)
 if (workflowDb) {
   await registerSocialAuthRoutes(app, auth, workflowDb)
