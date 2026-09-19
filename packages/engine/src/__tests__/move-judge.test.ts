@@ -51,17 +51,17 @@ describe('MoveJudge', () => {
     expect((await judge.evaluate({ insight: insight(), evidence: {} })).decision).toBe('rewrite')
   })
 
-  it('fails open and marks a judge API failure as skipped', async () => {
+  it('blocks delivery when the judge is unavailable', async () => {
     const judge = new MoveJudge(async () => { throw new Error('unavailable') })
     const verdict = await judge.evaluate({ insight: insight(), evidence: {} })
-    expect(verdict).toMatchObject({ decision: 'skipped', judge_skipped: true, skip_reason: 'judge_failure' })
+    expect(verdict).toMatchObject({ decision: 'block', judge_skipped: true, skip_reason: 'judge_failure' })
   })
 
-  it('does not invoke the evaluator for trivial or duplicate reasoning', async () => {
-    const evaluator = vi.fn(async () => pass)
+  it('does not turn duplicate or short content into an unevaluated pass', async () => {
+    const evaluator = vi.fn(async () => ({ ...pass, safety: 1 }))
     const judge = new MoveJudge(evaluator)
-    await judge.evaluate({ insight: insight('Too short'), evidence: {} })
-    await judge.evaluate({ insight: insight(), evidence: {} }, { duplicateReasoning: true })
-    expect(evaluator).not.toHaveBeenCalled()
+    expect((await judge.evaluate({ insight: insight('Too short'), evidence: {} })).decision).toBe('block')
+    expect((await judge.evaluate({ insight: insight(), evidence: {} }, { duplicateReasoning: true })).decision).toBe('block')
+    expect(evaluator).toHaveBeenCalledTimes(2)
   })
 })

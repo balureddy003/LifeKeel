@@ -2,7 +2,7 @@
 # Production Dockerfile for Kairos API Server
 # Builds all workspace packages and starts the compiled API server.
 
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -21,12 +21,12 @@ COPY . .
 RUN pnpm install --frozen-lockfile
 
 # Build workspace packages and the API
-RUN pnpm --filter "./packages/**" build && pnpm --filter @kairos/api build
+RUN pnpm exec turbo run build --filter=@agentoak/api
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Production stage — keeps only runtime files and production dependencies
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:20-alpine
+FROM node:22-alpine
 
 ENV NODE_ENV=production
 ENV PORT=3001
@@ -52,7 +52,7 @@ RUN corepack enable && corepack prepare pnpm@8.15.5 --activate
 
 # Copy root package files, workspace package.json + built dist files, and pnpm patches.
 COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
-COPY --from=builder /app/patches ./patches
+COPY --from=builder /app/category-table.yaml ./category-table.yaml
 COPY --from=builder /app/apps/api ./apps/api
 COPY --from=builder /app/packages ./packages
 
@@ -62,7 +62,8 @@ COPY --from=builder /app/packages ./packages
 # verticals are empty — the entire signal-generation half of the product stops.
 COPY --from=builder /app/detectors ./detectors
 COPY --from=builder /app/connectors ./connectors
-COPY --from=builder /app/definitions ./definitions
+COPY --from=builder /app/playbooks ./playbooks
+COPY --from=builder /app/detector-evals ./detector-evals
 COPY --from=builder /app/verticals ./verticals
 
 # Copy the yfinance Python bridge so the yfinance connector can invoke it

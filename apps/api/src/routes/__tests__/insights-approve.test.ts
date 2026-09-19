@@ -204,8 +204,11 @@ describe('POST /insights/:id/retry-execution', () => {
     const body = res.json()
     expect(body.insight.state).toBe('completed')
     expect(body.message).toBe('All actions completed')
-    // execution_failed -> approved -> completed
-    expect(col.findOneAndUpdate.mock.calls[0]![0]).toMatchObject({ state: 'execution_failed' })
+    // execution_failed -> approved -> completed. The claim filter also
+    // covers insights stranded in 'approved' by a crash — asserted via $or.
+    const claimFilter = col.findOneAndUpdate.mock.calls[0]![0]
+    expect(claimFilter.id).toBe(INSIGHT_ID)
+    expect(claimFilter.$or).toEqual(expect.arrayContaining([{ state: 'execution_failed' }]))
     expect(col.findOneAndUpdate.mock.calls[0]![1].$set).toMatchObject({ state: 'approved' })
   })
 

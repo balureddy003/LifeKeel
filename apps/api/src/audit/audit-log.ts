@@ -66,6 +66,8 @@ export type AuditAction =
   | 'referral.attributed'
   | 'referral.rewarded'
   | 'insight.prepare_on_device'
+  | 'reminder.sent'
+  | 'reminder.cancelled'
 
 export interface AuditEntry {
   tenant_id: string

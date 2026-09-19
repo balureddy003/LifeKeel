@@ -57,7 +57,7 @@ const URGENCY_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, 
 export class DeliveryRouter {
   private readonly db: Db
   private readonly signingSecret: string
-  private readonly studioBaseUrl: string
+  private readonly webBaseUrl: string
   private readonly apiBaseUrl: string
   private readonly moveJudge: MoveJudge | undefined
 
@@ -73,7 +73,10 @@ export class DeliveryRouter {
     this.db = db
     this.moveJudge = moveJudge
     this.signingSecret = process.env['DELIVERY_SIGNING_SECRET'] ?? process.env['JWT_SECRET'] ?? 'change-me'
-    this.studioBaseUrl = process.env['STUDIO_BASE_URL'] ?? 'http://localhost:3000'
+    // Deep links in notifications point at the family app (apps/web), not
+    // kairos-ai's Studio — AGENT_OAK_URL is the same env var auth-social.ts,
+    // billing.ts, and connector-credentials.ts already use for it.
+    this.webBaseUrl = process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002'
     this.apiBaseUrl = process.env['API_BASE_URL'] ?? 'http://localhost:3001'
 
     // Wire web push channel only if VAPID keys are configured
@@ -128,8 +131,8 @@ export class DeliveryRouter {
   /**
    * Registering a device token from the app is itself the opt-in gesture
    * (granting OS notification permission already required explicit user
-   * action) — there's no separate delivery-preferences screen in Kairos the
-   * way Studio has one, so this surgically ensures 'mobile_push' is in the
+   * action) — there's no separate delivery-preferences screen in Agent Oak
+   * the way Studio had one, so this surgically ensures 'mobile_push' is in the
    * tenant's channel list rather than requiring a settings UI that doesn't
    * exist yet. Preserves every other existing preference untouched.
    */
@@ -139,7 +142,12 @@ export class DeliveryRouter {
       {
         $addToSet: { channels: 'mobile_push' },
         $set: { mobile_push_enabled: true, enabled: true, updated_at: new Date() },
-        $setOnInsert: { tenant_id: tenantId, min_urgency: 'high' },
+        // 'low', not 'high': the engine derives urgency from rule confidence
+        // (≥0.85→high), and family detectors emit 0.7–0.88 — a 'high' floor
+        // silently dropped 10 of 12 rules, so subscribing to push delivered
+        // nothing. Notification spam is bounded by the dedup window and the
+        // MoveJudge gate, not by the floor.
+        $setOnInsert: { tenant_id: tenantId, min_urgency: 'low' },
       },
       { upsert: true },
     )
@@ -157,7 +165,8 @@ export class DeliveryRouter {
       {
         $addToSet: { channels: 'web_push' },
         $set: { web_push_enabled: true, enabled: true, updated_at: new Date() },
-        $setOnInsert: { tenant_id: tenantId, min_urgency: 'high' },
+        // 'low' for the same reason as enableMobilePush — see its comment.
+        $setOnInsert: { tenant_id: tenantId, min_urgency: 'low' },
       },
       { upsert: true },
     )
@@ -172,6 +181,19 @@ export class DeliveryRouter {
       {
         $pull: { channels: 'web_push' },
         $set: { web_push_enabled: false, updated_at: new Date() },
+      },
+    )
+  }
+
+  /** Turn mobile_push off only when the tenant's last device token is gone. */
+  async disableMobilePushIfNoTokens(tenantId: string): Promise<void> {
+    const remaining = await this.getMobilePushTokens(tenantId)
+    if (remaining.length > 0) return
+    await this.db.collection('delivery_preferences').updateOne(
+      { tenant_id: tenantId },
+      {
+        $pull: { channels: 'mobile_push' },
+        $set: { mobile_push_enabled: false, updated_at: new Date() },
       },
     )
   }
@@ -306,7 +328,10 @@ export class DeliveryRouter {
       ...(Array.isArray(insight['recommended_actions'])
         ? { recommended_actions: insight['recommended_actions'] as string[] }
         : {}),
-      action_url: `${this.studioBaseUrl}/?insight=${insightId}`,
+      // Deep-links to the insight detail screen in apps/web (/insights/[id]
+      // → InsightGateClient) — not Studio's old /?insight= shape, which
+      // nothing in the family app handles.
+      action_url: `${this.webBaseUrl}/insights/${insightId}`,
       approve_url: `${this.apiBaseUrl}/a/${this.signActionToken(insightId, tenantId, 'approve')}`,
       dismiss_url: `${this.apiBaseUrl}/a/${this.signActionToken(insightId, tenantId, 'dismiss')}`,
       why_url: `${this.apiBaseUrl}/why/${this.signEvidenceToken(insightId, tenantId)}`,
@@ -350,38 +375,8 @@ export class DeliveryRouter {
     let lastResult: DeliveryResult | null = null
 
     for (const channel of prefs.channels) {
-      // Dedup per channel
-      if (await this.alreadyDelivered(notification.insight_id, channel)) continue
-
-      let result: DeliveryResult
-      if (channel === 'whatsapp' && prefs.whatsapp_to) {
-        result = await this.whatsapp.send(prefs.whatsapp_to, notification)
-      } else if (channel === 'sms' && prefs.sms_to) {
-        result = await this.sms.send(prefs.sms_to, notification)
-      } else if (channel === 'email' && prefs.email_to) {
-        result = await this.email.send(prefs.email_to, prefs.business_name ?? 'Kairos', notification)
-      } else if (channel === 'web_push' && this.webPush && prefs.web_push_enabled) {
-        // Send to all subscribed devices for this tenant
-        const subs = await this.getPushSubscriptions(tenantId)
-        if (subs.length === 0) { continue }
-        let pushResult: DeliveryResult | null = null
-        for (const sub of subs) {
-          pushResult = await this.webPush.send(sub, notification)
-          if (pushResult.success) break // stop at first successful device
-        }
-        result = pushResult ?? { channel: 'web_push', success: false, error: 'No subscriptions', delivered_at: new Date() }
-      } else if (channel === 'mobile_push' && prefs.mobile_push_enabled) {
-        const tokens = await this.getMobilePushTokens(tenantId)
-        if (tokens.length === 0) { continue }
-        let pushResult: DeliveryResult | null = null
-        for (const token of tokens) {
-          pushResult = await this.mobilePush.send(token, notification)
-          if (pushResult.success) break // stop at first successful device
-        }
-        result = pushResult ?? { channel: 'mobile_push', success: false, error: 'No tokens', delivered_at: new Date() }
-      } else {
-        continue  // channel not configured
-      }
+      const result = await this.sendOnChannel(channel, prefs, tenantId, notification)
+      if (!result) continue  // already delivered or channel not configured
 
       await this.recordReceipt(notification.insight_id, tenantId, result)
       const createdAt = insight['created_at']
@@ -397,11 +392,116 @@ export class DeliveryRouter {
     return lastResult
   }
 
+  /**
+   * Dispatch a notification on one channel, honoring per-channel dedup.
+   * Returns null when the channel was already delivered to or isn't
+   * configured for this tenant — the caller treats both as "try the next
+   * channel," matching the previous inline behavior.
+   */
+  private async sendOnChannel(
+    channel: Channel,
+    prefs: DeliveryPreferences,
+    tenantId: string,
+    notification: InsightNotification,
+  ): Promise<DeliveryResult | null> {
+    if (await this.alreadyDelivered(notification.insight_id, channel)) return null
+
+    if (channel === 'whatsapp' && prefs.whatsapp_to) {
+      return this.whatsapp.send(prefs.whatsapp_to, notification)
+    }
+    if (channel === 'sms' && prefs.sms_to) {
+      return this.sms.send(prefs.sms_to, notification)
+    }
+    if (channel === 'email' && prefs.email_to) {
+      return this.email.send(prefs.email_to, prefs.business_name ?? 'Agent Oak', notification)
+    }
+    if (channel === 'web_push' && this.webPush && prefs.web_push_enabled) {
+      const subs = await this.getPushSubscriptions(tenantId)
+      if (subs.length === 0) return null
+      let pushResult: DeliveryResult | null = null
+      for (const sub of subs) {
+        pushResult = await this.webPush.send(sub, notification)
+        if (pushResult.success) break // stop at first successful device
+      }
+      return pushResult ?? { channel: 'web_push', success: false, error: 'No subscriptions', delivered_at: new Date() }
+    }
+    if (channel === 'mobile_push' && prefs.mobile_push_enabled) {
+      const tokens = await this.getMobilePushTokens(tenantId)
+      if (tokens.length === 0) return null
+      let pushResult: DeliveryResult | null = null
+      for (const token of tokens) {
+        pushResult = await this.mobilePush.send(token, notification)
+        if (pushResult.success) break // stop at first successful device
+      }
+      return pushResult ?? { channel: 'mobile_push', success: false, error: 'No tokens', delivered_at: new Date() }
+    }
+    return null
+  }
+
+  /**
+   * Tier-3 automatic notification — used by the policy-renewal reminder
+   * worker. Deliberately narrower than deliver():
+   *
+   *  - No MoveJudge call — the content is deterministic (a date from the
+   *    family profile), not model-generated, so there's nothing to grade.
+   *  - No signed approve/dismiss/evidence links — there's nothing to
+   *    approve; the notification is informational.
+   *  - Push channels only (web_push + mobile_push) — those require an
+   *    explicit OS/browser permission gesture to register, so a reminder
+   *    can only reach devices the user themselves owns. WhatsApp/SMS/email
+   *    could send to an address typed into settings, a wider blast radius
+   *    than this feature needs.
+   *
+   * Returns 'deferred' inside quiet hours (the caller retries next run)
+   * and 'no_channel' when no push channel is configured — neither
+   * increments the caller's retry counter, since the reminder may become
+   * deliverable later on its own.
+   */
+  async deliverReminder(
+    tenantId: string,
+    reminder: { id: string; title: string; body: string; url: string },
+  ): Promise<'sent' | 'deferred' | 'failed' | 'no_channel'> {
+    const prefs = await this.getPreferences(tenantId)
+    if (!prefs || !prefs.enabled) return 'no_channel'
+    if (this.inQuietHours(prefs)) return 'deferred'
+
+    const notification: InsightNotification = {
+      insight_id: reminder.id,
+      tenant_id: tenantId,
+      hypothesis: reminder.title,
+      urgency: 'low',
+      or_score: 0,
+      reasoning: reminder.body,
+      action_url: reminder.url,
+      approve_url: '',
+      dismiss_url: '',
+    }
+
+    let attempted = false
+    for (const channel of prefs.channels) {
+      if (channel !== 'web_push' && channel !== 'mobile_push') continue
+      const result = await this.sendOnChannel(channel, prefs, tenantId, notification)
+      if (!result) continue
+      attempted = true
+      await this.recordReceipt(reminder.id, tenantId, result)
+      if (result.success) return 'sent'
+    }
+    return attempted ? 'failed' : 'no_channel'
+  }
+
   private async passesMoveJudge(insight: Record<string, unknown>, tenantId: string): Promise<boolean> {
     if (!this.moveJudge || typeof insight['id'] !== 'string') return true
 
     const reasoning = typeof insight['reasoning'] === 'string' ? insight['reasoning'] : ''
-    const reasoningHash = crypto.createHash('sha256').update(reasoning.trim()).digest('hex')
+    const reasoningHash = crypto.createHash('sha256').update(JSON.stringify({
+      version: 2,
+      reasoning: reasoning.trim(),
+      actions: insight['actions'],
+      confidence: insight['confidence_breakdown'],
+      evidence: insight['feature_snapshot'],
+      signals: insight['derived_from_signals'],
+      impact: [insight['estimated_impact_low'], insight['estimated_impact_high']],
+    })).digest('hex')
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
     const duplicate = await this.db.collection('move_judge_verdicts').findOne({
       tenant_id: tenantId,
@@ -409,7 +509,10 @@ export class DeliveryRouter {
       evaluated_at: { $gte: since },
     })
 
-    const verdict = await this.moveJudge.evaluate({
+    const cached = duplicate && duplicate.judge_skipped === false && ['pass', 'block', 'rewrite'].includes(duplicate.decision)
+      ? duplicate as JudgeVerdict
+      : null
+    const verdict = cached ?? await this.moveJudge.evaluate({
       insight: insight as unknown as Insight,
       evidence: {
         evidence_refs: (insight['confidence_breakdown'] as Record<string, unknown> | undefined)?.['evidence_refs'] ?? [],
@@ -494,18 +597,18 @@ export class DeliveryRouter {
     const digestNotification: InsightNotification = {
       insight_id: `digest_${Date.now()}`,
       tenant_id: tenantId,
-      hypothesis: `${queued.length} new opportunities today`,
+      hypothesis: `${queued.length} new insight${queued.length === 1 ? '' : 's'} today`,
       urgency: 'medium',
       or_score: 1,
       estimated_impact_high: totalImpact,
       currency: 'GBP',
-      reasoning: `You have ${queued.length} opportunities worth up to ${(totalImpact / 100).toFixed(0)} in total. Open Kairos to review them all.`,
-      action_url: `${this.studioBaseUrl}/`,
-      approve_url: `${this.studioBaseUrl}/`,
-      dismiss_url: `${this.studioBaseUrl}/`,
+      reasoning: `You have ${queued.length} insights worth up to ${(totalImpact / 100).toFixed(0)} in total. Open Agent Oak to review them all.`,
+      action_url: `${this.webBaseUrl}/`,
+      approve_url: `${this.webBaseUrl}/`,
+      dismiss_url: `${this.webBaseUrl}/`,
     }
 
-    const result = await this.email.send(prefs.email_to, prefs.business_name ?? 'Kairos', digestNotification)
+    const result = await this.email.send(prefs.email_to, prefs.business_name ?? 'Agent Oak', digestNotification)
 
     if (result.success) {
       const ids = queued.map(q => q._id)

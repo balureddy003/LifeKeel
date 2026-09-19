@@ -38,9 +38,9 @@ mostly *distribution*, not capability:
   `apps/api/src/delivery/channels.ts`'s `RealMobilePushSender` speaks
   Expo's push API (`exp.host`), and `DeliveryRouter` exposes
   `saveMobilePushToken`/`enableMobilePush` — inherited from kairos-ai's
-  Studio app. But there is **no HTTP route that registers a mobile
-  token**: the plumbing exists with no door on it. Adding a
-  `POST /push/mobile` route is a small, well-scoped piece of work.
+  Studio app. The registration surface it was missing shipped
+  2026-09-19: `POST /push/mobile/subscribe` and
+  `POST /push/mobile/unsubscribe` in `routes/push.ts`.
 
 Two honest counterweights before the options:
 
@@ -110,9 +110,10 @@ roadmap step 4).
    writing the wrapper, not after. `upgrade/page.tsx`'s
    `window.location.href = stripeCheckoutUrl` also can't stay as-is in a
    webview regardless of which billing answer is chosen.
-4. **Mobile push token registration route.** `POST /push/mobile` (or an
-   extension of `push.ts`) — the `DeliveryRouter` methods it would call
-   already exist and are tested in shape.
+4. ~~**Mobile push token registration route.**~~ Done (2026-09-19):
+   `POST /push/mobile/subscribe` + `/push/mobile/unsubscribe`, with
+   `disableMobilePushIfNoTokens` added to the router for parity with web
+   push.
 5. **Universal links / Android App Links** for `/invite` codes and push
    action URLs. The invite code is the growth loop (PRD-110/112); a
    tap on an invite link that lands in a browser instead of the

@@ -38,10 +38,10 @@ function makeFakeDb(initialDoc: FamilyGroupDoc) {
   } as unknown as Db
 }
 
-function buildApp(fakeDb: Db) {
+function buildApp(fakeDb: Db, userId = 'organizer-1') {
   const app = Fastify()
   app.addHook('onRequest', async (request) => {
-    ;(request as any).authContext = { tenant_id: TENANT, user_id: 'organizer-1' }
+    ;(request as any).authContext = { tenant_id: TENANT, user_id: userId }
   })
   registerFamilyGroupRoutes(app, fakeDb)
   return app
@@ -59,6 +59,23 @@ const BASE_DOC: FamilyGroupDoc = {
   created_at: new Date('2026-01-01'),
   updated_at: new Date('2026-01-01'),
 }
+
+describe('family management authorization', () => {
+  it.each([
+    { method: 'PATCH' as const, url: '/family/members/child-1', payload: { role: 'organizer' } },
+    { method: 'POST' as const, url: '/family/members', payload: { name: 'Another', role: 'adult' } },
+    { method: 'DELETE' as const, url: '/family/members/organizer-1' },
+    { method: 'PATCH' as const, url: '/family', payload: { name: 'Changed' } },
+  ])('rejects non-organizer $method $url', async (request) => {
+    const app = buildApp(makeFakeDb(BASE_DOC), 'child-1')
+    expect((await app.inject(request)).statusCode).toBe(403)
+  })
+
+  it('does not let the last organizer remove their own role', async () => {
+    const app = buildApp(makeFakeDb(BASE_DOC))
+    expect((await app.inject({ method: 'PATCH', url: '/family/members/organizer-1', payload: { role: 'adult' } })).statusCode).toBe(409)
+  })
+})
 
 describe('PATCH /family/members/:id — date_of_birth', () => {
   let app: ReturnType<typeof buildApp>

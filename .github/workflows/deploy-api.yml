@@ -66,6 +66,8 @@ jobs:
           flags: --port=3001 --allow-unauthenticated --cpu=1 --memory=512Mi --max-instances=4 --concurrency=80 --min-instances=0
           env_vars: |
             NODE_ENV=production
+            KAIROS_DEPLOYMENT_MODE=cloud
+            CORS_ORIGIN=${{ vars.AGENT_OAK_URL || secrets.AGENT_OAK_URL }}
             LOG_LEVEL=info
             AGENT_OAK_URL=${{ vars.AGENT_OAK_URL || secrets.AGENT_OAK_URL }}
             API_BASE_URL=${{ vars.API_BASE_URL }}
@@ -79,15 +81,21 @@ jobs:
             STRIPE_SECRET_KEY=agentoak-stripe-secret-key:latest
             KAIROS_STRIPE_WEBHOOK_SECRET=agentoak-stripe-webhook-secret:latest
             OPENAI_API_KEY=agentoak-openai-api-key:latest
+            # Web push — without these, /push/vapid-key 503s and no browser
+            # can subscribe. Create in Secret Manager from one `npx web-push
+            # generate-vapid-keys` run before the next deploy.
+            VAPID_PUBLIC_KEY=agentoak-vapid-public-key:latest
+            VAPID_PRIVATE_KEY=agentoak-vapid-private-key:latest
+            VAPID_SUBJECT=agentoak-vapid-subject:latest
           secrets_update_strategy: overwrite
 
       - name: Smoke test new revision
         run: |
           SERVICE_URL="${{ steps.deploy.outputs.url }}"
-          echo "Smoke testing $SERVICE_URL/health"
+          echo "Smoke testing $SERVICE_URL/health/ready"
           STATUS="000"
           for i in $(seq 1 18); do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL/health" || echo "000")
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL/health/ready" || echo "000")
             if [ "$STATUS" = "200" ]; then
               echo "Smoke test passed (HTTP 200)"
               break

@@ -48,7 +48,12 @@ describe('/settings/automation', () => {
     const app = await buildApp(makeDb())
     const res = await app.inject({ method: 'GET', url: '/settings/automation' })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ dry_run_mode: false, trust_level_by_workflow: {} })
+    expect(res.json()).toEqual({
+      dry_run_mode: false,
+      trust_level_by_workflow: {},
+      renewal_reminders_enabled: false,
+      renewal_reminder_lead_days: [30, 7],
+    })
   })
 
   it('PATCH dry_run_mode persists and GET reads it back', async () => {
@@ -74,7 +79,33 @@ describe('/settings/automation', () => {
       automation: { dry_run_mode: false, trust_level_by_workflow: { wf_1: 3 } },
     }))
     const res = await app.inject({ method: 'GET', url: '/settings/automation' })
-    expect(res.json()).toEqual({ dry_run_mode: false, trust_level_by_workflow: { wf_1: 3 } })
+    expect(res.json()).toEqual({
+      dry_run_mode: false,
+      trust_level_by_workflow: { wf_1: 3 },
+      renewal_reminders_enabled: false,
+      renewal_reminder_lead_days: [30, 7],
+    })
+  })
+
+  it('PATCH renewal_reminders_enabled persists and GET reads it back', async () => {
+    const app = await buildApp(makeDb({ tenant_id: TENANT }))
+    const res = await app.inject({ method: 'PATCH', url: '/settings/automation', payload: { renewal_reminders_enabled: true } })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().renewal_reminders_enabled).toBe(true)
+  })
+
+  it('PATCH accepts custom lead days and rejects invalid ones', async () => {
+    const app = await buildApp(makeDb({ tenant_id: TENANT }))
+    const ok = await app.inject({ method: 'PATCH', url: '/settings/automation', payload: { renewal_reminder_lead_days: [14] } })
+    expect(ok.json().renewal_reminder_lead_days).toEqual([14])
+    const bad = await app.inject({ method: 'PATCH', url: '/settings/automation', payload: { renewal_reminder_lead_days: [0] } })
+    expect(bad.statusCode).toBe(400)
+  })
+
+  it('PATCH with no recognized fields returns 400', async () => {
+    const app = await buildApp(makeDb({ tenant_id: TENANT }))
+    const res = await app.inject({ method: 'PATCH', url: '/settings/automation', payload: {} })
+    expect(res.statusCode).toBe(400)
   })
 
   it('PATCH only writes dry_run_mode — trust levels survive unchanged', async () => {

@@ -4,6 +4,7 @@ import type { ConnectorLoader, EventGenerator } from '@agentoak/pipeline'
 import { queueManager } from './QueueManager.js'
 import { persistSignal } from '../signals.js'
 import { persistAndDeliverInsights } from '../insights-persist.js'
+import type { DeliveryRouter } from '../delivery/delivery-router.js'
 
 export const WEBHOOK_INGEST_QUEUE = 'webhook.ingest'
 
@@ -23,6 +24,7 @@ export function startWebhookWorker(
   connectorLoader: ConnectorLoader,
   eventGenerator: EventGenerator,
   db: Db,
+  deliveryRouter?: DeliveryRouter,
 ): void {
   queueManager.subscribe(WEBHOOK_INGEST_QUEUE, async payload => {
     const job = payload as WebhookIngestJob
@@ -58,6 +60,6 @@ export function startWebhookWorker(
     })
     if (result.insights.length === 0) return
 
-    await persistAndDeliverInsights(db, result.insights, job.tenantId)
+    await persistAndDeliverInsights(db, result.insights, job.tenantId, deliveryRouter)
   }, { concurrency: 4 })
 }

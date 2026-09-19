@@ -6,10 +6,16 @@
  * longer recognizes refund/publish keywords, and never calls fetch for
  * them) coverage, mirroring insights-prepare.test.ts's SendGrid guardrail
  * pattern for PRD-103.
+ *
+ * The receipts fake below enforces the real unique-index semantics on
+ * (tenant_id, insight_id, payload_hash) so claim-before-dispatch behavior —
+ * duplicate suppression, stale-claim ambiguity, dry-run supersession — is
+ * tested against the same contract MongoDB provides, not a stub of it.
  */
 
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { describe, expect, it, vi, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import type { Insight } from '@agentoak/engine'
 import { ActionExecutor } from '../action-executor.js'
 
@@ -37,15 +43,99 @@ function makeInsight(actions: string[]): Insight {
   } as unknown as Insight
 }
 
-function makeDb() {
-  const col = {
-    createIndex: vi.fn(async () => ({})),
-    insertOne: vi.fn(async () => ({ acknowledged: true })),
-    deleteOne: vi.fn(async () => ({ acknowledged: true })),
-    findOne: vi.fn(async () => null),
-    find: vi.fn(() => ({ sort: () => ({ toArray: async () => [] }) })),
+/** The payload hash the executor computes for a given insight+action. */
+function payloadHashFor(insightId: string, label: string, type: string): string {
+  return createHash('sha256')
+    .update(JSON.stringify({ insight_id: insightId, action_label: label, action_type: type }))
+    .digest('hex')
+}
+
+interface ReceiptDoc extends Record<string, unknown> {
+  id: string
+  tenant_id: string
+  insight_id: string
+  outcome: string
+  payload_hash: string
+}
+
+/** In-memory action_receipts collection honoring the unique-index contract. */
+function makeReceiptsCollection(seed: ReceiptDoc[] = []) {
+  const docs: ReceiptDoc[] = seed.map((d) => structuredClone(d))
+  const key = (d: ReceiptDoc) => `${d.tenant_id}|${d.insight_id}|${d.payload_hash}`
+  const matchesOutcome = (outcome: string, filter: unknown): boolean => {
+    if (filter === undefined) return true
+    if (typeof filter === 'string') return outcome === filter
+    const f = filter as { $in?: string[] }
+    return Array.isArray(f.$in) ? f.$in.includes(outcome) : true
   }
-  return { collection: () => col } as any
+  const matches = (d: ReceiptDoc, filter: Record<string, unknown>) =>
+    (filter['id'] === undefined || d.id === filter['id']) &&
+    (filter['tenant_id'] === undefined || d.tenant_id === filter['tenant_id']) &&
+    (filter['insight_id'] === undefined || d.insight_id === filter['insight_id']) &&
+    (filter['payload_hash'] === undefined || d.payload_hash === filter['payload_hash']) &&
+    matchesOutcome(d.outcome, filter['outcome'])
+
+  return {
+    docs,
+    createIndex: vi.fn(async () => ({})),
+    insertOne: vi.fn(async (doc: ReceiptDoc) => {
+      if (docs.some((d) => key(d) === key(doc))) {
+        const err = new Error('duplicate key') as Error & { code: number }
+        err.code = 11000
+        throw err
+      }
+      docs.push(structuredClone(doc))
+      return { acknowledged: true }
+    }),
+    findOne: vi.fn(async (filter: Record<string, unknown>) => {
+      const found = docs.find((d) => matches(d, filter))
+      return found ? structuredClone(found) : null
+    }),
+    findOneAndUpdate: vi.fn(async (filter: Record<string, unknown>, update: Record<string, Record<string, unknown>>) => {
+      const d = docs.find((doc) => matches(doc, filter))
+      if (!d) return null
+      for (const [k, v] of Object.entries(update['$set'] ?? {})) d[k] = v
+      for (const [k, v] of Object.entries(update['$inc'] ?? {})) d[k] = (Number(d[k]) || 0) + Number(v)
+      for (const k of Object.keys(update['$unset'] ?? {})) delete d[k]
+      return structuredClone(d)
+    }),
+    deleteOne: vi.fn(async (filter: Record<string, unknown>) => {
+      const idx = docs.findIndex((d) => matches(d, filter))
+      if (idx >= 0) docs.splice(idx, 1)
+      return { deletedCount: idx >= 0 ? 1 : 0 }
+    }),
+    find: vi.fn(() => ({ sort: () => ({ toArray: async () => docs.map((d) => structuredClone(d)) }) })),
+  }
+}
+
+function makeDb(seed: ReceiptDoc[] = [], creds: Record<string, unknown> | null = null) {
+  const receipts = makeReceiptsCollection(seed)
+  const db = {
+    collection: (name: string) => {
+      if (name === 'action_receipts') return receipts
+      if (name === 'connector_credentials') return { findOne: vi.fn(async () => creds) }
+      if (name === 'tenant_settings') return { findOne: vi.fn(async () => null) }
+      return { findOne: vi.fn(async () => null), createIndex: vi.fn(async () => ({})) }
+    },
+  }
+  return { db: db as never, receipts }
+}
+
+const SENDGRID = { api_key: 'sg-key' }
+
+function seedReceipt(overrides: Partial<ReceiptDoc>): ReceiptDoc {
+  return {
+    id: 'prior-receipt',
+    tenant_id: 'tenant-1',
+    insight_id: 'insight-1',
+    action_type: 'send_email',
+    action_label: 'Send an email reminder',
+    outcome: 'executed',
+    executed_at: new Date(),
+    dry_run: false,
+    payload_hash: payloadHashFor('insight-1', 'Send an email reminder', 'send_email'),
+    ...overrides,
+  }
 }
 
 describe('OAK-002: dangerous action types deleted', () => {
@@ -64,15 +154,14 @@ describe('OAK-002: dangerous action types deleted', () => {
   })
 
   describe('behavioral', () => {
-    beforeEach(() => {
-      vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('fetch should never be called for a deleted action type') }))
-    })
     afterEach(() => {
       vi.unstubAllGlobals()
     })
 
     it('a refund-worded action classifies as log_only (skipped) and never calls fetch', async () => {
-      const executor = new ActionExecutor(makeDb())
+      vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('fetch should never be called for a deleted action type') }))
+      const { db } = makeDb()
+      const executor = new ActionExecutor(db)
       const summary = await executor.execute(makeInsight(['Refund the customer immediately']), 'tenant-1', {})
 
       expect(summary.receipts).toHaveLength(1)
@@ -82,7 +171,9 @@ describe('OAK-002: dangerous action types deleted', () => {
     })
 
     it('a LinkedIn/Twitter-worded action also classifies as log_only and never calls fetch', async () => {
-      const executor = new ActionExecutor(makeDb())
+      vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('fetch should never be called for a deleted action type') }))
+      const { db } = makeDb()
+      const executor = new ActionExecutor(db)
       const summary = await executor.execute(
         makeInsight(['Post this update on LinkedIn', 'Tweet about it']),
         'tenant-1',
@@ -94,7 +185,9 @@ describe('OAK-002: dangerous action types deleted', () => {
     })
 
     it('a subscription-pause-worded action also classifies as log_only', async () => {
-      const executor = new ActionExecutor(makeDb())
+      vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('fetch should never be called') }))
+      const { db } = makeDb()
+      const executor = new ActionExecutor(db)
       const summary = await executor.execute(makeInsight(['Pause the subscription']), 'tenant-1', {})
 
       expect(summary.receipts[0]!.action_type).toBe('log_only')
@@ -103,25 +196,13 @@ describe('OAK-002: dangerous action types deleted', () => {
   })
 
   describe('kept action types still dispatch (regression guard)', () => {
-    beforeEach(() => {
-      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, text: async () => '', json: async () => ({}) })))
-    })
     afterEach(() => {
       vi.unstubAllGlobals()
     })
 
     it('send_email still classifies and dispatches (not deleted)', async () => {
-      const db = makeDb()
-      db.collection = ((name: string) => {
-        if (name === 'connector_credentials') return { findOne: vi.fn(async () => ({ api_key: 'sg-key' })) }
-        if (name === 'tenant_settings') return { findOne: vi.fn(async () => null) }
-        return {
-          createIndex: vi.fn(async () => ({})),
-          insertOne: vi.fn(async () => ({})),
-          findOne: vi.fn(async () => null),
-          deleteOne: vi.fn(async () => ({})),
-        }
-      }) as any
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, text: async () => '', json: async () => ({}) })))
+      const { db } = makeDb([], SENDGRID)
       const executor = new ActionExecutor(db)
       const summary = await executor.execute(makeInsight(['Send an email reminder']), 'tenant-1', {})
 
@@ -131,61 +212,95 @@ describe('OAK-002: dangerous action types deleted', () => {
     })
   })
 
-  describe('idempotency (durable retry support)', () => {
+  describe('claim-before-dispatch idempotency', () => {
     afterEach(() => {
       vi.unstubAllGlobals()
     })
 
     it('skips re-dispatch when a receipt for the same insight+action already succeeded', async () => {
       vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('should not be called — already executed') }))
-      const existingReceipt = {
-        id: 'prior-receipt', tenant_id: 'tenant-1', insight_id: 'insight-1',
-        action_type: 'send_email', action_label: 'Send an email reminder',
-        outcome: 'executed', executed_at: new Date(), dry_run: false, payload_hash: 'irrelevant-in-mock',
-      }
-      const db = makeDb()
-      db.collection = (() => ({
-        createIndex: vi.fn(async () => ({})),
-        insertOne: vi.fn(async () => ({ acknowledged: true })),
-        deleteOne: vi.fn(async () => ({ acknowledged: true })),
-        findOne: vi.fn(async () => existingReceipt),
-        find: vi.fn(() => ({ sort: () => ({ toArray: async () => [] }) })),
-      })) as any
+      const existing = seedReceipt({ outcome: 'executed' })
+      const { db } = makeDb([existing], SENDGRID)
 
       const executor = new ActionExecutor(db)
       const summary = await executor.execute(makeInsight(['Send an email reminder']), 'tenant-1', {})
 
-      expect(summary.receipts[0]).toEqual(existingReceipt)
+      expect(summary.receipts[0]).toEqual(existing)
       expect(fetch).not.toHaveBeenCalled()
     })
 
-    it('re-dispatches (retries) when the existing receipt for the same action previously failed', async () => {
+    it('re-dispatches via claim transition when the prior receipt failed', async () => {
       vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, text: async () => '', json: async () => ({}) })))
-      const staleFailedReceipt = {
-        id: 'prior-receipt', tenant_id: 'tenant-1', insight_id: 'insight-1',
-        action_type: 'send_email', action_label: 'Send an email reminder',
-        outcome: 'execution_failed', executed_at: new Date(), dry_run: false, payload_hash: 'irrelevant-in-mock',
-      }
-      const db = makeDb()
-      const deleteOne = vi.fn(async () => ({ acknowledged: true }))
-      db.collection = ((name: string) => {
-        if (name === 'connector_credentials') return { findOne: vi.fn(async () => ({ api_key: 'sg-key' })) }
-        if (name === 'tenant_settings') return { findOne: vi.fn(async () => null) }
-        return {
-          createIndex: vi.fn(async () => ({})),
-          insertOne: vi.fn(async () => ({ acknowledged: true })),
-          deleteOne,
-          findOne: vi.fn(async () => staleFailedReceipt),
-          find: vi.fn(() => ({ sort: () => ({ toArray: async () => [] }) })),
-        }
-      }) as any
+      const failed = seedReceipt({ outcome: 'execution_failed', outcome_reason: 'SendGrid 422', attempts: 1 })
+      const { db, receipts } = makeDb([failed], SENDGRID)
 
       const executor = new ActionExecutor(db)
       const summary = await executor.execute(makeInsight(['Send an email reminder']), 'tenant-1', {})
 
-      expect(deleteOne).toHaveBeenCalledWith({ id: 'prior-receipt' })
-      expect(summary.receipts[0]!.outcome).toBe('executed')
       expect(fetch).toHaveBeenCalled()
+      expect(summary.receipts[0]!.outcome).toBe('executed')
+      expect(summary.receipts[0]!.attempts).toBe(2)
+      expect(receipts.docs).toHaveLength(1) // same receipt, transitioned — not a new row
+    })
+
+    it('concurrent execute() calls cannot double-dispatch the same action', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, text: async () => '', json: async () => ({}) })))
+      const { db } = makeDb([], SENDGRID)
+      const executor = new ActionExecutor(db)
+      const insight = makeInsight(['Send an email reminder'])
+
+      const [a, b] = await Promise.all([
+        executor.execute(insight, 'tenant-1', {}),
+        executor.execute(insight, 'tenant-1', {}),
+      ])
+
+      expect(fetch).toHaveBeenCalledTimes(1)
+      // The loser of the claim sees either the still-pending claim or the
+      // already-finalized executed receipt — never a second dispatch.
+      for (const outcome of [a.receipts[0]!.outcome, b.receipts[0]!.outcome]) {
+        expect(['executed', 'pending']).toContain(outcome)
+      }
+    })
+
+    it('a stale pending claim is marked execution_ambiguous — never blindly re-dispatched', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('must not re-dispatch an unknown outcome') }))
+      const stalePending = seedReceipt({
+        outcome: 'pending',
+        claimed_at: new Date(Date.now() - 10 * 60 * 1000),
+        executed_at: new Date(Date.now() - 10 * 60 * 1000),
+      })
+      const { db, receipts } = makeDb([stalePending], SENDGRID)
+
+      const executor = new ActionExecutor(db)
+      const summary = await executor.execute(makeInsight(['Send an email reminder']), 'tenant-1', {})
+
+      expect(fetch).not.toHaveBeenCalled()
+      expect(summary.receipts[0]!.outcome).toBe('execution_ambiguous')
+      expect(receipts.docs[0]!.outcome).toBe('execution_ambiguous')
+    })
+
+    it('a fresh pending claim is deferred to, not re-dispatched', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('another dispatcher owns this claim') }))
+      const freshPending = seedReceipt({ outcome: 'pending', claimed_at: new Date() })
+      const { db } = makeDb([freshPending], SENDGRID)
+
+      const executor = new ActionExecutor(db)
+      const summary = await executor.execute(makeInsight(['Send an email reminder']), 'tenant-1', {})
+
+      expect(fetch).not.toHaveBeenCalled()
+      expect(summary.receipts[0]!.outcome).toBe('pending')
+    })
+
+    it('a dry-run skip does not suppress a later live execution of the same action', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, text: async () => '', json: async () => ({}) })))
+      const dryRunSkip = seedReceipt({ outcome: 'execution_skipped', outcome_reason: 'dry_run', dry_run: true })
+      const { db } = makeDb([dryRunSkip], SENDGRID)
+
+      const executor = new ActionExecutor(db)
+      const summary = await executor.execute(makeInsight(['Send an email reminder']), 'tenant-1', {})
+
+      expect(fetch).toHaveBeenCalled()
+      expect(summary.receipts[0]!.outcome).toBe('executed')
     })
   })
 
@@ -196,13 +311,7 @@ describe('OAK-002: dangerous action types deleted', () => {
 
     it('a 4xx SendGrid response classifies as execution_failed (definite, not worth blind retry)', async () => {
       vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 422, text: async () => 'bad request' })))
-      const db = makeDb()
-      const fallback = db.collection
-      db.collection = ((name: string) => {
-        if (name === 'connector_credentials') return { findOne: vi.fn(async () => ({ api_key: 'sg-key' })) }
-        if (name === 'tenant_settings') return { findOne: vi.fn(async () => null) }
-        return fallback()
-      }) as any
+      const { db } = makeDb([], SENDGRID)
       const executor = new ActionExecutor(db)
       const summary = await executor.execute(makeInsight(['Send an email reminder']), 'tenant-1', {})
       expect(summary.receipts[0]!.outcome).toBe('execution_failed')
@@ -210,13 +319,7 @@ describe('OAK-002: dangerous action types deleted', () => {
 
     it('a 5xx SendGrid response classifies as execution_ambiguous (may be worth retrying)', async () => {
       vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 503, text: async () => 'unavailable' })))
-      const db = makeDb()
-      const fallback = db.collection
-      db.collection = ((name: string) => {
-        if (name === 'connector_credentials') return { findOne: vi.fn(async () => ({ api_key: 'sg-key' })) }
-        if (name === 'tenant_settings') return { findOne: vi.fn(async () => null) }
-        return fallback()
-      }) as any
+      const { db } = makeDb([], SENDGRID)
       const executor = new ActionExecutor(db)
       const summary = await executor.execute(makeInsight(['Send an email reminder']), 'tenant-1', {})
       expect(summary.receipts[0]!.outcome).toBe('execution_ambiguous')

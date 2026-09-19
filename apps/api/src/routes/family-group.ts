@@ -22,6 +22,7 @@ import type { Db } from 'mongodb'
 import { randomUUID, randomBytes } from 'node:crypto'
 import { createLogger, getTenantCollection } from '@agentoak/platform'
 import { getFamilyGroupsCollection } from '../db.js'
+import { isFamilyOrganizer } from '../lib/family-permissions.js'
 
 const log = createLogger({ service: 'family-group', version: '0.0.0' })
 
@@ -169,6 +170,7 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
     const name = req.body?.name?.trim()
     if (!name) return reply.status(400).send({ error: 'Family name required' })
 
+    if (!await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)) return reply.status(403).send({ error: 'Only the organizer can manage the family' })
     const result = (await groupsFor(tenant_id).findOneAndUpdate(
       {},
       { $set: { name, updated_at: new Date() } },
@@ -193,6 +195,7 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
         return reply.status(400).send({ error: "Invalid date of birth. Use 'YYYY-MM-DD', not in the future." })
       }
 
+      if (!await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)) return reply.status(403).send({ error: 'Only the organizer can manage the family' })
       const member: FamilyMemberDoc = {
         id: randomUUID(),
         name: name.trim(),
@@ -232,6 +235,8 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
         return reply.status(400).send({ error: "Invalid date of birth. Use 'YYYY-MM-DD', not in the future." })
       }
 
+      if (!await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)) return reply.status(403).send({ error: 'Only the organizer can manage the family' })
+      if (req.params.id === req.authContext.user_id && role !== undefined && role !== 'organizer') return reply.status(409).send({ error: 'An organizer cannot remove their own role' })
       const set: Record<string, unknown> = { updated_at: new Date() }
       if (role !== undefined) set['members.$.role'] = role
       if (date_of_birth !== undefined) set['members.$.date_of_birth'] = date_of_birth
@@ -250,6 +255,8 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
   fastify.delete<{ Params: { id: string } }>('/family/members/:id', async (req, reply) => {
     const { tenant_id } = req.authContext
 
+    if (!await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)) return reply.status(403).send({ error: 'Only the organizer can manage the family' })
+    if (req.params.id === req.authContext.user_id) return reply.status(409).send({ error: 'An organizer cannot remove themselves' })
     const result = (await groupsFor(tenant_id).findOneAndUpdate(
       {},
       { $pull: { members: { id: req.params.id } }, $set: { updated_at: new Date() } },

@@ -820,17 +820,21 @@ export async function dismissInsight(insightId: string, reason?: string): Promis
 export interface AutomationSettings {
   dry_run_mode: boolean
   trust_level_by_workflow: Record<string, number>
+  renewal_reminders_enabled: boolean
+  renewal_reminder_lead_days: number[]
 }
 
 export async function fetchAutomationSettings(): Promise<AutomationSettings | null> {
   return apiFetch<AutomationSettings | null>('/settings/automation', null)
 }
 
-export async function updateAutomationSettings(dryRunMode: boolean): Promise<AutomationSettings | null | 'queued'> {
+export async function updateAutomationSettings(
+  patch: { dry_run_mode?: boolean; renewal_reminders_enabled?: boolean; renewal_reminder_lead_days?: number[] },
+): Promise<AutomationSettings | null | 'queued'> {
   try {
     const res = await fetchOrQueue(
       '/settings/automation',
-      { method: 'PATCH', body: JSON.stringify({ dry_run_mode: dryRunMode }) },
+      { method: 'PATCH', body: JSON.stringify(patch) },
       'Automation setting',
     )
     if (res === 'queued') return 'queued'
@@ -839,6 +843,43 @@ export async function updateAutomationSettings(dryRunMode: boolean): Promise<Aut
   } catch (err) {
     reportError(err, { path: '/settings/automation' })
     return null
+  }
+}
+
+// ── Automatic reminders (Tier 3 transparency surface) ─────────────────────
+
+export interface PolicyReminder {
+  id: string
+  kind: 'policy_renewal'
+  status: 'scheduled' | 'sending' | 'sent' | 'cancelled' | 'failed'
+  policy: { type: string; provider: string; member_id?: string }
+  renewal_date: string
+  lead_days: number
+  due_at: string
+  sent_at: string | null
+  cancelled_reason: string | null
+}
+
+export async function fetchReminders(): Promise<PolicyReminder[]> {
+  const result = await apiFetch<{ reminders: PolicyReminder[] } | null>('/reminders', null)
+  return result?.reminders ?? []
+}
+
+export async function cancelReminder(id: string): Promise<boolean> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const res = await fetch(`${base}/reminders/${id}/cancel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    })
+    return res.ok
+  } catch (err) {
+    reportError(err, { path: `/reminders/${id}/cancel` })
+    return false
   }
 }
 

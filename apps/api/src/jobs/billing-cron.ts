@@ -499,7 +499,7 @@ export async function runBillingCron(db: Db): Promise<void> {
         })
       })
     } finally {
-      await releaseCronLock(db, LOCK_NAME)
+      await releaseCronLock(db, LOCK_NAME, acquired)
     }
   } else {
     // v1 mode: no lock, no reconciliation, no orphaned event cleanup

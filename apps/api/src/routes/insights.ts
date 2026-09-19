@@ -574,9 +574,13 @@ export async function registerInsightRoutes(
           executionSummary === null ||
           executionSummary.receipts.some(r => r.outcome === 'execution_failed' || r.outcome === 'execution_ambiguous')
         )
+        // A 'pending' receipt means another dispatcher holds the claim and
+        // its outcome isn't known yet — leave the insight in 'approved'
+        // (in-flight) rather than calling it completed or failed.
+        const executionPending = executionSummary !== null && executionSummary.receipts.some(r => r.outcome === 'pending')
         const finalUpdate = await col.findOneAndUpdate(
           { id, tenant_id, state: 'approved' },
-          { $set: { state: executionFailed ? 'execution_failed' : 'completed' } },
+          { $set: { state: executionFailed ? 'execution_failed' : executionPending ? 'approved' : 'completed' } },
           { returnDocument: 'after' },
         )
         const finalResult = finalUpdate ?? result
@@ -628,12 +632,22 @@ export async function registerInsightRoutes(
       try {
         const col = await getInsightsCollection()
         const result = await col.findOneAndUpdate(
-          { id, tenant_id, state: 'execution_failed' },
+          {
+            id, tenant_id,
+            $or: [
+              { state: 'execution_failed' },
+              // A crash between the approve transition and the outcome
+              // write-back strands an insight in 'approved' forever. Only
+              // treat it as retryable once clearly stale, so this can't
+              // race an approve that's still in flight.
+              { state: 'approved', approved_at: { $lt: new Date(Date.now() - 2 * 60 * 1000) } },
+            ],
+          },
           { $set: { state: 'approved' } },
           { returnDocument: 'after' },
         )
         if (!result) {
-          return reply.status(404).send({ error: 'Insight not found or not in execution_failed state' })
+          return reply.status(404).send({ error: 'Insight not found or not in a retryable state' })
         }
 
         const tenantSettings = db ? await db.collection('tenant_settings').findOne({ tenant_id }) : null
@@ -646,9 +660,10 @@ export async function registerInsightRoutes(
 
         const executionFailed = executionSummary === null ||
           executionSummary.receipts.some(r => r.outcome === 'execution_failed' || r.outcome === 'execution_ambiguous')
+        const executionPending = executionSummary !== null && executionSummary.receipts.some(r => r.outcome === 'pending')
         const finalUpdate = await col.findOneAndUpdate(
           { id, tenant_id, state: 'approved' },
-          { $set: { state: executionFailed ? 'execution_failed' : 'completed' } },
+          { $set: { state: executionFailed ? 'execution_failed' : executionPending ? 'approved' : 'completed' } },
           { returnDocument: 'after' },
         )
 

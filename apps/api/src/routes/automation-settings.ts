@@ -8,11 +8,22 @@
  * was an unregistered route file (since deleted), so no shipped client could
  * reach them. These are the live endpoints the settings screen talks to.
  *
- * Deliberately narrow: the only writable field is dry_run_mode. Trust levels
- * are earned state (incremented by real approvals, capped at 5) — a PATCH
- * that let a client set them directly would make "Oak has earned enough
- * trust to auto-run" a UI flag instead of a record of actual behavior, so
- * they're read-only here.
+ * Writable fields:
+ *  - dry_run_mode — approving an insight records the decision without
+ *    dispatching anything.
+ *  - renewal_reminders_enabled — the Tier 3 opt-IN for policy-renewal
+ *    reminders (jobs/policy-renewal-reminders.ts). Default off: autonomy
+ *    is never assumed — a member must explicitly enable it here before
+ *    Oak schedules or sends anything on the family's behalf. The send
+ *    path re-checks this flag at execution time, so disabling takes
+ *    effect immediately for already-scheduled reminders.
+ *  - renewal_reminder_lead_days — how many days before a renewal to notify
+ *    (default [30, 7]; 1–365, max 5 entries).
+ *
+ * Trust levels are earned state (incremented by real approvals, capped at
+ * 5) — a PATCH that let a client set them directly would make "Oak has
+ * earned enough trust to auto-run" a UI flag instead of a record of actual
+ * behavior, so they're read-only here.
  *
  * Authorization: '/settings/*' maps to the 'settings' resource in
  * server.ts's authorizationResource — GET is 'read' (any signed-in role),
@@ -21,10 +32,29 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { getAuditLogger } from '../audit/audit-log.js'
+import { DEFAULT_LEAD_DAYS } from '../jobs/policy-renewal-reminders.js'
 
 interface AutomationDoc {
   dry_run_mode?: boolean
   trust_level_by_workflow?: Record<string, number>
+  renewal_reminders_enabled?: boolean
+  renewal_reminder_lead_days?: number[]
+}
+
+function toResponse(automation: AutomationDoc) {
+  return {
+    dry_run_mode: automation.dry_run_mode === true,
+    trust_level_by_workflow: automation.trust_level_by_workflow ?? {},
+    renewal_reminders_enabled: automation.renewal_reminders_enabled === true,
+    renewal_reminder_lead_days: automation.renewal_reminder_lead_days ?? DEFAULT_LEAD_DAYS,
+  }
+}
+
+function isValidLeadDays(value: unknown): value is number[] {
+  return Array.isArray(value)
+    && value.length >= 1
+    && value.length <= 5
+    && value.every((d) => Number.isInteger(d) && d >= 1 && d <= 365)
 }
 
 export function registerAutomationSettingsRoutes(app: FastifyInstance, db: Db): void {
@@ -33,41 +63,59 @@ export function registerAutomationSettingsRoutes(app: FastifyInstance, db: Db): 
   app.get('/settings/automation', async (request) => {
     const { tenant_id } = request.authContext
     const doc = await col.findOne({ tenant_id })
-    const automation = (doc?.['automation'] as AutomationDoc | undefined) ?? {}
-    return {
-      dry_run_mode: automation.dry_run_mode === true,
-      trust_level_by_workflow: automation.trust_level_by_workflow ?? {},
-    }
+    return toResponse((doc?.['automation'] as AutomationDoc | undefined) ?? {})
   })
 
-  app.patch<{ Body: { dry_run_mode?: boolean } }>(
+  app.patch<{
+    Body: {
+      dry_run_mode?: boolean
+      renewal_reminders_enabled?: boolean
+      renewal_reminder_lead_days?: number[]
+    }
+  }>(
     '/settings/automation',
     async (request, reply) => {
       const { tenant_id } = request.authContext
-      const { dry_run_mode } = request.body ?? {}
-      if (typeof dry_run_mode !== 'boolean') {
-        return reply.status(400).send({ error: 'dry_run_mode must be a boolean' })
+      const { dry_run_mode, renewal_reminders_enabled, renewal_reminder_lead_days } = request.body ?? {}
+
+      const set: Record<string, unknown> = {}
+      if (dry_run_mode !== undefined) {
+        if (typeof dry_run_mode !== 'boolean') {
+          return reply.status(400).send({ error: 'dry_run_mode must be a boolean' })
+        }
+        set['automation.dry_run_mode'] = dry_run_mode
+      }
+      if (renewal_reminders_enabled !== undefined) {
+        if (typeof renewal_reminders_enabled !== 'boolean') {
+          return reply.status(400).send({ error: 'renewal_reminders_enabled must be a boolean' })
+        }
+        set['automation.renewal_reminders_enabled'] = renewal_reminders_enabled
+      }
+      if (renewal_reminder_lead_days !== undefined) {
+        if (!isValidLeadDays(renewal_reminder_lead_days)) {
+          return reply.status(400).send({ error: 'renewal_reminder_lead_days must be 1–5 integers between 1 and 365' })
+        }
+        set['automation.renewal_reminder_lead_days'] = renewal_reminder_lead_days
+      }
+      if (Object.keys(set).length === 0) {
+        return reply.status(400).send({ error: 'Provide at least one of: dry_run_mode, renewal_reminders_enabled, renewal_reminder_lead_days' })
       }
 
       await col.updateOne(
         { tenant_id },
         {
-          $set: { 'automation.dry_run_mode': dry_run_mode, updated_at: new Date() },
+          $set: { ...set, updated_at: new Date() },
           $setOnInsert: { tenant_id, created_at: new Date() },
         },
         { upsert: true },
       )
 
       getAuditLogger()?.fromRequest(request, 'settings.update', 'settings', 'automation', {
-        dry_run_mode,
+        ...set,
       })
 
       const doc = await col.findOne({ tenant_id })
-      const automation = (doc?.['automation'] as AutomationDoc | undefined) ?? {}
-      return {
-        dry_run_mode: automation.dry_run_mode === true,
-        trust_level_by_workflow: automation.trust_level_by_workflow ?? {},
-      }
+      return toResponse((doc?.['automation'] as AutomationDoc | undefined) ?? {})
     },
   )
 }

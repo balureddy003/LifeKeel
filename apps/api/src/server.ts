@@ -84,6 +84,8 @@ import { registerFamilyFinancialProfileRoutes } from './routes/family-financial-
 import { registerLifeEventRoutes } from './routes/life-events.js'
 import { registerFamilyInboxRoutes } from './routes/family-inbox.js'
 import { registerPushRoutes } from './routes/push.js'
+import { registerReminderRoutes } from './routes/reminders.js'
+import { ensureReminderIndexes, runPolicyRenewalReminders } from './jobs/policy-renewal-reminders.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
 import { registerReadinessQuizRoutes } from './routes/readiness-quiz.js'
 import { sendOpsAlert } from './lib/ops-alerts.js'
@@ -221,6 +223,28 @@ try {
   }, { missedExecutionTolerance: 30_000, noOverlap: true })
   log.info({}, 'Email scan cron started')
 
+  // Policy renewal reminders — hourly. Tier 3 autonomy: deterministic,
+  // deduped, consent re-checked at send time, push-only to the member's
+  // own devices. Hourly (not daily) so a reminder deferred by quiet hours
+  // still goes out later the same day instead of waiting a full cycle.
+  if (deliveryRouter) {
+    const dr = deliveryRouter
+    await ensureReminderIndexes(workflowDb)
+    cron.schedule('17 * * * *', async () => {
+      try {
+        await withCronLock(workflowDb, 'policy-renewal-reminders', async () => {
+          const summary = await runPolicyRenewalReminders(workflowDb, (tenantId, reminder) => dr.deliverReminder(tenantId, reminder))
+          if (summary.sent > 0 || summary.failed > 0) {
+            log.info({ ...summary }, 'Policy renewal reminder run')
+          }
+        })
+      } catch (err) {
+        log.error({ err }, 'Policy renewal reminder run failed')
+      }
+    }, { missedExecutionTolerance: 60_000 })
+    log.info({}, 'Policy renewal reminder cron started')
+  }
+
   // Trading (auto-trade confirmation, reconciliation, momentum rebalance)
   // and workflow-approval-timeout sweeps removed — Agent Oak has no trading
   // vertical and no workflow engine to create approval gates in the first
@@ -250,7 +274,8 @@ try {
   // increases by > 0.05 since last check.
   cron.schedule('0 2 * * *', async () => {
     if (!scoreCalibrator) return
-    if (!(await acquireCronLock(workflowDb, 'calibration-drift'))) return
+    const lockOwner = await acquireCronLock(workflowDb, 'calibration-drift')
+    if (!lockOwner) return
     try {
       const histCol   = workflowDb.collection('calibration_ece_history')
       const alertCol  = workflowDb.collection('calibration_alerts')
@@ -289,7 +314,7 @@ try {
     } catch (err) {
       log.error({ err }, 'Calibration drift check failed')
     } finally {
-      await releaseCronLock(workflowDb, 'calibration-drift')
+      await releaseCronLock(workflowDb, 'calibration-drift', lockOwner)
     }
   }, { missedExecutionTolerance: 60_000 })
   log.info({}, 'Calibration drift cron started')
@@ -311,7 +336,8 @@ try {
   //   policy_blocked, budget_blocked → excluded (not user decisions, no signal)
   cron.schedule('0 3 * * *', async () => {
     if (!scoreCalibrator) return
-    if (!(await acquireCronLock(workflowDb, 'calibration-fit'))) return
+    const lockOwner = await acquireCronLock(workflowDb, 'calibration-fit')
+    if (!lockOwner) return
     try {
       const receiptsCol = workflowDb.collection('action_receipts')
       const now = Date.now()
@@ -414,7 +440,7 @@ try {
     } catch (err) {
       log.error({ err }, 'Calibration fitting cron failed')
     } finally {
-      await releaseCronLock(workflowDb, 'calibration-fit')
+      await releaseCronLock(workflowDb, 'calibration-fit', lockOwner)
     }
   }, { missedExecutionTolerance: 60_000 })
   log.info({}, 'Calibration fitting cron started (nightly 3 AM)')
@@ -505,7 +531,7 @@ try {
 
   // ── Queue setup ───────────────────────────────────────────────────────────
   await queueManager.connect()
-  startWebhookWorker(engine, connectorLoader, eventGenerator, workflowDb)
+  startWebhookWorker(engine, connectorLoader, eventGenerator, workflowDb, deliveryRouter)
   log.info({}, 'Queue manager connected')
 
   // ── Score calibration ─────────────────────────────────────────────────────
@@ -906,7 +932,7 @@ app.addHook('preHandler', async (request, reply) => {
 
 function authorizationResource(url: string): ProductResource | null {
   const segment = url.split('?')[0]?.split('/')[1]
-  const map: Record<string, ProductResource> = { insights: 'insights', goals: 'goals', outcomes: 'goals', detectors: 'detectors', connectors: 'connectors', analytics: 'analytics', team: 'users', settings: 'settings', account: 'settings', export: 'audit', 'audit-log': 'audit' }
+  const map: Record<string, ProductResource> = { insights: 'insights', goals: 'goals', outcomes: 'goals', detectors: 'detectors', connectors: 'connectors', analytics: 'analytics', team: 'users', settings: 'settings', account: 'settings', reminders: 'insights', export: 'audit', 'audit-log': 'audit' }
   return segment ? map[segment] ?? null : null
 }
 
@@ -1131,6 +1157,7 @@ if (workflowDb) {
   await registerFamilyFinancialProfileRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerLifeEventRoutes(app, workflowDb)
   registerPushRoutes(app, workflowDb, deliveryRouter)
+  registerReminderRoutes(app, workflowDb)
 }
 // Prometheus metrics — generic ops/observability, not vertical-specific.
 await registerMetricsRoutes(app, engine, scoreCalibrator)
