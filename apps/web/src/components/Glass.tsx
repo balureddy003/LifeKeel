@@ -301,13 +301,16 @@ export function PageHeader({
         )}
         <div className="flex items-center">{action ?? assistantAction}</div>
       </div>
-      {/* User-reported findings, both addressed here once since every page
+      {/* User-reported findings, all addressed here once since every page
           shares this header:
           1. text-title-lg (1.8rem on this app's 17px root, ~30.6px) read
-             as too large on a real mobile screen — steps down to title-md
-             (~25.5px) below md, where the screen is narrowest and a title
-             that size crowds the content right beneath it; full size
-             returns once there's room to justify it.
+             as too large on a real mobile screen — originally stepped down
+             to title-md (~25.5px) only below md, escalating back to
+             title-lg at md+. Live element-inspector feedback on a ~400px-
+             wide container ("this is too big") showed that escalation
+             still fires at md (768px) well before a header this size has
+             room to justify it — dropped entirely; title-md is now the
+             size at every width, not just the smallest one.
           2. "not modern" — semibold instead of bold (a heavy 700 black
              title reads as dated next to this app's otherwise light,
              glass-material UI), the same purple gradient the readiness
@@ -315,7 +318,7 @@ export function PageHeader({
              into the title itself rather than confined to icons/buttons,
              and more vertical room (py-3->py-4, pt-1/pb-1->pt-2/pb-2) so
              the title doesn't feel crowded against the header's own edges. */}
-      <h1 className="text-title-md md:text-title-lg leading-tight font-semibold tracking-tight pt-2 pb-2 bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">
+      <h1 className="text-title-md leading-tight font-semibold tracking-tight pt-2 pb-2 bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">
         {title}
       </h1>
       {subtitle && <p className="text-sm text-ink-tertiary pb-2">{subtitle}</p>}
