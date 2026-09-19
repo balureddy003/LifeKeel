@@ -367,14 +367,23 @@ export default function SettingsPage() {
       <PageHeader title="Settings" />
 
       {/* Profile */}
+      {/* Live-verification finding: ListRow's `value` prop sits beside
+          `children` in one items-center row, meant for a short label
+          ("Active", "System") next to a name — not a second full-length
+          string. With a real name+email, the name (no truncate on
+          children) could wrap to two lines while the single-line email
+          stayed vertically centered against the *whole* row, landing
+          beside the name's second line instead of below it. Stacking both
+          inside children (email truncated, name not) avoids the collision
+          instead of fighting ListRow's layout for this one special case. */}
       <ListSection>
         <ListRow
           icon={User}
-          value={user?.email}
           chevron
           onClick={openEditProfile}
         >
           <div className="text-base font-medium">{user?.name ?? 'User'}</div>
+          <div className="text-sm text-ink-tertiary truncate">{user?.email}</div>
         </ListRow>
       </ListSection>
 
