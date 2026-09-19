@@ -53,6 +53,7 @@ describe('/settings/automation', () => {
       trust_level_by_workflow: {},
       renewal_reminders_enabled: false,
       renewal_reminder_lead_days: [30, 7],
+      auto_execute_enabled: false,
     })
   })
 
@@ -84,7 +85,17 @@ describe('/settings/automation', () => {
       trust_level_by_workflow: { wf_1: 3 },
       renewal_reminders_enabled: false,
       renewal_reminder_lead_days: [30, 7],
+      auto_execute_enabled: false,
     })
+  })
+
+  it('PATCH auto_execute_enabled persists and GET reads it back', async () => {
+    const app = await buildApp(makeDb({ tenant_id: TENANT }))
+    const res = await app.inject({ method: 'PATCH', url: '/settings/automation', payload: { auto_execute_enabled: true } })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().auto_execute_enabled).toBe(true)
+    const bad = await app.inject({ method: 'PATCH', url: '/settings/automation', payload: { auto_execute_enabled: 'on' } })
+    expect(bad.statusCode).toBe(400)
   })
 
   it('PATCH renewal_reminders_enabled persists and GET reads it back', async () => {

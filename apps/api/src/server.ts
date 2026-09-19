@@ -85,6 +85,7 @@ import { registerLifeEventRoutes } from './routes/life-events.js'
 import { registerFamilyInboxRoutes } from './routes/family-inbox.js'
 import { registerPushRoutes } from './routes/push.js'
 import { registerReminderRoutes } from './routes/reminders.js'
+import { registerDetectorEvalRoutes, detectorEvalDir } from './routes/detector-evals.js'
 import { ensureReminderIndexes, runPolicyRenewalReminders } from './jobs/policy-renewal-reminders.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
 import { registerReadinessQuizRoutes } from './routes/readiness-quiz.js'
@@ -525,6 +526,18 @@ try {
           } catch (err) {
             log.error({ err }, 'Judge review queue drain failed')
           }
+        }
+        // Trusted-scope auto-execution — spends the trust approvals earned.
+        // Opt-in + trust threshold + log_only-only + grace period all gate
+        // inside the worker; nothing external can ever dispatch from here.
+        try {
+          const { runAutoExecuteTrusted } = await import('./jobs/auto-execute-trusted.js')
+          const auto = await runAutoExecuteTrusted(workflowDb)
+          if (auto.executed > 0 || auto.failed > 0) {
+            log.info({ ...auto }, 'Trusted-scope auto-execution completed')
+          }
+        } catch (err) {
+          log.error({ err }, 'Trusted-scope auto-execution failed')
         }
       })
     } catch (err) {
@@ -1183,6 +1196,7 @@ if (workflowDb) {
   registerLifeEventRoutes(app, workflowDb)
   registerPushRoutes(app, workflowDb, deliveryRouter)
   registerReminderRoutes(app, workflowDb)
+  registerDetectorEvalRoutes(app, workflowDb, engine, detectorEvalDir(ROOT))
 }
 // Prometheus metrics — generic ops/observability, not vertical-specific.
 await registerMetricsRoutes(app, engine, scoreCalibrator)

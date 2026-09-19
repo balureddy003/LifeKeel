@@ -822,6 +822,7 @@ export interface AutomationSettings {
   trust_level_by_workflow: Record<string, number>
   renewal_reminders_enabled: boolean
   renewal_reminder_lead_days: number[]
+  auto_execute_enabled: boolean
 }
 
 export async function fetchAutomationSettings(): Promise<AutomationSettings | null> {
@@ -829,7 +830,7 @@ export async function fetchAutomationSettings(): Promise<AutomationSettings | nu
 }
 
 export async function updateAutomationSettings(
-  patch: { dry_run_mode?: boolean; renewal_reminders_enabled?: boolean; renewal_reminder_lead_days?: number[] },
+  patch: { dry_run_mode?: boolean; renewal_reminders_enabled?: boolean; renewal_reminder_lead_days?: number[]; auto_execute_enabled?: boolean },
 ): Promise<AutomationSettings | null | 'queued'> {
   try {
     const res = await fetchOrQueue(

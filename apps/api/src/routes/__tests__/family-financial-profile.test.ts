@@ -91,6 +91,9 @@ function makeDb() {
   // it transitions to 'resolved' need somewhere real for that write to land.
   const insightDocs: Record<string, unknown>[] = []
   const insightsCol = {
+    find: (filter: Record<string, unknown>) => ({
+      toArray: async () => insightDocs.filter((d) => matchesFilter(d, filter)),
+    }),
     updateMany: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
       let modifiedCount = 0
       for (const doc of insightDocs) {
@@ -654,8 +657,8 @@ describe('PRD-107: insight resolution', () => {
     expect(insights.some((i) => i.rule_id === 'no_retirement_savings')).toBe(true)
   })
 
-  it('known limitation: a rule still firing for one household member blocks resolution for the whole detector/rule pair, even if it genuinely resolved for another member (entity_key is always empty for family events)', async () => {
-    const { app, insightDocs } = await buildApp(engine)
+  it('entity-aware resolution: a rule firing for one member resolves the legacy unkeyed insight and produces a member-keyed replacement', async () => {
+    const { app, insights, insightDocs } = await buildApp(engine)
     seedOpenInsight(insightDocs, 'family_protection_gap', 'no_income_protection')
 
     await app.inject({
@@ -681,11 +684,12 @@ describe('PRD-107: insight resolution', () => {
       },
     })
 
-    // Still fired (for the member), so the pre-existing seeded insight is
-    // deliberately left open rather than resolved — under-resolves, never
-    // spuriously resolves.
+    // The legacy unkeyed seed is stale — its (rule, '') pair didn't
+    // reproduce; the member-1 firing superseded it with a keyed insight.
     const seeded = insightDocs.find((d) => d['rule_id'] === 'no_income_protection')
-    expect(seeded?.['state']).toBe('identified')
+    expect(seeded?.['state']).toBe('resolved')
+    const memberInsight = insights.find((i) => i.rule_id === 'no_income_protection')
+    expect(memberInsight?.['entity_key']).toBe('member-1')
   })
 })
 

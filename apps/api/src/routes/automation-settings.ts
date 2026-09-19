@@ -19,6 +19,12 @@
  *    effect immediately for already-scheduled reminders.
  *  - renewal_reminder_lead_days — how many days before a renewal to notify
  *    (default [30, 7]; 1–365, max 5 entries).
+ *  - auto_execute_enabled — the Tier 3 opt-IN for acting on trusted
+ *    insight scopes without a tap (jobs/auto-execute-trusted.ts). Only
+ *    scopes that have reached the earned-trust threshold qualify, and
+ *    only insights whose actions are ALL log_only (no external side
+ *    effects — sends, CRM writes and anything money-adjacent stay
+ *    human-gated forever regardless of this flag).
  *
  * Trust levels are earned state (incremented by real approvals, capped at
  * 5) — a PATCH that let a client set them directly would make "Oak has
@@ -39,6 +45,7 @@ interface AutomationDoc {
   trust_level_by_workflow?: Record<string, number>
   renewal_reminders_enabled?: boolean
   renewal_reminder_lead_days?: number[]
+  auto_execute_enabled?: boolean
 }
 
 function toResponse(automation: AutomationDoc) {
@@ -47,6 +54,7 @@ function toResponse(automation: AutomationDoc) {
     trust_level_by_workflow: automation.trust_level_by_workflow ?? {},
     renewal_reminders_enabled: automation.renewal_reminders_enabled === true,
     renewal_reminder_lead_days: automation.renewal_reminder_lead_days ?? DEFAULT_LEAD_DAYS,
+    auto_execute_enabled: automation.auto_execute_enabled === true,
   }
 }
 
@@ -71,12 +79,13 @@ export function registerAutomationSettingsRoutes(app: FastifyInstance, db: Db): 
       dry_run_mode?: boolean
       renewal_reminders_enabled?: boolean
       renewal_reminder_lead_days?: number[]
+      auto_execute_enabled?: boolean
     }
   }>(
     '/settings/automation',
     async (request, reply) => {
       const { tenant_id } = request.authContext
-      const { dry_run_mode, renewal_reminders_enabled, renewal_reminder_lead_days } = request.body ?? {}
+      const { dry_run_mode, renewal_reminders_enabled, renewal_reminder_lead_days, auto_execute_enabled } = request.body ?? {}
 
       const set: Record<string, unknown> = {}
       if (dry_run_mode !== undefined) {
@@ -97,8 +106,14 @@ export function registerAutomationSettingsRoutes(app: FastifyInstance, db: Db): 
         }
         set['automation.renewal_reminder_lead_days'] = renewal_reminder_lead_days
       }
+      if (auto_execute_enabled !== undefined) {
+        if (typeof auto_execute_enabled !== 'boolean') {
+          return reply.status(400).send({ error: 'auto_execute_enabled must be a boolean' })
+        }
+        set['automation.auto_execute_enabled'] = auto_execute_enabled
+      }
       if (Object.keys(set).length === 0) {
-        return reply.status(400).send({ error: 'Provide at least one of: dry_run_mode, renewal_reminders_enabled, renewal_reminder_lead_days' })
+        return reply.status(400).send({ error: 'Provide at least one of: dry_run_mode, renewal_reminders_enabled, renewal_reminder_lead_days, auto_execute_enabled' })
       }
 
       await col.updateOne(

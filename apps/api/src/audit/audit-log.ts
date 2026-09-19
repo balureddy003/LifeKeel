@@ -29,6 +29,7 @@ export type AuditAction =
   | 'insight.prepare'
   | 'assistant.ask'
   | 'detector.create'
+  | 'detector.eval'
   | 'detector.update'
   | 'detector.delete'
   | 'detector.rollback'
@@ -68,6 +69,7 @@ export type AuditAction =
   | 'insight.prepare_on_device'
   | 'insight.review_release'
   | 'insight.review_discard'
+  | 'insight.auto_execute'
   | 'reminder.sent'
   | 'reminder.cancelled'
 

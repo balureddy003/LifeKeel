@@ -565,10 +565,15 @@ export async function registerInsightRoutes(
 
         auditInsight(ctx, 'insight.approve', id, { detector_id: result.detector_id, ...(ctx.via ? { via: ctx.via } : {}) })
 
-        // Increment trust level for this workflow if it has a workflow_id
+        // Increment trust level for this insight's workflow scope. Real
+        // detector-produced insights don't carry workflow_id (only sandbox
+        // seeds did) — the detector IS the workflow for them, so the key
+        // falls back to detector_id. Without this the counter never moved
+        // off zero for any production insight.
         const resultRecord = result as Record<string, unknown>
-        if (db && resultRecord['workflow_id']) {
-          const workflowId = resultRecord['workflow_id'] as string
+        const workflowScope = (resultRecord['workflow_id'] ?? resultRecord['detector_id']) as string | undefined
+        if (db && workflowScope) {
+          const workflowId = workflowScope
           const tenantSettings = await db.collection('tenant_settings').findOne({ tenant_id })
           const automation = (tenantSettings?.['automation'] as { trust_level_by_workflow?: Record<string, number> } | undefined) ?? { trust_level_by_workflow: {} }
           const currentLevel = automation.trust_level_by_workflow?.[workflowId] ?? 0

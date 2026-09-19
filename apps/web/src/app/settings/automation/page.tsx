@@ -19,7 +19,7 @@
 
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { BellRing, Loader2, ShieldCheck, TrendingUp } from 'lucide-react'
+import { BellRing, Loader2, ShieldCheck, TrendingUp, Zap } from 'lucide-react'
 import { GlassCard, PageHeader } from '@/components/Glass'
 import { useToast } from '@/components/Toast'
 import { haptic } from '@/lib/haptics'
@@ -48,7 +48,7 @@ export default function AutomationSettingsPage() {
     })
   }, [])
 
-  const applyPatch = async (patch: Partial<Pick<AutomationSettings, 'dry_run_mode' | 'renewal_reminders_enabled'>>) => {
+  const applyPatch = async (patch: Partial<Pick<AutomationSettings, 'dry_run_mode' | 'renewal_reminders_enabled' | 'auto_execute_enabled'>>) => {
     if (!settings || saving) return
     const previous = settings
     haptic('light')
@@ -207,6 +207,44 @@ export default function AutomationSettingsPage() {
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
             <GlassCard className="p-5">
               <div className="flex items-start gap-3">
+                <Zap size={20} className="text-family-400 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="text-base font-semibold text-ink-primary">Let Oak act on earned trust</div>
+                  <p className="text-sm text-ink-secondary leading-relaxed mt-1">
+                    Once a kind of insight has earned full trust (5 approvals), Oak records its
+                    recommendations as done automatically — after a one-hour window for you to
+                    dismiss first. This only ever covers actions with no outside effect; anything
+                    that sends a message or changes something external still always asks you.
+                  </p>
+                  <div className="flex items-center justify-between mt-4">
+                    <span className="text-sm font-medium text-ink-primary">
+                      {settings?.auto_execute_enabled ? 'On — trusted kinds run themselves' : 'Off'}
+                    </span>
+                    <button
+                      role="switch"
+                      aria-checked={settings?.auto_execute_enabled ?? false}
+                      aria-label="Let Oak act on earned trust"
+                      onClick={() => applyPatch({ auto_execute_enabled: !settings?.auto_execute_enabled })}
+                      disabled={saving || settings === null}
+                      className={`relative w-12 h-7 rounded-full transition-colors disabled:opacity-40 ${
+                        settings?.auto_execute_enabled ? 'bg-family-500' : 'bg-tint/10'
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 w-6 h-6 rounded-full bg-white transition-transform ${
+                          settings?.auto_execute_enabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </GlassCard>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+            <GlassCard className="p-5">
+              <div className="flex items-start gap-3">
                 <TrendingUp size={20} className="text-family-400 shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <div className="text-base font-semibold text-ink-primary">Trust Oak earns</div>
@@ -240,11 +278,13 @@ export default function AutomationSettingsPage() {
             </GlassCard>
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
             <GlassCard className="p-5">
               <p className="text-sm text-ink-secondary leading-relaxed">
-                Approving an insight always goes through its own review screen first — nothing on this
-                page removes that step. Dry-run only decides whether an approved action actually dispatches.
+                Approving an insight goes through its own review screen first. Earned-trust mode is
+                the only exception, and only for kinds of insight you've approved five times — and
+                even then, never for anything that sends a message or changes something outside Oak.
+                Dry-run decides whether approved actions actually dispatch.
               </p>
             </GlassCard>
           </motion.div>

@@ -365,9 +365,9 @@ export async function evaluateProfileAndGenerateInsights(
         income_protection_monthly_minor: earner.income_protection_monthly_minor,
         // PRD-104: carried through to feature_snapshot so a fired
         // insight can be attributed back to a real roster member, not
-        // just an anonymous "second earner" — doesn't affect dedup,
-        // ENTITY_KEY_FIELDS in packages/engine/src/detector.ts doesn't
-        // include it.
+        // just an anonymous "second earner" — and now load-bearing for
+        // dedup + entity-aware stale resolution, since ENTITY_KEY_FIELDS
+        // in packages/engine/src/detector.ts includes member_id.
         ...(earner.member_id ? { member_id: earner.member_id } : {}),
         ...shared,
       }
@@ -462,6 +462,11 @@ export async function evaluateProfileAndGenerateInsights(
       current_savings_minor: fund.current_savings_minor,
       target_savings_minor: fund.target_savings_minor,
       years_remaining: fund.years_remaining,
+      // Stable entity binding: a linked roster member gives the insight a
+      // durable identity (entity_key via ENTITY_KEY_FIELDS) so per-child
+      // dedup and stale-resolution work; child_name already in this event
+      // is the fallback key for unlinked funds.
+      ...(fund.member_id ? { member_id: fund.member_id } : {}),
     }
     const signalId = await persistSignal({
       tenant_id: tenantId,
@@ -489,14 +494,17 @@ export async function evaluateProfileAndGenerateInsights(
   // engine.evaluate() call per earner/child, aggregated into
   // generatedInsights above) — the only call site with a complete
   // enough picture to safely retract insights the fresh data no longer
-  // reproduces. See resolveStaleInsights's own doc comment for why this
-  // resolves per-detector-per-rule rather than per-entity.
+  // reproduces — per (rule_id, entity_key) pair now, so resolving child
+  // A's education insight doesn't wrongly keep child B's alive or vice
+  // versa. See resolveStaleInsights's own doc comment.
   const inventory = engine.inventory()
   for (const detectorId of FAMILY_DETECTOR_IDS) {
     const checkedRuleIds = inventory.find((d) => d.id === detectorId)?.rules.map((r) => r.id) ?? []
     if (checkedRuleIds.length === 0) continue
-    const firedRuleIds = generatedInsights.filter((i) => i.detector_id === detectorId).map((i) => i.rule_id)
-    await resolveStaleInsights(db, tenantId, detectorId, checkedRuleIds, firedRuleIds)
+    const firedEntities = generatedInsights
+      .filter((i) => i.detector_id === detectorId)
+      .map((i) => ({ rule_id: i.rule_id, entity_key: i.entity_key ?? '' }))
+    await resolveStaleInsights(db, tenantId, detectorId, checkedRuleIds, firedEntities)
   }
 
   return generatedInsights.length
