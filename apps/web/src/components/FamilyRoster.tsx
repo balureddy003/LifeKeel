@@ -86,6 +86,7 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
               key={m.id}
               onClick={() => { setSelectedId(m.id); haptic('light') }}
               aria-pressed={active}
+              title={m.name}
               className={`flex-1 min-w-0 rounded-2xl px-2 py-3 text-center border transition-colors ${
                 active ? 'bg-family-500/10 border-family-500/30' : 'border-tint/[0.06]'
               }`}
@@ -106,7 +107,15 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
                   />
                 )}
               </div>
-              <div className="text-xs font-semibold text-ink-primary truncate">{m.name}</div>
+              {/* Live-verification finding: with 4 equal-width columns on a
+                  375px viewport, a full name ("Nihaan Reddy Palayam") had
+                  no room and truncated mid-word ("Ni..."), unreadable at a
+                  glance — exactly the case this roster exists to make fast.
+                  First name matches the same precedent the empty-state copy
+                  just below already uses (selected.name.split(' ')[0]);
+                  the full name is still one tap away on the member's own
+                  page, and available as a hover title here. */}
+              <div className="text-xs font-semibold text-ink-primary truncate">{m.name.split(' ')[0]}</div>
               <div className={`text-caption truncate ${m.status === 'pending' ? 'text-warning font-medium' : 'text-ink-tertiary'}`}>
                 {m.status === 'pending' ? 'Pending' : ROLE_LABELS[m.role]}
               </div>
