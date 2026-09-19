@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Network, Check, X } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import { GoogleIcon } from '@/components/GoogleIcon'
 import { PasswordInput } from '@/components/PasswordInput'
 import { useAuth } from '@/lib/auth-context'
@@ -61,9 +61,8 @@ export default function SignUpPage() {
   return (
     <div className="min-h-screen flex flex-col px-6 pt-12 pb-8">
       <div className="text-center mb-8">
-        <div className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-3 mx-auto">
-          <Network size={32} className="text-family-400" />
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element -- matches MarketingLanding.tsx's own /icon.svg usage */}
+        <img src="/icon.svg" alt="" width={64} height={64} className="rounded-3xl mx-auto mb-3" />
         <h1 className="text-2xl font-bold">Create your account</h1>
         <p className="text-sm text-ink-tertiary mt-1">Takes 30 seconds. No credit card needed.</p>
       </div>
