@@ -9,7 +9,7 @@
  * POST   /family               — create (409 if one already exists)
  * PATCH  /family                — rename
  * POST   /family/members        — add a member
- * PATCH  /family/members/:id     — update a member's role
+ * PATCH  /family/members/:id     — update a member's role and/or date of birth
  * DELETE /family/members/:id      — remove a member
  *
  * Security: all routes require JWT auth. tenant_id from JWT, never from body.
@@ -35,6 +35,16 @@ export type FamilyRole = 'organizer' | 'parent' | 'adult' | 'child'
 // exactly the failure mode a clean 400 here should have prevented.
 const VALID_ROLES: readonly FamilyRole[] = ['organizer', 'parent', 'adult', 'child']
 
+// Strict 'YYYY-MM-DD' + a real calendar date (rejects '2024-02-30') and not
+// in the future — a birthdate can't post-date "today."
+function isValidDateOfBirth(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const d = new Date(`${value}T00:00:00Z`)
+  if (Number.isNaN(d.getTime())) return false
+  if (d.toISOString().slice(0, 10) !== value) return false
+  return d.getTime() <= Date.now()
+}
+
 // Exported for family-join.ts (PRD-110) — an approved join request pushes a
 // member here with `id` set to the new user's real `users.id`, exactly
 // mirroring how the organizer's own entry is `id: user_id` at family
@@ -48,6 +58,12 @@ export interface FamilyMemberDoc {
   role: FamilyRole
   status: 'active' | 'pending'
   joined_at: string
+  // Optional, ISO 'YYYY-MM-DD'. Added so the app can derive age and, for
+  // children, years-until-university instead of asking for those as raw
+  // numbers that go stale — see docs/prd (financial-profile wizard).
+  // Deliberately not required at creation: captured later via PATCH, at
+  // the point it's actually needed (progressive disclosure).
+  date_of_birth?: string
 }
 
 export interface FamilyGroupDoc extends Record<string, unknown> {
@@ -78,6 +94,7 @@ function toResponse(doc: FamilyGroupDoc) {
       role: m.role,
       status: m.status,
       joinedAt: m.joined_at,
+      ...(m.date_of_birth ? { dateOfBirth: m.date_of_birth } : {}),
     })),
   }
 }
@@ -162,14 +179,18 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
   })
 
   // ── POST /family/members ────────────────────────────────────────────────
-  fastify.post<{ Body: { name: string; email: string; role: FamilyRole } }>(
+  fastify.post<{ Body: { name: string; email: string; role: FamilyRole; date_of_birth?: string } }>(
     '/family/members',
     async (req, reply) => {
       const { tenant_id } = req.authContext
-      const { name, email, role } = req.body ?? ({} as { name: string; email: string; role: FamilyRole })
+      const { name, email, role, date_of_birth } =
+        req.body ?? ({} as { name: string; email: string; role: FamilyRole; date_of_birth?: string })
       if (!name?.trim() || !role) return reply.status(400).send({ error: 'Member name and role required' })
       if (!VALID_ROLES.includes(role)) {
         return reply.status(400).send({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` })
+      }
+      if (date_of_birth && !isValidDateOfBirth(date_of_birth)) {
+        return reply.status(400).send({ error: "Invalid date of birth. Use 'YYYY-MM-DD', not in the future." })
       }
 
       const member: FamilyMemberDoc = {
@@ -179,6 +200,7 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
         role,
         status: 'pending',
         joined_at: new Date().toISOString(),
+        ...(date_of_birth ? { date_of_birth } : {}),
       }
 
       const result = (await groupsFor(tenant_id).findOneAndUpdate(
@@ -192,19 +214,31 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
   )
 
   // ── PATCH /family/members/:id ───────────────────────────────────────────
-  fastify.patch<{ Params: { id: string }; Body: { role: FamilyRole } }>(
+  // Accepts role and/or date_of_birth — the only two mutable fields on a
+  // roster member today (name/email are set once, at invite time). At
+  // least one must be present.
+  fastify.patch<{ Params: { id: string }; Body: { role?: FamilyRole; date_of_birth?: string } }>(
     '/family/members/:id',
     async (req, reply) => {
       const { tenant_id } = req.authContext
-      const { role } = req.body ?? ({} as { role: FamilyRole })
-      if (!role) return reply.status(400).send({ error: 'Role required' })
-      if (!VALID_ROLES.includes(role)) {
+      const { role, date_of_birth } = req.body ?? ({} as { role?: FamilyRole; date_of_birth?: string })
+      if (role === undefined && date_of_birth === undefined) {
+        return reply.status(400).send({ error: 'role or date_of_birth required' })
+      }
+      if (role !== undefined && !VALID_ROLES.includes(role)) {
         return reply.status(400).send({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` })
       }
+      if (date_of_birth !== undefined && !isValidDateOfBirth(date_of_birth)) {
+        return reply.status(400).send({ error: "Invalid date of birth. Use 'YYYY-MM-DD', not in the future." })
+      }
+
+      const set: Record<string, unknown> = { updated_at: new Date() }
+      if (role !== undefined) set['members.$.role'] = role
+      if (date_of_birth !== undefined) set['members.$.date_of_birth'] = date_of_birth
 
       const result = (await groupsFor(tenant_id).findOneAndUpdate(
         { 'members.id': req.params.id },
-        { $set: { 'members.$.role': role, updated_at: new Date() } },
+        { $set: set },
         { returnDocument: 'after' },
       )) as FamilyGroupDoc | null
       if (!result) return reply.status(404).send({ error: 'Member not found' })

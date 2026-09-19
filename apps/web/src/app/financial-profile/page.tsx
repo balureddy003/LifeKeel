@@ -5,12 +5,13 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Loader2, AlertCircle, CheckCircle2, Plus, X, ChevronLeft, Sparkles } from 'lucide-react'
-import { PageHeader, GlassCard, GlassButton, Skeleton } from '@/components/Glass'
+import { PageHeader, GlassCard, GlassButton, Skeleton, IfAdvanced } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { useToast } from '@/components/Toast'
 import { useAppStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
+import { calculateAge, yearsUntil } from '@/lib/age'
 import {
   fetchFinancialProfileWithVersion,
   submitFinancialProfile,
@@ -61,6 +62,9 @@ interface EducationFundForm {
   currentSavings: string
   targetSavings: string
   yearsRemaining: string
+  // Optional link to a roster member (role 'child') — mirrors
+  // PolicyForm.memberId below. '' means unset / not on the roster yet.
+  memberId: string
 }
 
 interface PolicyForm {
@@ -90,14 +94,20 @@ const EMPTY_FORM: FormState = {
   employmentStatus: 'employed',
   monthlySalary: '',
   annualLivingExpenses: '',
-  mortgageOutstanding: '',
-  lifeCover: '',
-  incomeProtectionMonthly: '',
+  // These six default to '0' rather than '' — every one of them is
+  // labeled "0 if none" in the form, so a family without a mortgage,
+  // life cover, income protection, or a pension wouldn't otherwise know
+  // that without typing "0" themselves just to move past a field that
+  // doesn't apply to them. Fields with no such hint (salary, expenses,
+  // targets) stay blank on purpose — those need a real answer.
+  mortgageOutstanding: '0',
+  lifeCover: '0',
+  incomeProtectionMonthly: '0',
   hasSecondEarner: false,
   secondEarnerMemberId: '',
   secondEarnerEmploymentStatus: 'employed',
   secondEarnerMonthlySalary: '',
-  secondEarnerIncomeProtectionMonthly: '',
+  secondEarnerIncomeProtectionMonthly: '0',
   emergencySavings: '',
   monthlyExpenses: '',
   hasHighInterestDebt: false,
@@ -107,8 +117,8 @@ const EMPTY_FORM: FormState = {
   // leaving them blank, same as expectedAnnualGrowthPct's '5' below.
   currentAge: '30',
   targetRetirementAge: '65',
-  pensionBalance: '',
-  monthlyContribution: '',
+  pensionBalance: '0',
+  monthlyContribution: '0',
   targetRetirementIncome: '',
   expectedAnnualGrowthPct: '5',
 }
@@ -163,6 +173,7 @@ function fromProfile(profile: FinancialProfile): { form: FormState; funds: Educa
       currentSavings: toWhole(f.current_savings_minor),
       targetSavings: toWhole(f.target_savings_minor),
       yearsRemaining: String(f.years_remaining),
+      memberId: f.member_id ?? '',
     })),
     policies: (profile.policies ?? []).map((p) => ({
       type: p.type,
@@ -185,6 +196,7 @@ function toPayload(form: FormState, funds: EducationFundForm[], policies: Policy
       current_savings_minor: toMinor(f.currentSavings),
       target_savings_minor: Math.max(1, toMinor(f.targetSavings)),
       years_remaining: Number(f.yearsRemaining) || 0,
+      ...(f.memberId ? { member_id: f.memberId } : {}),
     }))
 
   const policyPayloads: FinancialProfilePolicy[] = policies
@@ -400,7 +412,7 @@ function computeCompleteness(form: FormState, funds: EducationFundForm[]): numbe
 
 export default function FinancialProfilePage() {
   const router = useRouter()
-  const { family, user } = useAuth()
+  const { family, user, updateMemberDateOfBirth } = useAuth()
   const confirm = useConfirm()
   // PRD-104: adults on the roster other than the signed-in user — the
   // Second Earner section only makes sense, and is only shown, when at
@@ -457,6 +469,35 @@ export default function FinancialProfilePage() {
     stepLabelRef.current?.focus()
   }, [stepIndex])
 
+  // Live-verification finding: "Annual living expenses" (step 1) and
+  // "Monthly expenses" (step 2, used for the emergency-fund-months
+  // calculation) are genuinely different numbers to two different
+  // detectors — not a duplicate field — but asked cold on separate
+  // screens with nothing connecting them, it reads as "didn't I just
+  // answer this?" and invites inconsistent answers. Prefilling an
+  // editable /12 estimate removes the re-entry friction while still
+  // letting the user correct it if their real monthly spend differs
+  // (e.g. annual expenses includes costs that don't recur monthly).
+  useEffect(() => {
+    if (STEPS[stepIndex]?.key !== 'emergency') return
+    if (form.monthlyExpenses !== '' || form.annualLivingExpenses === '') return
+    const estimate = Math.round(Number(form.annualLivingExpenses) / 12)
+    if (Number.isFinite(estimate) && estimate > 0) set('monthlyExpenses', String(estimate))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepIndex])
+
+  // "Your current age" is otherwise the one blank/default-30 number in the
+  // wizard with a knowable real answer — the signed-in user's own roster
+  // birthday, once one exists. Keeps form.currentAge (what actually gets
+  // submitted) in sync so toPayload needs no change; the retirement step's
+  // JSX below shows this as a derived, read-only value instead of a Field
+  // whenever it's available.
+  const selfMember = (family?.members ?? []).find((m) => m.id === user?.id)
+  useEffect(() => {
+    if (!selfMember?.dateOfBirth) return
+    set('currentAge', String(calculateAge(selfMember.dateOfBirth)))
+  }, [selfMember?.dateOfBirth])
+
   useEffect(() => {
     let cancelled = false
     fetchFinancialProfileWithVersion().then(({ profile, version: v }) => {
@@ -466,17 +507,26 @@ export default function FinancialProfilePage() {
         ? fromProfile(profile)
         : { form: EMPTY_FORM, funds: [] as EducationFundForm[], policies: [] as PolicyForm[] }
       // Pre-fill an education fund entry for each child already on the
-      // family roster (collected once at onboarding) that isn't already
-      // represented here — no reason to make the user retype a name that's
-      // already on file. Only names, since age/savings/target are specific
-      // to this form and weren't collected anywhere else.
+      // family roster that isn't already represented here — no reason to
+      // make the user retype a name that's already on file. Linked by
+      // memberId (not just a one-time name copy) so a birthday added later
+      // on the roster (see MemberProfileClient.tsx) still derives age/years
+      // here automatically instead of going stale.
+      const existingMemberIds = new Set(e.map((fund) => fund.memberId).filter(Boolean))
       const existingNames = new Set(e.map((fund) => fund.childName.trim().toLowerCase()))
       const knownChildren = (family?.members ?? []).filter(
-        (m) => m.role === 'child' && !existingNames.has(m.name.trim().toLowerCase()),
+        (m) => m.role === 'child' && !existingMemberIds.has(m.id) && !existingNames.has(m.name.trim().toLowerCase()),
       )
       const funds = [
         ...e,
-        ...knownChildren.map((c) => ({ childName: c.name, childAge: '', currentSavings: '', targetSavings: '', yearsRemaining: '' })),
+        ...knownChildren.map((c) => ({
+          childName: c.name,
+          childAge: c.dateOfBirth ? String(calculateAge(c.dateOfBirth)) : '',
+          currentSavings: '',
+          targetSavings: '',
+          yearsRemaining: c.dateOfBirth ? String(yearsUntil(c.dateOfBirth, 18)) : '',
+          memberId: c.id,
+        })),
       ]
       setForm(f)
       setFunds(funds)
@@ -508,7 +558,7 @@ export default function FinancialProfilePage() {
 
   const addChild = () => {
     haptic('light')
-    setFunds((prev) => [...prev, { childName: '', childAge: '', currentSavings: '', targetSavings: '', yearsRemaining: '' }])
+    setFunds((prev) => [...prev, { childName: '', childAge: '', currentSavings: '', targetSavings: '', yearsRemaining: '', memberId: '' }])
   }
 
   const removeChild = async (i: number) => {
@@ -526,6 +576,42 @@ export default function FinancialProfilePage() {
 
   const updateChild = (i: number, patch: Partial<EducationFundForm>) => {
     setFunds((prev) => prev.map((f, idx) => (idx === i ? { ...f, ...patch } : f)))
+  }
+
+  // Linking to a roster child (mirrors the Policy form's member picker):
+  // '' means "someone not listed yet" — clears the link and falls back to
+  // the free-text name field. Picking a real member also derives age/years
+  // when that member already has a birthday on file, instead of asking.
+  const handleChildMemberSelect = (i: number, memberId: string) => {
+    if (!memberId) {
+      updateChild(i, { memberId: '' })
+      return
+    }
+    const member = (family?.members ?? []).find((m) => m.id === memberId)
+    if (!member) return
+    updateChild(i, {
+      memberId,
+      childName: member.name,
+      ...(member.dateOfBirth
+        ? { childAge: String(calculateAge(member.dateOfBirth)), yearsRemaining: String(yearsUntil(member.dateOfBirth, 18)) }
+        : {}),
+    })
+  }
+
+  // A DOB entered here writes back to the roster member (so it's known
+  // everywhere else too, e.g. the Retirement step) and immediately derives
+  // this fund's age/years — same "ask once, at the point it's needed"
+  // pattern as the member's own profile page.
+  const handleChildDobChange = async (i: number, memberId: string, dob: string) => {
+    if (!dob) return
+    updateChild(i, { childAge: String(calculateAge(dob)), yearsRemaining: String(yearsUntil(dob, 18)) })
+    try {
+      await updateMemberDateOfBirth(memberId, dob)
+    } catch {
+      // Best-effort — the derived age/years above still apply locally even
+      // if the roster write fails; the user can retry from the member's
+      // own profile page later.
+    }
   }
 
   const addPolicy = () => {
@@ -894,13 +980,32 @@ export default function FinancialProfilePage() {
               <SectionTitle>Retirement</SectionTitle>
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Your current age" value={form.currentAge} onChange={(v) => set('currentAge', v)} />
+                  {selfMember?.dateOfBirth ? (
+                    <div>
+                      <div className="text-xs text-ink-tertiary mb-1.5">Your current age</div>
+                      <div className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary">
+                        {form.currentAge}
+                      </div>
+                      <Link href={`/member/${selfMember.id}`} className="text-xs text-family-400 font-medium mt-1 inline-block">
+                        From your birthday on file — not right?
+                      </Link>
+                    </div>
+                  ) : (
+                    <Field label="Your current age" value={form.currentAge} onChange={(v) => set('currentAge', v)} />
+                  )}
                   <Field label="Target retirement age" value={form.targetRetirementAge} onChange={(v) => set('targetRetirementAge', v)} />
                 </div>
                 <Field label="Pension balance" value={form.pensionBalance} onChange={(v) => set('pensionBalance', v)} placeholder="0 if none" prefix="£" />
                 <Field label="Monthly pension contribution" value={form.monthlyContribution} onChange={(v) => set('monthlyContribution', v)} placeholder="0 if none" prefix="£" />
                 <Field label="Target annual retirement income" value={form.targetRetirementIncome} onChange={(v) => set('targetRetirementIncome', v)} prefix="£" />
-                <Field label="Assumed annual growth rate" value={form.expectedAnnualGrowthPct} onChange={(v) => set('expectedAnnualGrowthPct', v)} suffix="%" />
+                {/* Already defaults sensibly to 5% — the one genuinely
+                    jargon-y field in this wizard, so it only shows in
+                    modes that opt into advanced detail (config.showAdvanced,
+                    already false for adult/child/elderly modes), rather
+                    than asking everyone to understand "growth rate." */}
+                <IfAdvanced>
+                  <Field label="Assumed annual growth rate" value={form.expectedAnnualGrowthPct} onChange={(v) => set('expectedAnnualGrowthPct', v)} suffix="%" />
+                </IfAdvanced>
               </div>
             </GlassCard>
           )}
@@ -909,33 +1014,82 @@ export default function FinancialProfilePage() {
             <GlassCard className="p-5">
               <SectionTitle>Education Funds</SectionTitle>
               <div className="space-y-4">
-                {funds.map((f, i) => (
-                  <div key={i} className="rounded-2xl bg-tint/[0.02] border border-tint/[0.06] p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-ink-tertiary">Child {i + 1}</span>
-                      <button type="button" onClick={() => removeChild(i)} aria-label="Remove child" className="w-7 h-7 rounded-full flex items-center justify-center text-ink-tertiary active:opacity-60">
-                        <X size={14} />
-                      </button>
+                {funds.map((f, i) => {
+                  const rosterChildren = (family?.members ?? []).filter((m) => m.role === 'child')
+                  const linkedMember = f.memberId ? rosterChildren.find((m) => m.id === f.memberId) : undefined
+                  // Free text is the only option when the roster has no
+                  // children yet, or once "Someone not listed yet" is chosen.
+                  const showFreeTextName = rosterChildren.length === 0 || (f.memberId === '' && !f.childName)
+                  return (
+                    <div key={i} className="rounded-2xl bg-tint/[0.02] border border-tint/[0.06] p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-ink-tertiary">Child {i + 1}</span>
+                        <button type="button" onClick={() => removeChild(i)} aria-label="Remove child" className="w-7 h-7 rounded-full flex items-center justify-center text-ink-tertiary active:opacity-60">
+                          <X size={14} />
+                        </button>
+                      </div>
+
+                      {rosterChildren.length > 0 && (
+                        <label className="block">
+                          <div className="text-xs text-ink-tertiary mb-1.5">Which child?</div>
+                          <select
+                            value={f.memberId}
+                            onChange={(e) => handleChildMemberSelect(i, e.target.value)}
+                            className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all bg-transparent"
+                          >
+                            <option value="">Someone not listed yet</option>
+                            {rosterChildren.map((m) => (
+                              <option key={m.id} value={m.id}>{m.name}</option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+
+                      {showFreeTextName && (
+                        <label className="block">
+                          <div className="text-xs text-ink-tertiary mb-1.5">Child's name</div>
+                          <input
+                            type="text"
+                            value={f.childName}
+                            onChange={(e) => updateChild(i, { childName: e.target.value })}
+                            className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                          />
+                        </label>
+                      )}
+
+                      {linkedMember && !linkedMember.dateOfBirth && (
+                        <label className="block">
+                          <div className="text-xs text-ink-tertiary mb-1.5">
+                            {linkedMember.name}&apos;s date of birth
+                          </div>
+                          <input
+                            type="date"
+                            max={new Date().toISOString().slice(0, 10)}
+                            onBlur={(e) => handleChildDobChange(i, linkedMember.id, e.target.value)}
+                            className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                          />
+                          <p className="text-xs text-ink-tertiary mt-1.5">Fills in age and years-until-university automatically.</p>
+                        </label>
+                      )}
+
+                      {linkedMember?.dateOfBirth ? (
+                        <div className="rounded-xl bg-tint/[0.03] border border-tint/[0.06] px-4 py-3 text-sm text-ink-secondary">
+                          {calculateAge(linkedMember.dateOfBirth)} years old, {yearsUntil(linkedMember.dateOfBirth, 18)} years until 18 —
+                          from {linkedMember.name}&apos;s birthday on file.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                          <Field label="Child's age" value={f.childAge} onChange={(v) => updateChild(i, { childAge: v })} />
+                          <Field label="Years until university" value={f.yearsRemaining} onChange={(v) => updateChild(i, { yearsRemaining: v })} />
+                        </div>
+                      )}
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="Current savings" value={f.currentSavings} onChange={(v) => updateChild(i, { currentSavings: v })} prefix="£" />
+                        <Field label="Target amount" value={f.targetSavings} onChange={(v) => updateChild(i, { targetSavings: v })} prefix="£" />
+                      </div>
                     </div>
-                    <label className="block">
-                      <div className="text-xs text-ink-tertiary mb-1.5">Child's name</div>
-                      <input
-                        type="text"
-                        value={f.childName}
-                        onChange={(e) => updateChild(i, { childName: e.target.value })}
-                        className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-                      />
-                    </label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="Child's age" value={f.childAge} onChange={(v) => updateChild(i, { childAge: v })} />
-                      <Field label="Years until university" value={f.yearsRemaining} onChange={(v) => updateChild(i, { yearsRemaining: v })} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="Current savings" value={f.currentSavings} onChange={(v) => updateChild(i, { currentSavings: v })} prefix="£" />
-                      <Field label="Target amount" value={f.targetSavings} onChange={(v) => updateChild(i, { targetSavings: v })} prefix="£" />
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
                 <button
                   type="button"
                   onClick={addChild}
@@ -971,9 +1125,29 @@ export default function FinancialProfilePage() {
               {submitting ? <Loader2 size={18} className="animate-spin" /> : 'Save & Generate Insights'}
             </GlassButton>
           ) : (
-            <GlassButton onClick={handleContinue} disabled={saving}>
-              {saving ? <Loader2 size={18} className="animate-spin" /> : 'Continue'}
-            </GlassButton>
+            <div>
+              <GlassButton onClick={handleContinue} disabled={saving}>
+                {saving ? <Loader2 size={18} className="animate-spin" /> : 'Continue'}
+              </GlassButton>
+              {/* The intro banner already claims "you can skip steps and
+                  come back later" (Continue never actually blocks on
+                  validation), but nothing made that visible on the least
+                  time-critical step. Education Funds is the wizard's last
+                  step, where "Save & Generate Insights" above already is
+                  that same low-commitment action — a second "skip" link
+                  next to a terminal submit button would be redundant, so
+                  this only needs to exist here, on Retirement. */}
+              {step.key === 'retirement' && (
+                <button
+                  type="button"
+                  onClick={handleContinue}
+                  disabled={saving}
+                  className="w-full text-center text-xs text-ink-tertiary font-medium mt-2 py-1"
+                >
+                  Skip for now — I&apos;ll fill this in later
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>

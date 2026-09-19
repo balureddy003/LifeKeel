@@ -104,6 +104,12 @@ export const FinancialProfileSchema = z.object({
         current_savings_minor: z.number().int().nonnegative(),
         target_savings_minor: z.number().int().positive(),
         years_remaining: z.number().int().nonnegative(),
+        // Optional link to a family_groups roster member (role 'child') —
+        // mirrors policies[].member_id (PRD-110). Not validated against the
+        // roster server-side (same posture as that field): a stale/removed
+        // member id just means the frontend falls back to the free-text
+        // child_name it already has.
+        member_id: z.string().min(1).optional(),
       }),
     )
     .default([]),

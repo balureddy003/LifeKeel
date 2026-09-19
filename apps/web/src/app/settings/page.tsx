@@ -60,6 +60,10 @@ export default function SettingsPage() {
   const [memberName, setMemberName] = useState('')
   const [memberEmail, setMemberEmail] = useState('')
   const [memberRole, setMemberRole] = useState<FamilyRole>('adult')
+  // Optional — lets Financial Profile derive age/years-until-university
+  // instead of asking again later. Never required here; skippable, added
+  // at the point it's actually needed if left blank now.
+  const [memberDob, setMemberDob] = useState('')
   const [addingMember, setAddingMember] = useState(false)
   const [addMemberError, setAddMemberError] = useState<string | null>(null)
 
@@ -335,6 +339,7 @@ export default function SettingsPage() {
     setMemberName('')
     setMemberEmail('')
     setMemberRole('adult')
+    setMemberDob('')
     setAddMemberError(null)
   }
 
@@ -344,7 +349,7 @@ export default function SettingsPage() {
     setAddingMember(true)
     setAddMemberError(null)
     try {
-      await inviteMember(memberName.trim(), memberEmail.trim(), memberRole)
+      await inviteMember(memberName.trim(), memberEmail.trim(), memberRole, memberDob || undefined)
       haptic('success')
       toast({ message: `${memberName.trim()} added to family` })
       resetAddMemberForm()
@@ -637,6 +642,17 @@ export default function SettingsPage() {
             className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
           />
 
+          <label className="block">
+            <div className="text-xs text-ink-tertiary mb-1.5">Date of birth (optional)</div>
+            <input
+              type="date"
+              value={memberDob}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setMemberDob(e.target.value)}
+              className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+            />
+          </label>
+
           <div className="flex gap-2">
             {INVITABLE_ROLES.map((role) => {
               const RoleIcon = ROLE_ICONS[role] ?? User
@@ -700,7 +716,7 @@ export default function SettingsPage() {
 
       {/* Push notifications — only shown on browsers that support them.
           Subscribing is the opt-in: the OS permission prompt is the
-          explicit gesture, and Oak only pushes high-urgency items
+          explicit gesture, and Oak pushes what the detectors produce
           (renewals, new insights) — never marketing. */}
       {pushSupported && (
         <ListSection title="Notifications">

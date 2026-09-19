@@ -69,6 +69,14 @@ describe('mapExtractedFieldsToProfileSuggestions', () => {
     expect(suggestions[0]?.path).toBe('household.mortgage_outstanding_minor')
   })
 
+  it('suggests monthly_salary_minor for a payslip/income document', () => {
+    const suggestions = mapExtractedFieldsToProfileSuggestions('income', {
+      net_pay: '£3,850',
+    })
+    expect(suggestions).toHaveLength(1)
+    expect(suggestions[0]?.path).toBe('household.monthly_salary_minor')
+  })
+
   it('returns no suggestions for categories with no mapping rule (investment, tax, will, other)', () => {
     expect(mapExtractedFieldsToProfileSuggestions('investment', { balance: '$10,000' })).toHaveLength(0)
     expect(mapExtractedFieldsToProfileSuggestions('other', { amount: '$500' })).toHaveLength(0)
@@ -87,10 +95,17 @@ describe('isApplicableProfilePath', () => {
   it('accepts the whitelisted paths', () => {
     expect(isApplicableProfilePath('household.life_cover_minor')).toBe(true)
     expect(isApplicableProfilePath('retirement.pension_balance_minor')).toBe(true)
+    // household.monthly_salary_minor: added alongside the 'income' OCR
+    // category (payslips/P60s) — see profile-mapping.ts's rules array.
+    expect(isApplicableProfilePath('household.monthly_salary_minor')).toBe(true)
   })
 
   it('rejects arbitrary paths', () => {
-    expect(isApplicableProfilePath('household.monthly_salary_minor')).toBe(false)
+    // A real FinancialProfile field, deliberately not on the OCR-suggestion
+    // whitelist (no document type maps to it) — the meaningful "arbitrary"
+    // case is a plausible-looking path that's still rejected, not a
+    // nonsense one.
+    expect(isApplicableProfilePath('household.annual_living_expenses_minor')).toBe(false)
     expect(isApplicableProfilePath('__proto__.polluted')).toBe(false)
     expect(isApplicableProfilePath('tenant_id')).toBe(false)
   })

@@ -9,6 +9,7 @@ import {
   addFamilyGroupMember,
   removeFamilyGroupMember,
   updateFamilyGroupMemberRole,
+  updateFamilyGroupMemberDateOfBirth,
   type ApiFamilyGroup,
 } from './api'
 import { getApiBase } from './env'
@@ -25,9 +26,10 @@ interface AuthContextValue {
   signInWithProvider: (provider: 'google') => Promise<void>
   signOut: () => void
   createFamily: (name: string, forUser?: User) => Promise<void>
-  inviteMember: (name: string, email: string, role: FamilyRole) => Promise<void>
+  inviteMember: (name: string, email: string, role: FamilyRole, dateOfBirth?: string) => Promise<void>
   removeMember: (id: string) => Promise<void>
   updateMemberRole: (id: string, role: FamilyRole) => Promise<void>
+  updateMemberDateOfBirth: (id: string, dateOfBirth: string) => Promise<void>
   refresh: () => Promise<void>
 }
 
@@ -247,7 +249,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // createFamily(): setFamily() hasn't re-rendered yet, so a caller that
   // chains inviteMember() immediately after awaiting createFamily() would
   // see a stale null `family` and bail even though the family now exists.
-  const inviteMember = async (name: string, email: string, role: FamilyRole) => {
+  const inviteMember = async (name: string, email: string, role: FamilyRole, dateOfBirth?: string) => {
     // Optimistic: show the pending member immediately; the roster shouldn't
     // wait on the network for an action the user just confirmed.
     const previous = family
@@ -264,13 +266,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             emoji: ROLE_EMOJI[role],
             status: 'pending' as const,
             joinedAt: new Date().toISOString(),
+            ...(dateOfBirth ? { dateOfBirth } : {}),
           },
         ],
       }
       persist(user, optimistic)
     }
     try {
-      const apiFamily = await addFamilyGroupMember(name, email, role)
+      const apiFamily = await addFamilyGroupMember(name, email, role, dateOfBirth)
       persist(user, toFamilyGroup(apiFamily))
     } catch (err) {
       persist(user, previous)
@@ -302,6 +305,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     try {
       const apiFamily = await updateFamilyGroupMemberRole(id, role)
+      persist(user, toFamilyGroup(apiFamily))
+    } catch (err) {
+      persist(user, previous)
+      throw err
+    }
+  }
+
+  const updateMemberDateOfBirth = async (id: string, dateOfBirth: string) => {
+    const previous = family
+    if (family) {
+      persist(user, {
+        ...family,
+        members: family.members.map((m) => (m.id === id ? { ...m, dateOfBirth } : m)),
+      })
+    }
+    try {
+      const apiFamily = await updateFamilyGroupMemberDateOfBirth(id, dateOfBirth)
       persist(user, toFamilyGroup(apiFamily))
     } catch (err) {
       persist(user, previous)
@@ -343,6 +363,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         inviteMember,
         removeMember,
         updateMemberRole,
+        updateMemberDateOfBirth,
         refresh,
       }}
     >

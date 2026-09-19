@@ -1,16 +1,34 @@
 'use client'
 
+import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, HelpCircle, User, ChevronRight, Siren } from 'lucide-react'
+import { ArrowLeft, HelpCircle, User, ChevronRight, Siren, Loader2 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { ROLE_LABELS } from '@/lib/auth-types'
 import { PageHeader, PageTransition } from '@/components/Glass'
+import { useToast } from '@/components/Toast'
+import { calculateAge } from '@/lib/age'
 
 export default function MemberProfileClient() {
   const params = useParams<{ id: string }>()
-  const { family } = useAuth()
+  const { family, updateMemberDateOfBirth } = useAuth()
+  const toast = useToast()
+  const [savingDob, setSavingDob] = useState(false)
   const member = family?.members.find((m) => m.id === params.id)
+
+  const handleDobChange = async (value: string) => {
+    if (!member || !value) return
+    setSavingDob(true)
+    try {
+      await updateMemberDateOfBirth(member.id, value)
+      toast({ message: 'Birthday saved' })
+    } catch (err) {
+      toast({ message: err instanceof Error ? err.message : "Couldn't save that — try again in a moment.", variant: 'error' })
+    } finally {
+      setSavingDob(false)
+    }
+  }
 
   if (!member) {
     return (
@@ -46,6 +64,28 @@ export default function MemberProfileClient() {
             </span>
           )}
         </div>
+      </div>
+
+      <div className="card">
+        <label className="block">
+          <div className="text-sm font-semibold text-ink-primary mb-1">Date of birth</div>
+          <p className="text-xs text-ink-tertiary mb-2">
+            {member.dateOfBirth
+              ? `${calculateAge(member.dateOfBirth)} years old — used to fill in age fields elsewhere so you don't have to re-type them.`
+              : "Optional — lets Financial Profile fill in age fields on its own instead of asking."}
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              defaultValue={member.dateOfBirth ?? ''}
+              max={new Date().toISOString().slice(0, 10)}
+              onBlur={(e) => handleDobChange(e.target.value)}
+              disabled={savingDob}
+              className="glass-input flex-1 rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all disabled:opacity-60"
+            />
+            {savingDob && <Loader2 size={18} className="animate-spin text-ink-tertiary flex-shrink-0" />}
+          </div>
+        </label>
       </div>
 
       <Link href="/financial-profile" className="card flex items-center gap-3 active:opacity-80">

@@ -535,6 +535,8 @@ export interface ApiFamilyMember {
   role: 'organizer' | 'parent' | 'adult' | 'child'
   status: 'active' | 'pending'
   joinedAt: string
+  /** ISO 'YYYY-MM-DD', optional. */
+  dateOfBirth?: string
 }
 
 export interface ApiFamilyGroup {
@@ -602,12 +604,18 @@ export async function addFamilyGroupMember(
   name: string,
   email: string,
   role: ApiFamilyMember['role'],
+  dateOfBirth?: string,
 ): Promise<ApiFamilyGroup> {
-  return familyGroupRequest('/family/members', 'POST', { name, email, role })
+  return familyGroupRequest('/family/members', 'POST', { name, email, role, ...(dateOfBirth ? { date_of_birth: dateOfBirth } : {}) })
 }
 
 export async function updateFamilyGroupMemberRole(id: string, role: ApiFamilyMember['role']): Promise<ApiFamilyGroup> {
   return familyGroupRequest(`/family/members/${id}`, 'PATCH', { role })
+}
+
+/** ISO 'YYYY-MM-DD'. Powers age/years-until-university derivation — see apps/web/src/lib/age.ts. */
+export async function updateFamilyGroupMemberDateOfBirth(id: string, dateOfBirth: string): Promise<ApiFamilyGroup> {
+  return familyGroupRequest(`/family/members/${id}`, 'PATCH', { date_of_birth: dateOfBirth })
 }
 
 export async function removeFamilyGroupMember(id: string): Promise<ApiFamilyGroup> {
@@ -919,6 +927,8 @@ export interface FinancialProfileEducationFund {
   current_savings_minor: number
   target_savings_minor: number
   years_remaining: number
+  /** Optional link to a family roster member (role 'child') — mirrors policies[].member_id. */
+  member_id?: string
 }
 
 export type EmploymentStatus = 'employed' | 'self_employed' | 'unemployed' | 'retired'

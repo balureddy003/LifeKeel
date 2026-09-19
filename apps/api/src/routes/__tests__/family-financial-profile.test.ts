@@ -793,3 +793,40 @@ describe('PRD-112: friend referral reward wiring', () => {
     expect(rewardReferralIfPendingMock).not.toHaveBeenCalled()
   })
 })
+
+describe('Financial Profile wizard: education_funds[].member_id (roster-linked children)', () => {
+  let engine: Engine
+
+  beforeEach(async () => {
+    engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
+    await engine.load()
+  })
+
+  it('round-trips education_funds[].member_id through POST then GET', async () => {
+    const { app } = await buildApp(engine)
+    const education_funds = [
+      { child_name: 'Sam', child_age: 8, current_savings_minor: 2_000_000, target_savings_minor: 2_000_000, years_remaining: 10, member_id: 'roster-child-1' },
+    ]
+
+    const post = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, education_funds },
+    })
+    expect(post.statusCode).toBe(200)
+
+    const get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    expect(get.statusCode).toBe(200)
+    expect(get.json().profile.education_funds).toEqual(education_funds)
+  })
+
+  it('still accepts an education fund with no member_id, unchanged from before this field existed', async () => {
+    const { app } = await buildApp(engine)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: BASE_PROFILE,
+    })
+    expect(res.statusCode).toBe(200)
+  })
+})

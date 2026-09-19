@@ -114,3 +114,54 @@ describe('mapExtractedFieldsToPolicySuggestion', () => {
     ])
   })
 })
+
+describe('mapExtractedFieldsToProfileSuggestions', () => {
+  it('maps a pension statement to a retirement.pension_balance_minor suggestion', () => {
+    expect(mapExtractedFieldsToProfileSuggestions('pension', { fund_value: '£42,000' })).toEqual([
+      {
+        path: 'retirement.pension_balance_minor',
+        label: 'Pension balance',
+        valueMinor: 4_200_000,
+        sourceField: 'fund_value',
+        sourceValue: '£42,000',
+      },
+    ])
+  })
+
+  it('maps a mortgage statement to a household.mortgage_outstanding_minor suggestion', () => {
+    expect(mapExtractedFieldsToProfileSuggestions('mortgage', { outstanding_balance: '£180,000' })).toEqual([
+      {
+        path: 'household.mortgage_outstanding_minor',
+        label: 'Mortgage outstanding',
+        valueMinor: 18_000_000,
+        sourceField: 'outstanding_balance',
+        sourceValue: '£180,000',
+      },
+    ])
+  })
+
+  it('maps a payslip to a household.monthly_salary_minor suggestion, preferring net_pay', () => {
+    expect(mapExtractedFieldsToProfileSuggestions('income', { gross_pay: '£5,000', net_pay: '£3,850' })).toEqual([
+      {
+        path: 'household.monthly_salary_minor',
+        label: 'Monthly salary',
+        valueMinor: 385_000,
+        sourceField: 'net_pay',
+        sourceValue: '£3,850',
+      },
+    ])
+  })
+
+  it('falls back to a generic "salary" field when net/gross pay are absent', () => {
+    const result = mapExtractedFieldsToProfileSuggestions('income', { salary: '£4,200' })
+    expect(result[0]?.valueMinor).toBe(420_000)
+  })
+
+  it('returns no suggestion for an income document with nothing extractable', () => {
+    expect(mapExtractedFieldsToProfileSuggestions('income', { provider: 'Acme Ltd' })).toEqual([])
+  })
+
+  it('returns no suggestion for an unrecognized category', () => {
+    expect(mapExtractedFieldsToProfileSuggestions('will', { amount: '£100' })).toEqual([])
+  })
+})
