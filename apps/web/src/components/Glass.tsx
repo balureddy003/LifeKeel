@@ -289,7 +289,13 @@ export function PageHeader({
     // all ~30 consumers; the assistant page, which pads at px-4, renders
     // its own header). Change the shared page gutter and this has to move
     // with it.
-    <header className="sticky top-0 z-sticky safe-area-top bg-navbg/80 backdrop-blur-xl -mx-5 px-5 py-4 border-b border-tint/[0.05]">
+    // Light-theme finding: bg-navbg/80 is near-opaque white, so the header
+    // read as a hard-edged slab that ends at the content column instead of
+    // the screen edge. Lighter tint plus a bottom fade mask (which also
+    // fades the blur and removes the need for a border line) lets it melt
+    // into the glass background while still keeping the title legible over
+    // content scrolling underneath.
+    <header className="sticky top-0 z-sticky safe-area-top bg-navbg/55 backdrop-blur-xl -mx-5 px-5 py-4 [mask-image:linear-gradient(to_bottom,#000_80%,transparent),linear-gradient(to_right,transparent,#000_6%,#000_94%,transparent)] [mask-composite:intersect] [-webkit-mask-image:linear-gradient(to_bottom,#000_80%,transparent),linear-gradient(to_right,transparent,#000_6%,#000_94%,transparent)] [-webkit-mask-composite:source-in]">
       <div className="flex items-center justify-between h-11">
         {backHref ? (
           <Link href={backHref} onClick={() => haptic('light')} className="flex items-center gap-1 text-ink-tertiary active:opacity-60">
