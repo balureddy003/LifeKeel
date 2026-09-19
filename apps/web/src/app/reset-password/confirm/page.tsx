@@ -62,6 +62,11 @@ export default function ConfirmPasswordResetPage() {
         <div className="w-16 h-16 rounded-3xl bg-danger/10 border border-danger/20 flex items-center justify-center mb-4">
           <AlertCircle size={32} className="text-danger" />
         </div>
+        {/* Deliberately not the brand-gradient treatment applied to the
+            other headings on this flow — an error state paired with the
+            danger-red icon above shouldn't also carry the cheerful purple
+            brand gradient; plain text reads as more appropriately serious
+            here. */}
         <h1 className="text-2xl font-bold mb-2">Invalid reset link</h1>
         <p className="text-sm text-ink-tertiary max-w-xs mb-8">
           This link is missing its reset token. Request a new one to continue.
@@ -83,7 +88,7 @@ export default function ConfirmPasswordResetPage() {
         >
           <CheckCircle2 size={32} className="text-success" />
         </motion.div>
-        <h1 className="text-2xl font-bold mb-2">Password updated</h1>
+        <h1 className="text-2xl font-semibold tracking-tight mb-2 bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">Password updated</h1>
         <p className="text-sm text-ink-tertiary">Taking you to sign in...</p>
       </div>
     )
@@ -95,7 +100,7 @@ export default function ConfirmPasswordResetPage() {
         <div className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-3 mx-auto">
           <Lock size={32} className="text-family-400" />
         </div>
-        <h1 className="text-2xl font-bold">Set a new password</h1>
+        <h1 className="text-2xl font-semibold tracking-tight bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">Set a new password</h1>
         <p className="text-sm text-ink-tertiary mt-1">Must be at least 8 characters</p>
       </div>
 

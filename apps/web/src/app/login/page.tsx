@@ -49,7 +49,7 @@ export default function LoginPage() {
       <div className="text-center mb-8">
         {/* eslint-disable-next-line @next/next/no-img-element -- matches MarketingLanding.tsx's own /icon.svg usage */}
         <img src="/icon.svg" alt="" width={64} height={64} className="rounded-3xl mx-auto mb-3" />
-        <h1 className="text-2xl font-bold">Welcome back</h1>
+        <h1 className="text-2xl font-semibold tracking-tight bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">Welcome back</h1>
         <p className="text-sm text-ink-tertiary mt-1">Sign in to your family</p>
       </div>
 
