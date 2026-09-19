@@ -301,7 +301,14 @@ export function PageHeader({
         )}
         <div className="flex items-center">{action ?? assistantAction}</div>
       </div>
-      <h1 className="text-title-lg leading-tight font-bold tracking-tight pt-1 pb-1">{title}</h1>
+      {/* User-reported finding: text-title-lg (1.8rem on this app's 17px
+          root, ~30.6px) read as too large on a real mobile screen — every
+          page uses this same header, so the fix belongs here once rather
+          than per-page. Steps down to title-md (~25.5px) below md, where
+          the screen is narrowest and a title that size crowds the content
+          right beneath it; full size returns once there's room to justify
+          it. */}
+      <h1 className="text-title-md md:text-title-lg leading-tight font-bold tracking-tight pt-1 pb-1">{title}</h1>
       {subtitle && <p className="text-sm text-ink-tertiary pb-1">{subtitle}</p>}
     </header>
   )
