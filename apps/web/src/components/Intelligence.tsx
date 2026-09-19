@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react'
 import { GlassCard } from './Glass'
 import { haptic } from '@/lib/haptics'
 import { useAppStore } from '@/lib/store'
-import { fetchFinancialProfile, fetchDocuments, fetchConnectorStatuses } from '@/lib/api'
+import { fetchFinancialProfile, fetchDocuments, fetchConnectorStatuses, fetchProfileSuggestions } from '@/lib/api'
 import { TrendingUp, FileText, Landmark, Mail, BarChart3, Scale, Car, Check, Sparkles, ChevronRight, ChevronDown, Users } from 'lucide-react'
 
 export function TrustLadder() {
@@ -200,12 +200,86 @@ function saveDismissedPromptIds(ids: Set<string>): void {
   }
 }
 
+interface MemoryPrompt {
+  id: string
+  icon: typeof Car
+  title: string
+  message: string
+  action: string
+  route: string
+}
+
+// Illustrative preview shown only when the family has no real, actionable
+// document yet — clearly labeled "Sample" so it never reads as a real signal.
+const SAMPLE_PROMPTS: MemoryPrompt[] = [
+  {
+    id: 'sample-car',
+    icon: Car,
+    title: 'I noticed something new',
+    message: 'I see a new vehicle in your transactions. Upload your insurance and registration so I can track it properly.',
+    action: 'Add vehicle',
+    route: '/upload',
+  },
+  {
+    id: 'sample-pension',
+    icon: Landmark,
+    title: 'We found a pension statement',
+    message: 'I found a pension document in your uploads. Should I add it to your retirement planning?',
+    action: 'Review',
+    route: '/upload?category=pension',
+  },
+]
+
+const CATEGORY_PROMPT_META: Record<string, { icon: typeof Car; title: string; what: string }> = {
+  pension: { icon: Landmark, title: 'We found a pension statement', what: 'add it to your retirement planning' },
+  mortgage: { icon: Landmark, title: 'We found a mortgage statement', what: 'update your mortgage balance' },
+  insurance: { icon: FileText, title: 'We found an insurance document', what: 'add it to your protection cover' },
+  income: { icon: Mail, title: 'We found a payslip', what: 'fill in your monthly salary' },
+}
+
+const MAX_DOCS_SCANNED = 3
+
+// Real, per-document prompts: the same extraction + suggestion pipeline the
+// document detail page already uses (GET /documents/:id/profile-suggestions),
+// surfaced on Home instead of only after the user opens the document.
+export async function loadDocumentPrompts(): Promise<MemoryPrompt[]> {
+  const { documents } = await fetchDocuments()
+  const recent = documents
+    .filter((d) => d.status === 'extracted' && CATEGORY_PROMPT_META[d.category])
+    .sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt))
+    .slice(0, MAX_DOCS_SCANNED)
+
+  const results = await Promise.all(
+    recent.map(async (doc) => {
+      const { suggestions, policySuggestion } = await fetchProfileSuggestions(doc.id)
+      const actionable = suggestions.length > 0 || !!policySuggestion?.provider
+      if (!actionable) return null
+      const meta = CATEGORY_PROMPT_META[doc.category]!
+      return {
+        id: doc.id,
+        icon: meta.icon,
+        title: meta.title,
+        message: `I read "${doc.filename}" from your uploads. Want to review what I found and ${meta.what}?`,
+        action: 'Review',
+        route: `/documents/${doc.id}`,
+      } satisfies MemoryPrompt
+    }),
+  )
+  return results.filter((p): p is MemoryPrompt => p !== null)
+}
+
 export function MemoryPrompts() {
   const router = useRouter()
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+  const [realPrompts, setRealPrompts] = useState<MemoryPrompt[] | null>(null)
 
   useEffect(() => {
     setDismissed(loadDismissedPromptIds())
+    let cancelled = false
+    loadDocumentPrompts()
+      .then((p) => { if (!cancelled) setRealPrompts(p) })
+      .catch(() => { if (!cancelled) setRealPrompts([]) })
+    return () => { cancelled = true }
   }, [])
 
   const dismiss = (id: string) => {
@@ -217,25 +291,15 @@ export function MemoryPrompts() {
     })
   }
 
-  const allPrompts = [
-    {
-      id: 'car',
-      icon: Car,
-      title: 'I noticed something new',
-      message: 'I see a new vehicle in your transactions. Upload your insurance and registration so I can track it properly.',
-      action: 'Add vehicle',
-      route: '/upload',
-    },
-    {
-      id: 'pension',
-      icon: Landmark,
-      title: 'We found a pension statement',
-      message: 'I found a pension document in your uploads. Should I add it to your retirement planning?',
-      action: 'Review',
-      route: '/upload?category=pension',
-    },
-  ]
-  const prompts = allPrompts.filter((p) => !dismissed.has(p.id))
+  // Still resolving — render nothing rather than flash the sample content
+  // and then swap it for real cards.
+  if (realPrompts === null) return null
+
+  const realVisible = realPrompts.filter((p) => !dismissed.has(p.id))
+  // Real prompts the user already dismissed must not fall back to the
+  // sample — that would present canned content as if it replaced them.
+  const isSample = realPrompts.length === 0
+  const prompts = isSample ? SAMPLE_PROMPTS.filter((p) => !dismissed.has(p.id)) : realVisible
 
   if (prompts.length === 0) return null
 
@@ -244,12 +308,16 @@ export function MemoryPrompts() {
       <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-1 px-1">
         <Sparkles size={16} className="text-family-400" />
         AI Memory
-        <span className="text-caption text-warning font-semibold px-1.5 py-0.5 rounded-full bg-warning/10">
-          Sample
-        </span>
+        {isSample && (
+          <span className="text-caption text-warning font-semibold px-1.5 py-0.5 rounded-full bg-warning/10">
+            Sample
+          </span>
+        )}
       </div>
       <p className="text-xs text-ink-tertiary mb-2 px-1">
-        Examples of what Oak surfaces once your documents and accounts are connected.
+        {isSample
+          ? 'Examples of what Oak surfaces once your documents and accounts are connected.'
+          : 'Found in documents you uploaded — nothing changes until you review and approve it.'}
       </p>
       {prompts.map((p, i) => {
         const Icon = p.icon
