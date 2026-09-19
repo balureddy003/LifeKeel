@@ -12,6 +12,9 @@
  * GET  /a/:token                     — signed notification action link (confirm page)
  * POST /a/:token                     — signed notification action link (executes)
  * GET  /why/:token                   — signed notification evidence link (read-only)
+ * GET  /insights/review              — insights the judge held back, awaiting review
+ * POST /insights/:id/review-release  — organizer override: deliver despite the verdict
+ * POST /insights/:id/review-discard  — organizer override: discard the held insight
  */
 
 import type { FastifyInstance } from 'fastify'
@@ -28,6 +31,7 @@ import { ActionExecutor, previewActions } from '../actions/action-executor.js'
 import { recordMomentDecision } from '../verified-moments.js'
 import { startGoalExperimentsForApproval } from '../outcomes/causal-experiments.js'
 import { generateDraft } from '../insights/generate-draft.js'
+import { isFamilyOrganizer } from '../lib/family-permissions.js'
 import {
   consolidateInsights,
   getDetectorPrioritySettings,
@@ -1006,6 +1010,90 @@ export async function registerInsightRoutes(
         <p>${escHtml(insight['reasoning'] ?? '')}</p>
         ${score}${impact}
         <p style="color:#888;font-size:.85rem">Rule: ${escHtml(insight['detector_id'] ?? '—')} · Urgency: ${escHtml(insight['urgency'] ?? '—')} · Status: ${escHtml(insight['state'] ?? '—')}</p></div>`))
+    })
+
+    /**
+     * GET /insights/review — the family's view of what the judge held back.
+     * Pending rows are still auto-retrying; exhausted rows need a human
+     * call. Transparency posture: the family sees Oak's own rejections,
+     * with the judge's scores and feedback attached.
+     */
+    app.get('/insights/review', async (request, reply) => {
+      const { tenant_id } = request.authContext
+      if (!db) return reply.status(503).send({ error: 'Review queue unavailable' })
+      const rows = await router.listReviewQueue(tenant_id)
+      const col = await getInsightsCollection()
+      const insightIds = rows.map(r => r['insight_id'] as string)
+      const insights = await col.find(
+        { id: { $in: insightIds }, tenant_id },
+        { projection: { id: 1, hypothesis: 1, reasoning: 1, urgency: 1, state: 1, category: 1 } },
+      ).toArray()
+      const byId = new Map(insights.map(i => [i.id as string, i]))
+      return {
+        items: rows.map(row => ({
+          queue: row['queue'],
+          status: row['status'],
+          attempts: row['attempts'] ?? 0,
+          verdict: row['verdict'],
+          updated_at: row['updated_at'],
+          insight: byId.get(row['insight_id'] as string) ?? { id: row['insight_id'], missing: true },
+        })),
+      }
+    })
+
+    /**
+     * POST /insights/:id/review-release — an organizer reads the judge's
+     * feedback and decides the insight is fine to send. The human decision
+     * IS the gate here, so deliver() runs with the judge bypassed; other
+     * gates (quiet hours, digest, dedup) still apply. Organizer-only, same
+     * as every other family mutation.
+     */
+    app.post<{ Params: { id: string } }>('/insights/:id/review-release', async (request, reply) => {
+      const { tenant_id, user_id } = request.authContext
+      const { id } = request.params
+      if (!db) return reply.status(503).send({ error: 'Review queue unavailable' })
+      if (!await isFamilyOrganizer(db, tenant_id, user_id)) {
+        return reply.status(403).send({ error: 'Only a family organizer can release held insights' })
+      }
+      const resolved = await router.resolveReviewItem(tenant_id, id, 'released')
+      if (!resolved) return reply.status(404).send({ error: 'No held review item for this insight' })
+      const col = await getInsightsCollection()
+      const insight = await col.findOne({ id, tenant_id })
+      if (!insight) return reply.status(404).send({ error: 'Insight not found' })
+      const result = await router.deliver(insight as Record<string, unknown>, tenant_id, { skipJudge: true })
+      auditInsight(
+        { id, tenantId: tenant_id, userId: user_id, via: 'review_release', ip: request.ip, userAgent: request.headers['user-agent'] },
+        'insight.review_release', id, { queue: resolved.queue },
+      )
+      return { released: true, delivered: result?.success === true }
+    })
+
+    /**
+     * POST /insights/:id/review-discard — an organizer agrees with the
+     * judge (or just doesn't want it). The review row closes and the
+     * insight goes through the normal dismiss path so learning sees it.
+     */
+    app.post<{ Params: { id: string }, Body: { reason?: string } }>('/insights/:id/review-discard', async (request, reply) => {
+      const { tenant_id, user_id } = request.authContext
+      const { id } = request.params
+      if (!db) return reply.status(503).send({ error: 'Review queue unavailable' })
+      if (!await isFamilyOrganizer(db, tenant_id, user_id)) {
+        return reply.status(403).send({ error: 'Only a family organizer can discard held insights' })
+      }
+      const resolved = await router.resolveReviewItem(tenant_id, id, 'discarded')
+      if (!resolved) return reply.status(404).send({ error: 'No held review item for this insight' })
+      const outcome = await dismissInsightDecision({
+        id, tenantId: tenant_id, userId: user_id,
+        reason: request.body?.reason, via: 'review_discard',
+        ip: request.ip, userAgent: request.headers['user-agent'],
+      })
+      auditInsight(
+        { id, tenantId: tenant_id, userId: user_id, via: 'review_discard', ip: request.ip, userAgent: request.headers['user-agent'] },
+        'insight.review_discard', id, { queue: resolved.queue },
+      )
+      // The row is discarded either way — a non-200 here only means the
+      // insight itself was already terminal.
+      return { discarded: true, insight_dismissed: outcome.code === 200 }
     })
   }
 

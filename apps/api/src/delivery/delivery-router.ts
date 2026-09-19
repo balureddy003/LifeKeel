@@ -53,6 +53,9 @@ export interface DeliveryPreferences {
 }
 
 const URGENCY_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 }
+const MAX_JUDGE_REVIEW_ATTEMPTS = 6
+const JUDGE_REVIEW_QUEUES = ['move_rewrite_queue', 'manual_review_queue'] as const
+type JudgeReviewQueue = (typeof JUDGE_REVIEW_QUEUES)[number]
 
 export class DeliveryRouter {
   private readonly db: Db
@@ -348,8 +351,15 @@ export class DeliveryRouter {
    * Deliver one insight to a tenant via the highest-priority available channel,
    * falling through on failure. Returns the successful DeliveryResult or the
    * last failure.
+   *
+   * `skipJudge` bypasses the MoveJudge gate — used only by the human review
+   * release path, where an organizer's explicit release IS the judgment.
    */
-  async deliver(insight: Record<string, unknown>, tenantId: string): Promise<DeliveryResult | null> {
+  async deliver(
+    insight: Record<string, unknown>,
+    tenantId: string,
+    opts?: { skipJudge?: boolean },
+  ): Promise<DeliveryResult | null> {
     const prefs = await this.getPreferences(tenantId)
     if (!prefs || !prefs.enabled) return null
 
@@ -369,7 +379,7 @@ export class DeliveryRouter {
       return null
     }
 
-    if (!await this.passesMoveJudge(insight, tenantId)) return null
+    if (!opts?.skipJudge && !await this.passesMoveJudge(insight, tenantId)) return null
 
     const notification = this.buildNotification(insight, tenantId)
     let lastResult: DeliveryResult | null = null
@@ -573,6 +583,121 @@ export class DeliveryRouter {
     return { sent, failed }
   }
 
+  /**
+   * Drain the judge review queues — the consumer passesMoveJudge's writes
+   * were missing. Rewrite verdicts get retried (the detector may have
+   * re-run with fresh evidence since); block verdicts get re-evaluated
+   * after their window so a transient judge_failure isn't permanent.
+   *
+   * The heavy lifting stays inside deliver()→passesMoveJudge: a re-block
+   * re-pends the row with attempt-counted backoff, a verdict that flipped
+   * queues supersedes this row, and a pass delivers. What this method adds
+   * is the trigger plus resolution bookkeeping — a row whose insight went
+   * terminal another way (human acted, deduped everywhere) is resolved
+   * rather than retried forever. 'evaluating' claims older than 10 min
+   * crashed mid-dispatch and are reclaimed.
+   */
+  async drainReviewQueues(limit = 50): Promise<{ retried: number; released: number; resolved: number }> {
+    const staleBefore = new Date(Date.now() - 10 * 60_000)
+    let retried = 0, released = 0, resolved = 0
+
+    for (const queueName of JUDGE_REVIEW_QUEUES) {
+      const col = this.db.collection(queueName)
+      const dueField = queueName === 'move_rewrite_queue' ? 'retry_at' : 're_evaluate_at'
+      const jobs = await col.find({
+        $or: [
+          { status: 'pending', [dueField]: { $lte: new Date() } },
+          { status: 'evaluating', claimed_at: { $lte: staleBefore } },
+        ],
+      }).sort({ updated_at: 1 }).limit(limit).toArray()
+
+      for (const job of jobs) {
+        const claimed = await col.findOneAndUpdate(
+          { _id: job['_id'], $or: [{ status: 'pending' }, { status: 'evaluating', claimed_at: { $lte: staleBefore } }] },
+          { $set: { status: 'evaluating', claimed_at: new Date() } },
+        )
+        if (!claimed) continue
+
+        const tenantId = job['tenant_id'] as string
+        const finish = async (patch: Record<string, unknown>) =>
+          col.updateOne({ _id: job['_id'] }, { $set: { ...patch, updated_at: new Date() } })
+
+        const insight = await this.db.collection('insights')
+          .findOne({ id: job['insight_id'], tenant_id: tenantId })
+        if (!insight) {
+          await finish({ status: 'resolved', resolved_reason: 'insight_not_found' })
+          resolved++
+          continue
+        }
+        // The family already acted on the insight — nothing left to judge.
+        if (insight['state'] !== 'identified') {
+          await finish({ status: 'resolved', resolved_reason: 'already_terminal' })
+          resolved++
+          continue
+        }
+
+        const result = await this.deliver(insight, tenantId)
+        if (result?.success) {
+          await finish({ status: 'resolved', resolved_reason: 'delivered' })
+          released++
+          continue
+        }
+
+        retried++
+        // deliver() returned without a send. If passesMoveJudge ran it has
+        // already re-pended this row (or superseded it into the other
+        // queue) — a row still 'evaluating' means the judge never ran:
+        // prefs off, quiet hours, digest mode. Reschedule modestly.
+        const after = await col.findOne({ _id: job['_id'] }, { projection: { status: 1 } })
+        if (after?.['status'] === 'evaluating') {
+          const fresh = await this.db.collection('insights')
+            .findOne({ id: job['insight_id'], tenant_id: tenantId }, { projection: { state: 1 } })
+          if (fresh?.['state'] !== 'identified') {
+            await finish({ status: 'resolved', resolved_reason: 'already_terminal' })
+            resolved++
+          } else {
+            await finish({ status: 'pending', [dueField]: new Date(Date.now() + 15 * 60_000) })
+          }
+        }
+      }
+    }
+    return { retried, released, resolved }
+  }
+
+  /** Human review surface — pending and exhausted rows across both queues. */
+  async listReviewQueue(tenantId: string, limit = 50): Promise<Array<Record<string, unknown>>> {
+    const rows: Array<Record<string, unknown>> = []
+    for (const queueName of JUDGE_REVIEW_QUEUES) {
+      const docs = await this.db.collection(queueName)
+        .find({ tenant_id: tenantId, status: { $in: ['pending', 'exhausted', 'evaluating'] } })
+        .sort({ updated_at: -1 }).limit(limit).toArray()
+      for (const doc of docs) {
+        rows.push({ ...doc, queue: queueName })
+      }
+    }
+    return rows
+  }
+
+  /**
+   * Resolve a review row as a human decision. 'release' returns the row so
+   * the caller can deliver the insight with the judge bypassed.
+   */
+  async resolveReviewItem(
+    tenantId: string,
+    insightId: string,
+    resolution: 'released' | 'discarded',
+  ): Promise<{ queue: JudgeReviewQueue; row: Record<string, unknown> } | null> {
+    for (const queueName of JUDGE_REVIEW_QUEUES) {
+      const col = this.db.collection(queueName)
+      const updated = await col.findOneAndUpdate(
+        { tenant_id: tenantId, insight_id: insightId, status: { $in: ['pending', 'exhausted', 'evaluating'] } },
+        { $set: { status: 'resolved', resolved_reason: resolution, updated_at: new Date() } },
+      )
+      if (updated) return { queue: queueName, row: updated }
+    }
+    return null
+  }
+
   private async passesMoveJudge(insight: Record<string, unknown>, tenantId: string): Promise<boolean> {
     if (!this.moveJudge || typeof insight['id'] !== 'string') return true
 
@@ -609,6 +734,20 @@ export class DeliveryRouter {
     if (verdict.decision === 'pass' || verdict.decision === 'skipped') return true
 
     const queue = verdict.decision === 'rewrite' ? 'move_rewrite_queue' : 'manual_review_queue'
+    const otherQueue = verdict.decision === 'rewrite' ? 'manual_review_queue' : 'move_rewrite_queue'
+
+    // Attempt-counted backoff bounds the re-eval loop: an unchanged insight
+    // re-blocks on the cached verdict each pass, so unbounded retries would
+    // spin forever. After MAX_JUDGE_REVIEW_ATTEMPTS the row goes 'exhausted'
+    // — still listed for human review, never retried automatically.
+    const existing = await this.db.collection(queue)
+      .findOne({ tenant_id: tenantId, insight_id: insight['id'] }, { projection: { attempts: 1 } })
+    const attempts = ((existing?.['attempts'] as number | undefined) ?? 0) + 1
+    const exhausted = attempts >= MAX_JUDGE_REVIEW_ATTEMPTS
+    const dueAt = new Date(Date.now() + (verdict.decision === 'rewrite'
+      ? Math.min(5 * 60_000 * Math.pow(2, attempts - 1), 6 * 3_600_000)
+      : Math.min(4 * 3_600_000 * attempts, 24 * 3_600_000)))
+
     await this.db.collection(queue).updateOne(
       { tenant_id: tenantId, insight_id: insight['id'] },
       {
@@ -617,14 +756,21 @@ export class DeliveryRouter {
           insight_id: insight['id'],
           detector_id: insight['detector_id'],
           verdict,
-          status: 'pending',
+          status: exhausted ? 'exhausted' : 'pending',
+          attempts,
           ...(verdict.decision === 'rewrite'
-            ? { retry_at: new Date() }
-            : { re_evaluate_at: new Date(Date.now() + 4 * 60 * 60 * 1000) }),
+            ? { retry_at: dueAt }
+            : { re_evaluate_at: dueAt }),
           updated_at: new Date(),
         },
       },
       { upsert: true },
+    )
+    // A verdict that flipped queues (rewrite→block or vice versa) would
+    // leave a stale pending row behind in the old one — close it out.
+    await this.db.collection(otherQueue).updateOne(
+      { tenant_id: tenantId, insight_id: insight['id'], status: { $in: ['pending', 'evaluating'] } },
+      { $set: { status: 'resolved', resolved_reason: 'superseded', updated_at: new Date() } },
     )
     return false
   }

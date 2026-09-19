@@ -340,7 +340,11 @@ export class QueueManager {
       this.delayedTimer = null
     }
     for (const sub of this.subscriberClients) {
-      try { await sub.quit() } catch { /* ignore */ }
+      try {
+        // quit() on a half-dead connection can wait on a socket timeout —
+        // bound it so shutdown always completes.
+        await Promise.race([sub.quit(), new Promise(r => setTimeout(r, 3000))])
+      } catch { /* ignore */ }
     }
     this.subscriberClients.length = 0
   }

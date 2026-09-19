@@ -66,6 +66,8 @@ export type AuditAction =
   | 'referral.attributed'
   | 'referral.rewarded'
   | 'insight.prepare_on_device'
+  | 'insight.review_release'
+  | 'insight.review_discard'
   | 'reminder.sent'
   | 'reminder.cancelled'
 

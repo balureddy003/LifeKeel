@@ -514,6 +514,17 @@ try {
           } catch (err) {
             log.error({ err }, 'Delivery queue drain failed')
           }
+          // Judge review queues — passesMoveJudge writes, drainReviewQueues
+          // consumes: retries due rewrites, re-evaluates blocks, resolves
+          // rows whose insights went terminal another way.
+          try {
+            const reviewed = await deliveryRouter.drainReviewQueues()
+            if (reviewed.retried > 0 || reviewed.released > 0 || reviewed.resolved > 0) {
+              log.info({ ...reviewed }, 'Judge review queues drained')
+            }
+          } catch (err) {
+            log.error({ err }, 'Judge review queue drain failed')
+          }
         }
       })
     } catch (err) {
