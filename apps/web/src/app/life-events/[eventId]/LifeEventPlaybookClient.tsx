@@ -76,6 +76,7 @@ function StepDraft({ eventId, step }: { eventId: string; step: LifeEventPlaybook
     haptic('light')
     setDrafting(true)
     setDraftError(null)
+
     const draft = await prepareLifeEventStepDraft(eventId, step.id)
     setDraftText(draft?.content ?? null)
     if (!draft) setDraftError("Oak couldn't write that draft just now — nothing was lost, try again in a moment.")
@@ -139,6 +140,7 @@ export default function LifeEventPlaybookClient() {
   const [event, setEvent] = useState<LifeEvent | null | undefined>(undefined)
   const [doneIds, setDoneIds] = useState<Set<string>>(new Set())
   const [syncError, setSyncError] = useState(false)
+  const [queuedOffline, setQueuedOffline] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -171,7 +173,12 @@ export default function LifeEventPlaybookClient() {
     saveDoneIds(params.eventId, next)
     setSyncError(false)
     setLifeEventStepDone(params.eventId, stepId, done).then((serverIds) => {
-      if (serverIds === null) {
+      if (serverIds === 'queued') {
+        // Offline — the toggle stays and the mutation replays on reconnect.
+        // Marked as pending rather than an error: nothing failed.
+        setSyncError(false)
+        setQueuedOffline(true)
+      } else if (serverIds === null) {
         // Revert to the pre-toggle state — the optimistic change didn't land.
         setDoneIds((current) => {
           const reverted = new Set(current)
@@ -182,6 +189,7 @@ export default function LifeEventPlaybookClient() {
         setSyncError(true)
       } else {
         setDoneIds(new Set(serverIds))
+        setQueuedOffline(false)
       }
     })
   }
@@ -246,6 +254,11 @@ export default function LifeEventPlaybookClient() {
         {syncError && (
           <p role="status" aria-live="polite" className="text-xs text-danger mb-3">
             That change didn't save — the step is back how it was. Check your connection and try again.
+          </p>
+        )}
+        {queuedOffline && !syncError && (
+          <p role="status" aria-live="polite" className="text-xs text-ink-tertiary mb-3">
+            You're offline — your checkmarks are saved here and will sync when you're back online.
           </p>
         )}
         <div className="space-y-2">

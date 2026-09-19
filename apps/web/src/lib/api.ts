@@ -10,6 +10,8 @@
 import { AI_RESPONSES } from './life-data'
 import type { InboxItem } from './onboarding-data'
 import { getApiBase } from './env'
+import { fetchOrQueue } from './offline-queue'
+import { cachedFetch, invalidateCache } from './fetch-cache'
 import { reportError } from './observability'
 
 export interface FamilyInsight {
@@ -129,13 +131,17 @@ export async function fetchFamilyInsights(): Promise<FamilyInsight[]> {
   // tenant active in other verticals doesn't push family insights off the
   // page before they even reach here. Still filter client-side too — cheap,
   // and keeps this honest if the server-side filter is ever relaxed.
-  return apiFetch<{ insights: RawInsight[] }>(
-    `/insights?detectors=${FAMILY_DETECTORS.join(',')}`,
-    { insights: [] },
-  ).then((r) =>
-    (r.insights ?? [])
-      .filter((i) => (FAMILY_DETECTORS as readonly string[]).includes(i.detector_id))
-      .map(adaptInsight),
+  // Cached 30s — the score card, gate list, and AppShell warmer all read
+  // this; an insight list that old is fine and the page paints instantly.
+  return cachedFetch('family-insights', 30_000, () =>
+    apiFetch<{ insights: RawInsight[] }>(
+      `/insights?detectors=${FAMILY_DETECTORS.join(',')}`,
+      { insights: [] },
+    ).then((r) =>
+      (r.insights ?? [])
+        .filter((i) => (FAMILY_DETECTORS as readonly string[]).includes(i.detector_id))
+        .map(adaptInsight),
+    ),
   )
 }
 
@@ -801,18 +807,14 @@ export async function fetchAutomationSettings(): Promise<AutomationSettings | nu
   return apiFetch<AutomationSettings | null>('/settings/automation', null)
 }
 
-export async function updateAutomationSettings(dryRunMode: boolean): Promise<AutomationSettings | null> {
+export async function updateAutomationSettings(dryRunMode: boolean): Promise<AutomationSettings | null | 'queued'> {
   try {
-    const base = getApiBase()
-    const token = getAuthToken()
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (token) headers['Authorization'] = `Bearer ${token}`
-
-    const res = await fetch(`${base}/settings/automation`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({ dry_run_mode: dryRunMode }),
-    })
+    const res = await fetchOrQueue(
+      '/settings/automation',
+      { method: 'PATCH', body: JSON.stringify({ dry_run_mode: dryRunMode }) },
+      'Automation setting',
+    )
+    if (res === 'queued') return 'queued'
     if (!res.ok) return null
     return (await res.json()) as AutomationSettings
   } catch (err) {
@@ -870,15 +872,9 @@ export async function deleteAccount(confirmation: string): Promise<{ ok: boolean
 
 export async function dismissInboxItem(itemId: string): Promise<boolean> {
   try {
-    const base = getApiBase()
-    const token = getAuthToken()
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (token) headers['Authorization'] = `Bearer ${token}`
-
-    const res = await fetch(`${base}/inbox/${itemId}/dismiss`, {
-      method: 'POST',
-      headers,
-    })
+    const res = await fetchOrQueue(`/inbox/${itemId}/dismiss`, { method: 'POST' }, 'Inbox dismiss')
+    if (res === 'queued') return true // UI already removed it; it lands on reconnect
+    if (res.ok) invalidateCache('inbox-items')
     return res.ok
   } catch (err) {
     reportError(err, { itemId })
@@ -887,13 +883,18 @@ export async function dismissInboxItem(itemId: string): Promise<boolean> {
 }
 
 export async function fetchInboxItems(): Promise<{ items: InboxItem[]; isLive: boolean }> {
-  return apiFetch<{ items: InboxItem[] }>(
-    '/inbox',
-    { items: [] },
-  ).then((r) => ({
-    items: r.items ?? [],
-    isLive: (r.items?.length ?? 0) > 0,
-  }))
+  // Cached 30s — AppShell already warms this on auth for the tab badge, so
+  // opening Inbox right after app load paints from cache instead of a
+  // skeleton. Invalidated on dismiss so a removed item stays removed.
+  return cachedFetch('inbox-items', 30_000, () =>
+    apiFetch<{ items: InboxItem[] }>(
+      '/inbox',
+      { items: [] },
+    ).then((r) => ({
+      items: r.items ?? [],
+      isLive: (r.items?.length ?? 0) > 0,
+    })),
+  )
 }
 
 // ── Financial profile ────────────────────────────────────────────────────
@@ -1116,18 +1117,14 @@ export async function prepareLifeEventStepDraft(eventId: string, stepId: string)
 // toggle — see the route's comment on cross-device convergence). Returns
 // the server's authoritative id list, or null on failure so the caller can
 // revert its optimistic update.
-export async function setLifeEventStepDone(eventId: string, stepId: string, done: boolean): Promise<string[] | null> {
+export async function setLifeEventStepDone(eventId: string, stepId: string, done: boolean): Promise<string[] | null | 'queued'> {
   try {
-    const base = getApiBase()
-    const token = getAuthToken()
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (token) headers['Authorization'] = `Bearer ${token}`
-
-    const res = await fetch(`${base}/family/life-events/${eventId}/steps/${stepId}/complete`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ done }),
-    })
+    const res = await fetchOrQueue(
+      `/family/life-events/${eventId}/steps/${stepId}/complete`,
+      { method: 'POST', body: JSON.stringify({ done }) },
+      'Checklist step',
+    )
+    if (res === 'queued') return 'queued' // keep the optimistic toggle; lands on reconnect
     if (!res.ok) return null
     const data = await res.json().catch(() => null) as { completed_step_ids?: string[] } | null
     return data?.completed_step_ids ?? []
@@ -1157,24 +1154,31 @@ export async function fetchAuditLog(before?: string): Promise<AuditLogEntry[]> {
 
 // ── Password reset ───────────────────────────────────────────────────────
 
-export async function requestPasswordReset(email: string): Promise<void> {
-  const res = await fetch(`${getApiBase()}/auth/request-password-reset`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, app: 'family' }),
-  })
+// Someone reaching either of these two is very possibly locked out of an
+// account they need right now — a raw browser network error ("Failed to
+// fetch") leaking straight into that moment is the wrong kind of scary.
+// Distinguish "we couldn't even reach the server" from "the server said no."
+async function passwordResetRequest(path: string, body: Record<string, unknown>): Promise<void> {
+  let res: Response
+  try {
+    res = await fetch(`${getApiBase()}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  } catch {
+    throw new Error("Couldn't reach Agent Oak — check your connection and try again.")
+  }
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || 'Request failed')
+  if (!res.ok) throw new Error(data.error || "That didn't go through — try again in a moment.")
+}
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  return passwordResetRequest('/auth/request-password-reset', { email, app: 'family' })
 }
 
 export async function confirmPasswordReset(token: string, newPassword: string): Promise<void> {
-  const res = await fetch(`${getApiBase()}/auth/reset-password`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token, new_password: newPassword }),
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || 'Request failed')
+  return passwordResetRequest('/auth/reset-password', { token, new_password: newPassword })
 }
 
 // ── Public readiness quiz (PRD-201) ─────────────────────────────────────

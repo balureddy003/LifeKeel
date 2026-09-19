@@ -21,6 +21,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Loader2, ShieldCheck, TrendingUp } from 'lucide-react'
 import { GlassCard, PageHeader } from '@/components/Glass'
+import { useToast } from '@/components/Toast'
 import { haptic } from '@/lib/haptics'
 import { fetchAutomationSettings, updateAutomationSettings, type AutomationSettings } from '@/lib/api'
 
@@ -29,6 +30,7 @@ export default function AutomationSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const toast = useToast()
 
   useEffect(() => {
     fetchAutomationSettings().then((s) => {
@@ -48,6 +50,11 @@ export default function AutomationSettingsPage() {
     setSaveError(null)
     const updated = await updateAutomationSettings(next)
     setSaving(false)
+    if (updated === 'queued') {
+      // Offline — keep the optimistic flip; the mutation replays on reconnect.
+      toast({ message: "You're offline — this will apply when you're back online" })
+      return
+    }
     if (!updated) {
       setSettings(previous)
       setSaveError("That didn't save — your previous setting is still in place. Try again in a moment.")

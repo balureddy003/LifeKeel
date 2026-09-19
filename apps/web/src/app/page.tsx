@@ -387,6 +387,7 @@ function SinceLastVisit({
   )
 }
 
+
 function UrgencyBanner() {
   const [dismissed, setDismissed] = useState(false)
   const currentYear = new Date().getFullYear()
@@ -581,7 +582,17 @@ export default function HomePage() {
   const { score: readinessScore, hasLiveData, loading: scoreLoading } = useFamilyReadinessScore()
   const { events: timelineEvents, hasData: hasTimelineData, hasChildren } = useFamilyTimeline()
   const { insights, loading: insightsLoading } = useFamilyInsights()
-  const retirementInsight = insights.find((i) => i.detector_id === 'family_retirement_gap')
+  const detectorDismissals = useAppStore((s) => s.detectorDismissals)
+  // Dismissal learning: a detector the family has dismissed twice stops
+  // being featured as the hero card — the insight still exists and still
+  // counts as open; it just stops being pushed. The whole card hides
+  // rather than falling back to "on track", which would be untrue.
+  const retirementSuppressed =
+    (detectorDismissals['family_retirement_gap'] ?? 0) >= 2 &&
+    insights.some((i) => i.detector_id === 'family_retirement_gap')
+  const retirementInsight = retirementSuppressed
+    ? undefined
+    : insights.find((i) => i.detector_id === 'family_retirement_gap')
   const openInsightCount = insights.filter((i) => !RESOLVED_INSIGHT_STATES.includes(i.state)).length
   const setCmdkOpen = useAppStore((s) => s.setCmdkOpen)
   const profileCompleteness = useAppStore((s) => s.profileCompleteness)
@@ -781,6 +792,7 @@ export default function HomePage() {
         </div>
       </IfAdvanced>
 
+      {!retirementSuppressed && (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -818,6 +830,7 @@ export default function HomePage() {
           )}
         </GlassCard>
       </motion.div>
+      )}
 
       <FeatureTip />
     </div>

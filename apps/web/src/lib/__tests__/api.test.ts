@@ -8,6 +8,7 @@ import {
   prepareLifeEventStepDraft,
   RESOLVED_INSIGHT_STATES,
 } from '../api'
+import { clearAllCaches } from '../fetch-cache'
 
 function mockFetchOnce(body: unknown, ok = true) {
   vi.stubGlobal(
@@ -31,6 +32,11 @@ function mockFetchSequence(...responses: { body: unknown; ok?: boolean }[]) {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  // fetchFamilyInsights (and anything else wrapped in cachedFetch) keeps
+  // its result in a module-level cache for 30s in real usage — without
+  // clearing it here, one test's mocked response silently answers every
+  // later test that also calls it, regardless of what they each mock.
+  clearAllCaches()
 })
 
 describe('fetchFamilyInsights', () => {
@@ -222,3 +228,4 @@ describe('PRD-108: life events', () => {
     expect(draft).toBeNull()
   })
 })
+

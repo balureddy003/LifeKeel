@@ -34,6 +34,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { GlassButton, GlassCard, PageHeader, PageTransition } from '@/components/Glass'
+import { useAppStore } from '@/lib/store'
 import { haptic } from '@/lib/haptics'
 import {
   approveInsight,
@@ -128,6 +129,7 @@ export default function InsightGateClient() {
   const [outcome, setOutcome] = useState<{ kind: 'completed' | 'execution_failed' | 'dismissed'; message: string } | null>(null)
   const [draftText, setDraftText] = useState<string | null>(null)
   const [draftError, setDraftError] = useState<string | null>(null)
+  const noteDetectorDismissal = useAppStore((s) => s.noteDetectorDismissal)
 
   useEffect(() => {
     let cancelled = false
@@ -187,6 +189,9 @@ export default function InsightGateClient() {
       return
     }
     haptic('light')
+    // Learn the dismissal: if this detector's insights keep getting
+    // dismissed, Home stops featuring that kind of insight as the hero.
+    if (preview) noteDetectorDismissal(preview.insight.detector_id)
     setOutcome({ kind: 'dismissed', message: 'Insight dismissed.' })
   }
 

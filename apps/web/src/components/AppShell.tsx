@@ -13,7 +13,10 @@ import { MeshGradient, Skeleton, SkeletonCard } from './Glass'
 import { EmergencyMode } from './EmergencyMode'
 import { CommandPalette } from './CommandPalette'
 import { DisclaimerFooter } from './Disclaimer'
-import { fetchInboxItems } from '@/lib/api'
+import { fetchInboxItems, fetchFamilyInsights } from '@/lib/api'
+import { flushMutationQueue } from '@/lib/offline-queue'
+import { warmCache } from '@/lib/fetch-cache'
+import { useToast } from './Toast'
 import { INBOX_ITEMS } from '@/lib/onboarding-data'
 import { MarketingLanding } from './MarketingLanding'
 import { NavRail } from './NavRail'
@@ -359,7 +362,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         setInboxUnreadCount(remaining.filter((i) => !i.read).length)
       }
     })
-    return () => { cancelled = true }
+    // Warm the next-most-likely read on idle so Home/insights paint from
+    // cache on first navigation rather than skeletoning on the wire.
+    const idleId = window.setTimeout(() => warmCache('family-insights', fetchFamilyInsights), 1500)
+    return () => {
+      cancelled = true
+      clearTimeout(idleId)
+    }
     // Only on mount (auth state changing triggers a re-render anyway).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, !!family])
@@ -377,6 +386,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       nav.clearAppBadge?.().catch(() => {})
     }
   }, [inboxUnreadCount])
+
+  // Offline write queue — replay mutations that were queued while offline.
+  // Runs on mount (app reopened after a dead-connection session) and on
+  // every 'online' event; a toast names what landed so the save doesn't
+  // feel like it silently happened behind the user's back.
+  const toast = useToast()
+  useEffect(() => {
+    if (!isAuthenticated) return
+    const flush = async () => {
+      const replayed = await flushMutationQueue()
+      if (replayed > 0) {
+        toast({
+          message: `Back online — ${replayed} change${replayed === 1 ? '' : 's'} saved`,
+          variant: 'success',
+        })
+      }
+    }
+    flush()
+    window.addEventListener('online', flush)
+    return () => window.removeEventListener('online', flush)
+  }, [isAuthenticated, toast])
 
   const isAuthRoute = pathname.startsWith('/welcome') ||
     pathname.startsWith('/signup') ||
