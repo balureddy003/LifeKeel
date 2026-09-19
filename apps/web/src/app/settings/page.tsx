@@ -15,10 +15,11 @@ import { ROLE_LABELS, type FamilyRole } from '@/lib/auth-types'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
 import { useToast } from '@/components/Toast'
 import { isValidEmailFormat } from '@/components/ConversationalOnboarding'
-import { User, LogOut, Check, X, Crown, Shield, ShieldCheck, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle, Calculator, Sparkles, HelpCircle, ScrollText, Bot, Download, Trash2, Sun, Moon, MonitorSmartphone, RefreshCw, Bell } from 'lucide-react'
-import { exportAccountData, deleteAccount, fetchAccessRequests, approveAccessRequest, denyAccessRequest, resetInviteCode, type AccessRequest } from '@/lib/api'
+import { User, LogOut, Check, X, Crown, Shield, ShieldCheck, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle, Calculator, Sparkles, HelpCircle, ScrollText, Bot, Download, Trash2, Sun, Moon, MonitorSmartphone, RefreshCw, Bell, Copy, Gift } from 'lucide-react'
+import { exportAccountData, deleteAccount, fetchAccessRequests, approveAccessRequest, denyAccessRequest, resetInviteCode, fetchMyReferralCode, fetchReferralSummary, type AccessRequest } from '@/lib/api'
 import { useThemePreference, type ThemePreference } from '@/lib/theme'
 import { isPushSupported, isPushSubscribed, subscribeToPush, unsubscribeFromPush, fetchVapidKey } from '@/lib/push'
+import { isOnDeviceSupported, isOnDeviceEnabled, setOnDeviceEnabled as persistOnDeviceEnabled, enableOnDeviceModel } from '@/lib/onDeviceLlm'
 import type { LucideIcon } from 'lucide-react'
 
 const MODE_ICONS: Record<string, LucideIcon> = {
@@ -76,6 +77,43 @@ export default function SettingsPage() {
     if (!isOrganizer) return
     fetchAccessRequests().then(setAccessRequests)
   }, [isOrganizer])
+
+  // Friend referral (PRD-112) — any family member can refer a friend to
+  // their own, separate account, unlike the organizer-only invite code.
+  const [referralCode, setReferralCode] = useState<string | null>(null)
+  const [referralSummary, setReferralSummary] = useState({ pending: 0, rewarded: 0 })
+  const [referralCopied, setReferralCopied] = useState(false)
+
+  useEffect(() => {
+    fetchMyReferralCode().then(setReferralCode)
+    fetchReferralSummary().then(setReferralSummary)
+  }, [])
+
+  const handleCopyReferralLink = async () => {
+    if (!referralCode) return
+    haptic('light')
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/signup?ref=${referralCode}`)
+      setReferralCopied(true)
+      haptic('success')
+      setTimeout(() => setReferralCopied(false), 2000)
+    } catch {
+      // Clipboard access can fail (permissions, non-secure context) — the
+      // code is still shown on-screen, so nothing is actually lost.
+    }
+  }
+
+  // On-device crisis drafts (PRD-113) — checked client-side on mount, not
+  // SSR'd, since navigator.gpu doesn't exist during server rendering.
+  const [onDeviceSupported, setOnDeviceSupportedState] = useState(false)
+  const [onDeviceEnabled, setOnDeviceEnabled] = useState(false)
+  const [onDeviceDownloading, setOnDeviceDownloading] = useState(false)
+  const [onDeviceProgress, setOnDeviceProgress] = useState(0)
+
+  useEffect(() => {
+    setOnDeviceSupportedState(isOnDeviceSupported())
+    setOnDeviceEnabled(isOnDeviceEnabled())
+  }, [])
 
   // Push notifications — supported/enabled probed on mount so the toggle
   // reflects reality (a subscription made on another device shows as on).
@@ -457,6 +495,78 @@ export default function SettingsPage() {
               ) : null
             }
           />
+        </ListSection>
+      )}
+
+      {/* Friend referral (PRD-112) — a completely separate account for the
+          friend, not another member of this family; no organizer gate. */}
+      {family && (
+        <ListSection title="Refer a Friend">
+          <ListRow
+            icon={Gift}
+            label={referralCode ? `Your link: /signup?ref=${referralCode}` : 'Loading…'}
+            value={
+              referralCode ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleCopyReferralLink() }}
+                  className="text-xs text-family-400 font-semibold px-2 py-1 rounded-lg bg-family-500/10 flex items-center gap-1"
+                >
+                  {referralCopied ? <Check size={12} /> : <Copy size={12} />}
+                  {referralCopied ? 'Copied' : 'Copy'}
+                </button>
+              ) : null
+            }
+          />
+          {(referralSummary.pending > 0 || referralSummary.rewarded > 0) && (
+            <ListRow>
+              <p className="text-xs text-ink-tertiary">
+                {referralSummary.rewarded} friend{referralSummary.rewarded === 1 ? '' : 's'} joined and rewarded
+                {referralSummary.pending > 0 ? ` · ${referralSummary.pending} pending` : ''}
+              </p>
+            </ListRow>
+          )}
+        </ListSection>
+      )}
+
+      {/* On-device crisis drafts (PRD-113) — hidden entirely on a browser
+          without WebGPU rather than shown disabled; no dead toggle to
+          explain. */}
+      {onDeviceSupported && (
+        <ListSection title="Privacy">
+          <ListRow icon={ShieldCheck}>
+            <div className="flex items-center justify-between w-full gap-3">
+              <div className="text-left min-w-0">
+                <div className="text-base font-medium">Generate crisis drafts on this device</div>
+                <div className="text-xs text-ink-tertiary mt-0.5">
+                  {onDeviceDownloading
+                    ? `Downloading… ${onDeviceProgress}%`
+                    : 'A one-time ~700MB download, then life-event drafts never leave this device'}
+                </div>
+              </div>
+              <button
+                role="switch"
+                aria-checked={onDeviceEnabled}
+                onClick={async (e) => {
+                  e.stopPropagation()
+                  if (onDeviceDownloading) return
+                  haptic('light')
+                  const next = !onDeviceEnabled
+                  if (next) {
+                    setOnDeviceDownloading(true)
+                    const ok = await enableOnDeviceModel(setOnDeviceProgress)
+                    setOnDeviceDownloading(false)
+                    if (!ok) { haptic('warning'); return }
+                  }
+                  persistOnDeviceEnabled(next)
+                  setOnDeviceEnabled(next)
+                  haptic('success')
+                }}
+                className={`w-12 h-7 rounded-full flex-shrink-0 flex items-center px-1 transition-colors ${onDeviceEnabled ? 'bg-family-500' : 'bg-tint/10'}`}
+              >
+                <motion.div className="w-5 h-5 rounded-full bg-white" animate={{ x: onDeviceEnabled ? 20 : 0 }} />
+              </button>
+            </div>
+          </ListRow>
         </ListSection>
       )}
 

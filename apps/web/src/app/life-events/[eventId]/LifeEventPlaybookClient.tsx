@@ -7,7 +7,8 @@ import Link from 'next/link'
 import { ArrowLeft, Check, Copy, HelpCircle, Loader2, Mail, PenLine, Printer, ShieldAlert } from 'lucide-react'
 import { GlassCard, GlassButton, PageHeader, PageTransition } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
-import { fetchLifeEvents, prepareLifeEventStepDraft, setLifeEventStepDone, type LifeEvent, type LifeEventPlaybookStep, type LifeEventType } from '@/lib/api'
+import { fetchLifeEvents, prepareLifeEventStepDraft, setLifeEventStepDone, pingOnDeviceDraftUsed, type LifeEvent, type LifeEventPlaybookStep, type LifeEventType } from '@/lib/api'
+import { isOnDeviceEnabled, isOnDeviceSupported, generateDraftOnDevice } from '@/lib/onDeviceLlm'
 
 // Same reasoning as /life-events's own notice: a user can land here directly
 // (a shared link, a return visit) without ever seeing Emergency Mode's
@@ -76,6 +77,20 @@ function StepDraft({ eventId, step }: { eventId: string; step: LifeEventPlaybook
     haptic('light')
     setDrafting(true)
     setDraftError(null)
+
+    // PRD-113: on-device first when the family has opted in and the
+    // browser actually supports it — any failure here (model not
+    // loaded, generation error) falls through to the existing cloud
+    // path transparently, never surfacing a raw error for this branch.
+    if (isOnDeviceEnabled() && isOnDeviceSupported()) {
+      const onDeviceDraft = await generateDraftOnDevice(step.body)
+      if (onDeviceDraft) {
+        setDraftText(onDeviceDraft)
+        setDrafting(false)
+        pingOnDeviceDraftUsed(eventId, step.id)
+        return
+      }
+    }
 
     const draft = await prepareLifeEventStepDraft(eventId, step.id)
     setDraftText(draft?.content ?? null)

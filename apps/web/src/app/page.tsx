@@ -15,7 +15,7 @@ import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@
 import { useAppStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
-import { fetchFinancialProfile, RESOLVED_INSIGHT_STATES, type FinancialProfile } from '@/lib/api'
+import { fetchFinancialProfile, fetchLifeChangeNudge, dismissLifeChangeNudge, RESOLVED_INSIGHT_STATES, type FinancialProfile } from '@/lib/api'
 import { elderlyHomeCopy } from '@/lib/elderlyHomeCopy'
 import { childHomeCopy } from '@/lib/childHomeCopy'
 import { simpleHomeCopy } from '@/lib/simpleHomeCopy'
@@ -387,6 +387,58 @@ function SinceLastVisit({
   )
 }
 
+// PRD-111: a family's profile itself already carried the signature of a
+// major change (income dropped, employment status flipped) that hasn't
+// been reported as a life event yet. Deliberately content-free — never
+// names or guesses what changed, never mentions a product; just an
+// invitation to tell Oak. Same dismissible-card shape as UrgencyBanner
+// below, kept as its own component since it has its own data source and
+// dismiss action.
+function LifeChangeNudge() {
+  const [active, setActive] = useState(false)
+  const [dismissed, setDismissed] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchLifeChangeNudge().then((r) => { if (!cancelled) setActive(r.active) })
+    return () => { cancelled = true }
+  }, [])
+
+  if (!active || dismissed) return null
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0, height: 0 }}
+        animate={{ opacity: 1, height: 'auto' }}
+        exit={{ opacity: 0, height: 0 }}
+      >
+        <GlassCard className="p-3.5 border-family-500/20 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0">
+            <Zap size={16} className="text-family-400" />
+          </div>
+          <Link href="/life-events" className="flex-1 min-w-0" onClick={() => haptic('light')}>
+            <div className="text-sm font-semibold text-ink-primary">
+              It looks like something changed
+            </div>
+            <div className="text-xs text-ink-tertiary">Want to tell Oak what&apos;s going on?</div>
+          </Link>
+          <button
+            onClick={() => {
+              setDismissed(true)
+              haptic('light')
+              dismissLifeChangeNudge()
+            }}
+            aria-label="Dismiss"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-tertiary active:opacity-60"
+          >
+            <X size={16} />
+          </button>
+        </GlassCard>
+      </motion.div>
+    </AnimatePresence>
+  )
+}
 
 function UrgencyBanner() {
   const [dismissed, setDismissed] = useState(false)
@@ -631,6 +683,7 @@ export default function HomePage() {
         openInsightCount={openInsightCount}
         loading={scoreLoading || insightsLoading}
       />
+      <LifeChangeNudge />
       <UrgencyBanner />
 
       {!hasLiveData && !scoreLoading && <GettingStarted />}

@@ -6,6 +6,10 @@ import {
   fetchLifeEvents,
   reportLifeEvent,
   prepareLifeEventStepDraft,
+  fetchLifeChangeNudge,
+  dismissLifeChangeNudge,
+  fetchMyReferralCode,
+  fetchReferralSummary,
   RESOLVED_INSIGHT_STATES,
 } from '../api'
 import { clearAllCaches } from '../fetch-cache'
@@ -229,3 +233,40 @@ describe('PRD-108: life events', () => {
   })
 })
 
+describe('PRD-111: fetchLifeChangeNudge / dismissLifeChangeNudge', () => {
+  it('fetchLifeChangeNudge returns the active flag', async () => {
+    mockFetchOnce({ active: true })
+    expect(await fetchLifeChangeNudge()).toEqual({ active: true })
+  })
+
+  it('fetchLifeChangeNudge falls back to inactive on failure, never throws', async () => {
+    mockFetchOnce({ error: 'unauthorized' }, false)
+    expect(await fetchLifeChangeNudge()).toEqual({ active: false })
+  })
+
+  it('dismissLifeChangeNudge posts to the dismiss endpoint', async () => {
+    const fetchMock = mockFetchSequence({ body: { ok: true } })
+    await dismissLifeChangeNudge()
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/family/life-events/nudge/dismiss'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+})
+
+describe('PRD-112: fetchMyReferralCode / fetchReferralSummary', () => {
+  it('fetchMyReferralCode returns the code', async () => {
+    mockFetchOnce({ code: 'ABC123' })
+    expect(await fetchMyReferralCode()).toBe('ABC123')
+  })
+
+  it('fetchMyReferralCode falls back to null on failure', async () => {
+    mockFetchOnce({ error: 'unauthorized' }, false)
+    expect(await fetchMyReferralCode()).toBeNull()
+  })
+
+  it('fetchReferralSummary returns pending/rewarded counts', async () => {
+    mockFetchOnce({ pending: 2, rewarded: 3 })
+    expect(await fetchReferralSummary()).toEqual({ pending: 2, rewarded: 3 })
+  })
+})

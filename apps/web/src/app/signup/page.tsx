@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -17,15 +17,24 @@ export default function SignUpPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [refCode, setRefCode] = useState<string | undefined>(undefined)
   const { signUp, signInWithProvider } = useAuth()
   const router = useRouter()
+
+  // PRD-112: carried through from a friend's referral link
+  // (/signup?ref=<code>), same window.location.search convention as
+  // /life-events's own ?type=.
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get('ref')
+    if (ref) setRefCode(ref)
+  }, [])
 
   const handleSignUp = async () => {
     if (!name.trim() || !email.trim() || password.length < 8) return
     setLoading(true)
     setError(null)
     try {
-      await signUp(name, email, password)
+      await signUp(name, email, password, refCode)
       haptic('success')
       track('signup_completed', { method: 'password' })
       router.push('/family-setup')
@@ -52,7 +61,7 @@ export default function SignUpPage() {
   return (
     <div className="min-h-screen flex flex-col px-6 pt-12 pb-8">
       <div className="text-center mb-8">
-        <div className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-3">
+        <div className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-3 mx-auto">
           <Network size={32} className="text-family-400" />
         </div>
         <h1 className="text-2xl font-bold">Create your account</h1>

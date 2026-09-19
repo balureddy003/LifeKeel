@@ -100,6 +100,29 @@ domain before going wide, prepare-only actions before anything that acts.
     trust-tier rule requires. The single highest-value, least-built gap
     in the product — a multiplier on every other journey, not just its
     own feature.
+11. [111-unreported-life-change-nudge.md](111-unreported-life-change-nudge.md) —
+    PRD-108's playbooks only personalize once a family explicitly reports
+    an event; nothing notices when their own profile data already carries
+    the signature of one (income to zero, employment status change,
+    emergency savings drained). Deliberately sourced from data the family
+    already typed in, not an external transaction feed — see the PRD's
+    own "Market bar" section for why that's a permanent choice, not a v1
+    limitation, tied to CLAUDE.md's "second rule" against ever needing
+    FCA/SEC-style authorization. Tier 0, information-gathering only.
+12. [112-friend-referral-loop.md](112-friend-referral-loop.md) — PRD-110's
+    invite code is family-join-scoped by design; nothing lets an existing
+    family refer a friend to their own, separate account. Reuses
+    `generateInviteCode()` and `redeemPromoCode()`'s existing atomic-
+    credit machinery rather than building parallel plumbing. Tier 0, with
+    an in-app-credit-only reward (no real money, no Stripe interaction).
+13. [113-on-device-inference-crisis-drafts.md](113-on-device-inference-crisis-drafts.md) —
+    the one real LLM call in the life-event playbook flow (drafting an
+    outreach message) routes through a cloud provider like everything
+    else; no competitor offers on-device inference for family life-admin.
+    Opt-in, WebGPU-gated, falls back to the existing cloud path
+    invisibly on unsupported devices or any local failure. Tier 1 —
+    unchanged from the feature it replaces the transport for; a human
+    still reviews and sends every draft.
 
 ## 20x — marketing: the same engine as the growth mechanic
 

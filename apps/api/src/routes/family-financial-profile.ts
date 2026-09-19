@@ -27,6 +27,8 @@ import { getTenantCollection } from '@agentoak/platform'
 import { getFamilyFinancialProfileCollection } from '../db.js'
 import { persistSignal } from '../signals.js'
 import { resolveStaleInsights } from '../insights-persist.js'
+import { maybeFlagUnreportedLifeChange, type ProfileChangeSnapshot } from '../life-events/detect-unreported-change.js'
+import { rewardReferralIfPending } from './referrals.js'
 
 const FAMILY_DETECTOR_IDS = [
   'family_protection_gap',
@@ -494,6 +496,24 @@ export async function evaluateProfileAndGenerateInsights(
   return generatedInsights.length
 }
 
+// PRD-111: reduces a full profile doc down to just the fields the
+// unreported-life-change nudge diffs between saves. The top-level
+// household earner has no member_id (matched positionally — there's
+// always exactly one); household.members[] entries carry their own.
+function toChangeSnapshot(profile: Pick<FinancialProfile, 'household' | 'emergency_fund'>): ProfileChangeSnapshot {
+  return {
+    earners: [
+      { employment_status: profile.household.employment_status, monthly_salary_minor: profile.household.monthly_salary_minor },
+      ...profile.household.members.map((m) => ({
+        member_id: m.member_id,
+        employment_status: m.employment_status,
+        monthly_salary_minor: m.monthly_salary_minor,
+      })),
+    ],
+    emergency_savings_minor: profile.emergency_fund.emergency_savings_minor,
+  }
+}
+
 export async function registerFamilyFinancialProfileRoutes(
   app: FastifyInstance,
   db: Db,
@@ -526,6 +546,11 @@ export async function registerFamilyFinancialProfileRoutes(
     }
     const { tenant_id } = req.authContext
     const profile = parsed.data
+
+    // PRD-111: read before the write so an unreported-life-change nudge
+    // can diff against what was actually there before — a plain read,
+    // entirely separate from the optimistic-concurrency filter below.
+    const previousDoc = await profileFor(tenant_id).findOne({})
 
     // OAK-006: optimistic concurrency. The multi-step wizard autosaves
     // after every step, and two tabs/devices editing the same profile
@@ -560,6 +585,19 @@ export async function registerFamilyFinancialProfileRoutes(
     }
 
     const insightsGenerated = await evaluateProfileAndGenerateInsights(profile, tenant_id, engine, db, onInsightsGenerated)
+    await maybeFlagUnreportedLifeChange(
+      req,
+      previousDoc ? toChangeSnapshot(previousDoc) : null,
+      toChangeSnapshot(profile),
+      db,
+    )
+    // PRD-112: "first-ever final submit" is the referral reward's
+    // meaningful-action milestone — real use has started, not just an
+    // account existing. No-op for every submit after the first, and a
+    // silent no-op when there's no pending referral (the common case).
+    if (!previousDoc) {
+      await rewardReferralIfPending(db, tenant_id)
+    }
     return reply.send({ ok: true, insights_generated: insightsGenerated, version: newVersion })
   })
 }

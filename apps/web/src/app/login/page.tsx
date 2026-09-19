@@ -48,7 +48,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex flex-col px-6 pt-12 pb-8">
       <div className="text-center mb-8">
-        <div className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-3">
+        <div className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-3 mx-auto">
           <Network size={32} className="text-family-400" />
         </div>
         <h1 className="text-2xl font-bold">Welcome back</h1>

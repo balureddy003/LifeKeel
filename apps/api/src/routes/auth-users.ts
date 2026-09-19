@@ -17,6 +17,7 @@ import { checkInviteCode, consumeInviteCode } from '../invite-codes.js'
 import { PLAN_QUOTAS, createInitialBilling } from '../billing/billing-constants.js'
 import { sendPasswordResetEmail } from '../auth-email.js'
 import { recordLedgerEntry } from '../billing/credit-ledger.js'
+import { attributeReferral } from './referrals.js'
 
 // Pragmatic (not full RFC 5322) format check for signup specifically —
 // unlike login/reset-request, which only ever do a lookup and return a
@@ -52,7 +53,10 @@ export interface User {
   updated_at: Date | undefined
 }
 
-interface SignupBody { email: string; password: string; name: string; workspace: string; external_id?: string; external_provider?: 'oidc' | 'saml'; tier_hint?: 'developer' | 'team' | 'business' | 'enterprise'; invite_code?: string; country?: string }
+// `ref` (PRD-112, friend referral) is deliberately separate from
+// `invite_code` above — that's an unrelated platform-wide B2B signup
+// gate (see checkInviteCode/consumeInviteCode), not a referral.
+interface SignupBody { email: string; password: string; name: string; workspace: string; external_id?: string; external_provider?: 'oidc' | 'saml'; tier_hint?: 'developer' | 'team' | 'business' | 'enterprise'; invite_code?: string; country?: string; ref?: string }
 interface LoginBody  { email: string; password: string; rememberMe?: boolean }
 interface UpdateProfileBody { name?: string; email?: string; avatar_color?: string }
 interface ChangePasswordBody { current_password: string; new_password: string }
@@ -107,7 +111,7 @@ export async function registerAuthUserRoutes(
     // without changing the honest per-request error message.
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (request, reply) => {
-      const { email, password, name, workspace, external_id, external_provider, tier_hint, invite_code, country } = request.body
+      const { email, password, name, workspace, external_id, external_provider, tier_hint, invite_code, country, ref } = request.body
 
       if (!email || !EMAIL_FORMAT_RE.test(email.trim())) return reply.status(400).send({ error: 'Valid email required' })
       if (!password || password.length < 8) return reply.status(400).send({ error: 'Password must be at least 8 characters' })
@@ -211,6 +215,9 @@ export async function registerAuthUserRoutes(
         created_at: new Date(),
         updated_at: new Date(),
       })
+
+      // PRD-112: silent no-op on an invalid/missing ref — never fails signup.
+      await attributeReferral(db, tenant_id, ref)
 
       // Record trial grant in the append-only credit ledger
       if (billing.credits_balance > 0) {

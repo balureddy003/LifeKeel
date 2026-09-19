@@ -18,7 +18,7 @@ interface AuthContextValue {
   family: FamilyGroup | null
   isAuthenticated: boolean
   isLoading: boolean
-  signUp: (name: string, email: string, password: string) => Promise<User>
+  signUp: (name: string, email: string, password: string, ref?: string) => Promise<User>
   signIn: (email: string, password: string) => Promise<void>
   updateEmail: (email: string) => Promise<User>
   updateProfile: (patch: { name?: string; email?: string }) => Promise<User>
@@ -160,12 +160,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const signUp = async (name: string, email: string, password: string) => {
+  const signUp = async (name: string, email: string, password: string, ref?: string) => {
     const { token, user: apiUser } = await apiAuthRequest('/auth/signup', {
       name,
       email,
       password,
       workspace: uniqueWorkspaceSlug(name || email),
+      ...(ref ? { ref } : {}),
     })
     localStorage.setItem(TOKEN_KEY, token)
     const u: User = { id: apiUser.id, name: apiUser.name, email: apiUser.email, avatar: '' }

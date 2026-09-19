@@ -60,6 +60,12 @@ export type AuditAction =
   | 'family.join_approved'
   | 'family.join_denied'
   | 'family.invite_code_reset'
+  | 'life_event.nudge_shown'
+  | 'life_event.nudge_dismissed'
+  | 'life_event.nudge_acted_on'
+  | 'referral.attributed'
+  | 'referral.rewarded'
+  | 'insight.prepare_on_device'
 
 export interface AuditEntry {
   tenant_id: string

@@ -680,6 +680,17 @@ export async function resetInviteCode(): Promise<string> {
   return data.inviteCode as string
 }
 
+// ── Friend referral (PRD-112) ───────────────────────────────────────────────
+
+export async function fetchMyReferralCode(): Promise<string | null> {
+  const r = await apiFetch<{ code: string | null }>('/referrals/my-code', { code: null })
+  return r.code
+}
+
+export async function fetchReferralSummary(): Promise<{ pending: number; rewarded: number }> {
+  return apiFetch<{ pending: number; rewarded: number }>('/referrals', { pending: 0, rewarded: 0 })
+}
+
 // ── Insight drafts (Tier 1 "prepare, don't send" — PRD-103) ────────────────
 
 export interface InsightDraft {
@@ -1091,6 +1102,25 @@ export async function reportLifeEvent(eventType: LifeEventType, affectedMemberId
   }
 }
 
+// PRD-111: whether an unreported-life-change nudge is currently active.
+// Deliberately just a boolean — the server never sends a reason, so
+// there's nothing here that could leak a guess about what changed.
+export async function fetchLifeChangeNudge(): Promise<{ active: boolean }> {
+  return apiFetch<{ active: boolean }>('/family/life-events/nudge', { active: false })
+}
+
+export async function dismissLifeChangeNudge(): Promise<void> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    await fetch(`${base}/family/life-events/nudge/dismiss`, { method: 'POST', headers })
+  } catch (err) {
+    reportError(err, { action: 'dismissLifeChangeNudge' })
+  }
+}
+
 // Same copy-to-clipboard / open-in-email-client-only posture as
 // prepareInsightDraft above — there is no "send" endpoint here either.
 export async function prepareLifeEventStepDraft(eventId: string, stepId: string): Promise<InsightDraft | null> {
@@ -1111,6 +1141,20 @@ export async function prepareLifeEventStepDraft(eventId: string, stepId: string)
     reportError(err, { eventId, stepId })
     return null
   }
+}
+
+// PRD-113: fire-and-forget audit-only ping after a successful on-device
+// draft — no draft content or step body sent, just the fact it happened.
+// Deliberately not awaited by the caller; a failure here shouldn't block
+// or affect the draft the family already has on screen.
+export function pingOnDeviceDraftUsed(eventId: string, stepId: string): void {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  fetch(`${base}/family/life-events/${eventId}/steps/${stepId}/prepare-on-device`, { method: 'POST', headers }).catch(() => {
+    // Best-effort observability only — never surfaced to the user.
+  })
 }
 
 // Persists checklist completion server-side (an explicit done flag, not a

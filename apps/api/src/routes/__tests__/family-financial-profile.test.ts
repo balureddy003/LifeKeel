@@ -15,8 +15,41 @@ vi.mock('../../signals.js', () => ({
   persistSignal: vi.fn(async () => 'stub-signal-id'),
 }))
 
+// PRD-112: rewardReferralIfPending's own logic (credit-ledger mechanics,
+// the atomic double-reward guard) is covered in isolation by
+// referrals.test.ts — this file only needs to confirm the *wiring*: is
+// it called on a tenant's first final submit, and not on later ones.
+const rewardReferralIfPendingMock = vi.fn(async (_db: unknown, _tenantId: string) => {})
+vi.mock('../referrals.js', () => ({
+  rewardReferralIfPending: (db: unknown, tenantId: string) => rewardReferralIfPendingMock(db, tenantId),
+}))
+
+// PRD-111: getSignalsCollection() is an async singleton with no db
+// parameter — it would otherwise try a real MongoDB connection the moment
+// maybeFlagUnreportedLifeChange runs. Stubbed to "no recent life event on
+// file" by default (recentLifeEvent lets a test opt into the other case);
+// everything else in db.js (getFamilyFinancialProfileCollection,
+// getLifeChangeNudgeStateCollection, ...) stays real — both are plain
+// `database.collection(name)` wrappers around whatever db this test's own
+// makeDb() passes in, so they need no mock of their own.
+let recentLifeEvent = false
+vi.mock('../../db.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../db.js')>()
+  return {
+    ...actual,
+    getSignalsCollection: vi.fn(async () => ({
+      findOne: async () => (recentLifeEvent ? { id: 'seed-event' } : null),
+    })),
+  }
+})
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DETECTORS_DIR = path.resolve(__dirname, '../../../../../detectors')
+
+beforeEach(() => {
+  recentLifeEvent = false
+  rewardReferralIfPendingMock.mockClear()
+})
 
 const TENANT = 'tenant-protection-domain-test'
 
@@ -69,13 +102,31 @@ function makeDb() {
       return { modifiedCount }
     }),
   }
+  // PRD-111: one nudge-state doc per tenant, same upsert shape as the real
+  // family_life_change_nudge_state collection.
+  const nudgeStateDocs: Record<string, unknown>[] = []
+  const nudgeStateCol = {
+    findOne: vi.fn(async (filter: Record<string, unknown>) => nudgeStateDocs.find((d) => matchesFilter(d, filter)) ?? null),
+    updateOne: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }, opts?: { upsert?: boolean }) => {
+      let doc = nudgeStateDocs.find((d) => d['tenant_id'] === filter['tenant_id'])
+      if (!doc) {
+        if (!opts?.upsert) return { matchedCount: 0, modifiedCount: 0 }
+        doc = { tenant_id: filter['tenant_id'] }
+        nudgeStateDocs.push(doc)
+      }
+      Object.assign(doc, update.$set)
+      return { matchedCount: 1, modifiedCount: 1 }
+    }),
+  }
+
   return {
-    collection: (name: string) => (name === 'insights' ? insightsCol : profileCol),
+    collection: (name: string) => (name === 'insights' ? insightsCol : name === 'family_life_change_nudge_state' ? nudgeStateCol : profileCol),
     _insightDocs: insightDocs,
+    _nudgeStateDocs: nudgeStateDocs,
   } as any
 }
 
-async function buildApp(engine: Engine): Promise<{ app: ReturnType<typeof Fastify>; insights: Insight[]; insightDocs: Record<string, unknown>[] }> {
+async function buildApp(engine: Engine): Promise<{ app: ReturnType<typeof Fastify>; insights: Insight[]; insightDocs: Record<string, unknown>[]; nudgeStateDocs: Record<string, unknown>[] }> {
   const app = Fastify()
   app.addHook('onRequest', async (request) => {
     ;(request as any).authContext = { tenant_id: TENANT, user_id: 'user-1' }
@@ -85,7 +136,7 @@ async function buildApp(engine: Engine): Promise<{ app: ReturnType<typeof Fastif
   await registerFamilyFinancialProfileRoutes(app, db, engine, async (generated) => {
     insights.push(...generated)
   })
-  return { app, insights, insightDocs: db._insightDocs }
+  return { app, insights, insightDocs: db._insightDocs, nudgeStateDocs: db._nudgeStateDocs }
 }
 
 const BASE_PROFILE = {
@@ -635,5 +686,110 @@ describe('PRD-107: insight resolution', () => {
     // spuriously resolves.
     const seeded = insightDocs.find((d) => d['rule_id'] === 'no_income_protection')
     expect(seeded?.['state']).toBe('identified')
+  })
+})
+
+describe('PRD-111: unreported life-change nudge', () => {
+  let engine: Engine
+
+  beforeEach(async () => {
+    engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
+    await engine.load()
+  })
+
+  it('a final save crossing employment_status to unemployed, with no recent life event, flags the nudge active', async () => {
+    const { app, nudgeStateDocs } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        household: { ...BASE_PROFILE.household, employment_status: 'unemployed' },
+        generate_insights: true,
+      },
+    })
+    expect(nudgeStateDocs.find((d) => d['tenant_id'] === TENANT)?.['active']).toBe(true)
+  })
+
+  it('the same crossing on an intermediate autosave (no generate_insights) does not flag the nudge', async () => {
+    const { app, nudgeStateDocs } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, household: { ...BASE_PROFILE.household, employment_status: 'unemployed' } },
+    })
+    expect(nudgeStateDocs.find((d) => d['tenant_id'] === TENANT)?.['active']).not.toBe(true)
+  })
+
+  it('a crossing does not flag the nudge when a life event was already reported recently', async () => {
+    recentLifeEvent = true
+    const { app, nudgeStateDocs } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        household: { ...BASE_PROFILE.household, employment_status: 'unemployed' },
+        generate_insights: true,
+      },
+    })
+    expect(nudgeStateDocs.find((d) => d['tenant_id'] === TENANT)?.['active']).not.toBe(true)
+  })
+
+  it('a first-ever save never flags the nudge — nothing to diff against', async () => {
+    const { app, nudgeStateDocs } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, household: { ...BASE_PROFILE.household, employment_status: 'unemployed' }, generate_insights: true },
+    })
+    expect(nudgeStateDocs.find((d) => d['tenant_id'] === TENANT)?.['active']).not.toBe(true)
+  })
+
+  it('a save with no threshold crossed does not flag the nudge', async () => {
+    const { app, nudgeStateDocs } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, household: { ...BASE_PROFILE.household, monthly_salary_minor: 420000 }, generate_insights: true },
+    })
+    expect(nudgeStateDocs.find((d) => d['tenant_id'] === TENANT)?.['active']).not.toBe(true)
+  })
+})
+
+describe('PRD-112: friend referral reward wiring', () => {
+  let engine: Engine
+
+  beforeEach(async () => {
+    engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
+    await engine.load()
+  })
+
+  it('calls rewardReferralIfPending on a first-ever final submit', async () => {
+    const { app } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    expect(rewardReferralIfPendingMock).toHaveBeenCalledTimes(1)
+    expect(rewardReferralIfPendingMock).toHaveBeenCalledWith(expect.anything(), TENANT)
+  })
+
+  it('does not call rewardReferralIfPending on a second submit', async () => {
+    const { app } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    rewardReferralIfPendingMock.mockClear()
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    expect(rewardReferralIfPendingMock).not.toHaveBeenCalled()
+  })
+
+  it('does not call rewardReferralIfPending on an intermediate autosave (no generate_insights)', async () => {
+    const { app } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: BASE_PROFILE })
+    expect(rewardReferralIfPendingMock).not.toHaveBeenCalled()
   })
 })

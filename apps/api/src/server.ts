@@ -78,6 +78,7 @@ import { registerAccountRoutes } from './routes/account.js'
 import { registerFamilyConnectorRoutes } from './routes/family-connectors.js'
 import { registerFamilyGroupRoutes } from './routes/family-group.js'
 import { registerFamilyJoinRoutes } from './routes/family-join.js'
+import { registerReferralRoutes } from './routes/referrals.js'
 import { registerGrowthEventRoutes } from './routes/growth-events.js'
 import { registerFamilyFinancialProfileRoutes } from './routes/family-financial-profile.js'
 import { registerLifeEventRoutes } from './routes/life-events.js'
@@ -1122,6 +1123,7 @@ if (workflowDb) {
   registerFamilyConnectorRoutes(app, workflowDb)
   registerFamilyGroupRoutes(app, workflowDb)
   registerFamilyJoinRoutes(app, workflowDb)
+  registerReferralRoutes(app, workflowDb)
   registerGrowthEventRoutes(app, workflowDb)
   registerFamilyInboxRoutes(app, workflowDb)
   registerAssistantRoutes(app, workflowDb)
