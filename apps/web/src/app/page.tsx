@@ -811,14 +811,12 @@ export default function HomePage() {
             </div>
             <p className="text-sm text-ink-tertiary leading-relaxed">
               {hasChildren
-                ? "We don't collect birthdates yet, so we can't estimate education milestones for your children."
+                ? "Add a birthday to your children's profiles to see education milestones here."
                 : 'Add children to your family profile to see education milestones and future planning events on your timeline.'}
             </p>
-            {!hasChildren && (
-              <Link href="/family" className="text-sm text-family-400 font-semibold flex items-center gap-1 mt-2">
-                Set up family <ChevronRight size={14} />
-              </Link>
-            )}
+            <Link href="/family" className="text-sm text-family-400 font-semibold flex items-center gap-1 mt-2">
+              {hasChildren ? 'Go to Family' : 'Set up family'} <ChevronRight size={14} />
+            </Link>
           </GlassCard>
         )}
       </motion.div>

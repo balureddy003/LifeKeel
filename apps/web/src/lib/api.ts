@@ -1001,8 +1001,18 @@ async function fetchFinancialProfileRaw(): Promise<{ profile: FinancialProfile |
   ).then((r) => ({ profile: r.profile ?? null, version: r.version ?? 0 }))
 }
 
+// Live-verification finding: page.tsx, family/page.tsx, FamilyRoster.tsx,
+// Intelligence.tsx, EventDetailClient.tsx, AssetProfileClient.tsx, and
+// useFamilyData.ts's hook each call this independently on mount — on the
+// home page alone, several of them mount together and fire 6+ simultaneous
+// duplicate GETs to the same endpoint, which is what made the dashboard's
+// first paint feel stuck. Cached the same way fetchFamilyInsights already
+// is: concurrent callers share one in-flight request, and the result stays
+// fresh for 30s. fetchFinancialProfileWithVersion (the wizard's own read,
+// below) deliberately stays uncached — OAK-006's concurrency check needs a
+// genuinely current version, not a 30s-old one.
 export async function fetchFinancialProfile(): Promise<FinancialProfile | null> {
-  return fetchFinancialProfileRaw().then((r) => r.profile)
+  return cachedFetch('financial-profile', 30_000, () => fetchFinancialProfileRaw().then((r) => r.profile))
 }
 
 /**
@@ -1044,6 +1054,11 @@ export async function submitFinancialProfile(
     if (res.status === 409) throw new Error(data.error || 'This profile was updated elsewhere — reload and try again.')
     throw new Error(data.error || 'Request failed')
   }
+  // Every other reader (Family, Intelligence, event/asset detail pages,
+  // useFamilyData's hooks) holds fetchFinancialProfile's cached copy —
+  // without dropping it here, a save could sit invisible to them for up to
+  // 30s, reading as "my edit didn't save" even though it did.
+  invalidateCache('financial-profile')
   return { insightsGenerated: data.insights_generated ?? 0, version: data.version ?? version ?? 0 }
 }
 
