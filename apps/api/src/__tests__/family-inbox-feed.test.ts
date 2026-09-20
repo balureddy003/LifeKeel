@@ -47,6 +47,28 @@ const insight = {
   created_at: new Date('2026-09-20T10:00:00Z'),
 }
 
+describe('insurance documents in the feed', () => {
+  const day = 86_400_000
+  const fmt = (d: Date) => `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`
+  const doc = (fields: Record<string, string>) => ({ id: 'd1', category: 'insurance', status: 'extracted', uploaded_at: new Date(), extracted_data: fields })
+
+  it('ranks a claim form with a deadline in the next 30 days as high priority', async () => {
+    const soon = fmt(new Date(Date.now() + day * 1.5))
+    const { db } = makeDb({ insights: { rows: [] }, inbox_items: { rows: [] }, documents: { rows: [doc({ provider: 'Aviva', policy_number: 'P1', policy_type: 'critical_illness', due_date: soon })] } })
+    const item = (await (await build(db)).inject({ method: 'GET', url: '/inbox' })).json().items[0]
+    expect(item).toMatchObject({ id: 'doc:d1', priority: 'high', route: '/documents/d1' })
+    expect(item.subject).toMatch(/^Aviva form due (tomorrow|in 2 days)$/)
+  })
+
+  it('surfaces a found policy with no near deadline as a review nudge, and ignores documents with no provider or number', async () => {
+    const far = fmt(new Date(Date.now() + day * 200))
+    const { db } = makeDb({ insights: { rows: [] }, inbox_items: { rows: [] }, documents: { rows: [doc({ provider: 'Aviva', due_date: far }), { ...doc({ note: 'x' }), id: 'd2' }] } })
+    const items = (await (await build(db)).inject({ method: 'GET', url: '/inbox' })).json().items
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ id: 'doc:d1', priority: 'medium', subject: 'Policy found: Aviva' })
+  })
+})
+
 describe('feed titles', () => {
   it('turns a snake_case rule id into a readable title', async () => {
     const { db } = makeDb({ insights: { rows: [{ ...insight, hypothesis: 'no_income_protection' }] }, inbox_items: { rows: [] } })

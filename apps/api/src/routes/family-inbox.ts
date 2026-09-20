@@ -39,6 +39,7 @@ export interface InboxItemDoc {
 }
 
 const INSIGHT_PREFIX = 'insight:'
+const DOC_PREFIX = 'doc:'
 
 const URGENCY_TO_PRIORITY: Record<string, 'high' | 'medium' | 'low'> = {
   critical: 'high',
@@ -65,6 +66,66 @@ function feedTitle(i: Record<string, unknown>): string {
   if (/\s/.test(raw)) return raw
   const words = raw.replace(/_/g, ' ')
   return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+/** dd/mm/yyyy, dd-mm-yyyy or yyyy-mm-dd → a Date at UTC midnight, else null. */
+function parseDocDate(raw: unknown): Date | null {
+  if (typeof raw !== 'string') return null
+  const m = raw.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/) ?? raw.trim().match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/)
+  if (!m) return null
+  const iso = m[1]!.length === 4 ? [m[1], m[2], m[3]] : [m[3], m[2], m[1]]
+  const d = new Date(Date.UTC(Number(iso[0]), Number(iso[1]) - 1, Number(iso[2])))
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+const DEADLINE_WINDOW_DAYS = 30
+
+/**
+ * An insurance document Oak has read, as a feed item: a deadline inside the
+ * next 30 days (e.g. a claim form) ranks high; otherwise a policy that was
+ * found gets a "review and add to your profile" nudge. Informational only —
+ * Oak never files or submits anything.
+ */
+function documentToFeedItem(d: Record<string, unknown>) {
+  const fields = (d['extracted_data'] as Record<string, string> | undefined) ?? {}
+  const provider = fields['provider']
+  const policyNumber = fields['policy_number']
+  if (!provider && !policyNumber) return null
+  const uploaded = d['uploaded_at'] instanceof Date ? d['uploaded_at'].toISOString() : new Date().toISOString()
+  const due = parseDocDate(fields['due_date'])
+  const daysLeft = due ? Math.ceil((due.getTime() - Date.now()) / 86_400_000) : null
+  const who = provider ?? 'your insurer'
+  const type = fields['policy_type']?.replace(/_/g, ' ')
+  const facts = [type && `Type: ${type}`, policyNumber && `Policy ${policyNumber}`, fields['beneficiary'] && `For: ${fields['beneficiary']}`].filter(Boolean).join(' · ')
+
+  if (daysLeft !== null && daysLeft >= 0 && daysLeft <= DEADLINE_WINDOW_DAYS) {
+    return {
+      id: `${DOC_PREFIX}${String(d['id'])}`,
+      emoji: '',
+      source: 'Oak',
+      subject: `${who} form due ${daysLeft === 0 ? 'today' : daysLeft === 1 ? 'tomorrow' : `in ${daysLeft} days`}`,
+      aiSummary: `A document from ${who} lists ${fields['due_date']} as a due date. ${facts}. Check it with your provider — Oak only reads it and does not submit anything.`,
+      actionLabel: 'Open document',
+      actionType: 'review' as const,
+      priority: 'high' as const,
+      date: uploaded,
+      read: false,
+      route: `/documents/${String(d['id'])}`,
+    }
+  }
+  return {
+    id: `${DOC_PREFIX}${String(d['id'])}`,
+    emoji: '',
+    source: 'Oak',
+    subject: `Policy found: ${who}${type ? ` ${type}` : ''}`,
+    aiSummary: `Oak read a document from ${who}. ${facts}. Review it and add it to your profile so your protection check reflects it.`,
+    actionLabel: 'Review policy',
+    actionType: 'review' as const,
+    priority: 'medium' as const,
+    date: uploaded,
+    read: false,
+    route: `/documents/${String(d['id'])}`,
+  }
 }
 
 /** An open insight, shaped as a feed item ("Oak noticed X — here's the next step"). */
@@ -126,6 +187,19 @@ export function registerFamilyInboxRoutes(
             .toArray()
 
       const fromInsights = insightDocs.map((i: Record<string, unknown>) => insightToFeedItem(i))
+
+      // Insurance documents Oak has read (uploaded or found in email) — a
+      // claim form with a deadline, or a policy not yet on the profile.
+      const insuranceDocs = unreadOnly
+        ? []
+        : await getTenantCollection<Record<string, unknown>>(db, 'documents', tenant_id)
+            .find({ category: 'insurance', status: 'extracted', feed_dismissed: { $ne: true } })
+            .sort({ uploaded_at: -1 })
+            .limit(10)
+            .toArray()
+      const fromDocuments = insuranceDocs
+        .map((d: Record<string, unknown>) => documentToFeedItem(d))
+        .filter((x: ReturnType<typeof documentToFeedItem>): x is NonNullable<typeof x> => x !== null)
       const fromEmail = {
         items: items.map((item) => ({
           id: item.id,
@@ -141,7 +215,7 @@ export function registerFamilyInboxRoutes(
           ...(item.policy_details ? { policy: item.policy_details } : {}),
         })),
       }
-      const merged = [...fromInsights, ...fromEmail.items].sort((a, b) => (a.date < b.date ? 1 : -1))
+      const merged = [...fromInsights, ...fromDocuments, ...fromEmail.items].sort((a, b) => (a.date < b.date ? 1 : -1))
       return { items: merged.slice(0, limit) }
     },
   )
@@ -149,6 +223,15 @@ export function registerFamilyInboxRoutes(
   // ── POST /inbox/:id/dismiss ─────────────────────────────────────────────
   fastify.post<{ Params: { id: string } }>('/inbox/:id/dismiss', async (req, reply) => {
     const { tenant_id } = req.authContext
+
+    if (req.params.id.startsWith(DOC_PREFIX)) {
+      const res = await getTenantCollection<Record<string, unknown>>(db, 'documents', tenant_id).updateOne(
+        { id: req.params.id.slice(DOC_PREFIX.length) },
+        { $set: { feed_dismissed: true } },
+      )
+      if (!(res as { matchedCount?: number }).matchedCount) return reply.status(404).send({ error: 'Inbox item not found' })
+      return { success: true }
+    }
 
     if (req.params.id.startsWith(INSIGHT_PREFIX)) {
       const res = await getTenantCollection<Record<string, unknown>>(db, 'insights', tenant_id).updateOne(
@@ -184,7 +267,7 @@ export function registerFamilyInboxRoutes(
     const { tenant_id } = req.authContext
 
     // Insight-backed items have no read state of their own.
-    if (req.params.id.startsWith(INSIGHT_PREFIX)) return { success: true }
+    if (req.params.id.startsWith(INSIGHT_PREFIX) || req.params.id.startsWith(DOC_PREFIX)) return { success: true }
 
     const result = await col.findOneAndUpdate(
       { id: req.params.id, tenant_id },

@@ -93,6 +93,73 @@ export async function testImapConnection(
 }
 
 /**
+ * Marketing emails embed logos, social icons and spacer pixels as inline
+ * (cid:) images — those aren't documents. A real attachment is not inline,
+ * and an image under ~20 KB is an icon, not a scanned page.
+ */
+function isRealAttachment(a: { contentType: string; size: number; related?: boolean; contentDisposition?: string }): boolean {
+  if (a.related || a.contentDisposition === 'inline') return false
+  if (a.contentType.startsWith('image/') && a.size < 20_000) return false
+  return true
+}
+
+async function parseMessage(uid: number, source: Buffer): Promise<FetchedEmail> {
+  const parsed = await simpleParser(source)
+  return {
+    uid,
+    messageId: parsed.messageId ?? `imap-uid-${uid}`,
+    from: parsed.from?.text ?? 'Unknown sender',
+    subject: parsed.subject ?? '(no subject)',
+    date: parsed.date ?? new Date(),
+    textSnippet: (parsed.text ?? '').slice(0, 4000),
+    attachments: (parsed.attachments ?? [])
+      .filter((a) => ATTACHMENT_MIME_ALLOWLIST.has(a.contentType) && a.size <= MAX_ATTACHMENT_BYTES && isRealAttachment(a))
+      .map((a) => ({ filename: a.filename ?? 'attachment', contentType: a.contentType, content: a.content })),
+  }
+}
+
+/** Words that mark an email as possibly about a policy or protection product. */
+export const POLICY_SEARCH_KEYWORDS = [
+  'insurance', 'policy', 'premium', 'renewal', 'cover', 'claim', 'pension', 'mortgage', 'assistance',
+]
+
+/**
+ * Looks back over the last `sinceDays` for mail whose subject mentions a
+ * policy-ish word — the server does the filtering, so a 90-day look-back
+ * doesn't mean downloading and classifying every message. Independent of
+ * the incremental UID cursor.
+ */
+export async function searchPolicyEmails(
+  creds: ImapCredentials,
+  opts: { sinceDays: number; limit?: number },
+): Promise<FetchedEmail[]> {
+  const limit = opts.limit ?? 60
+  const client = buildClient(creds)
+  const emails: FetchedEmail[] = []
+  await client.connect()
+  try {
+    const lock = await client.getMailboxLock('INBOX')
+    try {
+      const since = new Date(Date.now() - opts.sinceDays * 86_400_000)
+      const uids = (await client.search(
+        { since, or: POLICY_SEARCH_KEYWORDS.map((k) => ({ subject: k })) },
+        { uid: true },
+      )) || []
+      const newest = uids.sort((a, b) => a - b).slice(-limit)
+      if (newest.length === 0) return []
+      for await (const msg of client.fetch(newest, { uid: true, source: true }, { uid: true })) {
+        if (msg.source) emails.push(await parseMessage(msg.uid, msg.source))
+      }
+    } finally {
+      lock.release()
+    }
+  } finally {
+    await client.logout().catch(() => {})
+  }
+  return emails.sort((a, b) => a.uid - b.uid)
+}
+
+/**
  * Fetches messages from INBOX newer than `sinceUid` (exclusive) — or, with
  * no cursor yet, the most recent `limit` messages — for incremental scans
  * that don't reprocess the same mail every run.
@@ -118,22 +185,7 @@ export async function fetchRecentEmails(
         if (msg.uid > highestUid) highestUid = msg.uid
         if (!msg.source) continue
 
-        const parsed = await simpleParser(msg.source)
-        emails.push({
-          uid: msg.uid,
-          messageId: parsed.messageId ?? `imap-uid-${msg.uid}`,
-          from: parsed.from?.text ?? 'Unknown sender',
-          subject: parsed.subject ?? '(no subject)',
-          date: parsed.date ?? new Date(),
-          textSnippet: (parsed.text ?? '').slice(0, 4000),
-          attachments: (parsed.attachments ?? [])
-            .filter((a) => ATTACHMENT_MIME_ALLOWLIST.has(a.contentType) && a.size <= MAX_ATTACHMENT_BYTES)
-            .map((a) => ({
-              filename: a.filename ?? 'attachment',
-              contentType: a.contentType,
-              content: a.content,
-            })),
-        })
+        emails.push(await parseMessage(msg.uid, msg.source))
       }
     } finally {
       lock.release()

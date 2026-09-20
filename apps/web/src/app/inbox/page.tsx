@@ -13,6 +13,7 @@ import { useToast } from '@/components/Toast'
 import type { InboxItem } from '@/lib/onboarding-data'
 import { fetchInboxItems, dismissInboxItem, scanEmailInbox, fetchConnectorStatuses } from '@/lib/api'
 import { useAppStore } from '@/lib/store'
+import { searchMailboxForPolicies } from '@/lib/email-lookback'
 import { formatRelativeDate } from '@/lib/format'
 
 const INBOX_ICONS: Record<string, LucideIcon> = {
@@ -65,6 +66,7 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true)
   const [dismissingId, setDismissingId] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
+  const [lookingBack, setLookingBack] = useState(false)
   // Server is the source of truth (the local store only knows about
   // connections made in this tab) — otherwise a connected, actively-syncing
   // mailbox still showed "Connect your email".
@@ -125,6 +127,25 @@ export default function InboxPage() {
       haptic('warning')
     }
     setScanning(false)
+  }
+
+  const handleLookBack = async () => {
+    haptic('light')
+    setLookingBack(true)
+    const result = await searchMailboxForPolicies(90)
+    if (result) {
+      haptic('success')
+      toast({
+        message: result.inboxItemsCreated > 0
+          ? `Found ${result.inboxItemsCreated} policy email${result.inboxItemsCreated === 1 ? '' : 's'} from the last 90 days`
+          : `Checked ${result.scanned} possible policy email${result.scanned === 1 ? '' : 's'} from the last 90 days — no policy details found`,
+      })
+      await loadInbox()
+    } else {
+      haptic('warning')
+      toast({ message: 'Could not search your mailbox right now', variant: 'error' })
+    }
+    setLookingBack(false)
   }
 
   const handleTap = (id: string) => {
@@ -232,7 +253,7 @@ export default function InboxPage() {
             <Bot size={20} className="text-family-400 flex-shrink-0" />
             <div className="flex-1">
               <div className="text-sm font-semibold text-ink-secondary">Email connected</div>
-              <p className="text-xs text-ink-tertiary mt-0.5">Scans automatically every 15 minutes.</p>
+              <p className="text-xs text-ink-tertiary mt-0.5">New mail is checked every 15 minutes. Oak only keeps insurance and policy emails.</p>
             </div>
             <button
               onClick={handleScanNow}
@@ -241,6 +262,14 @@ export default function InboxPage() {
             >
               {scanning ? <Loader2 size={12} className="animate-spin" /> : null}
               {scanning ? 'Scanning...' : 'Scan now'}
+            </button>
+            <button
+              onClick={handleLookBack}
+              disabled={lookingBack}
+              className="text-xs font-semibold text-family-400 px-3 py-2 rounded-xl bg-family-500/10 active:opacity-80 disabled:opacity-50 flex items-center gap-1.5"
+            >
+              {lookingBack ? <Loader2 size={12} className="animate-spin" /> : null}
+              {lookingBack ? 'Searching…' : 'Find policies (90 days)'}
             </button>
           </GlassCard>
         </motion.div>

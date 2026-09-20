@@ -270,6 +270,23 @@ export function registerDocumentRoutes(
     return { suggestions, policySuggestion }
   })
 
+  // ── POST /documents/:id/reprocess ───────────────────────────────────────
+  // Re-runs extraction on a stored file — for documents whose first pass
+  // produced nothing (e.g. PDFs before they were read as text). Reads the
+  // original bytes back from GridFS; nothing is re-uploaded.
+  fastify.post<{ Params: { id: string } }>('/documents/:id/reprocess', async (req, reply) => {
+    const { tenant_id } = req.authContext
+    const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
+    const doc = await documents.findOne({ id: req.params.id })
+    if (!doc || !doc['file_id']) return reply.status(404).send({ error: 'Document not found' })
+
+    const chunks: Buffer[] = []
+    for await (const chunk of bucket.openDownloadStream(doc['file_id'] as ObjectId)) chunks.push(chunk as Buffer)
+    await processDocument(db, req.params.id, tenant_id, Buffer.concat(chunks), String(doc['mime_type'] ?? ''), String(doc['filename'] ?? 'document'))
+    const after = await documents.findOne({ id: req.params.id })
+    return { id: req.params.id, category: after?.['category'], status: after?.['status'], fieldCount: Object.keys((after?.['extracted_data'] as object) ?? {}).length }
+  })
+
   // ── POST /documents/:id/apply-to-profile ────────────────────────────────
   // Applies one or more of the suggestions above to the tenant's Financial
   // Profile. A scoped $set on an explicit whitelist of dotted paths — never

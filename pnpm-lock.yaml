@@ -116,6 +116,9 @@ importers:
       twilio:
         specifier: ^6.0.2
         version: 6.1.1
+      unpdf:
+        specifier: ^1.8.1
+        version: 1.8.1
       web-push:
         specifier: ^3.6.7
         version: 3.6.7
@@ -9171,6 +9174,16 @@ packages:
       '@types/unist': 3.0.3
       unist-util-is: 6.0.1
       unist-util-visit-parents: 6.0.2
+    dev: false
+
+  /unpdf@1.8.1:
+    resolution: {integrity: sha512-xkURhy2SoGpOIH0a1gLHNkASPIQYonadDJs2AQwPEfUakafeD9EA1WTWWsaR++gfTCXJpV27W7tU1nXuk82UKQ==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      '@napi-rs/canvas': ^0.1.69 || ^1.0.0
+    peerDependenciesMeta:
+      '@napi-rs/canvas':
+        optional: true
     dev: false
 
   /unrs-resolver@1.12.2:
