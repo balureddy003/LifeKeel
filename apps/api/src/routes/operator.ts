@@ -341,8 +341,14 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   app.get('/operator/operators', { preHandler: requireOperator(db, 'operators.manage') }, async () => {
     const docs = await operators.find({}, { projection: { _id: 0 } }).toArray()
-    const bootstrapIds = (process.env['PLATFORM_OPERATOR_USER_IDS'] ?? '').split(',').map((s) => s.trim()).filter(Boolean)
-    const ids = new Set([...docs.map((d) => d['user_id'] as string), ...bootstrapIds])
+    const dbIds = new Set(docs.map((d) => d['user_id'] as string))
+    // Env ids with a DB record are governed by that record — listing them
+    // under both sections would suggest the env entry still means something.
+    const bootstrapIds = (process.env['PLATFORM_OPERATOR_USER_IDS'] ?? '').split(',').map((s) => s.trim()).filter((id) => id && !dbIds.has(id))
+    // Break-glass semantics: env ids resolve only while no active DB
+    // super_admin exists (see resolveOperator), so mark them dormant here.
+    const dbSuperAdminExists = docs.some((d) => d['status'] === 'active' && (d['roles'] as string[] | undefined)?.includes('super_admin'))
+    const ids = new Set([...dbIds, ...bootstrapIds])
     const profiles = ids.size === 0 ? [] : await users.find(
       { id: { $in: [...ids] } },
       { projection: { _id: 0, id: 1, email: 1, name: 1, status: 1 } },
@@ -350,7 +356,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     const byId = new Map(profiles.map((u) => [u['id'] as string, u]))
     return {
       operators: docs.map((d) => ({ ...d, source: 'database', user: byId.get(d['user_id'] as string) ?? null })),
-      bootstrap: bootstrapIds.map((id) => ({ user_id: id, roles: ['super_admin'], status: 'active', source: 'bootstrap', user: byId.get(id) ?? null })),
+      bootstrap: bootstrapIds.map((id) => ({ user_id: id, roles: ['super_admin'], status: 'active', source: 'bootstrap', effective: !dbSuperAdminExists, user: byId.get(id) ?? null })),
     }
   })
 

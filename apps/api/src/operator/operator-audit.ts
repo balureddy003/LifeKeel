@@ -37,6 +37,9 @@ export type OperatorAuditAction =
 export interface OperatorAuditEntry {
   operator_user_id: string
   operator_roles: string[]
+  /** 'database' | 'bootstrap' — distinguishes audited actions taken through
+   *  the env break-glass path from DB-managed operators. */
+  operator_source: string
   action: OperatorAuditAction
   target_type: string
   target_id: string
@@ -70,6 +73,7 @@ export class OperatorAuditLogger {
     const entry: OperatorAuditEntry = {
       operator_user_id: operator.user_id,
       operator_roles: operator.roles,
+      operator_source: operator.source,
       action,
       target_type: targetType,
       target_id: targetId,

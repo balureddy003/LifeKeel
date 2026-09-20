@@ -98,6 +98,9 @@ export default function OperatorsPage() {
         {bootstrap.map((op) => (
           <GlassCard key={`bootstrap-${op.user_id}`} className="p-4 opacity-70">
             <div className="flex items-center gap-2"><ShieldCheck size={15} className="text-family-400" /><span className="font-medium">{op.user?.name ?? op.user_id}</span><span className="text-xs text-ink-tertiary">env bootstrap · super_admin</span></div>
+            {op.effective === false && (
+              <p className="mt-1 text-xs text-ink-tertiary">Dormant — DB super_admin exists. Remove PLATFORM_OPERATOR_USER_IDS once all break-glass users are DB-managed.</p>
+            )}
           </GlassCard>
         ))}
         {operators.length === 0 && bootstrap.length === 0 && !error && <p className="text-sm text-ink-tertiary">No operators configured.</p>}

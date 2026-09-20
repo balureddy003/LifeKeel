@@ -5,9 +5,12 @@ function request(userId = 'user-1', tenantId = 'tenant-1', demo = false) {
   return { authContext: { user_id: userId, tenant_id: tenantId, roles: ['admin'], demo } } as any
 }
 
-function dbWithOperator(operator: Record<string, unknown> | null) {
+function dbWithOperator(operator: Record<string, unknown> | null, activeSuperAdmins = 0) {
   return {
-    collection: () => ({ findOne: async () => operator }),
+    collection: () => ({
+      findOne: async () => operator,
+      countDocuments: async () => activeSuperAdmins,
+    }),
   } as any
 }
 
@@ -33,6 +36,23 @@ describe('operator authorization', () => {
     const result = await resolveOperator(dbWithOperator(null), request())
     expect(result?.roles).toEqual(['super_admin'])
     expect(result?.source).toBe('bootstrap')
+  })
+
+  it('goes dormant once a DB super_admin exists — break-glass only', async () => {
+    process.env['PLATFORM_OPERATOR_USER_IDS'] = 'user-1'
+    expect(await resolveOperator(dbWithOperator(null, 1), request())).toBeNull()
+  })
+
+  it('re-activates as the recovery path when no DB super_admin is active', async () => {
+    process.env['PLATFORM_OPERATOR_USER_IDS'] = 'user-1'
+    const result = await resolveOperator(dbWithOperator(null, 0), request())
+    expect(result?.source).toBe('bootstrap')
+  })
+
+  it('denies a suspended DB operator even when env-listed', async () => {
+    process.env['PLATFORM_OPERATOR_USER_IDS'] = 'user-1'
+    const suspended = { user_id: 'user-1', status: 'suspended', roles: ['super_admin'] }
+    expect(await resolveOperator(dbWithOperator(suspended), request())).toBeNull()
   })
 
   it('never grants operator access to demo tokens', async () => {

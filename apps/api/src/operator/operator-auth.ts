@@ -70,19 +70,34 @@ function bootstrapUserIds(): Set<string> {
   )
 }
 
+// Warn once per process per user — every request would spam the log, but a
+// break-glass resolution should leave a trace that points at the fix.
+const bootstrapWarned = new Set<string>()
+
 export async function resolveOperator(db: Db, request: FastifyRequest): Promise<OperatorContext | null> {
   const auth = request.authContext
   if (!auth || auth.demo) return null
 
-  const operator = await db.collection<PlatformOperatorDoc>('platform_operators').findOne({
-    user_id: auth.user_id,
-    status: 'active',
-  })
-  if (operator) {
+  const operators = db.collection<PlatformOperatorDoc>('platform_operators')
+  const operator = await operators.findOne({ user_id: auth.user_id })
+  if (operator?.status === 'active') {
     return { user_id: auth.user_id, tenant_id: auth.tenant_id, roles: operator.roles, source: 'database' }
   }
+  // An explicit suspension beats the env bootstrap — a suspended operator
+  // must not regain access just because their id is still in the env list.
+  if (operator?.status === 'suspended') return null
 
+  // PLATFORM_OPERATOR_USER_IDS is break-glass only: it grants super_admin
+  // until a DB-managed super_admin exists, then goes dormant. It re-activates
+  // if every DB super_admin is suspended/removed — that's the recovery path
+  // that makes it safe to remove the env var entirely after seeding.
   if (bootstrapUserIds().has(auth.user_id)) {
+    const activeSuperAdmins = await operators.countDocuments({ status: 'active', roles: 'super_admin' })
+    if (activeSuperAdmins > 0) return null
+    if (!bootstrapWarned.has(auth.user_id)) {
+      bootstrapWarned.add(auth.user_id)
+      request.log?.warn({ user_id: auth.user_id }, 'bootstrap operator access via PLATFORM_OPERATOR_USER_IDS — seed a DB super_admin to disable it')
+    }
     return { user_id: auth.user_id, tenant_id: auth.tenant_id, roles: ['super_admin'], source: 'bootstrap' }
   }
   return null

@@ -1563,6 +1563,8 @@ export interface OperatorRecord {
   roles: string[]
   status: 'active' | 'suspended'
   source: 'database' | 'bootstrap'
+  /** Bootstrap entries only — false means dormant (a DB super_admin exists). */
+  effective?: boolean
   user?: { id: string; email: string; name: string } | null
 }
 
