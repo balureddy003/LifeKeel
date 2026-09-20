@@ -296,17 +296,17 @@ export function PageHeader({
     // into the glass background while still keeping the title legible over
     // content scrolling underneath.
     <header className="sticky top-0 z-sticky safe-area-top bg-navbg/55 backdrop-blur-xl -mx-5 px-5 py-2 [mask-image:linear-gradient(to_bottom,#000_80%,transparent),linear-gradient(to_right,transparent,#000_6%,#000_94%,transparent)] [mask-composite:intersect] [-webkit-mask-image:linear-gradient(to_bottom,#000_80%,transparent),linear-gradient(to_right,transparent,#000_6%,#000_94%,transparent)] [-webkit-mask-composite:source-in]">
-      <div className="flex items-center justify-between h-10">
-        {backHref ? (
-          <Link href={backHref} onClick={() => haptic('light')} className="flex items-center gap-1 text-ink-tertiary active:opacity-60">
-            <ArrowLeft size={20} strokeWidth={2} />
-            <span className="text-base font-medium">Back</span>
-          </Link>
-        ) : (
-          <div />
-        )}
-        <div className="flex items-center">{action ?? assistantAction}</div>
-      </div>
+      {backHref && (
+        <Link href={backHref} onClick={() => haptic('light')} className="inline-flex items-center gap-1 h-8 text-ink-tertiary active:opacity-60">
+          <ArrowLeft size={20} strokeWidth={2} />
+          <span className="text-base font-medium">Back</span>
+        </Link>
+      )}
+      {/* Title block and action share one row, vertically centred, so the
+          action button lines up with the heading instead of floating on its
+          own row above it. */}
+      <div className="flex items-center justify-between gap-3 min-h-10">
+        <div className="min-w-0">
       {/* User-reported findings, all addressed here once since every page
           shares this header:
           1. text-title-lg (1.8rem on this app's 17px root, ~30.6px) read
@@ -332,6 +332,9 @@ export function PageHeader({
         {title}
       </h1>
       {subtitle && <p className="text-sm text-ink-tertiary pb-1">{subtitle}</p>}
+        </div>
+        <div className="flex items-center shrink-0">{action ?? assistantAction}</div>
+      </div>
     </header>
   )
 }
