@@ -54,6 +54,19 @@ const DETECTOR_ROUTE: Record<string, string> = {
   family_emergency_fund_adequacy: '/health/savings',
 }
 
+/**
+ * The engine stores the rule id (e.g. "no_income_protection") as the
+ * hypothesis; a person shouldn't read snake_case. Sentence-case it, and
+ * pass through anything that is already prose.
+ */
+function feedTitle(i: Record<string, unknown>): string {
+  const raw = String(i['hypothesis'] ?? i['rule_id'] ?? '')
+  if (!raw) return 'Oak noticed something'
+  if (/\s/.test(raw)) return raw
+  const words = raw.replace(/_/g, ' ')
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
 /** An open insight, shaped as a feed item ("Oak noticed X — here's the next step"). */
 function insightToFeedItem(i: Record<string, unknown>) {
   const actions = Array.isArray(i['actions']) ? (i['actions'] as unknown[]).filter((a): a is string => typeof a === 'string') : []
@@ -62,7 +75,7 @@ function insightToFeedItem(i: Record<string, unknown>) {
     id: `${INSIGHT_PREFIX}${String(i['id'])}`,
     emoji: '',
     source: 'Oak',
-    subject: String(i['hypothesis'] ?? 'Oak noticed something'),
+    subject: feedTitle(i),
     aiSummary: String(i['reasoning'] ?? '').slice(0, 400),
     actionLabel: (actions[0] ?? 'Review').slice(0, 80),
     actionType: 'review' as const,

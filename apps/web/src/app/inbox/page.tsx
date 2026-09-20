@@ -10,7 +10,6 @@ import { PullToRefresh } from '@/components/PullToRefresh'
 import { SwipeableRow } from '@/components/SwipeableRow'
 import { haptic } from '@/lib/haptics'
 import { useToast } from '@/components/Toast'
-import { INBOX_ITEMS } from '@/lib/onboarding-data'
 import type { InboxItem } from '@/lib/onboarding-data'
 import { fetchInboxItems, dismissInboxItem, scanEmailInbox, fetchConnectorStatuses } from '@/lib/api'
 import { useAppStore } from '@/lib/store'
@@ -41,19 +40,27 @@ const actionTypeColor = (type: InboxItem['actionType']) => {
   return colors[type] ?? '#8a8070'
 }
 
+function policyFacts(p: NonNullable<InboxItem['policy']>): [string, string][] {
+  const money = (n: number) => `${p.currency ?? ''} ${n.toLocaleString()}`.trim()
+  const rows: [string, string | undefined][] = [
+    ['Provider', p.provider],
+    ['Type', p.type?.replace(/_/g, ' ')],
+    ['Policy no.', p.policyNumber],
+    ['Cover', p.coverAmount !== undefined ? money(p.coverAmount) : undefined],
+    ['Premium / month', p.monthlyPremium !== undefined ? money(p.monthlyPremium) : undefined],
+    ['Renews', p.renewalDate],
+  ]
+  return rows.filter((r): r is [string, string] => !!r[1])
+}
+
 export default function InboxPage() {
   const router = useRouter()
   const connectedConnectors = useAppStore((s) => s.connectedConnectors)
-  const dismissedInboxIds = useAppStore((s) => s.dismissedInboxIds)
-  const dismissInboxItemLocal = useAppStore((s) => s.dismissInboxItemLocal)
   const setInboxUnreadCount = useAppStore((s) => s.setInboxUnreadCount)
   const toast = useToast()
   // Pending undo timers — cleared if the user taps "Undo" before they fire.
   const undoTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
-  const [items, setItems] = useState<InboxItem[]>(
-    INBOX_ITEMS.filter((item) => !dismissedInboxIds.includes(item.id))
-  )
-  const [isLive, setIsLive] = useState(false)
+  const [items, setItems] = useState<InboxItem[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [dismissingId, setDismissingId] = useState<string | null>(null)
@@ -91,13 +98,7 @@ export default function InboxPage() {
 
   const loadInbox = useCallback(async () => {
     const result = await fetchInboxItems()
-    if (result.isLive && result.items.length > 0) {
-      setItems(result.items)
-      setIsLive(true)
-    } else {
-      setItems(INBOX_ITEMS.filter((item) => !useAppStore.getState().dismissedInboxIds.includes(item.id)))
-      setIsLive(false)
-    }
+    setItems(result.items)
     setLoading(false)
   }, [])
 
@@ -147,11 +148,7 @@ export default function InboxPage() {
     // Schedule the permanent commit after the undo window
     const timer = setTimeout(() => {
       undoTimers.current.delete(item.id)
-      if (isLive) {
-        dismissInboxItem(item.id)
-      } else {
-        dismissInboxItemLocal(item.id)
-      }
+      dismissInboxItem(item.id)
     }, 5000)
     undoTimers.current.set(item.id, timer)
 
@@ -164,19 +161,21 @@ export default function InboxPage() {
         // Restore the item
         setItems((prev) => {
           if (prev.some((i) => i.id === item.id)) return prev
-          return [...prev, item].sort((a, b) => {
-            // Maintain original order by id (demo) or date
-            const aIdx = INBOX_ITEMS.findIndex((d) => d.id === a.id)
-            const bIdx = INBOX_ITEMS.findIndex((d) => d.id === b.id)
-            return aIdx - bIdx
-          })
+          return [...prev, item].sort((a, b) => (a.date < b.date ? 1 : -1))
         })
         haptic('light')
       },
     })
-  }, [isLive, dismissInboxItemLocal, toast, announceDismissal])
+  }, [toast, announceDismissal])
 
   const handleAction = (item: InboxItem) => {
+    // Oak's recommendations link to where the user can act on them; the
+    // item stays until they dismiss it or the underlying gap is resolved.
+    if (item.route) {
+      haptic('light')
+      router.push(item.route)
+      return
+    }
     dismissWithUndo(item, 'success')
   }
 
@@ -189,8 +188,8 @@ export default function InboxPage() {
     <PullToRefresh onRefresh={loadInbox}>
     <div className="px-5 pt-2 space-y-4">
       <PageHeader
-        title="Inbox"
-        subtitle="AI reads your financial mail for you"
+        title="From Oak"
+        subtitle="What Oak noticed — and what to do next"
         action={
           unreadCount > 0 && (
             <motion.span
@@ -215,17 +214,12 @@ export default function InboxPage() {
         <GlassCard className="p-4 border-family-500/20">
           <div className="flex items-center gap-2 mb-2">
             <Bot size={18} className="text-family-400" />
-            <span className="text-sm font-semibold text-family-400">AI Summary</span>
-            {!isLive && (
-              <span className="text-caption text-warning font-semibold px-1.5 py-0.5 rounded-full bg-warning/10">
-                Sample
-              </span>
-            )}
+            <span className="text-sm font-semibold text-family-400">Oak's summary</span>
           </div>
           <p className="text-sm text-ink-secondary leading-relaxed">
-            {isLive
-              ? `You have ${unreadCount} unread items needing attention.`
-              : `These are sample inbox items. Connect your email to receive AI-summarized financial notifications automatically.`}
+            {unreadCount > 0
+              ? `Oak has ${unreadCount} recommendation${unreadCount === 1 ? '' : 's'} for you to look at.`
+              : 'Nothing new — you have seen everything Oak has for you.'}
           </p>
         </GlassCard>
       </motion.div>
@@ -306,10 +300,9 @@ export default function InboxPage() {
           <GlassCard>
             <EmptyState
               icon={Bot}
-              title="Inbox zero"
-              description="You're all caught up. Connect your email to automatically receive financial notifications here."
-              actionLabel="Connect email"
-              onAction={() => { haptic('light'); router.push('/connect') }}
+              title="Nothing needs your attention"
+              description="Oak will post here when it spots a gap, a renewal, or policy details in your email."
+              {...(emailConnected ? {} : { actionLabel: 'Connect email', onAction: () => { haptic('light'); router.push('/connect/email') } })}
             />
           </GlassCard>
         ) : (
@@ -347,7 +340,11 @@ export default function InboxPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-xs text-ink-tertiary">{item.source}</span>
+                      <span className="text-xs text-ink-tertiary">
+                        {item.source === 'Oak'
+                          ? 'Oak noticed'
+                          : `Found in your email${item.policy?.provider ? ` · ${item.policy.provider}` : ''}`}
+                      </span>
                       {!item.read && (
                         <span className="w-2 h-2 rounded-full" style={{ background: color }} />
                       )}
@@ -382,11 +379,23 @@ export default function InboxPage() {
                         <div className="glass rounded-2xl p-3 mb-3">
                           <div className="flex items-center gap-1.5 mb-1.5">
                             <Bot size={14} className="text-family-400" />
-                            <span className="text-xs font-semibold text-family-400">AI explains</span>
+                            <span className="text-xs font-semibold text-family-400">
+                              {item.source === 'Oak' ? 'Why Oak flagged this' : 'What the email says'}
+                            </span>
                           </div>
                           <p className="text-sm text-ink-secondary leading-relaxed">
                             <MoneyText text={item.aiSummary} />
                           </p>
+                          {item.policy && (
+                            <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                              {policyFacts(item.policy).map(([k, v]) => (
+                                <div key={k} className="contents">
+                                  <dt className="text-ink-tertiary">{k}</dt>
+                                  <dd className="text-ink-secondary font-medium">{v}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           <motion.button
@@ -418,11 +427,10 @@ export default function InboxPage() {
         )}
       </div>
 
-      {/* Empty state hint */}
       <div className="glass rounded-2xl p-4 flex items-start gap-2">
         <Info size={18} className="text-ink-tertiary flex-shrink-0 mt-0.5" />
         <p className="text-xs text-ink-tertiary leading-relaxed">
-          Connect your email to automatically see every financial notification — bank statements, insurance renewals, pension updates — all summarized in plain language.
+          This isn’t your mailbox. Oak reads your connected email only for insurance and policy details, and ignores everything else. For information only — not advice.
         </p>
       </div>
     </div>

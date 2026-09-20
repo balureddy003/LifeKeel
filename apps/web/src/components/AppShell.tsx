@@ -17,7 +17,6 @@ import { fetchInboxItems, fetchFamilyInsights } from '@/lib/api'
 import { flushMutationQueue } from '@/lib/offline-queue'
 import { warmCache } from '@/lib/fetch-cache'
 import { useToast } from './Toast'
-import { INBOX_ITEMS } from '@/lib/onboarding-data'
 import { MarketingLanding } from './MarketingLanding'
 import { NavRail } from './NavRail'
 import { haptic } from '@/lib/haptics'
@@ -344,7 +343,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { config, emergencyActive, deactivateEmergency } = useMode()
   const router = useRouter()
   const setInboxUnreadCount = useAppStore((s) => s.setInboxUnreadCount)
-  const dismissedInboxIds = useAppStore((s) => s.dismissedInboxIds)
 
   // Pre-seed the inbox unread badge so it shows from the first page load
   // (not only after visiting Inbox).  The Inbox page later overrides this
@@ -352,15 +350,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isAuthenticated || !family) return
     let cancelled = false
-    fetchInboxItems().then(({ items, isLive }) => {
+    fetchInboxItems().then(({ items }) => {
       if (cancelled) return
-      if (isLive) {
-        setInboxUnreadCount(items.filter((i) => !i.read).length)
-      } else {
-        // Demo mode — filter out locally dismissed items
-        const remaining = INBOX_ITEMS.filter((i) => !dismissedInboxIds.includes(i.id))
-        setInboxUnreadCount(remaining.filter((i) => !i.read).length)
-      }
+      setInboxUnreadCount(items.filter((i) => !i.read).length)
     })
     // Warm the next-most-likely read on idle so Home/insights paint from
     // cache on first navigation rather than skeletoning on the wire.

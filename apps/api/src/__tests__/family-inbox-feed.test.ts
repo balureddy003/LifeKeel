@@ -47,6 +47,15 @@ const insight = {
   created_at: new Date('2026-09-20T10:00:00Z'),
 }
 
+describe('feed titles', () => {
+  it('turns a snake_case rule id into a readable title', async () => {
+    const { db } = makeDb({ insights: { rows: [{ ...insight, hypothesis: 'no_income_protection' }] }, inbox_items: { rows: [] } })
+    const app = await build(db)
+    const body = (await app.inject({ method: 'GET', url: '/inbox' })).json()
+    expect(body.items[0].subject).toBe('No income protection')
+  })
+})
+
 describe('GET /inbox — Oak recommendations feed', () => {
   it('returns open family insights as recommendations, merged with policy emails, newest first', async () => {
     const { db, finds } = makeDb({
@@ -74,6 +83,8 @@ describe('GET /inbox — Oak recommendations feed', () => {
     const app = await build(db)
     const res = await app.inject({ method: 'POST', url: '/inbox/insight:ins1/dismiss' })
     expect(res.statusCode).toBe(200)
-    expect(updateOne).toHaveBeenCalledWith({ id: 'ins1' }, expect.objectContaining({ $set: expect.objectContaining({ state: 'dismissed' }) }))
+    const [filter, update] = updateOne.mock.calls[0] as unknown as [Record<string, unknown>, { $set: Record<string, unknown> }]
+    expect(filter).toMatchObject({ id: 'ins1', tenant_id: 't1' })
+    expect(update.$set['state']).toBe('dismissed')
   })
 })
