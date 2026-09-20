@@ -178,6 +178,22 @@ describe('PRD-102: policies[] and the new protection-domain rules', () => {
     await engine.load()
   })
 
+  it('marks insights_evaluated_at only after a generate_insights submit, not after an autosave', async () => {
+    const { app } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: BASE_PROFILE })
+    const autosaved = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    expect(autosaved.json().profile.insights_evaluated_at).toBeUndefined()
+
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    const finalised = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    expect(finalised.json().profile.insights_evaluated_at).toBeDefined()
+
+    // A later autosave must not clear it.
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: BASE_PROFILE })
+    const again = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    expect(again.json().profile.insights_evaluated_at).toBeDefined()
+  })
+
   it('round-trips policies[] through POST then GET', async () => {
     const { app } = await buildApp(engine)
     const policies = [{ type: 'life', provider: 'Acme Insurance', coverage_amount_minor: 10_000_000, monthly_premium_minor: 2000 }]
