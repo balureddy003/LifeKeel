@@ -295,8 +295,8 @@ export function PageHeader({
     // fades the blur and removes the need for a border line) lets it melt
     // into the glass background while still keeping the title legible over
     // content scrolling underneath.
-    <header className="sticky top-0 z-sticky safe-area-top bg-navbg/55 backdrop-blur-xl -mx-5 px-5 py-4 [mask-image:linear-gradient(to_bottom,#000_80%,transparent),linear-gradient(to_right,transparent,#000_6%,#000_94%,transparent)] [mask-composite:intersect] [-webkit-mask-image:linear-gradient(to_bottom,#000_80%,transparent),linear-gradient(to_right,transparent,#000_6%,#000_94%,transparent)] [-webkit-mask-composite:source-in]">
-      <div className="flex items-center justify-between h-11">
+    <header className="sticky top-0 z-sticky safe-area-top bg-navbg/55 backdrop-blur-xl -mx-5 px-5 py-2 [mask-image:linear-gradient(to_bottom,#000_80%,transparent),linear-gradient(to_right,transparent,#000_6%,#000_94%,transparent)] [mask-composite:intersect] [-webkit-mask-image:linear-gradient(to_bottom,#000_80%,transparent),linear-gradient(to_right,transparent,#000_6%,#000_94%,transparent)] [-webkit-mask-composite:source-in]">
+      <div className="flex items-center justify-between h-10">
         {backHref ? (
           <Link href={backHref} onClick={() => haptic('light')} className="flex items-center gap-1 text-ink-tertiary active:opacity-60">
             <ArrowLeft size={20} strokeWidth={2} />
@@ -323,11 +323,15 @@ export function PageHeader({
              score bar already uses (from-family-400 to-family-500) carried
              into the title itself rather than confined to icons/buttons,
              and more vertical room (py-3->py-4, pt-1/pb-1->pt-2/pb-2) so
-             the title doesn't feel crowded against the header's own edges. */}
-      <h1 className="text-title-md leading-tight font-semibold tracking-tight pt-2 pb-2 bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">
+             the title doesn't feel crowded against the header's own edges.
+          3. Still "too big" (142px tall header, 25.5px title): compacted to
+             a text-xl (~21px) title, h-10 action row and py-2/pt-1/pb-1
+             spacing (~100px) — the semibold gradient title keeps its
+             hierarchy without the slab of empty space around it. */}
+      <h1 className="text-xl leading-tight font-semibold tracking-tight pt-1 pb-1 bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">
         {title}
       </h1>
-      {subtitle && <p className="text-sm text-ink-tertiary pb-2">{subtitle}</p>}
+      {subtitle && <p className="text-sm text-ink-tertiary pb-1">{subtitle}</p>}
     </header>
   )
 }
