@@ -161,6 +161,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         projection: {
           _id: 0, id: 1, email: 1, name: 1, tenant_id: 1, roles: 1, status: 1,
           email_verified: 1, external_provider: 1, created_at: 1, updated_at: 1,
+          failed_login_attempts: 1, locked_until: 1, sessions_revoked_at: 1,
           'attribution.utm_source': 1, 'attribution.utm_campaign': 1,
         },
       }).sort({ created_at: -1 }).skip(offset).limit(limit).toArray(),
@@ -294,6 +295,44 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     if (result.matchedCount === 0) return reply.status(404).send({ error: 'User not found' })
     await audit.log(request, 'operator.user.revoke_sessions', 'user', request.params.id, parsed.data.reason)
     return { ok: true }
+  })
+
+  /** Clear a login lockout early — the lock is a brute-force control, so an
+   *  operator lift needs a reason and an audit entry like any other
+   *  security-relevant action. */
+  app.post<{ Params: { id: string } }>('/operator/users/:id/unlock', { preHandler: requireOperator(db, 'users.manage') }, async (request, reply) => {
+    const parsed = ReasonSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+    const result = await users.updateOne(
+      { id: request.params.id, $or: [{ locked_until: { $gt: new Date() } }, { failed_login_attempts: { $gt: 0 } }] },
+      { $set: { failed_login_attempts: 0, updated_at: new Date() }, $unset: { locked_until: '' } },
+    )
+    if (result.matchedCount === 0) return reply.status(404).send({ error: 'User not found or not locked' })
+    await audit.log(request, 'operator.user.unlock', 'user', request.params.id, parsed.data.reason)
+    return { ok: true }
+  })
+
+  /** Account security posture: active lockouts, users accumulating failed
+   *  attempts, suspensions, and recent session revocations. */
+  app.get('/operator/security', { preHandler: requireOperator(db, 'users.read') }, async () => {
+    const now = new Date()
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    const [locked, withFailures, suspended, revoked7d] = await Promise.all([
+      users.find(
+        { locked_until: { $gt: now } },
+        { projection: { _id: 0, id: 1, email: 1, tenant_id: 1, failed_login_attempts: 1, locked_until: 1 } },
+      ).sort({ locked_until: -1 }).limit(50).toArray(),
+      users.countDocuments({ failed_login_attempts: { $gt: 0 } }),
+      users.countDocuments({ status: 'suspended' }),
+      users.countDocuments({ sessions_revoked_at: { $gte: weekAgo } }),
+    ])
+    return {
+      generated_at: now.toISOString(),
+      locked_users: locked,
+      users_with_failed_logins: withFailures,
+      suspended_users: suspended,
+      sessions_revoked_7d: revoked7d,
+    }
   })
 
   // ── Platform operator management (super_admin) ──────────────────────────

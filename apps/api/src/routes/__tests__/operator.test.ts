@@ -719,3 +719,45 @@ describe('leads detail, funnel, connectors, configuration, infrastructure', () =
     await app.close()
   })
 })
+
+describe('security monitoring', () => {
+  it('surfaces locked accounts and supports audited early unlock', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    await db.collection('users').updateOne(
+      { id: 'user-2' },
+      { $set: { failed_login_attempts: 5, locked_until: new Date(Date.now() + 10 * 60 * 1000) } },
+    )
+    const app = await buildApp()
+
+    const sec = await app.inject({ method: 'GET', url: '/operator/security' })
+    expect(sec.statusCode).toBe(200)
+    expect(sec.json().locked_users).toHaveLength(1)
+    expect(sec.json().locked_users[0].id).toBe('user-2')
+    expect(sec.json().users_with_failed_logins).toBe(1)
+
+    // users list now carries lockout state
+    const list = await app.inject({ method: 'GET', url: '/operator/users?q=family@example.com' })
+    expect(list.json().users[0].locked_until).toBeDefined()
+
+    const unlock = await app.inject({ method: 'POST', url: '/operator/users/user-2/unlock', payload: { reason: 'Verified identity via support call' } })
+    expect(unlock.statusCode).toBe(200)
+    const user = await db.collection('users').findOne({ id: 'user-2' })
+    expect(user?.['locked_until']).toBeUndefined()
+    expect(user?.['failed_login_attempts']).toBe(0)
+
+    const again = await app.inject({ method: 'POST', url: '/operator/users/user-2/unlock', payload: { reason: 'Already unlocked now' } })
+    expect(again.statusCode).toBe(404)
+
+    const entry = await db.collection('operator_audit_log').findOne({ action: 'operator.user.unlock' })
+    expect(entry?.['target_id']).toBe('user-2')
+    await app.close()
+  })
+
+  it('denies unlock to roles without users.manage', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    const app = await buildApp()
+    const res = await app.inject({ method: 'POST', url: '/operator/users/user-2/unlock', payload: { reason: 'Support cannot unlock' } })
+    expect(res.statusCode).toBe(403)
+    await app.close()
+  })
+})

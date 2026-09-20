@@ -32,6 +32,7 @@ export type OperatorAuditAction =
   | 'operator.connector.revoke'
   | 'operator.configuration.update'
   | 'operator.infrastructure.record_cost'
+  | 'operator.user.unlock'
 
 export interface OperatorAuditEntry {
   operator_user_id: string

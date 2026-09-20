@@ -1507,6 +1507,9 @@ export interface OperatorUser {
   email_verified?: boolean
   external_provider?: string
   attribution?: { utm_source?: string; utm_campaign?: string }
+  failed_login_attempts?: number
+  locked_until?: string
+  sessions_revoked_at?: string
   created_at: string
 }
 
@@ -1602,6 +1605,19 @@ export const suspendOperatorUser = (id: string, reason: string) => operatorActio
 export const reactivateOperatorUser = (id: string, reason: string) => operatorAction(`/operator/users/${id}/reactivate`, reason)
 export const sendUserPasswordReset = (id: string, reason: string) => operatorAction(`/operator/users/${id}/password-reset`, reason)
 export const revokeUserSessions = (id: string, reason: string) => operatorAction(`/operator/users/${id}/revoke-sessions`, reason)
+export const unlockUser = (id: string, reason: string) => operatorAction(`/operator/users/${id}/unlock`, reason)
+
+export interface OperatorSecurity {
+  generated_at: string
+  locked_users: Array<{ id: string; email: string; tenant_id: string; failed_login_attempts?: number; locked_until?: string }>
+  users_with_failed_logins: number
+  suspended_users: number
+  sessions_revoked_7d: number
+}
+
+export function fetchOperatorSecurity(): Promise<OperatorSecurity> {
+  return operatorRequest('/operator/security')
+}
 export const suspendOperatorTenant = (id: string, reason: string) => operatorAction(`/operator/tenants/${id}/suspend`, reason)
 export const reactivateOperatorTenant = (id: string, reason: string) => operatorAction(`/operator/tenants/${id}/reactivate`, reason)
 export const suspendOperator = (id: string, reason: string) => operatorAction(`/operator/operators/${id}/suspend`, reason)

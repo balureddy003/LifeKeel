@@ -1,17 +1,22 @@
 'use client'
 
 import { FormEvent, useEffect, useState } from 'react'
-import { Search } from 'lucide-react'
+import { Search, ShieldAlert } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import { useToast } from '@/components/Toast'
-import { fetchOperatorUsers, suspendOperatorUser, reactivateOperatorUser, sendUserPasswordReset, revokeUserSessions, type OperatorUser } from '@/lib/api'
+import { fetchOperatorUsers, fetchOperatorSecurity, suspendOperatorUser, reactivateOperatorUser, sendUserPasswordReset, revokeUserSessions, unlockUser, type OperatorSecurity, type OperatorUser } from '@/lib/api'
 import { ReasonAction } from '../_components/ReasonAction'
+
+function isLocked(user: OperatorUser): boolean {
+  return user.locked_until !== undefined && new Date(user.locked_until).getTime() > Date.now()
+}
 
 export default function OperatorUsersPage() {
   const toast = useToast()
   const [users, setUsers] = useState<OperatorUser[]>([])
   const [query, setQuery] = useState('')
   const [total, setTotal] = useState(0)
+  const [security, setSecurity] = useState<OperatorSecurity | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -29,7 +34,10 @@ export default function OperatorUsersPage() {
     }
   }
 
-  useEffect(() => { void load() }, [])
+  useEffect(() => {
+    void load()
+    fetchOperatorSecurity().then(setSecurity).catch(() => setSecurity(null))
+  }, [])
 
   function search(event: FormEvent) {
     event.preventDefault()
@@ -44,6 +52,30 @@ export default function OperatorUsersPage() {
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Email, name, user or tenant ID" className="glass-input min-w-0 flex-1 rounded-xl px-4 py-3 text-sm" />
         <button className="rounded-xl bg-family-500 px-4 text-white" aria-label="Search users"><Search size={18} /></button>
       </form>
+      {security && (security.locked_users.length > 0 || security.users_with_failed_logins > 0) && (
+        <GlassCard className="mt-4 border-warning/25 p-4">
+          <div className="flex items-center gap-2 text-warning"><ShieldAlert size={16} /><span className="text-sm font-semibold">Security</span></div>
+          <p className="mt-1 text-xs text-ink-secondary">
+            {security.locked_users.length} locked out · {security.users_with_failed_logins} with failed attempts · {security.sessions_revoked_7d} session revocations this week
+          </p>
+          {security.locked_users.map((u) => (
+            <div key={u.id} className="mt-2 flex items-center justify-between rounded-lg bg-warning/10 px-3 py-2 text-xs">
+              <span className="text-ink-secondary">
+                {u.email} · <code>{u.tenant_id}</code> · {u.failed_login_attempts} attempts
+                {u.locked_until && <> · locked until {new Date(u.locked_until).toLocaleTimeString()}</>}
+              </span>
+              <ReasonAction
+                label="Unlock"
+                onConfirm={async (r) => {
+                  await unlockUser(u.id, r)
+                  toast({ message: 'Lockout cleared', variant: 'success' })
+                  fetchOperatorSecurity().then(setSecurity).catch(() => {})
+                }}
+              />
+            </div>
+          ))}
+        </GlassCard>
+      )}
       {error && <p className="mt-4 text-sm text-danger">{error}</p>}
       {loading ? <div className="shimmer mt-5 h-32 rounded-2xl" /> : (
         <div className="mt-5 space-y-3">
@@ -56,6 +88,7 @@ export default function OperatorUsersPage() {
                   {user.attribution?.utm_source && (
                     <span className="rounded-full border border-family-500/25 px-2 py-0.5 text-xs text-family-400">{user.attribution.utm_source}</span>
                   )}
+                  {isLocked(user) && <span className="rounded-full border border-warning/40 px-2 py-0.5 text-xs text-warning">locked</span>}
                   <span className={`rounded-full border px-2 py-0.5 text-xs ${user.status === 'suspended' ? 'border-danger/25 text-danger' : 'border-success/25 text-success'}`}>{user.status ?? 'active'}</span>
                 </div>
               </div>
