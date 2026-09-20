@@ -122,9 +122,18 @@ export default function InboxPage() {
     const result = await scanEmailInbox()
     if (result) {
       haptic('success')
+      // Without a message a scan that finds nothing looks like a dead button.
+      toast({
+        message: result.scanned === 0
+          ? 'No new mail since the last check'
+          : result.inboxItemsCreated > 0
+            ? `Found ${result.inboxItemsCreated} new policy email${result.inboxItemsCreated === 1 ? '' : 's'}`
+            : `Checked ${result.scanned} new email${result.scanned === 1 ? '' : 's'} — nothing about policies`,
+      })
       await loadInbox()
     } else {
       haptic('warning')
+      toast({ message: 'Could not check your mailbox right now', variant: 'error' })
     }
     setScanning(false)
   }
@@ -249,16 +258,19 @@ export default function InboxPage() {
       {/* Email connected — manual rescan */}
       {emailConnected && !needsReauth && !loading && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <GlassCard className="p-4 flex items-center gap-3">
-            <Bot size={20} className="text-family-400 flex-shrink-0" />
-            <div className="flex-1">
+          <GlassCard className="p-4">
+            <div className="flex items-start gap-3">
+              <Bot size={20} className="text-family-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
               <div className="text-sm font-semibold text-ink-secondary">Email connected</div>
               <p className="text-xs text-ink-tertiary mt-0.5">New mail is checked every 15 minutes. Oak only keeps insurance and policy emails.</p>
+              </div>
             </div>
+            <div className="flex gap-2 mt-3">
             <button
               onClick={handleScanNow}
               disabled={scanning}
-              className="text-xs font-semibold text-family-400 px-3 py-2 rounded-xl bg-family-500/10 active:opacity-80 disabled:opacity-50 flex items-center gap-1.5"
+              className="flex-1 justify-center text-xs font-semibold text-family-400 px-3 py-2.5 rounded-xl bg-family-500/10 active:opacity-80 disabled:opacity-50 flex items-center gap-1.5"
             >
               {scanning ? <Loader2 size={12} className="animate-spin" /> : null}
               {scanning ? 'Scanning...' : 'Scan now'}
@@ -266,11 +278,12 @@ export default function InboxPage() {
             <button
               onClick={handleLookBack}
               disabled={lookingBack}
-              className="text-xs font-semibold text-family-400 px-3 py-2 rounded-xl bg-family-500/10 active:opacity-80 disabled:opacity-50 flex items-center gap-1.5"
+              className="flex-1 justify-center text-xs font-semibold text-family-400 px-3 py-2.5 rounded-xl bg-family-500/10 active:opacity-80 disabled:opacity-50 flex items-center gap-1.5"
             >
               {lookingBack ? <Loader2 size={12} className="animate-spin" /> : null}
               {lookingBack ? 'Searching…' : 'Find policies (90 days)'}
             </button>
+            </div>
           </GlassCard>
         </motion.div>
       )}
