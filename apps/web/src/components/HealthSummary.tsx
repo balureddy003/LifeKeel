@@ -2,10 +2,13 @@
 
 import { motion } from 'framer-motion'
 import Link from 'next/link'
+import { useState } from 'react'
 import { Heart, Wallet, Target, PiggyBank } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { GlassCard, SkeletonCard } from './Glass'
 import { haptic } from '@/lib/haptics'
+import { evaluateSavedProfile } from '@/lib/evaluate-profile'
+import { useToast } from '@/components/Toast'
 import { useFamilyHealthDomains, type HealthDomain } from '@/lib/useFamilyData'
 
 // Apple Health-style activity ring
@@ -32,7 +35,7 @@ function ActivityRing({
 }) {
   const radius = (size - strokeWidth) / 2
   const circumference = 2 * Math.PI * radius
-  const offset = circumference - (progress / 100) * circumference
+  const offset = circumference - ((isSample ? 0 : progress) / 100) * circumference
 
   const content = (
     <div className="flex flex-col items-center gap-1">
@@ -64,7 +67,7 @@ function ActivityRing({
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <Icon size={16} color={textColor} strokeWidth={2} />
           <span className="text-xs font-bold" style={{ color: textColor }}>
-            {progress}%
+            {isSample ? '—' : `${progress}%`}
           </span>
         </div>
       </div>
@@ -98,14 +101,32 @@ const DOMAIN_META: Record<HealthDomain, { color: string; textColor: string; labe
 
 export function HealthSummary() {
   const { domains, loading } = useFamilyHealthDomains()
+  const toast = useToast()
+  const [analysing, setAnalysing] = useState(false)
+
+  const analyse = async () => {
+    haptic('light')
+    setAnalysing(true)
+    try {
+      const n = await evaluateSavedProfile()
+      toast({ message: n > 0 ? `Found ${n} thing${n === 1 ? '' : 's'} worth a look` : 'Analysis done — no gaps found' })
+      window.location.reload()
+    } catch (e) {
+      toast({ message: e instanceof Error ? e.message : 'Could not analyse your profile', variant: 'error' })
+      setAnalysing(false)
+    }
+  }
 
   if (loading) {
     return <SkeletonCard lines={4} />
   }
 
   const domainKeys = Object.keys(DOMAIN_META) as HealthDomain[]
+  // Only domains that were actually assessed count toward the overall
+  // number — a placeholder score isn't evidence of anything.
+  const liveKeys = domainKeys.filter((d) => domains[d].hasLiveData)
   const overallScore = Math.round(
-    domainKeys.reduce((sum, d) => sum + domains[d].score, 0) / domainKeys.length,
+    liveKeys.reduce((sum, d) => sum + domains[d].score, 0) / liveKeys.length,
   )
   const anySample = domainKeys.some((d) => !domains[d].hasLiveData)
 
@@ -118,12 +139,18 @@ export function HealthSummary() {
         <div className="text-xs text-ink-tertiary mt-1">
           Your health across protection, wealth and goals appears once your financial profile is finished.
         </div>
-        <Link
-          href="/financial-profile"
-          className="inline-block mt-3 text-sm font-semibold text-family-400 active:opacity-70"
-        >
-          Finish your profile →
-        </Link>
+        <div className="mt-3 flex items-center gap-4">
+          <button
+            onClick={analyse}
+            disabled={analysing}
+            className="px-4 py-2 rounded-full bg-family-500 text-white text-sm font-semibold active:opacity-80 disabled:opacity-60"
+          >
+            {analysing ? 'Analysing…' : 'Analyse what I’ve entered'}
+          </button>
+          <Link href="/financial-profile" className="text-sm font-semibold text-family-400 active:opacity-70">
+            Edit profile
+          </Link>
+        </div>
       </GlassCard>
     )
   }
@@ -135,7 +162,7 @@ export function HealthSummary() {
           <div className="text-sm font-semibold text-ink-secondary">Family Health</div>
           <div className="text-xs text-ink-tertiary">
             Across protection, wealth & goals
-            {anySample && <span className="text-warning"> · some sample data</span>}
+            {anySample && <span className="text-warning"> · — means not set up yet</span>}
           </div>
         </div>
         <div className="text-3xl font-bold text-success">{overallScore}</div>

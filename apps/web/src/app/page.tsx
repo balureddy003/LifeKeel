@@ -662,6 +662,9 @@ export default function HomePage() {
     ? undefined
     : insights.find((i) => i.detector_id === 'family_retirement_gap')
   const openInsightCount = insights.filter((i) => !RESOLVED_INSIGHT_STATES.includes(i.state)).length
+  // "On track" means no open gaps, not merely a high number — three open
+  // protection gaps still score 77.
+  const onTrack = openInsightCount === 0 && readinessScore >= 70
   const setCmdkOpen = useAppStore((s) => s.setCmdkOpen)
   const profileCompleteness = useAppStore((s) => s.profileCompleteness)
 
@@ -732,20 +735,20 @@ export default function HomePage() {
                 <ScoreRing score={readinessScore} size={80} />
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-sm font-semibold ${readinessScore >= 70 ? 'text-success' : 'text-warning'}`}>
+                    <span className={`text-sm font-semibold ${onTrack ? 'text-success' : 'text-warning'}`}>
                       {config.simpleLanguage
-                        ? simpleHomeCopy({ hasLiveData, onTrack: readinessScore >= 70 }).status
-                        : readinessScore >= 70 ? "You're on track" : 'Some insights need review'}
+                        ? simpleHomeCopy({ hasLiveData, onTrack: onTrack }).status
+                        : onTrack ? "You're on track" : 'Some insights need review'}
                     </span>
                     <motion.span
-                      className={`w-2 h-2 rounded-full ${readinessScore >= 70 ? 'bg-success' : 'bg-warning'}`}
+                      className={`w-2 h-2 rounded-full ${onTrack ? 'bg-success' : 'bg-warning'}`}
                       animate={{ opacity: [1, 0.3, 1] }}
                       transition={{ duration: 2, repeat: Infinity }}
                     />
                   </div>
                   <p className="text-sm text-ink-secondary leading-relaxed">
                     {config.simpleLanguage
-                      ? simpleHomeCopy({ hasLiveData, onTrack: readinessScore >= 70 }).body
+                      ? simpleHomeCopy({ hasLiveData, onTrack: onTrack }).body
                       : 'Your family readiness score reflects the gaps found in your profile so far. Connect more data sources for a complete picture.'}
                   </p>
                   {profileCompleteness > 0 && profileCompleteness < 100 && (

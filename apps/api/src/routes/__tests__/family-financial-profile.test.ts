@@ -82,6 +82,10 @@ function makeDb() {
       stored = { ...(stored ?? {}), ...update.$set, version: currentVersion + (update.$inc?.['version'] ?? 0) }
       return stored
     }),
+    updateOne: vi.fn(async (_filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
+      stored = { ...(stored ?? {}), ...update.$set }
+      return { matchedCount: stored ? 1 : 0 }
+    }),
     createIndex: vi.fn(async () => ({})),
   }
   // PRD-107: a minimal in-memory stand-in for the real 'insights' collection
@@ -330,6 +334,23 @@ describe('unset targets and missing monthly expenses', () => {
     expect(rules).toContain('no_income_protection')
     expect(insights.some((i) => i.detector_id === 'family_education_shortfall')).toBe(false)
     expect(insights.some((i) => i.detector_id === 'family_retirement_gap')).toBe(false)
+  })
+
+  it('POST /evaluate runs detectors on the saved profile without re-entry and stamps it evaluated', async () => {
+    const { app, insights } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: UNSET }) // autosave only
+    expect(insights).toHaveLength(0)
+    const res = await app.inject({ method: 'POST', url: '/family/financial-profile/evaluate' })
+    expect(res.statusCode).toBe(200)
+    expect(insights.map((i) => i.rule_id)).toContain('life_insurance_below_household_needs')
+    const get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    expect(get.json().profile.insights_evaluated_at).toBeDefined()
+  })
+
+  it('POST /evaluate is a 404 when there is no profile', async () => {
+    const { app } = await buildApp(engine)
+    const res = await app.inject({ method: 'POST', url: '/family/financial-profile/evaluate' })
+    expect(res.statusCode).toBe(404)
   })
 
   it('derives monthly expenses from annual living expenses when none was entered', async () => {

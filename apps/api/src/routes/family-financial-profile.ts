@@ -567,6 +567,24 @@ export async function registerFamilyFinancialProfileRoutes(
     return { profile, updatedAt: updated_at, version: version ?? 0 }
   })
 
+  // Runs the detectors against the profile already on file — for a family
+  // whose wizard autosaved every step but never reached the final submit,
+  // so they don't have to re-enter anything to see their gaps. Tier 0:
+  // informational insights only, nothing is sent or executed anywhere.
+  app.post('/family/financial-profile/evaluate', async (req, reply) => {
+    const { tenant_id } = req.authContext
+    const doc = await profileFor(tenant_id).findOne({})
+    if (!doc) return reply.status(404).send({ error: 'No financial profile on file yet' })
+    const { tenant_id: _t, updated_at: _u, version: _v, _id: _i, insights_evaluated_at: _e, ...rest } = doc as Record<string, unknown>
+    const parsed = FinancialProfileSchema.safeParse(rest)
+    if (!parsed.success) {
+      return reply.status(422).send({ error: 'Saved profile is incomplete', issues: parsed.error.issues })
+    }
+    const insightsGenerated = await evaluateProfileAndGenerateInsights(parsed.data, tenant_id, engine, db, onInsightsGenerated)
+    await profileFor(tenant_id).updateOne({}, { $set: { insights_evaluated_at: new Date() } })
+    return reply.send({ ok: true, insights_generated: insightsGenerated })
+  })
+
   app.post<{ Body: FinancialProfile & { generate_insights?: boolean; version?: number } }>('/family/financial-profile', async (req, reply) => {
     const { generate_insights, version: clientVersion, ...body } = req.body
     const parsed = FinancialProfileSchema.safeParse(body)
