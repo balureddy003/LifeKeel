@@ -66,7 +66,16 @@ export interface ExecutionSummary {
   succeeded: number
   failed: number
   skipped: number
+  /** Receipts still claimed by another in-flight dispatcher — outcome not yet known. */
+  pending: number
 }
+
+/**
+ * How long a 'pending' dispatch claim can go without an outcome write before
+ * it's treated as a crashed dispatch (→ execution_ambiguous). Must exceed
+ * the slowest realistic provider call, including SDK-level retries.
+ */
+const ACTION_CLAIM_STALE_MS = 2 * 60 * 1000
 
 /**
  * Classifies a dispatch failure by retryability, mirroring the distinction
@@ -171,6 +180,7 @@ export class ActionExecutor {
       succeeded: receipts.filter(r => r.outcome === 'executed' || r.outcome === 'execution_skipped').length,
       failed:    receipts.filter(r => r.outcome === 'execution_failed' || r.outcome === 'execution_ambiguous').length,
       skipped:   receipts.filter(r => r.outcome === 'execution_skipped').length,
+      pending:   receipts.filter(r => r.outcome === 'pending').length,
     }
   }
 
@@ -192,58 +202,117 @@ export class ActionExecutor {
       .update(JSON.stringify({ insight_id: insight.id, action_label: intent.label, action_type: intent.type }))
       .digest('hex')
 
-    // Idempotency check: an 'executed'/'execution_skipped' receipt for this
-    // exact action already exists (e.g. this is a retry-execution call) —
-    // don't re-dispatch a side effect that already happened. A prior
-    // 'execution_failed'/'execution_ambiguous' receipt is superseded below,
-    // since that's exactly the case this retry path exists to resolve.
-    const existing = await this.col.findOne({ tenant_id: tenantId, insight_id: insight.id, payload_hash: payloadHash })
-    if (existing && (existing.outcome === 'executed' || existing.outcome === 'execution_skipped')) {
-      return existing
-    }
-    if (existing) {
-      await this.col.deleteOne({ id: existing.id })
-    }
-
-    const base: Omit<ActionReceipt, 'outcome' | 'outcome_reason'> = {
+    // Claim-before-dispatch: the 'pending' receipt is written BEFORE the
+    // provider call, and the unique index on (tenant_id, insight_id,
+    // payload_hash) makes the insert an atomic claim — exactly one caller
+    // wins. The old order (dispatch, then insert) had a crash window: a
+    // process that died after the provider succeeded but before the insert
+    // left no record, so the next retry dispatched again. A crash now
+    // leaves a 'pending' receipt; once it's older than CLAIM_STALE_MS the
+    // next caller marks it 'execution_ambiguous' — outcome unknown, needs
+    // reconciliation — rather than blindly re-dispatching.
+    const claim: ActionReceipt = {
       id:           randomUUID(),
       insight_id:   insight.id,
       tenant_id:    tenantId,
       action_label: intent.label,
       action_type:  intent.type,
+      outcome:      'pending',
       executed_at:  new Date(),
+      claimed_at:   new Date(),
+      attempts:     1,
       dry_run:      dryRun,
       payload_hash: payloadHash,
     }
 
-    let receipt: ActionReceipt
-    if (dryRun) {
-      receipt = { ...base, outcome: 'execution_skipped', outcome_reason: 'dry_run' }
-    } else if (intent.type === 'log_only') {
-      receipt = { ...base, outcome: 'execution_skipped', outcome_reason: 'log_only' }
-    } else {
-      try {
-        await this.dispatch(intent, insight, tenantId)
-        receipt = { ...base, outcome: 'executed' }
-      } catch (err) {
-        receipt = { ...base, outcome: classifyDispatchError(err), outcome_reason: String(err) }
-      }
+    try {
+      await this.col.insertOne(claim)
+      return await this.dispatchClaim(claim, intent, insight, dryRun)
+    } catch (err) {
+      if ((err as { code?: number }).code !== 11000) throw err
     }
 
-    // Awaited — a receipt that only exists in the HTTP response and never
-    // reaches the DB is an audit-trail gap, not just a slow write. A
-    // duplicate-key race here (concurrent retry) means another call already
-    // recorded this action — defer to whatever it wrote.
-    try {
-      await this.col.insertOne(receipt)
-    } catch (err) {
-      if ((err as { code?: number }).code === 11000) {
-        const winner = await this.col.findOne({ tenant_id: tenantId, insight_id: insight.id, payload_hash: payloadHash })
-        if (winner) return winner
+    const existing = await this.col.findOne({ tenant_id: tenantId, insight_id: insight.id, payload_hash: payloadHash })
+    if (!existing) return claim // index raced; another writer owns it — return our claim view
+
+    switch (existing.outcome) {
+      case 'executed':
+        return existing
+      case 'execution_skipped': {
+        // A dry-run skip is a simulation record, not a real side effect —
+        // it must not suppress a later live execution of the same action
+        // (previously a dry_run receipt permanently turned approve+send
+        // into a no-op for that insight). A live run supersedes it.
+        if (existing.dry_run && !dryRun) {
+          const removed = await this.col.deleteOne({ id: existing.id, outcome: 'execution_skipped' })
+          if (removed.deletedCount === 1) return this.runAction(opts)
+        }
+        return existing
       }
-      throw err
+      case 'pending': {
+        const claimedAt = new Date(existing.claimed_at ?? existing.executed_at).getTime()
+        if (Date.now() - claimedAt < ACTION_CLAIM_STALE_MS) {
+          return existing // another worker is mid-dispatch — defer to it
+        }
+        // Stale claim: the dispatcher crashed between provider call and
+        // outcome write (or before it). Record the ambiguity; never
+        // auto-redispatch a side effect whose outcome is unknown.
+        const marked = (await this.col.findOneAndUpdate(
+          { id: existing.id, outcome: 'pending' },
+          { $set: { outcome: 'execution_ambiguous', outcome_reason: 'dispatch claim expired — provider outcome unknown' } },
+          { returnDocument: 'after' },
+        )) as ActionReceipt | null
+        return marked ?? existing
+      }
+      default: {
+        // execution_failed / execution_ambiguous — this is the retry path.
+        // Atomically transition to 'pending' so a second concurrent retry
+        // loses the claim instead of double-dispatching.
+        const reclaimed = (await this.col.findOneAndUpdate(
+          { id: existing.id, outcome: { $in: ['execution_failed', 'execution_ambiguous'] } },
+          {
+            $set: { outcome: 'pending', claimed_at: new Date(), executed_at: new Date(), dry_run: dryRun },
+            $inc: { attempts: 1 },
+            $unset: { outcome_reason: '' },
+          },
+          { returnDocument: 'after' },
+        )) as ActionReceipt | null
+        if (!reclaimed) {
+          return ((await this.col.findOne({ id: existing.id })) as ActionReceipt | null) ?? existing
+        }
+        return this.dispatchClaim(reclaimed, intent, insight, dryRun)
+      }
     }
-    return receipt
+  }
+
+  /** Dispatch a claimed action and record the final outcome on its receipt. */
+  private async dispatchClaim(
+    claim: ActionReceipt,
+    intent: ActionIntent,
+    insight: Insight,
+    dryRun: boolean,
+  ): Promise<ActionReceipt> {
+    let outcome: ActionReceipt['outcome']
+    let reason: string | undefined
+    if (dryRun) {
+      outcome = 'execution_skipped'; reason = 'dry_run'
+    } else if (intent.type === 'log_only') {
+      outcome = 'execution_skipped'; reason = 'log_only'
+    } else {
+      try {
+        await this.dispatch(intent, insight, claim.tenant_id)
+        outcome = 'executed'
+      } catch (err) {
+        outcome = classifyDispatchError(err)
+        reason = String(err)
+      }
+    }
+    const final = (await this.col.findOneAndUpdate(
+      { id: claim.id, outcome: 'pending' },
+      { $set: { outcome, executed_at: new Date(), ...(reason ? { outcome_reason: reason } : {}) } },
+      { returnDocument: 'after' },
+    )) as ActionReceipt | null
+    return final ?? { ...claim, outcome, ...(reason ? { outcome_reason: reason } : {}) }
   }
 
   // ── Dispatch to connector ─────────────────────────────────────────────────────

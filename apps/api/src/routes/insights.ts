@@ -9,6 +9,12 @@
  * POST /insights/:id/retry-execution — retry actions that failed on approve (idempotent)
  * POST /insights/:id/dismiss         — dismiss insight
  * POST /insights/:id/prepare         — draft an outreach message (Tier 1 — never sends)
+ * GET  /a/:token                     — signed notification action link (confirm page)
+ * POST /a/:token                     — signed notification action link (executes)
+ * GET  /why/:token                   — signed notification evidence link (read-only)
+ * GET  /insights/review              — insights the judge held back, awaiting review
+ * POST /insights/:id/review-release  — organizer override: deliver despite the verdict
+ * POST /insights/:id/review-discard  — organizer override: discard the held insight
  */
 
 import type { FastifyInstance } from 'fastify'
@@ -17,13 +23,15 @@ import type { Engine, FeatureHashScorer, TenantLevelScorer, RecentInsight } from
 import type { ActionReceipt } from '@agentoak/workflows'
 import { ApprovalSignalHealthMonitor, createLlmRouterFromEnv, createLogger } from '@agentoak/platform'
 import { getInsightsCollection, getReceiptsCollection } from '../db.js'
-import { getAuditLogger } from '../audit/audit-log.js'
+import { getAuditLogger, type AuditAction } from '../audit/audit-log.js'
+import type { DeliveryRouter } from '../delivery/delivery-router.js'
 import { recordInsightRouteError } from './metrics.js'
 import { sendOpsAlert } from '../lib/ops-alerts.js'
 import { ActionExecutor, previewActions } from '../actions/action-executor.js'
 import { recordMomentDecision } from '../verified-moments.js'
 import { startGoalExperimentsForApproval } from '../outcomes/causal-experiments.js'
 import { generateDraft } from '../insights/generate-draft.js'
+import { isFamilyOrganizer } from '../lib/family-permissions.js'
 import {
   consolidateInsights,
   getDetectorPrioritySettings,
@@ -88,11 +96,51 @@ export async function registerInsightRoutes(
   featureHashScorer?: FeatureHashScorer,
   db?: Db,
   tenantLevelScorer?: TenantLevelScorer,
+  deliveryRouter?: DeliveryRouter,
 ): Promise<void> {
   const actionExecutor = db ? new ActionExecutor(db) : null
   // Independent instance for insight.prepare (Tier 1 drafting) — same
   // pattern as apps/api/src/routes/assistant.ts, no shared global needed.
   const prepareLlmFn = createLlmRouterFromEnv()
+
+  interface DecisionContext {
+    id: string
+    tenantId: string
+    userId: string
+    notes?: string
+    reason?: string
+    dryRunQuery?: boolean
+    via?: string
+    ip?: string
+    userAgent?: string
+  }
+
+  interface DecisionOutcome {
+    code: number
+    body: Record<string, unknown>
+  }
+
+  /** Audit an insight decision without needing a Fastify request — the
+   *  signed-link path has no authContext, so tenant/user come from the
+   *  verified token instead. */
+  const auditInsight = (
+    ctx: DecisionContext,
+    action: AuditAction,
+    resourceId: string,
+    metadata: Record<string, unknown>,
+  ): void => {
+    getAuditLogger()?.log({
+      tenant_id: ctx.tenantId,
+      user_id: ctx.userId,
+      action,
+      resource_type: 'insight',
+      resource_id: resourceId,
+      metadata,
+      ip: ctx.ip ?? '',
+      user_agent: ctx.userAgent ?? '',
+      timestamp: new Date(),
+    })
+  }
   /**
    * GET /insights
    * Query params: category, urgency, state, goal_id, detectors (comma-separated
@@ -386,35 +434,38 @@ export async function registerInsightRoutes(
   })
 
   /**
-   * POST /insights/:id/approve
-   * Marks an insight as approved and schedules its recommended actions.
-   * Body: { notes?: string }
+   * The approve decision, shared by POST /insights/:id/approve and the
+   * signed /a/:token notification link — identical quota gates, receipt,
+   * learning signal, trust increment, execution, and state write-back in
+   * both paths. ctx.userId is the actor ('signed-link' for notification
+   * links, which carry no user identity).
    */
-  app.post<{ Params: { id: string }; Body: { notes?: string } }>(
-    '/insights/:id/approve',
-    async (request, reply) => {
-      const { tenant_id } = request.authContext
-      const { id } = request.params
-      const { notes } = request.body ?? {}
+  const approveInsightDecision = async (ctx: DecisionContext): Promise<DecisionOutcome> => {
+    const { id } = ctx
+    const tenant_id = ctx.tenantId
+    const notes = ctx.notes
 
-      try {
+    try {
         if (db) {
           const tenant = await db.collection('tenants').findOne({ $or: [{ tenant_id }, { id: tenant_id }] })
           const now = new Date()
           const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
           const used = await db.collection('insights').countDocuments({ tenant_id, approved_at: { $gte: monthStart } })
           const quota = new FreeTierPolicy().check('monthly_move_approvals', used, String(tenant?.['tier'] ?? 'free'))
-          if (!quota.allowed) return reply.status(402).send({ error: 'Monthly Move approval quota exceeded', quota })
+          if (!quota.allowed) return { code: 402, body: { error: 'Monthly Move approval quota exceeded', quota } }
 
           // Outcome-credit gate: require a positive balance to approve an insight.
           // Legacy tenants without a billing block are allowed through until migrated.
           const billing = tenant?.['billing']
           if (billing && Number(billing['credits_balance'] ?? 0) <= 0) {
-            return reply.status(402).send({
-              error: 'No outcome credits remaining',
-              code: 'CREDITS_EXHAUSTED',
-              credits_balance: billing['credits_balance'] ?? 0,
-            })
+            return {
+              code: 402,
+              body: {
+                error: 'No outcome credits remaining',
+                code: 'CREDITS_EXHAUSTED',
+                credits_balance: billing['credits_balance'] ?? 0,
+              },
+            }
           }
         }
         const col = await getInsightsCollection()
@@ -429,7 +480,7 @@ export async function registerInsightRoutes(
             $set: {
               state: 'approved',
               approved_at: new Date(),
-              approved_by: request.authContext.user_id,
+              approved_by: ctx.userId,
               ...(notes !== undefined && { approval_notes: notes }),
             },
           },
@@ -437,7 +488,7 @@ export async function registerInsightRoutes(
         )
 
         if (!result) {
-          return reply.status(404).send({ error: 'Insight not found or not in identified state' })
+          return { code: 404, body: { error: 'Insight not found or not in identified state' } }
         }
 
         // Check learning health before creating receipt
@@ -451,7 +502,7 @@ export async function registerInsightRoutes(
         if (db) {
           const tenantSettings = await db.collection('tenant_settings').findOne({ tenant_id })
           const tenantDryRun = tenantSettings?.['automation']?.dry_run_mode === true
-          const dryRun = (request.query as Record<string, string>)['dry_run'] === '1' || tenantDryRun
+          const dryRun = ctx.dryRunQuery === true || tenantDryRun
 
           const receipt: ActionReceipt = {
             id: randomUUID(),
@@ -463,7 +514,7 @@ export async function registerInsightRoutes(
             outcome: tenantDryRun ? 'policy_blocked' : 'approved',
             outcome_reason: tenantDryRun ? 'dry_run_mode' : undefined,
             executed_at: new Date(),
-            approved_by: request.authContext.user_id,
+            approved_by: ctx.userId,
             payload_hash: createHash('sha256').update(JSON.stringify({ id, notes })).digest('hex'),
             dry_run: dryRun,
             learning_suppressed: !learningAllowed,
@@ -512,12 +563,17 @@ export async function registerInsightRoutes(
           }
         }
 
-        getAuditLogger()?.fromRequest(request, 'insight.approve', 'insight', id, { detector_id: result.detector_id })
+        auditInsight(ctx, 'insight.approve', id, { detector_id: result.detector_id, ...(ctx.via ? { via: ctx.via } : {}) })
 
-        // Increment trust level for this workflow if it has a workflow_id
+        // Increment trust level for this insight's workflow scope. Real
+        // detector-produced insights don't carry workflow_id (only sandbox
+        // seeds did) — the detector IS the workflow for them, so the key
+        // falls back to detector_id. Without this the counter never moved
+        // off zero for any production insight.
         const resultRecord = result as Record<string, unknown>
-        if (db && resultRecord['workflow_id']) {
-          const workflowId = resultRecord['workflow_id'] as string
+        const workflowScope = (resultRecord['workflow_id'] ?? resultRecord['detector_id']) as string | undefined
+        if (db && workflowScope) {
+          const workflowId = workflowScope
           const tenantSettings = await db.collection('tenant_settings').findOne({ tenant_id })
           const automation = (tenantSettings?.['automation'] as { trust_level_by_workflow?: Record<string, number> } | undefined) ?? { trust_level_by_workflow: {} }
           const currentLevel = automation.trust_level_by_workflow?.[workflowId] ?? 0
@@ -556,11 +612,11 @@ export async function registerInsightRoutes(
         // Also respect tenant-level dry_run_mode setting from automation settings.
         const tenantSettings = db ? await db.collection('tenant_settings').findOne({ tenant_id }) : null
         const tenantDryRun = tenantSettings?.['automation']?.dry_run_mode === true
-        const dryRun = (request.query as Record<string, string>)['dry_run'] === '1' || tenantDryRun
+        const dryRun = ctx.dryRunQuery === true || tenantDryRun
         const executionSummary = actionExecutor
           ? await actionExecutor.execute(result as never, result.tenant_id as string, {
               dryRun,
-              approvedBy: request.authContext.user_id,
+              approvedBy: ctx.userId,
             }).catch((err) => { app.log.error({ err, insight_id: id }, 'Action execution failed'); return null })
           : null
 
@@ -574,9 +630,13 @@ export async function registerInsightRoutes(
           executionSummary === null ||
           executionSummary.receipts.some(r => r.outcome === 'execution_failed' || r.outcome === 'execution_ambiguous')
         )
+        // A 'pending' receipt means another dispatcher holds the claim and
+        // its outcome isn't known yet — leave the insight in 'approved'
+        // (in-flight) rather than calling it completed or failed.
+        const executionPending = executionSummary !== null && executionSummary.receipts.some(r => r.outcome === 'pending')
         const finalUpdate = await col.findOneAndUpdate(
           { id, tenant_id, state: 'approved' },
-          { $set: { state: executionFailed ? 'execution_failed' : 'completed' } },
+          { $set: { state: executionFailed ? 'execution_failed' : executionPending ? 'approved' : 'completed' } },
           { returnDocument: 'after' },
         )
         const finalResult = finalUpdate ?? result
@@ -593,17 +653,40 @@ export async function registerInsightRoutes(
         }
 
         return {
-          insight: finalResult,
-          message: executionFailed
-            ? 'Insight approved; one or more actions failed to execute — see actions for details'
-            : 'Insight approved',
-          ...(executionSummary && { actions: executionSummary }),
+          code: 200,
+          body: {
+            insight: finalResult,
+            message: executionFailed
+              ? 'Insight approved; one or more actions failed to execute — see actions for details'
+              : 'Insight approved',
+            ...(executionSummary && { actions: executionSummary }),
+          },
         }
       } catch (err) {
         log.warn({ err, id }, 'POST /insights/:id/approve failed')
         reportInsightRouteError('POST /insights/:id/approve', err, tenant_id)
-        return reply.status(404).send({ error: 'Insight not found' })
+        return { code: 404, body: { error: 'Insight not found' } }
       }
+  }
+
+  /**
+   * POST /insights/:id/approve
+   * Marks an insight as approved and schedules its recommended actions.
+   * Body: { notes?: string }
+   */
+  app.post<{ Params: { id: string }; Body: { notes?: string } }>(
+    '/insights/:id/approve',
+    async (request, reply) => {
+      const outcome = await approveInsightDecision({
+        id: request.params.id,
+        tenantId: request.authContext.tenant_id,
+        userId: request.authContext.user_id,
+        notes: request.body?.notes,
+        dryRunQuery: (request.query as Record<string, string>)['dry_run'] === '1',
+        ip: request.ip,
+        userAgent: request.headers['user-agent'],
+      })
+      return reply.status(outcome.code).send(outcome.body)
     },
   )
 
@@ -628,12 +711,22 @@ export async function registerInsightRoutes(
       try {
         const col = await getInsightsCollection()
         const result = await col.findOneAndUpdate(
-          { id, tenant_id, state: 'execution_failed' },
+          {
+            id, tenant_id,
+            $or: [
+              { state: 'execution_failed' },
+              // A crash between the approve transition and the outcome
+              // write-back strands an insight in 'approved' forever. Only
+              // treat it as retryable once clearly stale, so this can't
+              // race an approve that's still in flight.
+              { state: 'approved', approved_at: { $lt: new Date(Date.now() - 2 * 60 * 1000) } },
+            ],
+          },
           { $set: { state: 'approved' } },
           { returnDocument: 'after' },
         )
         if (!result) {
-          return reply.status(404).send({ error: 'Insight not found or not in execution_failed state' })
+          return reply.status(404).send({ error: 'Insight not found or not in a retryable state' })
         }
 
         const tenantSettings = db ? await db.collection('tenant_settings').findOne({ tenant_id }) : null
@@ -646,9 +739,10 @@ export async function registerInsightRoutes(
 
         const executionFailed = executionSummary === null ||
           executionSummary.receipts.some(r => r.outcome === 'execution_failed' || r.outcome === 'execution_ambiguous')
+        const executionPending = executionSummary !== null && executionSummary.receipts.some(r => r.outcome === 'pending')
         const finalUpdate = await col.findOneAndUpdate(
           { id, tenant_id, state: 'approved' },
-          { $set: { state: executionFailed ? 'execution_failed' : 'completed' } },
+          { $set: { state: executionFailed ? 'execution_failed' : executionPending ? 'approved' : 'completed' } },
           { returnDocument: 'after' },
         )
 
@@ -668,20 +762,18 @@ export async function registerInsightRoutes(
   )
 
   /**
-   * POST /insights/:id/dismiss
-   * Body: { reason?: string }
+   * The dismiss decision, shared by POST /insights/:id/dismiss and the
+   * signed /a/:token notification link — see approveInsightDecision.
    */
-  app.post<{ Params: { id: string }; Body: { reason?: string } }>(
-    '/insights/:id/dismiss',
-    async (request, reply) => {
-      const { tenant_id } = request.authContext
-      const { id } = request.params
-      const { reason } = request.body ?? {}
+  const dismissInsightDecision = async (ctx: DecisionContext): Promise<DecisionOutcome> => {
+    const { id } = ctx
+    const tenant_id = ctx.tenantId
+    const reason = ctx.reason
 
-      try {
+    try {
         if (db) {
           const settings = await db.collection('tenant_settings').findOne({ tenant_id })
-          if (settings?.['require_dismissal_note'] === true && !reason?.trim()) return reply.status(400).send({ error: 'Dismissal reason required' })
+          if (settings?.['require_dismissal_note'] === true && !reason?.trim()) return { code: 400, body: { error: 'Dismissal reason required' } }
         }
         const col = await getInsightsCollection()
         const result = await col.findOneAndUpdate(
@@ -690,7 +782,7 @@ export async function registerInsightRoutes(
             $set: {
               state: 'dismissed',
               dismissed_at: new Date(),
-              dismissed_by: request.authContext.user_id,
+              dismissed_by: ctx.userId,
               ...(reason !== undefined && { dismiss_reason: reason }),
               ...(reason !== undefined && { 'collaboration.resolution_note': reason }),
             },
@@ -699,7 +791,7 @@ export async function registerInsightRoutes(
         )
 
         if (!result) {
-          return reply.status(404).send({ error: 'Insight not found or already actioned' })
+          return { code: 404, body: { error: 'Insight not found or already actioned' } }
         }
 
         // Check learning health before creating receipt
@@ -721,7 +813,7 @@ export async function registerInsightRoutes(
             outcome: 'dismissed',
             outcome_reason: reason,
             executed_at: new Date(),
-            approved_by: request.authContext.user_id,
+            approved_by: ctx.userId,
             payload_hash: createHash('sha256').update(JSON.stringify({ id, reason })).digest('hex'),
             dry_run: false,
             learning_suppressed: !learningAllowed,
@@ -768,7 +860,7 @@ export async function registerInsightRoutes(
           }
         }
 
-        getAuditLogger()?.fromRequest(request, 'insight.dismiss', 'insight', id, { reason })
+        auditInsight(ctx, 'insight.dismiss', id, { reason, ...(ctx.via ? { via: ctx.via } : {}) })
         if (db) {
           await recordMomentDecision(db, { tenantId: tenant_id, insightId: id, decision: 'dismiss' })
           const content = `${result.detector_id} fired and was dismissed. ${result.reasoning}`
@@ -786,14 +878,229 @@ export async function registerInsightRoutes(
             expires_at: new Date(Date.now() + 180 * 86_400_000),
           })
         }
-        return { insight: result, message: 'Insight dismissed' }
+        return { code: 200, body: { insight: result, message: 'Insight dismissed' } }
       } catch (err) {
         log.warn({ err, id }, 'POST /insights/:id/dismiss failed')
         reportInsightRouteError('POST /insights/:id/dismiss', err, tenant_id)
-        return reply.status(404).send({ error: 'Insight not found' })
+        return { code: 404, body: { error: 'Insight not found' } }
       }
+  }
+
+  /**
+   * POST /insights/:id/dismiss
+   * Body: { reason?: string }
+   */
+  app.post<{ Params: { id: string }; Body: { reason?: string } }>(
+    '/insights/:id/dismiss',
+    async (request, reply) => {
+      const outcome = await dismissInsightDecision({
+        id: request.params.id,
+        tenantId: request.authContext.tenant_id,
+        userId: request.authContext.user_id,
+        reason: request.body?.reason,
+        ip: request.ip,
+        userAgent: request.headers['user-agent'],
+      })
+      return reply.status(outcome.code).send(outcome.body)
     },
   )
+
+  // ── Signed notification links (/a/, /why/) ────────────────────────────────
+  // DeliveryRouter puts these URLs in every delivered notification:
+  //   approve_url  /a/<signActionToken(approve)>
+  //   dismiss_url  /a/<signActionToken(dismiss)>
+  //   why_url      /why/<signEvidenceToken>
+  // They're on server.ts's public-path list — the 7-day HMAC token IS the
+  // auth. Until now the URLs 404'd, so "approve from the notification" was
+  // dead on arrival.
+  //
+  // GET /a/:token renders a confirmation page rather than acting: mail
+  // scanners, chat previews, and browser prefetch all issue GETs, and a
+  // prefetch must never approve (and thereby dispatch email/WhatsApp) on
+  // the family's behalf. The POST — which only a deliberate button press
+  // produces — runs the exact same decision as POST /insights/:id/approve,
+  // including the quota/credit gates and dry-run honoring.
+  const escHtml = (s: unknown): string =>
+    String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c)
+
+  const linkPage = (title: string, inner: string): string =>
+    `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escHtml(title)}</title>` +
+    `<style>body{font-family:system-ui,-apple-system,sans-serif;max-width:32rem;margin:15vh auto;padding:0 1.25rem;color:#1e1b33}` +
+    `h1{font-size:1.3rem;margin-bottom:.5rem}p{color:#555;line-height:1.5}` +
+    `.card{border:1px solid #e3e0ef;border-radius:14px;padding:1.1rem 1.25rem;margin:1.25rem 0;background:#faf9fe}` +
+    `button{font:inherit;font-weight:600;padding:.8rem 1.6rem;border-radius:10px;border:0;cursor:pointer}` +
+    `.primary{background:#6d4fc4;color:#fff}.secondary{background:#eceaf4;color:#443d66}</style></head><body>${inner}</body></html>`
+
+  const expiredPage = linkPage('Link expired', `<h1>This link has expired</h1><p>Open Agent Oak to review the insight directly — notification links are valid for 7 days.</p>`)
+
+  if (deliveryRouter) {
+    const router = deliveryRouter
+
+    app.get<{ Params: { token: string } }>('/a/:token', async (request, reply) => {
+      const decoded = router.verifyActionToken(request.params.token)
+      if (!decoded) return reply.status(410).type('text/html').send(expiredPage)
+      const col = await getInsightsCollection()
+      const insight = await col.findOne(
+        { id: decoded.insight_id, tenant_id: decoded.tenant_id },
+        { projection: { hypothesis: 1, reasoning: 1, state: 1 } },
+      )
+      if (!insight) return reply.status(404).type('text/html').send(linkPage('Not found', `<h1>Insight not found</h1><p>It may have been removed.</p>`))
+      const approve = decoded.action === 'approve'
+      const verb = approve ? 'Approve' : 'Dismiss'
+      return reply.type('text/html').send(linkPage(`${verb} insight`, `
+        <h1>${verb} this insight?</h1>
+        <div class="card"><strong>${escHtml(insight['hypothesis'] ?? 'Insight')}</strong>
+        <p>${escHtml(insight['reasoning'] ?? '')}</p></div>
+        <form method="POST" action="/a/${escHtml(request.params.token)}">
+          <button type="submit" class="${approve ? 'primary' : 'secondary'}">${verb}</button>
+        </form>`))
+    })
+
+    app.post<{ Params: { token: string } }>('/a/:token', async (request, reply) => {
+      const decoded = router.verifyActionToken(request.params.token)
+      if (!decoded) return reply.status(410).type('text/html').send(expiredPage)
+      const base = {
+        id: decoded.insight_id,
+        tenantId: decoded.tenant_id,
+        // No user identity travels in the token — the signed link itself is
+        // the authority, so the actor is recorded as 'signed-link' in
+        // receipts, approved_by/dismissed_by, and the audit trail.
+        userId: 'signed-link',
+        via: 'signed_link',
+        ip: request.ip,
+        userAgent: request.headers['user-agent'],
+      }
+      const outcome = decoded.action === 'approve'
+        ? await approveInsightDecision(base)
+        : await dismissInsightDecision(base)
+      if (outcome.code !== 200) {
+        const err = (outcome.body as { error?: string }).error ?? 'Please try again'
+        return reply.status(outcome.code).type('text/html').send(
+          linkPage(`Couldn't ${decoded.action}`, `<h1>Couldn't ${decoded.action} that insight</h1><p>${escHtml(err)}</p>`),
+        )
+      }
+      const msg = (outcome.body as { message?: string }).message ?? 'Done'
+      return reply.type('text/html').send(linkPage('Done', `<h1>${decoded.action === 'approve' ? 'Approved' : 'Dismissed'}</h1><p>${escHtml(msg)}</p>`))
+    })
+
+    // GET /why/:token — read-only evidence view, safe as a plain GET.
+    app.get<{ Params: { token: string } }>('/why/:token', async (request, reply) => {
+      const decoded = router.verifyEvidenceToken(request.params.token)
+      if (!decoded) return reply.status(410).type('text/html').send(expiredPage)
+      const col = await getInsightsCollection()
+      const insight = await col.findOne(
+        { id: decoded.insight_id, tenant_id: decoded.tenant_id },
+        {
+          projection: {
+            hypothesis: 1, reasoning: 1, detector_id: 1, urgency: 1, state: 1,
+            confidence_breakdown: 1, estimated_impact_low: 1, estimated_impact_high: 1,
+            currency: 1, created_at: 1,
+          },
+        },
+      )
+      if (!insight) return reply.status(404).type('text/html').send(linkPage('Not found', `<h1>Insight not found</h1>`))
+
+      const doc = insight as Record<string, unknown>
+      const confidence = (insight['confidence_breakdown'] as Record<string, unknown> | undefined)?.['combined_score']
+      const lo = doc['estimated_impact_low']
+      const hi = doc['estimated_impact_high']
+      const cur = doc['currency']
+      const impact = (typeof lo === 'number' || typeof hi === 'number')
+        ? `<p>Estimated impact: ${escHtml(cur ?? '')} ${escHtml(lo ?? '—')}–${escHtml(hi ?? '—')}</p>` : ''
+      const score = typeof confidence === 'number'
+        ? `<p>Confidence: ${(confidence * 100).toFixed(0)}%</p>` : ''
+      return reply.type('text/html').send(linkPage('Why this insight', `
+        <h1>Why Oak flagged this</h1>
+        <div class="card"><strong>${escHtml(insight['hypothesis'] ?? 'Insight')}</strong>
+        <p>${escHtml(insight['reasoning'] ?? '')}</p>
+        ${score}${impact}
+        <p style="color:#888;font-size:.85rem">Rule: ${escHtml(insight['detector_id'] ?? '—')} · Urgency: ${escHtml(insight['urgency'] ?? '—')} · Status: ${escHtml(insight['state'] ?? '—')}</p></div>`))
+    })
+
+    /**
+     * GET /insights/review — the family's view of what the judge held back.
+     * Pending rows are still auto-retrying; exhausted rows need a human
+     * call. Transparency posture: the family sees Oak's own rejections,
+     * with the judge's scores and feedback attached.
+     */
+    app.get('/insights/review', async (request, reply) => {
+      const { tenant_id } = request.authContext
+      if (!db) return reply.status(503).send({ error: 'Review queue unavailable' })
+      const rows = await router.listReviewQueue(tenant_id)
+      const col = await getInsightsCollection()
+      const insightIds = rows.map(r => r['insight_id'] as string)
+      const insights = await col.find(
+        { id: { $in: insightIds }, tenant_id },
+        { projection: { id: 1, hypothesis: 1, reasoning: 1, urgency: 1, state: 1, category: 1 } },
+      ).toArray()
+      const byId = new Map(insights.map(i => [i.id as string, i]))
+      return {
+        items: rows.map(row => ({
+          queue: row['queue'],
+          status: row['status'],
+          attempts: row['attempts'] ?? 0,
+          verdict: row['verdict'],
+          updated_at: row['updated_at'],
+          insight: byId.get(row['insight_id'] as string) ?? { id: row['insight_id'], missing: true },
+        })),
+      }
+    })
+
+    /**
+     * POST /insights/:id/review-release — an organizer reads the judge's
+     * feedback and decides the insight is fine to send. The human decision
+     * IS the gate here, so deliver() runs with the judge bypassed; other
+     * gates (quiet hours, digest, dedup) still apply. Organizer-only, same
+     * as every other family mutation.
+     */
+    app.post<{ Params: { id: string } }>('/insights/:id/review-release', async (request, reply) => {
+      const { tenant_id, user_id } = request.authContext
+      const { id } = request.params
+      if (!db) return reply.status(503).send({ error: 'Review queue unavailable' })
+      if (!await isFamilyOrganizer(db, tenant_id, user_id)) {
+        return reply.status(403).send({ error: 'Only a family organizer can release held insights' })
+      }
+      const resolved = await router.resolveReviewItem(tenant_id, id, 'released')
+      if (!resolved) return reply.status(404).send({ error: 'No held review item for this insight' })
+      const col = await getInsightsCollection()
+      const insight = await col.findOne({ id, tenant_id })
+      if (!insight) return reply.status(404).send({ error: 'Insight not found' })
+      const result = await router.deliver(insight as Record<string, unknown>, tenant_id, { skipJudge: true })
+      auditInsight(
+        { id, tenantId: tenant_id, userId: user_id, via: 'review_release', ip: request.ip, userAgent: request.headers['user-agent'] },
+        'insight.review_release', id, { queue: resolved.queue },
+      )
+      return { released: true, delivered: result?.success === true }
+    })
+
+    /**
+     * POST /insights/:id/review-discard — an organizer agrees with the
+     * judge (or just doesn't want it). The review row closes and the
+     * insight goes through the normal dismiss path so learning sees it.
+     */
+    app.post<{ Params: { id: string }, Body: { reason?: string } }>('/insights/:id/review-discard', async (request, reply) => {
+      const { tenant_id, user_id } = request.authContext
+      const { id } = request.params
+      if (!db) return reply.status(503).send({ error: 'Review queue unavailable' })
+      if (!await isFamilyOrganizer(db, tenant_id, user_id)) {
+        return reply.status(403).send({ error: 'Only a family organizer can discard held insights' })
+      }
+      const resolved = await router.resolveReviewItem(tenant_id, id, 'discarded')
+      if (!resolved) return reply.status(404).send({ error: 'No held review item for this insight' })
+      const outcome = await dismissInsightDecision({
+        id, tenantId: tenant_id, userId: user_id,
+        reason: request.body?.reason, via: 'review_discard',
+        ip: request.ip, userAgent: request.headers['user-agent'],
+      })
+      auditInsight(
+        { id, tenantId: tenant_id, userId: user_id, via: 'review_discard', ip: request.ip, userAgent: request.headers['user-agent'] },
+        'insight.review_discard', id, { queue: resolved.queue },
+      )
+      // The row is discarded either way — a non-200 here only means the
+      // insight itself was already terminal.
+      return { discarded: true, insight_dismissed: outcome.code === 200 }
+    })
+  }
 
   /**
    * POST /insights/:id/prepare

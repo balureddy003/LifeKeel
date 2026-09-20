@@ -289,20 +289,52 @@ export function PageHeader({
     // all ~30 consumers; the assistant page, which pads at px-4, renders
     // its own header). Change the shared page gutter and this has to move
     // with it.
-    <header className="sticky top-0 z-sticky safe-area-top bg-navbg/80 backdrop-blur-xl -mx-5 px-5 py-3 border-b border-tint/[0.05]">
-      <div className="flex items-center justify-between h-11">
-        {backHref ? (
-          <Link href={backHref} onClick={() => haptic('light')} className="flex items-center gap-1 text-ink-tertiary active:opacity-60">
-            <ArrowLeft size={20} strokeWidth={2} />
-            <span className="text-base font-medium">Back</span>
-          </Link>
-        ) : (
-          <div />
-        )}
-        <div className="flex items-center">{action ?? assistantAction}</div>
-      </div>
-      <h1 className="text-title-lg leading-tight font-bold tracking-tight pt-1 pb-1">{title}</h1>
+    // Light-theme finding: bg-navbg/80 is near-opaque white, so the header
+    // read as a hard-edged slab that ends at the content column instead of
+    // the screen edge. Lighter tint plus a bottom fade mask (which also
+    // fades the blur and removes the need for a border line) lets it melt
+    // into the glass background while still keeping the title legible over
+    // content scrolling underneath.
+    <header className="sticky top-0 z-sticky safe-area-top bg-navbg/55 backdrop-blur-xl -mx-5 px-5 py-2 [mask-image:linear-gradient(to_bottom,#000_80%,transparent),linear-gradient(to_right,transparent,#000_6%,#000_94%,transparent)] [mask-composite:intersect] [-webkit-mask-image:linear-gradient(to_bottom,#000_80%,transparent),linear-gradient(to_right,transparent,#000_6%,#000_94%,transparent)] [-webkit-mask-composite:source-in]">
+      {backHref && (
+        <Link href={backHref} onClick={() => haptic('light')} className="inline-flex items-center gap-1 h-8 text-ink-tertiary active:opacity-60">
+          <ArrowLeft size={20} strokeWidth={2} />
+          <span className="text-base font-medium">Back</span>
+        </Link>
+      )}
+      {/* Title block and action share one row, vertically centred, so the
+          action button lines up with the heading instead of floating on its
+          own row above it. */}
+      <div className="flex items-center justify-between gap-3 min-h-10">
+        <div className="min-w-0">
+      {/* User-reported findings, all addressed here once since every page
+          shares this header:
+          1. text-title-lg (1.8rem on this app's 17px root, ~30.6px) read
+             as too large on a real mobile screen — originally stepped down
+             to title-md (~25.5px) only below md, escalating back to
+             title-lg at md+. Live element-inspector feedback on a ~400px-
+             wide container ("this is too big") showed that escalation
+             still fires at md (768px) well before a header this size has
+             room to justify it — dropped entirely; title-md is now the
+             size at every width, not just the smallest one.
+          2. "not modern" — semibold instead of bold (a heavy 700 black
+             title reads as dated next to this app's otherwise light,
+             glass-material UI), the same purple gradient the readiness
+             score bar already uses (from-family-400 to-family-500) carried
+             into the title itself rather than confined to icons/buttons,
+             and more vertical room (py-3->py-4, pt-1/pb-1->pt-2/pb-2) so
+             the title doesn't feel crowded against the header's own edges.
+          3. Still "too big" (142px tall header, 25.5px title): compacted to
+             a text-xl (~21px) title, h-10 action row and py-2/pt-1/pb-1
+             spacing (~100px) — the semibold gradient title keeps its
+             hierarchy without the slab of empty space around it. */}
+      <h1 className="text-xl leading-tight font-semibold tracking-tight pt-1 pb-1 bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">
+        {title}
+      </h1>
       {subtitle && <p className="text-sm text-ink-tertiary pb-1">{subtitle}</p>}
+        </div>
+        <div className="flex items-center shrink-0">{action ?? assistantAction}</div>
+      </div>
     </header>
   )
 }

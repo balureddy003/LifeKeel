@@ -1,0 +1,113 @@
+# Golden eval cases for detectors/family/protection-gap.yaml.
+# event_type mirrors what family-financial-profile.ts emits: 'family.household',
+# one event per earner with the shared household data merged in.
+cases:
+  - id: underinsured-with-dependents
+    description: Mortgage + dependents + living expenses dwarf the listed life cover
+    event_type: family.household
+    data:
+      has_dependents: 1
+      mortgage_outstanding_minor: 20000000
+      education_funding_gap_minor: 5000000
+      annual_living_expenses_minor: 3600000
+      life_cover_minor: 10000000
+      income_protection_monthly_minor: 50000
+      employed: 1
+      years_to_retirement: 25
+      monthly_salary_minor: 500000
+      soonest_renewal_days: 9999
+      has_health_or_ci_cover: 1
+    expected_insights:
+      - rule_id: life_insurance_below_household_needs
+        min_or_score: 0.5
+
+  - id: employed-no-income-protection
+    description: Single earner, employed, nothing listed for income protection
+    event_type: family.household
+    data:
+      has_dependents: 0
+      mortgage_outstanding_minor: 0
+      education_funding_gap_minor: 0
+      annual_living_expenses_minor: 0
+      life_cover_minor: 0
+      income_protection_monthly_minor: 0
+      employed: 1
+      years_to_retirement: 20
+      monthly_salary_minor: 400000
+      soonest_renewal_days: 9999
+      has_health_or_ci_cover: 1
+    expected_insights:
+      - rule_id: no_income_protection
+        min_or_score: 0.5
+
+  - id: renewal-approaching
+    description: A listed policy renews within 60 days
+    event_type: family.household
+    data:
+      has_dependents: 0
+      mortgage_outstanding_minor: 0
+      education_funding_gap_minor: 0
+      annual_living_expenses_minor: 0
+      life_cover_minor: 0
+      income_protection_monthly_minor: 0
+      employed: 0
+      years_to_retirement: 20
+      monthly_salary_minor: 0
+      soonest_renewal_days: 30
+      has_health_or_ci_cover: 1
+    expected_insights:
+      - rule_id: policy_renewal_window
+        min_or_score: 0.5
+
+  - id: dependents-no-health-cover
+    description: Kids on file but no health or critical illness policy listed
+    event_type: family.household
+    data:
+      has_dependents: 1
+      mortgage_outstanding_minor: 0
+      education_funding_gap_minor: 0
+      annual_living_expenses_minor: 0
+      life_cover_minor: 1000000000
+      income_protection_monthly_minor: 10000
+      employed: 1
+      years_to_retirement: 20
+      monthly_salary_minor: 400000
+      soonest_renewal_days: 9999
+      has_health_or_ci_cover: 0
+    expected_insights:
+      - rule_id: no_health_or_critical_illness_cover
+        min_or_score: 0.5
+
+  - id: fully-covered-household
+    description: Cover meets need, protection in place, nothing near renewal
+    event_type: family.household
+    data:
+      has_dependents: 1
+      mortgage_outstanding_minor: 1000000
+      education_funding_gap_minor: 0
+      annual_living_expenses_minor: 100000
+      life_cover_minor: 10000000
+      income_protection_monthly_minor: 10000
+      employed: 1
+      years_to_retirement: 20
+      monthly_salary_minor: 400000
+      soonest_renewal_days: 9999
+      has_health_or_ci_cover: 1
+    expected_silent: true
+
+  - id: retired-no-dependents
+    description: 70-year-old renter, nobody depending on income — nothing should fire
+    event_type: family.household
+    data:
+      has_dependents: 0
+      mortgage_outstanding_minor: 0
+      education_funding_gap_minor: 0
+      annual_living_expenses_minor: 0
+      life_cover_minor: 0
+      income_protection_monthly_minor: 0
+      employed: 0
+      years_to_retirement: 0
+      monthly_salary_minor: 0
+      soonest_renewal_days: 9999
+      has_health_or_ci_cover: 1
+    expected_silent: true

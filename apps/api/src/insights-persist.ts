@@ -84,32 +84,41 @@ export async function persistAndDeliverInsights(
  * that fixes a real gap and updates their profile keeps seeing the old
  * alert forever. Call once per detector, per evaluation cycle, with the
  * rule ids that detector's full YAML rule set includes (engine.inventory())
- * and the ones that actually fired this cycle across all of that
- * detector's sub-evaluations. Any previously-open ('identified'/'sent')
- * insight for a rule id in the first set but not the second no longer
- * reproduces, so it's marked 'resolved'.
+ * and the (rule_id, entity_key) pairs that actually fired this cycle
+ * across all of that detector's sub-evaluations.
  *
- * entity_key is '' for every family detector event, so this can't tell
- * "child A's insight" from "child B's" when one rule covers multiple
- * entities under the same detector — it only resolves a rule id when NONE
- * of this cycle's sub-evaluations fired it, which can under-resolve in
- * that multi-instance case but never spuriously resolves a still-valid
- * insight. Known, disclosed limitation of the entity_key scheme, not
- * introduced by this function.
+ * Resolution is entity-aware: an open insight is stale only when its own
+ * (rule_id, entity_key) pair didn't reproduce. Per-entity events
+ * (a roster member's income protection, a child's education fund) carry
+ * member_id/child_name keys — so "child A's insight" stays open while
+ * "child B's" resolves when only B's fund was fixed. Insights whose
+ * entity_key is '' resolve at rule granularity, same as before.
  */
 export async function resolveStaleInsights(
   db: Db,
   tenantId: string,
   detectorId: string,
   checkedRuleIds: string[],
-  firedRuleIds: string[],
+  firedEntities: Array<{ rule_id: string; entity_key: string }>,
 ): Promise<void> {
-  const staleRuleIds = checkedRuleIds.filter((id) => !firedRuleIds.includes(id))
-  if (staleRuleIds.length === 0) return
+  const checked = new Set(checkedRuleIds)
+  const fired = new Set(firedEntities.map((e) => `${e.rule_id}${e.entity_key}`))
+  if (checked.size === 0) return
 
   const insightsCol = getTenantCollection<Insight>(db, 'insights', tenantId)
+  const open: Insight[] = await insightsCol.find({
+    detector_id: detectorId,
+    rule_id: { $in: checkedRuleIds },
+    state: { $in: ['identified', 'sent'] },
+  }).toArray()
+
+  const staleIds = open
+    .filter((i) => !fired.has(`${i.rule_id}${i.entity_key ?? ''}`))
+    .map((i) => i.id)
+  if (staleIds.length === 0) return
+
   await insightsCol.updateMany(
-    { detector_id: detectorId, rule_id: { $in: staleRuleIds }, state: { $in: ['identified', 'sent'] } },
+    { id: { $in: staleIds } },
     { $set: { state: 'resolved', resolved_at: new Date() } },
   )
 }

@@ -30,3 +30,15 @@ implemented end-to-end — every item except #28 (family sharing, XL),
 which the plan itself defers to a dedicated PRD. PRD-109 (policy
 extraction → profile bridge) had already shipped before the pass — see
 `docs/prd/109-*.md`.
+
+4. [competitive-differentiation-deep-dive-2026.md](competitive-differentiation-deep-dive-2026.md) —
+   external market research cross-checked against the codebase: two new
+   competitive threats (Trustworthy Autopilot, State Farm Household
+   Story), six differentiation angles with recommendations, and what's
+   durable vs. catching up. Re-verify before citing beyond ~6 months.
+5. [mobile-apps-distribution-analysis-2026.md](mobile-apps-distribution-analysis-2026.md) —
+   what it takes to offer Agent Oak as native iOS/Android apps alongside
+   the web app: how much of "mobile" is already shipped as a PWA, the
+   PWA / Capacitor-wrap / RN-rewrite options with real costs, and the
+   phased recommendation (ship the PWA deliberately → Capacitor when
+   store presence earns it, gated on the IAP billing decision).

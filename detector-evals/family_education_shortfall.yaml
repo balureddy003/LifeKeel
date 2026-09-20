@@ -1,0 +1,54 @@
+# Golden eval cases for detectors/family/education-shortfall.yaml.
+# event_type mirrors family-financial-profile.ts: 'family.education_fund',
+# one event per child. member_id is optional there, so cases exercise both
+# the keyed and child_name-fallback paths.
+cases:
+  - id: fund-behind-target-close-deadline
+    description: Under 50% of target with 5 or fewer years remaining
+    event_type: family.education_fund
+    data:
+      child_name: Aisha
+      child_age: 14
+      member_id: member-a
+      current_savings_minor: 100000
+      target_savings_minor: 2000000
+      years_remaining: 4
+    expected_insights:
+      - rule_id: education_fund_behind_target
+        min_or_score: 0.5
+
+  - id: fund-not-started
+    description: Zero savings for a child under 16 with years remaining
+    event_type: family.education_fund
+    data:
+      child_name: Rohan
+      child_age: 8
+      current_savings_minor: 0
+      target_savings_minor: 1500000
+      years_remaining: 10
+    expected_insights:
+      - rule_id: education_fund_not_started
+        min_or_score: 0.5
+
+  - id: second-child-independent-outcome
+    description: Sibling with an on-track fund — proves per-child entity keys don't bleed across
+    event_type: family.education_fund
+    data:
+      child_name: Meera
+      child_age: 12
+      member_id: member-c
+      current_savings_minor: 1600000
+      target_savings_minor: 2000000
+      years_remaining: 4
+    expected_silent: true
+
+  - id: on-track-fund
+    description: Over half the target saved — no flag
+    event_type: family.education_fund
+    data:
+      child_name: Dev
+      child_age: 10
+      current_savings_minor: 1200000
+      target_savings_minor: 2000000
+      years_remaining: 8
+    expected_silent: true

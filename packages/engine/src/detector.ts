@@ -45,7 +45,11 @@ function globMatch(pattern: string, str: string): boolean {
 // for the same goal/ticker/customer" (a duplicate) from "the same rule fired
 // for a different one" (two legitimately separate insights) without needing
 // per-detector-category logic.
-const ENTITY_KEY_FIELDS = ['goal_id', 'ticker', 'symbol', 'customer_id', 'connector'] as const
+// member_id / child_name bind family-domain insights to a real roster
+// member or an education fund's named child — without them, two children
+// or two earners collapse into one deduped insight and the stale-insight
+// resolver can't tell them apart.
+const ENTITY_KEY_FIELDS = ['goal_id', 'ticker', 'symbol', 'customer_id', 'connector', 'member_id', 'child_name'] as const
 
 function computeEntityKey(featureSnapshot: Record<string, string | number | boolean>): string {
   for (const field of ENTITY_KEY_FIELDS) {

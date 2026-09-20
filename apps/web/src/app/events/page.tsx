@@ -58,7 +58,18 @@ export default function EventsPage() {
                     })()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-base font-semibold truncate">{event.label}</div>
+                    {/* Live-verification finding: at mobile width, the icon
+                        + chevron overhead leaves ~200px for the label —
+                        "Family member passed away" and "Medical emergency"
+                        both genuinely don't fit on one line and were
+                        truncating to "Family memb..." / "Medical emer...",
+                        losing the word that actually identifies the
+                        scenario. There's vertical room to spare here, so
+                        wrapping to two lines (keeping only the description
+                        truncated, which matters less — the card itself
+                        explains everything on tap) shows the whole title
+                        instead of guessing from a fragment. */}
+                    <div className="text-base font-semibold leading-snug line-clamp-2">{event.label}</div>
                     <div className="text-xs text-ink-tertiary truncate">{event.description}</div>
                   </div>
                   <span className="text-ink-tertiary text-lg">

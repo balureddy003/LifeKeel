@@ -15,7 +15,13 @@ const BENEFITS = [
 ]
 
 const EXTRACTED_FIELDS = [
-  { label: 'Provider', value: 'AllState Insurance' },
+  // Live-verification finding: "AllState Insurance" truncated to
+  // "AllState In..." in this chip's fixed width — the other three
+  // example values are all short enough to stay on one line, so
+  // shortening this illustrative (not real user data) example to match
+  // keeps the same single-line rhythm across all four, instead of this
+  // one alone needing to wrap.
+  { label: 'Provider', value: 'Allstate' },
   { label: 'Policy Number', value: 'HO-88213-A' },
   { label: 'Amount', value: '£1,240/yr' },
   { label: 'Renews', value: 'Jun 14, 2027' },
@@ -124,7 +130,7 @@ export default function UpgradePage() {
       window.location.href = url
     } catch (err) {
       haptic('warning')
-      setError(err instanceof Error ? err.message : 'Could not start checkout. Please try again.')
+      setError(err instanceof Error ? err.message : "Checkout didn't start — you haven't been charged anything. Try again in a moment.")
       setCheckingOut(false)
     }
   }

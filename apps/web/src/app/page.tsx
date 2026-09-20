@@ -15,7 +15,7 @@ import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@
 import { useAppStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
-import { fetchFinancialProfile, RESOLVED_INSIGHT_STATES, type FinancialProfile } from '@/lib/api'
+import { fetchFinancialProfile, fetchLifeChangeNudge, dismissLifeChangeNudge, RESOLVED_INSIGHT_STATES, type FinancialProfile } from '@/lib/api'
 import { elderlyHomeCopy } from '@/lib/elderlyHomeCopy'
 import { childHomeCopy } from '@/lib/childHomeCopy'
 import { simpleHomeCopy } from '@/lib/simpleHomeCopy'
@@ -387,6 +387,59 @@ function SinceLastVisit({
   )
 }
 
+// PRD-111: a family's profile itself already carried the signature of a
+// major change (income dropped, employment status flipped) that hasn't
+// been reported as a life event yet. Deliberately content-free — never
+// names or guesses what changed, never mentions a product; just an
+// invitation to tell Oak. Same dismissible-card shape as UrgencyBanner
+// below, kept as its own component since it has its own data source and
+// dismiss action.
+function LifeChangeNudge() {
+  const [active, setActive] = useState(false)
+  const [dismissed, setDismissed] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchLifeChangeNudge().then((r) => { if (!cancelled) setActive(r.active) })
+    return () => { cancelled = true }
+  }, [])
+
+  if (!active || dismissed) return null
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0, height: 0 }}
+        animate={{ opacity: 1, height: 'auto' }}
+        exit={{ opacity: 0, height: 0 }}
+      >
+        <GlassCard className="p-3.5 border-family-500/20 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0">
+            <Zap size={16} className="text-family-400" />
+          </div>
+          <Link href="/life-events" className="flex-1 min-w-0" onClick={() => haptic('light')}>
+            <div className="text-sm font-semibold text-ink-primary">
+              It looks like something changed
+            </div>
+            <div className="text-xs text-ink-tertiary">Want to tell Oak what&apos;s going on?</div>
+          </Link>
+          <button
+            onClick={() => {
+              setDismissed(true)
+              haptic('light')
+              dismissLifeChangeNudge()
+            }}
+            aria-label="Dismiss"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-tertiary active:opacity-60"
+          >
+            <X size={16} />
+          </button>
+        </GlassCard>
+      </motion.div>
+    </AnimatePresence>
+  )
+}
+
 function UrgencyBanner() {
   const [dismissed, setDismissed] = useState(false)
   const currentYear = new Date().getFullYear()
@@ -581,7 +634,17 @@ export default function HomePage() {
   const { score: readinessScore, hasLiveData, loading: scoreLoading } = useFamilyReadinessScore()
   const { events: timelineEvents, hasData: hasTimelineData, hasChildren } = useFamilyTimeline()
   const { insights, loading: insightsLoading } = useFamilyInsights()
-  const retirementInsight = insights.find((i) => i.detector_id === 'family_retirement_gap')
+  const detectorDismissals = useAppStore((s) => s.detectorDismissals)
+  // Dismissal learning: a detector the family has dismissed twice stops
+  // being featured as the hero card — the insight still exists and still
+  // counts as open; it just stops being pushed. The whole card hides
+  // rather than falling back to "on track", which would be untrue.
+  const retirementSuppressed =
+    (detectorDismissals['family_retirement_gap'] ?? 0) >= 2 &&
+    insights.some((i) => i.detector_id === 'family_retirement_gap')
+  const retirementInsight = retirementSuppressed
+    ? undefined
+    : insights.find((i) => i.detector_id === 'family_retirement_gap')
   const openInsightCount = insights.filter((i) => !RESOLVED_INSIGHT_STATES.includes(i.state)).length
   const setCmdkOpen = useAppStore((s) => s.setCmdkOpen)
   const profileCompleteness = useAppStore((s) => s.profileCompleteness)
@@ -620,6 +683,7 @@ export default function HomePage() {
         openInsightCount={openInsightCount}
         loading={scoreLoading || insightsLoading}
       />
+      <LifeChangeNudge />
       <UrgencyBanner />
 
       {!hasLiveData && !scoreLoading && <GettingStarted />}
@@ -747,14 +811,12 @@ export default function HomePage() {
             </div>
             <p className="text-sm text-ink-tertiary leading-relaxed">
               {hasChildren
-                ? "We don't collect birthdates yet, so we can't estimate education milestones for your children."
+                ? "Add a birthday to your children's profiles to see education milestones here."
                 : 'Add children to your family profile to see education milestones and future planning events on your timeline.'}
             </p>
-            {!hasChildren && (
-              <Link href="/family" className="text-sm text-family-400 font-semibold flex items-center gap-1 mt-2">
-                Set up family <ChevronRight size={14} />
-              </Link>
-            )}
+            <Link href="/family" className="text-sm text-family-400 font-semibold flex items-center gap-1 mt-2">
+              {hasChildren ? 'Go to Family' : 'Set up family'} <ChevronRight size={14} />
+            </Link>
           </GlassCard>
         )}
       </motion.div>
@@ -781,6 +843,7 @@ export default function HomePage() {
         </div>
       </IfAdvanced>
 
+      {!retirementSuppressed && (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -802,6 +865,10 @@ export default function HomePage() {
               >
                 See retirement plan <ChevronRight size={14} />
               </Link>
+              <p className="text-xs text-ink-tertiary mt-3 leading-relaxed">
+                Oak earns no commission from any insurer or provider — this is information
+                from your own data, not a recommendation to buy anything.
+              </p>
             </>
           ) : hasLiveData ? (
             <p className="text-sm text-ink-tertiary leading-relaxed">
@@ -814,6 +881,7 @@ export default function HomePage() {
           )}
         </GlassCard>
       </motion.div>
+      )}
 
       <FeatureTip />
     </div>

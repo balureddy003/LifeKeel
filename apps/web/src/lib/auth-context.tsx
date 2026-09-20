@@ -2,12 +2,14 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import type { User, FamilyGroup, FamilyRole } from './auth-types'
+import { ROLE_EMOJI } from './auth-types'
 import {
   fetchFamilyGroup,
   createFamilyGroup,
   addFamilyGroupMember,
   removeFamilyGroupMember,
   updateFamilyGroupMemberRole,
+  updateFamilyGroupMemberDateOfBirth,
   type ApiFamilyGroup,
 } from './api'
 import { getApiBase } from './env'
@@ -17,16 +19,17 @@ interface AuthContextValue {
   family: FamilyGroup | null
   isAuthenticated: boolean
   isLoading: boolean
-  signUp: (name: string, email: string, password: string) => Promise<User>
+  signUp: (name: string, email: string, password: string, ref?: string) => Promise<User>
   signIn: (email: string, password: string) => Promise<void>
   updateEmail: (email: string) => Promise<User>
   updateProfile: (patch: { name?: string; email?: string }) => Promise<User>
   signInWithProvider: (provider: 'google') => Promise<void>
   signOut: () => void
   createFamily: (name: string, forUser?: User) => Promise<void>
-  inviteMember: (name: string, email: string, role: FamilyRole) => Promise<void>
+  inviteMember: (name: string, email: string, role: FamilyRole, dateOfBirth?: string) => Promise<void>
   removeMember: (id: string) => Promise<void>
   updateMemberRole: (id: string, role: FamilyRole) => Promise<void>
+  updateMemberDateOfBirth: (id: string, dateOfBirth: string) => Promise<void>
   refresh: () => Promise<void>
 }
 
@@ -66,14 +69,26 @@ interface ApiUser {
 }
 
 async function apiAuthRequest(path: string, body: Record<string, unknown>): Promise<{ token: string; user: ApiUser }> {
-  const res = await fetch(`${getApiBase()}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+  let res: Response
+  try {
+    res = await fetch(`${getApiBase()}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  } catch {
+    // fetch itself throwing (offline, DNS, CORS) is a browser-level error
+    // like "Failed to fetch" — exactly the wrong moment to surface raw
+    // technical text to someone trying to get back into the app. Nothing
+    // was sent, so there's nothing at risk either way.
+    throw new Error("Couldn't reach Agent Oak — check your connection and try again. Nothing was saved.")
+  }
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
-    throw new Error(data.error || 'Something went wrong. Please try again.')
+    // A response the server did send but without a specific message is
+    // rarer, but still shouldn't read as data loss — distinct wording
+    // from the network-failure case above.
+    throw new Error(data.error || "That didn't go through — try again in a moment.")
   }
   return data
 }
@@ -147,12 +162,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const signUp = async (name: string, email: string, password: string) => {
+  const signUp = async (name: string, email: string, password: string, ref?: string) => {
     const { token, user: apiUser } = await apiAuthRequest('/auth/signup', {
       name,
       email,
       password,
       workspace: uniqueWorkspaceSlug(name || email),
+      ...(ref ? { ref } : {}),
     })
     localStorage.setItem(TOKEN_KEY, token)
     const u: User = { id: apiUser.id, name: apiUser.name, email: apiUser.email, avatar: '' }
@@ -233,19 +249,84 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // createFamily(): setFamily() hasn't re-rendered yet, so a caller that
   // chains inviteMember() immediately after awaiting createFamily() would
   // see a stale null `family` and bail even though the family now exists.
-  const inviteMember = async (name: string, email: string, role: FamilyRole) => {
-    const apiFamily = await addFamilyGroupMember(name, email, role)
-    persist(user, toFamilyGroup(apiFamily))
+  const inviteMember = async (name: string, email: string, role: FamilyRole, dateOfBirth?: string) => {
+    // Optimistic: show the pending member immediately; the roster shouldn't
+    // wait on the network for an action the user just confirmed.
+    const previous = family
+    if (family) {
+      const optimistic = {
+        ...family,
+        members: [
+          ...family.members,
+          {
+            id: `pending-${Date.now()}`,
+            name,
+            email,
+            role,
+            emoji: ROLE_EMOJI[role],
+            status: 'pending' as const,
+            joinedAt: new Date().toISOString(),
+            ...(dateOfBirth ? { dateOfBirth } : {}),
+          },
+        ],
+      }
+      persist(user, optimistic)
+    }
+    try {
+      const apiFamily = await addFamilyGroupMember(name, email, role, dateOfBirth)
+      persist(user, toFamilyGroup(apiFamily))
+    } catch (err) {
+      persist(user, previous)
+      throw err
+    }
   }
 
   const removeMember = async (id: string) => {
-    const apiFamily = await removeFamilyGroupMember(id)
-    persist(user, toFamilyGroup(apiFamily))
+    const previous = family
+    if (family) {
+      persist(user, { ...family, members: family.members.filter((m) => m.id !== id) })
+    }
+    try {
+      const apiFamily = await removeFamilyGroupMember(id)
+      persist(user, toFamilyGroup(apiFamily))
+    } catch (err) {
+      persist(user, previous)
+      throw err
+    }
   }
 
   const updateMemberRole = async (id: string, role: FamilyRole) => {
-    const apiFamily = await updateFamilyGroupMemberRole(id, role)
-    persist(user, toFamilyGroup(apiFamily))
+    const previous = family
+    if (family) {
+      persist(user, {
+        ...family,
+        members: family.members.map((m) => (m.id === id ? { ...m, role, emoji: ROLE_EMOJI[role] } : m)),
+      })
+    }
+    try {
+      const apiFamily = await updateFamilyGroupMemberRole(id, role)
+      persist(user, toFamilyGroup(apiFamily))
+    } catch (err) {
+      persist(user, previous)
+      throw err
+    }
+  }
+
+  const updateMemberDateOfBirth = async (id: string, dateOfBirth: string) => {
+    const previous = family
+    if (family) {
+      persist(user, {
+        ...family,
+        members: family.members.map((m) => (m.id === id ? { ...m, dateOfBirth } : m)),
+      })
+    }
+    try {
+      const apiFamily = await updateFamilyGroupMemberDateOfBirth(id, dateOfBirth)
+      persist(user, toFamilyGroup(apiFamily))
+    } catch (err) {
+      persist(user, previous)
+      throw err
+    }
   }
 
   const refresh = async () => {
@@ -282,6 +363,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         inviteMember,
         removeMember,
         updateMemberRole,
+        updateMemberDateOfBirth,
         refresh,
       }}
     >

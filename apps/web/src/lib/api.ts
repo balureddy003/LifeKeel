@@ -10,6 +10,8 @@
 import { AI_RESPONSES } from './life-data'
 import type { InboxItem } from './onboarding-data'
 import { getApiBase } from './env'
+import { fetchOrQueue } from './offline-queue'
+import { cachedFetch, invalidateCache } from './fetch-cache'
 import { reportError } from './observability'
 
 export interface FamilyInsight {
@@ -129,13 +131,17 @@ export async function fetchFamilyInsights(): Promise<FamilyInsight[]> {
   // tenant active in other verticals doesn't push family insights off the
   // page before they even reach here. Still filter client-side too — cheap,
   // and keeps this honest if the server-side filter is ever relaxed.
-  return apiFetch<{ insights: RawInsight[] }>(
-    `/insights?detectors=${FAMILY_DETECTORS.join(',')}`,
-    { insights: [] },
-  ).then((r) =>
-    (r.insights ?? [])
-      .filter((i) => (FAMILY_DETECTORS as readonly string[]).includes(i.detector_id))
-      .map(adaptInsight),
+  // Cached 30s — the score card, gate list, and AppShell warmer all read
+  // this; an insight list that old is fine and the page paints instantly.
+  return cachedFetch('family-insights', 30_000, () =>
+    apiFetch<{ insights: RawInsight[] }>(
+      `/insights?detectors=${FAMILY_DETECTORS.join(',')}`,
+      { insights: [] },
+    ).then((r) =>
+      (r.insights ?? [])
+        .filter((i) => (FAMILY_DETECTORS as readonly string[]).includes(i.detector_id))
+        .map(adaptInsight),
+    ),
   )
 }
 
@@ -529,6 +535,8 @@ export interface ApiFamilyMember {
   role: 'organizer' | 'parent' | 'adult' | 'child'
   status: 'active' | 'pending'
   joinedAt: string
+  /** ISO 'YYYY-MM-DD', optional. */
+  dateOfBirth?: string
 }
 
 export interface ApiFamilyGroup {
@@ -596,12 +604,18 @@ export async function addFamilyGroupMember(
   name: string,
   email: string,
   role: ApiFamilyMember['role'],
+  dateOfBirth?: string,
 ): Promise<ApiFamilyGroup> {
-  return familyGroupRequest('/family/members', 'POST', { name, email, role })
+  return familyGroupRequest('/family/members', 'POST', { name, email, role, ...(dateOfBirth ? { date_of_birth: dateOfBirth } : {}) })
 }
 
 export async function updateFamilyGroupMemberRole(id: string, role: ApiFamilyMember['role']): Promise<ApiFamilyGroup> {
   return familyGroupRequest(`/family/members/${id}`, 'PATCH', { role })
+}
+
+/** ISO 'YYYY-MM-DD'. Powers age/years-until-university derivation — see apps/web/src/lib/age.ts. */
+export async function updateFamilyGroupMemberDateOfBirth(id: string, dateOfBirth: string): Promise<ApiFamilyGroup> {
+  return familyGroupRequest(`/family/members/${id}`, 'PATCH', { date_of_birth: dateOfBirth })
 }
 
 export async function removeFamilyGroupMember(id: string): Promise<ApiFamilyGroup> {
@@ -672,6 +686,17 @@ export async function resetInviteCode(): Promise<string> {
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || "Couldn't reset the invite code")
   return data.inviteCode as string
+}
+
+// ── Friend referral (PRD-112) ───────────────────────────────────────────────
+
+export async function fetchMyReferralCode(): Promise<string | null> {
+  const r = await apiFetch<{ code: string | null }>('/referrals/my-code', { code: null })
+  return r.code
+}
+
+export async function fetchReferralSummary(): Promise<{ pending: number; rewarded: number }> {
+  return apiFetch<{ pending: number; rewarded: number }>('/referrals', { pending: 0, rewarded: 0 })
 }
 
 // ── Insight drafts (Tier 1 "prepare, don't send" — PRD-103) ────────────────
@@ -795,29 +820,67 @@ export async function dismissInsight(insightId: string, reason?: string): Promis
 export interface AutomationSettings {
   dry_run_mode: boolean
   trust_level_by_workflow: Record<string, number>
+  renewal_reminders_enabled: boolean
+  renewal_reminder_lead_days: number[]
+  auto_execute_enabled: boolean
 }
 
 export async function fetchAutomationSettings(): Promise<AutomationSettings | null> {
   return apiFetch<AutomationSettings | null>('/settings/automation', null)
 }
 
-export async function updateAutomationSettings(dryRunMode: boolean): Promise<AutomationSettings | null> {
+export async function updateAutomationSettings(
+  patch: { dry_run_mode?: boolean; renewal_reminders_enabled?: boolean; renewal_reminder_lead_days?: number[]; auto_execute_enabled?: boolean },
+): Promise<AutomationSettings | null | 'queued'> {
   try {
-    const base = getApiBase()
-    const token = getAuthToken()
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (token) headers['Authorization'] = `Bearer ${token}`
-
-    const res = await fetch(`${base}/settings/automation`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({ dry_run_mode: dryRunMode }),
-    })
+    const res = await fetchOrQueue(
+      '/settings/automation',
+      { method: 'PATCH', body: JSON.stringify(patch) },
+      'Automation setting',
+    )
+    if (res === 'queued') return 'queued'
     if (!res.ok) return null
     return (await res.json()) as AutomationSettings
   } catch (err) {
     reportError(err, { path: '/settings/automation' })
     return null
+  }
+}
+
+// ── Automatic reminders (Tier 3 transparency surface) ─────────────────────
+
+export interface PolicyReminder {
+  id: string
+  kind: 'policy_renewal'
+  status: 'scheduled' | 'sending' | 'sent' | 'cancelled' | 'failed'
+  policy: { type: string; provider: string; member_id?: string }
+  renewal_date: string
+  lead_days: number
+  due_at: string
+  sent_at: string | null
+  cancelled_reason: string | null
+}
+
+export async function fetchReminders(): Promise<PolicyReminder[]> {
+  const result = await apiFetch<{ reminders: PolicyReminder[] } | null>('/reminders', null)
+  return result?.reminders ?? []
+}
+
+export async function cancelReminder(id: string): Promise<boolean> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const res = await fetch(`${base}/reminders/${id}/cancel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    })
+    return res.ok
+  } catch (err) {
+    reportError(err, { path: `/reminders/${id}/cancel` })
+    return false
   }
 }
 
@@ -870,15 +933,9 @@ export async function deleteAccount(confirmation: string): Promise<{ ok: boolean
 
 export async function dismissInboxItem(itemId: string): Promise<boolean> {
   try {
-    const base = getApiBase()
-    const token = getAuthToken()
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (token) headers['Authorization'] = `Bearer ${token}`
-
-    const res = await fetch(`${base}/inbox/${itemId}/dismiss`, {
-      method: 'POST',
-      headers,
-    })
+    const res = await fetchOrQueue(`/inbox/${itemId}/dismiss`, { method: 'POST' }, 'Inbox dismiss')
+    if (res === 'queued') return true // UI already removed it; it lands on reconnect
+    if (res.ok) invalidateCache('inbox-items')
     return res.ok
   } catch (err) {
     reportError(err, { itemId })
@@ -887,13 +944,18 @@ export async function dismissInboxItem(itemId: string): Promise<boolean> {
 }
 
 export async function fetchInboxItems(): Promise<{ items: InboxItem[]; isLive: boolean }> {
-  return apiFetch<{ items: InboxItem[] }>(
-    '/inbox',
-    { items: [] },
-  ).then((r) => ({
-    items: r.items ?? [],
-    isLive: (r.items?.length ?? 0) > 0,
-  }))
+  // Cached 30s — AppShell already warms this on auth for the tab badge, so
+  // opening Inbox right after app load paints from cache instead of a
+  // skeleton. Invalidated on dismiss so a removed item stays removed.
+  return cachedFetch('inbox-items', 30_000, () =>
+    apiFetch<{ items: InboxItem[] }>(
+      '/inbox',
+      { items: [] },
+    ).then((r) => ({
+      items: r.items ?? [],
+      isLive: (r.items?.length ?? 0) > 0,
+    })),
+  )
 }
 
 // ── Financial profile ────────────────────────────────────────────────────
@@ -907,6 +969,8 @@ export interface FinancialProfileEducationFund {
   current_savings_minor: number
   target_savings_minor: number
   years_remaining: number
+  /** Optional link to a family roster member (role 'child') — mirrors policies[].member_id. */
+  member_id?: string
 }
 
 export type EmploymentStatus = 'employed' | 'self_employed' | 'unemployed' | 'retired'
@@ -979,8 +1043,18 @@ async function fetchFinancialProfileRaw(): Promise<{ profile: FinancialProfile |
   ).then((r) => ({ profile: r.profile ?? null, version: r.version ?? 0 }))
 }
 
+// Live-verification finding: page.tsx, family/page.tsx, FamilyRoster.tsx,
+// Intelligence.tsx, EventDetailClient.tsx, AssetProfileClient.tsx, and
+// useFamilyData.ts's hook each call this independently on mount — on the
+// home page alone, several of them mount together and fire 6+ simultaneous
+// duplicate GETs to the same endpoint, which is what made the dashboard's
+// first paint feel stuck. Cached the same way fetchFamilyInsights already
+// is: concurrent callers share one in-flight request, and the result stays
+// fresh for 30s. fetchFinancialProfileWithVersion (the wizard's own read,
+// below) deliberately stays uncached — OAK-006's concurrency check needs a
+// genuinely current version, not a 30s-old one.
 export async function fetchFinancialProfile(): Promise<FinancialProfile | null> {
-  return fetchFinancialProfileRaw().then((r) => r.profile)
+  return cachedFetch('financial-profile', 30_000, () => fetchFinancialProfileRaw().then((r) => r.profile))
 }
 
 /**
@@ -1022,6 +1096,11 @@ export async function submitFinancialProfile(
     if (res.status === 409) throw new Error(data.error || 'This profile was updated elsewhere — reload and try again.')
     throw new Error(data.error || 'Request failed')
   }
+  // Every other reader (Family, Intelligence, event/asset detail pages,
+  // useFamilyData's hooks) holds fetchFinancialProfile's cached copy —
+  // without dropping it here, a save could sit invisible to them for up to
+  // 30s, reading as "my edit didn't save" even though it did.
+  invalidateCache('financial-profile')
   return { insightsGenerated: data.insights_generated ?? 0, version: data.version ?? version ?? 0 }
 }
 
@@ -1090,6 +1169,25 @@ export async function reportLifeEvent(eventType: LifeEventType, affectedMemberId
   }
 }
 
+// PRD-111: whether an unreported-life-change nudge is currently active.
+// Deliberately just a boolean — the server never sends a reason, so
+// there's nothing here that could leak a guess about what changed.
+export async function fetchLifeChangeNudge(): Promise<{ active: boolean }> {
+  return apiFetch<{ active: boolean }>('/family/life-events/nudge', { active: false })
+}
+
+export async function dismissLifeChangeNudge(): Promise<void> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    await fetch(`${base}/family/life-events/nudge/dismiss`, { method: 'POST', headers })
+  } catch (err) {
+    reportError(err, { action: 'dismissLifeChangeNudge' })
+  }
+}
+
 // Same copy-to-clipboard / open-in-email-client-only posture as
 // prepareInsightDraft above — there is no "send" endpoint here either.
 export async function prepareLifeEventStepDraft(eventId: string, stepId: string): Promise<InsightDraft | null> {
@@ -1112,22 +1210,32 @@ export async function prepareLifeEventStepDraft(eventId: string, stepId: string)
   }
 }
 
+// PRD-113: fire-and-forget audit-only ping after a successful on-device
+// draft — no draft content or step body sent, just the fact it happened.
+// Deliberately not awaited by the caller; a failure here shouldn't block
+// or affect the draft the family already has on screen.
+export function pingOnDeviceDraftUsed(eventId: string, stepId: string): void {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  fetch(`${base}/family/life-events/${eventId}/steps/${stepId}/prepare-on-device`, { method: 'POST', headers }).catch(() => {
+    // Best-effort observability only — never surfaced to the user.
+  })
+}
+
 // Persists checklist completion server-side (an explicit done flag, not a
 // toggle — see the route's comment on cross-device convergence). Returns
 // the server's authoritative id list, or null on failure so the caller can
 // revert its optimistic update.
-export async function setLifeEventStepDone(eventId: string, stepId: string, done: boolean): Promise<string[] | null> {
+export async function setLifeEventStepDone(eventId: string, stepId: string, done: boolean): Promise<string[] | null | 'queued'> {
   try {
-    const base = getApiBase()
-    const token = getAuthToken()
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (token) headers['Authorization'] = `Bearer ${token}`
-
-    const res = await fetch(`${base}/family/life-events/${eventId}/steps/${stepId}/complete`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ done }),
-    })
+    const res = await fetchOrQueue(
+      `/family/life-events/${eventId}/steps/${stepId}/complete`,
+      { method: 'POST', body: JSON.stringify({ done }) },
+      'Checklist step',
+    )
+    if (res === 'queued') return 'queued' // keep the optimistic toggle; lands on reconnect
     if (!res.ok) return null
     const data = await res.json().catch(() => null) as { completed_step_ids?: string[] } | null
     return data?.completed_step_ids ?? []
@@ -1157,24 +1265,31 @@ export async function fetchAuditLog(before?: string): Promise<AuditLogEntry[]> {
 
 // ── Password reset ───────────────────────────────────────────────────────
 
-export async function requestPasswordReset(email: string): Promise<void> {
-  const res = await fetch(`${getApiBase()}/auth/request-password-reset`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, app: 'family' }),
-  })
+// Someone reaching either of these two is very possibly locked out of an
+// account they need right now — a raw browser network error ("Failed to
+// fetch") leaking straight into that moment is the wrong kind of scary.
+// Distinguish "we couldn't even reach the server" from "the server said no."
+async function passwordResetRequest(path: string, body: Record<string, unknown>): Promise<void> {
+  let res: Response
+  try {
+    res = await fetch(`${getApiBase()}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  } catch {
+    throw new Error("Couldn't reach Agent Oak — check your connection and try again.")
+  }
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || 'Request failed')
+  if (!res.ok) throw new Error(data.error || "That didn't go through — try again in a moment.")
+}
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  return passwordResetRequest('/auth/request-password-reset', { email, app: 'family' })
 }
 
 export async function confirmPasswordReset(token: string, newPassword: string): Promise<void> {
-  const res = await fetch(`${getApiBase()}/auth/reset-password`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token, new_password: newPassword }),
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || 'Request failed')
+  return passwordResetRequest('/auth/reset-password', { token, new_password: newPassword })
 }
 
 // ── Public readiness quiz (PRD-201) ─────────────────────────────────────

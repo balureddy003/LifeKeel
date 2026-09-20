@@ -27,6 +27,8 @@ import { getTenantCollection } from '@agentoak/platform'
 import { getFamilyFinancialProfileCollection } from '../db.js'
 import { persistSignal } from '../signals.js'
 import { resolveStaleInsights } from '../insights-persist.js'
+import { maybeFlagUnreportedLifeChange, type ProfileChangeSnapshot } from '../life-events/detect-unreported-change.js'
+import { rewardReferralIfPending } from './referrals.js'
 
 const FAMILY_DETECTOR_IDS = [
   'family_protection_gap',
@@ -102,6 +104,12 @@ export const FinancialProfileSchema = z.object({
         current_savings_minor: z.number().int().nonnegative(),
         target_savings_minor: z.number().int().positive(),
         years_remaining: z.number().int().nonnegative(),
+        // Optional link to a family_groups roster member (role 'child') —
+        // mirrors policies[].member_id (PRD-110). Not validated against the
+        // roster server-side (same posture as that field): a stale/removed
+        // member id just means the frontend falls back to the free-text
+        // child_name it already has.
+        member_id: z.string().min(1).optional(),
       }),
     )
     .default([]),
@@ -357,9 +365,9 @@ export async function evaluateProfileAndGenerateInsights(
         income_protection_monthly_minor: earner.income_protection_monthly_minor,
         // PRD-104: carried through to feature_snapshot so a fired
         // insight can be attributed back to a real roster member, not
-        // just an anonymous "second earner" — doesn't affect dedup,
-        // ENTITY_KEY_FIELDS in packages/engine/src/detector.ts doesn't
-        // include it.
+        // just an anonymous "second earner" — and now load-bearing for
+        // dedup + entity-aware stale resolution, since ENTITY_KEY_FIELDS
+        // in packages/engine/src/detector.ts includes member_id.
         ...(earner.member_id ? { member_id: earner.member_id } : {}),
         ...shared,
       }
@@ -454,6 +462,11 @@ export async function evaluateProfileAndGenerateInsights(
       current_savings_minor: fund.current_savings_minor,
       target_savings_minor: fund.target_savings_minor,
       years_remaining: fund.years_remaining,
+      // Stable entity binding: a linked roster member gives the insight a
+      // durable identity (entity_key via ENTITY_KEY_FIELDS) so per-child
+      // dedup and stale-resolution work; child_name already in this event
+      // is the fallback key for unlinked funds.
+      ...(fund.member_id ? { member_id: fund.member_id } : {}),
     }
     const signalId = await persistSignal({
       tenant_id: tenantId,
@@ -481,17 +494,38 @@ export async function evaluateProfileAndGenerateInsights(
   // engine.evaluate() call per earner/child, aggregated into
   // generatedInsights above) — the only call site with a complete
   // enough picture to safely retract insights the fresh data no longer
-  // reproduces. See resolveStaleInsights's own doc comment for why this
-  // resolves per-detector-per-rule rather than per-entity.
+  // reproduces — per (rule_id, entity_key) pair now, so resolving child
+  // A's education insight doesn't wrongly keep child B's alive or vice
+  // versa. See resolveStaleInsights's own doc comment.
   const inventory = engine.inventory()
   for (const detectorId of FAMILY_DETECTOR_IDS) {
     const checkedRuleIds = inventory.find((d) => d.id === detectorId)?.rules.map((r) => r.id) ?? []
     if (checkedRuleIds.length === 0) continue
-    const firedRuleIds = generatedInsights.filter((i) => i.detector_id === detectorId).map((i) => i.rule_id)
-    await resolveStaleInsights(db, tenantId, detectorId, checkedRuleIds, firedRuleIds)
+    const firedEntities = generatedInsights
+      .filter((i) => i.detector_id === detectorId)
+      .map((i) => ({ rule_id: i.rule_id, entity_key: i.entity_key ?? '' }))
+    await resolveStaleInsights(db, tenantId, detectorId, checkedRuleIds, firedEntities)
   }
 
   return generatedInsights.length
+}
+
+// PRD-111: reduces a full profile doc down to just the fields the
+// unreported-life-change nudge diffs between saves. The top-level
+// household earner has no member_id (matched positionally — there's
+// always exactly one); household.members[] entries carry their own.
+function toChangeSnapshot(profile: Pick<FinancialProfile, 'household' | 'emergency_fund'>): ProfileChangeSnapshot {
+  return {
+    earners: [
+      { employment_status: profile.household.employment_status, monthly_salary_minor: profile.household.monthly_salary_minor },
+      ...profile.household.members.map((m) => ({
+        member_id: m.member_id,
+        employment_status: m.employment_status,
+        monthly_salary_minor: m.monthly_salary_minor,
+      })),
+    ],
+    emergency_savings_minor: profile.emergency_fund.emergency_savings_minor,
+  }
 }
 
 export async function registerFamilyFinancialProfileRoutes(
@@ -527,6 +561,11 @@ export async function registerFamilyFinancialProfileRoutes(
     const { tenant_id } = req.authContext
     const profile = parsed.data
 
+    // PRD-111: read before the write so an unreported-life-change nudge
+    // can diff against what was actually there before — a plain read,
+    // entirely separate from the optimistic-concurrency filter below.
+    const previousDoc = await profileFor(tenant_id).findOne({})
+
     // OAK-006: optimistic concurrency. The multi-step wizard autosaves
     // after every step, and two tabs/devices editing the same profile
     // used to silently last-writer-wins overwrite each other's fields —
@@ -560,6 +599,19 @@ export async function registerFamilyFinancialProfileRoutes(
     }
 
     const insightsGenerated = await evaluateProfileAndGenerateInsights(profile, tenant_id, engine, db, onInsightsGenerated)
+    await maybeFlagUnreportedLifeChange(
+      req,
+      previousDoc ? toChangeSnapshot(previousDoc) : null,
+      toChangeSnapshot(profile),
+      db,
+    )
+    // PRD-112: "first-ever final submit" is the referral reward's
+    // meaningful-action milestone — real use has started, not just an
+    // account existing. No-op for every submit after the first, and a
+    // silent no-op when there's no pending referral (the common case).
+    if (!previousDoc) {
+      await rewardReferralIfPending(db, tenant_id)
+    }
     return reply.send({ ok: true, insights_generated: insightsGenerated, version: newVersion })
   })
 }

@@ -15,8 +15,41 @@ vi.mock('../../signals.js', () => ({
   persistSignal: vi.fn(async () => 'stub-signal-id'),
 }))
 
+// PRD-112: rewardReferralIfPending's own logic (credit-ledger mechanics,
+// the atomic double-reward guard) is covered in isolation by
+// referrals.test.ts — this file only needs to confirm the *wiring*: is
+// it called on a tenant's first final submit, and not on later ones.
+const rewardReferralIfPendingMock = vi.fn(async (_db: unknown, _tenantId: string) => {})
+vi.mock('../referrals.js', () => ({
+  rewardReferralIfPending: (db: unknown, tenantId: string) => rewardReferralIfPendingMock(db, tenantId),
+}))
+
+// PRD-111: getSignalsCollection() is an async singleton with no db
+// parameter — it would otherwise try a real MongoDB connection the moment
+// maybeFlagUnreportedLifeChange runs. Stubbed to "no recent life event on
+// file" by default (recentLifeEvent lets a test opt into the other case);
+// everything else in db.js (getFamilyFinancialProfileCollection,
+// getLifeChangeNudgeStateCollection, ...) stays real — both are plain
+// `database.collection(name)` wrappers around whatever db this test's own
+// makeDb() passes in, so they need no mock of their own.
+let recentLifeEvent = false
+vi.mock('../../db.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../db.js')>()
+  return {
+    ...actual,
+    getSignalsCollection: vi.fn(async () => ({
+      findOne: async () => (recentLifeEvent ? { id: 'seed-event' } : null),
+    })),
+  }
+})
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DETECTORS_DIR = path.resolve(__dirname, '../../../../../detectors')
+
+beforeEach(() => {
+  recentLifeEvent = false
+  rewardReferralIfPendingMock.mockClear()
+})
 
 const TENANT = 'tenant-protection-domain-test'
 
@@ -58,6 +91,9 @@ function makeDb() {
   // it transitions to 'resolved' need somewhere real for that write to land.
   const insightDocs: Record<string, unknown>[] = []
   const insightsCol = {
+    find: (filter: Record<string, unknown>) => ({
+      toArray: async () => insightDocs.filter((d) => matchesFilter(d, filter)),
+    }),
     updateMany: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
       let modifiedCount = 0
       for (const doc of insightDocs) {
@@ -69,13 +105,31 @@ function makeDb() {
       return { modifiedCount }
     }),
   }
+  // PRD-111: one nudge-state doc per tenant, same upsert shape as the real
+  // family_life_change_nudge_state collection.
+  const nudgeStateDocs: Record<string, unknown>[] = []
+  const nudgeStateCol = {
+    findOne: vi.fn(async (filter: Record<string, unknown>) => nudgeStateDocs.find((d) => matchesFilter(d, filter)) ?? null),
+    updateOne: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }, opts?: { upsert?: boolean }) => {
+      let doc = nudgeStateDocs.find((d) => d['tenant_id'] === filter['tenant_id'])
+      if (!doc) {
+        if (!opts?.upsert) return { matchedCount: 0, modifiedCount: 0 }
+        doc = { tenant_id: filter['tenant_id'] }
+        nudgeStateDocs.push(doc)
+      }
+      Object.assign(doc, update.$set)
+      return { matchedCount: 1, modifiedCount: 1 }
+    }),
+  }
+
   return {
-    collection: (name: string) => (name === 'insights' ? insightsCol : profileCol),
+    collection: (name: string) => (name === 'insights' ? insightsCol : name === 'family_life_change_nudge_state' ? nudgeStateCol : profileCol),
     _insightDocs: insightDocs,
+    _nudgeStateDocs: nudgeStateDocs,
   } as any
 }
 
-async function buildApp(engine: Engine): Promise<{ app: ReturnType<typeof Fastify>; insights: Insight[]; insightDocs: Record<string, unknown>[] }> {
+async function buildApp(engine: Engine): Promise<{ app: ReturnType<typeof Fastify>; insights: Insight[]; insightDocs: Record<string, unknown>[]; nudgeStateDocs: Record<string, unknown>[] }> {
   const app = Fastify()
   app.addHook('onRequest', async (request) => {
     ;(request as any).authContext = { tenant_id: TENANT, user_id: 'user-1' }
@@ -85,7 +139,7 @@ async function buildApp(engine: Engine): Promise<{ app: ReturnType<typeof Fastif
   await registerFamilyFinancialProfileRoutes(app, db, engine, async (generated) => {
     insights.push(...generated)
   })
-  return { app, insights, insightDocs: db._insightDocs }
+  return { app, insights, insightDocs: db._insightDocs, nudgeStateDocs: db._nudgeStateDocs }
 }
 
 const BASE_PROFILE = {
@@ -603,8 +657,8 @@ describe('PRD-107: insight resolution', () => {
     expect(insights.some((i) => i.rule_id === 'no_retirement_savings')).toBe(true)
   })
 
-  it('known limitation: a rule still firing for one household member blocks resolution for the whole detector/rule pair, even if it genuinely resolved for another member (entity_key is always empty for family events)', async () => {
-    const { app, insightDocs } = await buildApp(engine)
+  it('entity-aware resolution: a rule firing for one member resolves the legacy unkeyed insight and produces a member-keyed replacement', async () => {
+    const { app, insights, insightDocs } = await buildApp(engine)
     seedOpenInsight(insightDocs, 'family_protection_gap', 'no_income_protection')
 
     await app.inject({
@@ -630,10 +684,153 @@ describe('PRD-107: insight resolution', () => {
       },
     })
 
-    // Still fired (for the member), so the pre-existing seeded insight is
-    // deliberately left open rather than resolved — under-resolves, never
-    // spuriously resolves.
+    // The legacy unkeyed seed is stale — its (rule, '') pair didn't
+    // reproduce; the member-1 firing superseded it with a keyed insight.
     const seeded = insightDocs.find((d) => d['rule_id'] === 'no_income_protection')
-    expect(seeded?.['state']).toBe('identified')
+    expect(seeded?.['state']).toBe('resolved')
+    const memberInsight = insights.find((i) => i.rule_id === 'no_income_protection')
+    expect(memberInsight?.['entity_key']).toBe('member-1')
+  })
+})
+
+describe('PRD-111: unreported life-change nudge', () => {
+  let engine: Engine
+
+  beforeEach(async () => {
+    engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
+    await engine.load()
+  })
+
+  it('a final save crossing employment_status to unemployed, with no recent life event, flags the nudge active', async () => {
+    const { app, nudgeStateDocs } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        household: { ...BASE_PROFILE.household, employment_status: 'unemployed' },
+        generate_insights: true,
+      },
+    })
+    expect(nudgeStateDocs.find((d) => d['tenant_id'] === TENANT)?.['active']).toBe(true)
+  })
+
+  it('the same crossing on an intermediate autosave (no generate_insights) does not flag the nudge', async () => {
+    const { app, nudgeStateDocs } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, household: { ...BASE_PROFILE.household, employment_status: 'unemployed' } },
+    })
+    expect(nudgeStateDocs.find((d) => d['tenant_id'] === TENANT)?.['active']).not.toBe(true)
+  })
+
+  it('a crossing does not flag the nudge when a life event was already reported recently', async () => {
+    recentLifeEvent = true
+    const { app, nudgeStateDocs } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        household: { ...BASE_PROFILE.household, employment_status: 'unemployed' },
+        generate_insights: true,
+      },
+    })
+    expect(nudgeStateDocs.find((d) => d['tenant_id'] === TENANT)?.['active']).not.toBe(true)
+  })
+
+  it('a first-ever save never flags the nudge — nothing to diff against', async () => {
+    const { app, nudgeStateDocs } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, household: { ...BASE_PROFILE.household, employment_status: 'unemployed' }, generate_insights: true },
+    })
+    expect(nudgeStateDocs.find((d) => d['tenant_id'] === TENANT)?.['active']).not.toBe(true)
+  })
+
+  it('a save with no threshold crossed does not flag the nudge', async () => {
+    const { app, nudgeStateDocs } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, household: { ...BASE_PROFILE.household, monthly_salary_minor: 420000 }, generate_insights: true },
+    })
+    expect(nudgeStateDocs.find((d) => d['tenant_id'] === TENANT)?.['active']).not.toBe(true)
+  })
+})
+
+describe('PRD-112: friend referral reward wiring', () => {
+  let engine: Engine
+
+  beforeEach(async () => {
+    engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
+    await engine.load()
+  })
+
+  it('calls rewardReferralIfPending on a first-ever final submit', async () => {
+    const { app } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    expect(rewardReferralIfPendingMock).toHaveBeenCalledTimes(1)
+    expect(rewardReferralIfPendingMock).toHaveBeenCalledWith(expect.anything(), TENANT)
+  })
+
+  it('does not call rewardReferralIfPending on a second submit', async () => {
+    const { app } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    rewardReferralIfPendingMock.mockClear()
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    expect(rewardReferralIfPendingMock).not.toHaveBeenCalled()
+  })
+
+  it('does not call rewardReferralIfPending on an intermediate autosave (no generate_insights)', async () => {
+    const { app } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: BASE_PROFILE })
+    expect(rewardReferralIfPendingMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('Financial Profile wizard: education_funds[].member_id (roster-linked children)', () => {
+  let engine: Engine
+
+  beforeEach(async () => {
+    engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
+    await engine.load()
+  })
+
+  it('round-trips education_funds[].member_id through POST then GET', async () => {
+    const { app } = await buildApp(engine)
+    const education_funds = [
+      { child_name: 'Sam', child_age: 8, current_savings_minor: 2_000_000, target_savings_minor: 2_000_000, years_remaining: 10, member_id: 'roster-child-1' },
+    ]
+
+    const post = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, education_funds },
+    })
+    expect(post.statusCode).toBe(200)
+
+    const get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    expect(get.statusCode).toBe(200)
+    expect(get.json().profile.education_funds).toEqual(education_funds)
+  })
+
+  it('still accepts an education fund with no member_id, unchanged from before this field existed', async () => {
+    const { app } = await buildApp(engine)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: BASE_PROFILE,
+    })
+    expect(res.statusCode).toBe(200)
   })
 })

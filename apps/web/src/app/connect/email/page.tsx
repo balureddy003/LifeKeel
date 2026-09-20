@@ -111,7 +111,7 @@ export default function ConnectEmailPage() {
       setScanResult({ scanned: result.scanned, inboxItemsCreated: result.inboxItemsCreated })
     } else {
       haptic('warning')
-      setError('Scan failed — please try again in a moment.')
+      setError("The scan didn't finish — nothing was read or stored. Try again in a moment.")
     }
     setScanning(false)
   }

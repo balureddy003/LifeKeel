@@ -78,10 +78,15 @@ import { registerAccountRoutes } from './routes/account.js'
 import { registerFamilyConnectorRoutes } from './routes/family-connectors.js'
 import { registerFamilyGroupRoutes } from './routes/family-group.js'
 import { registerFamilyJoinRoutes } from './routes/family-join.js'
+import { registerReferralRoutes } from './routes/referrals.js'
 import { registerGrowthEventRoutes } from './routes/growth-events.js'
 import { registerFamilyFinancialProfileRoutes } from './routes/family-financial-profile.js'
 import { registerLifeEventRoutes } from './routes/life-events.js'
 import { registerFamilyInboxRoutes } from './routes/family-inbox.js'
+import { registerPushRoutes } from './routes/push.js'
+import { registerReminderRoutes } from './routes/reminders.js'
+import { registerDetectorEvalRoutes, detectorEvalDir } from './routes/detector-evals.js'
+import { ensureReminderIndexes, runPolicyRenewalReminders } from './jobs/policy-renewal-reminders.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
 import { registerReadinessQuizRoutes } from './routes/readiness-quiz.js'
 import { sendOpsAlert } from './lib/ops-alerts.js'
@@ -219,6 +224,28 @@ try {
   }, { missedExecutionTolerance: 30_000, noOverlap: true })
   log.info({}, 'Email scan cron started')
 
+  // Policy renewal reminders — hourly. Tier 3 autonomy: deterministic,
+  // deduped, consent re-checked at send time, push-only to the member's
+  // own devices. Hourly (not daily) so a reminder deferred by quiet hours
+  // still goes out later the same day instead of waiting a full cycle.
+  if (deliveryRouter) {
+    const dr = deliveryRouter
+    await ensureReminderIndexes(workflowDb)
+    cron.schedule('17 * * * *', async () => {
+      try {
+        await withCronLock(workflowDb, 'policy-renewal-reminders', async () => {
+          const summary = await runPolicyRenewalReminders(workflowDb, (tenantId, reminder) => dr.deliverReminder(tenantId, reminder))
+          if (summary.sent > 0 || summary.failed > 0) {
+            log.info({ ...summary }, 'Policy renewal reminder run')
+          }
+        })
+      } catch (err) {
+        log.error({ err }, 'Policy renewal reminder run failed')
+      }
+    }, { missedExecutionTolerance: 60_000 })
+    log.info({}, 'Policy renewal reminder cron started')
+  }
+
   // Trading (auto-trade confirmation, reconciliation, momentum rebalance)
   // and workflow-approval-timeout sweeps removed — Agent Oak has no trading
   // vertical and no workflow engine to create approval gates in the first
@@ -248,7 +275,8 @@ try {
   // increases by > 0.05 since last check.
   cron.schedule('0 2 * * *', async () => {
     if (!scoreCalibrator) return
-    if (!(await acquireCronLock(workflowDb, 'calibration-drift'))) return
+    const lockOwner = await acquireCronLock(workflowDb, 'calibration-drift')
+    if (!lockOwner) return
     try {
       const histCol   = workflowDb.collection('calibration_ece_history')
       const alertCol  = workflowDb.collection('calibration_alerts')
@@ -287,7 +315,7 @@ try {
     } catch (err) {
       log.error({ err }, 'Calibration drift check failed')
     } finally {
-      await releaseCronLock(workflowDb, 'calibration-drift')
+      await releaseCronLock(workflowDb, 'calibration-drift', lockOwner)
     }
   }, { missedExecutionTolerance: 60_000 })
   log.info({}, 'Calibration drift cron started')
@@ -309,7 +337,8 @@ try {
   //   policy_blocked, budget_blocked → excluded (not user decisions, no signal)
   cron.schedule('0 3 * * *', async () => {
     if (!scoreCalibrator) return
-    if (!(await acquireCronLock(workflowDb, 'calibration-fit'))) return
+    const lockOwner = await acquireCronLock(workflowDb, 'calibration-fit')
+    if (!lockOwner) return
     try {
       const receiptsCol = workflowDb.collection('action_receipts')
       const now = Date.now()
@@ -412,7 +441,7 @@ try {
     } catch (err) {
       log.error({ err }, 'Calibration fitting cron failed')
     } finally {
-      await releaseCronLock(workflowDb, 'calibration-fit')
+      await releaseCronLock(workflowDb, 'calibration-fit', lockOwner)
     }
   }, { missedExecutionTolerance: 60_000 })
   log.info({}, 'Calibration fitting cron started (nightly 3 AM)')
@@ -473,6 +502,43 @@ try {
             log.error({ job: names[i], err: result.reason }, 'Insight SLA/escalation job failed')
           }
         })
+        // The escalation worker only claims insights and queues
+        // delivery_queue rows — drainDeliveryQueue is the missing consumer
+        // that actually sends them. Runs in the same lock cycle so an
+        // escalation queued this tick goes out this tick.
+        if (deliveryRouter) {
+          try {
+            const drained = await deliveryRouter.drainDeliveryQueue()
+            if (drained.sent > 0 || drained.failed > 0) {
+              log.info({ ...drained }, 'Delivery queue drained')
+            }
+          } catch (err) {
+            log.error({ err }, 'Delivery queue drain failed')
+          }
+          // Judge review queues — passesMoveJudge writes, drainReviewQueues
+          // consumes: retries due rewrites, re-evaluates blocks, resolves
+          // rows whose insights went terminal another way.
+          try {
+            const reviewed = await deliveryRouter.drainReviewQueues()
+            if (reviewed.retried > 0 || reviewed.released > 0 || reviewed.resolved > 0) {
+              log.info({ ...reviewed }, 'Judge review queues drained')
+            }
+          } catch (err) {
+            log.error({ err }, 'Judge review queue drain failed')
+          }
+        }
+        // Trusted-scope auto-execution — spends the trust approvals earned.
+        // Opt-in + trust threshold + log_only-only + grace period all gate
+        // inside the worker; nothing external can ever dispatch from here.
+        try {
+          const { runAutoExecuteTrusted } = await import('./jobs/auto-execute-trusted.js')
+          const auto = await runAutoExecuteTrusted(workflowDb)
+          if (auto.executed > 0 || auto.failed > 0) {
+            log.info({ ...auto }, 'Trusted-scope auto-execution completed')
+          }
+        } catch (err) {
+          log.error({ err }, 'Trusted-scope auto-execution failed')
+        }
       })
     } catch (err) {
       log.error({ err }, 'Insight SLA/escalation cron failed')
@@ -503,7 +569,7 @@ try {
 
   // ── Queue setup ───────────────────────────────────────────────────────────
   await queueManager.connect()
-  startWebhookWorker(engine, connectorLoader, eventGenerator, workflowDb)
+  startWebhookWorker(engine, connectorLoader, eventGenerator, workflowDb, deliveryRouter)
   log.info({}, 'Queue manager connected')
 
   // ── Score calibration ─────────────────────────────────────────────────────
@@ -904,7 +970,7 @@ app.addHook('preHandler', async (request, reply) => {
 
 function authorizationResource(url: string): ProductResource | null {
   const segment = url.split('?')[0]?.split('/')[1]
-  const map: Record<string, ProductResource> = { insights: 'insights', goals: 'goals', outcomes: 'goals', detectors: 'detectors', connectors: 'connectors', analytics: 'analytics', team: 'users', settings: 'settings', account: 'settings', export: 'audit', 'audit-log': 'audit' }
+  const map: Record<string, ProductResource> = { insights: 'insights', goals: 'goals', outcomes: 'goals', detectors: 'detectors', connectors: 'connectors', analytics: 'analytics', team: 'users', settings: 'settings', account: 'settings', reminders: 'insights', export: 'audit', 'audit-log': 'audit' }
   return segment ? map[segment] ?? null : null
 }
 
@@ -1104,7 +1170,7 @@ app.get('/pipeline-connectors', async () => ({
 // marketplace, teams — isn't reachable from Agent Oak and was removed rather
 // than left dead in the route table. See SECURITY.md for the full list of
 // what was dropped and why.
-await registerInsightRoutes(app, engine, featureHashScorer, workflowDb, tenantLevelScorer)
+await registerInsightRoutes(app, engine, featureHashScorer, workflowDb, tenantLevelScorer, deliveryRouter)
 await registerAuthUserRoutes(app, auth)
 if (workflowDb) {
   await registerSocialAuthRoutes(app, auth, workflowDb)
@@ -1121,12 +1187,16 @@ if (workflowDb) {
   registerFamilyConnectorRoutes(app, workflowDb)
   registerFamilyGroupRoutes(app, workflowDb)
   registerFamilyJoinRoutes(app, workflowDb)
+  registerReferralRoutes(app, workflowDb)
   registerGrowthEventRoutes(app, workflowDb)
   registerFamilyInboxRoutes(app, workflowDb)
   registerAssistantRoutes(app, workflowDb)
   registerReadinessQuizRoutes(app, workflowDb, engine)
   await registerFamilyFinancialProfileRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerLifeEventRoutes(app, workflowDb)
+  registerPushRoutes(app, workflowDb, deliveryRouter)
+  registerReminderRoutes(app, workflowDb)
+  registerDetectorEvalRoutes(app, workflowDb, engine, detectorEvalDir(ROOT))
 }
 // Prometheus metrics — generic ops/observability, not vertical-specific.
 await registerMetricsRoutes(app, engine, scoreCalibrator)

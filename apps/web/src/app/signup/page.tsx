@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Network, Check, X } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import { GoogleIcon } from '@/components/GoogleIcon'
 import { PasswordInput } from '@/components/PasswordInput'
 import { useAuth } from '@/lib/auth-context'
@@ -17,15 +17,24 @@ export default function SignUpPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [refCode, setRefCode] = useState<string | undefined>(undefined)
   const { signUp, signInWithProvider } = useAuth()
   const router = useRouter()
+
+  // PRD-112: carried through from a friend's referral link
+  // (/signup?ref=<code>), same window.location.search convention as
+  // /life-events's own ?type=.
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get('ref')
+    if (ref) setRefCode(ref)
+  }, [])
 
   const handleSignUp = async () => {
     if (!name.trim() || !email.trim() || password.length < 8) return
     setLoading(true)
     setError(null)
     try {
-      await signUp(name, email, password)
+      await signUp(name, email, password, refCode)
       haptic('success')
       track('signup_completed', { method: 'password' })
       router.push('/family-setup')
@@ -52,10 +61,9 @@ export default function SignUpPage() {
   return (
     <div className="min-h-screen flex flex-col px-6 pt-12 pb-8">
       <div className="text-center mb-8">
-        <div className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-3">
-          <Network size={32} className="text-family-400" />
-        </div>
-        <h1 className="text-2xl font-bold">Create your account</h1>
+        {/* eslint-disable-next-line @next/next/no-img-element -- matches MarketingLanding.tsx's own /icon.svg usage */}
+        <img src="/icon.svg" alt="" width={64} height={64} className="rounded-3xl mx-auto mb-3" />
+        <h1 className="text-2xl font-semibold tracking-tight bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">Create your account</h1>
         <p className="text-sm text-ink-tertiary mt-1">Takes 30 seconds. No credit card needed.</p>
       </div>
 

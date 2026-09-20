@@ -43,6 +43,7 @@ type LedgerEntryType =
   | 'trial_expiry'
   | 'plan_downgrade'
   | 'cycle_reset'
+  | 'referral_reward'
 
 export interface LedgerEntry {
   id: string

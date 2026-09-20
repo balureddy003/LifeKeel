@@ -62,6 +62,11 @@ function makeDb() {
     audit_log: makeCol([{ tenant_id: TENANT, action: 'insight.approve' }]),
     tenants: makeCol([{ tenant_id: TENANT, status: 'active' }]),
     connector_credentials: makeCol([{ tenant_id: TENANT, connector_id: 'c1' }]),
+    reminders: makeCol([{ tenant_id: TENANT, id: 'r1' }, { tenant_id: 'other', id: 'r2' }]),
+    move_rewrite_queue: makeCol([{ tenant_id: TENANT, insight_id: 'i1' }]),
+    manual_review_queue: makeCol([{ tenant_id: TENANT, insight_id: 'i1' }]),
+    move_judge_verdicts: makeCol([{ tenant_id: TENANT, insight_id: 'i1' }]),
+    delivery_receipts: makeCol([{ tenant_id: TENANT, insight_id: 'i1' }]),
   }
   const db = {
     cols,
@@ -128,9 +133,11 @@ describe('POST /account/delete', () => {
     expect(res.json().deleted).toBe(true)
 
     // Tenant-tagged family data gone
-    for (const name of ['family_groups', 'family_financial_profile', 'documents', 'signals', 'insights', 'connector_credentials']) {
+    for (const name of ['family_groups', 'family_financial_profile', 'documents', 'signals', 'insights', 'connector_credentials', 'reminders', 'move_rewrite_queue', 'manual_review_queue', 'move_judge_verdicts', 'delivery_receipts']) {
       expect(db.cols[name]!.docs.filter((d) => d['tenant_id'] === TENANT)).toHaveLength(0)
     }
+    // Another tenant's reminders survive the wipe
+    expect(db.cols['reminders']!.docs).toHaveLength(1)
     // The account's users rows are gone; another tenant's row survives
     expect(db.cols['users']!.docs.some((d) => d['tenant_id'] === TENANT)).toBe(false)
     expect(db.cols['users']!.docs.some((d) => d['tenant_id'] === 'other')).toBe(true)

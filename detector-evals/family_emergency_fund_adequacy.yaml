@@ -1,0 +1,50 @@
+# Golden eval cases for detectors/family/emergency-fund-adequacy.yaml.
+# event_type mirrors family-financial-profile.ts: 'family.savings'.
+cases:
+  - id: thin-emergency-fund
+    description: Savings cover less than 3 months of expenses
+    event_type: family.savings
+    data:
+      emergency_savings_minor: 100000
+      monthly_expenses_minor: 200000
+      has_high_interest_debt: 0
+      high_interest_debt_balance_minor: 0
+    expected_insights:
+      - rule_id: emergency_fund_below_3_months
+        min_or_score: 0.5
+
+  - id: high-interest-debt-with-adequate-fund
+    description: Fund is fine but high-interest debt is listed — the debt rule stands alone
+    event_type: family.savings
+    data:
+      emergency_savings_minor: 1000000
+      monthly_expenses_minor: 200000
+      has_high_interest_debt: 1
+      high_interest_debt_balance_minor: 500000
+    expected_insights:
+      - rule_id: high_interest_debt_unaddressed
+        min_or_score: 0.5
+
+  - id: overfunded-while-in-debt
+    description: Over 12 months of expenses saved while carrying high-interest debt — both rules fire
+    event_type: family.savings
+    data:
+      emergency_savings_minor: 3000000
+      monthly_expenses_minor: 200000
+      has_high_interest_debt: 1
+      high_interest_debt_balance_minor: 500000
+    expected_insights:
+      - rule_id: high_interest_debt_unaddressed
+        min_or_score: 0.5
+      - rule_id: emergency_fund_overfunded
+        min_or_score: 0.5
+
+  - id: adequate-fund-no-debt
+    description: 4.5 months of expenses, no debt — nothing to flag
+    event_type: family.savings
+    data:
+      emergency_savings_minor: 900000
+      monthly_expenses_minor: 200000
+      has_high_interest_debt: 0
+      high_interest_debt_balance_minor: 0
+    expected_silent: true

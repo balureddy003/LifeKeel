@@ -88,6 +88,7 @@ First, classify the document into one of these categories:
 - insurance (policy documents, renewal notices, coverage statements)
 - pension (pension statements, retirement plan documents)
 - mortgage (mortgage statements, rate change notices, refinance offers)
+- income (payslips, P60s, salary statements, employment income letters)
 - investment (investment statements, portfolio summaries, trade confirmations)
 - tax (tax returns, tax notices, W-2/1099 forms)
 - will (will, estate planning documents, trust documents)
@@ -102,6 +103,9 @@ Then extract all relevant fields you can identify. Common fields include:
 - interest_rate
 - beneficiary
 - period (e.g. "Q3 2024", "January 2025")
+- net_pay / gross_pay / salary (income documents only — the recurring pay
+  amount for the period shown, whichever is clearest; prefer net_pay when
+  more than one is present, since that's what a household actually receives)
 - policy_type (insurance documents only — exactly one of: life, income_protection,
   critical_illness, health, car, home — pick whichever this policy actually
   covers; omit this field entirely if you're not confident)

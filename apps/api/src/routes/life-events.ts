@@ -14,13 +14,16 @@
  * POST /family/life-events                            — report a new event, returns its rendered playbook
  * POST /family/life-events/:id/steps/:stepId/prepare  — draft an outreach message for one step (Tier 1 — never sends)
  * POST /family/life-events/:id/steps/:stepId/complete — persist checklist completion server-side
+ * GET  /family/life-events/nudge                       — PRD-111: is an unreported-life-change nudge active
+ * POST /family/life-events/nudge/dismiss                — PRD-111: dismiss it
  */
 import crypto from 'node:crypto'
 import { z } from 'zod'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { createLlmRouterFromEnv, getTenantCollection } from '@agentoak/platform'
-import { getSignalsCollection } from '../db.js'
+import { getSignalsCollection, getLifeChangeNudgeStateCollection } from '../db.js'
+import { getAuditLogger } from '../audit/audit-log.js'
 import { persistSignal } from '../signals.js'
 import { generateDraft } from '../insights/generate-draft.js'
 import { renderPlaybook, type LifeEventType } from '../life-events/render-playbook.js'
@@ -121,6 +124,17 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
         data: { event_type, ...(affected_member_id ? { affected_member_id } : {}), reported_at },
       })
 
+      // PRD-111: reporting any life event is the family acting on their
+      // own initiative — clear a pending unreported-life-change nudge
+      // (if one was active) rather than leave it dangling now that
+      // there's a real report on file. Distinct audit action from a
+      // silent dismiss: this is the "nudge actually worked" signal.
+      const nudgeState = await getLifeChangeNudgeStateCollection(db).findOne({ tenant_id, active: true })
+      if (nudgeState) {
+        await getLifeChangeNudgeStateCollection(db).updateOne({ tenant_id }, { $set: { active: false } })
+        getAuditLogger()?.fromRequest(req, 'life_event.nudge_acted_on', 'life_event_nudge', tenant_id)
+      }
+
       return reply.status(201).send({
         id,
         event_type,
@@ -172,6 +186,21 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
   )
 
   /**
+   * PRD-113: audit-only. Fired (fire-and-forget) by the client after a
+   * successful on-device draft generation — no draft content or step
+   * body in the request, just the fact that on-device inference was
+   * used, so the feature's usage is observable the same way every other
+   * action is without compromising the privacy property it exists for.
+   */
+  app.post<{ Params: { id: string; stepId: string } }>(
+    '/family/life-events/:id/steps/:stepId/prepare-on-device',
+    async (req, reply) => {
+      getAuditLogger()?.fromRequest(req, 'insight.prepare_on_device', 'life_event_step', req.params.stepId)
+      return reply.send({ ok: true })
+    },
+  )
+
+  /**
    * Server-side checklist completion (remediation item 19). Body is an
    * explicit {done: boolean} rather than a blind toggle — two devices
    * racing the same step must converge on the same end state, which a
@@ -212,4 +241,25 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
       return { completed_step_ids: validCompletedIds({ ...doc, data: { ...doc.data, completed_step_ids: stored } }, playbook) }
     },
   )
+
+  // PRD-111: `active` only. The trigger reason lives in
+  // family_life_change_nudge_state for the audit log alone — never
+  // returned here, so the nudge has no way to guess or name what
+  // changed even by accident.
+  app.get('/family/life-events/nudge', async (req) => {
+    const { tenant_id } = req.authContext
+    const state = await getLifeChangeNudgeStateCollection(db).findOne({ tenant_id })
+    return { active: state?.active === true }
+  })
+
+  app.post('/family/life-events/nudge/dismiss', async (req) => {
+    const { tenant_id } = req.authContext
+    await getLifeChangeNudgeStateCollection(db).updateOne(
+      { tenant_id },
+      { $set: { active: false } },
+      { upsert: true },
+    )
+    getAuditLogger()?.fromRequest(req, 'life_event.nudge_dismissed', 'life_event_nudge', tenant_id)
+    return { ok: true }
+  })
 }
