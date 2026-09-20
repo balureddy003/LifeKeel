@@ -93,7 +93,7 @@ export const FinancialProfileSchema = z.object({
     target_retirement_age: z.number().int().positive(),
     pension_balance_minor: z.number().int().nonnegative(),
     monthly_contribution_minor: z.number().int().nonnegative(),
-    target_retirement_income_minor: z.number().int().positive(),
+    target_retirement_income_minor: z.number().int().nonnegative(),
     expected_annual_growth_pct: z.number().min(0).max(20).default(5),
   }),
   education_funds: z
@@ -102,7 +102,7 @@ export const FinancialProfileSchema = z.object({
         child_name: z.string().min(1),
         child_age: z.number().int().nonnegative(),
         current_savings_minor: z.number().int().nonnegative(),
-        target_savings_minor: z.number().int().positive(),
+        target_savings_minor: z.number().int().nonnegative(),
         years_remaining: z.number().int().nonnegative(),
         // Optional link to a family_groups roster member (role 'child') —
         // mirrors policies[].member_id (PRD-110). Not validated against the
@@ -149,6 +149,15 @@ export const FinancialProfileSchema = z.object({
     )
     .default([]),
 })
+
+/**
+ * A target of 0 means "not set yet". Profiles saved before this was
+ * allowed carry a client-side 1-minor-unit (£0.01) placeholder instead —
+ * no real target is under £1, so anything at or below that is unset too.
+ * Evaluating a detector against an unset target produces either silence
+ * (nothing to fall short of) or nonsense, so those checks are skipped.
+ */
+const isUnsetTarget = (minor: number) => minor <= 100
 
 export type FinancialProfile = z.infer<typeof FinancialProfileSchema>
 
@@ -399,7 +408,12 @@ export async function evaluateProfileAndGenerateInsights(
     const eventId = crypto.randomUUID()
     const data = {
       emergency_savings_minor: profile.emergency_fund.emergency_savings_minor,
-      monthly_expenses_minor: profile.emergency_fund.monthly_expenses_minor,
+      // Not entered separately? Fall back to the household's stated annual
+      // living expenses / 12 so the check runs on real numbers instead of 0.
+      monthly_expenses_minor:
+        profile.emergency_fund.monthly_expenses_minor > 0
+          ? profile.emergency_fund.monthly_expenses_minor
+          : Math.round(profile.household.annual_living_expenses_minor / 12),
       has_high_interest_debt: Number(profile.emergency_fund.has_high_interest_debt),
       high_interest_debt_balance_minor: profile.emergency_fund.high_interest_debt_balance_minor,
     }
@@ -421,7 +435,7 @@ export async function evaluateProfileAndGenerateInsights(
   }
 
   // ── family_retirement_gap ─────────────────────────────────────────────
-  {
+  if (!isUnsetTarget(profile.retirement.target_retirement_income_minor)) {
     const projection = projectRetirement(profile.retirement)
     const eventId = crypto.randomUUID()
     const data = {
@@ -455,6 +469,7 @@ export async function evaluateProfileAndGenerateInsights(
 
   // ── family_education_shortfall (one event per child) ─────────────────
   for (const fund of profile.education_funds) {
+    if (isUnsetTarget(fund.target_savings_minor)) continue
     const eventId = crypto.randomUUID()
     const data = {
       child_name: fund.child_name,
