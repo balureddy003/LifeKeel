@@ -372,7 +372,7 @@ export default function InboxPage() {
                       <span className="text-xs text-ink-tertiary">
                         {item.source === 'Oak'
                           ? 'Oak noticed'
-                          : `Found in your email${item.policy?.provider ? ` · ${item.policy.provider}` : ''}`}
+                          : `Found in your email${item.policy?.provider ? ` · ${item.policy.provider}` : ''}${item.threadCount ? ` · ${item.threadCount} messages` : ''}`}
                       </span>
                       {!item.read && (
                         <span className="w-2 h-2 rounded-full" style={{ background: color }} />

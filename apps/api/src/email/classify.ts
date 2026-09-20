@@ -62,7 +62,7 @@ Relevant (is_financial: true) — the email is ABOUT a policy, plan or long-term
 
 NOT relevant (is_financial: false) — even though it mentions money:
 - Transaction notifications of any kind: card or bank debit/credit alerts, "payment received/confirmed", order confirmations, food/shopping/travel bookings, subscription receipts and invoices, "your statement is available to view", balance alerts.
-- Newsletters, marketing, social notifications.
+- Newsletters, marketing, social notifications, and promotions or sales pitches for a product the family does not already hold ("open a SIPP", "get a quote") — even when the product is insurance or a pension.
 - Operational/usage alerts that only warn a charge COULD happen — API limits, storage quotas, uptime alerts.
 The test: does this tell the family something about a policy or protection they hold or should review? A record that money moved does not.
 

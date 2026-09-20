@@ -69,6 +69,28 @@ describe('insurance documents in the feed', () => {
   })
 })
 
+describe('email threads', () => {
+  it('collapses a claim conversation into one item with a count', async () => {
+    const row = (id: string, subject: string, date: string) => ({
+      id, source: 'Cega', subject, ai_summary: 's', action_label: 'Review', action_type: 'review', priority: 'high',
+      date, read: false, policy_details: { type: 'travel' },
+    })
+    const { db } = makeDb({
+      insights: { rows: [] }, documents: { rows: [] },
+      inbox_items: { rows: [
+        row('a', 'Assistance Correspondence (# ClaimNo 22559712 #)', '2026-09-09T10:00:00Z'),
+        row('b', 'RE: Assistance Correspondence (# ClaimNo 22559712 #)', '2026-09-10T10:00:00Z'),
+        row('c', 'Re: [EXTERNAL] Assistance Correspondence (# ClaimNo 22559712 #)', '2026-09-14T10:00:00Z'),
+        row('d', 'Your home insurance renewed', '2026-09-01T10:00:00Z'),
+      ] },
+    })
+    const items = (await (await build(db)).inject({ method: 'GET', url: '/inbox' })).json().items
+    expect(items.map((i: { id: string }) => i.id)).toEqual(['c', 'd'])
+    expect(items[0].threadCount).toBe(3)
+    expect(items[1].threadCount).toBeUndefined()
+  })
+})
+
 describe('feed titles', () => {
   it('turns a snake_case rule id into a readable title', async () => {
     const { db } = makeDb({ insights: { rows: [{ ...insight, hypothesis: 'no_income_protection' }] }, inbox_items: { rows: [] } })

@@ -38,6 +38,32 @@ export interface InboxItemDoc {
   policy_details?: import('../email/classify.js').EmailPolicyDetails
 }
 
+/** Reply/forward prefixes, [EXTERNAL] tags and (# ClaimNo … #) refs stripped, so a back-and-forth groups as one conversation. */
+function threadKey(subject: string): string {
+  return subject
+    .toLowerCase()
+    .replace(/^(\s*(re|fw|fwd)\s*:\s*|\s*\[[^\]]*\]\s*)+/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+/**
+ * A claim can generate dozens of near-identical mails. Collapse each
+ * conversation to its newest message with a count, so the feed stays a list
+ * of things to look at, not a mailbox.
+ */
+function groupEmailThreads<T extends { subject: string; date: string }>(items: T[]): (T & { threadCount?: number })[] {
+  const groups = new Map<string, T[]>()
+  for (const item of items) {
+    const key = threadKey(item.subject)
+    groups.set(key, [...(groups.get(key) ?? []), item])
+  }
+  return [...groups.values()].map((g) => {
+    const newest = [...g].sort((a, b) => (a.date < b.date ? 1 : -1))[0]!
+    return g.length > 1 ? { ...newest, threadCount: g.length } : newest
+  })
+}
+
 const INSIGHT_PREFIX = 'insight:'
 const DOC_PREFIX = 'doc:'
 
@@ -104,7 +130,7 @@ function documentToFeedItem(d: Record<string, unknown>) {
       emoji: '',
       source: 'Oak',
       subject: `${who} form due ${daysLeft === 0 ? 'today' : daysLeft === 1 ? 'tomorrow' : `in ${daysLeft} days`}`,
-      aiSummary: `A document from ${who} lists ${fields['due_date']} as a due date. ${facts}. Check it with your provider — Oak only reads it and does not submit anything.`,
+      aiSummary: `A document from ${who} lists ${fields['due_date']} as a due date.${facts ? ` ${facts}.` : ''} Check it with your provider — Oak only reads it and does not submit anything.`,
       actionLabel: 'Open document',
       actionType: 'review' as const,
       priority: 'high' as const,
@@ -118,7 +144,7 @@ function documentToFeedItem(d: Record<string, unknown>) {
     emoji: '',
     source: 'Oak',
     subject: `Policy found: ${who}${type ? ` ${type}` : ''}`,
-    aiSummary: `Oak read a document from ${who}. ${facts}. Review it and add it to your profile so your protection check reflects it.`,
+    aiSummary: `Oak read a document from ${who}.${facts ? ` ${facts}.` : ''} Review it and add it to your profile so your protection check reflects it.`,
     actionLabel: 'Review policy',
     actionType: 'review' as const,
     priority: 'medium' as const,
@@ -215,7 +241,7 @@ export function registerFamilyInboxRoutes(
           ...(item.policy_details ? { policy: item.policy_details } : {}),
         })),
       }
-      const merged = [...fromInsights, ...fromDocuments, ...fromEmail.items].sort((a, b) => (a.date < b.date ? 1 : -1))
+      const merged = [...fromInsights, ...fromDocuments, ...groupEmailThreads(fromEmail.items)].sort((a, b) => (a.date < b.date ? 1 : -1))
       return { items: merged.slice(0, limit) }
     },
   )

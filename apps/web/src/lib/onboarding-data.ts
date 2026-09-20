@@ -161,6 +161,8 @@ export interface InboxItem {
   priority: 'high' | 'medium' | 'low'
   date: string
   read: boolean
+  /** Messages in the conversation this item stands for (email items). */
+  threadCount?: number
   /** Where the action button goes (Oak-generated recommendations). */
   route?: string
   /** Policy facts the source email stated. */
