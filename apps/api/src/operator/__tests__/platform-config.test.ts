@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import Fastify from 'fastify'
 import { MongoClient, type Db } from 'mongodb'
 import { MongoMemoryServer } from 'mongodb-memory-server'
-import { getPlatformConfig, invalidatePlatformConfigCache, CONFIG_DOC_KEY } from '../platform-config.js'
+import { getPlatformConfig, invalidatePlatformConfigCache, registerPublicStatusRoute, CONFIG_DOC_KEY } from '../platform-config.js'
 
 let mongod: MongoMemoryServer
 let client: MongoClient
@@ -42,5 +43,31 @@ describe('getPlatformConfig', () => {
     expect((await getPlatformConfig(db)).maintenance_mode).toBe(true)
     invalidatePlatformConfigCache()
     expect((await getPlatformConfig(db)).maintenance_mode).toBe(false)
+  })
+})
+
+describe('GET /status', () => {
+  it('reports maintenance_mode and signups_enabled, and nothing else', async () => {
+    await db.collection('platform_config').insertOne({ key: CONFIG_DOC_KEY, maintenance_mode: true, signups_enabled: false, marketing_paused: true })
+    const app = Fastify()
+    registerPublicStatusRoute(app, () => db)
+    await app.ready()
+
+    const res = await app.inject({ method: 'GET', url: '/status' })
+    expect(res.statusCode).toBe(200)
+    // marketing_paused is deliberately not exposed publicly — operators only.
+    expect(res.json()).toEqual({ maintenance_mode: true, signups_enabled: false })
+    await app.close()
+  })
+
+  it('reports permissive defaults while the db is still booting', async () => {
+    const app = Fastify()
+    registerPublicStatusRoute(app, () => undefined)
+    await app.ready()
+
+    const res = await app.inject({ method: 'GET', url: '/status' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ maintenance_mode: false, signups_enabled: true })
+    await app.close()
   })
 })

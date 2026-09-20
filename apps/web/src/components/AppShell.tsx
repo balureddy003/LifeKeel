@@ -13,7 +13,7 @@ import { MeshGradient, Skeleton, SkeletonCard } from './Glass'
 import { EmergencyMode } from './EmergencyMode'
 import { CommandPalette } from './CommandPalette'
 import { DisclaimerFooter } from './Disclaimer'
-import { fetchInboxItems, fetchFamilyInsights } from '@/lib/api'
+import { fetchInboxItems, fetchFamilyInsights, fetchPublicStatus } from '@/lib/api'
 import { flushMutationQueue } from '@/lib/offline-queue'
 import { warmCache } from '@/lib/fetch-cache'
 import { useToast } from './Toast'
@@ -128,6 +128,44 @@ function OfflineBanner() {
           <WifiOff size={16} className="text-warning flex-shrink-0" />
           <span className="text-sm text-warning font-medium">
             You&apos;re offline — your data is still available
+          </span>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+// Operator-controlled maintenance mode 503s every non-operator API route,
+// which without this banner surfaces as every page silently failing. /status
+// is exempt from the 503 so this is the one signal that still gets through.
+// Polls slowly — the flag flips rarely, and a 60s lag on a banner is fine.
+function MaintenanceBanner() {
+  const [maintenance, setMaintenance] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    const check = () => fetchPublicStatus().then((s) => { if (!cancelled) setMaintenance(s.maintenance_mode) })
+    check()
+    const id = window.setInterval(check, 60_000)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+    }
+  }, [])
+
+  return (
+    <AnimatePresence>
+      {maintenance && (
+        <motion.div
+          initial={{ y: -60, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: -60, opacity: 0 }}
+          role="alert"
+          className="fixed top-0 left-0 right-0 z-banner glass safe-area-top px-4 py-2 flex items-center justify-center gap-2"
+        >
+          <Siren size={16} className="text-warning flex-shrink-0" />
+          <span className="text-sm text-warning font-medium">
+            Scheduled maintenance — things may not load right now. Back shortly.
           </span>
         </motion.div>
       )}
@@ -464,6 +502,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </a>
       <MeshGradient />
       <OfflineBanner />
+      <MaintenanceBanner />
       <ModeEffects />
       {showNav && <NavRail />}
       <div className={[railGutter, 'min-h-screen'].filter(Boolean).join(' ')}>

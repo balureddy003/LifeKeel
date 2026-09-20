@@ -127,6 +127,18 @@ async function apiFetch<T>(path: string, fallback: T): Promise<T> {
   }
 }
 
+// Public product status — unauthenticated route that stays reachable during
+// maintenance so the shell can render the outage banner. apiFetch's fallback
+// doubles as the "API unreachable" answer: no banner, OfflineBanner owns that.
+export interface PublicStatus {
+  maintenance_mode: boolean
+  signups_enabled: boolean
+}
+
+export async function fetchPublicStatus(): Promise<PublicStatus> {
+  return apiFetch<PublicStatus>('/status', { maintenance_mode: false, signups_enabled: true })
+}
+
 export async function fetchFamilyInsights(): Promise<FamilyInsight[]> {
   // The `detectors` param is now filtered server-side (GET /insights), so a
   // tenant active in other verticals doesn't push family insights off the
