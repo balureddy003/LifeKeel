@@ -180,7 +180,9 @@ export function useFamilyHealthDomains() {
     fetchFinancialProfile()
       .then((p) => {
         if (cancelled) return
-        setHasProfile(!!p)
+        // Only a profile detectors have run on counts — an autosaved,
+        // never-finalised one has zero insights too, which is not "healthy".
+        setHasProfile(!!p?.insights_evaluated_at)
       })
       .catch(() => {
         // Same "unhandled rejection leaves loading stuck forever" gap

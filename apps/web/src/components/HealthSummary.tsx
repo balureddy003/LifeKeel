@@ -109,6 +109,25 @@ export function HealthSummary() {
   )
   const anySample = domainKeys.some((d) => !domains[d].hasLiveData)
 
+  // Nothing evaluated yet: showing four rings of placeholder scores reads
+  // as a real health verdict. Say what's missing instead.
+  if (domainKeys.every((d) => !domains[d].hasLiveData)) {
+    return (
+      <GlassCard className="p-5">
+        <div className="text-sm font-semibold text-ink-secondary">Family Health</div>
+        <div className="text-xs text-ink-tertiary mt-1">
+          Your health across protection, wealth and goals appears once your financial profile is finished.
+        </div>
+        <Link
+          href="/financial-profile"
+          className="inline-block mt-3 text-sm font-semibold text-family-400 active:opacity-70"
+        >
+          Finish your profile →
+        </Link>
+      </GlassCard>
+    )
+  }
+
   return (
     <GlassCard className="p-5">
       <div className="flex items-center justify-between mb-4">
