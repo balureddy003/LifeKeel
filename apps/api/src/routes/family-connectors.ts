@@ -69,6 +69,12 @@ export function registerFamilyConnectorRoutes(
       .toArray()
 
     const connectedMap = new Map<string, { connected: boolean; lastSync?: string }>()
+    // The Gmail OAuth grant is stored twice (connector 'gmail' by the
+    // platform, mirrored as 'email' for the family scanner); the token
+    // refresher flags needs_reauth on whichever it tried to refresh.
+    const needsReauth = credentials.some(
+      (c: Record<string, unknown>) => (c['connector_id'] === 'gmail' || c['connector_id'] === 'email') && c['needs_reauth'] === true,
+    )
     for (const cred of credentials) {
       const lastSync = (cred['last_synced_at'] ?? cred['updated_at']) as Date | undefined
       connectedMap.set(cred['connector_id'] as string, {
@@ -85,6 +91,7 @@ export function registerFamilyConnectorRoutes(
         comingSoon: c.comingSoon,
         connected: connectedMap.get(c.id)?.connected ?? false,
         lastSync: connectedMap.get(c.id)?.lastSync,
+        ...(c.id === 'email' && connectedMap.get(c.id)?.connected && needsReauth ? { needsReauth: true } : {}),
       })),
     }
   })

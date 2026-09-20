@@ -9,6 +9,23 @@ import { useMode } from '@/lib/mode-context'
 
 const springConfig = { type: 'spring' as const, stiffness: 400, damping: 30 }
 
+// GlassCard renders its children inside an inner wrapper (next to the sheen
+// overlay), so flex/alignment classes passed as className landed on the
+// OUTER element where they don't touch the children — every "flex
+// items-center gap-3" card stacked its icon above its text (Inbox connect
+// banner, and ~25 others). Route those layout tokens to the inner wrapper;
+// everything else (sizing, borders, padding, flex-1 as a flex *item*) stays
+// on the outer element.
+const LAYOUT_TOKEN = /^(flex|inline-flex|flex-col|flex-row|flex-wrap|items-\S+|justify-\S+|gap-\S+)$/
+function splitLayoutClasses(className: string): { outer: string; inner: string } {
+  const outer: string[] = []
+  const inner: string[] = []
+  for (const token of className.split(/\s+/).filter(Boolean)) {
+    ;(LAYOUT_TOKEN.test(token) ? inner : outer).push(token)
+  }
+  return { outer: outer.join(' '), inner: inner.join(' ') }
+}
+
 export function GlassCard({
   children,
   className = '',
@@ -22,6 +39,7 @@ export function GlassCard({
   interactive?: boolean
   style?: MotionStyle
 }) {
+  const { outer, inner } = splitLayoutClasses(className)
   const ref = useRef<HTMLDivElement>(null)
   const rotateX = useSpring(useMotionValue(0), springConfig)
   const rotateY = useSpring(useMotionValue(0), springConfig)
@@ -64,10 +82,10 @@ export function GlassCard({
         transformPerspective: 800,
         ...style,
       } as MotionStyle}
-      className={`relative rounded-3xl border border-tint/[0.05] bg-tint/[0.03] backdrop-blur-2xl overflow-hidden ${className}`}
+      className={`relative rounded-3xl border border-tint/[0.05] bg-tint/[0.03] backdrop-blur-2xl overflow-hidden ${outer}`}
     >
       <div className="absolute inset-0 bg-gradient-to-b from-tint/[0.03] to-transparent pointer-events-none rounded-3xl" />
-      <div className="relative z-raised">{children}</div>
+      <div className={`relative z-raised ${inner}`}>{children}</div>
     </motion.div>
   )
 }
