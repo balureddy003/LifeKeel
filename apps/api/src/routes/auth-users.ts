@@ -17,6 +17,7 @@ import { checkInviteCode, consumeInviteCode } from '../invite-codes.js'
 import { PLAN_QUOTAS, createInitialBilling } from '../billing/billing-constants.js'
 import { sendPasswordResetEmail } from '../auth-email.js'
 import { recordLedgerEntry } from '../billing/credit-ledger.js'
+import { getPlatformConfig } from '../operator/platform-config.js'
 import { attributeReferral } from './referrals.js'
 
 // Pragmatic (not full RFC 5322) format check for signup specifically —
@@ -51,12 +52,28 @@ export interface User {
   password_reset_token: string | undefined
   password_reset_expires: Date | undefined
   updated_at: Date | undefined
+  // First-touch marketing attribution captured by apps/web's attribution.ts
+  // — utm_*/referrer/landing_path, all short sanitized strings.
+  attribution?: Record<string, string> | undefined
 }
 
 // `ref` (PRD-112, friend referral) is deliberately separate from
 // `invite_code` above — that's an unrelated platform-wide B2B signup
 // gate (see checkInviteCode/consumeInviteCode), not a referral.
-interface SignupBody { email: string; password: string; name: string; workspace: string; external_id?: string; external_provider?: 'oidc' | 'saml'; tier_hint?: 'developer' | 'team' | 'business' | 'enterprise'; invite_code?: string; country?: string; ref?: string }
+interface SignupBody { email: string; password: string; name: string; workspace: string; external_id?: string; external_provider?: 'oidc' | 'saml'; tier_hint?: 'developer' | 'team' | 'business' | 'enterprise'; invite_code?: string; country?: string; ref?: string; attribution?: Record<string, unknown> }
+
+// Attribution is client-supplied and unverifiable — it's analytics, not
+// authorization. Only the known keys survive, each a bounded string.
+const ATTRIBUTION_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'referrer', 'landing_path', 'captured_at'] as const
+function sanitizeAttribution(input: Record<string, unknown> | undefined): Record<string, string> | undefined {
+  if (!input || typeof input !== 'object') return undefined
+  const out: Record<string, string> = {}
+  for (const key of ATTRIBUTION_KEYS) {
+    const value = input[key]
+    if (typeof value === 'string' && value.length > 0) out[key] = value.slice(0, 300)
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
 interface LoginBody  { email: string; password: string; rememberMe?: boolean }
 interface UpdateProfileBody { name?: string; email?: string; avatar_color?: string }
 interface ChangePasswordBody { current_password: string; new_password: string }
@@ -111,13 +128,19 @@ export async function registerAuthUserRoutes(
     // without changing the honest per-request error message.
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (request, reply) => {
-      const { email, password, name, workspace, external_id, external_provider, tier_hint, invite_code, country, ref } = request.body
+      const { email, password, name, workspace, external_id, external_provider, tier_hint, invite_code, country, ref, attribution } = request.body
 
       if (!email || !EMAIL_FORMAT_RE.test(email.trim())) return reply.status(400).send({ error: 'Valid email required' })
       if (!password || password.length < 8) return reply.status(400).send({ error: 'Password must be at least 8 characters' })
       if (!name?.trim()) return reply.status(400).send({ error: 'Name required' })
 
       const db = await getDb()
+
+      // Operator-controlled switch: signups can be paused platform-wide
+      // (e.g. incident, migration) without taking the API down.
+      if (!(await getPlatformConfig(db)).signups_enabled) {
+        return reply.status(503).send({ error: 'Signups are temporarily disabled' })
+      }
 
       // Validate invite code early, but do not consume it until we know the signup will succeed.
       const inviteCheck = await checkInviteCode(db, invite_code)
@@ -180,6 +203,7 @@ export async function registerAuthUserRoutes(
         password_reset_token: undefined,
         password_reset_expires: undefined,
         updated_at: undefined,
+        attribution: sanitizeAttribution(attribution),
       }
 
       // Generate email verification token if enabled

@@ -10,6 +10,7 @@
 import { AI_RESPONSES } from './life-data'
 import type { InboxItem } from './onboarding-data'
 import { getApiBase } from './env'
+import { captureAttribution, getAttribution } from './attribution'
 import { fetchOrQueue } from './offline-queue'
 import { cachedFetch, invalidateCache } from './fetch-cache'
 import { reportError } from './observability'
@@ -1005,9 +1006,9 @@ export interface FinancialProfilePolicy {
 }
 
 export interface FinancialProfile {
-  household: {
   /** Set server-side when detectors last ran (the wizard's final submit). */
   insights_evaluated_at?: string
+  household: {
     employment_status: EmploymentStatus
     monthly_salary_minor: number
     annual_living_expenses_minor: number
@@ -1400,4 +1401,509 @@ export async function startOakPlusCheckout(): Promise<string> {
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Could not start checkout')
   return data.checkout_url as string
+}
+
+// ── Marketing posts (Postiz) ──────────────────────────────────────────────
+
+export interface MarketingIntegration {
+  id: string
+  name: string
+  identifier?: string
+  disabled: boolean
+}
+
+export type MarketingPostState = 'draft' | 'approved' | 'published' | 'publish_failed' | 'rejected'
+
+export interface MarketingPost {
+  id: string
+  channel: string
+  integration_id: string
+  content: string
+  state: MarketingPostState
+  scheduled_at?: string
+  auto_published?: boolean
+  dry_run?: boolean
+  created_at: string
+  approved_at?: string
+  published_at?: string
+  publish_error?: string
+}
+
+/** Null when Postiz isn't configured (503) or the request fails — distinct
+ *  from "no channels connected" ([]). */
+export async function fetchMarketingIntegrations(): Promise<MarketingIntegration[] | null> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  try {
+    const res = await fetch(`${base}/marketing/integrations`, { headers })
+    if (!res.ok) return null
+    const data = await res.json().catch(() => ({}))
+    return (data.integrations ?? []) as MarketingIntegration[]
+  } catch {
+    return null
+  }
+}
+
+export async function fetchMarketingPosts(): Promise<MarketingPost[]> {
+  const data = await apiFetch<{ posts: MarketingPost[] }>('/marketing/posts', { posts: [] })
+  return data.posts
+}
+
+async function marketingRequest<T>(path: string, method: 'POST', body?: Record<string, unknown>): Promise<T> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${base}${path}`, {
+    method,
+    headers,
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Request failed')
+  return data as T
+}
+
+export async function createMarketingPost(input: {
+  integration_id: string
+  channel: string
+  content: string
+  scheduled_at?: string
+}): Promise<MarketingPost> {
+  const data = await marketingRequest<{ post: MarketingPost }>('/marketing/posts', 'POST', { ...input })
+  return data.post
+}
+
+export async function approveMarketingPost(id: string): Promise<MarketingPost> {
+  const data = await marketingRequest<{ post: MarketingPost }>(`/marketing/posts/${id}/approve`, 'POST')
+  return data.post
+}
+
+export async function rejectMarketingPost(id: string): Promise<MarketingPost> {
+  const data = await marketingRequest<{ post: MarketingPost }>(`/marketing/posts/${id}/reject`, 'POST')
+  return data.post
+}
+
+export interface OperatorOverview {
+  generated_at: string
+  users: { total: number; active: number; suspended: number; signups_today: number; signups_week: number }
+  tenants: { total: number; active: number }
+  marketing: { publish_failed: number; queued: number }
+  leads: Record<string, number>
+  signups_by_source_7d: Record<string, number>
+  growth_events_7d: Array<{ event: string; count: number }>
+}
+
+export interface OperatorUser {
+  id: string
+  email: string
+  name: string
+  tenant_id: string
+  roles: string[]
+  status?: string
+  email_verified?: boolean
+  external_provider?: string
+  attribution?: { utm_source?: string; utm_campaign?: string }
+  created_at: string
+}
+
+export interface OperatorTenant {
+  tenant_id: string
+  name?: string
+  status?: string
+  plan?: string
+  country?: string
+  created_at?: string
+  user_count: number
+}
+
+async function operatorRequest<T>(path: string): Promise<T> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Operator request failed')
+  return data as T
+}
+
+export function fetchOperatorOverview(): Promise<OperatorOverview> {
+  return operatorRequest<OperatorOverview>('/operator/overview')
+}
+
+export function fetchOperatorUsers(query = ''): Promise<{ users: OperatorUser[]; total: number }> {
+  return operatorRequest(`/operator/users${query ? `?q=${encodeURIComponent(query)}` : ''}`)
+}
+
+export function fetchOperatorTenants(query = ''): Promise<{ tenants: OperatorTenant[]; total: number }> {
+  return operatorRequest(`/operator/tenants${query ? `?q=${encodeURIComponent(query)}` : ''}`)
+}
+
+export interface OperatorRecord {
+  user_id: string
+  roles: string[]
+  status: 'active' | 'suspended'
+  source: 'database' | 'bootstrap'
+  user?: { id: string; email: string; name: string } | null
+}
+
+export interface OperatorAuditEntry {
+  operator_user_id: string
+  operator_roles: string[]
+  action: string
+  target_type: string
+  target_id: string
+  reason: string
+  request_id: string
+  ip: string
+  created_at: string
+}
+
+export interface OperatorOperations {
+  generated_at: string
+  process: { uptime_seconds: number; rss_bytes: number }
+  mongo: { ok: boolean; ping_ms: number }
+  insights_by_state: Record<string, number>
+  marketing_posts_by_state: Record<string, number>
+  cron_locks: Array<Record<string, unknown> & { name?: string; owner?: string; expires_at?: string; stale?: boolean }>
+  reminders_by_state: Record<string, number>
+  failed_reminders: Array<{ id: string; tenant_id?: string; due_at?: string; attempts?: number; last_error?: string; policy?: { type?: string; provider?: string } }>
+  stale_reminder_claims: number
+  connectors: {
+    by_connector: Record<string, number>
+    expiring_tokens_7d: number
+    list: Array<{ tenant_id: string; connector_id: string; auth_type?: string; token_expires_at?: string; created_at?: string }>
+  }
+  delivery_by_state: Record<string, number>
+  failed_deliveries: Array<{ tenant_id?: string; channel?: string; status?: string; error?: string; updated_at?: string }>
+  failed_posts: Array<{ id: string; channel?: string; publish_error?: string; updated_at?: string }>
+  queue: { available: true; pending: number; processing: number; delayed: number; dead: number; dead_jobs: Array<{ id: string; attempts?: number; enqueuedAt: number }> } | { available: false }
+  growth_events_24h: number
+  documents_pending: number
+}
+
+async function operatorAction(path: string, reason: string): Promise<void> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ reason }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Operator action failed')
+}
+
+export const suspendOperatorUser = (id: string, reason: string) => operatorAction(`/operator/users/${id}/suspend`, reason)
+export const reactivateOperatorUser = (id: string, reason: string) => operatorAction(`/operator/users/${id}/reactivate`, reason)
+export const sendUserPasswordReset = (id: string, reason: string) => operatorAction(`/operator/users/${id}/password-reset`, reason)
+export const revokeUserSessions = (id: string, reason: string) => operatorAction(`/operator/users/${id}/revoke-sessions`, reason)
+export const suspendOperatorTenant = (id: string, reason: string) => operatorAction(`/operator/tenants/${id}/suspend`, reason)
+export const reactivateOperatorTenant = (id: string, reason: string) => operatorAction(`/operator/tenants/${id}/reactivate`, reason)
+export const suspendOperator = (id: string, reason: string) => operatorAction(`/operator/operators/${id}/suspend`, reason)
+export const reactivateOperator = (id: string, reason: string) => operatorAction(`/operator/operators/${id}/reactivate`, reason)
+export const retryReminder = (id: string, reason: string) => operatorAction(`/operator/reminders/${id}/retry`, reason)
+export const requeueDeadJob = (queue: string, jobId: string, reason: string) => operatorAction(`/operator/queues/${queue}/dead/${jobId}/requeue`, reason)
+export const revokeConnector = (connectorId: string, tenantId: string, reason: string) =>
+  operatorAction(`/operator/connectors/${connectorId}/tenants/${tenantId}/revoke`, reason)
+
+// ── Operator: funnel ──────────────────────────────────────────────────────
+
+export interface OperatorFunnel {
+  window_days: number
+  totals: { leads_30d: number; signups_30d: number; activated_tenants: number; paying_tenants: number }
+  leads_by_stage: Record<string, number>
+  by_source: Array<{ source: string; leads: number; signups: number }>
+}
+
+export function fetchOperatorFunnel(): Promise<OperatorFunnel> {
+  return operatorRequest('/operator/funnel')
+}
+
+// ── Operator: configuration ───────────────────────────────────────────────
+
+export interface PlatformConfig {
+  maintenance_mode: boolean
+  signups_enabled: boolean
+  marketing_paused: boolean
+}
+
+export interface ConfigHistoryEntry {
+  changes: Partial<PlatformConfig>
+  before: PlatformConfig
+  after: PlatformConfig
+  changed_by?: string
+  reason: string
+  created_at: string
+}
+
+export function fetchOperatorConfiguration(): Promise<{ config: PlatformConfig; history: ConfigHistoryEntry[] }> {
+  return operatorRequest('/operator/configuration')
+}
+
+export async function updateOperatorConfiguration(changes: Partial<PlatformConfig>, reason: string): Promise<PlatformConfig> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/operator/configuration`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ ...changes, reason }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Configuration update failed')
+  return (data as { config: PlatformConfig }).config
+}
+
+// ── Operator: infrastructure ──────────────────────────────────────────────
+
+export interface CostSnapshot {
+  id: string
+  service: string
+  monthly_usd: number
+  note?: string
+  recorded_by?: string
+  recorded_at: string
+}
+
+export function fetchInfrastructure(): Promise<{ services: CostSnapshot[]; total_monthly_usd: number; history: CostSnapshot[] }> {
+  return operatorRequest('/operator/infrastructure')
+}
+
+export async function recordCostSnapshot(service: string, monthlyUsd: number, reason: string, note?: string): Promise<void> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/operator/infrastructure/snapshots`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ service, monthly_usd: monthlyUsd, reason, ...(note !== undefined ? { note } : {}) }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Snapshot failed')
+}
+
+export function fetchOperatorLead(id: string): Promise<{ lead: OperatorLead & { attribution?: Record<string, string> } }> {
+  return operatorRequest(`/operator/leads/${id}`)
+}
+
+export async function createOperator(userId: string, roles: string[], reason: string): Promise<void> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/operator/operators`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ user_id: userId, roles, reason }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Could not add operator')
+}
+
+export function fetchOperators(): Promise<{ operators: OperatorRecord[]; bootstrap: OperatorRecord[] }> {
+  return operatorRequest('/operator/operators')
+}
+
+export function fetchOperatorAudit(query: { action?: string | undefined; target_type?: string | undefined; target_id?: string | undefined } = {}): Promise<{ entries: OperatorAuditEntry[]; total: number }> {
+  const params = new URLSearchParams(Object.entries(query).filter(([, v]) => v) as [string, string][])
+  return operatorRequest(`/operator/audit${params.size ? `?${params}` : ''}`)
+}
+
+export function fetchOperatorOperations(): Promise<OperatorOperations> {
+  return operatorRequest('/operator/operations')
+}
+
+// ── Operator: leads ───────────────────────────────────────────────────────
+
+export type LeadStage = 'new' | 'qualified' | 'contacted' | 'trial' | 'converted' | 'lost'
+
+export interface OperatorLead {
+  id: string
+  email: string
+  name?: string
+  source: string
+  stage: LeadStage
+  score_band?: string
+  suppressed: boolean
+  consent?: { marketing: boolean; captured_at?: string; source?: string }
+  notes: Array<{ text: string; author_id?: string; created_at: string }>
+  created_at: string
+  updated_at?: string
+}
+
+export function fetchOperatorLeads(query: { q?: string; stage?: string; source?: string } = {}): Promise<{ leads: OperatorLead[]; total: number; stages: Record<string, number> }> {
+  const params = new URLSearchParams(Object.entries(query).filter(([, v]) => v) as [string, string][])
+  return operatorRequest(`/operator/leads${params.size ? `?${params}` : ''}`)
+}
+
+export async function updateOperatorLead(id: string, update: { stage?: LeadStage; note?: string }, reason: string): Promise<OperatorLead> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/operator/leads/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ ...update, reason }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Lead update failed')
+  return (data as { lead: OperatorLead }).lead
+}
+
+export const suppressOperatorLead = (id: string, reason: string) => operatorAction(`/operator/leads/${id}/suppress`, reason)
+
+// ── Operator: promotions ──────────────────────────────────────────────────
+
+export interface OperatorPromotion {
+  code: string
+  grant_credits: number
+  max_uses: number
+  used_count: number
+  active: boolean
+  expires_at?: string
+  created_by?: string
+  created_at: string
+}
+
+export function fetchOperatorPromotions(query = ''): Promise<{ promotions: OperatorPromotion[]; total: number }> {
+  return operatorRequest(`/operator/promotions${query ? `?q=${encodeURIComponent(query)}` : ''}`)
+}
+
+export function fetchPromotionRedemptions(code: string): Promise<{ promotion: OperatorPromotion; redemptions: Array<{ tenant_id: string; grant_credits: number; redeemed_at: string }> }> {
+  return operatorRequest(`/operator/promotions/${encodeURIComponent(code)}/redemptions`)
+}
+
+export async function createOperatorPromotion(input: { code: string; grant_credits: number; max_uses: number; expires_at?: string }, reason: string): Promise<void> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/operator/promotions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ ...input, reason }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Could not create promotion')
+}
+
+export const deactivatePromotion = (code: string, reason: string) => operatorAction(`/operator/promotions/${encodeURIComponent(code)}/deactivate`, reason)
+export const reactivatePromotion = (code: string, reason: string) => operatorAction(`/operator/promotions/${encodeURIComponent(code)}/reactivate`, reason)
+
+// ── Operator: blog / SEO content ──────────────────────────────────────────
+
+export interface OperatorBlogPost {
+  id: string
+  title: string
+  slug: string
+  excerpt: string
+  category: 'product' | 'tutorial' | 'case-study' | 'news'
+  author: string
+  published: boolean
+  cover_image?: string
+  tags: string[]
+  meta_description?: string
+  content?: string
+  published_at?: string
+  created_at: string
+  updated_at?: string
+}
+
+export type BlogPostInput = Omit<OperatorBlogPost, 'id' | 'published' | 'published_at' | 'created_at' | 'updated_at'>
+
+export function fetchOperatorBlogPosts(): Promise<{ posts: OperatorBlogPost[] }> {
+  return operatorRequest('/operator/blog/posts')
+}
+
+export function fetchOperatorBlogPost(id: string): Promise<{ post: OperatorBlogPost }> {
+  return operatorRequest(`/operator/blog/posts/${id}`)
+}
+
+async function blogPostWrite(path: string, method: 'POST' | 'PATCH', body: Record<string, unknown>): Promise<OperatorBlogPost> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Blog request failed')
+  return (data as { post: OperatorBlogPost }).post
+}
+
+export const createOperatorBlogPost = (input: BlogPostInput, reason: string) => blogPostWrite('/operator/blog/posts', 'POST', { ...input, reason })
+export const updateOperatorBlogPost = (id: string, input: Partial<BlogPostInput>, reason: string) => blogPostWrite(`/operator/blog/posts/${id}`, 'PATCH', { ...input, reason })
+export const publishBlogPost = (id: string, reason: string) => operatorAction(`/operator/blog/posts/${id}/publish`, reason)
+export const unpublishBlogPost = (id: string, reason: string) => operatorAction(`/operator/blog/posts/${id}/unpublish`, reason)
+
+// ── Operator: billing ─────────────────────────────────────────────────────
+
+export interface OperatorBillingOverview {
+  generated_at: string
+  tenants_by_plan: Record<string, number>
+  tenants_by_status: Record<string, number>
+  stripe_linked_tenants: number
+  low_credit_tenants: number
+  credits_outstanding: number
+  recent_webhooks: Array<{ event_id: string; event_type: string; processed_at: string }>
+  recent_adjustments: Array<{ tenant_id: string; amount: number; reason: string; actor: string; timestamp: string }>
+}
+
+export interface BillingTenant {
+  tenant_id: string
+  name?: string
+  plan?: string
+  status?: string
+  billing?: { credits_balance?: number; credits_included?: number; currency?: string; trial_ends_at?: string }
+  stripe_customer_id?: string
+  stripe_subscription_id?: string
+}
+
+export interface LedgerEntry {
+  id: string
+  type: string
+  amount: number
+  balance_after: number
+  reference?: string
+  reason: string
+  actor: string
+  timestamp: string
+}
+
+export function fetchOperatorBilling(): Promise<OperatorBillingOverview> {
+  return operatorRequest('/operator/billing')
+}
+
+export function fetchBillingTenant(id: string): Promise<{ tenant: BillingTenant; ledger: LedgerEntry[]; ledger_has_more: boolean }> {
+  return operatorRequest(`/operator/billing/tenants/${encodeURIComponent(id)}`)
+}
+
+export async function adjustTenantCredits(tenantId: string, amount: number, reason: string): Promise<number> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/operator/billing/tenants/${encodeURIComponent(tenantId)}/adjust-credits`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ amount, reason }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Adjustment failed')
+  return (data as { credits_balance: number }).credits_balance
+}
+
+// ── Public lead capture ───────────────────────────────────────────────────
+
+export async function captureLead(input: { email: string; name?: string; source: string; score_band?: string }): Promise<boolean> {
+  try {
+    captureAttribution()
+    const attribution = getAttribution()
+    const res = await fetch(`${getApiBase()}/leads`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...input, consent_marketing: true, ...(attribution ? { attribution } : {}) }),
+    })
+    return res.ok
+  } catch (err) {
+    reportError(err, { path: '/leads' })
+    return false
+  }
 }

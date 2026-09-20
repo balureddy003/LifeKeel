@@ -7,6 +7,7 @@
  */
 
 import { getApiBase } from './env'
+import { captureAttribution } from './attribution'
 
 const ANON_ID_KEY = 'agentoak_anon_id'
 
@@ -21,6 +22,10 @@ function getAnonId(): string {
 
 export function track(event: string, meta?: Record<string, unknown>): void {
   if (typeof window === 'undefined') return
+  // Every marketing surface calls track() on mount, so this doubles as the
+  // first-touch attribution capture point — utm_*/referrer land before any
+  // later signup or lead-capture reads them.
+  captureAttribution()
   try {
     const token = localStorage.getItem('agentoak_token')
     fetch(`${getApiBase()}/growth/events`, {

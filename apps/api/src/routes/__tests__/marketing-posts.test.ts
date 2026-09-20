@@ -1,0 +1,272 @@
+/**
+ * /marketing/posts — the Postiz publish path and its earned-trust gate.
+ * A draft only auto-publishes when the channel's marketing_social scope is
+ * at threshold AND the tenant opted in; otherwise a human approve dispatches
+ * (and earns the trust), a reject kills it, and a Postiz failure lands in
+ * publish_failed — never silently.
+ */
+import { describe, expect, it, vi, beforeEach } from 'vitest'
+import Fastify from 'fastify'
+import { registerMarketingPostRoutes } from '../marketing-posts.js'
+import { AUTO_EXECUTE_TRUST_THRESHOLD } from '../../jobs/auto-execute-trusted.js'
+
+const TENANT = 'tenant-1'
+const USER = 'user-1'
+
+function matchesFilter(doc: Record<string, unknown>, filter: Record<string, unknown>): boolean {
+  return Object.entries(filter).every(([key, cond]) => {
+    if (cond && typeof cond === 'object' && '$in' in (cond as Record<string, unknown>)) {
+      return ((cond as { $in: unknown[] }).$in).includes(doc[key])
+    }
+    return doc[key] === cond
+  })
+}
+
+function applySet(doc: Record<string, unknown>, set: Record<string, unknown>) {
+  for (const [key, value] of Object.entries(set)) {
+    if (key.startsWith('automation.')) continue // nested path — handled by settings fake
+    doc[key] = value
+  }
+}
+
+function makeDb() {
+  const posts: Record<string, unknown>[] = []
+  const settingsDocs: Record<string, unknown>[] = []
+  const systemEvents: Record<string, unknown>[] = []
+  const postsCol = {
+    createIndex: vi.fn(async () => ({})),
+    insertOne: vi.fn(async (doc: Record<string, unknown>) => { posts.push(doc) }),
+    findOne: vi.fn(async (filter: Record<string, unknown>) => posts.find((d) => matchesFilter(d, filter)) ?? null),
+    updateOne: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
+      const doc = posts.find((d) => matchesFilter(d, filter))
+      if (doc) applySet(doc, update.$set)
+      return { modifiedCount: doc ? 1 : 0 }
+    }),
+    findOneAndUpdate: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
+      const doc = posts.find((d) => matchesFilter(d, filter))
+      if (!doc) return null
+      applySet(doc, update.$set)
+      return doc
+    }),
+    find: (filter: Record<string, unknown>) => ({
+      sort: () => ({ limit: () => ({ toArray: async () => posts.filter((d) => matchesFilter(d, filter)) }) }),
+    }),
+  }
+  const settingsCol = {
+    findOne: vi.fn(async (filter: Record<string, unknown>) => settingsDocs.find((d) => matchesFilter(d, filter)) ?? null),
+    updateOne: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
+      let doc = settingsDocs.find((d) => matchesFilter(d, filter))
+      if (!doc) {
+        doc = { ...filter }
+        settingsDocs.push(doc)
+      }
+      for (const [key, value] of Object.entries(update.$set)) {
+        const parts = key.split('.')
+        let target: Record<string, unknown> = doc
+        for (const p of parts.slice(0, -1)) {
+          target[p] = (target[p] ?? {}) as Record<string, unknown>
+          target = target[p] as Record<string, unknown>
+        }
+        target[parts[parts.length - 1] as string] = value
+      }
+      return { modifiedCount: 1 }
+    }),
+  }
+  const eventsCol = { insertOne: vi.fn(async (doc: Record<string, unknown>) => { systemEvents.push(doc) }) }
+  // platform_config read by the global marketing_paused switch in publishPost
+  const configCol = { findOne: vi.fn(async () => null) }
+  const collections: Record<string, unknown> = {
+    marketing_posts: postsCol,
+    tenant_settings: settingsCol,
+    system_events: eventsCol,
+    platform_config: configCol,
+  }
+  return { db: { collection: (name: string) => collections[name] } as any, posts, settingsDocs, systemEvents, postsCol, settingsCol }
+}
+
+function fakePostiz(overrides: Record<string, unknown> = {}) {
+  return {
+    listIntegrations: vi.fn(async () => [{ id: 'int-1', name: 'Oak on X', identifier: 'x' }]),
+    createPost: vi.fn(async () => [{ id: 'postiz-1' }]),
+    ...overrides,
+  } as any
+}
+
+async function buildApp(opts: {
+  postiz?: any
+  settings?: Record<string, unknown>
+  tenant?: string
+  operatorTenants?: string[]
+} = {}) {
+  const { db, posts, settingsDocs, systemEvents, postsCol } = makeDb()
+  const tenant = opts.tenant ?? TENANT
+  if (opts.settings) settingsDocs.push({ tenant_id: tenant, automation: opts.settings })
+  const app = Fastify()
+  app.addHook('onRequest', async (request) => {
+    ;(request as never as Record<string, unknown>)['authContext'] = { tenant_id: tenant, user_id: USER }
+  })
+  registerMarketingPostRoutes(app, db, 'postiz' in opts ? opts.postiz : fakePostiz(), {
+    operatorTenants: 'operatorTenants' in opts ? opts.operatorTenants! : [TENANT],
+  })
+  await app.ready()
+  const postiz = 'postiz' in opts ? opts.postiz : null
+  return { app, posts, settingsDocs, systemEvents, postsCol, postiz }
+}
+
+const DRAFT = { integration_id: 'int-1', channel: 'x', content: 'A thing worth posting' }
+const TRUSTED = { auto_execute_enabled: true, trust_level_by_workflow: { 'marketing_social:x': AUTO_EXECUTE_TRUST_THRESHOLD } }
+
+describe('/marketing/posts', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('creates a draft without publishing when the channel has no earned trust', async () => {
+    const postiz = fakePostiz()
+    const { app } = await buildApp({ postiz })
+    const res = await app.inject({ method: 'POST', url: '/marketing/posts', payload: DRAFT })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().post.state).toBe('draft')
+    expect(postiz.createPost).not.toHaveBeenCalled()
+  })
+
+  it('auto-publishes a new draft when the channel is trusted and the tenant opted in', async () => {
+    const postiz = fakePostiz()
+    const { app } = await buildApp({ postiz, settings: TRUSTED })
+    const res = await app.inject({ method: 'POST', url: '/marketing/posts', payload: DRAFT })
+    expect(res.statusCode).toBe(201)
+    const post = res.json().post
+    expect(post.state).toBe('published')
+    expect(post.auto_published).toBe(true)
+    expect(postiz.createPost).toHaveBeenCalledWith(
+      expect.objectContaining({ integrationId: 'int-1', content: DRAFT.content, channel: 'x', type: 'now' }),
+    )
+  })
+
+  it('stays a draft at full trust when auto_execute_enabled is off', async () => {
+    const postiz = fakePostiz()
+    const { app } = await buildApp({ postiz, settings: { ...TRUSTED, auto_execute_enabled: false } })
+    const res = await app.inject({ method: 'POST', url: '/marketing/posts', payload: DRAFT })
+    expect(res.json().post.state).toBe('draft')
+    expect(postiz.createPost).not.toHaveBeenCalled()
+  })
+
+  it('approve publishes via Postiz and earns one channel-trust increment', async () => {
+    const postiz = fakePostiz()
+    const { app, settingsDocs, posts } = await buildApp({ postiz })
+    await app.inject({ method: 'POST', url: '/marketing/posts', payload: DRAFT })
+    const id = posts[0]!['id'] as string
+
+    const res = await app.inject({ method: 'POST', url: `/marketing/posts/${id}/approve` })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().post.state).toBe('published')
+    expect(postiz.createPost).toHaveBeenCalledTimes(1)
+
+    const automation = settingsDocs[0]?.['automation'] as Record<string, unknown>
+    expect((automation['trust_level_by_workflow'] as Record<string, number>)['marketing_social:x']).toBe(1)
+  })
+
+  it('schedules instead of publishing-now when scheduled_at is still future', async () => {
+    const postiz = fakePostiz()
+    const { app } = await buildApp({ postiz, settings: TRUSTED })
+    const future = new Date(Date.now() + 3_600_000).toISOString()
+    const res = await app.inject({ method: 'POST', url: '/marketing/posts', payload: { ...DRAFT, scheduled_at: future } })
+    expect(res.json().post.state).toBe('published')
+    expect(postiz.createPost).toHaveBeenCalledWith(expect.objectContaining({ type: 'schedule', date: new Date(future) }))
+  })
+
+  it('a Postiz failure lands in publish_failed with the error kept — and earns no trust', async () => {
+    const postiz = fakePostiz({ createPost: vi.fn(async () => { throw new Error('Postiz 401 unauthorized') }) })
+    const { app, posts, settingsDocs } = await buildApp({ postiz })
+    await app.inject({ method: 'POST', url: '/marketing/posts', payload: DRAFT })
+    const id = posts[0]!['id'] as string
+
+    const res = await app.inject({ method: 'POST', url: `/marketing/posts/${id}/approve` })
+    expect(res.statusCode).toBe(502)
+    const doc = posts.find((p) => p['id'] === id)!
+    expect(doc['state']).toBe('publish_failed')
+    expect(String(doc['publish_error'])).toContain('Postiz 401')
+    expect(settingsDocs.find((d) => d['automation'])).toBeUndefined()
+
+    // Retry through the same route once Postiz is healthy again.
+    postiz.createPost.mockImplementation(async () => [{ id: 'ok' }])
+    const retry = await app.inject({ method: 'POST', url: `/marketing/posts/${id}/approve` })
+    expect(retry.json().post.state).toBe('published')
+  })
+
+  it('a second approve on a published post 404s — no double dispatch', async () => {
+    const postiz = fakePostiz()
+    const { app, posts } = await buildApp({ postiz })
+    await app.inject({ method: 'POST', url: '/marketing/posts', payload: DRAFT })
+    const id = posts[0]!['id'] as string
+    await app.inject({ method: 'POST', url: `/marketing/posts/${id}/approve` })
+    const res = await app.inject({ method: 'POST', url: `/marketing/posts/${id}/approve` })
+    expect(res.statusCode).toBe(404)
+    expect(postiz.createPost).toHaveBeenCalledTimes(1)
+  })
+
+  it('reject kills a queued draft and it cannot be approved afterwards', async () => {
+    const { app, posts } = await buildApp()
+    await app.inject({ method: 'POST', url: '/marketing/posts', payload: DRAFT })
+    const id = posts[0]!['id'] as string
+    const res = await app.inject({ method: 'POST', url: `/marketing/posts/${id}/reject` })
+    expect(res.json().post.state).toBe('rejected')
+    const approve = await app.inject({ method: 'POST', url: `/marketing/posts/${id}/approve` })
+    expect(approve.statusCode).toBe(404)
+  })
+
+  it('dry_run_mode flips state without a Postiz call; the human review still earns trust', async () => {
+    const postiz = fakePostiz()
+    const { app, posts, settingsDocs } = await buildApp({ postiz, settings: { dry_run_mode: true } })
+    await app.inject({ method: 'POST', url: '/marketing/posts', payload: DRAFT })
+    const id = posts[0]!['id'] as string
+    const res = await app.inject({ method: 'POST', url: `/marketing/posts/${id}/approve` })
+    expect(res.json().post.state).toBe('published')
+    expect(res.json().post.dry_run).toBe(true)
+    expect(postiz.createPost).not.toHaveBeenCalled()
+    const automation = settingsDocs[0]?.['automation'] as Record<string, unknown>
+    expect((automation['trust_level_by_workflow'] as Record<string, number>)['marketing_social:x']).toBe(1)
+  })
+
+  it('without a Postiz client, drafts still queue and approve lands publish_failed', async () => {
+    const { app, posts } = await buildApp({ postiz: null })
+    await app.inject({ method: 'POST', url: '/marketing/posts', payload: DRAFT })
+    expect(posts[0]!['state']).toBe('draft')
+    const res = await app.inject({ method: 'POST', url: `/marketing/posts/${posts[0]!['id']}/approve` })
+    expect(res.statusCode).toBe(502)
+    expect(posts[0]!['publish_error']).toBe('postiz_not_configured')
+  })
+
+  it('GET /marketing/integrations 503s when unconfigured, lists channels otherwise', async () => {
+    const noKey = await buildApp({ postiz: null })
+    expect((await noKey.app.inject({ method: 'GET', url: '/marketing/integrations' })).statusCode).toBe(503)
+
+    const withKey = await buildApp()
+    const res = await withKey.app.inject({ method: 'GET', url: '/marketing/integrations' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().integrations[0].id).toBe('int-1')
+  })
+
+  it('operator gate: a non-operator tenant gets 403 and writes nothing', async () => {
+    const postiz = fakePostiz()
+    const { app, posts } = await buildApp({ postiz, tenant: 'tenant-2' })
+    const res = await app.inject({ method: 'POST', url: '/marketing/posts', payload: DRAFT })
+    expect(res.statusCode).toBe(403)
+    expect(posts).toHaveLength(0)
+    const list = await app.inject({ method: 'GET', url: '/marketing/posts' })
+    expect(list.statusCode).toBe(403)
+    expect(postiz.createPost).not.toHaveBeenCalled()
+  })
+
+  it('operator gate: an empty allowlist turns the feature off with 503', async () => {
+    const { app, posts } = await buildApp({ operatorTenants: [] })
+    const res = await app.inject({ method: 'POST', url: '/marketing/posts', payload: DRAFT })
+    expect(res.statusCode).toBe(503)
+    expect(res.json().error).toBe('marketing_not_configured')
+    expect(posts).toHaveLength(0)
+  })
+
+  it('400s on invalid create payloads', async () => {
+    const { app } = await buildApp()
+    const res = await app.inject({ method: 'POST', url: '/marketing/posts', payload: { channel: 'x' } })
+    expect(res.statusCode).toBe(400)
+  })
+})

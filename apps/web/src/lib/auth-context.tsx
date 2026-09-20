@@ -13,6 +13,7 @@ import {
   type ApiFamilyGroup,
 } from './api'
 import { getApiBase } from './env'
+import { getAttribution } from './attribution'
 
 interface AuthContextValue {
   user: User | null
@@ -163,12 +164,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signUp = async (name: string, email: string, password: string, ref?: string) => {
+    const attribution = getAttribution()
     const { token, user: apiUser } = await apiAuthRequest('/auth/signup', {
       name,
       email,
       password,
       workspace: uniqueWorkspaceSlug(name || email),
       ...(ref ? { ref } : {}),
+      ...(attribution ? { attribution } : {}),
     })
     localStorage.setItem(TOKEN_KEY, token)
     const u: User = { id: apiUser.id, name: apiUser.name, email: apiUser.email, avatar: '' }
