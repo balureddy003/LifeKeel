@@ -9,6 +9,7 @@ import { recordLedgerEntry, getLedgerHistory } from '../billing/credit-ledger.js
 import { queueManager } from '../queue/QueueManager.js'
 import { WEBHOOK_INGEST_QUEUE } from '../queue/WebhookQueue.js'
 import { getPlatformConfig, invalidatePlatformConfigCache, CONFIG_DOC_KEY, type PlatformConfig } from '../operator/platform-config.js'
+import { getLoginEventsCollection } from '../db.js'
 
 const QuerySchema = z.object({
   q: z.string().trim().max(100).optional(),
@@ -313,11 +314,14 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   })
 
   /** Account security posture: active lockouts, users accumulating failed
-   *  attempts, suspensions, and recent session revocations. */
+   *  attempts, suspensions, session revocations, and 24h login telemetry
+   *  (failure hotspots by IP, first-seen IPs, recent event feed). */
   app.get('/operator/security', { preHandler: requireOperator(db, 'users.read') }, async () => {
     const now = new Date()
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-    const [locked, withFailures, suspended, revoked7d] = await Promise.all([
+    const loginEvents = getLoginEventsCollection(db)
+    const [locked, withFailures, suspended, revoked7d, failed24h, success24h, failedByIp, newIpLogins, recentEvents] = await Promise.all([
       users.find(
         { locked_until: { $gt: now } },
         { projection: { _id: 0, id: 1, email: 1, tenant_id: 1, failed_login_attempts: 1, locked_until: 1 } },
@@ -325,6 +329,31 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       users.countDocuments({ failed_login_attempts: { $gt: 0 } }),
       users.countDocuments({ status: 'suspended' }),
       users.countDocuments({ sessions_revoked_at: { $gte: weekAgo } }),
+      loginEvents.countDocuments({ success: false, created_at: { $gte: dayAgo } }),
+      loginEvents.countDocuments({ success: true, created_at: { $gte: dayAgo } }),
+      // Credential-stuffing signal: which IPs are generating failures.
+      loginEvents.aggregate([
+        { $match: { success: false, created_at: { $gte: dayAgo } } },
+        { $group: { _id: '$ip', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 5 },
+        { $project: { _id: 0, ip: '$_id', count: 1 } },
+      ]).toArray(),
+      // Account-takeover signal: successful logins from an (email, ip) pair
+      // first seen inside the last 24h. Bounded — a brand-new deploy reports
+      // every login as "new IP" until the collection accumulates history.
+      loginEvents.aggregate([
+        { $match: { success: true, email: { $exists: true } } },
+        { $group: { _id: { email: '$email', ip: '$ip' }, first_seen: { $min: '$created_at' } } },
+        { $match: { first_seen: { $gte: dayAgo } } },
+        { $sort: { first_seen: -1 } },
+        { $limit: 20 },
+        { $project: { _id: 0, email: '$_id.email', ip: '$_id.ip', first_seen: 1 } },
+      ]).toArray(),
+      loginEvents.find(
+        {},
+        { projection: { _id: 0, email: 1, success: 1, reason: 1, ip: 1, user_agent: 1, created_at: 1 } },
+      ).sort({ created_at: -1 }).limit(15).toArray(),
     ])
     return {
       generated_at: now.toISOString(),
@@ -332,6 +361,10 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       users_with_failed_logins: withFailures,
       suspended_users: suspended,
       sessions_revoked_7d: revoked7d,
+      logins_24h: { successful: success24h, failed: failed24h },
+      failed_by_ip_24h: failedByIp,
+      new_ip_logins_24h: newIpLogins,
+      recent_login_events: recentEvents,
     }
   })
 

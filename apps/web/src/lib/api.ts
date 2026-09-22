@@ -1627,6 +1627,10 @@ export interface OperatorSecurity {
   users_with_failed_logins: number
   suspended_users: number
   sessions_revoked_7d: number
+  logins_24h: { successful: number; failed: number }
+  failed_by_ip_24h: Array<{ ip: string; count: number }>
+  new_ip_logins_24h: Array<{ email: string; ip: string; first_seen: string }>
+  recent_login_events: Array<{ email?: string; success: boolean; reason?: string; ip?: string; user_agent?: string; created_at: string }>
 }
 
 export function fetchOperatorSecurity(): Promise<OperatorSecurity> {

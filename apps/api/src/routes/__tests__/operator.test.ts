@@ -760,4 +760,27 @@ describe('security monitoring', () => {
     expect(res.statusCode).toBe(403)
     await app.close()
   })
+
+  it('aggregates 24h login telemetry — failures by IP, first-seen IPs, event feed', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    const now = Date.now()
+    await db.collection('login_events').insertMany([
+      { email: 'family@example.com', user_id: 'user-2', success: false, reason: 'bad_password', ip: '203.0.113.9', created_at: new Date(now - 3600_000) },
+      { email: 'family@example.com', user_id: 'user-2', success: false, reason: 'bad_password', ip: '203.0.113.9', created_at: new Date(now - 3500_000) },
+      { email: 'operator@example.com', user_id: 'operator-1', success: true, ip: '198.51.100.4', created_at: new Date(now - 1800_000) },
+      // A week-old failure — outside the 24h window, must not be counted.
+      { email: 'family@example.com', user_id: 'user-2', success: false, reason: 'bad_password', ip: '203.0.113.9', created_at: new Date(now - 7 * 86400_000) },
+    ])
+    const app = await buildApp()
+
+    const res = await app.inject({ method: 'GET', url: '/operator/security' })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.logins_24h).toEqual({ successful: 1, failed: 2 })
+    expect(body.failed_by_ip_24h).toEqual([{ ip: '203.0.113.9', count: 2 }])
+    expect(body.new_ip_logins_24h).toEqual([{ email: 'operator@example.com', ip: '198.51.100.4', first_seen: expect.any(String) }])
+    expect(body.recent_login_events).toHaveLength(4)
+    expect(body.recent_login_events[0].success).toBe(true)
+    await app.close()
+  })
 })

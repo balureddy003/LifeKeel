@@ -9,10 +9,10 @@
  * - Email verification (optional, can be enabled via env var)
  */
 
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { AuthService, getCurrencyForCountry, getLocaleForCountry } from '@agentoak/platform'
-import { getDb } from '../db.js'
+import { getDb, getLoginEventsCollection } from '../db.js'
 import { checkInviteCode, consumeInviteCode } from '../invite-codes.js'
 import { PLAN_QUOTAS, createInitialBilling } from '../billing/billing-constants.js'
 import { sendPasswordResetEmail } from '../auth-email.js'
@@ -106,6 +106,23 @@ export async function getUsersCollection() {
   await col.createIndex({ external_id: 1, external_provider: 1 }, { sparse: true })
   await col.createIndex({ email_verification_token: 1 }, { sparse: true, expireAfterSeconds: 86400 }) // 24h TTL
   return col
+}
+
+/** Security telemetry for the operator security view — one doc per login
+ *  outcome. Fire-and-forget on purpose: a logging failure must never change
+ *  a login's outcome, so the insert is intentionally not awaited. */
+function recordLoginEvent(
+  request: FastifyRequest,
+  event: { email: string; success: boolean; reason?: string; user_id?: string; tenant_id?: string },
+): void {
+  void getDb()
+    .then((db) => getLoginEventsCollection(db).insertOne({
+      ...event,
+      ip: request.ip,
+      user_agent: (request.headers['user-agent'] ?? '').slice(0, 300),
+      created_at: new Date(),
+    }))
+    .catch(() => {})
 }
 
 export async function registerAuthUserRoutes(
@@ -286,18 +303,24 @@ export async function registerAuthUserRoutes(
     if (!email || !password) return reply.status(400).send({ error: 'Email and password required' })
 
     const col = await getUsersCollection()
-    const user = await col.findOne({ email: email.toLowerCase() })
+    const emailKey = email.toLowerCase()
+    const user = await col.findOne({ email: emailKey })
 
     if (!user) {
       // Timing-safe: still hash even on miss to prevent user enumeration
       scryptSync(password, randomBytes(16).toString('hex'), 32)
+      recordLoginEvent(request, { email: emailKey, success: false, reason: 'unknown_email' })
       return reply.status(401).send({ error: 'Invalid email or password' })
     }
-    if (user.status === 'suspended') return reply.status(403).send({ error: 'User suspended' })
+    if (user.status === 'suspended') {
+      recordLoginEvent(request, { email: emailKey, success: false, reason: 'suspended', user_id: user.id, tenant_id: user.tenant_id })
+      return reply.status(403).send({ error: 'User suspended' })
+    }
 
     // Check if account is locked
     if (user.locked_until && user.locked_until > new Date()) {
       const remainingMinutes = Math.ceil((user.locked_until.getTime() - Date.now()) / 60000)
+      recordLoginEvent(request, { email: emailKey, success: false, reason: 'locked', user_id: user.id, tenant_id: user.tenant_id })
       return reply.status(429).send({ 
         error: 'Account locked due to too many failed login attempts',
         retry_after_minutes: remainingMinutes
@@ -310,6 +333,7 @@ export async function registerAuthUserRoutes(
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
       // Increment failed login attempts
       const failedAttempts = (user.failed_login_attempts || 0) + 1
+      recordLoginEvent(request, { email: emailKey, success: false, reason: 'bad_password', user_id: user.id, tenant_id: user.tenant_id })
       const updateData: Partial<User> = { failed_login_attempts: failedAttempts }
 
       // Lock account if max attempts reached
@@ -317,7 +341,7 @@ export async function registerAuthUserRoutes(
         updateData.locked_until = new Date(Date.now() + LOCKOUT_DURATION_MS)
       }
 
-      await col.updateOne({ email: email.toLowerCase() }, { $set: updateData })
+      await col.updateOne({ email: emailKey }, { $set: updateData })
 
       if (failedAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
         return reply.status(429).send({ 
@@ -330,9 +354,10 @@ export async function registerAuthUserRoutes(
     }
 
     // Reset failed login attempts on successful login
-    await col.updateOne({ email: email.toLowerCase() }, { 
+    await col.updateOne({ email: emailKey }, { 
       $set: { failed_login_attempts: 0, locked_until: undefined } 
     })
+    recordLoginEvent(request, { email: emailKey, success: true, user_id: user.id, tenant_id: user.tenant_id })
 
     // "Remember me" controls actual session length, not just UI copy: checked
     // keeps the token's own literal promise (30 days), unchecked falls back

@@ -52,12 +52,37 @@ export default function OperatorUsersPage() {
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Email, name, user or tenant ID" className="glass-input min-w-0 flex-1 rounded-xl px-4 py-3 text-sm" />
         <button className="rounded-xl bg-family-500 px-4 text-white" aria-label="Search users"><Search size={18} /></button>
       </form>
-      {security && (security.locked_users.length > 0 || security.users_with_failed_logins > 0) && (
+      {security && (security.locked_users.length > 0 || security.users_with_failed_logins > 0 || security.logins_24h.failed > 0) && (
         <GlassCard className="mt-4 border-warning/25 p-4">
           <div className="flex items-center gap-2 text-warning"><ShieldAlert size={16} /><span className="text-sm font-semibold">Security</span></div>
           <p className="mt-1 text-xs text-ink-secondary">
             {security.locked_users.length} locked out · {security.users_with_failed_logins} with failed attempts · {security.sessions_revoked_7d} session revocations this week
           </p>
+          <p className="mt-1 text-xs text-ink-secondary">
+            Last 24h: {security.logins_24h.successful} successful · {security.logins_24h.failed} failed logins
+          </p>
+          {security.failed_by_ip_24h.length > 0 && (
+            <div className="mt-2">
+              <p className="text-xs font-medium text-ink-secondary">Failures by IP (24h)</p>
+              {security.failed_by_ip_24h.map((row) => (
+                <div key={row.ip} className="mt-1 flex items-center justify-between rounded-lg bg-warning/10 px-3 py-1.5 text-xs">
+                  <code className="text-ink-secondary">{row.ip}</code>
+                  <span className="text-warning">{row.count} failed</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {security.new_ip_logins_24h.length > 0 && (
+            <div className="mt-2">
+              <p className="text-xs font-medium text-ink-secondary">First-seen IPs (24h) — verify these are expected sign-ins</p>
+              {security.new_ip_logins_24h.map((row) => (
+                <div key={`${row.email}-${row.ip}`} className="mt-1 flex items-center justify-between rounded-lg bg-tint/[0.04] px-3 py-1.5 text-xs">
+                  <span className="text-ink-secondary">{row.email}</span>
+                  <code className="text-ink-tertiary">{row.ip}</code>
+                </div>
+              ))}
+            </div>
+          )}
           {security.locked_users.map((u) => (
             <div key={u.id} className="mt-2 flex items-center justify-between rounded-lg bg-warning/10 px-3 py-2 text-xs">
               <span className="text-ink-secondary">
