@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -16,6 +16,22 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const { signIn, signInWithProvider } = useAuth()
   const router = useRouter()
+
+  // OAuth callbacks redirect back here as /login?error=<code> on failure —
+  // surface a real message instead of landing silently. The codes come from
+  // auth-social.ts's getLoginErrorUrl call sites.
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get('error')
+    if (!code) return
+    const messages: Record<string, string> = {
+      workspace_taken: 'That workspace name is already taken — try signing in, or contact support.',
+      email_not_verified: 'Your provider could not verify that email address. Try another sign-in method.',
+      signups_disabled: 'New accounts are temporarily closed — sign in if you already have one.',
+      invalid_oauth_state: 'That sign-in link expired — please try again.',
+      missing_oauth_params: 'Sign-in was interrupted — please try again.',
+    }
+    setError(messages[code] ?? 'Sign-in failed. Please try again.')
+  }, [])
 
   const handleSignIn = async () => {
     if (!email.trim() || !password) return

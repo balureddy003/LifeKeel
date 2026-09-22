@@ -4,12 +4,13 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Check, X } from 'lucide-react'
+import { Check, X, UserX } from 'lucide-react'
 import { GoogleIcon } from '@/components/GoogleIcon'
 import { PasswordInput } from '@/components/PasswordInput'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
+import { fetchPublicStatus } from '@/lib/api'
 
 export default function SignUpPage() {
   const [name, setName] = useState('')
@@ -18,6 +19,7 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [refCode, setRefCode] = useState<string | undefined>(undefined)
+  const [signupsOpen, setSignupsOpen] = useState<boolean | null>(null)
   const { signUp, signInWithProvider } = useAuth()
   const router = useRouter()
 
@@ -27,6 +29,11 @@ export default function SignUpPage() {
   useEffect(() => {
     const ref = new URLSearchParams(window.location.search).get('ref')
     if (ref) setRefCode(ref)
+    // Operator-controlled kill-switch: /status stays public so the page can
+    // render a closed state instead of a raw 503 on submit. An unreachable
+    // API resolves to "open" (fetchPublicStatus's fallback) — the backend
+    // 503 still guards the actual signup call either way.
+    fetchPublicStatus().then((s) => setSignupsOpen(s.signups_enabled))
   }, [])
 
   const handleSignUp = async () => {
@@ -56,6 +63,25 @@ export default function SignUpPage() {
       haptic('warning')
       setError(err instanceof Error ? err.message : 'Google sign-in failed.')
     }
+  }
+
+  if (signupsOpen === false) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-warning/10 border border-warning/20 flex items-center justify-center mb-6">
+          <UserX size={28} className="text-warning" />
+        </div>
+        <h1 className="text-2xl font-semibold mb-2">Signups are temporarily closed</h1>
+        <p className="text-sm text-ink-tertiary mb-8 max-w-xs">
+          We&apos;re not accepting new accounts right now — please check back soon.
+        </p>
+        <Link href="/login" className="w-full max-w-xs">
+          <motion.button whileTap={{ scale: 0.96 }} className="w-full glass text-ink-primary font-semibold rounded-2xl py-4 text-base">
+            I already have an account
+          </motion.button>
+        </Link>
+      </div>
+    )
   }
 
   return (
