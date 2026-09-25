@@ -112,6 +112,16 @@ export class TokenRefreshScheduler {
         refreshed++
       } catch (err) {
         log.warn({ tenant_id: cred.tenant_id, connector_id: cred.connector_id, err }, 'Token refresh failed')
+        // invalid_grant means the refresh token itself is dead (revoked or
+        // expired) — retrying never helps, only the user re-consenting does.
+        // Record it so the app can offer "Reconnect" instead of silently
+        // showing a connection that will never sync again.
+        if (err instanceof Error && err.message === 'invalid_grant') {
+          await this.db.collection('connector_credentials').updateOne(
+            { tenant_id: cred.tenant_id, connector_id: cred.connector_id },
+            { $set: { needs_reauth: true, needs_reauth_at: new Date() } },
+          )
+        }
       }
     }
 

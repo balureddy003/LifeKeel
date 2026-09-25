@@ -169,4 +169,17 @@ describe('GET /connectors/status', () => {
     expect(ids).toContain('email')
     expect(ids).not.toContain('gmail')
   })
+
+  it('flags needsReauth on the email connector when its grant was marked dead, and only then', async () => {
+    const statusOf = async (cred: Record<string, unknown>) => {
+      const app = await buildApp(makeDb(cred))
+      const body = JSON.parse((await app.inject({ method: 'GET', url: '/connectors/status' })).body)
+      return body.connectors.find((c: { id: string }) => c.id === 'email')
+    }
+    const dead = await statusOf({ connector_id: 'email', needs_reauth: true })
+    expect(dead).toMatchObject({ connected: true, needsReauth: true })
+    const healthy = await statusOf({ connector_id: 'email' })
+    expect(healthy.connected).toBe(true)
+    expect(healthy.needsReauth).toBeUndefined()
+  })
 })

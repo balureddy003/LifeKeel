@@ -12,6 +12,7 @@ import {
   fetchFamilyGoals,
   fetchFamilyReadinessScore,
   fetchFinancialProfile,
+  type FinancialProfile,
   RESOLVED_INSIGHT_STATES,
   type FamilyInsight,
   type FamilyGoal,
@@ -105,6 +106,24 @@ export function useFamilyReadinessScore() {
   return { score, hasLiveData, loading }
 }
 
+// A target of <= £1 (100 minor units) is unset — see isUnsetTarget in the API.
+const TARGET_SET_MINOR = 100
+
+/** Did the domain's detector have real inputs to evaluate? */
+function domainWasChecked(domain: HealthDomain, p: FinancialProfile | null): boolean {
+  if (!p) return false
+  switch (domain) {
+    case 'protection':
+      return true
+    case 'savings':
+      return p.emergency_fund.monthly_expenses_minor > 0 || p.household.annual_living_expenses_minor > 0
+    case 'wealth':
+      return p.retirement.target_retirement_income_minor > TARGET_SET_MINOR
+    case 'goals':
+      return p.education_funds.some((f) => f.target_savings_minor > TARGET_SET_MINOR)
+  }
+}
+
 export type HealthDomain = 'protection' | 'wealth' | 'goals' | 'savings'
 
 export interface DomainHealth {
@@ -161,6 +180,7 @@ const DOMAIN_FALLBACK_SCORE: Record<HealthDomain, number> = {
 export function useFamilyHealthDomains() {
   const { insights, loading: insightsLoading, error } = useFamilyInsights()
   const [hasProfile, setHasProfile] = useState(false)
+  const [profile, setProfile] = useState<FinancialProfile | null>(null)
   // Two independent fetches (insights, financial profile) feed this hook,
   // and insights consistently resolves first — the returned `loading` flag
   // used to reflect only that one, so any domain with zero insights (no
@@ -180,7 +200,10 @@ export function useFamilyHealthDomains() {
     fetchFinancialProfile()
       .then((p) => {
         if (cancelled) return
-        setHasProfile(!!p)
+        // Only a profile detectors have run on counts — an autosaved,
+        // never-finalised one has zero insights too, which is not "healthy".
+        setHasProfile(!!p?.insights_evaluated_at)
+        setProfile(p)
       })
       .catch(() => {
         // Same "unhandled rejection leaves loading stuck forever" gap
@@ -201,7 +224,10 @@ export function useFamilyHealthDomains() {
     const domainInsights = insights.filter((i) => i.detector_id === detectorId)
 
     if (domainInsights.length === 0) {
-      domains[domain] = hasProfile
+      // Zero insights is only "healthy" if the detector had inputs to
+      // judge — with no target entered its check is skipped, and a 100%
+      // ring for a check that never ran is the same false comfort.
+      domains[domain] = hasProfile && domainWasChecked(domain, profile)
         ? { score: 100, hasLiveData: true, insights: [] }
         : { score: DOMAIN_FALLBACK_SCORE[domain], hasLiveData: false, insights: [] }
       continue

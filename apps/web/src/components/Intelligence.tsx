@@ -27,7 +27,7 @@ export function TrustLadder() {
 
   useEffect(() => {
     let cancelled = false
-    fetchFinancialProfile().then((p) => { if (!cancelled) setHasFinancialProfile(!!p) })
+    fetchFinancialProfile().then((p) => { if (!cancelled) setHasFinancialProfile(!!p?.insights_evaluated_at) })
     fetchDocuments().then((d) => { if (!cancelled) setHasDocuments(d.documents.length > 0) })
     fetchConnectorStatuses().then((cs) => {
       if (!cancelled) setConnectedIds(cs.filter((c) => c.connected).map((c) => c.id))

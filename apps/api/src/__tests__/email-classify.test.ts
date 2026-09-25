@@ -113,4 +113,44 @@ describe('classifyEmail', () => {
     expect(result.summary).toBe(longSummary.slice(0, 300))
     expect(result.actionLabel).toBe(longActionLabel.slice(0, 80))
   })
+
+  it('keeps only well-typed policy details the email states, dropping invalid or guessed fields', async () => {
+    const llm: LlmFn = async () =>
+      JSON.stringify({
+        is_financial: true,
+        summary: 'Your travel policy covers India until 30 Sep.',
+        action_label: 'Save claims number',
+        action_type: 'info',
+        priority: 'high',
+        policy: {
+          provider: 'Acme Travel',
+          type: 'travel',
+          policy_number: 'TR-123',
+          cover_amount: 500000,
+          currency: 'GBP',
+          monthly_premium: -5, // invalid: negative
+          renewal_date: 'next month', // invalid: not YYYY-MM-DD
+          extra: 'ignored',
+        },
+      })
+    const result = await classifyEmail(llm, makeEmail())
+    expect(result.policy).toEqual({ provider: 'Acme Travel', type: 'travel', policyNumber: 'TR-123', coverAmount: 500000, currency: 'GBP' })
+  })
+
+  it('omits policy when the model returns none or junk', async () => {
+    const llm: LlmFn = async () =>
+      JSON.stringify({ is_financial: true, summary: 'x', action_label: 'y', action_type: 'info', priority: 'low', policy: 'n/a' })
+    expect((await classifyEmail(llm, makeEmail())).policy).toBeUndefined()
+  })
+
+  it('tells the model transactions are not relevant and policy details are', async () => {
+    let system = ''
+    const llm: LlmFn = async (s) => {
+      system = s
+      return JSON.stringify({ is_financial: false, summary: '', action_label: '', action_type: 'info', priority: 'low' })
+    }
+    await classifyEmail(llm, makeEmail({ subject: 'INR 243.00 was debited from your A/c' }))
+    expect(system).toMatch(/Transaction notifications/)
+    expect(system).toMatch(/policy_number/)
+  })
 })

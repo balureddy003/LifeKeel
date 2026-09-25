@@ -12,7 +12,7 @@ import { haptic } from '@/lib/haptics'
 import { useToast } from '@/components/Toast'
 import { INBOX_ITEMS } from '@/lib/onboarding-data'
 import type { InboxItem } from '@/lib/onboarding-data'
-import { fetchInboxItems, dismissInboxItem, scanEmailInbox } from '@/lib/api'
+import { fetchInboxItems, dismissInboxItem, scanEmailInbox, fetchConnectorStatuses } from '@/lib/api'
 import { useAppStore } from '@/lib/store'
 import { formatRelativeDate } from '@/lib/format'
 
@@ -58,7 +58,20 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true)
   const [dismissingId, setDismissingId] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
-  const emailConnected = connectedConnectors.includes('email')
+  // Server is the source of truth (the local store only knows about
+  // connections made in this tab) — otherwise a connected, actively-syncing
+  // mailbox still showed "Connect your email".
+  const [serverEmail, setServerEmail] = useState<{ connected: boolean; needsReauth: boolean } | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    fetchConnectorStatuses().then((cs) => {
+      const email = cs.find((c) => c.id === 'email')
+      if (!cancelled) setServerEmail({ connected: !!email?.connected, needsReauth: !!email?.needsReauth })
+    })
+    return () => { cancelled = true }
+  }, [])
+  const emailConnected = (serverEmail?.connected ?? false) || connectedConnectors.includes('email')
+  const needsReauth = emailConnected && !!serverEmail?.needsReauth
 
   // Live-verification finding: "Dismiss" (and the expanded panel's action
   // button) removes the row the user just pressed — including the button
@@ -219,7 +232,7 @@ export default function InboxPage() {
       )}
 
       {/* Email connected — manual rescan */}
-      {emailConnected && !loading && (
+      {emailConnected && !needsReauth && !loading && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <GlassCard className="p-4 flex items-center gap-3">
             <Bot size={20} className="text-family-400 flex-shrink-0" />
@@ -239,8 +252,8 @@ export default function InboxPage() {
         </motion.div>
       )}
 
-      {/* Email not connected banner */}
-      {!emailConnected && !loading && (
+      {/* Email not connected / needs reconnecting banner */}
+      {(!emailConnected || needsReauth) && !loading && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -248,14 +261,18 @@ export default function InboxPage() {
           <GlassCard className="p-4 border-family-500/20 flex items-center gap-3">
             <Bot size={20} className="text-family-400 flex-shrink-0" />
             <div className="flex-1">
-              <div className="text-sm font-semibold text-family-400">Connect your email</div>
-              <p className="text-xs text-ink-tertiary mt-0.5">Get AI-summarized financial notifications automatically.</p>
+              <div className="text-sm font-semibold text-family-400">{needsReauth ? 'Reconnect your email' : 'Connect your email'}</div>
+              <p className="text-xs text-ink-tertiary mt-0.5">
+                {needsReauth
+                  ? 'Google stopped our access to your mailbox, so new mail isn’t syncing. Reconnect to resume.'
+                  : 'Get AI-summarized financial notifications automatically.'}
+              </p>
             </div>
             <button
-              onClick={() => { haptic('light'); router.push('/connect') }}
+              onClick={() => { haptic('light'); router.push('/connect/email') }}
               className="text-xs font-semibold text-white px-3 py-2 rounded-xl bg-family-500/80 active:opacity-80"
             >
-              Connect
+              {needsReauth ? 'Reconnect' : 'Connect'}
             </button>
           </GlassCard>
         </motion.div>

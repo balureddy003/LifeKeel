@@ -32,6 +32,8 @@ export interface InboxItemDoc {
   created_at: Date
   email_message_id?: string
   connector_id?: string
+  /** Policy facts stated in the email (see email/classify.ts). */
+  policy_details?: import('../email/classify.js').EmailPolicyDetails
 }
 
 export function registerFamilyInboxRoutes(

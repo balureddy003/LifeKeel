@@ -194,7 +194,7 @@ function toPayload(form: FormState, funds: EducationFundForm[], policies: Policy
       child_name: f.childName.trim(),
       child_age: Number(f.childAge) || 0,
       current_savings_minor: toMinor(f.currentSavings),
-      target_savings_minor: Math.max(1, toMinor(f.targetSavings)),
+      target_savings_minor: toMinor(f.targetSavings),
       years_remaining: Number(f.yearsRemaining) || 0,
       ...(f.memberId ? { member_id: f.memberId } : {}),
     }))
@@ -242,7 +242,7 @@ function toPayload(form: FormState, funds: EducationFundForm[], policies: Policy
       target_retirement_age: Number(form.targetRetirementAge) || 0,
       pension_balance_minor: toMinor(form.pensionBalance),
       monthly_contribution_minor: toMinor(form.monthlyContribution),
-      target_retirement_income_minor: Math.max(1, toMinor(form.targetRetirementIncome)),
+      target_retirement_income_minor: toMinor(form.targetRetirementIncome),
       expected_annual_growth_pct: Number(form.expectedAnnualGrowthPct) || 5,
     },
     education_funds,

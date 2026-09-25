@@ -82,6 +82,10 @@ function makeDb() {
       stored = { ...(stored ?? {}), ...update.$set, version: currentVersion + (update.$inc?.['version'] ?? 0) }
       return stored
     }),
+    updateOne: vi.fn(async (_filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
+      stored = { ...(stored ?? {}), ...update.$set }
+      return { matchedCount: stored ? 1 : 0 }
+    }),
     createIndex: vi.fn(async () => ({})),
   }
   // PRD-107: a minimal in-memory stand-in for the real 'insights' collection
@@ -296,6 +300,68 @@ describe('PRD-102: policies[] and the new protection-domain rules', () => {
     })
     expect(insights.some((i) => i.rule_id === 'life_insurance_below_household_needs')).toBe(true)
     expect(insights.some((i) => i.rule_id === 'no_income_protection')).toBe(true)
+  })
+})
+
+describe('unset targets and missing monthly expenses', () => {
+  let engine: Engine
+  beforeEach(async () => {
+    engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
+    await engine.load()
+  })
+
+  // Shape of a real saved profile: £400k mortgage, no cover, targets never
+  // entered (0, or the legacy 1-minor-unit client placeholder), no separate
+  // monthly-expenses figure.
+  const UNSET = {
+    ...BASE_PROFILE,
+    household: { ...BASE_PROFILE.household, monthly_salary_minor: 670000, annual_living_expenses_minor: 7_197_700, mortgage_outstanding_minor: 40_000_000, life_cover_minor: 0, income_protection_monthly_minor: 0 },
+    emergency_fund: { ...BASE_PROFILE.emergency_fund, emergency_savings_minor: 3_000_000, monthly_expenses_minor: 0 },
+    retirement: { ...BASE_PROFILE.retirement, current_age: 42, target_retirement_age: 70, target_retirement_income_minor: 0 },
+    education_funds: [
+      { child_name: 'A', child_age: 0, current_savings_minor: 0, target_savings_minor: 0, years_remaining: 0 },
+      { child_name: 'B', child_age: 0, current_savings_minor: 0, target_savings_minor: 1, years_remaining: 0 },
+    ],
+    policies: [],
+  }
+
+  it('accepts a 0 target, still fires the real protection gaps, and raises no education/retirement insight from unset targets', async () => {
+    const { app, insights } = await buildApp(engine)
+    const res = await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...UNSET, generate_insights: true } })
+    expect(res.statusCode).toBe(200)
+    const rules = insights.map((i) => i.rule_id)
+    expect(rules).toContain('life_insurance_below_household_needs')
+    expect(rules).toContain('no_income_protection')
+    expect(insights.some((i) => i.detector_id === 'family_education_shortfall')).toBe(false)
+    expect(insights.some((i) => i.detector_id === 'family_retirement_gap')).toBe(false)
+  })
+
+  it('POST /evaluate runs detectors on the saved profile without re-entry and stamps it evaluated', async () => {
+    const { app, insights } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: UNSET }) // autosave only
+    expect(insights).toHaveLength(0)
+    const res = await app.inject({ method: 'POST', url: '/family/financial-profile/evaluate' })
+    expect(res.statusCode).toBe(200)
+    expect(insights.map((i) => i.rule_id)).toContain('life_insurance_below_household_needs')
+    const get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    expect(get.json().profile.insights_evaluated_at).toBeDefined()
+  })
+
+  it('POST /evaluate is a 404 when there is no profile', async () => {
+    const { app } = await buildApp(engine)
+    const res = await app.inject({ method: 'POST', url: '/family/financial-profile/evaluate' })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('derives monthly expenses from annual living expenses when none was entered', async () => {
+    const { app, insights } = await buildApp(engine)
+    // £8,000 savings vs ~£6,000/month expenses -> under 3 months of cover.
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...UNSET, emergency_fund: { ...UNSET.emergency_fund, emergency_savings_minor: 800_000 }, generate_insights: true },
+    })
+    expect(insights.some((i) => i.rule_id === 'emergency_fund_below_3_months')).toBe(true)
   })
 })
 

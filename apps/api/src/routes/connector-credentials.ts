@@ -711,6 +711,9 @@ export function registerConnectorCredentialRoutes(
         ...(data.expires_in ? { token_expires_at: new Date(Date.now() + data.expires_in * 1000) } : {}),
         token_type: 'Bearer',
       })
+      // A fresh grant clears any earlier dead-refresh-token flag.
+      await getTenantCollection<Record<string, unknown>>(db, 'connector_credentials', tenantId)
+        .updateOne({ connector_id: req.params.id }, { $set: { needs_reauth: false } })
 
       // ── Family app: mirror into its own connector_id: 'email' shape ─────
       // The family app's inbox scanner (jobs/email-scan.ts) reads IMAP
@@ -748,6 +751,7 @@ export function registerConnectorCredentialRoutes(
             ...(data.expires_in ? { token_expires_at: new Date(Date.now() + data.expires_in * 1000) } : {}),
           },
           updated_at: new Date(),
+          needs_reauth: false,
         }
         await familyCreds.updateOne({ connector_id: 'email' }, { $set: credentialDoc }, { upsert: true })
 

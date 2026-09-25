@@ -165,7 +165,9 @@ export function getMemberSections(member: FamilyMember, policies: FinancialProfi
     const renewalDays = isProtectionBranch ? soonestRenewalWithinWindow(policies) : null
     const story = isProtectionBranch && policies.length > 0
       ? `${policies.length} ${policies.length === 1 ? 'policy' : 'policies'}: ${[...new Set(policies.map((p) => POLICY_TYPE_LABELS[p.type]))].join(', ')}${renewalDays !== null ? ` · renews in ${renewalDays} ${renewalDays === 1 ? 'day' : 'days'}` : ''}`
-      : `Includes ${branch.items.join(', ')}`
+      : isProtectionBranch
+        ? 'No policies on file yet'
+        : `Tracks ${branch.items.join(', ')}`
     const step = BRANCH_STEP[branch.icon]
     sections.push({
       id: `branch-${member.id}-${branch.label}`,

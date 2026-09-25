@@ -59,9 +59,9 @@ describe('OAK-013: getMemberSections surfaces the soonest policy renewal', () =>
     expect(protection?.story).not.toContain('renews in')
   })
 
-  it('falls back to the static label when there are no policies at all', () => {
+  it('says no policies are on file, rather than claiming cover, when there are none', () => {
     const sections = getMemberSections(makeMember(), [])
     const protection = sections.find((s) => s.label === 'Protection')
-    expect(protection?.story).toBe('Includes Life Insurance, Health Insurance')
+    expect(protection?.story).toBe('No policies on file yet')
   })
 })

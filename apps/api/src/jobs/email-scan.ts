@@ -158,6 +158,7 @@ export async function scanTenantInbox(db: Db, tenantId: string, credentialDoc: E
         created_at: new Date(),
         email_message_id: email.messageId,
         connector_id: credentialDoc.connector_id,
+        ...(classification.policy ? { policy_details: classification.policy } : {}),
       })
     } catch (err) {
       if ((err as { code?: number }).code === 11000) continue // lost the race — the other scan owns this message

@@ -379,6 +379,8 @@ export interface ConnectorStatus {
   comingSoon?: boolean
   lastSync?: string
   authUrl?: string
+  /** The saved grant's refresh token is dead — the user must reconnect. */
+  needsReauth?: boolean
 }
 
 // Trading212/Zerodha deliberately excluded — see family-connectors.ts.
