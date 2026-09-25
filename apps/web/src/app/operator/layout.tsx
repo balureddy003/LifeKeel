@@ -25,9 +25,9 @@ export default function OperatorLayout({ children }: { children: ReactNode }) {
             <Link href="/operator" className="font-semibold text-family-400">Agent Oak Operator</Link>
             <Link href="/" className="text-sm text-ink-tertiary">Product</Link>
           </div>
-          <nav className="mt-3 flex gap-2 overflow-x-auto">
+          <nav className="mt-3 flex gap-2 overflow-x-auto pb-1">
             {links.map(([label, href]) => (
-              <Link key={href} href={href} className="rounded-lg border border-tint/[0.08] px-3 py-1.5 text-sm text-ink-secondary hover:text-ink-primary">
+              <Link key={href} href={href} className="shrink-0 whitespace-nowrap rounded-lg border border-tint/[0.08] px-3 py-1.5 text-sm text-ink-secondary hover:text-ink-primary">
                 {label}
               </Link>
             ))}
