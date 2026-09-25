@@ -21,8 +21,11 @@ export async function evaluateSavedProfile(): Promise<number> {
         : data.error || 'Could not analyse your profile right now.',
     )
   }
-  // Everything downstream reads these cached copies.
+  // Everything downstream reads these cached copies — Inbox included, now
+  // that it surfaces open insights directly (see the matching fix in
+  // submitFinancialProfile for how this was found).
   invalidateCache('financial-profile')
   invalidateCache('family-insights')
+  invalidateCache('inbox-items')
   return data.insights_generated ?? 0
 }

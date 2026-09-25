@@ -358,6 +358,13 @@ export async function applyDocumentToProfile(
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Could not apply this document to your Financial Profile')
+  // The profile mutated and may have generated new insights — Home's
+  // score/rings, the Family/Intelligence pages, and the Inbox feed all
+  // read their own 30s-cached copy of one of these (see the identical fix
+  // on submitFinancialProfile for how this class of bug was found).
+  invalidateCache('financial-profile')
+  invalidateCache('family-insights')
+  invalidateCache('inbox-items')
   return { applied: data.applied ?? [], insightsGenerated: data.insights_generated ?? 0 }
 }
 
@@ -388,6 +395,13 @@ export async function applyPolicySuggestion(
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Could not add this policy to your Financial Profile')
+  // The profile mutated and may have generated new insights — Home's
+  // score/rings, the Family/Intelligence pages, and the Inbox feed all
+  // read their own 30s-cached copy of one of these (see the identical fix
+  // on submitFinancialProfile for how this class of bug was found).
+  invalidateCache('financial-profile')
+  invalidateCache('family-insights')
+  invalidateCache('inbox-items')
   return { applied: data.applied, insightsGenerated: data.insights_generated ?? 0 }
 }
 
@@ -412,6 +426,12 @@ export async function applyInboxPolicy(
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Could not add this policy to your Financial Profile')
+  // The profile mutated and may have generated new insights — Home's
+  // score/rings, the Family/Intelligence pages, and the Inbox feed all
+  // read their own 30s-cached copy of one of these (see the identical fix
+  // on submitFinancialProfile for how this class of bug was found).
+  invalidateCache('financial-profile')
+  invalidateCache('family-insights')
   invalidateCache('inbox-items')
   return { applied: data.applied, insightsGenerated: data.insights_generated ?? 0 }
 }
@@ -1180,6 +1200,16 @@ export async function submitFinancialProfile(
   // without dropping it here, a save could sit invisible to them for up to
   // 30s, reading as "my edit didn't save" even though it did.
   invalidateCache('financial-profile')
+  // A generate_insights submit can create brand-new insights server-side —
+  // Home's score/rings (family-insights) and the Inbox feed (inbox-items)
+  // both read their own 30s-cached copy. Confirmed live: finishing the
+  // wizard, then checking Inbox within that window, showed "Nothing needs
+  // your attention" over three real, just-created recommendations because
+  // an earlier page load (before the submit) had cached an empty result.
+  if (generateInsights) {
+    invalidateCache('family-insights')
+    invalidateCache('inbox-items')
+  }
   return { insightsGenerated: data.insights_generated ?? 0, version: data.version ?? version ?? 0 }
 }
 
