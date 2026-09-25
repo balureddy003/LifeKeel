@@ -3,6 +3,7 @@ import {
   fetchAIResponse,
   fetchFamilyInsights,
   fetchFamilyReadinessScore,
+  fetchInboxItems,
   fetchLifeEvents,
   reportLifeEvent,
   prepareLifeEventStepDraft,
@@ -167,6 +168,26 @@ describe('fetchFamilyReadinessScore', () => {
     expect(RESOLVED_INSIGHT_STATES).toContain('dismissed')
     const result = await fetchFamilyReadinessScore()
     expect(result).toEqual({ score: 100, hasLiveData: true })
+  })
+})
+
+describe('fetchInboxItems', () => {
+  it('is not "failed" for a genuine empty inbox (a normal 200 with no items)', async () => {
+    mockFetchOnce({ items: [] })
+    const result = await fetchInboxItems()
+    expect(result).toEqual({ items: [], isLive: false, failed: false })
+  })
+
+  it('flags failed when the server errors, so the page can tell that apart from a real empty inbox', async () => {
+    mockFetchOnce({}, false)
+    const result = await fetchInboxItems()
+    expect(result).toEqual({ items: [], isLive: false, failed: true })
+  })
+
+  it('flags failed when the network request itself throws', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
+    const result = await fetchInboxItems()
+    expect(result).toEqual({ items: [], isLive: false, failed: true })
   })
 })
 

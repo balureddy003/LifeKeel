@@ -12,6 +12,7 @@ import { haptic } from '@/lib/haptics'
 import { useToast } from '@/components/Toast'
 import type { InboxItem } from '@/lib/onboarding-data'
 import { fetchInboxItems, dismissInboxItem, scanEmailInbox, fetchConnectorStatuses } from '@/lib/api'
+import { invalidateCache } from '@/lib/fetch-cache'
 import { useAppStore } from '@/lib/store'
 import { searchMailboxForPolicies } from '@/lib/email-lookback'
 import { formatRelativeDate } from '@/lib/format'
@@ -67,6 +68,9 @@ export default function InboxPage() {
   const [dismissingId, setDismissingId] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
   const [lookingBack, setLookingBack] = useState(false)
+  // Distinct from "nothing to show you" — a genuine failure to reach the
+  // server (see apiFetch's onFailure), so the empty state doesn't lie.
+  const [loadError, setLoadError] = useState(false)
   // Server is the source of truth (the local store only knows about
   // connections made in this tab) — otherwise a connected, actively-syncing
   // mailbox still showed "Connect your email".
@@ -101,8 +105,16 @@ export default function InboxPage() {
   const loadInbox = useCallback(async () => {
     const result = await fetchInboxItems()
     setItems(result.items)
+    setLoadError(result.failed)
     setLoading(false)
   }, [])
+
+  const retryLoad = useCallback(() => {
+    haptic('light')
+    invalidateCache('inbox-items')
+    setLoading(true)
+    loadInbox()
+  }, [loadInbox])
 
   useEffect(() => {
     loadInbox()
@@ -338,7 +350,17 @@ export default function InboxPage() {
 
       {/* Inbox items */}
       <div className="space-y-2">
-        {items.length === 0 ? (
+        {items.length === 0 && loadError ? (
+          <GlassCard>
+            <EmptyState
+              icon={Bot}
+              title="Couldn't load your recommendations"
+              description="Oak couldn't reach the server just now — this isn't the same as having nothing to show you. Check your connection and try again."
+              actionLabel="Try again"
+              onAction={retryLoad}
+            />
+          </GlassCard>
+        ) : items.length === 0 ? (
           <GlassCard>
             <EmptyState
               icon={Bot}

@@ -100,7 +100,17 @@ function getAuthToken(): string | null {
   return localStorage.getItem('agentoak_token')
 }
 
-async function apiFetch<T>(path: string, fallback: T): Promise<T> {
+// `onFailure` fires only for what the fallback can't honestly explain away
+// as a normal empty state — a thrown fetch (offline/unreachable) or a 5xx —
+// never for an ordinary 4xx ("no family yet"). Optional and additive: every
+// existing caller that doesn't pass it keeps the exact same "always
+// resolves with fallback, look identical to a real empty" behavior. A
+// caller whose empty state and its genuine-failure state must read
+// differently to the user (Inbox: "nothing to show you" vs "couldn't check
+// right now") opts in instead of silently caching a transient failure as
+// truth — confirmed live: a single dropped request during a dev-server
+// blip made a real 15-item feed render as permanently empty until reload.
+async function apiFetch<T>(path: string, fallback: T, onFailure?: () => void): Promise<T> {
   try {
     const base = getApiBase()
     const token = getAuthToken()
@@ -111,18 +121,17 @@ async function apiFetch<T>(path: string, fallback: T): Promise<T> {
 
     const res = await fetch(`${base}${path}`, { headers })
     if (!res.ok) {
-      // 4xx here is routine — "no family yet", "not signed in yet" — that's
-      // exactly why every caller treats the fallback as a normal empty
-      // state, not an error. Only report what the fallback can't explain
-      // away as a legitimate empty state: a network failure (caught below)
-      // or the server itself erroring.
-      if (res.status >= 500) reportError(new Error(`API ${res.status}`), { path })
+      if (res.status >= 500) {
+        reportError(new Error(`API ${res.status}`), { path })
+        onFailure?.()
+      }
       return fallback
     }
     return (await res.json()) as T
   } catch (err) {
     // fetch() itself threw — offline or unreachable, not a status code.
     reportError(err, { path })
+    onFailure?.()
     return fallback
   }
 }
@@ -964,17 +973,20 @@ export async function dismissInboxItem(itemId: string): Promise<boolean> {
   }
 }
 
-export async function fetchInboxItems(): Promise<{ items: InboxItem[]; isLive: boolean }> {
+export async function fetchInboxItems(): Promise<{ items: InboxItem[]; isLive: boolean; failed: boolean }> {
   // Cached 30s — AppShell already warms this on auth for the tab badge, so
   // opening Inbox right after app load paints from cache instead of a
   // skeleton. Invalidated on dismiss so a removed item stays removed.
+  let failed = false
   return cachedFetch('inbox-items', 30_000, () =>
     apiFetch<{ items: InboxItem[] }>(
       '/inbox',
       { items: [] },
+      () => { failed = true },
     ).then((r) => ({
       items: r.items ?? [],
       isLive: (r.items?.length ?? 0) > 0,
+      failed,
     })),
   )
 }

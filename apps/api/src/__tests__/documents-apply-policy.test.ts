@@ -20,6 +20,12 @@ function makeDb(documentsSeed: Record<string, unknown>[] = []) {
   const documentsCol = {
     findOne: async (filter: Record<string, unknown>) =>
       documents.find((d) => Object.entries(filter).every(([k, v]) => d[k] === v)) ?? null,
+    updateOne: async (filter: Record<string, unknown>, update: { $set?: Record<string, unknown> }) => {
+      const doc = documents.find((d) => Object.entries(filter).every(([k, v]) => d[k] === v))
+      if (!doc) return { matchedCount: 0, modifiedCount: 0 }
+      if (update.$set) Object.assign(doc, update.$set)
+      return { matchedCount: 1, modifiedCount: 1 }
+    },
   }
 
   // Minimal single-document-per-tenant fake — good enough for this route,
@@ -52,6 +58,7 @@ function makeDb(documentsSeed: Record<string, unknown>[] = []) {
   return {
     collection: (name: string) => (name === 'documents' ? documentsCol : profilesCol),
     _profiles: profiles,
+    _documents: documents,
   } as any
 }
 
@@ -113,6 +120,9 @@ describe('POST /documents/:id/apply-policy', () => {
     })
     expect(db._profiles[0].policies).toHaveLength(1)
     expect(db._profiles[0].policies[0].provider).toBe('Legal & General')
+    // Applying this document's suggestion is the "acted on it" signal for
+    // the Inbox feed — the same document must stop being recommended.
+    expect(db._documents.find((d: any) => d.id === 'doc-1').feed_dismissed).toBe(true)
   })
 
   it('appends to an existing profile without clobbering other policies', async () => {

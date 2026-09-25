@@ -319,6 +319,13 @@ export function registerDocumentRoutes(
       for (const s of toApply) update[s.path] = s.valueMinor
       await profiles.updateOne({}, { $set: update }, { upsert: true })
 
+      // The Inbox feed's "policy found" / "review this" recommendation for
+      // this document exists to get the user here — once they've actually
+      // applied a suggestion, it has done its job and re-showing it every
+      // visit is noise (confirmed live: it kept nudging to review a
+      // document already applied to the profile).
+      await documents.updateOne({ id: req.params.id }, { $set: { feed_dismissed: true } })
+
       const insightsGenerated = await regenerateInsights(tenant_id)
 
       log.info(
@@ -389,6 +396,9 @@ export function registerDocumentRoutes(
         { $push: { policies: policy }, $set: { updated_at: new Date() } },
         { upsert: true },
       )
+
+      // See the matching comment in apply-to-profile above.
+      await documents.updateOne({ id: req.params.id }, { $set: { feed_dismissed: true } })
 
       const insightsGenerated = await regenerateInsights(tenant_id)
 

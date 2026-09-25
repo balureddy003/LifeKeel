@@ -85,6 +85,12 @@ function makeDb(documentsSeed: Record<string, unknown>[] = [], profileSeed: Reco
   const documentsCol = {
     findOne: async (filter: Record<string, unknown>) =>
       documents.find((d) => Object.entries(filter).every(([k, v]) => d[k] === v)) ?? null,
+    updateOne: async (filter: Record<string, unknown>, update: { $set?: Record<string, unknown> }) => {
+      const doc = documents.find((d) => Object.entries(filter).every(([k, v]) => d[k] === v))
+      if (!doc) return { matchedCount: 0, modifiedCount: 0 }
+      if (update.$set) Object.assign(doc, update.$set)
+      return { matchedCount: 1, modifiedCount: 1 }
+    },
   }
 
   const profilesCol = {
@@ -137,6 +143,7 @@ function makeDb(documentsSeed: Record<string, unknown>[] = [], profileSeed: Reco
     },
     _profiles: profiles,
     _insightDocs: insightDocs,
+    _documents: documents,
   } as any
 }
 
@@ -199,6 +206,7 @@ describe('POST /documents/:id/apply-policy — in-request insight regeneration',
     expect(status).toBe(200)
     expect(body.insights_generated).toBeGreaterThan(0)
     expect(insights.map((i) => i.rule_id)).toContain('policy_renewal_window')
+    expect(db._documents.find((d: any) => d.id === 'doc-1').feed_dismissed).toBe(true)
   })
 
   it('generates nothing when the apply creates only a skeleton profile (no wizard submission yet)', async () => {
@@ -266,6 +274,7 @@ describe('POST /documents/:id/apply-to-profile — in-request insight regenerati
     expect(body.applied).toHaveLength(1)
     expect(body.insights_generated).toBeGreaterThan(0)
     expect(insights.map((i) => i.rule_id)).toContain('policy_renewal_window')
+    expect(db._documents.find((d: any) => d.id === 'doc-2').feed_dismissed).toBe(true)
   })
 
   it('generates nothing when no complete profile exists yet', async () => {
