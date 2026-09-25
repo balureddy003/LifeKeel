@@ -4,8 +4,9 @@ import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Check, Copy, HelpCircle, Loader2, Mail, PenLine, Printer, ShieldAlert } from 'lucide-react'
+import { ArrowLeft, Check, Copy, HelpCircle, Loader2, Mail, PenLine, Printer } from 'lucide-react'
 import { GlassCard, GlassButton, PageHeader, PageTransition } from '@/components/Glass'
+import { LifeSafetyNotice } from '@/components/LifeSafetyNotice'
 import { haptic } from '@/lib/haptics'
 import { fetchLifeEvents, prepareLifeEventStepDraft, setLifeEventStepDone, pingOnDeviceDraftUsed, type LifeEvent, type LifeEventPlaybookStep, type LifeEventType } from '@/lib/api'
 import { isOnDeviceEnabled, isOnDeviceSupported, generateDraftOnDevice } from '@/lib/onDeviceLlm'
@@ -15,19 +16,6 @@ import { isOnDeviceEnabled, isOnDeviceSupported, generateDraftOnDevice } from '@
 // banner, and for these four types everything on this screen is insurance/
 // financial admin, not first response.
 const URGENT_TYPES = new Set<LifeEventType>(['medical', 'car', 'property', 'travel'])
-
-function LifeSafetyNotice() {
-  return (
-    <div className="rounded-xl border border-danger/30 px-3.5 py-3 flex items-start gap-2" style={{ background: 'rgba(248,113,113,0.08)' }}>
-      <ShieldAlert size={15} className="text-danger flex-shrink-0 mt-0.5" />
-      <p className="text-xs leading-relaxed text-ink-secondary">
-        <span className="font-semibold text-ink-primary">If anyone is in immediate danger, call 911</span> (or your
-        local emergency number) now — the steps below are insurance and financial admin, not first response.
-      </p>
-    </div>
-  )
-}
-
 
 // Checklist completion is now server-persisted (remediation item 19) —
 // localStorage remains only as an instant-paint cache while the server
@@ -244,7 +232,7 @@ export default function LifeEventPlaybookClient() {
         subtitle="Based on your family's real data"
       />
 
-      {URGENT_TYPES.has(event.event_type) && <LifeSafetyNotice />}
+      {URGENT_TYPES.has(event.event_type) && <LifeSafetyNotice compact />}
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <GlassCard className="p-5 border-family-500/20">

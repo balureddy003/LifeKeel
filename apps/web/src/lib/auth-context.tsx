@@ -122,7 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const me = await res.json()
         const raw = localStorage.getItem(STORAGE_KEY)
         const cached = raw ? JSON.parse(raw) : null
-        setUser({ id: me.user_id, name: me.name ?? cached?.user?.name ?? '', email: me.email ?? cached?.user?.email ?? '', avatar: '' })
+        setUser({ id: me.user_id, name: me.name ?? cached?.user?.name ?? '', email: me.email ?? cached?.user?.email ?? '', avatar: '', country: me.country })
 
         // The family roster is persisted server-side now — fetch the real
         // one instead of only trusting the local cache, so a login on a
@@ -341,7 +341,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       if (!res.ok) return
       const me = await res.json()
-      setUser({ id: me.user_id, name: me.name ?? '', email: me.email ?? '', avatar: '' })
+      setUser({ id: me.user_id, name: me.name ?? '', email: me.email ?? '', avatar: '', country: me.country })
       const apiFamily = await fetchFamilyGroup()
       setFamily(apiFamily ? toFamilyGroup(apiFamily) : null)
     } catch {

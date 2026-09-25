@@ -3,7 +3,8 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { HeartCrack, Heart, Car, Plane, Home, ChevronRight, ShieldAlert, type LucideIcon } from 'lucide-react'
+import { HeartCrack, Heart, Car, Plane, Home, ChevronRight, type LucideIcon } from 'lucide-react'
+import { LifeSafetyNotice } from './LifeSafetyNotice'
 import { haptic } from '@/lib/haptics'
 import { LIFE_EVENTS } from '@/lib/life-data'
 import { useFocusTrap } from '@/lib/useFocusTrap'
@@ -65,17 +66,8 @@ export function EmergencyMode({
               entry (Siren button, Cmd+K, elderly tile) — never gated behind a
               tile choice. */}
           <div className="px-6 pt-6 safe-area-top">
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="rounded-2xl border border-danger/30 px-4 py-3 flex items-start gap-2.5"
-              style={{ background: 'rgba(248,113,113,0.1)' }}
-            >
-              <ShieldAlert size={18} className="text-danger flex-shrink-0 mt-0.5" />
-              <p className="text-sm leading-relaxed text-ink-primary">
-                <span className="font-semibold">If anyone is in immediate danger, call 911 (or your local
-                emergency number) now.</span> Oak can help with the insurance and financial steps after.
-              </p>
+            <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
+              <LifeSafetyNotice />
             </motion.div>
           </div>
 
