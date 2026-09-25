@@ -99,13 +99,22 @@ describe('fetchFamilyInsights', () => {
 })
 
 describe('fetchFamilyReadinessScore', () => {
-  it('scores 100 with hasLiveData when there are no open insights but a profile exists', async () => {
+  it('scores 100 with hasLiveData when detectors ran and found no open insights', async () => {
+    mockFetchSequence(
+      { body: { insights: [] } },
+      { body: { profile: { household: {}, insights_evaluated_at: '2026-09-20T00:00:00Z' } } },
+    )
+    const result = await fetchFamilyReadinessScore()
+    expect(result).toEqual({ score: 100, hasLiveData: true })
+  })
+
+  it('does not score a saved-but-never-evaluated profile as 100 — zero insights there means unknown, not on track', async () => {
     mockFetchSequence(
       { body: { insights: [] } },
       { body: { profile: { household: {} } } },
     )
     const result = await fetchFamilyReadinessScore()
-    expect(result).toEqual({ score: 100, hasLiveData: true })
+    expect(result).toEqual({ score: 0, hasLiveData: false })
   })
 
   it('scores 0 without live data when there are no insights and no profile', async () => {

@@ -578,7 +578,18 @@ export async function registerFamilyFinancialProfileRoutes(
     const filter = clientVersion !== undefined ? { version: clientVersion } : {}
     const result = await profileFor(tenant_id).findOneAndUpdate(
       filter,
-      { $set: { ...profile, updated_at: new Date() }, $inc: { version: 1 } },
+      {
+        $set: {
+          ...profile,
+          updated_at: new Date(),
+          // Marks that detectors have actually run against this profile.
+          // Without it the client can't tell "evaluated, no gaps" from
+          // "saved by autosave, never evaluated" — both have zero
+          // insights, and the latter must not read as a perfect score.
+          ...(generate_insights ? { insights_evaluated_at: new Date() } : {}),
+        },
+        $inc: { version: 1 },
+      },
       { upsert: true, returnDocument: 'after' },
     )
     if (clientVersion !== undefined && !result) {

@@ -171,7 +171,13 @@ export async function fetchFamilyReadinessScore(): Promise<{ score: number; hasL
   const insights = await fetchFamilyInsights()
   if (insights.length === 0) {
     const profile = await fetchFinancialProfile()
-    return profile ? { score: 100, hasLiveData: true } : { score: 0, hasLiveData: false }
+    // Zero insights only means "no gaps" if detectors actually ran. A
+    // profile saved by the wizard's per-step autosave (never finalised)
+    // also has zero insights — scoring that 100 told a family with a
+    // £400k mortgage and no life cover they were "on track".
+    return profile?.insights_evaluated_at
+      ? { score: 100, hasLiveData: true }
+      : { score: 0, hasLiveData: false }
   }
   const openPenalty = insights
     .filter((i) => !RESOLVED_INSIGHT_STATES.includes(i.state))
@@ -998,6 +1004,8 @@ export interface FinancialProfilePolicy {
 
 export interface FinancialProfile {
   household: {
+  /** Set server-side when detectors last ran (the wizard's final submit). */
+  insights_evaluated_at?: string
     employment_status: EmploymentStatus
     monthly_salary_minor: number
     annual_living_expenses_minor: number

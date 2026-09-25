@@ -15,7 +15,7 @@ import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@
 import { useAppStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
-import { fetchFinancialProfile, fetchLifeChangeNudge, dismissLifeChangeNudge, RESOLVED_INSIGHT_STATES, type FinancialProfile } from '@/lib/api'
+import { fetchDocuments, fetchConnectorStatuses, fetchFinancialProfile, fetchLifeChangeNudge, dismissLifeChangeNudge, RESOLVED_INSIGHT_STATES, type FinancialProfile } from '@/lib/api'
 import { elderlyHomeCopy } from '@/lib/elderlyHomeCopy'
 import { childHomeCopy } from '@/lib/childHomeCopy'
 import { simpleHomeCopy } from '@/lib/simpleHomeCopy'
@@ -558,14 +558,30 @@ function FeatureTip() {
 // state when the user has no live data yet.  Each step maps to a real
 // store signal so progress is honest, not decorative.
 function GettingStarted() {
-  const docCount = useAppStore((s) => s.uploadedDocumentCount)
-  const profileDone = useAppStore((s) => s.financialProfileSubmitted)
-  const connectors = useAppStore((s) => s.connectedConnectors)
+  const docCountLocal = useAppStore((s) => s.uploadedDocumentCount)
+  const connectorsLocal = useAppStore((s) => s.connectedConnectors)
+  // Local flags only reflect actions taken in this tab; the server is the
+  // source of truth (same approach as TrustLadder), so a reload doesn't
+  // reset finished steps to "not done".
+  const [serverDocs, setServerDocs] = useState(0)
+  const [serverConnectors, setServerConnectors] = useState(0)
+  useEffect(() => {
+    let cancelled = false
+    fetchDocuments().then((d) => { if (!cancelled) setServerDocs(d.documents.length) })
+    fetchConnectorStatuses().then((cs) => { if (!cancelled) setServerConnectors(cs.filter((c) => c.connected).length) })
+    return () => { cancelled = true }
+  }, [])
+  const docCount = Math.max(docCountLocal, serverDocs)
+  const connectorCount = Math.max(connectorsLocal.length, serverConnectors)
 
   const steps = [
     { label: 'Upload a document', description: 'Insurance policy, will, or bank statement', href: '/upload', icon: Upload, done: docCount > 0 },
-    { label: 'Fill in your financial profile', description: 'Income, protection, savings — powers your score', href: '/financial-profile', icon: Calculator, done: profileDone },
-    { label: 'Connect a service', description: 'Email, bank, or insurance provider', href: '/connect', icon: Plug, done: connectors.length > 0 },
+    { label: 'Fill in your financial profile', description: 'Income, protection, savings — finish it to generate your score', href: '/financial-profile', icon: Calculator,
+      // Only rendered while there is no score, i.e. detectors haven't run
+      // on the profile yet — so this step is by definition not done, even
+      // if a half-saved profile exists.
+      done: false },
+    { label: 'Connect a service', description: 'Email, bank, or insurance provider', href: '/connect', icon: Plug, done: connectorCount > 0 },
   ]
 
   const doneCount = steps.filter((s) => s.done).length
