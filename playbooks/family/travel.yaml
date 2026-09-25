@@ -4,9 +4,8 @@ event_type: travel
 title: Travel Emergency Response Plan
 intro: >
   Something went wrong away from home — medical, lost documents, or a
-  cancelled trip. Sequenced list of what tends to matter first; travel
-  insurance isn't tracked in the financial profile yet, so the cover
-  check below is honest about what we can't see.
+  cancelled trip. Sequenced list of what tends to matter first, checked
+  against your real travel and health cover where it's on file.
 steps:
   - id: check_travel_cover
     title: Check what cover may apply

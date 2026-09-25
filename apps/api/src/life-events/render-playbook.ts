@@ -283,14 +283,23 @@ function renderPropertyStep(stepId: string, profile: FinancialProfile): string {
 
 function renderTravelStep(stepId: string, profile: FinancialProfile): string {
   if (stepId === 'check_travel_cover') {
-    // No 'travel' policy type exists in the schema (PRD-105 added car/home
-    // only) — the honest check: health policies sometimes cover emergency
-    // treatment abroad, and that's all we can see.
+    // 'travel' policies[] entries exist now (added once a real one showed
+    // up via a connected mailbox — see ocr/profile-mapping.ts's PolicyType)
+    // — this used to unconditionally claim "we don't track travel
+    // insurance yet", which went stale the moment that landed and was
+    // never wired up here. Checked first; health cover is still named as
+    // a secondary possibility either way.
+    const travel = profile.policies.filter((p) => p.type === 'travel')
     const health = profile.policies.filter((p) => p.type === 'health')
-    if (health.length > 0) {
-      return `We don't track travel insurance yet, but you have health insurance with ${health.map((p) => p.provider).join(', ')} on file — some health policies cover emergency treatment abroad, check yours. Also check whether a credit card or employer benefit includes travel cover.`
+    const describe = (p: FinancialProfile['policies'][number]) => p.provider + (p.policy_number ? ` (policy ${p.policy_number})` : '')
+    if (travel.length > 0) {
+      const healthNote = health.length > 0 ? ` You also have health insurance with ${health.map((p) => p.provider).join(', ')}, which may cover some emergency treatment abroad too.` : ''
+      return `Based on your real data, you have travel insurance with ${travel.map(describe).join(', ')} on file.${healthNote} Find that policy's 24/7 assistance number and call before paying for anything — most travel insurers only reimburse what they coordinated.`
     }
-    return "We don't track travel insurance yet and have no health policies on file either. Check whether your health policy, credit card, or employer benefits include travel cover — that's where emergency assistance usually hides."
+    if (health.length > 0) {
+      return `No travel insurance is on file, but you have health insurance with ${health.map((p) => p.provider).join(', ')} — some health policies cover emergency treatment abroad, check yours. Also check whether a credit card or employer benefit includes travel cover.`
+    }
+    return "No travel insurance or health policy is on file. Check whether a credit card or employer benefit includes travel cover — that's where emergency assistance usually hides. Once you're safe, add whatever cover you find to your financial profile so this step is grounded in real data next time."
   }
   return ''
 }
