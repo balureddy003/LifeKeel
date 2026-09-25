@@ -13,6 +13,7 @@ const POLICY_TYPE_LABELS: Record<PolicyType, string> = {
   critical_illness: 'Critical Illness',
   car: 'Car',
   home: 'Home',
+  travel: 'Travel',
 }
 
 const RENEWAL_WINDOW_DAYS = 60

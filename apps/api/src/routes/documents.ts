@@ -350,7 +350,7 @@ export function registerDocumentRoutes(
   // the user-confirmed apply re-runs detector evaluation in-request via
   // regenerateInsights() — a new policy is exactly the kind of change
   // (renewal windows, cover gaps) the detectors reason about.
-  const POLICY_TYPES = new Set<PolicyType>(['life', 'income_protection', 'health', 'critical_illness', 'car', 'home'])
+  const POLICY_TYPES = new Set<PolicyType>(['life', 'income_protection', 'health', 'critical_illness', 'car', 'home', 'travel'])
   interface ApplyPolicyBody {
     type?: string
     provider?: string

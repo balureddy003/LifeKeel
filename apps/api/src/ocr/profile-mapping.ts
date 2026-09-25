@@ -132,9 +132,9 @@ export function mapExtractedFieldsToProfileSuggestions(
 // Mirrors family-financial-profile.ts's policies[].type enum exactly — kept
 // as an independent literal union rather than importing the zod-inferred
 // type, so this module has no compile-time dependency on the routes layer.
-export type PolicyType = 'life' | 'income_protection' | 'health' | 'critical_illness' | 'car' | 'home'
+export type PolicyType = 'life' | 'income_protection' | 'health' | 'critical_illness' | 'car' | 'home' | 'travel'
 
-const POLICY_TYPES: readonly PolicyType[] = ['life', 'income_protection', 'health', 'critical_illness', 'car', 'home']
+const POLICY_TYPES: readonly PolicyType[] = ['life', 'income_protection', 'health', 'critical_illness', 'car', 'home', 'travel']
 
 export interface PolicySuggestion {
   /** null when OCR's policy_type guess doesn't match a known type — the user picks it in the review card. */

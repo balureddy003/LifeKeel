@@ -15,7 +15,10 @@
 
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
+import type { Engine, Insight } from '@agentoak/engine'
 import { createLogger, getTenantCollection } from '@agentoak/platform'
+import { evaluateProfileAndGenerateInsights, FinancialProfileSchema } from './family-financial-profile.js'
+import type { PolicyType } from '../ocr/profile-mapping.js'
 
 const log = createLogger({ service: 'family-inbox', version: '0.0.0' })
 
@@ -176,8 +179,27 @@ function insightToFeedItem(i: Record<string, unknown>) {
 export function registerFamilyInboxRoutes(
   fastify: FastifyInstance,
   db: Db,
+  engine?: Engine,
+  onInsightsGenerated?: (insights: Insight[], tenantId: string) => Promise<void>,
 ): void {
   const col = db.collection<InboxItemDoc>('inbox_items')
+
+  // Same posture and mechanics as documents.ts's apply-policy: an explicit,
+  // user-reviewed mutation (the Inbox card pre-fills from what the email
+  // stated, but the user confirms before anything is saved), re-running the
+  // detector pass in-request so a new policy's effect (a cleared protection
+  // gap, a renewal-window insight) shows up immediately rather than only
+  // after the next Financial Profile wizard submit.
+  const regenerateInsights = async (tenantId: string): Promise<number> => {
+    if (!engine) return 0
+    const profiles = getTenantCollection<Record<string, unknown>>(db, 'family_financial_profile', tenantId)
+    const doc = await profiles.findOne({})
+    if (!doc) return 0
+    const parsed = FinancialProfileSchema.safeParse(doc)
+    if (!parsed.success) return 0
+    return evaluateProfileAndGenerateInsights(parsed.data, tenantId, engine, db, onInsightsGenerated)
+  }
+  const POLICY_TYPES = new Set<PolicyType>(['life', 'income_protection', 'health', 'critical_illness', 'car', 'home', 'travel'])
 
   // ── GET /inbox ──────────────────────────────────────────────────────────
   fastify.get<{ Querystring: { limit?: string; unread_only?: string } }>(
@@ -243,6 +265,71 @@ export function registerFamilyInboxRoutes(
       }
       const merged = [...fromInsights, ...fromDocuments, ...groupEmailThreads(fromEmail.items)].sort((a, b) => (a.date < b.date ? 1 : -1))
       return { items: merged.slice(0, limit) }
+    },
+  )
+
+  // ── POST /inbox/:id/apply-policy ────────────────────────────────────────
+  // Turns a policy Oak found in email (item.policy — see classify.ts) into
+  // a real policies[] entry on the Financial Profile, the same review-then-
+  // confirm shape documents.ts's identically-named endpoint already uses
+  // for OCR'd documents. The email item's own extracted facts only ever
+  // pre-fill the client's form; nothing here trusts them unconfirmed.
+  interface ApplyPolicyBody {
+    type?: string
+    provider?: string
+    coverageAmountMinor?: number
+    monthlyPremiumMinor?: number
+    renewalDate?: string
+    policyNumber?: string
+    memberId?: string
+  }
+  fastify.post<{ Params: { id: string }; Body: ApplyPolicyBody }>(
+    '/inbox/:id/apply-policy',
+    async (req, reply) => {
+      const { tenant_id } = req.authContext
+      const item = await col.findOne({ id: req.params.id, tenant_id })
+      if (!item) {
+        return reply.status(404).send({ error: 'Inbox item not found' })
+      }
+
+      const { type, provider, coverageAmountMinor, monthlyPremiumMinor, renewalDate, policyNumber, memberId } = req.body
+      if (!type || !POLICY_TYPES.has(type as PolicyType)) {
+        return reply.status(400).send({ error: 'A valid policy type is required' })
+      }
+      if (!provider || !provider.trim()) {
+        return reply.status(400).send({ error: 'A provider name is required' })
+      }
+
+      const policy: Record<string, unknown> = {
+        type,
+        provider: provider.trim(),
+        coverage_amount_minor: Number.isFinite(coverageAmountMinor) && (coverageAmountMinor as number) >= 0 ? coverageAmountMinor : 0,
+        monthly_premium_minor: Number.isFinite(monthlyPremiumMinor) && (monthlyPremiumMinor as number) >= 0 ? monthlyPremiumMinor : 0,
+      }
+      if (renewalDate) policy['renewal_date'] = renewalDate
+      if (policyNumber) policy['policy_number'] = policyNumber
+      if (typeof memberId === 'string' && memberId.trim()) policy['member_id'] = memberId.trim()
+
+      const profiles = getTenantCollection<Record<string, unknown>>(db, 'family_financial_profile', tenant_id)
+      await profiles.updateOne(
+        {},
+        { $push: { policies: policy }, $set: { updated_at: new Date() } },
+        { upsert: true },
+      )
+
+      // Acted on — the same "stop nudging about it" treatment applying a
+      // document's suggestion gets (documents.ts sets feed_dismissed;
+      // dismissing this item is this collection's equivalent).
+      await col.updateOne({ id: req.params.id, tenant_id }, { $set: { dismissed: true, dismissed_at: new Date() } })
+
+      const insightsGenerated = await regenerateInsights(tenant_id)
+
+      log.info(
+        { itemId: req.params.id, tenant_id, policyType: type, provider, insights_generated: insightsGenerated },
+        'Applied an email-found policy to the financial profile',
+      )
+
+      return { applied: policy, insights_generated: insightsGenerated }
     },
   )
 

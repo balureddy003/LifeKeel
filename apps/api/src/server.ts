@@ -1210,7 +1210,7 @@ if (workflowDb) {
   registerFamilyJoinRoutes(app, workflowDb)
   registerReferralRoutes(app, workflowDb)
   registerGrowthEventRoutes(app, workflowDb)
-  registerFamilyInboxRoutes(app, workflowDb)
+  registerFamilyInboxRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerAssistantRoutes(app, workflowDb)
   registerReadinessQuizRoutes(app, workflowDb, engine)
   await registerLeadRoutes(app, workflowDb)

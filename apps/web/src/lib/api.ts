@@ -391,6 +391,31 @@ export async function applyPolicySuggestion(
   return { applied: data.applied, insightsGenerated: data.insights_generated ?? 0 }
 }
 
+/**
+ * Same as applyPolicySuggestion, for a policy Oak found in a connected
+ * email rather than an uploaded document — the Inbox item's own reviewed,
+ * possibly-edited fields, never applied unconfirmed.
+ */
+export async function applyInboxPolicy(
+  inboxItemId: string,
+  policy: ApplyPolicyInput,
+): Promise<{ applied: FinancialProfilePolicy; insightsGenerated: number }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${base}/inbox/${inboxItemId}/apply-policy`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(policy),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Could not add this policy to your Financial Profile')
+  invalidateCache('inbox-items')
+  return { applied: data.applied, insightsGenerated: data.insights_generated ?? 0 }
+}
+
 // ── Connectors ────────────────────────────────────────────────────────────
 
 export interface ConnectorStatus {
@@ -1029,7 +1054,7 @@ export type EmploymentStatus = 'employed' | 'self_employed' | 'unemployed' | 're
 
 // PRD-105: car/home added — recordable now, coverage-adequacy reasoning
 // for either is a separate, later PRD (see PRD-105's "Out of scope").
-export type PolicyType = 'life' | 'income_protection' | 'health' | 'critical_illness' | 'car' | 'home'
+export type PolicyType = 'life' | 'income_protection' | 'health' | 'critical_illness' | 'car' | 'home' | 'travel'
 
 // Additive to household.life_cover_minor / income_protection_monthly_minor
 // below, not a replacement — those two fields still feed the original

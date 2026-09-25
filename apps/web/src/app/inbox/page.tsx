@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { Bot, Info, Home, Landmark, Wallet, Plane, CreditCard, Car, Loader2 } from 'lucide-react'
+import { Bot, Info, Home, Landmark, Wallet, Plane, CreditCard, Car, Loader2, CheckCircle2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { GlassCard, PageHeader, EmptyState, MoneyText, Skeleton, PageTransition } from '@/components/Glass'
 import { PullToRefresh } from '@/components/PullToRefresh'
@@ -11,7 +11,9 @@ import { SwipeableRow } from '@/components/SwipeableRow'
 import { haptic } from '@/lib/haptics'
 import { useToast } from '@/components/Toast'
 import type { InboxItem } from '@/lib/onboarding-data'
-import { fetchInboxItems, dismissInboxItem, scanEmailInbox, fetchEmailConnectorStatus } from '@/lib/api'
+import { fetchInboxItems, dismissInboxItem, scanEmailInbox, fetchEmailConnectorStatus, applyInboxPolicy, type PolicyType } from '@/lib/api'
+import { useAuth } from '@/lib/auth-context'
+import { PolicyReviewForm, type PolicyDraft } from '@/components/PolicyReviewForm'
 import { invalidateCache } from '@/lib/fetch-cache'
 import { useAppStore } from '@/lib/store'
 import { searchMailboxForPolicies } from '@/lib/email-lookback'
@@ -42,6 +44,23 @@ const actionTypeColor = (type: InboxItem['actionType']) => {
   return colors[type] ?? '#8a8070'
 }
 
+const VALID_POLICY_TYPES = new Set<PolicyType>(['life', 'income_protection', 'health', 'critical_illness', 'car', 'home', 'travel'])
+
+function toPolicyDraft(p: NonNullable<InboxItem['policy']>): PolicyDraft {
+  // The email can state a type this app's profile has no home for yet
+  // (pension, mortgage, "other") — default to something the user picks
+  // from rather than silently mismatching the dropdown.
+  return {
+    type: p.type && VALID_POLICY_TYPES.has(p.type as PolicyType) ? (p.type as PolicyType) : 'life',
+    provider: p.provider ?? '',
+    coverageAmount: p.coverAmount != null ? String(p.coverAmount) : '',
+    monthlyPremium: p.monthlyPremium != null ? String(p.monthlyPremium) : '',
+    renewalDate: p.renewalDate ?? '',
+    policyNumber: p.policyNumber ?? '',
+    memberId: '',
+  }
+}
+
 function policyFacts(p: NonNullable<InboxItem['policy']>): [string, string][] {
   const money = (n: number) => `${p.currency ?? ''} ${n.toLocaleString()}`.trim()
   const rows: [string, string | undefined][] = [
@@ -57,6 +76,7 @@ function policyFacts(p: NonNullable<InboxItem['policy']>): [string, string][] {
 
 export default function InboxPage() {
   const router = useRouter()
+  const { family } = useAuth()
   const connectedConnectors = useAppStore((s) => s.connectedConnectors)
   const setInboxUnreadCount = useAppStore((s) => s.setInboxUnreadCount)
   const toast = useToast()
@@ -68,6 +88,16 @@ export default function InboxPage() {
   const [dismissingId, setDismissingId] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
   const [lookingBack, setLookingBack] = useState(false)
+  // The "review, then confirm" policy form for whichever email-sourced item
+  // is currently expanded (only one item is ever expanded at a time).
+  const [policyDraft, setPolicyDraft] = useState<PolicyDraft | null>(null)
+  const [policyApplying, setPolicyApplying] = useState(false)
+  const [policyError, setPolicyError] = useState<string | null>(null)
+  // Ids of items successfully applied this session — kept even after the
+  // item leaves `items` (server-dismissed) isn't needed since a fresh
+  // fetch drops it entirely, but covers the moment right after applying,
+  // before that refetch lands.
+  const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set())
   // Distinct from "nothing to show you" — a genuine failure to reach the
   // server (see apiFetch's onFailure), so the empty state doesn't lie.
   const [loadError, setLoadError] = useState(false)
@@ -175,8 +205,37 @@ export default function InboxPage() {
 
   const handleTap = (id: string) => {
     haptic('light')
-    setExpandedId(expandedId === id ? null : id)
+    const opening = expandedId !== id
+    setExpandedId(opening ? id : null)
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, read: true } : i)))
+    setPolicyError(null)
+    const item = items.find((i) => i.id === id)
+    setPolicyDraft(opening && item?.policy && !item.route ? toPolicyDraft(item.policy) : null)
+  }
+
+  const handleApplyPolicy = async (item: InboxItem) => {
+    if (!policyDraft) return
+    haptic('light')
+    setPolicyApplying(true)
+    setPolicyError(null)
+    try {
+      await applyInboxPolicy(item.id, {
+        type: policyDraft.type,
+        provider: policyDraft.provider.trim(),
+        coverageAmountMinor: Math.round((Number(policyDraft.coverageAmount) || 0) * 100),
+        monthlyPremiumMinor: Math.round((Number(policyDraft.monthlyPremium) || 0) * 100),
+        ...(policyDraft.renewalDate ? { renewalDate: policyDraft.renewalDate } : {}),
+        ...(policyDraft.policyNumber.trim() ? { policyNumber: policyDraft.policyNumber.trim() } : {}),
+        ...(policyDraft.memberId ? { memberId: policyDraft.memberId } : {}),
+      })
+      haptic('success')
+      setAppliedIds((prev) => new Set(prev).add(item.id))
+    } catch (err) {
+      haptic('warning')
+      setPolicyError(err instanceof Error ? err.message : 'Could not add this policy to your Financial Profile')
+    } finally {
+      setPolicyApplying(false)
+    }
   }
 
   // Shared dismiss logic: remove the item visually, then buffer the
@@ -465,24 +524,59 @@ export default function InboxPage() {
                             </dl>
                           )}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <motion.button
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => handleAction(item)}
-                            className="flex-1 rounded-2xl py-3 text-sm font-semibold text-white"
-                            style={{ background: actionTypeColor(item.actionType) }}
-                          >
-                            {item.actionLabel}
-                          </motion.button>
-                          <motion.button
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => handleDismiss(item)}
-                            disabled={dismissingId === item.id}
-                            className="glass rounded-2xl px-4 py-3 text-sm font-semibold text-ink-tertiary disabled:opacity-50"
-                          >
-                            {dismissingId === item.id ? <Loader2 size={14} className="animate-spin" /> : 'Dismiss'}
-                          </motion.button>
-                        </div>
+                        {item.policy && !item.route ? (
+                          appliedIds.has(item.id) ? (
+                            <div role="status" aria-live="polite" className="flex items-start gap-2 p-3 rounded-2xl bg-success/10 border border-success/20">
+                              <CheckCircle2 size={18} className="text-success flex-shrink-0 mt-0.5" />
+                              <p className="text-sm text-ink-secondary">
+                                Added to your Financial Profile.{' '}
+                                <button onClick={() => router.push('/financial-profile')} className="text-family-400 font-semibold">
+                                  Review your profile
+                                </button>.
+                              </p>
+                            </div>
+                          ) : policyDraft ? (
+                            <>
+                              <div className="text-xs text-ink-tertiary mb-3">
+                                Check these before adding — Oak filled them in from the email, especially the policy type.
+                              </div>
+                              <PolicyReviewForm
+                                draft={policyDraft}
+                                onChange={setPolicyDraft}
+                                onSubmit={() => handleApplyPolicy(item)}
+                                submitting={policyApplying}
+                                error={policyError}
+                                members={family?.members ?? []}
+                              />
+                              <button
+                                onClick={() => handleDismiss(item)}
+                                disabled={dismissingId === item.id}
+                                className="w-full mt-2 py-2 text-xs font-semibold text-ink-tertiary disabled:opacity-50"
+                              >
+                                Not now
+                              </button>
+                            </>
+                          ) : null
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <motion.button
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => handleAction(item)}
+                              className="flex-1 rounded-2xl py-3 text-sm font-semibold text-white"
+                              style={{ background: actionTypeColor(item.actionType) }}
+                            >
+                              {item.actionLabel}
+                            </motion.button>
+                            <motion.button
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => handleDismiss(item)}
+                              disabled={dismissingId === item.id}
+                              className="glass rounded-2xl px-4 py-3 text-sm font-semibold text-ink-tertiary disabled:opacity-50"
+                            >
+                              {dismissingId === item.id ? <Loader2 size={14} className="animate-spin" /> : 'Dismiss'}
+                            </motion.button>
+                          </div>
+                        )}
                       </div>
                     </motion.div>
                   )}
