@@ -27,6 +27,8 @@ export interface PlaybookStep {
   body: string
   /** Eligible for the prepare/draft affordance (PRD-103's insight.prepare, reused). */
   contact: boolean
+  /** Real phone/email Oak has on file for this step, when a matching policy states one — see resolveStepContacts. */
+  contacts?: StepContact[]
 }
 
 export interface Playbook {
@@ -304,6 +306,56 @@ function renderTravelStep(stepId: string, profile: FinancialProfile): string {
   return ''
 }
 
+/** A phone/email a "contact" step can put directly in front of the family, instead of "find the number". */
+export interface StepContact {
+  provider: string
+  phone?: string
+  email?: string
+}
+
+function toContacts(policies: FinancialProfile['policies']): StepContact[] {
+  return policies
+    .filter((p) => p.contact_phone || p.contact_email)
+    .map((p) => ({ provider: p.provider, phone: p.contact_phone, email: p.contact_email }))
+}
+
+/**
+ * Real phone/email for whichever step is asking the family to "contact"
+ * someone — only for the handful of contact:true steps that map onto an
+ * actual policies[] entry. A few contact steps (an employer's HR line, a
+ * mortgage lender, a pension scheme's own number) have no matching field
+ * anywhere in the schema yet — those legitimately return no contacts, not
+ * a guess, same "honest about what we can't see" posture as the body text.
+ */
+function resolveStepContacts(
+  eventType: LifeEventType,
+  stepId: string,
+  profile: FinancialProfile,
+  affectedMemberId: string | undefined,
+): StepContact[] {
+  if (eventType === 'bereavement' && stepId === 'notify_insurers') {
+    const hasAttribution = affectedMemberId && profile.policies.some((p) => p.member_id)
+    const relevant = hasAttribution ? profile.policies.filter((p) => p.member_id === affectedMemberId) : profile.policies
+    return toContacts(relevant)
+  }
+  if (eventType === 'disability' && stepId === 'check_cover') {
+    return toContacts(profile.policies.filter((p) => p.type === 'critical_illness'))
+  }
+  if (eventType === 'medical' && stepId === 'notify_health_insurer') {
+    return toContacts(profile.policies.filter((p) => p.type === 'health' || p.type === 'critical_illness'))
+  }
+  if (eventType === 'car' && stepId === 'notify_insurer') {
+    return toContacts(profile.policies.filter((p) => p.type === 'car'))
+  }
+  if (eventType === 'property' && stepId === 'notify_insurer') {
+    return toContacts(profile.policies.filter((p) => p.type === 'home'))
+  }
+  if (eventType === 'travel' && stepId === 'emergency_assistance') {
+    return toContacts(profile.policies.filter((p) => p.type === 'travel' || p.type === 'health'))
+  }
+  return []
+}
+
 function renderComputedStep(
   eventType: LifeEventType,
   stepId: string,
@@ -329,13 +381,17 @@ export function renderPlaybook(
     event_type: raw.event_type,
     title: raw.title,
     intro: raw.intro,
-    steps: raw.steps.map((step) => ({
-      id: step.id,
-      title: step.title,
-      body: step.computed
-        ? renderComputedStep(eventType, step.id, profile, affectedMemberId)
-        : (step.body ?? '').trim(),
-      contact: step.contact,
-    })),
+    steps: raw.steps.map((step) => {
+      const contacts = step.contact ? resolveStepContacts(eventType, step.id, profile, affectedMemberId) : []
+      return {
+        id: step.id,
+        title: step.title,
+        body: step.computed
+          ? renderComputedStep(eventType, step.id, profile, affectedMemberId)
+          : (step.body ?? '').trim(),
+        contact: step.contact,
+        ...(contacts.length > 0 ? { contacts } : {}),
+      }
+    }),
   }
 }

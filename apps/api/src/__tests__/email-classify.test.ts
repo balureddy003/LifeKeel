@@ -137,6 +137,28 @@ describe('classifyEmail', () => {
     expect(result.policy).toEqual({ provider: 'Acme Travel', type: 'travel', policyNumber: 'TR-123', coverAmount: 500000, currency: 'GBP' })
   })
 
+  it('keeps a well-formed claims phone and email, dropping malformed ones — this is what a life-event playbook can now put in front of the family', async () => {
+    const llm: LlmFn = async () =>
+      JSON.stringify({
+        is_financial: true, summary: 'x', action_label: 'y', action_type: 'info', priority: 'high',
+        policy: { provider: 'CEGA Assistance', type: 'travel', contact_phone: '+44 20 7748 0900', contact_email: 'assistance@cegagroup.com' },
+      })
+    expect((await classifyEmail(llm, makeEmail())).policy).toEqual({
+      provider: 'CEGA Assistance', type: 'travel', contactPhone: '+44 20 7748 0900', contactEmail: 'assistance@cegagroup.com',
+    })
+  })
+
+  it('drops a claims phone/email that does not look like one, rather than passing junk through', async () => {
+    const llm: LlmFn = async () =>
+      JSON.stringify({
+        is_financial: true, summary: 'x', action_label: 'y', action_type: 'info', priority: 'high',
+        policy: { provider: 'Aviva', contact_phone: 'call us', contact_email: 'not an email' },
+      })
+    const policy = (await classifyEmail(llm, makeEmail())).policy
+    expect(policy?.contactPhone).toBeUndefined()
+    expect(policy?.contactEmail).toBeUndefined()
+  })
+
   it('omits policy when the model returns none or junk', async () => {
     const llm: LlmFn = async () =>
       JSON.stringify({ is_financial: true, summary: 'x', action_label: 'y', action_type: 'info', priority: 'low', policy: 'n/a' })

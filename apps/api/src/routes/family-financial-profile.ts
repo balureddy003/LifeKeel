@@ -145,6 +145,15 @@ export const FinancialProfileSchema = z.object({
         // unset deliberately). Never guessed from OCR: attribution only ever
         // comes from an explicit user pick in the wizard or document review.
         member_id: z.string().min(1).optional(),
+        // The number/address a life-event playbook's "contact" steps can
+        // actually put in front of the family instead of "find the number
+        // and call" — only ever what a document or a scanned email stated
+        // (ocr/profile-mapping.ts, email/classify.ts) or what the family
+        // typed in themselves; never guessed. Basic shape checks only
+        // (not full RFC validation) — this is display/tel:/mailto: text,
+        // not something the app itself dials or sends to.
+        contact_phone: z.string().max(40).optional(),
+        contact_email: z.string().max(254).optional(),
       }),
     )
     .default([]),

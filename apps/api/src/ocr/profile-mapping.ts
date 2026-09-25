@@ -145,6 +145,9 @@ export interface PolicySuggestion {
   /** ISO "YYYY-MM-DD" only — anything OCR returned in a different format is left for the user to re-type, never guess-parsed. */
   renewalDate: string | null
   policyNumber: string | null
+  /** The claims/emergency-assistance line stated on the document — never the claimant's own phone/email. */
+  contactPhone: string | null
+  contactEmail: string | null
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
@@ -184,5 +187,8 @@ export function mapExtractedFieldsToPolicySuggestion(
   const premiumMoney = findField(fields, [/premium/i, /monthly.?amount/i])
   const monthlyPremiumMinor = premiumMoney ? parseMoneyToMinorUnits(premiumMoney.raw) : null
 
-  return { type, provider, coverageAmountMinor, monthlyPremiumMinor, renewalDate, policyNumber }
+  const contactPhone = findField(fields, [/claims.?phone/i, /assistance.?phone/i, /claims.?line/i, /helpline/i, /24.?hour/i, /emergency.?number/i])?.raw.trim() ?? null
+  const contactEmail = findField(fields, [/claims.?email/i, /assistance.?email/i])?.raw.trim() ?? null
+
+  return { type, provider, coverageAmountMinor, monthlyPremiumMinor, renewalDate, policyNumber, contactPhone, contactEmail }
 }

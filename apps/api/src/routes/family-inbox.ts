@@ -281,6 +281,8 @@ export function registerFamilyInboxRoutes(
     monthlyPremiumMinor?: number
     renewalDate?: string
     policyNumber?: string
+    contactPhone?: string
+    contactEmail?: string
     memberId?: string
   }
   fastify.post<{ Params: { id: string }; Body: ApplyPolicyBody }>(
@@ -292,7 +294,7 @@ export function registerFamilyInboxRoutes(
         return reply.status(404).send({ error: 'Inbox item not found' })
       }
 
-      const { type, provider, coverageAmountMinor, monthlyPremiumMinor, renewalDate, policyNumber, memberId } = req.body
+      const { type, provider, coverageAmountMinor, monthlyPremiumMinor, renewalDate, policyNumber, memberId, contactPhone, contactEmail } = req.body
       if (!type || !POLICY_TYPES.has(type as PolicyType)) {
         return reply.status(400).send({ error: 'A valid policy type is required' })
       }
@@ -308,6 +310,8 @@ export function registerFamilyInboxRoutes(
       }
       if (renewalDate) policy['renewal_date'] = renewalDate
       if (policyNumber) policy['policy_number'] = policyNumber
+      if (contactPhone?.trim()) policy['contact_phone'] = contactPhone.trim()
+      if (contactEmail?.trim()) policy['contact_email'] = contactEmail.trim()
       if (typeof memberId === 'string' && memberId.trim()) policy['member_id'] = memberId.trim()
 
       const profiles = getTenantCollection<Record<string, unknown>>(db, 'family_financial_profile', tenant_id)

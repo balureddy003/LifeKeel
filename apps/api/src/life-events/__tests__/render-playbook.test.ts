@@ -184,3 +184,49 @@ describe('travel playbook — check_travel_cover', () => {
     expect(body).not.toMatch(/don't track travel insurance/i)
   })
 })
+
+describe('step contacts — real phone/email a "contact" step can put in front of the family', () => {
+  it('travel: surfaces the travel policy\'s real assistance number, the exact gap the session\'s original crisis scenario needed', () => {
+    const playbook = renderPlaybook('travel', makeProfile({
+      policies: [{ type: 'travel', provider: 'Aviva', coverage_amount_minor: 0, monthly_premium_minor: 0, contact_phone: '+44 1603 622 999', contact_email: 'claims@aviva.co.uk' }],
+    }))
+    const step = playbook.steps.find((s) => s.id === 'emergency_assistance')!
+    expect(step.contacts).toEqual([{ provider: 'Aviva', phone: '+44 1603 622 999', email: 'claims@aviva.co.uk' }])
+  })
+
+  it('a policy with no contact info on file yields no contacts, not a guessed one', () => {
+    const playbook = renderPlaybook('car', makeProfile({
+      policies: [{ type: 'car', provider: 'Admiral', coverage_amount_minor: 0, monthly_premium_minor: 0 }],
+    }))
+    const step = playbook.steps.find((s) => s.id === 'notify_insurer')!
+    expect(step.contacts).toBeUndefined()
+  })
+
+  it('bereavement: only the deceased-attributed policy\'s contact surfaces, not an unrelated survivor\'s', () => {
+    const playbook = renderPlaybook('bereavement', makeProfile({
+      policies: [
+        { type: 'life', provider: 'Aviva', coverage_amount_minor: 0, monthly_premium_minor: 0, member_id: 'deceased', contact_phone: '0800 000 000' },
+        { type: 'life', provider: 'Legal & General', coverage_amount_minor: 0, monthly_premium_minor: 0, member_id: 'survivor', contact_phone: '0800 111 111' },
+      ],
+    }), 'deceased')
+    const step = playbook.steps.find((s) => s.id === 'notify_insurers')!
+    expect(step.contacts).toEqual([{ provider: 'Aviva', phone: '0800 000 000', email: undefined }])
+  })
+
+  it('a step with no matching policy field (e.g. a mortgage lender or employer) legitimately has no contacts to offer', () => {
+    const playbook = renderPlaybook('job_loss', makeProfile({
+      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 3600000, mortgage_outstanding_minor: 20_000_000, life_cover_minor: 0, income_protection_monthly_minor: 0, members: [] },
+    }))
+    const step = playbook.steps.find((s) => s.id === 'notify_mortgage_lender')!
+    expect(step.contacts).toBeUndefined()
+  })
+
+  it('a non-contact step never carries contacts, even if a matching policy has phone/email on file', () => {
+    const playbook = renderPlaybook('car', makeProfile({
+      policies: [{ type: 'car', provider: 'Admiral', coverage_amount_minor: 0, monthly_premium_minor: 0, contact_phone: '0800 222 222' }],
+    }))
+    const step = playbook.steps.find((s) => s.id === 'check_car_insurance')!
+    expect(step.contact).toBe(false)
+    expect(step.contacts).toBeUndefined()
+  })
+})

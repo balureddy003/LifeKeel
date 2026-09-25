@@ -107,8 +107,14 @@ Then extract all relevant fields you can identify. Common fields include:
   amount for the period shown, whichever is clearest; prefer net_pay when
   more than one is present, since that's what a household actually receives)
 - policy_type (insurance documents only — exactly one of: life, income_protection,
-  critical_illness, health, car, home — pick whichever this policy actually
-  covers; omit this field entirely if you're not confident)
+  critical_illness, health, car, home, travel — pick whichever this policy
+  actually covers; omit this field entirely if you're not confident)
+- claims_phone / assistance_phone (insurance documents only — the number to
+  call to make a claim or reach 24/7 emergency assistance, if the document
+  states one; not the claimant's own phone number)
+- claims_email (insurance documents only — the email address to make a
+  claim or reach the insurer, if the document states one; not the
+  claimant's own email address)
 
 Return ONLY a JSON object with this shape:
 {"category":"<category>","fields":{"<key>":"<value>",...},"rawText":"<brief summary of the document>"}
