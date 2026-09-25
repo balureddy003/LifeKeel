@@ -172,12 +172,15 @@ export async function fetchRecentEmails(
   const client = buildClient(creds)
   const emails: FetchedEmail[] = []
   let highestUid = opts.sinceUid ?? 0
+  // A cursor means "since last sync", already bounded to whatever's
+  // actually new — not the first-ever "just the most recent N" scan.
+  const incremental = opts.sinceUid !== undefined
 
   await client.connect()
   try {
     const lock = await client.getMailboxLock('INBOX')
     try {
-      const range = opts.sinceUid ? `${opts.sinceUid + 1}:*` : undefined
+      const range = incremental ? `${opts.sinceUid! + 1}:*` : undefined
       const exists = client.mailbox ? client.mailbox.exists : limit
       const fetchQuery = range ? { uid: range } : { seq: `${Math.max(1, exists - limit + 1)}:*` }
 
@@ -194,8 +197,18 @@ export async function fetchRecentEmails(
     await client.logout().catch(() => {})
   }
 
-  // A UID-range fetch can return more than `limit` if many arrived since the
-  // last scan — keep the newest `limit`, oldest first for stable ordering.
-  const trimmed = emails.sort((a, b) => a.uid - b.uid).slice(-limit)
-  return { emails: trimmed, highestUid }
+  const sorted = emails.sort((a, b) => a.uid - b.uid)
+  // First-ever scan only: keep the newest `limit`. Bug this replaced —
+  // found live on a real reconnected mailbox: an incremental scan was
+  // ALSO capped to the newest `limit`, while `highestUid` (the saved
+  // cursor) still advanced past every message the UID range actually
+  // returned, not just the kept ones. Any scan where more than `limit`
+  // messages arrived since the last sync — trivial after even a few days
+  // of a dead refresh token, with routine transaction alerts mixed in —
+  // silently and permanently skipped the older messages in that batch:
+  // the cursor moved past them, so no later scan would ever see them
+  // again. A real insurance-claim thread in your account was lost this
+  // way. Never cap an incremental scan; it's already bounded to "what's
+  // new", not the whole mailbox.
+  return { emails: incremental ? sorted : sorted.slice(-limit), highestUid }
 }
