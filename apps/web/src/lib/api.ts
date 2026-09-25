@@ -1501,7 +1501,7 @@ export async function startOakPlusCheckout(): Promise<string> {
   return data.checkout_url as string
 }
 
-// ── Marketing posts (Postiz) ──────────────────────────────────────────────
+// ── Marketing posts (social channels) ─────────────────────────────────────
 
 export interface MarketingIntegration {
   id: string
@@ -1527,7 +1527,7 @@ export interface MarketingPost {
   publish_error?: string
 }
 
-/** Null when Postiz isn't configured (503) or the request fails — distinct
+/** Null when no channel is configured (503) or the request fails — distinct
  *  from "no channels connected" ([]). */
 export async function fetchMarketingIntegrations(): Promise<MarketingIntegration[] | null> {
   const base = getApiBase()

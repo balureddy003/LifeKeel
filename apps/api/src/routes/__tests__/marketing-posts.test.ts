@@ -7,7 +7,7 @@
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import Fastify from 'fastify'
-import { registerMarketingPostRoutes } from '../marketing-posts.js'
+import { registerMarketingPostRoutes, publishDueMarketingPosts } from '../marketing-posts.js'
 import { AUTO_EXECUTE_TRUST_THRESHOLD } from '../../jobs/auto-execute-trusted.js'
 
 const TENANT = 'tenant-1'
@@ -110,7 +110,7 @@ async function buildApp(opts: {
   })
   await app.ready()
   const postiz = 'postiz' in opts ? opts.postiz : null
-  return { app, posts, settingsDocs, systemEvents, postsCol, postiz }
+  return { app, db, posts, settingsDocs, systemEvents, postsCol, postiz }
 }
 
 const DRAFT = { integration_id: 'int-1', channel: 'x', content: 'A thing worth posting' }
@@ -164,13 +164,22 @@ describe('/marketing/posts', () => {
     expect((automation['trust_level_by_workflow'] as Record<string, number>)['marketing_social:x']).toBe(1)
   })
 
-  it('schedules instead of publishing-now when scheduled_at is still future', async () => {
+  it('stays approved without dispatching when scheduled_at is still future, then the sweep publishes it when due', async () => {
     const postiz = fakePostiz()
-    const { app } = await buildApp({ postiz, settings: TRUSTED })
+    const { app, db, posts } = await buildApp({ postiz, settings: TRUSTED })
     const future = new Date(Date.now() + 3_600_000).toISOString()
     const res = await app.inject({ method: 'POST', url: '/marketing/posts', payload: { ...DRAFT, scheduled_at: future } })
-    expect(res.json().post.state).toBe('published')
-    expect(postiz.createPost).toHaveBeenCalledWith(expect.objectContaining({ type: 'schedule', date: new Date(future) }))
+    // Channels can't hold a schedule — the post waits as 'approved' until
+    // the cron sweep dispatches it at due time.
+    expect(res.json().post.state).toBe('approved')
+    expect(postiz.createPost).not.toHaveBeenCalled()
+
+    // Due time arrives — the sweep dispatches.
+    posts[0]!['scheduled_at'] = new Date(Date.now() - 1000)
+    const n = await publishDueMarketingPosts(db, postiz)
+    expect(n).toBe(1)
+    expect(postiz.createPost).toHaveBeenCalledWith(expect.objectContaining({ channel: 'x', type: 'now' }))
+    expect(posts[0]!['state']).toBe('published')
   })
 
   it('a Postiz failure lands in publish_failed with the error kept — and earns no trust', async () => {
@@ -232,7 +241,7 @@ describe('/marketing/posts', () => {
     expect(posts[0]!['state']).toBe('draft')
     const res = await app.inject({ method: 'POST', url: `/marketing/posts/${posts[0]!['id']}/approve` })
     expect(res.statusCode).toBe(502)
-    expect(posts[0]!['publish_error']).toBe('postiz_not_configured')
+    expect(posts[0]!['publish_error']).toBe('publisher_not_configured')
   })
 
   it('GET /marketing/integrations 503s when unconfigured, lists channels otherwise', async () => {

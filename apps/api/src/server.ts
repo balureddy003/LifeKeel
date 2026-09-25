@@ -85,7 +85,8 @@ import { registerLifeEventRoutes } from './routes/life-events.js'
 import { registerFamilyInboxRoutes } from './routes/family-inbox.js'
 import { registerPushRoutes } from './routes/push.js'
 import { registerReminderRoutes } from './routes/reminders.js'
-import { registerMarketingPostRoutes } from './routes/marketing-posts.js'
+import { registerMarketingPostRoutes, publishDueMarketingPosts } from './routes/marketing-posts.js'
+import { socialPublisherFromEnv } from './marketing/social-publisher.js'
 import { registerOperatorRoutes } from './routes/operator.js'
 import { getPlatformConfig, registerPublicStatusRoute } from './operator/platform-config.js'
 import { registerDetectorEvalRoutes, detectorEvalDir } from './routes/detector-evals.js'
@@ -227,6 +228,20 @@ try {
     }
   }, { missedExecutionTolerance: 30_000, noOverlap: true })
   log.info({}, 'Email scan cron started')
+
+  // Marketing publish sweep — every minute. Channels can't hold schedules,
+  // so approved posts with a due scheduled_at are dispatched here; the lock
+  // plus the 'publishing' claim guard against double-posting.
+  cron.schedule('* * * * *', async () => {
+    try {
+      await withCronLock(workflowDb, 'marketing-publish', async () => {
+        await publishDueMarketingPosts(workflowDb, socialPublisherFromEnv())
+      })
+    } catch (err) {
+      log.error({ err }, 'Marketing publish sweep failed')
+    }
+  }, { missedExecutionTolerance: 30_000, noOverlap: true })
+  log.info({}, 'Marketing publish cron started')
 
   // Policy renewal reminders — hourly. Tier 3 autonomy: deterministic,
   // deduped, consent re-checked at send time, push-only to the member's

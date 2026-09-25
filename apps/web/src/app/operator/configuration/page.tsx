@@ -23,7 +23,7 @@ const FLAGS: Array<{ key: keyof PlatformConfig; label: string; description: stri
   {
     key: 'marketing_paused',
     label: 'Marketing publishing paused',
-    description: 'Approvals and auto-publish stop dispatching to Postiz; posts stay approved for retry.',
+    description: 'Approvals and auto-publish stop dispatching to channels; posts stay approved for retry.',
     whenOn: 'No posts are being dispatched',
   },
 ]

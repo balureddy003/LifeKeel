@@ -3,7 +3,7 @@
 /**
  * /marketing — the review queue for outbound social posts. Drafts land here
  * (composed below now, generated daily once the content pipeline ships);
- * Approve publishes via Postiz, Reject kills the draft. The trust line under
+ * Approve publishes to the channel, Reject kills the draft. The trust line under
  * the composer shows how many human approvals a channel still needs before
  * Oak can publish to it unattended — the earned-trust ladder, visible.
  */
@@ -40,7 +40,7 @@ function trustScope(channel: string): string {
 export default function MarketingPage() {
   const toast = useToast()
   const [posts, setPosts] = useState<MarketingPost[]>([])
-  // null = Postiz not configured; [] = configured, no channels; the `loading`
+  // null = publishing not configured; [] = configured, no channels; the `loading`
   // gate above keeps the pre-fetch null from flashing the "not configured" copy.
   const [integrations, setIntegrations] = useState<MarketingIntegration[] | null>(null)
   const [automation, setAutomation] = useState<AutomationSettings | null>(null)
@@ -112,12 +112,16 @@ export default function MarketingPage() {
           <GlassCard className="p-4 mt-4">
             {integrations === null ? (
               <p className="text-sm text-ink-secondary leading-relaxed">
-                Postiz isn&apos;t configured on the API yet — set <code className="text-family-400">POSTIZ_API_KEY</code> and
-                connect a channel in Postiz, then drafts can publish from here.
+                No publishing channels configured — set credentials on the API
+                (<code className="text-family-400">X_ACCESS_TOKEN</code>,{' '}
+                <code className="text-family-400">LINKEDIN_ACCESS_TOKEN</code> +{' '}
+                <code className="text-family-400">LINKEDIN_AUTHOR_URN</code>, or{' '}
+                <code className="text-family-400">BSKY_HANDLE</code> +{' '}
+                <code className="text-family-400">BSKY_APP_PASSWORD</code>), then drafts can publish from here.
               </p>
             ) : integrations.length === 0 ? (
               <p className="text-sm text-ink-secondary leading-relaxed">
-                Postiz is connected but has no channels yet — connect an account in Postiz first.
+                Publishing is configured but no channels are enabled yet.
               </p>
             ) : (
               <>

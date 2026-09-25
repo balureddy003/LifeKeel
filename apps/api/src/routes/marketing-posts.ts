@@ -1,7 +1,7 @@
 /**
  * /marketing/posts — the publish half of the marketing engine: draft →
- * approve → publish via Postiz (one API key covers X, LinkedIn, Instagram,
- * Facebook, TikTok, …).
+ * approve → publish directly to each channel's own API (X, LinkedIn,
+ * Bluesky — see marketing/social-publisher.ts).
  *
  * Autonomy model — earned trust, from day one. Posting publicly on a
  * channel is an external, effectively-irreversible action, so it sits on
@@ -16,14 +16,19 @@
  * matching auto-execute-trusted.ts's learning_suppressed posture.
  *
  * dry_run_mode is honored: a simulating tenant's drafts still "publish"
- * (state flips, no Postiz call) so the whole pipeline can be rehearsed —
+ * (state flips, no channel call) so the whole pipeline can be rehearsed —
  * and dry-run human approvals still earn trust, since the human's review
  * of the content is the real signal, not the HTTP dispatch.
  *
- * Operator-only: POSTIZ_API_KEY is one server-global key to the operator's
- * own Postiz workspace, so platform-role permissions protect every route.
- * POSTIZ_API_KEY absent still lets drafts queue for an operator tenant —
- * publishes land in publish_failed, retryable via approve.
+ * Operator-only: channel credentials are server-global env tokens to the
+ * operator's own social accounts, so platform-role permissions protect
+ * every route. No credentials configured still lets drafts queue for an
+ * operator tenant — publishes land in publish_failed, retryable via
+ * approve.
+ *
+ * Scheduling is in-house: channels can't hold future posts, so an
+ * approved post with a future scheduled_at stays 'approved' until the
+ * marketing-publish cron sweep dispatches it when due.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { Db } from 'mongodb'
@@ -33,9 +38,9 @@ import { getAuditLogger } from '../audit/audit-log.js'
 import { AUTO_EXECUTE_TRUST_THRESHOLD } from '../jobs/auto-execute-trusted.js'
 import { requireOperator } from '../operator/operator-auth.js'
 import { getPlatformConfig } from '../operator/platform-config.js'
-import { postizClientFromEnv, type PostizClient } from '../marketing/postiz-client.js'
+import { socialPublisherFromEnv, type SocialPublisher } from '../marketing/social-publisher.js'
 
-export type MarketingPostState = 'draft' | 'approved' | 'published' | 'publish_failed' | 'rejected'
+export type MarketingPostState = 'draft' | 'approved' | 'publishing' | 'published' | 'publish_failed' | 'rejected'
 
 export interface MarketingPostDoc {
   id: string
@@ -107,14 +112,17 @@ async function incrementTrustScope(db: Db, tenantId: string, scope: string): Pro
 }
 
 /**
- * Dispatch one post. Under dry_run the state flips without touching Postiz;
- * a missing client or a failed call lands the post in publish_failed with
- * the error kept on the doc, retryable through the same approve route.
+ * Dispatch one post. Under dry_run the state flips without touching any
+ * channel; a missing publisher or a failed call lands the post in
+ * publish_failed with the error kept on the doc, retryable through the
+ * same approve route. A post with a future scheduled_at stays 'approved'
+ * — channels can't hold schedules, so the cron sweep dispatches it at
+ * due time.
  */
 async function publishPost(
   db: Db,
   col: { updateOne: (f: Record<string, unknown>, u: Record<string, unknown>) => Promise<unknown> },
-  client: PostizClient | null,
+  client: SocialPublisher | null,
   post: MarketingPostDoc,
   opts: { dryRun: boolean },
 ): Promise<{ ok: boolean }> {
@@ -136,21 +144,24 @@ async function publishPost(
     )
     return { ok: true }
   }
+  if (post.scheduled_at && post.scheduled_at.getTime() > now.getTime()) {
+    await col.updateOne({ id: post.id }, { $set: { publish_error: null } })
+    return { ok: true }
+  }
   if (!client) {
     await col.updateOne(
       { id: post.id },
-      { $set: { state: 'publish_failed', publish_error: 'postiz_not_configured' } },
+      { $set: { state: 'publish_failed', publish_error: 'publisher_not_configured' } },
     )
     return { ok: false }
   }
   try {
-    const scheduled = post.scheduled_at && post.scheduled_at.getTime() > now.getTime()
     await client.createPost({
       integrationId: post.integration_id,
       content: post.content,
       channel: post.channel,
-      type: scheduled ? 'schedule' : 'now',
-      date: scheduled ? (post.scheduled_at as Date) : now,
+      type: 'now',
+      date: now,
     })
     await col.updateOne(
       { id: post.id },
@@ -166,6 +177,40 @@ async function publishPost(
   }
 }
 
+/** Cron sweep — dispatch approved posts whose scheduled_at has come due.
+ *  Each doc is claimed 'approved' → 'publishing' before dispatch so two
+ *  ticks (or a tick racing an approve) can't double-post. */
+export async function publishDueMarketingPosts(
+  db: Db,
+  client: SocialPublisher | null,
+): Promise<number> {
+  const col = db.collection<MarketingPostDoc>('marketing_posts')
+  const now = new Date()
+  const due = (await col
+    .find({ state: 'approved' })
+    .sort({ scheduled_at: 1 })
+    .limit(50)
+    .toArray()).filter((p) => !p.scheduled_at || p.scheduled_at.getTime() <= now.getTime())
+    .slice(0, 20)
+  let dispatched = 0
+  for (const post of due) {
+    const claimed = await col.findOneAndUpdate(
+      { id: post.id, state: 'approved' },
+      { $set: { state: 'publishing' } },
+    )
+    if (!claimed) continue
+    // publishPost re-writes state to published/publish_failed on outcome;
+    // a pause leaves it 'publishing' — restore 'approved' so the next tick
+    // retries instead of stranding it.
+    const result = await publishPost(db, col, client, post, { dryRun: false })
+    if (!result.ok && (await getPlatformConfig(db)).marketing_paused) {
+      await col.updateOne({ id: post.id, state: 'publishing' }, { $set: { state: 'approved' } })
+    }
+    dispatched += 1
+  }
+  return dispatched
+}
+
 export interface MarketingRouteOptions {
   operatorTenants?: string[]
 }
@@ -173,10 +218,10 @@ export interface MarketingRouteOptions {
 export function registerMarketingPostRoutes(
   app: FastifyInstance,
   db: Db,
-  postiz?: PostizClient | null,
+  publisher?: SocialPublisher | null,
   opts?: MarketingRouteOptions,
 ): void {
-  const client = postiz === undefined ? postizClientFromEnv() : postiz
+  const client = publisher === undefined ? socialPublisherFromEnv() : publisher
   const col = db.collection<MarketingPostDoc>('marketing_posts')
   col.createIndex({ tenant_id: 1, created_at: -1 }).catch(() => {})
   col.createIndex({ id: 1 }, { unique: true }).catch(() => {})
@@ -192,9 +237,9 @@ export function registerMarketingPostRoutes(
   const readGate = opts?.operatorTenants ? testGate : requireOperator(db, 'marketing.read')
   const manageGate = opts?.operatorTenants ? testGate : requireOperator(db, 'marketing.manage')
 
-  /** GET /marketing/integrations — connected Postiz channels, for the composer. */
+  /** GET /marketing/integrations — env-configured channels, for the composer. */
   app.get('/marketing/integrations', { preHandler: readGate }, async (_req, reply) => {
-    if (!client) return reply.status(503).send({ error: 'postiz_not_configured' })
+    if (!client) return reply.status(503).send({ error: 'publisher_not_configured' })
     const integrations = await client.listIntegrations()
     return { integrations: integrations.map((i) => ({ id: i.id, name: i.name, identifier: i.identifier, disabled: i.disabled === true })) }
   })
