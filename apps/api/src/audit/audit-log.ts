@@ -72,6 +72,9 @@ export type AuditAction =
   | 'insight.auto_execute'
   | 'reminder.sent'
   | 'reminder.cancelled'
+  | 'marketing.post_approve'
+  | 'marketing.post_reject'
+  | 'marketing.post_auto_publish'
 
 export interface AuditEntry {
   tenant_id: string

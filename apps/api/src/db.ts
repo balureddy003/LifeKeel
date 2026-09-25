@@ -53,6 +53,13 @@ export async function getDb(): Promise<Db> {
   // Event dedup
   await db.collection('events').createIndex({ tenant_id: 1, event_id: 1 }, { unique: true }).catch(safeIndex)
 
+  // Login telemetry for the operator security view — 30-day TTL keeps it
+  // bounded; per-user and per-IP indexes back the aggregations.
+  const loginEvents = db.collection('login_events')
+  await loginEvents.createIndex({ created_at: 1 }, { expireAfterSeconds: 30 * 86400 }).catch(safeIndex)
+  await loginEvents.createIndex({ user_id: 1, created_at: -1 }).catch(safeIndex)
+  await loginEvents.createIndex({ ip: 1, created_at: -1 }).catch(safeIndex)
+
   // Initialize detector versions collection
   initDetectorVersionsCollection(db)
 
@@ -174,6 +181,13 @@ export function getFamilyFinancialProfileCollection(database: Db) {
 
 export function getGrowthEventsCollection(database: Db) {
   return database.collection<Record<string, unknown>>('growth_events')
+}
+
+// Security telemetry — one doc per /auth/login outcome (success and every
+// failure mode). IPs and user agents live here for operator review; the
+// collection is TTL-bounded (30 days, indexes ensured in getDb above).
+export function getLoginEventsCollection(database: Db) {
+  return database.collection<Record<string, unknown>>('login_events')
 }
 
 // PRD-111: one doc per tenant tracking whether an unreported-life-change

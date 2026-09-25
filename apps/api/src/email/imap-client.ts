@@ -93,6 +93,73 @@ export async function testImapConnection(
 }
 
 /**
+ * Marketing emails embed logos, social icons and spacer pixels as inline
+ * (cid:) images — those aren't documents. A real attachment is not inline,
+ * and an image under ~20 KB is an icon, not a scanned page.
+ */
+function isRealAttachment(a: { contentType: string; size: number; related?: boolean; contentDisposition?: string }): boolean {
+  if (a.related || a.contentDisposition === 'inline') return false
+  if (a.contentType.startsWith('image/') && a.size < 20_000) return false
+  return true
+}
+
+async function parseMessage(uid: number, source: Buffer): Promise<FetchedEmail> {
+  const parsed = await simpleParser(source)
+  return {
+    uid,
+    messageId: parsed.messageId ?? `imap-uid-${uid}`,
+    from: parsed.from?.text ?? 'Unknown sender',
+    subject: parsed.subject ?? '(no subject)',
+    date: parsed.date ?? new Date(),
+    textSnippet: (parsed.text ?? '').slice(0, 4000),
+    attachments: (parsed.attachments ?? [])
+      .filter((a) => ATTACHMENT_MIME_ALLOWLIST.has(a.contentType) && a.size <= MAX_ATTACHMENT_BYTES && isRealAttachment(a))
+      .map((a) => ({ filename: a.filename ?? 'attachment', contentType: a.contentType, content: a.content })),
+  }
+}
+
+/** Words that mark an email as possibly about a policy or protection product. */
+export const POLICY_SEARCH_KEYWORDS = [
+  'insurance', 'policy', 'premium', 'renewal', 'cover', 'claim', 'pension', 'mortgage', 'assistance',
+]
+
+/**
+ * Looks back over the last `sinceDays` for mail whose subject mentions a
+ * policy-ish word — the server does the filtering, so a 90-day look-back
+ * doesn't mean downloading and classifying every message. Independent of
+ * the incremental UID cursor.
+ */
+export async function searchPolicyEmails(
+  creds: ImapCredentials,
+  opts: { sinceDays: number; limit?: number },
+): Promise<FetchedEmail[]> {
+  const limit = opts.limit ?? 60
+  const client = buildClient(creds)
+  const emails: FetchedEmail[] = []
+  await client.connect()
+  try {
+    const lock = await client.getMailboxLock('INBOX')
+    try {
+      const since = new Date(Date.now() - opts.sinceDays * 86_400_000)
+      const uids = (await client.search(
+        { since, or: POLICY_SEARCH_KEYWORDS.map((k) => ({ subject: k })) },
+        { uid: true },
+      )) || []
+      const newest = uids.sort((a, b) => a - b).slice(-limit)
+      if (newest.length === 0) return []
+      for await (const msg of client.fetch(newest, { uid: true, source: true }, { uid: true })) {
+        if (msg.source) emails.push(await parseMessage(msg.uid, msg.source))
+      }
+    } finally {
+      lock.release()
+    }
+  } finally {
+    await client.logout().catch(() => {})
+  }
+  return emails.sort((a, b) => a.uid - b.uid)
+}
+
+/**
  * Fetches messages from INBOX newer than `sinceUid` (exclusive) — or, with
  * no cursor yet, the most recent `limit` messages — for incremental scans
  * that don't reprocess the same mail every run.
@@ -105,12 +172,15 @@ export async function fetchRecentEmails(
   const client = buildClient(creds)
   const emails: FetchedEmail[] = []
   let highestUid = opts.sinceUid ?? 0
+  // A cursor means "since last sync", already bounded to whatever's
+  // actually new — not the first-ever "just the most recent N" scan.
+  const incremental = opts.sinceUid !== undefined
 
   await client.connect()
   try {
     const lock = await client.getMailboxLock('INBOX')
     try {
-      const range = opts.sinceUid ? `${opts.sinceUid + 1}:*` : undefined
+      const range = incremental ? `${opts.sinceUid! + 1}:*` : undefined
       const exists = client.mailbox ? client.mailbox.exists : limit
       const fetchQuery = range ? { uid: range } : { seq: `${Math.max(1, exists - limit + 1)}:*` }
 
@@ -118,22 +188,7 @@ export async function fetchRecentEmails(
         if (msg.uid > highestUid) highestUid = msg.uid
         if (!msg.source) continue
 
-        const parsed = await simpleParser(msg.source)
-        emails.push({
-          uid: msg.uid,
-          messageId: parsed.messageId ?? `imap-uid-${msg.uid}`,
-          from: parsed.from?.text ?? 'Unknown sender',
-          subject: parsed.subject ?? '(no subject)',
-          date: parsed.date ?? new Date(),
-          textSnippet: (parsed.text ?? '').slice(0, 4000),
-          attachments: (parsed.attachments ?? [])
-            .filter((a) => ATTACHMENT_MIME_ALLOWLIST.has(a.contentType) && a.size <= MAX_ATTACHMENT_BYTES)
-            .map((a) => ({
-              filename: a.filename ?? 'attachment',
-              contentType: a.contentType,
-              content: a.content,
-            })),
-        })
+        emails.push(await parseMessage(msg.uid, msg.source))
       }
     } finally {
       lock.release()
@@ -142,8 +197,18 @@ export async function fetchRecentEmails(
     await client.logout().catch(() => {})
   }
 
-  // A UID-range fetch can return more than `limit` if many arrived since the
-  // last scan — keep the newest `limit`, oldest first for stable ordering.
-  const trimmed = emails.sort((a, b) => a.uid - b.uid).slice(-limit)
-  return { emails: trimmed, highestUid }
+  const sorted = emails.sort((a, b) => a.uid - b.uid)
+  // First-ever scan only: keep the newest `limit`. Bug this replaced —
+  // found live on a real reconnected mailbox: an incremental scan was
+  // ALSO capped to the newest `limit`, while `highestUid` (the saved
+  // cursor) still advanced past every message the UID range actually
+  // returned, not just the kept ones. Any scan where more than `limit`
+  // messages arrived since the last sync — trivial after even a few days
+  // of a dead refresh token, with routine transaction alerts mixed in —
+  // silently and permanently skipped the older messages in that batch:
+  // the cursor moved past them, so no later scan would ever see them
+  // again. A real insurance-claim thread in your account was lost this
+  // way. Never cap an incremental scan; it's already bounded to "what's
+  // new", not the whole mailbox.
+  return { emails: incremental ? sorted : sorted.slice(-limit), highestUid }
 }

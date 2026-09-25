@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Briefcase, HeartCrack, Activity, HeartPulse, Car, Home, Plane, ChevronRight, Loader2, AlertCircle, ShieldAlert } from 'lucide-react'
+import { Briefcase, HeartCrack, Activity, HeartPulse, Car, Home, Plane, ChevronRight, Loader2, AlertCircle } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { GlassCard, GlassButton, PageHeader } from '@/components/Glass'
+import { LifeSafetyNotice } from '@/components/LifeSafetyNotice'
 import { haptic } from '@/lib/haptics'
 import { useAuth } from '@/lib/auth-context'
 import { reportLifeEvent, fetchLifeEvents, type LifeEvent, type LifeEventType } from '@/lib/api'
@@ -26,18 +27,6 @@ const EVENT_TYPES: { id: LifeEventType; label: string; description: string; icon
 // one of these four types may still be in physical danger, and everything
 // below this point is insurance/financial admin, not first response.
 const URGENT_TYPES = new Set<LifeEventType>(['medical', 'car', 'property', 'travel'])
-
-function LifeSafetyNotice() {
-  return (
-    <div className="rounded-xl border border-danger/30 px-3.5 py-3 mb-4 flex items-start gap-2" style={{ background: 'rgba(248,113,113,0.08)' }}>
-      <ShieldAlert size={15} className="text-danger flex-shrink-0 mt-0.5" />
-      <p className="text-xs leading-relaxed text-ink-secondary">
-        <span className="font-semibold text-ink-primary">If anyone is in immediate danger, call 911</span> (or your
-        local emergency number) now — the steps below are insurance and financial admin, not first response.
-      </p>
-    </div>
-  )
-}
 
 export default function LifeEventsPage() {
   const router = useRouter()
@@ -140,7 +129,7 @@ export default function LifeEventsPage() {
               {EVENT_TYPES.find((e) => e.id === selectedType)?.label}
             </div>
 
-            {URGENT_TYPES.has(selectedType) && <LifeSafetyNotice />}
+            {URGENT_TYPES.has(selectedType) && <div className="mb-4"><LifeSafetyNotice compact /></div>}
 
 
             {existingSameType && (

@@ -50,11 +50,13 @@ interface QueueJob {
 
 type RedisClient = {
   lpush(key: string, ...values: string[]): Promise<number>
+  llen(key: string): Promise<number>
   brpop(key: string, timeout: number): Promise<[string, string] | null>
   brpoplpush(source: string, dest: string, timeout: number): Promise<string | null>
   lrem(key: string, count: number, value: string): Promise<number>
   lrange(key: string, start: number, stop: number): Promise<string[]>
   zadd(key: string, score: number, value: string): Promise<number>
+  zcard(key: string): Promise<number>
   zrangebyscore(key: string, min: number | string, max: number | string, ...rest: string[]): Promise<string[]>
   zrem(key: string, ...values: string[]): Promise<number>
   quit(): Promise<string>
@@ -330,6 +332,55 @@ export class QueueManager {
     })()
   }
 
+  /**
+   * Read-only queue introspection for the operator console — depth,
+   * in-flight count, delayed count, and a bounded sample of dead-lettered
+   * jobs. Returns null when Redis is unavailable (inline mode leaves no
+   * durable queue state to inspect).
+   */
+  async inspect(queueName: string): Promise<{
+    pending: number
+    processing: number
+    delayed: number
+    dead: number
+    dead_jobs: Array<{ id: string; attempts?: number; enqueuedAt: number }>
+  } | null> {
+    const client = redisClient
+    if (!client || !redisAvailable) return null
+    try {
+      const [pending, processing, delayed, dead, deadRaw] = await Promise.all([
+        client.llen(queueName),
+        client.llen(`${queueName}:processing`),
+        client.zcard(`${queueName}:delayed`),
+        client.llen(`${queueName}:dead`),
+        client.lrange(`${queueName}:dead`, 0, 19),
+      ])
+      const dead_jobs = deadRaw.map((raw) => {
+        try {
+          const job = JSON.parse(raw) as QueueJob
+          return { id: job.id, attempts: job.attempts, enqueuedAt: job.enqueuedAt }
+        } catch {
+          return { id: 'malformed', enqueuedAt: 0 }
+        }
+      })
+      return { pending, processing, delayed, dead, dead_jobs }
+    } catch (err) {
+      log.warn({ queue: queueName, err }, 'Queue inspect failed')
+      return null
+    }
+  }
+
+  /**
+   * Operator-initiated retry of a dead-lettered job: removes it from
+   * `${queue}:dead` and pushes it back to the live list with attempts
+   * reset to 0. Returns false when the job isn't found or Redis is down.
+   */
+  async requeueDead(queueName: string, jobId: string): Promise<boolean> {
+    const client = redisClient
+    if (!client || !redisAvailable) return false
+    return requeueDeadJob(client, queueName, jobId)
+  }
+
   /** Stop all subscriptions and close subscriber connections */
   async shutdown(): Promise<void> {
     for (const key of this.subscriptions.keys()) {
@@ -353,3 +404,23 @@ export class QueueManager {
 // ── Singleton ─────────────────────────────────────────────────────────────────
 
 export const queueManager = new QueueManager()
+
+/**
+ * Pure requeue operation, exported separately so it can be unit-tested
+ * with a mock client. The lrem-by-value claim means only one caller can
+ * move a given dead entry — safe under concurrent operators.
+ */
+export async function requeueDeadJob(client: RedisClient, queueName: string, jobId: string): Promise<boolean> {
+  const deadKey = `${queueName}:dead`
+  const entries = await client.lrange(deadKey, 0, -1)
+  for (const raw of entries) {
+    let job: QueueJob
+    try { job = JSON.parse(raw) as QueueJob } catch { continue }
+    if (job.id !== jobId) continue
+    if ((await client.lrem(deadKey, 1, raw)) !== 1) return false // another operator claimed it
+    job.attempts = 0
+    await client.lpush(queueName, JSON.stringify(job))
+    return true
+  }
+  return false
+}

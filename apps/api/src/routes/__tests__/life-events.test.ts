@@ -304,7 +304,7 @@ describe('Emergency-Mode taxonomy: medical / car / property / travel', () => {
     expect(step.body).toContain('mortgage')
   })
 
-  it('travel: honest about untracked travel insurance, points at the real health policy', async () => {
+  it('travel: no travel policy on file — falls back to the real health policy, without claiming travel is never tracked', async () => {
     const profile = {
       ...BASE_PROFILE,
       policies: [{ type: 'health', provider: 'Bupa', coverage_amount_minor: 3_000_000, monthly_premium_minor: 2500 }],
@@ -312,8 +312,20 @@ describe('Emergency-Mode taxonomy: medical / car / property / travel', () => {
     const { app } = await buildApp(profile)
     const res = await app.inject({ method: 'POST', url: '/family/life-events', payload: { event_type: 'travel' } })
     const step = res.json().playbook.steps.find((s: { id: string }) => s.id === 'check_travel_cover')
-    expect(step.body).toMatch(/don't track travel insurance/i)
+    expect(step.body).not.toMatch(/don't track travel insurance/i)
     expect(step.body).toContain('Bupa')
+  })
+
+  it('travel: a real travel policy on file is named directly, not just health as a fallback', async () => {
+    const profile = {
+      ...BASE_PROFILE,
+      policies: [{ type: 'travel', provider: 'Aviva', coverage_amount_minor: 0, monthly_premium_minor: 0, policy_number: 'TRV-42' }],
+    }
+    const { app } = await buildApp(profile)
+    const res = await app.inject({ method: 'POST', url: '/family/life-events', payload: { event_type: 'travel' } })
+    const step = res.json().playbook.steps.find((s: { id: string }) => s.id === 'check_travel_cover')
+    expect(step.body).toContain('Aviva')
+    expect(step.body).toContain('TRV-42')
   })
 })
 

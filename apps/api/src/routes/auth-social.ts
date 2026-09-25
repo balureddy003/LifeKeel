@@ -19,6 +19,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import crypto from 'node:crypto'
 import { AuthService, createLogger } from '@agentoak/platform'
+import { getPlatformConfig } from '../operator/platform-config.js'
 
 const log = createLogger({ service: 'auth-social', version: '0.0.0' })
 
@@ -253,6 +254,13 @@ export async function registerSocialAuthRoutes(
           return reply.redirect(getLoginErrorUrl(app, 'workspace_taken'))
         }
 
+        // Operator kill-switch — same flag /auth/signup enforces, placed
+        // after the existing-user lookup so OAuth *login* still works while
+        // new account creation is closed.
+        if (!(await getPlatformConfig(db)).signups_enabled) {
+          return reply.redirect(getLoginErrorUrl(app, 'signups_disabled'))
+        }
+
         // Create new user
         const userId = crypto.randomBytes(8).toString('hex')
 
@@ -446,6 +454,12 @@ export async function registerSocialAuthRoutes(
         const existingTenant = await db.collection('tenants').findOne({ tenant_id: tenantId })
         if (existingTenant) {
           return reply.status(409).send({ error: 'That workspace name is already taken. Choose another.' })
+        }
+
+        // Operator kill-switch — same flag /auth/signup enforces; existing
+        // users already resolved above and continue to sign in.
+        if (!(await getPlatformConfig(db)).signups_enabled) {
+          return reply.status(503).send({ error: 'Signups are temporarily disabled' })
         }
 
         // Create new user
@@ -675,6 +689,11 @@ export async function registerSocialAuthRoutes(
           return reply.redirect(`${studioUrl}/login?error=workspace_taken`)
         }
 
+        // Operator kill-switch — same flag /auth/signup enforces.
+        if (!(await getPlatformConfig(db)).signups_enabled) {
+          return reply.redirect(`${studioUrl}/login?error=signups_disabled`)
+        }
+
         // Create new user
         const userId = crypto.randomBytes(8).toString('hex')
 
@@ -872,6 +891,12 @@ export async function registerSocialAuthRoutes(
         const existingTenant = await db.collection('tenants').findOne({ tenant_id: tenantId })
         if (existingTenant) {
           return reply.status(409).send({ error: 'That workspace name is already taken. Choose another.' })
+        }
+
+        // Operator kill-switch — same flag /auth/signup enforces; existing
+        // users already resolved above and continue to sign in.
+        if (!(await getPlatformConfig(db)).signups_enabled) {
+          return reply.status(503).send({ error: 'Signups are temporarily disabled' })
         }
 
         // Create new user

@@ -22,6 +22,7 @@ export interface AuthContext {
   tenant_id: string   // use this for ALL database queries
   roles: string[]
   demo?: boolean      // true for demo tokens — triggers guard in auth middleware
+  iat?: number        // seconds since epoch — session revocation compares against user.sessions_revoked_at
 }
 
 const SENTINEL_VALUES = new Set(['', 'undefined', 'null', 'admin', '__test__'])
@@ -55,6 +56,7 @@ export class AuthService {
       tenant_id: tenantId,
       roles: (payload['roles'] as string[]) ?? [],
       demo: payload['demo'] === true,
+      ...(typeof payload.iat === 'number' ? { iat: payload.iat } : {}),
     }
   }
 }

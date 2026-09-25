@@ -29,6 +29,9 @@ const BlogPostSchema = z.object({
   published: z.boolean().default(false),
   cover_image: z.string().optional(),
   tags: z.array(z.string()).default([]),
+  // SEO description for <meta name="description"> — set via the operator
+  // console's content editor.
+  meta_description: z.string().max(300).optional(),
 })
 
 type BlogPost = z.infer<typeof BlogPostSchema> & {

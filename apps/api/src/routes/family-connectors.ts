@@ -159,7 +159,9 @@ export function registerFamilyConnectorRoutes(
   // Manual "scan now" — also what the initial connect triggers in the
   // background above, exposed here so the user can re-trigger it from the
   // Inbox without waiting for the cron.
-  fastify.post('/connectors/email/scan', async (req, reply) => {
+  // Optional body { days } runs a one-off targeted look-back for policy
+  // mail (capped at 365) instead of the incremental scan.
+  fastify.post<{ Body?: { days?: number } }>('/connectors/email/scan', async (req, reply) => {
     const { tenant_id } = req.authContext
     const credentialDoc = await getTenantCollection<Record<string, unknown>>(db, 'connector_credentials', tenant_id).findOne({
       connector_id: 'email',
@@ -168,7 +170,14 @@ export function registerFamilyConnectorRoutes(
       return reply.status(404).send({ error: 'No email connector connected' })
     }
 
-    const result = await scanTenantInbox(db, tenant_id, credentialDoc as Parameters<typeof scanTenantInbox>[2])
+    const days = Number(req.body?.days)
+    const lookBackDays = Number.isFinite(days) && days > 0 ? Math.min(Math.floor(days), 365) : undefined
+    const result = await scanTenantInbox(
+      db,
+      tenant_id,
+      credentialDoc as Parameters<typeof scanTenantInbox>[2],
+      lookBackDays !== undefined ? { lookBackDays } : {},
+    )
     return result
   })
 

@@ -5,6 +5,8 @@ export interface User {
   name: string
   email: string
   avatar: string
+  /** ISO-3166 alpha-2 (e.g. 'GB'), from /auth/me — used to localize the emergency-services number. */
+  country?: string
 }
 
 export interface FamilyMemberUser {

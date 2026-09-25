@@ -15,7 +15,7 @@
 import { randomUUID } from 'node:crypto'
 import { GridFSBucket, type Db } from 'mongodb'
 import { createLogger, getTenantCollection, createLlmRouterFromEnv, encryptIfNeeded, decryptIfNeeded } from '@agentoak/platform'
-import { fetchRecentEmails, type ImapCredentials } from '../email/imap-client.js'
+import { fetchRecentEmails, searchPolicyEmails, type ImapCredentials } from '../email/imap-client.js'
 import { refreshGoogleAccessToken } from '../email/gmail-oauth.js'
 import { classifyEmail } from '../email/classify.js'
 import { processDocument } from '../ocr/extract.js'
@@ -107,16 +107,24 @@ export interface ScanResult {
  * inbox items by email_message_id and advances the UID cursor so a repeat
  * scan only processes genuinely new mail.
  */
-export async function scanTenantInbox(db: Db, tenantId: string, credentialDoc: EmailConnectorCredentialDoc): Promise<ScanResult> {
+export async function scanTenantInbox(
+  db: Db,
+  tenantId: string,
+  credentialDoc: EmailConnectorCredentialDoc,
+  opts: { lookBackDays?: number } = {},
+): Promise<ScanResult> {
   const creds = await toImapCredentials(db, credentialDoc)
   if (!creds) {
     return { scanned: 0, inboxItemsCreated: 0, documentsCreated: 0 }
   }
 
-  const { emails, highestUid } = await fetchRecentEmails(creds, {
-    sinceUid: credentialDoc.last_synced_uid,
-    limit: 25,
-  })
+  // A look-back is a one-off targeted search for policy mail; it must not
+  // move the incremental cursor, or mail newer than the search window's
+  // newest hit but older than the cursor's next scan would be skipped.
+  const lookBack = opts.lookBackDays !== undefined
+  const { emails, highestUid } = lookBack
+    ? { emails: await searchPolicyEmails(creds, { sinceDays: opts.lookBackDays! }), highestUid: undefined }
+    : await fetchRecentEmails(creds, { sinceUid: credentialDoc.last_synced_uid, limit: 25 })
 
   const result: ScanResult = { scanned: emails.length, inboxItemsCreated: 0, documentsCreated: 0 }
   if (emails.length === 0) return result
@@ -202,7 +210,7 @@ export async function scanTenantInbox(db: Db, tenantId: string, credentialDoc: E
 
   await getTenantCollection<EmailConnectorCredentialDoc>(db, 'connector_credentials', tenantId).updateOne(
     { connector_id: credentialDoc.connector_id },
-    { $set: { last_synced_uid: highestUid, last_synced_at: new Date() } },
+    { $set: { ...(highestUid !== undefined ? { last_synced_uid: highestUid } : {}), last_synced_at: new Date() } },
   )
 
   log.info({ tenantId, ...result }, 'Email scan complete')

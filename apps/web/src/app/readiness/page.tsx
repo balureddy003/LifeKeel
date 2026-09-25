@@ -19,7 +19,7 @@ import { Share2, Check } from 'lucide-react'
 import { GlassCard, GlassButton, PageHeader, ScoreRing } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
-import { submitReadinessQuiz, type ReadinessQuizResult } from '@/lib/api'
+import { submitReadinessQuiz, captureLead, type ReadinessQuizResult } from '@/lib/api'
 import { learnMoreHref } from '@/lib/detector-content'
 
 const QUIZ_URL = 'https://kairos-trellis.web.app/readiness/'
@@ -130,6 +130,62 @@ function Field({
   )
 }
 
+/**
+ * Optional post-score email capture. The quiz promise is "no email
+ * required", so this sits below the results and is strictly opt-in: a lead
+ * is only created when the visitor types an address and ticks consent.
+ * Nothing about the quiz answers themselves is sent.
+ */
+function EmailCapture({ score }: { score: number }) {
+  const [email, setEmail] = useState('')
+  const [consent, setConsent] = useState(false)
+  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error'>('idle')
+
+  async function submit() {
+    haptic('light')
+    setState('busy')
+    const band = `${Math.floor(score / 10) * 10}-${Math.floor(score / 10) * 10 + 10}`
+    const ok = await captureLead({ email: email.trim(), source: 'readiness_quiz', score_band: band })
+    setState(ok ? 'done' : 'error')
+    // No client-side funnel event needed — POST /leads already records
+    // 'lead_captured' server-side with source/score_band.
+  }
+
+  if (state === 'done') {
+    return (
+      <GlassCard className="p-4 mt-4 w-full">
+        <p className="text-sm text-ink-secondary leading-relaxed">
+          Thanks — we&apos;ll only use your email for what you opted into. You can ask us to stop any time.
+        </p>
+      </GlassCard>
+    )
+  }
+
+  return (
+    <GlassCard className="p-4 mt-4 w-full">
+      <p className="text-sm font-semibold text-ink-primary">Want us to keep in touch?</p>
+      <p className="text-xs text-ink-tertiary mt-1 leading-relaxed">
+        Optional — leave your email for product updates and family-readiness tips. No spam.
+      </p>
+      <input
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="you@example.com"
+        className="glass-input w-full rounded-xl px-4 py-3 mt-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40"
+      />
+      <label className="mt-3 flex items-start gap-2.5 text-xs text-ink-secondary leading-relaxed cursor-pointer">
+        <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 accent-family-500" />
+        I agree to Agent Oak contacting me at this address.
+      </label>
+      {state === 'error' && <p className="text-xs text-danger mt-2">Couldn&apos;t save that — please try again.</p>}
+      <GlassButton onClick={submit} disabled={state === 'busy' || !email.trim() || !consent} className="mt-3">
+        {state === 'busy' ? 'Saving…' : 'Keep me posted'}
+      </GlassButton>
+    </GlassCard>
+  )
+}
+
 const EMPTY_FORM = {
   monthlySalary: '',
   emergencySavings: '',
@@ -213,6 +269,7 @@ export default function ReadinessQuizPage() {
         <div ref={resultRef} tabIndex={-1} aria-label={`Your Family Readiness Check result: ${result.score} out of 100`} className="mt-6 flex flex-col items-center outline-none">
           <ScoreRing score={result.score} size={160} />
           <ShareScore score={result.score} />
+          <EmailCapture score={result.score} />
 
           {result.insights.length === 0 ? (
             <GlassCard className="p-4 mt-6 w-full">

@@ -461,8 +461,9 @@ export function MarketingLanding() {
         </div>
         <p className="text-caption text-ink-tertiary text-center leading-snug max-w-sm">
           For informational and educational purposes only. Not financial, investment, tax, insurance, or legal
-          advice, and not a substitute for professional emergency services &mdash; always call 911 in a real
-          emergency. Consult a qualified professional before making financial decisions.
+          advice, and not a substitute for professional emergency services &mdash; always call your local
+          emergency number (911, 999, 112, or the equivalent where you are) in a real emergency. Consult a
+          qualified professional before making financial decisions.
         </p>
       </div>
     </div>

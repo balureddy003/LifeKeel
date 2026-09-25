@@ -3,17 +3,20 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { Bot, Info, Home, Landmark, Wallet, Plane, CreditCard, Car, Loader2 } from 'lucide-react'
+import { Bot, Info, Home, Landmark, Wallet, Plane, CreditCard, Car, Loader2, CheckCircle2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { GlassCard, PageHeader, EmptyState, MoneyText, Skeleton, PageTransition } from '@/components/Glass'
 import { PullToRefresh } from '@/components/PullToRefresh'
 import { SwipeableRow } from '@/components/SwipeableRow'
 import { haptic } from '@/lib/haptics'
 import { useToast } from '@/components/Toast'
-import { INBOX_ITEMS } from '@/lib/onboarding-data'
 import type { InboxItem } from '@/lib/onboarding-data'
-import { fetchInboxItems, dismissInboxItem, scanEmailInbox, fetchConnectorStatuses } from '@/lib/api'
+import { fetchInboxItems, dismissInboxItem, scanEmailInbox, fetchEmailConnectorStatus, applyInboxPolicy, type PolicyType } from '@/lib/api'
+import { useAuth } from '@/lib/auth-context'
+import { PolicyReviewForm, type PolicyDraft } from '@/components/PolicyReviewForm'
+import { invalidateCache } from '@/lib/fetch-cache'
 import { useAppStore } from '@/lib/store'
+import { searchMailboxForPolicies } from '@/lib/email-lookback'
 import { formatRelativeDate } from '@/lib/format'
 
 const INBOX_ICONS: Record<string, LucideIcon> = {
@@ -41,35 +44,78 @@ const actionTypeColor = (type: InboxItem['actionType']) => {
   return colors[type] ?? '#8a8070'
 }
 
+const VALID_POLICY_TYPES = new Set<PolicyType>(['life', 'income_protection', 'health', 'critical_illness', 'car', 'home', 'travel'])
+
+function toPolicyDraft(p: NonNullable<InboxItem['policy']>): PolicyDraft {
+  // The email can state a type this app's profile has no home for yet
+  // (pension, mortgage, "other") — default to something the user picks
+  // from rather than silently mismatching the dropdown.
+  return {
+    type: p.type && VALID_POLICY_TYPES.has(p.type as PolicyType) ? (p.type as PolicyType) : 'life',
+    provider: p.provider ?? '',
+    coverageAmount: p.coverAmount != null ? String(p.coverAmount) : '',
+    monthlyPremium: p.monthlyPremium != null ? String(p.monthlyPremium) : '',
+    renewalDate: p.renewalDate ?? '',
+    policyNumber: p.policyNumber ?? '',
+    memberId: '',
+  }
+}
+
+function policyFacts(p: NonNullable<InboxItem['policy']>): [string, string][] {
+  const money = (n: number) => `${p.currency ?? ''} ${n.toLocaleString()}`.trim()
+  const rows: [string, string | undefined][] = [
+    ['Provider', p.provider],
+    ['Type', p.type?.replace(/_/g, ' ')],
+    ['Policy no.', p.policyNumber],
+    ['Cover', p.coverAmount !== undefined ? money(p.coverAmount) : undefined],
+    ['Premium / month', p.monthlyPremium !== undefined ? money(p.monthlyPremium) : undefined],
+    ['Renews', p.renewalDate],
+  ]
+  return rows.filter((r): r is [string, string] => !!r[1])
+}
+
 export default function InboxPage() {
   const router = useRouter()
+  const { family } = useAuth()
   const connectedConnectors = useAppStore((s) => s.connectedConnectors)
-  const dismissedInboxIds = useAppStore((s) => s.dismissedInboxIds)
-  const dismissInboxItemLocal = useAppStore((s) => s.dismissInboxItemLocal)
   const setInboxUnreadCount = useAppStore((s) => s.setInboxUnreadCount)
   const toast = useToast()
   // Pending undo timers — cleared if the user taps "Undo" before they fire.
   const undoTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
-  const [items, setItems] = useState<InboxItem[]>(
-    INBOX_ITEMS.filter((item) => !dismissedInboxIds.includes(item.id))
-  )
-  const [isLive, setIsLive] = useState(false)
+  const [items, setItems] = useState<InboxItem[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [dismissingId, setDismissingId] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
+  const [lookingBack, setLookingBack] = useState(false)
+  // The "review, then confirm" policy form for whichever email-sourced item
+  // is currently expanded (only one item is ever expanded at a time).
+  const [policyDraft, setPolicyDraft] = useState<PolicyDraft | null>(null)
+  const [policyApplying, setPolicyApplying] = useState(false)
+  const [policyError, setPolicyError] = useState<string | null>(null)
+  // Ids of items successfully applied this session — kept even after the
+  // item leaves `items` (server-dismissed) isn't needed since a fresh
+  // fetch drops it entirely, but covers the moment right after applying,
+  // before that refetch lands.
+  const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set())
+  // Distinct from "nothing to show you" — a genuine failure to reach the
+  // server (see apiFetch's onFailure), so the empty state doesn't lie.
+  const [loadError, setLoadError] = useState(false)
   // Server is the source of truth (the local store only knows about
   // connections made in this tab) — otherwise a connected, actively-syncing
   // mailbox still showed "Connect your email".
   const [serverEmail, setServerEmail] = useState<{ connected: boolean; needsReauth: boolean } | null>(null)
-  useEffect(() => {
-    let cancelled = false
-    fetchConnectorStatuses().then((cs) => {
-      const email = cs.find((c) => c.id === 'email')
-      if (!cancelled) setServerEmail({ connected: !!email?.connected, needsReauth: !!email?.needsReauth })
-    })
-    return () => { cancelled = true }
+  const loadEmailStatus = useCallback(async () => {
+    const status = await fetchEmailConnectorStatus()
+    // A failed check must not overwrite a known-good status with "not
+    // connected" (confirmed live: a dropped request during a dev-server
+    // blip briefly showed "Connect your email" over an actually-connected,
+    // needs-reauth mailbox) — leave whatever we last knew alone instead.
+    if (!status.failed) setServerEmail({ connected: status.connected, needsReauth: status.needsReauth })
   }, [])
+  useEffect(() => {
+    loadEmailStatus()
+  }, [loadEmailStatus])
   const emailConnected = (serverEmail?.connected ?? false) || connectedConnectors.includes('email')
   const needsReauth = emailConnected && !!serverEmail?.needsReauth
 
@@ -91,15 +137,18 @@ export default function InboxPage() {
 
   const loadInbox = useCallback(async () => {
     const result = await fetchInboxItems()
-    if (result.isLive && result.items.length > 0) {
-      setItems(result.items)
-      setIsLive(true)
-    } else {
-      setItems(INBOX_ITEMS.filter((item) => !useAppStore.getState().dismissedInboxIds.includes(item.id)))
-      setIsLive(false)
-    }
+    setItems(result.items)
+    setLoadError(result.failed)
     setLoading(false)
   }, [])
+
+  const retryLoad = useCallback(() => {
+    haptic('light')
+    invalidateCache('inbox-items')
+    setLoading(true)
+    loadInbox()
+    loadEmailStatus()
+  }, [loadInbox, loadEmailStatus])
 
   useEffect(() => {
     loadInbox()
@@ -119,17 +168,74 @@ export default function InboxPage() {
     const result = await scanEmailInbox()
     if (result) {
       haptic('success')
+      // Without a message a scan that finds nothing looks like a dead button.
+      toast({
+        message: result.scanned === 0
+          ? 'No new mail since the last check'
+          : result.inboxItemsCreated > 0
+            ? `Found ${result.inboxItemsCreated} new policy email${result.inboxItemsCreated === 1 ? '' : 's'}`
+            : `Checked ${result.scanned} new email${result.scanned === 1 ? '' : 's'} — nothing about policies`,
+      })
       await loadInbox()
     } else {
       haptic('warning')
+      toast({ message: 'Could not check your mailbox right now', variant: 'error' })
     }
     setScanning(false)
   }
 
+  const handleLookBack = async () => {
+    haptic('light')
+    setLookingBack(true)
+    const result = await searchMailboxForPolicies(90)
+    if (result) {
+      haptic('success')
+      toast({
+        message: result.inboxItemsCreated > 0
+          ? `Found ${result.inboxItemsCreated} policy email${result.inboxItemsCreated === 1 ? '' : 's'} from the last 90 days`
+          : `Checked ${result.scanned} possible policy email${result.scanned === 1 ? '' : 's'} from the last 90 days — no policy details found`,
+      })
+      await loadInbox()
+    } else {
+      haptic('warning')
+      toast({ message: 'Could not search your mailbox right now', variant: 'error' })
+    }
+    setLookingBack(false)
+  }
+
   const handleTap = (id: string) => {
     haptic('light')
-    setExpandedId(expandedId === id ? null : id)
+    const opening = expandedId !== id
+    setExpandedId(opening ? id : null)
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, read: true } : i)))
+    setPolicyError(null)
+    const item = items.find((i) => i.id === id)
+    setPolicyDraft(opening && item?.policy && !item.route ? toPolicyDraft(item.policy) : null)
+  }
+
+  const handleApplyPolicy = async (item: InboxItem) => {
+    if (!policyDraft) return
+    haptic('light')
+    setPolicyApplying(true)
+    setPolicyError(null)
+    try {
+      await applyInboxPolicy(item.id, {
+        type: policyDraft.type,
+        provider: policyDraft.provider.trim(),
+        coverageAmountMinor: Math.round((Number(policyDraft.coverageAmount) || 0) * 100),
+        monthlyPremiumMinor: Math.round((Number(policyDraft.monthlyPremium) || 0) * 100),
+        ...(policyDraft.renewalDate ? { renewalDate: policyDraft.renewalDate } : {}),
+        ...(policyDraft.policyNumber.trim() ? { policyNumber: policyDraft.policyNumber.trim() } : {}),
+        ...(policyDraft.memberId ? { memberId: policyDraft.memberId } : {}),
+      })
+      haptic('success')
+      setAppliedIds((prev) => new Set(prev).add(item.id))
+    } catch (err) {
+      haptic('warning')
+      setPolicyError(err instanceof Error ? err.message : 'Could not add this policy to your Financial Profile')
+    } finally {
+      setPolicyApplying(false)
+    }
   }
 
   // Shared dismiss logic: remove the item visually, then buffer the
@@ -147,11 +253,7 @@ export default function InboxPage() {
     // Schedule the permanent commit after the undo window
     const timer = setTimeout(() => {
       undoTimers.current.delete(item.id)
-      if (isLive) {
-        dismissInboxItem(item.id)
-      } else {
-        dismissInboxItemLocal(item.id)
-      }
+      dismissInboxItem(item.id)
     }, 5000)
     undoTimers.current.set(item.id, timer)
 
@@ -164,19 +266,21 @@ export default function InboxPage() {
         // Restore the item
         setItems((prev) => {
           if (prev.some((i) => i.id === item.id)) return prev
-          return [...prev, item].sort((a, b) => {
-            // Maintain original order by id (demo) or date
-            const aIdx = INBOX_ITEMS.findIndex((d) => d.id === a.id)
-            const bIdx = INBOX_ITEMS.findIndex((d) => d.id === b.id)
-            return aIdx - bIdx
-          })
+          return [...prev, item].sort((a, b) => (a.date < b.date ? 1 : -1))
         })
         haptic('light')
       },
     })
-  }, [isLive, dismissInboxItemLocal, toast, announceDismissal])
+  }, [toast, announceDismissal])
 
   const handleAction = (item: InboxItem) => {
+    // Oak's recommendations link to where the user can act on them; the
+    // item stays until they dismiss it or the underlying gap is resolved.
+    if (item.route) {
+      haptic('light')
+      router.push(item.route)
+      return
+    }
     dismissWithUndo(item, 'success')
   }
 
@@ -189,8 +293,8 @@ export default function InboxPage() {
     <PullToRefresh onRefresh={loadInbox}>
     <div className="px-5 pt-2 space-y-4">
       <PageHeader
-        title="Inbox"
-        subtitle="AI reads your financial mail for you"
+        title="From Oak"
+        subtitle="What Oak noticed — and what to do next"
         action={
           unreadCount > 0 && (
             <motion.span
@@ -215,17 +319,12 @@ export default function InboxPage() {
         <GlassCard className="p-4 border-family-500/20">
           <div className="flex items-center gap-2 mb-2">
             <Bot size={18} className="text-family-400" />
-            <span className="text-sm font-semibold text-family-400">AI Summary</span>
-            {!isLive && (
-              <span className="text-caption text-warning font-semibold px-1.5 py-0.5 rounded-full bg-warning/10">
-                Sample
-              </span>
-            )}
+            <span className="text-sm font-semibold text-family-400">Oak's summary</span>
           </div>
           <p className="text-sm text-ink-secondary leading-relaxed">
-            {isLive
-              ? `You have ${unreadCount} unread items needing attention.`
-              : `These are sample inbox items. Connect your email to receive AI-summarized financial notifications automatically.`}
+            {unreadCount > 0
+              ? `Oak has ${unreadCount} recommendation${unreadCount === 1 ? '' : 's'} for you to look at.`
+              : 'Nothing new — you have seen everything Oak has for you.'}
           </p>
         </GlassCard>
       </motion.div>
@@ -234,20 +333,32 @@ export default function InboxPage() {
       {/* Email connected — manual rescan */}
       {emailConnected && !needsReauth && !loading && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <GlassCard className="p-4 flex items-center gap-3">
-            <Bot size={20} className="text-family-400 flex-shrink-0" />
-            <div className="flex-1">
+          <GlassCard className="p-4">
+            <div className="flex items-start gap-3">
+              <Bot size={20} className="text-family-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
               <div className="text-sm font-semibold text-ink-secondary">Email connected</div>
-              <p className="text-xs text-ink-tertiary mt-0.5">Scans automatically every 15 minutes.</p>
+              <p className="text-xs text-ink-tertiary mt-0.5">New mail is checked every 15 minutes. Oak only keeps insurance and policy emails.</p>
+              </div>
             </div>
+            <div className="flex gap-2 mt-3">
             <button
               onClick={handleScanNow}
               disabled={scanning}
-              className="text-xs font-semibold text-family-400 px-3 py-2 rounded-xl bg-family-500/10 active:opacity-80 disabled:opacity-50 flex items-center gap-1.5"
+              className="flex-1 justify-center text-xs font-semibold text-family-400 px-3 py-2.5 rounded-xl bg-family-500/10 active:opacity-80 disabled:opacity-50 flex items-center gap-1.5"
             >
               {scanning ? <Loader2 size={12} className="animate-spin" /> : null}
               {scanning ? 'Scanning...' : 'Scan now'}
             </button>
+            <button
+              onClick={handleLookBack}
+              disabled={lookingBack}
+              className="flex-1 justify-center text-xs font-semibold text-family-400 px-3 py-2.5 rounded-xl bg-family-500/10 active:opacity-80 disabled:opacity-50 flex items-center gap-1.5"
+            >
+              {lookingBack ? <Loader2 size={12} className="animate-spin" /> : null}
+              {lookingBack ? 'Searching…' : 'Find policies (90 days)'}
+            </button>
+            </div>
           </GlassCard>
         </motion.div>
       )}
@@ -302,14 +413,23 @@ export default function InboxPage() {
 
       {/* Inbox items */}
       <div className="space-y-2">
-        {items.length === 0 ? (
+        {items.length === 0 && loadError ? (
           <GlassCard>
             <EmptyState
               icon={Bot}
-              title="Inbox zero"
-              description="You're all caught up. Connect your email to automatically receive financial notifications here."
-              actionLabel="Connect email"
-              onAction={() => { haptic('light'); router.push('/connect') }}
+              title="Couldn't load your recommendations"
+              description="Oak couldn't reach the server just now — this isn't the same as having nothing to show you. Check your connection and try again."
+              actionLabel="Try again"
+              onAction={retryLoad}
+            />
+          </GlassCard>
+        ) : items.length === 0 ? (
+          <GlassCard>
+            <EmptyState
+              icon={Bot}
+              title="Nothing needs your attention"
+              description="Oak will post here when it spots a gap, a renewal, or policy details in your email."
+              {...(emailConnected ? {} : { actionLabel: 'Connect email', onAction: () => { haptic('light'); router.push('/connect/email') } })}
             />
           </GlassCard>
         ) : (
@@ -347,7 +467,11 @@ export default function InboxPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-xs text-ink-tertiary">{item.source}</span>
+                      <span className="text-xs text-ink-tertiary">
+                        {item.source === 'Oak'
+                          ? 'Oak noticed'
+                          : `Found in your email${item.policy?.provider ? ` · ${item.policy.provider}` : ''}${item.threadCount ? ` · ${item.threadCount} messages` : ''}`}
+                      </span>
                       {!item.read && (
                         <span className="w-2 h-2 rounded-full" style={{ background: color }} />
                       )}
@@ -382,30 +506,77 @@ export default function InboxPage() {
                         <div className="glass rounded-2xl p-3 mb-3">
                           <div className="flex items-center gap-1.5 mb-1.5">
                             <Bot size={14} className="text-family-400" />
-                            <span className="text-xs font-semibold text-family-400">AI explains</span>
+                            <span className="text-xs font-semibold text-family-400">
+                              {item.source === 'Oak' ? 'Why Oak flagged this' : 'What the email says'}
+                            </span>
                           </div>
                           <p className="text-sm text-ink-secondary leading-relaxed">
                             <MoneyText text={item.aiSummary} />
                           </p>
+                          {item.policy && (
+                            <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                              {policyFacts(item.policy).map(([k, v]) => (
+                                <div key={k} className="contents">
+                                  <dt className="text-ink-tertiary">{k}</dt>
+                                  <dd className="text-ink-secondary font-medium">{v}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          )}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <motion.button
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => handleAction(item)}
-                            className="flex-1 rounded-2xl py-3 text-sm font-semibold text-white"
-                            style={{ background: actionTypeColor(item.actionType) }}
-                          >
-                            {item.actionLabel}
-                          </motion.button>
-                          <motion.button
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => handleDismiss(item)}
-                            disabled={dismissingId === item.id}
-                            className="glass rounded-2xl px-4 py-3 text-sm font-semibold text-ink-tertiary disabled:opacity-50"
-                          >
-                            {dismissingId === item.id ? <Loader2 size={14} className="animate-spin" /> : 'Dismiss'}
-                          </motion.button>
-                        </div>
+                        {item.policy && !item.route ? (
+                          appliedIds.has(item.id) ? (
+                            <div role="status" aria-live="polite" className="flex items-start gap-2 p-3 rounded-2xl bg-success/10 border border-success/20">
+                              <CheckCircle2 size={18} className="text-success flex-shrink-0 mt-0.5" />
+                              <p className="text-sm text-ink-secondary">
+                                Added to your Financial Profile.{' '}
+                                <button onClick={() => router.push('/financial-profile')} className="text-family-400 font-semibold">
+                                  Review your profile
+                                </button>.
+                              </p>
+                            </div>
+                          ) : policyDraft ? (
+                            <>
+                              <div className="text-xs text-ink-tertiary mb-3">
+                                Check these before adding — Oak filled them in from the email, especially the policy type.
+                              </div>
+                              <PolicyReviewForm
+                                draft={policyDraft}
+                                onChange={setPolicyDraft}
+                                onSubmit={() => handleApplyPolicy(item)}
+                                submitting={policyApplying}
+                                error={policyError}
+                                members={family?.members ?? []}
+                              />
+                              <button
+                                onClick={() => handleDismiss(item)}
+                                disabled={dismissingId === item.id}
+                                className="w-full mt-2 py-2 text-xs font-semibold text-ink-tertiary disabled:opacity-50"
+                              >
+                                Not now
+                              </button>
+                            </>
+                          ) : null
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <motion.button
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => handleAction(item)}
+                              className="flex-1 rounded-2xl py-3 text-sm font-semibold text-white"
+                              style={{ background: actionTypeColor(item.actionType) }}
+                            >
+                              {item.actionLabel}
+                            </motion.button>
+                            <motion.button
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => handleDismiss(item)}
+                              disabled={dismissingId === item.id}
+                              className="glass rounded-2xl px-4 py-3 text-sm font-semibold text-ink-tertiary disabled:opacity-50"
+                            >
+                              {dismissingId === item.id ? <Loader2 size={14} className="animate-spin" /> : 'Dismiss'}
+                            </motion.button>
+                          </div>
+                        )}
                       </div>
                     </motion.div>
                   )}
@@ -418,11 +589,10 @@ export default function InboxPage() {
         )}
       </div>
 
-      {/* Empty state hint */}
       <div className="glass rounded-2xl p-4 flex items-start gap-2">
         <Info size={18} className="text-ink-tertiary flex-shrink-0 mt-0.5" />
         <p className="text-xs text-ink-tertiary leading-relaxed">
-          Connect your email to automatically see every financial notification — bank statements, insurance renewals, pension updates — all summarized in plain language.
+          This isn’t your mailbox. Oak reads your connected email only for insurance and policy details, and ignores everything else. For information only — not advice.
         </p>
       </div>
     </div>

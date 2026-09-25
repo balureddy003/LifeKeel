@@ -1,14 +1,38 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { isValidElement, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import { HelpCircle } from 'lucide-react'
 import { GlassCard, PageHeader } from '@/components/Glass'
+import { MermaidDiagram } from '@/components/MermaidDiagram'
 import { fetchBlogPost, type BlogPost } from '@/lib/api'
 
+// Diagram fences can arrive as ```mermaid, ```flowchart, or a bare ```
+// block whose first line is a diagram keyword — all render as mermaid.
+const DIAGRAM_START = /^(flowchart|graph|sequenceDiagram|stateDiagram|stateDiagram-v2|erDiagram|classDiagram|gantt|pie|journey|mindmap|timeline|gitGraph|C4Context|block-beta|quadrantChart|sankey|xychart|kanban)\b/
+
+function isDiagramBlock(className: string | undefined, text: string): boolean {
+  const lang = /language-(\w+)/.exec(className ?? '')?.[1]
+  if (lang === 'mermaid' || lang === 'flowchart') return true
+  // Bare fenced block: multi-line content starting with a diagram keyword.
+  // Inline code never contains a newline, so this can't hit inline spans.
+  return !lang && text.includes('\n') && DIAGRAM_START.test(text.trim())
+}
+
 const MARKDOWN_COMPONENTS = {
+  code: (props: React.ComponentProps<'code'>) => {
+    const { className, children } = props
+    const text = String(children ?? '')
+    if (isDiagramBlock(className, text)) return <MermaidDiagram chart={text} />
+    return <code className={className}>{children}</code>
+  },
+  // A diagram renders a <div> — invalid inside <pre>, so unwrap it there.
+  pre: (props: React.ComponentProps<'pre'>) => {
+    if (isValidElement(props.children) && props.children.type === MermaidDiagram) return <>{props.children}</>
+    return <pre {...props} />
+  },
   h2: (props: React.ComponentProps<'h2'>) => <h2 className="text-lg font-semibold text-ink-primary mt-6 mb-2" {...props} />,
   p: (props: React.ComponentProps<'p'>) => <p className="text-sm text-ink-secondary leading-relaxed mb-3" {...props} />,
   ul: (props: React.ComponentProps<'ul'>) => <ul className="list-disc list-outside pl-5 text-sm text-ink-secondary leading-relaxed mb-3 space-y-1" {...props} />,

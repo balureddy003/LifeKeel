@@ -107,14 +107,35 @@ Then extract all relevant fields you can identify. Common fields include:
   amount for the period shown, whichever is clearest; prefer net_pay when
   more than one is present, since that's what a household actually receives)
 - policy_type (insurance documents only — exactly one of: life, income_protection,
-  critical_illness, health, car, home — pick whichever this policy actually
-  covers; omit this field entirely if you're not confident)
+  critical_illness, health, car, home, travel — pick whichever this policy
+  actually covers; omit this field entirely if you're not confident)
+- claims_phone / assistance_phone (insurance documents only — the number to
+  call to make a claim or reach 24/7 emergency assistance, if the document
+  states one; not the claimant's own phone number)
+- claims_email (insurance documents only — the email address to make a
+  claim or reach the insurer, if the document states one; not the
+  claimant's own email address)
 
 Return ONLY a JSON object with this shape:
 {"category":"<category>","fields":{"<key>":"<value>",...},"rawText":"<brief summary of the document>"}
 
 If you cannot read the document clearly, return:
 {"category":"other","fields":{},"rawText":"Unable to extract text from document"}`
+
+const PDF_TEXT_LIMIT = 12_000
+
+/** Text layer of a PDF (first pages), trimmed for the prompt; '' when there is none. */
+export async function extractPdfText(pdf: Buffer): Promise<string> {
+  try {
+    const { extractText, getDocumentProxy } = await import('unpdf')
+    const doc = await getDocumentProxy(new Uint8Array(pdf))
+    const { text } = await extractText(doc, { mergePages: true })
+    return text.replace(/\s+\n/g, '\n').trim().slice(0, PDF_TEXT_LIMIT)
+  } catch (err) {
+    log.warn({ err }, 'PDF text extraction failed')
+    return ''
+  }
+}
 
 /**
  * Extract structured fields from a document image or PDF using OpenAI vision.
@@ -141,21 +162,33 @@ export async function extractDocumentFields(
 
   try {
     const { client, model, provider } = vision
-    const base64 = fileBuffer.toString('base64')
-    const imageUrl = `data:${mimeType};base64,${base64}`
+
+    // The vision API only accepts image MIME types — sending a PDF as a
+    // data URL is a 400, which silently left every PDF (policy schedules,
+    // statements, claim forms) "extracted" with no fields. PDFs go in as
+    // their extracted text instead.
+    let userContent: Array<
+      { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string; detail: 'high' } }
+    >
+    if (mimeType === 'application/pdf') {
+      const text = await extractPdfText(fileBuffer)
+      if (!text) {
+        log.warn({ filename }, 'PDF has no extractable text (likely a scan) — skipping extraction')
+        return { category: 'other', fields: {}, rawText: 'Scanned PDF — no text layer to read' }
+      }
+      userContent = [{ type: 'text', text: `${CATEGORY_PROMPT}\n\nDocument text:\n${text}` }]
+    } else {
+      const imageUrl = `data:${mimeType};base64,${fileBuffer.toString('base64')}`
+      userContent = [
+        { type: 'text', text: CATEGORY_PROMPT },
+        { type: 'image_url', image_url: { url: imageUrl, detail: 'high' } },
+      ]
+    }
 
     log.info({ filename, provider, model }, 'Starting OCR extraction')
     const response = await client.chat.completions.create({
       model,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: CATEGORY_PROMPT },
-            { type: 'image_url', image_url: { url: imageUrl, detail: 'high' } },
-          ],
-        },
-      ],
+      messages: [{ role: 'user', content: userContent }],
       max_tokens: 1000,
       temperature: 0,
     })

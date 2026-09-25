@@ -270,6 +270,23 @@ export function registerDocumentRoutes(
     return { suggestions, policySuggestion }
   })
 
+  // ── POST /documents/:id/reprocess ───────────────────────────────────────
+  // Re-runs extraction on a stored file — for documents whose first pass
+  // produced nothing (e.g. PDFs before they were read as text). Reads the
+  // original bytes back from GridFS; nothing is re-uploaded.
+  fastify.post<{ Params: { id: string } }>('/documents/:id/reprocess', async (req, reply) => {
+    const { tenant_id } = req.authContext
+    const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
+    const doc = await documents.findOne({ id: req.params.id })
+    if (!doc || !doc['file_id']) return reply.status(404).send({ error: 'Document not found' })
+
+    const chunks: Buffer[] = []
+    for await (const chunk of bucket.openDownloadStream(doc['file_id'] as ObjectId)) chunks.push(chunk as Buffer)
+    await processDocument(db, req.params.id, tenant_id, Buffer.concat(chunks), String(doc['mime_type'] ?? ''), String(doc['filename'] ?? 'document'))
+    const after = await documents.findOne({ id: req.params.id })
+    return { id: req.params.id, category: after?.['category'], status: after?.['status'], fieldCount: Object.keys((after?.['extracted_data'] as object) ?? {}).length }
+  })
+
   // ── POST /documents/:id/apply-to-profile ────────────────────────────────
   // Applies one or more of the suggestions above to the tenant's Financial
   // Profile. A scoped $set on an explicit whitelist of dotted paths — never
@@ -302,6 +319,13 @@ export function registerDocumentRoutes(
       for (const s of toApply) update[s.path] = s.valueMinor
       await profiles.updateOne({}, { $set: update }, { upsert: true })
 
+      // The Inbox feed's "policy found" / "review this" recommendation for
+      // this document exists to get the user here — once they've actually
+      // applied a suggestion, it has done its job and re-showing it every
+      // visit is noise (confirmed live: it kept nudging to review a
+      // document already applied to the profile).
+      await documents.updateOne({ id: req.params.id }, { $set: { feed_dismissed: true } })
+
       const insightsGenerated = await regenerateInsights(tenant_id)
 
       log.info(
@@ -326,7 +350,7 @@ export function registerDocumentRoutes(
   // the user-confirmed apply re-runs detector evaluation in-request via
   // regenerateInsights() — a new policy is exactly the kind of change
   // (renewal windows, cover gaps) the detectors reason about.
-  const POLICY_TYPES = new Set<PolicyType>(['life', 'income_protection', 'health', 'critical_illness', 'car', 'home'])
+  const POLICY_TYPES = new Set<PolicyType>(['life', 'income_protection', 'health', 'critical_illness', 'car', 'home', 'travel'])
   interface ApplyPolicyBody {
     type?: string
     provider?: string
@@ -334,6 +358,8 @@ export function registerDocumentRoutes(
     monthlyPremiumMinor?: number
     renewalDate?: string
     policyNumber?: string
+    contactPhone?: string
+    contactEmail?: string
     // PRD-110: optional roster-member attribution — only ever user-picked
     // in the review card, never guessed from the document.
     memberId?: string
@@ -348,7 +374,7 @@ export function registerDocumentRoutes(
         return reply.status(404).send({ error: 'Document not found' })
       }
 
-      const { type, provider, coverageAmountMinor, monthlyPremiumMinor, renewalDate, policyNumber, memberId } = req.body
+      const { type, provider, coverageAmountMinor, monthlyPremiumMinor, renewalDate, policyNumber, memberId, contactPhone, contactEmail } = req.body
       if (!type || !POLICY_TYPES.has(type as PolicyType)) {
         return reply.status(400).send({ error: 'A valid policy type is required' })
       }
@@ -364,6 +390,8 @@ export function registerDocumentRoutes(
       }
       if (renewalDate) policy['renewal_date'] = renewalDate
       if (policyNumber) policy['policy_number'] = policyNumber
+      if (contactPhone?.trim()) policy['contact_phone'] = contactPhone.trim()
+      if (contactEmail?.trim()) policy['contact_email'] = contactEmail.trim()
       if (typeof memberId === 'string' && memberId.trim()) policy['member_id'] = memberId.trim()
 
       const profiles = getTenantCollection<Record<string, unknown>>(db, 'family_financial_profile', tenant_id)
@@ -372,6 +400,9 @@ export function registerDocumentRoutes(
         { $push: { policies: policy }, $set: { updated_at: new Date() } },
         { upsert: true },
       )
+
+      // See the matching comment in apply-to-profile above.
+      await documents.updateOne({ id: req.params.id }, { $set: { feed_dismissed: true } })
 
       const insightsGenerated = await regenerateInsights(tenant_id)
 

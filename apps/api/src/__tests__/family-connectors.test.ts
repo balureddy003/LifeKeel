@@ -159,6 +159,20 @@ describe('POST /connectors/email/scan', () => {
   })
 })
 
+describe('POST /connectors/email/scan look-back', () => {
+  it('passes a bounded lookBackDays to the scanner only when days is given', async () => {
+    scanTenantInboxMock.mockClear()
+    scanTenantInboxMock.mockResolvedValue({ scanned: 0, inboxItemsCreated: 0, documentsCreated: 0 })
+    const app = await buildApp(makeDb({ connector_id: 'email', tenant_id: TEST_TENANT }))
+    await app.inject({ method: 'POST', url: '/connectors/email/scan', payload: { days: 90 } })
+    expect(scanTenantInboxMock.mock.calls[0]![3]).toEqual({ lookBackDays: 90 })
+    await app.inject({ method: 'POST', url: '/connectors/email/scan', payload: { days: 99999 } })
+    expect(scanTenantInboxMock.mock.calls[1]![3]).toEqual({ lookBackDays: 365 })
+    await app.inject({ method: 'POST', url: '/connectors/email/scan' })
+    expect(scanTenantInboxMock.mock.calls[2]![3]).toEqual({})
+  })
+})
+
 describe('GET /connectors/status', () => {
   it('lists the generic email connector instead of gmail', async () => {
     const db = makeDb()

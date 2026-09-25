@@ -43,7 +43,26 @@ describe('mapExtractedFieldsToPolicySuggestion', () => {
       monthlyPremiumMinor: 2450,
       renewalDate: '2027-03-01',
       policyNumber: 'LG-99182734',
+      contactPhone: null,
+      contactEmail: null,
     })
+  })
+
+  it('extracts a claims/assistance phone and email when the document states one', () => {
+    const result = mapExtractedFieldsToPolicySuggestion('insurance', {
+      provider: 'CEGA Assistance',
+      policy_type: 'travel',
+      claims_phone: '+44 20 7748 0900',
+      claims_email: 'assistance@cegagroup.com',
+    })
+    expect(result?.contactPhone).toBe('+44 20 7748 0900')
+    expect(result?.contactEmail).toBe('assistance@cegagroup.com')
+  })
+
+  it('leaves contact phone/email null when the document does not state one', () => {
+    const result = mapExtractedFieldsToPolicySuggestion('insurance', { provider: 'Aviva' })
+    expect(result?.contactPhone).toBeNull()
+    expect(result?.contactEmail).toBeNull()
   })
 
   it('maps a "car" policy_type from the OCR prompt straight through', () => {

@@ -22,6 +22,10 @@ import type { DeliveryRouter } from './delivery/delivery-router.js'
 /** Matches DetectorRuleSchema's own default in packages/engine/src/schemas.ts. */
 const DEFAULT_DEDUP_WINDOW_MS = 86_400_000
 
+// 'identified'/'sent' = still awaiting a human decision. Everything else
+// (approved/dismissed/completed/resolved/archived) is closed.
+const OPEN_STATES = ['identified', 'sent'] as const
+
 export async function persistAndDeliverInsights(
   db: Db,
   insights: Insight[],
@@ -38,23 +42,58 @@ export async function persistAndDeliverInsights(
 
   // An insight is a duplicate when the same rule has already fired for the
   // same entity (a goal, a ticker, a customer — see computeEntityKey in
-  // detector.ts) and that earlier insight is still open (state:
-  // 'identified') and within its own dedup window. Once a human has acted on
-  // it (approved/dismissed) or the window has elapsed, a fresh firing is a
-  // genuinely new occurrence and should surface again.
-  const dedupMatches = await Promise.all(
-    insights.map((insight) => {
-      const windowMs = insight.dedup_window_ms ?? DEFAULT_DEDUP_WINDOW_MS
-      return insightsCol.findOne({
-        detector_id: insight.detector_id,
-        rule_id: insight.rule_id,
-        entity_key: insight.entity_key ?? '',
-        state: 'identified',
-        created_at: { $gte: new Date(Date.now() - windowMs) },
-      })
-    }),
-  )
-  const newInsights = insights.filter((_, i) => !dedupMatches[i])
+  // detector.ts) and either:
+  //  - an earlier one for that (rule, entity) is still open — regardless of
+  //    how long ago it opened. An unresolved gap needs the human to act on
+  //    the one card that already exists, not a sibling. Confirmed live:
+  //    "No income protection" still open from five days earlier got a
+  //    second, independent "identified" insight the next time the detector
+  //    ran, because the OLD dedup check only looked at opens from the last
+  //    24h (dedup_window_ms) — anything older didn't count as a match at
+  //    all, so a still-true, never-dismissed gap silently grew a fresh
+  //    duplicate every time the window lapsed, forever.
+  //  - or one was closed (approved/dismissed/resolved/…) recently, within
+  //    its own dedup window — the "give it a beat before re-nagging" case
+  //    the window always meant to cover.
+  // Sequential, not Promise.all: batches are a handful of insights (one
+  // detector's rules), and two insights in the same batch can share a key
+  // (e.g. two rules on the same entity) — checking one at a time means a
+  // duplicate created earlier in this very loop is already visible via
+  // openMatches to the next check, instead of racing on a stale read.
+  const newInsights: Insight[] = []
+  for (const insight of insights) {
+    const key = { detector_id: insight.detector_id, rule_id: insight.rule_id, entity_key: insight.entity_key ?? '' }
+
+    const openMatches = await insightsCol
+      .find({ ...key, state: { $in: OPEN_STATES } })
+      .sort({ created_at: -1 })
+      .toArray()
+
+    if (openMatches.length > 0) {
+      // Self-heal pre-existing duplicates (created before this fix
+      // shipped, or from a race) down to the single newest one, instead of
+      // requiring a one-off migration — collapses on the next evaluation
+      // that touches this (rule, entity) pair.
+      if (openMatches.length > 1) {
+        const staleIds = openMatches.slice(1).map((m: Insight) => m.id)
+        await insightsCol.updateMany(
+          { id: { $in: staleIds } },
+          { $set: { state: 'resolved', resolved_at: new Date(), resolved_reason: 'duplicate' } },
+        )
+      }
+      continue
+    }
+
+    const windowMs = insight.dedup_window_ms ?? DEFAULT_DEDUP_WINDOW_MS
+    const recentlyClosed = await insightsCol.findOne({
+      ...key,
+      state: { $nin: OPEN_STATES },
+      created_at: { $gte: new Date(Date.now() - windowMs) },
+    })
+    if (recentlyClosed) continue
+
+    newInsights.push(insight)
+  }
   if (newInsights.length === 0) return
 
   // TenantScopedCollection has no bulkWrite — these upserts are small
@@ -109,7 +148,7 @@ export async function resolveStaleInsights(
   const open: Insight[] = await insightsCol.find({
     detector_id: detectorId,
     rule_id: { $in: checkedRuleIds },
-    state: { $in: ['identified', 'sent'] },
+    state: { $in: OPEN_STATES },
   }).toArray()
 
   const staleIds = open

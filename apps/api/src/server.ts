@@ -85,10 +85,14 @@ import { registerLifeEventRoutes } from './routes/life-events.js'
 import { registerFamilyInboxRoutes } from './routes/family-inbox.js'
 import { registerPushRoutes } from './routes/push.js'
 import { registerReminderRoutes } from './routes/reminders.js'
+import { registerMarketingPostRoutes } from './routes/marketing-posts.js'
+import { registerOperatorRoutes } from './routes/operator.js'
+import { getPlatformConfig, registerPublicStatusRoute } from './operator/platform-config.js'
 import { registerDetectorEvalRoutes, detectorEvalDir } from './routes/detector-evals.js'
 import { ensureReminderIndexes, runPolicyRenewalReminders } from './jobs/policy-renewal-reminders.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
 import { registerReadinessQuizRoutes } from './routes/readiness-quiz.js'
+import { registerLeadRoutes } from './routes/leads.js'
 import { sendOpsAlert } from './lib/ops-alerts.js'
 
 // Inject the connector schema registry so the engine can validate event schema compatibility.
@@ -890,7 +894,7 @@ app.addHook('onRequest', async (request, reply) => {
   // PRD-110: '/family/join' is deliberately NOT a prefix of the organizer-only
   // '/family/access-requests*' endpoints below — this array is matched by
   // startsWith, so '/family/join-requests' would have made those public too.
-  const open = ['/health', '/engine/health', '/metrics', '/auth/token', '/auth/demo-token', '/auth/signup', '/auth/login', '/auth/sso/', '/auth/google/', '/auth/github/', '/auth/request-password-reset', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/entitlements/plans', '/blog/posts', '/a/', '/why/', '/verify/', '/webhooks/', '/inbound/', '/insights/cleanup-stale-all', '/billing/webhook', '/documentation', '/documentation/json', '/documentation/uiOptions', '/documentation/static', '/growth/events', '/readiness-quiz', '/family/join']
+  const open = ['/health', '/engine/health', '/status', '/metrics', '/auth/token', '/auth/demo-token', '/auth/signup', '/auth/login', '/auth/sso/', '/auth/google/', '/auth/github/', '/auth/request-password-reset', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/entitlements/plans', '/blog/posts', '/a/', '/why/', '/verify/', '/webhooks/', '/inbound/', '/insights/cleanup-stale-all', '/billing/webhook', '/documentation', '/documentation/json', '/documentation/uiOptions', '/documentation/static', '/growth/events', '/readiness-quiz', '/leads', '/family/join']
   if (/^\/connectors\/[^/]+\/oauth\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/exchange/.test(request.url)) return
@@ -902,12 +906,26 @@ app.addHook('onRequest', async (request, reply) => {
   try {
     const ctx = await auth.verify(token)
     if (workflowDb) {
-      const user = await workflowDb.collection('users').findOne({
-        tenant_id: ctx.tenant_id,
-        id: ctx.user_id,
-        status: 'suspended',
-      })
-      if (user) return reply.status(401).send({ error: 'User suspended' })
+      const user = await workflowDb.collection('users').findOne(
+        { tenant_id: ctx.tenant_id, id: ctx.user_id },
+        { projection: { status: 1, sessions_revoked_at: 1 } },
+      )
+      if (user?.['status'] === 'suspended') return reply.status(401).send({ error: 'User suspended' })
+      // Operator session revocation: reject tokens issued before
+      // sessions_revoked_at. JWT iat is seconds; <= guards a token minted
+      // in the same second the revocation landed.
+      const revokedAt = user?.['sessions_revoked_at'] as Date | undefined
+      if (revokedAt && ctx.iat !== undefined && ctx.iat <= Math.floor(revokedAt.getTime() / 1000)) {
+        return reply.status(401).send({ error: 'Session revoked' })
+      }
+
+      // Operator-controlled maintenance mode: everything except the
+      // operator console routes gets a 503 — operators must stay able to
+      // reach the API or the flag couldn't be turned back off.
+      if (!request.url.startsWith('/operator/')) {
+        const config = await getPlatformConfig(workflowDb)
+        if (config.maintenance_mode) return reply.status(503).send({ error: 'Maintenance mode — try again shortly' })
+      }
     }
     request.authContext = ctx
 
@@ -1130,6 +1148,9 @@ app.get('/health', async () => ({
   signal_types: engine.registeredSignalTypes,
 }))
 app.get('/health/live', async () => ({ status: 'live' }))
+// Public product status — stays reachable during maintenance so the
+// frontend can render the outage banner instead of dead pages.
+registerPublicStatusRoute(app, () => workflowDb)
 app.get('/health/ready', async (_request, reply) => {
   let mongodb = 'disconnected'
   try {
@@ -1189,13 +1210,16 @@ if (workflowDb) {
   registerFamilyJoinRoutes(app, workflowDb)
   registerReferralRoutes(app, workflowDb)
   registerGrowthEventRoutes(app, workflowDb)
-  registerFamilyInboxRoutes(app, workflowDb)
+  registerFamilyInboxRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerAssistantRoutes(app, workflowDb)
   registerReadinessQuizRoutes(app, workflowDb, engine)
+  await registerLeadRoutes(app, workflowDb)
   await registerFamilyFinancialProfileRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerLifeEventRoutes(app, workflowDb)
   registerPushRoutes(app, workflowDb, deliveryRouter)
   registerReminderRoutes(app, workflowDb)
+  registerMarketingPostRoutes(app, workflowDb)
+  await registerOperatorRoutes(app, workflowDb)
   registerDetectorEvalRoutes(app, workflowDb, engine, detectorEvalDir(ROOT))
 }
 // Prometheus metrics — generic ops/observability, not vertical-specific.

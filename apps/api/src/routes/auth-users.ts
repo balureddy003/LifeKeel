@@ -9,14 +9,15 @@
  * - Email verification (optional, can be enabled via env var)
  */
 
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { AuthService, getCurrencyForCountry, getLocaleForCountry } from '@agentoak/platform'
-import { getDb } from '../db.js'
+import { getDb, getLoginEventsCollection } from '../db.js'
 import { checkInviteCode, consumeInviteCode } from '../invite-codes.js'
 import { PLAN_QUOTAS, createInitialBilling } from '../billing/billing-constants.js'
 import { sendPasswordResetEmail } from '../auth-email.js'
 import { recordLedgerEntry } from '../billing/credit-ledger.js'
+import { getPlatformConfig } from '../operator/platform-config.js'
 import { attributeReferral } from './referrals.js'
 
 // Pragmatic (not full RFC 5322) format check for signup specifically —
@@ -51,12 +52,28 @@ export interface User {
   password_reset_token: string | undefined
   password_reset_expires: Date | undefined
   updated_at: Date | undefined
+  // First-touch marketing attribution captured by apps/web's attribution.ts
+  // — utm_*/referrer/landing_path, all short sanitized strings.
+  attribution?: Record<string, string> | undefined
 }
 
 // `ref` (PRD-112, friend referral) is deliberately separate from
 // `invite_code` above — that's an unrelated platform-wide B2B signup
 // gate (see checkInviteCode/consumeInviteCode), not a referral.
-interface SignupBody { email: string; password: string; name: string; workspace: string; external_id?: string; external_provider?: 'oidc' | 'saml'; tier_hint?: 'developer' | 'team' | 'business' | 'enterprise'; invite_code?: string; country?: string; ref?: string }
+interface SignupBody { email: string; password: string; name: string; workspace: string; external_id?: string; external_provider?: 'oidc' | 'saml'; tier_hint?: 'developer' | 'team' | 'business' | 'enterprise'; invite_code?: string; country?: string; ref?: string; attribution?: Record<string, unknown> }
+
+// Attribution is client-supplied and unverifiable — it's analytics, not
+// authorization. Only the known keys survive, each a bounded string.
+const ATTRIBUTION_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'referrer', 'landing_path', 'captured_at'] as const
+function sanitizeAttribution(input: Record<string, unknown> | undefined): Record<string, string> | undefined {
+  if (!input || typeof input !== 'object') return undefined
+  const out: Record<string, string> = {}
+  for (const key of ATTRIBUTION_KEYS) {
+    const value = input[key]
+    if (typeof value === 'string' && value.length > 0) out[key] = value.slice(0, 300)
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
 interface LoginBody  { email: string; password: string; rememberMe?: boolean }
 interface UpdateProfileBody { name?: string; email?: string; avatar_color?: string }
 interface ChangePasswordBody { current_password: string; new_password: string }
@@ -91,6 +108,23 @@ export async function getUsersCollection() {
   return col
 }
 
+/** Security telemetry for the operator security view — one doc per login
+ *  outcome. Fire-and-forget on purpose: a logging failure must never change
+ *  a login's outcome, so the insert is intentionally not awaited. */
+function recordLoginEvent(
+  request: FastifyRequest,
+  event: { email: string; success: boolean; reason?: string; user_id?: string; tenant_id?: string },
+): void {
+  void getDb()
+    .then((db) => getLoginEventsCollection(db).insertOne({
+      ...event,
+      ip: request.ip,
+      user_agent: (request.headers['user-agent'] ?? '').slice(0, 300),
+      created_at: new Date(),
+    }))
+    .catch(() => {})
+}
+
 export async function registerAuthUserRoutes(
   app: FastifyInstance,
   auth: AuthService,
@@ -111,13 +145,19 @@ export async function registerAuthUserRoutes(
     // without changing the honest per-request error message.
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (request, reply) => {
-      const { email, password, name, workspace, external_id, external_provider, tier_hint, invite_code, country, ref } = request.body
+      const { email, password, name, workspace, external_id, external_provider, tier_hint, invite_code, country, ref, attribution } = request.body
 
       if (!email || !EMAIL_FORMAT_RE.test(email.trim())) return reply.status(400).send({ error: 'Valid email required' })
       if (!password || password.length < 8) return reply.status(400).send({ error: 'Password must be at least 8 characters' })
       if (!name?.trim()) return reply.status(400).send({ error: 'Name required' })
 
       const db = await getDb()
+
+      // Operator-controlled switch: signups can be paused platform-wide
+      // (e.g. incident, migration) without taking the API down.
+      if (!(await getPlatformConfig(db)).signups_enabled) {
+        return reply.status(503).send({ error: 'Signups are temporarily disabled' })
+      }
 
       // Validate invite code early, but do not consume it until we know the signup will succeed.
       const inviteCheck = await checkInviteCode(db, invite_code)
@@ -180,6 +220,7 @@ export async function registerAuthUserRoutes(
         password_reset_token: undefined,
         password_reset_expires: undefined,
         updated_at: undefined,
+        attribution: sanitizeAttribution(attribution),
       }
 
       // Generate email verification token if enabled
@@ -262,18 +303,24 @@ export async function registerAuthUserRoutes(
     if (!email || !password) return reply.status(400).send({ error: 'Email and password required' })
 
     const col = await getUsersCollection()
-    const user = await col.findOne({ email: email.toLowerCase() })
+    const emailKey = email.toLowerCase()
+    const user = await col.findOne({ email: emailKey })
 
     if (!user) {
       // Timing-safe: still hash even on miss to prevent user enumeration
       scryptSync(password, randomBytes(16).toString('hex'), 32)
+      recordLoginEvent(request, { email: emailKey, success: false, reason: 'unknown_email' })
       return reply.status(401).send({ error: 'Invalid email or password' })
     }
-    if (user.status === 'suspended') return reply.status(403).send({ error: 'User suspended' })
+    if (user.status === 'suspended') {
+      recordLoginEvent(request, { email: emailKey, success: false, reason: 'suspended', user_id: user.id, tenant_id: user.tenant_id })
+      return reply.status(403).send({ error: 'User suspended' })
+    }
 
     // Check if account is locked
     if (user.locked_until && user.locked_until > new Date()) {
       const remainingMinutes = Math.ceil((user.locked_until.getTime() - Date.now()) / 60000)
+      recordLoginEvent(request, { email: emailKey, success: false, reason: 'locked', user_id: user.id, tenant_id: user.tenant_id })
       return reply.status(429).send({ 
         error: 'Account locked due to too many failed login attempts',
         retry_after_minutes: remainingMinutes
@@ -286,6 +333,7 @@ export async function registerAuthUserRoutes(
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
       // Increment failed login attempts
       const failedAttempts = (user.failed_login_attempts || 0) + 1
+      recordLoginEvent(request, { email: emailKey, success: false, reason: 'bad_password', user_id: user.id, tenant_id: user.tenant_id })
       const updateData: Partial<User> = { failed_login_attempts: failedAttempts }
 
       // Lock account if max attempts reached
@@ -293,7 +341,7 @@ export async function registerAuthUserRoutes(
         updateData.locked_until = new Date(Date.now() + LOCKOUT_DURATION_MS)
       }
 
-      await col.updateOne({ email: email.toLowerCase() }, { $set: updateData })
+      await col.updateOne({ email: emailKey }, { $set: updateData })
 
       if (failedAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
         return reply.status(429).send({ 
@@ -306,9 +354,10 @@ export async function registerAuthUserRoutes(
     }
 
     // Reset failed login attempts on successful login
-    await col.updateOne({ email: email.toLowerCase() }, { 
+    await col.updateOne({ email: emailKey }, { 
       $set: { failed_login_attempts: 0, locked_until: undefined } 
     })
+    recordLoginEvent(request, { email: emailKey, success: true, user_id: user.id, tenant_id: user.tenant_id })
 
     // "Remember me" controls actual session length, not just UI copy: checked
     // keeps the token's own literal promise (30 days), unchecked falls back

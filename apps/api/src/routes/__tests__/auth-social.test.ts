@@ -18,6 +18,7 @@ import crypto from 'node:crypto'
 import Fastify from 'fastify'
 import { AuthService } from '@agentoak/platform'
 import { registerSocialAuthRoutes } from '../auth-social.js'
+import { invalidatePlatformConfigCache } from '../../operator/platform-config.js'
 
 const JWT_SECRET = 'test-secret'
 
@@ -31,9 +32,10 @@ function matchesClause(doc: Record<string, unknown>, clause: Record<string, unkn
   return Object.entries(clause).every(([k, v]) => doc[k] === v)
 }
 
-function makeDb(existingTenantIds: string[] = [], existingUsers: Record<string, unknown>[] = []) {
+function makeDb(existingTenantIds: string[] = [], existingUsers: Record<string, unknown>[] = [], platformConfig: Record<string, unknown> | null = null) {
   const users: Record<string, unknown>[] = existingUsers.map((u) => ({ _id: u['id'], ...u }))
   const tenants: Record<string, unknown>[] = existingTenantIds.map((tenant_id) => ({ tenant_id }))
+  const platformConfigCol = { findOne: vi.fn(async () => platformConfig) }
 
   const usersCol = {
     findOne: vi.fn(async (filter: { $or?: Record<string, unknown>[] }) =>
@@ -63,6 +65,7 @@ function makeDb(existingTenantIds: string[] = [], existingUsers: Record<string, 
     collection: (name: string) => {
       if (name === 'users') return usersCol
       if (name === 'tenants') return tenantsCol
+      if (name === 'platform_config') return platformConfigCol
       throw new Error(`unexpected collection: ${name}`)
     },
   }
@@ -73,7 +76,7 @@ function jsonResponse(body: unknown, ok = true, status = 200) {
   return { ok, status, json: async () => body, text: async () => JSON.stringify(body) } as Response
 }
 
-async function buildApp(existingTenantIds: string[] = [], existingUsers: Record<string, unknown>[] = []) {
+async function buildApp(existingTenantIds: string[] = [], existingUsers: Record<string, unknown>[] = [], platformConfig: Record<string, unknown> | null = null) {
   process.env['JWT_SECRET'] = JWT_SECRET
   process.env['GOOGLE_CLIENT_ID'] = 'g-client'
   process.env['GOOGLE_CLIENT_SECRET'] = 'g-secret'
@@ -82,7 +85,7 @@ async function buildApp(existingTenantIds: string[] = [], existingUsers: Record<
 
   const app = Fastify()
   const auth = new AuthService(JWT_SECRET)
-  const { db, users, tenants } = makeDb(existingTenantIds, existingUsers)
+  const { db, users, tenants } = makeDb(existingTenantIds, existingUsers, platformConfig)
   await registerSocialAuthRoutes(app, auth, db)
   return { app, users, tenants }
 }
@@ -273,6 +276,57 @@ describe('OAK-005: OAuth merge onto an existing account requires a verified emai
 
     const res = await app.inject({ method: 'POST', url: '/auth/github/exchange', payload: { code: 'c', state } })
 
+    expect(res.statusCode).toBe(200)
+  })
+})
+
+describe('signups_enabled kill-switch covers OAuth account creation', () => {
+  const signupsClosed = { key: 'global', signups_enabled: false }
+  const linkedGoogleUser = { id: 'existing-6', email: 'back@gmail.com', tenant_id: 'back-family', roles: ['admin'], external_id: 'google-1', external_provider: 'google' }
+
+  beforeEach(() => {
+    googleVerifiedEmail = true
+    githubEmailVerified = true
+    // getPlatformConfig caches 10s module-wide — earlier describes cached
+    // the enabled defaults; reset so the closed config actually reads.
+    invalidatePlatformConfigCache()
+    stubFetch()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('Google exchange: 503 and no user inserted when signups are disabled', async () => {
+    const { app, users } = await buildApp([], [], signupsClosed)
+    const res = await app.inject({ method: 'POST', url: '/auth/google/exchange', payload: { code: 'c', state: signState({ provider: 'google' }) } })
+    expect(res.statusCode).toBe(503)
+    expect(users).toHaveLength(0)
+  })
+
+  it('Google callback: redirects with error=signups_disabled, no user inserted', async () => {
+    const { app, users } = await buildApp([], [], signupsClosed)
+    const state = signState({ provider: 'google', app: 'family' })
+    const res = await app.inject({ method: 'GET', url: `/auth/google/callback?code=c&state=${encodeURIComponent(state)}` })
+    expect(res.statusCode).toBe(302)
+    expect(res.headers.location).toMatch(/error=signups_disabled/)
+    expect(users).toHaveLength(0)
+  })
+
+  it('GitHub exchange + callback: 503 / error=signups_disabled, no user inserted', async () => {
+    const { app, users } = await buildApp([], [], signupsClosed)
+    const exchange = await app.inject({ method: 'POST', url: '/auth/github/exchange', payload: { code: 'c', state: signState({ provider: 'github' }) } })
+    expect(exchange.statusCode).toBe(503)
+
+    const callback = await app.inject({ method: 'GET', url: `/auth/github/callback?code=c&state=${encodeURIComponent(signState({ provider: 'github' }))}` })
+    expect(callback.statusCode).toBe(302)
+    expect(callback.headers.location).toMatch(/error=signups_disabled/)
+    expect(users).toHaveLength(0)
+  })
+
+  it('existing OAuth users still sign in while signups are disabled', async () => {
+    const { app } = await buildApp([], [linkedGoogleUser], signupsClosed)
+    const res = await app.inject({ method: 'POST', url: '/auth/google/exchange', payload: { code: 'c', state: signState({ provider: 'google' }) } })
     expect(res.statusCode).toBe(200)
   })
 })

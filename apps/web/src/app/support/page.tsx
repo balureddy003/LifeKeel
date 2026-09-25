@@ -1,5 +1,6 @@
 import { AlertTriangle, Mail } from 'lucide-react'
 import { PageHeader } from '@/components/Glass'
+import { EmergencyNumberText } from '@/components/EmergencyNumberText'
 
 // Set NEXT_PUBLIC_SUPPORT_EMAIL to a real, monitored inbox to make this a
 // live mailto: link. Until then the page renders an explicit "not live
@@ -62,8 +63,8 @@ export default function SupportPage() {
 
       <H2>In a real emergency</H2>
       <P>
-        Agent Oak is not emergency services and can&apos;t dispatch help. If you&apos;re in immediate danger, call
-        911 (or your local emergency number) first.
+        Agent Oak is not emergency services and can&apos;t dispatch help. If you&apos;re in immediate danger, call{' '}
+        <EmergencyNumberText /> first.
       </P>
     </div>
   )
