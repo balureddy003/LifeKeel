@@ -418,6 +418,25 @@ export async function fetchConnectorStatuses(): Promise<ConnectorStatus[]> {
   ).then((r) => r.connectors ?? [])
 }
 
+/**
+ * Just the email connector's live state, with an explicit failure flag —
+ * fetchConnectorStatuses' fallback (every connector "not connected") looks
+ * identical to a real disconnect, which briefly showed "Connect your
+ * email" over an actually-connected-but-needs-reauth mailbox after a
+ * dropped request (confirmed live). Inbox uses this instead so it can
+ * leave the banner alone rather than assert the wrong state.
+ */
+export async function fetchEmailConnectorStatus(): Promise<{ connected: boolean; needsReauth: boolean; failed: boolean }> {
+  let failed = false
+  const { connectors } = await apiFetch<{ connectors: ConnectorStatus[] }>(
+    '/connectors/status',
+    { connectors: [] },
+    () => { failed = true },
+  )
+  const email = connectors.find((c) => c.id === 'email')
+  return { connected: !!email?.connected, needsReauth: !!email?.needsReauth, failed }
+}
+
 // Mirrors apps/api/src/email/providers.ts — host/port stay server-side, the
 // client only needs the id (to send) and label/hint (to display). Picking
 // "Other" leaves host/port to the user, which is what makes this connector

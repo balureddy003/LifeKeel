@@ -4,6 +4,7 @@ import {
   fetchFamilyInsights,
   fetchFamilyReadinessScore,
   fetchInboxItems,
+  fetchEmailConnectorStatus,
   fetchLifeEvents,
   reportLifeEvent,
   prepareLifeEventStepDraft,
@@ -188,6 +189,18 @@ describe('fetchInboxItems', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
     const result = await fetchInboxItems()
     expect(result).toEqual({ items: [], isLive: false, failed: true })
+  })
+})
+
+describe('fetchEmailConnectorStatus', () => {
+  it('reads the email connector out of the connectors list', async () => {
+    mockFetchOnce({ connectors: [{ id: 'email', name: 'Email', category: 'email', connected: true, needsReauth: true }] })
+    expect(await fetchEmailConnectorStatus()).toEqual({ connected: true, needsReauth: true, failed: false })
+  })
+
+  it('flags failed rather than reporting "not connected" on a server error', async () => {
+    mockFetchOnce({}, false)
+    expect(await fetchEmailConnectorStatus()).toEqual({ connected: false, needsReauth: false, failed: true })
   })
 })
 

@@ -11,7 +11,7 @@ import { SwipeableRow } from '@/components/SwipeableRow'
 import { haptic } from '@/lib/haptics'
 import { useToast } from '@/components/Toast'
 import type { InboxItem } from '@/lib/onboarding-data'
-import { fetchInboxItems, dismissInboxItem, scanEmailInbox, fetchConnectorStatuses } from '@/lib/api'
+import { fetchInboxItems, dismissInboxItem, scanEmailInbox, fetchEmailConnectorStatus } from '@/lib/api'
 import { invalidateCache } from '@/lib/fetch-cache'
 import { useAppStore } from '@/lib/store'
 import { searchMailboxForPolicies } from '@/lib/email-lookback'
@@ -75,14 +75,17 @@ export default function InboxPage() {
   // connections made in this tab) — otherwise a connected, actively-syncing
   // mailbox still showed "Connect your email".
   const [serverEmail, setServerEmail] = useState<{ connected: boolean; needsReauth: boolean } | null>(null)
-  useEffect(() => {
-    let cancelled = false
-    fetchConnectorStatuses().then((cs) => {
-      const email = cs.find((c) => c.id === 'email')
-      if (!cancelled) setServerEmail({ connected: !!email?.connected, needsReauth: !!email?.needsReauth })
-    })
-    return () => { cancelled = true }
+  const loadEmailStatus = useCallback(async () => {
+    const status = await fetchEmailConnectorStatus()
+    // A failed check must not overwrite a known-good status with "not
+    // connected" (confirmed live: a dropped request during a dev-server
+    // blip briefly showed "Connect your email" over an actually-connected,
+    // needs-reauth mailbox) — leave whatever we last knew alone instead.
+    if (!status.failed) setServerEmail({ connected: status.connected, needsReauth: status.needsReauth })
   }, [])
+  useEffect(() => {
+    loadEmailStatus()
+  }, [loadEmailStatus])
   const emailConnected = (serverEmail?.connected ?? false) || connectedConnectors.includes('email')
   const needsReauth = emailConnected && !!serverEmail?.needsReauth
 
@@ -114,7 +117,8 @@ export default function InboxPage() {
     invalidateCache('inbox-items')
     setLoading(true)
     loadInbox()
-  }, [loadInbox])
+    loadEmailStatus()
+  }, [loadInbox, loadEmailStatus])
 
   useEffect(() => {
     loadInbox()
