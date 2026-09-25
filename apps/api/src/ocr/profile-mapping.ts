@@ -23,6 +23,7 @@ const APPLICABLE_PATHS = [
   'household.life_cover_minor',
   'household.mortgage_outstanding_minor',
   'retirement.pension_balance_minor',
+  'household.monthly_salary_minor',
 ] as const
 
 export type ApplicableProfilePath = (typeof APPLICABLE_PATHS)[number]
@@ -104,6 +105,15 @@ export function mapExtractedFieldsToProfileSuggestions(
       path: 'household.mortgage_outstanding_minor',
       label: 'Mortgage outstanding',
       patterns: [/outstanding/i, /remaining.?balance/i, /balance/i, /coverage.?amount/i],
+    },
+    {
+      category: 'income',
+      path: 'household.monthly_salary_minor',
+      label: 'Monthly salary',
+      // net_pay preferred over gross — see extract.ts's CATEGORY_PROMPT
+      // ("that's what a household actually receives"); a monthly_salary
+      // path exists first in case the document states it directly.
+      patterns: [/monthly.?salary/i, /net.?pay/i, /gross.?pay/i, /salary/i, /amount/i],
     },
   ]
 

@@ -15,9 +15,11 @@ import { ROLE_LABELS, type FamilyRole } from '@/lib/auth-types'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
 import { useToast } from '@/components/Toast'
 import { isValidEmailFormat } from '@/components/ConversationalOnboarding'
-import { User, LogOut, Check, X, Crown, Shield, ShieldCheck, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle, Calculator, Sparkles, HelpCircle, ScrollText, Bot, Download, Trash2, Sun, Moon, MonitorSmartphone, RefreshCw } from 'lucide-react'
-import { exportAccountData, deleteAccount, fetchAccessRequests, approveAccessRequest, denyAccessRequest, resetInviteCode, type AccessRequest } from '@/lib/api'
+import { User, LogOut, Check, X, Crown, Shield, ShieldCheck, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle, Calculator, Sparkles, HelpCircle, ScrollText, Bot, Download, Trash2, Sun, Moon, MonitorSmartphone, RefreshCw, Bell, Copy, Gift } from 'lucide-react'
+import { exportAccountData, deleteAccount, fetchAccessRequests, approveAccessRequest, denyAccessRequest, resetInviteCode, fetchMyReferralCode, fetchReferralSummary, type AccessRequest } from '@/lib/api'
 import { useThemePreference, type ThemePreference } from '@/lib/theme'
+import { isPushSupported, isPushSubscribed, subscribeToPush, unsubscribeFromPush, fetchVapidKey } from '@/lib/push'
+import { isOnDeviceSupported, isOnDeviceEnabled, setOnDeviceEnabled as persistOnDeviceEnabled, enableOnDeviceModel } from '@/lib/onDeviceLlm'
 import type { LucideIcon } from 'lucide-react'
 
 const MODE_ICONS: Record<string, LucideIcon> = {
@@ -58,6 +60,10 @@ export default function SettingsPage() {
   const [memberName, setMemberName] = useState('')
   const [memberEmail, setMemberEmail] = useState('')
   const [memberRole, setMemberRole] = useState<FamilyRole>('adult')
+  // Optional — lets Financial Profile derive age/years-until-university
+  // instead of asking again later. Never required here; skippable, added
+  // at the point it's actually needed if left blank now.
+  const [memberDob, setMemberDob] = useState('')
   const [addingMember, setAddingMember] = useState(false)
   const [addMemberError, setAddMemberError] = useState<string | null>(null)
 
@@ -75,6 +81,90 @@ export default function SettingsPage() {
     if (!isOrganizer) return
     fetchAccessRequests().then(setAccessRequests)
   }, [isOrganizer])
+
+  // Friend referral (PRD-112) — any family member can refer a friend to
+  // their own, separate account, unlike the organizer-only invite code.
+  const [referralCode, setReferralCode] = useState<string | null>(null)
+  const [referralSummary, setReferralSummary] = useState({ pending: 0, rewarded: 0 })
+  const [referralCopied, setReferralCopied] = useState(false)
+
+  useEffect(() => {
+    fetchMyReferralCode().then(setReferralCode)
+    fetchReferralSummary().then(setReferralSummary)
+  }, [])
+
+  const handleCopyReferralLink = async () => {
+    if (!referralCode) return
+    haptic('light')
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/signup?ref=${referralCode}`)
+      setReferralCopied(true)
+      haptic('success')
+      setTimeout(() => setReferralCopied(false), 2000)
+    } catch {
+      // Clipboard access can fail (permissions, non-secure context) — the
+      // code is still shown on-screen, so nothing is actually lost.
+    }
+  }
+
+  // On-device crisis drafts (PRD-113) — checked client-side on mount, not
+  // SSR'd, since navigator.gpu doesn't exist during server rendering.
+  const [onDeviceSupported, setOnDeviceSupportedState] = useState(false)
+  const [onDeviceEnabled, setOnDeviceEnabled] = useState(false)
+  const [onDeviceDownloading, setOnDeviceDownloading] = useState(false)
+  const [onDeviceProgress, setOnDeviceProgress] = useState(0)
+
+  useEffect(() => {
+    setOnDeviceSupportedState(isOnDeviceSupported())
+    setOnDeviceEnabled(isOnDeviceEnabled())
+  }, [])
+
+  // Push notifications — supported/enabled probed on mount so the toggle
+  // reflects reality (a subscription made on another device shows as on).
+  const [pushSupported, setPushSupported] = useState(false)
+  const [pushEnabled, setPushEnabled] = useState(false)
+  const [pushAvailable, setPushAvailable] = useState<boolean | null>(null)
+  const [pushBusy, setPushBusy] = useState(false)
+
+  useEffect(() => {
+    if (!isPushSupported()) return
+    setPushSupported(true)
+    fetchVapidKey().then((key) => setPushAvailable(key !== null))
+    isPushSubscribed().then(setPushEnabled)
+  }, [])
+
+  const handlePushToggle = async () => {
+    if (pushBusy) return
+    haptic('light')
+    setPushBusy(true)
+    if (pushEnabled) {
+      const ok = await unsubscribeFromPush()
+      if (ok) {
+        setPushEnabled(false)
+        haptic('success')
+        toast({ message: 'Push notifications off for this device' })
+      } else {
+        haptic('warning')
+        toast({ message: "Couldn't turn notifications off — try again in a moment", variant: 'error' })
+      }
+    } else {
+      const ok = await subscribeToPush()
+      if (ok) {
+        setPushEnabled(true)
+        haptic('success')
+        toast({ message: 'Push notifications on — renewals and new insights will reach this device' })
+      } else {
+        haptic('warning')
+        toast({
+          message: Notification.permission === 'denied'
+            ? 'Notifications are blocked in your browser settings — allow them there first'
+            : "Couldn't turn notifications on — try again in a moment",
+          variant: 'error',
+        })
+      }
+    }
+    setPushBusy(false)
+  }
 
   const handleApproveRequest = async (id: string) => {
     haptic('light')
@@ -198,7 +288,7 @@ export default function SettingsPage() {
       setShowEditProfile(false)
     } catch (err) {
       haptic('warning')
-      setEditProfileError(err instanceof Error ? err.message : 'Could not save your profile. Please try again.')
+      setEditProfileError(err instanceof Error ? err.message : "Your changes didn't save — they're still here on this screen. Try again in a moment.")
     } finally {
       setSavingProfile(false)
     }
@@ -211,7 +301,7 @@ export default function SettingsPage() {
     const bundle = await exportAccountData()
     setExporting(false)
     if (!bundle) {
-      setExportError("Couldn't export right now — please try again.")
+      setExportError("The export didn't come through — your data is all still here. Try again in a moment.")
       return
     }
     const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' })
@@ -236,7 +326,7 @@ export default function SettingsPage() {
     const result = await deleteAccount(deleteConfirm.trim())
     setDeleting(false)
     if (!result.ok) {
-      setDeleteError(result.error ?? "Couldn't delete your account — please try again.")
+      setDeleteError(result.error ?? "The deletion didn't complete — your account is untouched. Try again or contact support.")
       return
     }
     // The account and its data are gone — local session cleanup then out.
@@ -249,6 +339,7 @@ export default function SettingsPage() {
     setMemberName('')
     setMemberEmail('')
     setMemberRole('adult')
+    setMemberDob('')
     setAddMemberError(null)
   }
 
@@ -258,13 +349,13 @@ export default function SettingsPage() {
     setAddingMember(true)
     setAddMemberError(null)
     try {
-      await inviteMember(memberName.trim(), memberEmail.trim(), memberRole)
+      await inviteMember(memberName.trim(), memberEmail.trim(), memberRole, memberDob || undefined)
       haptic('success')
       toast({ message: `${memberName.trim()} added to family` })
       resetAddMemberForm()
     } catch (err) {
       haptic('warning')
-      setAddMemberError(err instanceof Error ? err.message : 'Could not add member. Please try again.')
+      setAddMemberError(err instanceof Error ? err.message : "That member wasn't added — your family roster is unchanged. Try again in a moment.")
     } finally {
       setAddingMember(false)
     }
@@ -276,14 +367,23 @@ export default function SettingsPage() {
       <PageHeader title="Settings" />
 
       {/* Profile */}
+      {/* Live-verification finding: ListRow's `value` prop sits beside
+          `children` in one items-center row, meant for a short label
+          ("Active", "System") next to a name — not a second full-length
+          string. With a real name+email, the name (no truncate on
+          children) could wrap to two lines while the single-line email
+          stayed vertically centered against the *whole* row, landing
+          beside the name's second line instead of below it. Stacking both
+          inside children (email truncated, name not) avoids the collision
+          instead of fighting ListRow's layout for this one special case. */}
       <ListSection>
         <ListRow
           icon={User}
-          value={user?.email}
           chevron
           onClick={openEditProfile}
         >
           <div className="text-base font-medium">{user?.name ?? 'User'}</div>
+          <div className="text-sm text-ink-tertiary truncate">{user?.email}</div>
         </ListRow>
       </ListSection>
 
@@ -412,6 +512,78 @@ export default function SettingsPage() {
         </ListSection>
       )}
 
+      {/* Friend referral (PRD-112) — a completely separate account for the
+          friend, not another member of this family; no organizer gate. */}
+      {family && (
+        <ListSection title="Refer a Friend">
+          <ListRow
+            icon={Gift}
+            label={referralCode ? `Your link: /signup?ref=${referralCode}` : 'Loading…'}
+            value={
+              referralCode ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleCopyReferralLink() }}
+                  className="text-xs text-family-400 font-semibold px-2 py-1 rounded-lg bg-family-500/10 flex items-center gap-1"
+                >
+                  {referralCopied ? <Check size={12} /> : <Copy size={12} />}
+                  {referralCopied ? 'Copied' : 'Copy'}
+                </button>
+              ) : null
+            }
+          />
+          {(referralSummary.pending > 0 || referralSummary.rewarded > 0) && (
+            <ListRow>
+              <p className="text-xs text-ink-tertiary">
+                {referralSummary.rewarded} friend{referralSummary.rewarded === 1 ? '' : 's'} joined and rewarded
+                {referralSummary.pending > 0 ? ` · ${referralSummary.pending} pending` : ''}
+              </p>
+            </ListRow>
+          )}
+        </ListSection>
+      )}
+
+      {/* On-device crisis drafts (PRD-113) — hidden entirely on a browser
+          without WebGPU rather than shown disabled; no dead toggle to
+          explain. */}
+      {onDeviceSupported && (
+        <ListSection title="Privacy">
+          <ListRow icon={ShieldCheck}>
+            <div className="flex items-center justify-between w-full gap-3">
+              <div className="text-left min-w-0">
+                <div className="text-base font-medium">Generate crisis drafts on this device</div>
+                <div className="text-xs text-ink-tertiary mt-0.5">
+                  {onDeviceDownloading
+                    ? `Downloading… ${onDeviceProgress}%`
+                    : 'A one-time ~700MB download, then life-event drafts never leave this device'}
+                </div>
+              </div>
+              <button
+                role="switch"
+                aria-checked={onDeviceEnabled}
+                onClick={async (e) => {
+                  e.stopPropagation()
+                  if (onDeviceDownloading) return
+                  haptic('light')
+                  const next = !onDeviceEnabled
+                  if (next) {
+                    setOnDeviceDownloading(true)
+                    const ok = await enableOnDeviceModel(setOnDeviceProgress)
+                    setOnDeviceDownloading(false)
+                    if (!ok) { haptic('warning'); return }
+                  }
+                  persistOnDeviceEnabled(next)
+                  setOnDeviceEnabled(next)
+                  haptic('success')
+                }}
+                className={`w-12 h-7 rounded-full flex-shrink-0 flex items-center px-1 transition-colors ${onDeviceEnabled ? 'bg-family-500' : 'bg-tint/10'}`}
+              >
+                <motion.div className="w-5 h-5 rounded-full bg-white" animate={{ x: onDeviceEnabled ? 20 : 0 }} />
+              </button>
+            </div>
+          </ListRow>
+        </ListSection>
+      )}
+
       {/* Access requests (PRD-110) — organizer-only. A pending request never
           grants any access by itself; this is the one place that does. */}
       {isOrganizer && accessRequests.length > 0 && (
@@ -479,6 +651,17 @@ export default function SettingsPage() {
             className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
           />
 
+          <label className="block">
+            <div className="text-xs text-ink-tertiary mb-1.5">Date of birth (optional)</div>
+            <input
+              type="date"
+              value={memberDob}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setMemberDob(e.target.value)}
+              className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+            />
+          </label>
+
           <div className="flex gap-2">
             {INVITABLE_ROLES.map((role) => {
               const RoleIcon = ROLE_ICONS[role] ?? User
@@ -539,6 +722,43 @@ export default function SettingsPage() {
           <div className="text-xs text-ink-tertiary mt-0.5">Email, bank</div>
         </ListRow>
       </ListSection>
+
+      {/* Push notifications — only shown on browsers that support them.
+          Subscribing is the opt-in: the OS permission prompt is the
+          explicit gesture, and Oak pushes what the detectors produce
+          (renewals, new insights) — never marketing. */}
+      {pushSupported && (
+        <ListSection title="Notifications">
+          <ListRow icon={Bell}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-base font-medium">Push notifications</div>
+                <div className="text-xs text-ink-tertiary mt-0.5">
+                  {pushAvailable === false
+                    ? 'Not available on this server yet'
+                    : 'Renewals and new insights — never marketing'}
+                </div>
+              </div>
+              <button
+                role="switch"
+                aria-checked={pushEnabled}
+                aria-label="Push notifications"
+                disabled={pushAvailable === false || pushBusy}
+                onClick={handlePushToggle}
+                className={`relative w-12 h-7 rounded-full transition-colors disabled:opacity-40 flex-shrink-0 ${
+                  pushEnabled ? 'bg-family-500' : 'bg-tint/10'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 w-6 h-6 rounded-full bg-white transition-transform ${
+                    pushEnabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+                  }`}
+                />
+              </button>
+            </div>
+          </ListRow>
+        </ListSection>
+      )}
 
       {/* Financial profile */}
       <ListSection title="Personalized Insights">

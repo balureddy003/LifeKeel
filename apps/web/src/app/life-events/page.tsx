@@ -83,7 +83,7 @@ export default function LifeEventsPage() {
     const event = await reportLifeEvent(selectedType, affectedMemberId || undefined)
     setSubmitting(false)
     if (!event) {
-      setError("Couldn't report this right now — please try again.")
+      setError("That didn't go through — nothing was recorded. You can try again whenever you're ready.")
       return
     }
     router.push(`/life-events/${event.id}`)
@@ -118,7 +118,13 @@ export default function LifeEventsPage() {
                     <event.icon size={22} className="text-danger" strokeWidth={1.5} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-base font-semibold truncate">{event.label}</div>
+                    {/* Same finding and fix as events/page.tsx's "What If?"
+                        list: titles ("Disability / critical illness",
+                        "Medical emergency") were truncating to
+                        "Disability / cri..." despite vertical room to
+                        wrap. Only the less-critical description stays
+                        single-line truncated. */}
+                    <div className="text-base font-semibold leading-snug line-clamp-2">{event.label}</div>
                     <div className="text-xs text-ink-tertiary truncate">{event.description}</div>
                   </div>
                   <ChevronRight size={18} className="text-ink-tertiary" />

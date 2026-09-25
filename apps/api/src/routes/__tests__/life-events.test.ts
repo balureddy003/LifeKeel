@@ -37,7 +37,32 @@ vi.mock('../../signals.js', () => ({
   }),
 }))
 
+interface NudgeStateDoc {
+  tenant_id: string
+  active: boolean
+  reason?: string
+  triggered_at?: Date
+}
+let nudgeStateStore: NudgeStateDoc[] = []
+
 vi.mock('../../db.js', () => ({
+  // PRD-111: a plain in-memory stand-in for family_life_change_nudge_state —
+  // getLifeChangeNudgeStateCollection is a trivial database.collection(name)
+  // wrapper in real code, so the mock can be equally trivial here.
+  getLifeChangeNudgeStateCollection: vi.fn(() => ({
+    findOne: async (filter: Record<string, unknown>) =>
+      nudgeStateStore.find((d) => d.tenant_id === filter['tenant_id'] && (filter['active'] === undefined || d.active === filter['active'])) ?? null,
+    updateOne: async (filter: Record<string, unknown>, update: { $set: Partial<NudgeStateDoc> }, opts?: { upsert?: boolean }) => {
+      let doc = nudgeStateStore.find((d) => d.tenant_id === filter['tenant_id'])
+      if (!doc) {
+        if (!opts?.upsert) return { matchedCount: 0, modifiedCount: 0 }
+        doc = { tenant_id: filter['tenant_id'] as string, active: false }
+        nudgeStateStore.push(doc)
+      }
+      Object.assign(doc, update.$set)
+      return { matchedCount: 1, modifiedCount: 1 }
+    },
+  })),
   getSignalsCollection: vi.fn(async () => ({
     find: (filter: Record<string, unknown>) => ({
       sort: () => ({
@@ -100,6 +125,10 @@ const BASE_PROFILE = {
   education_funds: [] as unknown[],
   policies: [] as Array<{ type: string; provider: string; coverage_amount_minor: number; monthly_premium_minor: number }>,
 }
+
+beforeEach(() => {
+  nudgeStateStore = []
+})
 
 function makeDb(profile: typeof BASE_PROFILE | null) {
   const col = {
@@ -355,6 +384,18 @@ describe('PRD-108: POST /family/life-events/:id/steps/:stepId/prepare', () => {
     expect(res.json().draft).toBeNull()
   })
 
+  it('guardrail: PRD-111 nudge code never names a product/provider or guesses the specific event — CLAUDE.md\'s second rule, mechanically enforced', () => {
+    const routeSource = readFileSync(new URL('../life-events.ts', import.meta.url), 'utf-8')
+    const detectSource = readFileSync(new URL('../../life-events/detect-unreported-change.ts', import.meta.url), 'utf-8')
+    // The reason codes themselves are fine (audit-log-only, server-internal)
+    // — what must never appear is a user-facing string guessing the event
+    // ("job loss", "lost your") or naming a product/provider/policy.
+    const forbidden = /lost your job|you'?ve been made redundant|switch to|compare quotes|best policy|recommended policy/i
+    for (const source of [routeSource, detectSource]) {
+      expect(source).not.toMatch(forbidden)
+    }
+  })
+
   it('guardrail: life-events.ts and render-playbook.ts never import SendGrid or read its API key', () => {
     const routeSource = readFileSync(new URL('../life-events.ts', import.meta.url), 'utf-8')
     const renderSource = readFileSync(new URL('../../life-events/render-playbook.ts', import.meta.url), 'utf-8')
@@ -453,5 +494,54 @@ describe('Remediation item 19: POST /family/life-events/:id/steps/:stepId/comple
     const get = await app.inject({ method: 'GET', url: '/family/life-events' })
     const event = get.json().events.find((e: any) => e.id === id)
     expect(event.completed_step_ids).toEqual(['runway'])
+  })
+})
+
+describe('PRD-111: GET /family/life-events/nudge and POST /nudge/dismiss', () => {
+  beforeEach(() => {
+    signalsStore = []
+  })
+
+  it('reports inactive when no nudge state exists for the tenant', async () => {
+    const { app } = await buildApp()
+    const res = await app.inject({ method: 'GET', url: '/family/life-events/nudge' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ active: false })
+  })
+
+  it('reports active once a nudge is flagged, and never returns a reason', async () => {
+    const { app } = await buildApp()
+    nudgeStateStore.push({ tenant_id: TENANT, active: true, reason: 'employment_status_change', triggered_at: new Date() })
+
+    const res = await app.inject({ method: 'GET', url: '/family/life-events/nudge' })
+    expect(res.json()).toEqual({ active: true })
+    expect(JSON.stringify(res.json())).not.toContain('employment_status_change')
+  })
+
+  it('dismiss clears an active nudge', async () => {
+    const { app } = await buildApp()
+    nudgeStateStore.push({ tenant_id: TENANT, active: true, reason: 'salary_to_zero' })
+
+    const dismiss = await app.inject({ method: 'POST', url: '/family/life-events/nudge/dismiss' })
+    expect(dismiss.statusCode).toBe(200)
+
+    const get = await app.inject({ method: 'GET', url: '/family/life-events/nudge' })
+    expect(get.json()).toEqual({ active: false })
+  })
+
+  it('reporting a life event while a nudge is active clears it automatically', async () => {
+    const { app } = await buildApp()
+    nudgeStateStore.push({ tenant_id: TENANT, active: true, reason: 'emergency_fund_drained' })
+
+    await app.inject({ method: 'POST', url: '/family/life-events', payload: { event_type: 'job_loss' } })
+
+    const get = await app.inject({ method: 'GET', url: '/family/life-events/nudge' })
+    expect(get.json()).toEqual({ active: false })
+  })
+
+  it('reporting a life event with no active nudge is a no-op, not an error', async () => {
+    const { app } = await buildApp()
+    const res = await app.inject({ method: 'POST', url: '/family/life-events', payload: { event_type: 'job_loss' } })
+    expect(res.statusCode).toBe(201)
   })
 })

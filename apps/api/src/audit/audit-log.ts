@@ -29,6 +29,7 @@ export type AuditAction =
   | 'insight.prepare'
   | 'assistant.ask'
   | 'detector.create'
+  | 'detector.eval'
   | 'detector.update'
   | 'detector.delete'
   | 'detector.rollback'
@@ -60,6 +61,17 @@ export type AuditAction =
   | 'family.join_approved'
   | 'family.join_denied'
   | 'family.invite_code_reset'
+  | 'life_event.nudge_shown'
+  | 'life_event.nudge_dismissed'
+  | 'life_event.nudge_acted_on'
+  | 'referral.attributed'
+  | 'referral.rewarded'
+  | 'insight.prepare_on_device'
+  | 'insight.review_release'
+  | 'insight.review_discard'
+  | 'insight.auto_execute'
+  | 'reminder.sent'
+  | 'reminder.cancelled'
 
 export interface AuditEntry {
   tenant_id: string

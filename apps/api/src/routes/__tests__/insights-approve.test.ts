@@ -64,7 +64,9 @@ function makeInsightsCol(insight: Record<string, unknown>) {
 
 function makeDb() {
   const insightsColRaw = { countDocuments: vi.fn(async () => 0), find: () => ({ toArray: async () => [] }) }
-  const tenantSettingsCol = { findOne: vi.fn(async () => null) }
+  // Trust-scope increments (workflow_id ?? detector_id) upsert into
+  // tenant_settings on every approval now — the fake needs updateOne.
+  const tenantSettingsCol = { findOne: vi.fn(async () => null), updateOne: vi.fn(async () => ({})) }
   const tenantsCol = { findOne: vi.fn(async () => null) }
   const verifiedMomentsCol = { updateOne: vi.fn(async () => ({ acknowledged: true })) }
   return {
@@ -204,8 +206,11 @@ describe('POST /insights/:id/retry-execution', () => {
     const body = res.json()
     expect(body.insight.state).toBe('completed')
     expect(body.message).toBe('All actions completed')
-    // execution_failed -> approved -> completed
-    expect(col.findOneAndUpdate.mock.calls[0]![0]).toMatchObject({ state: 'execution_failed' })
+    // execution_failed -> approved -> completed. The claim filter also
+    // covers insights stranded in 'approved' by a crash — asserted via $or.
+    const claimFilter = col.findOneAndUpdate.mock.calls[0]![0]
+    expect(claimFilter.id).toBe(INSIGHT_ID)
+    expect(claimFilter.$or).toEqual(expect.arrayContaining([{ state: 'execution_failed' }]))
     expect(col.findOneAndUpdate.mock.calls[0]![1].$set).toMatchObject({ state: 'approved' })
   })
 

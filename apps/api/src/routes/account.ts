@@ -58,7 +58,12 @@ const DELETABLE_COLLECTIONS = [
   'outcome_events',
   'delivery_preferences',
   'delivery_queue',
+  'delivery_receipts',
   'digest_queue',
+  'move_rewrite_queue',
+  'manual_review_queue',
+  'move_judge_verdicts',
+  'reminders',
   'web_push_subscriptions',
   'mobile_push_tokens',
 ] as const
@@ -79,7 +84,7 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
   app.get('/account/export', async (request, reply) => {
     const { tenant_id, user_id } = request.authContext
 
-    const [user, family, profile, documents, insights, goals, signals, receipts, audit] =
+    const [user, family, profile, documents, insights, goals, signals, receipts, audit, reminders] =
       await Promise.all([
         db.collection('users').findOne({ tenant_id, id: user_id }),
         db.collection('family_groups').findOne({ tenant_id }),
@@ -90,6 +95,7 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
         db.collection('signals').find({ tenant_id }).toArray(),
         db.collection('action_receipts').find({ tenant_id }).toArray(),
         db.collection('audit_log').find({ tenant_id }).toArray(),
+        db.collection('reminders').find({ tenant_id }).toArray(),
       ])
 
     getAuditLogger()?.fromRequest(request, 'account.exported', 'account', tenant_id, {})
@@ -118,6 +124,7 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
         goals,
         signals,
         action_receipts: receipts,
+        reminders,
         audit_log: audit,
       })
   })

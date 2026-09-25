@@ -15,6 +15,8 @@ export interface FamilyMemberUser {
   emoji: string
   status: 'active' | 'pending'
   joinedAt: string
+  /** ISO 'YYYY-MM-DD', optional — see apps/web/src/lib/age.ts for deriving age/years-until from it. */
+  dateOfBirth?: string
 }
 
 export interface FamilyGroup {

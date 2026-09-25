@@ -1,0 +1,82 @@
+# Golden eval cases for detectors/family/retirement-gap.yaml.
+# event_type mirrors family-financial-profile.ts: 'family.pension'. The
+# projected/sentinel fields are outputs of projectRetirement() in that file —
+# cases feed them pre-computed, the same way the route does.
+cases:
+  - id: behind-target-affordable-fix
+    description: Projected age slips past target but the contribution increase is realistic
+    event_type: family.pension
+    data:
+      current_age: 40
+      target_retirement_age: 65
+      pension_balance_minor: 5000000
+      target_retirement_income_minor: 3000000
+      projected_retirement_age: 70
+      additional_monthly_contribution_needed_minor: 100000
+      achievable_retirement_income_minor: 2000000
+      monthly_salary_minor: 500000
+    expected_insights:
+      - rule_id: retirement_behind_target_age
+        min_or_score: 0.5
+
+  - id: gap-too-large-for-contributions
+    description: Needed monthly increase exceeds half the household salary
+    event_type: family.pension
+    data:
+      current_age: 55
+      target_retirement_age: 65
+      pension_balance_minor: 5000000
+      target_retirement_income_minor: 4000000
+      projected_retirement_age: 78
+      additional_monthly_contribution_needed_minor: 400000
+      achievable_retirement_income_minor: 1500000
+      monthly_salary_minor: 500000
+    expected_insights:
+      - rule_id: retirement_gap_unaffordable_by_contributions
+        min_or_score: 0.5
+
+  - id: already-past-target-with-shortfall
+    description: At/past target age with a pension that can't sustain the target income
+    event_type: family.pension
+    data:
+      current_age: 68
+      target_retirement_age: 65
+      pension_balance_minor: 3000000
+      target_retirement_income_minor: 3000000
+      projected_retirement_age: 65
+      additional_monthly_contribution_needed_minor: 9007199254740991
+      achievable_retirement_income_minor: 1000000
+      monthly_salary_minor: 0
+    expected_insights:
+      - rule_id: retirement_gap_unaffordable_by_contributions
+        min_or_score: 0.5
+
+  - id: no-pension-at-30
+    description: No pension balance listed, working-age adult
+    event_type: family.pension
+    data:
+      current_age: 30
+      target_retirement_age: 65
+      pension_balance_minor: 0
+      target_retirement_income_minor: 3000000
+      projected_retirement_age: 65
+      additional_monthly_contribution_needed_minor: 0
+      achievable_retirement_income_minor: 0
+      monthly_salary_minor: 400000
+    expected_insights:
+      - rule_id: no_retirement_savings
+        min_or_score: 0.5
+
+  - id: on-track
+    description: Projected retirement age beats target, balance exists
+    event_type: family.pension
+    data:
+      current_age: 40
+      target_retirement_age: 65
+      pension_balance_minor: 20000000
+      target_retirement_income_minor: 2000000
+      projected_retirement_age: 62
+      additional_monthly_contribution_needed_minor: 0
+      achievable_retirement_income_minor: 2500000
+      monthly_salary_minor: 500000
+    expected_silent: true

@@ -35,6 +35,41 @@ how confident the detector/model is. See ARCHITECTURE.md's trust-tier model
 money, or claims to act "on the family's behalf." When in doubt, the action
 belongs one tier lower than you think it does.
 
+## The second rule: never cross into regulated advice or arranging
+
+A deliberate, durable business decision, separate from the trust-tier rule
+above: **Agent Oak stays outside any activity that would require FCA/SEC-
+style regulatory authorization** — giving personal recommendations on
+retail investment/insurance products, arranging or advising on insurance
+contracts, payment initiation — permanently, not as a stage the product
+grows out of. This is not the same axis as the trust-tier rule: a pure
+Tier 0 insight that never touches autonomous execution can still trip
+this if its *content* reads as a personal recommendation rather than
+information.
+
+Concretely:
+- Detector/insight copy and the assistant's output describe what's *on
+  file* and estimate a possible gap — never "buy X," never name or steer
+  toward a specific provider/policy, always point to "a licensed
+  professional" / "compare quotes from multiple insurers" rather than
+  acting as the intermediary. `detectors/family/*.yaml`'s
+  `reasoning_template`/`actions` fields and `assistant.ts`'s
+  `SYSTEM_PROMPT` already follow this pattern — match it in anything new,
+  don't relax it.
+- Never build a "here's a better policy, switch to this one" flow, even
+  as a Tier 0/1 prepare-only draft — that's insurance *arranging*, a
+  separate regulated activity from giving information. PRD-103's drafted-
+  outreach mechanism stays scoped to "notify your existing provider,"
+  never a product comparison or switch recommendation.
+- When competitive or market research (see `docs/reviews/`) surfaces an
+  idea that implies Agent Oak becoming more advice-like, or investing in
+  compliance/audit infrastructure to support giving advice, the right
+  response is narrowing scope back to informational — not building out
+  the compliance machinery to support crossing the line. Compliance
+  overhead avoided by staying out of regulated activity in the first
+  place beats compliance overhead paid for after deciding to compete
+  there.
+
 ## Conventions
 
 - **TypeScript**, strict mode, `pnpm` workspace, `turbo` for build

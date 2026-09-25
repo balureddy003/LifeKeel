@@ -4,10 +4,11 @@ import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Check, Copy, HelpCircle, Loader2, Mail, PenLine, ShieldAlert } from 'lucide-react'
-import { GlassCard, GlassButton, PageHeader } from '@/components/Glass'
+import { ArrowLeft, Check, Copy, HelpCircle, Loader2, Mail, PenLine, Printer, ShieldAlert } from 'lucide-react'
+import { GlassCard, GlassButton, PageHeader, PageTransition } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
-import { fetchLifeEvents, prepareLifeEventStepDraft, setLifeEventStepDone, type LifeEvent, type LifeEventPlaybookStep, type LifeEventType } from '@/lib/api'
+import { fetchLifeEvents, prepareLifeEventStepDraft, setLifeEventStepDone, pingOnDeviceDraftUsed, type LifeEvent, type LifeEventPlaybookStep, type LifeEventType } from '@/lib/api'
+import { isOnDeviceEnabled, isOnDeviceSupported, generateDraftOnDevice } from '@/lib/onDeviceLlm'
 
 // Same reasoning as /life-events's own notice: a user can land here directly
 // (a shared link, a return visit) without ever seeing Emergency Mode's
@@ -76,9 +77,24 @@ function StepDraft({ eventId, step }: { eventId: string; step: LifeEventPlaybook
     haptic('light')
     setDrafting(true)
     setDraftError(null)
+
+    // PRD-113: on-device first when the family has opted in and the
+    // browser actually supports it — any failure here (model not
+    // loaded, generation error) falls through to the existing cloud
+    // path transparently, never surfacing a raw error for this branch.
+    if (isOnDeviceEnabled() && isOnDeviceSupported()) {
+      const onDeviceDraft = await generateDraftOnDevice(step.body)
+      if (onDeviceDraft) {
+        setDraftText(onDeviceDraft)
+        setDrafting(false)
+        pingOnDeviceDraftUsed(eventId, step.id)
+        return
+      }
+    }
+
     const draft = await prepareLifeEventStepDraft(eventId, step.id)
     setDraftText(draft?.content ?? null)
-    if (!draft) setDraftError("Couldn't generate a draft right now — please try again later.")
+    if (!draft) setDraftError("Oak couldn't write that draft just now — nothing was lost, try again in a moment.")
     setDrafting(false)
   }
 
@@ -139,6 +155,7 @@ export default function LifeEventPlaybookClient() {
   const [event, setEvent] = useState<LifeEvent | null | undefined>(undefined)
   const [doneIds, setDoneIds] = useState<Set<string>>(new Set())
   const [syncError, setSyncError] = useState(false)
+  const [queuedOffline, setQueuedOffline] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -171,7 +188,12 @@ export default function LifeEventPlaybookClient() {
     saveDoneIds(params.eventId, next)
     setSyncError(false)
     setLifeEventStepDone(params.eventId, stepId, done).then((serverIds) => {
-      if (serverIds === null) {
+      if (serverIds === 'queued') {
+        // Offline — the toggle stays and the mutation replays on reconnect.
+        // Marked as pending rather than an error: nothing failed.
+        setSyncError(false)
+        setQueuedOffline(true)
+      } else if (serverIds === null) {
         // Revert to the pre-toggle state — the optimistic change didn't land.
         setDoneIds((current) => {
           const reverted = new Set(current)
@@ -182,6 +204,7 @@ export default function LifeEventPlaybookClient() {
         setSyncError(true)
       } else {
         setDoneIds(new Set(serverIds))
+        setQueuedOffline(false)
       }
     })
   }
@@ -213,6 +236,7 @@ export default function LifeEventPlaybookClient() {
   const completedCount = playbook.steps.filter((s) => doneIds.has(s.id)).length
 
   return (
+    <PageTransition>
     <div className="px-5 pt-2 space-y-5">
       <PageHeader
         title={playbook.title}
@@ -231,11 +255,25 @@ export default function LifeEventPlaybookClient() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
         <div className="flex items-center justify-between mb-3">
           <span className="text-sm font-semibold text-ink-secondary">Steps</span>
-          <span className="text-xs text-ink-tertiary">{completedCount}/{playbook.steps.length} done</span>
+          <span className="flex items-center gap-3">
+            <button
+              onClick={() => { haptic('light'); window.print() }}
+              className="text-xs font-semibold text-family-400 flex items-center gap-1 print:hidden"
+              aria-label="Print this plan"
+            >
+              <Printer size={12} /> Print
+            </button>
+            <span className="text-xs text-ink-tertiary">{completedCount}/{playbook.steps.length} done</span>
+          </span>
         </div>
         {syncError && (
           <p role="status" aria-live="polite" className="text-xs text-danger mb-3">
-            Couldn't save that change — check your connection and try again.
+            That change didn't save — the step is back how it was. Check your connection and try again.
+          </p>
+        )}
+        {queuedOffline && !syncError && (
+          <p role="status" aria-live="polite" className="text-xs text-ink-tertiary mb-3">
+            You're offline — your checkmarks are saved here and will sync when you're back online.
           </p>
         )}
         <div className="space-y-2">
@@ -274,5 +312,6 @@ export default function LifeEventPlaybookClient() {
         </div>
       </motion.div>
     </div>
+    </PageTransition>
   )
 }

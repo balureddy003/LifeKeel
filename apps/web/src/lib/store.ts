@@ -84,6 +84,14 @@ interface AppState {
   // can show a badge without fetching inbox items on every page.
   inboxUnreadCount: number
   setInboxUnreadCount: (count: number) => void
+
+  // Insight dismissal learning — per-detector count of explicit dismisses.
+  // A family that dismisses the same kind of insight twice is telling Oak
+  // it's noise; surfaces that *feature* an insight (the Home hero card)
+  // should stop picking that detector, while the insight itself still
+  // exists and still counts as open elsewhere.
+  detectorDismissals: Record<string, number>
+  noteDetectorDismissal: (detectorId: string) => void
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 11)
@@ -199,6 +207,16 @@ export const useAppStore = create<AppState>()(
       // Inbox badge
       inboxUnreadCount: 0,
       setInboxUnreadCount: (count) => set({ inboxUnreadCount: count }),
+
+      // Insight dismissal learning
+      detectorDismissals: {},
+      noteDetectorDismissal: (detectorId) =>
+        set((state) => ({
+          detectorDismissals: {
+            ...state.detectorDismissals,
+            [detectorId]: (state.detectorDismissals[detectorId] ?? 0) + 1,
+          },
+        })),
     }),
     {
       name: 'family-ai-store',
@@ -208,6 +226,7 @@ export const useAppStore = create<AppState>()(
         family: state.family,
         mode: state.mode,
         dismissedInboxIds: state.dismissedInboxIds,
+        detectorDismissals: state.detectorDismissals,
         profileCompleteness: state.profileCompleteness,
         financialProfileSubmitted: state.financialProfileSubmitted,
       }),

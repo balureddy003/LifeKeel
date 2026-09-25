@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { AlertTriangle, ArrowLeft, Bot, Check, CheckCircle2, Copy, HelpCircle, Loader2, Mail, PenLine } from 'lucide-react'
 import { LIFE_EVENTS } from '@/lib/life-data'
-import { GlassCard, GlassButton, PageHeader } from '@/components/Glass'
+import { GlassCard, GlassButton, PageHeader, PageTransition } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { useEventReadiness } from '@/lib/useFamilyData'
 import { useAuth } from '@/lib/auth-context'
@@ -196,7 +196,7 @@ export default function EventDetailClient() {
     setDraftError(null)
     const draft = await prepareInsightDraft(insightId)
     setDraftText(draft?.content ?? null)
-    if (!draft) setDraftError("Couldn't generate a draft right now — please try again later.")
+    if (!draft) setDraftError("Oak couldn't write that draft just now — nothing was lost, try again in a moment.")
     setDrafting(false)
   }
 
@@ -230,6 +230,7 @@ export default function EventDetailClient() {
   const completedCount = actions.filter((a) => a.done).length
 
   return (
+    <PageTransition>
     <div className="px-5 pt-2 space-y-5">
       <PageHeader
         title={event.label}
@@ -409,5 +410,6 @@ export default function EventDetailClient() {
         </Link>
       </motion.div>
     </div>
+    </PageTransition>
   )
 }

@@ -18,6 +18,7 @@ import {
 } from './api'
 import { useAuth } from './auth-context'
 import type { TimelineEvent } from './modes'
+import { calculateAge } from './age'
 
 export function useFamilyInsights() {
   const [insights, setInsights] = useState<FamilyInsight[]>([])
@@ -78,11 +79,23 @@ export function useFamilyReadinessScore() {
     let cancelled = false
     async function load() {
       setLoading(true)
-      const { score: apiScore, hasLiveData: liveData } = await fetchFamilyReadinessScore()
-      if (!cancelled) {
-        setScore(apiScore)
-        setHasLiveData(liveData)
-        setLoading(false)
+      try {
+        const { score: apiScore, hasLiveData: liveData } = await fetchFamilyReadinessScore()
+        if (!cancelled) {
+          setScore(apiScore)
+          setHasLiveData(liveData)
+        }
+      } catch {
+        // Live-verification finding: this had no catch — a rejected fetch
+        // left `loading` true forever, an infinite skeleton on the home
+        // page's score card with no error shown. Honest zero/no-data state
+        // instead, matching fetchFamilyReadinessScore's own fallback shape.
+        if (!cancelled) {
+          setScore(0)
+          setHasLiveData(false)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     }
     load()
@@ -164,11 +177,20 @@ export function useFamilyHealthDomains() {
 
   useEffect(() => {
     let cancelled = false
-    fetchFinancialProfile().then((p) => {
-      if (cancelled) return
-      setHasProfile(!!p)
-      setProfileLoading(false)
-    })
+    fetchFinancialProfile()
+      .then((p) => {
+        if (cancelled) return
+        setHasProfile(!!p)
+      })
+      .catch(() => {
+        // Same "unhandled rejection leaves loading stuck forever" gap
+        // useFamilyReadinessScore had — no profile is the safe fallback,
+        // same as a genuine 404/null response.
+        if (!cancelled) setHasProfile(false)
+      })
+      .finally(() => {
+        if (!cancelled) setProfileLoading(false)
+      })
     return () => { cancelled = true }
   }, [])
 
@@ -195,40 +217,40 @@ export function useFamilyHealthDomains() {
   return { domains, loading, error }
 }
 
+// Assumed university-start age for a "starts university" milestone — same
+// assumption the Financial Profile wizard's Education Funds step uses
+// (yearsUntil(dob, 18)), so this timeline and that step agree.
+const UNIVERSITY_START_AGE = 18
+
 /**
- * Generates timeline events from the real family roster. Without
- * birthdates (not currently in the family group schema), education
- * milestones can't be computed — returns an empty array so the UI
- * can show an honest empty state instead of fabricated events.
+ * Generates timeline events from the real family roster. Each child with a
+ * birthdate on file (see auth-types.ts's dateOfBirth, apps/web/src/lib/age.ts)
+ * gets a "starts university" milestone; a child with no birthdate yet
+ * contributes nothing — synchronous, local data, no network call, so this
+ * never has a loading or error state of its own to hang on.
  */
 export function useFamilyTimeline() {
   const { family } = useAuth()
-  const [events, setEvents] = useState<TimelineEvent[]>([])
-  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      const members = family?.members ?? []
-      if (members.length === 0) {
-        if (!cancelled) { setEvents([]); setLoading(false) }
-        return
-      }
-
-      // No birthdate field exists on family members yet, so there's no
-      // real basis for computing milestone years (e.g. university) —
-      // leave events empty rather than guessing a year, per the honest
-      // empty-state approach documented above.
-      if (!cancelled) { setEvents([]); setLoading(false) }
-    }
-    load()
-    return () => { cancelled = true }
-  }, [family])
+  const events: TimelineEvent[] = (family?.members ?? [])
+    .filter((m) => m.role === 'child' && m.dateOfBirth)
+    .map((m) => {
+      const currentYear = new Date().getFullYear()
+      const age = calculateAge(m.dateOfBirth!)
+      const year = currentYear + Math.max(0, UNIVERSITY_START_AGE - age)
+      return {
+        id: `university-${m.id}`,
+        emoji: '🎓',
+        label: `${m.name} starts university`,
+        year,
+        status: year > currentYear ? 'future' : year === currentYear ? 'current' : 'done',
+      } satisfies TimelineEvent
+    })
+    .sort((a, b) => a.year - b.year)
 
   return {
     events,
-    loading,
+    loading: false,
     hasData: events.length > 0,
     hasChildren: (family?.members ?? []).some((m) => m.role === 'child'),
   }

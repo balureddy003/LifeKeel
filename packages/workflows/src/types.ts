@@ -16,9 +16,10 @@ export type ActionReceiptOutcome =
   // Per-action execution outcomes (apps/api/src/actions/action-executor.ts) —
   // one receipt per recommended action on an approved insight, distinct from
   // the single decision-level 'approved' receipt above.
+  | 'pending'             // claimed for dispatch but no outcome recorded yet — a stale pending receipt means the dispatcher crashed mid-flight and the provider outcome is unknown
   | 'executed'            // a single recommended action ran and succeeded
   | 'execution_failed'    // ran and failed with a definite (e.g. 4xx) error — retrying won't help until the underlying cause is fixed
-  | 'execution_ambiguous' // ran and failed with an ambiguous (5xx/timeout/network) error — may have partially succeeded, safe to retry
+  | 'execution_ambiguous' // ran and failed with an ambiguous (5xx/timeout/network) error, or a pending claim expired — may have partially succeeded, reconcile before retrying
   | 'execution_skipped'   // dry-run, or the action classified as no-op (log_only) — no connector call made
 
 export interface ActionReceipt {
@@ -33,6 +34,8 @@ export interface ActionReceipt {
   outcome: ActionReceiptOutcome
   outcome_reason?: string             // human-readable reason for block/dismiss/failure
   executed_at: Date
+  claimed_at?: Date                   // when the current dispatch attempt was claimed (pending receipts only)
+  attempts?: number                   // dispatch attempt count — 1 on first claim, incremented on each retry
   approved_by?: string                // user_id if human-approved
   payload_hash: string                // SHA-256 of action payload — immutable audit + idempotency key
   dry_run: boolean

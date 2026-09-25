@@ -44,17 +44,11 @@ export class MoveJudge {
 
   async evaluate(
     input: JudgeInput,
-    options: { duplicateReasoning?: boolean } = {},
+    _options: { duplicateReasoning?: boolean } = {},
   ): Promise<JudgeVerdict> {
     const evaluated_at = new Date()
     if (input.insight.confidence_breakdown.combined_score < this.deliveryThreshold) {
       return { decision: 'skipped', judge_skipped: true, skip_reason: 'below_delivery_threshold', evaluated_at }
-    }
-    if (input.insight.reasoning.trim().length <= 50) {
-      return { decision: 'skipped', judge_skipped: true, skip_reason: 'trivial_reasoning', evaluated_at }
-    }
-    if (options.duplicateReasoning) {
-      return { decision: 'skipped', judge_skipped: true, skip_reason: 'duplicate_reasoning', evaluated_at }
     }
 
     try {
@@ -66,7 +60,7 @@ export class MoveJudge {
         evaluated_at,
       }
     } catch {
-      return { decision: 'skipped', judge_skipped: true, skip_reason: 'judge_failure', evaluated_at }
+      return { decision: 'block', judge_skipped: true, skip_reason: 'judge_failure', evaluated_at }
     }
   }
 

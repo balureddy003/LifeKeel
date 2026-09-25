@@ -89,7 +89,7 @@ function ConnectorSyncPanel({ connectorId }: { connectorId: string }) {
   return (
     <div className="mt-2 space-y-1.5">
       {resources.length === 0 ? (
-        <p className="text-xs text-ink-tertiary">No documents synced yet.</p>
+        <p className="text-xs text-ink-tertiary">Nothing synced yet — statements and renewals will appear here once the first sync completes.</p>
       ) : (
         <p className="text-xs text-ink-tertiary">
           {inProgress ? 'Syncing… ' : ''}{totalSynced} record{totalSynced === 1 ? '' : 's'} synced · last sync {timeAgo(lastSync)}
@@ -97,11 +97,11 @@ function ConnectorSyncPanel({ connectorId }: { connectorId: string }) {
       )}
       {lastError && (
         <p role="status" aria-live="polite" className="text-xs text-danger">
-          Last sync failed{lastError.status_text ? `: ${lastError.status_text}` : ''} ({timeAgo(lastError.at)})
+          Last sync didn't finish{lastError.status_text ? ` — ${lastError.status_text}` : ''} ({timeAgo(lastError.at)}). Already-synced data is unaffected.
         </p>
       )}
       {failed && (
-        <p role="status" aria-live="polite" className="text-xs text-danger">Couldn't start a re-sync — try again.</p>
+        <p role="status" aria-live="polite" className="text-xs text-danger">The re-sync didn't start — try again in a moment.</p>
       )}
       <button
         type="button"
@@ -153,7 +153,7 @@ export default function ConnectPage() {
       setConnectorConnected(connectorId, false)
       haptic('success')
     } else {
-      setError(`Failed to disconnect ${connectorId}. Please try again.`)
+      setError(`${connectorId} is still connected — the disconnect didn't go through. Try again in a moment.`)
     }
     setConnectingId(null)
   }

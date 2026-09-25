@@ -176,6 +176,27 @@ export function getGrowthEventsCollection(database: Db) {
   return database.collection<Record<string, unknown>>('growth_events')
 }
 
+// PRD-111: one doc per tenant tracking whether an unreported-life-change
+// nudge is currently active. `reason` is written for the audit log only —
+// no route ever returns it, so the frontend has no way to leak a guess
+// about what changed even by accident.
+export function getLifeChangeNudgeStateCollection(database: Db) {
+  return database.collection<{ tenant_id: string; active: boolean; reason?: string; triggered_at?: Date }>('family_life_change_nudge_state')
+}
+
+// PRD-112: one referral code per tenant (the referrer's own shareable
+// link), and one `referrals` doc per attributed signup (the referee).
+// Kept as two collections rather than one, mirroring family_groups vs
+// family_join_requests above — a code exists before any signup uses it,
+// a referral only exists once one does.
+export function getReferralCodesCollection(database: Db) {
+  return database.collection<Record<string, unknown>>('referral_codes')
+}
+
+export function getReferralsCollection(database: Db) {
+  return database.collection<Record<string, unknown>>('referrals')
+}
+
 export async function ensureOutcomeIndexes(database: Db): Promise<void> {
   await Promise.all([
     getOutcomeEventsCollection(database)

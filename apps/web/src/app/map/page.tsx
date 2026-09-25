@@ -23,7 +23,13 @@ export default function MapPage() {
           Back
         </Link>
         <div className="flex-1" />
-        <h1 className="text-sm font-semibold text-ink-secondary">Family Map</h1>
+        {/* Deliberately not the shared PageHeader — a full-screen canvas
+            view needs the vertical space a full title block would cost.
+            Live-verification finding: it had drifted to plain, small,
+            right-aligned text with none of the brand treatment every other
+            header carries (gradient + semibold) — staying compact, but
+            picking up the same gradient so it still reads as the same app. */}
+        <h1 className="text-base font-semibold tracking-tight bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">Family Map</h1>
       </motion.div>
 
       <div className="flex-1 px-5 pb-5 min-h-0">

@@ -35,7 +35,7 @@ export default function RequestPasswordResetPage() {
       setSent(true)
     } catch (err) {
       haptic('warning')
-      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+      setError(err instanceof Error ? err.message : "That didn't work — your password is unchanged. Try again in a moment.")
     } finally {
       setLoading(false)
     }
@@ -51,7 +51,7 @@ export default function RequestPasswordResetPage() {
         >
           <CheckCircle2 size={32} className="text-success" />
         </motion.div>
-        <h1 ref={sentHeadingRef} tabIndex={-1} className="text-2xl font-bold mb-2 outline-none">Check your email</h1>
+        <h1 ref={sentHeadingRef} tabIndex={-1} className="text-2xl font-semibold tracking-tight mb-2 outline-none bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">Check your email</h1>
         <p className="text-sm text-ink-tertiary max-w-xs mb-8">
           If an account exists for <span className="text-ink-primary font-medium">{email}</span>, we&apos;ve sent a link to reset your password. It expires in 1 hour.
         </p>
@@ -68,7 +68,7 @@ export default function RequestPasswordResetPage() {
         <div className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-3 mx-auto">
           <Mail size={32} className="text-family-400" />
         </div>
-        <h1 className="text-2xl font-bold">Reset your password</h1>
+        <h1 className="text-2xl font-semibold tracking-tight bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">Reset your password</h1>
         <p className="text-sm text-ink-tertiary mt-1">Enter your email and we&apos;ll send you a reset link</p>
       </div>
 

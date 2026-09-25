@@ -114,6 +114,9 @@ function makeDb(documentsSeed: Record<string, unknown>[] = [], profileSeed: Reco
 
   const insightDocs: Record<string, unknown>[] = []
   const insightsCol = {
+    find: (filter: Record<string, unknown>) => ({
+      toArray: async () => insightDocs.filter((d) => matchesFilter(d, filter)),
+    }),
     updateMany: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
       let modifiedCount = 0
       for (const doc of insightDocs) {

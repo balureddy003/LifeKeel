@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { PageHeader, GlassCard, GlassButton, EmptyState, Skeleton } from '@/components/Glass'
-import { ScrollText, Loader2 } from 'lucide-react'
+import { ScrollText, Loader2, Printer } from 'lucide-react'
+import { haptic } from '@/lib/haptics'
 import { fetchAuditLog, type AuditLogEntry } from '@/lib/api'
 
 // The raw action ids (insight.approve, billing.plan_upgraded, …) are
@@ -80,6 +81,18 @@ export default function AuditLogPage() {
         backHref="/settings"
         subtitle="Security-relevant actions on your family's account — kept for 7 years"
       />
+
+      {!loading && entries.length > 0 && (
+        <div className="flex justify-end print:hidden">
+          <button
+            onClick={() => { haptic('light'); window.print() }}
+            className="text-xs font-semibold text-family-400 flex items-center gap-1"
+            aria-label="Print this activity log"
+          >
+            <Printer size={12} /> Print
+          </button>
+        </div>
+      )}
 
       {loading && (
         <div className="space-y-2">

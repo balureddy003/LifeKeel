@@ -22,7 +22,10 @@ export interface DeploymentConfig {
   maxWorkflowRunsPerMinute: number
 }
 
-const rawMode = (process.env['KAIROS_DEPLOYMENT_MODE'] ?? 'dev').toLowerCase()
+const rawMode = (process.env['KAIROS_DEPLOYMENT_MODE'] ?? (process.env['NODE_ENV'] === 'production' ? 'cloud' : 'dev')).toLowerCase()
+if (process.env['NODE_ENV'] === 'production' && !['cloud', 'airgap', 'accountant'].includes(rawMode)) {
+  throw new Error('Production requires cloud, airgap, or accountant deployment mode')
+}
 
 function resolveMode(raw: string): DeploymentMode {
   if (raw === 'airgap') return 'airgap'

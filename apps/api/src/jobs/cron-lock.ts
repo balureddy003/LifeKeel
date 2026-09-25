@@ -22,22 +22,24 @@
  */
 
 import type { Db } from 'mongodb'
+import { randomUUID } from 'node:crypto'
 
 const DEFAULT_LOCK_TTL_MS = 5 * 60 * 1000
 
 export async function ensureCronLockIndex(db: Db): Promise<void> {
-  await db.collection('cron_locks').createIndex({ name: 1 }, { unique: true }).catch(() => {})
+  await db.collection('cron_locks').createIndex({ name: 1 }, { unique: true })
 }
 
-export async function acquireCronLock(db: Db, name: string, ttlMs = DEFAULT_LOCK_TTL_MS): Promise<boolean> {
+export async function acquireCronLock(db: Db, name: string, ttlMs = DEFAULT_LOCK_TTL_MS): Promise<string | false> {
   const now = new Date()
+  const owner = randomUUID()
   try {
     const result = await db.collection('cron_locks').findOneAndUpdate(
       { name, expires_at: { $lt: now } },
-      { $set: { name, acquired_at: now, expires_at: new Date(now.getTime() + ttlMs) } },
+      { $set: { name, owner, acquired_at: now, expires_at: new Date(now.getTime() + ttlMs) } },
       { upsert: true, returnDocument: 'after' },
     ) as Record<string, unknown> | null
-    return !!result
+    return result ? owner : false
   } catch (err) {
     // Duplicate-key error (code 11000): with a unique index on `name`,
     // an already-held (not-yet-expired) lock doc doesn't match the
@@ -50,18 +52,36 @@ export async function acquireCronLock(db: Db, name: string, ttlMs = DEFAULT_LOCK
   }
 }
 
-export async function releaseCronLock(db: Db, name: string): Promise<void> {
-  await db.collection('cron_locks').deleteOne({ name }).catch(() => {})
+export async function releaseCronLock(db: Db, name: string, owner: string): Promise<void> {
+  await db.collection('cron_locks').deleteOne({ name, owner })
+}
+
+export async function renewCronLock(db: Db, name: string, owner: string, ttlMs = DEFAULT_LOCK_TTL_MS): Promise<boolean> {
+  const now = new Date()
+  const result = await db.collection('cron_locks').updateOne(
+    { name, owner, expires_at: { $gt: now } },
+    { $set: { expires_at: new Date(now.getTime() + ttlMs) } },
+  )
+  return result.matchedCount === 1
 }
 
 /** Runs `fn` only if the named lock is acquired; always releases on the way out. Returns false (fn not run) if the lock was already held. */
-export async function withCronLock(db: Db, name: string, fn: () => Promise<unknown>, ttlMs?: number): Promise<boolean> {
-  const acquired = await acquireCronLock(db, name, ttlMs)
-  if (!acquired) return false
+export async function withCronLock(db: Db, name: string, fn: (signal: AbortSignal) => Promise<unknown>, ttlMs = DEFAULT_LOCK_TTL_MS): Promise<boolean> {
+  const owner = await acquireCronLock(db, name, ttlMs)
+  if (!owner) return false
+  const controller = new AbortController()
+  const timer = setInterval(() => {
+    void renewCronLock(db, name, owner, ttlMs).then(renewed => {
+      if (!renewed) controller.abort(new Error(`Lease lost: ${name}`))
+    }).catch(error => controller.abort(error))
+  }, Math.max(1, Math.floor(ttlMs / 3)))
+  timer.unref()
   try {
-    await fn()
+    await fn(controller.signal)
+    controller.signal.throwIfAborted()
   } finally {
-    await releaseCronLock(db, name)
+    clearInterval(timer)
+    await releaseCronLock(db, name, owner)
   }
   return true
 }
