@@ -1561,6 +1561,8 @@ export interface MarketingPost {
   approved_at?: string
   published_at?: string
   publish_error?: string
+  external_url?: string
+  metrics?: { likes?: number; reposts?: number; replies?: number }
 }
 
 /** Null when no channel is configured (503) or the request fails — distinct

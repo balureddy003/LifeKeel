@@ -7,7 +7,7 @@
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import Fastify from 'fastify'
-import { registerMarketingPostRoutes, publishDueMarketingPosts, generateDailyMarketingDrafts } from '../marketing-posts.js'
+import { registerMarketingPostRoutes, publishDueMarketingPosts, generateDailyMarketingDrafts, pollMarketingEngagement } from '../marketing-posts.js'
 import { AUTO_EXECUTE_TRUST_THRESHOLD } from '../../jobs/auto-execute-trusted.js'
 
 const TENANT = 'tenant-1'
@@ -285,6 +285,17 @@ describe('/marketing/posts', () => {
     posts[0]!['scheduled_at'] = new Date(Date.now() - 1000)
     expect(await publishDueMarketingPosts(db, postiz)).toBe(0)
     expect(postiz.createPost).not.toHaveBeenCalled()
+  })
+
+  it('stores the channel response external id/url on a successful publish', async () => {
+    const postiz = fakePostiz({
+      createPost: vi.fn(async () => ({ external_id: 'at://did:plc:1/app.bsky.feed.post/3k1', url: 'https://bsky.app/profile/oak/post/3k1' })),
+    })
+    const { app, posts } = await buildApp({ postiz })
+    await app.inject({ method: 'POST', url: '/marketing/posts', payload: { ...DRAFT, channel: 'bluesky' } })
+    await app.inject({ method: 'POST', url: `/marketing/posts/${posts[0]!['id']}/approve` })
+    expect(posts[0]!['external_id']).toBe('at://did:plc:1/app.bsky.feed.post/3k1')
+    expect(posts[0]!['external_url']).toBe('https://bsky.app/profile/oak/post/3k1')
   })
 
   it('dry_run_mode flips state without a Postiz call; the human review still earns trust', async () => {
@@ -613,5 +624,42 @@ describe('/marketing/performance', () => {
     const res = await app.inject({ method: 'GET', url: '/marketing/performance' })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual({ posts: [], channels: [], totals: { views: 0, cta_clicks: 0, signups: 0, leads: 0 } })
+  })
+})
+
+describe('pollMarketingEngagement', () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('writes like/repost/reply counts onto published bluesky posts; skips dry-runs and other channels', async () => {
+    const { db, posts } = await buildApp()
+    posts.push(
+      { id: 'p1', tenant_id: TENANT, channel: 'bluesky', state: 'published', external_id: 'at://did:plc:1/app.bsky.feed.post/3k1', published_at: new Date() },
+      { id: 'p2', tenant_id: TENANT, channel: 'x', state: 'published', external_id: 'tw-1', published_at: new Date() },
+      { id: 'p3', tenant_id: TENANT, channel: 'bluesky', state: 'published', dry_run: true, external_id: 'at://did/dry', published_at: new Date() },
+    )
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({ posts: [{ uri: 'at://did:plc:1/app.bsky.feed.post/3k1', likeCount: 7, repostCount: 2, replyCount: 1 }] }),
+          { status: 200 },
+        ),
+      ),
+    )
+    const n = await pollMarketingEngagement(db)
+    expect(n).toBe(1)
+    expect(posts[0]!['metrics']).toEqual({ likes: 7, reposts: 2, replies: 1 })
+    expect(posts[1]!['metrics']).toBeUndefined()
+    expect(posts[2]!['metrics']).toBeUndefined()
+  })
+
+  it('survives a transient Bluesky failure without touching metrics', async () => {
+    const { db, posts } = await buildApp()
+    posts.push({ id: 'p1', tenant_id: TENANT, channel: 'bluesky', state: 'published', external_id: 'at://did/1', published_at: new Date() })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('err', { status: 503 })))
+    expect(await pollMarketingEngagement(db)).toBe(0)
+    expect(posts[0]!['metrics']).toBeUndefined()
   })
 })

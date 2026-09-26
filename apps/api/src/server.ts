@@ -85,7 +85,7 @@ import { registerLifeEventRoutes } from './routes/life-events.js'
 import { registerFamilyInboxRoutes } from './routes/family-inbox.js'
 import { registerPushRoutes } from './routes/push.js'
 import { registerReminderRoutes } from './routes/reminders.js'
-import { registerMarketingPostRoutes, publishDueMarketingPosts, generateDailyMarketingDrafts } from './routes/marketing-posts.js'
+import { registerMarketingPostRoutes, publishDueMarketingPosts, generateDailyMarketingDrafts, pollMarketingEngagement } from './routes/marketing-posts.js'
 import { socialPublisherFromEnv, DbSocialPublisher } from './marketing/social-publisher.js'
 import { registerOperatorRoutes } from './routes/operator.js'
 import { getPlatformConfig, registerPublicStatusRoute } from './operator/platform-config.js'
@@ -255,6 +255,18 @@ try {
     }
   }, { missedExecutionTolerance: 3_600_000 })
   log.info({}, 'Marketing draft generation cron started')
+
+  // Engagement polling — hourly; refreshes like/repost/reply counts on
+  // published posts where the channel exposes public metrics (Bluesky).
+  cron.schedule('17 * * * *', async () => {
+    try {
+      await withCronLock(workflowDb, 'marketing-engagement', async () => {
+        await pollMarketingEngagement(workflowDb)
+      })
+    } catch (err) {
+      log.error({ err }, 'Marketing engagement sweep failed')
+    }
+  }, { missedExecutionTolerance: 600_000 })
 
   // Policy renewal reminders — hourly. Tier 3 autonomy: deterministic,
   // deduped, consent re-checked at send time, push-only to the member's

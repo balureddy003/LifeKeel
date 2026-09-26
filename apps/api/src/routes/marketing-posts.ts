@@ -68,6 +68,10 @@ export interface MarketingPostDoc {
   publish_error?: string
   generated?: 'llm' | 'template'
   source_blog_slug?: string
+  external_id?: string
+  external_url?: string
+  metrics?: { likes?: number; reposts?: number; replies?: number }
+  metrics_at?: Date
 }
 
 const CreatePostSchema = z.object({
@@ -187,17 +191,25 @@ async function publishPost(
     return { ok: false }
   }
   try {
-    await client.createPost({
+    const result = (await client.createPost({
       integrationId: post.integration_id,
       content: post.content,
       channel: post.channel,
       type: 'now',
       date: now,
       tenantId: post.tenant_id,
-    })
+    })) as { external_id?: string; url?: string } | undefined
     await col.updateOne(
       { id: post.id },
-      { $set: { state: 'published', published_at: new Date(), publish_error: null } },
+      {
+        $set: {
+          state: 'published',
+          published_at: new Date(),
+          publish_error: null,
+          ...(result?.external_id ? { external_id: result.external_id } : {}),
+          ...(result?.url ? { external_url: result.url } : {}),
+        },
+      },
     )
     return { ok: true }
   } catch (err) {
@@ -369,6 +381,47 @@ export async function marketingPerformance(db: Db): Promise<{
     { views: 0, cta_clicks: 0, signups: 0, leads: 0 },
   )
   return { posts, channels, totals }
+}
+
+/** Engagement sweep — poll channel APIs for like/repost/reply counts on
+ *  published posts from the last 14 days. Bluesky's app.bsky.feed.getPosts
+ *  is public (no auth) and batches 25 at:// uris per call. X/LinkedIn read
+ *  APIs need elevated scopes we don't hold — their posts simply keep
+ *  metrics unset rather than reporting fake zeros. */
+export async function pollMarketingEngagement(db: Db): Promise<number> {
+  const col = db.collection<MarketingPostDoc>('marketing_posts')
+  const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
+  const published = (await col.find({ state: 'published' }).toArray())
+    .filter((p) => p.external_id && !p.dry_run && (!p.published_at || p.published_at.getTime() >= cutoff.getTime()))
+    .slice(0, 200)
+
+  const bsky = published.filter((p) => p.channel === 'bluesky' && p.external_id!.startsWith('at://'))
+  let updated = 0
+  for (let i = 0; i < bsky.length; i += 25) {
+    const chunk = bsky.slice(i, i + 25)
+    const params = chunk.map((p) => `uris=${encodeURIComponent(p.external_id!)}`).join('&')
+    const res = await fetch(`https://bsky.social/xrpc/app.bsky.feed.getPosts?${params}`)
+    if (!res.ok) break // transient — the next tick retries
+    const data = (await res.json()) as {
+      posts?: { uri: string; likeCount?: number; repostCount?: number; replyCount?: number }[]
+    }
+    const byUri = new Map((data.posts ?? []).map((p) => [p.uri, p]))
+    for (const post of chunk) {
+      const rec = byUri.get(post.external_id!)
+      if (!rec) continue
+      await col.updateOne(
+        { id: post.id },
+        {
+          $set: {
+            metrics: { likes: rec.likeCount ?? 0, reposts: rec.repostCount ?? 0, replies: rec.replyCount ?? 0 },
+            metrics_at: new Date(),
+          },
+        },
+      )
+      updated += 1
+    }
+  }
+  return updated
 }
 
 export interface MarketingRouteOptions {

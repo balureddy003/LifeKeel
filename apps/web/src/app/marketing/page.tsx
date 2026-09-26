@@ -461,10 +461,24 @@ export default function MarketingPage() {
                     </button>
                   </div>
                 )}
-                {post.state === 'published' && post.published_at && (
-                  <div className="flex items-center gap-1.5 text-xs text-ink-tertiary mt-2">
-                    <Check size={13} className="text-success" />
-                    {new Date(post.published_at).toLocaleString()}
+                {post.state === 'published' && (
+                  <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-xs text-ink-tertiary mt-2">
+                    {post.published_at && (
+                      <span className="flex items-center gap-1.5">
+                        <Check size={13} className="text-success" />
+                        {new Date(post.published_at).toLocaleString()}
+                      </span>
+                    )}
+                    {post.metrics && (
+                      <span>
+                        {post.metrics.likes ?? 0} likes · {post.metrics.reposts ?? 0} reposts · {post.metrics.replies ?? 0} replies
+                      </span>
+                    )}
+                    {post.external_url && (
+                      <a href={post.external_url} target="_blank" rel="noopener noreferrer" className="text-family-400 font-semibold">
+                        View post ↗
+                      </a>
+                    )}
                   </div>
                 )}
               </GlassCard>
