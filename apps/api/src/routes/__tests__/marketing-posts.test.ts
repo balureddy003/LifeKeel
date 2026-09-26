@@ -33,6 +33,7 @@ function makeDb() {
   const posts: Record<string, unknown>[] = []
   const settingsDocs: Record<string, unknown>[] = []
   const systemEvents: Record<string, unknown>[] = []
+  const connections: Record<string, unknown>[] = []
   const postsCol = {
     createIndex: vi.fn(async () => ({})),
     insertOne: vi.fn(async (doc: Record<string, unknown>) => { posts.push(doc) }),
@@ -75,13 +76,36 @@ function makeDb() {
   const eventsCol = { insertOne: vi.fn(async (doc: Record<string, unknown>) => { systemEvents.push(doc) }) }
   // platform_config read by the global marketing_paused switch in publishPost
   const configCol = { findOne: vi.fn(async () => null) }
+  const connectionsCol = {
+    createIndex: vi.fn(async () => ({})),
+    findOne: vi.fn(async (filter: Record<string, unknown>) => connections.find((d) => matchesFilter(d, filter)) ?? null),
+    updateOne: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown>; $setOnInsert?: Record<string, unknown> }) => {
+      let doc = connections.find((d) => matchesFilter(d, filter))
+      if (!doc) {
+        doc = { ...filter, ...(update.$setOnInsert ?? {}) }
+        connections.push(doc)
+      }
+      applySet(doc, update.$set)
+      return { modifiedCount: 1 }
+    }),
+    deleteOne: vi.fn(async (filter: Record<string, unknown>) => {
+      const idx = connections.findIndex((d) => matchesFilter(d, filter))
+      if (idx === -1) return { deletedCount: 0 }
+      connections.splice(idx, 1)
+      return { deletedCount: 1 }
+    }),
+    find: (filter: Record<string, unknown>) => ({
+      toArray: async () => connections.filter((d) => matchesFilter(d, filter)),
+    }),
+  }
   const collections: Record<string, unknown> = {
     marketing_posts: postsCol,
     tenant_settings: settingsCol,
     system_events: eventsCol,
     platform_config: configCol,
+    social_connections: connectionsCol,
   }
-  return { db: { collection: (name: string) => collections[name] } as any, posts, settingsDocs, systemEvents, postsCol, settingsCol }
+  return { db: { collection: (name: string) => collections[name] } as any, posts, settingsDocs, systemEvents, postsCol, settingsCol, connections, connectionsCol }
 }
 
 function fakePostiz(overrides: Record<string, unknown> = {}) {
@@ -98,7 +122,7 @@ async function buildApp(opts: {
   tenant?: string
   operatorTenants?: string[]
 } = {}) {
-  const { db, posts, settingsDocs, systemEvents, postsCol } = makeDb()
+  const { db, posts, settingsDocs, systemEvents, postsCol, connections } = makeDb()
   const tenant = opts.tenant ?? TENANT
   if (opts.settings) settingsDocs.push({ tenant_id: tenant, automation: opts.settings })
   const app = Fastify()
@@ -110,7 +134,7 @@ async function buildApp(opts: {
   })
   await app.ready()
   const postiz = 'postiz' in opts ? opts.postiz : null
-  return { app, db, posts, settingsDocs, systemEvents, postsCol, postiz }
+  return { app, db, posts, settingsDocs, systemEvents, postsCol, postiz, connections }
 }
 
 const DRAFT = { integration_id: 'int-1', channel: 'x', content: 'A thing worth posting' }
@@ -277,5 +301,93 @@ describe('/marketing/posts', () => {
     const { app } = await buildApp()
     const res = await app.inject({ method: 'POST', url: '/marketing/posts', payload: { channel: 'x' } })
     expect(res.statusCode).toBe(400)
+  })
+})
+
+describe('/marketing/connections', () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function stubSession(ok: boolean) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        ok
+          ? new Response(JSON.stringify({ accessJwt: 'tok', did: 'did:plc:abc' }), { status: 200 })
+          : new Response('{"error":"AuthenticationRequired"}', { status: 401 }),
+      ),
+    )
+  }
+
+  it('verifies the app password with Bluesky, then stores it encrypted', async () => {
+    stubSession(true)
+    const { app, connections } = await buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/marketing/connections/bluesky',
+      payload: { handle: '@Oak.Bsky.Social', app_password: 'abcd-efgh-ijkl-mnop' },
+    })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().connection.handle).toBe('oak.bsky.social')
+    expect(connections).toHaveLength(1)
+    const stored = connections[0]!
+    // Credential is AES-256-GCM'd at rest — the raw password must not appear.
+    const creds = stored['credentials'] as Record<string, string>
+    expect(creds['app_password']).not.toBe('abcd-efgh-ijkl-mnop')
+    expect(JSON.stringify(stored)).not.toContain('abcd-efgh-ijkl-mnop')
+  })
+
+  it('rejects a bad app password with 502 and stores nothing', async () => {
+    stubSession(false)
+    const { app, connections } = await buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/marketing/connections/bluesky',
+      payload: { handle: 'oak.bsky.social', app_password: 'wrong' },
+    })
+    expect(res.statusCode).toBe(502)
+    expect(res.json().error).toContain('bluesky_auth_failed')
+    expect(connections).toHaveLength(0)
+  })
+
+  it('GET lists connections without credentials; DELETE removes the row', async () => {
+    stubSession(true)
+    const { app } = await buildApp()
+    await app.inject({
+      method: 'POST',
+      url: '/marketing/connections/bluesky',
+      payload: { handle: 'oak.bsky.social', app_password: 'abcd-efgh-ijkl-mnop' },
+    })
+    const list = await app.inject({ method: 'GET', url: '/marketing/connections' })
+    expect(list.statusCode).toBe(200)
+    const conn = list.json().connections[0]
+    expect(conn.handle).toBe('oak.bsky.social')
+    expect(conn.credentials).toBeUndefined()
+
+    const del = await app.inject({ method: 'DELETE', url: '/marketing/connections/bluesky' })
+    expect(del.statusCode).toBe(200)
+    expect((await app.inject({ method: 'GET', url: '/marketing/connections' })).json().connections).toHaveLength(0)
+    expect((await app.inject({ method: 'DELETE', url: '/marketing/connections/bluesky' })).statusCode).toBe(404)
+  })
+
+  it('a stored connection shows up as a composer channel and shadows env for that channel', async () => {
+    stubSession(true)
+    const { app, db } = await buildApp()
+    await app.inject({
+      method: 'POST',
+      url: '/marketing/connections/bluesky',
+      payload: { handle: 'oak.bsky.social', app_password: 'abcd-efgh-ijkl-mnop' },
+    })
+    // Rebuild the default client path the same way the route does when no
+    // publisher is injected — DbSocialPublisher over env + db.
+    const { DbSocialPublisher } = await import('../../marketing/social-publisher.js')
+    const pub = new DbSocialPublisher(db, null)
+    const integrations = await pub.listIntegrations(TENANT)
+    expect(integrations).toEqual([
+      expect.objectContaining({ identifier: 'bluesky', source: 'connection' }),
+    ])
+    // Another tenant sees nothing.
+    expect(await pub.listIntegrations('other-tenant')).toEqual([])
   })
 })

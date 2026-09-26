@@ -20,8 +20,9 @@
  * and dry-run human approvals still earn trust, since the human's review
  * of the content is the real signal, not the HTTP dispatch.
  *
- * Operator-only: channel credentials are server-global env tokens to the
- * operator's own social accounts, so platform-role permissions protect
+ * Operator-only: channel credentials are either per-tenant rows in
+ * `social_connections` (connected via /marketing/connections, encrypted at
+ * rest) or server-global env tokens — platform-role permissions protect
  * every route. No credentials configured still lets drafts queue for an
  * operator tenant — publishes land in publish_failed, retryable via
  * approve.
@@ -38,7 +39,14 @@ import { getAuditLogger } from '../audit/audit-log.js'
 import { AUTO_EXECUTE_TRUST_THRESHOLD } from '../jobs/auto-execute-trusted.js'
 import { requireOperator } from '../operator/operator-auth.js'
 import { getPlatformConfig } from '../operator/platform-config.js'
-import { socialPublisherFromEnv, type SocialPublisher } from '../marketing/social-publisher.js'
+import {
+  socialPublisherFromEnv,
+  DbSocialPublisher,
+  verifyBlueskyCredentials,
+  type SocialPublisher,
+  type SocialConnectionDoc,
+} from '../marketing/social-publisher.js'
+import { encryptIfNeeded } from '@agentoak/platform'
 
 export type MarketingPostState = 'draft' | 'approved' | 'publishing' | 'published' | 'publish_failed' | 'rejected'
 
@@ -65,6 +73,16 @@ const CreatePostSchema = z.object({
   channel: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/),
   content: z.string().min(1).max(5000),
   scheduled_at: z.string().datetime().optional(),
+})
+
+const ConnectBlueskySchema = z.object({
+  handle: z
+    .string()
+    .min(1)
+    .max(253)
+    .transform((h) => h.trim().replace(/^@/, '').toLowerCase()),
+  app_password: z.string().min(4).max(100),
+  service: z.string().url().max(200).optional(),
 })
 
 function trustScope(channel: string): string {
@@ -162,6 +180,7 @@ async function publishPost(
       channel: post.channel,
       type: 'now',
       date: now,
+      tenantId: post.tenant_id,
     })
     await col.updateOne(
       { id: post.id },
@@ -221,10 +240,12 @@ export function registerMarketingPostRoutes(
   publisher?: SocialPublisher | null,
   opts?: MarketingRouteOptions,
 ): void {
-  const client = publisher === undefined ? socialPublisherFromEnv() : publisher
+  const client = publisher === undefined ? new DbSocialPublisher(db, socialPublisherFromEnv()) : publisher
   const col = db.collection<MarketingPostDoc>('marketing_posts')
+  const connectionsCol = db.collection<SocialConnectionDoc>('social_connections')
   col.createIndex({ tenant_id: 1, created_at: -1 }).catch(() => {})
   col.createIndex({ id: 1 }, { unique: true }).catch(() => {})
+  connectionsCol.createIndex({ tenant_id: 1, channel: 1 }, { unique: true }).catch(() => {})
 
   const testGate = async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
     const allowed = new Set(opts?.operatorTenants ?? [])
@@ -237,12 +258,79 @@ export function registerMarketingPostRoutes(
   const readGate = opts?.operatorTenants ? testGate : requireOperator(db, 'marketing.read')
   const manageGate = opts?.operatorTenants ? testGate : requireOperator(db, 'marketing.manage')
 
-  /** GET /marketing/integrations — env-configured channels, for the composer. */
-  app.get('/marketing/integrations', { preHandler: readGate }, async (_req, reply) => {
+  /** GET /marketing/integrations — channels the composer can target: this
+   *  tenant's stored connections plus any env-configured channels. */
+  app.get('/marketing/integrations', { preHandler: readGate }, async (req, reply) => {
     if (!client) return reply.status(503).send({ error: 'publisher_not_configured' })
-    const integrations = await client.listIntegrations()
-    return { integrations: integrations.map((i) => ({ id: i.id, name: i.name, identifier: i.identifier, disabled: i.disabled === true })) }
+    const integrations = await client.listIntegrations(req.authContext.tenant_id)
+    return { integrations: integrations.map((i) => ({ id: i.id, name: i.name, identifier: i.identifier, disabled: i.disabled === true, source: i.source })) }
   })
+
+  /** GET /marketing/connections — this tenant's stored channel credentials,
+   *  minus the credentials themselves. */
+  app.get('/marketing/connections', { preHandler: readGate }, async (req) => {
+    const conns = await connectionsCol.find({ tenant_id: req.authContext.tenant_id }).toArray()
+    return {
+      connections: conns.map(({ credentials: _credentials, ...rest }) => rest),
+    }
+  })
+
+  /** POST /marketing/connections/bluesky — verify the app password against
+   *  bsky.social before storing it (encrypted). A bad password is rejected
+   *  here rather than discovered on the first failed publish. */
+  app.post('/marketing/connections/bluesky', { preHandler: manageGate }, async (req, reply) => {
+    const { tenant_id, user_id } = req.authContext
+    const parsed = ConnectBlueskySchema.safeParse(req.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid connection', issues: parsed.error.issues })
+    }
+    const { handle, app_password, service } = parsed.data
+    let did: string
+    try {
+      did = (await verifyBlueskyCredentials(handle, app_password, service)).did
+    } catch (err) {
+      return reply.status(502).send({ error: `bluesky_auth_failed: ${String(err).slice(0, 200)}` })
+    }
+    const now = new Date()
+    await connectionsCol.updateOne(
+      { tenant_id, channel: 'bluesky' },
+      {
+        $set: {
+          handle,
+          credentials: { app_password: encryptIfNeeded(app_password)! },
+          service: service ?? 'https://bsky.social',
+          did,
+          status: 'active',
+          last_error: null,
+          connected_by: user_id,
+          updated_at: now,
+        },
+        $setOnInsert: { created_at: now },
+      },
+      { upsert: true },
+    )
+    getAuditLogger()?.fromRequest(req, 'marketing.connection_connect', 'social_connection', `bluesky:${tenant_id}`, {
+      channel: 'bluesky',
+      handle,
+    })
+    return reply.status(201).send({
+      connection: { tenant_id, channel: 'bluesky', handle, did, status: 'active', connected_by: user_id, updated_at: now },
+    })
+  })
+
+  /** DELETE /marketing/connections/:channel — drop a stored connection. Env
+   *  channels aren't affected; publishes fall back to them if present. */
+  app.delete<{ Params: { channel: string } }>(
+    '/marketing/connections/:channel',
+    { preHandler: manageGate },
+    async (req, reply) => {
+      const { tenant_id } = req.authContext
+      const result = await connectionsCol.deleteOne({ tenant_id, channel: req.params.channel })
+      if (!result.deletedCount) return reply.status(404).send({ error: 'No such connection' })
+      getAuditLogger()?.fromRequest(req, 'marketing.connection_disconnect', 'social_connection', `${req.params.channel}:${tenant_id}`, {})
+      return { ok: true }
+    },
+  )
 
   /** GET /marketing/posts — this tenant's queue, newest first. */
   app.get('/marketing/posts', { preHandler: readGate }, async (req) => {

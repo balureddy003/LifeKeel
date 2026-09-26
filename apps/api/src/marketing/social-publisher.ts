@@ -20,6 +20,12 @@
  * createPost) so marketing-posts.ts and its tests didn't have to change
  * shape. `integration_id` on a post is now just a label — dispatch keys off
  * `channel` alone.
+ *
+ * Credentials can also live in the `social_connections` collection,
+ * connected per-tenant through /marketing/connections (app-password for
+ * Bluesky today; env still covers X/LinkedIn). DbSocialPublisher resolves a
+ * tenant's stored connection first and falls back to the env handler for
+ * the same channel.
  */
 
 export interface ChannelInfo {
@@ -27,6 +33,7 @@ export interface ChannelInfo {
   name: string
   identifier: string
   disabled: boolean
+  source?: 'env' | 'connection'
 }
 
 export interface CreatePostArgs {
@@ -35,12 +42,16 @@ export interface CreatePostArgs {
   channel: string
   type: 'now' | 'schedule'
   date: Date
+  tenantId?: string
 }
 
 export interface SocialPublisher {
-  listIntegrations(): Promise<ChannelInfo[]>
+  listIntegrations(tenantId?: string): Promise<ChannelInfo[]>
   createPost(args: CreatePostArgs): Promise<unknown>
 }
+
+import type { Db } from 'mongodb'
+import { decryptIfNeeded } from '@agentoak/platform'
 
 interface ChannelHandler {
   info: ChannelInfo
@@ -59,7 +70,7 @@ async function checked(res: Response, what: string): Promise<void> {
 
 function xHandler(token: string): ChannelHandler {
   return {
-    info: { id: 'x:default', name: 'X', identifier: 'x', disabled: false },
+    info: { id: 'x:default', name: 'X', identifier: 'x', disabled: false, source: 'env' },
     async publish(content) {
       const res = await fetch('https://api.x.com/2/tweets', {
         method: 'POST',
@@ -80,7 +91,7 @@ function xHandler(token: string): ChannelHandler {
 
 function linkedinHandler(token: string, authorUrn: string): ChannelHandler {
   return {
-    info: { id: 'linkedin:default', name: 'LinkedIn', identifier: 'linkedin', disabled: false },
+    info: { id: 'linkedin:default', name: 'LinkedIn', identifier: 'linkedin', disabled: false, source: 'env' },
     async publish(content) {
       const res = await fetch('https://api.linkedin.com/rest/posts', {
         method: 'POST',
@@ -116,7 +127,7 @@ function linkedinHandler(token: string, authorUrn: string): ChannelHandler {
 
 function blueskyHandler(handle: string, appPassword: string, service = 'https://bsky.social'): ChannelHandler {
   return {
-    info: { id: 'bluesky:default', name: 'Bluesky', identifier: 'bluesky', disabled: false },
+    info: { id: 'bluesky:default', name: 'Bluesky', identifier: 'bluesky', disabled: false, source: 'env' },
     async publish(content) {
       const sessRes = await fetch(`${service}/xrpc/com.atproto.server.createSession`, {
         method: 'POST',
@@ -182,4 +193,114 @@ export function socialPublisherFromEnv(): EnvSocialPublisher | null {
   }
 
   return handlers.size === 0 ? null : new EnvSocialPublisher(handlers)
+}
+
+// ---------------------------------------------------------------------------
+// Tenant-stored connections — `social_connections` collection. Credentials
+// are AES-256-GCM encrypted at rest (encryptIfNeeded), same posture as
+// connector_credentials. A connection never leaves this module decrypted.
+// ---------------------------------------------------------------------------
+
+export interface SocialConnectionDoc {
+  tenant_id: string
+  channel: string
+  handle: string
+  credentials: Record<string, string>
+  service?: string
+  did?: string
+  status: 'active' | 'error'
+  last_error?: string | null
+  last_used_at?: Date
+  connected_by: string
+  created_at: Date
+  updated_at: Date
+}
+
+/** Verify a Bluesky handle + app password by opening a session. Returns the
+ *  account DID on success; throws with the XRPC error otherwise. Used by the
+ *  connect route so bad credentials are rejected before they're stored. */
+export async function verifyBlueskyCredentials(
+  handle: string,
+  appPassword: string,
+  service = 'https://bsky.social',
+): Promise<{ did: string }> {
+  const res = await fetch(`${service}/xrpc/com.atproto.server.createSession`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identifier: handle, password: appPassword }),
+  })
+  await checked(res, 'bluesky createSession')
+  const sess = (await res.json()) as { did?: string }
+  if (!sess.did) throw new Error('bluesky createSession: no did returned')
+  return { did: sess.did }
+}
+
+function handlerForConnection(conn: SocialConnectionDoc): ChannelHandler {
+  if (conn.channel === 'bluesky') {
+    const appPassword = decryptIfNeeded(conn.credentials['app_password'])
+    if (!appPassword) throw new Error('bluesky connection: no app password stored')
+    return blueskyHandler(conn.handle, appPassword, conn.service)
+  }
+  throw new Error(`connection_unsupported:${conn.channel}`)
+}
+
+const CHANNEL_NAMES: Record<string, string> = { x: 'X', linkedin: 'LinkedIn', bluesky: 'Bluesky' }
+
+/**
+ * Resolves a tenant's stored social_connections first, then falls back to
+ * the env-configured publisher. Stored credentials are decrypted only inside
+ * the dispatch call — listIntegrations never touches them.
+ */
+export class DbSocialPublisher implements SocialPublisher {
+  constructor(
+    private readonly db: Db,
+    private readonly env: EnvSocialPublisher | null,
+  ) {}
+
+  private get connections() {
+    return this.db.collection<SocialConnectionDoc>('social_connections')
+  }
+
+  async listIntegrations(tenantId?: string): Promise<ChannelInfo[]> {
+    const envList = this.env ? await this.env.listIntegrations() : []
+    if (!tenantId) return envList
+    const conns = await this.connections.find({ tenant_id: tenantId }).toArray()
+    const connChannels = new Set(conns.map((c) => c.channel))
+    return [
+      ...conns.map((c) => ({
+        id: `${c.channel}:connection`,
+        name: `${CHANNEL_NAMES[c.channel] ?? c.channel} (@${c.handle})`,
+        identifier: c.channel,
+        disabled: c.status === 'error',
+        source: 'connection' as const,
+      })),
+      // A stored connection shadows the env channel for this tenant — the
+      // composer would otherwise show the same channel twice.
+      ...envList.filter((i) => !connChannels.has(i.identifier)),
+    ]
+  }
+
+  async createPost(args: CreatePostArgs): Promise<unknown> {
+    const conn = args.tenantId
+      ? await this.connections.findOne({ tenant_id: args.tenantId, channel: args.channel })
+      : null
+    if (conn) {
+      try {
+        const result = await handlerForConnection(conn).publish(args.content)
+        await this.connections.updateOne(
+          { tenant_id: conn.tenant_id, channel: conn.channel },
+          { $set: { status: 'active', last_error: null, last_used_at: new Date() } },
+        )
+        return result
+      } catch (err) {
+        await this.connections.updateOne(
+          { tenant_id: conn.tenant_id, channel: conn.channel },
+          { $set: { status: 'error', last_error: String(err).slice(0, 300) } },
+        )
+        throw err
+      }
+    }
+    if (this.env) return this.env.createPost(args)
+    throw new Error(`channel_not_configured:${args.channel}`)
+  }
 }

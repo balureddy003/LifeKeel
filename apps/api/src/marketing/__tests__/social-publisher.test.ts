@@ -3,7 +3,8 @@
  * stubbed; no real network in tests.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { EnvSocialPublisher, socialPublisherFromEnv } from '../social-publisher.js'
+import { EnvSocialPublisher, DbSocialPublisher, socialPublisherFromEnv, type SocialConnectionDoc } from '../social-publisher.js'
+import { encryptIfNeeded } from '@agentoak/platform'
 
 function jsonRes(body: unknown, init: { status?: number; headers?: Record<string, string> } = {}) {
   return new Response(JSON.stringify(body), {
@@ -111,5 +112,102 @@ describe('EnvSocialPublisher.createPost', () => {
     await expect(
       pub.createPost({ integrationId: 'x', content: 'hi', channel: 'x', type: 'now', date: new Date() }),
     ).rejects.toThrow('x /2/tweets 401')
+  })
+})
+
+describe('DbSocialPublisher', () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs()
+    vi.restoreAllMocks()
+  })
+
+  function makeDb(conns: Partial<SocialConnectionDoc>[] = []) {
+    const docs = conns.map((c) => ({ status: 'active', credentials: {}, ...c }) as Record<string, unknown>)
+    const col = {
+      findOne: vi.fn(async (f: Record<string, unknown>) =>
+        docs.find((d) => d['tenant_id'] === f['tenant_id'] && d['channel'] === f['channel']) ?? null,
+      ),
+      find: vi.fn((f: Record<string, unknown>) => ({
+        toArray: async () => docs.filter((d) => d['tenant_id'] === f['tenant_id']),
+      })),
+      updateOne: vi.fn(async (f: Record<string, unknown>, u: { $set: Record<string, unknown> }) => {
+        const doc = docs.find((d) => d['tenant_id'] === f['tenant_id'] && d['channel'] === f['channel'])
+        if (doc) Object.assign(doc, u.$set)
+        return { modifiedCount: doc ? 1 : 0 }
+      }),
+    }
+    return { db: { collection: () => col } as never, col, docs }
+  }
+
+  const conn = (over: Partial<SocialConnectionDoc> = {}): Partial<SocialConnectionDoc> => ({
+    tenant_id: 't1',
+    channel: 'bluesky',
+    handle: 'oak.bsky.social',
+    credentials: { app_password: encryptIfNeeded('app-pass')! },
+    service: 'https://bsky.social',
+    ...over,
+  })
+
+  it('publishes through the tenant connection, decrypting the stored password', async () => {
+    const { db } = makeDb([conn()])
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('createSession')) {
+        expect(JSON.parse(String(init!.body)).password).toBe('app-pass')
+        return jsonRes({ accessJwt: 'jwt-1', did: 'did:plc:1' })
+      }
+      return jsonRes({ uri: 'at://did:plc:1/app.bsky.feed.post/9z' })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const pub = new DbSocialPublisher(db, null)
+    const res = (await pub.createPost({
+      integrationId: 'x', content: 'from db conn', channel: 'bluesky', type: 'now', date: new Date(), tenantId: 't1',
+    })) as { url?: string }
+    expect(res.url).toBe('https://bsky.app/profile/oak.bsky.social/post/9z')
+  })
+
+  it('marks the connection error on publish failure and recovers it on success', async () => {
+    const { db, docs } = makeDb([conn()])
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 500 })))
+    const pub = new DbSocialPublisher(db, null)
+    await expect(
+      pub.createPost({ integrationId: 'x', content: 'hi', channel: 'bluesky', type: 'now', date: new Date(), tenantId: 't1' }),
+    ).rejects.toThrow('bluesky createSession 500')
+    expect(docs[0]!['status']).toBe('error')
+    expect(String(docs[0]!['last_error'])).toContain('500')
+  })
+
+  it('falls back to env handlers when the tenant has no connection', async () => {
+    vi.stubEnv('X_ACCESS_TOKEN', 'xtok')
+    const { db } = makeDb([])
+    const fetchMock = vi.fn(async () => jsonRes({ data: { id: 'tw-9' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const pub = new DbSocialPublisher(db, socialPublisherFromEnv())
+    const res = (await pub.createPost({
+      integrationId: 'x', content: 'via env', channel: 'x', type: 'now', date: new Date(), tenantId: 't1',
+    })) as { external_id?: string }
+    expect(res.external_id).toBe('tw-9')
+  })
+
+  it('connection shadows env for the same channel; other env channels still list', async () => {
+    vi.stubEnv('X_ACCESS_TOKEN', 'xtok')
+    vi.stubEnv('BSKY_HANDLE', 'env-acc.bsky.social')
+    vi.stubEnv('BSKY_APP_PASSWORD', 'env-pass')
+    const { db } = makeDb([conn()])
+    const pub = new DbSocialPublisher(db, socialPublisherFromEnv())
+    const integrations = await pub.listIntegrations('t1')
+    const bluesky = integrations.filter((i) => i.identifier === 'bluesky')
+    expect(bluesky).toHaveLength(1)
+    expect(bluesky[0]!.source).toBe('connection')
+    expect(bluesky[0]!.name).toContain('@oak.bsky.social')
+    expect(integrations.find((i) => i.identifier === 'x')!.source).toBe('env')
+  })
+
+  it('throws channel_not_configured when neither conn nor env covers the channel', async () => {
+    const { db } = makeDb([])
+    const pub = new DbSocialPublisher(db, null)
+    await expect(
+      pub.createPost({ integrationId: 'x', content: 'hi', channel: 'x', type: 'now', date: new Date(), tenantId: 't1' }),
+    ).rejects.toThrow('channel_not_configured:x')
   })
 })

@@ -328,6 +328,8 @@ export interface DocumentPolicySuggestion {
   monthlyPremiumMinor: number | null
   renewalDate: string | null
   policyNumber: string | null
+  contactPhone: string | null
+  contactEmail: string | null
 }
 
 export interface DocumentSuggestions {
@@ -1508,6 +1510,18 @@ export interface MarketingIntegration {
   name: string
   identifier?: string
   disabled: boolean
+  source?: 'env' | 'connection'
+}
+
+export interface SocialConnection {
+  tenant_id: string
+  channel: string
+  handle: string
+  status: 'active' | 'error'
+  last_error?: string
+  connected_by?: string
+  created_at?: string
+  updated_at?: string
 }
 
 export type MarketingPostState = 'draft' | 'approved' | 'published' | 'publish_failed' | 'rejected'
@@ -1549,7 +1563,7 @@ export async function fetchMarketingPosts(): Promise<MarketingPost[]> {
   return data.posts
 }
 
-async function marketingRequest<T>(path: string, method: 'POST', body?: Record<string, unknown>): Promise<T> {
+async function marketingRequest<T>(path: string, method: 'POST' | 'DELETE', body?: Record<string, unknown>): Promise<T> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -1583,6 +1597,20 @@ export async function approveMarketingPost(id: string): Promise<MarketingPost> {
 export async function rejectMarketingPost(id: string): Promise<MarketingPost> {
   const data = await marketingRequest<{ post: MarketingPost }>(`/marketing/posts/${id}/reject`, 'POST')
   return data.post
+}
+
+export async function fetchSocialConnections(): Promise<SocialConnection[]> {
+  const data = await apiFetch<{ connections: SocialConnection[] }>('/marketing/connections', { connections: [] })
+  return data.connections
+}
+
+export async function connectBluesky(input: { handle: string; app_password: string }): Promise<SocialConnection> {
+  const data = await marketingRequest<{ connection: SocialConnection }>('/marketing/connections/bluesky', 'POST', { ...input })
+  return data.connection
+}
+
+export async function disconnectSocialChannel(channel: string): Promise<void> {
+  await marketingRequest<{ ok: boolean }>(`/marketing/connections/${channel}`, 'DELETE')
 }
 
 export interface OperatorOverview {

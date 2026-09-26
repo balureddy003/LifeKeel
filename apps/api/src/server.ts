@@ -86,7 +86,7 @@ import { registerFamilyInboxRoutes } from './routes/family-inbox.js'
 import { registerPushRoutes } from './routes/push.js'
 import { registerReminderRoutes } from './routes/reminders.js'
 import { registerMarketingPostRoutes, publishDueMarketingPosts } from './routes/marketing-posts.js'
-import { socialPublisherFromEnv } from './marketing/social-publisher.js'
+import { socialPublisherFromEnv, DbSocialPublisher } from './marketing/social-publisher.js'
 import { registerOperatorRoutes } from './routes/operator.js'
 import { getPlatformConfig, registerPublicStatusRoute } from './operator/platform-config.js'
 import { registerDetectorEvalRoutes, detectorEvalDir } from './routes/detector-evals.js'
@@ -235,7 +235,7 @@ try {
   cron.schedule('* * * * *', async () => {
     try {
       await withCronLock(workflowDb, 'marketing-publish', async () => {
-        await publishDueMarketingPosts(workflowDb, socialPublisherFromEnv())
+        await publishDueMarketingPosts(workflowDb, new DbSocialPublisher(workflowDb, socialPublisherFromEnv()))
       })
     } catch (err) {
       log.error({ err }, 'Marketing publish sweep failed')

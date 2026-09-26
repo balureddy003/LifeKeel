@@ -20,9 +20,13 @@ import {
   approveMarketingPost,
   rejectMarketingPost,
   fetchAutomationSettings,
+  fetchSocialConnections,
+  connectBluesky,
+  disconnectSocialChannel,
   type MarketingIntegration,
   type MarketingPost,
   type AutomationSettings,
+  type SocialConnection,
 } from '@/lib/api'
 
 const STATE_STYLE: Record<MarketingPost['state'], string> = {
@@ -44,22 +48,67 @@ export default function MarketingPage() {
   // gate above keeps the pre-fetch null from flashing the "not configured" copy.
   const [integrations, setIntegrations] = useState<MarketingIntegration[] | null>(null)
   const [automation, setAutomation] = useState<AutomationSettings | null>(null)
+  const [connections, setConnections] = useState<SocialConnection[]>([])
   const [loading, setLoading] = useState(true)
   const [integrationId, setIntegrationId] = useState('')
   const [content, setContent] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
+  const [showConnect, setShowConnect] = useState(false)
+  const [bskyHandle, setBskyHandle] = useState('')
+  const [bskyPassword, setBskyPassword] = useState('')
 
   useEffect(() => {
-    Promise.all([fetchMarketingPosts(), fetchMarketingIntegrations(), fetchAutomationSettings()])
-      .then(([p, i, a]) => {
+    Promise.all([fetchMarketingPosts(), fetchMarketingIntegrations(), fetchAutomationSettings(), fetchSocialConnections()])
+      .then(([p, i, a, c]) => {
         setPosts(p)
         setIntegrations(i)
         setAutomation(a)
+        setConnections(c)
         const first = (i ?? []).find((x) => !x.disabled)
         if (first) setIntegrationId(first.id)
       })
       .finally(() => setLoading(false))
   }, [])
+
+  async function refreshChannels() {
+    const [ints, conns] = await Promise.all([fetchMarketingIntegrations(), fetchSocialConnections()])
+    setIntegrations(ints)
+    setConnections(conns)
+    const first = (ints ?? []).find((x) => !x.disabled)
+    if (first) setIntegrationId(first.id)
+  }
+
+  async function connect() {
+    if (!bskyHandle.trim() || !bskyPassword.trim()) return
+    haptic('medium')
+    setBusy('connect')
+    try {
+      await connectBluesky({ handle: bskyHandle.trim(), app_password: bskyPassword.trim() })
+      setBskyHandle('')
+      setBskyPassword('')
+      setShowConnect(false)
+      await refreshChannels()
+      toast({ message: 'Bluesky connected' })
+    } catch (err) {
+      toast({ message: err instanceof Error ? err.message : 'Connection failed', variant: 'error' })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function disconnect(channel: string) {
+    haptic('light')
+    setBusy(`disconnect:${channel}`)
+    try {
+      await disconnectSocialChannel(channel)
+      await refreshChannels()
+      toast({ message: 'Channel disconnected' })
+    } catch (err) {
+      toast({ message: err instanceof Error ? err.message : 'Disconnect failed', variant: 'error' })
+    } finally {
+      setBusy(null)
+    }
+  }
 
   const selected = (integrations ?? []).find((i) => i.id === integrationId)
   const channel = selected?.identifier ?? 'other'
@@ -108,20 +157,83 @@ export default function MarketingPage() {
 
       {!loading && (
         <>
+          {/* Channels */}
+          <GlassCard className="p-4 mt-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-semibold text-ink-primary">Channels</p>
+              <button
+                onClick={() => setShowConnect((v) => !v)}
+                className="text-xs font-semibold text-family-400"
+              >
+                {showConnect ? 'Close' : 'Connect Bluesky'}
+              </button>
+            </div>
+            {(integrations ?? []).length === 0 ? (
+              <p className="text-xs text-ink-tertiary leading-relaxed">
+                Nothing connected yet — link Bluesky below, or set{' '}
+                <code className="text-family-400">X_ACCESS_TOKEN</code> /{' '}
+                <code className="text-family-400">LINKEDIN_ACCESS_TOKEN</code> on the API.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {(integrations ?? []).map((i) => {
+                  const conn = i.source === 'connection' ? connections.find((c) => c.channel === i.identifier) : undefined
+                  return (
+                    <li key={i.id} className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm text-ink-primary truncate">
+                          {i.name}
+                          {i.source === 'env' && <span className="text-ink-tertiary"> · server env</span>}
+                        </p>
+                        {conn?.status === 'error' && conn.last_error && (
+                          <p className="text-xs text-danger truncate">{conn.last_error}</p>
+                        )}
+                      </div>
+                      {i.source === 'connection' && (
+                        <button
+                          onClick={() => disconnect(i.identifier ?? '')}
+                          disabled={busy === `disconnect:${i.identifier}`}
+                          className="text-xs text-ink-tertiary font-semibold disabled:opacity-40"
+                        >
+                          {busy === `disconnect:${i.identifier}` ? '…' : 'Disconnect'}
+                        </button>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+            {showConnect && (
+              <div className="mt-3 pt-3 border-t border-tint/[0.06] space-y-2">
+                <input
+                  value={bskyHandle}
+                  onChange={(e) => setBskyHandle(e.target.value)}
+                  placeholder="handle — e.g. oak.bsky.social"
+                  className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
+                />
+                <input
+                  value={bskyPassword}
+                  onChange={(e) => setBskyPassword(e.target.value)}
+                  type="password"
+                  placeholder="app password (bsky.app → Settings → App passwords)"
+                  className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
+                />
+                <GlassButton onClick={connect} disabled={busy === 'connect' || !bskyHandle.trim() || !bskyPassword.trim()}>
+                  {busy === 'connect' ? 'Verifying…' : 'Verify & connect'}
+                </GlassButton>
+              </div>
+            )}
+          </GlassCard>
+
           {/* Composer */}
           <GlassCard className="p-4 mt-4">
             {integrations === null ? (
               <p className="text-sm text-ink-secondary leading-relaxed">
-                No publishing channels configured — set credentials on the API
-                (<code className="text-family-400">X_ACCESS_TOKEN</code>,{' '}
-                <code className="text-family-400">LINKEDIN_ACCESS_TOKEN</code> +{' '}
-                <code className="text-family-400">LINKEDIN_AUTHOR_URN</code>, or{' '}
-                <code className="text-family-400">BSKY_HANDLE</code> +{' '}
-                <code className="text-family-400">BSKY_APP_PASSWORD</code>), then drafts can publish from here.
+                Publishing channels couldn't load — check the API, then refresh.
               </p>
             ) : integrations.length === 0 ? (
               <p className="text-sm text-ink-secondary leading-relaxed">
-                Publishing is configured but no channels are enabled yet.
+                Connect a channel above to start queueing drafts.
               </p>
             ) : (
               <>

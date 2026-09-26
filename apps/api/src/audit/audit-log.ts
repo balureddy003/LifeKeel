@@ -75,6 +75,8 @@ export type AuditAction =
   | 'marketing.post_approve'
   | 'marketing.post_reject'
   | 'marketing.post_auto_publish'
+  | 'marketing.connection_connect'
+  | 'marketing.connection_disconnect'
 
 export interface AuditEntry {
   tenant_id: string
