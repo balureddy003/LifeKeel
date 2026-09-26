@@ -27,6 +27,7 @@ import { getAuditLogger } from '../audit/audit-log.js'
 import { persistSignal } from '../signals.js'
 import { generateDraft } from '../insights/generate-draft.js'
 import { renderPlaybook, type LifeEventType } from '../life-events/render-playbook.js'
+import { maybeSendVaultReminder } from '../life-events/vault-reminder.js'
 import type { FinancialProfile } from './family-financial-profile.js'
 
 // Full Emergency-Mode taxonomy: the 5 crisis tiles (bereavement, medical,
@@ -135,13 +136,23 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
         getAuditLogger()?.fromRequest(req, 'life_event.nudge_acted_on', 'life_event_nudge', tenant_id)
       }
 
+      const playbook = renderPlaybook(event_type, profile, affected_member_id)
+
+      // Crisis-release re-scope (see the plan): a Tier-3 notification, not
+      // an autonomous release — every adult already has standing vault
+      // access (isFamilyAdult). Fire-and-forget: a family reporting a real
+      // life event shouldn't wait on (or fail because of) an email send.
+      maybeSendVaultReminder(db, tenant_id, event_type, id, req.authContext.user_id, playbook.title).catch((err) =>
+        req.log.error({ err, id }, 'Vault reminder check failed'),
+      )
+
       return reply.status(201).send({
         id,
         event_type,
         affected_member_id: affected_member_id ?? null,
         reported_at,
         completed_step_ids: [],
-        playbook: renderPlaybook(event_type, profile, affected_member_id),
+        playbook,
       })
     },
   )

@@ -82,6 +82,7 @@ const DETECTOR_ROUTE: Record<string, string> = {
   family_retirement_gap: '/health/wealth',
   family_education_shortfall: '/health/goals',
   family_emergency_fund_adequacy: '/health/savings',
+  family_vault_reminder: '/vault',
 }
 
 /**
