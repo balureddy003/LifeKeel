@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
+import { OperatorGate } from './_components/OperatorGate'
 
 const links: Array<[string, string]> = [
   ['Overview', '/operator'],
@@ -9,7 +10,7 @@ const links: Array<[string, string]> = [
   ['Promotions', '/operator/promotions'],
   ['Billing', '/operator/billing'],
   ['Content', '/operator/content'],
-  ['Marketing', '/marketing'],
+  ['Marketing', '/operator/marketing'],
   ['Operators', '/operator/operators'],
   ['Operations', '/operator/operations'],
   ['Configuration', '/operator/configuration'],
@@ -34,7 +35,9 @@ export default function OperatorLayout({ children }: { children: ReactNode }) {
           </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-5 py-6">{children}</main>
+      <main className="mx-auto max-w-6xl px-5 py-6">
+        <OperatorGate>{children}</OperatorGate>
+      </main>
     </div>
   )
 }

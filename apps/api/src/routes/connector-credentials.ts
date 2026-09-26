@@ -125,7 +125,7 @@ function frontendRedirect(returnTo: ReturnTarget, params: Record<string, string>
   if (returnTo === 'marketing') {
     // Operator marketing composer — X connect returns here so the
     // Channels card can show the connected/error state inline.
-    const url = new URL('/marketing', process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002')
+    const url = new URL('/operator/marketing', process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002')
     for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
     return url.toString()
   }

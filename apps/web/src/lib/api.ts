@@ -1768,7 +1768,7 @@ export async function disconnectSocialChannel(channel: string): Promise<void> {
 /**
  * Kick off the X OAuth2 connect flow. The generic connector route builds
  * the authorize URL (PKCE + signed tenant-bound state); the callback lands
- * back on /marketing?connected=twitter_x. Tokens land encrypted in
+ * back on /operator/marketing?connected=twitter_x. Tokens land encrypted in
  * connector_credentials — no secret ever crosses this request.
  */
 export async function startXConnect(): Promise<{ auth_url: string } | null> {
@@ -1824,6 +1824,19 @@ async function operatorRequest<T>(path: string): Promise<T> {
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error((data.error as string) || 'Operator request failed')
   return data as T
+}
+
+export interface OperatorIdentity {
+  user_id: string
+  tenant_id: string
+  roles: string[]
+  source: 'database' | 'bootstrap'
+}
+
+/** Cheap identity check for the operator shell's access gate — the full
+ *  overview payload would be wasted work on every first paint. */
+export function fetchOperatorMe(): Promise<{ operator: OperatorIdentity }> {
+  return operatorRequest<{ operator: OperatorIdentity }>('/operator/me')
 }
 
 export function fetchOperatorOverview(): Promise<OperatorOverview> {
