@@ -645,6 +645,47 @@ function GettingStarted() {
   )
 }
 
+// Inline birthday entry right on the Life Timeline's empty-state card —
+// the previous version only linked to /family, which took a "Go to
+// Family → tap child → open their profile → scroll to Date of birth"
+// detour to fix one field. Saving here flips useFamilyTimeline's
+// hasData live, so the card replaces itself with the real timeline.
+function ChildDobPrompt() {
+  const { family, updateMemberDateOfBirth } = useAuth()
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const childrenWithoutDob = (family?.members ?? []).filter((m) => m.role === 'child' && !m.dateOfBirth)
+
+  if (childrenWithoutDob.length === 0) return null
+
+  const handleChange = async (id: string, value: string) => {
+    if (!value) return
+    setSavingId(id)
+    haptic('light')
+    try {
+      await updateMemberDateOfBirth(id, value)
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      {childrenWithoutDob.map((m) => (
+        <div key={m.id} className="flex items-center gap-2">
+          <span className="text-xs font-medium text-ink-secondary flex-1 truncate">{m.name.split(' ')[0]}&apos;s birthday</span>
+          <input
+            type="date"
+            max={new Date().toISOString().slice(0, 10)}
+            disabled={savingId === m.id}
+            onChange={(e) => handleChange(m.id, e.target.value)}
+            className="glass-input rounded-xl px-3 py-2 text-sm text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all disabled:opacity-60"
+          />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function HomePage() {
   const { config } = useMode()
   const { score: readinessScore, hasLiveData, loading: scoreLoading } = useFamilyReadinessScore()
@@ -830,12 +871,16 @@ export default function HomePage() {
             </div>
             <p className="text-sm text-ink-tertiary leading-relaxed">
               {hasChildren
-                ? "Add a birthday to your children's profiles to see education milestones here."
+                ? "Add a birthday to see education milestones here."
                 : 'Add children to your family profile to see education milestones and future planning events on your timeline.'}
             </p>
-            <Link href="/family" className="text-sm text-family-400 font-semibold flex items-center gap-1 mt-2">
-              {hasChildren ? 'Go to Family' : 'Set up family'} <ChevronRight size={14} />
-            </Link>
+            {hasChildren ? (
+              <ChildDobPrompt />
+            ) : (
+              <Link href="/family" className="text-sm text-family-400 font-semibold flex items-center gap-1 mt-2">
+                Set up family <ChevronRight size={14} />
+              </Link>
+            )}
           </GlassCard>
         )}
       </motion.div>

@@ -309,6 +309,28 @@ export async function fetchDocument(id: string): Promise<FamilyDocumentDetail | 
   return apiFetch<FamilyDocumentDetail | null>(`/documents/${id}`, null)
 }
 
+/**
+ * Fetches the original uploaded file's bytes and returns a local object URL
+ * for the AI Memory review drawer's side-by-side preview — auth is a Bearer
+ * header, so this can't just be an <img src> pointed at the API directly.
+ * Caller is responsible for URL.revokeObjectURL when done with it.
+ */
+export async function fetchDocumentFileUrl(id: string): Promise<{ url: string; mimeType: string } | null> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(`${base}/documents/${id}/file`, { headers })
+    if (!res.ok) return null
+    const blob = await res.blob()
+    return { url: URL.createObjectURL(blob), mimeType: blob.type }
+  } catch (err) {
+    reportError(err, { documentId: id })
+    return null
+  }
+}
+
 export interface ProfileSuggestion {
   path: string
   label: string

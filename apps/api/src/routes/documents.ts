@@ -252,6 +252,25 @@ export function registerDocumentRoutes(
     }
   })
 
+  // ── GET /documents/:id/file ──────────────────────────────────────────────
+  // Streams the original uploaded bytes back from GridFS — added for the AI
+  // Memory review drawer (show the source PDF/JPEG next to what Oak
+  // extracted from it), which had no way to display the document itself
+  // before this. Same tenant-scoped lookup and GridFS read `/reprocess`
+  // already uses; this just returns the bytes instead of re-running OCR.
+  fastify.get<{ Params: { id: string } }>('/documents/:id/file', async (req, reply) => {
+    const { tenant_id } = req.authContext
+    const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
+    const doc = await documents.findOne({ id: req.params.id })
+    if (!doc || !doc['file_id']) return reply.status(404).send({ error: 'Document not found' })
+
+    const chunks: Buffer[] = []
+    for await (const chunk of bucket.openDownloadStream(doc['file_id'] as ObjectId)) chunks.push(chunk as Buffer)
+    reply.header('Content-Type', String(doc['mime_type'] ?? 'application/octet-stream'))
+    reply.header('Content-Disposition', `inline; filename="${String(doc['filename'] ?? 'document').replace(/"/g, '')}"`)
+    return reply.send(Buffer.concat(chunks))
+  })
+
   // ── GET /documents/:id/profile-suggestions ──────────────────────────────
   // extractDocumentFields() pulls structured fields out of a document, but
   // nothing ever surfaced them back to the Financial Profile — the user had

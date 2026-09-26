@@ -192,6 +192,13 @@ function ModeEffects() {
   return null
 }
 
+// Deliberately a wider labeled pill, not a same-size/same-shape circle
+// like AskOakButton below — the two floating buttons used to differ only
+// by color (purple vs red), which fails colorblind users and is exactly
+// the wrong differentiator under crisis stress, when a mis-tap matters
+// most. Shape + a text label make this unmistakable at a glance without
+// touching either button's position (avoids a wider layout regression
+// across every page that reserves scroll-gutter space for these).
 function EmergencyButton() {
   const { config, activateEmergency } = useMode()
   if (!config.showEmergencyButton) return null
@@ -202,8 +209,8 @@ function EmergencyButton() {
         haptic('heavy')
         activateEmergency()
       }}
-      whileTap={{ scale: 0.9 }}
-      className="fixed bottom-32 right-4 z-fab w-12 h-12 rounded-full flex items-center justify-center"
+      whileTap={{ scale: 0.95 }}
+      className="fixed bottom-32 right-4 z-fab h-12 pl-3 pr-4 rounded-full flex items-center gap-1.5"
       style={{
         background: 'linear-gradient(135deg, #f87171, #dc2626)',
         border: '1px solid rgba(255,255,255,0.2)',
@@ -218,12 +225,13 @@ function EmergencyButton() {
         animate={{ scale: [1, 1.1, 1] }}
         transition={{ duration: 2, repeat: Infinity }}
       >
-        <Siren size={20} color="#fff" />
+        <Siren size={18} color="#fff" />
       </motion.div>
+      <span className="text-xs font-bold text-white tracking-wide">SOS</span>
       <motion.div
         className="absolute inset-0 rounded-full"
         style={{ border: '2px solid rgba(248,113,113,0.4)' }}
-        animate={{ scale: [1, 1.4], opacity: [0.6, 0] }}
+        animate={{ scale: [1, 1.25], opacity: [0.6, 0] }}
         transition={{ duration: 2, repeat: Infinity }}
       />
     </motion.button>

@@ -48,6 +48,7 @@ function ActivityRing({
             fill="none"
             stroke="rgb(var(--tint) / 0.05)"
             strokeWidth={strokeWidth}
+            strokeDasharray={isSample ? '3 5' : undefined}
           />
           <motion.circle
             cx={size / 2}
@@ -157,15 +158,15 @@ export function HealthSummary() {
 
   return (
     <GlassCard className="p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div>
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="min-w-0">
           <div className="text-sm font-semibold text-ink-secondary">Family Health</div>
-          <div className="text-xs text-ink-tertiary">
+          <div className="text-xs text-ink-tertiary mt-0.5">
             Across protection, wealth & goals
-            {anySample && <span className="text-warning"> · — means not set up yet</span>}
+            {anySample && <span className="text-warning"> — a dash means that area isn't set up yet</span>}
           </div>
         </div>
-        <div className="text-3xl font-bold text-success">{overallScore}</div>
+        <div className="text-3xl font-bold text-success flex-shrink-0 leading-none">{overallScore}</div>
       </div>
 
       {/* Activity rings */}

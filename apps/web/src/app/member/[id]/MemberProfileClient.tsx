@@ -3,12 +3,13 @@
 import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, HelpCircle, User, ChevronRight, Siren, Loader2 } from 'lucide-react'
+import { ArrowLeft, HelpCircle, User, ChevronRight, Siren, Loader2, Share2 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { ROLE_LABELS } from '@/lib/auth-types'
 import { PageHeader, PageTransition } from '@/components/Glass'
 import { useToast } from '@/components/Toast'
 import { calculateAge } from '@/lib/age'
+import { haptic } from '@/lib/haptics'
 
 export default function MemberProfileClient() {
   const params = useParams<{ id: string }>()
@@ -16,6 +17,30 @@ export default function MemberProfileClient() {
   const toast = useToast()
   const [savingDob, setSavingDob] = useState(false)
   const member = family?.members.find((m) => m.id === params.id)
+
+  // A "Pending" member has a roster record but hasn't joined yet — this
+  // app has no per-person emailed invite, only one shared family code
+  // (Settings), so the honest, actually-working action here is helping
+  // the organizer get that code to them, not a fake "resend" button.
+  const shareInvite = async () => {
+    if (!family || !member) return
+    haptic('light')
+    const message = `Join our family on Agent Oak, ${member.name.split(' ')[0]} — use invite code ${family.inviteCode} at the sign-up screen.`
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({ text: message })
+        return
+      } catch {
+        // User cancelled the share sheet or it's unsupported — fall through to clipboard.
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(message)
+      toast({ message: 'Invite message copied — paste it to them' })
+    } catch {
+      toast({ message: `Invite code: ${family.inviteCode}` })
+    }
+  }
 
   const handleDobChange = async (value: string) => {
     if (!member || !value) return
@@ -65,6 +90,23 @@ export default function MemberProfileClient() {
           )}
         </div>
       </div>
+
+      {member.status === 'pending' && (
+        <div className="card">
+          <div className="text-sm font-semibold text-ink-primary mb-1">Finish {member.name.split(' ')[0]}&apos;s setup</div>
+          <p className="text-xs text-ink-tertiary mb-3">
+            They haven&apos;t joined yet. Share your family&apos;s invite code with them so they can
+            create their own account and see what&apos;s already on file.
+          </p>
+          <button
+            onClick={shareInvite}
+            className="btn-secondary w-full flex items-center justify-center gap-2"
+          >
+            <Share2 size={16} />
+            <span>Share invite code</span>
+          </button>
+        </div>
+      )}
 
       <div className="card">
         <label className="block">

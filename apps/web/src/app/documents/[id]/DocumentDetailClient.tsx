@@ -13,6 +13,7 @@ import { POLICY_TYPE_LABELS, POLICY_TYPES, PERSON_SCOPED_POLICY_TYPES } from '@/
 import {
   fetchDocument,
   fetchProfileSuggestions,
+  fetchDocumentFileUrl,
   applyDocumentToProfile,
   applyPolicySuggestion,
   type FamilyDocumentDetail,
@@ -73,6 +74,7 @@ export default function DocumentDetailClient() {
   const [policyAppliedInsights, setPolicyAppliedInsights] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [policyError, setPolicyError] = useState<string | null>(null)
+  const [preview, setPreview] = useState<{ url: string; mimeType: string } | null | undefined>(undefined)
 
   const load = useCallback(async () => {
     const [d, s] = await Promise.all([
@@ -87,6 +89,28 @@ export default function DocumentDetailClient() {
   useEffect(() => {
     load()
   }, [load])
+
+  // Split-view review: the source file next to what Oak extracted from it,
+  // so approving a suggestion doesn't require trusting OCR blind. Fetched
+  // separately from the metadata load above since it's a binary blob, not
+  // JSON — and revoked on unmount/id-change so it doesn't leak memory.
+  useEffect(() => {
+    let cancelled = false
+    let objectUrl: string | null = null
+    setPreview(undefined)
+    fetchDocumentFileUrl(params.id).then((p) => {
+      if (cancelled) {
+        if (p) URL.revokeObjectURL(p.url)
+        return
+      }
+      objectUrl = p?.url ?? null
+      setPreview(p)
+    })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [params.id])
 
   const handleApply = async () => {
     haptic('light')
@@ -188,19 +212,42 @@ export default function DocumentDetailClient() {
         </div>
       </GlassCard>
 
-      {fields.length > 0 && (
-        <GlassCard className="p-4">
-          <div className="text-sm font-semibold text-ink-secondary mb-3">Extracted details</div>
-          <div className="space-y-2.5">
-            {fields.map(([key, value]) => (
-              <div key={key} className="flex items-start justify-between gap-3 text-sm">
-                <span className="text-ink-tertiary flex-shrink-0">{fieldLabel(key)}</span>
-                <span className="text-ink-primary text-right">{value}</span>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        {preview !== null && (
+          <GlassCard className="p-3">
+            <div className="text-sm font-semibold text-ink-secondary mb-2 px-1">Original document</div>
+            {preview === undefined ? (
+              <Skeleton className="h-64 w-full rounded-2xl" />
+            ) : preview.mimeType.startsWith('image/') ? (
+              // eslint-disable-next-line @next/next/no-img-element -- a local blob: URL, not an optimizable remote image
+              <img src={preview.url} alt={`Preview of ${doc.filename}`} className="w-full rounded-2xl object-contain max-h-[70vh]" />
+            ) : preview.mimeType === 'application/pdf' ? (
+              <iframe src={preview.url} title={`Preview of ${doc.filename}`} className="w-full h-[70vh] rounded-2xl border border-tint/[0.06]" />
+            ) : (
+              <div className="text-sm text-ink-tertiary p-4 text-center">
+                No inline preview for this file type.{' '}
+                <a href={preview.url} target="_blank" rel="noopener noreferrer" className="text-family-400 font-semibold">
+                  Open the file
+                </a>
               </div>
-            ))}
-          </div>
-        </GlassCard>
-      )}
+            )}
+          </GlassCard>
+        )}
+
+        {fields.length > 0 && (
+          <GlassCard className="p-4">
+            <div className="text-sm font-semibold text-ink-secondary mb-3">Extracted details</div>
+            <div className="space-y-2.5">
+              {fields.map(([key, value]) => (
+                <div key={key} className="flex items-start justify-between gap-3 text-sm">
+                  <span className="text-ink-tertiary flex-shrink-0">{fieldLabel(key)}</span>
+                  <span className="text-ink-primary text-right">{value}</span>
+                </div>
+              ))}
+            </div>
+          </GlassCard>
+        )}
+      </div>
 
       <AnimatePresence mode="wait">
         {applied ? (
