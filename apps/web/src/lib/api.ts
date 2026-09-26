@@ -1654,6 +1654,7 @@ export interface MarketingPost {
   state: MarketingPostState
   scheduled_at?: string
   auto_published?: boolean
+  campaign?: string
   generated?: 'llm' | 'template'
   dry_run?: boolean
   created_at: string
@@ -1707,6 +1708,7 @@ export async function createMarketingPost(input: {
   channel: string
   content: string
   scheduled_at?: string
+  campaign?: string
 }): Promise<MarketingPost> {
   const data = await marketingRequest<{ post: MarketingPost }>('/marketing/posts', 'POST', { ...input })
   return data.post
@@ -1736,14 +1738,33 @@ export async function generateMarketingPost(input: {
   channel: string
   topic?: string
   blog_slug?: string
+  campaign?: string
 }): Promise<MarketingPost> {
   const data = await marketingRequest<{ post: MarketingPost }>('/marketing/posts/generate', 'POST', { ...input })
   return data.post
 }
 
+/** Generate up to 3 draft variants without persisting — the composer
+ *  shows them side by side and the operator picks one to edit/queue. */
+export async function previewMarketingDrafts(input: {
+  integration_id: string
+  channel: string
+  topic?: string
+  blog_slug?: string
+  campaign?: string
+  count?: number
+}): Promise<string[]> {
+  const data = await marketingRequest<{ drafts: string[] }>('/marketing/posts/generate', 'POST', {
+    ...input,
+    preview: true,
+  })
+  return data.drafts ?? []
+}
+
 export interface MarketingPerformance {
   posts: { slug: string; title?: string; views: number; cta_clicks: number; signups: number; leads: number }[]
   channels: { channel: string; views: number; signups: number }[]
+  campaigns: { campaign: string; views: number; signups: number; leads: number }[]
   totals: { views: number; cta_clicks: number; signups: number; leads: number }
 }
 

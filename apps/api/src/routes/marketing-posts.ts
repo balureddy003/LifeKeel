@@ -68,12 +68,18 @@ export interface MarketingPostDoc {
   published_at?: Date
   publish_error?: string
   generated?: 'llm' | 'template'
+  /** UTM campaign tag — 'oak_social' for ungrouped posts; named campaigns
+   *  let the operator split performance by push. */
+  campaign?: string
   source_blog_slug?: string
   external_id?: string
   external_url?: string
   metrics?: { likes?: number; reposts?: number; replies?: number }
   metrics_at?: Date
 }
+
+/** Campaign tags ride inside utm_campaign — slug-safe chars only. */
+const CampaignSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/)
 
 const UpdatePostSchema = z.object({
   content: z.string().min(1).max(5000).optional(),
@@ -86,6 +92,7 @@ const CreatePostSchema = z.object({
   channel: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/),
   content: z.string().min(1).max(5000),
   scheduled_at: z.string().datetime().optional(),
+  campaign: CampaignSchema.optional(),
 })
 
 const GeneratePostSchema = z
@@ -94,6 +101,11 @@ const GeneratePostSchema = z
     channel: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/),
     topic: z.string().min(1).max(500).optional(),
     blog_slug: z.string().min(1).max(200).optional(),
+    campaign: CampaignSchema.optional(),
+    /** Preview mode: return 1–3 draft variants without persisting — the
+     *  operator picks one into the composer, which then creates normally. */
+    preview: z.boolean().optional(),
+    count: z.number().int().min(1).max(3).optional(),
   })
   .refine((v) => v.topic !== undefined || v.blog_slug !== undefined, {
     message: 'Provide topic or blog_slug',
@@ -323,13 +335,15 @@ export interface MarketingPerformanceRow {
 
 /** GET /marketing/performance — closes the loop numerically: per promoted
  *  blog post, blog_view/blog_cta_click growth events joined against
- *  signups and leads attributed utm_campaign=oak_social (content=slug).
+ *  signups and leads attributed utm_medium=social (content=slug,
+ *  campaign=named push).
  *  Channel rollups come from event meta.utm_source (captured since the
  *  UTM'd links shipped) and signup attribution. Aggregate counts only —
  *  no user-level data crosses this read. */
 export async function marketingPerformance(db: Db): Promise<{
   posts: MarketingPerformanceRow[]
   channels: { channel: string; views: number; signups: number }[]
+  campaigns: { campaign: string; views: number; signups: number; leads: number }[]
   totals: { views: number; cta_clicks: number; signups: number; leads: number }
 }> {
   const events = await db.collection('growth_events').find({}).toArray()
@@ -350,31 +364,43 @@ export async function marketingPerformance(db: Db): Promise<{
   }
   const channelViews = new Map<string, number>()
   const channelSignups = new Map<string, number>()
+  const campaignViews = new Map<string, number>()
+  const campaignSignups = new Map<string, number>()
+  const campaignLeads = new Map<string, number>()
+  // utm_medium=social marks our generated/published links — any campaign
+  // name under it counts; other mediums (ads, email) stay excluded.
+  const isSocial = (a: Record<string, string> | undefined) => a?.['utm_medium'] === 'social'
+  const campOf = (a: Record<string, string> | undefined) => a?.['utm_campaign'] || 'oak_social'
 
   for (const e of events) {
     const slug = slugOf(e['path'])
     if (!slug) continue
     if (e['event'] === 'blog_view') {
       row(slug).views += 1
-      const src = (e['meta'] as Record<string, unknown> | undefined)?.['utm_source']
+      const meta = e['meta'] as Record<string, unknown> | undefined
+      const src = meta?.['utm_source']
       if (typeof src === 'string') channelViews.set(src, (channelViews.get(src) ?? 0) + 1)
+      const camp = meta?.['utm_campaign']
+      if (typeof camp === 'string') campaignViews.set(camp, (campaignViews.get(camp) ?? 0) + 1)
     } else if (e['event'] === 'blog_cta_click') {
       row(slug).cta_clicks += 1
     }
   }
   for (const u of users) {
     const a = u['attribution'] as Record<string, string> | undefined
-    if (a?.['utm_campaign'] !== 'oak_social') continue
-    const slug = a['utm_content']
+    if (!isSocial(a)) continue
+    const slug = a!['utm_content']
     if (slug) row(slug).signups += 1
-    const src = a['utm_source']
+    const src = a!['utm_source']
     if (src) channelSignups.set(src, (channelSignups.get(src) ?? 0) + 1)
+    campaignSignups.set(campOf(a), (campaignSignups.get(campOf(a)) ?? 0) + 1)
   }
   for (const l of leads) {
     const a = l['attribution'] as Record<string, string> | undefined
-    if (a?.['utm_campaign'] !== 'oak_social') continue
-    const slug = a['utm_content']
+    if (!isSocial(a)) continue
+    const slug = a!['utm_content']
     if (slug) row(slug).leads += 1
+    campaignLeads.set(campOf(a), (campaignLeads.get(campOf(a)) ?? 0) + 1)
   }
 
   const posts = [...rows.values()]
@@ -383,11 +409,14 @@ export async function marketingPerformance(db: Db): Promise<{
   const channels = [...new Set([...channelViews.keys(), ...channelSignups.keys()])]
     .map((c) => ({ channel: c, views: channelViews.get(c) ?? 0, signups: channelSignups.get(c) ?? 0 }))
     .sort((a, b) => b.signups - a.signups || b.views - a.views)
+  const campaigns = [...new Set([...campaignViews.keys(), ...campaignSignups.keys(), ...campaignLeads.keys()])]
+    .map((c) => ({ campaign: c, views: campaignViews.get(c) ?? 0, signups: campaignSignups.get(c) ?? 0, leads: campaignLeads.get(c) ?? 0 }))
+    .sort((a, b) => b.signups - a.signups || b.views - a.views)
   const totals = posts.reduce(
     (t, r) => ({ views: t.views + r.views, cta_clicks: t.cta_clicks + r.cta_clicks, signups: t.signups + r.signups, leads: t.leads + r.leads }),
     { views: 0, cta_clicks: 0, signups: 0, leads: 0 },
   )
-  return { posts, channels, totals }
+  return { posts, channels, campaigns, totals }
 }
 
 /** Engagement sweep — poll channel APIs for like/repost/reply counts on
@@ -514,18 +543,18 @@ Rules — these are non-negotiable:
 
 /** UTM'd site link — clicks land in users.attribution.utm_source so the
  *  operator funnel can attribute signups back to the channel/post. */
-function siteLink(channel: string, path: string, contentTag: string): string {
+function siteLink(channel: string, path: string, contentTag: string, campaign = 'oak_social'): string {
   const base = (process.env['AGENT_OAK_URL'] ?? '').replace(/\/$/, '')
   return base
-    ? `${base}${path}?utm_source=${encodeURIComponent(channel)}&utm_medium=social&utm_campaign=oak_social&utm_content=${encodeURIComponent(contentTag)}`
+    ? `${base}${path}?utm_source=${encodeURIComponent(channel)}&utm_medium=social&utm_campaign=${encodeURIComponent(campaign)}&utm_content=${encodeURIComponent(contentTag)}`
     : ''
 }
 
-async function blogSourceBlock(db: Db, blogSlug: string, channel: string): Promise<{ sourceBlock: string; link: string } | null> {
+async function blogSourceBlock(db: Db, blogSlug: string, channel: string, campaign = 'oak_social'): Promise<{ sourceBlock: string; link: string } | null> {
   const post = await db.collection('blog_posts').findOne({ slug: blogSlug, published: true })
   if (!post) return null
   // utm_content carries the slug for per-post reads.
-  const link = siteLink(channel, `/blog/${blogSlug}`, blogSlug)
+  const link = siteLink(channel, `/blog/${blogSlug}`, blogSlug, campaign)
   return {
     link,
     sourceBlock: `Blog post to promote:\nTitle: ${post['title']}\nSummary: ${post['excerpt']}${link ? `\nLink to include verbatim: ${link}` : ''}`,
@@ -547,18 +576,56 @@ async function draftPostText(
       `Channel: ${channel} (hard maximum ${limit} characters — stay under it).\n\n${sourceBlock}\n\nWrite one post.`,
       'tier:fast',
     )
-    // If the model dropped or truncated the link, re-append it with its
-    // room reserved so the clamp can't eat it — a draft without the link
-    // has no funnel and no attribution.
-    const content = link && !raw.includes(link)
-      ? `${clampPost(raw, limit, link.length + 2)}\n\n${link}`
-      : clampPost(raw, limit)
+    const content = finishPost(raw, limit, link)
     if (!content) throw new Error('empty generation')
     return { content, generated: 'llm' }
   } catch {
     const body = clampPost(sourceBlock.split('\n').slice(1).join('\n'), limit, link ? link.length + 2 : 0)
     return { generated: 'template', content: `${body}${link ? `\n\n${link}` : ''}` }
   }
+}
+
+/** Re-append the CTA link with its room reserved when the model dropped
+ *  it — an unlinked draft has no funnel and no attribution. */
+function finishPost(raw: string, limit: number, link: string): string {
+  return link && !raw.includes(link)
+    ? `${clampPost(raw, limit, link.length + 2)}\n\n${link}`
+    : clampPost(raw, limit)
+}
+
+/** Preview variants for the composer — one LLM call asks for N takes
+ *  separated by '---' lines so the picker stays cheap. Nothing is
+ *  persisted; the operator picks a variant, edits it, and queues via
+ *  the normal create route where review/trust rules live. */
+export async function draftPostVariants(
+  llm: LlmFn,
+  channel: string,
+  sourceBlock: string,
+  link: string,
+  count: number,
+): Promise<string[]> {
+  const limit = CHANNEL_CHAR_LIMIT[channel] ?? 2000
+  if (count <= 1) {
+    const raw = await llm(
+      GENERATE_SYSTEM,
+      `Channel: ${channel} (hard maximum ${limit} characters — stay under it).\n\n${sourceBlock}\n\nWrite one post.`,
+      'tier:fast',
+    )
+    return [finishPost(raw, limit, link)].filter(Boolean)
+  }
+  const raw = await llm(
+    GENERATE_SYSTEM,
+    `Channel: ${channel} (hard maximum ${limit} characters each — stay under it).\n\n${sourceBlock}\n\nWrite ${count} meaningfully different variants — vary the hook, angle, and CTA phrasing. Separate variants with a line containing only ---`,
+    'tier:fast',
+  )
+  const drafts = raw
+    .split(/\n\s*---+\s*\n/)
+    .map((p) => finishPost(p, limit, link))
+    .filter(Boolean)
+    .slice(0, count)
+  if (drafts.length) return drafts
+  const single = finishPost(raw, limit, link)
+  return single ? [single] : []
 }
 
 export function registerMarketingPostRoutes(
@@ -707,7 +774,7 @@ export function registerMarketingPostRoutes(
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Invalid post', issues: parsed.error.issues })
     }
-    const { integration_id, channel, content, scheduled_at } = parsed.data
+    const { integration_id, channel, content, scheduled_at, campaign } = parsed.data
     const now = new Date()
     const post: MarketingPostDoc = {
       id: randomUUID(),
@@ -715,6 +782,7 @@ export function registerMarketingPostRoutes(
       channel,
       integration_id,
       content,
+      campaign: campaign ?? 'oak_social',
       ...(scheduled_at ? { scheduled_at: new Date(scheduled_at) } : {}),
       state: 'draft',
       created_by: user_id,
@@ -755,19 +823,31 @@ export function registerMarketingPostRoutes(
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
     }
-    const { integration_id, channel, topic, blog_slug } = parsed.data
+    const { integration_id, channel, topic, blog_slug, campaign, preview, count } = parsed.data
+    const camp = campaign ?? 'oak_social'
 
     let sourceBlock: string
     let link = ''
     if (blog_slug) {
-      const src = await blogSourceBlock(db, blog_slug, channel)
+      const src = await blogSourceBlock(db, blog_slug, channel, camp)
       if (!src) return reply.status(404).send({ error: 'Blog post not found' })
       sourceBlock = src.sourceBlock
       link = src.link
     } else {
       // Free-topic drafts still need a funnel — link the readiness check.
-      link = siteLink(channel, '/readiness', 'topic')
+      link = siteLink(channel, '/readiness', 'topic', camp)
       sourceBlock = `Topic: ${topic}${link ? `\nLink to include verbatim: ${link}` : ''}`
+    }
+
+    if (preview) {
+      try {
+        const drafts = await draftPostVariants(llm, channel, sourceBlock, link, count ?? 3)
+        return { drafts }
+      } catch {
+        // Same deterministic fallback as the persisted path.
+        const { content } = await draftPostText(async () => { throw new Error('fallback') }, channel, sourceBlock, link)
+        return { drafts: [content] }
+      }
     }
 
     const { content, generated } = await draftPostText(llm, channel, sourceBlock, link)
@@ -779,6 +859,7 @@ export function registerMarketingPostRoutes(
       channel,
       integration_id,
       content,
+      campaign: camp,
       state: 'draft',
       generated,
       ...(blog_slug ? { source_blog_slug: blog_slug } : {}),

@@ -601,6 +601,34 @@ describe('/marketing/posts/generate', () => {
     expect(post.content).toContain('utm_content=topic')
   })
 
+  it('preview mode returns variants without persisting — the operator picks one', async () => {
+    const llm = vi.fn(async (_system: string, _prompt: string, _tier?: string) => 'hook one\n---\nhook two\n---\nhook three')
+    const { app, posts } = await buildApp({ llm })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/marketing/posts/generate',
+      payload: { ...GEN, preview: true },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().drafts).toEqual(['hook one', 'hook two', 'hook three'])
+    expect(posts).toHaveLength(0)
+    expect(llm.mock.calls[0]![1]).toContain('variants')
+  })
+
+  it('posts carry their campaign into the UTM link and the doc', async () => {
+    vi.stubEnv('AGENT_OAK_URL', 'https://oak.example')
+    const llm = async () => 'campaign post'
+    const { app, posts } = await buildApp({ llm })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/marketing/posts/generate',
+      payload: { ...GEN, campaign: 'autumn_push' },
+    })
+    expect(res.statusCode).toBe(201)
+    expect(posts[0]!['campaign']).toBe('autumn_push')
+    expect(posts[0]!['content']).toContain('utm_campaign=autumn_push')
+  })
+
   it('400s with neither topic nor blog_slug, 404s on an unknown slug', async () => {
     const { app } = await buildApp()
     expect(
@@ -679,18 +707,19 @@ describe('/marketing/performance', () => {
       { event: 'blog_view', path: '/settings' },                           // non-blog path — ignored
     )
     users.push(
-      { attribution: { utm_source: 'bluesky', utm_campaign: 'oak_social', utm_content: 'cover-gap' } },
-      { attribution: { utm_source: 'bluesky', utm_campaign: 'oak_social', utm_content: 'cover-gap' } },
-      { attribution: { utm_source: 'google', utm_campaign: 'ads', utm_content: 'cover-gap' } }, // other campaign — excluded
-      { attribution: { utm_source: 'x', utm_campaign: 'oak_social' } },                          // campaign but no slug — channel only
+      { attribution: { utm_source: 'bluesky', utm_medium: 'social', utm_campaign: 'oak_social', utm_content: 'cover-gap' } },
+      { attribution: { utm_source: 'bluesky', utm_medium: 'social', utm_campaign: 'autumn_push', utm_content: 'cover-gap' } },
+      { attribution: { utm_source: 'google', utm_medium: 'cpc', utm_campaign: 'ads', utm_content: 'cover-gap' } }, // non-social medium — excluded
+      { attribution: { utm_source: 'x', utm_medium: 'social', utm_campaign: 'oak_social' } },                      // campaign but no slug — channel only
     )
-    leads.push({ attribution: { utm_source: 'x', utm_campaign: 'oak_social', utm_content: 'cover-gap' } })
+    leads.push({ attribution: { utm_source: 'x', utm_medium: 'social', utm_campaign: 'oak_social', utm_content: 'cover-gap' } })
 
     const res = await app.inject({ method: 'GET', url: '/marketing/performance' })
     expect(res.statusCode).toBe(200)
-    const { posts, channels, totals } = res.json() as {
+    const { posts, channels, campaigns, totals } = res.json() as {
       posts: { slug: string; views: number; cta_clicks: number; signups: number; leads: number; title?: string }[]
       channels: { channel: string; views: number; signups: number }[]
+      campaigns: { campaign: string; views: number; signups: number; leads: number }[]
       totals: { views: number; signups: number; leads: number }
     }
 
@@ -707,13 +736,19 @@ describe('/marketing/performance', () => {
     const x = channels.find((c) => c.channel === 'x')!
     expect(x).toMatchObject({ views: 1, signups: 1 })
     expect(channels.find((c) => c.channel === 'google')).toBeUndefined()
+
+    // Campaign rollup — named pushes bucket separately from the default.
+    const oakSocial = campaigns.find((c) => c.campaign === 'oak_social')!
+    expect(oakSocial).toMatchObject({ views: 1, signups: 2, leads: 1 })
+    expect(campaigns.find((c) => c.campaign === 'autumn_push')).toMatchObject({ signups: 1 })
+    expect(campaigns.find((c) => c.campaign === 'ads')).toBeUndefined()
   })
 
   it('returns an empty rollup when nothing has been promoted yet', async () => {
     const { app } = await buildApp()
     const res = await app.inject({ method: 'GET', url: '/marketing/performance' })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ posts: [], channels: [], totals: { views: 0, cta_clicks: 0, signups: 0, leads: 0 } })
+    expect(res.json()).toEqual({ posts: [], channels: [], campaigns: [], totals: { views: 0, cta_clicks: 0, signups: 0, leads: 0 } })
   })
 })
 
