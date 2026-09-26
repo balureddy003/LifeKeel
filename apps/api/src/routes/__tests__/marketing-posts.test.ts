@@ -443,7 +443,9 @@ describe('/marketing/posts/generate', () => {
     expect(res.statusCode).toBe(201)
     expect(seen[0]).toContain('The cover gap')
     expect(seen[0]).toContain('Most families miss it.')
-    expect(seen[0]).toContain('Link to include verbatim: https://oak.example/blog/cover-gap')
+    expect(seen[0]).toContain(
+      'Link to include verbatim: https://oak.example/blog/cover-gap?utm_source=bluesky&utm_medium=social&utm_campaign=oak_social&utm_content=cover-gap',
+    )
   })
 
   it('falls back to a template draft when the LLM fails — feature stays usable', async () => {

@@ -272,7 +272,7 @@ export async function generateDailyMarketingDrafts(db: Db, llm: LlmFn): Promise<
     if (!candidate) continue
 
     const slug = candidate['slug'] as string
-    const src = await blogSourceBlock(db, slug)
+    const src = await blogSourceBlock(db, slug, conn.channel)
     if (!src) continue
     const { content, generated } = await draftPostText(llm, conn.channel, src.sourceBlock, src.link)
     const post: MarketingPostDoc = {
@@ -320,11 +320,16 @@ Rules — these are non-negotiable:
   no emojis.
 - Return ONLY the post text, nothing else.`
 
-async function blogSourceBlock(db: Db, blogSlug: string): Promise<{ sourceBlock: string; link: string } | null> {
+async function blogSourceBlock(db: Db, blogSlug: string, channel: string): Promise<{ sourceBlock: string; link: string } | null> {
   const post = await db.collection('blog_posts').findOne({ slug: blogSlug, published: true })
   if (!post) return null
   const base = (process.env['AGENT_OAK_URL'] ?? '').replace(/\/$/, '')
-  const link = base ? `${base}/blog/${blogSlug}` : ''
+  // UTM'd so a click → signup lands in users.attribution.utm_source and the
+  // operator overview's "signups by source" — the measurable end of the
+  // social loop. utm_content carries the slug for per-post reads.
+  const link = base
+    ? `${base}/blog/${blogSlug}?utm_source=${encodeURIComponent(channel)}&utm_medium=social&utm_campaign=oak_social&utm_content=${encodeURIComponent(blogSlug)}`
+    : ''
   return {
     link,
     sourceBlock: `Blog post to promote:\nTitle: ${post['title']}\nSummary: ${post['excerpt']}${link ? `\nLink to include verbatim: ${link}` : ''}`,
@@ -524,7 +529,7 @@ export function registerMarketingPostRoutes(
     let sourceBlock: string
     let link = ''
     if (blog_slug) {
-      const src = await blogSourceBlock(db, blog_slug)
+      const src = await blogSourceBlock(db, blog_slug, channel)
       if (!src) return reply.status(404).send({ error: 'Blog post not found' })
       sourceBlock = src.sourceBlock
       link = src.link

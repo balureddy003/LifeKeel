@@ -8,6 +8,7 @@ import { HelpCircle } from 'lucide-react'
 import { GlassCard, PageHeader } from '@/components/Glass'
 import { MermaidDiagram } from '@/components/MermaidDiagram'
 import { fetchBlogPost, type BlogPost } from '@/lib/api'
+import { track } from '@/lib/growth-track'
 
 // Diagram fences can arrive as ```mermaid, ```flowchart, or a bare ```
 // block whose first line is a diagram keyword — all render as mermaid.
@@ -48,6 +49,10 @@ export default function BlogPostClient() {
 
   useEffect(() => {
     let cancelled = false
+    // The first-touch attribution capture point for social landings —
+    // generated posts deep-link here with utm_* params; track() persists
+    // them before any later signup reads getAttribution().
+    track('blog_view')
     fetchBlogPost(params.slug).then((p) => {
       if (!cancelled) {
         setPost(p)
@@ -90,6 +95,16 @@ export default function BlogPostClient() {
         <p className="text-sm text-ink-secondary leading-relaxed">
           Informational and educational only — not financial, investment, tax, or insurance advice.
         </p>
+      </GlassCard>
+      <GlassCard className="p-4 mt-3 flex items-center justify-between gap-3">
+        <p className="text-sm text-ink-primary font-medium">How covered is your family, really?</p>
+        <Link
+          href="/readiness"
+          onClick={() => track('blog_cta_click')}
+          className="shrink-0 text-sm font-semibold text-family-400"
+        >
+          Take the 2-min check →
+        </Link>
       </GlassCard>
     </div>
   )
