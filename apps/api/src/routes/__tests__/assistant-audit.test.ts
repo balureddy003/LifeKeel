@@ -29,7 +29,15 @@ vi.mock('../../db.js', () => ({
 }))
 
 function makeFakeDb() {
-  const col = { findOne: async () => null, insertOne: async () => ({}), createIndex: async () => ({}) }
+  const col = {
+    findOne: async () => null,
+    insertOne: async () => ({}),
+    createIndex: async () => ({}),
+    // Phase 2 (Digital Twin gap audit) added a 'documents' lookup for
+    // unreviewed AI Memory items — same find().sort().limit().toArray()
+    // shape the insights mock above already uses.
+    find: () => ({ sort: () => ({ limit: () => ({ toArray: async () => [] }) }) }),
+  }
   return { collection: () => col } as any
 }
 

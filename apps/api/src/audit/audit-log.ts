@@ -28,6 +28,7 @@ export type AuditAction =
   | 'insight.dismiss'
   | 'insight.prepare'
   | 'assistant.ask'
+  | 'assistant.simulate'
   | 'detector.create'
   | 'detector.eval'
   | 'detector.update'

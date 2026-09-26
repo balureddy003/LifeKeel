@@ -8,6 +8,11 @@
  * answer. Never throws to the client: any LLM failure (no provider
  * configured, bad key, rate limit, network) degrades to a graceful,
  * honest fallback with isLive: false rather than a 500.
+ *
+ * POST /assistant/simulate — a "what if" scenario (income change, new
+ * savings rate, directed at a child's education fund) computed by plain
+ * arithmetic in ../scenarios/calculate.ts, never by the LLM. The model
+ * only narrates the numbers this route hands it.
  */
 
 import { z } from 'zod'
@@ -16,9 +21,20 @@ import type { Db } from 'mongodb'
 import { createLlmRouterFromEnv, getTenantCollection, type LlmFn } from '@agentoak/platform'
 import { getInsightsCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
+import { calculateScenario, type ScenarioProfileInput, type ScenarioResult } from '../scenarios/calculate.js'
 
 const AskSchema = z.object({
   query: z.string().min(1).max(2000),
+})
+
+const SimulateSchema = z.object({
+  monthlyIncomeDeltaMinor: z.number().int().optional(),
+  monthlyExtraSavingsMinor: z.number().int().min(0).optional(),
+  targetChildName: z.string().max(100).optional(),
+  // Optional — what the family actually typed/asked about this scenario.
+  // Falls back to a generic prompt so the endpoint works from a plain
+  // structured UI control (sliders/inputs) with no free text at all.
+  question: z.string().max(2000).optional(),
 })
 
 const SYSTEM_PROMPT = `You are Oak, the assistant inside Agent Oak — a family's financial digital twin. Answer the family's question using ONLY the data provided below.
@@ -27,7 +43,10 @@ Rules:
 - Never give definitive financial, investment, insurance, tax, or legal advice, and never recommend, compare, or steer toward a specific product or provider. Always frame guidance as informational — describe what's on file and possible gaps — and recommend consulting a licensed professional for decisions.
 - If the provided data doesn't answer the question, say so honestly rather than guessing or inventing numbers.
 - Be concise and specific — reference the family's actual figures where relevant instead of generic advice.
-- Do not suggest Oak can take any action on the family's behalf (send money, contact anyone, file anything) — Oak only explains and summarizes.`
+- Do not suggest Oak can take any action on the family's behalf (send money, contact anyone, file anything) — Oak only explains and summarizes.
+- Some figures below are marked "profile pending" — that household member hasn't joined and confirmed their own details yet. If your answer relies on one of those figures, say plainly that it's provisional and based on data entered by someone else on their behalf, rather than presenting it as confirmed.
+- Some figures below come from an unreviewed uploaded document — the family hasn't confirmed those numbers are correct or added them to the profile yet. If your answer relies on one of those, say so and suggest they review it, rather than treating it as an established fact.
+- Never invent a hypothetical projection (e.g. "if income changed by X"). If asked one and no computed scenario result is provided below, say you can't calculate that yet and point to what's currently on file instead.`
 
 const FALLBACK_CONTENT = "Based on the information you've entered, here is a summary from your family's data. This is for informational purposes only — please consult a qualified professional before making financial decisions. Would you like to see the specific numbers from your family's profile?"
 
@@ -89,17 +108,42 @@ interface FinancialProfileDoc extends Record<string, unknown> {
 // shared/exported accessor. Only what buildContext needs to resolve a
 // member_id to a real name.
 interface FamilyGroupDoc extends Record<string, unknown> {
-  members: Array<{ id: string; name: string; role: string }>
+  // `status` was never declared here before, even though family-group.ts's
+  // own FamilyMemberDoc has had it from the start — a Pending member's name
+  // and figures flowed into the prompt exactly like a confirmed member's,
+  // with no signal to the model (or thus the family) that the data hadn't
+  // been confirmed by that person yet.
+  members: Array<{ id: string; name: string; role: string; status?: string }>
+}
+
+// A recently-extracted-but-unreviewed document (AI Memory) — surfaced so
+// Oak can mention it rather than stay silent about data sitting right
+// there unconfirmed. Mirrors the same `status === 'extracted'` convention
+// apps/web/src/components/Intelligence.tsx's MemoryPrompts already uses;
+// applying a suggestion never flips this status (a pre-existing gap, not
+// something this change fixes), so this can resurface an already-applied
+// document — same known limitation as the Home screen's own AI Memory card.
+interface UnreviewedDocumentDoc extends Record<string, unknown> {
+  filename?: string
+  category?: string
+  uploaded_at?: Date
 }
 
 function toMajor(minor: number | undefined): string {
   return typeof minor === 'number' ? (minor / 100).toFixed(2) : 'not provided'
 }
 
+function memberLabel(family: FamilyGroupDoc | null, memberId: string | undefined, fallback: string): string {
+  const member = family?.members.find((m) => m.id === memberId)
+  if (!member) return fallback
+  return member.status === 'pending' ? `${member.name} (profile pending)` : member.name
+}
+
 function buildContext(
   profile: FinancialProfileDoc | null,
   family: FamilyGroupDoc | null,
   insights: Array<{ reasoning: string; category: string; detector_id: string }>,
+  unreviewedDocs: UnreviewedDocumentDoc[],
 ): string {
   const parts: string[] = []
 
@@ -119,7 +163,7 @@ function buildContext(
       // assistant can answer "does my husband have income protection?"
       // about a specific person, not just the household total.
       for (const member of h.members ?? []) {
-        const name = family?.members.find((m) => m.id === member.member_id)?.name ?? 'another household member'
+        const name = memberLabel(family, member.member_id, 'another household member')
         parts.push(
           `Household member ${name}: employment status ${member.employment_status ?? 'unknown'}, ` +
           `monthly salary £${toMajor(member.monthly_salary_minor)}, income protection £${toMajor(member.income_protection_monthly_minor)}/month.`,
@@ -148,7 +192,7 @@ function buildContext(
     }
     for (const policy of profile.policies ?? []) {
       const holder = policy.member_id
-        ? (family?.members.find((m) => m.id === policy.member_id)?.name ?? 'a household member')
+        ? memberLabel(family, policy.member_id, 'a household member')
         : 'the household'
       parts.push(
         `${policy.type ?? 'Insurance'} policy with ${policy.provider ?? 'unknown provider'} held by ${holder}: ` +
@@ -167,7 +211,89 @@ function buildContext(
     }
   }
 
+  if (unreviewedDocs.length > 0) {
+    parts.push('Documents uploaded but not yet reviewed or added to the profile (mention if relevant, but note they are unconfirmed):')
+    for (const doc of unreviewedDocs) {
+      parts.push(`- "${doc.filename ?? 'a document'}" (${doc.category ?? 'uncategorized'}), uploaded ${doc.uploaded_at?.toISOString().slice(0, 10) ?? 'recently'}.`)
+    }
+  }
+
   return parts.join('\n')
+}
+
+// Shared by /ask and /simulate — both ground the LLM in the same tenant
+// data (profile, roster, open insights, unreviewed documents).
+async function loadAssistantData(db: Db, tenant_id: string) {
+  const [profileDoc, familyDoc, insightDocs, unreviewedDocs] = await Promise.all([
+    getTenantCollection<FinancialProfileDoc>(db, 'family_financial_profile', tenant_id).findOne({}),
+    getTenantCollection<FamilyGroupDoc>(db, 'family_groups', tenant_id).findOne({}),
+    getInsightsCollection().then((col) =>
+      col
+        .find({ tenant_id, state: { $in: ['identified', 'sent'] } })
+        .sort({ created_at: -1 })
+        .limit(10)
+        .toArray(),
+    ),
+    getTenantCollection<UnreviewedDocumentDoc>(db, 'documents', tenant_id)
+      .find({ status: 'extracted' })
+      .sort({ uploaded_at: -1 })
+      .limit(5)
+      .toArray(),
+  ])
+  return { profileDoc, familyDoc, insightDocs, unreviewedDocs }
+}
+
+// Maps the profile's raw fields into the scenario calculator's minimal
+// input shape — null when there's not enough on file to project anything
+// (no income and no expenses at all), so /simulate can decline honestly
+// instead of running the math on all-zero data and presenting it as real.
+function toScenarioProfileInput(profile: FinancialProfileDoc | null): ScenarioProfileInput | null {
+  const h = profile?.household
+  const ef = profile?.emergency_fund
+  if (!h && !ef) return null
+
+  const monthlyIncomeMinor = (h?.monthly_salary_minor ?? 0) + (h?.members ?? []).reduce((sum, m) => sum + (m.monthly_salary_minor ?? 0), 0)
+  const monthlyExpensesMinor = ef?.monthly_expenses_minor ?? Math.round((h?.annual_living_expenses_minor ?? 0) / 12)
+  if (monthlyIncomeMinor === 0 && monthlyExpensesMinor === 0) return null
+
+  return {
+    monthlyIncomeMinor,
+    monthlyExpensesMinor,
+    emergencySavingsMinor: ef?.emergency_savings_minor ?? 0,
+    educationFunds: (profile?.education_funds ?? [])
+      .filter((f) => !!f.child_name)
+      .map((f) => ({
+        childName: f.child_name!,
+        currentSavingsMinor: f.current_savings_minor ?? 0,
+        targetSavingsMinor: f.target_savings_minor ?? 0,
+        yearsRemaining: f.years_remaining ?? 0,
+      })),
+  }
+}
+
+function formatScenarioResult(result: ScenarioResult): string {
+  const lines = [
+    `Current total household monthly income: £${toMajor(result.currentMonthlyIncomeMinor)}.`,
+    `Projected monthly income under this scenario: £${toMajor(result.projectedMonthlyIncomeMinor)}.`,
+    `Current monthly surplus (income minus expenses): £${toMajor(result.currentMonthlySurplusMinor)}.`,
+    `Projected monthly surplus under this scenario: £${toMajor(result.projectedMonthlySurplusMinor)}.`,
+    result.currentRunwayMonths === null
+      ? 'Current emergency-fund runway: not applicable — income currently covers expenses.'
+      : `Current emergency-fund runway: ${result.currentRunwayMonths} months.`,
+    result.projectedRunwayMonths === null
+      ? 'Projected emergency-fund runway under this scenario: not applicable — income would cover expenses.'
+      : `Projected emergency-fund runway under this scenario: ${result.projectedRunwayMonths} months.`,
+  ]
+  if (result.educationFundProjection) {
+    const p = result.educationFundProjection
+    lines.push(
+      p.projectedMonthsToTarget === null
+        ? `${p.childName}'s education fund: no new monthly saving directed at it in this scenario, so no projection.`
+        : `${p.childName}'s education fund at this new saving rate: reaches its target in ${p.projectedMonthsToTarget} months, ` +
+          `versus ${p.yearsRemaining * 12} months remaining — ${p.onTrack ? 'on track' : 'not on track'} at this pace.`,
+    )
+  }
+  return lines.join('\n')
 }
 
 export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
@@ -189,22 +315,13 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
       const { tenant_id } = req.authContext
       const { query } = parsed.data
 
-      const [profileDoc, familyDoc, insightDocs] = await Promise.all([
-        getTenantCollection<FinancialProfileDoc>(db, 'family_financial_profile', tenant_id).findOne({}),
-        getTenantCollection<FamilyGroupDoc>(db, 'family_groups', tenant_id).findOne({}),
-        getInsightsCollection().then((col) =>
-          col
-            .find({ tenant_id, state: { $in: ['identified', 'sent'] } })
-            .sort({ created_at: -1 })
-            .limit(10)
-            .toArray(),
-        ),
-      ])
+      const { profileDoc, familyDoc, insightDocs, unreviewedDocs } = await loadAssistantData(db, tenant_id)
 
       const context = buildContext(
         profileDoc,
         familyDoc,
         insightDocs.map((i) => ({ reasoning: i.reasoning, category: i.category, detector_id: i.detector_id })),
+        unreviewedDocs,
       )
       const prompt = `Family data:\n${context}\n\nQuestion: ${query}`
 
@@ -216,6 +333,56 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
         req.log.warn({ err }, 'Assistant LLM call failed — falling back')
         getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', { is_live: false })
         return reply.send({ content: FALLBACK_CONTENT, isLive: false })
+      }
+    },
+  )
+
+  app.post<{ Body: z.infer<typeof SimulateSchema> }>(
+    '/assistant/simulate',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const parsed = SimulateSchema.safeParse(req.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
+      }
+      const { tenant_id } = req.authContext
+      const { monthlyIncomeDeltaMinor, monthlyExtraSavingsMinor, targetChildName, question } = parsed.data
+
+      const { profileDoc, familyDoc, insightDocs, unreviewedDocs } = await loadAssistantData(db, tenant_id)
+      const scenarioInput = toScenarioProfileInput(profileDoc)
+      if (!scenarioInput) {
+        return reply.send({
+          content: "There isn't enough on your Financial Profile yet (income or expenses) to project a scenario — fill that in first and this will work.",
+          isLive: false,
+          scenario: null,
+        })
+      }
+
+      const scenario = calculateScenario(scenarioInput, {
+        monthlyIncomeDeltaMinor,
+        monthlyExtraSavingsMinor,
+        targetChildName,
+      })
+
+      const context = buildContext(
+        profileDoc,
+        familyDoc,
+        insightDocs.map((i) => ({ reasoning: i.reasoning, category: i.category, detector_id: i.detector_id })),
+        unreviewedDocs,
+      )
+      const prompt =
+        `Family data:\n${context}\n\n` +
+        `Oak's calculator has already computed this scenario (these numbers are exact — narrate them, do not recompute or second-guess them):\n${formatScenarioResult(scenario)}\n\n` +
+        `Question: ${question ?? 'What does this scenario mean for our finances?'}`
+
+      try {
+        const content = await llmFn(SYSTEM_PROMPT, prompt, 'tier:fast')
+        getAuditLogger()?.fromRequest(req, 'assistant.simulate', 'assistant', 'simulate', { is_live: true })
+        return reply.send({ content, isLive: true, scenario })
+      } catch (err) {
+        req.log.warn({ err }, 'Assistant simulate LLM call failed — falling back to raw numbers')
+        getAuditLogger()?.fromRequest(req, 'assistant.simulate', 'assistant', 'simulate', { is_live: false })
+        return reply.send({ content: formatScenarioResult(scenario), isLive: false, scenario })
       }
     },
   )

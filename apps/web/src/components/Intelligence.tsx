@@ -6,7 +6,10 @@ import { useState, useEffect } from 'react'
 import { GlassCard } from './Glass'
 import { haptic } from '@/lib/haptics'
 import { useAppStore } from '@/lib/store'
-import { fetchFinancialProfile, fetchDocuments, fetchConnectorStatuses, fetchProfileSuggestions } from '@/lib/api'
+import { fetchFinancialProfile, fetchDocuments, fetchConnectorStatuses, fetchProfileSuggestions, RESOLVED_INSIGHT_STATES } from '@/lib/api'
+import { useAuth } from '@/lib/auth-context'
+import { useFamilyInsights } from '@/lib/useFamilyData'
+import { orderIncompleteTrustLadderSteps } from '@/lib/trustLadderOrder'
 import { TrendingUp, FileText, Landmark, Mail, BarChart3, Scale, Car, Check, Sparkles, ChevronRight, ChevronDown, Users } from 'lucide-react'
 
 export function TrustLadder() {
@@ -20,6 +23,8 @@ export function TrustLadder() {
   const connectedConnectorsLocal = useAppStore((s) => s.connectedConnectors)
   const uploadedDocumentCountLocal = useAppStore((s) => s.uploadedDocumentCount)
   const financialProfileSubmittedLocal = useAppStore((s) => s.financialProfileSubmitted)
+  const { family } = useAuth()
+  const { insights } = useFamilyInsights()
   const [expanded, setExpanded] = useState(false)
   const [hasFinancialProfile, setHasFinancialProfile] = useState(false)
   const [hasDocuments, setHasDocuments] = useState(false)
@@ -39,6 +44,20 @@ export function TrustLadder() {
   const uploadedDocumentCount = uploadedDocumentCountLocal || (hasDocuments ? 1 : 0)
   const connectedConnectors = connectedConnectorsLocal.length > 0 ? connectedConnectorsLocal : connectedIds
 
+  // "Add Your Family" used to be unconditionally done the moment any family
+  // existed at all — even with other members still Pending, half the
+  // household hadn't actually confirmed anything. Every other step's
+  // numbers are less trustworthy while that's true, so it's the one thing
+  // this ladder should never let hide as finished.
+  const hasPendingMembers = (family?.members ?? []).some((m) => m.status === 'pending')
+  // Which detector categories currently have a real open insight for this
+  // family — reused to promote the one ladder step that directly closes a
+  // gap Oak has already found, instead of a fixed order that's the same
+  // whether or not anything is actually wrong.
+  const openDetectorIds = new Set(
+    insights.filter((i) => !RESOLVED_INSIGHT_STATES.includes(i.state)).map((i) => i.detector_id),
+  )
+
   const steps = [
     { id: 'family', icon: Users, label: 'Add Your Family', timeframe: 'Day 1', desc: 'Tell us who\'s in your household', route: '/family' },
     { id: 'documents', icon: FileText, label: 'Upload Documents', timeframe: 'Week 1', desc: 'Snap a photo or upload any document', route: '/upload' },
@@ -48,7 +67,7 @@ export function TrustLadder() {
     { id: 'estate', icon: Scale, label: 'Estate Planning', timeframe: 'Month 3', desc: 'Upload your will and estate documents for secure storage', route: '/upload' },
   ].map((step) => {
     let status: 'done' | 'available' | 'locked' = 'locked'
-    if (step.id === 'family') status = 'done'
+    if (step.id === 'family') status = hasPendingMembers ? 'available' : 'done'
     else if (step.id === 'documents') status = uploadedDocumentCount > 0 ? 'done' : 'available'
     // Open Banking has no live connect flow yet — the Financial Profile is
     // the real way to complete this step today, same as investments below.
@@ -60,7 +79,7 @@ export function TrustLadder() {
   })
 
   const doneCount = steps.filter((s) => s.status === 'done').length
-  const incomplete = steps.filter((s) => s.status !== 'done')
+  const incomplete = orderIncompleteTrustLadderSteps(steps, { hasPendingMembers, openDetectorIds })
   // Collapsed by default to just what's next — this is the app's one "what
   // should I do now" list; a fully expanded 6-item wall competed with the
   // health rings for the same job every time, whether or not there was
