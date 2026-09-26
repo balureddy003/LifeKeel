@@ -54,20 +54,25 @@ function StepContacts({ contacts }: { contacts: LifeEventStepContact[] }) {
       {contacts.map((c, i) => (
         <div key={`${c.provider}-${i}`}>
           <div className="text-xs font-semibold text-ink-tertiary mb-1.5">{c.provider}</div>
-          <div className="flex gap-2">
+          {/* Stacked, not side-by-side — a full phone number in a half-width
+              button truncated to "+44 20 7748" at phone width, which is
+              actively harmful here: a cut-off number can't be dialed or
+              copied down by hand, defeating the one thing this button is
+              for. Full width reliably fits any real phone number. */}
+          <div className="flex flex-col gap-2">
             {c.phone && (
-              <a href={`tel:${c.phone.replace(/[^\d+]/g, '')}`} onClick={() => haptic('light')} className="flex-1 min-w-0">
+              <a href={`tel:${c.phone.replace(/[^\d+]/g, '')}`} onClick={() => haptic('light')} className="block w-full">
                 <GlassButton variant="secondary">
                   <Phone size={14} className="flex-shrink-0" />
-                  <span className="truncate">Call {c.phone}</span>
+                  <span>Call {c.phone}</span>
                 </GlassButton>
               </a>
             )}
             {c.email && (
-              <a href={`mailto:${c.email}`} onClick={() => haptic('light')} className="flex-1 min-w-0">
+              <a href={`mailto:${c.email}`} onClick={() => haptic('light')} className="block w-full">
                 <GlassButton variant="secondary">
                   <Mail size={14} className="flex-shrink-0" />
-                  <span className="truncate">Email</span>
+                  <span className="truncate">Email {c.email}</span>
                 </GlassButton>
               </a>
             )}

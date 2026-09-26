@@ -388,7 +388,11 @@ export function Money({ value, className = '' }: { value: string; className?: st
 // with showMoney off (e.g. Child), silently defeating the one feature this
 // component exists for. Matches both symbols — $ still appears in sample/
 // mock copy elsewhere that isn't live data.
-const CURRENCY_PATTERN = /[£$][\d,]+(?:\.\d+)?[KMB]?/g
+// Exported for assistant/page.tsx — Ask Oak's rich-text rendering redacts
+// currency in the raw markdown *string* (before ReactMarkdown parses it),
+// since MoneyText's own JSX-wrapping approach only works on a single text
+// node, not a whole tree of parsed markdown elements.
+export const CURRENCY_PATTERN = /[£$][\d,]+(?:\.\d+)?[KMB]?/g
 
 /**
  * Renders free-form text (e.g. an AI insight or income line item) with any

@@ -111,10 +111,15 @@ export default function LifeEventsPage() {
                         list: titles ("Disability / critical illness",
                         "Medical emergency") were truncating to
                         "Disability / cri..." despite vertical room to
-                        wrap. Only the less-critical description stays
-                        single-line truncated. */}
+                        wrap. The description was left single-line on the
+                        theory that it's "less critical," but live testing
+                        showed every one of these five descriptions
+                        mid-word truncating ("See your real runwa...",
+                        "Notify your family's ...") — none actually fit on
+                        one line at phone width, so the ellipsis never
+                        conveyed the point it was there for. */}
                     <div className="text-base font-semibold leading-snug line-clamp-2">{event.label}</div>
-                    <div className="text-xs text-ink-tertiary truncate">{event.description}</div>
+                    <div className="text-xs text-ink-tertiary leading-snug line-clamp-2">{event.description}</div>
                   </div>
                   <ChevronRight size={18} className="text-ink-tertiary" />
                 </div>

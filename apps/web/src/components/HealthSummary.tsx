@@ -169,11 +169,17 @@ export function HealthSummary() {
         <div className="text-3xl font-bold text-success flex-shrink-0 leading-none">{overallScore}</div>
       </div>
 
-      {/* Activity rings */}
+      {/* Activity rings — 4 × the old 80px size (320px) overran a 375px
+          phone's content width once the card's own padding was subtracted,
+          so the last two rings visibly overlapped. 64px keeps the same
+          Apple-Health-ring look with room to spare down to the smallest
+          supported viewport. */}
       <div className="flex items-center justify-around py-4">
         {domainKeys.map((d) => (
           <ActivityRing
             key={d}
+            size={64}
+            strokeWidth={7}
             progress={domains[d].score}
             color={DOMAIN_META[d].color}
             textColor={DOMAIN_META[d].textColor}

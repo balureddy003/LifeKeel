@@ -2,12 +2,35 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import ReactMarkdown from 'react-markdown'
+import type { Components } from 'react-markdown'
 import { Bot, Send } from 'lucide-react'
 import { AI_SUGGESTIONS } from '@/lib/life-data'
 import { AIAnswerCard } from '@/components/AIAnswer'
-import { PageHeader, MoneyText } from '@/components/Glass'
+import { PageHeader, CURRENCY_PATTERN } from '@/components/Glass'
+import { useMode } from '@/lib/mode-context'
 import { haptic } from '@/lib/haptics'
 import { fetchAIResponse } from '@/lib/api'
+
+// Oak's live answers were rendering as a single whitespace-pre-wrap plain
+// text blob — a multi-part answer (narrating a scenario, listing several
+// policies) came back from the LLM with real markdown structure
+// (paragraphs, **emphasis**, "- " lists) that just showed up as literal
+// asterisks and dashes instead of being rendered. Sized for a compact chat
+// bubble, not full page prose — see BlogPostClient.tsx's MARKDOWN_COMPONENTS
+// for the same pattern at article scale.
+const CHAT_MARKDOWN_COMPONENTS: Components = {
+  p: (props) => <p className="mb-2 last:mb-0" {...props} />,
+  ul: (props) => <ul className="list-disc list-outside pl-4 mb-2 last:mb-0 space-y-1" {...props} />,
+  ol: (props) => <ol className="list-decimal list-outside pl-4 mb-2 last:mb-0 space-y-1" {...props} />,
+  li: (props) => <li {...props} />,
+  strong: (props) => <strong className="font-semibold" {...props} />,
+  a: (props) => <a className="underline underline-offset-2" target="_blank" rel="noopener noreferrer" {...props} />,
+  code: (props) => <code className="px-1 py-0.5 rounded bg-tint/10 text-xs" {...props} />,
+  h1: (props) => <p className="font-semibold mb-1" {...props} />,
+  h2: (props) => <p className="font-semibold mb-1" {...props} />,
+  h3: (props) => <p className="font-semibold mb-1" {...props} />,
+}
 
 interface ChatMessage {
   id: string
@@ -47,6 +70,7 @@ function getContextSuggestions(context: string | null): string[] {
 }
 
 export default function AssistantPage() {
+  const { config } = useMode()
   const [pageContext] = useState<string | null>(
     () => typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('context') : null,
   )
@@ -152,10 +176,14 @@ export default function AssistantPage() {
               )}
               {msg.showPerplexity && msg.userQuery ? (
                 <AIAnswerCard query={msg.userQuery} />
+              ) : msg.role === 'assistant' ? (
+                <div className="text-sm leading-relaxed">
+                  <ReactMarkdown components={CHAT_MARKDOWN_COMPONENTS}>
+                    {config.showMoney ? msg.content : msg.content.replace(CURRENCY_PATTERN, '•••')}
+                  </ReactMarkdown>
+                </div>
               ) : (
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                  {msg.role === 'assistant' ? <MoneyText text={msg.content} /> : msg.content}
-                </p>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
               )}
             </div>
           </motion.div>
