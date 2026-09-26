@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import type { Components } from 'react-markdown'
 import { Bot, Send } from 'lucide-react'
 import { AI_SUGGESTIONS } from '@/lib/life-data'
@@ -19,6 +20,12 @@ import { fetchAIResponse } from '@/lib/api'
 // asterisks and dashes instead of being rendered. Sized for a compact chat
 // bubble, not full page prose — see BlogPostClient.tsx's MARKDOWN_COMPONENTS
 // for the same pattern at article scale.
+//
+// remarkGfm is required for pipe-table syntax specifically — Oak's
+// "Summary Table" answers came back as GFM tables, and without this plugin
+// react-markdown's default (CommonMark-only) parser doesn't recognize table
+// syntax at all, so it fell through to a literal paragraph of "| Area | On
+// File |" pipe characters instead of a <table>.
 const CHAT_MARKDOWN_COMPONENTS: Components = {
   p: (props) => <p className="mb-2 last:mb-0" {...props} />,
   ul: (props) => <ul className="list-disc list-outside pl-4 mb-2 last:mb-0 space-y-1" {...props} />,
@@ -30,6 +37,17 @@ const CHAT_MARKDOWN_COMPONENTS: Components = {
   h1: (props) => <p className="font-semibold mb-1" {...props} />,
   h2: (props) => <p className="font-semibold mb-1" {...props} />,
   h3: (props) => <p className="font-semibold mb-1" {...props} />,
+  // A chat bubble is max-w-[85%] of the screen — a wide table needs its own
+  // scroll container rather than blowing out the bubble or wrapping cells
+  // unreadably.
+  table: (props) => (
+    <div className="overflow-x-auto mb-2 last:mb-0 -mx-1">
+      <table className="text-xs border-collapse" {...props} />
+    </div>
+  ),
+  thead: (props) => <thead className="border-b border-ink-tertiary/20" {...props} />,
+  th: (props) => <th className="text-left font-semibold px-2 py-1 whitespace-nowrap" {...props} />,
+  td: (props) => <td className="px-2 py-1 align-top border-t border-ink-tertiary/10" {...props} />,
 }
 
 interface ChatMessage {
@@ -178,7 +196,7 @@ export default function AssistantPage() {
                 <AIAnswerCard query={msg.userQuery} />
               ) : msg.role === 'assistant' ? (
                 <div className="text-sm leading-relaxed">
-                  <ReactMarkdown components={CHAT_MARKDOWN_COMPONENTS}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={CHAT_MARKDOWN_COMPONENTS}>
                     {config.showMoney ? msg.content : msg.content.replace(CURRENCY_PATTERN, '•••')}
                   </ReactMarkdown>
                 </div>
