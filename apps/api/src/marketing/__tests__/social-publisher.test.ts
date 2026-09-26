@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { EnvSocialPublisher, DbSocialPublisher, socialPublisherFromEnv, type SocialConnectionDoc } from '../social-publisher.js'
-import { encryptIfNeeded } from '@agentoak/platform'
+import { encryptIfNeeded, decryptIfNeeded } from '@agentoak/platform'
 
 function jsonRes(body: unknown, init: { status?: number; headers?: Record<string, string> } = {}) {
   return new Response(JSON.stringify(body), {
@@ -121,8 +121,9 @@ describe('DbSocialPublisher', () => {
     vi.restoreAllMocks()
   })
 
-  function makeDb(conns: Partial<SocialConnectionDoc>[] = []) {
+  function makeDb(conns: Partial<SocialConnectionDoc>[] = [], creds: Record<string, unknown>[] = []) {
     const docs = conns.map((c) => ({ status: 'active', credentials: {}, ...c }) as Record<string, unknown>)
+    const credDocs = creds
     const col = {
       findOne: vi.fn(async (f: Record<string, unknown>) =>
         docs.find((d) => d['tenant_id'] === f['tenant_id'] && d['channel'] === f['channel']) ?? null,
@@ -136,8 +137,43 @@ describe('DbSocialPublisher', () => {
         return { modifiedCount: doc ? 1 : 0 }
       }),
     }
-    return { db: { collection: () => col } as never, col, docs }
+    const credCol = {
+      findOne: vi.fn(async (f: Record<string, unknown>) =>
+        credDocs.find((d) => d['tenant_id'] === f['tenant_id'] && d['connector_id'] === f['connector_id']) ?? null,
+      ),
+      updateOne: vi.fn(async (f: Record<string, unknown>, u: { $set: Record<string, unknown> }) => {
+        const doc = credDocs.find((d) => d['tenant_id'] === f['tenant_id'] && d['connector_id'] === f['connector_id'])
+        if (doc) {
+          for (const [k, v] of Object.entries(u.$set)) {
+            const parts = k.split('.')
+            let target = doc
+            for (const p of parts.slice(0, -1)) target = (target[p] ??= {}) as Record<string, unknown>
+            target[parts[parts.length - 1]!] = v
+          }
+        }
+        return { modifiedCount: doc ? 1 : 0 }
+      }),
+    }
+    return {
+      db: { collection: (name: string) => (name === 'connector_credentials' ? credCol : col) } as never,
+      col,
+      credCol,
+      docs,
+      credDocs,
+    }
   }
+
+  const xCred = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+    tenant_id: 't1',
+    connector_id: 'twitter_x',
+    auth_type: 'oauth2',
+    access_token: 'x-access-1', // no SETTINGS_ENCRYPTION_KEY in tests → passthrough
+    refresh_token: 'x-refresh-1',
+    token_expires_at: new Date(Date.now() + 3600_000),
+    token_type: 'Bearer',
+    extra: { username: 'agent_oak' },
+    ...over,
+  })
 
   const conn = (over: Partial<SocialConnectionDoc> = {}): Partial<SocialConnectionDoc> => ({
     tenant_id: 't1',
@@ -209,5 +245,64 @@ describe('DbSocialPublisher', () => {
     await expect(
       pub.createPost({ integrationId: 'x', content: 'hi', channel: 'x', type: 'now', date: new Date(), tenantId: 't1' }),
     ).rejects.toThrow('channel_not_configured:x')
+  })
+
+  it('publishes to X via the connector_credentials OAuth token', async () => {
+    const { db } = makeDb([], [xCred()])
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+      const url = String(input)
+      expect(url).toBe('https://api.x.com/2/tweets')
+      expect((init!.headers as Record<string, string>)['Authorization']).toBe('Bearer x-access-1')
+      expect(JSON.parse(String(init!.body)).text).toBe('hello X')
+      return jsonRes({ data: { id: 'tw-x1' } })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const pub = new DbSocialPublisher(db, null)
+    const res = (await pub.createPost({
+      integrationId: 'x:connection', content: 'hello X', channel: 'x', type: 'now', date: new Date(), tenantId: 't1',
+    })) as { external_id?: string; url?: string }
+    expect(res.external_id).toBe('tw-x1')
+    expect(res.url).toBe('https://x.com/i/web/status/tw-x1')
+  })
+
+  it('refreshes an expired X token before publishing (Basic auth, rotated tokens persisted)', async () => {
+    vi.stubEnv('X_CLIENT_ID', 'cid')
+    vi.stubEnv('X_CLIENT_SECRET', 'csec')
+    const { db, credDocs } = makeDb([], [xCred({ token_expires_at: new Date(Date.now() - 60_000) })])
+    const calls: string[] = []
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+      const url = String(input)
+      calls.push(url)
+      if (url.includes('oauth2/token')) {
+        const auth = (init!.headers as Record<string, string>)['Authorization']
+        expect(auth).toBe(`Basic ${Buffer.from('cid:csec').toString('base64')}`)
+        expect(String(init!.body)).toContain('refresh_token=x-refresh-1')
+        return jsonRes({ access_token: 'x-fresh', refresh_token: 'x-refresh-2', expires_in: 7200 })
+      }
+      expect((init!.headers as Record<string, string>)['Authorization']).toBe('Bearer x-fresh')
+      return jsonRes({ data: { id: 'tw-r1' } })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const pub = new DbSocialPublisher(db, null)
+    const res = (await pub.createPost({
+      integrationId: 'x:connection', content: 'hi', channel: 'x', type: 'now', date: new Date(), tenantId: 't1',
+    })) as { external_id?: string }
+    expect(res.external_id).toBe('tw-r1')
+    expect(calls[0]).toContain('oauth2/token')
+    expect(calls[1]).toBe('https://api.x.com/2/tweets')
+    // Rotated tokens persist encrypted — decrypt to assert the values.
+    expect(decryptIfNeeded(String(credDocs[0]!['access_token']))).toBe('x-fresh')
+    expect(decryptIfNeeded(String(credDocs[0]!['refresh_token']))).toBe('x-refresh-2')
+  })
+
+  it('lists the X OAuth connection with its handle and shadows env X', async () => {
+    vi.stubEnv('X_ACCESS_TOKEN', 'xtok')
+    const { db } = makeDb([], [xCred()])
+    const pub = new DbSocialPublisher(db, socialPublisherFromEnv())
+    const integrations = await pub.listIntegrations('t1')
+    const x = integrations.filter((i) => i.identifier === 'x')
+    expect(x).toHaveLength(1)
+    expect(x[0]!.source).toBe('connection')
+    expect(x[0]!.name).toContain('@agent_oak')
   })
 })

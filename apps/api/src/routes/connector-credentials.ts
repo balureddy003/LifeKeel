@@ -52,10 +52,10 @@ const FAMILY_CONNECTOR_ALLOWLIST = new Set([
 ])
 
 /** Which frontend initiated the OAuth flow — determines where the callback sends the user back. */
-type ReturnTarget = 'studio' | 'kairos-web' | 'kairos-mobile' | 'family'
+type ReturnTarget = 'studio' | 'kairos-web' | 'kairos-mobile' | 'family' | 'marketing'
 
 function isReturnTarget(value: unknown): value is ReturnTarget {
-  return value === 'studio' || value === 'kairos-web' || value === 'kairos-mobile' || value === 'family'
+  return value === 'studio' || value === 'kairos-web' || value === 'kairos-mobile' || value === 'family' || value === 'marketing'
 }
 
 function signOAuthState(payload: Record<string, unknown>): string {
@@ -122,6 +122,13 @@ function frontendRedirect(returnTo: ReturnTarget, params: Record<string, string>
     for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
     return url.toString()
   }
+  if (returnTo === 'marketing') {
+    // Operator marketing composer — X connect returns here so the
+    // Channels card can show the connected/error state inline.
+    const url = new URL('/marketing', process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002')
+    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
+    return url.toString()
+  }
   const base = returnTo === 'kairos-web'
     ? (process.env['KAIROS_URL'] ?? 'http://localhost:3003')
     : (process.env['STUDIO_URL'] ?? 'http://localhost:3000')
@@ -156,12 +163,16 @@ function getGoogleClientId(connectorId: string): string | undefined {
   // Try connector-specific first for backward compatibility
   const specificId = process.env[`KAIROS_${connectorId.toUpperCase()}_CLIENT_ID`]
   if (specificId) return specificId
-  
+
+  // X's OAuth app reads the shorter, purpose-named pair (what
+  // .env.example documents for the marketing connect flow).
+  if (connectorId === 'twitter_x') return process.env['X_CLIENT_ID']
+
   // Fall back to shared Google credentials for Google services
   if (GOOGLE_CONNECTORS.includes(connectorId)) {
     return process.env['GOOGLE_CLIENT_ID']
   }
-  
+
   return undefined
 }
 
@@ -169,12 +180,14 @@ function getGoogleClientSecret(connectorId: string): string {
   // Try connector-specific first for backward compatibility
   const specificSecret = process.env[`KAIROS_${connectorId.toUpperCase()}_CLIENT_SECRET`]
   if (specificSecret) return specificSecret
-  
+
+  if (connectorId === 'twitter_x') return process.env['X_CLIENT_SECRET'] ?? ''
+
   // Fall back to shared Google credentials for Google services
   if (GOOGLE_CONNECTORS.includes(connectorId)) {
     return process.env['GOOGLE_CLIENT_SECRET'] ?? ''
   }
-  
+
   return ''
 }
 
@@ -714,6 +727,27 @@ export function registerConnectorCredentialRoutes(
       // A fresh grant clears any earlier dead-refresh-token flag.
       await getTenantCollection<Record<string, unknown>>(db, 'connector_credentials', tenantId)
         .updateOne({ connector_id: req.params.id }, { $set: { needs_reauth: false } })
+
+      // X: resolve the account handle once so /marketing/connections can
+      // show "X (@handle)" instead of a bare channel name. Best-effort —
+      // a failed lookup never fails the connect flow.
+      if (req.params.id === 'twitter_x') {
+        try {
+          const meRes = await fetch('https://api.x.com/2/users/me', {
+            headers: { Authorization: `Bearer ${data.access_token}` },
+          })
+          const me = (await meRes.json()) as { data?: { id?: string; username?: string } }
+          if (meRes.ok && me.data?.username) {
+            await getTenantCollection<Record<string, unknown>>(db, 'connector_credentials', tenantId)
+              .updateOne(
+                { connector_id: 'twitter_x' },
+                { $set: { 'extra.username': me.data.username, ...(me.data.id ? { 'extra.user_id': me.data.id } : {}) } },
+              )
+          }
+        } catch {
+          // display nicety only
+        }
+      }
 
       // ── Family app: mirror into its own connector_id: 'email' shape ─────
       // The family app's inbox scanner (jobs/email-scan.ts) reads IMAP

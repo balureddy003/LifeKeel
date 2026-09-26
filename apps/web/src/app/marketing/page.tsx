@@ -21,6 +21,7 @@ import {
   rejectMarketingPost,
   fetchAutomationSettings,
   fetchSocialConnections,
+  startXConnect,
   connectBluesky,
   disconnectSocialChannel,
   type MarketingIntegration,
@@ -83,6 +84,24 @@ export default function MarketingPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  // OAuth return — the connector callback redirects here with
+  // ?connected=twitter_x on success or ?connect=twitter_x&error=… on
+  // failure. Toast the outcome, refresh the channel list, strip the params.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    const connected = q.get('connected')
+    const err = q.get('error')
+    if (!connected && !err && !q.get('connect')) return
+    if (connected === 'twitter_x') {
+      toast({ message: 'X connected' })
+      refreshChannels()
+    } else if (err) {
+      toast({ message: `X connect failed: ${q.get('detail') ?? err}`, variant: 'error' })
+    }
+    window.history.replaceState({}, '', '/marketing')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   async function refreshChannels() {
     const [ints, conns] = await Promise.all([fetchMarketingIntegrations(), fetchSocialConnections()])
     setIntegrations(ints)
@@ -104,6 +123,20 @@ export default function MarketingPage() {
       toast({ message: 'Bluesky connected' })
     } catch (err) {
       toast({ message: err instanceof Error ? err.message : 'Connection failed', variant: 'error' })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function connectX() {
+    haptic('medium')
+    setBusy('connect-x')
+    try {
+      const res = await startXConnect()
+      if (res?.auth_url) window.location.assign(res.auth_url)
+      else toast({ message: 'X OAuth not configured — set X_CLIENT_ID on the API', variant: 'error' })
+    } catch (err) {
+      toast({ message: err instanceof Error ? err.message : 'Connect failed', variant: 'error' })
     } finally {
       setBusy(null)
     }
@@ -204,12 +237,21 @@ export default function MarketingPage() {
           <GlassCard className="p-4 mt-4">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm font-semibold text-ink-primary">Channels</p>
-              <button
-                onClick={() => setShowConnect((v) => !v)}
-                className="text-xs font-semibold text-family-400"
-              >
-                {showConnect ? 'Close' : 'Connect Bluesky'}
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={connectX}
+                  disabled={busy === 'connect-x'}
+                  className="text-xs font-semibold text-family-400 disabled:opacity-40"
+                >
+                  {busy === 'connect-x' ? 'Redirecting…' : 'Connect X'}
+                </button>
+                <button
+                  onClick={() => setShowConnect((v) => !v)}
+                  className="text-xs font-semibold text-family-400"
+                >
+                  {showConnect ? 'Close' : 'Connect Bluesky'}
+                </button>
+              </div>
             </div>
             {(integrations ?? []).length === 0 ? (
               <p className="text-xs text-ink-tertiary leading-relaxed">

@@ -52,6 +52,7 @@ export interface SocialPublisher {
 
 import type { Db } from 'mongodb'
 import { decryptIfNeeded } from '@agentoak/platform'
+import { ConnectorActionExecutor } from '@agentoak/workflows'
 
 interface ChannelHandler {
   info: ChannelInfo
@@ -247,9 +248,15 @@ function handlerForConnection(conn: SocialConnectionDoc): ChannelHandler {
 const CHANNEL_NAMES: Record<string, string> = { x: 'X', linkedin: 'LinkedIn', bluesky: 'Bluesky' }
 
 /**
- * Resolves a tenant's stored social_connections first, then falls back to
- * the env-configured publisher. Stored credentials are decrypted only inside
- * the dispatch call — listIntegrations never touches them.
+ * Resolves tenant-stored credentials first, then falls back to the
+ * env-configured publisher. Two credential stores feed this:
+ * - `social_connections` — Bluesky app-password connects (this module owns it)
+ * - `connector_credentials` (`connector_id: 'twitter_x'`) — X's OAuth2 flow
+ *   from /connectors/twitter_x/oauth/*; dispatched through
+ *   ConnectorActionExecutor so refresh-on-expiry, Basic-auth confidential
+ *   client, and encrypted token rotation are all handled by that pipeline.
+ * Stored credentials are decrypted only inside the dispatch call —
+ * listIntegrations never touches them.
  */
 export class DbSocialPublisher implements SocialPublisher {
   constructor(
@@ -261,19 +268,43 @@ export class DbSocialPublisher implements SocialPublisher {
     return this.db.collection<SocialConnectionDoc>('social_connections')
   }
 
+  private get connectorCreds() {
+    return this.db.collection<{
+      tenant_id: string
+      connector_id: string
+      needs_reauth?: boolean
+      extra?: Record<string, string>
+    }>('connector_credentials')
+  }
+
   async listIntegrations(tenantId?: string): Promise<ChannelInfo[]> {
     const envList = this.env ? await this.env.listIntegrations() : []
     if (!tenantId) return envList
-    const conns = await this.connections.find({ tenant_id: tenantId }).toArray()
+    const [conns, xCred] = await Promise.all([
+      this.connections.find({ tenant_id: tenantId }).toArray(),
+      this.connectorCreds.findOne({ tenant_id: tenantId, connector_id: 'twitter_x' }),
+    ])
     const connChannels = new Set(conns.map((c) => c.channel))
-    return [
-      ...conns.map((c) => ({
-        id: `${c.channel}:connection`,
-        name: `${CHANNEL_NAMES[c.channel] ?? c.channel} (@${c.handle})`,
-        identifier: c.channel,
-        disabled: c.status === 'error',
+    const connList: ChannelInfo[] = conns.map((c) => ({
+      id: `${c.channel}:connection`,
+      name: `${CHANNEL_NAMES[c.channel] ?? c.channel} (@${c.handle})`,
+      identifier: c.channel,
+      disabled: c.status === 'error',
+      source: 'connection' as const,
+    }))
+    if (xCred) {
+      connChannels.add('x')
+      const username = xCred.extra?.['username']
+      connList.push({
+        id: 'x:connection',
+        name: `X${username ? ` (@${username})` : ''}`,
+        identifier: 'x',
+        disabled: xCred.needs_reauth === true,
         source: 'connection' as const,
-      })),
+      })
+    }
+    return [
+      ...connList,
       // A stored connection shadows the env channel for this tenant — the
       // composer would otherwise show the same channel twice.
       ...envList.filter((i) => !connChannels.has(i.identifier)),
@@ -281,6 +312,19 @@ export class DbSocialPublisher implements SocialPublisher {
   }
 
   async createPost(args: CreatePostArgs): Promise<unknown> {
+    // X via the OAuth-connected connector credential — the executor owns
+    // token expiry/refresh and surfaces X's humanized errors (e.g. the
+    // "Read only app permissions" hint on 402/403).
+    if (args.channel === 'x' && args.tenantId) {
+      const xCred = await this.connectorCreds.findOne({ tenant_id: args.tenantId, connector_id: 'twitter_x' })
+      if (xCred) {
+        const exec = new ConnectorActionExecutor(this.db)
+        const res = await exec.execute(args.tenantId, 'twitter_x', 'createPosts', { text: args.content })
+        if (!res.ok) throw new Error(res.error ?? `x publish failed: HTTP ${res.status}`)
+        const id = (res.body as { data?: { id?: string } } | null)?.data?.id
+        return { external_id: id, url: id ? `https://x.com/i/web/status/${id}` : undefined }
+      }
+    }
     const conn = args.tenantId
       ? await this.connections.findOne({ tenant_id: args.tenantId, channel: args.channel })
       : null

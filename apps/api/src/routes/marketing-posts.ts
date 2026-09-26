@@ -47,6 +47,7 @@ import {
   type SocialConnectionDoc,
 } from '../marketing/social-publisher.js'
 import { encryptIfNeeded, createLlmRouterFromEnv, type LlmFn } from '@agentoak/platform'
+import { ConnectorActionExecutor } from '@agentoak/workflows'
 
 export type MarketingPostState = 'draft' | 'approved' | 'publishing' | 'published' | 'publish_failed' | 'rejected'
 
@@ -385,9 +386,11 @@ export async function marketingPerformance(db: Db): Promise<{
 
 /** Engagement sweep — poll channel APIs for like/repost/reply counts on
  *  published posts from the last 14 days. Bluesky's app.bsky.feed.getPosts
- *  is public (no auth) and batches 25 at:// uris per call. X/LinkedIn read
- *  APIs need elevated scopes we don't hold — their posts simply keep
- *  metrics unset rather than reporting fake zeros. */
+ *  is public (no auth) and batches 25 at:// uris per call. X posts are
+ *  read per-tenant through the connector executor — the OAuth token we
+ *  hold already carries tweet.read, and getPostsById returns
+ *  public_metrics. LinkedIn's read APIs need elevated scopes we don't
+ *  hold — its posts simply keep metrics unset rather than fake zeros. */
 export async function pollMarketingEngagement(db: Db): Promise<number> {
   const col = db.collection<MarketingPostDoc>('marketing_posts')
   const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
@@ -419,6 +422,42 @@ export async function pollMarketingEngagement(db: Db): Promise<number> {
         },
       )
       updated += 1
+    }
+  }
+
+  // X — GET /2/tweets/{id}?tweet.fields=public_metrics via the connector
+  // executor (handles token decrypt + refresh). One call per post;
+  // tenants with needs_reauth or a failed read keep their last metrics.
+  const xPosts = published.filter((p) => p.channel === 'x' && !p.external_id!.startsWith('at://'))
+  if (xPosts.length) {
+    const exec = new ConnectorActionExecutor(db)
+    const hasCred = new Map<string, boolean>()
+    for (const post of xPosts) {
+      let ok = hasCred.get(post.tenant_id)
+      if (ok === undefined) {
+        const cred = await db.collection<Record<string, unknown>>('connector_credentials')
+          .findOne({ tenant_id: post.tenant_id, connector_id: 'twitter_x' })
+        ok = !!cred && cred['needs_reauth'] !== true
+        hasCred.set(post.tenant_id, ok)
+      }
+      if (!ok) continue
+      try {
+        const res = await exec.execute(post.tenant_id, 'twitter_x', 'getPostsById', { post_id: post.external_id })
+        const m = (res.body as { data?: { public_metrics?: { like_count?: number; repost_count?: number; reply_count?: number } } } | null)?.data?.public_metrics
+        if (!res.ok || !m) continue
+        await col.updateOne(
+          { id: post.id },
+          {
+            $set: {
+              metrics: { likes: m.like_count ?? 0, reposts: m.repost_count ?? 0, replies: m.reply_count ?? 0 },
+              metrics_at: new Date(),
+            },
+          },
+        )
+        updated += 1
+      } catch {
+        // transient — the next hourly tick retries
+      }
     }
   }
   return updated
@@ -527,11 +566,32 @@ export function registerMarketingPostRoutes(
   })
 
   /** GET /marketing/connections — this tenant's stored channel credentials,
-   *  minus the credentials themselves. */
+   *  minus the credentials themselves. X comes from connector_credentials
+   *  (connector_id: 'twitter_x') — the OAuth connect flow lives under
+   *  /connectors, not /marketing, so its row is projected into the same
+   *  shape here for a single list. */
   app.get('/marketing/connections', { preHandler: readGate }, async (req) => {
-    const conns = await connectionsCol.find({ tenant_id: req.authContext.tenant_id }).toArray()
+    const tenantId = req.authContext.tenant_id
+    const [conns, xCred] = await Promise.all([
+      connectionsCol.find({ tenant_id: tenantId }).toArray(),
+      db.collection<Record<string, unknown>>('connector_credentials')
+        .findOne({ tenant_id: tenantId, connector_id: 'twitter_x' }),
+    ])
     return {
-      connections: conns.map(({ credentials: _credentials, ...rest }) => rest),
+      connections: [
+        ...conns.map(({ credentials: _credentials, ...rest }) => rest),
+        ...(xCred
+          ? [{
+              tenant_id: tenantId,
+              channel: 'x',
+              handle: (xCred['extra'] as Record<string, string> | undefined)?.['username'] ?? '',
+              status: xCred['needs_reauth'] === true ? 'error' : 'active',
+              last_error: xCred['needs_reauth'] === true ? 'X token expired — reconnect' : null,
+              connected_by: 'oauth',
+              updated_at: xCred['updated_at'],
+            }]
+          : []),
+      ],
     }
   })
 
@@ -586,7 +646,15 @@ export function registerMarketingPostRoutes(
     async (req, reply) => {
       const { tenant_id } = req.authContext
       const result = await connectionsCol.deleteOne({ tenant_id, channel: req.params.channel })
-      if (!result.deletedCount) return reply.status(404).send({ error: 'No such connection' })
+      let deleted = result.deletedCount ?? 0
+      // X's row lives in connector_credentials (the generic OAuth flow),
+      // not social_connections — disconnect removes it too.
+      if (req.params.channel === 'x') {
+        const xRes = await db.collection('connector_credentials')
+          .deleteOne({ tenant_id, connector_id: 'twitter_x' })
+        deleted += xRes.deletedCount ?? 0
+      }
+      if (!deleted) return reply.status(404).send({ error: 'No such connection' })
       getAuditLogger()?.fromRequest(req, 'marketing.connection_disconnect', 'social_connection', `${req.params.channel}:${tenant_id}`, {})
       return { ok: true }
     },

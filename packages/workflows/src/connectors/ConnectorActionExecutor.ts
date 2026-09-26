@@ -47,12 +47,16 @@ function getGoogleClientId(connectorId: string): string {
   // Try connector-specific first for backward compatibility
   const specificId = process.env[`KAIROS_${connectorId.toUpperCase()}_CLIENT_ID`]
   if (specificId) return specificId
-  
+
+  // X's OAuth app — the X_CLIENT_ID pair is what .env.example documents
+  // for the marketing connect flow (shorter, purpose-named).
+  if (connectorId === 'twitter_x') return process.env['X_CLIENT_ID'] ?? ''
+
   // Fall back to shared Google credentials for Google services
   if (GOOGLE_CONNECTORS.includes(connectorId)) {
     return process.env['GOOGLE_CLIENT_ID'] ?? ''
   }
-  
+
   return ''
 }
 
@@ -60,12 +64,14 @@ function getGoogleClientSecret(connectorId: string): string {
   // Try connector-specific first for backward compatibility
   const specificSecret = process.env[`KAIROS_${connectorId.toUpperCase()}_CLIENT_SECRET`]
   if (specificSecret) return specificSecret
-  
+
+  if (connectorId === 'twitter_x') return process.env['X_CLIENT_SECRET'] ?? ''
+
   // Fall back to shared Google credentials for Google services
   if (GOOGLE_CONNECTORS.includes(connectorId)) {
     return process.env['GOOGLE_CLIENT_SECRET'] ?? ''
   }
-  
+
   return ''
 }
 

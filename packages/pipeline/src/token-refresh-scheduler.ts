@@ -12,7 +12,7 @@
  * and eliminates 401 errors during scheduled syncs.
  */
 import { safeFetch } from './safe-fetch.js'
-import { createLogger } from '@agentoak/platform'
+import { createLogger, decryptIfNeeded, encryptIfNeeded } from '@agentoak/platform'
 
 const log = createLogger({ service: 'token-refresh', version: '0.0.0' })
 
@@ -26,12 +26,14 @@ function getGoogleClientId(connectorId: string): string {
   // Try connector-specific first for backward compatibility
   const specificId = process.env[`KAIROS_${connectorId.toUpperCase()}_CLIENT_ID`]
   if (specificId) return specificId
-  
+
+  if (connectorId === 'twitter_x') return process.env['X_CLIENT_ID'] ?? ''
+
   // Fall back to shared Google credentials for Google services
   if (GOOGLE_CONNECTORS.includes(connectorId)) {
     return process.env['GOOGLE_CLIENT_ID'] ?? ''
   }
-  
+
   return ''
 }
 
@@ -39,12 +41,14 @@ function getGoogleClientSecret(connectorId: string): string {
   // Try connector-specific first for backward compatibility
   const specificSecret = process.env[`KAIROS_${connectorId.toUpperCase()}_CLIENT_SECRET`]
   if (specificSecret) return specificSecret
-  
+
+  if (connectorId === 'twitter_x') return process.env['X_CLIENT_SECRET'] ?? ''
+
   // Fall back to shared Google credentials for Google services
   if (GOOGLE_CONNECTORS.includes(connectorId)) {
     return process.env['GOOGLE_CLIENT_SECRET'] ?? ''
   }
-  
+
   return ''
 }
 
@@ -59,6 +63,7 @@ const TOKEN_URLS: Record<string, string> = {
   google_drive: 'https://oauth2.googleapis.com/token',
   youtube: 'https://oauth2.googleapis.com/token',
   google_sheets: 'https://oauth2.googleapis.com/token',
+  twitter_x: 'https://api.x.com/2/oauth2/token',
   shopify: '', // per-shop, not handled here
 }
 
@@ -143,15 +148,29 @@ export class TokenRefreshScheduler {
     const clientSecret = getGoogleClientSecret(connectorId)
     if (!clientId) return // not configured
 
+    // refresh_token is stored AES-256-GCM by the OAuth callback — sending
+    // the ciphertext as-is reads back as invalid_grant and was silently
+    // poisoning every encrypted credential on its first refresh.
+    const plaintextRefresh = decryptIfNeeded(refreshToken)
+    if (!plaintextRefresh) return
+
+    const body = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: plaintextRefresh,
+      client_id: clientId,
+    })
+    const headers: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' }
+    // X confidential clients authenticate via Basic, not a body secret.
+    if (connectorId === 'twitter_x' && clientSecret) {
+      headers['Authorization'] = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`
+    } else if (clientSecret) {
+      body.set('client_secret', clientSecret)
+    }
+
     const res = await safeFetch(tokenUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: refreshToken,
-        client_id: clientId,
-        client_secret: clientSecret,
-      }).toString(),
+      headers,
+      body: body.toString(),
     })
 
     const data = await res.json() as {
@@ -170,8 +189,11 @@ export class TokenRefreshScheduler {
       { tenant_id: tenantId, connector_id: connectorId },
       {
         $set: {
-          access_token: data.access_token,
-          ...(data.refresh_token ? { refresh_token: data.refresh_token } : {}),
+          // Write back encrypted — the OAuth callback stores ciphertext,
+          // and readers decryptIfNeeded, so a plaintext write would still
+          // decrypt fine but would break the encrypt-at-rest posture.
+          access_token: encryptIfNeeded(data.access_token)!,
+          ...(data.refresh_token ? { refresh_token: encryptIfNeeded(data.refresh_token)! } : {}),
           ...(data.expires_in
             ? { token_expires_at: new Date(Date.now() + data.expires_in * 1000) }
             : {}),

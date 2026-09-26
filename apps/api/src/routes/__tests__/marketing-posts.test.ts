@@ -113,6 +113,31 @@ function makeDb() {
   const users: Record<string, unknown>[] = []
   const leads: Record<string, unknown>[] = []
   const growthEvents: Record<string, unknown>[] = []
+  const connectorCredentials: Record<string, unknown>[] = []
+  const credsCol = {
+    findOne: vi.fn(async (filter: Record<string, unknown>) => connectorCredentials.find((d) => matchesFilter(d, filter)) ?? null),
+    updateOne: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
+      const doc = connectorCredentials.find((d) => matchesFilter(d, filter))
+      if (doc) {
+        for (const [k, v] of Object.entries(update.$set)) {
+          const parts = k.split('.')
+          let target = doc
+          for (const p of parts.slice(0, -1)) target = (target[p] ??= {}) as Record<string, unknown>
+          target[parts[parts.length - 1]!] = v
+        }
+      }
+      return { modifiedCount: doc ? 1 : 0 }
+    }),
+    deleteOne: vi.fn(async (filter: Record<string, unknown>) => {
+      const idx = connectorCredentials.findIndex((d) => matchesFilter(d, filter))
+      if (idx === -1) return { deletedCount: 0 }
+      connectorCredentials.splice(idx, 1)
+      return { deletedCount: 1 }
+    }),
+    find: (filter: Record<string, unknown>) => ({
+      toArray: async () => connectorCredentials.filter((d) => matchesFilter(d, filter)),
+    }),
+  }
   const listCol = (docs: Record<string, unknown>[]) => ({
     find: (filter: Record<string, unknown>) => ({ toArray: async () => docs.filter((d) => matchesFilter(d, filter)) }),
   })
@@ -122,12 +147,13 @@ function makeDb() {
     system_events: eventsCol,
     platform_config: configCol,
     social_connections: connectionsCol,
+    connector_credentials: credsCol,
     blog_posts: blogCol,
     users: listCol(users),
     leads: listCol(leads),
     growth_events: listCol(growthEvents),
   }
-  return { db: { collection: (name: string) => collections[name] } as any, posts, settingsDocs, systemEvents, postsCol, settingsCol, connections, connectionsCol, blogPosts, users, leads, growthEvents }
+  return { db: { collection: (name: string) => collections[name] } as any, posts, settingsDocs, systemEvents, postsCol, settingsCol, connections, connectionsCol, blogPosts, users, leads, growthEvents, connectorCredentials }
 }
 
 function fakePostiz(overrides: Record<string, unknown> = {}) {
@@ -145,7 +171,7 @@ async function buildApp(opts: {
   operatorTenants?: string[]
   llm?: (system: string, prompt: string, model?: string) => Promise<string>
 } = {}) {
-  const { db, posts, settingsDocs, systemEvents, postsCol, connections, blogPosts, users, leads, growthEvents } = makeDb()
+  const { db, posts, settingsDocs, systemEvents, postsCol, connections, blogPosts, users, leads, growthEvents, connectorCredentials } = makeDb()
   const tenant = opts.tenant ?? TENANT
   if (opts.settings) settingsDocs.push({ tenant_id: tenant, automation: opts.settings })
   const app = Fastify()
@@ -158,7 +184,7 @@ async function buildApp(opts: {
   })
   await app.ready()
   const postiz = 'postiz' in opts ? opts.postiz : null
-  return { app, db, posts, settingsDocs, systemEvents, postsCol, postiz, connections, blogPosts, users, leads, growthEvents }
+  return { app, db, posts, settingsDocs, systemEvents, postsCol, postiz, connections, blogPosts, users, leads, growthEvents, connectorCredentials }
 }
 
 const DRAFT = { integration_id: 'int-1', channel: 'x', content: 'A thing worth posting' }
@@ -661,5 +687,83 @@ describe('pollMarketingEngagement', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('err', { status: 503 })))
     expect(await pollMarketingEngagement(db)).toBe(0)
     expect(posts[0]!['metrics']).toBeUndefined()
+  })
+})
+
+describe('X OAuth connection (connector_credentials)', () => {
+  const xCred = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+    tenant_id: TENANT,
+    connector_id: 'twitter_x',
+    auth_type: 'oauth2',
+    access_token: 'x-access-1',
+    refresh_token: 'x-refresh-1',
+    token_expires_at: new Date(Date.now() + 3600_000),
+    token_type: 'Bearer',
+    extra: { username: 'agent_oak' },
+    updated_at: new Date(),
+    ...over,
+  })
+
+  it('GET /marketing/connections merges the twitter_x credential row without tokens', async () => {
+    const { app, connectorCredentials } = await buildApp()
+    connectorCredentials.push(xCred())
+    const res = await app.inject({ method: 'GET', url: '/marketing/connections' })
+    expect(res.statusCode).toBe(200)
+    const conns = res.json().connections
+    const x = conns.find((c: Record<string, unknown>) => c.channel === 'x')
+    expect(x).toMatchObject({ channel: 'x', handle: 'agent_oak', status: 'active' })
+    expect(x.access_token).toBeUndefined()
+    expect(x.refresh_token).toBeUndefined()
+  })
+
+  it('needs_reauth credentials surface as status error with a reconnect hint', async () => {
+    const { app, connectorCredentials } = await buildApp()
+    connectorCredentials.push(xCred({ needs_reauth: true }))
+    const res = await app.inject({ method: 'GET', url: '/marketing/connections' })
+    const x = res.json().connections.find((c: Record<string, unknown>) => c.channel === 'x')
+    expect(x.status).toBe('error')
+    expect(String(x.last_error)).toContain('reconnect')
+  })
+
+  it('DELETE /marketing/connections/x removes the connector credential', async () => {
+    const { app, connectorCredentials } = await buildApp()
+    connectorCredentials.push(xCred())
+    const del = await app.inject({ method: 'DELETE', url: '/marketing/connections/x' })
+    expect(del.statusCode).toBe(200)
+    expect(connectorCredentials).toHaveLength(0)
+    expect((await app.inject({ method: 'DELETE', url: '/marketing/connections/x' })).statusCode).toBe(404)
+  })
+
+  it('engagement poller reads public_metrics for X posts via the connector token', async () => {
+    const { db, posts, connectorCredentials } = await buildApp()
+    connectorCredentials.push(xCred())
+    posts.push(
+      { id: 'p1', tenant_id: TENANT, channel: 'x', state: 'published', external_id: 'tw-55', published_at: new Date() },
+      { id: 'p2', tenant_id: TENANT, channel: 'x', state: 'published', external_id: 'tw-56', published_at: new Date() },
+    )
+    const fetchMock = vi.fn(async (input: unknown) => {
+      const url = String(input)
+      if (url.includes('/2/tweets/tw-55')) {
+        return new Response(
+          JSON.stringify({ data: { id: 'tw-55', public_metrics: { like_count: 9, repost_count: 3, reply_count: 2 } } }),
+          { status: 200 },
+        )
+      }
+      return new Response('rate limited', { status: 429 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const n = await pollMarketingEngagement(db)
+    expect(n).toBe(1)
+    expect(posts[0]!['metrics']).toEqual({ likes: 9, reposts: 3, replies: 2 })
+    expect(posts[1]!['metrics']).toBeUndefined() // 429 → keeps previous state
+  })
+
+  it('poller skips X posts entirely when the tenant has no credential', async () => {
+    const { db, posts } = await buildApp()
+    posts.push({ id: 'p1', tenant_id: TENANT, channel: 'x', state: 'published', external_id: 'tw-1', published_at: new Date() })
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    expect(await pollMarketingEngagement(db)).toBe(0)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
