@@ -6,6 +6,7 @@ import { AuthProvider } from '@/lib/auth-context'
 import { ModeProvider } from '@/lib/mode-context'
 import { AppShell } from '@/components/AppShell'
 import { Observability } from '@/components/Observability'
+import { GoogleAnalytics } from '@/components/GoogleAnalytics'
 import { ConfirmSheetProvider } from '@/components/ConfirmSheetProvider'
 import { ToastProvider } from '@/components/Toast'
 
@@ -168,6 +169,7 @@ export default function RootLayout({
       </head>
       <body>
         <Observability />
+        <GoogleAnalytics />
         {/* Live-verification finding: the global CSS prefers-reduced-motion
             rule only zeroes out native CSS animations/transitions — it
             can't touch Framer Motion's own animation engine, which drives

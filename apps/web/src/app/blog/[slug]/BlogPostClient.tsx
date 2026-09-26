@@ -22,6 +22,92 @@ function isDiagramBlock(className: string | undefined, text: string): boolean {
   return !lang && text.includes('\n') && DIAGRAM_START.test(text.trim())
 }
 
+const SITE_URL = 'https://kairos-trellis.web.app'
+
+/**
+ * Static export means every /blog/<slug> serves the same placeholder HTML,
+ * so per-post <title>/description/canonical/OG can't be prerendered — the
+ * crawler-facing fix is injecting them here once the post loads (Google
+ * executes JS for rendering; social-scraper unfurls stay on the root
+ * metadata, a hard constraint of the static export). Everything we touch
+ * is snapshotted and restored on unmount so navigating away leaves the
+ * root layout's site-wide tags intact.
+ */
+function applyPostSeo(post: BlogPost, slug: string): () => void {
+  const description = (post.meta_description || post.excerpt).trim()
+  const url = `${SITE_URL}/blog/${slug}/`
+  const prevTitle = document.title
+  document.title = `${post.title} — Agent Oak`
+
+  const created: HTMLElement[] = []
+  const restored: { el: HTMLMetaElement | HTMLLinkElement; prev: string | null }[] = []
+
+  const upsertMeta = (attr: 'name' | 'property', key: string, content: string) => {
+    let el = document.head.querySelector<HTMLMetaElement>(`meta[${attr}="${key}"]`)
+    if (!el) {
+      el = document.createElement('meta')
+      el.setAttribute(attr, key)
+      created.push(el)
+      document.head.appendChild(el)
+    } else {
+      restored.push({ el, prev: el.getAttribute('content') })
+    }
+    el.setAttribute('content', content)
+  }
+
+  upsertMeta('name', 'description', description)
+  upsertMeta('property', 'og:title', post.title)
+  upsertMeta('property', 'og:description', description)
+  upsertMeta('property', 'og:url', url)
+  upsertMeta('property', 'og:type', 'article')
+  upsertMeta('name', 'twitter:title', post.title)
+  upsertMeta('name', 'twitter:description', description)
+  if (post.cover_image) upsertMeta('property', 'og:image', post.cover_image)
+
+  let canonical = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]')
+  if (canonical) restored.push({ el: canonical, prev: canonical.getAttribute('href') })
+  else {
+    canonical = document.createElement('link')
+    canonical.rel = 'canonical'
+    created.push(canonical)
+    document.head.appendChild(canonical)
+  }
+  canonical.href = url
+
+  // Google processes JSON-LD injected by JS — this is the per-post
+  // structured data the placeholder HTML can't carry.
+  const ld = document.createElement('script')
+  ld.type = 'application/ld+json'
+  ld.textContent = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    headline: post.title,
+    description,
+    url,
+    datePublished: post.published_at,
+    dateModified: post.updated_at ?? post.published_at,
+    author: { '@type': 'Organization', name: post.author || 'Agent Oak', url: SITE_URL },
+    publisher: {
+      '@type': 'Organization',
+      name: 'Agent Oak',
+      logo: { '@type': 'ImageObject', url: `${SITE_URL}/icon.svg` },
+    },
+    ...(post.cover_image ? { image: post.cover_image } : {}),
+  })
+  created.push(ld)
+  document.head.appendChild(ld)
+
+  return () => {
+    document.title = prevTitle
+    for (const { el, prev } of restored) {
+      const attr = el instanceof HTMLLinkElement ? 'href' : 'content'
+      if (prev === null) el.removeAttribute(attr)
+      else el.setAttribute(attr, prev)
+    }
+    for (const el of created) el.remove()
+  }
+}
+
 const MARKDOWN_COMPONENTS = {
   code: (props: React.ComponentProps<'code'>) => {
     const { className, children } = props
@@ -60,13 +146,17 @@ export default function BlogPostClient() {
       if (v) utm[k] = v.slice(0, 100)
     }
     track('blog_view', Object.keys(utm).length ? utm : undefined)
+    let seoCleanup: (() => void) | null = null
     fetchBlogPost(params.slug).then((p) => {
-      if (!cancelled) {
-        setPost(p)
-        setLoading(false)
-      }
+      if (cancelled) return
+      if (p) seoCleanup = applyPostSeo(p, params.slug)
+      setPost(p)
+      setLoading(false)
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      seoCleanup?.()
+    }
   }, [params.slug])
 
   if (loading) {

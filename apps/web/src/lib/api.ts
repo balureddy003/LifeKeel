@@ -1502,6 +1502,8 @@ export interface BlogPostSummary {
 
 export interface BlogPost extends BlogPostSummary {
   content: string
+  meta_description?: string
+  cover_image?: string
 }
 
 /** Public, unauthenticated. */

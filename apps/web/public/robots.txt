@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://kairos-trellis.web.app/sitemap.xml
