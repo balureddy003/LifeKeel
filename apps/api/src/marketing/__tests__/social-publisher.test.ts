@@ -295,6 +295,31 @@ describe('DbSocialPublisher', () => {
     expect(decryptIfNeeded(String(credDocs[0]!['refresh_token']))).toBe('x-refresh-2')
   })
 
+  it('surfaces the real X error detail instead of collapsing every 403 into a permissions hint', async () => {
+    const { db } = makeDb([], [xCred()])
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      jsonRes(
+        { title: 'Forbidden', detail: 'You are not allowed to create a Tweet with duplicate content.' },
+        { status: 403 },
+      ),
+    ))
+    const pub = new DbSocialPublisher(db, null)
+    await expect(
+      pub.createPost({ integrationId: 'x:connection', content: 'same text twice', channel: 'x', type: 'now', date: new Date(), tenantId: 't1' }),
+    ).rejects.toThrow('duplicate content')
+  })
+
+  it('permission-shaped X errors get the reconnect hint — tokens keep the scopes they were issued with', async () => {
+    const { db } = makeDb([], [xCred()])
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      jsonRes({ title: 'Forbidden', detail: 'You are not permitted to perform this action.' }, { status: 403 }),
+    ))
+    const pub = new DbSocialPublisher(db, null)
+    await expect(
+      pub.createPost({ integrationId: 'x:connection', content: 'hi', channel: 'x', type: 'now', date: new Date(), tenantId: 't1' }),
+    ).rejects.toThrow('disconnect and reconnect X')
+  })
+
   it('lists the X OAuth connection with its handle and shadows env X', async () => {
     vi.stubEnv('X_ACCESS_TOKEN', 'xtok')
     const { db } = makeDb([], [xCred()])

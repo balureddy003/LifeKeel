@@ -478,34 +478,54 @@ export interface MarketingRouteOptions {
  *  clamped anyway because LLMs can't count. */
 const CHANNEL_CHAR_LIMIT: Record<string, number> = { x: 280, bluesky: 300, linkedin: 3000 }
 
-function clampPost(text: string, limit: number): string {
+/** reserve: characters held back for an appended link — the clamp must
+ *  never eat the CTA URL, an unlinked draft converts nobody. */
+function clampPost(text: string, limit: number, reserve = 0): string {
   const trimmed = text.trim()
-  if (trimmed.length <= limit) return trimmed
-  const window = trimmed.slice(0, limit - 1)
+  const cap = limit - reserve
+  if (trimmed.length <= cap) return trimmed
+  const window = trimmed.slice(0, cap - 1)
   const cut = Math.max(window.lastIndexOf('\n'), window.lastIndexOf('. '), window.lastIndexOf(' '))
-  return `${window.slice(0, cut > limit * 0.6 ? cut : limit - 1).trimEnd()}…`
+  return `${window.slice(0, cut > cap * 0.6 ? cut : cap - 1).trimEnd()}…`
 }
 
-const GENERATE_SYSTEM = `You write short social posts for Agent Oak, a family-finance digital twin.
+const GENERATE_SYSTEM = `You write social posts for Agent Oak — a free tool that shows a family
+in two minutes how ready their finances are for the unexpected (illness,
+job loss, a death in the family), plus plain-English education on the
+gaps it finds.
+
+Voice: sharp, warm, concrete — a thoughtful person sharing something
+genuinely useful, not a brand account broadcasting. Open with a hook:
+a hard question, a "what would happen if…", or a surprising everyday
+fact. Short lines. End by inviting the reader to try the free check.
+
 Rules — these are non-negotiable:
 - Informational, educational tone only. Never personalized financial,
   insurance, or investment advice. Never name, rank, or recommend a
-  specific provider, policy, or product. No savings promises, no urgency
-  or fear tactics.
-- Plain text only — no markdown, no hashtags unless the source has them,
-  no emojis.
+  specific provider, policy, or product. No savings promises, no
+  manufactured urgency or fear-baiting.
+- Only use facts and numbers that appear in the source material —
+  never invent statistics.
+- Plain text only — no markdown. At most two hashtags; at most one
+  emoji, never in the hook.
+- When a link is provided, include it verbatim on its own line at
+  the end.
 - Return ONLY the post text, nothing else.`
+
+/** UTM'd site link — clicks land in users.attribution.utm_source so the
+ *  operator funnel can attribute signups back to the channel/post. */
+function siteLink(channel: string, path: string, contentTag: string): string {
+  const base = (process.env['AGENT_OAK_URL'] ?? '').replace(/\/$/, '')
+  return base
+    ? `${base}${path}?utm_source=${encodeURIComponent(channel)}&utm_medium=social&utm_campaign=oak_social&utm_content=${encodeURIComponent(contentTag)}`
+    : ''
+}
 
 async function blogSourceBlock(db: Db, blogSlug: string, channel: string): Promise<{ sourceBlock: string; link: string } | null> {
   const post = await db.collection('blog_posts').findOne({ slug: blogSlug, published: true })
   if (!post) return null
-  const base = (process.env['AGENT_OAK_URL'] ?? '').replace(/\/$/, '')
-  // UTM'd so a click → signup lands in users.attribution.utm_source and the
-  // operator overview's "signups by source" — the measurable end of the
-  // social loop. utm_content carries the slug for per-post reads.
-  const link = base
-    ? `${base}/blog/${blogSlug}?utm_source=${encodeURIComponent(channel)}&utm_medium=social&utm_campaign=oak_social&utm_content=${encodeURIComponent(blogSlug)}`
-    : ''
+  // utm_content carries the slug for per-post reads.
+  const link = siteLink(channel, `/blog/${blogSlug}`, blogSlug)
   return {
     link,
     sourceBlock: `Blog post to promote:\nTitle: ${post['title']}\nSummary: ${post['excerpt']}${link ? `\nLink to include verbatim: ${link}` : ''}`,
@@ -527,14 +547,17 @@ async function draftPostText(
       `Channel: ${channel} (hard maximum ${limit} characters — stay under it).\n\n${sourceBlock}\n\nWrite one post.`,
       'tier:fast',
     )
-    const content = clampPost(raw, limit)
+    // If the model dropped or truncated the link, re-append it with its
+    // room reserved so the clamp can't eat it — a draft without the link
+    // has no funnel and no attribution.
+    const content = link && !raw.includes(link)
+      ? `${clampPost(raw, limit, link.length + 2)}\n\n${link}`
+      : clampPost(raw, limit)
     if (!content) throw new Error('empty generation')
     return { content, generated: 'llm' }
   } catch {
-    return {
-      generated: 'template',
-      content: clampPost(`${sourceBlock.split('\n').slice(1).join('\n')}${link ? `\n\n${link}` : ''}`, limit),
-    }
+    const body = clampPost(sourceBlock.split('\n').slice(1).join('\n'), limit, link ? link.length + 2 : 0)
+    return { generated: 'template', content: `${body}${link ? `\n\n${link}` : ''}` }
   }
 }
 
@@ -742,7 +765,9 @@ export function registerMarketingPostRoutes(
       sourceBlock = src.sourceBlock
       link = src.link
     } else {
-      sourceBlock = `Topic: ${topic}`
+      // Free-topic drafts still need a funnel — link the readiness check.
+      link = siteLink(channel, '/readiness', 'topic')
+      sourceBlock = `Topic: ${topic}${link ? `\nLink to include verbatim: ${link}` : ''}`
     }
 
     const { content, generated } = await draftPostText(llm, channel, sourceBlock, link)

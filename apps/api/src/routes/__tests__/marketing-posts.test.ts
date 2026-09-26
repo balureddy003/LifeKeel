@@ -576,6 +576,31 @@ describe('/marketing/posts/generate', () => {
     expect(res.json().post.content.length).toBeLessThanOrEqual(280)
   })
 
+  it('reserves room for the link — a full-length body cannot push it past the clamp', async () => {
+    vi.stubEnv('AGENT_OAK_URL', 'https://oak.example')
+    const { app, blogPosts } = await buildApp({ llm: async () => 'word '.repeat(100) })
+    blogPosts.push({ slug: 'cover-gap', published: true, title: 'The cover gap', excerpt: 'Most families miss it.' })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/marketing/posts/generate',
+      payload: { integration_id: 'i', channel: 'x', blog_slug: 'cover-gap' },
+    })
+    const post = res.json().post
+    expect(post.content).toContain(
+      'https://oak.example/blog/cover-gap?utm_source=x&utm_medium=social&utm_campaign=oak_social&utm_content=cover-gap',
+    )
+    expect(post.content.length).toBeLessThanOrEqual(280)
+  })
+
+  it('free-topic drafts carry a UTM link to the readiness check', async () => {
+    vi.stubEnv('AGENT_OAK_URL', 'https://oak.example')
+    const { app } = await buildApp({ llm: async () => 'A family safety net starts with one question.' })
+    const res = await app.inject({ method: 'POST', url: '/marketing/posts/generate', payload: GEN })
+    const post = res.json().post
+    expect(post.content).toContain('https://oak.example/readiness?utm_source=x')
+    expect(post.content).toContain('utm_content=topic')
+  })
+
   it('400s with neither topic nor blog_slug, 404s on an unknown slug', async () => {
     const { app } = await buildApp()
     expect(

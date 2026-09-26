@@ -557,7 +557,19 @@ export class ConnectorActionExecutor {
 
   private humanizeApiError(connectorId: string, status: number, body: Record<string, unknown>, rawBody?: string): string {
     if ((status === 402 || status === 403) && connectorId === 'twitter_x') {
-      return 'X app is set to "Read only". Go to developer.twitter.com → your app → User authentication settings → set permissions to "Read and Write", then reconnect X in Kairos Connectors.'
+      // X v2 puts the real cause in `detail` / `errors[].message` —
+      // duplicate content, daily cap, tier restrictions. Collapsing every
+      // 4xx into the permissions hint misdiagnoses retries, so surface the
+      // provider text verbatim unless it actually IS a scope problem —
+      // scope fixes need a reconnect anyway (tokens keep the permissions
+      // they were issued with; flipping the app to Read+Write does not
+      // retro-grant them to existing tokens).
+      const detail =
+        String(body['detail'] ?? '').trim() ||
+        String((body['errors'] as { message?: string }[] | undefined)?.[0]?.['message'] ?? '').trim()
+      const looksPermissions = /permission|not permitted|scope|forbidden/i.test(detail)
+      if (detail && !looksPermissions) return `X refused to post: ${detail}`
+      return `X refused to post${detail ? `: ${detail}.` : ' (HTTP 403).'} Check developer.x.com → your app → User authentication settings shows "Read and Write", then disconnect and reconnect X on the Marketing page — the token only gets new permissions when it's re-issued.`
     }
     if (status === 402) {
       return `${connectorId}: API access denied (HTTP 402) — check your developer plan or app permissions`
