@@ -669,11 +669,14 @@ export function registerMarketingPostRoutes(
     return { post }
   })
 
-  /** POST /marketing/posts/:id/reject — kill a queued draft. */
+  /** POST /marketing/posts/:id/reject — kill a queued draft. 'approved' is
+   *  included so a scheduled post can be pulled before the publish sweep
+   *  picks it up; 'publishing' is excluded — a claimed dispatch can't be
+   *  unwound. */
   app.post<{ Params: { id: string } }>('/marketing/posts/:id/reject', { preHandler: manageGate }, async (req, reply) => {
     const { tenant_id, user_id } = req.authContext
     const result = (await col.findOneAndUpdate(
-      { id: req.params.id, tenant_id, state: { $in: ['draft', 'publish_failed'] } },
+      { id: req.params.id, tenant_id, state: { $in: ['draft', 'publish_failed', 'approved'] } },
       { $set: { state: 'rejected', rejected_by: user_id, rejected_at: new Date() } },
       { returnDocument: 'after' },
     )) as MarketingPostDoc | null

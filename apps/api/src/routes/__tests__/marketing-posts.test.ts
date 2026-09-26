@@ -270,6 +270,23 @@ describe('/marketing/posts', () => {
     expect(approve.statusCode).toBe(404)
   })
 
+  it('a scheduled approved post can be cancelled before the sweep dispatches it', async () => {
+    const postiz = fakePostiz()
+    const { app, db, posts } = await buildApp({ postiz, settings: TRUSTED })
+    const future = new Date(Date.now() + 3_600_000).toISOString()
+    await app.inject({ method: 'POST', url: '/marketing/posts', payload: { ...DRAFT, scheduled_at: future } })
+    expect(posts[0]!['state']).toBe('approved')
+
+    const res = await app.inject({ method: 'POST', url: `/marketing/posts/${posts[0]!['id']}/reject` })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().post.state).toBe('rejected')
+
+    // Due time arrives — the sweep skips the cancelled post.
+    posts[0]!['scheduled_at'] = new Date(Date.now() - 1000)
+    expect(await publishDueMarketingPosts(db, postiz)).toBe(0)
+    expect(postiz.createPost).not.toHaveBeenCalled()
+  })
+
   it('dry_run_mode flips state without a Postiz call; the human review still earns trust', async () => {
     const postiz = fakePostiz()
     const { app, posts, settingsDocs } = await buildApp({ postiz, settings: { dry_run_mode: true } })

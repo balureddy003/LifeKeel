@@ -58,6 +58,7 @@ export default function MarketingPage() {
   const [loading, setLoading] = useState(true)
   const [integrationId, setIntegrationId] = useState('')
   const [content, setContent] = useState('')
+  const [scheduleAt, setScheduleAt] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [showConnect, setShowConnect] = useState(false)
   const [bskyHandle, setBskyHandle] = useState('')
@@ -164,9 +165,11 @@ export default function MarketingPage() {
         integration_id: selected.id,
         channel,
         content: content.trim(),
+        ...(scheduleAt ? { scheduled_at: new Date(scheduleAt).toISOString() } : {}),
       })
       setPosts((p) => [post, ...p])
       setContent('')
+      setScheduleAt('')
       toast({ message: post.state === 'published' ? 'Published' : 'Draft queued for review' })
     } catch (err) {
       toast({ message: err instanceof Error ? err.message : "Couldn't save that draft", variant: 'error' })
@@ -295,9 +298,22 @@ export default function MarketingPage() {
                   rows={4}
                   className="glass-input w-full rounded-xl px-4 py-3 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 resize-none mb-3"
                 />
+                <input
+                  type="datetime-local"
+                  value={scheduleAt}
+                  onChange={(e) => setScheduleAt(e.target.value)}
+                  min={new Date().toISOString().slice(0, 16)}
+                  aria-label="Schedule for later"
+                  className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-secondary outline-none mb-3"
+                />
                 <GlassButton onClick={submit} disabled={busy === 'create' || !content.trim()}>
-                  {busy === 'create' ? 'Queueing…' : 'Queue draft'}
+                  {busy === 'create' ? 'Queueing…' : scheduleAt ? 'Queue scheduled draft' : 'Queue draft'}
                 </GlassButton>
+                {scheduleAt && (
+                  <p className="text-xs text-ink-tertiary mt-2 leading-relaxed">
+                    Approving a scheduled draft publishes it at {new Date(scheduleAt).toLocaleString()} — cancel it from the queue anytime before then.
+                  </p>
+                )}
                 <p className="text-xs text-ink-tertiary mt-2.5 leading-relaxed">
                   {autoEnabled
                     ? `${Math.min(trustLevel, 5)}/5 approvals on ${channel} — at 5, Oak publishes new drafts here itself.`
@@ -428,6 +444,20 @@ export default function MarketingPage() {
                       aria-label="Reject draft"
                     >
                       <X size={15} />
+                    </button>
+                  </div>
+                )}
+                {post.state === 'approved' && (
+                  <div className="flex items-center justify-between gap-2 mt-3">
+                    <span className="text-xs text-ink-tertiary">
+                      {post.scheduled_at ? `Scheduled for ${new Date(post.scheduled_at).toLocaleString()}` : 'Approved — publishes on the next sweep'}
+                    </span>
+                    <button
+                      onClick={() => decide(post.id, 'reject')}
+                      disabled={busy === post.id}
+                      className="text-xs font-semibold text-ink-tertiary disabled:opacity-40"
+                    >
+                      Cancel
                     </button>
                   </div>
                 )}
