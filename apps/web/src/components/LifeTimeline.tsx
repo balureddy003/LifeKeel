@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef } from 'react'
+import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { Calendar, GraduationCap, Heart, Home, Briefcase, Baby, Palmtree, Target } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -49,24 +50,30 @@ export function LifeTimeline({ events }: { events: TimelineEvent[] }) {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
-            onClick={() => haptic('light')}
-            className="flex flex-col items-center min-w-[100px] cursor-pointer"
+            className="flex flex-col items-center min-w-[100px]"
             style={{ scrollSnapAlign: 'start' }}
           >
             <div className="w-px h-8 bg-tint/10" />
-            <motion.div
-              whileTap={{ scale: 0.9 }}
-              className="glass rounded-2xl p-3 flex flex-col items-center gap-1 min-w-[90px]"
-            >
-              <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-family-500/10">
-                {(() => {
-                  const EventIcon = EVENT_ICONS[event.id] ?? EVENT_ICONS.default!
-                  return <EventIcon size={16} className="text-family-400" strokeWidth={1.5} />
-                })()}
-              </div>
-              <span className="text-xs font-semibold text-center">{event.label}</span>
-              <span className="text-caption text-ink-tertiary">{event.year}</span>
-            </motion.div>
+            {/* A real <Link>, not a div with onClick — the card previously
+                looked tappable (cursor-pointer, tabIndex, tap animation)
+                but only fired a haptic buzz and went nowhere. An anchor
+                also gets keyboard focus + Enter-activation for free,
+                fixing the missing keyboard support at the same time. */}
+            <Link href={`/events/${event.scenarioId}`} onClick={() => haptic('light')}>
+              <motion.div
+                whileTap={{ scale: 0.9 }}
+                className="glass rounded-2xl p-3 flex flex-col items-center gap-1 min-w-[90px]"
+              >
+                <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-family-500/10">
+                  {(() => {
+                    const EventIcon = EVENT_ICONS[event.scenarioId] ?? EVENT_ICONS.default!
+                    return <EventIcon size={16} className="text-family-400" strokeWidth={1.5} />
+                  })()}
+                </div>
+                <span className="text-xs font-semibold text-center">{event.label}</span>
+                <span className="text-caption text-ink-tertiary">{event.year}</span>
+              </motion.div>
+            </Link>
           </motion.div>
         ))}
 

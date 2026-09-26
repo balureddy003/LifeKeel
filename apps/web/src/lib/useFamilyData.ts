@@ -266,6 +266,7 @@ export function useFamilyTimeline() {
       const year = currentYear + Math.max(0, UNIVERSITY_START_AGE - age)
       return {
         id: `university-${m.id}`,
+        scenarioId: 'university',
         emoji: '🎓',
         label: `${m.name} starts university`,
         year,

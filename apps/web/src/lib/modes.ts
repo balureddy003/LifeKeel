@@ -80,6 +80,11 @@ export interface LifeEvent {
 
 export interface TimelineEvent {
   id: string
+  // The "What If?" scenario this milestone corresponds to (LIFE_EVENTS'
+  // static ids, e.g. 'university') — distinct from `id`, which is unique
+  // per family member (`university-${memberId}`) and doesn't match any
+  // /events/[eventId] route on its own.
+  scenarioId: string
   emoji: string
   label: string
   year: number
