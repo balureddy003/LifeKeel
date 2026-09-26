@@ -85,7 +85,7 @@ import { registerLifeEventRoutes } from './routes/life-events.js'
 import { registerFamilyInboxRoutes } from './routes/family-inbox.js'
 import { registerPushRoutes } from './routes/push.js'
 import { registerReminderRoutes } from './routes/reminders.js'
-import { registerMarketingPostRoutes, publishDueMarketingPosts } from './routes/marketing-posts.js'
+import { registerMarketingPostRoutes, publishDueMarketingPosts, generateDailyMarketingDrafts } from './routes/marketing-posts.js'
 import { socialPublisherFromEnv, DbSocialPublisher } from './marketing/social-publisher.js'
 import { registerOperatorRoutes } from './routes/operator.js'
 import { getPlatformConfig, registerPublicStatusRoute } from './operator/platform-config.js'
@@ -242,6 +242,19 @@ try {
     }
   }, { missedExecutionTolerance: 30_000, noOverlap: true })
   log.info({}, 'Marketing publish cron started')
+
+  // Daily draft generation — queues one AI draft per opted-in tenant for
+  // review. Never publishes; it only fills the morning review queue.
+  cron.schedule('23 8 * * *', async () => {
+    try {
+      await withCronLock(workflowDb, 'marketing-generate', async () => {
+        await generateDailyMarketingDrafts(workflowDb, globalLlmFn)
+      })
+    } catch (err) {
+      log.error({ err }, 'Marketing draft generation failed')
+    }
+  }, { missedExecutionTolerance: 3_600_000 })
+  log.info({}, 'Marketing draft generation cron started')
 
   // Policy renewal reminders — hourly. Tier 3 autonomy: deterministic,
   // deduped, consent re-checked at send time, push-only to the member's

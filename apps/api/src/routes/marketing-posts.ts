@@ -67,6 +67,7 @@ export interface MarketingPostDoc {
   published_at?: Date
   publish_error?: string
   generated?: 'llm' | 'template'
+  source_blog_slug?: string
 }
 
 const CreatePostSchema = z.object({
@@ -242,6 +243,56 @@ export async function publishDueMarketingPosts(
   return dispatched
 }
 
+/** Daily cron sweep — queue one AI draft per opted-in tenant for morning
+ *  review. Opt-in is tenant_settings.automation.daily_marketing_drafts_enabled
+ *  (same Act-layer doc as the other autonomy flags). Requires an active
+ *  social connection to know the channel; picks the newest published blog
+ *  post the tenant hasn't promoted yet (source_blog_slug dedupe) and skips
+ *  the day when everything's been promoted. The draft is always 'draft' —
+ *  generated content never skips human review regardless of trust. */
+export async function generateDailyMarketingDrafts(db: Db, llm: LlmFn): Promise<number> {
+  const postsCol = db.collection<MarketingPostDoc>('marketing_posts')
+  const connsCol = db.collection<SocialConnectionDoc>('social_connections')
+  const blogsCol = db.collection('blog_posts')
+  const optedIn = (await db.collection('tenant_settings').find({}).toArray())
+    .filter((d) => (d['automation'] as Record<string, unknown> | undefined)?.['daily_marketing_drafts_enabled'] === true)
+
+  let queued = 0
+  for (const s of optedIn) {
+    const tenantId = s['tenant_id'] as string
+    const conn = await connsCol.findOne({ tenant_id: tenantId, status: 'active' })
+    if (!conn) continue
+    const usedSlugs = new Set(
+      (await postsCol.find({ tenant_id: tenantId }).toArray())
+        .map((p) => p.source_blog_slug)
+        .filter((x): x is string => Boolean(x)),
+    )
+    const candidate = (await blogsCol.find({ published: true }).sort({ published_at: -1 }).limit(50).toArray())
+      .find((b) => !usedSlugs.has(b['slug'] as string))
+    if (!candidate) continue
+
+    const slug = candidate['slug'] as string
+    const src = await blogSourceBlock(db, slug)
+    if (!src) continue
+    const { content, generated } = await draftPostText(llm, conn.channel, src.sourceBlock, src.link)
+    const post: MarketingPostDoc = {
+      id: randomUUID(),
+      tenant_id: tenantId,
+      channel: conn.channel,
+      integration_id: `${conn.channel}:connection`,
+      content,
+      state: 'draft',
+      generated,
+      source_blog_slug: slug,
+      created_by: 'daily-generator',
+      created_at: new Date(),
+    }
+    await postsCol.insertOne(post)
+    queued += 1
+  }
+  return queued
+}
+
 export interface MarketingRouteOptions {
   operatorTenants?: string[]
   llm?: LlmFn
@@ -268,6 +319,43 @@ Rules — these are non-negotiable:
 - Plain text only — no markdown, no hashtags unless the source has them,
   no emojis.
 - Return ONLY the post text, nothing else.`
+
+async function blogSourceBlock(db: Db, blogSlug: string): Promise<{ sourceBlock: string; link: string } | null> {
+  const post = await db.collection('blog_posts').findOne({ slug: blogSlug, published: true })
+  if (!post) return null
+  const base = (process.env['AGENT_OAK_URL'] ?? '').replace(/\/$/, '')
+  const link = base ? `${base}/blog/${blogSlug}` : ''
+  return {
+    link,
+    sourceBlock: `Blog post to promote:\nTitle: ${post['title']}\nSummary: ${post['excerpt']}${link ? `\nLink to include verbatim: ${link}` : ''}`,
+  }
+}
+
+/** LLM draft with deterministic fallback — shared by the generate route
+ *  and the daily cron so both produce identical-quality output. */
+async function draftPostText(
+  llm: LlmFn,
+  channel: string,
+  sourceBlock: string,
+  link: string,
+): Promise<{ content: string; generated: 'llm' | 'template' }> {
+  const limit = CHANNEL_CHAR_LIMIT[channel] ?? 2000
+  try {
+    const raw = await llm(
+      GENERATE_SYSTEM,
+      `Channel: ${channel} (hard maximum ${limit} characters — stay under it).\n\n${sourceBlock}\n\nWrite one post.`,
+      'tier:fast',
+    )
+    const content = clampPost(raw, limit)
+    if (!content) throw new Error('empty generation')
+    return { content, generated: 'llm' }
+  } catch {
+    return {
+      generated: 'template',
+      content: clampPost(`${sourceBlock.split('\n').slice(1).join('\n')}${link ? `\n\n${link}` : ''}`, limit),
+    }
+  }
+}
 
 export function registerMarketingPostRoutes(
   app: FastifyInstance,
@@ -433,33 +521,18 @@ export function registerMarketingPostRoutes(
     }
     const { integration_id, channel, topic, blog_slug } = parsed.data
 
-    let sourceBlock = ''
+    let sourceBlock: string
     let link = ''
     if (blog_slug) {
-      const post = await db.collection('blog_posts').findOne({ slug: blog_slug, published: true })
-      if (!post) return reply.status(404).send({ error: 'Blog post not found' })
-      const base = (process.env['AGENT_OAK_URL'] ?? '').replace(/\/$/, '')
-      link = base ? `${base}/blog/${blog_slug}` : ''
-      sourceBlock = `Blog post to promote:\nTitle: ${post['title']}\nSummary: ${post['excerpt']}${link ? `\nLink to include verbatim: ${link}` : ''}`
+      const src = await blogSourceBlock(db, blog_slug)
+      if (!src) return reply.status(404).send({ error: 'Blog post not found' })
+      sourceBlock = src.sourceBlock
+      link = src.link
     } else {
       sourceBlock = `Topic: ${topic}`
     }
 
-    const limit = CHANNEL_CHAR_LIMIT[channel] ?? 2000
-    let content: string
-    let generated: 'llm' | 'template' = 'llm'
-    try {
-      const raw = await llm(
-        GENERATE_SYSTEM,
-        `Channel: ${channel} (hard maximum ${limit} characters — stay under it).\n\n${sourceBlock}\n\nWrite one post.`,
-        'tier:fast',
-      )
-      content = clampPost(raw, limit)
-      if (!content) throw new Error('empty generation')
-    } catch {
-      generated = 'template'
-      content = clampPost(`${sourceBlock.split('\n').slice(1).join('\n')}${link ? `\n\n${link}` : ''}`, limit)
-    }
+    const { content, generated } = await draftPostText(llm, channel, sourceBlock, link)
 
     const now = new Date()
     const post: MarketingPostDoc = {
@@ -470,6 +543,7 @@ export function registerMarketingPostRoutes(
       content,
       state: 'draft',
       generated,
+      ...(blog_slug ? { source_blog_slug: blog_slug } : {}),
       created_by: user_id,
       created_at: now,
     }

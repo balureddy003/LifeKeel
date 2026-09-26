@@ -46,6 +46,7 @@ interface AutomationDoc {
   renewal_reminders_enabled?: boolean
   renewal_reminder_lead_days?: number[]
   auto_execute_enabled?: boolean
+  daily_marketing_drafts_enabled?: boolean
 }
 
 function toResponse(automation: AutomationDoc) {
@@ -55,6 +56,7 @@ function toResponse(automation: AutomationDoc) {
     renewal_reminders_enabled: automation.renewal_reminders_enabled === true,
     renewal_reminder_lead_days: automation.renewal_reminder_lead_days ?? DEFAULT_LEAD_DAYS,
     auto_execute_enabled: automation.auto_execute_enabled === true,
+    daily_marketing_drafts_enabled: automation.daily_marketing_drafts_enabled === true,
   }
 }
 
@@ -80,12 +82,13 @@ export function registerAutomationSettingsRoutes(app: FastifyInstance, db: Db): 
       renewal_reminders_enabled?: boolean
       renewal_reminder_lead_days?: number[]
       auto_execute_enabled?: boolean
+      daily_marketing_drafts_enabled?: boolean
     }
   }>(
     '/settings/automation',
     async (request, reply) => {
       const { tenant_id } = request.authContext
-      const { dry_run_mode, renewal_reminders_enabled, renewal_reminder_lead_days, auto_execute_enabled } = request.body ?? {}
+      const { dry_run_mode, renewal_reminders_enabled, renewal_reminder_lead_days, auto_execute_enabled, daily_marketing_drafts_enabled } = request.body ?? {}
 
       const set: Record<string, unknown> = {}
       if (dry_run_mode !== undefined) {
@@ -112,8 +115,14 @@ export function registerAutomationSettingsRoutes(app: FastifyInstance, db: Db): 
         }
         set['automation.auto_execute_enabled'] = auto_execute_enabled
       }
+      if (daily_marketing_drafts_enabled !== undefined) {
+        if (typeof daily_marketing_drafts_enabled !== 'boolean') {
+          return reply.status(400).send({ error: 'daily_marketing_drafts_enabled must be a boolean' })
+        }
+        set['automation.daily_marketing_drafts_enabled'] = daily_marketing_drafts_enabled
+      }
       if (Object.keys(set).length === 0) {
-        return reply.status(400).send({ error: 'Provide at least one of: dry_run_mode, renewal_reminders_enabled, renewal_reminder_lead_days, auto_execute_enabled' })
+        return reply.status(400).send({ error: 'Provide at least one of: dry_run_mode, renewal_reminders_enabled, renewal_reminder_lead_days, auto_execute_enabled, daily_marketing_drafts_enabled' })
       }
 
       await col.updateOne(

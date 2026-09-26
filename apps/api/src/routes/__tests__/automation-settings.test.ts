@@ -54,6 +54,7 @@ describe('/settings/automation', () => {
       renewal_reminders_enabled: false,
       renewal_reminder_lead_days: [30, 7],
       auto_execute_enabled: false,
+      daily_marketing_drafts_enabled: false,
     })
   })
 
@@ -86,6 +87,7 @@ describe('/settings/automation', () => {
       renewal_reminders_enabled: false,
       renewal_reminder_lead_days: [30, 7],
       auto_execute_enabled: false,
+      daily_marketing_drafts_enabled: false,
     })
   })
 

@@ -29,6 +29,7 @@ import {
   type SocialConnection,
   generateMarketingPost,
   fetchBlogPosts,
+  updateAutomationSettings,
   type BlogPostSummary,
 } from '@/lib/api'
 
@@ -327,6 +328,21 @@ export default function MarketingPage() {
                       <GlassButton onClick={generate} disabled={busy === 'generate' || (!genBlogSlug && !genTopic.trim())}>
                         {busy === 'generate' ? 'Generating…' : 'Generate draft'}
                       </GlassButton>
+                      <label className="flex items-start gap-2 cursor-pointer pt-1">
+                        <input
+                          type="checkbox"
+                          checked={automation?.daily_marketing_drafts_enabled === true}
+                          onChange={async (e) => {
+                            const next = await updateAutomationSettings({ daily_marketing_drafts_enabled: e.target.checked })
+                            if (next && next !== 'queued') setAutomation(next)
+                            toast({ message: e.target.checked ? 'Daily drafts on — one queued each morning' : 'Daily drafts off' })
+                          }}
+                          className="mt-0.5 accent-family-500"
+                        />
+                        <span className="text-xs text-ink-secondary leading-relaxed">
+                          Queue one for review every morning — promotes a blog post you haven't pushed yet.
+                        </span>
+                      </label>
                       <p className="text-xs text-ink-tertiary leading-relaxed">
                         Generated drafts always wait for your approval — they never auto-publish.
                       </p>

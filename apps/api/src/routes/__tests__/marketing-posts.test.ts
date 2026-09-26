@@ -7,7 +7,7 @@
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import Fastify from 'fastify'
-import { registerMarketingPostRoutes, publishDueMarketingPosts } from '../marketing-posts.js'
+import { registerMarketingPostRoutes, publishDueMarketingPosts, generateDailyMarketingDrafts } from '../marketing-posts.js'
 import { AUTO_EXECUTE_TRUST_THRESHOLD } from '../../jobs/auto-execute-trusted.js'
 
 const TENANT = 'tenant-1'
@@ -50,6 +50,7 @@ function makeDb() {
       return doc
     }),
     find: (filter: Record<string, unknown>) => ({
+      toArray: async () => posts.filter((d) => matchesFilter(d, filter)),
       sort: () => ({ limit: () => ({ toArray: async () => posts.filter((d) => matchesFilter(d, filter)) }) }),
     }),
   }
@@ -71,6 +72,9 @@ function makeDb() {
         target[parts[parts.length - 1] as string] = value
       }
       return { modifiedCount: 1 }
+    }),
+    find: (filter: Record<string, unknown>) => ({
+      toArray: async () => settingsDocs.filter((d) => matchesFilter(d, filter)),
     }),
   }
   const eventsCol = { insertOne: vi.fn(async (doc: Record<string, unknown>) => { systemEvents.push(doc) }) }
@@ -101,6 +105,9 @@ function makeDb() {
   const blogPosts: Record<string, unknown>[] = []
   const blogCol = {
     findOne: vi.fn(async (filter: Record<string, unknown>) => blogPosts.find((d) => matchesFilter(d, filter)) ?? null),
+    find: (filter: Record<string, unknown>) => ({
+      sort: () => ({ limit: () => ({ toArray: async () => blogPosts.filter((d) => matchesFilter(d, filter)) }) }),
+    }),
   }
   const collections: Record<string, unknown> = {
     marketing_posts: postsCol,
@@ -478,5 +485,52 @@ describe('/marketing/posts/generate', () => {
         })
       ).statusCode,
     ).toBe(404)
+  })
+})
+
+describe('generateDailyMarketingDrafts', () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('queues a review-first draft for an opted-in tenant with a connection and an unpromoted post', async () => {
+    const { db, settingsDocs, connections, blogPosts, posts } = await buildApp()
+    settingsDocs.push({ tenant_id: TENANT, automation: { daily_marketing_drafts_enabled: true } })
+    connections.push({ tenant_id: TENANT, channel: 'bluesky', status: 'active', handle: 'oak.bsky.social', credentials: {} })
+    blogPosts.push({ slug: 'cover-gap', published: true, title: 'The cover gap', excerpt: 'Most families miss it.' })
+    const n = await generateDailyMarketingDrafts(db, async () => 'morning draft')
+    expect(n).toBe(1)
+    const post = posts[0]!
+    expect(post['state']).toBe('draft')
+    expect(post['generated']).toBe('llm')
+    expect(post['source_blog_slug']).toBe('cover-gap')
+    expect(post['channel']).toBe('bluesky')
+    expect(post['created_by']).toBe('daily-generator')
+  })
+
+  it('skips tenants that never opted in and tenants without an active connection', async () => {
+    const { db, settingsDocs, connections, blogPosts, posts } = await buildApp()
+    blogPosts.push({ slug: 'cover-gap', published: true, title: 'T', excerpt: 'E' })
+    // Not opted in — nothing.
+    settingsDocs.push({ tenant_id: 'tenant-off', automation: { daily_marketing_drafts_enabled: false } })
+    connections.push({ tenant_id: 'tenant-off', channel: 'bluesky', status: 'active', credentials: {} })
+    // Opted in but no connection — nothing.
+    settingsDocs.push({ tenant_id: 'tenant-noconn', automation: { daily_marketing_drafts_enabled: true } })
+    const n = await generateDailyMarketingDrafts(db, async () => 'x')
+    expect(n).toBe(0)
+    expect(posts).toHaveLength(0)
+  })
+
+  it('skips the day when every published post was already promoted (source_blog_slug dedupe)', async () => {
+    const { db, settingsDocs, connections, blogPosts, posts } = await buildApp()
+    settingsDocs.push({ tenant_id: TENANT, automation: { daily_marketing_drafts_enabled: true } })
+    connections.push({ tenant_id: TENANT, channel: 'bluesky', status: 'active', credentials: {} })
+    blogPosts.push({ slug: 'cover-gap', published: true, title: 'T', excerpt: 'E' })
+    posts.push({ id: 'p1', tenant_id: TENANT, channel: 'bluesky', state: 'published', source_blog_slug: 'cover-gap' })
+    expect(await generateDailyMarketingDrafts(db, async () => 'x')).toBe(0)
+    // A new post lands → next sweep picks it up.
+    blogPosts.push({ slug: 'new-post', published: true, title: 'N', excerpt: 'E2' })
+    expect(await generateDailyMarketingDrafts(db, async () => 'fresh')).toBe(1)
+    expect(posts.find((p) => p['source_blog_slug'] === 'new-post')).toBeTruthy()
   })
 })
