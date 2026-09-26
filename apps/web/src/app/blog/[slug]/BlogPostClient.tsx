@@ -51,8 +51,15 @@ export default function BlogPostClient() {
     let cancelled = false
     // The first-touch attribution capture point for social landings —
     // generated posts deep-link here with utm_* params; track() persists
-    // them before any later signup reads getAttribution().
-    track('blog_view')
+    // them before any later signup reads getAttribution(). The params are
+    // also echoed into the event meta so /marketing/performance can
+    // attribute views per channel (pathname alone can't).
+    const utm: Record<string, string> = {}
+    for (const k of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content'] as const) {
+      const v = new URLSearchParams(window.location.search).get(k)
+      if (v) utm[k] = v.slice(0, 100)
+    }
+    track('blog_view', Object.keys(utm).length ? utm : undefined)
     fetchBlogPost(params.slug).then((p) => {
       if (!cancelled) {
         setPost(p)

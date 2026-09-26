@@ -30,7 +30,9 @@ import {
   generateMarketingPost,
   fetchBlogPosts,
   updateAutomationSettings,
+  fetchMarketingPerformance,
   type BlogPostSummary,
+  type MarketingPerformance,
 } from '@/lib/api'
 
 const STATE_STYLE: Record<MarketingPost['state'], string> = {
@@ -64,14 +66,16 @@ export default function MarketingPage() {
   const [blogs, setBlogs] = useState<BlogPostSummary[]>([])
   const [genBlogSlug, setGenBlogSlug] = useState('')
   const [genTopic, setGenTopic] = useState('')
+  const [performance, setPerformance] = useState<MarketingPerformance | null>(null)
 
   useEffect(() => {
-    Promise.all([fetchMarketingPosts(), fetchMarketingIntegrations(), fetchAutomationSettings(), fetchSocialConnections()])
-      .then(([p, i, a, c]) => {
+    Promise.all([fetchMarketingPosts(), fetchMarketingIntegrations(), fetchAutomationSettings(), fetchSocialConnections(), fetchMarketingPerformance()])
+      .then(([p, i, a, c, perf]) => {
         setPosts(p)
         setIntegrations(i)
         setAutomation(a)
         setConnections(c)
+        setPerformance(perf)
         const first = (i ?? []).find((x) => !x.disabled)
         if (first) setIntegrationId(first.id)
       })
@@ -352,6 +356,38 @@ export default function MarketingPage() {
               </>
             )}
           </GlassCard>
+
+          {/* Performance — promoted posts → views → signups */}
+          {performance && (performance.totals.views > 0 || performance.totals.signups > 0 || performance.channels.length > 0) && (
+            <GlassCard className="p-4 mt-4">
+              <p className="text-sm font-semibold text-ink-primary mb-3">Performance</p>
+              <div className="flex gap-4 mb-3 text-center">
+                <div><p className="text-lg font-bold text-ink-primary">{performance.totals.views}</p><p className="text-caption text-ink-tertiary">views</p></div>
+                <div><p className="text-lg font-bold text-ink-primary">{performance.totals.cta_clicks}</p><p className="text-caption text-ink-tertiary">CTA taps</p></div>
+                <div><p className="text-lg font-bold text-ink-primary">{performance.totals.leads}</p><p className="text-caption text-ink-tertiary">leads</p></div>
+                <div><p className="text-lg font-bold text-success">{performance.totals.signups}</p><p className="text-caption text-ink-tertiary">signups</p></div>
+              </div>
+              {performance.channels.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {performance.channels.map((c) => (
+                    <span key={c.channel} className="text-caption rounded-full border border-family-500/25 text-family-400 px-2 py-0.5">
+                      {c.channel}: {c.views}v · {c.signups}s
+                    </span>
+                  ))}
+                </div>
+              )}
+              <ul className="space-y-1.5">
+                {performance.posts.slice(0, 8).map((p) => (
+                  <li key={p.slug} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="text-ink-secondary truncate">{p.title ?? p.slug}</span>
+                    <span className="text-ink-tertiary shrink-0">
+                      {p.views}v · {p.cta_clicks}c · {p.leads}l · <span className="text-success">{p.signups}s</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </GlassCard>
+          )}
 
           {/* Queue */}
           <div className="mt-6 space-y-3">

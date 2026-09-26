@@ -106,9 +106,16 @@ function makeDb() {
   const blogCol = {
     findOne: vi.fn(async (filter: Record<string, unknown>) => blogPosts.find((d) => matchesFilter(d, filter)) ?? null),
     find: (filter: Record<string, unknown>) => ({
+      toArray: async () => blogPosts.filter((d) => matchesFilter(d, filter)),
       sort: () => ({ limit: () => ({ toArray: async () => blogPosts.filter((d) => matchesFilter(d, filter)) }) }),
     }),
   }
+  const users: Record<string, unknown>[] = []
+  const leads: Record<string, unknown>[] = []
+  const growthEvents: Record<string, unknown>[] = []
+  const listCol = (docs: Record<string, unknown>[]) => ({
+    find: (filter: Record<string, unknown>) => ({ toArray: async () => docs.filter((d) => matchesFilter(d, filter)) }),
+  })
   const collections: Record<string, unknown> = {
     marketing_posts: postsCol,
     tenant_settings: settingsCol,
@@ -116,8 +123,11 @@ function makeDb() {
     platform_config: configCol,
     social_connections: connectionsCol,
     blog_posts: blogCol,
+    users: listCol(users),
+    leads: listCol(leads),
+    growth_events: listCol(growthEvents),
   }
-  return { db: { collection: (name: string) => collections[name] } as any, posts, settingsDocs, systemEvents, postsCol, settingsCol, connections, connectionsCol, blogPosts }
+  return { db: { collection: (name: string) => collections[name] } as any, posts, settingsDocs, systemEvents, postsCol, settingsCol, connections, connectionsCol, blogPosts, users, leads, growthEvents }
 }
 
 function fakePostiz(overrides: Record<string, unknown> = {}) {
@@ -135,7 +145,7 @@ async function buildApp(opts: {
   operatorTenants?: string[]
   llm?: (system: string, prompt: string, model?: string) => Promise<string>
 } = {}) {
-  const { db, posts, settingsDocs, systemEvents, postsCol, connections, blogPosts } = makeDb()
+  const { db, posts, settingsDocs, systemEvents, postsCol, connections, blogPosts, users, leads, growthEvents } = makeDb()
   const tenant = opts.tenant ?? TENANT
   if (opts.settings) settingsDocs.push({ tenant_id: tenant, automation: opts.settings })
   const app = Fastify()
@@ -148,7 +158,7 @@ async function buildApp(opts: {
   })
   await app.ready()
   const postiz = 'postiz' in opts ? opts.postiz : null
-  return { app, db, posts, settingsDocs, systemEvents, postsCol, postiz, connections, blogPosts }
+  return { app, db, posts, settingsDocs, systemEvents, postsCol, postiz, connections, blogPosts, users, leads, growthEvents }
 }
 
 const DRAFT = { integration_id: 'int-1', channel: 'x', content: 'A thing worth posting' }
@@ -534,5 +544,57 @@ describe('generateDailyMarketingDrafts', () => {
     blogPosts.push({ slug: 'new-post', published: true, title: 'N', excerpt: 'E2' })
     expect(await generateDailyMarketingDrafts(db, async () => 'fresh')).toBe(1)
     expect(posts.find((p) => p['source_blog_slug'] === 'new-post')).toBeTruthy()
+  })
+})
+
+describe('/marketing/performance', () => {
+  it('rolls views, CTA clicks, attributed signups and leads up per promoted post and channel', async () => {
+    const { app, growthEvents, users, leads, blogPosts } = await buildApp()
+    blogPosts.push({ slug: 'cover-gap', title: 'The cover gap', published: true })
+    growthEvents.push(
+      { event: 'blog_view', path: '/blog/cover-gap', meta: { utm_source: 'bluesky', utm_campaign: 'oak_social' } },
+      { event: 'blog_view', path: '/blog/cover-gap', meta: { utm_source: 'bluesky' } },
+      { event: 'blog_view', path: '/blog/cover-gap', meta: { utm_source: 'x' } },
+      { event: 'blog_view', path: '/blog/other-post' },                    // no utm — view counts, channel doesn't
+      { event: 'blog_cta_click', path: '/blog/cover-gap' },
+      { event: 'landing_view', path: '/' },                                // unrelated event — ignored
+      { event: 'blog_view', path: '/settings' },                           // non-blog path — ignored
+    )
+    users.push(
+      { attribution: { utm_source: 'bluesky', utm_campaign: 'oak_social', utm_content: 'cover-gap' } },
+      { attribution: { utm_source: 'bluesky', utm_campaign: 'oak_social', utm_content: 'cover-gap' } },
+      { attribution: { utm_source: 'google', utm_campaign: 'ads', utm_content: 'cover-gap' } }, // other campaign — excluded
+      { attribution: { utm_source: 'x', utm_campaign: 'oak_social' } },                          // campaign but no slug — channel only
+    )
+    leads.push({ attribution: { utm_source: 'x', utm_campaign: 'oak_social', utm_content: 'cover-gap' } })
+
+    const res = await app.inject({ method: 'GET', url: '/marketing/performance' })
+    expect(res.statusCode).toBe(200)
+    const { posts, channels, totals } = res.json() as {
+      posts: { slug: string; views: number; cta_clicks: number; signups: number; leads: number; title?: string }[]
+      channels: { channel: string; views: number; signups: number }[]
+      totals: { views: number; signups: number; leads: number }
+    }
+
+    const gap = posts.find((p) => p.slug === 'cover-gap')!
+    expect(gap).toMatchObject({ views: 3, cta_clicks: 1, signups: 2, leads: 1, title: 'The cover gap' })
+    const other = posts.find((p) => p.slug === 'other-post')!
+    expect(other.views).toBe(1)
+    // Totals are the sum of per-post rows — a campaign signup without
+    // utm_content counts in channels but not in posts totals.
+    expect(totals).toMatchObject({ views: 4, signups: 2, leads: 1 })
+
+    const bsky = channels.find((c) => c.channel === 'bluesky')!
+    expect(bsky).toMatchObject({ views: 2, signups: 2 })
+    const x = channels.find((c) => c.channel === 'x')!
+    expect(x).toMatchObject({ views: 1, signups: 1 })
+    expect(channels.find((c) => c.channel === 'google')).toBeUndefined()
+  })
+
+  it('returns an empty rollup when nothing has been promoted yet', async () => {
+    const { app } = await buildApp()
+    const res = await app.inject({ method: 'GET', url: '/marketing/performance' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ posts: [], channels: [], totals: { views: 0, cta_clicks: 0, signups: 0, leads: 0 } })
   })
 })

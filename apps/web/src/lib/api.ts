@@ -1611,6 +1611,16 @@ export async function generateMarketingPost(input: {
   return data.post
 }
 
+export interface MarketingPerformance {
+  posts: { slug: string; title?: string; views: number; cta_clicks: number; signups: number; leads: number }[]
+  channels: { channel: string; views: number; signups: number }[]
+  totals: { views: number; cta_clicks: number; signups: number; leads: number }
+}
+
+export async function fetchMarketingPerformance(): Promise<MarketingPerformance | null> {
+  return apiFetch<MarketingPerformance | null>('/marketing/performance', null)
+}
+
 export async function fetchSocialConnections(): Promise<SocialConnection[]> {
   const data = await apiFetch<{ connections: SocialConnection[] }>('/marketing/connections', { connections: [] })
   return data.connections

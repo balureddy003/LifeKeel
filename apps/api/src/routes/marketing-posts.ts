@@ -293,6 +293,84 @@ export async function generateDailyMarketingDrafts(db: Db, llm: LlmFn): Promise<
   return queued
 }
 
+export interface MarketingPerformanceRow {
+  slug: string
+  title?: string
+  views: number
+  cta_clicks: number
+  signups: number
+  leads: number
+}
+
+/** GET /marketing/performance — closes the loop numerically: per promoted
+ *  blog post, blog_view/blog_cta_click growth events joined against
+ *  signups and leads attributed utm_campaign=oak_social (content=slug).
+ *  Channel rollups come from event meta.utm_source (captured since the
+ *  UTM'd links shipped) and signup attribution. Aggregate counts only —
+ *  no user-level data crosses this read. */
+export async function marketingPerformance(db: Db): Promise<{
+  posts: MarketingPerformanceRow[]
+  channels: { channel: string; views: number; signups: number }[]
+  totals: { views: number; cta_clicks: number; signups: number; leads: number }
+}> {
+  const events = await db.collection('growth_events').find({}).toArray()
+  const users = await db.collection('users').find({}).toArray()
+  const leads = await db.collection('leads').find({}).toArray()
+  const blogs = await db.collection('blog_posts').find({}).toArray()
+  const titleBy = new Map(blogs.map((b) => [b['slug'] as string, b['title'] as string]))
+
+  const slugOf = (path: unknown) => /^\/blog\/([^/?#]+)/.exec(String(path ?? ''))?.[1]
+  const rows = new Map<string, MarketingPerformanceRow>()
+  const row = (slug: string) => {
+    let r = rows.get(slug)
+    if (!r) {
+      r = { slug, views: 0, cta_clicks: 0, signups: 0, leads: 0 }
+      rows.set(slug, r)
+    }
+    return r
+  }
+  const channelViews = new Map<string, number>()
+  const channelSignups = new Map<string, number>()
+
+  for (const e of events) {
+    const slug = slugOf(e['path'])
+    if (!slug) continue
+    if (e['event'] === 'blog_view') {
+      row(slug).views += 1
+      const src = (e['meta'] as Record<string, unknown> | undefined)?.['utm_source']
+      if (typeof src === 'string') channelViews.set(src, (channelViews.get(src) ?? 0) + 1)
+    } else if (e['event'] === 'blog_cta_click') {
+      row(slug).cta_clicks += 1
+    }
+  }
+  for (const u of users) {
+    const a = u['attribution'] as Record<string, string> | undefined
+    if (a?.['utm_campaign'] !== 'oak_social') continue
+    const slug = a['utm_content']
+    if (slug) row(slug).signups += 1
+    const src = a['utm_source']
+    if (src) channelSignups.set(src, (channelSignups.get(src) ?? 0) + 1)
+  }
+  for (const l of leads) {
+    const a = l['attribution'] as Record<string, string> | undefined
+    if (a?.['utm_campaign'] !== 'oak_social') continue
+    const slug = a['utm_content']
+    if (slug) row(slug).leads += 1
+  }
+
+  const posts = [...rows.values()]
+    .map((r) => ({ ...r, title: titleBy.get(r.slug) }))
+    .sort((a, b) => b.signups - a.signups || b.views - a.views)
+  const channels = [...new Set([...channelViews.keys(), ...channelSignups.keys()])]
+    .map((c) => ({ channel: c, views: channelViews.get(c) ?? 0, signups: channelSignups.get(c) ?? 0 }))
+    .sort((a, b) => b.signups - a.signups || b.views - a.views)
+  const totals = posts.reduce(
+    (t, r) => ({ views: t.views + r.views, cta_clicks: t.cta_clicks + r.cta_clicks, signups: t.signups + r.signups, leads: t.leads + r.leads }),
+    { views: 0, cta_clicks: 0, signups: 0, leads: 0 },
+  )
+  return { posts, channels, totals }
+}
+
 export interface MarketingRouteOptions {
   operatorTenants?: string[]
   llm?: LlmFn
@@ -460,6 +538,9 @@ export function registerMarketingPostRoutes(
       return { ok: true }
     },
   )
+
+  /** GET /marketing/performance — promoted-post funnel rollup. */
+  app.get('/marketing/performance', { preHandler: readGate }, async () => marketingPerformance(db))
 
   /** GET /marketing/posts — this tenant's queue, newest first. */
   app.get('/marketing/posts', { preHandler: readGate }, async (req) => {
