@@ -2,6 +2,7 @@ import { Home, Briefcase, ShieldCheck, HeartPulse, Target, GraduationCap, House,
 import type { LucideIcon } from 'lucide-react'
 import type { FamilyMember } from './types'
 import type { FinancialProfilePolicy, PolicyType } from './api'
+import { PERSON_SCOPED_POLICY_TYPES } from './policyTypes'
 
 // Duplicated from financial-profile/page.tsx rather than shared — this repo
 // has no shared types package between call sites, matching the existing
@@ -140,9 +141,22 @@ export const ROLE_BRANCHES: Record<string, { label: string; icon: string; items:
  * real policy data when any exists — an honest empty state (today's static
  * label, unchanged) when it doesn't, rather than a regression for
  * households that haven't filled the financial profile in yet.
+ *
+ * Digital Twin gap audit (Phase 3): `policies` was previously shown
+ * unfiltered on every member's Protection section — a person-scoped policy
+ * (life/income protection/health/critical illness) explicitly attributed to
+ * one person via `member_id` (PRD-110) showed up identically on every other
+ * member's own page too, which is the opposite of what a per-member "Twin"
+ * view should do. A policy with no member_id at all (never attributed) is
+ * genuinely unknown-whose, so it still shows everywhere — only a policy
+ * explicitly attributed to someone else is excluded. Household-wide types
+ * (car/home/travel) are never filtered.
  */
 export function getMemberSections(member: FamilyMember, policies: FinancialProfilePolicy[] = []): MemberSection[] {
   const sections: MemberSection[] = []
+  const memberPolicies = policies.filter(
+    (p) => !PERSON_SCOPED_POLICY_TYPES.has(p.type) || !p.member_id || p.member_id === member.id,
+  )
 
   for (const branch of member.branches ?? ROLE_BRANCHES[member.role] ?? []) {
     const assetItems = branch.items.filter((item) => ASSET_ITEM_IDS[item])
@@ -163,9 +177,9 @@ export function getMemberSections(member: FamilyMember, policies: FinancialProfi
 
     const cat = BRANCH_CATEGORY[branch.icon] ?? 'wealth'
     const isProtectionBranch = branch.icon === 'ShieldCheck'
-    const renewalDays = isProtectionBranch ? soonestRenewalWithinWindow(policies) : null
-    const story = isProtectionBranch && policies.length > 0
-      ? `${policies.length} ${policies.length === 1 ? 'policy' : 'policies'}: ${[...new Set(policies.map((p) => POLICY_TYPE_LABELS[p.type]))].join(', ')}${renewalDays !== null ? ` · renews in ${renewalDays} ${renewalDays === 1 ? 'day' : 'days'}` : ''}`
+    const renewalDays = isProtectionBranch ? soonestRenewalWithinWindow(memberPolicies) : null
+    const story = isProtectionBranch && memberPolicies.length > 0
+      ? `${memberPolicies.length} ${memberPolicies.length === 1 ? 'policy' : 'policies'}: ${[...new Set(memberPolicies.map((p) => POLICY_TYPE_LABELS[p.type]))].join(', ')}${renewalDays !== null ? ` · renews in ${renewalDays} ${renewalDays === 1 ? 'day' : 'days'}` : ''}`
       : isProtectionBranch
         ? 'No policies on file yet'
         : `Tracks ${branch.items.join(', ')}`

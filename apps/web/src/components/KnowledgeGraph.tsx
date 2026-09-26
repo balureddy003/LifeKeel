@@ -23,6 +23,7 @@ import { useAuth } from '@/lib/auth-context'
 import type { FamilyMember } from '@/lib/types'
 import { getMemberSections, CATEGORY_COLOR, FAMILY_ACCENT, type GraphCategory } from '@/lib/familySections'
 import { runForceSimulation, type SimNode, type SimEdge } from '@/lib/forceSimulation'
+import { fetchFinancialProfile, type FinancialProfilePolicy } from '@/lib/api'
 
 type NodeKind = 'root' | 'person' | 'category' | 'asset'
 
@@ -58,7 +59,7 @@ interface RawEdge {
   target: string
 }
 
-function buildGraphData(members: FamilyMember[]): { rawNodes: RawNode[]; rawEdges: RawEdge[] } {
+function buildGraphData(members: FamilyMember[], policies: FinancialProfilePolicy[]): { rawNodes: RawNode[]; rawEdges: RawEdge[] } {
   const rawNodes: RawNode[] = []
   const rawEdges: RawEdge[] = []
 
@@ -84,7 +85,7 @@ function buildGraphData(members: FamilyMember[]): { rawNodes: RawNode[]; rawEdge
     })
     rawEdges.push({ source: 'family', target: member.id })
 
-    for (const section of getMemberSections(member)) {
+    for (const section of getMemberSections(member, policies)) {
       rawNodes.push({
         id: section.id,
         label: section.label,
@@ -101,8 +102,8 @@ function buildGraphData(members: FamilyMember[]): { rawNodes: RawNode[]; rawEdge
   return { rawNodes, rawEdges }
 }
 
-function buildFamilyGraph(members: FamilyMember[]): { nodes: Node<NodeData>[]; edges: Edge[] } {
-  const { rawNodes, rawEdges } = buildGraphData(members)
+function buildFamilyGraph(members: FamilyMember[], policies: FinancialProfilePolicy[]): { nodes: Node<NodeData>[]; edges: Edge[] } {
+  const { rawNodes, rawEdges } = buildGraphData(members, policies)
 
   const simNodes: SimNode[] = rawNodes.map((n) => ({
     id: n.id,
@@ -210,6 +211,19 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
   const [filter, setFilter] = useState<GraphCategory | 'all'>('all')
   const router = useRouter()
   const { family } = useAuth()
+  // Digital Twin gap audit (Phase 3): this graph never fetched real policy
+  // data at all — every member's Protection node said "No policies on file
+  // yet" regardless of what was actually on file, unlike FamilyRoster.tsx's
+  // equivalent card on Home, which already reads this.
+  const [policies, setPolicies] = useState<FinancialProfilePolicy[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchFinancialProfile().then((profile) => {
+      if (!cancelled) setPolicies(profile?.policies ?? [])
+    })
+    return () => { cancelled = true }
+  }, [])
 
   const graphMembers: FamilyMember[] = useMemo(() => {
     if (!family || family.members.length === 0) return []
@@ -222,7 +236,7 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
     }))
   }, [family])
 
-  const { nodes: allNodes, edges: allEdges } = useMemo(() => buildFamilyGraph(graphMembers), [graphMembers])
+  const { nodes: allNodes, edges: allEdges } = useMemo(() => buildFamilyGraph(graphMembers, policies), [graphMembers, policies])
 
   const { nodes, edges } = useMemo(() => {
     if (filter === 'all') return { nodes: allNodes, edges: allEdges }

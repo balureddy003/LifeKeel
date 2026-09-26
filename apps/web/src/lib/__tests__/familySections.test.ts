@@ -65,3 +65,51 @@ describe('OAK-013: getMemberSections surfaces the soonest policy renewal', () =>
     expect(protection?.story).toBe('No policies on file yet')
   })
 })
+
+describe('Digital Twin gap audit (Phase 3): getMemberSections scopes person-specific policies per member', () => {
+  it('excludes a person-scoped policy explicitly attributed to someone else', () => {
+    const sections = getMemberSections(makeMember({ id: 'm1' }), [
+      makePolicy({ type: 'life', member_id: 'someone-else' }),
+    ])
+    const protection = sections.find((s) => s.label === 'Protection')
+    expect(protection?.story).toBe('No policies on file yet')
+  })
+
+  it('includes a person-scoped policy explicitly attributed to this member', () => {
+    const sections = getMemberSections(makeMember({ id: 'm1' }), [
+      makePolicy({ type: 'life', member_id: 'm1' }),
+    ])
+    const protection = sections.find((s) => s.label === 'Protection')
+    expect(protection?.story).toContain('1 policy: Life')
+  })
+
+  it('includes a person-scoped policy with no member_id at all (unattributed — genuinely unknown whose)', () => {
+    const sections = getMemberSections(makeMember({ id: 'm1' }), [makePolicy({ type: 'life' })])
+    const protection = sections.find((s) => s.label === 'Protection')
+    expect(protection?.story).toContain('1 policy: Life')
+  })
+
+  it('never filters a household-wide policy type by member_id', () => {
+    const sections = getMemberSections(makeMember({ id: 'm1' }), [
+      makePolicy({ type: 'car', member_id: 'someone-else' }),
+    ])
+    const protection = sections.find((s) => s.label === 'Protection')
+    expect(protection?.story).toContain('1 policy: Car')
+  })
+
+  it('shows each member only their own person-scoped policy out of a mixed household list', () => {
+    const shared = [
+      makePolicy({ type: 'life', member_id: 'alex' }),
+      makePolicy({ type: 'health', member_id: 'sam' }),
+      makePolicy({ type: 'car' }),
+    ]
+    const alexProtection = getMemberSections(makeMember({ id: 'alex' }), shared).find((s) => s.label === 'Protection')
+    const samProtection = getMemberSections(makeMember({ id: 'sam' }), shared).find((s) => s.label === 'Protection')
+    expect(alexProtection?.story).toContain('Life')
+    expect(alexProtection?.story).toContain('Car')
+    expect(alexProtection?.story).not.toContain('Health')
+    expect(samProtection?.story).toContain('Health')
+    expect(samProtection?.story).toContain('Car')
+    expect(samProtection?.story).not.toContain('Life')
+  })
+})
