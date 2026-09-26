@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react'
 import { GlassCard } from './Glass'
 import { haptic } from '@/lib/haptics'
 import { useAppStore } from '@/lib/store'
-import { fetchFinancialProfile, fetchDocuments, fetchConnectorStatuses, fetchProfileSuggestions, RESOLVED_INSIGHT_STATES } from '@/lib/api'
+import { fetchFinancialProfile, fetchDocuments, fetchConnectorStatuses, fetchProfileSuggestions, fetchVaultDocuments, RESOLVED_INSIGHT_STATES } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { useFamilyInsights } from '@/lib/useFamilyData'
 import { orderIncompleteTrustLadderSteps } from '@/lib/trustLadderOrder'
@@ -28,12 +28,17 @@ export function TrustLadder() {
   const [expanded, setExpanded] = useState(false)
   const [hasFinancialProfile, setHasFinancialProfile] = useState(false)
   const [hasDocuments, setHasDocuments] = useState(false)
+  const [hasVaultDocuments, setHasVaultDocuments] = useState(false)
   const [connectedIds, setConnectedIds] = useState<string[]>([])
 
   useEffect(() => {
     let cancelled = false
     fetchFinancialProfile().then((p) => { if (!cancelled) setHasFinancialProfile(!!p?.insights_evaluated_at) })
     fetchDocuments().then((d) => { if (!cancelled) setHasDocuments(d.documents.length > 0) })
+    // A child's request 403s (forbidden: true, documents: []) — that's not
+    // an error, it just never marks this step done for them, same as any
+    // other member who hasn't added anything to the vault yet.
+    fetchVaultDocuments().then((v) => { if (!cancelled) setHasVaultDocuments(v.documents.length > 0) })
     fetchConnectorStatuses().then((cs) => {
       if (!cancelled) setConnectedIds(cs.filter((c) => c.connected).map((c) => c.id))
     })
@@ -64,7 +69,7 @@ export function TrustLadder() {
     { id: 'bank', icon: Landmark, label: 'Connect Bank', timeframe: 'Week 2', desc: 'Securely connect your bank accounts', route: '/connect' },
     { id: 'email', icon: Mail, label: 'Connect Email', timeframe: 'Week 3', desc: 'AI scans for financial documents only', route: '/connect' },
     { id: 'investments', icon: BarChart3, label: 'Add Investments', timeframe: 'Month 2', desc: 'Add your pension and investment numbers to your Financial Profile', route: '/financial-profile' },
-    { id: 'estate', icon: Scale, label: 'Estate Planning', timeframe: 'Month 3', desc: 'Upload your will and estate documents for secure storage', route: '/upload' },
+    { id: 'estate', icon: Scale, label: 'Estate Planning', timeframe: 'Month 3', desc: 'Store your will and estate documents in the encrypted vault', route: '/vault' },
   ].map((step) => {
     let status: 'done' | 'available' | 'locked' = 'locked'
     if (step.id === 'family') status = hasPendingMembers ? 'available' : 'done'
@@ -74,7 +79,7 @@ export function TrustLadder() {
     else if (step.id === 'bank') status = (connectedConnectors.includes('open-banking') || financialProfileSubmitted) ? 'done' : 'available'
     else if (step.id === 'email') status = connectedConnectors.includes('email') ? 'done' : 'available'
     else if (step.id === 'investments') status = financialProfileSubmitted ? 'done' : 'available'
-    else if (step.id === 'estate') status = 'available'
+    else if (step.id === 'estate') status = hasVaultDocuments ? 'done' : 'available'
     return { ...step, status }
   })
 

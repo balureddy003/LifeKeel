@@ -97,3 +97,36 @@ export function decryptIfNeeded(value: string | undefined): string | undefined {
     return value  // graceful fallback — return as-is if decryption fails
   }
 }
+
+/**
+ * Encrypt raw bytes (e.g. an uploaded document's contents) for storage —
+ * same key material and cipher as encryptField, but a compact binary
+ * envelope instead of the hex/colon string format: hex-encoding a multi-MB
+ * file would roughly double its size for no benefit when it's headed
+ * straight into GridFS (already binary storage) rather than a text column.
+ * Envelope layout: [1-byte key version][12-byte iv][16-byte authTag][ciphertext].
+ */
+export function encryptBuffer(plaintext: Buffer): Buffer {
+  const version = getCurrentVersion()
+  if (version < 0 || version > 255) throw new Error('[crypto] encryptBuffer supports key versions 0-255 only')
+  const key = getKey(version)
+  const iv = randomBytes(12)
+  const cipher = createCipheriv(ALGORITHM, key, iv)
+  const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()])
+  const authTag = cipher.getAuthTag()
+  return Buffer.concat([Buffer.from([version]), iv, authTag, encrypted])
+}
+
+/** Decrypt bytes produced by encryptBuffer. */
+export function decryptBuffer(envelope: Buffer): Buffer {
+  const HEADER_LENGTH = 1 + 12 + 16
+  if (envelope.length < HEADER_LENGTH) throw new Error('[crypto] Invalid encrypted buffer envelope')
+  const version = envelope.readUInt8(0)
+  const iv = envelope.subarray(1, 13)
+  const authTag = envelope.subarray(13, HEADER_LENGTH)
+  const data = envelope.subarray(HEADER_LENGTH)
+  const key = getKey(version)
+  const decipher = createDecipheriv(ALGORITHM, key, iv)
+  decipher.setAuthTag(authTag)
+  return Buffer.concat([decipher.update(data), decipher.final()])
+}

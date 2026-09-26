@@ -110,6 +110,51 @@ describe('decryptIfNeeded', () => {
   })
 })
 
+describe('encryptBuffer / decryptBuffer', () => {
+  it('round-trips binary file bytes (not just UTF-8 text)', async () => {
+    const { encryptBuffer, decryptBuffer } = await getCrypto()
+    // A byte sequence that is not valid UTF-8 on its own, to catch any
+    // accidental string round-trip in the implementation.
+    const original = Buffer.from([0x00, 0xff, 0x10, 0x80, 0xfe, 0x01, 0x02, 0x03])
+    const encrypted = encryptBuffer(original)
+    expect(Buffer.compare(encrypted, original)).not.toBe(0)
+    expect(Buffer.compare(decryptBuffer(encrypted), original)).toBe(0)
+  })
+
+  it('produces different ciphertext each call (random IV)', async () => {
+    const { encryptBuffer } = await getCrypto()
+    const plain = Buffer.from('same file contents')
+    const a = encryptBuffer(plain)
+    const b = encryptBuffer(plain)
+    expect(Buffer.compare(a, b)).not.toBe(0)
+  })
+
+  it('prefixes the envelope with a 1-byte key version', async () => {
+    const { encryptBuffer } = await getCrypto()
+    const encrypted = encryptBuffer(Buffer.from('x'))
+    expect(encrypted.readUInt8(0)).toBe(1) // default ENCRYPTION_KEY_CURRENT_VERSION
+  })
+
+  it('throws rather than silently corrupting on tampered ciphertext', async () => {
+    const { encryptBuffer, decryptBuffer } = await getCrypto()
+    const encrypted = encryptBuffer(Buffer.from('a will document'))
+    encrypted[encrypted.length - 1] = encrypted[encrypted.length - 1]! ^ 0xff
+    expect(() => decryptBuffer(encrypted)).toThrow()
+  })
+
+  it('throws on a too-short/invalid envelope rather than reading garbage', async () => {
+    const { decryptBuffer } = await getCrypto()
+    expect(() => decryptBuffer(Buffer.from([1, 2, 3]))).toThrow('Invalid encrypted buffer envelope')
+  })
+
+  it('round-trips a multi-kilobyte buffer (larger than a single cipher block)', async () => {
+    const { encryptBuffer, decryptBuffer } = await getCrypto()
+    const original = Buffer.alloc(64 * 1024, 7) // 64KB, stands in for a real document
+    const decrypted = decryptBuffer(encryptBuffer(original))
+    expect(Buffer.compare(decrypted, original)).toBe(0)
+  })
+})
+
 describe('versioned encryption key registry', () => {
   it('encrypts with the current registry version and decrypts versioned ciphertext', async () => {
     process.env['ENCRYPTION_KEY_V1'] = 'b'.repeat(64)

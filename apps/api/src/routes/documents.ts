@@ -38,7 +38,9 @@ type DocumentRecord = Record<string, unknown> & {
   processing_completed_at?: Date
 }
 
-const ALLOWED_MIME_TYPES = new Set([
+// Exported for vault.ts (Digital Estate Vault) — same allowed types/size
+// limit apply to an uploaded will/PoA as to any other document.
+export const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
@@ -48,7 +50,14 @@ const ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
 ])
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB — matches multipart limit in server.ts
+export const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB — matches multipart limit in server.ts
+
+// Estate Vault documents live in this same GridFS bucket + 'documents'
+// collection (see vault.ts's module doc for why), encrypted at rest and
+// gated to adult family members only — never mix them into the general
+// document list/detail/file routes below, which have no such gating.
+// Exported so vault.ts uses the exact same literal, not a copy that could drift.
+export const ESTATE_VAULT_CATEGORY = 'estate_vault'
 
 export function registerDocumentRoutes(
   fastify: FastifyInstance,
@@ -194,9 +203,12 @@ export function registerDocumentRoutes(
     async (req) => {
       const { tenant_id } = req.authContext
       const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
-      const filter: Record<string, unknown> = {}
+      // Estate Vault documents are encrypted and adult-gated (see vault.ts)
+      // — never surfaced through the general, ungated document list even
+      // if someone explicitly requests that category.
+      const filter: Record<string, unknown> = { category: { $ne: ESTATE_VAULT_CATEGORY } }
 
-      if (req.query.category) filter['category'] = req.query.category
+      if (req.query.category && req.query.category !== ESTATE_VAULT_CATEGORY) filter['category'] = req.query.category
       if (req.query.status) filter['status'] = req.query.status
 
       const limit = Math.min(parseInt(req.query.limit ?? '50', 10), 100)
@@ -233,7 +245,7 @@ export function registerDocumentRoutes(
       id: req.params.id,
     })
 
-    if (!doc) {
+    if (!doc || doc['category'] === ESTATE_VAULT_CATEGORY) {
       return reply.status(404).send({ error: 'Document not found' })
     }
 
@@ -262,7 +274,7 @@ export function registerDocumentRoutes(
     const { tenant_id } = req.authContext
     const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
     const doc = await documents.findOne({ id: req.params.id })
-    if (!doc || !doc['file_id']) return reply.status(404).send({ error: 'Document not found' })
+    if (!doc || !doc['file_id'] || doc['category'] === ESTATE_VAULT_CATEGORY) return reply.status(404).send({ error: 'Document not found' })
 
     const chunks: Buffer[] = []
     for await (const chunk of bucket.openDownloadStream(doc['file_id'] as ObjectId)) chunks.push(chunk as Buffer)
@@ -297,7 +309,7 @@ export function registerDocumentRoutes(
     const { tenant_id } = req.authContext
     const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
     const doc = await documents.findOne({ id: req.params.id })
-    if (!doc || !doc['file_id']) return reply.status(404).send({ error: 'Document not found' })
+    if (!doc || !doc['file_id'] || doc['category'] === ESTATE_VAULT_CATEGORY) return reply.status(404).send({ error: 'Document not found' })
 
     const chunks: Buffer[] = []
     for await (const chunk of bucket.openDownloadStream(doc['file_id'] as ObjectId)) chunks.push(chunk as Buffer)
@@ -442,7 +454,7 @@ export function registerDocumentRoutes(
       id: req.params.id,
     })
 
-    if (!doc) {
+    if (!doc || doc['category'] === ESTATE_VAULT_CATEGORY) {
       return reply.status(404).send({ error: 'Document not found' })
     }
 

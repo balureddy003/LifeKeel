@@ -331,6 +331,81 @@ export async function fetchDocumentFileUrl(id: string): Promise<{ url: string; m
   }
 }
 
+// ── Digital Estate Vault (Phase 3, Digital Twin gap audit) ─────────────────
+// Encrypted storage for estate documents (wills, power of attorney) —
+// adult family members only (the API 403s a child's token). No release,
+// notification, or "dead man's switch" logic exists anywhere here or on the
+// server: every read/write is a signed-in adult's own explicit action.
+
+export interface VaultDocument {
+  id: string
+  filename: string
+  mimeType: string
+  uploadedAt: string
+  uploadedBy: string | null
+}
+
+export async function fetchVaultDocuments(): Promise<{ documents: VaultDocument[]; forbidden: boolean }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  try {
+    const res = await fetch(`${base}/vault/documents`, { headers })
+    if (res.status === 403) return { documents: [], forbidden: true }
+    if (!res.ok) return { documents: [], forbidden: false }
+    const data = (await res.json().catch(() => ({}))) as { documents?: VaultDocument[] }
+    return { documents: data.documents ?? [], forbidden: false }
+  } catch (err) {
+    reportError(err, { path: '/vault/documents' })
+    return { documents: [], forbidden: false }
+  }
+}
+
+export async function uploadVaultDocument(file: File): Promise<VaultDocument> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const formData = new FormData()
+  formData.append('file', file)
+  const headers: Record<string, string> = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${base}/vault/documents/upload`, { method: 'POST', headers, body: formData })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || `Upload failed: ${res.status}`)
+  return data as VaultDocument
+}
+
+export async function fetchVaultDocumentFileUrl(id: string): Promise<{ url: string; mimeType: string } | null> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(`${base}/vault/documents/${id}/file`, { headers })
+    if (!res.ok) return null
+    const blob = await res.blob()
+    return { url: URL.createObjectURL(blob), mimeType: blob.type }
+  } catch (err) {
+    reportError(err, { documentId: id })
+    return null
+  }
+}
+
+export async function deleteVaultDocument(id: string): Promise<boolean> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(`${base}/vault/documents/${id}`, { method: 'DELETE', headers })
+    return res.ok
+  } catch (err) {
+    reportError(err, { documentId: id })
+    return false
+  }
+}
+
 export interface ProfileSuggestion {
   path: string
   label: string

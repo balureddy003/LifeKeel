@@ -72,6 +72,7 @@ import { deploymentConfig, logDeploymentMode } from './config/deployment.js'
 import { addSandboxContext, sandboxMiddleware, sandboxWriteMiddleware } from './middleware/sandbox.js'
 import { registerCaseStudyRoutes } from './routes/case-studies.js'
 import { registerDocumentRoutes } from './routes/documents.js'
+import { registerVaultRoutes } from './routes/vault.js'
 import { registerAuditLogRoutes } from './routes/audit-log.js'
 import { registerAutomationSettingsRoutes } from './routes/automation-settings.js'
 import { registerAccountRoutes } from './routes/account.js'
@@ -1242,6 +1243,7 @@ if (workflowDb) {
   registerBillingRoutes(app, workflowDb)
   registerBlogRoutes(app, workflowDb)
   registerDocumentRoutes(app, workflowDb, engine, insightsDeliveryHook)
+  registerVaultRoutes(app, workflowDb)
   registerAuditLogRoutes(app, workflowDb)
   registerAutomationSettingsRoutes(app, workflowDb)
   registerAccountRoutes(app, workflowDb)
