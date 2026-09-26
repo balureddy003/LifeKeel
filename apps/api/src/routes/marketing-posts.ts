@@ -75,6 +75,12 @@ export interface MarketingPostDoc {
   metrics_at?: Date
 }
 
+const UpdatePostSchema = z.object({
+  content: z.string().min(1).max(5000).optional(),
+  // ISO datetime, empty string, or null — the latter two clear the schedule.
+  scheduled_at: z.string().datetime().or(z.literal('')).nullable().optional(),
+})
+
 const CreatePostSchema = z.object({
   integration_id: z.string().min(1).max(200),
   channel: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/),
@@ -757,6 +763,38 @@ export function registerMarketingPostRoutes(
     await col.insertOne(post)
     getAuditLogger()?.fromRequest(req, 'marketing.post_generate', 'marketing_post', post.id, { channel, generated })
     return reply.status(201).send({ post })
+  })
+
+  /** PATCH /marketing/posts/:id — edit a pending post's content or
+   *  schedule. Only 'draft' and 'publish_failed' are editable — 'approved'
+   *  is already claimed for dispatch, so rescheduling there would race the
+   *  sweep; cancel it (reject) and edit from draft instead. */
+  app.patch<{ Params: { id: string } }>('/marketing/posts/:id', { preHandler: manageGate }, async (req, reply) => {
+    const { tenant_id } = req.authContext
+    const parsed = UpdatePostSchema.safeParse(req.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid update', issues: parsed.error.issues })
+    }
+    const { content, scheduled_at } = parsed.data
+    const set: Record<string, unknown> = {}
+    const unset: Record<string, ''> = {}
+    if (content !== undefined) set['content'] = content
+    if (scheduled_at) set['scheduled_at'] = new Date(scheduled_at)
+    else if (scheduled_at !== undefined) unset['scheduled_at'] = ''
+    if (Object.keys(set).length === 0 && Object.keys(unset).length === 0) {
+      return reply.status(400).send({ error: 'Nothing to update' })
+    }
+    const post = (await col.findOneAndUpdate(
+      { id: req.params.id, tenant_id, state: { $in: ['draft', 'publish_failed'] } },
+      { ...(Object.keys(set).length ? { $set: set } : {}), ...(Object.keys(unset).length ? { $unset: unset } : {}) },
+      { returnDocument: 'after' },
+    )) as MarketingPostDoc | null
+    if (!post) return reply.status(404).send({ error: 'Post not found or not editable' })
+    getAuditLogger()?.fromRequest(req, 'marketing.post_update', 'marketing_post', post.id, {
+      channel: post.channel,
+      edited: [...Object.keys(set), ...Object.keys(unset)],
+    })
+    return { post }
   })
 
   /** POST /marketing/posts/:id/approve — human decision; publishes and earns

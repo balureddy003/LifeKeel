@@ -43,12 +43,18 @@ function makeDb() {
       if (doc) applySet(doc, update.$set)
       return { modifiedCount: doc ? 1 : 0 }
     }),
-    findOneAndUpdate: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
-      const doc = posts.find((d) => matchesFilter(d, filter))
-      if (!doc) return null
-      applySet(doc, update.$set)
-      return doc
-    }),
+    findOneAndUpdate: vi.fn(
+      async (
+        filter: Record<string, unknown>,
+        update: { $set?: Record<string, unknown>; $unset?: Record<string, unknown> },
+      ) => {
+        const doc = posts.find((d) => matchesFilter(d, filter))
+        if (!doc) return null
+        if (update.$set) applySet(doc, update.$set)
+        for (const key of Object.keys(update.$unset ?? {})) delete doc[key]
+        return doc
+      },
+    ),
     find: (filter: Record<string, unknown>) => ({
       toArray: async () => posts.filter((d) => matchesFilter(d, filter)),
       sort: () => ({ limit: () => ({ toArray: async () => posts.filter((d) => matchesFilter(d, filter)) }) }),
@@ -311,6 +317,39 @@ describe('/marketing/posts', () => {
     posts[0]!['scheduled_at'] = new Date(Date.now() - 1000)
     expect(await publishDueMarketingPosts(db, postiz)).toBe(0)
     expect(postiz.createPost).not.toHaveBeenCalled()
+  })
+
+  it('PATCH edits a draft content and schedule; approved posts are not editable', async () => {
+    const { app, posts } = await buildApp()
+    await app.inject({ method: 'POST', url: '/marketing/posts', payload: DRAFT })
+    const id = posts[0]!['id'] as string
+
+    const future = new Date(Date.now() + 3_600_000).toISOString()
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/marketing/posts/${id}`,
+      payload: { content: 'edited body', scheduled_at: future },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().post.content).toBe('edited body')
+    expect(res.json().post.scheduled_at).toBe(future)
+
+    // Clearing the schedule unsets the field.
+    const cleared = await app.inject({
+      method: 'PATCH',
+      url: `/marketing/posts/${id}`,
+      payload: { scheduled_at: '' },
+    })
+    expect(cleared.json().post.scheduled_at).toBeUndefined()
+
+    // Approved posts are claimed for dispatch — edits bounce with 404.
+    await app.inject({ method: 'POST', url: `/marketing/posts/${id}/approve` })
+    const blocked = await app.inject({
+      method: 'PATCH',
+      url: `/marketing/posts/${id}`,
+      payload: { content: 'too late' },
+    })
+    expect(blocked.statusCode).toBe(404)
   })
 
   it('stores the channel response external id/url on a successful publish', async () => {

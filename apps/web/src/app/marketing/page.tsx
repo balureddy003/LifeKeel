@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Send, Check, X, Loader2 } from 'lucide-react'
+import { Send, Check, X, Loader2, Pencil } from 'lucide-react'
 import { GlassCard, GlassButton, PageHeader } from '@/components/Glass'
 import { useToast } from '@/components/Toast'
 import { haptic } from '@/lib/haptics'
@@ -29,6 +29,7 @@ import {
   type AutomationSettings,
   type SocialConnection,
   generateMarketingPost,
+  updateMarketingPost,
   fetchBlogPosts,
   updateAutomationSettings,
   fetchMarketingPerformance,
@@ -42,6 +43,31 @@ const STATE_STYLE: Record<MarketingPost['state'], string> = {
   published: 'text-success bg-success/10 border-success/25',
   publish_failed: 'text-danger bg-danger/10 border-danger/25',
   rejected: 'text-ink-tertiary bg-tint/[0.04] border-tint/[0.08]',
+}
+
+const STATE_LABEL: Record<MarketingPost['state'], string> = {
+  draft: 'draft',
+  approved: 'scheduled',
+  published: 'published',
+  publish_failed: 'failed',
+  rejected: 'rejected',
+}
+
+/** Display label + hard post-length cap per channel — the composer counter
+ *  uses the cap so a draft can't go out that the provider would reject. */
+const CHANNEL_META: Record<string, { label: string; limit: number }> = {
+  x: { label: 'X', limit: 280 },
+  bluesky: { label: 'Bluesky', limit: 300 },
+  linkedin: { label: 'LinkedIn', limit: 3000 },
+}
+const channelLimit = (ch: string) => CHANNEL_META[ch]?.limit ?? 5000
+const channelLabel = (ch: string) => CHANNEL_META[ch]?.label ?? ch
+
+/** ISO date → the `YYYY-MM-DDTHH:MM` a datetime-local input wants. */
+function toLocalInput(iso: string): string {
+  const d = new Date(iso)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 function trustScope(channel: string): string {
@@ -69,6 +95,9 @@ export default function MarketingPage() {
   const [genBlogSlug, setGenBlogSlug] = useState('')
   const [genTopic, setGenTopic] = useState('')
   const [performance, setPerformance] = useState<MarketingPerformance | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editContent, setEditContent] = useState('')
+  const [editSchedule, setEditSchedule] = useState('')
 
   useEffect(() => {
     Promise.all([fetchMarketingPosts(), fetchMarketingIntegrations(), fetchAutomationSettings(), fetchSocialConnections(), fetchMarketingPerformance()])
@@ -188,6 +217,9 @@ export default function MarketingPage() {
   const channel = selected?.identifier ?? 'other'
   const trustLevel = automation?.trust_level_by_workflow?.[trustScope(channel)] ?? 0
   const autoEnabled = automation?.auto_execute_enabled === true
+  const limit = channelLimit(channel)
+  const overLimit = content.length > limit
+  const pendingCount = posts.filter((p) => p.state === 'draft' || p.state === 'publish_failed').length
 
   async function submit() {
     if (!selected || !content.trim()) return
@@ -225,6 +257,31 @@ export default function MarketingPage() {
     }
   }
 
+  function startEdit(post: MarketingPost) {
+    setEditingId(post.id)
+    setEditContent(post.content)
+    setEditSchedule(post.scheduled_at ? toLocalInput(post.scheduled_at) : '')
+  }
+
+  async function saveEdit(post: MarketingPost) {
+    if (!editContent.trim() || editContent.length > channelLimit(post.channel)) return
+    haptic('light')
+    setBusy(`edit:${post.id}`)
+    try {
+      const updated = await updateMarketingPost(post.id, {
+        content: editContent.trim(),
+        scheduled_at: editSchedule ? new Date(editSchedule).toISOString() : '',
+      })
+      setPosts((p) => p.map((x) => (x.id === post.id ? updated : x)))
+      setEditingId(null)
+      toast({ message: 'Draft updated' })
+    } catch (err) {
+      toast({ message: err instanceof Error ? err.message : "Couldn't save that edit", variant: 'error' })
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
     <div className="px-5 pt-2 pb-12">
       <PageHeader title="Marketing" subtitle="Outbound posts — drafted, reviewed, published." backHref="/settings" action={<></>} />
@@ -235,21 +292,27 @@ export default function MarketingPage() {
         <>
           {/* Channels */}
           <GlassCard className="p-4 mt-4">
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-2.5">
               <p className="text-sm font-semibold text-ink-primary">Channels</p>
               <div className="flex items-center gap-3">
-                <button
-                  onClick={connectX}
-                  disabled={busy === 'connect-x'}
-                  className="text-xs font-semibold text-family-400 disabled:opacity-40"
-                >
-                  {busy === 'connect-x' ? 'Redirecting…' : 'Connect X'}
-                </button>
+                {!(integrations ?? []).some((i) => i.identifier === 'x') && (
+                  <button
+                    onClick={connectX}
+                    disabled={busy === 'connect-x'}
+                    className="text-xs font-semibold text-family-400 disabled:opacity-40"
+                  >
+                    {busy === 'connect-x' ? 'Redirecting…' : 'Connect X'}
+                  </button>
+                )}
                 <button
                   onClick={() => setShowConnect((v) => !v)}
                   className="text-xs font-semibold text-family-400"
                 >
-                  {showConnect ? 'Close' : 'Connect Bluesky'}
+                  {showConnect
+                    ? 'Close'
+                    : (integrations ?? []).some((i) => i.identifier === 'bluesky')
+                      ? 'Reconnect Bluesky'
+                      : 'Connect Bluesky'}
                 </button>
               </div>
             </div>
@@ -260,25 +323,32 @@ export default function MarketingPage() {
                 <code className="text-family-400">LINKEDIN_ACCESS_TOKEN</code> on the API.
               </p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="space-y-2.5">
                 {(integrations ?? []).map((i) => {
                   const conn = i.source === 'connection' ? connections.find((c) => c.channel === i.identifier) : undefined
+                  const ok = conn?.status !== 'error'
                   return (
                     <li key={i.id} className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-sm text-ink-primary truncate">
-                          {i.name}
-                          {i.source === 'env' && <span className="text-ink-tertiary"> · server env</span>}
-                        </p>
-                        {conn?.status === 'error' && conn.last_error && (
-                          <p className="text-xs text-danger truncate">{conn.last_error}</p>
-                        )}
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span
+                          className={`w-2 h-2 rounded-full shrink-0 ${ok ? 'bg-success' : 'bg-danger'}`}
+                          aria-hidden
+                        />
+                        <div className="min-w-0">
+                          <p className="text-sm text-ink-primary truncate">
+                            {i.name}
+                            {i.source === 'env' && <span className="text-ink-tertiary"> · server env</span>}
+                          </p>
+                          {!ok && conn?.last_error && (
+                            <p className="text-xs text-danger truncate">{conn.last_error}</p>
+                          )}
+                        </div>
                       </div>
                       {i.source === 'connection' && (
                         <button
                           onClick={() => disconnect(i.identifier ?? '')}
                           disabled={busy === `disconnect:${i.identifier}`}
-                          className="text-xs text-ink-tertiary font-semibold disabled:opacity-40"
+                          className="text-xs text-ink-tertiary font-semibold disabled:opacity-40 shrink-0"
                         >
                           {busy === `disconnect:${i.identifier}` ? '…' : 'Disconnect'}
                         </button>
@@ -322,33 +392,51 @@ export default function MarketingPage() {
               </p>
             ) : (
               <>
-                <select
-                  value={integrationId}
-                  onChange={(e) => setIntegrationId(e.target.value)}
-                  className="glass-input w-full rounded-xl px-4 py-3 text-sm text-ink-primary mb-3 outline-none"
-                >
+                <div className="flex flex-wrap gap-2 mb-3">
                   {integrations.map((i) => (
-                    <option key={i.id} value={i.id} disabled={i.disabled}>
-                      {i.name}{i.identifier ? ` (${i.identifier})` : ''}
-                    </option>
+                    <button
+                      key={i.id}
+                      onClick={() => !i.disabled && setIntegrationId(i.id)}
+                      disabled={i.disabled}
+                      className={`rounded-full px-3.5 py-1.5 text-xs font-semibold border transition-colors ${
+                        i.id === integrationId
+                          ? 'bg-family-500/20 border-family-500/40 text-family-300'
+                          : 'bg-tint/[0.04] border-tint/[0.08] text-ink-secondary'
+                      } ${i.disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                    >
+                      {i.name}
+                    </button>
                   ))}
-                </select>
+                </div>
                 <textarea
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  placeholder="Write the post…"
+                  placeholder={`Write the post for ${channelLabel(channel)}…`}
                   rows={4}
-                  className="glass-input w-full rounded-xl px-4 py-3 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 resize-none mb-3"
+                  className="glass-input w-full rounded-xl px-4 py-3 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 resize-none"
                 />
+                <div className="flex items-center justify-between mt-1.5 mb-3">
+                  <p className="text-caption text-ink-tertiary">
+                    {overLimit && `Over the ${channelLabel(channel)} limit — `}
+                    {limit !== 5000 && `${channelLabel(channel)} allows ${limit} characters`}
+                  </p>
+                  <p
+                    className={`text-caption tabular-nums ${
+                      overLimit ? 'text-danger font-semibold' : content.length > limit * 0.9 ? 'text-warning' : 'text-ink-tertiary'
+                    }`}
+                  >
+                    {content.length}/{limit === 5000 ? '∞' : limit}
+                  </p>
+                </div>
+                <label className="block text-caption text-ink-tertiary mb-1">Schedule for later — optional</label>
                 <input
                   type="datetime-local"
                   value={scheduleAt}
                   onChange={(e) => setScheduleAt(e.target.value)}
                   min={new Date().toISOString().slice(0, 16)}
-                  aria-label="Schedule for later"
                   className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-secondary outline-none mb-3"
                 />
-                <GlassButton onClick={submit} disabled={busy === 'create' || !content.trim()}>
+                <GlassButton onClick={submit} disabled={busy === 'create' || !content.trim() || overLimit}>
                   {busy === 'create' ? 'Queueing…' : scheduleAt ? 'Queue scheduled draft' : 'Queue draft'}
                 </GlassButton>
                 {scheduleAt && (
@@ -358,8 +446,8 @@ export default function MarketingPage() {
                 )}
                 <p className="text-xs text-ink-tertiary mt-2.5 leading-relaxed">
                   {autoEnabled
-                    ? `${Math.min(trustLevel, 5)}/5 approvals on ${channel} — at 5, Oak publishes new drafts here itself.`
-                    : `Earned-trust publishing is off (Settings → Automation). ${Math.min(trustLevel, 5)}/5 approvals on ${channel} so far.`}
+                    ? `${Math.min(trustLevel, 5)}/5 approvals on ${channelLabel(channel)} — at 5, Oak publishes new drafts here itself.`
+                    : `Earned-trust publishing is off (Settings → Automation). ${Math.min(trustLevel, 5)}/5 approvals on ${channelLabel(channel)} so far.`}
                 </p>
                 <div className="mt-3 pt-3 border-t border-tint/[0.06]">
                   <button onClick={openGenerator} className="text-xs font-semibold text-family-400">
@@ -449,27 +537,83 @@ export default function MarketingPage() {
 
           {/* Queue */}
           <div className="mt-6 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-ink-primary">Queue</p>
+              {pendingCount > 0 && (
+                <span className="text-caption font-semibold rounded-full bg-warning/10 border border-warning/25 text-warning px-2 py-0.5">
+                  {pendingCount} to review
+                </span>
+              )}
+            </div>
             {posts.length === 0 && (
               <GlassCard className="p-4">
-                <p className="text-sm text-ink-secondary">Nothing queued yet.</p>
+                <p className="text-sm text-ink-secondary leading-relaxed">
+                  Nothing queued yet — write a draft above or generate one with Oak.
+                </p>
               </GlassCard>
             )}
             {posts.map((post) => (
               <GlassCard key={post.id} className="p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <span className={`text-caption font-bold uppercase tracking-wide rounded-full px-2 py-0.5 border ${STATE_STYLE[post.state]}`}>
-                    {post.state.replace('_', ' ')}
+                    {STATE_LABEL[post.state]}
                   </span>
-                  <span className="text-caption text-ink-tertiary">{post.channel}</span>
+                  <span className="text-caption text-ink-tertiary">{channelLabel(post.channel)}</span>
                   {post.auto_published && <span className="text-caption text-family-400">auto</span>}
                   {post.generated && <span className="text-caption text-ink-tertiary">ai draft</span>}
                   {post.dry_run && <span className="text-caption text-ink-tertiary">dry run</span>}
+                  {(post.state === 'draft' || post.state === 'publish_failed') && editingId !== post.id && (
+                    <button
+                      onClick={() => startEdit(post)}
+                      className="ml-auto flex items-center gap-1 text-caption font-semibold text-ink-tertiary"
+                      aria-label="Edit draft"
+                    >
+                      <Pencil size={11} /> Edit
+                    </button>
+                  )}
                 </div>
-                <p className="text-sm text-ink-primary leading-relaxed whitespace-pre-wrap">{post.content}</p>
+                {editingId === post.id ? (
+                  <div>
+                    <textarea
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      rows={4}
+                      className="glass-input w-full rounded-xl px-4 py-3 text-sm text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 resize-none"
+                    />
+                    <p className={`text-caption tabular-nums mt-1 text-right ${editContent.length > channelLimit(post.channel) ? 'text-danger font-semibold' : 'text-ink-tertiary'}`}>
+                      {editContent.length}/{channelLimit(post.channel)}
+                    </p>
+                    <input
+                      type="datetime-local"
+                      value={editSchedule}
+                      onChange={(e) => setEditSchedule(e.target.value)}
+                      aria-label="Schedule for later"
+                      className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-secondary outline-none mt-1"
+                    />
+                    <div className="flex gap-2 mt-2.5">
+                      <button
+                        onClick={() => saveEdit(post)}
+                        disabled={busy === `edit:${post.id}` || !editContent.trim() || editContent.length > channelLimit(post.channel)}
+                        className="flex-1 rounded-xl py-2 text-sm font-semibold bg-family-500/15 border border-family-500/25 text-family-400 disabled:opacity-40"
+                      >
+                        {busy === `edit:${post.id}` ? 'Saving…' : 'Save changes'}
+                      </button>
+                      <button
+                        onClick={() => setEditingId(null)}
+                        className="w-11 flex items-center justify-center rounded-xl bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary"
+                        aria-label="Cancel edit"
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-ink-primary leading-relaxed whitespace-pre-wrap">{post.content}</p>
+                )}
                 {post.publish_error && (
                   <p className="text-xs text-danger mt-2 leading-snug">{post.publish_error}</p>
                 )}
-                {(post.state === 'draft' || post.state === 'publish_failed') && (
+                {(post.state === 'draft' || post.state === 'publish_failed') && editingId !== post.id && (
                   <div className="flex gap-2 mt-3">
                     <button
                       onClick={() => decide(post.id, 'approve')}

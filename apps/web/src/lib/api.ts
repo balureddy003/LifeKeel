@@ -1686,7 +1686,7 @@ export async function fetchMarketingPosts(): Promise<MarketingPost[]> {
   return data.posts
 }
 
-async function marketingRequest<T>(path: string, method: 'POST' | 'DELETE', body?: Record<string, unknown>): Promise<T> {
+async function marketingRequest<T>(path: string, method: 'POST' | 'PATCH' | 'DELETE', body?: Record<string, unknown>): Promise<T> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -1719,6 +1719,15 @@ export async function approveMarketingPost(id: string): Promise<MarketingPost> {
 
 export async function rejectMarketingPost(id: string): Promise<MarketingPost> {
   const data = await marketingRequest<{ post: MarketingPost }>(`/marketing/posts/${id}/reject`, 'POST')
+  return data.post
+}
+
+/** Edit a draft/publish_failed post — content and/or schedule ('' clears it). */
+export async function updateMarketingPost(
+  id: string,
+  patch: { content?: string; scheduled_at?: string | null },
+): Promise<MarketingPost> {
+  const data = await marketingRequest<{ post: MarketingPost }>(`/marketing/posts/${id}`, 'PATCH', { ...patch })
   return data.post
 }
 
