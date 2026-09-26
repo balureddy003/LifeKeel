@@ -166,7 +166,7 @@ export interface InboxItem {
   /** Where the action button goes (Oak-generated recommendations). */
   route?: string
   /** Policy facts the source email stated. */
-  policy?: { provider?: string; type?: string; policyNumber?: string; coverAmount?: number; currency?: string; monthlyPremium?: number; renewalDate?: string }
+  policy?: { provider?: string; type?: string; policyNumber?: string; coverAmount?: number; currency?: string; monthlyPremium?: number; renewalDate?: string; contactPhone?: string; contactEmail?: string }
 }
 
 export const INBOX_ITEMS: InboxItem[] = [

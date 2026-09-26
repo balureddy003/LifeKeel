@@ -77,6 +77,10 @@ interface PolicyForm {
   // PRD-110: roster member this policy belongs to — '' means unset
   // (household-wide; the only option for car/home).
   memberId: string
+  // Claims/24-7-assistance line — display and tel:/mailto: only in the
+  // crisis playbooks later, never dialed or sent automatically.
+  contactPhone: string
+  contactEmail: string
 }
 
 const EMPTY_POLICY: PolicyForm = {
@@ -87,6 +91,8 @@ const EMPTY_POLICY: PolicyForm = {
   renewalDate: '',
   policyNumber: '',
   memberId: '',
+  contactPhone: '',
+  contactEmail: '',
 }
 
 
@@ -183,6 +189,8 @@ function fromProfile(profile: FinancialProfile): { form: FormState; funds: Educa
       renewalDate: p.renewal_date ?? '',
       policyNumber: p.policy_number ?? '',
       memberId: p.member_id ?? '',
+      contactPhone: p.contact_phone ?? '',
+      contactEmail: p.contact_email ?? '',
     })),
   }
 }
@@ -209,6 +217,8 @@ function toPayload(form: FormState, funds: EducationFundForm[], policies: Policy
       ...(p.renewalDate ? { renewal_date: p.renewalDate } : {}),
       ...(p.policyNumber.trim() ? { policy_number: p.policyNumber.trim() } : {}),
       ...(PERSON_SCOPED_POLICY_TYPES.has(p.type) && p.memberId ? { member_id: p.memberId } : {}),
+      ...(p.contactPhone.trim() ? { contact_phone: p.contactPhone.trim() } : {}),
+      ...(p.contactEmail.trim() ? { contact_email: p.contactEmail.trim() } : {}),
     }))
 
   return {
@@ -942,6 +952,31 @@ export default function FinancialProfilePage() {
                         className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
                       />
                     </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="block">
+                        <div className="text-xs text-ink-tertiary mb-1.5">Claims/assistance phone</div>
+                        <input
+                          type="tel"
+                          value={p.contactPhone}
+                          onChange={(e) => updatePolicy(i, { contactPhone: e.target.value })}
+                          placeholder="If known"
+                          className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                        />
+                      </label>
+                      <label className="block">
+                        <div className="text-xs text-ink-tertiary mb-1.5">Claims/assistance email</div>
+                        <input
+                          type="email"
+                          value={p.contactEmail}
+                          onChange={(e) => updatePolicy(i, { contactEmail: e.target.value })}
+                          placeholder="If known"
+                          className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                        />
+                      </label>
+                    </div>
+                    <div className="text-[11px] text-ink-tertiary">
+                      Shown in your emergency playbooks so the family can call or email fast — Oak never contacts anyone for you.
+                    </div>
                   </div>
                 ))}
                 <button

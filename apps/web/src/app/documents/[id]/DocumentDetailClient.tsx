@@ -38,6 +38,11 @@ interface PolicyDraft {
   policyNumber: string
   // PRD-110: '' until the user picks — never prefilled from the document.
   memberId: string
+  // Claims/24-7-assistance line the document stated — display and
+  // tel:/mailto: only in the crisis playbooks, never dialed or sent
+  // automatically. Prefilled from OCR when the document states one.
+  contactPhone: string
+  contactEmail: string
 }
 
 function toPolicyDraft(s: DocumentPolicySuggestion): PolicyDraft {
@@ -49,6 +54,8 @@ function toPolicyDraft(s: DocumentPolicySuggestion): PolicyDraft {
     renewalDate: s.renewalDate ?? '',
     policyNumber: s.policyNumber ?? '',
     memberId: '',
+    contactPhone: s.contactPhone ?? '',
+    contactEmail: s.contactEmail ?? '',
   }
 }
 
@@ -112,6 +119,8 @@ export default function DocumentDetailClient() {
         ...(policyDraft.renewalDate ? { renewalDate: policyDraft.renewalDate } : {}),
         ...(policyDraft.policyNumber.trim() ? { policyNumber: policyDraft.policyNumber.trim() } : {}),
         ...(PERSON_SCOPED_POLICY_TYPES.has(policyDraft.type) && policyDraft.memberId ? { memberId: policyDraft.memberId } : {}),
+        ...(policyDraft.contactPhone.trim() ? { contactPhone: policyDraft.contactPhone.trim() } : {}),
+        ...(policyDraft.contactEmail.trim() ? { contactEmail: policyDraft.contactEmail.trim() } : {}),
       })
       haptic('success')
       setPolicyApplied(true)
@@ -363,6 +372,31 @@ export default function DocumentDetailClient() {
                     className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
                   />
                 </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block">
+                    <div className="text-xs text-ink-tertiary mb-1.5">Claims/assistance phone</div>
+                    <input
+                      type="tel"
+                      value={policyDraft.contactPhone}
+                      onChange={(e) => setPolicyDraft({ ...policyDraft, contactPhone: e.target.value })}
+                      placeholder="If known"
+                      className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                    />
+                  </label>
+                  <label className="block">
+                    <div className="text-xs text-ink-tertiary mb-1.5">Claims/assistance email</div>
+                    <input
+                      type="email"
+                      value={policyDraft.contactEmail}
+                      onChange={(e) => setPolicyDraft({ ...policyDraft, contactEmail: e.target.value })}
+                      placeholder="If known"
+                      className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                    />
+                  </label>
+                </div>
+                <div className="text-[11px] text-ink-tertiary -mt-1">
+                  Shown in your emergency playbooks so the family can call or email fast — Oak never contacts anyone for you.
+                </div>
               </div>
               {policyError && (
                 <div role="status" aria-live="polite" className="flex items-start gap-2 mb-3 text-xs text-danger">

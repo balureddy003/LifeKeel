@@ -377,6 +377,10 @@ export interface ApplyPolicyInput {
   monthlyPremiumMinor: number
   renewalDate?: string
   policyNumber?: string
+  // Claims/24-7-assistance line stated on the document/email — display and
+  // tel:/mailto: only, never dialed or sent automatically.
+  contactPhone?: string
+  contactEmail?: string
   // Optional roster-member attribution (PRD-110) — user-picked only.
   memberId?: string
 }
@@ -1092,6 +1096,10 @@ export interface FinancialProfilePolicy {
   policy_number?: string
   // PRD-110: optional roster-member attribution — person-scoped policies
   // (life, income protection, health, critical illness) can name whose
+  // Claims/24-7-assistance line stated on the source document/email —
+  // display and tel:/mailto: only, never dialed or sent automatically.
+  contact_phone?: string
+  contact_email?: string
   // policy it is; car/home stay unset (household-wide by nature).
   member_id?: string
 }
@@ -1224,6 +1232,14 @@ export async function submitFinancialProfile(
 // the real financial profile, re-rendered live on every fetch rather than
 // frozen at report time.
 
+// A real policy contact the step's provider(s) actually have on file —
+// display and tel:/mailto: only, the family still makes the call/send.
+export interface LifeEventStepContact {
+  provider: string
+  phone?: string
+  email?: string
+}
+
 export type LifeEventType = 'job_loss' | 'bereavement' | 'disability' | 'medical' | 'car' | 'property' | 'travel'
 
 export interface LifeEventPlaybookStep {
@@ -1231,6 +1247,10 @@ export interface LifeEventPlaybookStep {
   title: string
   body: string
   // Eligible for the same Tier 1 "prepare, don't send" draft affordance
+  // Present only when a policy on file has a phone/email to surface for
+  // this step (render-playbook.ts's resolveStepContacts) — absent, not an
+  // empty array, when nothing matched.
+  contacts?: LifeEventStepContact[]
   // insight cards use (PRD-103) — see prepareLifeEventStepDraft below.
   contact: boolean
 }

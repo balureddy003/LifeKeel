@@ -58,6 +58,8 @@ function toPolicyDraft(p: NonNullable<InboxItem['policy']>): PolicyDraft {
     renewalDate: p.renewalDate ?? '',
     policyNumber: p.policyNumber ?? '',
     memberId: '',
+    contactPhone: p.contactPhone ?? '',
+    contactEmail: p.contactEmail ?? '',
   }
 }
 
@@ -70,6 +72,8 @@ function policyFacts(p: NonNullable<InboxItem['policy']>): [string, string][] {
     ['Cover', p.coverAmount !== undefined ? money(p.coverAmount) : undefined],
     ['Premium / month', p.monthlyPremium !== undefined ? money(p.monthlyPremium) : undefined],
     ['Renews', p.renewalDate],
+    ['Claims phone', p.contactPhone],
+    ['Claims email', p.contactEmail],
   ]
   return rows.filter((r): r is [string, string] => !!r[1])
 }
@@ -227,6 +231,8 @@ export default function InboxPage() {
         ...(policyDraft.renewalDate ? { renewalDate: policyDraft.renewalDate } : {}),
         ...(policyDraft.policyNumber.trim() ? { policyNumber: policyDraft.policyNumber.trim() } : {}),
         ...(policyDraft.memberId ? { memberId: policyDraft.memberId } : {}),
+        ...(policyDraft.contactPhone.trim() ? { contactPhone: policyDraft.contactPhone.trim() } : {}),
+        ...(policyDraft.contactEmail.trim() ? { contactEmail: policyDraft.contactEmail.trim() } : {}),
       })
       haptic('success')
       setAppliedIds((prev) => new Set(prev).add(item.id))

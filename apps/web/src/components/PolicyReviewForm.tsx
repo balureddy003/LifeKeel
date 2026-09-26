@@ -13,6 +13,11 @@ export interface PolicyDraft {
   renewalDate: string
   policyNumber: string
   memberId: string
+  // Claims/24-7-assistance line — display and tel:/mailto: only in the
+  // playbook later, never dialed or sent automatically. Often prefilled
+  // from a scanned document/email, always user-editable.
+  contactPhone: string
+  contactEmail: string
 }
 
 /**
@@ -120,6 +125,31 @@ export function PolicyReviewForm({
             className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
           />
         </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <div className="text-xs text-ink-tertiary mb-1.5">Claims/assistance phone</div>
+            <input
+              type="tel"
+              value={draft.contactPhone}
+              onChange={(e) => onChange({ ...draft, contactPhone: e.target.value })}
+              placeholder="If known"
+              className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+            />
+          </label>
+          <label className="block">
+            <div className="text-xs text-ink-tertiary mb-1.5">Claims/assistance email</div>
+            <input
+              type="email"
+              value={draft.contactEmail}
+              onChange={(e) => onChange({ ...draft, contactEmail: e.target.value })}
+              placeholder="If known"
+              className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+            />
+          </label>
+        </div>
+        <div className="text-[11px] text-ink-tertiary -mt-1">
+          Shown in your emergency playbooks so the family can call or email fast — Oak never contacts anyone for you.
+        </div>
       </div>
       {error && (
         <div role="status" aria-live="polite" className="flex items-start gap-2 mb-3 text-xs text-danger">

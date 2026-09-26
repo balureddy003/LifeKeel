@@ -4,11 +4,11 @@ import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Check, Copy, HelpCircle, Loader2, Mail, PenLine, Printer } from 'lucide-react'
+import { ArrowLeft, Check, Copy, HelpCircle, Loader2, Mail, Phone, PenLine, Printer } from 'lucide-react'
 import { GlassCard, GlassButton, PageHeader, PageTransition } from '@/components/Glass'
 import { LifeSafetyNotice } from '@/components/LifeSafetyNotice'
 import { haptic } from '@/lib/haptics'
-import { fetchLifeEvents, prepareLifeEventStepDraft, setLifeEventStepDone, pingOnDeviceDraftUsed, type LifeEvent, type LifeEventPlaybookStep, type LifeEventType } from '@/lib/api'
+import { fetchLifeEvents, prepareLifeEventStepDraft, setLifeEventStepDone, pingOnDeviceDraftUsed, type LifeEvent, type LifeEventPlaybookStep, type LifeEventStepContact, type LifeEventType } from '@/lib/api'
 import { isOnDeviceEnabled, isOnDeviceSupported, generateDraftOnDevice } from '@/lib/onDeviceLlm'
 
 // Same reasoning as /life-events's own notice: a user can land here directly
@@ -42,6 +42,40 @@ function saveDoneIds(eventId: string, doneIds: Set<string>): void {
   } catch {
     // Best-effort — private browsing / storage-full shouldn't break the checklist.
   }
+}
+
+// A real, policy-sourced contact for this step (render-playbook.ts's
+// resolveStepContacts) — tap-to-call / tap-to-email only. Oak surfaces the
+// number it already has on file; the family still makes the call or sends
+// the email. No auto-dial, no auto-send, ever.
+function StepContacts({ contacts }: { contacts: LifeEventStepContact[] }) {
+  return (
+    <div className="space-y-3">
+      {contacts.map((c, i) => (
+        <div key={`${c.provider}-${i}`}>
+          <div className="text-xs font-semibold text-ink-tertiary mb-1.5">{c.provider}</div>
+          <div className="flex gap-2">
+            {c.phone && (
+              <a href={`tel:${c.phone.replace(/[^\d+]/g, '')}`} onClick={() => haptic('light')} className="flex-1 min-w-0">
+                <GlassButton variant="secondary">
+                  <Phone size={14} className="flex-shrink-0" />
+                  <span className="truncate">Call {c.phone}</span>
+                </GlassButton>
+              </a>
+            )}
+            {c.email && (
+              <a href={`mailto:${c.email}`} onClick={() => haptic('light')} className="flex-1 min-w-0">
+                <GlassButton variant="secondary">
+                  <Mail size={14} className="flex-shrink-0" />
+                  <span className="truncate">Email</span>
+                </GlassButton>
+              </a>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 // Tier 1 "prepare, don't send" (PRD-103), reused per-step — a playbook can
@@ -99,7 +133,7 @@ function StepDraft({ eventId, step }: { eventId: string; step: LifeEventPlaybook
   }
 
   return (
-    <div className="mt-3 pt-3 border-t border-tint/5">
+    <div>
       {!draftText ? (
         <>
           <GlassButton variant="secondary" onClick={handleDraft} disabled={drafting}>
@@ -293,7 +327,12 @@ export default function LifeEventPlaybookClient() {
                     <p className="text-sm text-ink-secondary leading-relaxed mt-1">{step.body}</p>
                   </div>
                 </button>
-                {step.contact && <StepDraft eventId={event.id} step={step} />}
+                {(step.contact || (step.contacts && step.contacts.length > 0)) && (
+                  <div className="mt-3 pt-3 border-t border-tint/5 space-y-3">
+                    {step.contacts && step.contacts.length > 0 && <StepContacts contacts={step.contacts} />}
+                    {step.contact && <StepDraft eventId={event.id} step={step} />}
+                  </div>
+                )}
               </motion.div>
             )
           })}
