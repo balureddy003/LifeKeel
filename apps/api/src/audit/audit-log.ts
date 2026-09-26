@@ -77,6 +77,7 @@ export type AuditAction =
   | 'marketing.post_auto_publish'
   | 'marketing.connection_connect'
   | 'marketing.connection_disconnect'
+  | 'marketing.post_generate'
 
 export interface AuditEntry {
   tenant_id: string

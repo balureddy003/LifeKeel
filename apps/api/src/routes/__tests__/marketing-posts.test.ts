@@ -98,14 +98,19 @@ function makeDb() {
       toArray: async () => connections.filter((d) => matchesFilter(d, filter)),
     }),
   }
+  const blogPosts: Record<string, unknown>[] = []
+  const blogCol = {
+    findOne: vi.fn(async (filter: Record<string, unknown>) => blogPosts.find((d) => matchesFilter(d, filter)) ?? null),
+  }
   const collections: Record<string, unknown> = {
     marketing_posts: postsCol,
     tenant_settings: settingsCol,
     system_events: eventsCol,
     platform_config: configCol,
     social_connections: connectionsCol,
+    blog_posts: blogCol,
   }
-  return { db: { collection: (name: string) => collections[name] } as any, posts, settingsDocs, systemEvents, postsCol, settingsCol, connections, connectionsCol }
+  return { db: { collection: (name: string) => collections[name] } as any, posts, settingsDocs, systemEvents, postsCol, settingsCol, connections, connectionsCol, blogPosts }
 }
 
 function fakePostiz(overrides: Record<string, unknown> = {}) {
@@ -121,8 +126,9 @@ async function buildApp(opts: {
   settings?: Record<string, unknown>
   tenant?: string
   operatorTenants?: string[]
+  llm?: (system: string, prompt: string, model?: string) => Promise<string>
 } = {}) {
-  const { db, posts, settingsDocs, systemEvents, postsCol, connections } = makeDb()
+  const { db, posts, settingsDocs, systemEvents, postsCol, connections, blogPosts } = makeDb()
   const tenant = opts.tenant ?? TENANT
   if (opts.settings) settingsDocs.push({ tenant_id: tenant, automation: opts.settings })
   const app = Fastify()
@@ -131,10 +137,11 @@ async function buildApp(opts: {
   })
   registerMarketingPostRoutes(app, db, 'postiz' in opts ? opts.postiz : fakePostiz(), {
     operatorTenants: 'operatorTenants' in opts ? opts.operatorTenants! : [TENANT],
+    llm: opts.llm ?? (async () => 'generated post text'),
   })
   await app.ready()
   const postiz = 'postiz' in opts ? opts.postiz : null
-  return { app, db, posts, settingsDocs, systemEvents, postsCol, postiz, connections }
+  return { app, db, posts, settingsDocs, systemEvents, postsCol, postiz, connections, blogPosts }
 }
 
 const DRAFT = { integration_id: 'int-1', channel: 'x', content: 'A thing worth posting' }
@@ -389,5 +396,87 @@ describe('/marketing/connections', () => {
     ])
     // Another tenant sees nothing.
     expect(await pub.listIntegrations('other-tenant')).toEqual([])
+  })
+})
+
+describe('/marketing/posts/generate', () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  const GEN = { integration_id: 'int-1', channel: 'x', topic: 'why families underinsure' }
+
+  it('LLM-drafts a post that lands as draft — AI content is review-first even at full trust', async () => {
+    const llm = vi.fn(async () => 'fresh generated copy')
+    const { app, posts } = await buildApp({ settings: TRUSTED, llm })
+    const res = await app.inject({ method: 'POST', url: '/marketing/posts/generate', payload: GEN })
+    expect(res.statusCode).toBe(201)
+    const post = res.json().post
+    expect(post.state).toBe('draft')
+    expect(post.generated).toBe('llm')
+    expect(post.content).toBe('fresh generated copy')
+    expect(posts[0]!['state']).toBe('draft')
+    expect(llm).toHaveBeenCalledWith(expect.stringContaining('Informational'), expect.stringContaining('underinsure'), 'tier:fast')
+  })
+
+  it('promotes a published blog post — prompt carries title, excerpt and verbatim link', async () => {
+    vi.stubEnv('AGENT_OAK_URL', 'https://oak.example')
+    const seen: string[] = []
+    const llm = async (_s: string, prompt: string) => {
+      seen.push(prompt)
+      return 'Read this https://oak.example/blog/cover-gap'
+    }
+    const { app, blogPosts } = await buildApp({ llm })
+    blogPosts.push({ slug: 'cover-gap', published: true, title: 'The cover gap', excerpt: 'Most families miss it.' })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/marketing/posts/generate',
+      payload: { integration_id: 'i', channel: 'bluesky', blog_slug: 'cover-gap' },
+    })
+    expect(res.statusCode).toBe(201)
+    expect(seen[0]).toContain('The cover gap')
+    expect(seen[0]).toContain('Most families miss it.')
+    expect(seen[0]).toContain('Link to include verbatim: https://oak.example/blog/cover-gap')
+  })
+
+  it('falls back to a template draft when the LLM fails — feature stays usable', async () => {
+    const llm = async () => {
+      throw new Error('OPENAI_API_KEY not set')
+    }
+    const { app, blogPosts } = await buildApp({ llm })
+    blogPosts.push({ slug: 'cover-gap', published: true, title: 'The cover gap', excerpt: 'Most families miss it.' })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/marketing/posts/generate',
+      payload: { integration_id: 'i', channel: 'x', blog_slug: 'cover-gap' },
+    })
+    const post = res.json().post
+    expect(post.state).toBe('draft')
+    expect(post.generated).toBe('template')
+    expect(post.content).toContain('The cover gap')
+    expect(post.content).toContain('Most families miss it.')
+  })
+
+  it('clamps output to the channel limit — x caps at 280', async () => {
+    const llm = async () => 'word '.repeat(100)
+    const { app } = await buildApp({ llm })
+    const res = await app.inject({ method: 'POST', url: '/marketing/posts/generate', payload: GEN })
+    expect(res.json().post.content.length).toBeLessThanOrEqual(280)
+  })
+
+  it('400s with neither topic nor blog_slug, 404s on an unknown slug', async () => {
+    const { app } = await buildApp()
+    expect(
+      (await app.inject({ method: 'POST', url: '/marketing/posts/generate', payload: { integration_id: 'i', channel: 'x' } })).statusCode,
+    ).toBe(400)
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/marketing/posts/generate',
+          payload: { integration_id: 'i', channel: 'x', blog_slug: 'nope' },
+        })
+      ).statusCode,
+    ).toBe(404)
   })
 })

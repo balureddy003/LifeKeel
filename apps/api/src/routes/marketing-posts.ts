@@ -46,7 +46,7 @@ import {
   type SocialPublisher,
   type SocialConnectionDoc,
 } from '../marketing/social-publisher.js'
-import { encryptIfNeeded } from '@agentoak/platform'
+import { encryptIfNeeded, createLlmRouterFromEnv, type LlmFn } from '@agentoak/platform'
 
 export type MarketingPostState = 'draft' | 'approved' | 'publishing' | 'published' | 'publish_failed' | 'rejected'
 
@@ -66,6 +66,7 @@ export interface MarketingPostDoc {
   approved_at?: Date
   published_at?: Date
   publish_error?: string
+  generated?: 'llm' | 'template'
 }
 
 const CreatePostSchema = z.object({
@@ -74,6 +75,17 @@ const CreatePostSchema = z.object({
   content: z.string().min(1).max(5000),
   scheduled_at: z.string().datetime().optional(),
 })
+
+const GeneratePostSchema = z
+  .object({
+    integration_id: z.string().min(1).max(200),
+    channel: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/),
+    topic: z.string().min(1).max(500).optional(),
+    blog_slug: z.string().min(1).max(200).optional(),
+  })
+  .refine((v) => v.topic !== undefined || v.blog_slug !== undefined, {
+    message: 'Provide topic or blog_slug',
+  })
 
 const ConnectBlueskySchema = z.object({
   handle: z
@@ -232,7 +244,30 @@ export async function publishDueMarketingPosts(
 
 export interface MarketingRouteOptions {
   operatorTenants?: string[]
+  llm?: LlmFn
 }
+
+/** Per-channel hard caps — the model is told the limit, then the output is
+ *  clamped anyway because LLMs can't count. */
+const CHANNEL_CHAR_LIMIT: Record<string, number> = { x: 280, bluesky: 300, linkedin: 3000 }
+
+function clampPost(text: string, limit: number): string {
+  const trimmed = text.trim()
+  if (trimmed.length <= limit) return trimmed
+  const window = trimmed.slice(0, limit - 1)
+  const cut = Math.max(window.lastIndexOf('\n'), window.lastIndexOf('. '), window.lastIndexOf(' '))
+  return `${window.slice(0, cut > limit * 0.6 ? cut : limit - 1).trimEnd()}…`
+}
+
+const GENERATE_SYSTEM = `You write short social posts for Agent Oak, a family-finance digital twin.
+Rules — these are non-negotiable:
+- Informational, educational tone only. Never personalized financial,
+  insurance, or investment advice. Never name, rank, or recommend a
+  specific provider, policy, or product. No savings promises, no urgency
+  or fear tactics.
+- Plain text only — no markdown, no hashtags unless the source has them,
+  no emojis.
+- Return ONLY the post text, nothing else.`
 
 export function registerMarketingPostRoutes(
   app: FastifyInstance,
@@ -257,6 +292,7 @@ export function registerMarketingPostRoutes(
   }
   const readGate = opts?.operatorTenants ? testGate : requireOperator(db, 'marketing.read')
   const manageGate = opts?.operatorTenants ? testGate : requireOperator(db, 'marketing.manage')
+  const llm = opts?.llm ?? createLlmRouterFromEnv()
 
   /** GET /marketing/integrations — channels the composer can target: this
    *  tenant's stored connections plus any env-configured channels. */
@@ -381,6 +417,65 @@ export function registerMarketingPostRoutes(
 
     const saved = await col.findOne({ id: post.id })
     return reply.status(201).send({ post: saved })
+  })
+
+  /** POST /marketing/posts/generate — LLM-drafted post from a blog post or
+   *  free topic. Deliberately always lands 'draft': AI-authored content
+   *  gets human eyes regardless of the channel's earned trust (the trust
+   *  ladder gates human-drafted posts; generated content sits one tier
+   *  lower). Falls back to a deterministic template when no LLM provider
+   *  is configured — the feature stays usable, marked generated:template. */
+  app.post('/marketing/posts/generate', { preHandler: manageGate }, async (req, reply) => {
+    const { tenant_id, user_id } = req.authContext
+    const parsed = GeneratePostSchema.safeParse(req.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
+    }
+    const { integration_id, channel, topic, blog_slug } = parsed.data
+
+    let sourceBlock = ''
+    let link = ''
+    if (blog_slug) {
+      const post = await db.collection('blog_posts').findOne({ slug: blog_slug, published: true })
+      if (!post) return reply.status(404).send({ error: 'Blog post not found' })
+      const base = (process.env['AGENT_OAK_URL'] ?? '').replace(/\/$/, '')
+      link = base ? `${base}/blog/${blog_slug}` : ''
+      sourceBlock = `Blog post to promote:\nTitle: ${post['title']}\nSummary: ${post['excerpt']}${link ? `\nLink to include verbatim: ${link}` : ''}`
+    } else {
+      sourceBlock = `Topic: ${topic}`
+    }
+
+    const limit = CHANNEL_CHAR_LIMIT[channel] ?? 2000
+    let content: string
+    let generated: 'llm' | 'template' = 'llm'
+    try {
+      const raw = await llm(
+        GENERATE_SYSTEM,
+        `Channel: ${channel} (hard maximum ${limit} characters — stay under it).\n\n${sourceBlock}\n\nWrite one post.`,
+        'tier:fast',
+      )
+      content = clampPost(raw, limit)
+      if (!content) throw new Error('empty generation')
+    } catch {
+      generated = 'template'
+      content = clampPost(`${sourceBlock.split('\n').slice(1).join('\n')}${link ? `\n\n${link}` : ''}`, limit)
+    }
+
+    const now = new Date()
+    const post: MarketingPostDoc = {
+      id: randomUUID(),
+      tenant_id,
+      channel,
+      integration_id,
+      content,
+      state: 'draft',
+      generated,
+      created_by: user_id,
+      created_at: now,
+    }
+    await col.insertOne(post)
+    getAuditLogger()?.fromRequest(req, 'marketing.post_generate', 'marketing_post', post.id, { channel, generated })
+    return reply.status(201).send({ post })
   })
 
   /** POST /marketing/posts/:id/approve — human decision; publishes and earns

@@ -27,6 +27,9 @@ import {
   type MarketingPost,
   type AutomationSettings,
   type SocialConnection,
+  generateMarketingPost,
+  fetchBlogPosts,
+  type BlogPostSummary,
 } from '@/lib/api'
 
 const STATE_STYLE: Record<MarketingPost['state'], string> = {
@@ -56,6 +59,10 @@ export default function MarketingPage() {
   const [showConnect, setShowConnect] = useState(false)
   const [bskyHandle, setBskyHandle] = useState('')
   const [bskyPassword, setBskyPassword] = useState('')
+  const [showGenerate, setShowGenerate] = useState(false)
+  const [blogs, setBlogs] = useState<BlogPostSummary[]>([])
+  const [genBlogSlug, setGenBlogSlug] = useState('')
+  const [genTopic, setGenTopic] = useState('')
 
   useEffect(() => {
     Promise.all([fetchMarketingPosts(), fetchMarketingIntegrations(), fetchAutomationSettings(), fetchSocialConnections()])
@@ -105,6 +112,34 @@ export default function MarketingPage() {
       toast({ message: 'Channel disconnected' })
     } catch (err) {
       toast({ message: err instanceof Error ? err.message : 'Disconnect failed', variant: 'error' })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function openGenerator() {
+    const next = !showGenerate
+    setShowGenerate(next)
+    if (next && blogs.length === 0) setBlogs(await fetchBlogPosts().catch(() => []))
+  }
+
+  async function generate() {
+    if (!selected) return
+    if (!genBlogSlug && !genTopic.trim()) return
+    haptic('medium')
+    setBusy('generate')
+    try {
+      const post = await generateMarketingPost({
+        integration_id: selected.id,
+        channel,
+        ...(genBlogSlug ? { blog_slug: genBlogSlug } : { topic: genTopic.trim() }),
+      })
+      setPosts((p) => [post, ...p])
+      setShowGenerate(false)
+      setGenTopic('')
+      toast({ message: 'Draft generated — review it below' })
+    } catch (err) {
+      toast({ message: err instanceof Error ? err.message : 'Generation failed', variant: 'error' })
     } finally {
       setBusy(null)
     }
@@ -263,6 +298,41 @@ export default function MarketingPage() {
                     ? `${Math.min(trustLevel, 5)}/5 approvals on ${channel} — at 5, Oak publishes new drafts here itself.`
                     : `Earned-trust publishing is off (Settings → Automation). ${Math.min(trustLevel, 5)}/5 approvals on ${channel} so far.`}
                 </p>
+                <div className="mt-3 pt-3 border-t border-tint/[0.06]">
+                  <button onClick={openGenerator} className="text-xs font-semibold text-family-400">
+                    {showGenerate ? 'Close generator' : 'Generate a draft with Oak'}
+                  </button>
+                  {showGenerate && (
+                    <div className="mt-2.5 space-y-2">
+                      <select
+                        value={genBlogSlug}
+                        onChange={(e) => setGenBlogSlug(e.target.value)}
+                        className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary outline-none"
+                      >
+                        <option value="">Free topic…</option>
+                        {blogs.map((b) => (
+                          <option key={b.slug} value={b.slug}>
+                            Promote: {b.title}
+                          </option>
+                        ))}
+                      </select>
+                      {!genBlogSlug && (
+                        <input
+                          value={genTopic}
+                          onChange={(e) => setGenTopic(e.target.value)}
+                          placeholder="Topic — e.g. why emergency funds matter"
+                          className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
+                        />
+                      )}
+                      <GlassButton onClick={generate} disabled={busy === 'generate' || (!genBlogSlug && !genTopic.trim())}>
+                        {busy === 'generate' ? 'Generating…' : 'Generate draft'}
+                      </GlassButton>
+                      <p className="text-xs text-ink-tertiary leading-relaxed">
+                        Generated drafts always wait for your approval — they never auto-publish.
+                      </p>
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </GlassCard>
@@ -282,6 +352,7 @@ export default function MarketingPage() {
                   </span>
                   <span className="text-caption text-ink-tertiary">{post.channel}</span>
                   {post.auto_published && <span className="text-caption text-family-400">auto</span>}
+                  {post.generated && <span className="text-caption text-ink-tertiary">ai draft</span>}
                   {post.dry_run && <span className="text-caption text-ink-tertiary">dry run</span>}
                 </div>
                 <p className="text-sm text-ink-primary leading-relaxed whitespace-pre-wrap">{post.content}</p>

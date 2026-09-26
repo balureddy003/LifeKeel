@@ -1534,6 +1534,7 @@ export interface MarketingPost {
   state: MarketingPostState
   scheduled_at?: string
   auto_published?: boolean
+  generated?: 'llm' | 'template'
   dry_run?: boolean
   created_at: string
   approved_at?: string
@@ -1596,6 +1597,16 @@ export async function approveMarketingPost(id: string): Promise<MarketingPost> {
 
 export async function rejectMarketingPost(id: string): Promise<MarketingPost> {
   const data = await marketingRequest<{ post: MarketingPost }>(`/marketing/posts/${id}/reject`, 'POST')
+  return data.post
+}
+
+export async function generateMarketingPost(input: {
+  integration_id: string
+  channel: string
+  topic?: string
+  blog_slug?: string
+}): Promise<MarketingPost> {
+  const data = await marketingRequest<{ post: MarketingPost }>('/marketing/posts/generate', 'POST', { ...input })
   return data.post
 }
 
