@@ -167,7 +167,10 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body>
+      {/* suppressHydrationWarning: browser extensions (Grammarly etc.)
+          inject data-* attributes onto <body> before hydration — a
+          mismatch here is theirs, not a render bug. */}
+      <body suppressHydrationWarning>
         <Observability />
         <GoogleAnalytics />
         {/* Live-verification finding: the global CSS prefers-reduced-motion
