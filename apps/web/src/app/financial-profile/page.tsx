@@ -267,6 +267,7 @@ function Field({
   placeholder,
   suffix,
   prefix,
+  hint,
 }: {
   label: string
   value: string
@@ -274,10 +275,12 @@ function Field({
   placeholder?: string
   suffix?: string
   prefix?: string
+  hint?: string
 }) {
   return (
     <label className="block">
       <div className="text-xs text-ink-tertiary mb-1.5">{label}</div>
+      {hint && <div className="text-xs text-ink-tertiary/70 mb-1.5 -mt-1">{hint}</div>}
       <div className="relative">
         {prefix && (
           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-base text-ink-tertiary">{prefix}</span>
@@ -834,7 +837,13 @@ export default function FinancialProfilePage() {
               <div className="space-y-3">
                 <EmploymentStatusPicker value={form.employmentStatus} onChange={(v) => set('employmentStatus', v)} />
                 <Field label="Monthly salary" value={form.monthlySalary} onChange={(v) => set('monthlySalary', v)} prefix="£" />
-                <Field label="Annual living expenses" value={form.annualLivingExpenses} onChange={(v) => set('annualLivingExpenses', v)} prefix="£" />
+                <Field
+                  label="Annual living expenses"
+                  hint="Everyday household spending only — food, bills, transport. Exclude mortgage payments; that's counted separately below."
+                  value={form.annualLivingExpenses}
+                  onChange={(v) => set('annualLivingExpenses', v)}
+                  prefix="£"
+                />
                 <Field label="Mortgage outstanding" value={form.mortgageOutstanding} onChange={(v) => set('mortgageOutstanding', v)} placeholder="0 if none" prefix="£" />
                 <Field label="Life insurance cover" value={form.lifeCover} onChange={(v) => set('lifeCover', v)} placeholder="0 if none" prefix="£" />
                 <Field label="Income protection (monthly payout)" value={form.incomeProtectionMonthly} onChange={(v) => set('incomeProtectionMonthly', v)} placeholder="0 if none" prefix="£" />

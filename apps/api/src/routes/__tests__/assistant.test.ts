@@ -119,6 +119,62 @@ describe('POST /assistant/ask', () => {
     expect(body.content).toContain('2500.00') // monthly_salary_minor 250000 -> £2500.00
   })
 
+  it('does not present the retirement wizard\'s placeholder age/target as real data before the user sets a target income', async () => {
+    // Matches the shape the financial-profile wizard actually autosaves
+    // before a user has ever reached the retirement step: current_age and
+    // target_retirement_age hold their untouched form defaults (30/65),
+    // and target_retirement_income_minor is still 0 — the same signal the
+    // family_retirement_gap detector itself already uses (isUnsetTarget in
+    // family-financial-profile.ts) to know this section was never engaged
+    // with. Live-verification finding: without this gate, Oak told a user
+    // with no date of birth on file "Current age: 30" as if it were a
+    // confirmed fact.
+    profileFixture = {
+      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 250000 },
+      retirement: {
+        current_age: 30,
+        target_retirement_age: 65,
+        pension_balance_minor: 0,
+        monthly_contribution_minor: 0,
+        target_retirement_income_minor: 0,
+      },
+    }
+
+    const app = await buildApp(TENANT_A)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/assistant/ask',
+      payload: { query: 'Can we retire at 65?' },
+    })
+
+    const body = response.json()
+    expect(body.content).not.toContain('currently age 30')
+    expect(body.content).toContain('no target retirement income has been set yet')
+  })
+
+  it('does present retirement figures once the user has set a real target retirement income', async () => {
+    profileFixture = {
+      household: { employment_status: 'employed', monthly_salary_minor: 400000 },
+      retirement: {
+        current_age: 42,
+        target_retirement_age: 65,
+        pension_balance_minor: 5000000,
+        monthly_contribution_minor: 50000,
+        target_retirement_income_minor: 3000000,
+      },
+    }
+
+    const app = await buildApp(TENANT_A)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/assistant/ask',
+      payload: { query: 'Can we retire at 65?' },
+    })
+
+    const body = response.json()
+    expect(body.content).toContain('currently age 42')
+  })
+
   it('sends different context for two tenants with different profile data', async () => {
     profileFixture = { household: { monthly_salary_minor: 100000 } }
     const appA = await buildApp(TENANT_A)

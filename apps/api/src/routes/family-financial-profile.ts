@@ -166,7 +166,7 @@ export const FinancialProfileSchema = z.object({
  * Evaluating a detector against an unset target produces either silence
  * (nothing to fall short of) or nonsense, so those checks are skipped.
  */
-const isUnsetTarget = (minor: number) => minor <= 100
+export const isUnsetTarget = (minor: number) => minor <= 100
 
 export type FinancialProfile = z.infer<typeof FinancialProfileSchema>
 

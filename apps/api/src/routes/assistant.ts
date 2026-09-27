@@ -22,6 +22,7 @@ import { createLlmRouterFromEnv, getTenantCollection, type LlmFn } from '@agento
 import { getInsightsCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { calculateScenario, type ScenarioProfileInput, type ScenarioResult } from '../scenarios/calculate.js'
+import { isUnsetTarget } from './family-financial-profile.js'
 
 const AskSchema = z.object({
   query: z.string().min(1).max(2000),
@@ -46,7 +47,8 @@ Rules:
 - Do not suggest Oak can take any action on the family's behalf (send money, contact anyone, file anything) — Oak only explains and summarizes.
 - Some figures below are marked "profile pending" — that household member hasn't joined and confirmed their own details yet. If your answer relies on one of those figures, say plainly that it's provisional and based on data entered by someone else on their behalf, rather than presenting it as confirmed.
 - Some figures below come from an unreviewed uploaded document — the family hasn't confirmed those numbers are correct or added them to the profile yet. If your answer relies on one of those, say so and suggest they review it, rather than treating it as an established fact.
-- Never invent a hypothetical projection (e.g. "if income changed by X"). If asked one and no computed scenario result is provided below, say you can't calculate that yet and point to what's currently on file instead.`
+- Never invent a hypothetical projection (e.g. "if income changed by X"). If asked one and no computed scenario result is provided below, say you can't calculate that yet and point to what's currently on file instead.
+- The "Open insights" list below is the only set of gaps Oak has formally flagged — each one already passed a specific threshold (e.g. an education fund is only flagged once it's within 5 years of its target date). When a question leads you to describe a gap that ISN'T in that list — a figure that's merely below target but not close enough to be flagged yet — say so plainly (e.g. "on track for now, but worth revisiting closer to the date") rather than using the same urgent language ("shortfall", "not fully funded", "gap") you'd use for a flagged insight. Matching tone to formal flags keeps a distant, low-priority observation from reading as equally urgent to a real one.`
 
 const FALLBACK_CONTENT = "Based on the information you've entered, here is a summary from your family's data. This is for informational purposes only — please consult a qualified professional before making financial decisions. Would you like to see the specific numbers from your family's profile?"
 
@@ -176,12 +178,29 @@ function buildContext(
         `High-interest debt: ${ef.has_high_interest_debt ? 'yes' : 'no'}.`,
       )
     }
+    // The retirement wizard step pre-fills current_age/target_retirement_age
+    // with plausible-looking placeholders (30/65) so autosave can satisfy
+    // the schema before the user has ever reached that step — unlike every
+    // other blank-defaulted field here, an unedited placeholder age reads
+    // exactly like a real answer, so Oak must not repeat it as fact. Gate
+    // on the same isUnsetTarget threshold the retirement detector itself
+    // already uses (family-financial-profile.ts) to decide the section was
+    // never really engaged with — confirmed live: without this gate Oak
+    // told a user with no date of birth on file "Current age: 30" as data.
     if (r) {
-      parts.push(
-        `Retirement: currently age ${r.current_age ?? 'unknown'}, targeting retirement at ${r.target_retirement_age ?? 'unknown'}, ` +
-        `pension balance £${toMajor(r.pension_balance_minor)}, contributing £${toMajor(r.monthly_contribution_minor)}/month, ` +
-        `target retirement income £${toMajor(r.target_retirement_income_minor)}/year.`,
-      )
+      if (isUnsetTarget(r.target_retirement_income_minor ?? 0)) {
+        parts.push(
+          'Retirement: no target retirement income has been set yet. Any age or contribution figures on file may just be ' +
+          'unconfirmed wizard defaults, not real answers — do not state them as facts; ask the user to complete the ' +
+          'retirement section of their Financial Profile before estimating retirement income or age.',
+        )
+      } else {
+        parts.push(
+          `Retirement: currently age ${r.current_age ?? 'unknown'}, targeting retirement at ${r.target_retirement_age ?? 'unknown'}, ` +
+          `pension balance £${toMajor(r.pension_balance_minor)}, contributing £${toMajor(r.monthly_contribution_minor)}/month, ` +
+          `target retirement income £${toMajor(r.target_retirement_income_minor)}/year.`,
+        )
+      }
     }
     for (const fund of profile.education_funds ?? []) {
       parts.push(
