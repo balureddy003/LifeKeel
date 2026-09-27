@@ -274,6 +274,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, family } = useAuth()
   const pathname = usePathname()
 
+  // /operator is exempt too: the operator shell has its own OperatorGate
+  // (a logged-in operator with no family group would otherwise hit the
+  // "Set up your family" wall and never reach the console).
   const isAuthRoute = pathname.startsWith('/welcome') ||
     pathname.startsWith('/signup') ||
     pathname.startsWith('/login') ||
@@ -285,6 +288,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/support') ||
     pathname.startsWith('/readiness') ||
     pathname.startsWith('/blog') ||
+    pathname.startsWith('/operator') ||
     pathname.startsWith('/invite')
 
   if (isLoading) {
@@ -459,7 +463,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/blog') ||
     pathname.startsWith('/invite')
 
-  const showNav = isAuthenticated && family && !isAuthRoute
+  // The operator console ships its own header/nav in app/operator/layout.
+  // Without this exclusion an operator who is also a signed-in family
+  // member gets the consumer rail, tab bar, SOS/Ask Oak buttons, and the
+  // phone-width wrapper layered on top of it.
+  const isOperatorRoute = pathname.startsWith('/operator')
+
+  const showNav = isAuthenticated && family && !isAuthRoute && !isOperatorRoute
   const showEmergency = showNav && pathname !== '/assistant' && config.showEmergencyButton
   const showAskOak = showNav && pathname !== '/assistant'
 
@@ -490,7 +500,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // reserves NavRail's own width so the content centers in what's left of
   // the viewport, not in the full viewport underneath the rail.
   const isMarketingPage = !isAuthenticated && pathname === '/'
-  const widthClass = isMarketingPage ? '' : 'max-w-md md:max-w-xl lg:max-w-2xl mx-auto'
+  const widthClass = isMarketingPage || isOperatorRoute ? '' : 'max-w-md md:max-w-xl lg:max-w-2xl mx-auto'
   const railGutter = showNav ? 'md:pl-[88px]' : ''
 
   return (
