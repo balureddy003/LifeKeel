@@ -141,6 +141,17 @@ describe('DbSocialPublisher', () => {
       findOne: vi.fn(async (f: Record<string, unknown>) =>
         credDocs.find((d) => d['tenant_id'] === f['tenant_id'] && d['connector_id'] === f['connector_id']) ?? null,
       ),
+      find: vi.fn((f: Record<string, unknown>) => ({
+        toArray: async () =>
+          credDocs.filter((d) => {
+            if (d['tenant_id'] !== f['tenant_id']) return false
+            const cond = f['connector_id']
+            if (cond && typeof cond === 'object' && '$in' in (cond as Record<string, unknown>)) {
+              return ((cond as { $in: unknown[] }).$in).includes(d['connector_id'])
+            }
+            return d['connector_id'] === cond
+          }),
+      })),
       updateOne: vi.fn(async (f: Record<string, unknown>, u: { $set: Record<string, unknown> }) => {
         const doc = credDocs.find((d) => d['tenant_id'] === f['tenant_id'] && d['connector_id'] === f['connector_id'])
         if (doc) {
@@ -329,5 +340,130 @@ describe('DbSocialPublisher', () => {
     expect(x).toHaveLength(1)
     expect(x[0]!.source).toBe('connection')
     expect(x[0]!.name).toContain('@agent_oak')
+  })
+
+  const oauthCred = (connectorId: string, extra: Record<string, string>) => ({
+    tenant_id: 't1',
+    connector_id: connectorId,
+    auth_type: 'oauth2',
+    access_token: `tok-${connectorId}`, // no SETTINGS_ENCRYPTION_KEY → passthrough
+    token_type: 'Bearer',
+    extra,
+  })
+
+  it('publishes a Facebook page post via the page token + stored page_id', async () => {
+    const { db } = makeDb([], [oauthCred('facebook_pages', { page_id: 'pg-42', page_name: 'Oak HQ' })])
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+      const url = String(input)
+      expect(url).toBe('https://graph.facebook.com/v19.0/pg-42/feed')
+      expect((init!.headers as Record<string, string>)['Authorization']).toBe('Bearer tok-facebook_pages')
+      expect(JSON.parse(String(init!.body))).toEqual({ message: 'hello fb' })
+      return jsonRes({ id: 'pg-42_113' })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const pub = new DbSocialPublisher(db, null)
+    const res = (await pub.createPost({
+      integrationId: 'facebook:connection', content: 'hello fb', channel: 'facebook', type: 'now', date: new Date(), tenantId: 't1',
+    })) as { external_id?: string; url?: string }
+    expect(res.external_id).toBe('pg-42_113')
+    expect(res.url).toBe('https://facebook.com/pg-42_113')
+  })
+
+  it('posts a Facebook photo when media_url is set', async () => {
+    const { db } = makeDb([], [oauthCred('facebook_pages', { page_id: 'pg-42' })])
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+      expect(String(input)).toBe('https://graph.facebook.com/v19.0/pg-42/photos')
+      expect(JSON.parse(String(init!.body))).toEqual({ caption: 'with pic', image_url: 'https://oak.example/pic.png' })
+      return jsonRes({ id: 'ph-9', post_id: 'pg-42_114' })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const pub = new DbSocialPublisher(db, null)
+    const res = (await pub.createPost({
+      integrationId: 'facebook:connection', content: 'with pic', channel: 'facebook', type: 'now', date: new Date(), tenantId: 't1', mediaUrl: 'https://oak.example/pic.png',
+    })) as { external_id?: string }
+    expect(res.external_id).toBe('pg-42_114')
+  })
+
+  it('publishes a Threads post through the two-step container flow', async () => {
+    const { db } = makeDb([], [oauthCred('threads', { user_id: 'th-1', username: '@agentoak' })])
+    const calls: { url: string; body: Record<string, unknown> }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: unknown, init?: RequestInit) => {
+      const url = String(input)
+      calls.push({ url, body: JSON.parse(String(init!.body)) })
+      if (url.endsWith('/threads')) return jsonRes({ id: 'container-7' })
+      return jsonRes({ id: 'media-88' })
+    }))
+    const pub = new DbSocialPublisher(db, null)
+    const res = (await pub.createPost({
+      integrationId: 'threads:connection', content: 'hello threads', channel: 'threads', type: 'now', date: new Date(), tenantId: 't1',
+    })) as { external_id?: string }
+    expect(calls[0]!.url).toBe('https://graph.threads.net/v1.0/th-1/threads')
+    expect(calls[0]!.body).toEqual({ media_type: 'TEXT', text: 'hello threads' })
+    expect(calls[1]!.url).toBe('https://graph.threads.net/v1.0/th-1/threads_publish')
+    expect(calls[1]!.body).toEqual({ creation_id: 'container-7' })
+    expect(res.external_id).toBe('media-88')
+  })
+
+  it('publishes to LinkedIn via the OAuth token and captured member URN', async () => {
+    const { db } = makeDb([], [oauthCred('linkedin', { author_urn: 'urn:li:person:oauth-sub', name: 'Balu' })])
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+      expect(String(input)).toBe('https://api.linkedin.com/rest/posts')
+      expect((init!.headers as Record<string, string>)['Authorization']).toBe('Bearer tok-linkedin')
+      const body = JSON.parse(String(init!.body)) as Record<string, unknown>
+      expect(body['author']).toBe('urn:li:person:oauth-sub')
+      return jsonRes({}, { headers: { 'x-restli-id': 'urn:li:share:77' } })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const pub = new DbSocialPublisher(db, null)
+    const res = (await pub.createPost({
+      integrationId: 'linkedin:connection', content: 'hi linkedin', channel: 'linkedin', type: 'now', date: new Date(), tenantId: 't1',
+    })) as { external_id?: string }
+    expect(res.external_id).toBe('urn:li:share:77')
+  })
+
+  it('rejects Instagram without an image, then publishes via container→publish', async () => {
+    const { db } = makeDb([], [oauthCred('instagram_business', { ig_user_id: 'ig-9', ig_username: '@oak' })])
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/media')) return jsonRes({ id: 'container-3' })
+      return jsonRes({ id: 'media-55' })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const pub = new DbSocialPublisher(db, null)
+    await expect(
+      pub.createPost({ integrationId: 'ig', content: 'no image', channel: 'instagram', type: 'now', date: new Date(), tenantId: 't1' }),
+    ).rejects.toThrow('image is required')
+
+    const res = (await pub.createPost({
+      integrationId: 'ig', content: 'with image', channel: 'instagram', type: 'now', date: new Date(), tenantId: 't1', mediaUrl: 'https://oak.example/i.png',
+    })) as { external_id?: string }
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://graph.facebook.com/v19.0/ig-9/media')
+    expect(JSON.parse(String(init.body))).toEqual({ image_url: 'https://oak.example/i.png', caption: 'with image' })
+    expect(res.external_id).toBe('media-55')
+  })
+
+  it('lists every OAuth-connected channel with its account label', async () => {
+    const { db } = makeDb([], [
+      oauthCred('facebook_pages', { page_id: 'pg-1', page_name: 'Oak HQ' }),
+      oauthCred('threads', { user_id: 'th-1', username: '@agentoak' }),
+      oauthCred('linkedin', { author_urn: 'urn:li:person:x', name: 'Balu Reddy' }),
+      oauthCred('instagram_business', { ig_user_id: 'ig-1', ig_username: '@oak' }),
+    ])
+    const pub = new DbSocialPublisher(db, null)
+    const integrations = await pub.listIntegrations('t1')
+    const byId = new Map(integrations.map((i) => [i.identifier, i.name]))
+    expect(byId.get('facebook')).toBe('Facebook (Oak HQ)')
+    expect(byId.get('threads')).toBe('Threads (@agentoak)')
+    expect(byId.get('linkedin')).toBe('LinkedIn (Balu Reddy)')
+    expect(byId.get('instagram')).toBe('Instagram (@oak)')
+  })
+
+  it('surfaces needs_reauth as a reconnect error instead of a dead publish', async () => {
+    const { db } = makeDb([], [{ ...oauthCred('threads', { user_id: 'th-1' }), needs_reauth: true }])
+    const pub = new DbSocialPublisher(db, null)
+    await expect(
+      pub.createPost({ integrationId: 't', content: 'hi', channel: 'threads', type: 'now', date: new Date(), tenantId: 't1' }),
+    ).rejects.toThrow('reconnect')
   })
 })

@@ -15,6 +15,22 @@
  *                                                   POST /rest/posts.
  *   bluesky  BSKY_HANDLE + BSKY_APP_PASSWORD      — app-password auth;
  *                                                   createSession → createRecord.
+ *   mastodon MASTODON_INSTANCE_URL +              — instance token;
+ *            MASTODON_ACCESS_TOKEN                    POST /api/v1/statuses.
+ *
+ * OAuth-connected channels (operator "Connect" buttons, tokens in
+ * connector_credentials, decrypted only inside the dispatch call):
+ *   x          connector twitter_x           — executor action createPosts
+ *   facebook   connector facebook_pages      — page token + extra.page_id
+ *   linkedin   connector linkedin            — extra.author_urn captured at
+ *                                              callback (rest/posts, no refresh
+ *                                              — tokens live ~60 days)
+ *   threads    connector threads             — extra.user_id; container →
+ *                                              publish two-step
+ *   instagram  connector instagram_business  — extra.ig_user_id; media
+ *                                              container → publish; REQUIRES
+ *                                              an image (media_url) — IG has
+ *                                              no text-post API.
  *
  * Duck-type-compatible with the old PostizClient (listIntegrations /
  * createPost) so marketing-posts.ts and its tests didn't have to change
@@ -43,6 +59,8 @@ export interface CreatePostArgs {
   type: 'now' | 'schedule'
   date: Date
   tenantId?: string
+  /** Attached image URL — required by Instagram, optional photo for Facebook. */
+  mediaUrl?: string
 }
 
 export interface SocialPublisher {
@@ -160,6 +178,92 @@ function blueskyHandler(handle: string, appPassword: string, service = 'https://
 }
 
 // ---------------------------------------------------------------------------
+// Threads — Graph Threads API. Publishing is two-step: create a media
+// container, then publish it. Bearer is the long-lived user token minted by
+// the OAuth callback (th_exchange_token), user id stored in cred.extra.
+// ---------------------------------------------------------------------------
+
+function threadsHandler(token: string, userId: string): ChannelHandler {
+  const base = 'https://graph.threads.net/v1.0'
+  return {
+    info: { id: 'threads:default', name: 'Threads', identifier: 'threads', disabled: false, source: 'env' },
+    async publish(content) {
+      const container = await fetch(`${base}/${userId}/threads`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ media_type: 'TEXT', text: content }),
+      })
+      await checked(container, 'threads create container')
+      const creationId = ((await container.json()) as { id?: string }).id
+      if (!creationId) throw new Error('threads create container: no id returned')
+
+      const pub = await fetch(`${base}/${userId}/threads_publish`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ creation_id: creationId }),
+      })
+      await checked(pub, 'threads publish container')
+      const mediaId = ((await pub.json()) as { id?: string }).id
+      return { external_id: mediaId }
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Instagram Business — Graph API via the linked Facebook Page's token.
+// Two-step like Threads: media container (image required — there is no
+// text-post endpoint), then publish. Caption limit 2200.
+// ---------------------------------------------------------------------------
+
+function instagramHandler(pageToken: string, igUserId: string, mediaUrl: string): ChannelHandler {
+  const base = 'https://graph.facebook.com/v19.0'
+  return {
+    info: { id: 'instagram:default', name: 'Instagram', identifier: 'instagram', disabled: false, source: 'connection' },
+    async publish(content) {
+      const container = await fetch(`${base}/${igUserId}/media`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${pageToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_url: mediaUrl, caption: content }),
+      })
+      await checked(container, 'instagram create media container')
+      const creationId = ((await container.json()) as { id?: string }).id
+      if (!creationId) throw new Error('instagram create container: no id returned')
+
+      const pub = await fetch(`${base}/${igUserId}/media_publish`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${pageToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ creation_id: creationId }),
+      })
+      await checked(pub, 'instagram publish container')
+      const mediaId = ((await pub.json()) as { id?: string }).id
+      return { external_id: mediaId }
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mastodon — instance API, plain bearer token. Text posts fit marketing
+// content natively; /statuses/{id} doubles as the engagement read.
+// ---------------------------------------------------------------------------
+
+function mastodonHandler(instanceUrl: string, token: string): ChannelHandler {
+  const base = instanceUrl.replace(/\/$/, '')
+  return {
+    info: { id: 'mastodon:default', name: 'Mastodon', identifier: 'mastodon', disabled: false, source: 'env' },
+    async publish(content) {
+      const res = await fetch(`${base}/api/v1/statuses`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: content }),
+      })
+      await checked(res, 'mastodon /api/v1/statuses')
+      const data = (await res.json()) as { id?: string; url?: string }
+      return { external_id: data.id, url: data.url }
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 export class EnvSocialPublisher implements SocialPublisher {
   constructor(private readonly handlers: ReadonlyMap<string, ChannelHandler>) {}
@@ -192,6 +296,10 @@ export function socialPublisherFromEnv(): EnvSocialPublisher | null {
   if (bskyHandle && bskyPass) {
     handlers.set('bluesky', blueskyHandler(bskyHandle, bskyPass, process.env['BSKY_SERVICE_URL']))
   }
+
+  const mastodonInstance = process.env['MASTODON_INSTANCE_URL']
+  const mastodonToken = process.env['MASTODON_ACCESS_TOKEN']
+  if (mastodonInstance && mastodonToken) handlers.set('mastodon', mastodonHandler(mastodonInstance, mastodonToken))
 
   return handlers.size === 0 ? null : new EnvSocialPublisher(handlers)
 }
@@ -245,18 +353,61 @@ function handlerForConnection(conn: SocialConnectionDoc): ChannelHandler {
   throw new Error(`connection_unsupported:${conn.channel}`)
 }
 
-const CHANNEL_NAMES: Record<string, string> = { x: 'X', linkedin: 'LinkedIn', bluesky: 'Bluesky' }
+const CHANNEL_NAMES: Record<string, string> = {
+  x: 'X',
+  linkedin: 'LinkedIn',
+  bluesky: 'Bluesky',
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  threads: 'Threads',
+  mastodon: 'Mastodon',
+}
+
+/** Marketing channel id → connector_credentials connector id. The OAuth
+ *  connect flow for each lives under /connectors/:id/oauth/*; the callback
+ *  enriches `extra` with the ids publishing needs (page_id, author_urn,
+ *  ig_user_id, user_id). */
+export const CONNECTOR_CHANNELS: Record<string, string> = {
+  x: 'twitter_x',
+  facebook: 'facebook_pages',
+  linkedin: 'linkedin',
+  threads: 'threads',
+  instagram: 'instagram_business',
+}
+
+/** Label shown on the connected channel card — X's handle, Facebook's page
+ *  name, Threads' username, etc. Captured into cred.extra at OAuth callback. */
+function connectorLabel(channel: string, extra: Record<string, string> | undefined): string {
+  const name = CHANNEL_NAMES[channel] ?? channel
+  // Display names (FB page, LinkedIn person) are used verbatim; handle fields
+  // get a normalized '@' — X's callback stores bare usernames while the Meta
+  // callbacks store '@'-prefixed ones.
+  const display = extra?.['page_name'] ?? extra?.['name']
+  if (display) return `${name} (${display})`
+  const handle = extra?.['username'] ?? extra?.['ig_username']
+  if (!handle) return name
+  return `${name} (${handle.startsWith('@') ? handle : `@${handle}`})`
+}
+
+interface ConnectorCredDoc {
+  tenant_id: string
+  connector_id: string
+  access_token?: string
+  needs_reauth?: boolean
+  extra?: Record<string, string>
+}
 
 /**
  * Resolves tenant-stored credentials first, then falls back to the
  * env-configured publisher. Two credential stores feed this:
  * - `social_connections` — Bluesky app-password connects (this module owns it)
- * - `connector_credentials` (`connector_id: 'twitter_x'`) — X's OAuth2 flow
- *   from /connectors/twitter_x/oauth/*; dispatched through
- *   ConnectorActionExecutor so refresh-on-expiry, Basic-auth confidential
- *   client, and encrypted token rotation are all handled by that pipeline.
- * Stored credentials are decrypted only inside the dispatch call —
- * listIntegrations never touches them.
+ * - `connector_credentials` — OAuth-connected channels (X, Facebook Pages,
+ *   LinkedIn, Threads, Instagram Business). Facebook dispatches through
+ *   ConnectorActionExecutor (its feed/photos actions fit the generic
+ *   single-call shape); LinkedIn/Threads/Instagram use dedicated handlers
+ *   because their publish contracts don't (nested body, container→publish
+ *   two-step). Stored tokens are decrypted only inside the dispatch call —
+ *   listIntegrations never touches them.
  */
 export class DbSocialPublisher implements SocialPublisher {
   constructor(
@@ -269,20 +420,17 @@ export class DbSocialPublisher implements SocialPublisher {
   }
 
   private get connectorCreds() {
-    return this.db.collection<{
-      tenant_id: string
-      connector_id: string
-      needs_reauth?: boolean
-      extra?: Record<string, string>
-    }>('connector_credentials')
+    return this.db.collection<ConnectorCredDoc>('connector_credentials')
   }
 
   async listIntegrations(tenantId?: string): Promise<ChannelInfo[]> {
     const envList = this.env ? await this.env.listIntegrations() : []
     if (!tenantId) return envList
-    const [conns, xCred] = await Promise.all([
+    const [conns, creds] = await Promise.all([
       this.connections.find({ tenant_id: tenantId }).toArray(),
-      this.connectorCreds.findOne({ tenant_id: tenantId, connector_id: 'twitter_x' }),
+      this.connectorCreds
+        .find({ tenant_id: tenantId, connector_id: { $in: Object.values(CONNECTOR_CHANNELS) } })
+        .toArray(),
     ])
     const connChannels = new Set(conns.map((c) => c.channel))
     const connList: ChannelInfo[] = conns.map((c) => ({
@@ -292,14 +440,15 @@ export class DbSocialPublisher implements SocialPublisher {
       disabled: c.status === 'error',
       source: 'connection' as const,
     }))
-    if (xCred) {
-      connChannels.add('x')
-      const username = xCred.extra?.['username']
+    for (const cred of creds) {
+      const channel = Object.entries(CONNECTOR_CHANNELS).find(([, c]) => c === cred.connector_id)?.[0]
+      if (!channel) continue
+      connChannels.add(channel)
       connList.push({
-        id: 'x:connection',
-        name: `X${username ? ` (@${username})` : ''}`,
-        identifier: 'x',
-        disabled: xCred.needs_reauth === true,
+        id: `${channel}:connection`,
+        name: connectorLabel(channel, cred.extra),
+        identifier: channel,
+        disabled: cred.needs_reauth === true,
         source: 'connection' as const,
       })
     }
@@ -311,20 +460,77 @@ export class DbSocialPublisher implements SocialPublisher {
     ]
   }
 
-  async createPost(args: CreatePostArgs): Promise<unknown> {
-    // X via the OAuth-connected connector credential — the executor owns
-    // token expiry/refresh and surfaces X's humanized errors (e.g. the
-    // "Read only app permissions" hint on 402/403).
-    if (args.channel === 'x' && args.tenantId) {
-      const xCred = await this.connectorCreds.findOne({ tenant_id: args.tenantId, connector_id: 'twitter_x' })
-      if (xCred) {
-        const exec = new ConnectorActionExecutor(this.db)
-        const res = await exec.execute(args.tenantId, 'twitter_x', 'createPosts', { text: args.content })
-        if (!res.ok) throw new Error(res.error ?? `x publish failed: HTTP ${res.status}`)
-        const id = (res.body as { data?: { id?: string } } | null)?.data?.id
-        return { external_id: id, url: id ? `https://x.com/i/web/status/${id}` : undefined }
-      }
+  /** Publish through an OAuth-connected channel. Returns null when the
+   *  channel has no connector credential so the caller falls through to
+   *  social_connections/env handlers. */
+  private async publishViaConnector(args: CreatePostArgs): Promise<{ external_id?: string; url?: string } | null> {
+    if (!args.tenantId) return null
+    const connectorId = CONNECTOR_CHANNELS[args.channel]
+    if (!connectorId) return null
+    const cred = await this.connectorCreds.findOne({ tenant_id: args.tenantId, connector_id: connectorId })
+    if (!cred) return null
+    if (cred.needs_reauth === true) {
+      throw new Error(`${args.channel} token expired — reconnect on the Marketing page`)
     }
+
+    // X and Facebook fit the executor's generic action shape (single POST,
+    // path params from cred.extra, flat body). The executor also owns token
+    // decrypt + refresh-on-expiry + provider error surfacing.
+    if (args.channel === 'x') {
+      const exec = new ConnectorActionExecutor(this.db)
+      const res = await exec.execute(args.tenantId, 'twitter_x', 'createPosts', { text: args.content })
+      if (!res.ok) throw new Error(res.error ?? `x publish failed: HTTP ${res.status}`)
+      const id = (res.body as { data?: { id?: string } } | null)?.data?.id
+      return { external_id: id, url: id ? `https://x.com/i/web/status/${id}` : undefined }
+    }
+    if (args.channel === 'facebook') {
+      if (!cred.extra?.['page_id']) {
+        throw new Error('facebook: no page connected — reconnect Facebook and pick a Page')
+      }
+      const exec = new ConnectorActionExecutor(this.db)
+      const res = await exec.execute(
+        args.tenantId,
+        'facebook_pages',
+        args.mediaUrl ? 'create_photo_post' : 'create_post',
+        args.mediaUrl
+          ? { caption: args.content, image_url: args.mediaUrl }
+          : { message: args.content },
+      )
+      if (!res.ok) throw new Error(res.error ?? `facebook publish failed: HTTP ${res.status}`)
+      const id = (res.body as { id?: string; post_id?: string } | null)?.post_id
+        ?? (res.body as { id?: string } | null)?.id
+      return { external_id: id, url: id ? `https://facebook.com/${id}` : undefined }
+    }
+
+    // LinkedIn/Threads/Instagram: dedicated handlers — their contracts are
+    // nested bodies or container→publish two-steps the generic executor
+    // can't express. Token decrypt is explicit and stays inside this call.
+    const token = cred.access_token ? decryptIfNeeded(cred.access_token) : undefined
+    if (!token) throw new Error(`${args.channel}: stored credential has no access token`)
+    if (args.channel === 'linkedin') {
+      const urn = cred.extra?.['author_urn']
+      if (!urn) throw new Error('linkedin: no member URN stored — reconnect LinkedIn')
+      return linkedinHandler(token, urn).publish(args.content)
+    }
+    if (args.channel === 'threads') {
+      const userId = cred.extra?.['user_id']
+      if (!userId) throw new Error('threads: no user id stored — reconnect Threads')
+      return threadsHandler(token, userId).publish(args.content)
+    }
+    if (args.channel === 'instagram') {
+      const igUserId = cred.extra?.['ig_user_id']
+      if (!igUserId) throw new Error('instagram: no business account linked — reconnect Instagram')
+      if (!args.mediaUrl) {
+        throw new Error('instagram: an image is required — set the media URL on the post')
+      }
+      return instagramHandler(token, igUserId, args.mediaUrl).publish(args.content)
+    }
+    return null
+  }
+
+  async createPost(args: CreatePostArgs): Promise<unknown> {
+    const connectorResult = await this.publishViaConnector(args)
+    if (connectorResult) return connectorResult
     const conn = args.tenantId
       ? await this.connections.findOne({ tenant_id: args.tenantId, channel: args.channel })
       : null

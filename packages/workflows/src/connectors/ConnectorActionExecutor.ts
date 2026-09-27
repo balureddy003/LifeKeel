@@ -43,14 +43,21 @@ function assertExternalUrlAllowed(url: string, context: string): void {
 // Google connectors that can use shared credentials
 const GOOGLE_CONNECTORS = ['google_calendar', 'gmail', 'google_drive', 'youtube', 'google_sheets', 'google_business']
 
+// Meta app credentials cover Facebook Login, Instagram Graph, and Threads —
+// one Meta app can hold all three products.
+const META_CONNECTORS = ['facebook_pages', 'instagram_business', 'instagram']
+
 function getGoogleClientId(connectorId: string): string {
   // Try connector-specific first for backward compatibility
   const specificId = process.env[`KAIROS_${connectorId.toUpperCase()}_CLIENT_ID`]
   if (specificId) return specificId
 
-  // X's OAuth app — the X_CLIENT_ID pair is what .env.example documents
-  // for the marketing connect flow (shorter, purpose-named).
+  // Purpose-named pairs — what .env.example documents for the marketing
+  // connect flows.
   if (connectorId === 'twitter_x') return process.env['X_CLIENT_ID'] ?? ''
+  if (connectorId === 'linkedin') return process.env['LINKEDIN_CLIENT_ID'] ?? ''
+  if (connectorId === 'threads') return process.env['THREADS_CLIENT_ID'] ?? process.env['META_CLIENT_ID'] ?? ''
+  if (META_CONNECTORS.includes(connectorId)) return process.env['META_CLIENT_ID'] ?? ''
 
   // Fall back to shared Google credentials for Google services
   if (GOOGLE_CONNECTORS.includes(connectorId)) {
@@ -66,6 +73,9 @@ function getGoogleClientSecret(connectorId: string): string {
   if (specificSecret) return specificSecret
 
   if (connectorId === 'twitter_x') return process.env['X_CLIENT_SECRET'] ?? ''
+  if (connectorId === 'linkedin') return process.env['LINKEDIN_CLIENT_SECRET'] ?? ''
+  if (connectorId === 'threads') return process.env['THREADS_CLIENT_SECRET'] ?? process.env['META_CLIENT_SECRET'] ?? ''
+  if (META_CONNECTORS.includes(connectorId)) return process.env['META_CLIENT_SECRET'] ?? ''
 
   // Fall back to shared Google credentials for Google services
   if (GOOGLE_CONNECTORS.includes(connectorId)) {
@@ -599,6 +609,37 @@ export class ConnectorActionExecutor {
   // ── OAuth token refresh ────────────────────────────────────────────────────
 
   private async tryRefreshToken(cred: ConnectorCredential): Promise<void> {
+    // Threads doesn't do refresh_token grants — its 60-day tokens extend via
+    // GET th_refresh_token passing the CURRENT access token. Handled before
+    // the refresh_token early-return since Threads creds never store one.
+    if (cred.connector_id === 'threads' && cred.access_token) {
+      const current = decryptIfNeeded(cred.access_token)
+      if (!current) return
+      try {
+        const res = await this.fetchFn(
+          `https://graph.threads.net/refresh_access_token?grant_type=th_refresh_token&access_token=${encodeURIComponent(current)}`,
+        )
+        if (res.ok) {
+          const data = await res.json() as { access_token?: string; expires_in?: number }
+          if (data.access_token) {
+            await this.credentials.updateOne(
+              { tenant_id: cred.tenant_id, connector_id: 'threads' },
+              {
+                $set: {
+                  access_token: encryptIfNeeded(data.access_token)!,
+                  ...(data.expires_in ? { token_expires_at: new Date(Date.now() + data.expires_in * 1000) } : {}),
+                  updated_at: new Date(),
+                },
+              },
+            )
+          }
+        }
+      } catch {
+        // Refresh failed — the actual call will surface the real error.
+      }
+      return
+    }
+
     if (!cred.refresh_token) return
 
     // Connector-specific refresh endpoints

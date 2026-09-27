@@ -866,3 +866,87 @@ describe('X OAuth connection (connector_credentials)', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
+
+describe('learning loop — performance-informed generation', () => {
+  beforeEach(() => vi.unstubAllEnvs())
+
+  const GEN = { integration_id: 'int-1', channel: 'x', topic: 'why families underinsure' }
+  const pubPost = (over: Record<string, unknown>) => ({
+    id: 'p', tenant_id: TENANT, channel: 'x', integration_id: 'i',
+    content: 'post text', state: 'published',
+    created_by: 'u', created_at: new Date(), published_at: new Date(),
+    ...over,
+  })
+
+  it('injects measured winners and flops into the generation prompt', async () => {
+    const seen: string[] = []
+    const llm = async (_s: string, prompt: string) => {
+      seen.push(prompt)
+      return 'fresh draft'
+    }
+    const { app, posts } = await buildApp({ llm })
+    posts.push(
+      pubPost({ id: 'w1', content: 'What happens to the mortgage if paychecks stop tomorrow?', metrics: { likes: 12, reposts: 3, replies: 2 }, metrics_at: new Date() }),
+      pubPost({ id: 'f1', content: 'Generic brand broadcast copy', metrics: { likes: 0, reposts: 0, replies: 0 }, metrics_at: new Date() }),
+    )
+    const res = await app.inject({ method: 'POST', url: '/marketing/posts/generate', payload: GEN })
+    expect(res.statusCode).toBe(201)
+    expect(seen[0]).toContain('WINNER')
+    expect(seen[0]).toContain('paychecks stop tomorrow')
+    expect(seen[0]).toContain('12 likes')
+    expect(seen[0]).toContain('FLOP')
+    expect(seen[0]).toContain('Generic brand broadcast copy')
+    // Still review-first — learning never loosens the gate.
+    expect(res.json().post.state).toBe('draft')
+  })
+
+  it('credits signups attributed to the promoted slug into the winner line', async () => {
+    const seen: string[] = []
+    const llm = async (_s: string, prompt: string) => {
+      seen.push(prompt)
+      return 'fresh draft'
+    }
+    const { app, posts, users } = await buildApp({ llm })
+    posts.push(
+      pubPost({ id: 'w1', source_blog_slug: 'cover-gap', content: 'The cover gap nobody checks', metrics: { likes: 2 }, metrics_at: new Date() }),
+      pubPost({ id: 'w2', source_blog_slug: 'other-post', content: 'Second promoted post', metrics: { likes: 1 }, metrics_at: new Date() }),
+    )
+    users.push({ attribution: { utm_medium: 'social', utm_source: 'x', utm_content: 'cover-gap' } })
+    const res = await app.inject({ method: 'POST', url: '/marketing/posts/generate', payload: GEN })
+    expect(res.statusCode).toBe(201)
+    expect(seen[0]).toContain('cover gap nobody checks')
+    expect(seen[0]).toContain('1 signups/leads')
+  })
+
+  it('never leaks another tenant\'s published posts into the prompt', async () => {
+    const seen: string[] = []
+    const llm = async (_s: string, prompt: string) => {
+      seen.push(prompt)
+      return 'fresh draft'
+    }
+    const { app, posts } = await buildApp({ llm })
+    posts.push(
+      pubPost({ id: 'w1', content: 'Tenant one winner', metrics: { likes: 5 }, metrics_at: new Date() }),
+      pubPost({ id: 'w2', content: 'Tenant one runner-up', metrics: { likes: 2 }, metrics_at: new Date() }),
+      pubPost({ id: 'other', tenant_id: 'tenant-2', content: 'SECRET_OTHER_TENANT_WINNER', metrics: { likes: 999 }, metrics_at: new Date() }),
+    )
+    const res = await app.inject({ method: 'POST', url: '/marketing/posts/generate', payload: GEN })
+    expect(res.statusCode).toBe(201)
+    expect(seen[0]).toContain('Tenant one winner')
+    expect(seen[0]).not.toContain('SECRET_OTHER_TENANT_WINNER')
+  })
+
+  it('generates normally when there is no performance history', async () => {
+    const seen: string[] = []
+    const llm = async (_s: string, prompt: string) => {
+      seen.push(prompt)
+      return 'fresh draft'
+    }
+    const { app } = await buildApp({ llm })
+    const res = await app.inject({ method: 'POST', url: '/marketing/posts/generate', payload: GEN })
+    expect(res.statusCode).toBe(201)
+    expect(seen[0]).not.toContain('WINNER')
+    expect(seen[0]).not.toContain('FLOP')
+    expect(res.json().post.content).toBe('fresh draft')
+  })
+})

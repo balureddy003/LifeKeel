@@ -43,6 +43,7 @@ import {
   socialPublisherFromEnv,
   DbSocialPublisher,
   verifyBlueskyCredentials,
+  CONNECTOR_CHANNELS,
   type SocialPublisher,
   type SocialConnectionDoc,
 } from '../marketing/social-publisher.js'
@@ -72,6 +73,9 @@ export interface MarketingPostDoc {
    *  let the operator split performance by push. */
   campaign?: string
   source_blog_slug?: string
+  /** Image URL for media-capable channels. Instagram REQUIRES it (its API
+   *  has no text-only post); Facebook uses it as an attached photo. */
+  media_url?: string
   external_id?: string
   external_url?: string
   metrics?: { likes?: number; reposts?: number; replies?: number }
@@ -85,6 +89,7 @@ const UpdatePostSchema = z.object({
   content: z.string().min(1).max(5000).optional(),
   // ISO datetime, empty string, or null — the latter two clear the schedule.
   scheduled_at: z.string().datetime().or(z.literal('')).nullable().optional(),
+  media_url: z.string().url().max(2000).or(z.literal('')).nullable().optional(),
 })
 
 const CreatePostSchema = z.object({
@@ -93,6 +98,7 @@ const CreatePostSchema = z.object({
   content: z.string().min(1).max(5000),
   scheduled_at: z.string().datetime().optional(),
   campaign: CampaignSchema.optional(),
+  media_url: z.string().url().max(2000).optional(),
 })
 
 const GeneratePostSchema = z
@@ -217,6 +223,7 @@ async function publishPost(
       type: 'now',
       date: now,
       tenantId: post.tenant_id,
+      ...(post.media_url ? { mediaUrl: post.media_url } : {}),
     })) as { external_id?: string; url?: string } | undefined
     await col.updateOne(
       { id: post.id },
@@ -305,7 +312,8 @@ export async function generateDailyMarketingDrafts(db: Db, llm: LlmFn): Promise<
     const slug = candidate['slug'] as string
     const src = await blogSourceBlock(db, slug, conn.channel)
     if (!src) continue
-    const { content, generated } = await draftPostText(llm, conn.channel, src.sourceBlock, src.link)
+    const learning = await learningContextBlock(db, tenantId, conn.channel)
+    const { content, generated } = await draftPostText(llm, conn.channel, src.sourceBlock, src.link, learning)
     const post: MarketingPostDoc = {
       id: randomUUID(),
       tenant_id: tenantId,
@@ -495,6 +503,105 @@ export async function pollMarketingEngagement(db: Db): Promise<number> {
       }
     }
   }
+
+  // Facebook Pages — GET /{post_id}?fields=likes.summary(true),comments.
+  // summary(true),shares under the stored page token.
+  const fbPosts = published.filter((p) => p.channel === 'facebook')
+  if (fbPosts.length) updated += await pollViaExecutor(db, col, fbPosts, 'facebook_pages', 'get_post', (body) => {
+    const b = body as {
+      likes?: { summary?: { total_count?: number } }
+      comments?: { summary?: { total_count?: number } }
+      shares?: { count?: number }
+    } | null
+    if (!b) return null
+    return {
+      likes: b.likes?.summary?.total_count ?? 0,
+      reposts: b.shares?.count ?? 0,
+      replies: b.comments?.summary?.total_count ?? 0,
+    }
+  })
+
+  // Instagram — like/comment counts are plain fields on the media object.
+  const igPosts = published.filter((p) => p.channel === 'instagram')
+  if (igPosts.length) updated += await pollViaExecutor(db, col, igPosts, 'instagram_business', 'get_media', (body) => {
+    const b = body as { like_count?: number; comments_count?: number } | null
+    if (!b) return null
+    return { likes: b.like_count ?? 0, replies: b.comments_count ?? 0 }
+  })
+
+  // Threads — insights endpoint returns a metric list, not flat fields.
+  const threadPosts = published.filter((p) => p.channel === 'threads')
+  if (threadPosts.length) updated += await pollViaExecutor(db, col, threadPosts, 'threads', 'get_media_insights', (body) => {
+    const data = (body as { data?: { name?: string; values?: { value?: number }[] }[] } | null)?.data
+    if (!data) return null
+    const metric = (name: string) => data.find((d) => d.name === name)?.values?.[0]?.value ?? 0
+    return { likes: metric('likes'), reposts: metric('reposts') + metric('quotes'), replies: metric('replies') }
+  })
+
+  // Mastodon — the status object carries counts; env-token read.
+  const mastoPosts = published.filter((p) => p.channel === 'mastodon')
+  const mastoInstance = process.env['MASTODON_INSTANCE_URL']?.replace(/\/$/, '')
+  const mastoToken = process.env['MASTODON_ACCESS_TOKEN']
+  if (mastoPosts.length && mastoInstance && mastoToken) {
+    for (const post of mastoPosts) {
+      try {
+        const res = await fetch(`${mastoInstance}/api/v1/statuses/${post.external_id}`, {
+          headers: { Authorization: `Bearer ${mastoToken}` },
+        })
+        if (!res.ok) continue
+        const s = (await res.json()) as { favourites_count?: number; reblogs_count?: number; replies_count?: number }
+        await col.updateOne(
+          { id: post.id },
+          {
+            $set: {
+              metrics: { likes: s.favourites_count ?? 0, reposts: s.reblogs_count ?? 0, replies: s.replies_count ?? 0 },
+              metrics_at: new Date(),
+            },
+          },
+        )
+        updated += 1
+      } catch {
+        // transient — the next hourly tick retries
+      }
+    }
+  }
+  return updated
+}
+
+/** Shared per-tenant engagement read for OAuth-connected channels — skips
+ *  tenants with missing/reauth'd creds, decodes each provider's response
+ *  shape into the common {likes, reposts, replies} form. */
+async function pollViaExecutor(
+  db: Db,
+  col: { updateOne: (f: Record<string, unknown>, u: Record<string, unknown>) => Promise<unknown> },
+  posts: MarketingPostDoc[],
+  connectorId: string,
+  actionId: string,
+  decode: (body: unknown) => { likes?: number; reposts?: number; replies?: number } | null,
+): Promise<number> {
+  const exec = new ConnectorActionExecutor(db)
+  const hasCred = new Map<string, boolean>()
+  let updated = 0
+  for (const post of posts) {
+    let ok = hasCred.get(post.tenant_id)
+    if (ok === undefined) {
+      const cred = await db.collection<Record<string, unknown>>('connector_credentials')
+        .findOne({ tenant_id: post.tenant_id, connector_id: connectorId })
+      ok = !!cred && cred['needs_reauth'] !== true
+      hasCred.set(post.tenant_id, ok)
+    }
+    if (!ok) continue
+    try {
+      const paramKey = connectorId === 'facebook_pages' ? 'post_id' : 'media_id'
+      const res = await exec.execute(post.tenant_id, connectorId, actionId, { [paramKey]: post.external_id })
+      const metrics = res.ok ? decode(res.body) : null
+      if (!metrics) continue
+      await col.updateOne({ id: post.id }, { $set: { metrics, metrics_at: new Date() } })
+      updated += 1
+    } catch {
+      // transient — the next hourly tick retries
+    }
+  }
   return updated
 }
 
@@ -505,7 +612,15 @@ export interface MarketingRouteOptions {
 
 /** Per-channel hard caps — the model is told the limit, then the output is
  *  clamped anyway because LLMs can't count. */
-const CHANNEL_CHAR_LIMIT: Record<string, number> = { x: 280, bluesky: 300, linkedin: 3000 }
+const CHANNEL_CHAR_LIMIT: Record<string, number> = {
+  x: 280,
+  bluesky: 300,
+  threads: 500,
+  linkedin: 3000,
+  instagram: 2200,
+  facebook: 5000,
+  mastodon: 500,
+}
 
 /** reserve: characters held back for an appended link — the clamp must
  *  never eat the CTA URL, an unlinked draft converts nobody. */
@@ -539,6 +654,9 @@ Rules — these are non-negotiable:
   emoji, never in the hook.
 - When a link is provided, include it verbatim on its own line at
   the end.
+- When a WINNER/FLOP performance section is provided, use it as the
+  style bar: match the winners' hooks and structure, avoid whatever
+  the flops did — but never reuse their exact wording.
 - Return ONLY the post text, nothing else.`
 
 /** UTM'd site link — clicks land in users.attribution.utm_source so the
@@ -561,6 +679,80 @@ async function blogSourceBlock(db: Db, blogSlug: string, channel: string, campai
   }
 }
 
+/** The learning loop's prompt side — what this tenant's audience actually
+ *  responded to. Published posts are scored on polled engagement plus the
+ *  signups/leads their promoted slug attributed (utm_content carries it);
+ *  the top and bottom ends are quoted back to the model as style signal.
+ *  Strictly tenant-scoped — nobody else's winners leak into a prompt.
+ *  Returns '' when the sample is too thin for "learning" to mean anything,
+ *  so a brand-new tenant generates exactly as before. */
+async function learningContextBlock(db: Db, tenantId: string, channel: string): Promise<string> {
+  const published = await db.collection<MarketingPostDoc>('marketing_posts')
+    .find({ tenant_id: tenantId, state: 'published' })
+    .toArray()
+  if (published.length < 2) return ''
+
+  // Conversions join back through the slug the post promoted.
+  const conversionsBySlug = new Map<string, number>()
+  const bump = (slug: unknown, n = 1) => {
+    if (typeof slug === 'string' && slug) conversionsBySlug.set(slug, (conversionsBySlug.get(slug) ?? 0) + n)
+  }
+  for (const u of await db.collection('users').find({}).toArray()) {
+    const a = u['attribution'] as Record<string, string> | undefined
+    if (a?.['utm_medium'] === 'social') bump(a['utm_content'])
+  }
+  for (const l of await db.collection('leads').find({}).toArray()) {
+    const a = l['attribution'] as Record<string, string> | undefined
+    if (a?.['utm_medium'] === 'social') bump(a['utm_content'])
+  }
+
+  const scored = published.map((p) => {
+    const m = p.metrics ?? {}
+    const conversions = p.source_blog_slug ? (conversionsBySlug.get(p.source_blog_slug) ?? 0) : 0
+    // Conversions outweigh vanity metrics by a wide margin — a signup is
+    // the actual goal; a like is directional signal at best.
+    const score =
+      conversions * 10 +
+      (m.reposts ?? 0) * 3 +
+      (m.replies ?? 0) * 2 +
+      (m.likes ?? 0)
+    return { p, score, conversions }
+  })
+
+  // Same-channel winners first — platform conventions differ, then fill
+  // with cross-channel signal if the channel itself is thin.
+  const winners = scored
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+  const channelWinners = winners.filter((s) => s.p.channel === channel).slice(0, 3)
+  const otherWinners = winners.filter((s) => s.p.channel !== channel).slice(0, Math.max(0, 3 - channelWinners.length))
+  const flops = scored
+    .filter((s) => s.score === 0 && s.p.metrics_at) // only "measured and flat", never unmeasured
+    .slice(0, 2)
+
+  const top = [...channelWinners, ...otherWinners]
+  if (top.length === 0 && flops.length === 0) return ''
+
+  const excerpt = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 140)
+  const lines: string[] = [
+    'What has performed for THIS account before — study the winners for structure and tone (never copy wording):',
+  ]
+  for (const { p, conversions } of top) {
+    const m = p.metrics ?? {}
+    const stats = [
+      `${m.likes ?? 0} likes`,
+      `${m.reposts ?? 0} reposts`,
+      `${m.replies ?? 0} replies`,
+      conversions > 0 ? `${conversions} signups/leads` : null,
+    ].filter(Boolean).join(', ')
+    lines.push(`WINNER [${p.channel}]: "${excerpt(p.content)}" → ${stats}`)
+  }
+  for (const { p } of flops) {
+    lines.push(`FLOP [${p.channel}]: "${excerpt(p.content)}" → no measured response — avoid this angle/style`)
+  }
+  return lines.join('\n')
+}
+
 /** LLM draft with deterministic fallback — shared by the generate route
  *  and the daily cron so both produce identical-quality output. */
 async function draftPostText(
@@ -568,12 +760,13 @@ async function draftPostText(
   channel: string,
   sourceBlock: string,
   link: string,
+  learning = '',
 ): Promise<{ content: string; generated: 'llm' | 'template' }> {
   const limit = CHANNEL_CHAR_LIMIT[channel] ?? 2000
   try {
     const raw = await llm(
       GENERATE_SYSTEM,
-      `Channel: ${channel} (hard maximum ${limit} characters — stay under it).\n\n${sourceBlock}\n\nWrite one post.`,
+      `Channel: ${channel} (hard maximum ${limit} characters — stay under it).\n\n${sourceBlock}${learning ? `\n\n${learning}` : ''}\n\nWrite one post.`,
       'tier:fast',
     )
     const content = finishPost(raw, limit, link)
@@ -603,19 +796,21 @@ export async function draftPostVariants(
   sourceBlock: string,
   link: string,
   count: number,
+  learning = '',
 ): Promise<string[]> {
   const limit = CHANNEL_CHAR_LIMIT[channel] ?? 2000
+  const tail = learning ? `\n\n${learning}` : ''
   if (count <= 1) {
     const raw = await llm(
       GENERATE_SYSTEM,
-      `Channel: ${channel} (hard maximum ${limit} characters — stay under it).\n\n${sourceBlock}\n\nWrite one post.`,
+      `Channel: ${channel} (hard maximum ${limit} characters — stay under it).\n\n${sourceBlock}${tail}\n\nWrite one post.`,
       'tier:fast',
     )
     return [finishPost(raw, limit, link)].filter(Boolean)
   }
   const raw = await llm(
     GENERATE_SYSTEM,
-    `Channel: ${channel} (hard maximum ${limit} characters each — stay under it).\n\n${sourceBlock}\n\nWrite ${count} meaningfully different variants — vary the hook, angle, and CTA phrasing. Separate variants with a line containing only ---`,
+    `Channel: ${channel} (hard maximum ${limit} characters each — stay under it).\n\n${sourceBlock}${tail}\n\nWrite ${count} meaningfully different variants — vary the hook, angle, and CTA phrasing. Separate variants with a line containing only ---`,
     'tier:fast',
   )
   const drafts = raw
@@ -662,31 +857,38 @@ export function registerMarketingPostRoutes(
   })
 
   /** GET /marketing/connections — this tenant's stored channel credentials,
-   *  minus the credentials themselves. X comes from connector_credentials
-   *  (connector_id: 'twitter_x') — the OAuth connect flow lives under
-   *  /connectors, not /marketing, so its row is projected into the same
-   *  shape here for a single list. */
+   *  minus the credentials themselves. OAuth-connected channels (X,
+   *  Facebook, LinkedIn, Threads, Instagram) live in connector_credentials —
+   *  the OAuth connect flow is under /connectors, not /marketing — so each
+   *  row is projected into the same shape here for a single list. */
   app.get('/marketing/connections', { preHandler: readGate }, async (req) => {
     const tenantId = req.authContext.tenant_id
-    const [conns, xCred] = await Promise.all([
+    const [conns, creds] = await Promise.all([
       connectionsCol.find({ tenant_id: tenantId }).toArray(),
       db.collection<Record<string, unknown>>('connector_credentials')
-        .findOne({ tenant_id: tenantId, connector_id: 'twitter_x' }),
+        .find({ tenant_id: tenantId, connector_id: { $in: Object.values(CONNECTOR_CHANNELS) } })
+        .toArray(),
     ])
+    const channelByConnector = new Map(
+      Object.entries(CONNECTOR_CHANNELS).map(([channel, connector]) => [connector, channel]),
+    )
     return {
       connections: [
         ...conns.map(({ credentials: _credentials, ...rest }) => rest),
-        ...(xCred
-          ? [{
-              tenant_id: tenantId,
-              channel: 'x',
-              handle: (xCred['extra'] as Record<string, string> | undefined)?.['username'] ?? '',
-              status: xCred['needs_reauth'] === true ? 'error' : 'active',
-              last_error: xCred['needs_reauth'] === true ? 'X token expired — reconnect' : null,
-              connected_by: 'oauth',
-              updated_at: xCred['updated_at'],
-            }]
-          : []),
+        ...creds.map((cred) => {
+          const channel = channelByConnector.get(cred['connector_id'] as string) ?? cred['connector_id']
+          const extra = cred['extra'] as Record<string, string> | undefined
+          const needsReauth = cred['needs_reauth'] === true
+          return {
+            tenant_id: tenantId,
+            channel,
+            handle: extra?.['username'] ?? extra?.['page_name'] ?? extra?.['name'] ?? extra?.['ig_username'] ?? '',
+            status: needsReauth ? 'error' : 'active',
+            last_error: needsReauth ? `${channel} token expired — reconnect` : null,
+            connected_by: 'oauth',
+            updated_at: cred['updated_at'],
+          }
+        }),
       ],
     }
   })
@@ -743,12 +945,13 @@ export function registerMarketingPostRoutes(
       const { tenant_id } = req.authContext
       const result = await connectionsCol.deleteOne({ tenant_id, channel: req.params.channel })
       let deleted = result.deletedCount ?? 0
-      // X's row lives in connector_credentials (the generic OAuth flow),
-      // not social_connections — disconnect removes it too.
-      if (req.params.channel === 'x') {
-        const xRes = await db.collection('connector_credentials')
-          .deleteOne({ tenant_id, connector_id: 'twitter_x' })
-        deleted += xRes.deletedCount ?? 0
+      // OAuth-connected rows live in connector_credentials (the generic
+      // OAuth flow), not social_connections — disconnect removes them too.
+      const connectorId = CONNECTOR_CHANNELS[req.params.channel]
+      if (connectorId) {
+        const credRes = await db.collection('connector_credentials')
+          .deleteOne({ tenant_id, connector_id: connectorId })
+        deleted += credRes.deletedCount ?? 0
       }
       if (!deleted) return reply.status(404).send({ error: 'No such connection' })
       getAuditLogger()?.fromRequest(req, 'marketing.connection_disconnect', 'social_connection', `${req.params.channel}:${tenant_id}`, {})
@@ -774,7 +977,10 @@ export function registerMarketingPostRoutes(
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Invalid post', issues: parsed.error.issues })
     }
-    const { integration_id, channel, content, scheduled_at, campaign } = parsed.data
+    const { integration_id, channel, content, scheduled_at, campaign, media_url } = parsed.data
+    if (channel === 'instagram' && !media_url) {
+      return reply.status(400).send({ error: 'Instagram requires an image — provide media_url' })
+    }
     const now = new Date()
     const post: MarketingPostDoc = {
       id: randomUUID(),
@@ -784,6 +990,7 @@ export function registerMarketingPostRoutes(
       content,
       campaign: campaign ?? 'oak_social',
       ...(scheduled_at ? { scheduled_at: new Date(scheduled_at) } : {}),
+      ...(media_url ? { media_url } : {}),
       state: 'draft',
       created_by: user_id,
       created_at: now,
@@ -839,9 +1046,14 @@ export function registerMarketingPostRoutes(
       sourceBlock = `Topic: ${topic}${link ? `\nLink to include verbatim: ${link}` : ''}`
     }
 
+    // The learning loop: quote this tenant's measured winners/flops back to
+    // the model so each generation round is informed by what actually moved
+    // views, engagement, and signups — not just by the source material.
+    const learning = await learningContextBlock(db, tenant_id, channel)
+
     if (preview) {
       try {
-        const drafts = await draftPostVariants(llm, channel, sourceBlock, link, count ?? 3)
+        const drafts = await draftPostVariants(llm, channel, sourceBlock, link, count ?? 3, learning)
         return { drafts }
       } catch {
         // Same deterministic fallback as the persisted path.
@@ -850,7 +1062,7 @@ export function registerMarketingPostRoutes(
       }
     }
 
-    const { content, generated } = await draftPostText(llm, channel, sourceBlock, link)
+    const { content, generated } = await draftPostText(llm, channel, sourceBlock, link, learning)
 
     const now = new Date()
     const post: MarketingPostDoc = {
@@ -881,12 +1093,14 @@ export function registerMarketingPostRoutes(
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Invalid update', issues: parsed.error.issues })
     }
-    const { content, scheduled_at } = parsed.data
+    const { content, scheduled_at, media_url } = parsed.data
     const set: Record<string, unknown> = {}
     const unset: Record<string, ''> = {}
     if (content !== undefined) set['content'] = content
     if (scheduled_at) set['scheduled_at'] = new Date(scheduled_at)
     else if (scheduled_at !== undefined) unset['scheduled_at'] = ''
+    if (media_url) set['media_url'] = media_url
+    else if (media_url !== undefined) unset['media_url'] = ''
     if (Object.keys(set).length === 0 && Object.keys(unset).length === 0) {
       return reply.status(400).send({ error: 'Nothing to update' })
     }

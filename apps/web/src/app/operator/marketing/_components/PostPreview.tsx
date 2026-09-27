@@ -9,7 +9,15 @@
 import { Heart, MessageCircle, Repeat2, BarChart3 } from 'lucide-react'
 import type { MarketingPost } from '@/lib/api'
 
-const CHANNEL_LABEL: Record<string, string> = { x: 'X', bluesky: 'Bluesky', linkedin: 'LinkedIn' }
+const CHANNEL_LABEL: Record<string, string> = {
+  x: 'X',
+  bluesky: 'Bluesky',
+  linkedin: 'LinkedIn',
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  threads: 'Threads',
+  mastodon: 'Mastodon',
+}
 
 /** Renders the post text with URLs tinted, like the channels do. */
 function Linkified({ text }: { text: string }) {

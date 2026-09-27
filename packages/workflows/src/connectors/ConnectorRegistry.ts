@@ -731,6 +731,9 @@ export const CONNECTORS: ConnectorDef[] = [
         { name: 'caption', label: 'Caption', type: 'template', required: true },
         { name: 'image_url', label: 'Image URL', type: 'template', required: true },
       ]},
+      { id: 'get_post', label: 'Get post metrics', description: 'Read a page post with like/comment/share counts', method: 'GET', path: '/{post_id}?fields=likes.summary(true),comments.summary(true),shares', params: [
+        { name: 'post_id', label: 'Post ID', type: 'template', required: true },
+      ]},
     ],
     triggers: [
       { id: 'comment_received', label: 'New comment', event_type: 'facebook.comment', webhook_event: 'feed', description: 'Fired when a comment is posted on your page' },
@@ -757,10 +760,36 @@ export const CONNECTORS: ConnectorDef[] = [
         { name: 'ig_user_id', label: 'IG User ID', type: 'template', required: true },
         { name: 'image_url', label: 'Story image URL', type: 'template', required: true },
       ]},
+      { id: 'get_media', label: 'Get media metrics', description: 'Read an IG media object with like/comment counts', method: 'GET', path: '/{media_id}?fields=like_count,comments_count', params: [
+        { name: 'media_id', label: 'Media ID', type: 'template', required: true },
+      ]},
     ],
     triggers: [
       { id: 'comment_received', label: 'New comment', event_type: 'instagram.comment', webhook_event: 'comments', description: 'Fired when someone comments on your post' },
     ],
+  },
+
+  {
+    id: 'threads',
+    name: 'Threads',
+    category: 'social',
+    description: 'Publish text posts and read insights on Threads',
+    icon: '🧵',
+    color: '#000000',
+    auth: 'oauth2',
+    base_url: 'https://graph.threads.net/v1.0',
+    docs_url: 'https://developers.facebook.com/docs/threads',
+    tags: ['social', 'threads', 'meta'],
+    // Publishing goes through social-publisher.ts's two-step container→
+    // publish handler — the single-call action shape can't express it.
+    // These actions cover the read side (engagement polling).
+    actions: [
+      { id: 'get_me', label: 'Get profile', description: 'Read the connected Threads user', method: 'GET', path: '/me?fields=id,username', params: [] },
+      { id: 'get_media_insights', label: 'Get post insights', description: 'Read views/likes/replies/reposts for a post', method: 'GET', path: '/{media_id}/insights?metric=views,likes,replies,reposts,quotes', params: [
+        { name: 'media_id', label: 'Media ID', type: 'template', required: true },
+      ]},
+    ],
+    triggers: [],
   },
 
   {

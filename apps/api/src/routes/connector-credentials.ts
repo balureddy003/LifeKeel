@@ -159,14 +159,23 @@ function peekReturnTo(state: string | undefined): ReturnTarget {
 // Google connectors that can use shared credentials
 const GOOGLE_CONNECTORS = ['google_calendar', 'gmail', 'google_drive', 'youtube', 'google_sheets', 'google_business']
 
+// Meta app credentials cover Facebook Login, Instagram Graph, and Threads —
+// one Meta app can hold all three products. Threads also accepts its own
+// purpose-named pair (Meta originally shipped Threads apps with separate
+// credentials; keep that path working).
+const META_CONNECTORS = ['facebook_pages', 'instagram_business', 'instagram']
+
 function getGoogleClientId(connectorId: string): string | undefined {
   // Try connector-specific first for backward compatibility
   const specificId = process.env[`KAIROS_${connectorId.toUpperCase()}_CLIENT_ID`]
   if (specificId) return specificId
 
-  // X's OAuth app reads the shorter, purpose-named pair (what
-  // .env.example documents for the marketing connect flow).
+  // Purpose-named pairs (what .env.example documents for the marketing
+  // connect flows).
   if (connectorId === 'twitter_x') return process.env['X_CLIENT_ID']
+  if (connectorId === 'linkedin') return process.env['LINKEDIN_CLIENT_ID']
+  if (connectorId === 'threads') return process.env['THREADS_CLIENT_ID'] ?? process.env['META_CLIENT_ID']
+  if (META_CONNECTORS.includes(connectorId)) return process.env['META_CLIENT_ID']
 
   // Fall back to shared Google credentials for Google services
   if (GOOGLE_CONNECTORS.includes(connectorId)) {
@@ -182,6 +191,9 @@ function getGoogleClientSecret(connectorId: string): string {
   if (specificSecret) return specificSecret
 
   if (connectorId === 'twitter_x') return process.env['X_CLIENT_SECRET'] ?? ''
+  if (connectorId === 'linkedin') return process.env['LINKEDIN_CLIENT_SECRET'] ?? ''
+  if (connectorId === 'threads') return process.env['THREADS_CLIENT_SECRET'] ?? process.env['META_CLIENT_SECRET'] ?? ''
+  if (META_CONNECTORS.includes(connectorId)) return process.env['META_CLIENT_SECRET'] ?? ''
 
   // Fall back to shared Google credentials for Google services
   if (GOOGLE_CONNECTORS.includes(connectorId)) {
@@ -500,10 +512,16 @@ export function registerConnectorCredentialRoutes(
       onedrive: `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=Files.Read+Files.Read.All+offline_access&state=${state}`,
       dropbox: `https://www.dropbox.com/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&token_access_type=offline&state=${state}`,
       twitter_x: `https://x.com/i/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent('tweet.read tweet.write users.read offline.access')}&state=${state}&code_challenge=${pkce.challenge}&code_challenge_method=S256`,
-      // Social media
-      facebook_pages: `https://www.facebook.com/v19.0/dialog/oauth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent('pages_show_list')}&response_type=code&state=${state}`,
-      instagram_business: `https://www.facebook.com/v19.0/dialog/oauth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent('pages_show_list')}&response_type=code&state=${state}`,
-      instagram: `https://www.facebook.com/v19.0/dialog/oauth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent('pages_show_list')}&response_type=code&state=${state}`,
+      // Social media — scopes request what publishing actually needs:
+      // pages_show_list alone lets the callback read the page list but every
+      // post attempt would 403 (pages_manage_posts). instagram_content_publish
+      // drives the media container→publish flow; pages_read_engagement backs
+      // the hourly metrics poll.
+      facebook_pages: `https://www.facebook.com/v19.0/dialog/oauth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent('pages_show_list,pages_manage_posts,pages_read_engagement')}&response_type=code&state=${state}`,
+      instagram_business: `https://www.facebook.com/v19.0/dialog/oauth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent('pages_show_list,instagram_basic,instagram_content_publish')}&response_type=code&state=${state}`,
+      instagram: `https://www.facebook.com/v19.0/dialog/oauth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent('pages_show_list,instagram_basic,instagram_content_publish')}&response_type=code&state=${state}`,
+      threads: `https://threads.net/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent('threads_basic,threads_content_publish')}&response_type=code&state=${state}`,
+      linkedin: `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent('openid profile w_member_social')}&state=${state}`,
       youtube: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent('https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube')}&access_type=offline&state=${state}`,
     }
 
@@ -660,6 +678,8 @@ export function registerConnectorCredentialRoutes(
       facebook_pages: 'https://graph.facebook.com/v19.0/oauth/access_token',
       instagram_business: 'https://graph.facebook.com/v19.0/oauth/access_token',
       instagram: 'https://graph.facebook.com/v19.0/oauth/access_token',
+      threads: 'https://graph.threads.net/oauth/access_token',
+      linkedin: 'https://www.linkedin.com/oauth/v2/accessToken',
       youtube: 'https://oauth2.googleapis.com/token',
     }
 
@@ -746,6 +766,129 @@ export function registerConnectorCredentialRoutes(
           }
         } catch {
           // display nicety only
+        }
+      }
+
+      // ── Meta: Facebook Pages + Instagram Business ────────────────────────
+      // The OAuth grant returns a short-lived USER token, but page posts and
+      // IG media publish under a PAGE token. Exchange the user token for a
+      // long-lived one (60d), read /me/accounts, take the first page's
+      // non-expiring page token, and store THAT as the credential's
+      // access_token — it's what publishing and engagement reads use. A user
+      // with no managed page can't publish, so that's a hard error here
+      // rather than a dead connection.
+      if (req.params.id === 'facebook_pages' || req.params.id === 'instagram_business' || req.params.id === 'instagram') {
+        try {
+          const exchange = await fetch(
+            `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token` +
+            `&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}` +
+            `&fb_exchange_token=${encodeURIComponent(data.access_token)}`,
+          )
+          const longLived = (await exchange.json()) as { access_token?: string }
+          const userToken = longLived.access_token ?? data.access_token
+
+          const accountsRes = await fetch(
+            `https://graph.facebook.com/v19.0/me/accounts?fields=id,name,access_token&access_token=${encodeURIComponent(userToken)}`,
+          )
+          const accounts = (await accountsRes.json()) as { data?: { id: string; name: string; access_token: string }[] }
+          const page = accounts.data?.[0]
+          if (!page?.id || !page.access_token) {
+            return reply.redirect(frontendRedirect(returnTo, { connect: req.params.id, error: 'no_facebook_page' }))
+          }
+
+          const extra: Record<string, string> = { page_id: page.id, page_name: page.name }
+
+          // Instagram Business: the IG account hangs off the page — resolve
+          // ig_user_id now so publishing never has to rediscover it.
+          if (req.params.id !== 'facebook_pages') {
+            const igRes = await fetch(
+              `https://graph.facebook.com/v19.0/${page.id}?fields=instagram_business_account&access_token=${encodeURIComponent(page.access_token)}`,
+            )
+            const ig = (await igRes.json()) as { instagram_business_account?: { id?: string } }
+            const igId = ig.instagram_business_account?.id
+            if (!igId) {
+              return reply.redirect(frontendRedirect(returnTo, { connect: req.params.id, error: 'no_instagram_business_account' }))
+            }
+            extra['ig_user_id'] = igId
+            try {
+              const igUserRes = await fetch(
+                `https://graph.facebook.com/v19.0/${igId}?fields=username&access_token=${encodeURIComponent(page.access_token)}`,
+              )
+              const igUser = (await igUserRes.json()) as { username?: string }
+              if (igUser.username) extra['ig_username'] = `@${igUser.username}`
+            } catch {
+              // display nicety only
+            }
+          }
+
+          // Page tokens derived from a long-lived user token don't expire —
+          // drop the short-lived expiry the generic save just wrote.
+          await getTenantCollection<Record<string, unknown>>(db, 'connector_credentials', tenantId)
+            .updateOne(
+              { connector_id: req.params.id },
+              { $set: { access_token: encryptIfNeeded(page.access_token)!, extra }, $unset: { token_expires_at: '' } },
+            )
+        } catch (err) {
+          log.error({ err, connector_id: req.params.id }, 'Meta page resolution failed')
+          return reply.redirect(frontendRedirect(returnTo, { connect: req.params.id, error: 'meta_page_resolution_failed' }))
+        }
+      }
+
+      // ── Threads ──────────────────────────────────────────────────────────
+      // Same Meta umbrella, different token service: exchange the ~1hr user
+      // token for a 60-day token, then read /me once for the user id the
+      // publish endpoints need. th_refresh_token keeps it alive from there.
+      if (req.params.id === 'threads') {
+        try {
+          const longLivedRes = await fetch(
+            `https://graph.threads.net/access_token?grant_type=th_exchange_token` +
+            `&client_secret=${encodeURIComponent(clientSecret)}&access_token=${encodeURIComponent(data.access_token)}`,
+          )
+          const longLived = (await longLivedRes.json()) as { access_token?: string; expires_in?: number }
+          const token = longLived.access_token ?? data.access_token
+
+          const meRes = await fetch(`https://graph.threads.net/v1.0/me?fields=id,username&access_token=${encodeURIComponent(token)}`)
+          const me = (await meRes.json()) as { id?: string; username?: string }
+          if (!me.id) {
+            return reply.redirect(frontendRedirect(returnTo, { connect: 'threads', error: 'threads_me_failed' }))
+          }
+          await getTenantCollection<Record<string, unknown>>(db, 'connector_credentials', tenantId)
+            .updateOne(
+              { connector_id: 'threads' },
+              {
+                $set: {
+                  access_token: encryptIfNeeded(token)!,
+                  extra: { user_id: me.id, ...(me.username ? { username: `@${me.username}` } : {}) },
+                  ...(longLived.expires_in ? { token_expires_at: new Date(Date.now() + longLived.expires_in * 1000) } : {}),
+                },
+              },
+            )
+        } catch (err) {
+          log.error({ err }, 'Threads token exchange failed')
+          return reply.redirect(frontendRedirect(returnTo, { connect: 'threads', error: 'threads_exchange_failed' }))
+        }
+      }
+
+      // ── LinkedIn ─────────────────────────────────────────────────────────
+      // Publishing needs the author URN; /v2/userinfo gives `sub` under the
+      // openid scope. No refresh token — the ~60d token then needs_reauth.
+      if (req.params.id === 'linkedin') {
+        try {
+          const meRes = await fetch('https://api.linkedin.com/v2/userinfo', {
+            headers: { Authorization: `Bearer ${data.access_token}` },
+          })
+          const me = (await meRes.json()) as { sub?: string; name?: string }
+          if (!me.sub) {
+            return reply.redirect(frontendRedirect(returnTo, { connect: 'linkedin', error: 'linkedin_userinfo_failed' }))
+          }
+          await getTenantCollection<Record<string, unknown>>(db, 'connector_credentials', tenantId)
+            .updateOne(
+              { connector_id: 'linkedin' },
+              { $set: { extra: { author_urn: `urn:li:person:${me.sub}`, ...(me.name ? { name: me.name } : {}) } } },
+            )
+        } catch (err) {
+          log.error({ err }, 'LinkedIn userinfo failed')
+          return reply.redirect(frontendRedirect(returnTo, { connect: 'linkedin', error: 'linkedin_userinfo_failed' }))
         }
       }
 

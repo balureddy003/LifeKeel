@@ -1662,6 +1662,7 @@ export interface MarketingPost {
   published_at?: string
   publish_error?: string
   external_url?: string
+  media_url?: string
   metrics?: { likes?: number; reposts?: number; replies?: number }
 }
 
@@ -1709,6 +1710,7 @@ export async function createMarketingPost(input: {
   content: string
   scheduled_at?: string
   campaign?: string
+  media_url?: string
 }): Promise<MarketingPost> {
   const data = await marketingRequest<{ post: MarketingPost }>('/marketing/posts', 'POST', { ...input })
   return data.post
@@ -1727,7 +1729,7 @@ export async function rejectMarketingPost(id: string): Promise<MarketingPost> {
 /** Edit a draft/publish_failed post — content and/or schedule ('' clears it). */
 export async function updateMarketingPost(
   id: string,
-  patch: { content?: string; scheduled_at?: string | null },
+  patch: { content?: string; scheduled_at?: string | null; media_url?: string | null },
 ): Promise<MarketingPost> {
   const data = await marketingRequest<{ post: MarketingPost }>(`/marketing/posts/${id}`, 'PATCH', { ...patch })
   return data.post
@@ -1787,17 +1789,23 @@ export async function disconnectSocialChannel(channel: string): Promise<void> {
 }
 
 /**
- * Kick off the X OAuth2 connect flow. The generic connector route builds
- * the authorize URL (PKCE + signed tenant-bound state); the callback lands
- * back on /operator/marketing?connected=twitter_x. Tokens land encrypted in
- * connector_credentials — no secret ever crosses this request.
+ * Kick off an OAuth connect flow for a social connector (twitter_x,
+ * facebook_pages, linkedin, threads, instagram_business). The generic
+ * connector route builds the authorize URL (signed tenant-bound state);
+ * the callback lands back on /operator/marketing?connected=<connector_id>.
+ * Tokens land encrypted in connector_credentials — no secret ever crosses
+ * this request.
  */
-export async function startXConnect(): Promise<{ auth_url: string } | null> {
+export async function startConnectorConnect(connectorId: string): Promise<{ auth_url: string } | null> {
   const data = await apiFetch<{ auth_url?: string } | null>(
-    '/connectors/twitter_x/oauth/start?app=marketing&mode=json',
+    `/connectors/${connectorId}/oauth/start?app=marketing&mode=json`,
     null,
   )
   return data?.auth_url ? { auth_url: data.auth_url } : null
+}
+
+export async function startXConnect(): Promise<{ auth_url: string } | null> {
+  return startConnectorConnect('twitter_x')
 }
 
 export interface OperatorOverview {

@@ -23,7 +23,7 @@ import {
   rejectMarketingPost,
   fetchAutomationSettings,
   fetchSocialConnections,
-  startXConnect,
+  startConnectorConnect,
   connectBluesky,
   disconnectSocialChannel,
   type MarketingIntegration,
@@ -58,14 +58,31 @@ const STATE_LABEL: Record<MarketingPost['state'], string> = {
 }
 
 /** Display label + hard post-length cap per channel — the composer counter
- *  uses the cap so a draft can't go out that the provider would reject. */
-const CHANNEL_META: Record<string, { label: string; limit: number }> = {
+ *  uses the cap so a draft can't go out that the provider would reject.
+ *  media: 'required' channels can't publish without an image (Instagram's
+ *  API has no text post); 'optional' attaches it as a photo (Facebook). */
+const CHANNEL_META: Record<string, { label: string; limit: number; media?: 'required' | 'optional' }> = {
   x: { label: 'X', limit: 280 },
   bluesky: { label: 'Bluesky', limit: 300 },
+  threads: { label: 'Threads', limit: 500 },
   linkedin: { label: 'LinkedIn', limit: 3000 },
+  instagram: { label: 'Instagram', limit: 2200, media: 'required' },
+  facebook: { label: 'Facebook', limit: 5000, media: 'optional' },
+  mastodon: { label: 'Mastodon', limit: 500 },
 }
 const channelLimit = (ch: string) => CHANNEL_META[ch]?.limit ?? 5000
 const channelLabel = (ch: string) => CHANNEL_META[ch]?.label ?? ch
+const channelMedia = (ch: string) => CHANNEL_META[ch]?.media
+
+/** OAuth-connectable channels — connector id ↔ marketing channel. Bluesky
+ *  is app-password instead; Mastodon is env-only. */
+const OAUTH_CHANNELS: { channel: string; connector: string; label: string }[] = [
+  { channel: 'x', connector: 'twitter_x', label: 'X' },
+  { channel: 'facebook', connector: 'facebook_pages', label: 'Facebook Page' },
+  { channel: 'instagram', connector: 'instagram_business', label: 'Instagram Business' },
+  { channel: 'threads', connector: 'threads', label: 'Threads' },
+  { channel: 'linkedin', connector: 'linkedin', label: 'LinkedIn' },
+]
 
 const CAMPAIGN_RE = /^[a-z0-9][a-z0-9_-]{0,59}$/
 const DEFAULT_CAMPAIGN = 'oak_social'
@@ -97,6 +114,7 @@ export default function MarketingPage() {
   const [showConnect, setShowConnect] = useState(false)
   const [bskyHandle, setBskyHandle] = useState('')
   const [bskyPassword, setBskyPassword] = useState('')
+  const [mediaUrl, setMediaUrl] = useState('')
   const [showGenerate, setShowGenerate] = useState(false)
   const [blogs, setBlogs] = useState<BlogPostSummary[]>([])
   const [genBlogSlug, setGenBlogSlug] = useState('')
@@ -130,11 +148,18 @@ export default function MarketingPage() {
     const connected = q.get('connected')
     const err = q.get('error')
     if (!connected && !err && !q.get('connect')) return
-    if (connected === 'twitter_x') {
-      toast({ message: 'X connected' })
+    if (connected) {
+      const label = OAUTH_CHANNELS.find((o) => o.connector === connected)?.label ?? connected
+      toast({ message: `${label} connected` })
       refreshChannels()
     } else if (err) {
-      toast({ message: `X connect failed: ${q.get('detail') ?? err}`, variant: 'error' })
+      const label = OAUTH_CHANNELS.find((o) => o.connector === q.get('connect'))?.label ?? 'Channel'
+      const hint = err === 'no_facebook_page'
+        ? ' — no managed Facebook Page found'
+        : err === 'no_instagram_business_account'
+          ? ' — no Instagram Business account linked to your Page'
+          : ''
+      toast({ message: `${label} connect failed: ${q.get('detail') ?? err}${hint}`, variant: 'error' })
     }
     window.history.replaceState({}, '', '/operator/marketing')
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -166,13 +191,13 @@ export default function MarketingPage() {
     }
   }
 
-  async function connectX() {
+  async function connectOAuth(connectorId: string, label: string) {
     haptic('medium')
-    setBusy('connect-x')
+    setBusy(`connect-${connectorId}`)
     try {
-      const res = await startXConnect()
+      const res = await startConnectorConnect(connectorId)
       if (res?.auth_url) window.location.assign(res.auth_url)
-      else toast({ message: 'X OAuth not configured — set X_CLIENT_ID on the API', variant: 'error' })
+      else toast({ message: `${label} OAuth not configured — set its client credentials on the API`, variant: 'error' })
     } catch (err) {
       toast({ message: err instanceof Error ? err.message : 'Connect failed', variant: 'error' })
     } finally {
@@ -233,6 +258,8 @@ export default function MarketingPage() {
   const autoEnabled = automation?.auto_execute_enabled === true
   const limit = channelLimit(channel)
   const overLimit = content.length > limit
+  const mediaMode = channelMedia(channel)
+  const mediaMissing = mediaMode === 'required' && !mediaUrl.trim()
   const pendingCount = posts.filter((p) => p.state === 'draft' || p.state === 'publish_failed').length
 
   const knownCampaigns = useMemo(() => {
@@ -260,10 +287,12 @@ export default function MarketingPage() {
         content: content.trim(),
         campaign: camp,
         ...(scheduleAt ? { scheduled_at: new Date(scheduleAt).toISOString() } : {}),
+        ...(mediaUrl.trim() ? { media_url: mediaUrl.trim() } : {}),
       })
       setPosts((p) => [post, ...p])
       setContent('')
       setScheduleAt('')
+      setMediaUrl('')
       setTab('queue')
       toast({ message: post.state === 'published' ? 'Published' : 'Draft queued for review' })
     } catch (err) {
@@ -327,33 +356,16 @@ export default function MarketingPage() {
           <GlassCard className="p-4">
             <div className="flex items-center justify-between mb-2.5">
               <p className="text-sm font-semibold text-ink-primary">Channels</p>
-              <div className="flex items-center gap-3">
-                {!(integrations ?? []).some((i) => i.identifier === 'x') && (
-                  <button
-                    onClick={connectX}
-                    disabled={busy === 'connect-x'}
-                    className="text-xs font-semibold text-family-400 disabled:opacity-40"
-                  >
-                    {busy === 'connect-x' ? 'Redirecting…' : 'Connect X'}
-                  </button>
-                )}
-                <button
-                  onClick={() => setShowConnect((v) => !v)}
-                  className="text-xs font-semibold text-family-400"
-                >
-                  {showConnect
-                    ? 'Close'
-                    : (integrations ?? []).some((i) => i.identifier === 'bluesky')
-                      ? 'Reconnect Bluesky'
-                      : 'Connect Bluesky'}
-                </button>
-              </div>
+              <button
+                onClick={() => setShowConnect((v) => !v)}
+                className="text-xs font-semibold text-family-400"
+              >
+                {showConnect ? 'Close' : 'Connect a channel'}
+              </button>
             </div>
             {(integrations ?? []).length === 0 ? (
               <p className="text-xs text-ink-tertiary leading-relaxed">
-                Nothing connected yet — link Bluesky below, or set{' '}
-                <code className="text-family-400">X_ACCESS_TOKEN</code> /{' '}
-                <code className="text-family-400">LINKEDIN_ACCESS_TOKEN</code> on the API.
+                Nothing connected yet — open "Connect a channel" above.
               </p>
             ) : (
               <ul className="space-y-2.5">
@@ -392,23 +404,50 @@ export default function MarketingPage() {
               </ul>
             )}
             {showConnect && (
-              <div className="mt-3 pt-3 border-t border-tint/[0.06] space-y-2">
-                <input
-                  value={bskyHandle}
-                  onChange={(e) => setBskyHandle(e.target.value)}
-                  placeholder="handle — e.g. oak.bsky.social"
-                  className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
-                />
-                <input
-                  value={bskyPassword}
-                  onChange={(e) => setBskyPassword(e.target.value)}
-                  type="password"
-                  placeholder="app password (bsky.app → Settings → App passwords)"
-                  className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
-                />
-                <GlassButton onClick={connect} disabled={busy === 'connect' || !bskyHandle.trim() || !bskyPassword.trim()}>
-                  {busy === 'connect' ? 'Verifying…' : 'Verify & connect'}
-                </GlassButton>
+              <div className="mt-3 pt-3 border-t border-tint/[0.06] space-y-3">
+                {/* OAuth channels — each appears until connected */}
+                <div className="flex flex-wrap gap-2">
+                  {OAUTH_CHANNELS.filter((o) => !(integrations ?? []).some((i) => i.identifier === o.channel)).map((o) => (
+                    <button
+                      key={o.connector}
+                      onClick={() => connectOAuth(o.connector, o.label)}
+                      disabled={busy === `connect-${o.connector}`}
+                      className="rounded-full px-3.5 py-1.5 text-xs font-semibold border bg-tint/[0.04] border-tint/[0.08] text-ink-secondary hover:border-family-500/40 hover:text-family-300 disabled:opacity-40 transition-colors"
+                    >
+                      {busy === `connect-${o.connector}` ? 'Redirecting…' : `Connect ${o.label}`}
+                    </button>
+                  ))}
+                  {OAUTH_CHANNELS.every((o) => (integrations ?? []).some((i) => i.identifier === o.channel)) && (
+                    <p className="text-xs text-ink-tertiary">All OAuth channels connected.</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-caption text-ink-tertiary mb-1.5">Bluesky — app password</p>
+                  <div className="space-y-2">
+                    <input
+                      value={bskyHandle}
+                      onChange={(e) => setBskyHandle(e.target.value)}
+                      placeholder="handle — e.g. oak.bsky.social"
+                      className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
+                    />
+                    <input
+                      value={bskyPassword}
+                      onChange={(e) => setBskyPassword(e.target.value)}
+                      type="password"
+                      placeholder="app password (bsky.app → Settings → App passwords)"
+                      className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
+                    />
+                    <GlassButton onClick={connect} disabled={busy === 'connect' || !bskyHandle.trim() || !bskyPassword.trim()}>
+                      {busy === 'connect' ? 'Verifying…' : 'Verify & connect'}
+                    </GlassButton>
+                  </div>
+                </div>
+                <p className="text-caption text-ink-tertiary leading-relaxed">
+                  Facebook + Instagram need a Meta app (META_CLIENT_ID/SECRET) and a Page with a linked Business
+                  account. Threads uses the same Meta app (or THREADS_CLIENT_ID). LinkedIn needs a LinkedIn app with
+                  "Share on LinkedIn" enabled (LINKEDIN_CLIENT_ID/SECRET). Mastodon runs off env:
+                  MASTODON_INSTANCE_URL + MASTODON_ACCESS_TOKEN.
+                </p>
               </div>
             )}
           </GlassCard>
@@ -487,6 +526,19 @@ export default function MarketingPage() {
                   <div className="mb-3">
                     <PostPreview channel={channel} content={content} accountName={selectedAccount} />
                   </div>
+                  {mediaMode && (
+                    <div className="mb-3">
+                      <label className="block text-caption text-ink-tertiary mb-1">
+                        Image URL {mediaMode === 'required' ? '— Instagram requires an image' : '— optional, posts as a photo'}
+                      </label>
+                      <input
+                        value={mediaUrl}
+                        onChange={(e) => setMediaUrl(e.target.value)}
+                        placeholder="https://… a public image URL"
+                        className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
+                      />
+                    </div>
+                  )}
                   <div className="grid sm:grid-cols-2 gap-3 mb-3">
                     <div>
                       <label className="block text-caption text-ink-tertiary mb-1">Schedule for later — optional</label>
@@ -514,7 +566,7 @@ export default function MarketingPage() {
                       </datalist>
                     </div>
                   </div>
-                  <GlassButton onClick={submit} disabled={busy === 'create' || !content.trim() || overLimit}>
+                  <GlassButton onClick={submit} disabled={busy === 'create' || !content.trim() || overLimit || mediaMissing}>
                     {busy === 'create' ? 'Queueing…' : scheduleAt ? 'Queue scheduled draft' : 'Queue draft'}
                   </GlassButton>
                   {scheduleAt && (
