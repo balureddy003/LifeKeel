@@ -190,6 +190,44 @@ describe('runLifecycleSweep — trial sequence', () => {
   })
 })
 
+describe('runLifecycleSweep — churned-tenant winback', () => {
+  it('emails a churned tenant still on free — once, after the 3d grace window', async () => {
+    await db.collection('tenants').insertOne({ tenant_id: 't1', plan: 'free', created_at: new Date(Date.now() - 60 * DAY) })
+    await db.collection('users').insertOne({
+      id: 'u1', email: 'u@example.com', name: 'Uma', tenant_id: 't1', status: 'active', created_at: new Date(Date.now() - 60 * DAY),
+    })
+    await db.collection('audit_log').insertOne({
+      action: 'billing.plan_downgraded', tenant_id: 't1', timestamp: new Date(Date.now() - 5 * DAY),
+    })
+    const sent = await runLifecycleSweep(db)
+    expect(sent).toHaveLength(1)
+    expect(sent[0]).toMatchObject({ sequence: 'winback', step: 'return', email: 'u@example.com' })
+    // Once ever — a second sweep sends nothing.
+    expect(await runLifecycleSweep(db)).toHaveLength(0)
+  })
+
+  it('leaves recent churns and re-subscribed tenants alone', async () => {
+    // Too fresh (inside the 3d grace window) — tenant exists and is free,
+    // only the timestamp excludes it.
+    await db.collection('tenants').insertOne({ tenant_id: 't1', plan: 'free', created_at: new Date(Date.now() - 60 * DAY) })
+    await db.collection('audit_log').insertOne({
+      action: 'billing.plan_downgraded', tenant_id: 't1', timestamp: new Date(Date.now() - 12 * HOUR),
+    })
+    // Re-subscribed — stripe_subscription_id back on the tenant.
+    await db.collection('tenants').insertOne({
+      tenant_id: 't2', plan: 'free', stripe_subscription_id: 'sub_1', created_at: new Date(Date.now() - 60 * DAY),
+    })
+    await db.collection('audit_log').insertOne({
+      action: 'billing.plan_downgraded', tenant_id: 't2', timestamp: new Date(Date.now() - 5 * DAY),
+    })
+    await db.collection('users').insertMany([
+      { id: 'u1', email: 'a@x.com', tenant_id: 't1', status: 'active', created_at: new Date(Date.now() - 60 * DAY) },
+      { id: 'u2', email: 'b@x.com', tenant_id: 't2', status: 'active', created_at: new Date(Date.now() - 60 * DAY) },
+    ])
+    expect(await runLifecycleSweep(db)).toHaveLength(0)
+  })
+})
+
 describe('global gates', () => {
   it('honors marketing_paused — zero sends, nothing claimed', async () => {
     await seedLead()

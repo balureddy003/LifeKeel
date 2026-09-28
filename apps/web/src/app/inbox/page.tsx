@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { Bot, Info, Home, Landmark, Wallet, Plane, CreditCard, Car, Loader2, CheckCircle2 } from 'lucide-react'
+import { Bot, Info, Home, Landmark, Wallet, Plane, CreditCard, Car, Loader2, CheckCircle2, Share2, Copy } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { GlassCard, PageHeader, EmptyState, MoneyText, Skeleton, PageTransition } from '@/components/Glass'
 import { PullToRefresh } from '@/components/PullToRefresh'
@@ -11,7 +11,7 @@ import { SwipeableRow } from '@/components/SwipeableRow'
 import { haptic } from '@/lib/haptics'
 import { useToast } from '@/components/Toast'
 import type { InboxItem } from '@/lib/onboarding-data'
-import { fetchInboxItems, dismissInboxItem, scanEmailInbox, fetchEmailConnectorStatus, applyInboxPolicy, type PolicyType } from '@/lib/api'
+import { fetchInboxItems, dismissInboxItem, scanEmailInbox, fetchEmailConnectorStatus, applyInboxPolicy, fetchMyReferralCode, type PolicyType } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { PolicyReviewForm, type PolicyDraft } from '@/components/PolicyReviewForm'
 import { invalidateCache } from '@/lib/fetch-cache'
@@ -595,6 +595,10 @@ export default function InboxPage() {
         )}
       </div>
 
+      {/* Referral prompt — the inbox is where Oak proves value, so it's the
+          honest place to ask for a share. Snoozes 14 days on dismiss. */}
+      {items.length > 0 && <ReferralPrompt />}
+
       <div className="glass rounded-2xl p-4 flex items-start gap-2">
         <Info size={18} className="text-ink-tertiary flex-shrink-0 mt-0.5" />
         <p className="text-xs text-ink-tertiary leading-relaxed">
@@ -604,5 +608,85 @@ export default function InboxPage() {
     </div>
     </PullToRefresh>
     </PageTransition>
+  )
+}
+
+const REFERRAL_SNOOZE_KEY = 'agentoak_referral_prompt_snoozed'
+const REFERRAL_SNOOZE_MS = 14 * 24 * 60 * 60 * 1000
+
+/** "Share Oak with another family" — shown at the bottom of the inbox,
+ *  the moment the product has just demonstrated value (there are items
+ *  to read). Dismiss snoozes 14 days so it can't nag. */
+function ReferralPrompt() {
+  const [code, setCode] = useState<string | null>(null)
+  const [visible, setVisible] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const toast = useToast()
+
+  useEffect(() => {
+    try {
+      const snoozed = Number(localStorage.getItem(REFERRAL_SNOOZE_KEY) ?? 0)
+      if (Date.now() - snoozed < REFERRAL_SNOOZE_MS) return
+    } catch { /* locked-down storage — show it anyway, dismiss just won't persist */ }
+    setVisible(true)
+    fetchMyReferralCode().then(setCode)
+  }, [])
+
+  if (!visible) return null
+
+  const link = code ? `${window.location.origin}/signup?ref=${code}` : null
+
+  const share = async () => {
+    if (!link) return
+    haptic('light')
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Agent Oak', text: 'Check your family\'s readiness — free, about a minute.', url: link })
+        return
+      } catch { /* user cancelled or unsupported — fall through to copy */ }
+    }
+    try {
+      await navigator.clipboard.writeText(link)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      toast({ message: 'Couldn\u2019t copy the link', variant: 'error' })
+    }
+  }
+
+  const snooze = () => {
+    haptic('light')
+    try { localStorage.setItem(REFERRAL_SNOOZE_KEY, String(Date.now())) } catch {}
+    setVisible(false)
+  }
+
+  return (
+    <div className="glass rounded-2xl p-4">
+      <div className="flex items-start gap-3">
+        <div className="w-9 h-9 rounded-xl bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0">
+          <Share2 size={16} className="text-family-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-ink-primary">Know a family that should check theirs?</p>
+          <p className="text-xs text-ink-tertiary mt-0.5 leading-relaxed">
+            Share your link — when they join and finish setup, you both get 25 credits.
+          </p>
+        </div>
+      </div>
+      <div className="mt-3 flex items-center gap-2">
+        <motion.button
+          whileTap={{ scale: 0.95 }}
+          onClick={share}
+          disabled={!code}
+          className="flex-1 rounded-2xl py-2.5 text-sm font-semibold text-white bg-family-500 disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+          {copied ? 'Link copied' : 'Share your link'}
+        </motion.button>
+        <button onClick={snooze} className="px-3 py-2.5 text-xs font-semibold text-ink-tertiary">
+          Not now
+        </button>
+      </div>
+    </div>
   )
 }

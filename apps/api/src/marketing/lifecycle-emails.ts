@@ -14,6 +14,10 @@
  *                  the trial sequence owns their conversion timing.
  *   trial          billing.trial_ends_at within 72h → "trial ending" email;
  *                  trial_expired ≤48h ago → "features paused" winback.
+ *   winback        tenant churned (billing.plan_downgraded audit entry)
+ *                  3–14d ago and is still free → one "your data's still
+ *                  here" return email. Once ever per tenant — a second
+ *                  churn doesn't re-trigger it.
  *
  * Safety: every send is a `lifecycle_sends` ledger row keyed
  * `${sequence}:${step}:${recipient}` — a send is claimed by insert BEFORE
@@ -38,7 +42,7 @@ interface LifecycleSendDoc {
   id: string
   /** `${sequence}:${step}:${recipientId}` — unique, claimed before send. */
   key: string
-  sequence: 'lead_nurture' | 'activation' | 'upgrade' | 'trial'
+  sequence: 'lead_nurture' | 'activation' | 'upgrade' | 'trial' | 'winback'
   step: string
   recipient: string // lead id or user id
   email: string
@@ -192,6 +196,19 @@ function trialExpiredBody(firstName: string, appUrl: string): string {
   `)
 }
 
+function winbackBody(firstName: string, appUrl: string): string {
+  return wrap(`
+    <p>Hi ${firstName},</p>
+    <p>Your Oak Plus subscription has ended — your account moved back to the free
+    plan, and nothing was deleted: your family's profile, documents, and every
+    insight Oak already found are still there.</p>
+    <p>The free plan keeps working — your credit balance refills monthly, so Oak
+    keeps watching the basics. If it was the paid features you miss — AI document
+    extraction and inbox summaries — they're one step away.</p>
+    ${cta(`${appUrl}/upgrade?utm_source=lifecycle&utm_medium=email&utm_campaign=winback`, 'See your account')}
+  `)
+}
+
 // ── The sweep ─────────────────────────────────────────────────────────────
 
 interface EmailJob {
@@ -318,6 +335,57 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
         subject: ending ? 'Your Agent Oak trial ends soon' : 'Your trial has ended — AI is paused',
         html: ending ? trialEndingBody(firstName, endsAt, appUrl) : trialExpiredBody(firstName, appUrl),
       })
+    }
+  }
+
+  // ── winback: churned 3–14d ago (plan_downgraded audit entry), still
+  //  free, not re-subscribed. One email per tenant ever — the dedup key
+  //  is per-user so a churn-return-churn cycle doesn't re-mail. ──
+  const churned = await db.collection('audit_log')
+    .find(
+      {
+        action: 'billing.plan_downgraded',
+        timestamp: { $gte: new Date(now - 14 * DAY), $lte: new Date(now - 3 * DAY) },
+      },
+      { projection: { _id: 0, tenant_id: 1, timestamp: 1 } },
+    )
+    .sort({ timestamp: -1 })
+    .limit(200)
+    .toArray()
+  // Latest downgrade wins — an old churn superseded by a re-subscribe then
+  // another churn still counts (audit timestamps are per-event).
+  const churnedAt = new Map<string, Date>()
+  for (const a of churned) {
+    const tid = a['tenant_id'] as string
+    if (!churnedAt.has(tid)) churnedAt.set(tid, a['timestamp'] as Date)
+  }
+  if (churnedAt.size > 0) {
+    const stillFree = new Set(
+      (await db.collection('tenants')
+        .find(
+          { tenant_id: { $in: [...churnedAt.keys()] }, plan: { $in: ['free', null] }, stripe_subscription_id: { $exists: false } },
+          { projection: { _id: 0, tenant_id: 1 } },
+        ).toArray())
+        .map((t) => t['tenant_id'] as string),
+    )
+    if (stillFree.size > 0) {
+      const users = await db.collection('users')
+        .find({ tenant_id: { $in: [...stillFree] }, status: 'active' }, { projection: { _id: 0, id: 1, email: 1, name: 1, tenant_id: 1 } })
+        .limit(500)
+        .toArray()
+      const sentKeys = new Set(
+        (await lifecycleSendsCol(db).find({ sequence: 'winback', recipient: { $in: users.map((u) => u['id'] as string) } }, { projection: { _id: 0, key: 1 } }).toArray())
+          .map((s) => s['key'] as string),
+      )
+      for (const u of users) {
+        const key = `winback:return:${u['id']}`
+        if (sentKeys.has(key)) continue
+        jobs.push({
+          key, sequence: 'winback', step: 'return', recipient: u['id'] as string, email: u['email'] as string,
+          subject: 'Your Oak data is still here',
+          html: winbackBody(String(u['name'] ?? 'there').split(' ')[0] || 'there', appUrl),
+        })
+      }
     }
   }
 
