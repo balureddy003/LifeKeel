@@ -1,22 +1,41 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, HelpCircle, User, ChevronRight, Siren, Loader2, Share2 } from 'lucide-react'
+import { ArrowLeft, HelpCircle, User, ChevronRight, Siren, Loader2, Share2, GraduationCap, ShieldCheck, AlertCircle } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { ROLE_LABELS } from '@/lib/auth-types'
-import { PageHeader, PageTransition } from '@/components/Glass'
+import { PageHeader, PageTransition, Money } from '@/components/Glass'
+import { fetchMemberTwin, type MemberTwin } from '@/lib/api'
 import { useToast } from '@/components/Toast'
 import { calculateAge } from '@/lib/age'
 import { haptic } from '@/lib/haptics'
+
+// Minor units → "£1,234" / "£1,234/mo" display strings (Money redacts in
+// child-mode, so raw amounts never render unredacted).
+function gbp(minor: number): string {
+  return `£${Math.round(minor / 100).toLocaleString('en-GB')}`
+}
+function gbpPerMonth(minor: number): string {
+  return `${gbp(minor)}/mo`
+}
 
 export default function MemberProfileClient() {
   const params = useParams<{ id: string }>()
   const { family, updateMemberDateOfBirth } = useAuth()
   const toast = useToast()
   const [savingDob, setSavingDob] = useState(false)
+  const [twin, setTwin] = useState<MemberTwin | null>(null)
   const member = family?.members.find((m) => m.id === params.id)
+
+  // PRD-117: the member twin — their earner slice, attributed policies,
+  // education funds, and open insights, all server-assembled on read.
+  useEffect(() => {
+    let cancelled = false
+    fetchMemberTwin(params.id).then((t) => { if (!cancelled) setTwin(t) })
+    return () => { cancelled = true }
+  }, [params.id])
 
   // A "Pending" member has a roster record but hasn't joined yet — this
   // app has no per-person emailed invite, only one shared family code
@@ -130,12 +149,80 @@ export default function MemberProfileClient() {
         </label>
       </div>
 
+      {twin?.has_live_data && (
+        <div className="card space-y-4">
+          <div className="text-sm font-semibold text-ink-primary">Their financial picture</div>
+
+          {twin.financial.earner && (
+            <div className="flex items-start gap-3">
+              <User size={16} className="text-family-400 mt-0.5 flex-shrink-0" />
+              <div className="text-sm text-ink-secondary">
+                <span className="capitalize">{twin.financial.earner.employment_status.replace('_', ' ')}</span>
+                {' — '}
+                <Money value={gbpPerMonth(twin.financial.earner.monthly_salary_minor)} />
+                {twin.financial.earner.income_protection_monthly_minor > 0 && (
+                  <span className="text-ink-tertiary">
+                    {' '}· income protection <Money value={gbpPerMonth(twin.financial.earner.income_protection_monthly_minor)} />
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {twin.financial.policies.map((p, i) => (
+            <div key={`${p.type}-${i}`} className="flex items-start gap-3">
+              <ShieldCheck size={16} className="text-family-400 mt-0.5 flex-shrink-0" />
+              <div className="text-sm text-ink-secondary">
+                <span className="capitalize">{p.type.replace('_', ' ')}</span>
+                {' — '}{p.provider}
+                {p.coverage_amount_minor > 0 && (
+                  <span className="text-ink-tertiary">
+                    {' '}· cover <Money value={gbp(p.coverage_amount_minor)} />
+                  </span>
+                )}
+                {p.renewal_date && (
+                  <span className="text-ink-tertiary"> · renews {new Date(p.renewal_date).toLocaleDateString('en-GB')}</span>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {twin.financial.education_funds.map((f, i) => (
+            <div key={f.child_name ?? i} className="flex items-start gap-3">
+              <GraduationCap size={16} className="text-family-400 mt-0.5 flex-shrink-0" />
+              <div className="text-sm text-ink-secondary">
+                Education fund: <Money value={gbp(f.current_savings_minor)} />
+                {' of '}
+                <Money value={gbp(f.target_savings_minor)} />
+                <span className="text-ink-tertiary">
+                  {' '}— needs <Money value={gbpPerMonth(f.needed_monthly_minor)} /> for {f.years_remaining}y
+                </span>
+              </div>
+            </div>
+          ))}
+
+          {twin.financial.insights.length > 0 && (
+            <div className="pt-3 border-t border-tint/10 space-y-1.5">
+              <div className="text-xs font-semibold text-ink-tertiary flex items-center gap-1.5">
+                <AlertCircle size={12} /> Open insights about {member.name.split(' ')[0]}
+              </div>
+              {twin.financial.insights.map((i) => (
+                <p key={String(i.id)} className="text-xs text-ink-secondary leading-relaxed">
+                  {typeof i.hypothesis === 'string' ? i.hypothesis.replace(/_/g, ' ') : ''}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <Link href="/financial-profile" className="card flex items-center gap-3 active:opacity-80">
         <div className="flex-1">
-          <div className="text-sm font-semibold text-ink-primary">Add financial details</div>
+          <div className="text-sm font-semibold text-ink-primary">Update financial details</div>
           <p className="text-sm text-ink-tertiary mt-0.5">
-            Income, protection, and assets aren&apos;t collected per-member yet — add them to your
-            family&apos;s Financial Profile to power real insights.
+            {twin?.has_live_data
+              ? 'Per-member income, protection, and education funds live in the family Financial Profile.'
+              : 'Income, protection, and education funds are collected per-member — add them in the Financial Profile.'}
           </p>
         </div>
         <ChevronRight size={16} className="text-ink-tertiary flex-shrink-0" />

@@ -79,9 +79,15 @@ export async function redeemPromoCode(
     return { ok: false, grant_credits: 0, new_balance: 0, reason: 'Promo code already redeemed by this workspace' }
   }
 
-  // Atomic increment of promo code usage
+  // Atomic increment of promo code usage. max_uses <= 0 means unlimited
+  // (the early return above treats it that way, and the operator schema
+  // defaults to 0) — the conditional filter must only apply when a real
+  // cap exists, because `used_count: { $lt: 0 }` never matches and made
+  // every unlimited code permanently unredeemable.
   const codeUpdate = await promoCol.updateOne(
-    { code: normalized, used_count: { $lt: (doc as unknown as Record<string, number>).max_uses } },
+    doc.max_uses > 0
+      ? { code: normalized, used_count: { $lt: doc.max_uses } }
+      : { code: normalized },
     { $inc: { used_count: 1 } },
   )
 

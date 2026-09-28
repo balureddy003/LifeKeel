@@ -21,7 +21,8 @@ import type { Db } from 'mongodb'
 import { createLlmRouterFromEnv, getTenantCollection, type LlmFn } from '@agentoak/platform'
 import { getInsightsCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
-import { calculateScenario, type ScenarioProfileInput, type ScenarioResult } from '../scenarios/calculate.js'
+import { calculateScenario, type ScenarioResult } from '../scenarios/calculate.js'
+import { toScenarioProfileInput } from '../scenarios/profile-input.js'
 import { isUnsetTarget } from './family-financial-profile.js'
 
 const AskSchema = z.object({
@@ -32,6 +33,10 @@ const SimulateSchema = z.object({
   monthlyIncomeDeltaMinor: z.number().int().optional(),
   monthlyExtraSavingsMinor: z.number().int().min(0).optional(),
   targetChildName: z.string().max(100).optional(),
+  // PRD-115: months until the income change takes effect — "a job
+  // transition in 6 months" — so the runway projection starts from the
+  // balance the household will actually have then, not today's.
+  monthsUntilChange: z.number().int().min(0).max(360).optional(),
   // Optional — what the family actually typed/asked about this scenario.
   // Falls back to a generic prompt so the endpoint works from a plain
   // structured UI control (sliders/inputs) with no free text at all.
@@ -262,33 +267,8 @@ async function loadAssistantData(db: Db, tenant_id: string) {
   return { profileDoc, familyDoc, insightDocs, unreviewedDocs }
 }
 
-// Maps the profile's raw fields into the scenario calculator's minimal
-// input shape — null when there's not enough on file to project anything
-// (no income and no expenses at all), so /simulate can decline honestly
-// instead of running the math on all-zero data and presenting it as real.
-function toScenarioProfileInput(profile: FinancialProfileDoc | null): ScenarioProfileInput | null {
-  const h = profile?.household
-  const ef = profile?.emergency_fund
-  if (!h && !ef) return null
-
-  const monthlyIncomeMinor = (h?.monthly_salary_minor ?? 0) + (h?.members ?? []).reduce((sum, m) => sum + (m.monthly_salary_minor ?? 0), 0)
-  const monthlyExpensesMinor = ef?.monthly_expenses_minor ?? Math.round((h?.annual_living_expenses_minor ?? 0) / 12)
-  if (monthlyIncomeMinor === 0 && monthlyExpensesMinor === 0) return null
-
-  return {
-    monthlyIncomeMinor,
-    monthlyExpensesMinor,
-    emergencySavingsMinor: ef?.emergency_savings_minor ?? 0,
-    educationFunds: (profile?.education_funds ?? [])
-      .filter((f) => !!f.child_name)
-      .map((f) => ({
-        childName: f.child_name!,
-        currentSavingsMinor: f.current_savings_minor ?? 0,
-        targetSavingsMinor: f.target_savings_minor ?? 0,
-        yearsRemaining: f.years_remaining ?? 0,
-      })),
-  }
-}
+// toScenarioProfileInput moved to ../scenarios/profile-input.ts for
+// PRD-115 — the saved-scenario routes reuse the same mapping.
 
 function formatScenarioResult(result: ScenarioResult): string {
   const lines = [
@@ -302,6 +282,11 @@ function formatScenarioResult(result: ScenarioResult): string {
     result.projectedRunwayMonths === null
       ? 'Projected emergency-fund runway under this scenario: not applicable — income would cover expenses.'
       : `Projected emergency-fund runway under this scenario: ${result.projectedRunwayMonths} months.`,
+    // PRD-115: say when the change lands so the LLM narrates "in 6 months
+    // you'd have X" instead of implying today's balance carries it.
+    result.monthsUntilChange > 0
+      ? `Timing: this change takes effect in ${result.monthsUntilChange} months — by then the emergency fund would have reached £${toMajor(result.savingsAtChangeMinor)}, and the projected runway above is measured from that balance.`
+      : 'Timing: this change takes effect immediately.',
   ]
   if (result.educationFundProjection) {
     const p = result.educationFundProjection
@@ -365,7 +350,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
         return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
       }
       const { tenant_id } = req.authContext
-      const { monthlyIncomeDeltaMinor, monthlyExtraSavingsMinor, targetChildName, question } = parsed.data
+      const { monthlyIncomeDeltaMinor, monthlyExtraSavingsMinor, targetChildName, monthsUntilChange, question } = parsed.data
 
       const { profileDoc, familyDoc, insightDocs, unreviewedDocs } = await loadAssistantData(db, tenant_id)
       const scenarioInput = toScenarioProfileInput(profileDoc)
@@ -381,6 +366,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
         monthlyIncomeDeltaMinor,
         monthlyExtraSavingsMinor,
         targetChildName,
+        monthsUntilChange,
       })
 
       const context = buildContext(

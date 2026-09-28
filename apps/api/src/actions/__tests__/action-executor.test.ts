@@ -19,7 +19,10 @@ import { createHash } from 'node:crypto'
 import type { Insight } from '@agentoak/engine'
 import { ActionExecutor } from '../action-executor.js'
 
-function makeInsight(actions: string[]): Insight {
+function makeInsight(
+  actions: string[],
+  action_intents?: { type: 'send_email' | 'send_whatsapp' | 'crm_tag' | 'log_only'; label: string; params?: Record<string, unknown> }[],
+): Insight {
   return {
     id: 'insight-1',
     tenant_id: 'tenant-1',
@@ -30,6 +33,7 @@ function makeInsight(actions: string[]): Insight {
     estimated_impact_high: 200,
     reasoning: 'A test insight.',
     actions,
+    ...(action_intents ? { action_intents } : {}),
     confidence_breakdown: {
       or_score: 0.8,
       combined_score: 0.8,
@@ -323,6 +327,79 @@ describe('OAK-002: dangerous action types deleted', () => {
       const executor = new ActionExecutor(db)
       const summary = await executor.execute(makeInsight(['Send an email reminder']), 'tenant-1', {})
       expect(summary.receipts[0]!.outcome).toBe('execution_ambiguous')
+    })
+  })
+
+  // PRD-116: detector-declared action_intents are authoritative over
+  // keyword classification — in both directions.
+  describe('PRD-116: declared action_intents', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    it('a declared send_email intent dispatches even when its label would keyword-classify as log_only', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, text: async () => '', json: async () => ({}) })))
+      const { db } = makeDb([], SENDGRID)
+      const executor = new ActionExecutor(db)
+      // "Email me a reminder before this policy renews" doesn't match
+      // /send.*email|email.*remind/ — the declaration is what makes it send.
+      const summary = await executor.execute(
+        makeInsight(
+          ['Email me a reminder before this policy renews'],
+          [{ type: 'send_email', label: 'Email me a reminder before this policy renews' }],
+        ),
+        'tenant-1',
+        {},
+      )
+      expect(summary.receipts[0]!.action_type).toBe('send_email')
+      expect(summary.receipts[0]!.outcome).toBe('executed')
+      expect(fetch).toHaveBeenCalledWith('https://api.sendgrid.com/v3/mail/send', expect.anything())
+    })
+
+    it('a declared log_only intent suppresses a label that would keyword-classify as external', async () => {
+      // The safer direction matters more: a detector that explicitly
+      // declares log_only must never dispatch, whatever the regex thinks
+      // the label sounds like.
+      vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('fetch must not run for a declared log_only') }))
+      const { db } = makeDb([], SENDGRID)
+      const executor = new ActionExecutor(db)
+      const summary = await executor.execute(
+        makeInsight(
+          ['Send an email reminder'],
+          [{ type: 'log_only', label: 'Send an email reminder' }],
+        ),
+        'tenant-1',
+        {},
+      )
+      expect(summary.receipts[0]!.action_type).toBe('log_only')
+      expect(summary.receipts[0]!.outcome).toBe('execution_skipped')
+      expect(fetch).not.toHaveBeenCalled()
+    })
+
+    it('previewActions reflects the declared intent — the approval gate names the same action the executor runs', async () => {
+      const { previewActions } = await import('../action-executor.js')
+      const previews = previewActions(
+        ['Email me a reminder before this policy renews', 'Review the renewal terms'],
+        [{ type: 'send_email', label: 'Email me a reminder before this policy renews' }],
+      )
+      expect(previews[0]).toMatchObject({ type: 'send_email', external: true })
+      expect(previews[1]).toMatchObject({ type: 'log_only', external: false })
+    })
+
+    it('a declared intent whose label is not in actions still executes — declared intents are the actionable set', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, text: async () => '', json: async () => ({}) })))
+      const { db } = makeDb([], SENDGRID)
+      const executor = new ActionExecutor(db)
+      const summary = await executor.execute(
+        makeInsight(
+          ['Review the renewal terms'],
+          [{ type: 'send_email', label: 'Email me a reminder before this policy renews' }],
+        ),
+        'tenant-1',
+        {},
+      )
+      expect(summary.receipts.map((r) => r.action_type).sort()).toEqual(['log_only', 'send_email'])
+      expect(fetch).toHaveBeenCalledTimes(1)
     })
   })
 })

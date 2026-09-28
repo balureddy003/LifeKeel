@@ -6,7 +6,7 @@ import { Sparkles, CheckCircle2, Loader2, AlertCircle, ScanLine } from 'lucide-r
 import { PageHeader, GlassCard, GlassButton, Skeleton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
-import { fetchBillingSubscription, startOakPlusCheckout, type BillingSubscription } from '@/lib/api'
+import { fetchBillingSubscription, openBillingPortal, redeemPromoCode, startOakPlusCheckout, type BillingSubscription } from '@/lib/api'
 
 const BENEFITS = [
   'AI reads your documents and pulls out the provider, policy number, amounts, and dates automatically',
@@ -80,9 +80,15 @@ function ExtractionPreview() {
 export default function UpgradePage() {
   const [loading, setLoading] = useState(true)
   const [checkingOut, setCheckingOut] = useState(false)
+  const [openingPortal, setOpeningPortal] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isPlus, setIsPlus] = useState(false)
+  const [sub, setSub] = useState<BillingSubscription | null>(null)
   const [banner, setBanner] = useState<'success' | 'canceled' | null>(null)
+  const [promoCode, setPromoCode] = useState('')
+  const [redeeming, setRedeeming] = useState(false)
+  const [promoMessage, setPromoMessage] = useState<string | null>(null)
+  const [promoError, setPromoError] = useState<string | null>(null)
 
   useEffect(() => {
     track('upgrade_page_view')
@@ -95,9 +101,10 @@ export default function UpgradePage() {
       !!sub && sub.plan !== 'free' && sub.status !== 'canceled'
 
     let cancelled = false
-    fetchBillingSubscription().then((sub) => {
+    fetchBillingSubscription().then((s) => {
       if (cancelled) return
-      setIsPlus(isActive(sub))
+      setSub(s)
+      setIsPlus(isActive(s))
       setLoading(false)
     })
 
@@ -111,8 +118,9 @@ export default function UpgradePage() {
         clearInterval(interval)
         return
       }
-      const sub = await fetchBillingSubscription()
-      if (!cancelled && isActive(sub)) {
+      const s = await fetchBillingSubscription()
+      if (!cancelled && isActive(s)) {
+        setSub(s)
         setIsPlus(true)
         clearInterval(interval)
       }
@@ -132,6 +140,42 @@ export default function UpgradePage() {
       haptic('warning')
       setError(err instanceof Error ? err.message : "Checkout didn't start — you haven't been charged anything. Try again in a moment.")
       setCheckingOut(false)
+    }
+  }
+
+  const handleManage = async () => {
+    haptic('light')
+    setOpeningPortal(true)
+    setError(null)
+    try {
+      const url = await openBillingPortal(window.location.origin + '/upgrade')
+      window.location.href = url
+    } catch (err) {
+      haptic('warning')
+      setError(err instanceof Error ? err.message : "Couldn't open subscription management. Try again in a moment.")
+      setOpeningPortal(false)
+    }
+  }
+
+  const handleRedeem = async () => {
+    const code = promoCode.trim()
+    if (!code) return
+    haptic('light')
+    track('promo_redeem_attempt')
+    setRedeeming(true)
+    setPromoMessage(null)
+    setPromoError(null)
+    try {
+      const result = await redeemPromoCode(code)
+      haptic('success')
+      track('promo_redeemed')
+      setPromoMessage(`Code applied — ${result.grant_credits} credits added to your account.`)
+      setPromoCode('')
+    } catch (err) {
+      haptic('warning')
+      setPromoError(err instanceof Error ? err.message : "Couldn't redeem that code. Check it and try again.")
+    } finally {
+      setRedeeming(false)
     }
   }
 
@@ -181,7 +225,20 @@ export default function UpgradePage() {
             </div>
             <h2 className="text-lg font-bold mb-1">You're on Oak Plus</h2>
             <p className="text-sm text-ink-tertiary">AI document extraction and inbox summaries are active on your account.</p>
+            {sub?.subscription?.current_period_end && (
+              <p className="text-xs text-ink-tertiary mt-2">
+                {sub.subscription.cancel_at_period_end
+                  ? `Cancels on ${new Date(sub.subscription.current_period_end * 1000).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })} — Oak Plus stays active until then.`
+                  : `Renews ${new Date(sub.subscription.current_period_end * 1000).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}`}
+              </p>
+            )}
           </GlassCard>
+
+          {error && <p role="status" aria-live="polite" className="text-sm text-danger text-center mt-4">{error}</p>}
+
+          <GlassButton onClick={handleManage} disabled={openingPortal} className="mt-4">
+            {openingPortal ? <Loader2 size={18} className="animate-spin" /> : 'Manage subscription'}
+          </GlassButton>
         </motion.div>
       ) : (
         <>
@@ -216,6 +273,27 @@ export default function UpgradePage() {
           </GlassButton>
         </>
       )}
+
+      <GlassCard className="p-5">
+        <label htmlFor="promo-code" className="text-sm font-semibold text-ink-secondary">Have a promo code?</label>
+        <div className="flex gap-2 mt-2">
+          <input
+            id="promo-code"
+            type="text"
+            value={promoCode}
+            onChange={(e) => setPromoCode(e.target.value)}
+            placeholder="Enter code"
+            autoComplete="off"
+            autoCapitalize="characters"
+            className="flex-1 min-w-0 rounded-xl bg-tint/[0.04] border border-tint/[0.08] px-3 py-2 text-sm text-ink-primary placeholder:text-ink-tertiary focus:outline-none focus:border-family-500/40"
+          />
+          <GlassButton onClick={handleRedeem} disabled={redeeming || promoCode.trim().length === 0} className="px-4 py-2 text-sm w-auto">
+            {redeeming ? <Loader2 size={16} className="animate-spin" /> : 'Apply'}
+          </GlassButton>
+        </div>
+        {promoMessage && <p role="status" className="text-sm text-success mt-2">{promoMessage}</p>}
+        {promoError && <p role="status" className="text-sm text-danger mt-2">{promoError}</p>}
+      </GlassCard>
 
       <p className="text-xs text-ink-tertiary text-center leading-relaxed">
         Uploading and storing documents is always free. This upgrade covers the AI reading step only.

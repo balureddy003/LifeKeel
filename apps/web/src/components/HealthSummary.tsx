@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { useState } from 'react'
-import { Heart, Wallet, Target, PiggyBank } from 'lucide-react'
+import { Heart, Wallet, Target, PiggyBank, FileLock2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { GlassCard, SkeletonCard } from './Glass'
 import { haptic } from '@/lib/haptics'
@@ -98,6 +98,7 @@ const DOMAIN_META: Record<HealthDomain, { color: string; textColor: string; labe
   wealth: { color: '#fbbf24', textColor: 'rgb(var(--warning))', label: 'Wealth', icon: Wallet },
   goals: { color: '#4ade80', textColor: 'rgb(var(--success))', label: 'Goals', icon: Target },
   savings: { color: '#60a5fa', textColor: 'rgb(var(--info))', label: 'Savings', icon: PiggyBank },
+  estate: { color: '#8b80f8', textColor: 'rgb(var(--family-400))', label: 'Estate', icon: FileLock2 },
 }
 
 export function HealthSummary() {

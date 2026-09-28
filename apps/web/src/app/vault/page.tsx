@@ -11,7 +11,10 @@ import {
   uploadVaultDocument,
   fetchVaultDocumentFileUrl,
   deleteVaultDocument,
+  VAULT_DOC_TYPES,
+  VAULT_DOC_TYPE_LABELS,
   type VaultDocument,
+  type VaultDocType,
 } from '@/lib/api'
 import { Camera, Upload, FileLock2, Loader2, AlertCircle, Lock, Trash2, X } from 'lucide-react'
 
@@ -27,6 +30,10 @@ export default function VaultPage() {
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState<{ id: string; url: string; mimeType: string; filename: string } | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  // What kind of document the next upload is — feeds the estate component
+  // of the readiness score (a "will" counts toward estate completion,
+  // "other" doesn't).
+  const [docType, setDocType] = useState<VaultDocType>('other')
 
   const load = useCallback(async () => {
     const { documents: docs, forbidden: f } = await fetchVaultDocuments()
@@ -55,7 +62,7 @@ export default function VaultPage() {
     setError(null)
     haptic('light')
     try {
-      const doc = await uploadVaultDocument(file)
+      const doc = await uploadVaultDocument(file, docType)
       setDocuments((prev) => [doc, ...prev])
       haptic('success')
       toast({ message: 'Added to your vault' })
@@ -65,7 +72,7 @@ export default function VaultPage() {
     } finally {
       setUploading(false)
     }
-  }, [toast])
+  }, [toast, docType])
 
   const openPreview = useCallback(async (doc: VaultDocument) => {
     haptic('light')
@@ -125,6 +132,19 @@ export default function VaultPage() {
         </GlassCard>
       ) : (
         <>
+          <label className="flex items-center gap-2 px-1 text-xs text-ink-tertiary">
+            Document type
+            <select
+              value={docType}
+              onChange={(e) => setDocType(e.target.value as VaultDocType)}
+              className="rounded-lg bg-tint/[0.04] border border-tint/[0.08] px-2 py-1 text-xs text-ink-secondary"
+            >
+              {VAULT_DOC_TYPES.map((t) => (
+                <option key={t} value={t}>{VAULT_DOC_TYPE_LABELS[t]}</option>
+              ))}
+            </select>
+          </label>
+
           <div className="grid grid-cols-2 gap-3">
             <motion.button
               whileTap={{ scale: 0.96 }}
@@ -189,7 +209,12 @@ export default function VaultPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold truncate">{doc.filename}</div>
-                        <div className="text-xs text-ink-tertiary mt-0.5">
+                        <div className="text-xs text-ink-tertiary mt-0.5 flex items-center gap-1.5">
+                          {doc.docType && (
+                            <span className="rounded-full bg-family-500/10 text-family-400 px-1.5 py-px text-[10px] font-medium">
+                              {VAULT_DOC_TYPE_LABELS[doc.docType]}
+                            </span>
+                          )}
                           Added {new Date(doc.uploadedAt).toLocaleDateString()}
                         </div>
                       </div>

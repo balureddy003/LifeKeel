@@ -256,6 +256,9 @@ export class Detector {
         estimated_impact_high: impactHigh,
         reasoning,
         actions: rule.actions,
+        ...(rule.action_intents && rule.action_intents.length > 0
+          ? { action_intents: rule.action_intents }
+          : {}),
         ...(alternatives && alternatives.length > 0 ? { alternatives } : {}),
         ...(riskAssessment ? { risk_assessment: riskAssessment } : {}),
         ...(exitCriteria ? { exit_criteria: exitCriteria } : {}),

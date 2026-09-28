@@ -41,6 +41,15 @@ type VaultDocumentRecord = Record<string, unknown> & {
   uploaded_at?: Date
 }
 
+// PRD-114: optional document-type tag on upload — what makes the estate
+// component of GET /family/readiness computable ("is there a will? a
+// PoA?") instead of just "N files exist". Additive: documents uploaded
+// before this field have no doc_type and simply don't satisfy an expected
+// category. Types are user-declared, never OCR-guessed — the vault does
+// no extraction on these files at all.
+export const VAULT_DOC_TYPES = ['will', 'power_of_attorney', 'insurance_policy', 'estate_instruction', 'other'] as const
+export type VaultDocType = (typeof VAULT_DOC_TYPES)[number]
+
 export function registerVaultRoutes(fastify: FastifyInstance, db: Db): void {
   // Reuses documents.ts's own bucket name — see this file's module doc for
   // why a second bucket isn't warranted (account.ts's tenant-deletion sweep
@@ -55,9 +64,13 @@ export function registerVaultRoutes(fastify: FastifyInstance, db: Db): void {
   }
 
   // ── POST /vault/documents/upload ────────────────────────────────────────
-  fastify.post('/vault/documents/upload', async (req, reply) => {
+  fastify.post<{ Querystring: { doc_type?: string } }>('/vault/documents/upload', async (req, reply) => {
     if (!(await requireAdult(req, reply))) return
     const { tenant_id } = req.authContext
+    const docType = req.query.doc_type
+    if (docType !== undefined && !(VAULT_DOC_TYPES as readonly string[]).includes(docType)) {
+      return reply.status(400).send({ error: `Invalid doc_type. Allowed: ${VAULT_DOC_TYPES.join(', ')}` })
+    }
     const data = await req.file()
     if (!data) {
       return reply.status(400).send({ error: 'No file uploaded' })
@@ -82,7 +95,7 @@ export function registerVaultRoutes(fastify: FastifyInstance, db: Db): void {
 
     try {
       const uploadStream = bucket.openUploadStream(filename, {
-        metadata: { tenant_id, document_id: documentId, mime_type: mimeType, uploaded_at: new Date(), category: ESTATE_VAULT_CATEGORY },
+        metadata: { tenant_id, document_id: documentId, mime_type: mimeType, uploaded_at: new Date(), category: ESTATE_VAULT_CATEGORY, ...(docType ? { doc_type: docType } : {}) },
       })
       const fileId = uploadStream.id as ObjectId
       await new Promise<void>((resolve, reject) => {
@@ -104,6 +117,7 @@ export function registerVaultRoutes(fastify: FastifyInstance, db: Db): void {
           uploaded_by: req.authContext.user_id,
           file_id: fileId,
           encrypted: true,
+          ...(docType ? { doc_type: docType } : {}),
         })
       } catch (metaErr) {
         await bucket.delete(fileId).catch((cleanupErr) =>
@@ -117,6 +131,7 @@ export function registerVaultRoutes(fastify: FastifyInstance, db: Db): void {
         filename,
         category: ESTATE_VAULT_CATEGORY,
         uploadedAt: new Date().toISOString(),
+        ...(docType ? { docType } : {}),
       })
     } catch (err) {
       log.error({ err, documentId, filename }, 'Failed to store estate vault document')
@@ -137,6 +152,7 @@ export function registerVaultRoutes(fastify: FastifyInstance, db: Db): void {
         mimeType: doc['mime_type'],
         uploadedAt: doc['uploaded_at']?.toISOString() ?? '',
         uploadedBy: doc['uploaded_by'] ?? null,
+        docType: doc['doc_type'] ?? null,
       })),
     }
   })

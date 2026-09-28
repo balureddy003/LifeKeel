@@ -77,4 +77,53 @@ describe('calculateScenario', () => {
     const result = calculateScenario({ ...baseProfile, emergencySavingsMinor: 0 }, { monthlyIncomeDeltaMinor: -500_000 })
     expect(result.projectedRunwayMonths).toBe(0)
   })
+
+  // PRD-115 — monthsUntilChange: the horizon grows (or drains) the fund
+  // under today's numbers first, then runway is measured from there.
+  it('grows the fund by the current surplus over the horizon before the change hits', () => {
+    const result = calculateScenario(baseProfile, {
+      monthlyIncomeDeltaMinor: -500_000,
+      monthsUntilChange: 6,
+    })
+    // £9,000 + £2,000/mo surplus × 6 = £21,000 at change; then 21/3 = 7 months
+    expect(result.savingsAtChangeMinor).toBe(2_100_000)
+    expect(result.projectedRunwayMonths).toBe(7)
+    expect(result.monthsUntilChange).toBe(6)
+  })
+
+  it('drains the fund over the horizon when the household is already underwater', () => {
+    const underwater: ScenarioProfileInput = {
+      ...baseProfile,
+      monthlyIncomeMinor: 200_000, // £2,000 in, £3,000 out → −£1,000/mo
+    }
+    const result = calculateScenario(underwater, {
+      monthlyIncomeDeltaMinor: -200_000,
+      monthsUntilChange: 6,
+    })
+    // £9,000 − £1,000 × 6 = £3,000 left at change; then £3,000/£3,000 = 1 month
+    expect(result.savingsAtChangeMinor).toBe(300_000)
+    expect(result.projectedRunwayMonths).toBe(1)
+  })
+
+  it('floors savingsAtChange at 0 — a horizon drain can exhaust but never go negative', () => {
+    const underwater: ScenarioProfileInput = {
+      ...baseProfile,
+      monthlyIncomeMinor: 100_000, // −£2,000/mo
+    }
+    const result = calculateScenario(underwater, {
+      monthlyIncomeDeltaMinor: -100_000,
+      monthsUntilChange: 12,
+    })
+    // £9,000 − £2,000 × 12 = −£15,000 → clamped to 0
+    expect(result.savingsAtChangeMinor).toBe(0)
+    expect(result.projectedRunwayMonths).toBe(0)
+  })
+
+  it('treats a missing or zero horizon as an instant change — today’s balance', () => {
+    for (const monthsUntilChange of [undefined, 0]) {
+      const result = calculateScenario(baseProfile, { monthlyIncomeDeltaMinor: -500_000, monthsUntilChange })
+      expect(result.savingsAtChangeMinor).toBe(900_000)
+      expect(result.projectedRunwayMonths).toBe(3)
+    }
+  })
 })

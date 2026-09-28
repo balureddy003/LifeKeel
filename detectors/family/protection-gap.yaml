@@ -87,6 +87,16 @@ rules:
       - Review the renewal terms and any premium change
       - Compare against current market quotes before renewing automatically
       - Confirm the coverage amount still matches your household's needs
+      - Email me a reminder before this policy renews
+    # PRD-116: the first detector-declared executable intent in the family
+    # vertical — a renewal reminder emailed to the family's own address
+    # (the executor's send_email is always a self-send, never to the
+    # insurer). Declared explicitly rather than keyword-matched so the
+    # approval gate names a real side effect; auto-execute-trusted excludes
+    # it categorically — an external intent never auto-dispatches.
+    action_intents:
+      - type: send_email
+        label: Email me a reminder before this policy renews
 
   - id: no_health_or_critical_illness_cover
     name: No Health or Critical Illness Cover Listed

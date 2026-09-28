@@ -53,12 +53,18 @@ function makeEmail(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function makeDb(existingMessageIds: string[] = []) {
+function makeDb(
+  existingMessageIds: string[] = [],
+  tenant: Record<string, unknown> | null = { plan: 'starter' },
+) {
   const inboxInserts: Record<string, unknown>[] = []
   const documentInserts: Record<string, unknown>[] = []
   const credentialUpdates: Record<string, unknown>[] = []
 
   const collections: Record<string, unknown> = {
+    tenants: {
+      findOne: vi.fn(async () => (tenant ? { tenant_id: TENANT, ...tenant } : null)),
+    },
     inbox_items: {
       findOne: vi.fn(async (filter: { email_message_id: string }) =>
         existingMessageIds.includes(filter.email_message_id) ? { id: 'existing' } : null,
@@ -96,6 +102,57 @@ describe('scanTenantInbox', () => {
     classifyEmailMock.mockReset()
     processDocumentMock.mockClear()
     uploadStreamEnd.mockClear()
+  })
+
+  it('is a no-op for a free tenant — no LLM, OCR, or cursor movement', async () => {
+    const db = makeDb([], { plan: 'free' })
+
+    const result = await scanTenantInbox(db, TENANT, VALID_CREDENTIAL_DOC as any)
+
+    expect(result).toEqual({ scanned: 0, inboxItemsCreated: 0, documentsCreated: 0 })
+    expect(fetchRecentEmailsMock).not.toHaveBeenCalled()
+    expect(classifyEmailMock).not.toHaveBeenCalled()
+    expect(processDocumentMock).not.toHaveBeenCalled()
+    // The UID cursor must not advance — mail received on the free plan
+    // gets backfilled if the tenant upgrades later.
+    expect(db._credentialUpdates).toHaveLength(0)
+  })
+
+  it('is a no-op when the tenant document is missing (defaults to free)', async () => {
+    const db = makeDb([], null)
+
+    const result = await scanTenantInbox(db, TENANT, VALID_CREDENTIAL_DOC as any)
+
+    expect(result).toEqual({ scanned: 0, inboxItemsCreated: 0, documentsCreated: 0 })
+    expect(fetchRecentEmailsMock).not.toHaveBeenCalled()
+  })
+
+  it('scans for a free tenant whose signup trial is still running', async () => {
+    fetchRecentEmailsMock.mockResolvedValue({ emails: [makeEmail()], highestUid: 1 })
+    classifyEmailMock.mockResolvedValue({ isFinancial: true, summary: 's', actionLabel: 'a', actionType: 'review', priority: 'high' })
+    const db = makeDb([], {
+      plan: 'free',
+      billing: { trial_ends_at: new Date(Date.now() + 10 * 86_400_000) },
+    })
+
+    const result = await scanTenantInbox(db, TENANT, VALID_CREDENTIAL_DOC as any)
+
+    // Trial demos the paid product — a free-plan tenant inside the trial
+    // window gets the AI inbox.
+    expect(result.inboxItemsCreated).toBe(1)
+    expect(classifyEmailMock).toHaveBeenCalled()
+  })
+
+  it('is a no-op for a free tenant whose trial has ended', async () => {
+    const db = makeDb([], {
+      plan: 'free',
+      billing: { trial_ends_at: new Date(Date.now() - 86_400_000), trial_expired: true },
+    })
+
+    const result = await scanTenantInbox(db, TENANT, VALID_CREDENTIAL_DOC as any)
+
+    expect(result).toEqual({ scanned: 0, inboxItemsCreated: 0, documentsCreated: 0 })
+    expect(fetchRecentEmailsMock).not.toHaveBeenCalled()
   })
 
   it('returns zero scan result when credentials are incomplete', async () => {

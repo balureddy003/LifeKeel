@@ -10,6 +10,7 @@
  * apps/api/src/life-events/render-playbook.ts — so the numbers shown
  * stay live rather than frozen at report time.
  *
+ * GET  /family/events/:eventId/readiness              — real readiness for a /events "What If?" scenario
  * GET  /family/life-events                            — the tenant's declared events, most recent first
  * POST /family/life-events                            — report a new event, returns its rendered playbook
  * POST /family/life-events/:id/steps/:stepId/prepare  — draft an outreach message for one step (Tier 1 — never sends)
@@ -25,8 +26,9 @@ import { createLlmRouterFromEnv, getTenantCollection } from '@agentoak/platform'
 import { getSignalsCollection, getLifeChangeNudgeStateCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { persistSignal } from '../signals.js'
-import { generateDraft } from '../insights/generate-draft.js'
+import { generateDraft, generatePrepNote } from '../insights/generate-draft.js'
 import { renderPlaybook, type LifeEventType } from '../life-events/render-playbook.js'
+import { computeEventReadiness } from '../life-events/event-readiness.js'
 import { maybeSendVaultReminder } from '../life-events/vault-reminder.js'
 import type { FinancialProfile } from './family-financial-profile.js'
 
@@ -99,6 +101,24 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
     }
   })
 
+  /**
+   * Real readiness for a /events "What If?" hypothetical scenario —
+   * event-readiness.ts's pure-arithmetic formulas, reused from this file
+   * (not a life-event route conceptually) because it needs the exact same
+   * `profileFor` lookup every route here already has. Registered under
+   * /family/events/ rather than /family/life-events/ on purpose: these
+   * are two separate features (a hypothetical preview vs. a real, tracked
+   * report) and the URL should say so, even though the computation is
+   * shared. No profile at all is the only true "sample" case — everything
+   * else either has real data or is honest that it doesn't (hasLiveData).
+   */
+  app.get<{ Params: { eventId: string } }>('/family/events/:eventId/readiness', async (req, reply) => {
+    const { tenant_id } = req.authContext
+    const profile = await profileFor(tenant_id).findOne({})
+    if (!profile) return reply.send({ hasLiveData: false })
+    return reply.send(computeEventReadiness(req.params.eventId, profile))
+  })
+
   app.post<{ Body: { event_type: string; affected_member_id?: string } }>(
     '/family/life-events',
     async (req, reply) => {
@@ -159,10 +179,18 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
 
   /**
    * Tier 1 "prepare, don't send" (docs/prd/103-tier1-prepare-actions.md),
-   * reused: same generateDraft() LLM plumbing POST /insights/:id/prepare
-   * uses, called directly with this step's own rendered text rather than
-   * a persisted Insight document — a playbook step isn't detector output,
-   * so it has no real detector_id/rule_id to borrow.
+   * reused: same generateDraft()/generatePrepNote() LLM plumbing
+   * POST /insights/:id/prepare uses, called directly with this step's own
+   * rendered text rather than a persisted Insight document — a playbook
+   * step isn't detector output, so it has no real detector_id/rule_id to
+   * borrow.
+   *
+   * Every step is eligible now, not just contact:true ones — a step with
+   * no one to email (e.g. job-loss's "Review your budget") previously had
+   * no prepare affordance at all, even though Oak already has the real
+   * numbers to help start it. `step.contact` picks which prompt applies
+   * (an outreach email vs. a starting-point note); the eligibility gate
+   * itself only checks the step actually exists.
    */
   app.post<{ Params: { id: string; stepId: string } }>(
     '/family/life-events/:id/steps/:stepId/prepare',
@@ -180,15 +208,17 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
 
       const playbook = renderPlaybook(doc.data.event_type, profile, doc.data.affected_member_id)
       const step = playbook.steps.find((s) => s.id === stepId)
-      if (!step || !step.contact) {
-        return reply.status(404).send({ error: 'Step not found or not eligible for a draft' })
+      if (!step) {
+        return reply.status(404).send({ error: 'Step not found' })
       }
 
-      const content = await generateDraft(prepareLlmFn, {
-        reasoning: step.body,
-        category: 'life_event',
-        detector_id: `family_life_event_${doc.data.event_type}`,
-      })
+      const content = step.contact
+        ? await generateDraft(prepareLlmFn, {
+            reasoning: step.body,
+            category: 'life_event',
+            detector_id: `family_life_event_${doc.data.event_type}`,
+          })
+        : await generatePrepNote(prepareLlmFn, { title: step.title, body: step.body })
       if (!content) {
         return reply.send({ draft: null, error: "Couldn't generate a draft right now — please try again later." })
       }

@@ -123,6 +123,39 @@ domain before going wide, prepare-only actions before anything that acts.
     invisibly on unsupported devices or any local failure. Tier 1 —
     unchanged from the feature it replaces the transport for; a human
     still reviews and sends every draft.
+14. [114-composite-family-readiness-score.md](114-composite-family-readiness-score.md) —
+    the dashboard's headline score was client-derived
+    `100 − Σ confidence×10` penalty math that couldn't see estate
+    readiness and couldn't distinguish "evaluated and clear" from
+    "never evaluated." Replaces it with a deterministic, server-side
+    composite (emergency fund, protection, retirement, education,
+    estate) computed fresh on every read, plus the vault `doc_type`
+    metadata the estate component is measured from. Tier 0.
+15. [115-time-shifted-persisted-scenarios.md](115-time-shifted-persisted-scenarios.md) —
+    `/assistant/simulate` could only do instant deltas and nothing
+    persisted — "job loss in 6 months" measured runway from today's
+    balance and vanished after the answer. Adds `monthsUntilChange`
+    (fund grows/drains under today's numbers until the change lands),
+    the `family_scenarios` collection + CRUD routes that recompute on
+    read, and the first real web surface for scenario math on the
+    job-loss tile. Tier 0.
+16. [116-detector-declared-action-intents.md](116-detector-declared-action-intents.md) —
+    the Act layer's execute machinery (approve → SendGrid/Twilio dispatch,
+    idempotent receipts, approval-gate preview) shipped before any
+    detector could feed it — every family action was a free-text string
+    regex-classified as `log_only`. Adds typed `action_intents` on
+    detector rules, authoritative over keyword classification in both
+    directions, and exercises the first real Tier-2 intent: a self-send
+    renewal-reminder email on `policy_renewal_window`. Tier 2, approve
+    still the consent gate; auto-execute stays categorically
+    log_only-only.
+17. [117-member-twin-read-model.md](117-member-twin-read-model.md) —
+    PRD-104 shipped per-member financial identity but nothing assembled
+    it back into a per-member view. Adds `GET /family/members/:id/twin`
+    (earner slice, attributed policies/funds/insights, computed fresh on
+    read), `?member_id=` on `/insights`, and the real twin section on
+    `/member/[id]` — the read-model foundation member micro-agents build
+    on. Tier 0.
 
 ## 20x — marketing: the same engine as the growth mechanic
 

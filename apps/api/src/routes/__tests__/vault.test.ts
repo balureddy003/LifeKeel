@@ -230,4 +230,27 @@ describe('Digital Estate Vault', () => {
     const res = await app.inject({ method: 'GET', url: `/documents/${id}/file` })
     expect(res.statusCode).toBe(404)
   })
+
+  // PRD-114: doc_type tags what the estate component of /family/readiness
+  // counts — user-declared on upload, stored, and returned in listings.
+  it('stores and returns a declared doc_type, and rejects an invalid one', async () => {
+    const app = await buildApp(ADULT_ID)
+    const { body, boundary } = multipartPayload('will.pdf', Buffer.from('x'))
+    const bad = await app.inject({
+      method: 'POST', url: '/vault/documents/upload?doc_type=bogus',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body,
+    })
+    expect(bad.statusCode).toBe(400)
+
+    const ok = await app.inject({
+      method: 'POST', url: '/vault/documents/upload?doc_type=will',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body,
+    })
+    expect(ok.statusCode).toBe(201)
+    expect(ok.json().docType).toBe('will')
+
+    const list = await app.inject({ method: 'GET', url: '/vault/documents' })
+    expect(list.json().documents[0].docType).toBe('will')
+    await app.close()
+  })
 })

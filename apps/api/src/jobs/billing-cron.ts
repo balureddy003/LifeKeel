@@ -22,6 +22,7 @@ import {
   PAYMENT_GRACE_PERIOD_DAYS,
   PAYMENT_SUSPENSION_DAYS,
   FREE_TIER_MONTHLY_REFILL,
+  TRIAL_CREDITS,
   type Plan,
 } from '../billing/billing-constants.js'
 import { recordLedgerEntry, reconcileCredits } from '../billing/credit-ledger.js'
@@ -115,25 +116,32 @@ export async function expireTrials(db: Db): Promise<{ expired: number }> {
   for (const tenant of expiredTenants) {
     const tenantId = tenant['tenant_id'] as string
     const currentBalance = Number(tenant['billing']?.['credits_balance'] ?? 0)
+    // Expire only the unspent trial grant — the balance is fungible, so
+    // this assumes trial credits are spent first and errs in the tenant's
+    // favor. Promo, invite, referral, and purchased pack credits must
+    // survive the trial ending; zeroing the whole balance wiped them.
+    const trialGrant = Number(tenant['billing']?.['credits_included'] ?? TRIAL_CREDITS)
+    const newBalance = Math.max(0, currentBalance - trialGrant)
+    const removed = currentBalance - newBalance
     await db.collection('tenants').updateOne(
       { tenant_id: tenantId },
       {
         $set: {
           'billing.trial_expired': true,
-          'billing.credits_balance': 0,
+          'billing.credits_balance': newBalance,
           'billing.credits_included': 0,
           updated_at: now,
         },
       },
     )
     // Record in the append-only credit ledger
-    if (currentBalance > 0) {
+    if (removed > 0) {
       await recordLedgerEntry(db, {
         tenantId,
         type: 'trial_expiry',
-        amount: -currentBalance,
+        amount: -removed,
         reference: 'trial_expired',
-        reason: 'Trial expired — credits zeroed',
+        reason: 'Trial expired — unspent trial credits removed',
         actor: 'system',
       }).catch(() => {})
     }
@@ -259,12 +267,17 @@ export async function resetBillingCycles(db: Db): Promise<{ reset: number }> {
     const currency = String(tenant['billing']?.['currency'] ?? 'GBP')
     const planBilling = createPlanBilling(plan, currency)
     const oldBalance = Number(tenant['billing']?.['credits_balance'] ?? 0)
+    // Same top-up semantics as the renewal webhook — a cycle reset must
+    // not wipe credits the tenant paid for (packs, promos, referrals).
+    const newBalance = planBilling.credits_balance === Number.MAX_SAFE_INTEGER
+      ? planBilling.credits_balance
+      : Math.max(oldBalance, planBilling.credits_balance)
 
     await db.collection('tenants').updateOne(
       { tenant_id: tenantId },
       {
         $set: {
-          'billing.credits_balance': planBilling.credits_balance,
+          'billing.credits_balance': newBalance,
           'billing.credits_used_this_period': 0,
           'billing.billing_period_start': planBilling.billing_period_start,
           'billing.billing_period_end': planBilling.billing_period_end,
@@ -272,9 +285,8 @@ export async function resetBillingCycles(db: Db): Promise<{ reset: number }> {
         },
       },
     )
-    // Record in the append-only credit ledger
-    const newBalance = planBilling.credits_balance === Number.MAX_SAFE_INTEGER ? 0 : planBilling.credits_balance
-    const delta = newBalance - oldBalance
+    // Record in the append-only credit ledger — the actual movement.
+    const delta = newBalance === Number.MAX_SAFE_INTEGER ? 0 : newBalance - oldBalance
     if (delta !== 0) {
       await recordLedgerEntry(db, {
         tenantId,

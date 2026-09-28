@@ -329,6 +329,30 @@ describe('Emergency-Mode taxonomy: medical / car / property / travel', () => {
   })
 })
 
+describe('GET /family/events/:eventId/readiness', () => {
+  it('returns real, computed data for an event type event-readiness.ts covers', async () => {
+    const { app } = await buildApp(BASE_PROFILE)
+    const res = await app.inject({ method: 'GET', url: '/family/events/job-loss/readiness' })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.hasLiveData).toBe(true)
+    expect(body.explanation).toContain('3 months') // BASE_PROFILE: 900,000 / 300,000
+  })
+
+  it('is honest (hasLiveData: false) with no financial profile at all, never a fabricated score', async () => {
+    const { app } = await buildApp(null)
+    const res = await app.inject({ method: 'GET', url: '/family/events/job-loss/readiness' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().hasLiveData).toBe(false)
+  })
+
+  it('is honest (hasLiveData: false) for an event id with no formula, even with a real profile on file', async () => {
+    const { app } = await buildApp(BASE_PROFILE)
+    const res = await app.inject({ method: 'GET', url: '/family/events/marriage/readiness' })
+    expect(res.json().hasLiveData).toBe(false)
+  })
+})
+
 describe('PRD-108: GET /family/life-events', () => {
   beforeEach(() => {
     signalsStore = []
@@ -370,12 +394,24 @@ describe('PRD-108: POST /family/life-events/:id/steps/:stepId/prepare', () => {
     expect(res.json().draft.content).toContain('Aviva')
   })
 
-  it('404s for a step that exists but is not contact-eligible', async () => {
+  it('generates a starting-point note (not an outreach email) for a step with no one to contact', async () => {
     const { app } = await buildApp()
     const reportRes = await app.inject({ method: 'POST', url: '/family/life-events', payload: { event_type: 'job_loss' } })
     const id = reportRes.json().id
 
+    // 'runway' is computed:true, contact:false — no one to email, but Oak
+    // already has the real numbers (render-playbook.ts) to help start it.
     const res = await app.inject({ method: 'POST', url: `/family/life-events/${id}/steps/runway/prepare` })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().draft.content).toContain('Draft based on')
+  })
+
+  it('404s for a step id that does not exist on this playbook', async () => {
+    const { app } = await buildApp()
+    const reportRes = await app.inject({ method: 'POST', url: '/family/life-events', payload: { event_type: 'job_loss' } })
+    const id = reportRes.json().id
+
+    const res = await app.inject({ method: 'POST', url: `/family/life-events/${id}/steps/not-a-real-step/prepare` })
     expect(res.statusCode).toBe(404)
   })
 

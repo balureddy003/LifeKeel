@@ -99,6 +99,9 @@ import { ensureReminderIndexes, runPolicyRenewalReminders } from './jobs/policy-
 import { registerAssistantRoutes } from './routes/assistant.js'
 import { registerSupportRoutes } from './routes/support.js'
 import { registerReadinessQuizRoutes } from './routes/readiness-quiz.js'
+import { registerFamilyReadinessRoutes } from './routes/family-readiness.js'
+import { registerFamilyScenarioRoutes } from './routes/family-scenarios.js'
+import { registerMemberTwinRoutes } from './routes/member-twin.js'
 import { registerLeadRoutes } from './routes/leads.js'
 import { sendOpsAlert } from './lib/ops-alerts.js'
 
@@ -1323,6 +1326,9 @@ if (workflowDb) {
   registerAssistantRoutes(app, workflowDb)
   registerSupportRoutes(app, workflowDb)
   registerReadinessQuizRoutes(app, workflowDb, engine)
+  registerFamilyReadinessRoutes(app, workflowDb)
+  registerFamilyScenarioRoutes(app, workflowDb)
+  registerMemberTwinRoutes(app, workflowDb)
   await registerLeadRoutes(app, workflowDb)
   await registerFamilyFinancialProfileRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerLifeEventRoutes(app, workflowDb)

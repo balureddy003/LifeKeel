@@ -155,6 +155,20 @@ describe('Billing cron jobs', () => {
     expect(tenant?.['billing']?.['credits_balance']).toBe(5)
   })
 
+  it('H5: expiry removes only the unspent trial grant — earned/purchased credits survive', async () => {
+    const pastDate = new Date(Date.now() - 5 * 86_400_000)
+    // Balance 25 = 10 trial + 15 promo credits; credits_included tracks the
+    // trial grant size. Expiry must leave the non-trial 15 behind.
+    await seedTenant(db, TENANT_ID, { trialEndsAt: pastDate, balance: 25 })
+
+    const result = await expireTrials(db)
+
+    expect(result.expired).toBe(1)
+    const tenant = await db.collection('tenants').findOne({ tenant_id: TENANT_ID })
+    expect(tenant?.['billing']?.['trial_expired']).toBe(true)
+    expect(tenant?.['billing']?.['credits_balance']).toBe(15)
+  })
+
   it('H5: does not re-expire already expired tenants', async () => {
     const pastDate = new Date(Date.now() - 5 * 86_400_000)
     await seedTenant(db, TENANT_ID, { trialEndsAt: pastDate, trialExpired: true, balance: 0 })

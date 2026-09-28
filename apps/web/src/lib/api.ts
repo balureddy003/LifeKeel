@@ -175,6 +175,53 @@ export async function fetchFamilyInsights(): Promise<FamilyInsight[]> {
   )
 }
 
+// PRD-117: member-attributed insights only — the member twin read model
+// already embeds them, but other surfaces (e.g. a member-scoped inbox
+// filter) can query the same attribution directly.
+export async function fetchMemberInsights(memberId: string): Promise<FamilyInsight[]> {
+  return cachedFetch(`member-insights:${memberId}`, 30_000, () =>
+    apiFetch<{ insights: RawInsight[] }>(
+      `/insights?detectors=${FAMILY_DETECTORS.join(',')}&member_id=${encodeURIComponent(memberId)}`,
+      { insights: [] },
+    ).then((r) => (r.insights ?? []).map(adaptInsight)),
+  )
+}
+
+// PRD-117: the member twin read model — roster record + earner slice +
+// attributed policies/funds/insights, assembled server-side per read.
+export interface MemberTwin {
+  member: {
+    id: string
+    name: string
+    role: string
+    status: string
+    date_of_birth?: string
+    age: number | null
+  }
+  financial: {
+    earner: {
+      employment_status: EmploymentStatus
+      monthly_salary_minor: number
+      income_protection_monthly_minor: number
+    } | null
+    policies: Array<Pick<FinancialProfilePolicy, 'type' | 'provider' | 'coverage_amount_minor' | 'monthly_premium_minor' | 'renewal_date'>>
+    education_funds: Array<{
+      child_name?: string
+      current_savings_minor: number
+      target_savings_minor: number
+      years_remaining: number
+      months_remaining: number
+      needed_monthly_minor: number
+    }>
+    insights: RawInsight[]
+  }
+  has_live_data: boolean
+}
+
+export async function fetchMemberTwin(memberId: string): Promise<MemberTwin | null> {
+  return apiFetch<MemberTwin | null>(`/family/members/${encodeURIComponent(memberId)}/twin`, null)
+}
+
 export async function fetchFamilyGoals(): Promise<FamilyGoal[]> {
   return apiFetch<{ goals: FamilyGoal[] }>(
     '/goals',
@@ -197,7 +244,55 @@ export async function fetchFamilyGoals(): Promise<FamilyGoal[]> {
 // well-covered family "you're verified and clear" instead of showing them
 // the same "No data yet, connect your accounts" prompt as someone who
 // hasn't done anything.
+// PRD-114: the composite Family Readiness Score, computed server-side from
+// deterministic subscores over the real profile + vault contents — see
+// apps/api/src/readiness/score.ts. Insights explain the subscores; they no
+// longer subtract from them directly.
+export interface ReadinessComponentInsight {
+  id: string
+  detector_id: string
+  rule_id: string
+  hypothesis: string
+  confidence: number
+}
+
+export type ReadinessComponentKey = 'emergency_fund' | 'protection' | 'retirement' | 'education' | 'estate'
+
+export interface ReadinessComponent {
+  key: ReadinessComponentKey
+  label: string
+  score: number | null
+  weight: number
+  detail: string
+  gated?: boolean
+  insights: ReadinessComponentInsight[]
+}
+
+export interface FamilyReadiness {
+  score: number | null
+  has_live_data: boolean
+  computed_at: string
+  components: ReadinessComponent[]
+  insights: ReadinessComponentInsight[]
+}
+
+export async function fetchFamilyReadiness(): Promise<FamilyReadiness | null> {
+  return apiFetch<FamilyReadiness | null>('/family/readiness', null)
+}
+
+// Starts from 100 (no known gaps) and subtracts a confidence-weighted
+// penalty per currently-open insight — kept only as the offline fallback
+// when /family/readiness can't be reached, since it still beats showing
+// nothing. The comment below documents why even that fallback must check
+// insights_evaluated_at before scoring an insight-free profile 100.
 export async function fetchFamilyReadinessScore(): Promise<{ score: number; hasLiveData: boolean }> {
+  const server = await fetchFamilyReadiness()
+  if (server && server.has_live_data && server.score !== null) {
+    return { score: server.score, hasLiveData: true }
+  }
+  if (server && !server.has_live_data) return { score: 0, hasLiveData: false }
+  if (server && server.has_live_data && server.score === null) return { score: 0, hasLiveData: true }
+
   const insights = await fetchFamilyInsights()
   if (insights.length === 0) {
     const profile = await fetchFinancialProfile()
@@ -213,6 +308,98 @@ export async function fetchFamilyReadinessScore(): Promise<{ score: number; hasL
     .filter((i) => !RESOLVED_INSIGHT_STATES.includes(i.state))
     .reduce((sum, i) => sum + i.confidence, 0)
   return { score: Math.round(Math.max(0, Math.min(100, 100 - openPenalty * 10))), hasLiveData: true }
+}
+
+// ── Saved scenarios (PRD-115) ───────────────────────────────────────────
+// "What if income drops in N months" projections — inputs are stored,
+// results are always recomputed server-side against the live profile on
+// read (see routes/family-scenarios.ts), so a saved scenario moves as the
+// family's real numbers move.
+export interface ScenarioInputs {
+  /** Household monthly income change in minor units — negative for a loss. */
+  monthlyIncomeDeltaMinor?: number
+  monthlyExtraSavingsMinor?: number
+  targetChildName?: string
+  /** Months until the income change takes effect; 0 = immediate. */
+  monthsUntilChange?: number
+}
+
+export interface ScenarioResult {
+  currentMonthlyIncomeMinor: number
+  projectedMonthlyIncomeMinor: number
+  currentMonthlySurplusMinor: number
+  projectedMonthlySurplusMinor: number
+  currentRunwayMonths: number | null
+  projectedRunwayMonths: number | null
+  savingsAtChangeMinor: number
+  monthsUntilChange: number
+  educationFundProjection: {
+    childName: string
+    yearsRemaining: number
+    projectedMonthsToTarget: number | null
+    onTrack: boolean | null
+  } | null
+}
+
+export interface FamilyScenario {
+  id: string
+  name: string
+  inputs: ScenarioInputs
+  created_by: string
+  created_at: string
+  result: ScenarioResult | null
+  has_live_data: boolean
+}
+
+async function scenarioRequest<T>(path: string, init: RequestInit, fallback: T): Promise<T> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(`${base}${path}`, { ...init, headers })
+    if (!res.ok) return fallback
+    return (await res.json()) as T
+  } catch (err) {
+    reportError(err, { path })
+    return fallback
+  }
+}
+
+/** Pure-math preview — persists nothing, never calls an LLM. */
+export async function previewScenario(
+  inputs: ScenarioInputs,
+): Promise<{ result: ScenarioResult | null; has_live_data: boolean } | null> {
+  return scenarioRequest('/family/scenarios/preview', { method: 'POST', body: JSON.stringify(inputs) }, null)
+}
+
+export async function saveFamilyScenario(name: string, inputs: ScenarioInputs): Promise<FamilyScenario | null> {
+  const data = await scenarioRequest<{ scenario: FamilyScenario } | null>(
+    '/family/scenarios',
+    { method: 'POST', body: JSON.stringify({ name, ...inputs }) },
+    null,
+  )
+  return data?.scenario ?? null
+}
+
+export async function fetchFamilyScenarios(): Promise<FamilyScenario[]> {
+  return apiFetch<{ scenarios: FamilyScenario[] }>('/family/scenarios', { scenarios: [] }).then(
+    (r) => r.scenarios ?? [],
+  )
+}
+
+export async function deleteFamilyScenario(id: string): Promise<boolean> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(`${base}/family/scenarios/${id}`, { method: 'DELETE', headers })
+    return res.ok
+  } catch (err) {
+    reportError(err, { action: 'deleteFamilyScenario', id })
+    return false
+  }
 }
 
 /**
@@ -351,6 +538,21 @@ export interface VaultDocument {
   mimeType: string
   uploadedAt: string
   uploadedBy: string | null
+  /** PRD-114: user-declared document type — feeds the estate component of
+   *  GET /family/readiness. null for documents uploaded before the field
+   *  existed. */
+  docType: VaultDocType | null
+}
+
+export const VAULT_DOC_TYPES = ['will', 'power_of_attorney', 'insurance_policy', 'estate_instruction', 'other'] as const
+export type VaultDocType = (typeof VAULT_DOC_TYPES)[number]
+
+export const VAULT_DOC_TYPE_LABELS: Record<VaultDocType, string> = {
+  will: 'Will',
+  power_of_attorney: 'Power of attorney',
+  insurance_policy: 'Insurance policy',
+  estate_instruction: 'Estate instructions',
+  other: 'Other',
 }
 
 export async function fetchVaultDocuments(): Promise<{ documents: VaultDocument[]; forbidden: boolean }> {
@@ -370,7 +572,7 @@ export async function fetchVaultDocuments(): Promise<{ documents: VaultDocument[
   }
 }
 
-export async function uploadVaultDocument(file: File): Promise<VaultDocument> {
+export async function uploadVaultDocument(file: File, docType?: VaultDocType): Promise<VaultDocument> {
   const base = getApiBase()
   const token = getAuthToken()
   const formData = new FormData()
@@ -378,7 +580,8 @@ export async function uploadVaultDocument(file: File): Promise<VaultDocument> {
   const headers: Record<string, string> = {}
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`${base}/vault/documents/upload`, { method: 'POST', headers, body: formData })
+  const url = docType ? `${base}/vault/documents/upload?doc_type=${docType}` : `${base}/vault/documents/upload`
+  const res = await fetch(url, { method: 'POST', headers, body: formData })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || `Upload failed: ${res.status}`)
   return data as VaultDocument
@@ -1609,10 +1812,16 @@ export async function fetchBlogPost(slug: string): Promise<BlogPost | null> {
 export interface BillingSubscription {
   plan: string
   status: string
+  subscription?: {
+    id: string
+    status: string
+    current_period_end?: number | null
+    cancel_at_period_end?: boolean
+  } | null
 }
 
 export async function fetchBillingSubscription(): Promise<BillingSubscription | null> {
-  return apiFetch<{ plan: string; status: string } | null>('/billing/subscription', null)
+  return apiFetch<BillingSubscription | null>('/billing/subscription', null)
 }
 
 export async function startOakPlusCheckout(): Promise<string> {

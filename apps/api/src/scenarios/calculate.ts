@@ -33,6 +33,17 @@ export interface ScenarioChange {
   monthlyExtraSavingsMinor?: number
   /** Which education fund (by childName, case-insensitive) the extra savings is directed at, if any. */
   targetChildName?: string
+  /**
+   * PRD-115: months until the income change takes effect ("a job
+   * transition in 6 months"). Until then the household lives under the
+   * current regime — a positive surplus accrues to the emergency fund, a
+   * negative one drains it — and the projected runway is then measured
+   * from the balance at that point, not today's. 0/undefined = instant
+   * (the pre-PRD-115 behavior). The extra-savings habit is treated as
+   * starting now, not at the horizon — it's the family's decision today,
+   * unlike the income event they're bracing for.
+   */
+  monthsUntilChange?: number
 }
 
 export interface EducationFundProjection {
@@ -56,6 +67,16 @@ export interface ScenarioResult {
    */
   currentRunwayMonths: number | null
   projectedRunwayMonths: number | null
+  /**
+   * PRD-115: the emergency-fund balance at the moment the income change
+   * takes effect — today's balance grown (or drained) by the current
+   * monthly surplus over monthsUntilChange. Equals emergencySavingsMinor
+   * when the horizon is 0. Runway is measured from this, not from today's
+   * balance, which is the whole point of the horizon: "in 6 months you'd
+   * have saved up to £X, which then covers Y months."
+   */
+  savingsAtChangeMinor: number
+  monthsUntilChange: number
   educationFundProjection: EducationFundProjection | null
 }
 
@@ -69,6 +90,7 @@ function runwayMonths(incomeMinor: number, expensesMinor: number, savingsMinor: 
 export function calculateScenario(profile: ScenarioProfileInput, change: ScenarioChange): ScenarioResult {
   const incomeDelta = change.monthlyIncomeDeltaMinor ?? 0
   const extraSavings = change.monthlyExtraSavingsMinor ?? 0
+  const monthsUntilChange = Math.max(0, Math.floor(change.monthsUntilChange ?? 0))
 
   const currentMonthlyIncomeMinor = profile.monthlyIncomeMinor
   const projectedMonthlyIncomeMinor = currentMonthlyIncomeMinor + incomeDelta
@@ -76,8 +98,15 @@ export function calculateScenario(profile: ScenarioProfileInput, change: Scenari
   const currentMonthlySurplusMinor = currentMonthlyIncomeMinor - profile.monthlyExpensesMinor
   const projectedMonthlySurplusMinor = projectedMonthlyIncomeMinor - profile.monthlyExpensesMinor - extraSavings
 
+  // The change hits at the end of the horizon; until then the household
+  // lives under today's numbers. Floor at 0 — the fund can't go negative.
+  const savingsAtChangeMinor = Math.max(
+    0,
+    profile.emergencySavingsMinor + currentMonthlySurplusMinor * monthsUntilChange,
+  )
+
   const currentRunwayMonths = runwayMonths(currentMonthlyIncomeMinor, profile.monthlyExpensesMinor, profile.emergencySavingsMinor)
-  const projectedRunwayMonths = runwayMonths(projectedMonthlyIncomeMinor, profile.monthlyExpensesMinor, profile.emergencySavingsMinor)
+  const projectedRunwayMonths = runwayMonths(projectedMonthlyIncomeMinor, profile.monthlyExpensesMinor, savingsAtChangeMinor)
 
   let educationFundProjection: EducationFundProjection | null = null
   if (change.targetChildName) {
@@ -105,6 +134,8 @@ export function calculateScenario(profile: ScenarioProfileInput, change: Scenari
     projectedMonthlySurplusMinor,
     currentRunwayMonths,
     projectedRunwayMonths,
+    savingsAtChangeMinor,
+    monthsUntilChange,
     educationFundProjection,
   }
 }

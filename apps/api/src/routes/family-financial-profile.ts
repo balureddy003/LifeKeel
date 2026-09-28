@@ -195,7 +195,10 @@ export type FinancialProfile = z.infer<typeof FinancialProfileSchema>
  * current_age >= target_retirement_age, which reports today's real
  * sustainability instead of compounding forward as if still accumulating.
  */
-function projectRetirement(r: FinancialProfile['retirement']) {
+// Exported for readiness/score.ts — the composite readiness score reuses
+// exactly this projection (achievable_retirement_income_minor vs the
+// target) rather than duplicating the compounding math.
+export function projectRetirement(r: FinancialProfile['retirement']) {
   const rate = r.expected_annual_growth_pct / 100
   const requiredCorpusMinor = r.target_retirement_income_minor * 25
   const annualContribution = r.monthly_contribution_minor * 12
@@ -262,7 +265,7 @@ function projectRetirement(r: FinancialProfile['retirement']) {
   }
 }
 
-function educationFundingGapMinor(funds: FinancialProfile['education_funds']): number {
+export function educationFundingGapMinor(funds: FinancialProfile['education_funds']): number {
   return funds.reduce((sum, f) => sum + Math.max(0, f.target_savings_minor - f.current_savings_minor), 0)
 }
 

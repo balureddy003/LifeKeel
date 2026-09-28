@@ -48,7 +48,11 @@ function makeDb() {
     find: () => ({ sort: () => ({ limit: () => ({ toArray: async () => documents }) }) }),
   }
   const tenantsCol = { findOne: async () => ({ tenant_id: 'tenant-1', plan: 'free' }) }
-  return { collection: (name: string) => (name === 'documents' ? documentsCol : tenantsCol) } as any
+  const growthEventsCol = { insertOne: async () => ({ insertedId: 'ge-1' }) }
+  return {
+    collection: (name: string) =>
+      name === 'documents' ? documentsCol : name === 'growth_events' ? growthEventsCol : tenantsCol,
+  } as any
 }
 
 async function buildApp() {

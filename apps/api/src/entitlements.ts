@@ -52,6 +52,29 @@ export function hasFeature(feature: Feature, plan: Plan): boolean {
 }
 
 /**
+ * The plan to use for feature checks. A free-plan tenant whose signup
+ * trial is still running gets starter-level feature access — the trial
+ * exists to demo what Oak Plus sells, so gating the flagship features off
+ * during it would make the trial dead weight. Once `trial_ends_at` passes
+ * (or `trial_expired` was set — e.g. a paid subscription that churned),
+ * this falls back to the stored plan.
+ *
+ * Quotas are deliberately not bumped: this only affects boolean feature
+ * gates, not PLAN_QUOTAS or credit balances.
+ */
+export function effectivePlan(tenant: Record<string, unknown> | null | undefined): Plan {
+  const plan = (tenant?.['plan'] ?? 'free') as Plan
+  if (plan !== 'free') return plan
+  const billing = tenant?.['billing'] as Record<string, unknown> | undefined
+  if (billing?.['trial_expired'] === true) return plan
+  const trialEndsAt = billing?.['trial_ends_at']
+  if (trialEndsAt && new Date(trialEndsAt as string | Date).getTime() > Date.now()) {
+    return 'starter'
+  }
+  return plan
+}
+
+/**
  * Get all features available for a plan
  */
 export function getPlanFeatures(plan: Plan): Record<string, boolean> {
@@ -90,7 +113,7 @@ export function requireFeature(feature: Feature) {
       return reply.status(404).send({ error: 'Tenant not found' })
     }
 
-    const plan = (tenant.plan ?? 'free') as Plan
+    const plan = effectivePlan(tenant)
 
     if (!hasFeature(feature, plan)) {
       // Paywall hit = the strongest upgrade-intent signal there is. Log it
@@ -168,7 +191,7 @@ export function checkQuota(resource: string) {
     if (currentUsage >= quota) {
       db.collection('growth_events').insertOne({
         event: 'upgrade_intent',
-        meta: { tenant_id, resource, plan: tenant['plan'] ?? 'free' },
+        meta: { tenant_id, resource, plan: effectivePlan(tenant) },
         created_at: new Date(),
       }).catch(() => {})
       return reply.status(429).send({
