@@ -1024,6 +1024,43 @@ describe('security monitoring', () => {
     await app.close()
   })
 
+  it('reports the revenue leg — payers in-window, trial pipeline, MRR, per-source', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    // family-1 (plan 'plus' from beforeEach) upgraded 5 days ago per the
+    // ledger — a new payer in-window. family-2 is a free tenant mid-trial.
+    const fiveDays = 5 * 24 * 60 * 60 * 1000
+    await db.collection('credit_ledger').insertOne({
+      tenant_id: 'family-1', type: 'plan_grant', amount: 100, balance_after: 100,
+      reference: 'plus', reason: 'test', actor: 'stripe_webhook', timestamp: new Date(Date.now() - fiveDays),
+    })
+    await db.collection('tenants').insertOne({
+      tenant_id: 'family-2', name: 'Trialing', status: 'active', plan: 'free',
+      billing: { trial_ends_at: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000) }, created_at: new Date(),
+    })
+    await db.collection('users').insertOne({
+      id: 'user-3', tenant_id: 'family-2', email: 't@example.com', name: 'T',
+      roles: ['admin'], status: 'active', attribution: { utm_source: 'instagram' }, created_at: new Date(),
+    })
+    // user-2's signup attribution — family-1's paying status should join to it.
+    await db.collection('users').updateOne({ id: 'user-2' }, { $set: { attribution: { utm_source: 'x' } } })
+    const app = await buildApp()
+
+    const funnel = await app.inject({ method: 'GET', url: '/operator/funnel' })
+    expect(funnel.statusCode).toBe(200)
+    const revenue = funnel.json().revenue
+    expect(revenue.paying_tenants).toBe(1)
+    expect(revenue.paying_30d).toBe(1)
+    expect(revenue.trialing_tenants).toBe(1)
+    expect(revenue.mrr_pence).toBe(0) // 'plus' isn't a priced tier — only starter counts
+    expect(revenue.median_days_to_paid).toBeNull() // paidAt (5d ago) predates signup (now)
+
+    const xRow = funnel.json().by_source.find((s: { source: string }) => s.source === 'x')
+    expect(xRow.paying).toBe(1)
+    const igRow = funnel.json().by_source.find((s: { source: string }) => s.source === 'instagram')
+    expect(igRow.trialing).toBe(1)
+    await app.close()
+  })
+
   it('persists alert triage state with an audit entry per action', async () => {
     await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     const app = await buildApp()

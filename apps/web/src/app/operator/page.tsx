@@ -216,12 +216,30 @@ export default function OperatorOverviewPage() {
               )}
             </div>
           )}
+          {funnel.revenue && (
+            <div className="mt-4">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-tertiary">Revenue</h3>
+              <div className="mt-2 grid gap-3 sm:grid-cols-4">
+                <div><div className="text-xl font-semibold">£{(funnel.revenue.mrr_pence / 100).toFixed(2)}</div><div className="text-xs text-ink-tertiary">MRR</div></div>
+                <div><div className="text-xl font-semibold">{funnel.revenue.paying_30d}</div><div className="text-xs text-ink-tertiary">new payers · 30d</div></div>
+                <div><div className="text-xl font-semibold">{funnel.revenue.trialing_tenants}</div><div className="text-xs text-ink-tertiary">in trial</div></div>
+                <div>
+                  <div className="text-xl font-semibold">{funnel.revenue.median_days_to_paid !== null ? `${funnel.revenue.median_days_to_paid}d` : '—'}</div>
+                  <div className="text-xs text-ink-tertiary">median signup→paid</div>
+                </div>
+              </div>
+            </div>
+          )}
           {funnel.by_source.length > 0 && (
             <div className="mt-4 divide-y divide-tint/[0.06]">
               {funnel.by_source.map((row) => (
                 <div key={row.source} className="flex justify-between py-2 text-sm">
                   <span className="text-ink-secondary">{row.source}</span>
-                  <span className="text-ink-tertiary">{row.leads} leads · {row.signups} signups</span>
+                  <span className="text-ink-tertiary">
+                    {row.leads} leads · {row.signups} signups
+                    {row.trialing > 0 && ` · ${row.trialing} trialing`}
+                    {row.paying > 0 && ` · ${row.paying} paying`}
+                  </span>
                 </div>
               ))}
             </div>

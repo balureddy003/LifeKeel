@@ -821,14 +821,14 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       // Activation cohort — tenants of users who signed up inside the window.
       users.find({ created_at: { $gte: since } }, { projection: { _id: 0, tenant_id: 1, created_at: 1 } }).toArray(),
     ])
-    const sources = new Map<string, { source: string; leads: number; signups: number }>()
+    const sources = new Map<string, { source: string; leads: number; signups: number; paying: number; trialing: number }>()
     for (const s of leadSources) {
       const key = (s['_id'] as string) ?? 'unknown'
-      sources.set(key, { source: key, leads: s['count'] as number, signups: 0 })
+      sources.set(key, { source: key, leads: s['count'] as number, signups: 0, paying: 0, trialing: 0 })
     }
     for (const s of signupSources) {
       const key = (s['_id'] as string) ?? 'direct'
-      const row = sources.get(key) ?? { source: key, leads: 0, signups: 0 }
+      const row = sources.get(key) ?? { source: key, leads: 0, signups: 0, paying: 0, trialing: 0 }
       row.signups = s['count'] as number
       sources.set(key, row)
     }
@@ -882,6 +882,87 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       activation = { cohort_signups_30d: cohortUsers.length, steps, median_time_to_first_insight_hours: median === null ? null : Math.round(median * 10) / 10 }
     }
 
+    // Revenue leg — the funnel's paying end. "Became paying" is the first
+    // credit_ledger plan_grant; with billing v2's ledger off it falls back to
+    // billing_period_start, which renewals also stamp — in that mode a
+    // long-lived payer can look "new" in a 30d window (bounded, noted).
+    // Trialing = free-plan tenant whose signup trial is still running —
+    // the conversion pipeline sitting between signup and paying.
+    const [firstGrants, payingTenantDocs, trialTenantDocs, sourceTenantPairs] = await Promise.all([
+      db.collection('credit_ledger').aggregate([
+        { $match: { type: 'plan_grant' } },
+        { $group: { _id: '$tenant_id', first_at: { $min: '$timestamp' } } },
+      ]).toArray(),
+      tenants.find(
+        { plan: { $exists: true, $nin: ['free', 'trial'] } },
+        { projection: { _id: 0, tenant_id: 1, plan: 1, 'billing.billing_period_start': 1 } },
+      ).toArray(),
+      tenants.find(
+        { plan: { $nin: ['starter', 'growth', 'enterprise'] }, 'billing.trial_ends_at': { $gt: new Date() }, 'billing.trial_expired': { $ne: true } },
+        { projection: { _id: 0, tenant_id: 1 } },
+      ).toArray(),
+      users.aggregate([
+        { $group: { _id: { s: { $ifNull: ['$attribution.utm_source', 'direct'] }, t: '$tenant_id' } } },
+      ]).toArray(),
+    ])
+
+    const grantAt = new Map(firstGrants.map((g) => [String(g['_id']), g['first_at'] as Date]))
+    const paidAt = new Map<string, Date>()
+    // A tenant that upgraded mid-trial keeps a future trial_ends_at —
+    // paying wins over trialing so it doesn't get counted twice.
+    const payingIds = new Set(payingTenantDocs.map((t) => String(t['tenant_id'])))
+    const trialing = new Set(trialTenantDocs.map((t) => String(t['tenant_id'])).filter((id) => !payingIds.has(id)))
+    for (const t of payingTenantDocs) {
+      const id = String(t['tenant_id'])
+      const at = grantAt.get(id) ?? (t['billing'] as Record<string, unknown> | undefined)?.['billing_period_start'] as Date | undefined
+      if (at instanceof Date) paidAt.set(id, at)
+    }
+    const newPayers = [...paidAt.entries()].filter(([, at]) => at >= since)
+
+    // Median days from signup to first payment, over tenants who converted
+    // in-window — how long the free→paid journey actually takes.
+    let medianDaysToPaid: number | null = null
+    if (newPayers.length > 0) {
+      const payerIds = newPayers.map(([id]) => id)
+      const firstSignups = await users.aggregate([
+        { $match: { tenant_id: { $in: payerIds } } },
+        { $group: { _id: '$tenant_id', first_at: { $min: '$created_at' } } },
+      ]).toArray()
+      const signupAt = new Map(firstSignups.map((s) => [String(s['_id']), s['first_at'] as Date]))
+      const days = newPayers
+        .map(([id, at]) => {
+          const s = signupAt.get(id)
+          return s instanceof Date ? (at.getTime() - s.getTime()) / 86_400_000 : null
+        })
+        .filter((d): d is number => d !== null && d >= 0)
+        .sort((a, b) => a - b)
+      medianDaysToPaid = days.length === 0 ? null : days.length % 2 === 1
+        ? Math.round(days[Math.floor(days.length / 2)]! * 10) / 10
+        : Math.round((days[days.length / 2 - 1]! + days[days.length / 2]!) / 2 * 10) / 10
+    }
+
+    // Per-source paying/trialing — joins every user's utm_source to their
+    // tenant's current plan, so the channel table answers "which channels
+    // pay", not just "which channels sign people up". A tenant with users
+    // from mixed sources attributes to the first pair seen.
+    const sourceByTenant = new Map<string, string>()
+    for (const p of sourceTenantPairs) {
+      const key = p['_id'] as { s: string; t: string }
+      if (!sourceByTenant.has(String(key.t))) sourceByTenant.set(String(key.t), String(key.s ?? 'direct'))
+    }
+    for (const tenantId of paidAt.keys()) {
+      const source = sourceByTenant.get(tenantId) ?? 'direct'
+      const row = sources.get(source) ?? { source, leads: 0, signups: 0, paying: 0, trialing: 0 }
+      row.paying += 1
+      sources.set(source, row)
+    }
+    for (const tenantId of trialing) {
+      const source = sourceByTenant.get(tenantId) ?? 'direct'
+      const row = sources.get(source) ?? { source, leads: 0, signups: 0, paying: 0, trialing: 0 }
+      row.trialing += 1
+      sources.set(source, row)
+    }
+
     return {
       window_days: 30,
       totals: {
@@ -893,6 +974,16 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       leads_by_stage: Object.fromEntries(leadStages.map((s) => [s['_id'], s['count']])),
       by_source: [...sources.values()].sort((a, b) => b.signups - a.signups),
       activation,
+      revenue: {
+        paying_tenants: payingTenantDocs.length,
+        paying_30d: newPayers.length,
+        trialing_tenants: trialing.size,
+        // Only starter ("Oak Plus") has a real price — £7.99/mo. Dormant
+        // growth/enterprise tiers count toward paying totals but not MRR.
+        mrr_pence: payingTenantDocs.filter((t) => t['plan'] === 'starter').length * 799,
+        currency: 'GBP',
+        median_days_to_paid: medianDaysToPaid,
+      },
     }
   })
 

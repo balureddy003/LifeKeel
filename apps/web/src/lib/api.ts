@@ -2192,7 +2192,7 @@ export interface OperatorFunnel {
   window_days: number
   totals: { leads_30d: number; signups_30d: number; activated_tenants: number; paying_tenants: number }
   leads_by_stage: Record<string, number>
-  by_source: Array<{ source: string; leads: number; signups: number }>
+  by_source: Array<{ source: string; leads: number; signups: number; paying: number; trialing: number }>
   /** Activation steps for the 30d signup cohort — measured from persisted
    *  tenant state (profile exists / first insight / connector linked),
    *  not anonymous client events. */
@@ -2200,6 +2200,17 @@ export interface OperatorFunnel {
     cohort_signups_30d: number
     steps: { key: string; label: string; count: number; pct: number }[]
     median_time_to_first_insight_hours: number | null
+  }
+  /** The funnel's paying end: conversions in-window (first credit ledger
+   *  plan_grant, or billing_period_start when the ledger is off), the
+   *  active-trial pipeline, and MRR over priced plans. */
+  revenue?: {
+    paying_tenants: number
+    paying_30d: number
+    trialing_tenants: number
+    mrr_pence: number
+    currency: string
+    median_days_to_paid: number | null
   }
 }
 
