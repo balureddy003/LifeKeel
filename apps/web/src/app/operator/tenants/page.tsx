@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ChevronDown, ChevronUp, Search, Users } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import { useToast } from '@/components/Toast'
-import { fetchOperatorTenants, fetchOperatorTenant, suspendOperatorTenant, reactivateOperatorTenant, type OperatorTenant, type OperatorTenantMember } from '@/lib/api'
+import { fetchOperatorTenants, fetchOperatorTenant, suspendOperatorTenant, reactivateOperatorTenant, type OperatorTenant, type OperatorTenantHealth, type OperatorTenantMember } from '@/lib/api'
 import { ReasonAction } from '../_components/ReasonAction'
 import { Pager } from '../_components/Pager'
 
@@ -15,6 +15,20 @@ const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
   { value: 'suspended', label: 'Suspended' },
 ]
+
+/** Colour-coded health pill. The score is computed server-side and every
+ *  deduction is a named factor — the pill's tooltip lists them so the
+ *  number never reads as a black box. */
+function healthClasses(score: number): string {
+  if (score >= 80) return 'border-success/30 text-success'
+  if (score >= 50) return 'border-amber-500/40 text-amber-400'
+  return 'border-danger/40 text-danger'
+}
+
+function healthTitle(health: OperatorTenantHealth): string {
+  if (health.factors.length === 0) return 'No issues detected'
+  return health.factors.map((f) => `${f.label} (${f.points})`).join('\n')
+}
 
 export default function OperatorTenantsPage() {
   const toast = useToast()
@@ -137,7 +151,17 @@ export default function OperatorTenantsPage() {
                   <div className="font-medium">{tenant.name ?? tenant.tenant_id}</div>
                   <div className="text-xs text-ink-tertiary">{tenant.tenant_id}</div>
                 </div>
-                <span className={`rounded-full border px-2 py-0.5 text-xs ${tenant.status === 'suspended' ? 'border-danger/25 text-danger' : 'border-tint/[0.08]'}`}>{tenant.status ?? 'unknown'}</span>
+                <div className="flex shrink-0 items-center gap-2">
+                  {tenant.health && (
+                    <span
+                      title={healthTitle(tenant.health)}
+                      className={`rounded-full border px-2 py-0.5 text-xs ${healthClasses(tenant.health.score)}`}
+                    >
+                      {tenant.health.score}
+                    </span>
+                  )}
+                  <span className={`rounded-full border px-2 py-0.5 text-xs ${tenant.status === 'suspended' ? 'border-danger/25 text-danger' : 'border-tint/[0.08]'}`}>{tenant.status ?? 'unknown'}</span>
+                </div>
               </div>
               <div className="mt-3 flex gap-4 text-sm text-ink-secondary">
                 <button
@@ -150,6 +174,13 @@ export default function OperatorTenantsPage() {
                 <span>{tenant.plan ?? 'free'} plan</span>
                 {tenant.country && <span>{tenant.country}</span>}
               </div>
+              {tenant.health && tenant.health.factors.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {tenant.health.factors.map((f) => (
+                    <span key={f.label} className="rounded-full bg-danger/10 px-2 py-0.5 text-[11px] text-danger">{f.label}</span>
+                  ))}
+                </div>
+              )}
               {expanded === tenant.tenant_id && (
                 <div className="mt-3 rounded-xl bg-tint/[0.04] p-3">
                   {membersLoading === tenant.tenant_id ? (

@@ -1839,6 +1839,11 @@ export interface OperatorUser {
   created_at: string
 }
 
+export interface OperatorTenantHealth {
+  score: number
+  factors: { label: string; points: number }[]
+}
+
 export interface OperatorTenant {
   tenant_id: string
   name?: string
@@ -1847,6 +1852,7 @@ export interface OperatorTenant {
   country?: string
   created_at?: string
   user_count: number
+  health?: OperatorTenantHealth
 }
 
 async function operatorRequest<T>(path: string): Promise<T> {
@@ -1943,8 +1949,39 @@ export interface OperatorTenantMember {
 
 /** Tenant detail + member list — powers the inline member expansion on the
  *  operator tenants page. */
-export function fetchOperatorTenant(id: string): Promise<{ tenant: OperatorTenant; members: OperatorTenantMember[] }> {
+export function fetchOperatorTenant(id: string): Promise<{ tenant: OperatorTenant; members: OperatorTenantMember[]; health: OperatorTenantHealth }> {
   return operatorRequest(`/operator/tenants/${encodeURIComponent(id)}`)
+}
+
+export interface OperatorLoginEvent {
+  created_at: string
+  success: boolean
+  method?: string
+  ip?: string
+}
+
+export interface OperatorCaseSummary {
+  id: string
+  subject: string
+  status: string
+  updated_at: string
+}
+
+export interface OperatorUserDossier {
+  user: OperatorUser
+  tenant: OperatorTenant | null
+  dossier: {
+    recent_logins: OperatorLoginEvent[]
+    insights: Record<string, number>
+    ledger_tail: { timestamp: string; type: string; amount: number; balance_after?: number; reason?: string }[]
+    support_cases: OperatorCaseSummary[]
+    audit_trail: OperatorAuditEntry[]
+  }
+}
+
+/** The one-screen support dossier for a single user. */
+export function fetchOperatorUser(id: string): Promise<OperatorUserDossier> {
+  return operatorRequest(`/operator/users/${encodeURIComponent(id)}`)
 }
 
 export interface OperatorRecord {

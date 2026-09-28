@@ -87,6 +87,7 @@ import { registerFamilyInboxRoutes } from './routes/family-inbox.js'
 import { registerPushRoutes } from './routes/push.js'
 import { registerReminderRoutes } from './routes/reminders.js'
 import { registerMarketingPostRoutes, publishDueMarketingPosts, generateDailyMarketingDrafts, pollMarketingEngagement } from './routes/marketing-posts.js'
+import { runMetricsRollup } from './jobs/metrics-rollup.js'
 import { socialPublisherFromEnv, DbSocialPublisher } from './marketing/social-publisher.js'
 import { registerOperatorRoutes } from './routes/operator.js'
 import { getPlatformConfig, registerPublicStatusRoute } from './operator/platform-config.js'
@@ -269,6 +270,21 @@ try {
       log.error({ err }, 'Marketing engagement sweep failed')
     }
   }, { missedExecutionTolerance: 600_000 })
+
+  // Daily metrics rollup — hourly at :40. Recomputes today + yesterday
+  // (late-arriving events) into metrics_daily; first run backfills 90 days.
+  // Operator dashboards read the rollup instead of scanning raw events.
+  cron.schedule('40 * * * *', async () => {
+    try {
+      await withCronLock(workflowDb, 'metrics-rollup', async () => {
+        const summary = await runMetricsRollup(workflowDb)
+        log.info({ ...summary }, 'Metrics rollup run')
+      })
+    } catch (err) {
+      log.error({ err }, 'Metrics rollup failed')
+    }
+  }, { missedExecutionTolerance: 1_800_000 })
+  log.info({}, 'Metrics rollup cron started')
 
   // Policy renewal reminders — hourly. Tier 3 autonomy: deterministic,
   // deduped, consent re-checked at send time, push-only to the member's

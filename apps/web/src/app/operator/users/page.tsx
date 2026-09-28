@@ -192,7 +192,10 @@ export default function OperatorUsersPage() {
           {users.map((user) => (
             <GlassCard key={user.id} className="p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
-                <div><div className="font-medium">{user.name}</div><div className="text-sm text-ink-secondary">{user.email}</div></div>
+                <div>
+                  <Link href={`/operator/users/${encodeURIComponent(user.id)}`} className="font-medium hover:text-family-400 hover:underline">{user.name}</Link>
+                  <div className="text-sm text-ink-secondary">{user.email}</div>
+                </div>
                 <div className="flex gap-2">
                   {user.attribution?.utm_source && (
                     <span className="rounded-full border border-family-500/25 px-2 py-0.5 text-xs text-family-400">{user.attribution.utm_source}</span>

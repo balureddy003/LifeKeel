@@ -75,6 +75,23 @@ describe('/operator control plane', () => {
     await app.close()
   })
 
+  it('serves the activity series from metrics_daily once the rollup has backfilled', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    // A rollup row for an event that does NOT exist in raw growth_events —
+    // if it shows up, the overview read the rollup, not the collection scan.
+    const today = new Date().toISOString().slice(0, 10)
+    await db.collection<{ _id: string }>('metrics_daily').insertMany([
+      { _id: 'meta', backfilled_at: new Date() } as never,
+      { _id: `${today}|growth_event|quiz_completed`, day: today, metric: 'growth_event', dim: 'quiz_completed', count: 7, updated_at: new Date() } as never,
+    ])
+    const app = await buildApp()
+    const response = await app.inject({ method: 'GET', url: '/operator/overview' })
+    expect(response.statusCode).toBe(200)
+    const activity = response.json().activity_30d as { day: string; event: string; count: number }[]
+    expect(activity).toContainEqual({ day: today, event: 'quiz_completed', count: 7 })
+    await app.close()
+  })
+
   it('searches users without returning credential material', async () => {
     await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     const app = await buildApp()
@@ -914,5 +931,70 @@ describe('security monitoring', () => {
     const denied = await app2.inject({ method: 'POST', url: '/operator/users/user-2/erase', payload: { reason: 'Support cannot erase' } })
     expect(denied.statusCode).toBe(403)
     await app2.close()
+  })
+
+  it('returns a support dossier with logins, insights, ledger, cases and audit trail', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    await db.collection('login_events').insertMany([
+      { user_id: 'user-2', tenant_id: 'family-1', success: true, method: 'password', ip: '10.0.0.1', created_at: yesterday },
+      { user_id: 'user-2', tenant_id: 'family-1', success: false, method: 'password', ip: '10.0.0.9', created_at: new Date() },
+    ])
+    await db.collection('insights').insertMany([
+      { tenant_id: 'family-1', state: 'sent' }, { tenant_id: 'family-1', state: 'sent' }, { tenant_id: 'family-1', state: 'dismissed' },
+    ])
+    await db.collection('support_cases').insertOne({
+      id: 'case-1', user_id: 'user-2', tenant_id: 'family-1', subject: 'Billing question', status: 'open',
+      messages: [{ id: 'm1', author: 'user', text: 'should not be projected', created_at: new Date() }],
+      created_at: new Date(), updated_at: new Date(),
+    })
+    const app = await buildApp()
+    const response = await app.inject({ method: 'GET', url: '/operator/users/user-2' })
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.user.email).toBe('family@example.com')
+    expect(body.user.password_hash).toBeUndefined()
+    expect(body.tenant.tenant_id).toBe('family-1')
+    expect(body.dossier.recent_logins).toHaveLength(2)
+    expect(body.dossier.insights).toEqual({ sent: 2, dismissed: 1 })
+    expect(body.dossier.support_cases).toHaveLength(1)
+    expect(body.dossier.support_cases[0].subject).toBe('Billing question')
+    // Message bodies are case content, not account context — the dossier
+    // shows metadata only; the inbox owns the thread.
+    expect(body.dossier.support_cases[0].messages?.[0]?.text).toBeUndefined()
+    expect(body.dossier.ledger_tail).toEqual([])
+    expect(body.dossier.audit_trail).toEqual([])
+    await app.close()
+  })
+
+  it('scores tenant health from operational signals and explains deductions', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    await db.collection('tenants').updateOne({ tenant_id: 'family-1' }, { $set: { created_at: old } })
+    await db.collection('users').updateOne({ id: 'user-2' }, { $set: { created_at: old } })
+    await db.collection('reminders').insertOne({ tenant_id: 'family-1', status: 'failed' })
+    await db.collection('users').updateOne({ id: 'user-2' }, { $set: { locked_until: new Date(Date.now() + 60_000) } })
+    await db.collection('connector_credentials').insertOne({ tenant_id: 'family-1', connector_id: 'bank', token_expires_at: new Date(Date.now() + 60_000) })
+    await db.collection('support_cases').insertOne({
+      id: 'case-h', user_id: 'user-2', tenant_id: 'family-1', subject: 'Help', status: 'open', messages: [], created_at: new Date(), updated_at: new Date(),
+    })
+    const app = await buildApp()
+    const response = await app.inject({ method: 'GET', url: '/operator/tenants' })
+    expect(response.statusCode).toBe(200)
+    const rows = response.json().tenants as { tenant_id: string; health: { score: number; factors: { label: string; points: number }[] } }[]
+    const family = rows.find((t) => t.tenant_id === 'family-1')!
+    // 100 - 10 (reminder) - 15 (locked) - 20 (token) - 10 (case) - 25 (stale)
+    expect(family.health.score).toBe(20)
+    expect(family.health.factors.length).toBe(5)
+    expect(family.health.factors.map((f) => f.points).every((p) => p < 0)).toBe(true)
+    const clean = rows.find((t) => t.tenant_id === 'operator-tenant')!
+    expect(clean.health.score).toBe(100)
+    expect(clean.health.factors).toEqual([])
+
+    // Same score surfaces on the single-tenant view.
+    const detail = await app.inject({ method: 'GET', url: '/operator/tenants/family-1' })
+    expect(detail.statusCode).toBe(200)
+    expect(detail.json().health.score).toBe(20)
+    await app.close()
   })
 })

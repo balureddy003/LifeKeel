@@ -1,6 +1,7 @@
 'use client'
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { Search, Sparkles } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import { useToast } from '@/components/Toast'
@@ -79,6 +80,9 @@ function CaseThread({ id, canManage, onChanged }: { id: string; canManage: boole
           {detail.user && <span>Account: {detail.user.email} · status {detail.user.status ?? 'active'}</span>}
           {detail.tenant && <span>Workspace: {detail.tenant.name ?? detail.tenant.tenant_id} · {detail.tenant.plan ?? 'free'} plan</span>}
           <span>{detail.member_count} member{detail.member_count === 1 ? '' : 's'}</span>
+          {detail.user && (
+            <Link href={`/operator/users/${encodeURIComponent(detail.user.id)}`} className="text-family-400 hover:underline">Full dossier →</Link>
+          )}
         </div>
       )}
       {c.messages.map((m) => (

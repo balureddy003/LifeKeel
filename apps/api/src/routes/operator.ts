@@ -11,6 +11,8 @@ import { WEBHOOK_INGEST_QUEUE } from '../queue/WebhookQueue.js'
 import { getPlatformConfig, invalidatePlatformConfigCache, CONFIG_DOC_KEY, type PlatformConfig } from '../operator/platform-config.js'
 import { getLoginEventsCollection } from '../db.js'
 import { createLlmRouterFromEnv } from '@agentoak/platform'
+import { computeTenantHealth } from '../operator/tenant-health.js'
+import { isRollupReady, readDailyRollup } from '../jobs/metrics-rollup.js'
 import type { SupportCaseDoc, SupportMessage } from './support.js'
 
 const QuerySchema = z.object({
@@ -141,6 +143,8 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   db.collection('operator_audit_log').createIndex({ created_at: -1 }).catch(() => {})
   // Support inbox: status-filtered, updated_at-ordered.
   db.collection('support_cases').createIndex({ status: 1, updated_at: -1 }).catch(() => {})
+  // Daily metric rollups: metric+day-range reads; _id is already unique.
+  db.collection('metrics_daily').createIndex({ metric: 1, day: -1 }).catch(() => {})
   // Awaited: the promo create path relies on the unique index for duplicate
   // detection, so it can't race registration.
   await Promise.all([
@@ -205,11 +209,19 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       db.collection('leads').countDocuments({ created_at: { $gte: weekAgo } }),
       db.collection('leads').countDocuments({ created_at: { $gte: new Date(weekAgo.getTime() - 7 * 24 * 60 * 60 * 1000), $lt: weekAgo } }),
       // 30-day daily series per funnel event — powers the KPI sparklines.
-      db.collection('growth_events').aggregate([
-        { $match: { created_at: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } } },
-        { $group: { _id: { day: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } }, event: '$event' }, count: { $sum: 1 } } },
-        { $project: { _id: 0, day: '$_id.day', event: '$_id.event', count: 1 } },
-      ]).toArray(),
+      // Reads metrics_daily rollups once the hourly job has backfilled;
+      // falls back to the raw scan until then (fresh envs, pre-backfill).
+      isRollupReady(db).then(async (ready) => {
+        if (ready) {
+          const rows = await readDailyRollup(db, 'growth_event', 30)
+          return rows.map((r) => ({ day: r.day, event: r.dim, count: r.count }))
+        }
+        return db.collection('growth_events').aggregate([
+          { $match: { created_at: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } } },
+          { $group: { _id: { day: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } }, event: '$event' }, count: { $sum: 1 } } },
+          { $project: { _id: 0, day: '$_id.day', event: '$_id.event', count: 1 } },
+        ]).toArray()
+      }),
       db.collection('support_cases').countDocuments({ status: 'open' }),
     ])
 
@@ -261,14 +273,45 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     return { users: items, total, limit, offset, ...(nextCursor ? { next_cursor: nextCursor } : {}) }
   })
 
+  /** One-screen support dossier — identity, workspace, security posture,
+   *  insight activity, billing ledger tail, open support cases, and the
+   *  operator actions already taken on this account. The goal: a support
+   *  ticket resolves without opening four other pages or the database. */
   app.get<{ Params: { id: string } }>('/operator/users/:id', { preHandler: requireOperator(db, 'users.read') }, async (request, reply) => {
     const user = await users.findOne(
       { id: request.params.id },
       { projection: { password_hash: 0, salt: 0, password_reset_token: 0, email_verification_token: 0 } },
     )
     if (!user) return reply.status(404).send({ error: 'User not found' })
-    const tenant = await tenants.findOne({ tenant_id: user['tenant_id'] }, { projection: { _id: 0 } })
-    return { user, tenant }
+    const tenantId = user['tenant_id'] as string
+    const [tenant, recentLogins, insightCounts, ledger, userCases, userAudit] = await Promise.all([
+      tenants.findOne({ tenant_id: tenantId }, { projection: { _id: 0 } }),
+      getLoginEventsCollection(db)
+        .find({ user_id: user['id'] }, { projection: { _id: 0 } })
+        .sort({ created_at: -1 }).limit(10).toArray(),
+      db.collection('insights').aggregate([
+        { $match: { tenant_id: tenantId } },
+        { $group: { _id: '$state', count: { $sum: 1 } } },
+      ]).toArray(),
+      getLedgerHistory(db, { tenantId, limit: 10 }),
+      db.collection('support_cases')
+        .find({ user_id: user['id'] }, { projection: { _id: 0, 'messages.text': 0 } })
+        .sort({ updated_at: -1 }).limit(10).toArray(),
+      db.collection('operator_audit_log')
+        .find({ target_type: 'user', target_id: user['id'] }, { projection: { _id: 0 } })
+        .sort({ created_at: -1 }).limit(10).toArray(),
+    ])
+    return {
+      user,
+      tenant,
+      dossier: {
+        recent_logins: recentLogins,
+        insights: Object.fromEntries(insightCounts.map((i) => [i['_id'], i['count']])),
+        ledger_tail: ledger.entries,
+        support_cases: userCases,
+        audit_trail: userAudit,
+      },
+    }
   })
 
   app.post<{ Params: { id: string } }>('/operator/users/:id/suspend', { preHandler: requireOperator(db, 'users.manage') }, async (request, reply) => {
@@ -319,18 +362,29 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       { $group: { _id: '$tenant_id', count: { $sum: 1 } } },
     ]).toArray()
     const counts = new Map(memberCounts.map((item) => [item['_id'] as string, item['count'] as number]))
+    const health = await computeTenantHealth(db, tenantIds)
     const nextCursor = items.length === limit ? encodeCursor(items[items.length - 1], 'tenant_id') : undefined
-    return { tenants: items.map((item) => ({ ...item, user_count: counts.get(item['tenant_id'] as string) ?? 0 })), total, limit, offset, ...(nextCursor ? { next_cursor: nextCursor } : {}) }
+    return {
+      tenants: items.map((item) => ({
+        ...item,
+        user_count: counts.get(item['tenant_id'] as string) ?? 0,
+        health: health.get(item['tenant_id'] as string) ?? { score: 100, factors: [] },
+      })),
+      total, limit, offset, ...(nextCursor ? { next_cursor: nextCursor } : {}),
+    }
   })
 
   app.get<{ Params: { id: string } }>('/operator/tenants/:id', { preHandler: requireOperator(db, 'tenants.read') }, async (request, reply) => {
     const tenant = await tenants.findOne({ $or: [{ tenant_id: request.params.id }, { id: request.params.id }] }, { projection: { _id: 0 } })
     if (!tenant) return reply.status(404).send({ error: 'Tenant not found' })
-    const members = await users.find(
-      { tenant_id: tenant['tenant_id'] },
-      { projection: { _id: 0, id: 1, email: 1, name: 1, roles: 1, status: 1, created_at: 1 } },
-    ).sort({ created_at: 1 }).toArray()
-    return { tenant, members }
+    const [members, health] = await Promise.all([
+      users.find(
+        { tenant_id: tenant['tenant_id'] },
+        { projection: { _id: 0, id: 1, email: 1, name: 1, roles: 1, status: 1, created_at: 1 } },
+      ).sort({ created_at: 1 }).toArray(),
+      computeTenantHealth(db, [tenant['tenant_id'] as string]),
+    ])
+    return { tenant, members, health: health.get(tenant['tenant_id'] as string) ?? { score: 100, factors: [] } }
   })
 
   /** Suspending a tenant blocks every request for all of its users — the
