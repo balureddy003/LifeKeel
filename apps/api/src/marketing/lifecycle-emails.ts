@@ -42,7 +42,7 @@ interface LifecycleSendDoc {
   id: string
   /** `${sequence}:${step}:${recipientId}` — unique, claimed before send. */
   key: string
-  sequence: 'lead_nurture' | 'activation' | 'upgrade' | 'trial' | 'winback'
+  sequence: 'lead_nurture' | 'activation' | 'upgrade' | 'trial' | 'winback' | 'campaign'
   step: string
   recipient: string // lead id or user id
   email: string
@@ -76,6 +76,25 @@ export function verifyUnsubscribeToken(leadId: string, token: string): boolean {
   return expected.length === given.length && timingSafeEqual(expected, given)
 }
 
+/** User-side unsubscribe — campaigns mail signed-up users too, and marketing
+ *  mail to users needs a working opt-out (the lifecycle account emails like
+ *  trial-ending are transactional and don't include it). */
+export function userUnsubscribeToken(userId: string): string {
+  return createHmac('sha256', process.env['JWT_SECRET'] ?? 'dev-secret')
+    .update(`unsub-user:${userId}`)
+    .digest('base64url')
+}
+
+export function verifyUserUnsubscribeToken(userId: string, token: string): boolean {
+  const expected = Buffer.from(userUnsubscribeToken(userId))
+  const given = Buffer.from(token)
+  return expected.length === given.length && timingSafeEqual(expected, given)
+}
+
+export function userUnsubUrl(base: string, userId: string): string {
+  return `${base}/users/unsubscribe?id=${encodeURIComponent(userId)}&sig=${userUnsubscribeToken(userId)}`
+}
+
 function unsubUrl(base: string, leadId: string): string {
   return `${base}/leads/unsubscribe?id=${encodeURIComponent(leadId)}&sig=${unsubscribeToken(leadId)}`
 }
@@ -86,7 +105,7 @@ function getFromEmail(): string {
   return process.env['SENDGRID_FROM_EMAIL'] ?? 'hello@agentoak.ai'
 }
 
-async function sendEmail(to: string, subject: string, html: string, unsubLink?: string): Promise<void> {
+export async function sendEmail(to: string, subject: string, html: string, unsubLink?: string): Promise<void> {
   const apiKey = process.env['SENDGRID_API_KEY']
   if (!apiKey) {
     log.warn({ to, subject }, 'No SENDGRID_API_KEY — skipping lifecycle email')
@@ -102,7 +121,7 @@ async function sendEmail(to: string, subject: string, html: string, unsubLink?: 
   })
 }
 
-function wrap(body: string, unsubLink?: string): string {
+export function wrap(body: string, unsubLink?: string): string {
   return `<div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;color:#1a1a2e;">
 ${body}
 <p style="color:#9a9ab0;font-size:11px;margin-top:32px;border-top:1px solid #eee;padding-top:12px;">
@@ -110,7 +129,7 @@ Agent Oak — your family's digital twin.${unsubLink ? ` <a href="${unsubLink}" 
 </p></div>`
 }
 
-const cta = (url: string, label: string) =>
+export const cta = (url: string, label: string) =>
   `<a href="${url}" style="display:inline-block;padding:12px 22px;background:#6c5ce7;color:#fff;border-radius:10px;text-decoration:none;font-weight:600;margin:16px 0;">${label}</a>`
 
 // ── Email bodies (informational only — never advice/arranging) ──────────────

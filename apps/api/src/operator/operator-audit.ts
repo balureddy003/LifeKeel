@@ -25,6 +25,8 @@ export type OperatorAuditAction =
   | 'operator.blog.update'
   | 'operator.blog.publish'
   | 'operator.blog.unpublish'
+  | 'operator.campaign.create'
+  | 'operator.campaign.send'
   | 'operator.billing.adjust_credits'
   | 'operator.reminder.retry'
   | 'operator.user.revoke_sessions'

@@ -2543,6 +2543,59 @@ export const updateOperatorBlogPost = (id: string, input: Partial<BlogPostInput>
 export const publishBlogPost = (id: string, reason: string) => operatorAction(`/operator/blog/posts/${id}/publish`, reason)
 export const unpublishBlogPost = (id: string, reason: string) => operatorAction(`/operator/blog/posts/${id}/unpublish`, reason)
 
+// ── Operator: segment campaigns ───────────────────────────────────────────
+
+export interface CampaignFilter {
+  audience: 'users' | 'leads' | 'both'
+  plans?: string[]
+  trialing?: boolean
+  has_profile?: boolean
+  lead_stages?: string[]
+  utm_sources?: string[]
+  created_within_days?: number
+  min_age_days?: number
+}
+
+export interface OperatorCampaign {
+  id: string
+  name: string
+  subject: string
+  body_text: string
+  cta_url?: string
+  cta_label?: string
+  filter: CampaignFilter
+  status: 'draft' | 'sent'
+  created_by: string
+  created_at: string
+  sent_at?: string
+  stats?: { targeted: number; sent: number; failed: number }
+}
+
+export function fetchOperatorCampaigns(): Promise<{ campaigns: OperatorCampaign[] }> {
+  return operatorRequest('/operator/campaigns')
+}
+
+async function campaignWrite(path: string, body: Record<string, unknown>): Promise<unknown> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Campaign request failed')
+  return data
+}
+
+export const createCampaign = async (input: Omit<OperatorCampaign, 'id' | 'status' | 'created_by' | 'created_at' | 'sent_at' | 'stats'>, reason: string): Promise<OperatorCampaign> =>
+  ((await campaignWrite('/operator/campaigns', { ...input, reason })) as { campaign: OperatorCampaign }).campaign
+
+export const previewCampaignAudience = (filter: CampaignFilter): Promise<{ count: number; users: number; leads: number }> =>
+  campaignWrite('/operator/campaigns/preview', { ...filter }) as Promise<{ count: number; users: number; leads: number }>
+
+export const sendCampaignNow = (id: string, reason: string) => operatorAction(`/operator/campaigns/${id}/send`, reason)
+
 // ── Operator: billing ─────────────────────────────────────────────────────
 
 export interface OperatorBillingOverview {

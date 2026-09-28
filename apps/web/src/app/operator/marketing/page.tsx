@@ -37,9 +37,16 @@ import {
   fetchMarketingPerformance,
   type BlogPostSummary,
   type MarketingPerformance,
+  fetchOperatorCampaigns,
+  createCampaign,
+  previewCampaignAudience,
+  sendCampaignNow,
+  type OperatorCampaign,
+  type CampaignFilter,
 } from '@/lib/api'
 import { PostPreview } from './_components/PostPreview'
 import { PostCalendar } from './_components/PostCalendar'
+import { ReasonAction } from '../_components/ReasonAction'
 
 const STATE_STYLE: Record<MarketingPost['state'], string> = {
   draft: 'text-warning bg-warning/10 border-warning/25',
@@ -94,7 +101,7 @@ function toLocalInput(iso: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-type Tab = 'compose' | 'queue' | 'calendar' | 'performance'
+type Tab = 'compose' | 'queue' | 'calendar' | 'performance' | 'campaigns'
 
 export default function MarketingPage() {
   const toast = useToast()
@@ -461,6 +468,7 @@ export default function MarketingPage() {
                 ['queue', `Queue${pendingCount ? ` (${pendingCount})` : ''}`],
                 ['calendar', 'Calendar'],
                 ['performance', 'Performance'],
+                ['campaigns', 'Campaigns'],
               ] as [Tab, string][]
             ).map(([key, label]) => (
               <button
@@ -951,6 +959,9 @@ export default function MarketingPage() {
               )}
             </>
           )}
+
+          {/* Campaigns — one-shot targeted email to filtered cohorts */}
+          {tab === 'campaigns' && <CampaignsPanel />}
         </>
       )}
     </div>
@@ -1113,6 +1124,218 @@ function LinkBuilder({
       <p className="text-caption text-ink-tertiary leading-relaxed">
         Keep <span className="font-semibold">medium = social</span> for channel posts — the performance tab only joins utm_medium=social traffic.
       </p>
+    </div>
+  )
+}
+
+/** One-shot targeted email — operator drafts copy, previews the audience,
+ *  fires the send. Drafts render the filter as chips; sent campaigns show
+ *  their delivery stats. */
+function CampaignsPanel() {
+  const toast = useToast()
+  const [campaigns, setCampaigns] = useState<OperatorCampaign[] | null>(null)
+  const [showCreate, setShowCreate] = useState(false)
+  const [name, setName] = useState('')
+  const [subject, setSubject] = useState('')
+  const [body, setBody] = useState('')
+  const [ctaUrl, setCtaUrl] = useState('')
+  const [ctaLabel, setCtaLabel] = useState('')
+  const [audience, setAudience] = useState<CampaignFilter['audience']>('users')
+  const [planFilter, setPlanFilter] = useState('')
+  const [trialing, setTrialing] = useState('')
+  const [hasProfile, setHasProfile] = useState('')
+  const [sources, setSources] = useState('')
+  const [preview, setPreview] = useState<{ count: number; users: number; leads: number } | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchOperatorCampaigns().then((r) => setCampaigns(r.campaigns)).catch(() => setCampaigns([]))
+  }, [])
+
+  function buildFilter(): CampaignFilter {
+    const f: CampaignFilter = { audience }
+    if (planFilter) f.plans = [planFilter]
+    if (trialing === 'only') f.trialing = true
+    if (trialing === 'exclude') f.trialing = false
+    if (hasProfile === 'yes') f.has_profile = true
+    if (hasProfile === 'no') f.has_profile = false
+    const srcs = sources.split(',').map((s) => s.trim()).filter(Boolean)
+    if (srcs.length > 0) f.utm_sources = srcs
+    return f
+  }
+
+  async function runPreview() {
+    setBusy('preview')
+    try {
+      setPreview(await previewCampaignAudience(buildFilter()))
+    } catch (err) {
+      toast({ message: err instanceof Error ? err.message : 'Preview failed', variant: 'error' })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function create(reason: string) {
+    setBusy('create')
+    try {
+      await createCampaign(
+        {
+          name: name.trim(),
+          subject: subject.trim(),
+          body_text: body.trim(),
+          ...(ctaUrl.trim() ? { cta_url: ctaUrl.trim() } : {}),
+          ...(ctaLabel.trim() ? { cta_label: ctaLabel.trim() } : {}),
+          filter: buildFilter(),
+        },
+        reason,
+      )
+      toast({ message: 'Campaign draft created' })
+      setShowCreate(false)
+      setName(''); setSubject(''); setBody(''); setCtaUrl(''); setCtaLabel(''); setPreview(null)
+      const r = await fetchOperatorCampaigns()
+      setCampaigns(r.campaigns)
+    } catch (err) {
+      toast({ message: err instanceof Error ? err.message : 'Create failed', variant: 'error' })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function send(id: string, reason: string) {
+    await sendCampaignNow(id, reason)
+    toast({ message: 'Campaign sent' })
+    const r = await fetchOperatorCampaigns()
+    setCampaigns(r.campaigns)
+  }
+
+  const selectCls = 'glass-input w-full rounded-xl px-3 py-2 text-sm text-ink-primary outline-none'
+
+  return (
+    <div className="space-y-4">
+      <GlassCard className="p-4">
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-sm font-semibold text-ink-primary">Email campaigns</p>
+          <button onClick={() => setShowCreate((v) => !v)} className="text-xs font-semibold text-family-400">
+            {showCreate ? 'Close' : 'New campaign'}
+          </button>
+        </div>
+        <p className="text-caption text-ink-tertiary leading-relaxed">
+          One-shot email to a filtered cohort — users honor <code>email_opt_out</code>, leads honor consent +
+          suppression. The send button is the approval gate: once fired, a campaign can&apos;t re-send.
+        </p>
+
+        {showCreate && (
+          <div className="mt-3 pt-3 border-t border-tint/[0.06] space-y-2.5">
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Campaign name — e.g. trial-nudge-march"
+              className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none" />
+            <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject line"
+              className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none" />
+            <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={5}
+              placeholder={'Body — blank lines split paragraphs.\nUse {{first_name}} to personalize.'}
+              className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none resize-y" />
+            <div className="flex gap-2">
+              <input value={ctaUrl} onChange={(e) => setCtaUrl(e.target.value)} placeholder="CTA URL (optional)"
+                className="glass-input flex-1 rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none" />
+              <input value={ctaLabel} onChange={(e) => setCtaLabel(e.target.value)} placeholder="CTA label"
+                className="glass-input w-40 rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <select value={audience} onChange={(e) => setAudience(e.target.value as CampaignFilter['audience'])} className={selectCls}>
+                <option value="users">Users only</option>
+                <option value="leads">Leads only</option>
+                <option value="both">Users + leads</option>
+              </select>
+              <select value={planFilter} onChange={(e) => setPlanFilter(e.target.value)} className={selectCls}>
+                <option value="">Any plan</option>
+                <option value="free">Free</option>
+                <option value="starter">Oak Plus</option>
+              </select>
+              <select value={trialing} onChange={(e) => setTrialing(e.target.value)} className={selectCls}>
+                <option value="">Trial: any</option>
+                <option value="only">Trialing only</option>
+                <option value="exclude">Not trialing</option>
+              </select>
+              <select value={hasProfile} onChange={(e) => setHasProfile(e.target.value)} className={selectCls}>
+                <option value="">Profile: any</option>
+                <option value="yes">Has profile</option>
+                <option value="no">No profile</option>
+              </select>
+            </div>
+            <input value={sources} onChange={(e) => setSources(e.target.value)} placeholder="utm_source filter — comma-separated, optional"
+              className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none" />
+
+            <div className="flex items-center gap-3">
+              <button onClick={runPreview} disabled={busy === 'preview'}
+                className="rounded-lg border border-tint/[0.1] px-3 py-1.5 text-xs font-medium text-ink-secondary hover:text-ink-primary disabled:opacity-40">
+                {busy === 'preview' ? 'Counting…' : 'Preview audience'}
+              </button>
+              {preview && (
+                <p className="text-xs text-ink-secondary">
+                  <span className="font-semibold text-ink-primary">{preview.count}</span> recipients
+                  <span className="text-ink-tertiary"> ({preview.users} users · {preview.leads} leads)</span>
+                </p>
+              )}
+            </div>
+
+            <ReasonAction
+              label="Create draft"
+              description="Creates a draft — nothing sends until you fire it from the list below."
+              onConfirm={async (reason) => {
+                if (name.trim().length < 3 || subject.trim().length < 3 || body.trim().length < 20) {
+                  throw new Error('Name, subject, and a 20+ character body are required')
+                }
+                await create(reason)
+              }}
+            />
+          </div>
+        )}
+      </GlassCard>
+
+      {campaigns === null ? (
+        <div className="shimmer h-20 rounded-2xl" />
+      ) : campaigns.length === 0 ? (
+        <GlassCard className="p-4">
+          <p className="text-sm text-ink-secondary">No campaigns yet — the lifecycle sequences handle the always-on mail; campaigns are for the moments in between.</p>
+        </GlassCard>
+      ) : (
+        <GlassCard className="p-4">
+          <ul className="space-y-3">
+            {campaigns.map((c) => (
+              <li key={c.id} className="border-b border-tint/[0.06] last:border-0 pb-3 last:pb-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-ink-primary truncate">{c.name}</p>
+                    <p className="text-xs text-ink-tertiary truncate">{c.subject}</p>
+                    <p className="text-caption text-ink-tertiary mt-0.5">
+                      {c.filter.audience}
+                      {c.filter.plans?.length ? ` · ${c.filter.plans.join(',')}` : ''}
+                      {c.filter.trialing !== undefined ? (c.filter.trialing ? ' · trialing' : ' · not trialing') : ''}
+                      {c.filter.has_profile !== undefined ? (c.filter.has_profile ? ' · has profile' : ' · no profile') : ''}
+                      {c.filter.utm_sources?.length ? ` · src: ${c.filter.utm_sources.join(',')}` : ''}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    {c.status === 'sent' ? (
+                      <p className="text-xs text-ink-tertiary">
+                        sent {c.stats ? `${c.stats.sent}/${c.stats.targeted}` : ''}
+                        {c.stats?.failed ? <span className="text-danger"> ({c.stats.failed} failed)</span> : ''}
+                      </p>
+                    ) : (
+                      <ReasonAction
+                        label="Send now"
+                        destructive
+                        description="One-shot — sends real email to the matching audience and can't be re-run."
+                        onConfirm={(reason) => send(c.id, reason)}
+                      />
+                    )}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </GlassCard>
+      )}
     </div>
   )
 }

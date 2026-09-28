@@ -1308,3 +1308,63 @@ describe('security monitoring', () => {
     await app.close()
   })
 })
+
+describe('segment campaigns', () => {
+  const campaignBody = {
+    name: 'March nudge',
+    subject: 'A quick hello',
+    body_text: 'Hi {{first_name}},\n\nOak misses you.',
+    filter: { audience: 'users' },
+    reason: 'Targeted winback test campaign',
+  }
+
+  it('creates, previews, sends once — all audited', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['marketing_operator'] })
+    const app = await buildApp()
+
+    // Preview reflects seeded users (operator-1 + user-2 are both active).
+    const preview = await app.inject({ method: 'POST', url: '/operator/campaigns/preview', payload: { audience: 'users' } })
+    expect(preview.statusCode).toBe(200)
+    expect(preview.json().count).toBe(2)
+
+    const created = await app.inject({ method: 'POST', url: '/operator/campaigns', payload: campaignBody })
+    expect(created.statusCode).toBe(200)
+    const id = created.json().campaign.id
+
+    const list = await app.inject({ method: 'GET', url: '/operator/campaigns' })
+    expect(list.json().campaigns).toHaveLength(1)
+    expect(list.json().campaigns[0].status).toBe('draft')
+
+    const send = await app.inject({ method: 'POST', url: `/operator/campaigns/${id}/send`, payload: { reason: 'Firing the campaign' } })
+    expect(send.statusCode).toBe(200)
+    expect(send.json().stats).toMatchObject({ targeted: 2, sent: 2, failed: 0 })
+
+    // One-shot — a second send is a hard 409.
+    const resend = await app.inject({ method: 'POST', url: `/operator/campaigns/${id}/send`, payload: { reason: 'Trying again anyway' } })
+    expect(resend.statusCode).toBe(409)
+
+    expect(await db.collection('operator_audit_log').countDocuments({ action: 'operator.campaign.create' })).toBe(1)
+    expect(await db.collection('operator_audit_log').countDocuments({ action: 'operator.campaign.send' })).toBe(1)
+    expect(await db.collection('lifecycle_sends').countDocuments({ sequence: 'campaign' })).toBe(2)
+    await app.close()
+  })
+
+  it('denies campaign writes to operators without marketing.manage', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    const app = await buildApp()
+    const created = await app.inject({ method: 'POST', url: '/operator/campaigns', payload: campaignBody })
+    expect(created.statusCode).toBe(403)
+    await app.close()
+  })
+
+  it('skips users who opted out of marketing email', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['marketing_operator'] })
+    await db.collection('users').updateOne({ id: 'user-2' }, { $set: { email_opt_out: true } })
+    const app = await buildApp()
+    const created = await app.inject({ method: 'POST', url: '/operator/campaigns', payload: campaignBody })
+    const id = created.json().campaign.id
+    const send = await app.inject({ method: 'POST', url: `/operator/campaigns/${id}/send`, payload: { reason: 'Firing the campaign' } })
+    expect(send.json().stats.sent).toBe(1) // only operator-1 — user-2 opted out
+    await app.close()
+  })
+})

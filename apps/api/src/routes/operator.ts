@@ -16,6 +16,7 @@ import { isRollupReady, readDailyRollup } from '../jobs/metrics-rollup.js'
 import { getRunbooks } from '../operator/runbooks.js'
 import { listAutopilotRules, getAutopilotRule, NEVER_AUTONOMOUS, PROPOSAL_HANDLERS, type AutopilotActionDoc } from '../operator/autopilot.js'
 import { runWeeklyDigest } from '../operator/weekly-digest.js'
+import { campaignsCol, resolveAudience, sendCampaign, type CampaignDoc } from '../marketing/campaigns.js'
 import type { SupportCaseDoc, SupportMessage } from './support.js'
 
 const QuerySchema = z.object({
@@ -74,6 +75,28 @@ const BlogPostWriteSchema = z.object({
 })
 const BlogPostCreateSchema = BlogPostWriteSchema.extend({ reason: z.string().trim().min(5).max(500) })
 const BlogPostUpdateSchema = BlogPostWriteSchema.partial().extend({ reason: z.string().trim().min(5).max(500) })
+// Segment campaigns — operator-authored email to a filtered cohort. The
+// filter is intentionally coarse (plan/trial/profile/lead-stage/source/
+// age): precise enough to target, too coarse to single out a person.
+const CampaignFilterSchema = z.object({
+  audience: z.enum(['users', 'leads', 'both']),
+  plans: z.array(z.string().trim().min(1).max(30)).max(10).optional(),
+  trialing: z.boolean().optional(),
+  has_profile: z.boolean().optional(),
+  lead_stages: z.array(z.string().trim().min(1).max(30)).max(10).optional(),
+  utm_sources: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
+  created_within_days: z.number().int().min(1).max(3650).optional(),
+  min_age_days: z.number().int().min(0).max(3650).optional(),
+})
+const CampaignCreateSchema = z.object({
+  name: z.string().trim().min(3).max(120),
+  subject: z.string().trim().min(3).max(200),
+  body_text: z.string().trim().min(20).max(10000),
+  cta_url: z.string().trim().url().max(500).optional(),
+  cta_label: z.string().trim().min(1).max(60).optional(),
+  filter: CampaignFilterSchema,
+  reason: z.string().trim().min(5).max(500),
+})
 const CreditAdjustSchema = z.object({
   amount: z.number().int().min(-10000).max(10000).refine((v) => v !== 0, 'Amount cannot be zero'),
   reason: z.string().trim().min(5).max(500),
@@ -1209,6 +1232,77 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     if (result.matchedCount === 0) return reply.status(404).send({ error: 'Post not found or not published' })
     await audit.log(request, 'operator.blog.unpublish', 'blog_post', request.params.id, parsed.data.reason)
     return { ok: true }
+  })
+
+  // ── Segment campaigns ───────────────────────────────────────────────────
+  // One-shot targeted email: operator drafts copy, previews the audience,
+  // fires the send. The send button is the approval gate — externally-facing
+  // communication never fires autonomously (trust model). Consent/opt-out
+  // + dedup rails live in marketing/campaigns.ts.
+
+  const campaigns = campaignsCol(db)
+
+  app.get('/operator/campaigns', { preHandler: requireOperator(db, 'marketing.read') }, async () => {
+    const list = await campaigns
+      .find({}, { projection: { _id: 0 } })
+      .sort({ created_at: -1 })
+      .limit(100)
+      .toArray()
+    return { campaigns: list }
+  })
+
+  app.post('/operator/campaigns', { preHandler: requireOperator(db, 'marketing.manage') }, async (request, reply) => {
+    const parsed = CampaignCreateSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid campaign', issues: parsed.error.issues })
+    const { reason, ...data } = parsed.data
+    const campaign: CampaignDoc = {
+      id: randomBytes(8).toString('hex'),
+      ...data,
+      status: 'draft',
+      created_by: request.operatorContext?.user_id ?? 'unknown',
+      created_at: new Date(),
+    }
+    await campaigns.insertOne(campaign)
+    await audit.log(request, 'operator.campaign.create', 'campaign', campaign.id, reason, { name: campaign.name, audience: campaign.filter.audience })
+    const { _id: _omit, ...out } = campaign as CampaignDoc & { _id?: unknown }
+    return { campaign: out }
+  })
+
+  // Audience count for a filter without creating anything — the "how many
+  // people is this?" check before firing.
+  app.post('/operator/campaigns/preview', { preHandler: requireOperator(db, 'marketing.read') }, async (request, reply) => {
+    const parsed = CampaignFilterSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid filter', issues: parsed.error.issues })
+    const recipients = await resolveAudience(db, parsed.data)
+    const users = recipients.filter((r) => r.kind === 'user').length
+    return { count: recipients.length, users, leads: recipients.length - users }
+  })
+
+  app.post<{ Params: { id: string } }>('/operator/campaigns/:id/send', { preHandler: requireOperator(db, 'marketing.manage') }, async (request, reply) => {
+    const parsed = ReasonSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+    const campaign = await campaigns.findOne({ id: request.params.id })
+    if (!campaign) return reply.status(404).send({ error: 'Campaign not found' })
+    if (campaign.status !== 'draft') return reply.status(409).send({ error: `Campaign already ${campaign.status}` })
+    // Claim the send BEFORE mailing — racing double-clicks get 409 off the
+    // status flip, and lifecycle_sends dedup is the second lock anyway.
+    const claimed = await campaigns.updateOne(
+      { id: campaign.id, status: 'draft' },
+      { $set: { status: 'sent', sent_at: new Date() } },
+    )
+    if (claimed.modifiedCount === 0) return reply.status(409).send({ error: 'Campaign already sent' })
+    try {
+      const stats = await sendCampaign(db, campaign)
+      await campaigns.updateOne({ id: campaign.id }, { $set: { stats } })
+      await audit.log(request, 'operator.campaign.send', 'campaign', campaign.id, parsed.data.reason, stats)
+      return { ok: true, stats }
+    } catch (err) {
+      // Roll the draft back so a transient failure (marketing_paused, DB
+      // blip) doesn't wedge the campaign in a half-sent state it can't
+      // leave — the ledger already claimed any sends that went out.
+      await campaigns.updateOne({ id: campaign.id }, { $set: { status: 'draft' }, $unset: { sent_at: '' } })
+      throw err
+    }
   })
 
   // ── Billing ─────────────────────────────────────────────────────────────
