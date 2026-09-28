@@ -2385,6 +2385,7 @@ export interface OperatorDigest {
   autopilot_executed_7d: number
   autopilot_pending_proposals: number
   marketing_published_7d: number
+  lifecycle_sent_7d: number
   top_content?: { slug: string; signups: number }
   created_at: string
 }

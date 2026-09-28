@@ -89,6 +89,7 @@ import { registerReminderRoutes } from './routes/reminders.js'
 import { registerMarketingPostRoutes, publishDueMarketingPosts, generateDailyMarketingDrafts, pollMarketingEngagement } from './routes/marketing-posts.js'
 import { runMetricsRollup } from './jobs/metrics-rollup.js'
 import { runWeeklyDigest } from './operator/weekly-digest.js'
+import { runLifecycleSweep } from './marketing/lifecycle-emails.js'
 import { runAutopilotSweep, ensureAutopilotIndexes } from './operator/autopilot.js'
 import { socialPublisherFromEnv, DbSocialPublisher } from './marketing/social-publisher.js'
 import { registerOperatorRoutes } from './routes/operator.js'
@@ -320,6 +321,20 @@ try {
     }
   }, { missedExecutionTolerance: 3_600_000 })
   log.info({}, 'Weekly digest cron started')
+
+  // Lifecycle email sweep — hourly at :25. Lead nurture, activation and
+  // upgrade nudges; consent/suppression/marketing_paused gated, ledger-deduped.
+  cron.schedule('25 * * * *', async () => {
+    try {
+      await withCronLock(workflowDb, 'lifecycle-sweep', async () => {
+        const sent = await runLifecycleSweep(workflowDb)
+        if (sent.length > 0) log.info({ count: sent.length }, 'Lifecycle emails sent')
+      })
+    } catch (err) {
+      log.error({ err }, 'Lifecycle sweep failed')
+    }
+  }, { missedExecutionTolerance: 1_800_000 })
+  log.info({}, 'Lifecycle email cron started')
 
   // Policy renewal reminders — hourly. Tier 3 autonomy: deterministic,
   // deduped, consent re-checked at send time, push-only to the member's

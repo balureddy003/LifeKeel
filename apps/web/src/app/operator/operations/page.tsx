@@ -361,6 +361,7 @@ export default function OperationsPage() {
             <div className="flex justify-between"><span className="text-ink-tertiary">Autopilot acts (7d)</span><span className="font-medium">{digest.autopilot_executed_7d}</span></div>
             <div className="flex justify-between"><span className="text-ink-tertiary">Pending proposals</span><span className="font-medium">{digest.autopilot_pending_proposals}</span></div>
             <div className="flex justify-between"><span className="text-ink-tertiary">Posts published (7d)</span><span className="font-medium">{digest.marketing_published_7d}</span></div>
+            <div className="flex justify-between"><span className="text-ink-tertiary">Lifecycle emails (7d)</span><span className="font-medium">{digest.lifecycle_sent_7d ?? 0}</span></div>
           </div>
         ) : (
           <p className="mt-2 text-sm text-ink-tertiary">No digest yet — the Monday cron creates the first, or send one now.</p>

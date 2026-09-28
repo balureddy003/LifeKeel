@@ -20,6 +20,7 @@ export interface WeeklyDigestDoc {
   autopilot_executed_7d: number
   autopilot_pending_proposals: number
   marketing_published_7d: number
+  lifecycle_sent_7d: number
   /** Top promoted blog post by attributed signups this week, if any. */
   top_content?: { slug: string; signups: number }
   created_at: Date
@@ -39,6 +40,7 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
     autopilotExecuted,
     pendingProposals,
     marketingPublished,
+    lifecycleSent,
     weekSignups,
   ] = await Promise.all([
     db.collection('users').countDocuments({ created_at: { $gte: weekAgo } }),
@@ -49,6 +51,7 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
     db.collection('autopilot_actions').countDocuments({ status: 'executed', created_at: { $gte: weekAgo } }),
     db.collection('autopilot_actions').countDocuments({ status: 'proposed' }),
     db.collection('marketing_posts').countDocuments({ state: 'published', published_at: { $gte: weekAgo } }),
+    db.collection('lifecycle_sends').countDocuments({ status: 'sent', created_at: { $gte: weekAgo } }),
     // utm_medium=social signups this week → top promoted slug.
     db.collection('users')
       .find(
@@ -76,6 +79,7 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
     autopilot_executed_7d: autopilotExecuted,
     autopilot_pending_proposals: pendingProposals,
     marketing_published_7d: marketingPublished,
+    lifecycle_sent_7d: lifecycleSent,
     ...(top ? { top_content: { slug: top[0], signups: top[1] } } : {}),
     created_at: now,
   }
@@ -91,7 +95,7 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
     `Leads: ${leads7d} new this week · ${leadsNew} waiting in "new"`,
     `Open alerts: ${openAlerts}`,
     `Autopilot: ${autopilotExecuted} actions executed · ${pendingProposals} proposals awaiting review`,
-    `Marketing: ${marketingPublished} posts published`,
+    `Marketing: ${marketingPublished} posts published · ${lifecycleSent} lifecycle emails sent`,
   ]
   if (top) lines.push(`Top content: ${top[0]} → ${top[1]} signups`)
   await sendOpsAlert({
