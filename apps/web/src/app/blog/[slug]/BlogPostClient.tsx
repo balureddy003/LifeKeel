@@ -1,6 +1,6 @@
 'use client'
 
-import { isValidElement, useEffect, useState } from 'react'
+import { isValidElement, useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
@@ -132,6 +132,9 @@ export default function BlogPostClient() {
   const params = useParams<{ slug: string }>()
   const [post, setPost] = useState<BlogPost | null>(null)
   const [loading, setLoading] = useState(true)
+  // Landing UTM is captured once on mount; the CTA click echoes it so
+  // channel-level conversion (view → CTA) is attributable per source.
+  const utmRef = useRef<Record<string, string>>({})
 
   useEffect(() => {
     let cancelled = false
@@ -145,6 +148,7 @@ export default function BlogPostClient() {
       const v = new URLSearchParams(window.location.search).get(k)
       if (v) utm[k] = v.slice(0, 100)
     }
+    utmRef.current = utm
     track('blog_view', Object.keys(utm).length ? utm : undefined)
     let seoCleanup: (() => void) | null = null
     fetchBlogPost(params.slug).then((p) => {
@@ -197,7 +201,7 @@ export default function BlogPostClient() {
         <p className="text-sm text-ink-primary font-medium">How covered is your family, really?</p>
         <Link
           href="/readiness"
-          onClick={() => track('blog_cta_click')}
+          onClick={() => track('blog_cta_click', Object.keys(utmRef.current).length ? utmRef.current : undefined)}
           className="shrink-0 text-sm font-semibold text-family-400"
         >
           Take the 2-min check →

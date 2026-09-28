@@ -115,6 +115,10 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       recentEvents,
       leadsByStage,
       signupsBySource,
+      signupsPrevWeek,
+      leadsWeek,
+      leadsPrevWeek,
+      activityRows,
     ] = await Promise.all([
       users.countDocuments({}),
       users.countDocuments({ status: { $ne: 'suspended' } }),
@@ -137,16 +141,29 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         { $project: { _id: 0, source: '$_id', count: 1 } },
         { $sort: { count: -1 } },
       ]).toArray(),
+      // Week-over-week deltas — the command center's "is it working?" chips.
+      users.countDocuments({ created_at: { $gte: new Date(weekAgo.getTime() - 7 * 24 * 60 * 60 * 1000), $lt: weekAgo } }),
+      db.collection('leads').countDocuments({ created_at: { $gte: weekAgo } }),
+      db.collection('leads').countDocuments({ created_at: { $gte: new Date(weekAgo.getTime() - 7 * 24 * 60 * 60 * 1000), $lt: weekAgo } }),
+      // 30-day daily series per funnel event — powers the KPI sparklines.
+      db.collection('growth_events').aggregate([
+        { $match: { created_at: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } } },
+        { $group: { _id: { day: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } }, event: '$event' }, count: { $sum: 1 } } },
+        { $project: { _id: 0, day: '$_id.day', event: '$_id.event', count: 1 } },
+      ]).toArray(),
     ])
 
     return {
       generated_at: new Date().toISOString(),
-      users: { total: totalUsers, active: activeUsers, suspended: suspendedUsers, signups_today: signupsToday, signups_week: signupsWeek },
+      users: { total: totalUsers, active: activeUsers, suspended: suspendedUsers, signups_today: signupsToday, signups_week: signupsWeek, signups_prev_week: signupsPrevWeek },
       tenants: { total: totalTenants, active: activeTenants },
       marketing: { publish_failed: failedPosts, queued: queuedPosts },
       leads: Object.fromEntries(leadsByStage.map((s) => [s['_id'], s['count']])),
+      leads_7d: leadsWeek,
+      leads_prev_7d: leadsPrevWeek,
       signups_by_source_7d: Object.fromEntries(signupsBySource.map((s) => [s['source'], s['count']])),
       growth_events_7d: recentEvents,
+      activity_30d: activityRows,
     }
   })
 
@@ -479,10 +496,11 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     if (stage) filter['stage'] = stage
     if (source) filter['source'] = source
     if (suppressed) filter['suppressed'] = suppressed === 'true'
-    const [items, total, stageCounts] = await Promise.all([
+    const [items, total, stageCounts, sourceCounts] = await Promise.all([
       leads.find(filter, { projection: { _id: 0 } }).sort({ created_at: -1 }).skip(offset).limit(limit).toArray(),
       leads.countDocuments(filter),
       leads.aggregate([{ $group: { _id: '$stage', count: { $sum: 1 } } }]).toArray(),
+      leads.aggregate([{ $group: { _id: '$source', count: { $sum: 1 } } }]).toArray(),
     ])
     return {
       leads: items,
@@ -490,6 +508,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       limit,
       offset,
       stages: Object.fromEntries(stageCounts.map((s) => [s['_id'], s['count']])),
+      sources: Object.fromEntries(sourceCounts.map((s) => [s['_id'], s['count']])),
     }
   })
 

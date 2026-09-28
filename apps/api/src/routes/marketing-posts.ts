@@ -372,6 +372,8 @@ export async function marketingPerformance(db: Db): Promise<{
   }
   const channelViews = new Map<string, number>()
   const channelSignups = new Map<string, number>()
+  const channelCtas = new Map<string, number>()
+  const channelLeads = new Map<string, number>()
   const campaignViews = new Map<string, number>()
   const campaignSignups = new Map<string, number>()
   const campaignLeads = new Map<string, number>()
@@ -392,6 +394,9 @@ export async function marketingPerformance(db: Db): Promise<{
       if (typeof camp === 'string') campaignViews.set(camp, (campaignViews.get(camp) ?? 0) + 1)
     } else if (e['event'] === 'blog_cta_click') {
       row(slug).cta_clicks += 1
+      const meta = e['meta'] as Record<string, unknown> | undefined
+      const src = meta?.['utm_source']
+      if (typeof src === 'string') channelCtas.set(src, (channelCtas.get(src) ?? 0) + 1)
     }
   }
   for (const u of users) {
@@ -409,13 +414,21 @@ export async function marketingPerformance(db: Db): Promise<{
     const slug = a!['utm_content']
     if (slug) row(slug).leads += 1
     campaignLeads.set(campOf(a), (campaignLeads.get(campOf(a)) ?? 0) + 1)
+    const src = a!['utm_source']
+    if (src) channelLeads.set(src, (channelLeads.get(src) ?? 0) + 1)
   }
 
   const posts = [...rows.values()]
     .map((r) => ({ ...r, title: titleBy.get(r.slug) }))
     .sort((a, b) => b.signups - a.signups || b.views - a.views)
-  const channels = [...new Set([...channelViews.keys(), ...channelSignups.keys()])]
-    .map((c) => ({ channel: c, views: channelViews.get(c) ?? 0, signups: channelSignups.get(c) ?? 0 }))
+  const channels = [...new Set([...channelViews.keys(), ...channelSignups.keys(), ...channelCtas.keys(), ...channelLeads.keys()])]
+    .map((c) => ({
+      channel: c,
+      views: channelViews.get(c) ?? 0,
+      cta_clicks: channelCtas.get(c) ?? 0,
+      leads: channelLeads.get(c) ?? 0,
+      signups: channelSignups.get(c) ?? 0,
+    }))
     .sort((a, b) => b.signups - a.signups || b.views - a.views)
   const campaigns = [...new Set([...campaignViews.keys(), ...campaignSignups.keys(), ...campaignLeads.keys()])]
     .map((c) => ({ campaign: c, views: campaignViews.get(c) ?? 0, signups: campaignSignups.get(c) ?? 0, leads: campaignLeads.get(c) ?? 0 }))

@@ -67,6 +67,11 @@ describe('/operator control plane', () => {
     expect(response.json().tenants.total).toBe(2)
     expect(response.json().marketing.publish_failed).toBe(1)
     expect(response.json().growth_events_7d).toContainEqual({ event: 'signup_completed', count: 1 })
+    // 30-day activity series for the command-center sparklines.
+    const activity = response.json().activity_30d as { day: string; event: string; count: number }[]
+    expect(activity).toContainEqual(expect.objectContaining({ event: 'signup_completed', count: 1 }))
+    expect(response.json().users.signups_prev_week).toBe(0)
+    expect(response.json().leads_7d).toBe(0)
     await app.close()
   })
 
@@ -214,6 +219,7 @@ describe('/operator control plane', () => {
     expect(list.statusCode).toBe(200)
     expect(list.json().leads).toHaveLength(1)
     expect(list.json().stages.new).toBe(1)
+    expect(list.json().sources.readiness_quiz).toBe(1)
 
     const update = await app.inject({
       method: 'PATCH', url: '/operator/leads/lead-1',

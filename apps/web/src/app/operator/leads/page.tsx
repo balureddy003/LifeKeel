@@ -9,8 +9,10 @@ import {
   type LeadStage, type OperatorLead,
 } from '@/lib/api'
 import { ReasonAction } from '../_components/ReasonAction'
+import { Pager } from '../_components/Pager'
 
 const STAGES: LeadStage[] = ['new', 'qualified', 'contacted', 'trial', 'converted', 'lost']
+const PAGE_SIZE = 25
 
 type LeadDetail = OperatorLead & { attribution?: Record<string, string> }
 
@@ -82,21 +84,33 @@ export default function OperatorLeadsPage() {
   const toast = useToast()
   const [leads, setLeads] = useState<OperatorLead[]>([])
   const [stages, setStages] = useState<Record<string, number>>({})
+  const [sources, setSources] = useState<Record<string, number>>({})
   const [query, setQuery] = useState('')
   const [stageFilter, setStageFilter] = useState('')
+  const [sourceFilter, setSourceFilter] = useState('')
+  const [suppressedOnly, setSuppressedOnly] = useState(false)
   const [total, setTotal] = useState(0)
+  const [offset, setOffset] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  async function load(q = '', stage = '') {
+  async function load(q = '', stage = '', source = '', suppressed = false, pageOffset = offset) {
     setLoading(true)
     setError(null)
     try {
-      const result = await fetchOperatorLeads({ ...(q ? { q } : {}), ...(stage ? { stage } : {}) })
+      const result = await fetchOperatorLeads({
+        ...(q ? { q } : {}),
+        ...(stage ? { stage } : {}),
+        ...(source ? { source } : {}),
+        ...(suppressed ? { suppressed: 'true' as const } : {}),
+        limit: PAGE_SIZE,
+        offset: pageOffset,
+      })
       setLeads(result.leads)
       setTotal(result.total)
       setStages(result.stages)
+      setSources(result.sources ?? {})
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load leads')
     } finally {
@@ -104,17 +118,21 @@ export default function OperatorLeadsPage() {
     }
   }
 
-  useEffect(() => { void load() }, [])
+  useEffect(() => { void load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function search(event: FormEvent) {
     event.preventDefault()
-    void load(query.trim(), stageFilter)
+    setOffset(0)
+    void load(query.trim(), stageFilter, sourceFilter, suppressedOnly, 0)
   }
 
   async function moveStage(lead: OperatorLead, stage: LeadStage, reason: string) {
     const updated = await updateOperatorLead(lead.id, { stage }, reason)
-    setLeads((current) => current.map((l) => (l.id === lead.id ? updated : l)))
     toast({ message: `Moved to ${stage}` })
+    // A stage move under an active filter can remove the lead from view, and
+    // stage counts change — reload rather than patching the row in place.
+    if (stageFilter) await load(query.trim(), stageFilter, sourceFilter, suppressedOnly, offset)
+    else setLeads((current) => current.map((l) => (l.id === lead.id ? updated : l)))
   }
 
   return (
@@ -126,7 +144,7 @@ export default function OperatorLeadsPage() {
 
       <div className="mt-4 flex flex-wrap gap-2">
         <button
-          onClick={() => { setStageFilter(''); void load(query.trim(), '') }}
+          onClick={() => { setStageFilter(''); setOffset(0); void load(query.trim(), '', sourceFilter, suppressedOnly, 0) }}
           className={`rounded-full border px-3 py-1 text-xs ${!stageFilter ? 'border-family-500/30 text-family-400' : 'border-tint/[0.08] text-ink-tertiary'}`}
         >
           All ({Object.values(stages).reduce((a, b) => a + b, 0)})
@@ -134,12 +152,34 @@ export default function OperatorLeadsPage() {
         {STAGES.map((stage) => (
           <button
             key={stage}
-            onClick={() => { setStageFilter(stage); void load(query.trim(), stage) }}
+            onClick={() => { setStageFilter(stage); setOffset(0); void load(query.trim(), stage, sourceFilter, suppressedOnly, 0) }}
             className={`rounded-full border px-3 py-1 text-xs ${stageFilter === stage ? 'border-family-500/30 text-family-400' : 'border-tint/[0.08] text-ink-tertiary'}`}
           >
             {stage} ({stages[stage] ?? 0})
           </button>
         ))}
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {Object.keys(sources).length > 1 && (
+          <select
+            value={sourceFilter}
+            onChange={(e) => { setSourceFilter(e.target.value); setOffset(0); void load(query.trim(), stageFilter, e.target.value, suppressedOnly, 0) }}
+            className="glass-input rounded-lg px-2 py-1 text-xs text-ink-secondary"
+            aria-label="Filter by source"
+          >
+            <option value="">All sources</option>
+            {Object.entries(sources).map(([source, count]) => (
+              <option key={source} value={source}>{source} ({count})</option>
+            ))}
+          </select>
+        )}
+        <button
+          onClick={() => { const next = !suppressedOnly; setSuppressedOnly(next); setOffset(0); void load(query.trim(), stageFilter, sourceFilter, next, 0) }}
+          className={`rounded-full border px-3 py-1 text-xs ${suppressedOnly ? 'border-danger/40 bg-danger/10 text-danger' : 'border-tint/[0.08] text-ink-tertiary'}`}
+        >
+          Suppressed only
+        </button>
       </div>
 
       <form onSubmit={search} className="mt-4 flex gap-2">
@@ -195,7 +235,7 @@ export default function OperatorLeadsPage() {
                   <ReasonAction
                     label="Suppress"
                     destructive
-                    onConfirm={async (r) => { await suppressOperatorLead(lead.id, r); toast({ message: 'Lead suppressed' }); await load(query.trim(), stageFilter) }}
+                    onConfirm={async (r) => { await suppressOperatorLead(lead.id, r); toast({ message: 'Lead suppressed' }); await load(query.trim(), stageFilter, sourceFilter, suppressedOnly, offset) }}
                   />
                 )}
               </div>
@@ -212,6 +252,7 @@ export default function OperatorLeadsPage() {
           )}
         </div>
       )}
+      <Pager total={total} limit={PAGE_SIZE} offset={offset} onPage={(o) => { setOffset(o); void load(query.trim(), stageFilter, sourceFilter, suppressedOnly, o) }} loading={loading} />
     </div>
   )
 }

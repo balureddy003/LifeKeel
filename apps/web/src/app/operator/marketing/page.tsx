@@ -823,48 +823,82 @@ export default function MarketingPage() {
           {tab === 'performance' && (
             <>
               {performance && (performance.totals.views > 0 || performance.totals.signups > 0 || performance.channels.length > 0) ? (
-                <GlassCard className="p-4">
-                  <div className="flex gap-4 mb-3 text-center">
-                    <div><p className="text-lg font-bold text-ink-primary">{performance.totals.views}</p><p className="text-caption text-ink-tertiary">views</p></div>
-                    <div><p className="text-lg font-bold text-ink-primary">{performance.totals.cta_clicks}</p><p className="text-caption text-ink-tertiary">CTA taps</p></div>
-                    <div><p className="text-lg font-bold text-ink-primary">{performance.totals.leads}</p><p className="text-caption text-ink-tertiary">leads</p></div>
-                    <div><p className="text-lg font-bold text-success">{performance.totals.signups}</p><p className="text-caption text-ink-tertiary">signups</p></div>
-                  </div>
-                  {performance.channels.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mb-3">
-                      {performance.channels.map((c) => (
-                        <span key={c.channel} className="text-caption rounded-full border border-family-500/25 text-family-400 px-2 py-0.5">
-                          {c.channel}: {c.views}v · {c.signups}s
-                        </span>
-                      ))}
+                <div className="space-y-4">
+                  <GlassCard className="p-4">
+                    <div className="flex gap-4 mb-1 text-center">
+                      <div><p className="text-lg font-bold text-ink-primary">{performance.totals.views}</p><p className="text-caption text-ink-tertiary">views</p></div>
+                      <div><p className="text-lg font-bold text-ink-primary">{performance.totals.cta_clicks}</p><p className="text-caption text-ink-tertiary">CTA taps</p></div>
+                      <div><p className="text-lg font-bold text-ink-primary">{performance.totals.leads}</p><p className="text-caption text-ink-tertiary">leads</p></div>
+                      <div><p className="text-lg font-bold text-success">{performance.totals.signups}</p><p className="text-caption text-ink-tertiary">signups</p></div>
                     </div>
+                    {performance.totals.views > 0 && (
+                      <p className="text-caption text-ink-tertiary">
+                        {((performance.totals.cta_clicks / performance.totals.views) * 100).toFixed(1)}% view→CTA
+                        {performance.totals.cta_clicks > 0 && ` · ${((performance.totals.signups / performance.totals.cta_clicks) * 100).toFixed(1)}% CTA→signup`}
+                      </p>
+                    )}
+                  </GlassCard>
+                  {performance.channels.length > 0 && (
+                    <GlassCard className="p-4">
+                      <p className="text-caption font-semibold text-ink-tertiary mb-2">Channel funnel — where the clicks actually convert</p>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="text-left text-ink-tertiary">
+                              <th className="pb-2 font-medium">Channel</th>
+                              <th className="pb-2 text-right font-medium">Views</th>
+                              <th className="pb-2 text-right font-medium">CTA</th>
+                              <th className="pb-2 text-right font-medium">Leads</th>
+                              <th className="pb-2 text-right font-medium">Signups</th>
+                              <th className="pb-2 text-right font-medium">View→signup</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-tint/[0.06]">
+                            {performance.channels.map((c) => (
+                              <tr key={c.channel}>
+                                <td className="py-2 font-medium text-ink-primary">{c.channel}</td>
+                                <td className="py-2 text-right text-ink-secondary">{c.views}</td>
+                                <td className="py-2 text-right text-ink-secondary">{c.cta_clicks}</td>
+                                <td className="py-2 text-right text-ink-secondary">{c.leads}</td>
+                                <td className="py-2 text-right font-semibold text-success">{c.signups}</td>
+                                <td className="py-2 text-right text-ink-tertiary">{c.views > 0 ? `${((c.signups / c.views) * 100).toFixed(1)}%` : '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </GlassCard>
                   )}
                   {performance.campaigns.length > 0 && (
-                    <div className="mb-3">
-                      <p className="text-caption text-ink-tertiary mb-1.5">By campaign</p>
+                    <GlassCard className="p-4">
+                      <p className="text-caption font-semibold text-ink-tertiary mb-2">Campaigns</p>
                       <ul className="space-y-1.5">
                         {performance.campaigns.map((c) => (
                           <li key={c.campaign} className="flex items-center justify-between gap-2 text-xs">
                             <span className="text-ink-secondary truncate">{c.campaign}</span>
                             <span className="text-ink-tertiary shrink-0">
                               {c.views}v · {c.leads}l · <span className="text-success">{c.signups}s</span>
+                              {c.views > 0 && <span className="ml-1">({((c.signups / c.views) * 100).toFixed(1)}%)</span>}
                             </span>
                           </li>
                         ))}
                       </ul>
-                    </div>
+                    </GlassCard>
                   )}
-                  <ul className="space-y-1.5">
-                    {performance.posts.slice(0, 8).map((p) => (
-                      <li key={p.slug} className="flex items-center justify-between gap-2 text-xs">
-                        <span className="text-ink-secondary truncate">{p.title ?? p.slug}</span>
-                        <span className="text-ink-tertiary shrink-0">
-                          {p.views}v · {p.cta_clicks}c · {p.leads}l · <span className="text-success">{p.signups}s</span>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </GlassCard>
+                  <GlassCard className="p-4">
+                    <p className="text-caption font-semibold text-ink-tertiary mb-2">Top content — the learning loop reads this same ranking</p>
+                    <ul className="space-y-1.5">
+                      {performance.posts.slice(0, 8).map((p) => (
+                        <li key={p.slug} className="flex items-center justify-between gap-2 text-xs">
+                          <span className="text-ink-secondary truncate">{p.title ?? p.slug}</span>
+                          <span className="text-ink-tertiary shrink-0">
+                            {p.views}v · {p.cta_clicks}c · {p.leads}l · <span className="text-success">{p.signups}s</span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </GlassCard>
+                </div>
               ) : (
                 <GlassCard className="p-4">
                   <p className="text-sm text-ink-secondary leading-relaxed">

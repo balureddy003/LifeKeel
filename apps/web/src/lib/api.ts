@@ -1765,7 +1765,7 @@ export async function previewMarketingDrafts(input: {
 
 export interface MarketingPerformance {
   posts: { slug: string; title?: string; views: number; cta_clicks: number; signups: number; leads: number }[]
-  channels: { channel: string; views: number; signups: number }[]
+  channels: { channel: string; views: number; cta_clicks: number; leads: number; signups: number }[]
   campaigns: { campaign: string; views: number; signups: number; leads: number }[]
   totals: { views: number; cta_clicks: number; signups: number; leads: number }
 }
@@ -1810,12 +1810,16 @@ export async function startXConnect(): Promise<{ auth_url: string } | null> {
 
 export interface OperatorOverview {
   generated_at: string
-  users: { total: number; active: number; suspended: number; signups_today: number; signups_week: number }
+  users: { total: number; active: number; suspended: number; signups_today: number; signups_week: number; signups_prev_week?: number }
   tenants: { total: number; active: number }
   marketing: { publish_failed: number; queued: number }
   leads: Record<string, number>
+  leads_7d?: number
+  leads_prev_7d?: number
   signups_by_source_7d: Record<string, number>
   growth_events_7d: Array<{ event: string; count: number }>
+  /** Per-day counts of funnel events over the last 30 days — sparkline feed. */
+  activity_30d?: Array<{ day: string; event: string; count: number }>
 }
 
 export interface OperatorUser {
@@ -2136,8 +2140,11 @@ export interface OperatorLead {
   updated_at?: string
 }
 
-export function fetchOperatorLeads(query: { q?: string; stage?: string; source?: string } = {}): Promise<{ leads: OperatorLead[]; total: number; stages: Record<string, number> }> {
-  const params = new URLSearchParams(Object.entries(query).filter(([, v]) => v) as [string, string][])
+export function fetchOperatorLeads(query: { q?: string; stage?: string; source?: string; suppressed?: 'true' | 'false'; limit?: number; offset?: number } = {}): Promise<{ leads: OperatorLead[]; total: number; stages: Record<string, number>; sources: Record<string, number>; limit: number; offset: number }> {
+  const params = new URLSearchParams()
+  for (const [k, v] of Object.entries(query)) {
+    if (v !== undefined && v !== '') params.set(k, String(v))
+  }
   return operatorRequest(`/operator/leads${params.size ? `?${params}` : ''}`)
 }
 

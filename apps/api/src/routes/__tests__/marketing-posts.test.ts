@@ -703,6 +703,7 @@ describe('/marketing/performance', () => {
       { event: 'blog_view', path: '/blog/cover-gap', meta: { utm_source: 'x' } },
       { event: 'blog_view', path: '/blog/other-post' },                    // no utm — view counts, channel doesn't
       { event: 'blog_cta_click', path: '/blog/cover-gap' },
+      { event: 'blog_cta_click', path: '/blog/cover-gap', meta: { utm_source: 'bluesky' } }, // channel-level CTA
       { event: 'landing_view', path: '/' },                                // unrelated event — ignored
       { event: 'blog_view', path: '/settings' },                           // non-blog path — ignored
     )
@@ -718,13 +719,13 @@ describe('/marketing/performance', () => {
     expect(res.statusCode).toBe(200)
     const { posts, channels, campaigns, totals } = res.json() as {
       posts: { slug: string; views: number; cta_clicks: number; signups: number; leads: number; title?: string }[]
-      channels: { channel: string; views: number; signups: number }[]
+      channels: { channel: string; views: number; cta_clicks: number; leads: number; signups: number }[]
       campaigns: { campaign: string; views: number; signups: number; leads: number }[]
       totals: { views: number; signups: number; leads: number }
     }
 
     const gap = posts.find((p) => p.slug === 'cover-gap')!
-    expect(gap).toMatchObject({ views: 3, cta_clicks: 1, signups: 2, leads: 1, title: 'The cover gap' })
+    expect(gap).toMatchObject({ views: 3, cta_clicks: 2, signups: 2, leads: 1, title: 'The cover gap' })
     const other = posts.find((p) => p.slug === 'other-post')!
     expect(other.views).toBe(1)
     // Totals are the sum of per-post rows — a campaign signup without
@@ -732,9 +733,9 @@ describe('/marketing/performance', () => {
     expect(totals).toMatchObject({ views: 4, signups: 2, leads: 1 })
 
     const bsky = channels.find((c) => c.channel === 'bluesky')!
-    expect(bsky).toMatchObject({ views: 2, signups: 2 })
+    expect(bsky).toMatchObject({ views: 2, cta_clicks: 1, leads: 0, signups: 2 })
     const x = channels.find((c) => c.channel === 'x')!
-    expect(x).toMatchObject({ views: 1, signups: 1 })
+    expect(x).toMatchObject({ views: 1, cta_clicks: 0, leads: 1, signups: 1 })
     expect(channels.find((c) => c.channel === 'google')).toBeUndefined()
 
     // Campaign rollup — named pushes bucket separately from the default.
