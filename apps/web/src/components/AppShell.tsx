@@ -307,6 +307,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/support') ||
     pathname.startsWith('/readiness') ||
     pathname.startsWith('/blog') ||
+    pathname.startsWith('/guides') ||
     pathname.startsWith('/operator') ||
     pathname.startsWith('/invite')
 
@@ -480,6 +481,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/support') ||
     pathname.startsWith('/readiness') ||
     pathname.startsWith('/blog') ||
+    pathname.startsWith('/guides') ||
     pathname.startsWith('/invite')
 
   // The operator console ships its own header/nav in app/operator/layout.
