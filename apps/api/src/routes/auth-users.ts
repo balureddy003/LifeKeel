@@ -41,7 +41,7 @@ export interface User {
   created_at: Date
   avatar_color: string
   roles: string[]
-  status: 'active' | 'suspended' | undefined
+  status: 'active' | 'suspended' | 'erased' | undefined
   failed_login_attempts: number | undefined
   locked_until: Date | undefined
   external_id: string | undefined
@@ -310,6 +310,12 @@ export async function registerAuthUserRoutes(
       // Timing-safe: still hash even on miss to prevent user enumeration
       scryptSync(password, randomBytes(16).toString('hex'), 32)
       recordLoginEvent(request, { email: emailKey, success: false, reason: 'unknown_email' })
+      return reply.status(401).send({ error: 'Invalid email or password' })
+    }
+    // Erased accounts are tombstones — no credentials remain, and the
+    // response mustn't distinguish them from an unknown email.
+    if (user.status === 'erased') {
+      recordLoginEvent(request, { email: emailKey, success: false, reason: 'erased', user_id: user.id, tenant_id: user.tenant_id })
       return reply.status(401).send({ error: 'Invalid email or password' })
     }
     if (user.status === 'suspended') {

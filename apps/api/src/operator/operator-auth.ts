@@ -61,6 +61,17 @@ export function hasOperatorPermission(roles: PlatformRole[], permission: Operato
   return roles.some((role) => ROLE_PERMISSIONS[role]?.includes(permission))
 }
 
+/** Union of all permissions granted by the operator's roles — used by
+ *  /operator/me so the console can hide nav items that would 403. The
+ *  backend stays authoritative; this is for UX, not enforcement. */
+export function resolvePermissions(roles: PlatformRole[]): OperatorPermission[] {
+  const granted = new Set<OperatorPermission>()
+  for (const role of roles) {
+    for (const permission of ROLE_PERMISSIONS[role] ?? []) granted.add(permission)
+  }
+  return [...granted].sort()
+}
+
 function bootstrapUserIds(): Set<string> {
   return new Set(
     (process.env['PLATFORM_OPERATOR_USER_IDS'] ?? '')

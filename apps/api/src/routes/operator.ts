@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify'
-import type { Db } from 'mongodb'
+import { ObjectId, type Db } from 'mongodb'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { OperatorAuditLogger } from '../operator/operator-audit.js'
-import { requireOperator, type PlatformRole } from '../operator/operator-auth.js'
+import { requireOperator, resolvePermissions, type PlatformRole } from '../operator/operator-auth.js'
 import { sendPasswordResetEmail } from '../auth-email.js'
 import { recordLedgerEntry, getLedgerHistory } from '../billing/credit-ledger.js'
 import { queueManager } from '../queue/QueueManager.js'
@@ -19,6 +19,9 @@ const QuerySchema = z.object({
   tenant: z.string().trim().max(100).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
   offset: z.coerce.number().int().min(0).default(0),
+  /** Keyset cursor `<created_at ISO>|<id>` — preferred over offset at scale
+   *  (skip(N) scans N docs; a cursor seeks the index directly). */
+  cursor: z.string().max(300).optional(),
 })
 
 const ReasonSchema = z.object({ reason: z.string().trim().min(5).max(500) })
@@ -40,6 +43,7 @@ const LeadQuerySchema = z.object({
   suppressed: z.enum(['true', 'false']).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
   offset: z.coerce.number().int().min(0).default(0),
+  cursor: z.string().max(300).optional(),
 })
 const PromotionCreateSchema = z.object({
   code: z.string().trim().min(3).max(40).regex(/^[A-Z0-9_-]+$/i, 'Letters, numbers, dashes and underscores only'),
@@ -74,10 +78,41 @@ const AuditQuerySchema = z.object({
   operator_user_id: z.string().trim().max(100).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
+  cursor: z.string().max(300).optional(),
 })
 
 function safeRegex(value: string): RegExp {
   return new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+}
+
+/** Keyset pagination for `created_at:-1` sorts — the cursor encodes the last
+ *  row's (created_at, id) pair; the next page seeks past it via the index.
+ *  The id tiebreak keeps ordering stable when rows share a timestamp. */
+function decodeCursor(cursor: string | undefined): { created_at: Date; id: string } | null | undefined {
+  if (!cursor) return undefined
+  const raw = Buffer.from(cursor, 'base64url').toString('utf8')
+  const sep = raw.lastIndexOf('|')
+  if (sep <= 0) return null
+  const created = new Date(raw.slice(0, sep))
+  const id = raw.slice(sep + 1)
+  if (Number.isNaN(created.getTime()) || !id) return null
+  return { created_at: created, id }
+}
+
+function encodeCursor(item: Record<string, unknown>, idField: string): string | undefined {
+  const created = item['created_at']
+  const id = item[idField]
+  if (!(created instanceof Date) || typeof id !== 'string' || !id) return undefined
+  return Buffer.from(`${created.toISOString()}|${id}`).toString('base64url')
+}
+
+function cursorFilter(cursor: { created_at: Date; id: string }, idField: string): Record<string, unknown> {
+  return {
+    $or: [
+      { created_at: { $lt: cursor.created_at } },
+      { created_at: cursor.created_at, [idField]: { $lt: cursor.id } },
+    ],
+  }
 }
 
 export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Promise<void> {
@@ -87,6 +122,13 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   users.createIndex({ created_at: -1 }).catch(() => {})
   users.createIndex({ tenant_id: 1, created_at: -1 }).catch(() => {})
+  // Operator search hits these — at scale a regex scan over unindexed
+  // fields is a full collection scan.
+  users.createIndex({ email: 1 }).catch(() => {})
+  users.createIndex({ name: 1 }).catch(() => {})
+  tenants.createIndex({ name: 1 }).catch(() => {})
+  db.collection('leads').createIndex({ created_at: -1 }).catch(() => {})
+  db.collection('operator_audit_log').createIndex({ created_at: -1 }).catch(() => {})
   // Awaited: the promo create path relies on the unique index for duplicate
   // detection, so it can't race registration.
   await Promise.all([
@@ -95,9 +137,13 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     db.collection('leads').createIndex({ email: 1 }, { unique: true }),
   ]).catch(() => {})
 
-  app.get('/operator/me', { preHandler: requireOperator(db, 'overview.read') }, async (request) => ({
-    operator: request.operatorContext,
-  }))
+  app.get('/operator/me', { preHandler: requireOperator(db, 'overview.read') }, async (request) => {
+    const operator = request.operatorContext
+    return {
+      operator,
+      permissions: operator ? resolvePermissions(operator.roles) : [],
+    }
+  })
 
   app.get('/operator/overview', { preHandler: requireOperator(db, 'overview.read') }, async () => {
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
@@ -170,7 +216,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   app.get('/operator/users', { preHandler: requireOperator(db, 'users.read') }, async (request, reply) => {
     const parsed = QuerySchema.safeParse(request.query)
     if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
-    const { q, status, tenant, limit, offset } = parsed.data
+    const { q, status, tenant, limit, offset, cursor } = parsed.data
     const filter: Record<string, unknown> = {}
     if (q) {
       const pattern = safeRegex(q)
@@ -178,6 +224,11 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     }
     if (status) filter['status'] = status
     if (tenant) filter['tenant_id'] = tenant
+    const decoded = decodeCursor(cursor)
+    if (decoded === null) return reply.status(400).send({ error: 'Invalid cursor' })
+    // $and, not assign: the search regex above already owns filter.$or —
+    // overwriting it would silently drop the search on page 2+.
+    if (decoded) filter['$and'] = [cursorFilter(decoded, 'id')]
     const [items, total] = await Promise.all([
       users.find(filter, {
         projection: {
@@ -186,10 +237,13 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
           failed_login_attempts: 1, locked_until: 1, sessions_revoked_at: 1,
           'attribution.utm_source': 1, 'attribution.utm_campaign': 1,
         },
-      }).sort({ created_at: -1 }).skip(offset).limit(limit).toArray(),
-      users.countDocuments(filter),
+      }).sort({ created_at: -1, id: -1 }).skip(decoded ? 0 : offset).limit(limit).toArray(),
+      // Cursor pages skip the count — counting a filtered 1M-row collection
+      // per page turn is exactly the cost keyset pagination exists to avoid.
+      decoded ? Promise.resolve(undefined) : users.countDocuments(filter),
     ])
-    return { users: items, total, limit, offset }
+    const nextCursor = items.length === limit ? encodeCursor(items[items.length - 1] as Record<string, unknown>, 'id') : undefined
+    return { users: items, total, limit, offset, ...(nextCursor ? { next_cursor: nextCursor } : {}) }
   })
 
   app.get<{ Params: { id: string } }>('/operator/users/:id', { preHandler: requireOperator(db, 'users.read') }, async (request, reply) => {
@@ -230,16 +284,19 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   app.get('/operator/tenants', { preHandler: requireOperator(db, 'tenants.read') }, async (request, reply) => {
     const parsed = QuerySchema.safeParse(request.query)
     if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
-    const { q, status, limit, offset } = parsed.data
+    const { q, status, limit, offset, cursor } = parsed.data
     const filter: Record<string, unknown> = {}
     if (q) {
       const pattern = safeRegex(q)
       filter['$or'] = [{ tenant_id: pattern }, { id: pattern }, { name: pattern }]
     }
     if (status) filter['status'] = status
+    const decoded = decodeCursor(cursor)
+    if (decoded === null) return reply.status(400).send({ error: 'Invalid cursor' })
+    if (decoded) filter['$and'] = [cursorFilter(decoded, 'tenant_id')]
     const [items, total] = await Promise.all([
-      tenants.find(filter, { projection: { _id: 0 } }).sort({ created_at: -1 }).skip(offset).limit(limit).toArray(),
-      tenants.countDocuments(filter),
+      tenants.find(filter, { projection: { _id: 0 } }).sort({ created_at: -1, tenant_id: -1 }).skip(decoded ? 0 : offset).limit(limit).toArray(),
+      decoded ? Promise.resolve(undefined) : tenants.countDocuments(filter),
     ])
     const tenantIds = items.map((item) => item['tenant_id'] as string).filter(Boolean)
     const memberCounts = tenantIds.length === 0 ? [] : await users.aggregate([
@@ -247,7 +304,8 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       { $group: { _id: '$tenant_id', count: { $sum: 1 } } },
     ]).toArray()
     const counts = new Map(memberCounts.map((item) => [item['_id'] as string, item['count'] as number]))
-    return { tenants: items.map((item) => ({ ...item, user_count: counts.get(item['tenant_id'] as string) ?? 0 })), total, limit, offset }
+    const nextCursor = items.length === limit ? encodeCursor(items[items.length - 1], 'tenant_id') : undefined
+    return { tenants: items.map((item) => ({ ...item, user_count: counts.get(item['tenant_id'] as string) ?? 0 })), total, limit, offset, ...(nextCursor ? { next_cursor: nextCursor } : {}) }
   })
 
   app.get<{ Params: { id: string } }>('/operator/tenants/:id', { preHandler: requireOperator(db, 'tenants.read') }, async (request, reply) => {
@@ -331,6 +389,93 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     )
     if (result.matchedCount === 0) return reply.status(404).send({ error: 'User not found or not locked' })
     await audit.log(request, 'operator.user.unlock', 'user', request.params.id, parsed.data.reason)
+    return { ok: true }
+  })
+
+  /** Data-subject export — everything we hold on a user, bundled as one
+   *  JSON document for GDPR/DSAR requests. POST (not GET) so the reason is
+   *  captured and audited like every other privileged read of this size.
+   *  users.read suffices: the bundle contains nothing the read endpoints
+   *  don't already expose, just assembled — and the audit entry records it. */
+  app.post<{ Params: { id: string } }>('/operator/users/:id/export', { preHandler: requireOperator(db, 'users.read') }, async (request, reply) => {
+    const parsed = ReasonSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+    const user = await users.findOne(
+      { id: request.params.id },
+      { projection: { password_hash: 0, salt: 0, password_reset_token: 0, email_verification_token: 0 } },
+    )
+    if (!user) return reply.status(404).send({ error: 'User not found' })
+    const tenantId = user['tenant_id'] as string | undefined
+    const email = user['email'] as string | undefined
+    const [tenant, members, leadDocs, userAudit] = await Promise.all([
+      tenantId ? tenants.findOne({ tenant_id: tenantId }, { projection: { _id: 0 } }) : Promise.resolve(null),
+      tenantId
+        ? users.find({ tenant_id: tenantId }, { projection: { _id: 0, id: 1, email: 1, name: 1, roles: 1, status: 1, created_at: 1 } }).toArray()
+        : Promise.resolve([]),
+      email ? db.collection('leads').find({ email: String(email).toLowerCase() }, { projection: { _id: 0 } }).toArray() : Promise.resolve([]),
+      db.collection('operator_audit_log')
+        .find({ target_type: 'user', target_id: request.params.id }, { projection: { _id: 0 } })
+        .sort({ created_at: -1 }).limit(200).toArray(),
+    ])
+    await audit.log(request, 'operator.user.export', 'user', request.params.id, parsed.data.reason)
+    return {
+      exported_at: new Date().toISOString(),
+      requested_by: request.operatorContext?.user_id,
+      reason: parsed.data.reason,
+      user,
+      tenant,
+      members,
+      leads: leadDocs,
+      operator_actions_on_record: userAudit,
+    }
+  })
+
+  /** Erasure — anonymizes the account in place (keeps the id for referential
+   *  integrity across audit/ledger rows), clears every credential so login
+   *  is impossible, revokes sessions, and tombstones the matching lead
+   *  record. Irreversible by design — hence users.manage + reason + audit,
+   *  and it's deliberately not exposed to any autopilot path. */
+  app.post<{ Params: { id: string } }>('/operator/users/:id/erase', { preHandler: requireOperator(db, 'users.manage') }, async (request, reply) => {
+    const parsed = ReasonSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+    if (request.params.id === request.operatorContext?.user_id) {
+      return reply.status(409).send({ error: 'Operators cannot erase themselves' })
+    }
+    const user = await users.findOne({ id: request.params.id }, { projection: { email: 1, status: 1 } })
+    if (!user) return reply.status(404).send({ error: 'User not found' })
+    if (user['status'] === 'erased') return reply.status(409).send({ error: 'User already erased' })
+    const now = new Date()
+    const oldEmail = user['email'] as string | undefined
+    await users.updateOne(
+      { id: request.params.id },
+      {
+        $set: {
+          status: 'erased',
+          email: `erased-${request.params.id}@erased.invalid`,
+          name: 'Erased user',
+          sessions_revoked_at: now,
+          erased_at: now,
+          updated_at: now,
+        },
+        $unset: {
+          password_hash: '', salt: '', avatar_color: '', attribution: '',
+          external_id: '', external_provider: '', email_verified: '',
+          email_verification_token: '', email_verification_expires: '',
+          password_reset_token: '', password_reset_expires: '',
+          locked_until: '', failed_login_attempts: '',
+        },
+      },
+    )
+    if (oldEmail) {
+      await db.collection('leads').updateOne(
+        { email: oldEmail.toLowerCase() },
+        { $set: { email: `erased-${request.params.id}@erased.invalid`, suppressed: true, updated_at: now }, $unset: { name: '', attribution: '' } },
+      )
+    }
+    // If the erased user held operator privileges, drop the record too —
+    // a tombstone account must retain no privileged surface.
+    await db.collection('platform_operators').deleteOne({ user_id: request.params.id })
+    await audit.log(request, 'operator.user.erase', 'user', request.params.id, parsed.data.reason)
     return { ok: true }
   })
 
@@ -487,7 +632,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   app.get('/operator/leads', { preHandler: requireOperator(db, 'leads.read') }, async (request, reply) => {
     const parsed = LeadQuerySchema.safeParse(request.query)
     if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
-    const { q, stage, source, suppressed, limit, offset } = parsed.data
+    const { q, stage, source, suppressed, limit, offset, cursor } = parsed.data
     const filter: Record<string, unknown> = {}
     if (q) {
       const pattern = safeRegex(q)
@@ -496,17 +641,24 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     if (stage) filter['stage'] = stage
     if (source) filter['source'] = source
     if (suppressed) filter['suppressed'] = suppressed === 'true'
+    const decoded = decodeCursor(cursor)
+    if (decoded === null) return reply.status(400).send({ error: 'Invalid cursor' })
+    // $and, not assign: the search regex above already owns filter.$or —
+    // overwriting it would silently drop the search on page 2+.
+    if (decoded) filter['$and'] = [cursorFilter(decoded, 'id')]
     const [items, total, stageCounts, sourceCounts] = await Promise.all([
-      leads.find(filter, { projection: { _id: 0 } }).sort({ created_at: -1 }).skip(offset).limit(limit).toArray(),
-      leads.countDocuments(filter),
+      leads.find(filter, { projection: { _id: 0 } }).sort({ created_at: -1, id: -1 }).skip(decoded ? 0 : offset).limit(limit).toArray(),
+      decoded ? Promise.resolve(undefined) : leads.countDocuments(filter),
       leads.aggregate([{ $group: { _id: '$stage', count: { $sum: 1 } } }]).toArray(),
       leads.aggregate([{ $group: { _id: '$source', count: { $sum: 1 } } }]).toArray(),
     ])
+    const nextCursor = items.length === limit ? encodeCursor(items[items.length - 1], 'id') : undefined
     return {
       leads: items,
       total,
       limit,
       offset,
+      ...(nextCursor ? { next_cursor: nextCursor } : {}),
       stages: Object.fromEntries(stageCounts.map((s) => [s['_id'], s['count']])),
       sources: Object.fromEntries(sourceCounts.map((s) => [s['_id'], s['count']])),
     }
@@ -861,18 +1013,32 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   app.get('/operator/audit', { preHandler: requireOperator(db, 'audit.read') }, async (request, reply) => {
     const parsed = AuditQuerySchema.safeParse(request.query)
     if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
-    const { action, target_type, target_id, operator_user_id, limit, offset } = parsed.data
+    const { action, target_type, target_id, operator_user_id, limit, offset, cursor } = parsed.data
     const filter: Record<string, unknown> = {}
     if (action) filter['action'] = action
     if (target_type) filter['target_type'] = target_type
     if (target_id) filter['target_id'] = target_id
     if (operator_user_id) filter['operator_user_id'] = operator_user_id
+    const decoded = decodeCursor(cursor)
+    if (decoded === null) return reply.status(400).send({ error: 'Invalid cursor' })
+    // Audit rows have no app-level id — the cursor tiebreaks on _id, which
+    // is unique and monotone enough for a stable created_at sort.
+    if (decoded) {
+      if (!ObjectId.isValid(decoded.id)) return reply.status(400).send({ error: 'Invalid cursor' })
+      const oid = new ObjectId(decoded.id)
+      filter['$or'] = [{ created_at: { $lt: decoded.created_at } }, { created_at: decoded.created_at, _id: { $lt: oid } }]
+    }
     const col = db.collection('operator_audit_log')
-    const [items, total] = await Promise.all([
-      col.find(filter, { projection: { _id: 0 } }).sort({ created_at: -1 }).skip(offset).limit(limit).toArray(),
-      col.countDocuments(filter),
+    const [rawItems, total] = await Promise.all([
+      col.find(filter).sort({ created_at: -1, _id: -1 }).skip(decoded ? 0 : offset).limit(limit).toArray(),
+      decoded ? Promise.resolve(undefined) : col.countDocuments(filter),
     ])
-    return { entries: items, total, limit, offset }
+    const last = rawItems[rawItems.length - 1]
+    const nextCursor = rawItems.length === limit && last
+      ? encodeCursor({ created_at: last['created_at'], _id: last['_id'].toHexString() }, '_id')
+      : undefined
+    const items = rawItems.map(({ _id, ...rest }) => rest)
+    return { entries: items, total, limit, offset, ...(nextCursor ? { next_cursor: nextCursor } : {}) }
   })
 
   /** Read-only operational health: process, datastore, job leases,

@@ -2,9 +2,11 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { OperatorGate } from './_components/OperatorGate'
 import { OperatorSidebar, OperatorSignOutButton, OperatorTabs } from './_components/OperatorNav'
+import { OperatorSessionProvider } from './_components/OperatorSession'
 
 export default function OperatorLayout({ children }: { children: ReactNode }) {
   return (
+    <OperatorSessionProvider>
     <div className="min-h-screen bg-canvas text-ink-primary">
       {/* Desktop: fixed left rail owns the header role entirely. */}
       <OperatorSidebar />
@@ -27,5 +29,6 @@ export default function OperatorLayout({ children }: { children: ReactNode }) {
         </main>
       </div>
     </div>
+    </OperatorSessionProvider>
   )
 }

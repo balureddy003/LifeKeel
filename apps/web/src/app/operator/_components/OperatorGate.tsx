@@ -1,30 +1,25 @@
 'use client'
 
 /**
- * Client-side gate for the whole /operator/* shell. One /operator/me call
- * on mount — a 401/403 renders a clean "access required" screen instead of
- * every page surfacing its own API error. The routes stay server-gated;
- * this is presentation, not the security boundary.
+ * Client-side gate for the whole /operator/* shell. Reads the shared
+ * session (one /operator/me call per console load — see OperatorSession).
+ * A 401/403 renders a clean "access required" screen instead of every page
+ * surfacing its own API error. The routes stay server-gated; this is
+ * presentation, not the security boundary.
  */
 
-import { useEffect, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { ShieldAlert } from 'lucide-react'
-import { fetchOperatorMe } from '@/lib/api'
+import { useOperatorSession } from './OperatorSession'
 
 export function OperatorGate({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<'checking' | 'ok' | 'denied'>('checking')
+  const { status } = useOperatorSession()
 
-  useEffect(() => {
-    fetchOperatorMe()
-      .then(() => setState('ok'))
-      .catch(() => setState('denied'))
-  }, [])
-
-  if (state === 'checking') {
+  if (status === 'checking') {
     return <div className="shimmer h-40 rounded-2xl" />
   }
-  if (state === 'denied') {
+  if (status === 'denied') {
     return (
       <div className="mx-auto max-w-md text-center py-16">
         <ShieldAlert size={28} className="mx-auto text-warning" />

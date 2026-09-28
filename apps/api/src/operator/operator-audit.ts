@@ -33,6 +33,8 @@ export type OperatorAuditAction =
   | 'operator.configuration.update'
   | 'operator.infrastructure.record_cost'
   | 'operator.user.unlock'
+  | 'operator.user.export'
+  | 'operator.user.erase'
 
 export interface OperatorAuditEntry {
   operator_user_id: string

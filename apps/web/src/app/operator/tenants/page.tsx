@@ -21,8 +21,9 @@ export default function OperatorTenantsPage() {
   const [tenants, setTenants] = useState<OperatorTenant[]>([])
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
-  const [total, setTotal] = useState(0)
-  const [offset, setOffset] = useState(0)
+  const [total, setTotal] = useState<number | undefined>(undefined)
+  const [cursors, setCursors] = useState<string[]>([])
+  const [nextCursor, setNextCursor] = useState<string | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [ready, setReady] = useState(false)
@@ -40,13 +41,14 @@ export default function OperatorTenantsPage() {
     setReady(true)
   }, [])
 
-  const load = useCallback(async (q: string, statusFilter: string, pageOffset: number) => {
+  const load = useCallback(async (q: string, statusFilter: string, cursor?: string) => {
     setLoading(true)
     setError(null)
     try {
-      const result = await fetchOperatorTenants(q, { status: statusFilter || undefined }, { limit: PAGE_SIZE, offset: pageOffset })
+      const result = await fetchOperatorTenants(q, { status: statusFilter || undefined }, { limit: PAGE_SIZE, ...(cursor ? { cursor } : {}) })
       setTenants(result.tenants)
       setTotal(result.total)
+      setNextCursor(result.next_cursor)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load tenants')
     } finally {
@@ -54,27 +56,36 @@ export default function OperatorTenantsPage() {
     }
   }, [])
 
-  useEffect(() => { if (ready) void load(query.trim(), status, offset) }, [ready, load, offset, status]) // eslint-disable-line react-hooks/exhaustive-deps
+  const currentCursor = cursors[cursors.length - 1]
+  useEffect(() => { if (ready) void load(query.trim(), status, currentCursor) }, [ready, load, cursors, status]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function onQueryChange(value: string) {
     setQuery(value)
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
-      setOffset(0)
-      void load(value.trim(), status, 0)
+      setCursors([])
+      void load(value.trim(), status)
     }, 350)
   }
 
   function search(event: FormEvent) {
     event.preventDefault()
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    setOffset(0)
-    void load(query.trim(), status, 0)
+    setCursors([])
+    void load(query.trim(), status)
   }
 
   function selectStatus(value: string) {
     setStatus(value)
-    setOffset(0)
+    setCursors([])
+  }
+
+  function goNext() {
+    if (nextCursor) setCursors((prev) => [...prev, nextCursor])
+  }
+
+  function goPrev() {
+    setCursors((prev) => prev.slice(0, -1))
   }
 
   async function toggleMembers(tenantId: string) {
@@ -116,7 +127,7 @@ export default function OperatorTenantsPage() {
         ))}
       </div>
       {error && <p className="mt-4 text-sm text-danger">{error}</p>}
-      <p className="mt-5 text-xs text-ink-tertiary">{total.toLocaleString()} tenants</p>
+      <p className="mt-5 text-xs text-ink-tertiary">{total !== undefined ? `${total.toLocaleString()} tenants` : `${tenants.length} shown`}</p>
       {loading ? <div className="shimmer mt-2 h-32 rounded-2xl" /> : (
         <div className="mt-2 space-y-3">
           {tenants.map((tenant) => (
@@ -167,9 +178,9 @@ export default function OperatorTenantsPage() {
               )}
               <div className="mt-3">
                 {tenant.status === 'suspended' ? (
-                  <ReasonAction label="Reactivate tenant" onConfirm={async (r) => { await reactivateOperatorTenant(tenant.tenant_id, r); toast({ message: 'Tenant reactivated' }); await load(query.trim(), status, offset) }} />
+                  <ReasonAction label="Reactivate tenant" onConfirm={async (r) => { await reactivateOperatorTenant(tenant.tenant_id, r); toast({ message: 'Tenant reactivated' }); await load(query.trim(), status, currentCursor) }} />
                 ) : (
-                  <ReasonAction label="Suspend tenant" destructive onConfirm={async (r) => { await suspendOperatorTenant(tenant.tenant_id, r); toast({ message: 'Tenant suspended' }); await load(query.trim(), status, offset) }} />
+                  <ReasonAction label="Suspend tenant" destructive onConfirm={async (r) => { await suspendOperatorTenant(tenant.tenant_id, r); toast({ message: 'Tenant suspended' }); await load(query.trim(), status, currentCursor) }} />
                 )}
               </div>
             </GlassCard>
@@ -177,7 +188,7 @@ export default function OperatorTenantsPage() {
           {tenants.length === 0 && <p className="text-sm text-ink-tertiary">No tenants match this filter.</p>}
         </div>
       )}
-      <Pager total={total} limit={PAGE_SIZE} offset={offset} onPage={setOffset} loading={loading} />
+      <Pager page={cursors.length} count={tenants.length} total={total} hasNext={nextCursor !== undefined} onPrev={goPrev} onNext={goNext} loading={loading} />
     </div>
   )
 }

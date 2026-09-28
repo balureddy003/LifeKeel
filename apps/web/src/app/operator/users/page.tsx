@@ -2,18 +2,20 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Search, ShieldAlert, X } from 'lucide-react'
+import { Download, Search, ShieldAlert, X } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import { useToast } from '@/components/Toast'
-import { fetchOperatorUsers, fetchOperatorSecurity, suspendOperatorUser, reactivateOperatorUser, sendUserPasswordReset, revokeUserSessions, unlockUser, type OperatorSecurity, type OperatorUser } from '@/lib/api'
+import { fetchOperatorUsers, fetchOperatorSecurity, suspendOperatorUser, reactivateOperatorUser, sendUserPasswordReset, revokeUserSessions, unlockUser, exportOperatorUser, eraseOperatorUser, type OperatorSecurity, type OperatorUser } from '@/lib/api'
 import { ReasonAction } from '../_components/ReasonAction'
 import { Pager } from '../_components/Pager'
+import { useHasPermission } from '../_components/OperatorSession'
 
 const PAGE_SIZE = 25
 const STATUS_OPTIONS = [
   { value: '', label: 'All' },
   { value: 'active', label: 'Active' },
   { value: 'suspended', label: 'Suspended' },
+  { value: 'erased', label: 'Erased' },
 ]
 
 function isLocked(user: OperatorUser): boolean {
@@ -26,13 +28,19 @@ export default function OperatorUsersPage() {
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
   const [tenantFilter, setTenantFilter] = useState('')
-  const [total, setTotal] = useState(0)
-  const [offset, setOffset] = useState(0)
+  const [total, setTotal] = useState<number | undefined>(undefined)
+  /** Cursor stack — cursors[i] fetched page i+1; empty = first page.
+   *  Prev pops, Next pushes the page's `next_cursor`. Reset on any
+   *  filter change. */
+  const [cursors, setCursors] = useState<string[]>([])
+  const [nextCursor, setNextCursor] = useState<string | undefined>(undefined)
   const [security, setSecurity] = useState<OperatorSecurity | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [ready, setReady] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // users.manage gates the erase path — read-only roles never see it.
+  const canManageUsers = useHasPermission('users.manage')
 
   // Inbound drill-down: /operator/users?tenant=<id> opens the list already
   // scoped to one workspace's members. `ready` gates the list effect so the
@@ -43,13 +51,14 @@ export default function OperatorUsersPage() {
     setReady(true)
   }, [])
 
-  const load = useCallback(async (q: string, statusFilter: string, tenant: string, pageOffset: number) => {
+  const load = useCallback(async (q: string, statusFilter: string, tenant: string, cursor?: string) => {
     setLoading(true)
     setError(null)
     try {
-      const result = await fetchOperatorUsers(q, { status: statusFilter || undefined, tenant: tenant || undefined }, { limit: PAGE_SIZE, offset: pageOffset })
+      const result = await fetchOperatorUsers(q, { status: statusFilter || undefined, tenant: tenant || undefined }, { limit: PAGE_SIZE, ...(cursor ? { cursor } : {}) })
       setUsers(result.users)
       setTotal(result.total)
+      setNextCursor(result.next_cursor)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load users')
     } finally {
@@ -57,7 +66,8 @@ export default function OperatorUsersPage() {
     }
   }, [])
 
-  useEffect(() => { if (ready) void load(query.trim(), status, tenantFilter, offset) }, [ready, load, offset, status, tenantFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  const currentCursor = cursors[cursors.length - 1]
+  useEffect(() => { if (ready) void load(query.trim(), status, tenantFilter, currentCursor) }, [ready, load, cursors, status, tenantFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchOperatorSecurity().then(setSecurity).catch(() => setSecurity(null))
@@ -69,26 +79,34 @@ export default function OperatorUsersPage() {
     setQuery(value)
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
-      setOffset(0)
-      void load(value.trim(), status, tenantFilter, 0)
+      setCursors([])
+      void load(value.trim(), status, tenantFilter)
     }, 350)
   }
 
   function search(event: FormEvent) {
     event.preventDefault()
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    setOffset(0)
-    void load(query.trim(), status, tenantFilter, 0)
+    setCursors([])
+    void load(query.trim(), status, tenantFilter)
   }
 
   function selectStatus(value: string) {
     setStatus(value)
-    setOffset(0)
+    setCursors([])
   }
 
   function clearTenantFilter() {
     setTenantFilter('')
-    setOffset(0)
+    setCursors([])
+  }
+
+  function goNext() {
+    if (nextCursor) setCursors((prev) => [...prev, nextCursor])
+  }
+
+  function goPrev() {
+    setCursors((prev) => prev.slice(0, -1))
   }
 
   return (
@@ -168,7 +186,7 @@ export default function OperatorUsersPage() {
         </GlassCard>
       )}
       {error && <p className="mt-4 text-sm text-danger">{error}</p>}
-      <p className="mt-5 text-xs text-ink-tertiary">{total.toLocaleString()} users</p>
+      <p className="mt-5 text-xs text-ink-tertiary">{total !== undefined ? `${total.toLocaleString()} users` : `${users.length} shown`}</p>
       {loading ? <div className="shimmer mt-2 h-32 rounded-2xl" /> : (
         <div className="mt-2 space-y-3">
           {users.map((user) => (
@@ -180,7 +198,7 @@ export default function OperatorUsersPage() {
                     <span className="rounded-full border border-family-500/25 px-2 py-0.5 text-xs text-family-400">{user.attribution.utm_source}</span>
                   )}
                   {isLocked(user) && <span className="rounded-full border border-warning/40 px-2 py-0.5 text-xs text-warning">locked</span>}
-                  <span className={`rounded-full border px-2 py-0.5 text-xs ${user.status === 'suspended' ? 'border-danger/25 text-danger' : 'border-success/25 text-success'}`}>{user.status ?? 'active'}</span>
+                  <span className={`rounded-full border px-2 py-0.5 text-xs ${user.status === 'suspended' || user.status === 'erased' ? 'border-danger/25 text-danger' : 'border-success/25 text-success'}`}>{user.status ?? 'active'}</span>
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-tertiary">
@@ -193,19 +211,46 @@ export default function OperatorUsersPage() {
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {user.status === 'suspended' ? (
-                  <ReasonAction label="Reactivate" onConfirm={async (r) => { await reactivateOperatorUser(user.id, r); toast({ message: 'User reactivated' }); await load(query.trim(), status, tenantFilter, offset) }} />
-                ) : (
-                  <ReasonAction label="Suspend" destructive onConfirm={async (r) => { await suspendOperatorUser(user.id, r); toast({ message: 'User suspended' }); await load(query.trim(), status, tenantFilter, offset) }} />
+                  <ReasonAction label="Reactivate" onConfirm={async (r) => { await reactivateOperatorUser(user.id, r); toast({ message: 'User reactivated' }); await load(query.trim(), status, tenantFilter, currentCursor) }} />
+                ) : user.status === 'erased' ? null : (
+                  <ReasonAction label="Suspend" destructive onConfirm={async (r) => { await suspendOperatorUser(user.id, r); toast({ message: 'User suspended' }); await load(query.trim(), status, tenantFilter, currentCursor) }} />
                 )}
-                <ReasonAction label="Password reset" onConfirm={async (r) => { await sendUserPasswordReset(user.id, r); toast({ message: 'Reset email sent' }) }} />
-                <ReasonAction label="Revoke sessions" destructive onConfirm={async (r) => { await revokeUserSessions(user.id, r); toast({ message: 'All sessions revoked — user must sign in again' }) }} />
+                {user.status !== 'erased' && (
+                  <>
+                    <ReasonAction label="Password reset" onConfirm={async (r) => { await sendUserPasswordReset(user.id, r); toast({ message: 'Reset email sent' }) }} />
+                    <ReasonAction label="Revoke sessions" destructive onConfirm={async (r) => { await revokeUserSessions(user.id, r); toast({ message: 'All sessions revoked — user must sign in again' }) }} />
+                  </>
+                )}
+                <ReasonAction
+                  label={<span className="flex items-center gap-1"><Download size={12} /> Export data</span>}
+                  onConfirm={async (r) => {
+                    const bundle = await exportOperatorUser(user.id, r)
+                    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `agentoak-export-${user.id}.json`
+                    a.click()
+                    URL.revokeObjectURL(url)
+                    toast({ message: 'Export downloaded', variant: 'success' })
+                  }}
+                />
+                {canManageUsers && user.status !== 'erased' && (
+                  <ReasonAction
+                    label="Erase user"
+                    destructive
+                    confirmPhrase="ERASE"
+                    description="Permanently anonymizes this account — email, name and attribution are scrubbed, credentials removed, sessions revoked. Cannot be undone."
+                    onConfirm={async (r) => { await eraseOperatorUser(user.id, r); toast({ message: 'User erased' }); await load(query.trim(), status, tenantFilter, currentCursor) }}
+                  />
+                )}
               </div>
             </GlassCard>
           ))}
           {users.length === 0 && <p className="text-sm text-ink-tertiary">No users match this filter.</p>}
         </div>
       )}
-      <Pager total={total} limit={PAGE_SIZE} offset={offset} onPage={setOffset} loading={loading} />
+      <Pager page={cursors.length} count={users.length} total={total} hasNext={nextCursor !== undefined} onPrev={goPrev} onNext={goNext} loading={loading} />
     </div>
   )
 }

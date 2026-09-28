@@ -2,34 +2,39 @@
 
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
-/** Server-side pagination footer for operator list pages. Keeps the DOM to
- *  one page of results so the console stays usable at thousands of rows. */
-export function Pager({ total, limit, offset, onPage, loading }: {
-  total: number
-  limit: number
-  offset: number
-  onPage: (offset: number) => void
+/** Keyset-cursor pager for operator list pages. The cursor stack lives in
+ *  the page (one entry per visited page, current on top); Prev pops, Next
+ *  pushes the last `next_cursor`. Unlike offset paging this never scans
+ *  skipped rows server-side — constant work at any depth. `total` only
+ *  exists on the first page, where the backend still runs the count. */
+export function Pager({ page, count, total, hasNext, onPrev, onNext, loading }: {
+  page: number
+  count: number
+  total?: number | undefined
+  hasNext: boolean
+  onPrev: () => void
+  onNext: () => void
   loading?: boolean
 }) {
-  if (total === 0) return null
-  const from = offset + 1
-  const to = Math.min(offset + limit, total)
-  const hasPrev = offset > 0
-  const hasNext = offset + limit < total
+  if (page === 0 && count === 0) return null
+  const hasPrev = page > 0
+  const summary = total !== undefined
+    ? `Page ${page + 1} · ${total.toLocaleString()} total`
+    : `Page ${page + 1} · ${count} shown`
   return (
     <div className="mt-4 flex items-center justify-between text-xs text-ink-tertiary">
-      <span>Showing {from}–{to} of {total.toLocaleString()}</span>
+      <span>{summary}</span>
       <div className="flex gap-2">
         <button
           disabled={!hasPrev || loading}
-          onClick={() => onPage(Math.max(0, offset - limit))}
+          onClick={onPrev}
           className="flex items-center gap-1 rounded-lg border border-tint/[0.08] px-3 py-1.5 disabled:opacity-40"
         >
           <ChevronLeft size={14} /> Prev
         </button>
         <button
           disabled={!hasNext || loading}
-          onClick={() => onPage(offset + limit)}
+          onClick={onNext}
           className="flex items-center gap-1 rounded-lg border border-tint/[0.08] px-3 py-1.5 disabled:opacity-40"
         >
           Next <ChevronRight size={14} />

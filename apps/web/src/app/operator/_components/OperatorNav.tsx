@@ -20,25 +20,38 @@ import {
   LogOut,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
+import { useOperatorSession } from './OperatorSession'
 
+/** `permission` is the backend permission the page's APIs require — nav
+ *  items without one are visible to every operator. Filtering is a UX
+ *  nicety only; the routes enforce the same check server-side. */
 const links = [
-  { href: '/operator', label: 'Overview', icon: LayoutDashboard },
-  { href: '/operator/users', label: 'Users', icon: Users },
-  { href: '/operator/tenants', label: 'Tenants', icon: Building2 },
-  { href: '/operator/leads', label: 'Leads', icon: UserPlus },
-  { href: '/operator/promotions', label: 'Promotions', icon: Tag },
-  { href: '/operator/billing', label: 'Billing', icon: CreditCard },
-  { href: '/operator/content', label: 'Content', icon: FileText },
-  { href: '/operator/marketing', label: 'Marketing', icon: Megaphone },
-  { href: '/operator/operators', label: 'Operators', icon: ShieldCheck },
-  { href: '/operator/operations', label: 'Operations', icon: Activity },
-  { href: '/operator/configuration', label: 'Configuration', icon: SlidersHorizontal },
-  { href: '/operator/audit', label: 'Audit', icon: ScrollText },
-  { href: '/operator/settings', label: 'Settings', icon: Settings },
+  { href: '/operator', label: 'Overview', icon: LayoutDashboard, permission: 'overview.read' },
+  { href: '/operator/users', label: 'Users', icon: Users, permission: 'users.read' },
+  { href: '/operator/tenants', label: 'Tenants', icon: Building2, permission: 'tenants.read' },
+  { href: '/operator/leads', label: 'Leads', icon: UserPlus, permission: 'leads.read' },
+  { href: '/operator/promotions', label: 'Promotions', icon: Tag, permission: 'promotions.read' },
+  { href: '/operator/billing', label: 'Billing', icon: CreditCard, permission: 'billing.read' },
+  { href: '/operator/content', label: 'Content', icon: FileText, permission: 'marketing.read' },
+  { href: '/operator/marketing', label: 'Marketing', icon: Megaphone, permission: 'marketing.read' },
+  { href: '/operator/operators', label: 'Operators', icon: ShieldCheck, permission: 'operators.manage' },
+  { href: '/operator/operations', label: 'Operations', icon: Activity, permission: 'operations.read' },
+  { href: '/operator/configuration', label: 'Configuration', icon: SlidersHorizontal, permission: 'configuration.read' },
+  { href: '/operator/audit', label: 'Audit', icon: ScrollText, permission: 'audit.read' },
+  { href: '/operator/settings', label: 'Settings', icon: Settings, permission: undefined },
 ]
 
 function isActive(pathname: string, href: string) {
   return href === '/operator' ? pathname === '/operator' : pathname.startsWith(href)
+}
+
+/** Links the operator's resolved permissions actually allow. Empty while
+ *  the session is still checking — showing denied links then hiding them
+ *  mid-click is worse than a briefly sparse nav. */
+function useVisibleLinks() {
+  const { status, me } = useOperatorSession()
+  if (status !== 'ok' || !me) return []
+  return links.filter((link) => !link.permission || me.permissions.includes(link.permission))
 }
 
 function useSignOut() {
@@ -72,6 +85,7 @@ export function OperatorSidebar() {
   const pathname = usePathname()
   const { user } = useAuth()
   const handleSignOut = useSignOut()
+  const visibleLinks = useVisibleLinks()
   return (
     <aside className="hidden md:fixed md:inset-y-0 md:left-0 md:z-sticky md:flex md:w-56 md:flex-col border-r border-tint/[0.08] bg-navbg/80 backdrop-blur-xl">
       <div className="border-b border-tint/[0.08] px-5 py-4">
@@ -79,7 +93,7 @@ export function OperatorSidebar() {
         <p className="mt-0.5 text-caption text-ink-tertiary">Platform console</p>
       </div>
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-        {links.map(({ href, label, icon: Icon }) => {
+        {visibleLinks.map(({ href, label, icon: Icon }) => {
           const active = isActive(pathname, href)
           return (
             <Link
@@ -127,9 +141,10 @@ export function OperatorSidebar() {
 // strip, now with the same active-state styling as the sidebar.
 export function OperatorTabs() {
   const pathname = usePathname()
+  const visibleLinks = useVisibleLinks()
   return (
     <nav className="flex gap-2 overflow-x-auto pb-1 md:hidden">
-      {links.map(({ href, label }) => {
+      {visibleLinks.map(({ href, label }) => {
         const active = isActive(pathname, href)
         return (
           <Link

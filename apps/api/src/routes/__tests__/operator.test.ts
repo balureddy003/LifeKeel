@@ -803,4 +803,116 @@ describe('security monitoring', () => {
     expect(body.recent_login_events[0].success).toBe(true)
     await app.close()
   })
+
+  it('/operator/me resolves the permission union for the operator roles', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    const app = await buildApp()
+    const res = await app.inject({ method: 'GET', url: '/operator/me' })
+    expect(res.statusCode).toBe(200)
+    const { permissions } = res.json()
+    expect(permissions).toContain('users.read')
+    expect(permissions).toContain('audit.read')
+    // Support is read-only — manage perms must not resolve.
+    expect(permissions).not.toContain('users.manage')
+    expect(permissions).not.toContain('operators.manage')
+    await app.close()
+  })
+
+  it('keyset-paginates users with next_cursor and no overlap', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    // Controlled timestamps — the two seeded users share created_at ~now.
+    const base = Date.now() - 60_000
+    await db.collection('users').insertMany(
+      [0, 1, 2].map((i) => ({
+        id: `page-user-${i}`, tenant_id: 'family-1', email: `page${i}@example.com`, name: `Page ${i}`,
+        roles: ['member'], status: 'active', created_at: new Date(base - i * 1000),
+      })),
+    )
+    const app = await buildApp()
+
+    const seen: string[] = []
+    let cursor: string | undefined
+    for (let page = 0; page < 10; page++) {
+      const url = `/operator/users?q=page${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}&limit=2`
+      const res = await app.inject({ method: 'GET', url })
+      expect(res.statusCode).toBe(200)
+      const body = res.json()
+      seen.push(...body.users.map((u: { id: string }) => u.id))
+      cursor = body.next_cursor
+      if (!cursor) break
+    }
+    expect(seen).toEqual(['page-user-0', 'page-user-1', 'page-user-2'])
+    expect(new Set(seen).size).toBe(3)
+    await app.close()
+  })
+
+  it('rejects a malformed cursor', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    const app = await buildApp()
+    const res = await app.inject({ method: 'GET', url: `/operator/users?cursor=${Buffer.from('not-a-cursor').toString('base64url')}` })
+    expect(res.statusCode).toBe(400)
+    await app.close()
+  })
+
+  it('exports a user bundle without credential material', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    const app = await buildApp()
+    const res = await app.inject({ method: 'POST', url: '/operator/users/user-2/export', payload: { reason: 'GDPR data request ticket #42' } })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.user.id).toBe('user-2')
+    expect(body.user.email).toBe('family@example.com')
+    expect(body.user.password_hash).toBeUndefined()
+    expect(body.user.salt).toBeUndefined()
+    expect(body.tenant.tenant_id).toBe('family-1')
+    expect(body.members).toHaveLength(1)
+    const audit = await db.collection('operator_audit_log').findOne({ action: 'operator.user.export' })
+    expect(audit?.['reason']).toBe('GDPR data request ticket #42')
+    await app.close()
+  })
+
+  it('erases a user — anonymizes, revokes sessions, tombstones the lead', async () => {
+    await db.collection('platform_operators').insertMany([
+      { user_id: 'operator-1', status: 'active', roles: ['platform_admin'] },
+      { user_id: 'user-2', status: 'active', roles: ['support'] },
+    ])
+    await db.collection('leads').insertOne({ id: 'lead-1', email: 'family@example.com', name: 'Family User', source: 'readiness_quiz', stage: 'new', created_at: new Date() })
+    const app = await buildApp()
+
+    const res = await app.inject({ method: 'POST', url: '/operator/users/user-2/erase', payload: { reason: 'Right-to-erasure request #7' } })
+    expect(res.statusCode).toBe(200)
+    const user = await db.collection('users').findOne({ id: 'user-2' })
+    expect(user?.['status']).toBe('erased')
+    expect(user?.['email']).toBe('erased-user-2@erased.invalid')
+    expect(user?.['name']).toBe('Erased user')
+    expect(user?.['password_hash']).toBeUndefined()
+    expect(user?.['sessions_revoked_at']).toBeInstanceOf(Date)
+    // Operator privileges die with the account.
+    expect(await db.collection('platform_operators').findOne({ user_id: 'user-2' })).toBeNull()
+    // The lead is tombstoned, not deleted — suppression survives.
+    const lead = await db.collection('leads').findOne({ id: 'lead-1' })
+    expect(lead?.['email']).toBe('erased-user-2@erased.invalid')
+    expect(lead?.['suppressed']).toBe(true)
+    const audit = await db.collection('operator_audit_log').findOne({ action: 'operator.user.erase' })
+    expect(audit?.['target_id']).toBe('user-2')
+
+    // Idempotent-ish: a second erase refuses rather than re-scrubbing.
+    const again = await app.inject({ method: 'POST', url: '/operator/users/user-2/erase', payload: { reason: 'Duplicate request' } })
+    expect(again.statusCode).toBe(409)
+    await app.close()
+  })
+
+  it('refuses self-erasure and denies erase to read-only roles', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    const app = await buildApp()
+    const self = await app.inject({ method: 'POST', url: '/operator/users/operator-1/erase', payload: { reason: 'Must not be allowed' } })
+    expect(self.statusCode).toBe(409)
+    await app.close()
+
+    const app2 = await buildApp()
+    await db.collection('platform_operators').updateOne({ user_id: 'operator-1' }, { $set: { roles: ['support'] } })
+    const denied = await app2.inject({ method: 'POST', url: '/operator/users/user-2/erase', payload: { reason: 'Support cannot erase' } })
+    expect(denied.statusCode).toBe(403)
+    await app2.close()
+  })
 })

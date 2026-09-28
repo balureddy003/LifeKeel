@@ -1866,10 +1866,19 @@ export interface OperatorIdentity {
   source: 'database' | 'bootstrap'
 }
 
+/** Mirrors the backend's OperatorPermission union — kept as a string here so
+ *  new permissions don't break older frontends; nav filtering uses `string`. */
+export type OperatorPermission = string
+
+export interface OperatorMe {
+  operator: OperatorIdentity
+  permissions: OperatorPermission[]
+}
+
 /** Cheap identity check for the operator shell's access gate — the full
  *  overview payload would be wasted work on every first paint. */
-export function fetchOperatorMe(): Promise<{ operator: OperatorIdentity }> {
-  return operatorRequest<{ operator: OperatorIdentity }>('/operator/me')
+export function fetchOperatorMe(): Promise<OperatorMe> {
+  return operatorRequest<OperatorMe>('/operator/me')
 }
 
 export function fetchOperatorOverview(): Promise<OperatorOverview> {
@@ -1877,9 +1886,12 @@ export function fetchOperatorOverview(): Promise<OperatorOverview> {
 }
 
 export interface OperatorListPage {
-  total: number
+  /** Absent on cursor-paginated responses — counting millions of rows on
+   *  every keystroke page is exactly what the cursor avoids. */
+  total?: number
   limit: number
   offset: number
+  next_cursor?: string
 }
 
 export interface OperatorUserFilters {
@@ -1891,14 +1903,15 @@ export interface OperatorUserFilters {
 export function fetchOperatorUsers(
   query = '',
   filters: OperatorUserFilters = {},
-  page: { limit?: number; offset?: number } = {},
+  page: { limit?: number; offset?: number; cursor?: string } = {},
 ): Promise<{ users: OperatorUser[] } & OperatorListPage> {
   const params = new URLSearchParams()
   if (query) params.set('q', query)
   if (filters.status) params.set('status', filters.status)
   if (filters.tenant) params.set('tenant', filters.tenant)
   if (page.limit !== undefined) params.set('limit', String(page.limit))
-  if (page.offset !== undefined) params.set('offset', String(page.offset))
+  if (page.cursor) params.set('cursor', page.cursor)
+  else if (page.offset !== undefined) params.set('offset', String(page.offset))
   const qs = params.toString()
   return operatorRequest(`/operator/users${qs ? `?${qs}` : ''}`)
 }
@@ -1906,13 +1919,14 @@ export function fetchOperatorUsers(
 export function fetchOperatorTenants(
   query = '',
   filters: { status?: string | undefined } = {},
-  page: { limit?: number; offset?: number } = {},
+  page: { limit?: number; offset?: number; cursor?: string } = {},
 ): Promise<{ tenants: OperatorTenant[] } & OperatorListPage> {
   const params = new URLSearchParams()
   if (query) params.set('q', query)
   if (filters.status) params.set('status', filters.status)
   if (page.limit !== undefined) params.set('limit', String(page.limit))
-  if (page.offset !== undefined) params.set('offset', String(page.offset))
+  if (page.cursor) params.set('cursor', page.cursor)
+  else if (page.offset !== undefined) params.set('offset', String(page.offset))
   const qs = params.toString()
   return operatorRequest(`/operator/tenants${qs ? `?${qs}` : ''}`)
 }
@@ -1994,6 +2008,34 @@ export const reactivateOperatorUser = (id: string, reason: string) => operatorAc
 export const sendUserPasswordReset = (id: string, reason: string) => operatorAction(`/operator/users/${id}/password-reset`, reason)
 export const revokeUserSessions = (id: string, reason: string) => operatorAction(`/operator/users/${id}/revoke-sessions`, reason)
 export const unlockUser = (id: string, reason: string) => operatorAction(`/operator/users/${id}/unlock`, reason)
+
+export interface OperatorUserExport {
+  exported_at: string
+  requested_by?: string
+  reason: string
+  user: Record<string, unknown>
+  tenant: Record<string, unknown> | null
+  members: OperatorTenantMember[]
+  leads: Record<string, unknown>[]
+  operator_actions_on_record: Record<string, unknown>[]
+}
+
+/** Data-subject export — same POST+reason shape as other operator actions,
+ *  but returns the assembled bundle instead of void. */
+export async function exportOperatorUser(id: string, reason: string): Promise<OperatorUserExport> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/operator/users/${id}/export`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ reason }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Export failed')
+  return data as OperatorUserExport
+}
+
+export const eraseOperatorUser = (id: string, reason: string) => operatorAction(`/operator/users/${id}/erase`, reason)
 
 export interface OperatorSecurity {
   generated_at: string
@@ -2140,7 +2182,7 @@ export interface OperatorLead {
   updated_at?: string
 }
 
-export function fetchOperatorLeads(query: { q?: string; stage?: string; source?: string; suppressed?: 'true' | 'false'; limit?: number; offset?: number } = {}): Promise<{ leads: OperatorLead[]; total: number; stages: Record<string, number>; sources: Record<string, number>; limit: number; offset: number }> {
+export function fetchOperatorLeads(query: { q?: string; stage?: string; source?: string; suppressed?: 'true' | 'false'; limit?: number; offset?: number; cursor?: string } = {}): Promise<{ leads: OperatorLead[]; total?: number; next_cursor?: string; stages: Record<string, number>; sources: Record<string, number>; limit: number; offset: number }> {
   const params = new URLSearchParams()
   for (const [k, v] of Object.entries(query)) {
     if (v !== undefined && v !== '') params.set(k, String(v))

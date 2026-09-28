@@ -89,13 +89,17 @@ export default function OperatorLeadsPage() {
   const [stageFilter, setStageFilter] = useState('')
   const [sourceFilter, setSourceFilter] = useState('')
   const [suppressedOnly, setSuppressedOnly] = useState(false)
-  const [total, setTotal] = useState(0)
-  const [offset, setOffset] = useState(0)
+  const [total, setTotal] = useState<number | undefined>(undefined)
+  // Cursor stack — cursors[i] fetched page i+1; Prev pops, Next pushes.
+  const [cursors, setCursors] = useState<string[]>([])
+  const [nextCursor, setNextCursor] = useState<string | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  async function load(q = '', stage = '', source = '', suppressed = false, pageOffset = offset) {
+  const currentCursor = cursors[cursors.length - 1]
+
+  async function load(q = '', stage = '', source = '', suppressed = false, cursor?: string) {
     setLoading(true)
     setError(null)
     try {
@@ -105,10 +109,11 @@ export default function OperatorLeadsPage() {
         ...(source ? { source } : {}),
         ...(suppressed ? { suppressed: 'true' as const } : {}),
         limit: PAGE_SIZE,
-        offset: pageOffset,
+        ...(cursor ? { cursor } : {}),
       })
       setLeads(result.leads)
       setTotal(result.total)
+      setNextCursor(result.next_cursor)
       setStages(result.stages)
       setSources(result.sources ?? {})
     } catch (err) {
@@ -118,12 +123,16 @@ export default function OperatorLeadsPage() {
     }
   }
 
-  useEffect(() => { void load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load() }, [])  
+
+  function resetToFirstPage(q = query.trim(), stage = stageFilter, source = sourceFilter, suppressed = suppressedOnly) {
+    setCursors([])
+    void load(q, stage, source, suppressed)
+  }
 
   function search(event: FormEvent) {
     event.preventDefault()
-    setOffset(0)
-    void load(query.trim(), stageFilter, sourceFilter, suppressedOnly, 0)
+    resetToFirstPage()
   }
 
   async function moveStage(lead: OperatorLead, stage: LeadStage, reason: string) {
@@ -131,8 +140,20 @@ export default function OperatorLeadsPage() {
     toast({ message: `Moved to ${stage}` })
     // A stage move under an active filter can remove the lead from view, and
     // stage counts change — reload rather than patching the row in place.
-    if (stageFilter) await load(query.trim(), stageFilter, sourceFilter, suppressedOnly, offset)
+    if (stageFilter) await load(query.trim(), stageFilter, sourceFilter, suppressedOnly, currentCursor)
     else setLeads((current) => current.map((l) => (l.id === lead.id ? updated : l)))
+  }
+
+  function goNext() {
+    if (!nextCursor) return
+    setCursors((prev) => [...prev, nextCursor])
+    void load(query.trim(), stageFilter, sourceFilter, suppressedOnly, nextCursor)
+  }
+
+  function goPrev() {
+    const next = cursors.slice(0, -1)
+    setCursors(next)
+    void load(query.trim(), stageFilter, sourceFilter, suppressedOnly, next[next.length - 1])
   }
 
   return (
@@ -144,7 +165,7 @@ export default function OperatorLeadsPage() {
 
       <div className="mt-4 flex flex-wrap gap-2">
         <button
-          onClick={() => { setStageFilter(''); setOffset(0); void load(query.trim(), '', sourceFilter, suppressedOnly, 0) }}
+          onClick={() => { setStageFilter(''); resetToFirstPage(query.trim(), '', sourceFilter, suppressedOnly) }}
           className={`rounded-full border px-3 py-1 text-xs ${!stageFilter ? 'border-family-500/30 text-family-400' : 'border-tint/[0.08] text-ink-tertiary'}`}
         >
           All ({Object.values(stages).reduce((a, b) => a + b, 0)})
@@ -152,7 +173,7 @@ export default function OperatorLeadsPage() {
         {STAGES.map((stage) => (
           <button
             key={stage}
-            onClick={() => { setStageFilter(stage); setOffset(0); void load(query.trim(), stage, sourceFilter, suppressedOnly, 0) }}
+            onClick={() => { setStageFilter(stage); resetToFirstPage(query.trim(), stage, sourceFilter, suppressedOnly) }}
             className={`rounded-full border px-3 py-1 text-xs ${stageFilter === stage ? 'border-family-500/30 text-family-400' : 'border-tint/[0.08] text-ink-tertiary'}`}
           >
             {stage} ({stages[stage] ?? 0})
@@ -164,7 +185,7 @@ export default function OperatorLeadsPage() {
         {Object.keys(sources).length > 1 && (
           <select
             value={sourceFilter}
-            onChange={(e) => { setSourceFilter(e.target.value); setOffset(0); void load(query.trim(), stageFilter, e.target.value, suppressedOnly, 0) }}
+            onChange={(e) => { setSourceFilter(e.target.value); resetToFirstPage(query.trim(), stageFilter, e.target.value, suppressedOnly) }}
             className="glass-input rounded-lg px-2 py-1 text-xs text-ink-secondary"
             aria-label="Filter by source"
           >
@@ -175,7 +196,7 @@ export default function OperatorLeadsPage() {
           </select>
         )}
         <button
-          onClick={() => { const next = !suppressedOnly; setSuppressedOnly(next); setOffset(0); void load(query.trim(), stageFilter, sourceFilter, next, 0) }}
+          onClick={() => { const next = !suppressedOnly; setSuppressedOnly(next); resetToFirstPage(query.trim(), stageFilter, sourceFilter, next) }}
           className={`rounded-full border px-3 py-1 text-xs ${suppressedOnly ? 'border-danger/40 bg-danger/10 text-danger' : 'border-tint/[0.08] text-ink-tertiary'}`}
         >
           Suppressed only
@@ -190,7 +211,7 @@ export default function OperatorLeadsPage() {
       {error && <p className="mt-4 text-sm text-danger">{error}</p>}
       {loading ? <div className="shimmer mt-5 h-32 rounded-2xl" /> : (
         <div className="mt-5 space-y-3">
-          <p className="text-xs text-ink-tertiary">{total} leads</p>
+          <p className="text-xs text-ink-tertiary">{total !== undefined ? `${total} leads` : `${leads.length} shown`}</p>
           {leads.map((lead) => (
             <GlassCard key={lead.id} className="p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
@@ -235,7 +256,7 @@ export default function OperatorLeadsPage() {
                   <ReasonAction
                     label="Suppress"
                     destructive
-                    onConfirm={async (r) => { await suppressOperatorLead(lead.id, r); toast({ message: 'Lead suppressed' }); await load(query.trim(), stageFilter, sourceFilter, suppressedOnly, offset) }}
+                    onConfirm={async (r) => { await suppressOperatorLead(lead.id, r); toast({ message: 'Lead suppressed' }); await load(query.trim(), stageFilter, sourceFilter, suppressedOnly, currentCursor) }}
                   />
                 )}
               </div>
@@ -252,7 +273,7 @@ export default function OperatorLeadsPage() {
           )}
         </div>
       )}
-      <Pager total={total} limit={PAGE_SIZE} offset={offset} onPage={(o) => { setOffset(o); void load(query.trim(), stageFilter, sourceFilter, suppressedOnly, o) }} loading={loading} />
+      <Pager page={cursors.length} count={leads.length} total={total} hasNext={nextCursor !== undefined} onPrev={goPrev} onNext={goNext} loading={loading} />
     </div>
   )
 }
