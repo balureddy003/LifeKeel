@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, BellOff, Building2, Check, CheckCheck, ChevronRight, Megaphone, TrendingUp, UserPlus, Users, UserCheck } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
-import { fetchOperatorOverview, fetchOperatorFunnel, fetchOperatorOperations, fetchOperatorSecurity, fetchOperatorAlerts, setOperatorAlertState, type OperatorAlert, type OperatorFunnel, type OperatorOperations, type OperatorOverview, type OperatorSecurity } from '@/lib/api'
+import { fetchOperatorOverview, fetchOperatorFunnel, fetchOperatorOperations, fetchOperatorSecurity, fetchOperatorAlerts, setOperatorAlertState, fetchOperatorReferrals, type OperatorAlert, type OperatorFunnel, type OperatorOperations, type OperatorOverview, type OperatorReferrals, type OperatorSecurity } from '@/lib/api'
 import { Sparkline, seriesFor, WowDelta } from './_components/Sparkline'
 
 function Metric({ label, value, detail, delta, spark, icon: Icon }: {
@@ -91,6 +91,7 @@ export default function OperatorOverviewPage() {
   const [ops, setOps] = useState<OperatorOperations | null>(null)
   const [security, setSecurity] = useState<OperatorSecurity | null>(null)
   const [alerts, setAlerts] = useState<OperatorAlert[]>([])
+  const [referrals, setReferrals] = useState<OperatorReferrals | null>(null)
   const [busyAlert, setBusyAlert] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -103,6 +104,7 @@ export default function OperatorOverviewPage() {
     fetchOperatorFunnel().then(setFunnel).catch(() => setFunnel(null))
     fetchOperatorOperations().then(setOps).catch(() => setOps(null))
     fetchOperatorSecurity().then(setSecurity).catch(() => setSecurity(null))
+    fetchOperatorReferrals().then(setReferrals).catch(() => setReferrals(null))
     loadAlerts()
   }, [loadAlerts])
 
@@ -222,6 +224,34 @@ export default function OperatorOverviewPage() {
                   <span className="text-ink-tertiary">{row.leads} leads · {row.signups} signups</span>
                 </div>
               ))}
+            </div>
+          )}
+        </GlassCard>
+      )}
+      {referrals && (referrals.totals.codes_issued > 0 || referrals.totals.referrals > 0) && (
+        <GlassCard className="mt-5 p-4">
+          <h2 className="flex items-center gap-2 font-semibold"><TrendingUp size={16} className="text-family-400" /> Referrals</h2>
+          <div className="mt-3 grid gap-3 sm:grid-cols-4">
+            <div><div className="text-xl font-semibold">{referrals.totals.codes_issued}</div><div className="text-xs text-ink-tertiary">codes issued</div></div>
+            <div><div className="text-xl font-semibold">{referrals.totals.referrals}</div><div className="text-xs text-ink-tertiary">signups referred</div></div>
+            <div><div className="text-xl font-semibold text-success">{referrals.totals.rewarded}</div><div className="text-xs text-ink-tertiary">converted (rewarded)</div></div>
+            <div><div className="text-xl font-semibold">{referrals.totals.credits_granted}</div><div className="text-xs text-ink-tertiary">credits granted</div></div>
+          </div>
+          {referrals.leaderboard.filter((r) => r.referrals > 0).length > 0 && (
+            <div className="mt-4 divide-y divide-tint/[0.06]">
+              {referrals.leaderboard
+                .filter((r) => r.referrals > 0)
+                .slice(0, 10)
+                .map((r) => (
+                  <div key={r.tenant_id} className="flex justify-between py-2 text-sm">
+                    <span className="text-ink-secondary">
+                      {r.tenant_name} <span className="text-ink-tertiary">· {r.code}</span>
+                    </span>
+                    <span className="text-ink-tertiary">
+                      {r.referrals} referred · <span className="text-success">{r.rewarded} converted</span>
+                    </span>
+                  </div>
+                ))}
             </div>
           )}
         </GlassCard>

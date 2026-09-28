@@ -353,11 +353,26 @@ export async function marketingPerformance(db: Db): Promise<{
   channels: { channel: string; views: number; signups: number }[]
   campaigns: { campaign: string; views: number; signups: number; leads: number }[]
   totals: { views: number; cta_clicks: number; signups: number; leads: number }
+  /** "What works" — trait-level engagement analysis over measured posts.
+   *  Providers don't expose impressions, so engagement is normalized
+   *  against the account's own median (x=1.0) rather than per-impression:
+   *  a 2.1x multiplier reads "posts with this trait got ~2x the median
+   *  engagement for this account". Honest comparative signal, never an
+   *  absolute rate. */
+  insights: {
+    measured_posts: number
+    unmeasured_channels: string[]
+    rows: { label: string; measured: number; engagement_x: number }[]
+    top_post?: { channel: string; excerpt: string; engagement: number }
+  }
 }> {
   const events = await db.collection('growth_events').find({}).toArray()
   const users = await db.collection('users').find({}).toArray()
   const leads = await db.collection('leads').find({}).toArray()
   const blogs = await db.collection('blog_posts').find({}).toArray()
+  const publishedPosts = await db.collection<MarketingPostDoc>('marketing_posts')
+    .find({ state: 'published' }, { projection: { _id: 0, channel: 1, content: 1, metrics: 1, metrics_at: 1, source_blog_slug: 1, external_url: 1 } })
+    .toArray()
   const titleBy = new Map(blogs.map((b) => [b['slug'] as string, b['title'] as string]))
 
   const slugOf = (path: unknown) => /^\/blog\/([^/?#]+)/.exec(String(path ?? ''))?.[1]
@@ -437,7 +452,47 @@ export async function marketingPerformance(db: Db): Promise<{
     (t, r) => ({ views: t.views + r.views, cta_clicks: t.cta_clicks + r.cta_clicks, signups: t.signups + r.signups, leads: t.leads + r.leads }),
     { views: 0, cta_clicks: 0, signups: 0, leads: 0 },
   )
-  return { posts, channels, campaigns, totals }
+
+  // ── "What works" — engagement normalized against the account median ──
+  const engagement = (p: MarketingPostDoc) => {
+    const m = p.metrics ?? {}
+    return (m.likes ?? 0) + (m.reposts ?? 0) * 3 + (m.replies ?? 0) * 2
+  }
+  const measured = publishedPosts.filter((p) => p.metrics_at)
+  const unmeasuredChannels = [...new Set(publishedPosts.filter((p) => !p.metrics_at).map((p) => p.channel))].sort()
+  const medianOf = (nums: number[]) => {
+    if (nums.length === 0) return 0
+    const s = [...nums].sort((a, b) => a - b)
+    return s.length % 2 === 1 ? s[Math.floor(s.length / 2)]! : (s[s.length / 2 - 1]! + s[s.length / 2]!) / 2
+  }
+  const accountMedian = medianOf(measured.map(engagement))
+  const traits: { label: string; match: (p: MarketingPostDoc) => boolean }[] = [
+    { label: 'Asks a question', match: (p) => p.content.includes('?') },
+    { label: 'Shares a number or stat', match: (p) => /\d/.test(p.content) },
+    { label: 'Promotes a blog post', match: (p) => Boolean(p.source_blog_slug) },
+    { label: 'Short (under 160 chars)', match: (p) => p.content.length < 160 },
+    { label: 'Long (240+ chars)', match: (p) => p.content.length >= 240 },
+  ]
+  const insightRows = traits
+    .map((t) => {
+      const inBucket = measured.filter(t.match)
+      if (inBucket.length < 3) return null // too thin to mean anything
+      const x = accountMedian === 0 ? null : Math.round((medianOf(inBucket.map(engagement)) / accountMedian) * 10) / 10
+      if (x === null || (x > 0.75 && x < 1.33)) return null // no signal either way
+      return { label: t.label, measured: inBucket.length, engagement_x: x }
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null)
+    .sort((a, b) => b.engagement_x - a.engagement_x)
+  const top = measured.length === 0 ? undefined : [...measured].sort((a, b) => engagement(b) - engagement(a))[0]
+  const insights = {
+    measured_posts: measured.length,
+    unmeasured_channels: unmeasuredChannels,
+    rows: insightRows,
+    ...(top
+      ? { top_post: { channel: top.channel, excerpt: top.content.replace(/\s+/g, ' ').trim().slice(0, 140), engagement: engagement(top) } }
+      : {}),
+  }
+  return { posts, channels, campaigns, totals, insights }
 }
 
 /** Engagement sweep — poll channel APIs for like/repost/reply counts on

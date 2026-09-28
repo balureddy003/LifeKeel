@@ -1090,4 +1090,35 @@ describe('security monitoring', () => {
     expect(runbooks['metrics-rollup'].what).toContain('metrics_daily')
     await app.close()
   })
+
+  it('serves the referral leaderboard with totals and tenant names', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db.collection('referral_codes').insertMany([
+      { tenant_id: 'family-1', code: 'OAK-AAAA', created_at: new Date() },
+      { tenant_id: 'family-2', code: 'OAK-BBBB', created_at: new Date() },
+    ])
+    await db.collection('tenants').insertOne({ tenant_id: 'family-2', name: 'Family Two', status: 'active', created_at: new Date() })
+    await db.collection('referrals').insertMany([
+      { referrer_tenant_id: 'family-1', referred_tenant_id: 'family-9', code: 'OAK-AAAA', status: 'rewarded', created_at: new Date(), rewarded_at: new Date() },
+      { referrer_tenant_id: 'family-1', referred_tenant_id: 'family-8', code: 'OAK-AAAA', status: 'pending', created_at: new Date() },
+    ])
+    const app = await buildApp()
+    const response = await app.inject({ method: 'GET', url: '/operator/referrals' })
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.totals).toEqual({ codes_issued: 2, referrals: 2, pending: 1, rewarded: 1, credits_granted: 50 })
+    // Family One tops the board; the zero-referral code still appears as a signal.
+    expect(body.leaderboard[0].tenant_name).toBe('Family One')
+    expect(body.leaderboard[0]).toMatchObject({ code: 'OAK-AAAA', rewarded: 1, pending: 1, referrals: 2 })
+    expect(body.leaderboard[1]).toMatchObject({ tenant_name: 'Family Two', code: 'OAK-BBBB', referrals: 0 })
+    expect(body.recent[0].referrer_name).toBe('Family One')
+    await app.close()
+  })
+
+  it('denies the referral leaderboard to non-operators', async () => {
+    const app = await buildApp('user-2')
+    const response = await app.inject({ method: 'GET', url: '/operator/referrals' })
+    expect(response.statusCode).toBe(403)
+    await app.close()
+  })
 })

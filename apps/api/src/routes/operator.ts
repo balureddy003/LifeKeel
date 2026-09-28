@@ -894,6 +894,73 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     }
   })
 
+  // ── Referrals ───────────────────────────────────────────────────────────
+
+  /** Referral leaderboard — the growth loop's own funnel, operator-visible:
+   *  who has codes, who referred whom, pending vs rewarded. Referral docs
+   *  are tenant-keyed (a tenant IS the referring family unit — see
+   *  referrals.ts); reward execution lives in rewardReferralIfPending on
+   *  the referred tenant's first profile submit, atomic on status. This is
+   *  read-only visibility — 25 credits both ways per conversion. */
+  app.get('/operator/referrals', { preHandler: requireOperator(db, 'leads.read') }, async () => {
+    const [codes, docs] = await Promise.all([
+      db.collection('referral_codes').find({}, { projection: { _id: 0, tenant_id: 1, code: 1 } }).toArray(),
+      db.collection('referrals').find({}, { projection: { _id: 0 } }).sort({ created_at: -1 }).toArray(),
+    ])
+    const codeBy = new Map(codes.map((c) => [c['tenant_id'] as string, c['code'] as string]))
+    const tenantIds = [...new Set([
+      ...codes.map((c) => c['tenant_id'] as string),
+      ...docs.flatMap((d) => [d['referrer_tenant_id'] as string, d['referred_tenant_id'] as string]),
+    ])]
+    const tenantNames = new Map<string, string>()
+    if (tenantIds.length > 0) {
+      for (const t of await tenants.find({ tenant_id: { $in: tenantIds } }, { projection: { _id: 0, tenant_id: 1, name: 1 } }).toArray()) {
+        tenantNames.set(t['tenant_id'] as string, (t['name'] as string) ?? '')
+      }
+    }
+
+    const byReferrer = new Map<string, { tenant_id: string; code: string; pending: number; rewarded: number }>()
+    for (const d of docs) {
+      const ref = d['referrer_tenant_id'] as string
+      const row = byReferrer.get(ref) ?? { tenant_id: ref, code: codeBy.get(ref) ?? '', pending: 0, rewarded: 0 }
+      if (d['status'] === 'rewarded') row.rewarded += 1
+      else if (d['status'] === 'pending') row.pending += 1
+      byReferrer.set(ref, row)
+    }
+    // Codes with zero referrals still appear — an issued code with no
+    // conversions is itself a signal (shared vs never-shared).
+    for (const c of codes) {
+      const t = c['tenant_id'] as string
+      if (!byReferrer.has(t)) byReferrer.set(t, { tenant_id: t, code: c['code'] as string, pending: 0, rewarded: 0 })
+    }
+
+    const leaderboard = [...byReferrer.values()]
+      .map((r) => ({ ...r, tenant_name: tenantNames.get(r.tenant_id) ?? 'Unknown', referrals: r.pending + r.rewarded }))
+      .sort((a, b) => b.rewarded - a.rewarded || b.referrals - a.referrals)
+      .slice(0, 100)
+    const pending = docs.filter((d) => d['status'] === 'pending').length
+    const rewarded = docs.filter((d) => d['status'] === 'rewarded').length
+    return {
+      totals: {
+        codes_issued: codes.length,
+        referrals: docs.length,
+        pending,
+        rewarded,
+        credits_granted: rewarded * 2 * 25, // both sides get REFERRAL_REWARD_CREDITS
+      },
+      leaderboard,
+      recent: docs.slice(0, 20).map((d) => ({
+        referrer_tenant_id: d['referrer_tenant_id'],
+        referrer_name: tenantNames.get(d['referrer_tenant_id'] as string) ?? 'Unknown',
+        referred_name: tenantNames.get(d['referred_tenant_id'] as string) ?? 'Unknown',
+        code: d['code'],
+        status: d['status'],
+        created_at: d['created_at'],
+        rewarded_at: d['rewarded_at'] ?? null,
+      })),
+    }
+  })
+
   // ── Promotions ──────────────────────────────────────────────────────────
   // Doc shape matches the redemption path in billing/promo-codes.ts:
   // { code, grant_credits, max_uses, used_count, active, expires_at?, created_at }.

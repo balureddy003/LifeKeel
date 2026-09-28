@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import { Send, Check, X, Loader2, Pencil, Sparkles } from 'lucide-react'
+import { Send, Check, X, Loader2, Pencil, Sparkles, Link2 } from 'lucide-react'
 import { GlassCard, GlassButton } from '@/components/Glass'
 import { useToast } from '@/components/Toast'
 import { haptic } from '@/lib/haptics'
@@ -125,6 +125,7 @@ export default function MarketingPage() {
   const [editContent, setEditContent] = useState('')
   const [editSchedule, setEditSchedule] = useState('')
   const [campaignFilter, setCampaignFilter] = useState<string | null>(null)
+  const [showLinkBuilder, setShowLinkBuilder] = useState(false)
 
   useEffect(() => {
     Promise.all([fetchMarketingPosts(), fetchMarketingIntegrations(), fetchAutomationSettings(), fetchSocialConnections(), fetchMarketingPerformance()])
@@ -651,6 +652,13 @@ export default function MarketingPage() {
                       </div>
                     )}
                   </div>
+                  <div className="mt-3 pt-3 border-t border-tint/[0.06]">
+                    <button onClick={() => setShowLinkBuilder((v) => !v)} className="flex items-center gap-1.5 text-xs font-semibold text-family-400">
+                      <Link2 size={13} />
+                      {showLinkBuilder ? 'Close link builder' : 'Build a tracked link'}
+                    </button>
+                    {showLinkBuilder && <LinkBuilder blogs={blogs} campaigns={knownCampaigns} onToast={toast} />}
+                  </div>
                 </>
               )}
             </GlassCard>
@@ -898,6 +906,41 @@ export default function MarketingPage() {
                       ))}
                     </ul>
                   </GlassCard>
+                  {(performance.insights.measured_posts > 0 || performance.insights.unmeasured_channels.length > 0) && (
+                    <GlassCard className="p-4">
+                      <p className="text-caption font-semibold text-ink-tertiary mb-1">What works</p>
+                      <p className="text-caption text-ink-tertiary mb-3">
+                        Engagement vs. this account&apos;s own median across {performance.insights.measured_posts} measured
+                        {performance.insights.measured_posts === 1 ? ' post' : ' posts'} — providers don&apos;t expose impressions, so multipliers are relative, not absolute rates.
+                      </p>
+                      {performance.insights.rows.length > 0 ? (
+                        <ul className="space-y-1.5">
+                          {performance.insights.rows.map((r) => (
+                            <li key={r.label} className="flex items-center justify-between gap-2 text-xs">
+                              <span className="text-ink-secondary">{r.label}</span>
+                              <span className={`shrink-0 font-semibold tabular-nums ${r.engagement_x >= 1 ? 'text-success' : 'text-danger'}`}>
+                                {r.engagement_x}× <span className="font-normal text-ink-tertiary">({r.measured} posts)</span>
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-ink-tertiary">No trait separates winners from flops yet — keep publishing.</p>
+                      )}
+                      {performance.insights.top_post && (
+                        <p className="text-xs text-ink-secondary mt-3 pt-3 border-t border-tint/[0.06]">
+                          Best post: <span className="text-ink-tertiary">[{performance.insights.top_post.channel}]</span>{' '}
+                          &ldquo;{performance.insights.top_post.excerpt}&rdquo;{' '}
+                          <span className="text-success">({performance.insights.top_post.engagement} engagement)</span>
+                        </p>
+                      )}
+                      {performance.insights.unmeasured_channels.length > 0 && (
+                        <p className="text-caption text-ink-tertiary mt-2">
+                          Unmeasured: {performance.insights.unmeasured_channels.join(', ')} — their APIs can&apos;t be polled for engagement yet.
+                        </p>
+                      )}
+                    </GlassCard>
+                  )}
                 </div>
               ) : (
                 <GlassCard className="p-4">
@@ -916,4 +959,160 @@ export default function MarketingPage() {
 
 function trustScope(channel: string): string {
   return `marketing_social:${channel}`
+}
+
+/** UTM link builder — share-ready tracked URLs with the same convention
+ *  the publisher stamps (utm_source=channel, utm_medium, utm_campaign,
+ *  utm_content=slug) so clicks land in attribution and the funnel joins
+ *  them back to the channel. Presets enforce naming hygiene — free text
+ *  stays possible for off-preset sources. */
+const LINK_SOURCE_PRESETS = ['x', 'linkedin', 'bluesky', 'threads', 'facebook', 'instagram', 'newsletter', 'bio']
+const LINK_MEDIUM_PRESETS = ['social', 'newsletter', 'referral', 'bio', 'paid']
+const LINK_PATH_PRESETS = ['/', '/readiness', '/signup']
+
+function LinkBuilder({
+  blogs,
+  campaigns,
+  onToast,
+}: {
+  blogs: BlogPostSummary[]
+  campaigns: string[]
+  onToast: (t: { message: string }) => void
+}) {
+  const [base, setBase] = useState('')
+  const [path, setPath] = useState('/readiness')
+  const [source, setSource] = useState('x')
+  const [medium, setMedium] = useState('social')
+  const [camp, setCamp] = useState(DEFAULT_CAMPAIGN)
+  const [contentTag, setContentTag] = useState('')
+
+  useEffect(() => {
+    if (!base && typeof window !== 'undefined') setBase(window.location.origin)
+  }, [base])
+
+  // utm_content convention: the blog slug for promoted posts, so the
+  // performance rollup can join traffic back to the post.
+  useEffect(() => {
+    const slug = /^\/blog\/([^/?#]+)/.exec(path)?.[1]
+    if (slug) setContentTag(slug)
+  }, [path])
+
+  const url = useMemo(() => {
+    const b = base.trim().replace(/\/$/, '')
+    if (!b || !path.trim()) return ''
+    try {
+      const u = new URL(`${b}${path.startsWith('/') ? path : `/${path}`}`)
+      u.searchParams.set('utm_source', source.trim())
+      u.searchParams.set('utm_medium', medium)
+      u.searchParams.set('utm_campaign', camp.trim() || DEFAULT_CAMPAIGN)
+      if (contentTag.trim()) u.searchParams.set('utm_content', contentTag.trim())
+      return u.toString()
+    } catch {
+      return ''
+    }
+  }, [base, path, source, medium, camp, contentTag])
+
+  const copy = async () => {
+    if (!url) return
+    await navigator.clipboard.writeText(url)
+    haptic('light')
+    onToast({ message: 'Link copied' })
+  }
+
+  return (
+    <div className="mt-2.5 space-y-2">
+      <div className="grid sm:grid-cols-2 gap-2">
+        <div>
+          <label className="block text-caption text-ink-tertiary mb-1">Destination base</label>
+          <input
+            value={base}
+            onChange={(e) => setBase(e.target.value)}
+            placeholder="https://agentoak.app"
+            className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-caption text-ink-tertiary mb-1">Path</label>
+          <input
+            list="link-paths"
+            value={path}
+            onChange={(e) => setPath(e.target.value)}
+            className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary outline-none"
+          />
+          <datalist id="link-paths">
+            {LINK_PATH_PRESETS.map((p) => (
+              <option key={p} value={p} />
+            ))}
+            {blogs.map((b) => (
+              <option key={b.slug} value={`/blog/${b.slug}`}>
+                {b.title}
+              </option>
+            ))}
+          </datalist>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div>
+          <label className="block text-caption text-ink-tertiary mb-1">Source (channel)</label>
+          <input
+            list="link-sources"
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary outline-none"
+          />
+          <datalist id="link-sources">
+            {LINK_SOURCE_PRESETS.map((s) => (
+              <option key={s} value={s} />
+            ))}
+          </datalist>
+        </div>
+        <div>
+          <label className="block text-caption text-ink-tertiary mb-1">Medium</label>
+          <select
+            value={medium}
+            onChange={(e) => setMedium(e.target.value)}
+            className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary outline-none"
+          >
+            {LINK_MEDIUM_PRESETS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-caption text-ink-tertiary mb-1">Campaign</label>
+          <input
+            list="link-campaigns"
+            value={camp}
+            onChange={(e) => setCamp(e.target.value)}
+            className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary outline-none"
+          />
+          <datalist id="link-campaigns">
+            {campaigns.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+        </div>
+        <div>
+          <label className="block text-caption text-ink-tertiary mb-1">Content tag</label>
+          <input
+            value={contentTag}
+            onChange={(e) => setContentTag(e.target.value)}
+            placeholder="slug or variant id"
+            className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
+          />
+        </div>
+      </div>
+      {url && (
+        <div className="flex items-center gap-2">
+          <code className="flex-1 truncate rounded-xl border border-tint/[0.08] bg-tint/[0.02] px-3 py-2 text-xs text-ink-secondary">{url}</code>
+          <GlassButton onClick={copy}>Copy</GlassButton>
+        </div>
+      )}
+      <p className="text-caption text-ink-tertiary leading-relaxed">
+        Keep <span className="font-semibold">medium = social</span> for channel posts — the performance tab only joins utm_medium=social traffic.
+      </p>
+    </div>
+  )
 }

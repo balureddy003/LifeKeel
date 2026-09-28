@@ -1776,6 +1776,15 @@ export interface MarketingPerformance {
   channels: { channel: string; views: number; cta_clicks: number; leads: number; signups: number }[]
   campaigns: { campaign: string; views: number; signups: number; leads: number }[]
   totals: { views: number; cta_clicks: number; signups: number; leads: number }
+  /** "What works" — engagement normalized against the account median
+   *  (x=1.0); providers don't expose impressions so this is comparative,
+   *  not an absolute rate. */
+  insights: {
+    measured_posts: number
+    unmeasured_channels: string[]
+    rows: { label: string; measured: number; engagement_x: number }[]
+    top_post?: { channel: string; excerpt: string; engagement: number }
+  }
 }
 
 export async function fetchMarketingPerformance(): Promise<MarketingPerformance | null> {
@@ -2162,6 +2171,18 @@ export interface OperatorFunnel {
 
 export function fetchOperatorFunnel(): Promise<OperatorFunnel> {
   return operatorRequest('/operator/funnel')
+}
+
+// ── Operator: referrals ───────────────────────────────────────────────────
+
+export interface OperatorReferrals {
+  totals: { codes_issued: number; referrals: number; pending: number; rewarded: number; credits_granted: number }
+  leaderboard: { tenant_id: string; tenant_name: string; code: string; pending: number; rewarded: number; referrals: number }[]
+  recent: { referrer_tenant_id: string; referrer_name: string; referred_name: string; code: string; status: string; created_at: string; rewarded_at: string | null }[]
+}
+
+export function fetchOperatorReferrals(): Promise<OperatorReferrals> {
+  return operatorRequest('/operator/referrals')
 }
 
 // ── Operator: configuration ───────────────────────────────────────────────
