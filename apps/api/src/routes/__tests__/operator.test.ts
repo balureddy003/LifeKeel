@@ -1121,4 +1121,51 @@ describe('security monitoring', () => {
     expect(response.statusCode).toBe(403)
     await app.close()
   })
+
+  it('lists autopilot rules all-disabled and toggles one with audit', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+    const app = await buildApp()
+
+    const list = await app.inject({ method: 'GET', url: '/operator/autopilot' })
+    expect(list.statusCode).toBe(200)
+    const rules = list.json().rules as { rule: string; enabled: boolean }[]
+    expect(rules.length).toBeGreaterThanOrEqual(4)
+    expect(rules.every((r) => r.enabled === false)).toBe(true)
+    expect(list.json().never_autonomous).toContain('user.erase')
+    expect(list.json().never_autonomous).toContain('marketing.publish')
+
+    const toggle = await app.inject({
+      method: 'PUT', url: '/operator/autopilot/auto_unlock_expired',
+      payload: { enabled: true, max_blast_radius: 5, reason: 'Trial the safest rule first' },
+    })
+    expect(toggle.statusCode).toBe(200)
+    expect(toggle.json().rule.enabled).toBe(true)
+    expect(toggle.json().rule.max_blast_radius).toBe(5)
+
+    // Unknown rules can't be invented — the never-autonomous boundary is
+    // enforced by the registry, not by naming.
+    const bogus = await app.inject({
+      method: 'PUT', url: '/operator/autopilot/user.erase',
+      payload: { enabled: true, reason: 'Try to automate erasure' },
+    })
+    expect(bogus.statusCode).toBe(404)
+
+    const auditCount = await db.collection('operator_audit_log').countDocuments({ action: 'operator.autopilot.update' })
+    expect(auditCount).toBe(1)
+    await app.close()
+  })
+
+  it('denies autopilot changes to roles without operations.manage', async () => {
+    // support has operations.read but not operations.manage
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    const app = await buildApp()
+    const denied = await app.inject({
+      method: 'PUT', url: '/operator/autopilot/auto_unlock_expired',
+      payload: { enabled: true, reason: 'Support should not touch this' },
+    })
+    expect(denied.statusCode).toBe(403)
+    const list = await app.inject({ method: 'GET', url: '/operator/autopilot' })
+    expect(list.statusCode).toBe(200)
+    await app.close()
+  })
 })

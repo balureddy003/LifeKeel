@@ -14,6 +14,7 @@ import { createLlmRouterFromEnv } from '@agentoak/platform'
 import { computeTenantHealth } from '../operator/tenant-health.js'
 import { isRollupReady, readDailyRollup } from '../jobs/metrics-rollup.js'
 import { getRunbooks } from '../operator/runbooks.js'
+import { listAutopilotRules, getAutopilotRule, NEVER_AUTONOMOUS } from '../operator/autopilot.js'
 import type { SupportCaseDoc, SupportMessage } from './support.js'
 
 const QuerySchema = z.object({
@@ -1378,6 +1379,67 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     )
     await audit.log(request, `operator.alert.${action}` as const, 'alert', dedup_key, title ?? dedup_key)
     return { ok: true }
+  })
+
+  // ── Autopilot ───────────────────────────────────────────────────────────
+  // Per-rule toggles over the Tier 0/1 registry in operator/autopilot.ts.
+  // Every rule defaults OFF — enabling is a deliberate, audited act. The
+  // NEVER_AUTONOMOUS families (erase, publish, credit adjust, operator
+  // grants, …) have no registry entry at all: PUT rejects unknown rules,
+  // so config can never create autonomy the code didn't design for.
+
+  const autopilotRules = db.collection('autopilot_rules')
+  const autopilotActions = db.collection('autopilot_actions')
+  const AutopilotUpdateSchema = z.object({
+    enabled: z.boolean().optional(),
+    max_blast_radius: z.number().int().min(1).max(500).optional(),
+    cooldown_minutes: z.number().int().min(5).max(10080).optional(),
+    reason: z.string().trim().min(5).max(500),
+  })
+
+  app.get('/operator/autopilot', { preHandler: requireOperator(db, 'operations.read') }, async () => {
+    const [ruleRows, recent] = await Promise.all([
+      listAutopilotRules(db),
+      autopilotActions.find({}, { projection: { _id: 0 } }).sort({ created_at: -1 }).limit(50).toArray(),
+    ])
+    return { rules: ruleRows, recent_actions: recent, never_autonomous: NEVER_AUTONOMOUS }
+  })
+
+  app.put<{ Params: { rule: string } }>('/operator/autopilot/:rule', { preHandler: requireOperator(db, 'operations.manage') }, async (request, reply) => {
+    const parsed = AutopilotUpdateSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid update', issues: parsed.error.issues })
+    const rule = getAutopilotRule(request.params.rule)
+    if (!rule) return reply.status(404).send({ error: 'Unknown autopilot rule — not in the automatable registry' })
+    const { enabled, max_blast_radius, cooldown_minutes, reason } = parsed.data
+    if (enabled === undefined && max_blast_radius === undefined && cooldown_minutes === undefined) {
+      return reply.status(400).send({ error: 'Nothing to update' })
+    }
+    const set: Record<string, unknown> = { updated_by: request.operatorContext?.user_id, updated_at: new Date() }
+    if (enabled !== undefined) set['enabled'] = enabled
+    if (max_blast_radius !== undefined) set['max_blast_radius'] = max_blast_radius
+    if (cooldown_minutes !== undefined) set['cooldown_minutes'] = cooldown_minutes
+    await autopilotRules.updateOne({ rule: rule.id }, { $set: set, $setOnInsert: { rule: rule.id } }, { upsert: true })
+    await audit.log(request, 'operator.autopilot.update', 'autopilot_rule', rule.id, reason, { changes: { enabled, max_blast_radius, cooldown_minutes } })
+    const updated = await autopilotRules.findOne({ rule: rule.id }, { projection: { _id: 0 } })
+    return { rule: { ...rule.defaults, ...updated, label: rule.label, description: rule.description } }
+  })
+
+  app.get('/operator/autopilot/actions', { preHandler: requireOperator(db, 'operations.read') }, async (request, reply) => {
+    const parsed = QuerySchema.safeParse(request.query)
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
+    const { limit, offset, cursor } = parsed.data
+    const decoded = decodeCursor(cursor)
+    if (decoded === null) return reply.status(400).send({ error: 'Invalid cursor' })
+    const filter: Record<string, unknown> = {}
+    if (decoded) filter['$and'] = [cursorFilter(decoded, 'id')]
+    const items = await autopilotActions
+      .find(filter, { projection: { _id: 0 } })
+      .sort({ created_at: -1, id: -1 })
+      .limit(limit + 1)
+      .toArray()
+    const page = items.slice(0, limit)
+    const nextCursor = items.length > limit ? encodeCursor(page[page.length - 1]!, 'id') : undefined
+    return { actions: page, ...(nextCursor ? { next_cursor: nextCursor } : {}) }
   })
 
   // ── Operator audit + operations health ──────────────────────────────────

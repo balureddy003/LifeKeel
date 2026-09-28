@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Activity, BellRing, BookOpen, Database, FileText, Layers, Lock, Plug, Radio, Send, Server } from 'lucide-react'
+import { Activity, BellRing, BookOpen, Bot, Database, FileText, Layers, Lock, Plug, Radio, Send, Server } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import {
   fetchOperatorOperations, fetchInfrastructure, recordCostSnapshot,
   retryReminder, requeueDeadJob, revokeConnector,
-  type CostSnapshot, type OperatorOperations,
+  fetchOperatorAutopilot, updateOperatorAutopilot,
+  type AutopilotAction, type AutopilotRule, type CostSnapshot, type OperatorOperations,
 } from '@/lib/api'
 import { useToast } from '@/components/Toast'
 import { ReasonAction } from '../_components/ReasonAction'
@@ -48,6 +49,7 @@ function RunbookNote({ note }: { note: { what: string; safe_to_requeue: string; 
 export default function OperationsPage() {
   const [ops, setOps] = useState<OperatorOperations | null>(null)
   const [infra, setInfra] = useState<{ services: CostSnapshot[]; total_monthly_usd: number; history: CostSnapshot[] } | null>(null)
+  const [autopilot, setAutopilot] = useState<{ rules: AutopilotRule[]; recent_actions: AutopilotAction[]; never_autonomous: string[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [costService, setCostService] = useState('')
   const [costUsd, setCostUsd] = useState('')
@@ -58,9 +60,11 @@ export default function OperationsPage() {
 
   const load = () => fetchOperatorOperations().then(setOps).catch((err) => setError(err instanceof Error ? err.message : 'Could not load operations'))
   const loadInfra = () => fetchInfrastructure().then(setInfra).catch(() => setInfra(null))
+  const loadAutopilot = () => fetchOperatorAutopilot().then(setAutopilot).catch(() => setAutopilot(null))
   useEffect(() => {
     fetchOperatorOperations().then(setOps).catch((err) => setError(err instanceof Error ? err.message : 'Could not load operations'))
     fetchInfrastructure().then(setInfra).catch(() => setInfra(null))
+    loadAutopilot()
   }, [])
 
   if (error) return <GlassCard className="p-5"><h1 className="text-xl font-semibold">Operations unavailable</h1><p className="mt-2 text-sm text-danger">{error}</p></GlassCard>
@@ -219,6 +223,67 @@ export default function OperationsPage() {
           <p className="mt-3 text-xs text-ink-tertiary">Credential values are never exposed — this shows metadata only.</p>
         </GlassCard>
       </div>
+
+      {autopilot && (
+        <GlassCard className="mt-5 p-4">
+          <h2 className="flex items-center gap-2 font-semibold"><Bot size={15} className="text-family-400" /> Autopilot</h2>
+          <p className="mt-1 text-xs text-ink-tertiary">
+            Tier 0/1 rules — reversible, bounded, ledgered. Every act is written to the action ledger before it runs
+            and can only touch a given target once. All off by default; enable one at a time as trust builds.
+          </p>
+          <div className="mt-3 divide-y divide-tint/[0.06]">
+            {autopilot.rules.map((r) => (
+              <div key={r.rule} className="py-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <span className="text-sm font-medium text-ink-primary">{r.label}</span>
+                    <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold ${r.enabled ? 'bg-success/15 text-success' : 'bg-tint/[0.06] text-ink-tertiary'}`}>
+                      {r.enabled ? 'enabled' : 'off'}
+                    </span>
+                  </div>
+                  <ReasonAction
+                    label={r.enabled ? 'Disable' : 'Enable'}
+                    description={r.enabled
+                      ? `Stop ${r.label}. In-flight ledger rows stand; the rule simply stops acting.`
+                      : `Enable ${r.label}. Acts on at most ${r.max_blast_radius} targets per sweep, no more than once every ${r.cooldown_minutes}m.`}
+                    onConfirm={async (reason) => {
+                      await updateOperatorAutopilot(r.rule, { enabled: !r.enabled }, reason)
+                      toast({ message: `${r.label} ${r.enabled ? 'disabled' : 'enabled'}`, variant: 'success' })
+                      await loadAutopilot()
+                    }}
+                  />
+                </div>
+                <p className="mt-0.5 text-xs text-ink-tertiary">{r.description}</p>
+                <p className="mt-0.5 text-[10px] text-ink-tertiary">
+                  ≤{r.max_blast_radius}/sweep · cooldown {r.cooldown_minutes}m
+                  {r.last_run_at && <> · last ran {new Date(r.last_run_at).toLocaleString()}</>}
+                  {r.updated_by && <> · set by {r.updated_by}</>}
+                </p>
+              </div>
+            ))}
+          </div>
+          {autopilot.recent_actions.length > 0 && (
+            <div className="mt-4">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-tertiary">Recent actions</h3>
+              <div className="mt-2 divide-y divide-tint/[0.06]">
+                {autopilot.recent_actions.slice(0, 10).map((a) => (
+                  <div key={a.id} className="flex items-center justify-between gap-3 py-1.5 text-xs">
+                    <span className="min-w-0 truncate text-ink-secondary">
+                      <span className="font-medium">{a.rule}</span> · {a.target_id} — {a.result ?? a.reason}
+                    </span>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 ${a.status === 'executed' ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'}`}>
+                      {a.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <p className="mt-3 text-[10px] text-ink-tertiary">
+            Never autonomous — enforced in code, not config: {autopilot.never_autonomous.slice(0, 6).join(', ')}, …
+          </p>
+        </GlassCard>
+      )}
 
       <GlassCard className="mt-5 p-4">
         <h2 className="flex items-center gap-2 font-semibold"><Lock size={15} className="text-family-400" /> Cron leases</h2>

@@ -42,6 +42,8 @@ export type OperatorAuditAction =
   | 'operator.alert.snooze'
   | 'operator.alert.resolve'
   | 'operator.alert.reopen'
+  | 'operator.autopilot.update'
+  | 'autopilot.action'
 
 export interface OperatorAuditEntry {
   operator_user_id: string

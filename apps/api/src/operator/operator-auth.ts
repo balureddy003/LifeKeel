@@ -64,6 +64,13 @@ export function hasOperatorPermission(roles: PlatformRole[], permission: Operato
   return roles.some((role) => ROLE_PERMISSIONS[role]?.includes(permission))
 }
 
+/** Which roles carry a permission — used by autopilot assignment to find
+ *  operators eligible for a given work stream (platform_operators docs
+ *  store role names, not resolved permissions). */
+export function rolesWithPermission(permission: OperatorPermission): PlatformRole[] {
+  return (Object.keys(ROLE_PERMISSIONS) as PlatformRole[]).filter((r) => ROLE_PERMISSIONS[r].includes(permission))
+}
+
 /** Union of all permissions granted by the operator's roles — used by
  *  /operator/me so the console can hide nav items that would 403. The
  *  backend stays authoritative; this is for UX, not enforcement. */

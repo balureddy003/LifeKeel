@@ -88,6 +88,7 @@ import { registerPushRoutes } from './routes/push.js'
 import { registerReminderRoutes } from './routes/reminders.js'
 import { registerMarketingPostRoutes, publishDueMarketingPosts, generateDailyMarketingDrafts, pollMarketingEngagement } from './routes/marketing-posts.js'
 import { runMetricsRollup } from './jobs/metrics-rollup.js'
+import { runAutopilotSweep, ensureAutopilotIndexes } from './operator/autopilot.js'
 import { socialPublisherFromEnv, DbSocialPublisher } from './marketing/social-publisher.js'
 import { registerOperatorRoutes } from './routes/operator.js'
 import { getPlatformConfig, registerPublicStatusRoute } from './operator/platform-config.js'
@@ -285,6 +286,25 @@ try {
     }
   }, { missedExecutionTolerance: 1_800_000 })
   log.info({}, 'Metrics rollup cron started')
+
+  // Autopilot sweep — hourly. Evaluates only enabled, off-cooldown Tier 0/1
+  // rules; each act writes an autopilot_actions ledger row (dedup-keyed so a
+  // target is never touched twice) plus an operator_audit_log entry under
+  // actor 'autopilot'. All rules default off — this cron is inert until an
+  // operator enables one.
+  cron.schedule('50 * * * *', async () => {
+    try {
+      await withCronLock(workflowDb, 'autopilot-sweep', async () => {
+        const actions = await runAutopilotSweep(workflowDb)
+        if (actions.length > 0) {
+          log.info({ count: actions.length, rules: [...new Set(actions.map((a) => a.rule))] }, 'Autopilot sweep')
+        }
+      })
+    } catch (err) {
+      log.error({ err }, 'Autopilot sweep failed')
+    }
+  }, { missedExecutionTolerance: 1_800_000 })
+  log.info({}, 'Autopilot sweep cron started')
 
   // Policy renewal reminders — hourly. Tier 3 autonomy: deterministic,
   // deduped, consent re-checked at send time, push-only to the member's
@@ -1279,6 +1299,7 @@ if (workflowDb) {
   registerPushRoutes(app, workflowDb, deliveryRouter)
   registerReminderRoutes(app, workflowDb)
   registerMarketingPostRoutes(app, workflowDb)
+  ensureAutopilotIndexes(workflowDb)
   await registerOperatorRoutes(app, workflowDb)
   registerDetectorEvalRoutes(app, workflowDb, engine, detectorEvalDir(ROOT))
 }

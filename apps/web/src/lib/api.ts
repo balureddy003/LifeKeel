@@ -2276,6 +2276,49 @@ export function fetchOperatorOperations(): Promise<OperatorOperations> {
   return operatorRequest('/operator/operations')
 }
 
+// ── Operator: autopilot ───────────────────────────────────────────────────
+
+export interface AutopilotRule {
+  rule: string
+  label: string
+  description: string
+  enabled: boolean
+  max_blast_radius: number
+  cooldown_minutes: number
+  last_run_at?: string
+  updated_by?: string
+  updated_at?: string
+}
+
+export interface AutopilotAction {
+  id: string
+  rule: string
+  target_type: string
+  target_id: string
+  reason: string
+  status: 'executed' | 'failed'
+  result?: string
+  created_at: string
+}
+
+export function fetchOperatorAutopilot(): Promise<{ rules: AutopilotRule[]; recent_actions: AutopilotAction[]; never_autonomous: string[] }> {
+  return operatorRequest('/operator/autopilot')
+}
+
+export function updateOperatorAutopilot(rule: string, update: { enabled?: boolean; max_blast_radius?: number; cooldown_minutes?: number }, reason: string): Promise<{ rule: AutopilotRule }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  return fetch(`${base}/operator/autopilot/${encodeURIComponent(rule)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ ...update, reason }),
+  }).then(async (res) => {
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error((data.error as string) || 'Autopilot update failed')
+    return data
+  })
+}
+
 // ── Operator: leads ───────────────────────────────────────────────────────
 
 export type LeadStage = 'new' | 'qualified' | 'contacted' | 'trial' | 'converted' | 'lost'
