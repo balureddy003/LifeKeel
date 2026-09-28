@@ -82,6 +82,20 @@ describe('/operator control plane', () => {
     await app.close()
   })
 
+  it('filters users by exact tenant for the members drill-down', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db.collection('users').insertOne({
+      id: 'user-3', tenant_id: 'family-10', email: 'other@example.com', name: 'Other',
+      roles: ['member'], status: 'active', created_at: new Date(),
+    })
+    const app = await buildApp()
+    const response = await app.inject({ method: 'GET', url: '/operator/users?tenant=family-1' })
+    expect(response.statusCode).toBe(200)
+    expect(response.json().total).toBe(1)
+    expect(response.json().users[0].id).toBe('user-2')
+    await app.close()
+  })
+
   it('prevents support operators from suspending users', async () => {
     await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     const app = await buildApp()

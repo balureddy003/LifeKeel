@@ -14,6 +14,9 @@ import { getLoginEventsCollection } from '../db.js'
 const QuerySchema = z.object({
   q: z.string().trim().max(100).optional(),
   status: z.string().trim().max(30).optional(),
+  /** Exact tenant match — used by the operator "view this tenant's users"
+   *  drill-down, where the fuzzy `q` regex would over-match. */
+  tenant: z.string().trim().max(100).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
   offset: z.coerce.number().int().min(0).default(0),
 })
@@ -150,13 +153,14 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   app.get('/operator/users', { preHandler: requireOperator(db, 'users.read') }, async (request, reply) => {
     const parsed = QuerySchema.safeParse(request.query)
     if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
-    const { q, status, limit, offset } = parsed.data
+    const { q, status, tenant, limit, offset } = parsed.data
     const filter: Record<string, unknown> = {}
     if (q) {
       const pattern = safeRegex(q)
       filter['$or'] = [{ email: pattern }, { name: pattern }, { tenant_id: pattern }, { id: pattern }]
     }
     if (status) filter['status'] = status
+    if (tenant) filter['tenant_id'] = tenant
     const [items, total] = await Promise.all([
       users.find(filter, {
         projection: {

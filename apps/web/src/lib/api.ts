@@ -1872,12 +1872,60 @@ export function fetchOperatorOverview(): Promise<OperatorOverview> {
   return operatorRequest<OperatorOverview>('/operator/overview')
 }
 
-export function fetchOperatorUsers(query = ''): Promise<{ users: OperatorUser[]; total: number }> {
-  return operatorRequest(`/operator/users${query ? `?q=${encodeURIComponent(query)}` : ''}`)
+export interface OperatorListPage {
+  total: number
+  limit: number
+  offset: number
 }
 
-export function fetchOperatorTenants(query = ''): Promise<{ tenants: OperatorTenant[]; total: number }> {
-  return operatorRequest(`/operator/tenants${query ? `?q=${encodeURIComponent(query)}` : ''}`)
+export interface OperatorUserFilters {
+  status?: string | undefined
+  /** Exact tenant_id — the tenant drill-down from the tenants page. */
+  tenant?: string | undefined
+}
+
+export function fetchOperatorUsers(
+  query = '',
+  filters: OperatorUserFilters = {},
+  page: { limit?: number; offset?: number } = {},
+): Promise<{ users: OperatorUser[] } & OperatorListPage> {
+  const params = new URLSearchParams()
+  if (query) params.set('q', query)
+  if (filters.status) params.set('status', filters.status)
+  if (filters.tenant) params.set('tenant', filters.tenant)
+  if (page.limit !== undefined) params.set('limit', String(page.limit))
+  if (page.offset !== undefined) params.set('offset', String(page.offset))
+  const qs = params.toString()
+  return operatorRequest(`/operator/users${qs ? `?${qs}` : ''}`)
+}
+
+export function fetchOperatorTenants(
+  query = '',
+  filters: { status?: string | undefined } = {},
+  page: { limit?: number; offset?: number } = {},
+): Promise<{ tenants: OperatorTenant[] } & OperatorListPage> {
+  const params = new URLSearchParams()
+  if (query) params.set('q', query)
+  if (filters.status) params.set('status', filters.status)
+  if (page.limit !== undefined) params.set('limit', String(page.limit))
+  if (page.offset !== undefined) params.set('offset', String(page.offset))
+  const qs = params.toString()
+  return operatorRequest(`/operator/tenants${qs ? `?${qs}` : ''}`)
+}
+
+export interface OperatorTenantMember {
+  id: string
+  email: string
+  name: string
+  roles: string[]
+  status?: string
+  created_at: string
+}
+
+/** Tenant detail + member list — powers the inline member expansion on the
+ *  operator tenants page. */
+export function fetchOperatorTenant(id: string): Promise<{ tenant: OperatorTenant; members: OperatorTenantMember[] }> {
+  return operatorRequest(`/operator/tenants/${encodeURIComponent(id)}`)
 }
 
 export interface OperatorRecord {
