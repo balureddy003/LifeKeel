@@ -1,19 +1,144 @@
 'use client'
 
-import { useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Users, Check, X, Clock } from 'lucide-react'
+import { Users, Check, X, Clock, Mail } from 'lucide-react'
 import { PasswordInput } from '@/components/PasswordInput'
-import { joinFamily } from '@/lib/api'
+import { joinFamily, fetchFamilyInvite, type FamilyInviteInfo } from '@/lib/api'
+import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 
-// PRD-110: submitting this form never creates a login or grants any
-// access by itself — it only creates a pending request the family's
-// organizer has to explicitly approve. See docs/prd/110-family-sharing-secondary-user-access.md.
+// This page serves two different "invite" flows, distinguished by the URL
+// segment's shape:
+//   - 6-char code  → PRD-110 join request: the requester found the family's
+//     shared invite code; submitting only queues a request the organizer
+//     must approve — it never creates a login or grants access by itself.
+//   - long token   → PRD-123 per-member invite: the organizer emailed a
+//     specific pending roster member; accepting creates/links their login
+//     and flips that roster entry to active immediately (the organizer's
+//     approval already happened at invite-send time).
+const isMemberInviteToken = (code: string) => /^[0-9a-f]{48}$/i.test(code)
+
 export default function InviteJoinClient() {
   const params = useParams<{ code: string }>()
+  if (isMemberInviteToken(params.code)) return <AcceptMemberInvite token={params.code} />
+  return <RequestJoin code={params.code} />
+}
+
+// ── PRD-123: accept a per-member invite ────────────────────────────────────
+function AcceptMemberInvite({ token }: { token: string }) {
+  const router = useRouter()
+  const { acceptFamilyInvite } = useAuth()
+  const [info, setInfo] = useState<FamilyInviteInfo | null>(null)
+  const [lookupError, setLookupError] = useState<string | null>(null)
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchFamilyInvite(token).then(setInfo).catch((err) => setLookupError(err instanceof Error ? err.message : 'Invalid invite'))
+  }, [token])
+
+  const handleAccept = async () => {
+    if (password.length < 8) return
+    haptic('light')
+    setLoading(true)
+    setError(null)
+    try {
+      await acceptFamilyInvite(token, password)
+      haptic('success')
+      router.push('/')
+    } catch (err) {
+      haptic('warning')
+      setError(err instanceof Error ? err.message : "Couldn't accept the invite. Please try again.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (lookupError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
+        <div className="w-16 h-16 rounded-3xl bg-danger/10 border border-danger/20 flex items-center justify-center mb-4">
+          <X size={32} className="text-danger" />
+        </div>
+        <h1 className="text-2xl font-bold mb-2">Invite not valid</h1>
+        <p className="text-sm text-ink-secondary leading-relaxed max-w-xs">{lookupError}</p>
+        <Link href="/login" className="inline-block mt-6 text-sm font-semibold text-family-400">
+          Go to sign in
+        </Link>
+      </div>
+    )
+  }
+
+  if (!info) {
+    return <div className="min-h-screen flex items-center justify-center text-sm text-ink-tertiary">Checking your invite…</div>
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col px-6 pt-12 pb-8">
+      <div className="text-center mb-8">
+        <div className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-3 mx-auto">
+          <Mail size={32} className="text-family-400" />
+        </div>
+        <h1 className="text-2xl font-bold">You're invited, {info.memberName}</h1>
+        <p className="text-sm text-ink-tertiary mt-1">
+          {info.familyName} set you up on Agent Oak. Set a password to finish joining — you'll be signed in
+          right away. If you already have an Oak account for this family, use that password to link it instead.
+        </p>
+      </div>
+
+      <div className="mb-6">
+        <label htmlFor="accept-password" className="block text-xs text-ink-tertiary mb-1.5 px-1">
+          Password (min. 8 characters)
+        </label>
+        <PasswordInput
+          id="accept-password"
+          placeholder="Password (min. 8 characters)"
+          value={password}
+          onChange={setPassword}
+          onKeyDown={(e) => e.key === 'Enter' && handleAccept()}
+          autoComplete="new-password"
+        />
+        {password.length > 0 && (
+          <div
+            role="status"
+            aria-live="polite"
+            className={`flex items-center gap-1.5 mt-1.5 px-1 text-xs ${password.length >= 8 ? 'text-success' : 'text-ink-tertiary'}`}
+          >
+            {password.length >= 8 ? <Check size={12} /> : <X size={12} />}
+            {password.length >= 8 ? 'Password length looks good' : `${8 - password.length} more character${8 - password.length === 1 ? '' : 's'} needed`}
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <p role="status" aria-live="polite" className="text-sm text-danger text-center mb-4">{error}</p>
+      )}
+
+      <motion.button
+        whileTap={{ scale: 0.96 }}
+        onClick={handleAccept}
+        disabled={password.length < 8 || loading}
+        className="w-full bg-family-500 text-white font-semibold rounded-2xl py-4 text-base shadow-md shadow-family-500/15 disabled:opacity-40 active:opacity-90 transition-opacity"
+      >
+        {loading ? 'Joining...' : `Join ${info.familyName}`}
+      </motion.button>
+
+      <p className="text-xs text-ink-tertiary text-center mt-4">
+        Not you? <Link href="/login" className="text-family-400 font-semibold">Sign in</Link>
+      </p>
+    </div>
+  )
+}
+
+// ── PRD-110: request to join via shared invite code ────────────────────────
+// Submitting this form never creates a login or grants any access by itself —
+// it only creates a pending request the family's organizer has to explicitly
+// approve. See docs/prd/110-family-sharing-secondary-user-access.md.
+function RequestJoin({ code }: { code: string }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -29,7 +154,7 @@ export default function InviteJoinClient() {
     setLoading(true)
     setError(null)
     try {
-      const result = await joinFamily(params.code, name.trim(), email.trim(), password)
+      const result = await joinFamily(code, name.trim(), email.trim(), password)
       haptic('success')
       setSubmitted(result)
     } catch (err) {

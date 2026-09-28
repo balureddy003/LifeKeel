@@ -32,8 +32,25 @@ const TENANT_B = 'tenant-assistant-b'
 
 let profileFixture: Record<string, unknown> | null = null
 let familyFixture: Record<string, unknown> | null = null
-let insightsFixture: Array<{ reasoning: string; category: string; detector_id: string }> = []
+let insightsFixture: Array<Record<string, unknown>> = []
 let unreviewedDocsFixture: Array<Record<string, unknown>> = []
+
+// Mongo-filter matcher just capable enough for the member-twin's insight
+// attribution filter (equality + $in + $or + dotted paths) — the member-
+// scoped /assistant/ask path (PRD-122) queries db.collection('insights')
+// directly rather than the mocked getInsightsCollection.
+function getPath(doc: Record<string, unknown>, path: string): unknown {
+  return path.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], doc)
+}
+function matchesFilter(doc: Record<string, unknown>, filter: Record<string, unknown>): boolean {
+  return Object.entries(filter).every(([key, cond]) => {
+    if (key === '$or') return (cond as Record<string, unknown>[]).some((sub) => matchesFilter(doc, sub))
+    if (cond && typeof cond === 'object' && '$in' in (cond as Record<string, unknown>)) {
+      return ((cond as { $in: unknown[] }).$in).includes(getPath(doc, key))
+    }
+    return getPath(doc, key) === cond
+  })
+}
 
 function makeDb() {
   return {
@@ -43,16 +60,24 @@ function makeDb() {
     // when this route only ever read one collection. Phase 2 (Digital
     // Twin gap audit) added a third: 'documents', for unreviewed AI
     // Memory items — same find().sort().limit().toArray() shape the
-    // insights mock above already uses.
+    // insights mock above already uses. PRD-122 added 'insights' here:
+    // the member twin's attributed-insight query hits it raw with a
+    // direct toArray() (no sort chain).
     collection: (name: string) => ({
       findOne: vi.fn(async () => (name === 'family_groups' ? familyFixture : profileFixture)),
-      find: () => ({
-        sort: () => ({
-          limit: () => ({
-            toArray: async () => (name === 'documents' ? unreviewedDocsFixture : []),
+      find: (filter: Record<string, unknown> = {}) => {
+        const docs = () => {
+          if (name === 'documents') return unreviewedDocsFixture
+          if (name === 'insights') return insightsFixture.filter((d) => matchesFilter(d, filter))
+          return []
+        }
+        return {
+          toArray: async () => docs(),
+          sort: () => ({
+            limit: () => ({ toArray: async () => docs() }),
           }),
-        }),
-      }),
+        }
+      },
     }),
   } as any
 }
@@ -255,6 +280,88 @@ describe('POST /assistant/ask', () => {
     const response = await app.inject({ method: 'POST', url: '/assistant/ask', payload: { query: 'anything unreviewed?' } })
     expect(response.json().content).toContain('travel-policy.pdf')
     expect(response.json().content).toContain('not yet reviewed')
+  })
+
+  // PRD-122: member_id scopes the grounding to that member's twin.
+  it('member_id scopes the prompt to that member\'s twin — their figures and attributed insights, not the whole household', async () => {
+    profileFixture = {
+      household: {
+        employment_status: 'employed',
+        monthly_salary_minor: 400000,
+        annual_living_expenses_minor: 3600000,
+        mortgage_outstanding_minor: 0,
+        life_cover_minor: 0,
+        income_protection_monthly_minor: 0,
+        members: [{ member_id: 'm2', employment_status: 'employed', monthly_salary_minor: 250000, income_protection_monthly_minor: 0, monthly_pension_contribution_minor: 30000 }],
+      },
+      emergency_fund: { emergency_savings_minor: 900000, monthly_expenses_minor: 300000, has_high_interest_debt: false },
+      // The scorer reads retirement/education_funds as schema-required —
+      // a real stored doc always has them, so the fixture models that.
+      retirement: { current_age: 40, target_retirement_age: 65, pension_balance_minor: 0, monthly_contribution_minor: 0, target_retirement_income_minor: 3000000, expected_annual_growth_pct: 5 },
+      education_funds: [],
+    }
+    familyFixture = {
+      members: [
+        { id: 'user-1', name: 'Organizer', role: 'organizer', status: 'active' },
+        { id: 'm2', name: 'Sam', role: 'parent', status: 'active' },
+      ],
+    }
+    insightsFixture = [
+      { tenant_id: TENANT_A, reasoning: 'Sam has no income protection policy.', category: 'risk', detector_id: 'family_protection_gap', state: 'identified', feature_snapshot: { member_id: 'm2' } },
+      { tenant_id: TENANT_A, reasoning: 'Household emergency fund covers only 3 months.', category: 'savings', detector_id: 'family_emergency_fund_adequacy', state: 'identified' },
+    ]
+
+    const app = await buildApp(TENANT_A)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/assistant/ask',
+      payload: { query: "Is Sam's pension on track?", member_id: 'm2' },
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.isLive).toBe(true)
+    expect(body.content).toContain('specifically about Sam')
+    expect(body.content).toContain('2500.00') // Sam's salary, not the household's 4000
+    expect(body.content).toContain('300.00') // Sam's pension contribution
+    // Member-attributed insight rides along; the household-only one doesn't.
+    expect(body.content).toContain('Sam has no income protection')
+    expect(body.content).not.toContain('emergency fund covers only 3 months')
+  })
+
+  it('member_id 404s for a roster member that does not exist', async () => {
+    familyFixture = { members: [{ id: 'user-1', name: 'Organizer', role: 'organizer', status: 'active' }] }
+    const app = await buildApp(TENANT_A)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/assistant/ask',
+      payload: { query: 'anything?', member_id: 'ghost' },
+    })
+    expect(response.statusCode).toBe(404)
+  })
+
+  it('member scope flags a pending member\'s figures as provisional', async () => {
+    profileFixture = {
+      household: {
+        members: [{ member_id: 'm2', employment_status: 'employed', monthly_salary_minor: 250000 }],
+        mortgage_outstanding_minor: 0, annual_living_expenses_minor: 0, life_cover_minor: 0,
+      },
+      retirement: { current_age: 40, target_retirement_age: 65, pension_balance_minor: 0, monthly_contribution_minor: 0, target_retirement_income_minor: 0, expected_annual_growth_pct: 5 },
+      education_funds: [],
+    }
+    familyFixture = {
+      members: [
+        { id: 'user-1', name: 'Organizer', role: 'organizer', status: 'active' },
+        { id: 'm2', name: 'Sam', role: 'parent', status: 'pending' },
+      ],
+    }
+    const app = await buildApp(TENANT_A)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/assistant/ask',
+      payload: { query: "Is Sam's income recorded?", member_id: 'm2' },
+    })
+    expect(response.json().content).toContain('profile pending')
   })
 })
 

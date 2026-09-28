@@ -52,6 +52,11 @@ export interface User {
   password_reset_token: string | undefined
   password_reset_expires: Date | undefined
   updated_at: Date | undefined
+  // PRD-130: last authenticated request, throttled to one write per hour
+  // per user in the auth middleware. Feeds the continuity check-in — a
+  // login timestamp alone can't tell an active-but-long-lived session
+  // from a genuinely absent organizer.
+  last_seen_at?: Date | undefined
   // First-touch marketing attribution captured by apps/web's attribution.ts
   // — utm_*/referrer/landing_path, all short sanitized strings.
   attribution?: Record<string, string> | undefined

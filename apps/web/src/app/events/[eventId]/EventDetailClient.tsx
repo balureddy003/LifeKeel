@@ -10,8 +10,9 @@ import { GlassCard, GlassButton, PageHeader, PageTransition } from '@/components
 import { haptic } from '@/lib/haptics'
 import { useEventReadiness } from '@/lib/useFamilyData'
 import { useAuth } from '@/lib/auth-context'
-import { prepareInsightDraft, fetchFinancialProfile, previewScenario, saveFamilyScenario, fetchFamilyScenarios, deleteFamilyScenario, type FinancialProfilePolicy, type PolicyType, type ScenarioResult, type FamilyScenario } from '@/lib/api'
+import { prepareInsightDraft, fetchFinancialProfile, type FinancialProfilePolicy, type PolicyType } from '@/lib/api'
 import { learnMoreHref } from '@/lib/detector-content'
+import EventScenarioCard, { eventHasScenario } from './ScenarioCard'
 
 export interface Action {
   id: string
@@ -130,18 +131,6 @@ export function personalizeAction(action: Action, policies: FinancialProfilePoli
   return match ? action.personalize(match.provider) : action.label
 }
 
-// PRD-115: minor-units → display string, £ locale fixed to match the app's
-// actual currency (see Money's comment in Glass.tsx on why $-only broke).
-function formatMinor(minor: number): string {
-  return `£${Math.round(minor / 100).toLocaleString('en-GB')}`
-}
-
-// The job-loss tile's "what if it happened in N months" choices. A job
-// transition being *anticipated* is exactly the case the horizon exists
-// for — runway measured from the balance the household will actually have
-// then, not today's.
-const SCENARIO_HORIZON_OPTIONS = [0, 3, 6, 12] as const
-
 export default function EventDetailClient() {
   const params = useParams<{ eventId: string }>()
   const event = LIFE_EVENTS.find((e) => e.id === params.eventId)
@@ -164,74 +153,9 @@ export default function EventDetailClient() {
     fetchFinancialProfile().then((profile) => {
       if (cancelled) return
       setPolicies(profile?.policies ?? [])
-      // PRD-115: household income mirrors the server's scenario input
-      // mapping (scenarios/profile-input.ts) so the preview's "income
-      // drops to zero" delta matches what the backend would compute.
-      const income = profile
-        ? profile.household.monthly_salary_minor +
-          (profile.household.members ?? []).reduce((s, m) => s + m.monthly_salary_minor, 0)
-        : 0
-      setProfileIncomeMinor(income > 0 ? income : null)
     })
     return () => { cancelled = true }
   }, [])
-
-  // PRD-115: the job-loss tile gets a time-shifted projection — "if our
-  // income stopped in N months, how long would savings last?" Other event
-  // ids keep their static/detector-backed readiness; only job-loss has a
-  // defensible runway formula to time-shift.
-  const [profileIncomeMinor, setProfileIncomeMinor] = useState<number | null>(null)
-  const [scenarioHorizon, setScenarioHorizon] = useState<number>(6)
-  const [scenarioResult, setScenarioResult] = useState<ScenarioResult | null>(null)
-  const [scenarioLoading, setScenarioLoading] = useState(false)
-  const [savedScenarios, setSavedScenarios] = useState<FamilyScenario[]>([])
-  const [scenarioJustSaved, setScenarioJustSaved] = useState(false)
-
-  const isJobLoss = event?.id === 'job-loss'
-
-  useEffect(() => {
-    if (!isJobLoss || !profileIncomeMinor) return
-    let cancelled = false
-    setScenarioLoading(true)
-    setScenarioJustSaved(false)
-    previewScenario({ monthlyIncomeDeltaMinor: -profileIncomeMinor, monthsUntilChange: scenarioHorizon })
-      .then((r) => {
-        if (cancelled) return
-        setScenarioResult(r?.result ?? null)
-        setScenarioLoading(false)
-      })
-    return () => { cancelled = true }
-  }, [isJobLoss, profileIncomeMinor, scenarioHorizon])
-
-  useEffect(() => {
-    if (!isJobLoss) return
-    let cancelled = false
-    fetchFamilyScenarios().then((s) => { if (!cancelled) setSavedScenarios(s) })
-    return () => { cancelled = true }
-  }, [isJobLoss])
-
-  const scenarioName = scenarioHorizon === 0 ? 'Job loss starting now' : `Job loss in ${scenarioHorizon} months`
-
-  const handleSaveScenario = async () => {
-    if (!profileIncomeMinor) return
-    haptic('light')
-    const saved = await saveFamilyScenario(scenarioName, {
-      monthlyIncomeDeltaMinor: -profileIncomeMinor,
-      monthsUntilChange: scenarioHorizon,
-    })
-    if (saved) {
-      setSavedScenarios((prev) => [saved, ...prev])
-      setScenarioJustSaved(true)
-      haptic('success')
-    }
-  }
-
-  const handleDeleteScenario = async (id: string) => {
-    haptic('light')
-    if (await deleteFamilyScenario(id)) {
-      setSavedScenarios((prev) => prev.filter((s) => s.id !== id))
-    }
-  }
 
   const toggleAction = (id: string) => {
     haptic('light')
@@ -359,86 +283,17 @@ export default function EventDetailClient() {
         </GlassCard>
       </motion.div>
 
-      {/* PRD-115: time-shifted "what if income stopped in N months" —
-          only on the job-loss tile, only with a real income on file. */}
-      {isJobLoss && profileIncomeMinor && (
+      {/* PRD-115/132: the "what if" card — job-loss plus every event with
+          a defensible template (bereavement, disability, medical,
+          new-child, university); renders nothing when the profile lacks
+          the inputs the template needs. */}
+      {eventHasScenario(event.id) && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
         >
-          <GlassCard className="p-5">
-            <span className="text-sm font-semibold text-ink-secondary">If it happened later</span>
-            <div className="flex gap-2 mt-3">
-              {SCENARIO_HORIZON_OPTIONS.map((months) => (
-                <button
-                  key={months}
-                  onClick={() => { haptic('light'); setScenarioHorizon(months) }}
-                  aria-pressed={scenarioHorizon === months}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-                    scenarioHorizon === months
-                      ? 'bg-family-500/20 text-family-400 border border-family-500/40'
-                      : 'bg-tint/5 text-ink-tertiary border border-tint/10'
-                  }`}
-                >
-                  {months === 0 ? 'Now' : `${months} mo`}
-                </button>
-              ))}
-            </div>
-            <div className="mt-3 min-h-[3rem]">
-              {scenarioLoading ? (
-                <Loader2 size={16} className="animate-spin text-ink-tertiary mt-2" />
-              ) : scenarioResult ? (
-                <p className="text-sm text-ink-secondary leading-relaxed">
-                  {scenarioHorizon > 0 && (
-                    <>If your household income stopped in {scenarioHorizon} months, savings would
-                    reach about {formatMinor(scenarioResult.savingsAtChangeMinor)} by then — </>
-                  )}
-                  {scenarioResult.projectedRunwayMonths === null
-                    ? scenarioHorizon > 0
-                      ? 'and your reduced income would still cover expenses.'
-                      : 'Your income currently covers expenses.'
-                    : scenarioHorizon > 0
-                      ? `covering about ${scenarioResult.projectedRunwayMonths} months of spending after that.`
-                      : `If income stopped now, savings would cover about ${scenarioResult.projectedRunwayMonths} months of spending.`}
-                </p>
-              ) : (
-                <p className="text-sm text-ink-tertiary">Couldn’t project this right now — try again in a moment.</p>
-              )}
-            </div>
-            {scenarioResult && !scenarioJustSaved && (
-              <GlassButton variant="secondary" onClick={handleSaveScenario}>
-                <span>Save this scenario</span>
-              </GlassButton>
-            )}
-            {scenarioJustSaved && (
-              <p className="text-xs text-success mt-2 flex items-center gap-1.5">
-                <CheckCircle2 size={12} /> Saved — it stays updated as your numbers change
-              </p>
-            )}
-            {savedScenarios.length > 0 && (
-              <div className="mt-4 pt-3 border-t border-tint/10 space-y-1.5">
-                <span className="text-xs font-semibold text-ink-tertiary">Saved scenarios</span>
-                {savedScenarios.map((s) => (
-                  <div key={s.id} className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-ink-secondary truncate">{s.name}</span>
-                    <span className="text-xs text-ink-tertiary whitespace-nowrap">
-                      {s.result?.projectedRunwayMonths != null
-                        ? `${s.result.projectedRunwayMonths} mo runway`
-                        : '—'}
-                    </span>
-                    <button
-                      onClick={() => handleDeleteScenario(s.id)}
-                      aria-label={`Delete ${s.name}`}
-                      className="text-xs text-ink-tertiary hover:text-danger transition-colors"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </GlassCard>
+          <EventScenarioCard eventId={event.id} />
         </motion.div>
       )}
 

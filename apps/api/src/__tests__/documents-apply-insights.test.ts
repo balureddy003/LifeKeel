@@ -85,6 +85,11 @@ function makeDb(documentsSeed: Record<string, unknown>[] = [], profileSeed: Reco
   const documentsCol = {
     findOne: async (filter: Record<string, unknown>) =>
       documents.find((d) => Object.entries(filter).every(([k, v]) => d[k] === v)) ?? null,
+    // PRD-121: the estate eval inside regenerateInsights reads vault doc
+    // types via find(...).toArray() — direct cursor, no sort chain.
+    find: (filter: Record<string, unknown>) => ({
+      toArray: async () => documents.filter((d) => matchesFilter(d, filter)),
+    }),
     updateOne: async (filter: Record<string, unknown>, update: { $set?: Record<string, unknown> }) => {
       const doc = documents.find((d) => Object.entries(filter).every(([k, v]) => d[k] === v))
       if (!doc) return { matchedCount: 0, modifiedCount: 0 }

@@ -34,15 +34,16 @@ const FAMILY_DETECTORS = new Set([
   'family_emergency_fund_adequacy',
   'family_retirement_gap',
   'family_education_shortfall',
+  'family_estate_readiness',
 ])
 
-// Which composite component a family detector explains. Estate has no
-// detector — its component is driven by vault contents alone.
+// Which composite component a family detector explains.
 const DETECTOR_TO_COMPONENT: Record<string, ReadinessComponentKey> = {
   family_emergency_fund_adequacy: 'emergency_fund',
   family_protection_gap: 'protection',
   family_retirement_gap: 'retirement',
   family_education_shortfall: 'education',
+  family_estate_readiness: 'estate',
 }
 
 // The insight states that count as still-open problems — mirrors

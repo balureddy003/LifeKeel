@@ -126,4 +126,97 @@ describe('calculateScenario', () => {
       expect(result.projectedRunwayMonths).toBe(3)
     }
   })
+
+  // PRD-132 — multi-step timelines: ordered regime changes the flat
+  // income-delta shorthand can't express.
+  it('projects a dip-and-recover timeline — income stops now, returns at month 12', () => {
+    // Disability-style: earner income (-£2,000 of the £5,000) stops now,
+    // returns in a year. Surplus goes +£2,000 → 0 → +£2,000.
+    const result = calculateScenario(baseProfile, {
+      steps: [
+        { atMonth: 0, monthlyIncomeDeltaMinor: -200_000 },
+        { atMonth: 12, monthlyIncomeDeltaMinor: 200_000 },
+      ],
+    })
+    expect(result.timeline).toHaveLength(2)
+    // Month 0: regime is £3,000 in vs £3,000 out — no burn, no runway risk.
+    expect(result.timeline![0]).toMatchObject({
+      atMonth: 0,
+      monthlyIncomeMinor: 300_000,
+      savingsMinor: 900_000,
+      runwayMonths: null,
+    })
+    // Month 12: income restored — 12 months at net-zero, fund unchanged.
+    expect(result.timeline![1]).toMatchObject({
+      atMonth: 12,
+      monthlyIncomeMinor: 500_000,
+      savingsMinor: 900_000,
+      runwayMonths: null,
+    })
+    expect(result.fundDepletedAtMonth).toBeNull()
+    // Endpoint fields describe the final regime for existing consumers.
+    expect(result.projectedMonthlyIncomeMinor).toBe(500_000)
+    expect(result.savingsAtChangeMinor).toBe(900_000)
+    expect(result.monthsUntilChange).toBe(12)
+  })
+
+  it('records the mid-segment month the fund runs out, even when income later returns', () => {
+    // Full job loss at 0 (-£5,000 → £3,000/mo burn), income returns at
+    // month 12 — but £9,000 only covers 3 months of burn.
+    const result = calculateScenario(baseProfile, {
+      steps: [
+        { atMonth: 0, monthlyIncomeDeltaMinor: -500_000 },
+        { atMonth: 12, monthlyIncomeDeltaMinor: 500_000 },
+      ],
+    })
+    expect(result.fundDepletedAtMonth).toBe(3)
+    // The fund is already empty by month 12 even though income recovers.
+    expect(result.timeline![1]!.savingsMinor).toBe(0)
+  })
+
+  it('lets a step raise expenses, not just income — a cost spike that settles', () => {
+    // Medical-style: +£1,000/mo costs now, back to normal at month 12.
+    // Surplus £2,000 → £1,000 during the spike → £2,000 after.
+    const result = calculateScenario(baseProfile, {
+      steps: [
+        { atMonth: 0, monthlyExpenseDeltaMinor: 100_000 },
+        { atMonth: 12, monthlyExpenseDeltaMinor: -100_000 },
+      ],
+    })
+    // Still accreting, just slower: £9,000 + £1,000 × 12 = £21,000.
+    expect(result.timeline![1]!.savingsMinor).toBe(2_100_000)
+    expect(result.timeline![1]!.monthlyExpensesMinor).toBe(300_000)
+    expect(result.fundDepletedAtMonth).toBeNull()
+  })
+
+  it('normalizes unsorted input and merges same-month steps', () => {
+    const result = calculateScenario(baseProfile, {
+      steps: [
+        { atMonth: 6, monthlyIncomeDeltaMinor: -300_000 },
+        { atMonth: 0, monthlyIncomeDeltaMinor: -100_000 },
+        { atMonth: 6, monthlyExpenseDeltaMinor: 50_000 },
+      ],
+    })
+    expect(result.timeline!.map((p) => p.atMonth)).toEqual([0, 6])
+    // Same-month deltas summed: income −£3,000 (now £1,000), expenses +£500.
+    expect(result.timeline![1]!.monthlyIncomeMinor).toBe(100_000)
+    expect(result.timeline![1]!.monthlyExpensesMinor).toBe(350_000)
+  })
+
+  it('takes precedence over the flat income-delta/horizon shorthand', () => {
+    const result = calculateScenario(baseProfile, {
+      monthlyIncomeDeltaMinor: -999_999,
+      monthsUntilChange: 99,
+      steps: [{ atMonth: 0, monthlyIncomeDeltaMinor: -500_000 }],
+    })
+    expect(result.timeline).toHaveLength(1)
+    expect(result.projectedMonthlyIncomeMinor).toBe(0)
+    expect(result.monthsUntilChange).toBe(0)
+  })
+
+  it('keeps single-step results honest: timeline and depletion are null', () => {
+    const result = calculateScenario(baseProfile, { monthlyIncomeDeltaMinor: -500_000 })
+    expect(result.timeline).toBeNull()
+    expect(result.fundDepletedAtMonth).toBeNull()
+  })
 })

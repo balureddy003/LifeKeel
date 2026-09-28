@@ -34,11 +34,21 @@ import { calculateScenario, type ScenarioChange, type ScenarioResult } from '../
 import { toScenarioProfileInput } from '../scenarios/profile-input.js'
 import type { FinancialProfile } from './family-financial-profile.js'
 
+const ScenarioStepSchema = z.object({
+  atMonth: z.number().int().min(0).max(360),
+  monthlyIncomeDeltaMinor: z.number().int().optional(),
+  monthlyExpenseDeltaMinor: z.number().int().optional(),
+})
+
 const ScenarioInputsSchema = z.object({
   monthlyIncomeDeltaMinor: z.number().int().optional(),
   monthlyExtraSavingsMinor: z.number().int().min(0).optional(),
   targetChildName: z.string().max(100).optional(),
   monthsUntilChange: z.number().int().min(0).max(360).optional(),
+  // PRD-132: ordered regime changes ("income stops now, returns in 12
+  // months"). Overrides the flat income-delta/horizon shorthand when
+  // present; extra savings still applies throughout.
+  steps: z.array(ScenarioStepSchema).max(12).optional(),
 })
 
 const CreateSchema = ScenarioInputsSchema.extend({

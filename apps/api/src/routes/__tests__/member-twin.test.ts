@@ -17,6 +17,7 @@ const CHILD_ID = 'child-1'
 let profileDoc: Record<string, unknown> | null
 let insights: Record<string, unknown>[]
 let members: Record<string, unknown>[]
+let nudges: Record<string, unknown>[] = []
 
 const PROFILE = {
   household: {
@@ -48,8 +49,18 @@ function matchFilter(doc: Record<string, unknown>, filter: Record<string, unknow
     if (k === '$or') return (v as Record<string, unknown>[]).some((c) => matchFilter(doc, c))
     if (v && typeof v === 'object' && '$in' in (v as Record<string, unknown>))
       return ((v as { $in: unknown[] }).$in as unknown[]).includes(resolveKey(doc, k))
+    if (v && typeof v === 'object' && '$nin' in (v as Record<string, unknown>))
+      return !((v as { $nin: unknown[] }).$nin as unknown[]).includes(resolveKey(doc, k))
     return resolveKey(doc, k) === v
   })
+}
+
+// Minimal $set/$setOnInsert/$unset writer — enough for member_nudges'
+// reconcile upserts.
+function applyUpdate(doc: Record<string, unknown>, update: Record<string, unknown>, inserting: boolean) {
+  const set = { ...(inserting ? (update['$setOnInsert'] as Record<string, unknown> | undefined) : {}), ...(update['$set'] as Record<string, unknown> | undefined) }
+  for (const [k, v] of Object.entries(set)) doc[k] = v
+  for (const k of Object.keys((update['$unset'] as Record<string, unknown> | undefined) ?? {})) delete doc[k]
 }
 
 // Supports the dotted keys used in insight filters ('feature_snapshot.member_id').
@@ -63,6 +74,26 @@ function col(store: Record<string, unknown>[]) {
     find: (filter: Record<string, unknown> = {}, _opts?: unknown) => ({
       toArray: async () => store.filter((d) => matchFilter(d, filter)),
     }),
+    updateOne: async (filter: Record<string, unknown>, update: Record<string, unknown>, opts?: { upsert?: boolean }) => {
+      const doc = store.find((d) => matchFilter(d, filter))
+      if (doc) {
+        applyUpdate(doc, update, false)
+        return { modifiedCount: 1 }
+      }
+      if (opts?.upsert) {
+        const fresh: Record<string, unknown> = {}
+        for (const [k, v] of Object.entries(filter)) if (!k.startsWith('$') && typeof v !== 'object') fresh[k] = v
+        applyUpdate(fresh, update, true)
+        store.push(fresh)
+        return { modifiedCount: 0, upsertedCount: 1 }
+      }
+      return { modifiedCount: 0 }
+    },
+    updateMany: async (filter: Record<string, unknown>, update: Record<string, unknown>) => {
+      let n = 0
+      for (const d of store) if (matchFilter(d, filter)) { applyUpdate(d, update, false); n++ }
+      return { modifiedCount: n }
+    },
     createIndex: async () => ({}),
   }
 }
@@ -77,6 +108,7 @@ function makeDb(tenantId: string) {
       // tenant's query finds nothing (as it should).
       if (name === 'family_groups') return col([{ tenant_id: TENANT, members }])
       if (name === 'insights') return col(insights.map((d) => ({ tenant_id: tenantId, ...d })))
+      if (name === 'member_nudges') return col(nudges)
       return col([])
     },
   } as never
@@ -127,6 +159,11 @@ describe('GET /family/members/:id/twin', () => {
     expect(body.financial.policies[0].provider).toBe('Aviva')
     // Only open, member-attributed insights
     expect(body.financial.insights.map((i: { id: string }) => i.id)).toEqual(['i1'])
+    // PRD-118 member readiness: protection 100 (IP on file + attributed
+    // Aviva life cover ≥ need), retirement null (no target set), estate 0
+    // (no vault docs in this mock) → (100×40 + 0×10)/50 = 80.
+    expect(body.readiness.components.map((c: { key: string }) => c.key)).toEqual(['protection', 'retirement', 'estate'])
+    expect(body.readiness.score).toBe(80)
     expect(body.has_live_data).toBe(true)
     await app.close()
   })
@@ -138,6 +175,9 @@ describe('GET /family/members/:id/twin', () => {
     expect(body.financial.earner).toMatchObject({ employment_status: 'self_employed', monthly_salary_minor: 250_000 })
     expect(body.financial.policies.map((p: { provider: string }) => p.provider)).toEqual(['Bupa'])
     expect(body.financial.education_funds).toHaveLength(0)
+    // Employed earner with no income protection and no life policy —
+    // their own protection component reads 0, not the household's.
+    expect(body.readiness.components.find((c: { key: string }) => c.key === 'protection').score).toBe(0)
     await app.close()
   })
 
@@ -154,6 +194,9 @@ describe('GET /family/members/:id/twin', () => {
     // (2,000,000 − 200,000) / 96 = 18,750 needed per month
     expect(fund.needed_monthly_minor).toBe(18_750)
     expect(body.financial.earner).toBeNull()
+    // Child twin readiness is education alone: £2k of £20k target → 10.
+    expect(body.readiness.components.map((c: { key: string }) => c.key)).toEqual(['education'])
+    expect(body.readiness.score).toBe(10)
     await app.close()
   })
 
@@ -170,6 +213,221 @@ describe('GET /family/members/:id/twin', () => {
   it('scopes to the tenant — a member id only resolves in its own family', async () => {
     const app = await buildApp(OTHER_TENANT)
     const res = await app.inject({ method: 'GET', url: `/family/members/${ORG_ID}/twin` })
+    expect(res.statusCode).toBe(404)
+    await app.close()
+  })
+})
+
+describe('GET /family/members/:id/twin?mode=youth (PRD-124)', () => {
+  beforeEach(() => {
+    members = [
+      { id: ORG_ID, name: 'Balu Kumar', email: 'b@x.com', role: 'organizer', status: 'active', joined_at: '2026-01-01', date_of_birth: '1985-06-15' },
+      { id: PARTNER_ID, name: 'Sudha Kumar', email: 's@x.com', role: 'adult', status: 'active', joined_at: '2026-01-02' },
+      { id: CHILD_ID, name: 'Nihaan Kumar', email: '', role: 'child', status: 'pending', joined_at: '2026-01-03', date_of_birth: '2016-03-01' },
+    ]
+    profileDoc = { ...PROFILE }
+    insights = []
+  })
+
+  it('returns a redacted youth projection — percentages, never minor amounts', async () => {
+    insights = [
+      { id: 'i1', detector_id: 'family_education_shortfall', rule_id: 'r', hypothesis: 'gap', confidence: 0.8, state: 'identified', feature_snapshot: { member_id: CHILD_ID } },
+    ]
+    const app = await buildApp()
+    const res = await app.inject({ method: 'GET', url: `/family/members/${CHILD_ID}/twin?mode=youth` })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+
+    // The youth block carries the kid-legible view.
+    expect(body.youth.age_band).toBe('younger')
+    expect(body.youth.savings_goals).toHaveLength(1)
+    const goal = body.youth.savings_goals[0]
+    expect(goal.progress_pct).toBe(10) // 200k of 2M target
+    expect(goal.years_until_goal).toBe(8)
+
+    // The redaction is the point: nothing in the payload carries money,
+    // earner data, policies, or insight copy.
+    expect(body.financial).toEqual({ earner: null, policies: [], education_funds: [], insights: [] })
+    expect(body.readiness).toBeNull()
+    // No minor-unit fields or raw savings figures anywhere in the payload.
+    const raw = JSON.stringify(body)
+    expect(raw).not.toContain('_minor')
+    expect(raw).not.toContain('200000') // the fund's current_savings_minor
+    expect(raw).not.toContain('2000000') // its target
+
+    // PRD-129: band-appropriate literacy lessons ride the same payload.
+    expect(body.youth.lessons.length).toBeGreaterThan(0)
+    expect(body.youth.lessons.map((l: { id: string }) => l.id)).toContain('save-some-first')
+    expect(body.youth.lessons.map((l: { id: string }) => l.id)).not.toContain('compounding')
+    await app.close()
+  })
+
+  it('teen band gets the teen curriculum — server-side banding, not a client pick', async () => {
+    members[2]!['date_of_birth'] = '2011-05-01' // ~15 → teen band
+    const app = await buildApp()
+    const res = await app.inject({ method: 'GET', url: `/family/members/${CHILD_ID}/twin?mode=youth` })
+    const body = res.json()
+    expect(body.youth.age_band).toBe('teen')
+    expect(body.youth.lessons.map((l: { id: string }) => l.id)).toContain('compounding')
+    await app.close()
+  })
+
+  it('400s youth mode on an adult member rather than silently leaking the full payload', async () => {
+    const app = await buildApp()
+    const res = await app.inject({ method: 'GET', url: `/family/members/${ORG_ID}/twin?mode=youth` })
+    expect(res.statusCode).toBe(400)
+    await app.close()
+  })
+
+  it('adult-role member under 18 still gets youth treatment (DOB wins over role)', async () => {
+    members[1]!['date_of_birth'] = '2011-05-01' // partner, ~15
+    const app = await buildApp()
+    const res = await app.inject({ method: 'GET', url: `/family/members/${PARTNER_ID}/twin?mode=youth` })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().youth.age_band).toBe('teen')
+    await app.close()
+  })
+})
+
+describe('GET /family/members/:id/agent (PRD-126)', () => {
+  beforeEach(() => {
+    members = [
+      { id: ORG_ID, name: 'Balu Kumar', email: 'b@x.com', role: 'organizer', status: 'active', joined_at: '2026-01-01', date_of_birth: '1985-06-15' },
+      { id: PARTNER_ID, name: 'Sudha Kumar', email: 's@x.com', role: 'adult', status: 'active', joined_at: '2026-01-02' },
+      { id: CHILD_ID, name: 'Nihaan Kumar', email: '', role: 'child', status: 'pending', joined_at: '2026-01-03', date_of_birth: '2016-03-01' },
+    ]
+    profileDoc = { ...PROFILE }
+    insights = []
+  })
+
+  it('synthesizes prioritized nudges — member insights first, then attention, then progress', async () => {
+    insights = [
+      { id: 'i1', detector_id: 'family_protection_gap', rule_id: 'no_income_protection', hypothesis: 'missing_income_protection', reasoning: 'Partner has no income protection on file', confidence: 0.8, state: 'identified', feature_snapshot: { member_id: PARTNER_ID } },
+    ]
+    const app = await buildApp()
+    const res = await app.inject({ method: 'GET', url: `/family/members/${PARTNER_ID}/agent` })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+
+    expect(body.persona).toBe('adult')
+    expect(body.provisional).toBe(false)
+    const kinds = body.nudges.map((n: { kind: string }) => n.kind)
+    // Insight first, then the attention nudge for protection=0, estate=0.
+    expect(kinds[0]).toBe('insight')
+    expect(kinds).toContain('attention')
+    expect(body.nudges[0].source.insight_id).toBe('i1')
+    const protection = body.nudges.find((n: { source?: { component?: string } }) => n.source?.component === 'protection')
+    expect(protection.title).toMatch(/protection/i)
+    await app.close()
+  })
+
+  it('marks a pending member provisional — their data was entered on their behalf', async () => {
+    const app = await buildApp()
+    const res = await app.inject({ method: 'GET', url: `/family/members/${CHILD_ID}/agent` })
+    const body = res.json()
+    expect(body.provisional).toBe(true)
+  })
+
+  it('child members get the guardian persona — nudges speak about the child, to the adults', async () => {
+    const app = await buildApp()
+    const res = await app.inject({ method: 'GET', url: `/family/members/${CHILD_ID}/agent` })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.persona).toBe('guardian')
+    // Education at 10% of target → attention nudge phrased about Nihaan.
+    const attention = body.nudges.find((n: { kind: string }) => n.kind === 'attention')
+    expect(attention.title).toContain('Nihaan')
+    await app.close()
+  })
+
+  it('nudges carry no product/provider steering — informational copy only', async () => {
+    const app = await buildApp()
+    const res = await app.inject({ method: 'GET', url: `/family/members/${PARTNER_ID}/agent` })
+    const body = res.json()
+    const text = JSON.stringify(body.nudges).toLowerCase()
+    expect(text).not.toMatch(/buy|purchase|switch to|we recommend \w+ insurance/)
+    await app.close()
+  })
+
+  it('404s for a member id not on the roster', async () => {
+    const app = await buildApp()
+    const res = await app.inject({ method: 'GET', url: '/family/members/nope/agent' })
+    expect(res.statusCode).toBe(404)
+    await app.close()
+  })
+})
+
+describe('member nudge persistence (PRD-127)', () => {
+  beforeEach(() => {
+    members = [
+      { id: ORG_ID, name: 'Balu Kumar', email: 'b@x.com', role: 'organizer', status: 'active', joined_at: '2026-01-01', date_of_birth: '1985-06-15' },
+      { id: PARTNER_ID, name: 'Sudha Kumar', email: 's@x.com', role: 'adult', status: 'active', joined_at: '2026-01-02' },
+      { id: CHILD_ID, name: 'Nihaan Kumar', email: '', role: 'child', status: 'pending', joined_at: '2026-01-03', date_of_birth: '2016-03-01' },
+    ]
+    profileDoc = { ...PROFILE }
+    insights = []
+    nudges = []
+  })
+
+  it('persists nudges with stable ids — a second read dedupes instead of duplicating', async () => {
+    const app = await buildApp()
+    const first = await app.inject({ method: 'GET', url: `/family/members/${PARTNER_ID}/agent` })
+    const firstBody = first.json()
+    const count = firstBody.nudges.length
+    expect(count).toBeGreaterThan(0)
+    expect(firstBody.nudges.every((n: { id?: string }) => typeof n.id === 'string')).toBe(true)
+    expect(nudges).toHaveLength(count)
+
+    const second = await app.inject({ method: 'GET', url: `/family/members/${PARTNER_ID}/agent` })
+    expect(second.json().nudges.map((n: { id: string }) => n.id)).toEqual(
+      firstBody.nudges.map((n: { id: string }) => n.id),
+    )
+    expect(nudges).toHaveLength(count)
+    await app.close()
+  })
+
+  it('dismissal persists — the nudge leaves the surface and stays gone while the evidence stands', async () => {
+    const app = await buildApp()
+    const first = (await app.inject({ method: 'GET', url: `/family/members/${PARTNER_ID}/agent` })).json()
+    const target = first.nudges[0]
+    const res = await app.inject({
+      method: 'POST',
+      url: `/family/members/${PARTNER_ID}/agent/nudges/${target.id}/dismiss`,
+    })
+    expect(res.statusCode).toBe(200)
+    expect(nudges.find((n) => n.id === target.id)?.status).toBe('dismissed')
+
+    const second = (await app.inject({ method: 'GET', url: `/family/members/${PARTNER_ID}/agent` })).json()
+    expect(second.nudges.map((n: { id: string }) => n.id)).not.toContain(target.id)
+    // Still exactly one row — no resurrection, no duplicate.
+    expect(nudges.filter((n) => n.dedupe_key === nudges.find((x) => x.id === target.id)?.dedupe_key)).toHaveLength(1)
+    await app.close()
+  })
+
+  it('a nudge whose evidence disappears resolves itself on the next read', async () => {
+    insights = [
+      { id: 'i1', detector_id: 'family_protection_gap', rule_id: 'no_income_protection', hypothesis: 'h', reasoning: 'r', confidence: 0.8, state: 'identified', feature_snapshot: { member_id: PARTNER_ID } },
+    ]
+    const app = await buildApp()
+    const first = (await app.inject({ method: 'GET', url: `/family/members/${PARTNER_ID}/agent` })).json()
+    const insightNudge = first.nudges.find((n: { kind: string }) => n.kind === 'insight')
+    expect(insightNudge).toBeTruthy()
+
+    // The insight resolves — the nudge must retire itself, not linger.
+    insights = []
+    const second = (await app.inject({ method: 'GET', url: `/family/members/${PARTNER_ID}/agent` })).json()
+    expect(second.nudges.map((n: { id: string }) => n.id)).not.toContain(insightNudge.id)
+    expect(nudges.find((n) => n.id === insightNudge.id)?.status).toBe('resolved')
+    await app.close()
+  })
+
+  it('404s dismissing a nudge that belongs to a different member', async () => {
+    const app = await buildApp()
+    const partner = (await app.inject({ method: 'GET', url: `/family/members/${PARTNER_ID}/agent` })).json()
+    const res = await app.inject({
+      method: 'POST',
+      url: `/family/members/${ORG_ID}/agent/nudges/${partner.nudges[0].id}/dismiss`,
+    })
     expect(res.statusCode).toBe(404)
     await app.close()
   })

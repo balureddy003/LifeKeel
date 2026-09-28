@@ -17,6 +17,8 @@ export interface FamilyMemberUser {
   emoji: string
   status: 'active' | 'pending'
   joinedAt: string
+  /** The `users.id` this entry binds to after invite acceptance (PRD-123) — id stays the roster identity. */
+  userId?: string
   /** ISO 'YYYY-MM-DD', optional — see apps/web/src/lib/age.ts for deriving age/years-until from it. */
   dateOfBirth?: string
 }
@@ -26,6 +28,8 @@ export interface FamilyGroup {
   name: string
   members: FamilyMemberUser[]
   inviteCode: string
+  /** Organizer-authored household note Ask Oak reads as background (gap 8). */
+  contextNote?: string
 }
 
 export const ROLE_LABELS: Record<FamilyRole, string> = {

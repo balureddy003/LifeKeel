@@ -147,7 +147,7 @@ const DOMAIN_DETECTOR_MAP: Record<HealthDomain, string | null> = {
   wealth: 'family_retirement_gap',
   goals: 'family_education_shortfall',
   savings: 'family_emergency_fund_adequacy',
-  estate: null, // no detector — vault contents drive this domain (PRD-114)
+  estate: 'family_estate_readiness', // PRD-121 — vault doc_type gaps are now detectable
 }
 
 // Server readiness component → health domain. When GET /family/readiness
@@ -273,13 +273,6 @@ export function useFamilyHealthDomains() {
       } else {
         domains[domain] = { score: server.score, hasLiveData: true, insights: domainInsights, detail: server.detail }
       }
-      continue
-    }
-
-    if (domain === 'estate') {
-      // No server data and no detector — the only honest state is
-      // "not measured yet".
-      domains[domain] = { score: DOMAIN_FALLBACK_SCORE.estate, hasLiveData: false, insights: [] }
       continue
     }
 

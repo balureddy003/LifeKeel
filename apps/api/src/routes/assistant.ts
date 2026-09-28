@@ -24,9 +24,14 @@ import { getAuditLogger } from '../audit/audit-log.js'
 import { calculateScenario, type ScenarioResult } from '../scenarios/calculate.js'
 import { toScenarioProfileInput } from '../scenarios/profile-input.js'
 import { isUnsetTarget } from './family-financial-profile.js'
+import { getMemberTwin, type MemberTwinResult } from './member-twin.js'
 
 const AskSchema = z.object({
   query: z.string().min(1).max(2000),
+  // PRD-122: scope the answer to one roster member — the assistant grounds
+  // on that member's twin (their earner slice, attributed policies/funds/
+  // insights, member readiness) instead of the whole household.
+  member_id: z.string().max(100).optional(),
 })
 
 const SimulateSchema = z.object({
@@ -226,6 +231,13 @@ function buildContext(
     }
   }
 
+  // Gap-8: the organizer's own free-text context note — background color
+  // for questions the structured profile can't express ("Mum lives alone
+  // in Leeds"). User-authored, not a verified fact.
+  if (family?.context_note) {
+    parts.push(`Household context, in the organizer's own words: "${family.context_note}"`)
+  }
+
   if (insights.length === 0) {
     parts.push('No open insights currently identified.')
   } else {
@@ -240,6 +252,75 @@ function buildContext(
     for (const doc of unreviewedDocs) {
       parts.push(`- "${doc.filename ?? 'a document'}" (${doc.category ?? 'uncategorized'}), uploaded ${doc.uploaded_at?.toISOString().slice(0, 10) ?? 'recently'}.`)
     }
+  }
+
+  return parts.join('\n')
+}
+
+// PRD-122: the member-scoped counterpart to buildContext — grounds the
+// answer on a single member's twin read model (same assembly the member
+// page renders) plus a shared-household background line, since questions
+// like "can Sam afford uni" implicate family-level figures too.
+function buildMemberContext(twin: MemberTwinResult, profile: FinancialProfileDoc | null): string {
+  const m = twin.member
+  const parts: string[] = []
+
+  parts.push(
+    `This question is specifically about ${m.name} ` +
+    `(role ${m.role}${m.age !== null ? `, age ${m.age}` : ''}` +
+    `${m.status === 'pending' ? ', profile pending — their figures were entered by someone else and are unconfirmed' : ''}). ` +
+    `Answer about them specifically; household-level figures are background only.`,
+  )
+
+  if (twin.readiness) {
+    parts.push(
+      `${m.name}'s member readiness: ${twin.readiness.score !== null ? `${twin.readiness.score}/100` : 'not enough data to score'}.`,
+    )
+    for (const c of twin.readiness.components) {
+      parts.push(`- ${c.label}: ${c.gated ? 'restricted' : c.score !== null ? `${c.score}/100` : 'unscored'} — ${c.detail}`)
+    }
+  }
+
+  const e = twin.financial.earner
+  parts.push(
+    e
+      ? `${m.name}'s income: employment status ${e.employment_status ?? 'unknown'}, salary £${toMajor(e.monthly_salary_minor)}/month, ` +
+        `income protection £${toMajor(e.income_protection_monthly_minor)}/month, ` +
+        `pension balance £${toMajor(e.pension_balance_minor)}, pension contribution £${toMajor(e.monthly_pension_contribution_minor)}/month.`
+      : `${m.name} has no income or employment figures on file (not a household earner, or details not entered yet).`,
+  )
+
+  for (const p of twin.financial.policies) {
+    parts.push(
+      `${p.type ?? 'Insurance'} policy with ${p.provider ?? 'unknown provider'} held by ${m.name}: ` +
+      `cover £${toMajor(p.coverage_amount_minor)}, premium £${toMajor(p.monthly_premium_minor)}/month` +
+      `${p.renewal_date ? `, renews ${p.renewal_date}` : ''}.`,
+    )
+  }
+  for (const f of twin.financial.education_funds) {
+    parts.push(
+      `Education fund for ${f.child_name ?? m.name}: £${toMajor(f.current_savings_minor)} saved against a ` +
+      `£${toMajor(f.target_savings_minor)} target, ${f.years_remaining} years remaining ` +
+      `(needs £${toMajor(f.needed_monthly_minor)}/month to stay on pace).`,
+    )
+  }
+
+  const memberInsights = twin.financial.insights
+  if (memberInsights.length === 0) {
+    parts.push(`No open insights currently flagged for ${m.name}.`)
+  } else {
+    parts.push(`Open insights about ${m.name}:`)
+    for (const i of memberInsights) {
+      parts.push(`- ${typeof i['reasoning'] === 'string' ? i['reasoning'] : i['hypothesis'] ?? ''}`)
+    }
+  }
+
+  if (profile?.emergency_fund || profile?.household) {
+    parts.push(
+      `Shared household background: annual living expenses £${toMajor(profile?.household?.annual_living_expenses_minor)}, ` +
+      `emergency fund £${toMajor(profile?.emergency_fund?.emergency_savings_minor)} against ` +
+      `£${toMajor(profile?.emergency_fund?.monthly_expenses_minor)}/month expenses.`,
+    )
   }
 
   return parts.join('\n')
@@ -316,26 +397,33 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
       if (!parsed.success) {
         return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
       }
-      const { tenant_id } = req.authContext
-      const { query } = parsed.data
+      const { tenant_id, user_id } = req.authContext
+      const { query, member_id } = parsed.data
 
       const { profileDoc, familyDoc, insightDocs, unreviewedDocs } = await loadAssistantData(db, tenant_id)
 
-      const context = buildContext(
-        profileDoc,
-        familyDoc,
-        insightDocs.map((i) => ({ reasoning: i.reasoning, category: i.category, detector_id: i.detector_id })),
-        unreviewedDocs,
-      )
+      let context: string
+      if (member_id) {
+        const twin = await getMemberTwin(db, tenant_id, member_id, user_id)
+        if (!twin) return reply.status(404).send({ error: 'Family member not found' })
+        context = buildMemberContext(twin, profileDoc)
+      } else {
+        context = buildContext(
+          profileDoc,
+          familyDoc,
+          insightDocs.map((i) => ({ reasoning: i.reasoning, category: i.category, detector_id: i.detector_id })),
+          unreviewedDocs,
+        )
+      }
       const prompt = `Family data:\n${context}\n\nQuestion: ${query}`
 
       try {
         const content = await llmFn(SYSTEM_PROMPT, prompt, 'tier:fast')
-        getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', { is_live: true })
+        getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', { is_live: true, ...(member_id ? { member_id } : {}) })
         return reply.send({ content, isLive: true })
       } catch (err) {
         req.log.warn({ err }, 'Assistant LLM call failed — falling back')
-        getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', { is_live: false })
+        getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', { is_live: false, ...(member_id ? { member_id } : {}) })
         return reply.send({ content: FALLBACK_CONTENT, isLive: false })
       }
     },

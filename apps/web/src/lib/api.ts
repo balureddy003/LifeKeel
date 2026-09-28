@@ -93,6 +93,7 @@ const FAMILY_DETECTORS = [
   'family_education_shortfall',
   'family_emergency_fund_adequacy',
   'family_retirement_gap',
+  'family_estate_readiness',
 ] as const
 
 function getAuthToken(): string | null {
@@ -203,6 +204,8 @@ export interface MemberTwin {
       employment_status: EmploymentStatus
       monthly_salary_minor: number
       income_protection_monthly_minor: number
+      pension_balance_minor?: number
+      monthly_pension_contribution_minor?: number
     } | null
     policies: Array<Pick<FinancialProfilePolicy, 'type' | 'provider' | 'coverage_amount_minor' | 'monthly_premium_minor' | 'renewal_date'>>
     education_funds: Array<{
@@ -215,11 +218,59 @@ export interface MemberTwin {
     }>
     insights: RawInsight[]
   }
+  /** PRD-118: per-member readiness — same component vocabulary as the
+   *  family score (minus emergency_fund, which is household-level).
+   *  Components carry no explaining insights here; financial.insights
+   *  already holds the member's open list. */
+  readiness: {
+    score: number | null
+    components: Array<Omit<ReadinessComponent, 'insights'>>
+  } | null
+  /** PRD-124: present only when fetched with mode='youth' — redacted
+   *  kid-legible projection; financial/readiness are empty in that mode. */
+  youth?: {
+    age_band: 'younger' | 'teen'
+    headline: string
+    savings_goals: Array<{ name: string; progress_pct: number; years_until_goal: number }>
+    /** PRD-129: age-banded literacy lessons — concepts + a "try it", no
+     *  amounts or products. */
+    lessons: Array<{ id: string; title: string; body: string; try_it: string }>
+  }
   has_live_data: boolean
 }
 
-export async function fetchMemberTwin(memberId: string): Promise<MemberTwin | null> {
-  return apiFetch<MemberTwin | null>(`/family/members/${encodeURIComponent(memberId)}/twin`, null)
+export async function fetchMemberTwin(memberId: string, mode?: 'youth'): Promise<MemberTwin | null> {
+  return apiFetch<MemberTwin | null>(`/family/members/${encodeURIComponent(memberId)}/twin${mode === 'youth' ? '?mode=youth' : ''}`, null)
+}
+
+/** PRD-126/127: the member's agent persona — proactive member-scoped
+ *  nudges read off the twin and persisted in member_nudges. 'guardian'
+ *  persona for minors (speaks to adults). */
+export interface MemberAgent {
+  member: { id: string; name: string; role: string; status: string; age: number | null }
+  persona: 'adult' | 'guardian'
+  nudges: Array<{
+    id: string
+    kind: 'attention' | 'insight' | 'progress'
+    title: string
+    detail: string
+    first_seen_at: string
+    source?: { component?: string; insight_id?: string }
+  }>
+  provisional: boolean
+}
+
+export async function fetchMemberAgent(memberId: string): Promise<MemberAgent | null> {
+  return apiFetch<MemberAgent | null>(`/family/members/${encodeURIComponent(memberId)}/agent`, null)
+}
+
+export async function dismissMemberNudge(memberId: string, nudgeId: string): Promise<boolean> {
+  const token = getAuthToken()
+  const res = await fetch(
+    `${getApiBase()}/family/members/${encodeURIComponent(memberId)}/agent/nudges/${encodeURIComponent(nudgeId)}/dismiss`,
+    { method: 'POST', headers: { Authorization: `Bearer ${token ?? ''}` } },
+  )
+  return res.ok
 }
 
 export async function fetchFamilyGoals(): Promise<FamilyGoal[]> {
@@ -322,6 +373,18 @@ export interface ScenarioInputs {
   targetChildName?: string
   /** Months until the income change takes effect; 0 = immediate. */
   monthsUntilChange?: number
+  /**
+   * PRD-132: ordered regime changes — the flat delta/horizon fields are
+   * the one-step shorthand for this and are ignored when steps exist.
+   * Deltas accumulate: a later step's +X can undo an earlier −X.
+   */
+  steps?: ScenarioStep[]
+}
+
+export interface ScenarioStep {
+  atMonth: number
+  monthlyIncomeDeltaMinor?: number
+  monthlyExpenseDeltaMinor?: number
 }
 
 export interface ScenarioResult {
@@ -333,6 +396,16 @@ export interface ScenarioResult {
   projectedRunwayMonths: number | null
   savingsAtChangeMinor: number
   monthsUntilChange: number
+  /** PRD-132: one point per timeline step — null for single-step inputs. */
+  timeline: Array<{
+    atMonth: number
+    monthlyIncomeMinor: number
+    monthlyExpensesMinor: number
+    savingsMinor: number
+    runwayMonths: number | null
+  }> | null
+  /** PRD-132: the month the fund runs out mid-timeline, if it does. */
+  fundDepletedAtMonth: number | null
   educationFundProjection: {
     childName: string
     yearsRemaining: number
@@ -414,7 +487,7 @@ export async function deleteFamilyScenario(id: string): Promise<boolean> {
  * Returns both the content and an `isLive` flag so the UI can distinguish
  * real API responses from mock fallbacks and label them accordingly.
  */
-export async function fetchAIResponse(query: string): Promise<{ content: string; isLive: boolean }> {
+export async function fetchAIResponse(query: string, memberId?: string): Promise<{ content: string; isLive: boolean }> {
   try {
     const base = getApiBase()
     const token = getAuthToken()
@@ -429,7 +502,8 @@ export async function fetchAIResponse(query: string): Promise<{ content: string;
     const res = await fetch(`${base}/assistant/ask`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ query }),
+      // PRD-122: memberId scopes the answer to one roster member's twin.
+      body: JSON.stringify(memberId ? { query, member_id: memberId } : { query }),
       signal: AbortSignal.timeout(30_000),
     })
     if (res.ok) {
@@ -542,6 +616,9 @@ export interface VaultDocument {
    *  GET /family/readiness. null for documents uploaded before the field
    *  existed. */
   docType: VaultDocType | null
+  /** PRD-134: client-side-encrypted under a family passphrase — the
+   *  server returns the sealed envelope and the browser unseals it. */
+  sealed?: boolean
 }
 
 export const VAULT_DOC_TYPES = ['will', 'power_of_attorney', 'insurance_policy', 'estate_instruction', 'other'] as const
@@ -572,22 +649,44 @@ export async function fetchVaultDocuments(): Promise<{ documents: VaultDocument[
   }
 }
 
-export async function uploadVaultDocument(file: File, docType?: VaultDocType): Promise<VaultDocument> {
+export async function uploadVaultDocument(
+  file: File,
+  docType?: VaultDocType,
+  /** PRD-134: when set, the file is sealed client-side before upload —
+   *  the server stores ciphertext it cannot read. */
+  sealPassphrase?: string,
+): Promise<VaultDocument> {
   const base = getApiBase()
   const token = getAuthToken()
   const formData = new FormData()
-  formData.append('file', file)
+  let upload: Blob = file
+  if (sealPassphrase) {
+    const { sealFile } = await import('./vault-seal')
+    upload = new Blob([await sealFile(await file.arrayBuffer(), sealPassphrase) as BlobPart], { type: 'application/octet-stream' })
+  }
+  formData.append('file', upload, file.name)
   const headers: Record<string, string> = {}
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const url = docType ? `${base}/vault/documents/upload?doc_type=${docType}` : `${base}/vault/documents/upload`
-  const res = await fetch(url, { method: 'POST', headers, body: formData })
+  const params = new URLSearchParams()
+  if (docType) params.set('doc_type', docType)
+  if (sealPassphrase) {
+    params.set('sealed', '1')
+    params.set('mime', file.type || 'application/octet-stream')
+  }
+  const qs = params.toString()
+  const res = await fetch(`${base}/vault/documents/upload${qs ? `?${qs}` : ''}`, { method: 'POST', headers, body: formData })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || `Upload failed: ${res.status}`)
   return data as VaultDocument
 }
 
-export async function fetchVaultDocumentFileUrl(id: string): Promise<{ url: string; mimeType: string } | null> {
+export async function fetchVaultDocumentFileUrl(
+  id: string,
+  /** PRD-134: sealed docs need the passphrase + declared mime to unseal
+   *  in-browser; unsealed docs pass nothing. */
+  seal?: { passphrase: string; mimeType: string },
+): Promise<{ url: string; mimeType: string } | 'wrong-passphrase' | null> {
   try {
     const base = getApiBase()
     const token = getAuthToken()
@@ -595,6 +694,17 @@ export async function fetchVaultDocumentFileUrl(id: string): Promise<{ url: stri
     if (token) headers['Authorization'] = `Bearer ${token}`
     const res = await fetch(`${base}/vault/documents/${id}/file`, { headers })
     if (!res.ok) return null
+    if (seal) {
+      const { unsealFile, VaultSealError } = await import('./vault-seal')
+      try {
+        const plaintext = await unsealFile(await res.arrayBuffer(), seal.passphrase)
+        const blob = new Blob([plaintext], { type: seal.mimeType })
+        return { url: URL.createObjectURL(blob), mimeType: seal.mimeType }
+      } catch (err) {
+        if (err instanceof VaultSealError) return 'wrong-passphrase'
+        throw err
+      }
+    }
     const blob = await res.blob()
     return { url: URL.createObjectURL(blob), mimeType: blob.type }
   } catch (err) {
@@ -847,6 +957,53 @@ export async function connectEmail(payload: ConnectEmailPayload): Promise<{ ok: 
   return { ok: true }
 }
 
+// ── Open Banking (PRD-133) — read-only account-info connector. The
+// provider list is deliberately tiny: 'sandbox' (dev/test demo accounts)
+// and 'truelayer' (a consented access token — the OAuth flow that mints
+// it is the partnership-dependent piece). No payment initiation exists
+// anywhere in this path.
+export interface ExternalAccount {
+  id: string
+  provider: string
+  name: string
+  type: string
+  currency: string
+  balance_minor: number
+  synced_at: string
+}
+
+export async function connectOpenBanking(
+  provider: 'sandbox' | 'truelayer',
+  accessToken?: string,
+): Promise<{ ok: true; accounts: number } | { ok: false; error: string }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/connectors/open-banking/credentials`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ provider, ...(accessToken ? { accessToken } : {}) }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return { ok: false, error: data.error || 'Could not connect — check the details and try again.' }
+  return { ok: true, accounts: data.accounts ?? 0 }
+}
+
+export async function syncOpenBanking(): Promise<boolean> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/connectors/open-banking/sync`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  return res.ok
+}
+
+export async function fetchOpenBankingAccounts(): Promise<ExternalAccount[]> {
+  return apiFetch<{ accounts: ExternalAccount[] }>('/connectors/open-banking/accounts', { accounts: [] }).then(
+    (r) => r.accounts ?? [],
+  )
+}
+
 /** Kicks off the Gmail OAuth flow — resolves to the Google consent-screen
  * URL to navigate the browser to. On success, the callback lands back on
  * this same /connect/email page with ?connected=email; on failure, with
@@ -943,6 +1100,8 @@ export interface ApiFamilyMember {
   role: 'organizer' | 'parent' | 'adult' | 'child'
   status: 'active' | 'pending'
   joinedAt: string
+  /** The `users.id` this roster entry is bound to after invite acceptance (PRD-123). */
+  userId?: string
   /** ISO 'YYYY-MM-DD', optional. */
   dateOfBirth?: string
 }
@@ -952,6 +1111,8 @@ export interface ApiFamilyGroup {
   name: string
   inviteCode: string
   members: ApiFamilyMember[]
+  /** Gap-8: the organizer-authored context note Ask Oak reads. */
+  contextNote?: string
 }
 
 async function familyGroupRequest(
@@ -1065,6 +1226,61 @@ export async function fetchAccessRequests(): Promise<AccessRequest[]> {
   return apiFetch<{ requests: AccessRequest[] }>('/family/access-requests', { requests: [] }).then((r) => r.requests)
 }
 
+// ── Per-member invites (PRD-123) ──────────────────────────────────────────
+// The organizer-facing direction of family sharing: invite a specific pending
+// roster member by email, they accept via a one-time link, and their existing
+// roster entry flips to active — no duplicate member, no join-request queue.
+
+export interface MemberInviteResult {
+  invited: boolean
+  /** false when the API has no SendGrid key — share inviteUrl manually. */
+  emailed: boolean
+  inviteUrl: string
+}
+
+export async function inviteFamilyMember(memberId: string, email?: string): Promise<MemberInviteResult> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/family/members/${memberId}/invite`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(email ? { email } : {}),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || "Couldn't send the invite. Please try again.")
+  return { invited: data.invited, emailed: data.emailed, inviteUrl: data.invite_url }
+}
+
+export interface FamilyInviteInfo {
+  memberName: string
+  familyName: string
+  expiresAt: string
+}
+
+// Public — the invitee has no auth token yet.
+export async function fetchFamilyInvite(token: string): Promise<FamilyInviteInfo> {
+  const base = getApiBase()
+  const res = await fetch(`${base}/family/invite/${encodeURIComponent(token)}`)
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'This invite link is invalid or has expired')
+  return { memberName: data.member_name, familyName: data.family_name, expiresAt: data.expires_at }
+}
+
+// Public — accepting both verifies the token AND proves ownership of the
+// email (via a new or existing password). Returns a session token so the
+// acceptor lands signed in.
+export async function acceptFamilyInvite(token: string, password: string): Promise<{ token: string; user: { id: string; email: string; name: string } }> {
+  const base = getApiBase()
+  const res = await fetch(`${base}/family/invite/accept`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, password }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || "Couldn't accept the invite. Please try again.")
+  return { token: data.token, user: data.user }
+}
+
 async function accessRequestAction(id: string, action: 'approve' | 'deny'): Promise<Record<string, unknown>> {
   const base = getApiBase()
   const token = getAuthToken()
@@ -1094,6 +1310,153 @@ export async function resetInviteCode(): Promise<string> {
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || "Couldn't reset the invite code")
   return data.inviteCode as string
+}
+
+// ── Family continuity (PRD-130) ─────────────────────────────────────────────
+
+export interface FamilyContinuity {
+  continuity: {
+    enabled: boolean
+    designated_member_ids: string[]
+    check_in_after_days: number
+    grace_days: number
+  }
+  state: { phase: 'watching' | 'check_in_sent' | 'alerted'; inactive_since?: string; check_in_sent_at?: string; alerted_at?: string }
+  is_organizer: boolean
+}
+
+export async function fetchFamilyContinuity(): Promise<FamilyContinuity | null> {
+  return apiFetch<FamilyContinuity | null>('/family/continuity', null)
+}
+
+export async function updateFamilyContinuity(input: FamilyContinuity['continuity']): Promise<FamilyContinuity['continuity']> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const res = await fetch(`${base}/family/continuity`, { method: 'PATCH', headers, body: JSON.stringify(input) })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || "Couldn't save continuity settings")
+  return data.continuity
+}
+
+// ── Family cash flow (PRD-131) ──────────────────────────────────────────────
+
+export interface CashflowEntry {
+  id: string
+  kind: 'income' | 'expense'
+  label: string
+  amount_minor: number
+  recurrence: 'weekly' | 'monthly' | 'yearly' | 'once'
+  monthly_minor: number
+  member_id?: string
+  created_at: string
+}
+
+export interface CashflowSummary {
+  entries: CashflowEntry[]
+  summary: { monthly_inflow_minor: number; monthly_outflow_minor: number; net_minor: number; runway_months: number | null }
+}
+
+export async function fetchFamilyCashflow(): Promise<CashflowSummary | null> {
+  return apiFetch<CashflowSummary | null>('/family/cashflow', null)
+}
+
+export async function addCashflowEntry(input: { kind: 'income' | 'expense'; label: string; amount_minor: number; recurrence: string }): Promise<boolean> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/family/cashflow/entries`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(input),
+  })
+  return res.ok
+}
+
+export async function deleteCashflowEntry(id: string): Promise<boolean> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/family/cashflow/entries/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  return res.ok
+}
+
+// ── Assets register (gap 8's non-sensitive slice) ────────────────────────
+// Declared assets — property, vehicles, valuables — any active adult can
+// maintain. Same sensitivity class as the financial profile; medical/health
+// stays deferred by design.
+export const ASSET_KINDS = ['property', 'vehicle', 'savings_account', 'investment', 'valuable', 'other'] as const
+export type AssetKind = (typeof ASSET_KINDS)[number]
+
+export const ASSET_KIND_LABELS: Record<AssetKind, string> = {
+  property: 'Property',
+  vehicle: 'Vehicle',
+  savings_account: 'Savings account',
+  investment: 'Investment',
+  valuable: 'Valuable',
+  other: 'Other',
+}
+
+export interface FamilyAsset {
+  id: string
+  kind: AssetKind
+  name: string
+  value_minor: number
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AssetList {
+  assets: FamilyAsset[]
+  summary: { total_minor: number; by_kind: Record<string, number> }
+}
+
+export async function fetchFamilyAssets(): Promise<AssetList> {
+  return apiFetch<AssetList>('/family/assets', { assets: [], summary: { total_minor: 0, by_kind: {} } })
+}
+
+async function assetRequest(path: string, method: 'POST' | 'PATCH' | 'DELETE', body?: Record<string, unknown>): Promise<FamilyAsset | null | boolean> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const res = await fetch(`${base}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    })
+    if (!res.ok) return method === 'DELETE' ? false : null
+    if (method === 'DELETE') return true
+    const data = (await res.json()) as { asset: FamilyAsset }
+    return data.asset
+  } catch (err) {
+    reportError(err, { path })
+    return method === 'DELETE' ? false : null
+  }
+}
+
+export async function addFamilyAsset(input: { kind: AssetKind; name: string; value_minor: number; notes?: string }): Promise<FamilyAsset | null> {
+  return (await assetRequest('/family/assets', 'POST', input)) as FamilyAsset | null
+}
+
+export async function updateFamilyAsset(id: string, patch: { name?: string; value_minor?: number; notes?: string | null }): Promise<FamilyAsset | null> {
+  return (await assetRequest(`/family/assets/${encodeURIComponent(id)}`, 'PATCH', patch)) as FamilyAsset | null
+}
+
+export async function deleteFamilyAsset(id: string): Promise<boolean> {
+  return (await assetRequest(`/family/assets/${encodeURIComponent(id)}`, 'DELETE')) as boolean
+}
+
+/** Gap-8: the organizer-authored context note Ask Oak reads as household
+ *  background. Empty string clears it. */
+export async function updateFamilyContext(note: string): Promise<ApiFamilyGroup | null> {
+  try {
+    return await familyGroupRequest('/family/context', 'PATCH', { note })
+  } catch {
+    return null
+  }
 }
 
 // ── Friend referral (PRD-112) ───────────────────────────────────────────────
@@ -1434,6 +1797,8 @@ export interface FinancialProfile {
       employment_status: EmploymentStatus
       monthly_salary_minor: number
       income_protection_monthly_minor: number
+      pension_balance_minor?: number
+      monthly_pension_contribution_minor?: number
     }>
   }
   emergency_fund: {
@@ -1754,6 +2119,9 @@ export interface ReadinessQuizInsight {
 
 export interface ReadinessQuizResult {
   score: number | null
+  /** PRD-125: the same composite components /family/readiness computes —
+   *  only the ones the quiz collects are scored; the rest read null. */
+  components?: Array<{ key: string; label: string; score: number | null; weight: number; detail: string }>
   insights: ReadinessQuizInsight[]
   error?: string
 }
@@ -1767,7 +2135,7 @@ export async function submitReadinessQuiz(answers: ReadinessQuizAnswers): Promis
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) return { score: null, insights: [], error: data.error || 'Request failed' }
-  return { score: data.score ?? null, insights: data.insights ?? [], error: data.error }
+  return { score: data.score ?? null, components: data.components ?? [], insights: data.insights ?? [], error: data.error }
 }
 
 // ── Blog / detector-driven content (PRD-202) ────────────────────────────

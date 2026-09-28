@@ -126,7 +126,7 @@ function makeDb(inboxSeed: Record<string, unknown>[] = [], profileSeed: Record<s
     }),
   }
 
-  const documentsCol = { find: () => ({ sort: () => ({ limit: () => ({ toArray: async () => [] }) }) }) }
+  const documentsCol = { find: () => ({ toArray: async () => [], sort: () => ({ limit: () => ({ toArray: async () => [] }) }) }) }
 
   return {
     collection: (name: string) => {

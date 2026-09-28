@@ -34,6 +34,16 @@ export default function VaultPage() {
   // of the readiness score (a "will" counts toward estate completion,
   // "other" doesn't).
   const [docType, setDocType] = useState<VaultDocType>('other')
+  // PRD-134: opt-in client-side sealing — the passphrase encrypts the file
+  // in this browser before upload and is never sent anywhere.
+  const [sealUpload, setSealUpload] = useState(false)
+  const [sealPass, setSealPass] = useState('')
+  const [sealPassConfirm, setSealPassConfirm] = useState('')
+  // Opening a sealed doc prompts for the passphrase first.
+  const [unsealPrompt, setUnsealPrompt] = useState<VaultDocument | null>(null)
+  const [unsealPass, setUnsealPass] = useState('')
+  const [unsealError, setUnsealError] = useState<string | null>(null)
+  const [unsealing, setUnsealing] = useState(false)
 
   const load = useCallback(async () => {
     const { documents: docs, forbidden: f } = await fetchVaultDocuments()
@@ -58,31 +68,59 @@ export default function VaultPage() {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
+    if (sealUpload && (!sealPass || sealPass !== sealPassConfirm)) {
+      setError('Enter the passphrase twice to seal this document — it can’t be recovered if forgotten.')
+      return
+    }
     setUploading(true)
     setError(null)
     haptic('light')
     try {
-      const doc = await uploadVaultDocument(file, docType)
+      const doc = await uploadVaultDocument(file, docType, sealUpload ? sealPass : undefined)
       setDocuments((prev) => [doc, ...prev])
       haptic('success')
-      toast({ message: 'Added to your vault' })
+      toast({ message: sealUpload ? 'Sealed and added to your vault' : 'Added to your vault' })
     } catch (err) {
       haptic('warning')
       setError(err instanceof Error ? err.message : 'Could not upload that document')
     } finally {
       setUploading(false)
     }
-  }, [toast, docType])
+  }, [toast, docType, sealUpload, sealPass, sealPassConfirm])
 
-  const openPreview = useCallback(async (doc: VaultDocument) => {
+  const openPreview = useCallback(async (doc: VaultDocument, passphrase?: string) => {
     haptic('light')
-    const file = await fetchVaultDocumentFileUrl(doc.id)
+    const file = await fetchVaultDocumentFileUrl(doc.id, passphrase ? { passphrase, mimeType: doc.mimeType } : undefined)
+    if (file === 'wrong-passphrase') {
+      setUnsealError('That passphrase doesn’t open this document')
+      return
+    }
     if (!file) {
       toast({ message: "Couldn't open that document", variant: 'error' })
       return
     }
+    setUnsealPrompt(null)
+    setUnsealPass('')
+    setUnsealError(null)
     setPreview({ id: doc.id, url: file.url, mimeType: file.mimeType, filename: doc.filename })
   }, [toast])
+
+  const handleDocOpen = useCallback((doc: VaultDocument) => {
+    if (doc.sealed) {
+      setUnsealPrompt(doc)
+      setUnsealError(null)
+      setUnsealPass('')
+      return
+    }
+    void openPreview(doc)
+  }, [openPreview])
+
+  const handleUnseal = useCallback(async () => {
+    if (!unsealPrompt || !unsealPass) return
+    setUnsealing(true)
+    await openPreview(unsealPrompt, unsealPass)
+    setUnsealing(false)
+  }, [unsealPrompt, unsealPass, openPreview])
 
   const handleDelete = useCallback(async (doc: VaultDocument) => {
     const ok = await confirm({
@@ -145,6 +183,43 @@ export default function VaultPage() {
             </select>
           </label>
 
+          <div className="px-1 space-y-2">
+            <label className="flex items-center gap-2 text-xs text-ink-tertiary">
+              <input
+                type="checkbox"
+                checked={sealUpload}
+                onChange={(e) => { setSealUpload(e.target.checked); setSealPass(''); setSealPassConfirm('') }}
+                className="accent-family-500"
+              />
+              Seal with a passphrase — even Oak can’t read it
+            </label>
+            {sealUpload && (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    placeholder="Passphrase"
+                    autoComplete="new-password"
+                    value={sealPass}
+                    onChange={(e) => setSealPass(e.target.value)}
+                    className="glass-input flex-1 rounded-xl px-3 py-2 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40"
+                  />
+                  <input
+                    type="password"
+                    placeholder="Again"
+                    autoComplete="new-password"
+                    value={sealPassConfirm}
+                    onChange={(e) => setSealPassConfirm(e.target.value)}
+                    className="glass-input flex-1 rounded-xl px-3 py-2 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40"
+                  />
+                </div>
+                <p className="text-[11px] text-ink-tertiary leading-relaxed">
+                  The passphrase never leaves this device and can’t be recovered — share it with the family members who should be able to open this. Document name and type stay visible to Oak.
+                </p>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <motion.button
               whileTap={{ scale: 0.96 }}
@@ -201,15 +276,20 @@ export default function VaultPage() {
                 <motion.div key={doc.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
                   <GlassCard className="p-4 flex items-center gap-3">
                     <button
-                      onClick={() => openPreview(doc)}
+                      onClick={() => handleDocOpen(doc)}
                       className="flex items-center gap-3 flex-1 min-w-0 text-left active:opacity-70"
                     >
                       <div className="w-10 h-10 rounded-2xl bg-tint/[0.05] flex items-center justify-center flex-shrink-0">
-                        <FileLock2 size={18} className="text-ink-secondary" />
+                        {doc.sealed ? <Lock size={18} className="text-family-400" /> : <FileLock2 size={18} className="text-ink-secondary" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold truncate">{doc.filename}</div>
                         <div className="text-xs text-ink-tertiary mt-0.5 flex items-center gap-1.5">
+                          {doc.sealed && (
+                            <span className="rounded-full bg-family-500/15 text-family-300 px-1.5 py-px text-[10px] font-medium">
+                              Sealed
+                            </span>
+                          )}
                           {doc.docType && (
                             <span className="rounded-full bg-family-500/10 text-family-400 px-1.5 py-px text-[10px] font-medium">
                               {VAULT_DOC_TYPE_LABELS[doc.docType]}
@@ -234,6 +314,61 @@ export default function VaultPage() {
           </div>
         </>
       )}
+
+      {/* PRD-134: passphrase prompt before opening a sealed document. */}
+      <AnimatePresence>
+        {unsealPrompt && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-modal bg-black/70 flex items-center justify-center p-4"
+            onClick={() => setUnsealPrompt(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="glass rounded-2xl p-4 max-w-sm w-full space-y-3"
+            >
+              <div className="flex items-center gap-2">
+                <Lock size={16} className="text-family-400" />
+                <span className="text-sm font-semibold">Sealed document</span>
+              </div>
+              <p className="text-xs text-ink-tertiary">"{unsealPrompt.filename}" is encrypted with a passphrase only your family knows. Oak can’t open it for you.</p>
+              <input
+                type="password"
+                autoFocus
+                placeholder="Passphrase"
+                value={unsealPass}
+                onChange={(e) => setUnsealPass(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && void handleUnseal()}
+                className="glass-input w-full rounded-xl px-3 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40"
+              />
+              {unsealError && <p role="status" aria-live="polite" className="text-xs text-danger">{unsealError}</p>}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setUnsealPrompt(null)}
+                  className="flex-1 rounded-xl py-2.5 text-sm font-semibold text-ink-tertiary bg-tint/[0.05]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleUnseal()}
+                  disabled={!unsealPass || unsealing}
+                  className="flex-1 rounded-xl py-2.5 text-sm font-semibold text-white bg-family-500/80 disabled:opacity-50 flex items-center justify-center gap-1.5"
+                >
+                  {unsealing && <Loader2 size={14} className="animate-spin" />}
+                  Open
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {preview && (

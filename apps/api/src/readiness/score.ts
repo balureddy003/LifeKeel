@@ -259,6 +259,10 @@ export function computeReadiness(profile: FinancialProfile, estateDocTypes: stri
     educationComponent(profile),
     estateComponent(estateDocTypes),
   ]
+  return combineComponents(components)
+}
+
+function combineComponents(components: ReadinessComponent[]): ReadinessResult {
   const scored = components.filter((c) => c.score !== null)
   const totalWeight = scored.reduce((s, c) => s + c.weight, 0)
   const score =
@@ -266,4 +270,210 @@ export function computeReadiness(profile: FinancialProfile, estateDocTypes: stri
       ? null
       : Math.round(scored.reduce((s, c) => s + (c.score! * c.weight) / totalWeight, 0))
   return { score, components }
+}
+
+// ── Per-member readiness (PRD-118) ─────────────────────────────────────────
+//
+// The member twin's slice of readiness — same component vocabulary as the
+// family score, scoped to what belongs to one member: their income
+// protection, their life cover, their education funds. Emergency fund stays
+// household-level (a shared pool isn't any one member's), and retirement is
+// only scored for the organizer because the household pension projection is
+// modeled on them — per-member pension contributions aren't collected yet,
+// so other earners get an honest null rather than a borrowed number.
+
+export const MEMBER_READINESS_WEIGHTS: Partial<Record<ReadinessComponentKey, number>> = {
+  protection: 40,
+  retirement: 25,
+  education: 25,
+  estate: 10,
+}
+
+export interface MemberSlice {
+  memberId: string
+  role: string
+  /** Roster-derived age (date_of_birth) — feeds the member's own retirement projection. */
+  age: number | null
+  /** The member's earner record (members[] entry, or household fields for the organizer), null if not an earner. */
+  earner: {
+    employment_status: string
+    monthly_salary_minor: number
+    income_protection_monthly_minor: number
+    pension_balance_minor?: number
+    monthly_pension_contribution_minor?: number
+  } | null
+  /** Policies already filtered to this member (member_id attribution). */
+  policies: { type: string; coverage_amount_minor?: number }[]
+  /** Education funds already filtered to this member. */
+  educationFunds: { current_savings_minor: number; target_savings_minor: number }[]
+}
+
+const ADULT_ROLES = new Set(['organizer', 'parent', 'adult'])
+
+function memberProtectionComponent(profile: FinancialProfile | null, slice: MemberSlice): ReadinessComponent {
+  const base = {
+    key: 'protection' as const,
+    label: 'Protection',
+    weight: MEMBER_READINESS_WEIGHTS.protection!,
+  }
+  const need = profile
+    ? profile.household.mortgage_outstanding_minor +
+      educationFundingGapMinor(profile.education_funds) +
+      profile.household.annual_living_expenses_minor * 5
+    : 0
+  const yearsToRetirement = profile
+    ? Math.max(0, profile.retirement.target_retirement_age - profile.retirement.current_age)
+    : 0
+
+  const checks: Array<{ weight: number; earned: number; label: string; met: boolean }> = []
+
+  const earner = slice.earner
+  if (earner && (earner.employment_status === 'employed' || earner.employment_status === 'self_employed') && yearsToRetirement > 1) {
+    const covered =
+      earner.income_protection_monthly_minor > 0 ||
+      slice.policies.some((p) => p.type === 'income_protection')
+    checks.push({ weight: 50, earned: covered ? 50 : 0, label: 'income protection', met: covered })
+  }
+
+  if (need > 0) {
+    if (slice.role === 'organizer') {
+      // The organizer's cover lives in two places: the household-level
+      // life_cover figure plus any life policy explicitly attributed to
+      // them. Scored as a fraction of need, like the family component.
+      const attributedLife = slice.policies
+        .filter((p) => p.type === 'life')
+        .reduce((s, p) => s + (p.coverage_amount_minor ?? 0), 0)
+      const fraction = Math.min(1, (profile!.household.life_cover_minor + attributedLife) / need)
+      checks.push({ weight: 50, earned: fraction * 50, label: 'life cover', met: fraction >= 1 })
+    } else {
+      // No per-member need figure exists — an attributed life policy is
+      // the binary signal that this member's cover was considered at all.
+      const covered = slice.policies.some((p) => p.type === 'life')
+      checks.push({ weight: 50, earned: covered ? 50 : 0, label: 'life cover', met: covered })
+    }
+  }
+
+  if (checks.length === 0) {
+    return { ...base, score: null, detail: 'No income to protect and no life-cover need applies.' }
+  }
+  const applicable = checks.reduce((s, c) => s + c.weight, 0)
+  const earned = checks.reduce((s, c) => s + c.earned, 0)
+  const score = Math.min(100, Math.round((earned / applicable) * 100))
+  const gaps = checks.filter((c) => !c.met).map((c) => c.label)
+  return {
+    ...base,
+    score,
+    detail: gaps.length === 0 ? 'Cover is in place for this member.' : `Gaps: ${gaps.join(', ')}.`,
+  }
+}
+
+/** Non-organizer retirement: scored from the member's own pension fields
+ *  (PRD-119) projected on the household's target age/growth, compared
+ *  against their income share of the household target income — the
+ *  household target is a joint number, so the member's slice of it is
+ *  proportional to what they earn. No pension data → honest null, same
+ *  rule as the family score. */
+function memberRetirementComponent(profile: FinancialProfile | null, slice: MemberSlice): ReadinessComponent {
+  const base = {
+    key: 'retirement' as const,
+    label: 'Retirement',
+    weight: MEMBER_READINESS_WEIGHTS.retirement!,
+  }
+  const earner = slice.earner
+  const balance = earner?.pension_balance_minor ?? 0
+  const contribution = earner?.monthly_pension_contribution_minor ?? 0
+  if (!profile || !earner || (balance === 0 && contribution === 0)) {
+    return {
+      ...base,
+      score: null,
+      detail: 'No pension figures on file for this member — add their balance and monthly contribution in the Financial Profile.',
+    }
+  }
+  if (slice.age === null) {
+    return { ...base, score: null, detail: 'Set this member\'s date of birth to project their pension.' }
+  }
+  if (isUnsetTarget(profile.retirement.target_retirement_income_minor)) {
+    return { ...base, score: null, detail: 'No household retirement income target set.' }
+  }
+  const totalSalary =
+    profile.household.monthly_salary_minor +
+    profile.household.members.reduce((s, m) => s + m.monthly_salary_minor, 0)
+  if (totalSalary <= 0 || earner.monthly_salary_minor <= 0) {
+    return { ...base, score: null, detail: 'No salary on file to derive this member\'s share of the retirement target.' }
+  }
+  const memberTargetMinor = Math.round(
+    (profile.retirement.target_retirement_income_minor * earner.monthly_salary_minor) / totalSalary,
+  )
+  const projection = projectRetirement({
+    current_age: slice.age,
+    target_retirement_age: profile.retirement.target_retirement_age,
+    pension_balance_minor: balance,
+    monthly_contribution_minor: contribution,
+    target_retirement_income_minor: memberTargetMinor,
+    expected_annual_growth_pct: profile.retirement.expected_annual_growth_pct,
+  })
+  const score = Math.min(100, Math.round((projection.achievable_retirement_income_minor / memberTargetMinor) * 100))
+  return {
+    ...base,
+    score,
+    detail:
+      score >= 100
+        ? 'On track against their share of the household retirement target.'
+        : `Trajectory funds ~${score}% of their share of the household retirement target.`,
+  }
+}
+
+function memberEducationComponent(slice: MemberSlice): ReadinessComponent {
+  const base = {
+    key: 'education' as const,
+    label: 'Education',
+    weight: MEMBER_READINESS_WEIGHTS.education!,
+  }
+  const funded = slice.educationFunds.filter((f) => !isUnsetTarget(f.target_savings_minor))
+  if (funded.length === 0) {
+    return {
+      ...base,
+      score: null,
+      detail: slice.educationFunds.length === 0 ? 'No education fund linked to this member yet.' : 'No education target set.',
+    }
+  }
+  const scores = funded.map((f) => Math.min(100, (f.current_savings_minor / f.target_savings_minor) * 100))
+  const score = Math.round(scores.reduce((s, x) => s + x, 0) / scores.length)
+  return {
+    ...base,
+    score,
+    detail: funded.length === 1 ? `Fund is ~${score}% of target.` : `Average ${score}% of target across ${funded.length} funds.`,
+  }
+}
+
+/**
+ * A member's readiness — deterministic, computed fresh from the same profile
+ * the family score reads. `estateDocTypes` follows the same adult-gating as
+ * computeReadiness: pass null when the *viewer* isn't an adult, and the
+ * component comes back gated. Estate is only included for adult members —
+ * it describes household estate planning, meaningless on a child's twin.
+ */
+export function computeMemberReadiness(
+  profile: FinancialProfile | null,
+  slice: MemberSlice,
+  estateDocTypes: string[] | null,
+): ReadinessResult {
+  const components: ReadinessComponent[] = []
+  if (ADULT_ROLES.has(slice.role)) {
+    components.push(memberProtectionComponent(profile, slice))
+    if (slice.role === 'organizer' && profile) {
+      const retirement = retirementComponent(profile)
+      components.push({ ...retirement, weight: MEMBER_READINESS_WEIGHTS.retirement! })
+    } else {
+      components.push(memberRetirementComponent(profile, slice))
+    }
+  }
+  if (slice.educationFunds.length > 0 || slice.role === 'child') {
+    components.push(memberEducationComponent(slice))
+  }
+  if (ADULT_ROLES.has(slice.role)) {
+    const estate = estateComponent(estateDocTypes)
+    components.push({ ...estate, weight: MEMBER_READINESS_WEIGHTS.estate! })
+  }
+  return combineComponents(components)
 }

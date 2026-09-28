@@ -96,12 +96,18 @@ import { registerOperatorRoutes } from './routes/operator.js'
 import { getPlatformConfig, registerPublicStatusRoute } from './operator/platform-config.js'
 import { registerDetectorEvalRoutes, detectorEvalDir } from './routes/detector-evals.js'
 import { ensureReminderIndexes, runPolicyRenewalReminders } from './jobs/policy-renewal-reminders.js'
+import { runMemberAgentLoop } from './jobs/member-agent-loop.js'
+import { ensureMemberNudgeIndexes } from './member-nudges.js'
+import { runContinuityCheck, ensureContinuityIndexes } from './jobs/continuity-check.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
 import { registerSupportRoutes } from './routes/support.js'
 import { registerReadinessQuizRoutes } from './routes/readiness-quiz.js'
 import { registerFamilyReadinessRoutes } from './routes/family-readiness.js'
 import { registerFamilyScenarioRoutes } from './routes/family-scenarios.js'
 import { registerMemberTwinRoutes } from './routes/member-twin.js'
+import { registerFamilyContinuityRoutes } from './routes/family-continuity.js'
+import { registerFamilyCashflowRoutes } from './routes/family-cashflow.js'
+import { registerFamilyAssetRoutes } from './routes/family-assets.js'
 import { registerLeadRoutes } from './routes/leads.js'
 import { sendOpsAlert } from './lib/ops-alerts.js'
 
@@ -360,6 +366,39 @@ try {
     }, { missedExecutionTolerance: 60_000 })
     log.info({}, 'Policy renewal reminder cron started')
   }
+
+  // Member agent loop — daily at 07:15. Rebuilds every member twin and
+  // reconciles the agent's nudges into member_nudges, so proactive member
+  // guidance exists even when nobody opens the page. Write-only state —
+  // no notifications are delivered (Tier 0, deterministic).
+  await ensureMemberNudgeIndexes(workflowDb)
+  cron.schedule('15 7 * * *', async () => {
+    try {
+      await withCronLock(workflowDb, 'member-agent-loop', async () => {
+        const summary = await runMemberAgentLoop(workflowDb)
+        if (summary.failed > 0) log.warn({ ...summary }, 'Member agent loop completed with failures')
+      })
+    } catch (err) {
+      log.error({ err }, 'Member agent loop failed')
+    }
+  }, { missedExecutionTolerance: 3_600_000, noOverlap: true })
+  log.info({}, 'Member agent loop cron started')
+
+  // Continuity check — daily at 07:45 (after the agent loop). Advances the
+  // watching → check_in_sent → alerted state machine for families whose
+  // organizer enabled the switch. Email-only; the state machine itself is
+  // the guarantee against double-sends.
+  await ensureContinuityIndexes(workflowDb)
+  cron.schedule('45 7 * * *', async () => {
+    try {
+      await withCronLock(workflowDb, 'continuity-check', async () => {
+        await runContinuityCheck(workflowDb)
+      })
+    } catch (err) {
+      log.error({ err }, 'Continuity check failed')
+    }
+  }, { missedExecutionTolerance: 3_600_000 })
+  log.info({}, 'Continuity check cron started')
 
   // Trading (auto-trade confirmation, reconciliation, momentum rebalance)
   // and workflow-approval-timeout sweeps removed — Agent Oak has no trading
@@ -1005,7 +1044,7 @@ app.addHook('onRequest', async (request, reply) => {
   // PRD-110: '/family/join' is deliberately NOT a prefix of the organizer-only
   // '/family/access-requests*' endpoints below — this array is matched by
   // startsWith, so '/family/join-requests' would have made those public too.
-  const open = ['/health', '/engine/health', '/status', '/metrics', '/auth/token', '/auth/demo-token', '/auth/signup', '/auth/login', '/auth/sso/', '/auth/google/', '/auth/github/', '/auth/request-password-reset', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/entitlements/plans', '/blog/posts', '/a/', '/why/', '/verify/', '/webhooks/', '/inbound/', '/insights/cleanup-stale-all', '/billing/webhook', '/documentation', '/documentation/json', '/documentation/uiOptions', '/documentation/static', '/growth/events', '/readiness-quiz', '/leads', '/users/unsubscribe', '/family/join']
+  const open = ['/health', '/engine/health', '/status', '/metrics', '/auth/token', '/auth/demo-token', '/auth/signup', '/auth/login', '/auth/sso/', '/auth/google/', '/auth/github/', '/auth/request-password-reset', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/entitlements/plans', '/blog/posts', '/a/', '/why/', '/verify/', '/webhooks/', '/inbound/', '/insights/cleanup-stale-all', '/billing/webhook', '/documentation', '/documentation/json', '/documentation/uiOptions', '/documentation/static', '/growth/events', '/readiness-quiz', '/leads', '/users/unsubscribe', '/family/join', '/family/invite/']
   if (/^\/connectors\/[^/]+\/oauth\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/exchange/.test(request.url)) return
@@ -1016,11 +1055,13 @@ app.addHook('onRequest', async (request, reply) => {
 
   try {
     const ctx = await auth.verify(token)
+    let authedUser: Record<string, unknown> | null = null
     if (workflowDb) {
       const user = await workflowDb.collection('users').findOne(
         { tenant_id: ctx.tenant_id, id: ctx.user_id },
-        { projection: { status: 1, sessions_revoked_at: 1 } },
+        { projection: { status: 1, sessions_revoked_at: 1, last_seen_at: 1 } },
       )
+      authedUser = user
       if (user?.['status'] === 'suspended') return reply.status(401).send({ error: 'User suspended' })
       // Operator session revocation: reject tokens issued before
       // sessions_revoked_at. JWT iat is seconds; <= guards a token minted
@@ -1039,6 +1080,21 @@ app.addHook('onRequest', async (request, reply) => {
       }
     }
     request.authContext = ctx
+
+    // PRD-130: heartbeat for the continuity switch — throttled to one
+    // write per hour per user so an active session costs almost nothing
+    // but a silent organizer is still detectable. Fire-and-forget: a
+    // missed beat skews the inactivity clock by an hour at most, never
+    // blocks a request.
+    if (workflowDb && ctx.user_id) {
+      const lastSeen = authedUser?.['last_seen_at'] as Date | undefined
+      if (!lastSeen || Date.now() - lastSeen.getTime() > 60 * 60 * 1000) {
+        workflowDb.collection('users').updateOne(
+          { tenant_id: ctx.tenant_id, id: ctx.user_id },
+          { $set: { last_seen_at: new Date() } },
+        ).catch(() => {})
+      }
+    }
 
     // Demo tenant guard: block access to sensitive operations for demo users.
     // The demo token carries `demo: true` — even though it has admin roles,
@@ -1313,13 +1369,13 @@ if (workflowDb) {
   registerBillingRoutes(app, workflowDb)
   registerBlogRoutes(app, workflowDb)
   registerDocumentRoutes(app, workflowDb, engine, insightsDeliveryHook)
-  registerVaultRoutes(app, workflowDb)
+  registerVaultRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerAuditLogRoutes(app, workflowDb)
   registerAutomationSettingsRoutes(app, workflowDb)
   registerAccountRoutes(app, workflowDb)
   registerFamilyConnectorRoutes(app, workflowDb)
   registerFamilyGroupRoutes(app, workflowDb)
-  registerFamilyJoinRoutes(app, workflowDb)
+  registerFamilyJoinRoutes(app, workflowDb, auth)
   registerReferralRoutes(app, workflowDb)
   registerGrowthEventRoutes(app, workflowDb)
   registerFamilyInboxRoutes(app, workflowDb, engine, insightsDeliveryHook)
@@ -1329,6 +1385,9 @@ if (workflowDb) {
   registerFamilyReadinessRoutes(app, workflowDb)
   registerFamilyScenarioRoutes(app, workflowDb)
   registerMemberTwinRoutes(app, workflowDb)
+  registerFamilyContinuityRoutes(app, workflowDb)
+  registerFamilyCashflowRoutes(app, workflowDb)
+  registerFamilyAssetRoutes(app, workflowDb)
   await registerLeadRoutes(app, workflowDb)
   await registerFamilyFinancialProfileRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerLifeEventRoutes(app, workflowDb)

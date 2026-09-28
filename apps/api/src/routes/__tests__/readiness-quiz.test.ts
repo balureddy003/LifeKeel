@@ -105,4 +105,30 @@ describe('POST /readiness-quiz', () => {
     const res = await app.inject({ method: 'POST', url: '/readiness-quiz', payload: { monthly_salary_minor: 'not-a-number' } })
     expect(res.statusCode).toBe(400)
   })
+
+  // PRD-125: the quiz score IS the composite score — same components, same
+  // weights, same "no data → null, drops out" honesty rule. Regression
+  // guard against the quiz drifting back to its own formula.
+  it('scores with the same composite components as /family/readiness', async () => {
+    const { app } = await buildApp()
+    const res = await app.inject({ method: 'POST', url: '/readiness-quiz', payload: UNDER_PROTECTED })
+    const body = res.json()
+
+    // Only the components the quiz collects are scored — retirement,
+    // education, and estate honestly drop out rather than reading as 0.
+    const scored = body.components.filter((c: { score: number | null }) => c.score !== null)
+    expect(scored.map((c: { key: string }) => c.key).sort()).toEqual(['emergency_fund', 'protection'])
+
+    // The composite is the weight-renormalized mean of scored components —
+    // identical math to computeReadiness (score.ts).
+    const totalWeight = scored.reduce((s: number, c: { weight: number }) => s + c.weight, 0)
+    const expected = Math.round(
+      scored.reduce((s: number, c: { score: number; weight: number }) => s + (c.score * c.weight) / totalWeight, 0),
+    )
+    expect(body.score).toBe(expected)
+
+    // Component labels/details come from the shared scorer, not quiz copy.
+    const emergency = body.components.find((c: { key: string }) => c.key === 'emergency_fund')
+    expect(emergency.detail).toMatch(/month/)
+  })
 })
