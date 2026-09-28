@@ -21,6 +21,8 @@ export interface WeeklyDigestDoc {
   autopilot_pending_proposals: number
   marketing_published_7d: number
   lifecycle_sent_7d: number
+  /** Paywall hits in the last 7d — tenants bumping into paid features. */
+  upgrade_intent_7d: number
   /** Top promoted blog post by attributed signups this week, if any. */
   top_content?: { slug: string; signups: number }
   created_at: Date
@@ -41,6 +43,7 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
     pendingProposals,
     marketingPublished,
     lifecycleSent,
+    upgradeIntent,
     weekSignups,
   ] = await Promise.all([
     db.collection('users').countDocuments({ created_at: { $gte: weekAgo } }),
@@ -52,6 +55,7 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
     db.collection('autopilot_actions').countDocuments({ status: 'proposed' }),
     db.collection('marketing_posts').countDocuments({ state: 'published', published_at: { $gte: weekAgo } }),
     db.collection('lifecycle_sends').countDocuments({ status: 'sent', created_at: { $gte: weekAgo } }),
+    db.collection('growth_events').countDocuments({ event: 'upgrade_intent', created_at: { $gte: weekAgo } }),
     // utm_medium=social signups this week → top promoted slug.
     db.collection('users')
       .find(
@@ -80,6 +84,7 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
     autopilot_pending_proposals: pendingProposals,
     marketing_published_7d: marketingPublished,
     lifecycle_sent_7d: lifecycleSent,
+    upgrade_intent_7d: upgradeIntent,
     ...(top ? { top_content: { slug: top[0], signups: top[1] } } : {}),
     created_at: now,
   }
@@ -95,7 +100,7 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
     `Leads: ${leads7d} new this week · ${leadsNew} waiting in "new"`,
     `Open alerts: ${openAlerts}`,
     `Autopilot: ${autopilotExecuted} actions executed · ${pendingProposals} proposals awaiting review`,
-    `Marketing: ${marketingPublished} posts published · ${lifecycleSent} lifecycle emails sent`,
+    `Marketing: ${marketingPublished} posts published · ${lifecycleSent} lifecycle emails · ${upgradeIntent} upgrade-intent hits`,
   ]
   if (top) lines.push(`Top content: ${top[0]} → ${top[1]} signups`)
   await sendOpsAlert({

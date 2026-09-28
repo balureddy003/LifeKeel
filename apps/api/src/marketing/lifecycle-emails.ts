@@ -10,6 +10,10 @@
  *                  family_financial_profile → one "finish setup" nudge.
  *   upgrade        free-plan tenant ≥7d old whose user logged in ≥3 times
  *                  in the last 14d → one "what paid unlocks" email.
+ *                  Tenants inside an active signup trial are excluded —
+ *                  the trial sequence owns their conversion timing.
+ *   trial          billing.trial_ends_at within 72h → "trial ending" email;
+ *                  trial_expired ≤48h ago → "features paused" winback.
  *
  * Safety: every send is a `lifecycle_sends` ledger row keyed
  * `${sequence}:${step}:${recipient}` — a send is claimed by insert BEFORE
@@ -34,7 +38,7 @@ interface LifecycleSendDoc {
   id: string
   /** `${sequence}:${step}:${recipientId}` — unique, claimed before send. */
   key: string
-  sequence: 'lead_nurture' | 'activation' | 'upgrade'
+  sequence: 'lead_nurture' | 'activation' | 'upgrade' | 'trial'
   step: string
   recipient: string // lead id or user id
   email: string
@@ -164,6 +168,30 @@ function upgradeBody(firstName: string, appUrl: string): string {
   `)
 }
 
+function trialEndingBody(firstName: string, endsAt: Date, appUrl: string): string {
+  const date = endsAt.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+  return wrap(`
+    <p>Hi ${firstName},</p>
+    <p>Your Agent Oak trial ends <strong>${date}</strong>. After that, AI document
+    extraction and inbox summaries pause — everything you've already extracted
+    stays exactly where it is.</p>
+    <p>If Oak's been pulling signal out of your family's paperwork, upgrading keeps
+    it running without a gap.</p>
+    ${cta(`${appUrl}/upgrade?utm_source=lifecycle&utm_medium=email&utm_campaign=trial&utm_content=ending`, 'Keep AI features on')}
+  `)
+}
+
+function trialExpiredBody(firstName: string, appUrl: string): string {
+  return wrap(`
+    <p>Hi ${firstName},</p>
+    <p>Your Agent Oak trial has ended — AI document extraction and inbox summaries
+    are paused. Your documents, insights, and everything Oak already found are
+    untouched.</p>
+    <p>Any time you want the AI back on, it's one upgrade away.</p>
+    ${cta(`${appUrl}/upgrade?utm_source=lifecycle&utm_medium=email&utm_campaign=trial&utm_content=expired`, 'Reactivate AI features')}
+  `)
+}
+
 // ── The sweep ─────────────────────────────────────────────────────────────
 
 interface EmailJob {
@@ -246,28 +274,89 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
     }
   }
 
-  // ── upgrade: free tenant ≥7d, engaged user (≥3 logins/14d) ──
+  // ── trial: free tenants whose signup trial ends in ≤72h or expired ≤48h
+  //  ago — the highest-converting lifecycle moment there is. ──
+  const trialTenants = await db.collection('tenants')
+    .find(
+      {
+        plan: { $in: ['free', null] },
+        'billing.trial_ends_at': { $exists: true },
+      },
+      { projection: { _id: 0, tenant_id: 1, billing: 1 } },
+    )
+    .limit(500)
+    .toArray()
+  const actionableTrials = trialTenants.filter((t) => {
+    const b = t['billing'] as Record<string, unknown> | undefined
+    const endsAt = b?.['trial_ends_at'] as Date | undefined
+    if (!endsAt) return false
+    const ms = endsAt.getTime() - now
+    // Ending soon, or expired within the last 48h (trial_expired flag or clock).
+    return (ms > 0 && ms <= 3 * DAY) || (ms <= 0 && ms >= -2 * DAY)
+  })
+  if (actionableTrials.length > 0) {
+    const tenantIds = actionableTrials.map((t) => t['tenant_id'] as string)
+    const users = await db.collection('users')
+      .find({ tenant_id: { $in: tenantIds }, status: 'active' }, { projection: { _id: 0, id: 1, email: 1, name: 1, tenant_id: 1 } })
+      .limit(500)
+      .toArray()
+    const sentKeys = new Set(
+      (await lifecycleSendsCol(db).find({ sequence: 'trial', recipient: { $in: users.map((u) => u['id'] as string) } }, { projection: { _id: 0, key: 1 } }).toArray())
+        .map((s) => s['key'] as string),
+    )
+    const endsByTenant = new Map(actionableTrials.map((t) => [t['tenant_id'] as string, ((t['billing'] as Record<string, unknown>)['trial_ends_at'] as Date)]))
+    for (const u of users) {
+      const endsAt = endsByTenant.get(u['tenant_id'] as string)
+      if (!endsAt) continue
+      const ending = endsAt.getTime() > now
+      const step = ending ? 'ending' : 'expired'
+      const key = `trial:${step}:${u['id']}`
+      if (sentKeys.has(key)) continue
+      const firstName = String(u['name'] ?? 'there').split(' ')[0] || 'there'
+      jobs.push({
+        key, sequence: 'trial', step, recipient: u['id'] as string, email: u['email'] as string,
+        subject: ending ? 'Your Agent Oak trial ends soon' : 'Your trial has ended — AI is paused',
+        html: ending ? trialEndingBody(firstName, endsAt, appUrl) : trialExpiredBody(firstName, appUrl),
+      })
+    }
+  }
+
+  // ── upgrade: free tenant ≥7d, engaged user (≥3 logins/14d), NOT in an
+  //  active trial — the trial sequence owns conversion timing there. ──
   const loginAgg = await db.collection('login_events').aggregate([
     { $match: { success: true, created_at: { $gte: new Date(now - 14 * DAY) } } },
     { $group: { _id: '$user_id', logins: { $sum: 1 } } },
     { $match: { logins: { $gte: 3 } } },
     { $limit: 500 },
   ]).toArray()
-  if (loginAgg.length > 0) {
-    const userIds = loginAgg.map((r) => r['_id'] as string)
+  // Tenants that hit a paid wall in the last 14d qualify without the login
+  // threshold — paying-intent beats passive engagement as a trigger.
+  const intentTenants = new Set(
+    (await db.collection('growth_events')
+      .find({ event: 'upgrade_intent', created_at: { $gte: new Date(now - 14 * DAY) } }, { projection: { _id: 0, 'meta.tenant_id': 1 } })
+      .limit(500).toArray())
+      .map((e) => (e['meta'] as Record<string, unknown> | undefined)?.['tenant_id'] as string),
+  )
+  const engagedUserIds = loginAgg.map((r) => r['_id'] as string)
+  if (engagedUserIds.length > 0 || intentTenants.size > 0) {
+    const userFilter: Record<string, unknown> = intentTenants.size > 0
+      ? { status: 'active', $or: [{ id: { $in: engagedUserIds } }, { tenant_id: { $in: [...intentTenants] } }] }
+      : { status: 'active', id: { $in: engagedUserIds } }
     const users = await db.collection('users')
-      .find({ id: { $in: userIds }, status: 'active' }, { projection: { _id: 0, id: 1, email: 1, name: 1, tenant_id: 1 } })
+      .find(userFilter, { projection: { _id: 0, id: 1, email: 1, name: 1, tenant_id: 1 } })
       .toArray()
     const tenantIds = [...new Set(users.map((u) => u['tenant_id'] as string))]
     const freeTenants = new Set(
       (await db.collection('tenants')
-        // null/absent plan = free tier.
-        .find({ tenant_id: { $in: tenantIds }, plan: { $in: ['free', null] }, created_at: { $lte: new Date(now - 7 * DAY) } },
+        // null/absent plan = free tier. $not $gt now excludes active trials
+        // (missing or already-past trial_ends_at) — trialing tenants get the
+        // trial sequence instead of a generic "what paid unlocks" nudge.
+        .find({ tenant_id: { $in: tenantIds }, plan: { $in: ['free', null] }, created_at: { $lte: new Date(now - 7 * DAY) }, 'billing.trial_ends_at': { $not: { $gt: new Date() } } },
           { projection: { _id: 0, tenant_id: 1 } }).toArray())
         .map((t) => t['tenant_id'] as string),
     )
     const sentKeys = new Set(
-      (await lifecycleSendsCol(db).find({ sequence: 'upgrade', recipient: { $in: userIds } }, { projection: { _id: 0, key: 1 } }).toArray())
+      (await lifecycleSendsCol(db).find({ sequence: 'upgrade', recipient: { $in: users.map((u) => u['id'] as string) } }, { projection: { _id: 0, key: 1 } }).toArray())
         .map((s) => s['key'] as string),
     )
     for (const u of users) {

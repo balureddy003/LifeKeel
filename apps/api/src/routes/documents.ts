@@ -175,6 +175,13 @@ export function registerDocumentRoutes(
         })
       } else {
         log.info({ documentId, filename, tenant_id, plan }, 'Document stored — AI extraction requires a paid plan')
+        // They uploaded expecting extraction — the strongest upgrade-intent
+        // signal. Feeds the lifecycle upgrade sequence's targeting.
+        db.collection('growth_events').insertOne({
+          event: 'upgrade_intent',
+          meta: { tenant_id, feature: 'document_ai_extraction', plan },
+          created_at: new Date(),
+        }).catch(() => {})
         await documents.updateOne(
           { id: documentId },
           { $set: { status: 'stored' } },

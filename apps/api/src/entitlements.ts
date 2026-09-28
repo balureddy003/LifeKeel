@@ -93,6 +93,14 @@ export function requireFeature(feature: Feature) {
     const plan = (tenant.plan ?? 'free') as Plan
 
     if (!hasFeature(feature, plan)) {
+      // Paywall hit = the strongest upgrade-intent signal there is. Log it
+      // (tenant-scoped, fire-and-forget) so lifecycle email can target the
+      // tenants actually bumping into limits rather than blasting everyone.
+      db.collection('growth_events').insertOne({
+        event: 'upgrade_intent',
+        meta: { tenant_id, feature, plan },
+        created_at: new Date(),
+      }).catch(() => {})
       return reply.status(403).send({
         error: 'Feature not available on current plan',
         feature,
@@ -158,6 +166,11 @@ export function checkQuota(resource: string) {
     }
 
     if (currentUsage >= quota) {
+      db.collection('growth_events').insertOne({
+        event: 'upgrade_intent',
+        meta: { tenant_id, resource, plan: tenant['plan'] ?? 'free' },
+        created_at: new Date(),
+      }).catch(() => {})
       return reply.status(429).send({
         error: 'Quota exceeded',
         resource,

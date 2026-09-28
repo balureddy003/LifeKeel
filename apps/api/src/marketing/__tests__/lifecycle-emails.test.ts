@@ -132,6 +132,62 @@ describe('runLifecycleSweep — activation + upgrade', () => {
     )
     expect(await runLifecycleSweep(db)).toHaveLength(0)
   })
+
+  it('targets a free tenant that hit the paywall even without the login threshold', async () => {
+    await db.collection('tenants').insertOne({ tenant_id: 't1', plan: 'free', created_at: new Date(Date.now() - 10 * DAY) })
+    await db.collection('users').insertOne({
+      id: 'u1', email: 'u@example.com', tenant_id: 't1', status: 'active', created_at: new Date(Date.now() - 10 * DAY),
+    })
+    // Zero logins — but one document upload hit the extraction wall.
+    await db.collection('growth_events').insertOne({
+      event: 'upgrade_intent', meta: { tenant_id: 't1', feature: 'document_ai_extraction' }, created_at: new Date(),
+    })
+    const sent = await runLifecycleSweep(db)
+    expect(sent.map((s) => s.sequence)).toEqual(['upgrade'])
+  })
+})
+
+describe('runLifecycleSweep — trial sequence', () => {
+  it('emails a tenant whose trial ends within 72h — once', async () => {
+    await db.collection('tenants').insertOne({
+      tenant_id: 't1', plan: 'free', created_at: new Date(Date.now() - 12 * DAY),
+      billing: { trial_ends_at: new Date(Date.now() + 2 * DAY), credits_balance: 40 },
+    })
+    await db.collection('users').insertOne({
+      id: 'u1', email: 'u@example.com', name: 'Uma', tenant_id: 't1', status: 'active', created_at: new Date(Date.now() - 12 * DAY),
+    })
+    const sent = await runLifecycleSweep(db)
+    expect(sent).toHaveLength(1)
+    expect(sent[0]).toMatchObject({ sequence: 'trial', step: 'ending', email: 'u@example.com' })
+    expect(await runLifecycleSweep(db)).toHaveLength(0)
+  })
+
+  it('sends the winback when a trial expired within the last 48h', async () => {
+    await db.collection('tenants').insertOne({
+      tenant_id: 't1', plan: 'free', created_at: new Date(Date.now() - 20 * DAY),
+      billing: { trial_ends_at: new Date(Date.now() - DAY), trial_expired: true },
+    })
+    await db.collection('users').insertOne({
+      id: 'u1', email: 'u@example.com', tenant_id: 't1', status: 'active', created_at: new Date(Date.now() - 20 * DAY),
+    })
+    const sent = await runLifecycleSweep(db)
+    expect(sent[0]).toMatchObject({ sequence: 'trial', step: 'expired' })
+  })
+
+  it('does not generic-nudge a tenant mid-trial — the trial sequence owns them', async () => {
+    await db.collection('tenants').insertOne({
+      tenant_id: 't1', plan: 'free', created_at: new Date(Date.now() - 10 * DAY),
+      billing: { trial_ends_at: new Date(Date.now() + 10 * DAY) }, // 10d out — too early for 'ending'
+    })
+    await db.collection('users').insertOne({
+      id: 'u1', email: 'u@example.com', tenant_id: 't1', status: 'active', created_at: new Date(Date.now() - 10 * DAY),
+    })
+    await db.collection('login_events').insertMany(
+      [1, 2, 3].map(() => ({ user_id: 'u1', success: true, created_at: new Date() })),
+    )
+    // Engaged + free would normally trigger 'upgrade' — but the trial is live.
+    expect(await runLifecycleSweep(db)).toHaveLength(0)
+  })
 })
 
 describe('global gates', () => {
