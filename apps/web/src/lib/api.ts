@@ -2554,6 +2554,10 @@ export interface OperatorBillingOverview {
   credits_outstanding: number
   recent_webhooks: Array<{ event_id: string; event_type: string; processed_at: string }>
   recent_adjustments: Array<{ tenant_id: string; amount: number; reason: string; actor: string; timestamp: string }>
+  /** Stripe portal cancellation-survey results, aggregated + recent rows.
+   *  'unstated' = churned before the survey existed or reason skipped. */
+  churn_by_reason: Record<string, number>
+  recent_churned: Array<{ tenant_id: string; name?: string; reason: string | null; feedback: string | null; churned_at: string | null }>
 }
 
 export interface BillingTenant {

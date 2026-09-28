@@ -1217,7 +1217,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   // adjustment — Stripe remains authoritative for subscriptions.
 
   app.get('/operator/billing', { preHandler: requireOperator(db, 'billing.read') }, async () => {
-    const [byPlan, byStatus, stripeLinked, lowCredit, creditsOutstanding, recentWebhooks, recentAdjustments] = await Promise.all([
+    const [byPlan, byStatus, stripeLinked, lowCredit, creditsOutstanding, recentWebhooks, recentAdjustments, churnReasons, churned] = await Promise.all([
       tenants.aggregate([{ $group: { _id: { $ifNull: ['$plan', 'unknown'] }, count: { $sum: 1 } } }]).toArray(),
       tenants.aggregate([{ $group: { _id: { $ifNull: ['$status', 'unknown'] }, count: { $sum: 1 } } }]).toArray(),
       tenants.countDocuments({ stripe_customer_id: { $exists: true, $ne: null } }),
@@ -1229,6 +1229,17 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       ]).toArray(),
       db.collection('stripe_webhook_events').find({}, { projection: { _id: 0 } }).sort({ processed_at: -1 }).limit(20).toArray(),
       db.collection('credit_ledger').find({ type: 'admin_adjustment' }, { projection: { _id: 0 } }).sort({ timestamp: -1 }).limit(10).toArray(),
+      // Churn telemetry — churn_reason comes from Stripe's portal
+      // cancellation survey (cancellation_details), churned_at from the
+      // subscription.deleted webhook.
+      tenants.aggregate([
+        { $match: { 'billing.churned_at': { $exists: true } } },
+        { $group: { _id: { $ifNull: ['$billing.churn_reason', 'unstated'] }, count: { $sum: 1 } } },
+      ]).toArray(),
+      tenants.find(
+        { 'billing.churned_at': { $exists: true } },
+        { projection: { _id: 0, tenant_id: 1, name: 1, 'billing.churn_reason': 1, 'billing.churn_feedback': 1, 'billing.churned_at': 1 } },
+      ).sort({ 'billing.churned_at': -1 }).limit(20).toArray(),
     ])
     return {
       generated_at: new Date().toISOString(),
@@ -1239,6 +1250,14 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       credits_outstanding: Number(creditsOutstanding[0]?.['total'] ?? 0),
       recent_webhooks: recentWebhooks,
       recent_adjustments: recentAdjustments,
+      churn_by_reason: Object.fromEntries(churnReasons.map((r) => [r['_id'], r['count']])),
+      recent_churned: churned.map((t) => ({
+        tenant_id: t['tenant_id'],
+        name: t['name'],
+        reason: (t['billing'] as Record<string, unknown> | undefined)?.['churn_reason'] ?? null,
+        feedback: (t['billing'] as Record<string, unknown> | undefined)?.['churn_feedback'] ?? null,
+        churned_at: (t['billing'] as Record<string, unknown> | undefined)?.['churned_at'] ?? null,
+      })),
     }
   })
 
