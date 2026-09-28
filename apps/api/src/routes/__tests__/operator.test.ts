@@ -1168,4 +1168,106 @@ describe('security monitoring', () => {
     expect(list.statusCode).toBe(200)
     await app.close()
   })
+
+  it('approves a suspend proposal — executes the mutation, audits, and cannot be re-approved', async () => {
+    // platform_admin carries both operations.read and users.manage.
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    await db.collection('autopilot_actions').insertOne({
+      id: 'prop-1', rule: 'propose_suspend_brute_force', dedup_key: 'dk1',
+      target_type: 'user', target_id: 'user-2', reason: '30 failed logins / 5 IPs',
+      status: 'proposed',
+      proposal: { kind: 'user.suspend', required_permission: 'users.manage', summary: 'Suspend family@example.com', payload: { user_id: 'user-2' } },
+      created_at: new Date(),
+    })
+    const app = await buildApp()
+
+    const approve = await app.inject({
+      method: 'POST', url: '/operator/autopilot/proposals/prop-1/approve',
+      payload: { reason: 'Confirmed credential-stuffing pattern' },
+    })
+    expect(approve.statusCode).toBe(200)
+    expect(approve.json().result).toContain('suspended')
+    expect((await db.collection('users').findOne({ id: 'user-2' }))!['status']).toBe('suspended')
+    expect((await db.collection('users').findOne({ id: 'user-2' }))!['sessions_revoked_at']).toBeTruthy()
+
+    const row = await db.collection('autopilot_actions').findOne({ id: 'prop-1' })
+    expect(row).toMatchObject({ status: 'executed', resolved_by: 'operator-1' })
+    // Terminal — second approve 404s rather than re-running.
+    const again = await app.inject({
+      method: 'POST', url: '/operator/autopilot/proposals/prop-1/approve',
+      payload: { reason: 'Second click must not re-execute' },
+    })
+    expect(again.statusCode).toBe(404)
+    expect(await db.collection('operator_audit_log').countDocuments({ action: 'operator.autopilot.approve' })).toBe(1)
+    await app.close()
+  })
+
+  it('enforces the proposal required_permission — operations alone cannot approve a suspend', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+    await db.collection('autopilot_actions').insertOne({
+      id: 'prop-1', rule: 'propose_suspend_brute_force', dedup_key: 'dk1',
+      target_type: 'user', target_id: 'user-2', reason: 'x',
+      status: 'proposed',
+      proposal: { kind: 'user.suspend', required_permission: 'users.manage', summary: 's', payload: { user_id: 'user-2' } },
+      created_at: new Date(),
+    })
+    const app = await buildApp()
+    const res = await app.inject({
+      method: 'POST', url: '/operator/autopilot/proposals/prop-1/approve',
+      payload: { reason: 'operations role lacks users.manage' },
+    })
+    expect(res.statusCode).toBe(403)
+    expect((await db.collection('users').findOne({ id: 'user-2' }))!['status']).toBe('active')
+    expect((await db.collection('autopilot_actions').findOne({ id: 'prop-1' }))!['status']).toBe('proposed')
+    await app.close()
+  })
+
+  it('rejects a proposal with reason — terminal and audited', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+    await db.collection('autopilot_actions').insertOne({
+      id: 'prop-1', rule: 'propose_suspend_brute_force', dedup_key: 'dk1',
+      target_type: 'user', target_id: 'user-2', reason: 'x',
+      status: 'proposed',
+      proposal: { kind: 'user.suspend', required_permission: 'users.manage', summary: 's', payload: { user_id: 'user-2' } },
+      created_at: new Date(),
+    })
+    const app = await buildApp()
+    const noReason = await app.inject({ method: 'POST', url: '/operator/autopilot/proposals/prop-1/reject', payload: {} })
+    expect(noReason.statusCode).toBe(400)
+    const reject = await app.inject({
+      method: 'POST', url: '/operator/autopilot/proposals/prop-1/reject',
+      payload: { reason: 'Just a forgetful user, watching instead' },
+    })
+    expect(reject.statusCode).toBe(200)
+    expect((await db.collection('autopilot_actions').findOne({ id: 'prop-1' }))!['status']).toBe('rejected')
+    expect((await db.collection('users').findOne({ id: 'user-2' }))!['status']).toBe('active')
+    expect(await db.collection('operator_audit_log').countDocuments({ action: 'operator.autopilot.reject' })).toBe(1)
+    // A rejected proposal cannot later execute.
+    const app2 = await buildApp()
+    const lateApprove = await app2.inject({
+      method: 'POST', url: '/operator/autopilot/proposals/prop-1/approve',
+      payload: { reason: 'Trying to approve a rejected proposal' },
+    })
+    expect(lateApprove.statusCode).toBe(404)
+    await app.close()
+    await app2.close()
+  })
+
+  it('serves the latest weekly digest and generates one on demand', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+    const app = await buildApp()
+
+    const empty = await app.inject({ method: 'GET', url: '/operator/digest' })
+    expect(empty.statusCode).toBe(200)
+    expect(empty.json().digest).toBeNull()
+
+    const send = await app.inject({ method: 'POST', url: '/operator/digest/send' })
+    expect(send.statusCode).toBe(200)
+    expect(send.json().digest.signups_7d).toBe(2) // the two seeded users
+
+    const latest = await app.inject({ method: 'GET', url: '/operator/digest' })
+    expect(latest.json().digest.id).toBe(send.json().digest.id)
+    expect(await db.collection('operator_audit_log').countDocuments({ action: 'operator.digest.send' })).toBe(1)
+    await app.close()
+  })
 })

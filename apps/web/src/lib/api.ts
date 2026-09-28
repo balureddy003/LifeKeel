@@ -1631,6 +1631,40 @@ export async function startOakPlusCheckout(): Promise<string> {
   return data.checkout_url as string
 }
 
+/** Redeems a promo code — throws with the server's reason on failure. */
+export async function redeemPromoCode(code: string): Promise<{ grant_credits: number; credits_balance: number }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${base}/billing/redeem-promo-code`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ code }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Could not redeem code')
+  return data
+}
+
+/** Opens the Stripe customer portal — subscription management/cancel lives there. */
+export async function openBillingPortal(returnUrl?: string): Promise<string> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${base}/billing/portal`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ return_url: returnUrl }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Could not open subscription management')
+  return data.portal_url as string
+}
+
 // ── Marketing posts (social channels) ─────────────────────────────────────
 
 export interface MarketingIntegration {
@@ -2296,8 +2330,15 @@ export interface AutopilotAction {
   target_type: string
   target_id: string
   reason: string
-  status: 'executed' | 'failed'
+  status: 'executed' | 'failed' | 'proposed' | 'approved' | 'rejected'
   result?: string
+  proposal?: {
+    kind: string
+    required_permission: string
+    summary: string
+  }
+  resolved_by?: string
+  resolved_at?: string
   created_at: string
 }
 
@@ -2315,6 +2356,52 @@ export function updateOperatorAutopilot(rule: string, update: { enabled?: boolea
   }).then(async (res) => {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error((data.error as string) || 'Autopilot update failed')
+    return data
+  })
+}
+
+export function resolveAutopilotProposal(id: string, decision: 'approve' | 'reject', reason: string): Promise<{ ok: boolean; result?: string }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  return fetch(`${base}/operator/autopilot/proposals/${encodeURIComponent(id)}/${decision}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ reason }),
+  }).then(async (res) => {
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error((data.error as string) || `Proposal ${decision} failed`)
+    return data
+  })
+}
+
+export interface OperatorDigest {
+  id: string
+  window_days: number
+  signups_7d: number
+  signups_prev_7d: number
+  leads_new: number
+  leads_total_7d: number
+  open_alerts: number
+  autopilot_executed_7d: number
+  autopilot_pending_proposals: number
+  marketing_published_7d: number
+  top_content?: { slug: string; signups: number }
+  created_at: string
+}
+
+export function fetchOperatorDigest(): Promise<{ digest: OperatorDigest | null }> {
+  return operatorRequest('/operator/digest')
+}
+
+export function sendOperatorDigest(): Promise<{ digest: OperatorDigest }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  return fetch(`${base}/operator/digest/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  }).then(async (res) => {
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error((data.error as string) || 'Digest generation failed')
     return data
   })
 }

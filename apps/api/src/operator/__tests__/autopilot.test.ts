@@ -4,6 +4,7 @@ import { MongoMemoryServer } from 'mongodb-memory-server'
 import {
   AUTOPILOT_RULES,
   NEVER_AUTONOMOUS,
+  PROPOSAL_HANDLERS,
   ensureAutopilotIndexes,
   listAutopilotRules,
   runAutopilotSweep,
@@ -175,5 +176,117 @@ describe('runAutopilotSweep', () => {
     const alert = await db.collection('operator_alerts').findOne({ dedup_key: 'channel_auth_failure:t1:x' })
     expect(alert).toMatchObject({ status: 'open', severity: 'danger' })
     expect(await db.collection('operator_alerts').findOne({ dedup_key: 'channel_auth_failure:t1:bluesky' })).toBeNull()
+  })
+})
+
+describe('tier-2 proposals', () => {
+  it('proposes — but never executes — a suspend for a brute-forced account', async () => {
+    await enableRule('propose_suspend_brute_force')
+    await db.collection('users').insertOne({ id: 'victim', email: 'v@example.com', status: 'active' })
+    // 15 failures across 3 IPs in the last 24h.
+    const events = Array.from({ length: 15 }, (_, i) => ({
+      user_id: 'victim', success: false, reason: 'bad_password',
+      ip: `10.0.0.${i % 3}`, created_at: new Date(),
+    }))
+    await db.collection('login_events').insertMany(events)
+
+    const rows = await runAutopilotSweep(db)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      rule: 'propose_suspend_brute_force',
+      status: 'proposed',
+      target_id: 'victim',
+    })
+    expect(rows[0]!.proposal).toMatchObject({ kind: 'user.suspend', required_permission: 'users.manage' })
+    // The mutation did NOT run — proposals file, they never act.
+    expect((await db.collection('users').findOne({ id: 'victim' }))!['status']).toBe('active')
+    const audit = await db.collection('operator_audit_log').findOne({ action: 'autopilot.propose' })
+    expect(audit).toMatchObject({ operator_user_id: 'autopilot', target_id: 'victim' })
+  })
+
+  it('ignores failures from a single IP — that is a forgot-password user, not stuffing', async () => {
+    await enableRule('propose_suspend_brute_force')
+    await db.collection('users').insertOne({ id: 'u1', status: 'active' })
+    await db.collection('login_events').insertMany(
+      Array.from({ length: 20 }, () => ({ user_id: 'u1', success: false, ip: '10.0.0.1', created_at: new Date() })),
+    )
+    expect(await runAutopilotSweep(db)).toHaveLength(0)
+  })
+
+  it('dedupes proposals — a second sweep files nothing for the same window', async () => {
+    await enableRule('propose_suspend_brute_force')
+    await db.collection('users').insertOne({ id: 'victim', status: 'active' })
+    await db.collection('login_events').insertMany(
+      Array.from({ length: 15 }, (_, i) => ({ user_id: 'victim', success: false, ip: `10.0.0.${i % 3}`, created_at: new Date() })),
+    )
+    await runAutopilotSweep(db)
+    await db.collection('autopilot_rules').updateOne({ rule: 'propose_suspend_brute_force' }, { $set: { last_run_at: new Date(0) } })
+    expect(await runAutopilotSweep(db)).toHaveLength(0)
+    expect(await db.collection('autopilot_actions').countDocuments({ status: 'proposed' })).toBe(1)
+  })
+
+  it('skips users already suspended', async () => {
+    await enableRule('propose_suspend_brute_force')
+    await db.collection('users').insertOne({ id: 'u1', status: 'suspended' })
+    await db.collection('login_events').insertMany(
+      Array.from({ length: 15 }, (_, i) => ({ user_id: 'u1', success: false, ip: `10.0.0.${i % 3}`, created_at: new Date() })),
+    )
+    expect(await runAutopilotSweep(db)).toHaveLength(0)
+  })
+
+  it('proposes a promo draft for a published blog post no channel has promoted', async () => {
+    await enableRule('propose_blog_promo')
+    await db.collection('blog_posts').insertOne({
+      slug: 'ready-check', title: 'The readiness check', published: true,
+      published_at: new Date(Date.now() - 5 * 24 * 3600_000), excerpt: 'excerpt',
+    })
+    await db.collection('social_connections').insertOne({ tenant_id: 't1', channel: 'x', status: 'active' })
+
+    const rows = await runAutopilotSweep(db)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ status: 'proposed', target_type: 'blog_post' })
+    expect(rows[0]!.proposal).toMatchObject({
+      kind: 'marketing.blog_draft',
+      required_permission: 'marketing.manage',
+      payload: { blog_slug: 'ready-check', tenant_id: 't1', channel: 'x' },
+    })
+  })
+
+  it('does not re-propose a post already promoted on that tenant', async () => {
+    await enableRule('propose_blog_promo')
+    await db.collection('blog_posts').insertOne({
+      slug: 'ready-check', title: 'T', published: true,
+      published_at: new Date(Date.now() - 5 * 24 * 3600_000),
+    })
+    await db.collection('social_connections').insertOne({ tenant_id: 't1', channel: 'x', status: 'active' })
+    await db.collection('marketing_posts').insertOne({ tenant_id: 't1', source_blog_slug: 'ready-check', state: 'draft' })
+    expect(await runAutopilotSweep(db)).toHaveLength(0)
+  })
+})
+
+describe('PROPOSAL_HANDLERS', () => {
+  it('user.suspend applies the same suspend+revoke mutation the manual route does', async () => {
+    await db.collection('users').insertOne({ id: 'victim', status: 'active' })
+    const result = await PROPOSAL_HANDLERS['user.suspend']!(db, { user_id: 'victim' }, {})
+    expect(result).toContain('suspended')
+    const user = await db.collection('users').findOne({ id: 'victim' })
+    expect(user).toMatchObject({ status: 'suspended' })
+    expect(user!['sessions_revoked_at']).toBeTruthy()
+    // Idempotent — approving a stale proposal no-ops instead of failing.
+    expect(await PROPOSAL_HANDLERS['user.suspend']!(db, { user_id: 'victim' }, {})).toContain('no-op')
+  })
+
+  it('marketing.blog_draft creates a review-gated draft, never a published post', async () => {
+    await db.collection('blog_posts').insertOne({
+      slug: 'ready-check', title: 'The readiness check', excerpt: 'excerpt', published: true,
+    })
+    const result = await PROPOSAL_HANDLERS['marketing.blog_draft']!(
+      db,
+      { tenant_id: 't1', blog_slug: 'ready-check', channel: 'x' },
+      { llm: async () => { throw new Error('no provider') } }, // template fallback path
+    )
+    expect(result).toContain('draft')
+    const post = await db.collection('marketing_posts').findOne({ source_blog_slug: 'ready-check' })
+    expect(post).toMatchObject({ state: 'draft', tenant_id: 't1', channel: 'x', generated: 'template' })
   })
 })

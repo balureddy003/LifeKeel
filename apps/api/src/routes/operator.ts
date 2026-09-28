@@ -3,7 +3,7 @@ import { ObjectId, type Db } from 'mongodb'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { OperatorAuditLogger } from '../operator/operator-audit.js'
-import { requireOperator, resolvePermissions, type PlatformRole } from '../operator/operator-auth.js'
+import { requireOperator, resolvePermissions, hasOperatorPermission, type PlatformRole, type OperatorPermission } from '../operator/operator-auth.js'
 import { sendPasswordResetEmail } from '../auth-email.js'
 import { recordLedgerEntry, getLedgerHistory } from '../billing/credit-ledger.js'
 import { queueManager } from '../queue/QueueManager.js'
@@ -14,7 +14,8 @@ import { createLlmRouterFromEnv } from '@agentoak/platform'
 import { computeTenantHealth } from '../operator/tenant-health.js'
 import { isRollupReady, readDailyRollup } from '../jobs/metrics-rollup.js'
 import { getRunbooks } from '../operator/runbooks.js'
-import { listAutopilotRules, getAutopilotRule, NEVER_AUTONOMOUS } from '../operator/autopilot.js'
+import { listAutopilotRules, getAutopilotRule, NEVER_AUTONOMOUS, PROPOSAL_HANDLERS, type AutopilotActionDoc } from '../operator/autopilot.js'
+import { runWeeklyDigest } from '../operator/weekly-digest.js'
 import type { SupportCaseDoc, SupportMessage } from './support.js'
 
 const QuerySchema = z.object({
@@ -1440,6 +1441,83 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     const page = items.slice(0, limit)
     const nextCursor = items.length > limit ? encodeCursor(page[page.length - 1]!, 'id') : undefined
     return { actions: page, ...(nextCursor ? { next_cursor: nextCursor } : {}) }
+  })
+
+  /** Approve a Tier-2 proposal — executes the stored payload server-side
+   *  through the same mutation the corresponding manual endpoint performs.
+   *  The proposal carries its own required_permission (users.manage for a
+   *  suspend, marketing.manage for a draft) — the approving operator's
+   *  roles must satisfy it, which is a stricter gate than the route's own
+   *  operations.read. */
+  app.post<{ Params: { id: string } }>('/operator/autopilot/proposals/:id/approve', { preHandler: requireOperator(db, 'operations.read') }, async (request, reply) => {
+    const parsed = ReasonSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+    const action = await autopilotActions.findOne({ id: request.params.id })
+    if (!action || action['status'] !== 'proposed' || !action['proposal']) {
+      return reply.status(404).send({ error: 'Proposal not found or already resolved' })
+    }
+    const proposal = action['proposal'] as NonNullable<AutopilotActionDoc['proposal']>
+    const roles = (request.operatorContext?.roles ?? []) as PlatformRole[]
+    if (!hasOperatorPermission(roles, proposal.required_permission as OperatorPermission)) {
+      return reply.status(403).send({ error: `This proposal requires ${proposal.required_permission}` })
+    }
+    const handler = PROPOSAL_HANDLERS[proposal.kind]
+    if (!handler) return reply.status(400).send({ error: `Unknown proposal kind: ${proposal.kind}` })
+
+    // Claim first: proposed → approved is atomic, so two racing approvers
+    // can't both execute the underlying mutation. A crash mid-handler
+    // leaves 'approved' — visible as stuck, never silently re-run.
+    const claim = await autopilotActions.updateOne(
+      { id: action['id'], status: 'proposed' },
+      { $set: { status: 'approved', resolved_by: request.operatorContext?.user_id, resolved_at: new Date() } },
+    )
+    if (claim.modifiedCount === 0) return reply.status(409).send({ error: 'Proposal already resolved' })
+
+    let result: string
+    let finalStatus: 'executed' | 'failed' = 'executed'
+    try {
+      result = await handler(db, proposal.payload, { llm: llmFn })
+    } catch (err) {
+      finalStatus = 'failed'
+      result = String(err).slice(0, 300)
+    }
+    await autopilotActions.updateOne({ id: action['id'] }, { $set: { status: finalStatus, result } })
+    await audit.log(request, 'operator.autopilot.approve', 'autopilot_action', action['id'] as string, parsed.data.reason, {
+      kind: proposal.kind, target: action['target_id'], status: finalStatus, result,
+    })
+    if (finalStatus === 'failed') return reply.status(502).send({ error: `Proposal execution failed: ${result}` })
+    return { ok: true, result }
+  })
+
+  /** Reject a proposal — the dedup key keeps it from re-appearing; the
+   *  rejection reason lands on the ledger row. */
+  app.post<{ Params: { id: string } }>('/operator/autopilot/proposals/:id/reject', { preHandler: requireOperator(db, 'operations.manage') }, async (request, reply) => {
+    const parsed = ReasonSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+    const result = await autopilotActions.updateOne(
+      { id: request.params.id, status: 'proposed' },
+      { $set: { status: 'rejected', result: parsed.data.reason, resolved_by: request.operatorContext?.user_id, resolved_at: new Date() } },
+    )
+    if (result.matchedCount === 0) return reply.status(404).send({ error: 'Proposal not found or already resolved' })
+    await audit.log(request, 'operator.autopilot.reject', 'autopilot_action', request.params.id, parsed.data.reason)
+    return { ok: true }
+  })
+
+  // ── Weekly digest — the Monday-morning summary the cron persists to
+  // operator_digests and posts to ops Slack. POST lets an operator run it
+  // now (audited) without waiting for the schedule. ───────────────────────
+
+  const digests = db.collection('operator_digests')
+
+  app.get('/operator/digest', { preHandler: requireOperator(db, 'operations.read') }, async () => {
+    const latest = await digests.findOne({}, { projection: { _id: 0 }, sort: { created_at: -1 } })
+    return { digest: latest ?? null }
+  })
+
+  app.post('/operator/digest/send', { preHandler: requireOperator(db, 'operations.manage') }, async (request) => {
+    const digest = await runWeeklyDigest(db)
+    await audit.log(request, 'operator.digest.send', 'digest', digest.id, 'Manual weekly digest generation')
+    return { digest }
   })
 
   // ── Operator audit + operations health ──────────────────────────────────

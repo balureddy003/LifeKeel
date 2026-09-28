@@ -18,6 +18,8 @@ import type { Db } from 'mongodb'
 import { queueManager } from '../queue/QueueManager.js'
 import { WEBHOOK_INGEST_QUEUE } from '../queue/WebhookQueue.js'
 import { rolesWithPermission, type PlatformRole } from './operator-auth.js'
+import { draftBlogPromoPost } from '../routes/marketing-posts.js'
+import type { LlmFn } from '@agentoak/platform'
 
 export interface AutopilotRuleConfig {
   rule: string
@@ -39,8 +41,19 @@ export interface AutopilotActionDoc {
   target_type: string
   target_id: string
   reason: string
-  status: 'executed' | 'failed'
+  /** proposed → approved (claimed) → executed | failed; rejected is terminal. */
+  status: 'executed' | 'failed' | 'proposed' | 'approved' | 'rejected'
   result?: string
+  /** Tier-2 proposals carry the intended mutation here — the approve
+   *  route executes it server-side; the client never supplies it. */
+  proposal?: {
+    kind: string
+    required_permission: string
+    summary: string
+    payload: Record<string, unknown>
+  }
+  resolved_by?: string
+  resolved_at?: Date
   created_at: Date
 }
 
@@ -49,7 +62,11 @@ interface Candidate {
   target_id: string
   dedup_key: string
   reason: string
-  act: () => Promise<string>
+  /** When set, the sweep files a proposal instead of acting — a human
+   *  approves or rejects from the console, and the action only happens
+   *  on approval via PROPOSAL_HANDLERS. */
+  proposal?: AutopilotActionDoc['proposal']
+  act?: () => Promise<string>
 }
 
 interface AutopilotRule {
@@ -266,6 +283,90 @@ export const AUTOPILOT_RULES: AutopilotRule[] = [
         })
     },
   },
+  {
+    id: 'propose_suspend_brute_force',
+    label: 'Propose suspending brute-forced accounts',
+    description:
+      'A user with 15+ failed logins in 24h across 3+ distinct IPs is a credential-stuffing ' +
+      'target. Autopilot files a suspension proposal — the suspend itself stays a human call ' +
+      '(users.manage), executed only on approve.',
+    defaults: { max_blast_radius: 10, cooldown_minutes: 360 },
+    collect: async (db) => {
+      const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      const suspects = await db
+        .collection('login_events')
+        .aggregate([
+          { $match: { success: false, user_id: { $exists: true }, created_at: { $gte: dayAgo } } },
+          { $group: { _id: '$user_id', failures: { $sum: 1 }, ips: { $addToSet: '$ip' } } },
+          { $match: { failures: { $gte: 15 } } },
+          { $limit: 50 },
+        ])
+        .toArray()
+      const out: Candidate[] = []
+      for (const s of suspects) {
+        const userId = s['_id'] as string
+        const ipCount = (s['ips'] as unknown[]).length
+        if (ipCount < 3) continue
+        const user = await db.collection('users').findOne({ id: userId }, { projection: { _id: 0, status: 1, email: 1 } })
+        if (!user || user['status'] !== 'active') continue
+        out.push({
+          target_type: 'user',
+          target_id: userId,
+          // Day-bucketed: at most one proposal per user per day — rejected
+          // proposals resurface if the attack continues, but can't spam.
+          dedup_key: `propose_suspend_brute_force:${userId}:${dayAgo.toISOString().slice(0, 10)}`,
+          reason: `${s['failures']} failed logins in 24h across ${ipCount} IPs`,
+          proposal: {
+            kind: 'user.suspend',
+            required_permission: 'users.manage',
+            summary: `Suspend ${user['email'] ?? userId} — ${s['failures']} failed logins / ${ipCount} IPs in 24h`,
+            payload: { user_id: userId },
+          },
+        })
+      }
+      return out
+    },
+  },
+  {
+    id: 'propose_blog_promo',
+    label: 'Propose promoting unpushed blog posts',
+    description:
+      'A published blog post older than 3 days that no channel has promoted yet gets a ' +
+      '"generate a draft" proposal. Approving produces a review-gated draft — it still ' +
+      'waits in the queue for human approval like every generated post.',
+    defaults: { max_blast_radius: 3, cooldown_minutes: 1440 },
+    collect: async (db) => {
+      const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+      const [blogs, posts, conns] = await Promise.all([
+        db.collection('blog_posts').find({ published: true, published_at: { $lt: cutoff } }, { projection: { _id: 0, slug: 1, title: 1 } }).toArray(),
+        db.collection('marketing_posts').find({}, { projection: { _id: 0, tenant_id: 1, source_blog_slug: 1 } }).toArray(),
+        db.collection('social_connections').find({ status: 'active' }, { projection: { _id: 0, tenant_id: 1, channel: 1 } }).toArray(),
+      ])
+      if (conns.length === 0) return []
+      const promoted = new Set(posts.map((p) => `${p['tenant_id']}:${p['source_blog_slug']}`))
+      const out: Candidate[] = []
+      for (const conn of conns) {
+        const tenantId = conn['tenant_id'] as string
+        const channel = conn['channel'] as string
+        const candidate = blogs.find((b) => !promoted.has(`${tenantId}:${b['slug']}`))
+        if (!candidate) continue
+        const slug = candidate['slug'] as string
+        out.push({
+          target_type: 'blog_post',
+          target_id: `${tenantId}:${slug}`,
+          dedup_key: `propose_blog_promo:${tenantId}:${slug}`,
+          reason: `Blog "${candidate['title']}" published >3d ago, never promoted on ${channel}`,
+          proposal: {
+            kind: 'marketing.blog_draft',
+            required_permission: 'marketing.manage',
+            summary: `Draft a ${channel} post promoting "${candidate['title']}"`,
+            payload: { blog_slug: slug, tenant_id: tenantId, channel },
+          },
+        })
+      }
+      return out
+    },
+  },
 ]
 
 /** Hard-coded, not config: these action families can never be automated.
@@ -293,9 +394,40 @@ export function actionsCol(db: Db) {
   return db.collection<AutopilotActionDoc>('autopilot_actions')
 }
 
+/** What an approved proposal actually does — server-side only. The
+ *  approve route looks the kind up here and passes the stored payload;
+ *  nothing about the action is supplied by the client. Every handler is
+ *  the same mutation a human operator would trigger through the
+ *  corresponding endpoint. */
+export interface ProposalDeps {
+  llm?: LlmFn
+}
+export const PROPOSAL_HANDLERS: Record<string, (db: Db, payload: Record<string, unknown>, deps: ProposalDeps) => Promise<string>> = {
+  'user.suspend': async (db, payload) => {
+    const userId = payload['user_id'] as string
+    const result = await db.collection('users').updateOne(
+      { id: userId, status: { $nin: ['suspended', 'erased'] } },
+      { $set: { status: 'suspended', suspended_at: new Date(), sessions_revoked_at: new Date(), updated_at: new Date() } },
+    )
+    return result.modifiedCount === 0 ? 'user already suspended/erased — no-op' : 'user suspended, sessions revoked'
+  },
+  'marketing.blog_draft': async (db, payload, deps) => {
+    if (!deps.llm) throw new Error('No LLM provider — cannot generate draft')
+    const post = await draftBlogPromoPost(
+      db,
+      deps.llm,
+      payload['tenant_id'] as string,
+      payload['blog_slug'] as string,
+      payload['channel'] as string,
+    )
+    return post ? `draft ${post.id} queued for review` : 'blog post no longer exists — no-op'
+  },
+}
+
 export function ensureAutopilotIndexes(db: Db): void {
   actionsCol(db).createIndex({ dedup_key: 1 }, { unique: true }).catch(() => {})
   actionsCol(db).createIndex({ created_at: -1 }).catch(() => {})
+  db.collection('operator_digests').createIndex({ created_at: -1 }).catch(() => {})
 }
 
 /** Config merged over registry defaults — a rule with no stored doc is
@@ -334,8 +466,9 @@ export async function runAutopilotSweep(db: Db): Promise<AutopilotActionDoc[]> {
     const candidates = await def.collect(db)
     for (const c of candidates) {
       if (acted >= cfg.max_blast_radius) break
-      // Ledger insert first — the unique dedup_key makes "already acted"
-      // atomic, so the act itself is only attempted once per target.
+      // Ledger insert first — the unique dedup_key makes "already acted
+      // or proposed" atomic, so the act is only attempted once per target.
+      const isProposal = c.proposal !== undefined
       const row: AutopilotActionDoc = {
         id: randomUUID(),
         rule: cfg.rule,
@@ -343,7 +476,8 @@ export async function runAutopilotSweep(db: Db): Promise<AutopilotActionDoc[]> {
         target_type: c.target_type,
         target_id: c.target_id,
         reason: c.reason,
-        status: 'executed',
+        status: isProposal ? 'proposed' : 'executed',
+        ...(c.proposal ? { proposal: c.proposal } : {}),
         created_at: new Date(),
       }
       try {
@@ -351,14 +485,18 @@ export async function runAutopilotSweep(db: Db): Promise<AutopilotActionDoc[]> {
       } catch {
         continue // dedup — this target was already handled
       }
-      try {
-        row.result = await c.act()
-      } catch (err) {
-        row.status = 'failed'
-        row.result = String(err).slice(0, 300)
+      if (!isProposal && c.act) {
+        try {
+          row.result = await c.act()
+        } catch (err) {
+          row.status = 'failed'
+          row.result = String(err).slice(0, 300)
+        }
+        await actionsCol(db).updateOne({ id: row.id }, { $set: { status: row.status, result: row.result } })
+        if (row.status === 'executed') acted += 1
+      } else {
+        acted += 1 // proposals count against the blast radius too
       }
-      await actionsCol(db).updateOne({ id: row.id }, { $set: { status: row.status, result: row.result } })
-      if (row.status === 'executed') acted += 1
       executed.push(row)
 
       // Operator-visible audit trail — actor is the autopilot itself,
@@ -367,7 +505,7 @@ export async function runAutopilotSweep(db: Db): Promise<AutopilotActionDoc[]> {
         operator_user_id: 'autopilot',
         operator_roles: [] as string[],
         operator_source: 'autopilot',
-        action: 'autopilot.action',
+        action: isProposal ? 'autopilot.propose' : 'autopilot.action',
         target_type: c.target_type,
         target_id: c.target_id,
         reason: `${cfg.rule}: ${c.reason}`,

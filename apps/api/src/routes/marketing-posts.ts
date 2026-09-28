@@ -332,6 +332,40 @@ export async function generateDailyMarketingDrafts(db: Db, llm: LlmFn): Promise<
   return queued
 }
 
+/** Generate one review-gated draft promoting a blog post on a tenant's
+ *  channel — extracted so the autopilot proposal-approve path produces
+ *  the same 'draft' state as the daily sweep and the generate route.
+ *  Returns null when the blog post is gone or the channel has no active
+ *  connection. Generated content still never skips human review. */
+export async function draftBlogPromoPost(
+  db: Db,
+  llm: LlmFn,
+  tenantId: string,
+  blogSlug: string,
+  channel: string,
+  createdBy = 'autopilot-approve',
+): Promise<MarketingPostDoc | null> {
+  const src = await blogSourceBlock(db, blogSlug, channel)
+  if (!src) return null
+  const learning = await learningContextBlock(db, tenantId, channel)
+  const { content, generated } = await draftPostText(llm, channel, src.sourceBlock, src.link, learning)
+  const post: MarketingPostDoc = {
+    id: randomUUID(),
+    tenant_id: tenantId,
+    channel,
+    integration_id: `${channel}:connection`,
+    content,
+    campaign: 'oak_social',
+    state: 'draft',
+    generated,
+    source_blog_slug: blogSlug,
+    created_by: createdBy,
+    created_at: new Date(),
+  }
+  await db.collection<MarketingPostDoc>('marketing_posts').insertOne(post)
+  return post
+}
+
 export interface MarketingPerformanceRow {
   slug: string
   title?: string

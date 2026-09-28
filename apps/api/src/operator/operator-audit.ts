@@ -43,7 +43,11 @@ export type OperatorAuditAction =
   | 'operator.alert.resolve'
   | 'operator.alert.reopen'
   | 'operator.autopilot.update'
+  | 'operator.autopilot.approve'
+  | 'operator.autopilot.reject'
+  | 'operator.digest.send'
   | 'autopilot.action'
+  | 'autopilot.propose'
 
 export interface OperatorAuditEntry {
   operator_user_id: string

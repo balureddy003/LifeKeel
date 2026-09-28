@@ -88,6 +88,7 @@ import { registerPushRoutes } from './routes/push.js'
 import { registerReminderRoutes } from './routes/reminders.js'
 import { registerMarketingPostRoutes, publishDueMarketingPosts, generateDailyMarketingDrafts, pollMarketingEngagement } from './routes/marketing-posts.js'
 import { runMetricsRollup } from './jobs/metrics-rollup.js'
+import { runWeeklyDigest } from './operator/weekly-digest.js'
 import { runAutopilotSweep, ensureAutopilotIndexes } from './operator/autopilot.js'
 import { socialPublisherFromEnv, DbSocialPublisher } from './marketing/social-publisher.js'
 import { registerOperatorRoutes } from './routes/operator.js'
@@ -305,6 +306,20 @@ try {
     }
   }, { missedExecutionTolerance: 1_800_000 })
   log.info({}, 'Autopilot sweep cron started')
+
+  // Weekly operator digest — Mondays 08:30. Persisted to operator_digests
+  // and posted to the ops Slack channel (best-effort, never throws).
+  cron.schedule('30 8 * * 1', async () => {
+    try {
+      await withCronLock(workflowDb, 'weekly-digest', async () => {
+        const digest = await runWeeklyDigest(workflowDb)
+        log.info({ id: digest.id }, 'Weekly operator digest')
+      })
+    } catch (err) {
+      log.error({ err }, 'Weekly digest failed')
+    }
+  }, { missedExecutionTolerance: 3_600_000 })
+  log.info({}, 'Weekly digest cron started')
 
   // Policy renewal reminders — hourly. Tier 3 autonomy: deterministic,
   // deduped, consent re-checked at send time, push-only to the member's

@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Activity, BellRing, BookOpen, Bot, Database, FileText, Layers, Lock, Plug, Radio, Send, Server } from 'lucide-react'
+import { Activity, BellRing, BookOpen, Bot, Database, FileText, Inbox, Layers, Lock, MailCheck, Plug, Radio, Send, Server } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import {
   fetchOperatorOperations, fetchInfrastructure, recordCostSnapshot,
   retryReminder, requeueDeadJob, revokeConnector,
-  fetchOperatorAutopilot, updateOperatorAutopilot,
-  type AutopilotAction, type AutopilotRule, type CostSnapshot, type OperatorOperations,
+  fetchOperatorAutopilot, updateOperatorAutopilot, resolveAutopilotProposal,
+  fetchOperatorDigest, sendOperatorDigest,
+  type AutopilotAction, type AutopilotRule, type CostSnapshot, type OperatorDigest, type OperatorOperations,
 } from '@/lib/api'
 import { useToast } from '@/components/Toast'
 import { ReasonAction } from '../_components/ReasonAction'
@@ -50,6 +51,7 @@ export default function OperationsPage() {
   const [ops, setOps] = useState<OperatorOperations | null>(null)
   const [infra, setInfra] = useState<{ services: CostSnapshot[]; total_monthly_usd: number; history: CostSnapshot[] } | null>(null)
   const [autopilot, setAutopilot] = useState<{ rules: AutopilotRule[]; recent_actions: AutopilotAction[]; never_autonomous: string[] } | null>(null)
+  const [digest, setDigest] = useState<OperatorDigest | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [costService, setCostService] = useState('')
   const [costUsd, setCostUsd] = useState('')
@@ -61,10 +63,12 @@ export default function OperationsPage() {
   const load = () => fetchOperatorOperations().then(setOps).catch((err) => setError(err instanceof Error ? err.message : 'Could not load operations'))
   const loadInfra = () => fetchInfrastructure().then(setInfra).catch(() => setInfra(null))
   const loadAutopilot = () => fetchOperatorAutopilot().then(setAutopilot).catch(() => setAutopilot(null))
+  const loadDigest = () => fetchOperatorDigest().then((d) => setDigest(d.digest)).catch(() => setDigest(null))
   useEffect(() => {
     fetchOperatorOperations().then(setOps).catch((err) => setError(err instanceof Error ? err.message : 'Could not load operations'))
     fetchInfrastructure().then(setInfra).catch(() => setInfra(null))
     loadAutopilot()
+    loadDigest()
   }, [])
 
   if (error) return <GlassCard className="p-5"><h1 className="text-xl font-semibold">Operations unavailable</h1><p className="mt-2 text-sm text-danger">{error}</p></GlassCard>
@@ -262,16 +266,67 @@ export default function OperationsPage() {
               </div>
             ))}
           </div>
+          {autopilot.recent_actions.some((a) => a.status === 'proposed' || a.status === 'approved') && (
+            <div className="mt-4">
+              <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">
+                <Inbox size={12} /> Pending proposals
+              </h3>
+              <p className="mt-1 text-[10px] text-ink-tertiary">
+                Tier-2 — autopilot spotted the situation; the action only happens if a human approves. Approving runs the same mutation as the manual endpoint.
+              </p>
+              <div className="mt-2 space-y-2">
+                {autopilot.recent_actions.filter((a) => a.status === 'proposed' || a.status === 'approved').map((a) => (
+                  <div key={a.id} className="rounded-lg border border-warning/20 bg-warning/[0.04] p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-ink-primary">{a.proposal?.summary ?? a.reason}</p>
+                        <p className="mt-0.5 text-xs text-ink-tertiary">{a.reason} · requires <code>{a.proposal?.required_permission}</code></p>
+                      </div>
+                      {a.status === 'proposed' ? (
+                        <div className="flex shrink-0 gap-1.5">
+                          <ReasonAction
+                            label="Approve"
+                            description={`Execute: ${a.proposal?.summary ?? a.reason}`}
+                            onConfirm={async (reason) => {
+                              await resolveAutopilotProposal(a.id, 'approve', reason)
+                              toast({ message: 'Proposal approved and executed', variant: 'success' })
+                              await loadAutopilot()
+                            }}
+                          />
+                          <ReasonAction
+                            label="Reject"
+                            destructive
+                            description="Decline this proposal. The reason is recorded on the ledger row."
+                            onConfirm={async (reason) => {
+                              await resolveAutopilotProposal(a.id, 'reject', reason)
+                              toast({ message: 'Proposal rejected', variant: 'success' })
+                              await loadAutopilot()
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <span className="shrink-0 rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-semibold text-warning">executing…</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {autopilot.recent_actions.length > 0 && (
             <div className="mt-4">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-tertiary">Recent actions</h3>
               <div className="mt-2 divide-y divide-tint/[0.06]">
-                {autopilot.recent_actions.slice(0, 10).map((a) => (
+                {autopilot.recent_actions.filter((a) => a.status !== 'proposed' && a.status !== 'approved').slice(0, 10).map((a) => (
                   <div key={a.id} className="flex items-center justify-between gap-3 py-1.5 text-xs">
                     <span className="min-w-0 truncate text-ink-secondary">
                       <span className="font-medium">{a.rule}</span> · {a.target_id} — {a.result ?? a.reason}
                     </span>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 ${a.status === 'executed' ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'}`}>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 ${
+                      a.status === 'executed' ? 'bg-success/15 text-success'
+                      : a.status === 'rejected' ? 'bg-tint/[0.08] text-ink-tertiary'
+                      : 'bg-danger/15 text-danger'
+                    }`}>
                       {a.status}
                     </span>
                   </div>
@@ -284,6 +339,39 @@ export default function OperationsPage() {
           </p>
         </GlassCard>
       )}
+
+      <GlassCard className="mt-5 p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="flex items-center gap-2 font-semibold"><MailCheck size={15} className="text-family-400" /> Weekly digest</h2>
+          <ReasonAction
+            label="Send now"
+            description="Generate and post this week's operator digest to the ops Slack channel immediately (the cron also runs it Mondays 08:30)."
+            onConfirm={async () => {
+              const res = await sendOperatorDigest()
+              setDigest(res.digest)
+              toast({ message: 'Digest generated and posted to ops channel', variant: 'success' })
+            }}
+          />
+        </div>
+        {digest ? (
+          <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm md:grid-cols-3">
+            <div className="flex justify-between"><span className="text-ink-tertiary">Signups (7d)</span><span className="font-medium">{digest.signups_7d} <span className="text-xs text-ink-tertiary">vs {digest.signups_prev_7d}</span></span></div>
+            <div className="flex justify-between"><span className="text-ink-tertiary">Leads new / in &quot;new&quot;</span><span className="font-medium">{digest.leads_total_7d} / {digest.leads_new}</span></div>
+            <div className="flex justify-between"><span className="text-ink-tertiary">Open alerts</span><span className="font-medium">{digest.open_alerts}</span></div>
+            <div className="flex justify-between"><span className="text-ink-tertiary">Autopilot acts (7d)</span><span className="font-medium">{digest.autopilot_executed_7d}</span></div>
+            <div className="flex justify-between"><span className="text-ink-tertiary">Pending proposals</span><span className="font-medium">{digest.autopilot_pending_proposals}</span></div>
+            <div className="flex justify-between"><span className="text-ink-tertiary">Posts published (7d)</span><span className="font-medium">{digest.marketing_published_7d}</span></div>
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-ink-tertiary">No digest yet — the Monday cron creates the first, or send one now.</p>
+        )}
+        {digest?.top_content && (
+          <p className="mt-2 text-xs text-ink-tertiary">
+            Top content this week: <span className="font-medium text-ink-secondary">{digest.top_content.slug}</span> → {digest.top_content.signups} signups
+          </p>
+        )}
+        {digest && <p className="mt-2 text-[10px] text-ink-tertiary">Generated {new Date(digest.created_at).toLocaleString()} · posted to ops Slack when configured</p>}
+      </GlassCard>
 
       <GlassCard className="mt-5 p-4">
         <h2 className="flex items-center gap-2 font-semibold"><Lock size={15} className="text-family-400" /> Cron leases</h2>
