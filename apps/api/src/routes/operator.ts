@@ -13,6 +13,7 @@ import { getLoginEventsCollection } from '../db.js'
 import { createLlmRouterFromEnv } from '@agentoak/platform'
 import { computeTenantHealth } from '../operator/tenant-health.js'
 import { isRollupReady, readDailyRollup } from '../jobs/metrics-rollup.js'
+import { getRunbooks } from '../operator/runbooks.js'
 import type { SupportCaseDoc, SupportMessage } from './support.js'
 
 const QuerySchema = z.object({
@@ -143,6 +144,8 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   db.collection('operator_audit_log').createIndex({ created_at: -1 }).catch(() => {})
   // Support inbox: status-filtered, updated_at-ordered.
   db.collection('support_cases').createIndex({ status: 1, updated_at: -1 }).catch(() => {})
+  // Operator alert triage state — one doc per signal's dedup_key.
+  db.collection('operator_alerts').createIndex({ dedup_key: 1 }, { unique: true }).catch(() => {})
   // Daily metric rollups: metric+day-range reads; _id is already unique.
   db.collection('metrics_daily').createIndex({ metric: 1, day: -1 }).catch(() => {})
   // Awaited: the promo create path relies on the unique index for duplicate
@@ -799,7 +802,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
    *  join users' attribution to leads' source where both exist. */
   app.get('/operator/funnel', { preHandler: requireOperator(db, 'overview.read') }, async () => {
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-    const [leadStages, leadSources, signupSources, signups30d, leads30d, activated, paying] = await Promise.all([
+    const [leadStages, leadSources, signupSources, signups30d, leads30d, activated, paying, cohortUsers] = await Promise.all([
       leads.aggregate([{ $group: { _id: '$stage', count: { $sum: 1 } } }]).toArray(),
       leads.aggregate([
         { $match: { created_at: { $gte: since } } },
@@ -813,6 +816,8 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       leads.countDocuments({ created_at: { $gte: since } }),
       db.collection('insights').distinct('tenant_id'),
       tenants.countDocuments({ plan: { $exists: true, $nin: ['free', 'trial'] } }),
+      // Activation cohort — tenants of users who signed up inside the window.
+      users.find({ created_at: { $gte: since } }, { projection: { _id: 0, tenant_id: 1, created_at: 1 } }).toArray(),
     ])
     const sources = new Map<string, { source: string; leads: number; signups: number }>()
     for (const s of leadSources) {
@@ -825,6 +830,56 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       row.signups = s['count'] as number
       sources.set(key, row)
     }
+
+    // Activation steps — measured from persisted tenant state, not client
+    // events (anonymous anon_id events can't be joined to tenants anyway):
+    // a tenant "set up" when a financial profile exists, "activated" at its
+    // first insight, "connected" when a connector credential lands.
+    const cohortTenantIds = [...new Set(cohortUsers.map((u) => u['tenant_id'] as string))]
+    let activation: Record<string, unknown> = {
+      cohort_signups_30d: cohortUsers.length,
+      steps: [] as unknown[],
+      median_time_to_first_insight_hours: null,
+    }
+    if (cohortTenantIds.length > 0) {
+      const [profileTenants, firstInsights, connectorTenants] = await Promise.all([
+        db.collection('family_financial_profile').distinct('tenant_id', { tenant_id: { $in: cohortTenantIds } }),
+        db.collection('insights').aggregate([
+          { $match: { tenant_id: { $in: cohortTenantIds } } },
+          { $group: { _id: '$tenant_id', first_at: { $min: '$created_at' } } },
+        ]).toArray(),
+        db.collection('connector_credentials').distinct('tenant_id', { tenant_id: { $in: cohortTenantIds } }),
+      ])
+      const profileSet = new Set(profileTenants.map(String))
+      const connectorSet = new Set(connectorTenants.map(String))
+      const insightSet = new Set(firstInsights.map((i) => String(i['_id'])))
+
+      // Median hours from signup to first insight — the time-to-activate
+      // signal that actually decides whether a new family sticks.
+      const tenantSignupAt = new Map<string, number>()
+      for (const u of cohortUsers) {
+        const t = u['tenant_id'] as string
+        const at = (u['created_at'] as Date).getTime()
+        tenantSignupAt.set(t, Math.min(tenantSignupAt.get(t) ?? Infinity, at))
+      }
+      const ttis = firstInsights
+        .filter((i) => i['first_at'] instanceof Date)
+        .map((i) => ((i['first_at'] as Date).getTime() - (tenantSignupAt.get(String(i['_id'])) ?? 0)) / 3_600_000)
+        .filter((h) => h >= 0)
+        .sort((a, b) => a - b)
+      const median = ttis.length === 0 ? null : ttis.length % 2 === 1
+        ? ttis[Math.floor(ttis.length / 2)]
+        : (ttis[ttis.length / 2 - 1]! + ttis[ttis.length / 2]!) / 2
+
+      const steps = [
+        { key: 'signed_up', label: 'Signed up', count: cohortUsers.length },
+        { key: 'profile_completed', label: 'Family profile filled', count: profileSet.size },
+        { key: 'first_insight', label: 'First insight received', count: insightSet.size },
+        { key: 'connector_connected', label: 'Connector linked', count: connectorSet.size },
+      ].map((s) => ({ ...s, pct: cohortUsers.length === 0 ? 0 : Math.round((s.count / cohortUsers.length) * 100) }))
+      activation = { cohort_signups_30d: cohortUsers.length, steps, median_time_to_first_insight_hours: median === null ? null : Math.round(median * 10) / 10 }
+    }
+
     return {
       window_days: 30,
       totals: {
@@ -835,6 +890,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       },
       leads_by_stage: Object.fromEntries(leadStages.map((s) => [s['_id'], s['count']])),
       by_source: [...sources.values()].sort((a, b) => b.signups - a.signups),
+      activation,
     }
   })
 
@@ -1208,6 +1264,55 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     return { ok: true }
   })
 
+  // ── Alert triage state ──────────────────────────────────────────────────
+  // Attention-feed items are computed live each load — this collection only
+  // persists the *triage decision* (ack/snooze/resolve) per signal, keyed by
+  // dedup_key, so the feed itself needs no cron materializing rows. Resolve
+  // records the signal_value it resolved at; if the underlying count grows
+  // past that, the client re-surfaces the item — resolved is "I've seen this
+  // exact state", not a mute forever.
+
+  const alerts = db.collection('operator_alerts')
+  const AlertStateSchema = z.object({
+    dedup_key: z.string().min(1).max(120),
+    action: z.enum(['ack', 'snooze', 'resolve', 'reopen']),
+    title: z.string().max(300).optional(),
+    severity: z.enum(['info', 'warning', 'danger']).optional(),
+    href: z.string().max(300).optional(),
+    signal_value: z.number().int().min(0).optional(),
+  })
+
+  app.get('/operator/alerts', { preHandler: requireOperator(db, 'overview.read') }, async () => {
+    const docs = await alerts.find({}, { projection: { _id: 0 } }).toArray()
+    return { alerts: docs }
+  })
+
+  app.post('/operator/alerts/state', { preHandler: requireOperator(db, 'overview.read') }, async (request, reply) => {
+    const parsed = AlertStateSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid body', issues: parsed.error.issues })
+    const { dedup_key, action, title, severity, href, signal_value } = parsed.data
+    const now = new Date()
+    const set: Record<string, unknown> = {
+      status: action === 'ack' ? 'ack' : action === 'snooze' ? 'snoozed' : action === 'resolve' ? 'resolved' : 'open',
+      updated_by: request.operatorContext?.user_id,
+      updated_at: now,
+      ...(title ? { title } : {}),
+      ...(severity ? { severity } : {}),
+      ...(href ? { href } : {}),
+      ...(signal_value !== undefined ? { signal_value } : {}),
+    }
+    if (action === 'snooze') set['snoozed_until'] = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+    else set['snoozed_until'] = null
+    if (action === 'resolve') set['resolved_signal_value'] = signal_value ?? null
+    await alerts.updateOne(
+      { dedup_key },
+      { $set: set, $setOnInsert: { dedup_key, created_at: now } },
+      { upsert: true },
+    )
+    await audit.log(request, `operator.alert.${action}` as const, 'alert', dedup_key, title ?? dedup_key)
+    return { ok: true }
+  })
+
   // ── Operator audit + operations health ──────────────────────────────────
 
   app.get('/operator/audit', { preHandler: requireOperator(db, 'audit.read') }, async (request, reply) => {
@@ -1305,6 +1410,10 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       generated_at: now.toISOString(),
       process: { uptime_seconds: Math.round(process.uptime()), rss_bytes: process.memoryUsage().rss },
       mongo: { ok: mongoOk, ping_ms: mongoPingMs },
+      // Triage notes keyed by alert/queue name — what the signal means and
+      // whether retrying it is safe. Loaded from runbooks.yaml at the repo
+      // root; empty object if the file is missing or malformed.
+      runbooks: getRunbooks(),
       insights_by_state: Object.fromEntries(insightsByState.map((i) => [i['_id'], i['count']])),
       marketing_posts_by_state: Object.fromEntries(postsByState.map((i) => [i['_id'], i['count']])),
       cron_locks: cronLocks.map((lock) => ({
@@ -1397,10 +1506,18 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     return { config, history }
   })
 
+  const MaintenanceWindowSchema = z.object({
+    starts_at: z.string().datetime(),
+    ends_at: z.string().datetime(),
+    message: z.string().min(1).max(300),
+  }).refine((w) => new Date(w.ends_at) > new Date(w.starts_at), { message: 'ends_at must be after starts_at' })
+
   const ConfigUpdateSchema = z.object({
     maintenance_mode: z.boolean().optional(),
     signups_enabled: z.boolean().optional(),
     marketing_paused: z.boolean().optional(),
+    /** null clears a scheduled window; object sets/replaces it. */
+    maintenance_window: MaintenanceWindowSchema.nullable().optional(),
     reason: z.string().min(5).max(500),
   })
 
@@ -1415,6 +1532,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       maintenance_mode: changes.maintenance_mode ?? before.maintenance_mode,
       signups_enabled: changes.signups_enabled ?? before.signups_enabled,
       marketing_paused: changes.marketing_paused ?? before.marketing_paused,
+      maintenance_window: changes.maintenance_window === undefined ? before.maintenance_window : changes.maintenance_window,
     }
     const changedKeys = (Object.keys(changes) as (keyof PlatformConfig)[]).filter((k) => changes[k] !== before[k])
     if (changedKeys.length === 0) return reply.status(400).send({ error: 'No effective changes' })

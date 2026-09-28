@@ -997,4 +997,97 @@ describe('security monitoring', () => {
     expect(detail.json().health.score).toBe(20)
     await app.close()
   })
+
+  it('reports activation steps and median time-to-first-insight for the signup cohort', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    // user-2 (family-1) signed up now in beforeEach. Give family-1 a
+    // profile, a connector, and a first insight ~2h after signup.
+    const twoHours = 2 * 60 * 60 * 1000
+    await db.collection('family_financial_profile').insertOne({ tenant_id: 'family-1', updated_at: new Date() })
+    await db.collection('connector_credentials').insertOne({ tenant_id: 'family-1', connector_id: 'bank', token_expires_at: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000) })
+    await db.collection('insights').insertOne({ tenant_id: 'family-1', state: 'sent', created_at: new Date(Date.now() + twoHours) })
+    const app = await buildApp()
+    const response = await app.inject({ method: 'GET', url: '/operator/funnel' })
+    expect(response.statusCode).toBe(200)
+    const activation = response.json().activation
+    // operator-tenant also has a cohort signup (operator-1) with no profile,
+    // insight or connector — so the cohort is 2 signups, half activating.
+    expect(activation.cohort_signups_30d).toBe(2)
+    const steps = Object.fromEntries(activation.steps.map((s: { key: string; count: number; pct: number }) => [s.key, s]))
+    expect(steps.signed_up.count).toBe(2)
+    expect(steps.profile_completed.count).toBe(1)
+    expect(steps.first_insight.count).toBe(1)
+    expect(steps.connector_connected.count).toBe(1)
+    expect(steps.profile_completed.pct).toBe(50)
+    // First insight timestamp - user-2 signup timestamp ≈ +2h.
+    expect(activation.median_time_to_first_insight_hours).toBeCloseTo(2, 0)
+    await app.close()
+  })
+
+  it('persists alert triage state with an audit entry per action', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    const app = await buildApp()
+
+    const empty = await app.inject({ method: 'GET', url: '/operator/alerts' })
+    expect(empty.json().alerts).toEqual([])
+
+    const ack = await app.inject({
+      method: 'POST', url: '/operator/alerts/state',
+      payload: { dedup_key: 'dead_letters', action: 'ack', title: '2 dead-lettered jobs', severity: 'danger', signal_value: 2 },
+    })
+    expect(ack.statusCode).toBe(200)
+    let doc = await db.collection('operator_alerts').findOne({ dedup_key: 'dead_letters' })
+    expect(doc?.['status']).toBe('ack')
+
+    const resolve = await app.inject({
+      method: 'POST', url: '/operator/alerts/state',
+      payload: { dedup_key: 'dead_letters', action: 'resolve', signal_value: 2 },
+    })
+    expect(resolve.statusCode).toBe(200)
+    doc = await db.collection('operator_alerts').findOne({ dedup_key: 'dead_letters' })
+    expect(doc?.['status']).toBe('resolved')
+    expect(doc?.['resolved_signal_value']).toBe(2)
+
+    const auditCount = await db.collection('operator_audit_log').countDocuments({ action: { $in: ['operator.alert.ack', 'operator.alert.resolve'] } })
+    expect(auditCount).toBe(2)
+
+    // Non-operators can't touch triage state.
+    const outsider = await buildApp('user-2')
+    const denied = await outsider.inject({ method: 'POST', url: '/operator/alerts/state', payload: { dedup_key: 'x', action: 'resolve' } })
+    expect(denied.statusCode).toBe(403)
+    await outsider.close()
+    await app.close()
+  })
+
+  it('schedules, exposes, and clears a maintenance window', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    const app = await buildApp()
+    const window = { starts_at: new Date(Date.now() + 3600_000).toISOString(), ends_at: new Date(Date.now() + 7200_000).toISOString(), message: 'DB maintenance' }
+    const set = await app.inject({ method: 'PUT', url: '/operator/configuration', payload: { maintenance_window: window, reason: 'Planned DB upgrade' } })
+    expect(set.statusCode).toBe(200)
+    expect(set.json().config.maintenance_window.message).toBe('DB maintenance')
+
+    // Backwards window rejected.
+    const bad = await app.inject({
+      method: 'PUT', url: '/operator/configuration',
+      payload: { maintenance_window: { starts_at: window.ends_at, ends_at: window.starts_at, message: 'x' }, reason: 'Bad window' },
+    })
+    expect(bad.statusCode).toBe(400)
+
+    const cleared = await app.inject({ method: 'PUT', url: '/operator/configuration', payload: { maintenance_window: null, reason: 'Maintenance finished early' } })
+    expect(cleared.statusCode).toBe(200)
+    expect(cleared.json().config.maintenance_window).toBeNull()
+    await app.close()
+  })
+
+  it('serves runbook notes alongside operations health', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+    const app = await buildApp()
+    const response = await app.inject({ method: 'GET', url: '/operator/operations' })
+    expect(response.statusCode).toBe(200)
+    const runbooks = response.json().runbooks
+    expect(runbooks.dead_letters.safe_to_requeue).toContain('Yes')
+    expect(runbooks['metrics-rollup'].what).toContain('metrics_daily')
+    await app.close()
+  })
 })

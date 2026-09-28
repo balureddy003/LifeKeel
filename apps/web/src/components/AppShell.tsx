@@ -13,7 +13,7 @@ import { MeshGradient, Skeleton, SkeletonCard } from './Glass'
 import { EmergencyMode } from './EmergencyMode'
 import { CommandPalette } from './CommandPalette'
 import { DisclaimerFooter } from './Disclaimer'
-import { fetchInboxItems, fetchFamilyInsights, fetchPublicStatus } from '@/lib/api'
+import { fetchInboxItems, fetchFamilyInsights, fetchPublicStatus, type PublicStatus } from '@/lib/api'
 import { flushMutationQueue } from '@/lib/offline-queue'
 import { warmCache } from '@/lib/fetch-cache'
 import { useToast } from './Toast'
@@ -140,11 +140,11 @@ function OfflineBanner() {
 // is exempt from the 503 so this is the one signal that still gets through.
 // Polls slowly — the flag flips rarely, and a 60s lag on a banner is fine.
 function MaintenanceBanner() {
-  const [maintenance, setMaintenance] = useState(false)
+  const [status, setStatus] = useState<PublicStatus | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    const check = () => fetchPublicStatus().then((s) => { if (!cancelled) setMaintenance(s.maintenance_mode) })
+    const check = () => fetchPublicStatus().then((s) => { if (!cancelled) setStatus(s) })
     check()
     const id = window.setInterval(check, 60_000)
     return () => {
@@ -153,10 +153,16 @@ function MaintenanceBanner() {
     }
   }, [])
 
+  const win = status?.maintenance_window
+  const windowText = win
+    ? `${win.message} (${new Date(win.starts_at).toLocaleString()} – ${new Date(win.ends_at).toLocaleTimeString()})`
+    : null
+
   return (
     <AnimatePresence>
-      {maintenance && (
+      {status?.maintenance_mode && (
         <motion.div
+          key="maintenance"
           initial={{ y: -60, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -60, opacity: 0 }}
@@ -167,6 +173,19 @@ function MaintenanceBanner() {
           <span className="text-sm text-warning font-medium">
             Scheduled maintenance — things may not load right now. Back shortly.
           </span>
+        </motion.div>
+      )}
+      {!status?.maintenance_mode && windowText && (
+        <motion.div
+          key="window"
+          initial={{ y: -60, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: -60, opacity: 0 }}
+          role="status"
+          className="fixed top-0 left-0 right-0 z-banner glass safe-area-top px-4 py-2 flex items-center justify-center gap-2"
+        >
+          <Siren size={16} className="text-family-400 flex-shrink-0" />
+          <span className="text-sm text-ink-secondary font-medium">{windowText}</span>
         </motion.div>
       )}
     </AnimatePresence>

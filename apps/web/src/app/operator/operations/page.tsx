@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Activity, BellRing, Database, FileText, Layers, Lock, Plug, Radio, Send, Server } from 'lucide-react'
+import { Activity, BellRing, BookOpen, Database, FileText, Layers, Lock, Plug, Radio, Send, Server } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import {
   fetchOperatorOperations, fetchInfrastructure, recordCostSnapshot,
@@ -23,6 +23,26 @@ function StateRows({ states, empty }: { states: Record<string, number>; empty: s
   return <>{entries.map(([s, c]) => (
     <div key={s} className="mt-2 flex justify-between text-sm"><span className="text-ink-secondary">{s}</span><span>{c}</span></div>
   ))}</>
+}
+
+/** Runbook note — the "is it safe to click retry?" answer, inline next to
+ *  the signal it describes. Sourced from runbooks.yaml via the ops API. */
+function RunbookNote({ note }: { note: { what: string; safe_to_requeue: string; escalate: string } }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mt-2">
+      <button onClick={() => setOpen(!open)} className="flex items-center gap-1 text-xs text-family-400 hover:underline">
+        <BookOpen size={11} /> Runbook
+      </button>
+      {open && (
+        <div className="mt-1.5 space-y-1 rounded-lg bg-tint/[0.04] p-2.5 text-xs text-ink-tertiary">
+          <p>{note.what}</p>
+          <p><span className="font-medium text-ink-secondary">Safe to retry:</span> {note.safe_to_requeue}</p>
+          <p><span className="font-medium text-ink-secondary">Escalate:</span> {note.escalate}</p>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function OperationsPage() {
@@ -70,6 +90,7 @@ export default function OperationsPage() {
               <div className="mt-1 flex justify-between text-sm"><span className="text-ink-secondary">Processing</span><span>{ops.queue.processing}</span></div>
               <div className="mt-1 flex justify-between text-sm"><span className="text-ink-secondary">Delayed</span><span>{ops.queue.delayed}</span></div>
               <div className="mt-1 flex justify-between text-sm"><span className={ops.queue.dead > 0 ? 'text-danger' : 'text-ink-secondary'}>Dead-lettered</span><span className={ops.queue.dead > 0 ? 'font-semibold text-danger' : ''}>{ops.queue.dead}</span></div>
+              {ops.queue.dead_jobs.length > 0 && ops.runbooks?.dead_letters && <RunbookNote note={ops.runbooks.dead_letters} />}
               {ops.queue.dead_jobs.length > 0 && (
                 <div className="mt-3 space-y-1">
                   {ops.queue.dead_jobs.map((j) => (
@@ -103,6 +124,7 @@ export default function OperationsPage() {
         <GlassCard className="p-4">
           <h2 className="font-semibold">Marketing posts by state</h2>
           <StateRows states={ops.marketing_posts_by_state} empty="No posts." />
+          {ops.failed_posts.length > 0 && ops.runbooks?.publish_failed && <RunbookNote note={ops.runbooks.publish_failed} />}
           {ops.failed_posts.length > 0 && (
             <div className="mt-3 space-y-1">
               {ops.failed_posts.map((p) => (
@@ -124,6 +146,7 @@ export default function OperationsPage() {
               {ops.stale_reminder_claims} stale &quot;sending&quot; claim{ops.stale_reminder_claims === 1 ? '' : 's'} — a worker likely crashed mid-dispatch; the next run recovers it.
             </p>
           )}
+          {ops.failed_reminders.length > 0 && ops.runbooks?.failed_reminders && <RunbookNote note={ops.runbooks.failed_reminders} />}
           {ops.failed_reminders.length > 0 && (
             <div className="mt-3 space-y-2">
               {ops.failed_reminders.map((r) => (
@@ -171,6 +194,7 @@ export default function OperationsPage() {
               {ops.connectors.expiring_tokens_7d} token{ops.connectors.expiring_tokens_7d === 1 ? '' : 's'} expiring within 7 days — expect reconnects.
             </p>
           )}
+          {ops.connectors.expiring_tokens_7d > 0 && ops.runbooks?.expiring_tokens && <RunbookNote note={ops.runbooks.expiring_tokens} />}
           {ops.connectors.list.length > 0 && (
             <div className="mt-3 space-y-1">
               {ops.connectors.list.map((c, i) => (
@@ -214,6 +238,7 @@ export default function OperationsPage() {
             ))}
           </div>
         )}
+        {ops.cron_locks.some((l) => l.stale) && ops.runbooks?.stale_crons && <RunbookNote note={ops.runbooks.stale_crons} />}
       </GlassCard>
 
       <GlassCard className="mt-5 p-4">

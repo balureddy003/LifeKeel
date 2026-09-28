@@ -1,13 +1,15 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Settings2 } from 'lucide-react'
+import { CalendarClock, Settings2 } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import { useToast } from '@/components/Toast'
 import { fetchOperatorConfiguration, updateOperatorConfiguration, type PlatformConfig } from '@/lib/api'
 import { ReasonAction } from '../_components/ReasonAction'
 
-const FLAGS: Array<{ key: keyof PlatformConfig; label: string; description: string; whenOn: string }> = [
+type BooleanFlagKey = 'maintenance_mode' | 'signups_enabled' | 'marketing_paused'
+
+const FLAGS: Array<{ key: BooleanFlagKey; label: string; description: string; whenOn: string }> = [
   {
     key: 'maintenance_mode',
     label: 'Maintenance mode',
@@ -32,6 +34,9 @@ export default function OperatorConfigurationPage() {
   const toast = useToast()
   const [data, setData] = useState<{ config: PlatformConfig; history: Array<{ changes: Partial<PlatformConfig>; changed_by?: string; reason: string; created_at: string }> } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [winStart, setWinStart] = useState('')
+  const [winEnd, setWinEnd] = useState('')
+  const [winMessage, setWinMessage] = useState('')
 
   const load = () => fetchOperatorConfiguration().then(setData).catch((err) => setError(err instanceof Error ? err.message : 'Could not load configuration'))
   useEffect(() => {
@@ -76,6 +81,54 @@ export default function OperatorConfigurationPage() {
           )
         })}
       </div>
+
+      <GlassCard className="mt-5 p-4">
+        <h2 className="flex items-center gap-2 font-semibold"><CalendarClock size={15} className="text-family-400" /> Scheduled maintenance window</h2>
+        <p className="mt-1 text-xs text-ink-tertiary">
+          Announced to users via the app banner ahead of time — it does not engage maintenance mode; flip that separately when the window starts.
+        </p>
+        {data.config.maintenance_window && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-warning/10 px-3 py-2 text-xs">
+            <span className="text-warning">
+              {new Date(data.config.maintenance_window.starts_at).toLocaleString()} → {new Date(data.config.maintenance_window.ends_at).toLocaleString()} · {data.config.maintenance_window.message}
+            </span>
+            <ReasonAction
+              label="Clear window"
+              onConfirm={async (reason) => {
+                const next = await updateOperatorConfiguration({ maintenance_window: null }, reason)
+                setData({ ...data, config: next })
+                toast({ message: 'Maintenance window cleared', variant: 'success' })
+                await load()
+              }}
+            />
+          </div>
+        )}
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <label className="text-xs text-ink-tertiary">Starts
+            <input type="datetime-local" value={winStart} onChange={(e) => setWinStart(e.target.value)} className="glass-input mt-1 w-full rounded-xl px-3 py-2 text-sm" />
+          </label>
+          <label className="text-xs text-ink-tertiary">Ends
+            <input type="datetime-local" value={winEnd} onChange={(e) => setWinEnd(e.target.value)} className="glass-input mt-1 w-full rounded-xl px-3 py-2 text-sm" />
+          </label>
+        </div>
+        <input value={winMessage} onChange={(e) => setWinMessage(e.target.value)} placeholder="Banner message, e.g. “Scheduled maintenance Sunday 02:00–03:00 UTC — expect brief read-only periods.”" className="glass-input mt-2 w-full rounded-xl px-3 py-2 text-sm" />
+        <div className="mt-3">
+          <ReasonAction
+            label="Schedule window"
+            onConfirm={async (reason) => {
+              if (!winStart || !winEnd || !winMessage.trim()) throw new Error('Start, end and message are required')
+              const next = await updateOperatorConfiguration(
+                { maintenance_window: { starts_at: new Date(winStart).toISOString(), ends_at: new Date(winEnd).toISOString(), message: winMessage.trim() } },
+                reason,
+              )
+              setData({ ...data, config: next })
+              setWinStart(''); setWinEnd(''); setWinMessage('')
+              toast({ message: 'Maintenance window scheduled', variant: 'success' })
+              await load()
+            }}
+          />
+        </div>
+      </GlassCard>
 
       <GlassCard className="mt-5 p-4">
         <h2 className="font-semibold">Change history</h2>

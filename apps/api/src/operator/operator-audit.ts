@@ -38,6 +38,10 @@ export type OperatorAuditAction =
   | 'operator.support.reply'
   | 'operator.support.resolve'
   | 'operator.support.reopen'
+  | 'operator.alert.ack'
+  | 'operator.alert.snooze'
+  | 'operator.alert.resolve'
+  | 'operator.alert.reopen'
 
 export interface OperatorAuditEntry {
   operator_user_id: string

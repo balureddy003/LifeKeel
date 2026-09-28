@@ -139,9 +139,17 @@ async function apiFetch<T>(path: string, fallback: T, onFailure?: () => void): P
 // Public product status — unauthenticated route that stays reachable during
 // maintenance so the shell can render the outage banner. apiFetch's fallback
 // doubles as the "API unreachable" answer: no banner, OfflineBanner owns that.
+export interface MaintenanceWindow {
+  starts_at: string
+  ends_at: string
+  message: string
+}
+
 export interface PublicStatus {
   maintenance_mode: boolean
   signups_enabled: boolean
+  /** Present only while the window is upcoming or in progress. */
+  maintenance_window?: MaintenanceWindow
 }
 
 export async function fetchPublicStatus(): Promise<PublicStatus> {
@@ -2027,6 +2035,42 @@ export interface OperatorOperations {
   queue: { available: true; pending: number; processing: number; delayed: number; dead: number; dead_jobs: Array<{ id: string; attempts?: number; enqueuedAt: number }> } | { available: false }
   growth_events_24h: number
   documents_pending: number
+  /** Triage notes from runbooks.yaml, keyed by alert/queue name. */
+  runbooks?: Record<string, { what: string; safe_to_requeue: string; escalate: string }>
+}
+
+export type OperatorAlertAction = 'ack' | 'snooze' | 'resolve' | 'reopen'
+
+export interface OperatorAlert {
+  dedup_key: string
+  status: 'open' | 'ack' | 'snoozed' | 'resolved'
+  title?: string
+  severity?: 'info' | 'warning' | 'danger'
+  signal_value?: number
+  resolved_signal_value?: number | null
+  snoozed_until?: string | null
+  updated_by?: string
+  updated_at: string
+}
+
+export function fetchOperatorAlerts(): Promise<{ alerts: OperatorAlert[] }> {
+  return operatorRequest('/operator/alerts')
+}
+
+export async function setOperatorAlertState(
+  dedupKey: string,
+  action: OperatorAlertAction,
+  context: { title?: string; severity?: string; href?: string; signal_value?: number } = {},
+): Promise<void> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/operator/alerts/state`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ dedup_key: dedupKey, action, ...context }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Alert action failed')
 }
 
 async function operatorAction(path: string, reason: string): Promise<void> {
@@ -2106,6 +2150,14 @@ export interface OperatorFunnel {
   totals: { leads_30d: number; signups_30d: number; activated_tenants: number; paying_tenants: number }
   leads_by_stage: Record<string, number>
   by_source: Array<{ source: string; leads: number; signups: number }>
+  /** Activation steps for the 30d signup cohort — measured from persisted
+   *  tenant state (profile exists / first insight / connector linked),
+   *  not anonymous client events. */
+  activation?: {
+    cohort_signups_30d: number
+    steps: { key: string; label: string; count: number; pct: number }[]
+    median_time_to_first_insight_hours: number | null
+  }
 }
 
 export function fetchOperatorFunnel(): Promise<OperatorFunnel> {
@@ -2118,6 +2170,7 @@ export interface PlatformConfig {
   maintenance_mode: boolean
   signups_enabled: boolean
   marketing_paused: boolean
+  maintenance_window: MaintenanceWindow | null
 }
 
 export interface ConfigHistoryEntry {
