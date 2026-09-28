@@ -10,6 +10,8 @@ import { queueManager } from '../queue/QueueManager.js'
 import { WEBHOOK_INGEST_QUEUE } from '../queue/WebhookQueue.js'
 import { getPlatformConfig, invalidatePlatformConfigCache, CONFIG_DOC_KEY, type PlatformConfig } from '../operator/platform-config.js'
 import { getLoginEventsCollection } from '../db.js'
+import { createLlmRouterFromEnv } from '@agentoak/platform'
+import type { SupportCaseDoc, SupportMessage } from './support.js'
 
 const QuerySchema = z.object({
   q: z.string().trim().max(100).optional(),
@@ -80,6 +82,14 @@ const AuditQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   cursor: z.string().max(300).optional(),
 })
+const SupportQuerySchema = z.object({
+  q: z.string().trim().max(100).optional(),
+  status: z.enum(['open', 'answered', 'resolved']).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  offset: z.coerce.number().int().min(0).default(0),
+  cursor: z.string().max(300).optional(),
+})
+const SupportMessageWriteSchema = z.object({ text: z.string().trim().min(1).max(4000) })
 
 function safeRegex(value: string): RegExp {
   return new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
@@ -99,18 +109,18 @@ function decodeCursor(cursor: string | undefined): { created_at: Date; id: strin
   return { created_at: created, id }
 }
 
-function encodeCursor(item: Record<string, unknown>, idField: string): string | undefined {
-  const created = item['created_at']
+function encodeCursor(item: Record<string, unknown>, idField: string, dateField = 'created_at'): string | undefined {
+  const created = item[dateField]
   const id = item[idField]
   if (!(created instanceof Date) || typeof id !== 'string' || !id) return undefined
   return Buffer.from(`${created.toISOString()}|${id}`).toString('base64url')
 }
 
-function cursorFilter(cursor: { created_at: Date; id: string }, idField: string): Record<string, unknown> {
+function cursorFilter(cursor: { created_at: Date; id: string }, idField: string, dateField = 'created_at'): Record<string, unknown> {
   return {
     $or: [
-      { created_at: { $lt: cursor.created_at } },
-      { created_at: cursor.created_at, [idField]: { $lt: cursor.id } },
+      { [dateField]: { $lt: cursor.created_at } },
+      { [dateField]: cursor.created_at, [idField]: { $lt: cursor.id } },
     ],
   }
 }
@@ -129,6 +139,8 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   tenants.createIndex({ name: 1 }).catch(() => {})
   db.collection('leads').createIndex({ created_at: -1 }).catch(() => {})
   db.collection('operator_audit_log').createIndex({ created_at: -1 }).catch(() => {})
+  // Support inbox: status-filtered, updated_at-ordered.
+  db.collection('support_cases').createIndex({ status: 1, updated_at: -1 }).catch(() => {})
   // Awaited: the promo create path relies on the unique index for duplicate
   // detection, so it can't race registration.
   await Promise.all([
@@ -165,6 +177,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       leadsWeek,
       leadsPrevWeek,
       activityRows,
+      openCases,
     ] = await Promise.all([
       users.countDocuments({}),
       users.countDocuments({ status: { $ne: 'suspended' } }),
@@ -197,6 +210,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         { $group: { _id: { day: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } }, event: '$event' }, count: { $sum: 1 } } },
         { $project: { _id: 0, day: '$_id.day', event: '$_id.event', count: 1 } },
       ]).toArray(),
+      db.collection('support_cases').countDocuments({ status: 'open' }),
     ])
 
     return {
@@ -210,6 +224,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       signups_by_source_7d: Object.fromEntries(signupsBySource.map((s) => [s['source'], s['count']])),
       growth_events_7d: recentEvents,
       activity_30d: activityRows,
+      support: { open: openCases },
     }
   })
 
@@ -1006,6 +1021,137 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     await audit.log(request, 'operator.billing.adjust_credits', 'tenant', tenantId, reason, { amount })
 
     return { ok: true, credits_balance: updated['billing']?.['credits_balance'] }
+  })
+
+  // ── Support inbox ────────────────────────────────────────────────────────
+  // Human half of the AI-first support channel. Users hit Oak triage first
+  // (POST /support/ask); cases land here only when AI couldn't resolve. The
+  // inbox sorts by updated_at — it's a queue, not a log.
+  const supportCases = db.collection<SupportCaseDoc>('support_cases')
+  const llmFn = createLlmRouterFromEnv()
+
+  app.get('/operator/support', { preHandler: requireOperator(db, 'support.read') }, async (request, reply) => {
+    const parsed = SupportQuerySchema.safeParse(request.query)
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
+    const { q, status, limit, offset, cursor } = parsed.data
+    const filter: Record<string, unknown> = {}
+    if (q) {
+      const pattern = safeRegex(q)
+      filter['$or'] = [{ subject: pattern }, { email: pattern }, { id: pattern }]
+    }
+    if (status) filter['status'] = status
+    const decoded = decodeCursor(cursor)
+    if (decoded === null) return reply.status(400).send({ error: 'Invalid cursor' })
+    if (decoded) filter['$and'] = [cursorFilter(decoded, 'id', 'updated_at')]
+    const [items, total, counts] = await Promise.all([
+      supportCases.find(filter, { projection: { _id: 0 } }).sort({ updated_at: -1, id: -1 }).skip(decoded ? 0 : offset).limit(limit).toArray(),
+      decoded ? Promise.resolve(undefined) : supportCases.countDocuments(filter),
+      supportCases.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]).toArray(),
+    ])
+    const last = items[items.length - 1]
+    const nextCursor = items.length === limit && last ? encodeCursor(last, 'id', 'updated_at') : undefined
+    return {
+      cases: items,
+      total,
+      limit,
+      offset,
+      ...(nextCursor ? { next_cursor: nextCursor } : {}),
+      statuses: Object.fromEntries(counts.map((s) => [s['_id'], s['count']])),
+    }
+  })
+
+  /** Case detail + the account context an operator needs beside the thread
+   *  — plan, tenant, member count — so the reply doesn't need a second
+   *  page open to know who's asking. */
+  app.get<{ Params: { id: string } }>('/operator/support/:id', { preHandler: requireOperator(db, 'support.read') }, async (request, reply) => {
+    const doc = await supportCases.findOne({ id: request.params.id }, { projection: { _id: 0 } })
+    if (!doc) return reply.status(404).send({ error: 'Case not found' })
+    const [user, tenant, memberCount] = await Promise.all([
+      users.findOne({ id: doc['user_id'] }, { projection: { _id: 0, id: 1, email: 1, name: 1, status: 1, created_at: 1 } }),
+      tenants.findOne({ tenant_id: doc['tenant_id'] }, { projection: { _id: 0, tenant_id: 1, name: 1, plan: 1, status: 1 } }),
+      users.countDocuments({ tenant_id: doc['tenant_id'] }),
+    ])
+    return { case: doc, user, tenant, member_count: memberCount }
+  })
+
+  /** Operator reply — the action itself is the reason, so the audit entry
+   *  records the case reference rather than demanding a typed reason for
+   *  every chat message. */
+  app.post<{ Params: { id: string } }>('/operator/support/:id/reply', { preHandler: requireOperator(db, 'support.manage') }, async (request, reply) => {
+    const parsed = SupportMessageWriteSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
+    const doc = await supportCases.findOne({ id: request.params.id }, { projection: { subject: 1, user_id: 1 } })
+    if (!doc) return reply.status(404).send({ error: 'Case not found' })
+    const operator = request.operatorContext
+    const now = new Date()
+    const operatorUser = await users.findOne({ id: operator?.user_id }, { projection: { name: 1 } })
+    const result = await supportCases.updateOne(
+      { id: request.params.id },
+      {
+        $push: {
+          messages: {
+            id: randomUUID(), author: 'operator', author_id: operator?.user_id,
+            author_name: (operatorUser?.['name'] as string) ?? 'Operator',
+            text: parsed.data.text, created_at: now,
+          } as SupportMessage,
+        },
+        $set: { status: 'answered', updated_at: now },
+      },
+    )
+    if (result.matchedCount === 0) return reply.status(404).send({ error: 'Case not found' })
+    await audit.log(request, 'operator.support.reply', 'support_case', request.params.id, `Replied to "${doc['subject']}"`)
+    return { ok: true }
+  })
+
+  /** AI draft — LLM proposes a reply grounded in the thread + account
+   *  context; the operator edits and sends. Never auto-sent: external-facing
+   *  text a human hasn't read is a publishing action, not a draft. */
+  app.post<{ Params: { id: string } }>('/operator/support/:id/draft', { preHandler: requireOperator(db, 'support.manage') }, async (request, reply) => {
+    const doc = await supportCases.findOne({ id: request.params.id }, { projection: { _id: 0 } })
+    if (!doc) return reply.status(404).send({ error: 'Case not found' })
+    const user = await users.findOne({ id: doc['user_id'] }, { projection: { name: 1, email: 1, status: 1 } })
+    const tenant = await tenants.findOne({ tenant_id: doc['tenant_id'] }, { projection: { plan: 1 } })
+    const thread = (doc['messages'] as Array<{ author: string; text: string }> ?? [])
+      .map((m) => `${m.author === 'user' ? 'Customer' : m.author === 'oak' ? 'Oak (AI)' : 'Operator'}: ${m.text}`)
+      .join('\n')
+    const prompt =
+      `Customer: ${(user?.['name'] as string) ?? 'unknown'} (${(user?.['email'] as string) ?? 'no email'}), account status ${(user?.['status'] as string) ?? 'active'}, plan ${(tenant?.['plan'] as string) ?? 'free'}.\n` +
+      `Case subject: ${doc['subject']}\n\nThread so far:\n${thread}\n\nDraft a reply for the operator.`
+    try {
+      const draft = await llmFn(
+        `You draft support replies for Agent Oak operators. Write a helpful, honest reply to the customer's latest message. Never give financial/investment/insurance/legal advice or recommend specific providers. If the request needs an account change (billing, deletion, reset), say the team will handle it — never promise specifics you can't verify. Plain text, 2–5 sentences, no greeting sign-off boilerplate beyond a name placeholder if needed.`,
+        prompt,
+        'tier:fast',
+      )
+      return { draft }
+    } catch (err) {
+      request.log.warn({ err }, 'Support draft LLM call failed')
+      return reply.status(503).send({ error: 'AI drafting unavailable right now' })
+    }
+  })
+
+  app.post<{ Params: { id: string } }>('/operator/support/:id/resolve', { preHandler: requireOperator(db, 'support.manage') }, async (request, reply) => {
+    const parsed = ReasonSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+    const result = await supportCases.updateOne(
+      { id: request.params.id, status: { $ne: 'resolved' } },
+      { $set: { status: 'resolved', resolved_by: request.operatorContext?.user_id, resolved_at: new Date(), updated_at: new Date() } },
+    )
+    if (result.matchedCount === 0) return reply.status(404).send({ error: 'Case not found or already resolved' })
+    await audit.log(request, 'operator.support.resolve', 'support_case', request.params.id, parsed.data.reason)
+    return { ok: true }
+  })
+
+  app.post<{ Params: { id: string } }>('/operator/support/:id/reopen', { preHandler: requireOperator(db, 'support.manage') }, async (request, reply) => {
+    const parsed = ReasonSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+    const result = await supportCases.updateOne(
+      { id: request.params.id, status: 'resolved' },
+      { $set: { status: 'open', updated_at: new Date() }, $unset: { resolved_by: '', resolved_at: '' } },
+    )
+    if (result.matchedCount === 0) return reply.status(404).send({ error: 'Case not found or not resolved' })
+    await audit.log(request, 'operator.support.reopen', 'support_case', request.params.id, parsed.data.reason)
+    return { ok: true }
   })
 
   // ── Operator audit + operations health ──────────────────────────────────

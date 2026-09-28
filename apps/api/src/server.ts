@@ -93,6 +93,7 @@ import { getPlatformConfig, registerPublicStatusRoute } from './operator/platfor
 import { registerDetectorEvalRoutes, detectorEvalDir } from './routes/detector-evals.js'
 import { ensureReminderIndexes, runPolicyRenewalReminders } from './jobs/policy-renewal-reminders.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
+import { registerSupportRoutes } from './routes/support.js'
 import { registerReadinessQuizRoutes } from './routes/readiness-quiz.js'
 import { registerLeadRoutes } from './routes/leads.js'
 import { sendOpsAlert } from './lib/ops-alerts.js'
@@ -1254,6 +1255,7 @@ if (workflowDb) {
   registerGrowthEventRoutes(app, workflowDb)
   registerFamilyInboxRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerAssistantRoutes(app, workflowDb)
+  registerSupportRoutes(app, workflowDb)
   registerReadinessQuizRoutes(app, workflowDb, engine)
   await registerLeadRoutes(app, workflowDb)
   await registerFamilyFinancialProfileRoutes(app, workflowDb, engine, insightsDeliveryHook)

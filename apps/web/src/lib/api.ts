@@ -1820,6 +1820,7 @@ export interface OperatorOverview {
   growth_events_7d: Array<{ event: string; count: number }>
   /** Per-day counts of funnel events over the last 30 days — sparkline feed. */
   activity_30d?: Array<{ day: string; event: string; count: number }>
+  support?: { open: number }
 }
 
 export interface OperatorUser {
@@ -2359,4 +2360,115 @@ export async function captureLead(input: { email: string; name?: string; source:
     reportError(err, { path: '/leads' })
     return false
   }
+}
+
+// ── Support channel (user-facing + operator inbox) ────────────────────────
+
+export interface SupportMessage {
+  id: string
+  author: 'user' | 'operator' | 'oak'
+  author_id?: string
+  author_name?: string
+  text: string
+  created_at: string
+}
+
+export interface SupportCase {
+  id: string
+  subject: string
+  status: 'open' | 'answered' | 'resolved'
+  ai_triaged: boolean
+  email?: string
+  user_id?: string
+  tenant_id?: string
+  messages: SupportMessage[]
+  created_at: string
+  updated_at: string
+}
+
+async function supportRequest<T>(path: string, method = 'GET', body?: Record<string, unknown>): Promise<T> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Request failed')
+  return data as T
+}
+
+/** AI triage — Oak answers product/account questions before a case exists. */
+export function askSupport(question: string): Promise<{ answer: string; isLive: boolean }> {
+  return supportRequest('/support/ask', 'POST', { question })
+}
+
+export function createSupportCase(subject: string, message: string, triage?: { question: string; answer: string }[]): Promise<{ case: SupportCase }> {
+  return supportRequest('/support/cases', 'POST', { subject, message, ...(triage?.length ? { triage } : {}) })
+}
+
+export function fetchMySupportCases(): Promise<{ cases: SupportCase[] }> {
+  return supportRequest('/support/cases')
+}
+
+export function fetchMySupportCase(id: string): Promise<{ case: SupportCase }> {
+  return supportRequest(`/support/cases/${encodeURIComponent(id)}`)
+}
+
+export function replyToMyCase(id: string, text: string): Promise<{ ok: boolean }> {
+  return supportRequest(`/support/cases/${encodeURIComponent(id)}/messages`, 'POST', { text })
+}
+
+// Operator inbox
+export interface OperatorCaseDetail {
+  case: SupportCase
+  user?: { id: string; email: string; name: string; status?: string; created_at: string } | null
+  tenant?: { tenant_id: string; name?: string; plan?: string; status?: string } | null
+  member_count: number
+}
+
+export function fetchOperatorSupportCases(
+  query: { q?: string; status?: string; cursor?: string; limit?: number } = {},
+): Promise<{ cases: SupportCase[]; total?: number; next_cursor?: string; statuses: Record<string, number> }> {
+  const params = new URLSearchParams()
+  for (const [k, v] of Object.entries(query)) {
+    if (v !== undefined && v !== '') params.set(k, String(v))
+  }
+  return operatorRequest(`/operator/support${params.size ? `?${params}` : ''}`)
+}
+
+export function fetchOperatorSupportCase(id: string): Promise<OperatorCaseDetail> {
+  return operatorRequest(`/operator/support/${encodeURIComponent(id)}`)
+}
+
+export async function replyOperatorCase(id: string, text: string): Promise<void> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/operator/support/${encodeURIComponent(id)}/reply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ text }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Reply failed')
+}
+
+export const resolveOperatorCase = (id: string, reason: string) => operatorAction(`/operator/support/${id}/resolve`, reason)
+export const reopenOperatorCase = (id: string, reason: string) => operatorAction(`/operator/support/${id}/reopen`, reason)
+
+/** AI-drafted operator reply — proposal only, never sent without the
+ *  operator editing and submitting it themselves. */
+export function draftOperatorReply(id: string): Promise<{ draft: string }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  return fetch(`${base}/operator/support/${encodeURIComponent(id)}/draft`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: '{}',
+  }).then(async (res) => {
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error((data.error as string) || 'Draft failed')
+    return data as { draft: string }
+  })
 }

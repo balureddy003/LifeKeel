@@ -50,6 +50,8 @@ function collectAttention(overview: OperatorOverview, ops: OperatorOperations | 
   if (overview.users.suspended > 0) items.push({ severity: 'info', text: `${overview.users.suspended} suspended user${overview.users.suspended === 1 ? '' : 's'}`, href: '/operator/users' })
   const newLeads = overview.leads?.['new'] ?? 0
   if (newLeads > 0) items.push({ severity: 'info', text: `${newLeads} new lead${newLeads === 1 ? '' : 's'} awaiting triage`, href: '/operator/leads' })
+  const openCases = overview.support?.open ?? 0
+  if (openCases > 0) items.push({ severity: 'warning', text: `${openCases} open support case${openCases === 1 ? '' : 's'} — Oak already triaged`, href: '/operator/support' })
   return items
 }
 

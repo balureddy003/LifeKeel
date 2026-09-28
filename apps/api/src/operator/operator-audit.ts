@@ -35,6 +35,9 @@ export type OperatorAuditAction =
   | 'operator.user.unlock'
   | 'operator.user.export'
   | 'operator.user.erase'
+  | 'operator.support.reply'
+  | 'operator.support.resolve'
+  | 'operator.support.reopen'
 
 export interface OperatorAuditEntry {
   operator_user_id: string

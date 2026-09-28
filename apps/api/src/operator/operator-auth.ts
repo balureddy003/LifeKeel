@@ -23,6 +23,8 @@ export type OperatorPermission =
   | 'leads.manage'
   | 'promotions.read'
   | 'promotions.manage'
+  | 'support.read'
+  | 'support.manage'
 
 export interface OperatorContext {
   user_id: string
@@ -38,22 +40,23 @@ interface PlatformOperatorDoc {
 }
 
 const ROLE_PERMISSIONS: Record<PlatformRole, readonly OperatorPermission[]> = {
-  support: ['overview.read', 'users.read', 'tenants.read', 'operations.read', 'leads.read', 'audit.read'],
+  support: ['overview.read', 'users.read', 'tenants.read', 'operations.read', 'leads.read', 'audit.read', 'support.read', 'support.manage'],
   marketing_operator: ['overview.read', 'marketing.read', 'marketing.manage', 'leads.read', 'leads.manage', 'promotions.read', 'audit.read'],
   finance_operator: ['overview.read', 'billing.read', 'billing.manage', 'tenants.read', 'leads.read', 'promotions.read', 'promotions.manage', 'audit.read'],
-  operations: ['overview.read', 'users.read', 'tenants.read', 'marketing.read', 'operations.read', 'operations.manage', 'leads.read', 'audit.read'],
+  operations: ['overview.read', 'users.read', 'tenants.read', 'marketing.read', 'operations.read', 'operations.manage', 'leads.read', 'audit.read', 'support.read'],
   platform_admin: [
     'overview.read', 'users.read', 'users.manage', 'tenants.read', 'tenants.manage',
     'marketing.read', 'marketing.manage', 'operations.read', 'operations.manage',
     'billing.read', 'billing.manage', 'configuration.read', 'configuration.manage',
     'leads.read', 'leads.manage', 'promotions.read', 'promotions.manage', 'audit.read',
+    'support.read', 'support.manage',
   ],
   super_admin: [
     'overview.read', 'users.read', 'users.manage', 'tenants.read', 'tenants.manage',
     'marketing.read', 'marketing.manage', 'operations.read', 'operations.manage',
     'billing.read', 'billing.manage', 'configuration.read', 'configuration.manage',
     'leads.read', 'leads.manage', 'promotions.read', 'promotions.manage',
-    'operators.manage', 'audit.read',
+    'operators.manage', 'audit.read', 'support.read', 'support.manage',
   ],
 }
 
