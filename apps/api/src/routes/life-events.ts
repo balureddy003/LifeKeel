@@ -51,12 +51,18 @@ interface LifeEventSignalDoc {
     event_type: LifeEventType
     affected_member_id?: string
     reported_at: string
+    // Who reported it — needed so checklist-reminder.ts's cron can nudge
+    // the reporter specifically (not every adult, unlike vault-reminder)
+    // without re-deriving it from context it no longer has by then.
+    reported_by_user_id?: string
     // Checklist completion (remediation item 19) — previously localStorage-
     // only on the web client, so checking off "call your insurer" on a phone
     // never showed on a laptop and was invisible to Oak entirely. Persisted
     // on the signal doc itself; only ids the currently-rendered playbook
     // actually contains are ever stored or returned.
     completed_step_ids?: string[]
+    // checklist-reminder.ts's dedupe flag — one reminder ever per event.
+    checklist_reminder_sent?: boolean
   }
   created_at: Date
 }
@@ -142,7 +148,12 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
         signal_type: 'family.life_event',
         source: 'manual-entry',
         external_id: id,
-        data: { event_type, ...(affected_member_id ? { affected_member_id } : {}), reported_at },
+        data: {
+          event_type,
+          ...(affected_member_id ? { affected_member_id } : {}),
+          reported_at,
+          reported_by_user_id: req.authContext.user_id,
+        },
       })
 
       // PRD-111: reporting any life event is the family acting on their

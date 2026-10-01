@@ -188,6 +188,24 @@ export async function fetchMemberInsights(memberId: string): Promise<FamilyInsig
   )
 }
 
+// Real readiness for a /events "What If?" scenario — computed server-side
+// from the family's actual profile (apps/api's event-readiness.ts) rather
+// than /events' hardcoded EVENT_STABILITY fallback map. hasLiveData: false
+// (the only field guaranteed present) means "no real number for this
+// event id" — the caller falls back to its own static sample.
+export interface EventReadiness {
+  stability: number
+  explanation: string
+  hasLiveData: boolean
+}
+
+export async function fetchEventReadiness(eventId: string): Promise<EventReadiness | { hasLiveData: false }> {
+  return apiFetch<EventReadiness | { hasLiveData: false }>(
+    `/family/events/${encodeURIComponent(eventId)}/readiness`,
+    { hasLiveData: false },
+  )
+}
+
 // PRD-117: the member twin read model — roster record + earner slice +
 // attributed policies/funds/insights, assembled server-side per read.
 export interface MemberTwin {

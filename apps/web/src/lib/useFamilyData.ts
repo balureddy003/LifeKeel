@@ -13,6 +13,7 @@ import {
   fetchFamilyReadiness,
   fetchFamilyReadinessScore,
   fetchFinancialProfile,
+  fetchEventReadiness as fetchEventReadinessApi,
   type FinancialProfile,
   type ReadinessComponentKey,
   RESOLVED_INSIGHT_STATES,
@@ -373,18 +374,35 @@ export function useEventReadiness(
 
   useEffect(() => {
     let cancelled = false
+
+    // event-readiness.ts on the API side — the fallback used below when
+    // EVENT_DETECTOR_MAP has no mapping (car/property/travel today) or the
+    // mapped detector hasn't produced a matching insight yet. Never backed
+    // by an Insight document, so insightId/ruleId always stay null on this
+    // path — the "Draft a message"/"Learn more" affordances that need one
+    // simply don't render for these event types, same as before.
+    async function loadFromEventReadiness() {
+      const result = await fetchEventReadinessApi(eventId)
+      if (cancelled) return
+      if ('stability' in result && result.hasLiveData) {
+        setStability(result.stability)
+        setExplanation(result.explanation)
+        setHasLiveData(true)
+      } else {
+        setStability(fallbackStability)
+        setExplanation(fallbackExplanation)
+        setHasLiveData(false)
+      }
+      setInsightId(null)
+      setRuleId(null)
+      setLoading(false)
+    }
+
     async function load() {
       setLoading(true)
       const mapping = EVENT_DETECTOR_MAP[eventId]
       if (!mapping) {
-        if (!cancelled) {
-          setStability(fallbackStability)
-          setExplanation(fallbackExplanation)
-          setHasLiveData(false)
-          setInsightId(null)
-          setRuleId(null)
-          setLoading(false)
-        }
+        await loadFromEventReadiness()
         return
       }
 
@@ -392,31 +410,23 @@ export function useEventReadiness(
         const insights = await fetchFamilyInsights()
         const candidates = insights.filter((i) => i.detector_id === mapping.detectorId)
         const matching = candidates.find((i) => i.rule_id === mapping.preferredRuleId) ?? candidates[0]
-        if (!cancelled) {
-          if (matching && (matching.reasoning || matching.hypothesis)) {
-            setStability(matching.confidence > 0 ? Math.round(matching.confidence * 100) : fallbackStability)
-            setExplanation(matching.reasoning || matching.hypothesis || fallbackExplanation)
-            setHasLiveData(true)
-            setInsightId(matching.id)
-            setRuleId(matching.rule_id)
-          } else {
-            setStability(fallbackStability)
-            setExplanation(fallbackExplanation)
-            setHasLiveData(false)
-            setInsightId(null)
-            setRuleId(null)
-          }
+        if (cancelled) return
+        if (matching && (matching.reasoning || matching.hypothesis)) {
+          setStability(matching.confidence > 0 ? Math.round(matching.confidence * 100) : fallbackStability)
+          setExplanation(matching.reasoning || matching.hypothesis || fallbackExplanation)
+          setHasLiveData(true)
+          setInsightId(matching.id)
+          setRuleId(matching.rule_id)
           setLoading(false)
+        } else {
+          // Mapped detector exists but hasn't flagged anything yet — fall
+          // back to the real-data computation rather than going straight
+          // to the static sample, so a clean-but-complete profile still
+          // shows a real number instead of a permanent "Sample scenario".
+          await loadFromEventReadiness()
         }
       } catch {
-        if (!cancelled) {
-          setStability(fallbackStability)
-          setExplanation(fallbackExplanation)
-          setHasLiveData(false)
-          setInsightId(null)
-          setRuleId(null)
-          setLoading(false)
-        }
+        if (!cancelled) await loadFromEventReadiness()
       }
     }
     load()

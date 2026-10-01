@@ -83,6 +83,7 @@ import { registerReferralRoutes } from './routes/referrals.js'
 import { registerGrowthEventRoutes } from './routes/growth-events.js'
 import { registerFamilyFinancialProfileRoutes } from './routes/family-financial-profile.js'
 import { registerLifeEventRoutes } from './routes/life-events.js'
+import { runChecklistReminderSweep } from './life-events/checklist-reminder.js'
 import { registerFamilyInboxRoutes } from './routes/family-inbox.js'
 import { registerPushRoutes } from './routes/push.js'
 import { registerReminderRoutes } from './routes/reminders.js'
@@ -399,6 +400,23 @@ try {
     }
   }, { missedExecutionTolerance: 3_600_000 })
   log.info({}, 'Continuity check cron started')
+
+  // Checklist reminder — Tier 3, daily at 08:10. Nudges the reporting user
+  // (only — see checklist-reminder.ts) when a bereavement/disability/
+  // medical life event they reported 3+ days ago still has unchecked
+  // response-plan steps. One email ever per event, same dedupe shape as
+  // vault-reminder.ts.
+  cron.schedule('10 8 * * *', async () => {
+    try {
+      await withCronLock(workflowDb, 'checklist-reminder', async () => {
+        const sent = await runChecklistReminderSweep(workflowDb)
+        if (sent > 0) log.info({ sent }, 'Checklist reminder sweep')
+      })
+    } catch (err) {
+      log.error({ err }, 'Checklist reminder sweep failed')
+    }
+  }, { missedExecutionTolerance: 3_600_000 })
+  log.info({}, 'Checklist reminder cron started')
 
   // Trading (auto-trade confirmation, reconciliation, momentum rebalance)
   // and workflow-approval-timeout sweeps removed — Agent Oak has no trading

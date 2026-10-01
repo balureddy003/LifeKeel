@@ -418,7 +418,19 @@ export default function EventDetailClient() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
       >
-        <Link href="/assistant" onClick={() => haptic('light')} className="block">
+        {/* Workstream A bonus: used to link to a blank chat with no idea
+            what the user was just looking at. Now hands Oak the specific
+            scenario by name so its first answer is grounded in this event
+            instead of starting from zero — Oak still computes the actual
+            numbers itself from the live profile, this just points it at
+            the right question. */}
+        <Link
+          href={`/assistant?context=/events&prompt=${encodeURIComponent(
+            `What would happen to my family financially if "${event.label}" happened, and what should we prepare?`,
+          )}`}
+          onClick={() => haptic('light')}
+          className="block"
+        >
           <GlassButton variant="secondary">
             <Bot size={18} />
             <span>Ask AI About This</span>
