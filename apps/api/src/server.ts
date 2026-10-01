@@ -98,6 +98,7 @@ import { getPlatformConfig, registerPublicStatusRoute } from './operator/platfor
 import { registerDetectorEvalRoutes, detectorEvalDir } from './routes/detector-evals.js'
 import { ensureReminderIndexes, runPolicyRenewalReminders } from './jobs/policy-renewal-reminders.js'
 import { runMemberAgentLoop } from './jobs/member-agent-loop.js'
+import { runStaleProfileEvaluationSweep } from './jobs/stale-profile-evaluation.js'
 import { ensureMemberNudgeIndexes } from './member-nudges.js'
 import { runContinuityCheck, ensureContinuityIndexes } from './jobs/continuity-check.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
@@ -648,6 +649,27 @@ try {
   const persistAndDeliverInsights = async (insights: Insight[], tenantId: string): Promise<void> =>
     persistAndDeliverInsightsCore(workflowDb, insights, tenantId, deliveryRouter)
   insightsDeliveryHook = persistAndDeliverInsights
+
+  // Stale profile evaluation — daily at 06:30 (before the member agent
+  // loop at 07:15 and continuity check at 07:45). Closes the gap where a
+  // family autosaves real data across wizard steps but never clicks "Save
+  // & Generate Insights" — their profile sits fully accurate and fully
+  // un-evaluated otherwise. Tier 0: reuses the exact
+  // evaluateProfileAndGenerateInsights() + persistAndDeliverInsights path
+  // POST /family/financial-profile/evaluate already runs on demand; this
+  // only adds the "someone has to remember to click it" → "guaranteed to
+  // eventually happen" part.
+  cron.schedule('30 6 * * *', async () => {
+    try {
+      await withCronLock(workflowDb, 'stale-profile-evaluation', async () => {
+        const summary = await runStaleProfileEvaluationSweep(workflowDb, engine, persistAndDeliverInsights)
+        if (summary.failed > 0) log.warn({ ...summary }, 'Stale profile evaluation sweep completed with failures')
+      })
+    } catch (err) {
+      log.error({ err }, 'Stale profile evaluation sweep failed')
+    }
+  }, { missedExecutionTolerance: 3_600_000, noOverlap: true })
+  log.info({}, 'Stale profile evaluation cron started')
 
   const retentionWorker = new RetentionWorker(workflowDb)
   const insightSlaWorker = new InsightSlaWorker(workflowDb)
