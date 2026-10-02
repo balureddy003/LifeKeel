@@ -19,3 +19,8 @@ next-env.d.ts
 dist/
 .turbo/
 __pycache__/
+
+# Playwright E2E — auth tokens/report output, never committed
+apps/web/e2e/.auth/
+apps/web/playwright-report/
+apps/web/test-results/
