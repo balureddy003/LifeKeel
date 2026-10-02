@@ -180,15 +180,28 @@ function toLocalResult(v: z.infer<typeof LocalExtractionSchema>): ExtractionResu
   return { category: v.category, fields, rawText: v.summary.slice(0, 500) }
 }
 
-/** Same contract as extractDocumentFields, but fully self-hosted. Never falls back to a cloud model. */
+/** The local engine or model failed (as opposed to the document legitimately having nothing to extract). */
+export class LocalExtractionError extends Error {
+  constructor(message: string, readonly cause_?: unknown) {
+    super(message)
+    this.name = 'LocalExtractionError'
+  }
+}
+
+/**
+ * Same contract as extractDocumentFields, but fully self-hosted. Never falls
+ * back to a cloud model. A document with nothing to read returns an empty
+ * result; an engine or model *failure* throws LocalExtractionError so the caller
+ * records it as retryable instead of storing a fake "extracted" result.
+ */
 export async function extractDocumentFieldsLocal(
   fileBuffer: Buffer,
   mimeType: string,
   filename: string,
   decide: DecisionFn,
 ): Promise<ExtractionResult> {
+  let text: string
   try {
-    let text: string
     if (mimeType === 'application/pdf') {
       text = await extractPdfText(fileBuffer)
       if (!text) return { category: 'other', fields: {}, rawText: 'Scanned PDF — no text layer to read' }
@@ -198,7 +211,12 @@ export async function extractDocumentFieldsLocal(
     } else {
       return { category: 'other', fields: {}, rawText: `Unsupported file type: ${mimeType}` }
     }
+  } catch (err) {
+    log.error({ err, filename }, 'Local OCR engine failed')
+    throw new LocalExtractionError(`OCR engine failed: ${(err as Error).message}`, err)
+  }
 
+  try {
     log.info({ filename, provider: 'local' }, 'Starting local OCR extraction')
     const { value } = await decide({
       system: LOCAL_SYSTEM_PROMPT,
@@ -210,8 +228,8 @@ export async function extractDocumentFieldsLocal(
     log.info({ filename, category: result.category, field_count: Object.keys(result.fields).length }, 'Local OCR extraction complete')
     return result
   } catch (err) {
-    log.error({ err, filename }, 'Local OCR extraction failed')
-    return { category: 'other', fields: {}, rawText: `Extraction error: ${(err as Error).message}` }
+    log.error({ err, filename }, 'Local extraction model failed')
+    throw new LocalExtractionError(`Local model failed: ${(err as Error).message}`, err)
   }
 }
 
@@ -359,6 +377,9 @@ export async function processDocument(
           error_message: (err as Error).message,
           processing_completed_at: new Date(),
         },
+        // Counted so the retry sweep (ocr/retry-failed.ts) can give up on a document
+        // that keeps failing instead of retrying it forever.
+        $inc: { retry_count: 1 },
       },
     )
   }

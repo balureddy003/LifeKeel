@@ -77,6 +77,9 @@ jobs:
             LOCAL_OCR_MODEL=${{ vars.LOCAL_OCR_MODEL }}
             LOCAL_TEXT_ENABLED=${{ vars.LOCAL_TEXT_ENABLED }}
             LOCAL_TEXT_MODEL=${{ vars.LOCAL_TEXT_MODEL }}
+            LOCAL_MODEL_MAX_CONCURRENT=${{ vars.LOCAL_MODEL_MAX_CONCURRENT }}
+            EMAIL_SCAN_FANOUT=${{ vars.EMAIL_SCAN_FANOUT }}
+            EMAIL_SCAN_CONCURRENCY=${{ vars.EMAIL_SCAN_CONCURRENCY }}
           secrets: |
             MONGODB_URL=agentoak-mongodb-url:latest
             REDIS_URL=agentoak-redis-url:latest

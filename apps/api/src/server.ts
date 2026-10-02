@@ -63,7 +63,8 @@ import { RetentionWorker } from './jobs/retention-worker.js'
 import { InsightSlaWorker } from './jobs/insight-sla-worker.js'
 import { EscalationWorker } from './jobs/escalation-worker.js'
 import { createCredentialExpiryInsights } from './jobs/connector-health-alert.js'
-import { scanAllConnectedInboxes } from './jobs/email-scan.js'
+import { scanAllConnectedInboxes, enqueueConnectedInboxScans, runQueuedInboxScan, EMAIL_SCAN_QUEUE } from './jobs/email-scan.js'
+import { retryFailedDocuments } from './ocr/retry-failed.js'
 import { withCronLock, acquireCronLock, releaseCronLock, ensureCronLockIndex } from './jobs/cron-lock.js'
 import { registerApiVersioning, rewriteVersionedUrl } from './api-versioning.js'
 import { registerBillingRoutes } from './routes/billing.js'
@@ -242,14 +243,35 @@ try {
   // document-like attachments through the same OCR pipeline manual uploads
   // use. Also triggered on-demand right after connecting (see
   // family-connectors.ts) and via POST /connectors/email/scan.
+  // Opt-in (EMAIL_SCAN_FANOUT=true): one queue job per mailbox so scans run in parallel
+  // across workers instead of one after another (see jobs/email-scan.ts).
+  const emailScanFanout = process.env['EMAIL_SCAN_FANOUT'] === 'true'
   cron.schedule('*/15 * * * *', async () => {
     try {
-      await withCronLock(workflowDb, 'email-scan', () => scanAllConnectedInboxes(workflowDb))
+      await withCronLock(workflowDb, 'email-scan', () => emailScanFanout
+        // Fan-out: this tick only enqueues (fast); workers below do the scans in parallel.
+        ? enqueueConnectedInboxScans(workflowDb, (q, p) => queueManager.publish(q, p)).then(() => undefined)
+        : scanAllConnectedInboxes(workflowDb))
     } catch (err) {
       log.error({ err }, 'Email scan cron failed')
     }
   }, { missedExecutionTolerance: 30_000, noOverlap: true })
   log.info({}, 'Email scan cron started')
+
+  // Retry documents whose local OCR/extraction failed (status 'error'). Only
+  // relevant when the self-hosted model is configured; bounded per document by
+  // MAX_DOCUMENT_ATTEMPTS and per sweep by SWEEP_LIMIT (see ocr/retry-failed.ts).
+  const ocrRetryDecide = localDecisionFromEnv('ocr')
+  if (ocrRetryDecide) {
+    cron.schedule('*/10 * * * *', async () => {
+      try {
+        await withCronLock(workflowDb, 'document-ocr-retry', () => retryFailedDocuments(workflowDb, ocrRetryDecide))
+      } catch (err) {
+        log.error({ err }, 'Document OCR retry cron failed')
+      }
+    }, { missedExecutionTolerance: 30_000, noOverlap: true })
+    log.info({}, 'Document OCR retry cron started')
+  }
 
   // Marketing publish sweep — every minute. Channels can't hold schedules,
   // so approved posts with a due scheduled_at are dispatched here; the lock
@@ -769,6 +791,14 @@ try {
   // ── Queue setup ───────────────────────────────────────────────────────────
   await queueManager.connect()
   startWebhookWorker(engine, connectorLoader, eventGenerator, workflowDb, deliveryRouter)
+  if (emailScanFanout) {
+    // Per-process concurrency; total parallelism is this x replicas. Size it with the
+    // model service: each in-flight scan can hold one local-model call (see
+    // LOCAL_MODEL_MAX_CONCURRENT and the agentoak_local_model_queue_wait_seconds metric).
+    const scanConcurrency = Number(process.env['EMAIL_SCAN_CONCURRENCY']) || 2
+    queueManager.subscribe(EMAIL_SCAN_QUEUE, (payload) => runQueuedInboxScan(workflowDb, payload), { concurrency: scanConcurrency })
+    log.info({ concurrency: scanConcurrency }, 'Email scan fan-out workers started')
+  }
   log.info({}, 'Queue manager connected')
 
   // ── Score calibration ─────────────────────────────────────────────────────
