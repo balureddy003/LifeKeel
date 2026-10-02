@@ -1,11 +1,14 @@
 import {
   JudgeScoresSchema,
   MoveJudge,
+  type JudgeEvaluator,
   type JudgeInput,
 } from '@agentoak/engine'
 import type { Db } from 'mongodb'
 import { callStructured, LlmBudgetGuard, createGuardEventSink, type DecisionFn, type LlmFn, type LlmGovernanceOptions } from '@agentoak/platform'
 import { createLocalJudgeEvaluator } from './local-judge.js'
+import { withShadow, type ShadowRecord } from './shadow-judge.js'
+import { recordShadowComparison } from '../routes/metrics.js'
 
 const SYSTEM = `You are the final quality check for a family-finance insight shown to a household.
 Score each rubric dimension from 1 to 5. Be strict about claims the evidence does not
@@ -16,19 +19,44 @@ to buy, switch, sell or invest, or any steering towards a named product or provi
 caps safety at 1. Pointing the family to "a licensed professional" or to compare quotes
 from multiple providers is correct, not a defect.`
 
+const SHADOW_RETENTION_MS = 30 * 24 * 3_600_000
+
+export interface CreateMoveJudgeOptions {
+  /**
+   * With a local model configured, keep the cloud judge authoritative and run the
+   * local one behind it, recording agreement (see shadow-judge.ts). For validating the
+   * local judge on real traffic before it is allowed to decide. Insight text still goes
+   * to the cloud judge in this mode, as it did before the local judge existed.
+   */
+  shadow?: boolean
+}
+
 /**
  * When `localDecide` is provided the judge runs on our own small model and
  * never falls back to a cloud LLM: a local failure or an uncertain answer
  * blocks the insight and queues it for human review. This keeps insight text
- * inside our infrastructure and spends no tokens.
+ * inside our infrastructure and spends no tokens. With `opts.shadow` the cloud judge
+ * decides and the local one is only measured.
  */
-export function createMoveJudge(llm: LlmFn, db: Db, localDecide?: DecisionFn): MoveJudge {
-  if (localDecide) return new MoveJudge(createLocalJudgeEvaluator(localDecide), { useGuard: true })
+export function createMoveJudge(llm: LlmFn, db: Db, localDecide?: DecisionFn, opts: CreateMoveJudgeOptions = {}): MoveJudge {
+  if (localDecide && !opts.shadow) return new MoveJudge(createLocalJudgeEvaluator(localDecide), { useGuard: true })
 
+  const cloud = createCloudJudgeEvaluator(llm, db)
+  if (!localDecide) return new MoveJudge(cloud, { useGuard: true })
+
+  const record = async (r: ShadowRecord) => {
+    recordShadowComparison('judge', r.outcome)
+    // No insight text or figures: ids, decisions and outcome only.
+    await db.collection('judge_shadow_results').insertOne({ ...r, created_at: new Date(), expires_at: new Date(Date.now() + SHADOW_RETENTION_MS) })
+  }
+  return new MoveJudge(withShadow(cloud, createLocalJudgeEvaluator(localDecide), { record }), { useGuard: true })
+}
+
+function createCloudJudgeEvaluator(llm: LlmFn, db: Db): JudgeEvaluator {
   const budgetGuard = new LlmBudgetGuard(db)
   const guardEventSink = createGuardEventSink(db, 'move-judge')
 
-  return new MoveJudge(async (input: JudgeInput) => {
+  return async (input: JudgeInput) => {
     const governance: LlmGovernanceOptions = {
       tenantId: input.insight.tenant_id ?? 'unknown',
       budgetGuard,
@@ -62,5 +90,5 @@ export function createMoveJudge(llm: LlmFn, db: Db, localDecide?: DecisionFn): M
       }),
     })
     return JudgeScoresSchema.parse(result.data)
-  }, { useGuard: true })
+  }
 }

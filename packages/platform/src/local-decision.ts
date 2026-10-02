@@ -26,6 +26,11 @@ export interface LocalDecisionConfig {
    * not the per-attempt timeout). Default: unlimited.
    */
   maxConcurrent?: number
+  /**
+   * Extra request headers, resolved per call (so short-lived tokens can refresh).
+   * Used for service-to-service auth, e.g. a Cloud Run identity token.
+   */
+  getHeaders?: () => Promise<Record<string, string>>
   /** Called once per decide() with the outcome, for metrics. Must not throw. */
   onCall?: (event: LocalDecisionCallEvent) => void
   /** Injectable for tests. */
@@ -115,9 +120,10 @@ export function createLocalDecisionFn(cfg: LocalDecisionConfig): DecisionFn {
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
+        const extraHeaders = cfg.getHeaders ? await cfg.getHeaders() : {}
         const res = await doFetch(`${baseUrl}/api/chat`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...extraHeaders },
           signal: AbortSignal.timeout(timeoutMs),
           body: JSON.stringify({
             model: cfg.model,

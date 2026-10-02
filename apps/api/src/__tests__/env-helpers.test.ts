@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { optionalFlag } from '../env-helpers.js'
+import { optionalEnum, optionalFlag } from '../env-helpers.js'
 
 describe('optionalFlag', () => {
   const schema = z.object({ FLAG: optionalFlag() })
@@ -18,5 +18,14 @@ describe('optionalFlag', () => {
 
   it('is what a plain strict enum is not: a plain enum rejects the empty string', () => {
     expect(z.object({ FLAG: z.enum(['true', 'false']).optional() }).safeParse({ FLAG: '' }).success).toBe(false)
+  })
+})
+
+describe('optionalEnum', () => {
+  const schema = z.object({ AUTH: optionalEnum(['none', 'cloudrun-iam']) })
+  it('treats an empty deploy variable as unset and still validates real values', () => {
+    expect(schema.safeParse({ AUTH: '' })).toMatchObject({ success: true, data: { AUTH: undefined } })
+    expect(schema.parse({ AUTH: 'cloudrun-iam' }).AUTH).toBe('cloudrun-iam')
+    expect(schema.safeParse({ AUTH: 'basic' }).success).toBe(false)
   })
 })

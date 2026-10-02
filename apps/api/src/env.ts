@@ -14,7 +14,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import { createLogger } from '@agentoak/platform'
-import { optionalFlag } from './env-helpers.js'
+import { optionalEnum, optionalFlag } from './env-helpers.js'
 
 const log = createLogger({ service: 'env', version: '0.0.0' })
 
@@ -55,6 +55,9 @@ const ConfigSchema = z.object({
   // Self-hosted small model for the move judge (see infra/local-judge). When set,
   // the judge never calls a cloud LLM.
   LOCAL_JUDGE_BASE_URL: z.string().optional(),
+  // How the API authenticates to the model service: 'cloudrun-iam' attaches a Google
+  // identity token (service deployed with --no-allow-unauthenticated); unset/none sends none.
+  LOCAL_JUDGE_AUTH: optionalEnum(['none', 'cloudrun-iam']),
   LOCAL_JUDGE_MODEL: z.string().optional(),
   LOCAL_CLASSIFIER_MODEL: z.string().optional(),
   LOCAL_OCR_MODEL: z.string().optional(),
@@ -62,7 +65,14 @@ const ConfigSchema = z.object({
   // Fan email scans out through the queue (parallel across workers) instead of one sequential cron loop.
   EMAIL_SCAN_FANOUT: optionalFlag(),
   EMAIL_SCAN_CONCURRENCY: z.string().optional(),
+  // USD per hour of one model instance; enables the busy-time cost estimate metric.
+  LOCAL_MODEL_COST_PER_HOUR_USD: z.string().optional(),
+  // Email policy-relevance encoder (infra/encoder-service). Mode off/unset = not used.
+  EMAIL_ENCODER_URL: z.string().optional(),
+  EMAIL_ENCODER_MODE: optionalEnum(['off', 'shadow', 'gate']),
   LOCAL_MODEL_MAX_CONCURRENT: z.string().optional(),
+  // Keep the cloud judge authoritative and measure the local one behind it (shadow mode).
+  JUDGE_SHADOW: optionalFlag(),
   LOCAL_TEXT_ENABLED: optionalFlag(),
   LOCAL_TEXT_MODEL: z.string().optional(),
 

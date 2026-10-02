@@ -172,6 +172,8 @@ export interface LlmConfig {
   azureApiVersion?: string
   /** Ollama base URL (default: http://localhost:11434) */
   ollamaBaseUrl?: string
+  /** Extra headers for Ollama calls, resolved per call (e.g. a Cloud Run identity token). */
+  ollamaHeaders?: () => Promise<Record<string, string>>
   /** Default model if caller doesn't specify */
   defaultModel?: string
   /** Max tokens to generate (default: 2048) */
@@ -483,6 +485,7 @@ async function callOllama(
   baseUrl: string,
   maxTokens: number,
   temperature: number,
+  getHeaders?: () => Promise<Record<string, string>>,
 ): Promise<string> {
   const url = `${baseUrl}/api/chat`
   const body = {
@@ -499,7 +502,7 @@ async function callOllama(
     try {
       res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(getHeaders ? await getHeaders() : {}) },
         body: JSON.stringify(body),
         // CPU-served models are slow but must not hang a request forever.
         signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
@@ -625,7 +628,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
 
         case 'ollama': {
           const baseUrl = cfg.ollamaBaseUrl ?? process.env['OLLAMA_BASE_URL'] ?? 'http://localhost:11434'
-          return await callOllama(system, prompt, resolvedModel, baseUrl, maxTokens, temperature)
+          return await callOllama(system, prompt, resolvedModel, baseUrl, maxTokens, temperature, cfg.ollamaHeaders)
         }
 
         default:

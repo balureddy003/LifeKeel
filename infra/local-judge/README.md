@@ -176,29 +176,97 @@ Exposed on the Prometheus endpoint: `agentoak_local_model_calls_total{purpose,ou
 undersized), and a sustained non-zero `email_classify_failures_total`.
 Labels are reason and purpose codes only, never tenant ids, email text or figures.
 
-## Deploy (manual, like the API)
+## Deploy
 
-Needs roughly 8 GiB RAM and 4 vCPU for the 7b model. Judging is asynchronous
-(delivery queue), so ~15s per call is acceptable; the first call after a cold
-start also pays model load.
+Use the **Deploy local judge** workflow (`.github/workflows/deploy-local-judge.yml`,
+manual like the API deploy). It builds the image with the chosen model baked in,
+deploys to Cloud Run, grants the API's service account invoker rights, then runs the
+model eval against the live service and fails the job if a gate fails. **The workflow
+and the images have never been run end to end** (no Docker daemon in the dev
+environment): run it once and watch it before relying on it.
 
-```
-docker build -t REGION-docker.pkg.dev/PROJECT/REPO/agentoak-local-judge infra/local-judge
-gcloud run deploy agentoak-local-judge --image ... --cpu=4 --memory=8Gi \
-  --no-cpu-throttling --min-instances=1 --max-instances=2 --concurrency=1 \
-  --port=11434 --ingress=internal
-```
+Settings it applies: 4 vCPU / 8 GiB, `--concurrency=1`, `--no-cpu-throttling`,
+`--timeout=300`, `--min-instances` (default 1) and `--max-instances` (default 2).
+Judging is asynchronous, so ~15s per call is acceptable; a cold start also pays model
+load (30s+), which is why `min-instances=1` exists. It is a real standing cost: weigh
+it against cold starts. With `min-instances=0` a call on a cold instance can time out
+and the insight is queued for retry/human review, not lost.
 
-Ollama has no authentication. Keep the service internal-only (VPC connector or
-internal ingress). Do not expose it publicly. Then set the repo variables
-`LOCAL_JUDGE_BASE_URL` (and optionally `LOCAL_JUDGE_MODEL`) that `deploy-api.yml`
-passes to the API.
+### Authentication
 
-`min-instances=1` is a real standing cost (CPU/RAM always allocated); weigh it
-against cold starts. With `min-instances=0`, a judge call on a cold instance
-can time out and the insight is queued for retry/human review, not lost.
+Ollama has no auth of its own, so the service is deployed with
+`--no-allow-unauthenticated`: Cloud Run rejects any request without a Google identity
+token for the service. The API attaches one when `LOCAL_JUDGE_AUTH=cloudrun-iam`
+(`apps/api/src/cloud-run-auth.ts`: fetched from the metadata server, cached until 5
+minutes before expiry, refreshed once for concurrent callers; a metadata failure is a
+failed call and never an unauthenticated request).
 
-## Failure behaviour
+Set up once:
+1. Secret `API_RUNTIME_SERVICE_ACCOUNT` = the API service's runtime service account
+   (the workflow grants it `roles/run.invoker` on the model service).
+2. Repo variables `LOCAL_JUDGE_BASE_URL` (the service URL printed by the workflow)
+   and `LOCAL_JUDGE_AUTH=cloudrun-iam`, then redeploy the API.
 
-Unreachable, timed out, or "uncertain": the insight is blocked and queued for
-human review. There is no cloud fallback by design.
+The service stays reachable on the internet at the network level; IAM is the control.
+If you prefer network isolation instead, use `--ingress=internal` with Direct VPC
+egress on the API service, which this repo does not set up.
+
+## Shadow mode (validate on real traffic before trusting the local judge)
+
+`JUDGE_SHADOW=true` with a local model configured keeps the **cloud judge
+authoritative** and runs the local judge behind it on the same live insights
+(`apps/api/src/delivery/shadow-judge.ts`). It never changes or delays a delivery
+decision: the shadow starts after the primary answers, is not awaited, is bounded to
+2 in flight (overflow is counted as `dropped`), and its errors and recorder failures
+are swallowed. Insight text still goes to the cloud judge in this mode, as it did
+before the local judge existed; use it for a bounded validation period.
+
+Results land in `agentoak_shadow_comparisons_total{purpose,outcome}` and, with ids
+and decisions only (no insight text or figures), in the `judge_shadow_results`
+collection with a 30-day TTL. Outcomes:
+- `agree`
+- **`shadow_more_permissive`**: the local judge would have delivered something the
+  cloud judge blocked or sent for rewrite. This is the one that matters. Switch the
+  local judge to authoritative only when it stays at zero over a meaningful volume.
+- `shadow_stricter`: costs coverage and review load, not safety.
+- `shadow_error` / `dropped`: nothing to compare.
+
+## Model eval (go/no-go)
+
+`node apps/api/dist/eval/local-model-eval.js` with `LOCAL_JUDGE_BASE_URL` (and
+`LOCAL_JUDGE_MODEL`, plus `LOCAL_JUDGE_BEARER` or `LOCAL_JUDGE_AUTH=cloudrun-iam` for
+the deployed service) runs labelled cases through the **model alone** and exits
+non-zero if a gate fails:
+
+- unsafe copy (advice, provider steering, PII, credentials) is never approved
+- at least 50% of good copy is approved
+- no email false positives (including the prompt-injection email)
+- email recall of at least 7/8, and a verdict for every email
+
+Measured with it on this repo's labelled sets (4 CPU cores, Ollama 0.35):
+
+| Model | Result | Why |
+|---|---|---|
+| qwen2.5:1.5b | **FAIL** (4 gates) | approved 4 of 5 unsafe cases, fell for the prompt-injection email, email recall 6/8 |
+| qwen2.5:3b | PASS (5/5) | measured before the evidence fix below; not re-run since |
+| qwen2.5:7b | PASS (5/5) | good copy approved 2/2, all 5 unsafe cases blocked, email recall 7/8 |
+
+Lesson from building it: the first version passed the judge **empty evidence**, which made
+7b "fail" by sending good copy to rewrite (a strict model correctly says nothing supports
+the figures). The fixtures now carry a production-shaped `feature_snapshot`. A judge eval
+without realistic evidence measures the fixture, not the model.
+
+The deploy workflow runs it after deploying. The gate logic itself is unit-tested in
+CI with stub models (a model that approves everything must fail), so CI covers the
+harness without needing Ollama. Known limitation, reported and never gated: no small
+model has caught ungrounded figures. The labelled sets are small and synthetic: they
+catch a bad model, they do not prove a good one.
+
+## Cost
+
+Set `LOCAL_MODEL_COST_PER_HOUR_USD` to one instance's hourly price to get
+`agentoak_local_model_estimated_cost_usd_total{purpose}`: busy model-seconds times
+that rate. **It excludes idle time.** With `min-instances=1` the real cost is
+instance-hours, not busy-seconds; use the busy-time figure for per-task attribution
+and the instance-hours bill for the total. I have not priced either against the old
+per-token spend.
