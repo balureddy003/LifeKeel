@@ -31,22 +31,50 @@ advice/provider-steering cases, PII, an ungrounded figure, vague copy),
 protection terms. Measured on 16 synthetic labelled emails
 (`email/__fixtures__/labelled-emails.ts`), model only, no prefilter:
 
-| Model | Classified correctly | Recall | False positives | Avg/email |
-|---|---|---|---|---|
-| qwen2.5:3b | 15/16 | 7/8 | 0 | ~10s |
-| qwen2.5:7b | 15/16 | 7/8 | 0 | ~19s |
+| Model | Classified correctly | Recall | False positives | Policy fields | Avg/email |
+|---|---|---|---|---|---|
+| qwen2.5:3b | 15/16 | 7/8 | 0 | 5/7 | ~14s |
+| qwen2.5:7b | 15/16 | 7/8 | 0 | 6/7 | ~22s |
 
 - Both resisted the prompt-injection email and both missed the same borderline
   "review your will" email.
-- Policy-field extraction is the weaker part: 7b is conservative and often
-  leaves out the provider, 3b fills it more often. Extracted fields only ever
-  *propose* a profile update that a human approves, never auto-applied.
+- Decoding schemas must mark every key **required with an explicit null option**.
+  With optional keys the small models skipped fields they could read (7b policy
+  fields were 2/7 before this fix, 6/7 after). Extracted fields only ever *propose*
+  a profile update that a human approves, never auto-applied.
 - Classification quality was equal, so `LOCAL_CLASSIFIER_MODEL=qwen2.5:3b`
   halves latency, at the cost of keeping a second model resident (~2 GB more RAM).
   Left at the judge model by default so only one model is loaded.
 - Sample is small and synthetic. Re-measure on real mail before widening use.
 - Classifier errors fall back to "not financial" (same as the cloud path
   today), so a model outage can silently drop an email. The UID cursor still advances.
+
+## Document OCR (same server + Tesseract in the API image)
+
+With `LOCAL_JUDGE_BASE_URL` set, uploaded documents and email attachments are read
+locally (`apps/api/src/ocr/local-ocr.ts`, `extract.ts`): images go through the
+Tesseract binary, PDFs through their text layer, then the self-hosted model fills a
+fixed set of fields. Nothing is sent to a cloud vision model. `LOCAL_OCR_MODEL`
+overrides the model for this task only.
+
+Measured on 8 synthetic documents (life policy, pension, mortgage, payslip; each
+rendered clean and degraded with rotation, blur and noise), 4 CPU cores:
+
+| Model | Category | Fields | Avg/doc (model, after OCR) |
+|---|---|---|---|
+| qwen2.5:3b | 8/8 | 32/32 | ~28s |
+| qwen2.5:7b | 8/8 | 30/32 | ~39s |
+
+- Tesseract read all 32 key tokens correctly on both clean and degraded renders
+  (~0.3s per image).
+- **3b beat 7b here**: 7b is more conservative and left the payslip employer out.
+  `LOCAL_OCR_MODEL=qwen2.5:3b` is the better choice for documents.
+- Not covered: handwriting, phone photos with perspective or glare, non-English
+  text, tables spanning pages, scanned PDFs (still skipped, as before). The
+  synthetic renders are cleaner than real scans, and the cloud vision model was
+  not available to compare against. Re-measure on real uploads before relying on it.
+- Needs `tesseract-ocr` in the API image (added to `apps/api/Dockerfile`, not
+  build-tested here).
 
 ## Deploy (manual, like the API)
 

@@ -56,6 +56,7 @@ const ConfigSchema = z.object({
   LOCAL_JUDGE_BASE_URL: z.string().optional(),
   LOCAL_JUDGE_MODEL: z.string().optional(),
   LOCAL_CLASSIFIER_MODEL: z.string().optional(),
+  LOCAL_OCR_MODEL: z.string().optional(),
 
   // Billing
   BILLING_V2_ENABLED: z.enum(['true', 'false']).optional(),

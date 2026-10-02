@@ -60,8 +60,21 @@ const LocalEmailSchema = z.object({
   }).nullish(),
 })
 
-const nullableString = { type: ['string', 'null'] } as const
-const nullableNumber = { type: ['number', 'null'] } as const
+// Every policy key is required with an explicit null option: measured on the OCR
+// path, optional keys let a small model skip fields it could read.
+const nullableString = { anyOf: [{ type: 'string' }, { type: 'null' }] } as const
+const nullableNumber = { anyOf: [{ type: 'number' }, { type: 'null' }] } as const
+const POLICY_JSON_PROPERTIES = {
+  provider: nullableString,
+  type: nullableString,
+  policy_number: nullableString,
+  cover_amount: nullableNumber,
+  currency: nullableString,
+  monthly_premium: nullableNumber,
+  renewal_date: nullableString,
+  contact_phone: nullableString,
+  contact_email: nullableString,
+} as const
 const LOCAL_EMAIL_JSON_SCHEMA = {
   type: 'object',
   properties: {
@@ -71,21 +84,13 @@ const LOCAL_EMAIL_JSON_SCHEMA = {
     action_type: { type: 'string', enum: ['review', 'renew', 'compare', 'update', 'info'] },
     priority: { type: 'string', enum: ['high', 'medium', 'low'] },
     policy: {
-      type: ['object', 'null'],
-      properties: {
-        provider: nullableString,
-        type: nullableString,
-        policy_number: nullableString,
-        cover_amount: nullableNumber,
-        currency: nullableString,
-        monthly_premium: nullableNumber,
-        renewal_date: nullableString,
-        contact_phone: nullableString,
-        contact_email: nullableString,
-      },
+      anyOf: [
+        { type: 'object', properties: POLICY_JSON_PROPERTIES, required: Object.keys(POLICY_JSON_PROPERTIES) },
+        { type: 'null' },
+      ],
     },
   },
-  required: ['is_financial', 'summary', 'action_label', 'action_type', 'priority'],
+  required: ['is_financial', 'summary', 'action_label', 'action_type', 'priority', 'policy'],
 } as const
 
 /** Keeps only well-typed, bounded fields — the model's output is untrusted. */

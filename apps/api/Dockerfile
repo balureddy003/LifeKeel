@@ -38,6 +38,11 @@ WORKDIR /app
 # the builder's node_modules wholesale.
 RUN apk add --no-cache python3 make g++ py3-setuptools py3-pip
 
+# Tesseract for local document OCR (apps/api/src/ocr/local-ocr.ts). Used only when
+# LOCAL_JUDGE_BASE_URL is set, so uploaded documents are read in-process instead of
+# being sent to a cloud vision model. NOT build-tested here; verify the image once.
+RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-eng
+
 # Install yfinance + pandas for the yfinance market-data connector
 # (scripts/fetch-yfinance.py). Required by the momentum engine to fetch
 # 252-day price history for portfolio tickers. No API key needed — yfinance

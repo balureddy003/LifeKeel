@@ -21,6 +21,7 @@ import { randomUUID } from 'node:crypto'
 import type { Engine, Insight } from '@agentoak/engine'
 import { createLogger, getTenantCollection } from '@agentoak/platform'
 import { processDocument } from '../ocr/extract.js'
+import { localDecisionFromEnv } from '../local-model.js'
 import { evaluateProfileAndGenerateInsights, FinancialProfileSchema } from './family-financial-profile.js'
 import {
   mapExtractedFieldsToProfileSuggestions,
@@ -170,7 +171,7 @@ export function registerDocumentRoutes(
       if (aiExtractionEnabled) {
         log.info({ documentId, filename, tenant_id }, 'Document stored, starting OCR processing')
         // Trigger async OCR processing (non-blocking — errors handled in processDocument)
-        processDocument(db, documentId, tenant_id, fileBuffer, mimeType, filename).catch((err) => {
+        processDocument(db, documentId, tenant_id, fileBuffer, mimeType, filename, localDecisionFromEnv('ocr')).catch((err) => {
           log.error({ err, documentId }, 'OCR processing threw unhandled error')
         })
       } else {
@@ -320,7 +321,7 @@ export function registerDocumentRoutes(
 
     const chunks: Buffer[] = []
     for await (const chunk of bucket.openDownloadStream(doc['file_id'] as ObjectId)) chunks.push(chunk as Buffer)
-    await processDocument(db, req.params.id, tenant_id, Buffer.concat(chunks), String(doc['mime_type'] ?? ''), String(doc['filename'] ?? 'document'))
+    await processDocument(db, req.params.id, tenant_id, Buffer.concat(chunks), String(doc['mime_type'] ?? ''), String(doc['filename'] ?? 'document'), localDecisionFromEnv('ocr'))
     const after = await documents.findOne({ id: req.params.id })
     return { id: req.params.id, category: after?.['category'], status: after?.['status'], fieldCount: Object.keys((after?.['extracted_data'] as object) ?? {}).length }
   })

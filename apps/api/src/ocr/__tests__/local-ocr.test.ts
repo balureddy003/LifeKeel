@@ -1,0 +1,132 @@
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, writeFileSync, chmodSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import type { DecisionFn } from '@agentoak/platform'
+import { isOcrableImage, LocalOcrError, ocrImageToText } from '../local-ocr.js'
+import { extractDocumentFieldsLocal } from '../extract.js'
+
+let dir: string
+let okBin: string
+let failBin: string
+const png = Buffer.from('not-a-real-png')
+
+beforeAll(() => {
+  dir = mkdtempSync(path.join(tmpdir(), 'fake-tesseract-'))
+  okBin = path.join(dir, 'ok.sh')
+  failBin = path.join(dir, 'fail.sh')
+  // Fake engine: consumes stdin, prints a policy document.
+  writeFileSync(okBin, '#!/bin/sh\ncat >/dev/null\nprintf "BRIGHTLIFE\\n\\n\\nPolicy number: BL-1\\nSum assured: 250,000 GBP  \\n"\n')
+  writeFileSync(failBin, '#!/bin/sh\ncat >/dev/null\necho boom >&2\nexit 3\n')
+  chmodSync(okBin, 0o755)
+  chmodSync(failBin, 0o755)
+})
+afterAll(() => rmSync(dir, { recursive: true, force: true }))
+
+describe('ocrImageToText', () => {
+  it('returns the engine text with whitespace tidied', async () => {
+    expect(await ocrImageToText(png, 'image/png', okBin)).toBe('BRIGHTLIFE\n\nPolicy number: BL-1\nSum assured: 250,000 GBP')
+  })
+
+  it('rejects unsupported types and oversized images before spawning anything', async () => {
+    await expect(ocrImageToText(png, 'application/zip', okBin)).rejects.toBeInstanceOf(LocalOcrError)
+    await expect(ocrImageToText(Buffer.alloc(16 * 1024 * 1024), 'image/png', okBin)).rejects.toThrow(/too large/)
+  })
+
+  it('surfaces a non-zero exit as a LocalOcrError', async () => {
+    await expect(ocrImageToText(png, 'image/png', failBin)).rejects.toThrow(/exit 3\): boom/)
+  })
+
+  it('reports a missing engine clearly instead of hanging', async () => {
+    await expect(ocrImageToText(png, 'image/png', path.join(dir, 'does-not-exist'))).rejects.toThrow(/unavailable/)
+  })
+
+  it('knows which mime types are images', () => {
+    expect(isOcrableImage('image/PNG')).toBe(true)
+    expect(isOcrableImage('application/pdf')).toBe(false)
+  })
+})
+
+const allNull = {
+  provider: null, policy_number: null, account_number: null, premium: null, renewal_date: null, maturity_date: null,
+  due_date: null, coverage_amount: null, balance: null, interest_rate: null, beneficiary: null, period: null,
+  net_pay: null, gross_pay: null, claims_phone: null, claims_email: null,
+}
+const decideWith = (value: unknown, calls: Array<{ system: string; prompt: string; jsonSchema: Record<string, unknown> }> = []) =>
+  (async (req: { system: string; prompt: string; jsonSchema: Record<string, unknown> }) => {
+    calls.push(req)
+    return { value, model: 'local', latency_ms: 1 }
+  }) as unknown as DecisionFn
+
+describe('extractDocumentFieldsLocal', () => {
+  it('reads an image through local OCR then the local model, keeping only stated fields', async () => {
+    process.env['TESSERACT_BIN'] = okBin
+    try {
+      const calls: Array<{ system: string; prompt: string; jsonSchema: Record<string, unknown> }> = []
+      const result = await extractDocumentFieldsLocal(
+        png, 'image/png', 'policy.png',
+        decideWith({ ...allNull, category: 'insurance', policy_type: 'life', summary: 'Life policy', provider: ' BrightLife ', coverage_amount: '250,000 GBP', premium: '   ' }, calls),
+      )
+      expect(result).toEqual({
+        category: 'insurance',
+        fields: { provider: 'BrightLife', coverage_amount: '250,000 GBP', policy_type: 'life' },
+        rawText: 'Life policy',
+      })
+      // OCR text reached the model inside the untrusted-data wrapper.
+      expect(calls[0]!.prompt).toContain('<document_text>')
+      expect(calls[0]!.prompt).toContain('Policy number: BL-1')
+      expect(calls[0]!.system.toLowerCase()).toContain('untrusted')
+    } finally {
+      delete process.env['TESSERACT_BIN']
+    }
+  })
+
+  it('requires every key in the decoding schema so small models do not skip fields', async () => {
+    process.env['TESSERACT_BIN'] = okBin
+    try {
+      const calls: Array<{ system: string; prompt: string; jsonSchema: Record<string, unknown> }> = []
+      await extractDocumentFieldsLocal(png, 'image/png', 'a.png', decideWith({ ...allNull, category: 'other', summary: 's' }, calls))
+      const schema = calls[0]!.jsonSchema as { properties: Record<string, unknown>; required: string[] }
+      expect([...schema.required].sort()).toEqual(Object.keys(schema.properties).sort())
+    } finally {
+      delete process.env['TESSERACT_BIN']
+    }
+  })
+
+  it('never calls the model when OCR finds no text', async () => {
+    const empty = path.join(dir, 'empty.sh')
+    writeFileSync(empty, '#!/bin/sh\ncat >/dev/null\n')
+    chmodSync(empty, 0o755)
+    process.env['TESSERACT_BIN'] = empty
+    try {
+      const decide = vi.fn()
+      const result = await extractDocumentFieldsLocal(png, 'image/png', 'blank.png', decide as unknown as DecisionFn)
+      expect(result.category).toBe('other')
+      expect(decide).not.toHaveBeenCalled()
+    } finally {
+      delete process.env['TESSERACT_BIN']
+    }
+  })
+
+  it('reads a PDF from its text layer without OCR', async () => {
+    const pdf = readFileSync(path.join(__dirname, 'text-layer.pdf'))
+    const calls: Array<{ system: string; prompt: string; jsonSchema: Record<string, unknown> }> = []
+    const result = await extractDocumentFieldsLocal(pdf, 'application/pdf', 'doc.pdf', decideWith({ ...allNull, category: 'insurance', policy_type: null, summary: 'pdf' }, calls))
+    expect(result.category).toBe('insurance')
+    expect(calls).toHaveLength(1)
+  })
+
+  it('returns a safe empty result, not a cloud call, when the model or engine fails', async () => {
+    const down = (async () => { throw new Error('refused') }) as unknown as DecisionFn
+    process.env['TESSERACT_BIN'] = okBin
+    try {
+      const result = await extractDocumentFieldsLocal(png, 'image/png', 'a.png', down)
+      expect(result).toMatchObject({ category: 'other', fields: {} })
+      expect(result.rawText).toContain('Extraction error')
+    } finally {
+      delete process.env['TESSERACT_BIN']
+    }
+    const unsupported = await extractDocumentFieldsLocal(png, 'application/zip', 'a.zip', down)
+    expect(unsupported.rawText).toContain('Unsupported')
+  })
+})

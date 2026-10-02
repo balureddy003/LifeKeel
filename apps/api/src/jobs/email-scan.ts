@@ -149,6 +149,7 @@ export async function scanTenantInbox(
   // Self-hosted classifier when LOCAL_JUDGE_BASE_URL is set; the prefilter
   // skips the model entirely for mail with no policy/protection terms.
   const decide = localDecisionFromEnv('classifier')
+  const ocrDecide = localDecisionFromEnv('ocr')
   const inboxItems = db.collection<InboxItemDoc>('inbox_items')
   const bucket = new GridFSBucket(db, { bucketName: 'documents' })
   const documents = getTenantCollection<Record<string, unknown>>(db, 'documents', tenantId)
@@ -224,7 +225,7 @@ export async function scanTenantInbox(
         // HTTP response waiting on this, and awaiting keeps attachments
         // processed one at a time rather than bursting many concurrent
         // vision calls at the OCR provider.
-        await processDocument(db, documentId, tenantId, attachment.content, attachment.contentType, attachment.filename).catch((err) => {
+        await processDocument(db, documentId, tenantId, attachment.content, attachment.contentType, attachment.filename, ocrDecide).catch((err) => {
           log.error({ err, documentId, tenantId }, 'OCR processing of email attachment failed')
         })
       }
