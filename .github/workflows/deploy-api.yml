@@ -75,6 +75,8 @@ jobs:
             LOCAL_JUDGE_MODEL=${{ vars.LOCAL_JUDGE_MODEL }}
             LOCAL_CLASSIFIER_MODEL=${{ vars.LOCAL_CLASSIFIER_MODEL }}
             LOCAL_OCR_MODEL=${{ vars.LOCAL_OCR_MODEL }}
+            LOCAL_TEXT_ENABLED=${{ vars.LOCAL_TEXT_ENABLED }}
+            LOCAL_TEXT_MODEL=${{ vars.LOCAL_TEXT_MODEL }}
           secrets: |
             MONGODB_URL=agentoak-mongodb-url:latest
             REDIS_URL=agentoak-redis-url:latest

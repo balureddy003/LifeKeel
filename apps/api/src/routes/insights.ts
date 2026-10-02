@@ -21,7 +21,8 @@ import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import type { Engine, FeatureHashScorer, TenantLevelScorer, RecentInsight } from '@agentoak/engine'
 import type { ActionReceipt } from '@agentoak/workflows'
-import { ApprovalSignalHealthMonitor, createLlmRouterFromEnv, createLogger } from '@agentoak/platform'
+import { ApprovalSignalHealthMonitor, createLogger } from '@agentoak/platform'
+import { familyDataLlmFromEnv } from '../local-model.js'
 import { getInsightsCollection, getReceiptsCollection } from '../db.js'
 import { getAuditLogger, type AuditAction } from '../audit/audit-log.js'
 import type { DeliveryRouter } from '../delivery/delivery-router.js'
@@ -101,7 +102,7 @@ export async function registerInsightRoutes(
   const actionExecutor = db ? new ActionExecutor(db) : null
   // Independent instance for insight.prepare (Tier 1 drafting) — same
   // pattern as apps/api/src/routes/assistant.ts, no shared global needed.
-  const prepareLlmFn = createLlmRouterFromEnv()
+  const prepareLlmFn = familyDataLlmFromEnv()
 
   interface DecisionContext {
     id: string

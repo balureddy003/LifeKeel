@@ -474,6 +474,8 @@ async function callGroq(
   })
 }
 
+const OLLAMA_TIMEOUT_MS = 180_000
+
 async function callOllama(
   system: string,
   prompt: string,
@@ -497,6 +499,8 @@ async function callOllama(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      // CPU-served models are slow but must not hang a request forever.
+      signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
     })
     if (!res.ok) throw new Error(`Ollama HTTP ${res.status}: ${await res.text()}`)
     const data = await res.json() as { message?: { content?: string } }

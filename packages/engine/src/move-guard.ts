@@ -50,6 +50,18 @@ const STEERING_PATTERNS: RegExp[] = [
   /\b(cheapest|top-rated|recommended)\s+(policy|insurer|provider|fund|plan)\b/i,
 ]
 
+/**
+ * Generated text legitimately contains refusals like "I can't say which is the
+ * best insurer" or "whether to switch to another provider", which the strict
+ * template-copy patterns above would flag. For generated text only affirmative
+ * steering counts; naming a specific provider is handled by the caller (see
+ * apps/api/src/local-model.ts), which knows which names the prompt supplied.
+ */
+const STEERING_GENERATED_PATTERNS: RegExp[] = [
+  /\b(the\s+)?best\s+(policy|policies|insurer|provider|fund|plan|deal)(\s+for you)?\s+(is|are|would be)\b/i,
+  /\b(cheapest|top-rated|recommended)\s+(policy|insurer|provider|fund|plan)(\s+for you)?\s+(is|are|would be)\b/i,
+]
+
 const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i
 const UK_NI = /\b[A-CEGHJ-PR-TW-Z]{2}\s?\d{2}\s?\d{2}\s?\d{2}\s?[A-D]\b/i
 const IBAN = /\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){3,7}\b/
@@ -85,10 +97,10 @@ function hasCardNumber(text: string): boolean {
 }
 
 /** Scan one string for blocking content. Exported for template-level tests. */
-export function scanText(text: string): GuardReason[] {
+export function scanText(text: string, opts: { generated?: boolean } = {}): GuardReason[] {
   const reasons = new Set<GuardReason>()
   if (ADVICE_PATTERNS.some(p => p.test(text))) reasons.add('regulated_advice')
-  if (STEERING_PATTERNS.some(p => p.test(text))) reasons.add('provider_steering')
+  if ((opts.generated ? STEERING_GENERATED_PATTERNS : STEERING_PATTERNS).some(p => p.test(text))) reasons.add('provider_steering')
   if (EMAIL.test(text) || UK_NI.test(text) || IBAN.test(text) || hasCardNumber(text)) reasons.add('pii')
   if (CREDENTIAL_PATTERNS.some(p => p.test(text))) reasons.add('credential')
   return [...reasons]

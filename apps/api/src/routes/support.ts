@@ -17,7 +17,8 @@ import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { createLlmRouterFromEnv, getTenantCollection, type LlmFn } from '@agentoak/platform'
+import { getTenantCollection, type LlmFn } from '@agentoak/platform'
+import { familyDataLlmFromEnv } from '../local-model.js'
 
 const AskSchema = z.object({ question: z.string().trim().min(1).max(2000) })
 const CreateCaseSchema = z.object({
@@ -78,7 +79,7 @@ Rules:
 const ASK_FALLBACK = "I couldn't reach my answer service just now. If this is urgent, open a support case below and a teammate will pick it up."
 
 export function registerSupportRoutes(app: FastifyInstance, db: Db): void {
-  const llmFn: LlmFn = createLlmRouterFromEnv()
+  const llmFn: LlmFn = familyDataLlmFromEnv()
   const cases = db.collection<SupportCaseDoc>('support_cases')
   const users = db.collection('users')
 
