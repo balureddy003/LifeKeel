@@ -17,10 +17,20 @@ describe('extractDraftProvenance', () => {
     expect(facts).toEqual(['£250,000'])
   })
 
-  it('matches figures whose formatting differs (commas, currency glyph, spacing)', () => {
-    const draft = 'We believe we would need 55000 per year.'
+  it('matches figures whose formatting differs (commas, spacing, plural units)', () => {
+    const draft = 'We believe we would need £55,000 per year, i.e. £250000 in cover for 14 month.'
     const { facts } = extractDraftProvenance(source, draft)
-    expect(facts).toContain('£55,000')
+    expect(facts).toEqual(['£250,000', '£55,000', '14 months'])
+  })
+
+  it('does not match a currency-swapped figure — that is a fabrication, not a retrieved fact', () => {
+    const draft = 'I am writing about our cover of $250,000.'
+    expect(extractDraftProvenance(source, draft).facts).toEqual([])
+  })
+
+  it('does not match a figure stripped of its currency symbol', () => {
+    const draft = 'We believe we would need 55000 per year.'
+    expect(extractDraftProvenance(source, draft).facts).toEqual([])
   })
 
   it('returns no facts when the draft is pure generated wording', () => {

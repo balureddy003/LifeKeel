@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Home, Inbox, Users, CalendarClock, Settings, WifiOff, Siren, Network, Bot } from 'lucide-react'
+import { Home, Inbox, Users, CalendarClock, Settings, WifiOff, Siren, Network, Bot, MailWarning, X } from 'lucide-react'
 import { useNetworkStatus } from '@/lib/useNetworkStatus'
 import { useAuth } from '@/lib/auth-context'
 import { useMode } from '@/lib/mode-context'
@@ -13,7 +13,7 @@ import { MeshGradient, Skeleton, SkeletonCard } from './Glass'
 import { EmergencyMode } from './EmergencyMode'
 import { CommandPalette } from './CommandPalette'
 import { DisclaimerFooter } from './Disclaimer'
-import { fetchInboxItems, fetchFamilyInsights, fetchPublicStatus, type PublicStatus } from '@/lib/api'
+import { fetchInboxItems, fetchFamilyInsights, fetchPublicStatus, resendVerificationEmail, type PublicStatus } from '@/lib/api'
 import { flushMutationQueue } from '@/lib/offline-queue'
 import { warmCache } from '@/lib/fetch-cache'
 import { useToast } from './Toast'
@@ -186,6 +186,74 @@ function MaintenanceBanner() {
         >
           <Siren size={16} className="text-family-400 flex-shrink-0" />
           <span className="text-sm text-ink-secondary font-medium">{windowText}</span>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+// Signed-in but unverified email — the other side of /verify-email.
+// Without this the verification email is a dead end: nothing in the app
+// ever told the user it existed or offered a resend. Dismisses per
+// session (not permanently — it's a trust property, not a promo) and
+// clears itself once the account flips to verified.
+const VERIFY_BANNER_DISMISSED = 'oak:verify-banner-dismissed'
+
+function VerifyEmailBanner() {
+  const { isAuthenticated, user } = useAuth()
+  const [dismissed, setDismissed] = useState(true)
+  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
+
+  useEffect(() => {
+    try { setDismissed(sessionStorage.getItem(VERIFY_BANNER_DISMISSED) === '1') } catch { /* private mode */ }
+  }, [])
+
+  const resend = async () => {
+    setState('sending')
+    try {
+      await resendVerificationEmail()
+      setState('sent')
+    } catch {
+      setState('error')
+    }
+  }
+
+  const dismiss = () => {
+    setDismissed(true)
+    try { sessionStorage.setItem(VERIFY_BANNER_DISMISSED, '1') } catch { /* private mode */ }
+  }
+
+  const show = isAuthenticated && user?.emailVerified === false && !dismissed
+
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          initial={{ y: -60, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: -60, opacity: 0 }}
+          role="status"
+          aria-live="polite"
+          className="fixed top-0 left-0 right-0 z-banner glass safe-area-top px-4 py-2 flex items-center justify-center gap-2"
+        >
+          <MailWarning size={16} className="text-warning flex-shrink-0" />
+          <span className="text-sm text-ink-secondary font-medium">
+            {state === 'sent' ? 'Verification link sent — check your inbox' :
+             state === 'error' ? "Couldn't send the link — try again in a moment" :
+             'Verify your email so invites and recovery reach you'}
+          </span>
+          {state !== 'sent' && (
+            <button
+              onClick={resend}
+              disabled={state === 'sending'}
+              className="text-sm text-family-400 font-semibold disabled:opacity-50"
+            >
+              {state === 'sending' ? 'Sending…' : 'Resend link'}
+            </button>
+          )}
+          <button onClick={dismiss} aria-label="Dismiss" className="text-ink-tertiary">
+            <X size={14} />
+          </button>
         </motion.div>
       )}
     </AnimatePresence>
@@ -550,6 +618,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <MeshGradient />
       <OfflineBanner />
       <MaintenanceBanner />
+      <VerifyEmailBanner />
       <ModeEffects />
       {showNav && <NavRail />}
       <div className={[railGutter, 'min-h-screen'].filter(Boolean).join(' ')}>

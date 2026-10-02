@@ -1296,7 +1296,7 @@ export async function fetchFamilyInvite(token: string): Promise<FamilyInviteInfo
 // Public — accepting both verifies the token AND proves ownership of the
 // email (via a new or existing password). Returns a session token so the
 // acceptor lands signed in.
-export async function acceptFamilyInvite(token: string, password: string): Promise<{ token: string; user: { id: string; email: string; name: string } }> {
+export async function acceptFamilyInvite(token: string, password: string): Promise<{ token: string; user: { id: string; email: string; name: string; email_verified?: boolean } }> {
   const base = getApiBase()
   const res = await fetch(`${base}/family/invite/accept`, {
     method: 'POST',

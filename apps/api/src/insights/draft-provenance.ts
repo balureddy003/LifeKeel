@@ -26,10 +26,14 @@ const MONEY_RE = /[£$€]\s?\d[\d,]*(?:\.\d{1,2})?[kKmM]?/g
 // Number+unit phrases: "14 months", "3 years", "25%", "4 weeks".
 const NUM_UNIT_RE = /\b\d[\d,]*(?:\.\d+)?\s?(?:months?|years?|weeks?|days?|percent|%)\b/gi
 
-/** Comparison key — "£55,000" in the source should still match "$55,000"
- *  or "55000" in the draft: the figure is what matters, not its dressing. */
+/** Comparison key — commas, spacing, and plural-vs-singular units are
+ *  dressing ("£55,000" ≡ "£55000", "14 months" ≡ "14 month"), but the
+ *  currency symbol is load-bearing: a draft claiming "$55,000" when the
+ *  data says "£55,000" is a fabrication, not a match, and must not earn a
+ *  "from your data" chip. A bare "55000" with no symbol doesn't match
+ *  either — under-claiming is the honest failure mode here. */
 function factKey(s: string): string {
-  return s.toLowerCase().replace(/[£$€,\s]/g, '')
+  return s.toLowerCase().replace(/[,\s]/g, '').replace(/(months|years|weeks|days)$/, (u) => u.slice(0, -1))
 }
 
 export function extractDraftProvenance(sourceText: string, draftText: string): DraftProvenance {
