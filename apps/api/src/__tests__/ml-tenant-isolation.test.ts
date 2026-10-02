@@ -172,9 +172,19 @@ describe('ML Tenant Isolation', () => {
   })
 
   describe('Queue Tenant Isolation', () => {
-    const TEST_QUEUE = 'ml-iso-test-queue'
+    // A fresh queue name per test, not a shared constant — shutdown() stops
+    // the polling loop but can't guarantee an in-flight, already-dispatched
+    // BRPOPLPUSH from the previous test's connection has been abandoned
+    // server-side by the time the next test publishes. Confirmed in CI: the
+    // previous test's now-orphaned poll loop occasionally won the race to
+    // claim this test's first job off a shared queue name, silently
+    // "losing" it from this test's own processedTenants/receivedJobs. A
+    // unique queue name per test makes that race impossible regardless of
+    // teardown timing, rather than trying to out-wait it.
+    let TEST_QUEUE: string
 
     beforeEach(async () => {
+      TEST_QUEUE = `ml-iso-test-queue-${Date.now()}-${Math.random().toString(36).slice(2)}`
       await queueManager.connect()
     })
 
