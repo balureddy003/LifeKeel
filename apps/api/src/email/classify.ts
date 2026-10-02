@@ -11,6 +11,7 @@ import { z } from 'zod'
 import type { DecisionFn, LlmFn } from '@agentoak/platform'
 import type { FetchedEmail } from './imap-client.js'
 import { mightBePolicyRelated } from './prefilter.js'
+import type { EncoderClassifier } from './encoder-classifier.js'
 
 export interface EmailClassification {
   isFinancial: boolean
@@ -190,10 +191,61 @@ export interface ClassifyEmailOptions {
   decide?: DecisionFn
   /** Skip the model for mail with no policy/protection terms (see prefilter.ts). */
   prefilter?: boolean
+  /**
+   * A small encoder model that says whether the email is about a policy (infra/encoder-service).
+   *  - 'gate':   an email it judges irrelevant skips the LLM entirely; relevant ones go on to the LLM.
+   *  - 'shadow': the LLM decides as before and the encoder is only compared against it.
+   * An encoder error never drops an email: the LLM path runs as if no encoder were configured.
+   */
+  encoder?: {
+    classify: EncoderClassifier
+    mode: 'gate' | 'shadow'
+    /** Outcome per email, for metrics: gated_skip | gated_pass | error_fell_back | agree | encoder_missed | encoder_extra | shadow_error */
+    onOutcome?: (outcome: EncoderOutcome) => void
+  }
 }
+
+export type EncoderOutcome =
+  | 'gated_skip'
+  | 'gated_pass'
+  | 'error_fell_back'
+  /** Shadow only: encoder and LLM agree. */
+  | 'agree'
+  /** Shadow only: the LLM found a policy email the encoder called irrelevant. The dangerous direction. */
+  | 'encoder_missed'
+  /** Shadow only: the encoder flagged an email the LLM did not. Costs an LLM call in gate mode, not safety. */
+  | 'encoder_extra'
+  | 'shadow_error'
 
 export async function classifyEmail(llm: LlmFn, email: FetchedEmail, opts: ClassifyEmailOptions = {}): Promise<EmailClassification> {
   if (opts.prefilter && !mightBePolicyRelated(email)) return NOT_FINANCIAL
+
+  const enc = opts.encoder
+  const report = (o: EncoderOutcome) => { try { enc?.onOutcome?.(o) } catch { /* metrics must never affect classification */ } }
+
+  if (enc?.mode === 'gate') {
+    try {
+      const verdict = await enc.classify(email)
+      if (!verdict.relevant) { report('gated_skip'); return NOT_FINANCIAL }
+      report('gated_pass')
+    } catch {
+      report('error_fell_back') // fail open to the LLM: an encoder outage must not drop mail
+    }
+    return classifyWithModel(llm, email, opts)
+  }
+
+  const classification = await classifyWithModel(llm, email, opts)
+  if (enc?.mode === 'shadow' && !classification.failed) {
+    // Compared after the LLM has decided, and never awaited by the caller's decision path.
+    void enc.classify(email).then(
+      (v) => report(v.relevant === classification.isFinancial ? 'agree' : classification.isFinancial ? 'encoder_missed' : 'encoder_extra'),
+      () => report('shadow_error'),
+    )
+  }
+  return classification
+}
+
+async function classifyWithModel(llm: LlmFn, email: FetchedEmail, opts: ClassifyEmailOptions): Promise<EmailClassification> {
 
   // OAK-016: previously string-concatenated directly with no delimiter and
   // no "this is data, not instructions" framing — an inbound email's

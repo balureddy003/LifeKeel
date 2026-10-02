@@ -72,6 +72,7 @@ let localModelLatency: Histogram | null = null
 let localModelQueueWait: Histogram | null = null
 let localModelCost: Counter | null = null
 let shadowComparisons: Counter | null = null
+let emailEncoderOutcomes: Counter | null = null
 let outputGuardBlocks: Counter | null = null
 let emailClassifyFailures: Counter | null = null
 let documentExtractionRetries: Counter | null = null
@@ -232,6 +233,12 @@ function initMetrics(registry: Registry): void {
     buckets: [0.1, 1, 5, 15, 30, 60, 120, 300],
     registers: [registry],
   })
+  emailEncoderOutcomes = new Counter({
+    name: 'agentoak_email_encoder_total',
+    help: 'Email encoder outcomes: gated_skip | gated_pass | error_fell_back | agree | encoder_missed | encoder_extra | shadow_error. encoder_missed is the one that matters.',
+    labelNames: ['outcome'],
+    registers: [registry],
+  })
   shadowComparisons = new Counter({
     name: 'agentoak_shadow_comparisons_total',
     help: 'Candidate-vs-authoritative comparisons by purpose and outcome (agree | shadow_more_permissive | shadow_stricter | shadow_error | dropped)',
@@ -326,6 +333,12 @@ export function recordLocalModelCall(purpose: string, ok: boolean, latencySecond
   localModelCalls!.inc({ purpose, outcome: ok ? 'ok' : 'error' })
   localModelLatency!.observe({ purpose }, latencySeconds)
   localModelQueueWait!.observe({ purpose }, queueWaitSeconds)
+}
+
+/** Email encoder: record what it did for one email (see email/classify.ts EncoderOutcome). */
+export function recordEmailEncoderOutcome(outcome: string): void {
+  initMetrics(getRegistry())
+  emailEncoderOutcomes!.inc({ outcome })
 }
 
 /** Shadow mode: record one comparison of a candidate against the authoritative evaluator. */

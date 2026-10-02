@@ -1,5 +1,6 @@
 import { scanText } from '@agentoak/engine'
 import { recordLocalModelCall, recordOutputGuardBlock } from './routes/metrics.js'
+import { createEncoderClassifier, type EncoderClassifier } from './email/encoder-classifier.js'
 import { cloudRunIdTokenProvider } from './cloud-run-auth.js'
 import { createLlmRouter, createLlmRouterFromEnv, createLocalDecisionFn, type DecisionFn, type LlmFn } from '@agentoak/platform'
 
@@ -159,4 +160,25 @@ export function familyDataLlmFromEnv(): LlmFn {
     maxTokens: 700,
     temperature: 0.2,
   }))
+}
+
+/**
+ * The email encoder (infra/encoder-service), or undefined when EMAIL_ENCODER_URL is unset or the mode is
+ * off. EMAIL_ENCODER_MODE: 'shadow' measures it against the LLM with no effect on results; 'gate' lets it
+ * skip the LLM for emails it judges irrelevant. Run shadow first and move to gate only when
+ * agentoak_email_encoder_total{outcome="encoder_missed"} stays at zero over real volume.
+ * Reuses LOCAL_JUDGE_AUTH for service-to-service auth.
+ */
+export function emailEncoderFromEnv(): { classify: EncoderClassifier; mode: 'gate' | 'shadow' } | undefined {
+  const baseUrl = process.env['EMAIL_ENCODER_URL']
+  const mode = process.env['EMAIL_ENCODER_MODE']
+  if (!baseUrl || (mode !== 'gate' && mode !== 'shadow')) return undefined
+  return {
+    mode,
+    classify: createEncoderClassifier({
+      baseUrl,
+      getHeaders: authHeadersFromEnv(baseUrl),
+      onCall: (e) => recordLocalModelCall('encoder', e.ok, e.latency_ms / 1000, 0, (e.latency_ms / 3_600_000) * costPerHourUsd()),
+    }),
+  }
 }

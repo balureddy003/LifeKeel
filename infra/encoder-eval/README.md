@@ -48,8 +48,10 @@ venv/bin/pip install gliner2 transformers peft accelerate datasets
 venv/bin/python eval_encoder.py fastino/GLiNER2.5-Decide heldout-emails.json
 ```
 
-## If this goes further
+## What was built from this
 
-It would need a small Python service (the API is Node) behind the same `DecisionFn`
-interface, a held-out set of **real, de-identified** email, and shadow mode to compare it
-against the LLM classifier on live traffic before it decides anything.
+`../encoder-service` wraps this model in a small CPU service, and the API can use it as a
+gate or shadow in front of the LLM email classifier (`EMAIL_ENCODER_MODE`, off by default).
+End to end through the real service and the Node client, gate mode avoided 18 of 36 LLM calls
+(every irrelevant email) and dropped 0 of 18 policy emails. Still needed before gate mode is
+trusted: a held-out set of **real, de-identified** email and a shadow period on live traffic.

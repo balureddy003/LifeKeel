@@ -18,8 +18,8 @@ import { createLogger, getTenantCollection, createLlmRouterFromEnv, encryptIfNee
 import { fetchRecentEmails, searchPolicyEmails, type ImapCredentials } from '../email/imap-client.js'
 import { refreshGoogleAccessToken } from '../email/gmail-oauth.js'
 import { classifyEmail } from '../email/classify.js'
-import { localDecisionFromEnv } from '../local-model.js'
-import { recordEmailClassifyFailure } from '../routes/metrics.js'
+import { localDecisionFromEnv, emailEncoderFromEnv } from '../local-model.js'
+import { recordEmailClassifyFailure, recordEmailEncoderOutcome } from '../routes/metrics.js'
 import { acquireCronLock, releaseCronLock } from './cron-lock.js'
 import { processDocument } from '../ocr/extract.js'
 import { effectivePlan, hasFeature } from '../entitlements.js'
@@ -175,6 +175,8 @@ export async function scanTenantInbox(
   // skips the model entirely for mail with no policy/protection terms.
   const decide = localDecisionFromEnv('classifier')
   const ocrDecide = localDecisionFromEnv('ocr')
+  const encoderCfg = emailEncoderFromEnv()
+  const encoder = encoderCfg ? { ...encoderCfg, onOutcome: recordEmailEncoderOutcome } : undefined
   const inboxItems = db.collection<InboxItemDoc>('inbox_items')
   const bucket = new GridFSBucket(db, { bucketName: 'documents' })
   const documents = getTenantCollection<Record<string, unknown>>(db, 'documents', tenantId)
@@ -189,7 +191,7 @@ export async function scanTenantInbox(
     const existing = await inboxItems.findOne({ tenant_id: tenantId, email_message_id: email.messageId })
     if (existing) continue
 
-    const classification = await classifyEmail(llm, email, { decide, prefilter: true })
+    const classification = await classifyEmail(llm, email, { decide, prefilter: true, encoder })
     if (classification.failed) {
       recordEmailClassifyFailure()
       failedEmails.push({ uid: email.uid, messageId: email.messageId })

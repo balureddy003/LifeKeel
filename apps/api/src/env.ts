@@ -67,6 +67,9 @@ const ConfigSchema = z.object({
   EMAIL_SCAN_CONCURRENCY: z.string().optional(),
   // USD per hour of one model instance; enables the busy-time cost estimate metric.
   LOCAL_MODEL_COST_PER_HOUR_USD: z.string().optional(),
+  // Email policy-relevance encoder (infra/encoder-service). Mode off/unset = not used.
+  EMAIL_ENCODER_URL: z.string().optional(),
+  EMAIL_ENCODER_MODE: optionalEnum(['off', 'shadow', 'gate']),
   LOCAL_MODEL_MAX_CONCURRENT: z.string().optional(),
   // Keep the cloud judge authoritative and measure the local one behind it (shadow mode).
   JUDGE_SHADOW: optionalFlag(),
