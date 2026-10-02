@@ -58,8 +58,11 @@ const STEERING_PATTERNS: RegExp[] = [
  * apps/api/src/local-model.ts), which knows which names the prompt supplied.
  */
 const STEERING_GENERATED_PATTERNS: RegExp[] = [
-  /\b(the\s+)?best\s+(policy|policies|insurer|provider|fund|plan|deal)(\s+for you)?\s+(is|are|would be)\b/i,
-  /\b(cheapest|top-rated|recommended)\s+(policy|insurer|provider|fund|plan)(\s+for you)?\s+(is|are|would be)\b/i,
+  /\b(the\s+)?best\s+(policy|policies|insurer|provider|fund|plan|deal)(\s+(for you|available|on offer))*\s+(is|are|would be)\b/i,
+  /\b(cheapest|top-rated|recommended)\s+(policy|insurer|provider|fund|plan)(\s+(for you|available|on offer))*\s+(is|are|would be)\b/i,
+  // Imperatives and first-person recommendations: "I recommend the cheapest policy", "go with the best fund".
+  /\b(i|we)\s+(recommend|suggest|advise)\s+(you\s+)?(take|get|choose|pick|go with|opt for|the)\s+(the\s+)?(best|cheapest|top-rated)\b/i,
+  /\b(go with|choose|pick|opt for|take out|get)\s+(the\s+)?(best|cheapest|top-rated)\s+(policy|policies|insurer|provider|fund|plan|deal)\b/i,
 ]
 
 const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i

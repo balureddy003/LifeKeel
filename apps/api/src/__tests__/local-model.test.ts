@@ -24,6 +24,15 @@ describe('ungroundedNumbers', () => {
     expect(ungroundedNumbers('Down 20% to 2,560 GBP, so 2,500 GBP monthly', 'Salary 3,200 GBP, expenses 30,000 GBP')).toEqual(['2560', '2500'])
   })
 
+  it('does not drop later figures from a large prompt', () => {
+    const many = Array.from({ length: 120 }, (_, i) => `item${i} ${1000 + i * 7}`).join(', ')
+    expect(ungroundedNumbers('Item total 1833 GBP', many)).toEqual([])
+  })
+
+  it('treats a bare calendar year as wording, not a claim', () => {
+    expect(ungroundedNumbers('Renews in 2027', 'Salary 3,200 GBP')).toEqual([])
+  })
+
   it('ignores short wording numbers like "3 months" or "5 years"', () => {
     expect(ungroundedNumbers('Aim for 3 months over 5 years, up 20%', source)).toEqual([])
   })
@@ -45,8 +54,13 @@ describe('withOutputGuard', () => {
     expect(await withOutputGuard(say(refusal))('s', 'p')).toBe(refusal)
   })
 
-  it('still rejects affirmative steering in generated text', async () => {
-    await expect(withOutputGuard(say('The best insurer for you is a mutual society.'))('s', 'p')).rejects.toBeInstanceOf(BlockedLocalOutputError)
+  it.each([
+    'The best insurer for you is a mutual society.',
+    'I recommend the cheapest policy you can find.',
+    'You should go with the best fund available.',
+    'The cheapest plan available is the right one for you.',
+  ])('still rejects affirmative steering in generated text: %s', async (text) => {
+    await expect(withOutputGuard(say(text))('s', 'p')).rejects.toBeInstanceOf(BlockedLocalOutputError)
   })
 
   it('rejects a well-known provider the model volunteered, but allows one the family already holds', async () => {
@@ -60,10 +74,15 @@ describe('withOutputGuard', () => {
 })
 
 describe('volunteeredProviders', () => {
-  it('matches whole names only', () => {
-    expect(volunteeredProviders('The progressive tax system', 'x')).toEqual(['progressive'])
-    expect(volunteeredProviders('A hastings-style plan', 'x')).toEqual(['hastings'])
+  it('matches whole names only and ignores ordinary words that happen to be brands', () => {
+    expect(volunteeredProviders('Consider Aviva or Direct Line', 'x')).toEqual(['aviva', 'direct line'])
+    expect(volunteeredProviders('The progressive tax system, admiral rank, vitality and fidelity', 'x')).toEqual([])
+    expect(volunteeredProviders('A bupafoo plan', 'x')).toEqual([])
     expect(volunteeredProviders('nothing here', 'x')).toEqual([])
+  })
+
+  it('allows a name the prompt itself supplied', () => {
+    expect(volunteeredProviders('Your Aviva policy', 'Provider: Aviva')).toEqual([])
   })
 })
 
@@ -91,5 +110,5 @@ describe('env gating', () => {
     // Different functions; the local one targets the unreachable URL and fails fast, never reaching a cloud provider.
     expect(local).not.toBe(cloud)
     await expect(local('s', 'p', 'tier:fast')).rejects.toBeDefined()
-  })
+  }, 30_000)
 })

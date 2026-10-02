@@ -36,7 +36,11 @@ function significantNumbers(text: string): string[] {
   return (text.match(NUMBER) ?? []).map(n => n.replace(/,/g, '').replace(/\.$/, '')).filter(n => n.replace('.', '').length >= 3)
 }
 
-const MAX_PAIR_SOURCES = 40
+/** A bare calendar year is wording, not a financial claim. */
+const isYear = (n: string): boolean => /^(19|20)\d{2}$/.test(n)
+
+// Pair sums/differences grow quadratically (150 numbers = ~11k pairs, trivial).
+const MAX_PAIR_SOURCES = 150
 
 /** Figures the source states, plus the sum or difference of any two (a shortfall is not an invention). */
 function allowedValues(source: string): number[] {
@@ -52,9 +56,9 @@ function allowedValues(source: string): number[] {
 // exhaustive: it catches the common failure (volunteering a big brand) but not
 // an obscure one, so the prompt rules and human review remain the real controls.
 const KNOWN_PROVIDERS = [
-  'aviva', 'axa', 'allianz', 'zurich', 'prudential', 'legal & general', 'legal and general', 'bupa', 'vitality',
-  'scottish widows', 'royal london', 'standard life', 'aegon', 'direct line', 'admiral', 'hastings', 'vanguard',
-  'fidelity', 'hargreaves lansdown', 'blackrock', 'metlife', 'state farm', 'geico', 'progressive', 'allstate',
+  'aviva', 'axa', 'allianz', 'zurich', 'prudential', 'legal & general', 'legal and general', 'bupa',
+  'scottish widows', 'royal london', 'standard life', 'aegon', 'direct line', 'vanguard',
+  'hargreaves lansdown', 'blackrock', 'metlife', 'state farm', 'geico', 'allstate',
   'new york life', 'northwestern mutual',
 ]
 
@@ -73,7 +77,7 @@ export function volunteeredProviders(output: string, source: string): string[] {
  */
 export function ungroundedNumbers(output: string, source: string): string[] {
   const allowed = allowedValues(source)
-  return [...new Set(significantNumbers(output).filter(n => !allowed.some(a => Math.abs(a - Number(n)) < 0.01)))]
+  return [...new Set(significantNumbers(output).filter(n => !isYear(n) && !allowed.some(a => Math.abs(a - Number(n)) < 0.01)))]
 }
 
 /**
@@ -91,7 +95,7 @@ export function withOutputGuard(llm: LlmFn): LlmFn {
     const reasons: string[] = scanText(text, { generated: true })
     const volunteered = volunteeredProviders(text, `${system}\n${prompt}`)
     if (volunteered.length > 0) reasons.push(`provider_steering(${volunteered.join(',')})`)
-    const invented = ungroundedNumbers(text, `${system}\n${prompt}`)
+    const invented = ungroundedNumbers(text, `${prompt}\n${system}`)
     if (invented.length > 0) reasons.push(`ungrounded_numbers(${invented.slice(0, 3).join(',')})`)
     if (reasons.length > 0) throw new BlockedLocalOutputError(reasons)
     return text
