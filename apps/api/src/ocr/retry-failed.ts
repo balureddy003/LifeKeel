@@ -1,6 +1,7 @@
 import { GridFSBucket, type Db, type ObjectId } from 'mongodb'
 import { createLogger, type DecisionFn } from '@agentoak/platform'
 import { processDocument } from './extract.js'
+import { recordDocumentExtractionRetries } from '../routes/metrics.js'
 
 const log = createLogger({ service: 'ocr-retry', version: '0.0.0' })
 
@@ -48,6 +49,9 @@ export async function retryFailedDocuments(db: Db, decide: DecisionFn, now = new
       )
     }
   }
-  if (attempted > 0) log.info({ attempted }, 'Retried failed document extractions')
+  if (attempted > 0) {
+    recordDocumentExtractionRetries(attempted)
+    log.info({ attempted }, 'Retried failed document extractions')
+  }
   return attempted
 }

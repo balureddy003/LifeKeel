@@ -134,6 +134,48 @@ side-by-side against the cloud model shows acceptable quality and you accept the
 latency. Marketing posts and the operator console carry no family data and stay
 on the cloud router.
 
+## Capacity and scaling (measured)
+
+On 4 CPU cores with `qwen2.5:3b`, sending 6 email classifications at 1, 2 and 4
+concurrent calls:
+
+| Concurrent calls | Throughput | Avg time per call |
+|---|---|---|
+| 1 | 3.8 emails/min | 15.8s |
+| 2 | 3.9 emails/min | 28.2s |
+| 4 | 3.8 emails/min | 47.3s |
+
+- **One CPU model instance is a fixed ~3.8 emails/min (about 5,500/day) at 3b.**
+  Parallel calls only add latency and timeout risk. Hence
+  `LOCAL_MODEL_MAX_CONCURRENT` defaults to 1 per API process, and the model service
+  runs with `--concurrency=1`.
+- **Throughput scales by adding model instances**, not client concurrency. Set
+  `LOCAL_MODEL_MAX_CONCURRENT` to the number of instances the autoscaler can
+  provide, and note it is per API process (total in flight = value x API replicas).
+  Excess requests queue at the load balancer, so their wait counts against the
+  120s per-call timeout: watch `agentoak_local_model_queue_wait_seconds`.
+- **Email scan fan-out** (`EMAIL_SCAN_FANOUT=true`) runs one queue job per mailbox
+  with `EMAIL_SCAN_CONCURRENCY` workers per process (default 2). The queue itself
+  scales linearly (real Redis, 8 jobs of 1s: 9.0s, 5.0s, 3.0s at concurrency 1, 2, 4),
+  but a scan is model-bound, so fan-out only helps if model capacity grows with it.
+  With a single model instance leave it off.
+- 7b is slower than 3b (about 1.5-2x per call here), so budget fewer calls per
+  instance if you keep it for the judge.
+- Numbers come from one 4-core sandbox and a small email sample; load-test on the
+  real instance type before sizing production.
+
+## Metrics
+
+Exposed on the Prometheus endpoint: `agentoak_local_model_calls_total{purpose,outcome}`,
+`agentoak_local_model_latency_seconds{purpose}`,
+`agentoak_local_model_queue_wait_seconds{purpose}`,
+`agentoak_output_guard_blocks_total{reason}`,
+`agentoak_email_classify_failures_total`,
+`agentoak_document_extraction_retries_total`. Suggested alerts: error ratio of
+`local_model_calls_total` above a few percent, a rising p95 of queue wait (model
+undersized), and a sustained non-zero `email_classify_failures_total`.
+Labels are reason and purpose codes only, never tenant ids, email text or figures.
+
 ## Deploy (manual, like the API)
 
 Needs roughly 8 GiB RAM and 4 vCPU for the 7b model. Judging is asynchronous

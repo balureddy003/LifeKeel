@@ -40,6 +40,11 @@ function getRegistry(): Registry {
   return _registry
 }
 
+/** Prometheus text exposition of the shared registry (used by tests and ops tooling). */
+export async function renderMetrics(): Promise<string> {
+  return getRegistry().metrics()
+}
+
 // ── Metric singletons ────────────────────────────────────────────────────────
 
 let evaluationsTotal: Counter | null = null
@@ -62,6 +67,12 @@ let insightRouteErrors: Counter | null = null
 let featureHashEvictions: Counter | null = null
 let featureHashCacheHits: Counter | null = null
 let featureHashCacheMisses: Counter | null = null
+let localModelCalls: Counter | null = null
+let localModelLatency: Histogram | null = null
+let localModelQueueWait: Histogram | null = null
+let outputGuardBlocks: Counter | null = null
+let emailClassifyFailures: Counter | null = null
+let documentExtractionRetries: Counter | null = null
 
 function initMetrics(registry: Registry): void {
   if (evaluationsTotal) return  // already initialised
@@ -197,6 +208,44 @@ function initMetrics(registry: Registry): void {
     labelNames: ['tenant_id', 'detector_id'],
     registers: [registry],
   })
+  // Self-hosted model path (see infra/local-judge/README.md). `purpose` is
+  // judge | classifier | ocr; high-cardinality ids are deliberately not labels.
+  localModelCalls = new Counter({
+    name: 'agentoak_local_model_calls_total',
+    help: 'Self-hosted model decisions by purpose and outcome (ok | error)',
+    labelNames: ['purpose', 'outcome'],
+    registers: [registry],
+  })
+  localModelLatency = new Histogram({
+    name: 'agentoak_local_model_latency_seconds',
+    help: 'Time inside the self-hosted model call (excludes waiting for a concurrency slot)',
+    labelNames: ['purpose'],
+    buckets: [1, 3, 5, 10, 20, 30, 60, 120, 240],
+    registers: [registry],
+  })
+  localModelQueueWait = new Histogram({
+    name: 'agentoak_local_model_queue_wait_seconds',
+    help: 'Time a call waited for a local-model concurrency slot; sustained growth means the model service is undersized',
+    labelNames: ['purpose'],
+    buckets: [0.1, 1, 5, 15, 30, 60, 120, 300],
+    registers: [registry],
+  })
+  outputGuardBlocks = new Counter({
+    name: 'agentoak_output_guard_blocks_total',
+    help: 'Generated text rejected by the output guard, by reason',
+    labelNames: ['reason'],
+    registers: [registry],
+  })
+  emailClassifyFailures = new Counter({
+    name: 'agentoak_email_classify_failures_total',
+    help: 'Emails the classifier could not classify (retried on the next scan)',
+    registers: [registry],
+  })
+  documentExtractionRetries = new Counter({
+    name: 'agentoak_document_extraction_retries_total',
+    help: 'Documents re-attempted by the OCR retry sweep',
+    registers: [registry],
+  })
 }
 
 /** M5: Record a credit consumption for Prometheus metrics. */
@@ -254,6 +303,30 @@ export function recordLlmCacheHitMiss(tenantId: string, task: string, hit: boole
   } else {
     llmCacheMisses!.inc({ tenant_id: tenantId, task })
   }
+}
+
+/** Self-hosted model: record one decision (outcome, model time, and wait for a slot). */
+export function recordLocalModelCall(purpose: string, ok: boolean, latencySeconds: number, queueWaitSeconds: number): void {
+  initMetrics(getRegistry())
+  localModelCalls!.inc({ purpose, outcome: ok ? 'ok' : 'error' })
+  localModelLatency!.observe({ purpose }, latencySeconds)
+  localModelQueueWait!.observe({ purpose }, queueWaitSeconds)
+}
+
+/** Output guard: record one rejected generation. `reason` is the guard reason code (no free text). */
+export function recordOutputGuardBlock(reason: string): void {
+  initMetrics(getRegistry())
+  outputGuardBlocks!.inc({ reason })
+}
+
+export function recordEmailClassifyFailure(): void {
+  initMetrics(getRegistry())
+  emailClassifyFailures!.inc()
+}
+
+export function recordDocumentExtractionRetries(count: number): void {
+  initMetrics(getRegistry())
+  documentExtractionRetries!.inc(count)
 }
 
 /** ML layer: record a FeatureHashScorer LRU eviction. */

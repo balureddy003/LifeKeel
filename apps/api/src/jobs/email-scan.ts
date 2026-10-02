@@ -19,6 +19,8 @@ import { fetchRecentEmails, searchPolicyEmails, type ImapCredentials } from '../
 import { refreshGoogleAccessToken } from '../email/gmail-oauth.js'
 import { classifyEmail } from '../email/classify.js'
 import { localDecisionFromEnv } from '../local-model.js'
+import { recordEmailClassifyFailure } from '../routes/metrics.js'
+import { acquireCronLock, releaseCronLock } from './cron-lock.js'
 import { processDocument } from '../ocr/extract.js'
 import { effectivePlan, hasFeature } from '../entitlements.js'
 import type { InboxItemDoc } from '../routes/family-inbox.js'
@@ -42,6 +44,8 @@ type EmailConnectorCredentialDoc = Record<string, unknown> & {
     token_expires_at?: Date | string
   }
   last_synced_uid?: number
+  /** When the queue fan-out last enqueued this mailbox (see enqueueConnectedInboxScans). */
+  scan_enqueued_at?: Date
   last_synced_at?: Date
 }
 
@@ -187,6 +191,7 @@ export async function scanTenantInbox(
 
     const classification = await classifyEmail(llm, email, { decide, prefilter: true })
     if (classification.failed) {
+      recordEmailClassifyFailure()
       failedEmails.push({ uid: email.uid, messageId: email.messageId })
       consecutiveFailures += 1
       if (consecutiveFailures >= MAX_CONSECUTIVE_CLASSIFY_FAILURES) {
@@ -318,5 +323,80 @@ export async function scanAllConnectedInboxes(db: Db): Promise<void> {
     } catch (err) {
       log.error({ err, tenantId: doc.tenant_id }, 'Email scan failed for tenant')
     }
+  }
+}
+
+// ── Queue fan-out ─────────────────────────────────────────────────────────────
+// scanAllConnectedInboxes walks tenants one after another inside a single cron
+// run. With a CPU-served model at ~15-20s per email that cannot finish a large
+// customer base inside the 15-minute window, and the cron's no-overlap rule then
+// skips runs and builds a backlog. Fan-out turns each tenant scan into a queue job
+// so several workers (and several model instances behind them) run in parallel.
+// Off unless EMAIL_SCAN_FANOUT=true (see server.ts). Jobs carry only a tenant id,
+// never credentials: the worker reloads the credential document itself.
+
+export const EMAIL_SCAN_QUEUE = 'email-scan'
+/** Just under the 15-minute cron period, so each cron tick enqueues a tenant at most once. */
+const ENQUEUE_INTERVAL_MS = 14 * 60_000
+/** A scan that outlives this lock is presumed dead (see cron-lock.ts); a new one may start. */
+const TENANT_SCAN_LOCK_TTL_MS = 30 * 60_000
+
+const CONNECTED_EMAIL_FILTER = { connector_id: 'email', auth_type: { $in: ['imap', 'oauth'] } }
+
+type Publish = (queue: string, payload: unknown) => Promise<void>
+
+/**
+ * Enqueues one scan job per connected mailbox that has not been enqueued within
+ * the last ENQUEUE_INTERVAL_MS, so a slow queue cannot accumulate duplicate jobs
+ * for the same tenant. Returns how many jobs were enqueued.
+ */
+export async function enqueueConnectedInboxScans(db: Db, publish: Publish, now = new Date()): Promise<number> {
+  const credentials = db.collection<EmailConnectorCredentialDoc>('connector_credentials')
+  const due = await credentials
+    .find({
+      ...CONNECTED_EMAIL_FILTER,
+      $or: [{ scan_enqueued_at: { $exists: false } }, { scan_enqueued_at: { $lt: new Date(now.getTime() - ENQUEUE_INTERVAL_MS) } }],
+    })
+    .toArray()
+
+  let enqueued = 0
+  for (const doc of due) {
+    try {
+      await publish(EMAIL_SCAN_QUEUE, { tenant_id: doc.tenant_id })
+      await credentials.updateOne({ _id: (doc as { _id?: unknown })['_id'] } as never, { $set: { scan_enqueued_at: now } })
+      enqueued += 1
+    } catch (err) {
+      log.error({ err, tenantId: doc.tenant_id }, 'Could not enqueue email scan')
+    }
+  }
+  return enqueued
+}
+
+/**
+ * Queue handler: scans one tenant. Never throws: the queue would re-run a failed
+ * job immediately (up to its attempt cap), which only hammers an unhealthy IMAP
+ * host or model; the next cron tick retries instead, as the sequential path does.
+ * A per-tenant lock stops two workers scanning the same mailbox at once.
+ */
+export async function runQueuedInboxScan(db: Db, payload: unknown): Promise<void> {
+  const tenantId = (payload as { tenant_id?: unknown } | null)?.tenant_id
+  if (typeof tenantId !== 'string' || !tenantId) {
+    log.error({ payload }, 'Ignoring email scan job without a tenant_id')
+    return
+  }
+  const lockName = `email-scan:${tenantId}`
+  const owner = await acquireCronLock(db, lockName, TENANT_SCAN_LOCK_TTL_MS)
+  if (!owner) {
+    log.info({ tenantId }, 'Email scan already running for tenant — skipping duplicate job')
+    return
+  }
+  try {
+    const doc = await db.collection<EmailConnectorCredentialDoc>('connector_credentials').findOne({ ...CONNECTED_EMAIL_FILTER, tenant_id: tenantId })
+    if (!doc) return // disconnected since it was enqueued
+    await scanTenantInbox(db, tenantId, doc)
+  } catch (err) {
+    log.error({ err, tenantId }, 'Queued email scan failed')
+  } finally {
+    await releaseCronLock(db, lockName, owner)
   }
 }

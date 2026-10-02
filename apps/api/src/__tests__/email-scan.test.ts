@@ -36,7 +36,7 @@ vi.mock('mongodb', async (importOriginal) => {
   }
 })
 
-const { scanTenantInbox } = await import('../jobs/email-scan.js')
+const { scanTenantInbox, enqueueConnectedInboxScans, runQueuedInboxScan, EMAIL_SCAN_QUEUE } = await import('../jobs/email-scan.js')
 
 const TENANT = 'tenant-scan-test'
 
@@ -350,5 +350,104 @@ describe('scanTenantInbox when the classifier fails', () => {
 
     expect(db._failureAttempts.get('bad')).toBe(1)
     expect(cursorOf(db)).toBe(0)
+  })
+})
+
+describe('email scan queue fan-out', () => {
+  const NOW = new Date('2026-10-02T12:00:00Z')
+
+  function makeFanoutDb(opts: { credentials?: Record<string, unknown>[]; lockHeld?: boolean; tenantPlan?: string } = {}) {
+    const credentials = opts.credentials ?? []
+    const credentialUpdates: Array<{ filter: Record<string, unknown>; update: Record<string, any> }> = []
+    const lockReleases: unknown[] = []
+    let findQuery: Record<string, any> = {}
+    const collections: Record<string, any> = {
+      connector_credentials: {
+        find: vi.fn((q: Record<string, unknown>) => { findQuery = q; return { toArray: async () => credentials } }),
+        findOne: vi.fn(async (q: Record<string, unknown>) => credentials.find(c => c['tenant_id'] === q['tenant_id']) ?? null),
+        updateOne: vi.fn(async (filter: Record<string, unknown>, update: Record<string, any>) => { credentialUpdates.push({ filter, update }); return {} }),
+      },
+      cron_locks: {
+        findOneAndUpdate: vi.fn(async () => (opts.lockHeld ? null : { name: 'x' })),
+        deleteOne: vi.fn(async (f: unknown) => { lockReleases.push(f); return {} }),
+      },
+      tenants: { findOne: vi.fn(async () => ({ tenant_id: TENANT, plan: opts.tenantPlan ?? 'starter' })) },
+    }
+    return { db: { collection: (n: string) => collections[n] } as any, credentialUpdates, lockReleases, query: () => findQuery }
+  }
+
+  beforeEach(() => {
+    fetchRecentEmailsMock.mockReset()
+    fetchRecentEmailsMock.mockResolvedValue({ emails: [], highestUid: 0 })
+  })
+
+  it('enqueues one job per due mailbox carrying only the tenant id, never credentials', async () => {
+    const { db, credentialUpdates } = makeFanoutDb({
+      credentials: [
+        { _id: 'c1', tenant_id: 'a', password: 'secret-1', username: 'a@x.example' },
+        { _id: 'c2', tenant_id: 'b', password: 'secret-2', username: 'b@x.example' },
+      ],
+    })
+    const publish = vi.fn(async () => {})
+
+    expect(await enqueueConnectedInboxScans(db, publish, NOW)).toBe(2)
+
+    expect(publish.mock.calls).toEqual([[EMAIL_SCAN_QUEUE, { tenant_id: 'a' }], [EMAIL_SCAN_QUEUE, { tenant_id: 'b' }]])
+    expect(JSON.stringify(publish.mock.calls)).not.toContain('secret')
+    expect(credentialUpdates.map(u => u.update.$set.scan_enqueued_at)).toEqual([NOW, NOW])
+  })
+
+  it('does not re-enqueue a mailbox already enqueued within the last 14 minutes', async () => {
+    const { db, query } = makeFanoutDb()
+    await enqueueConnectedInboxScans(db, vi.fn(async () => {}), NOW)
+    const q = query()
+    expect(q.connector_id).toBe('email')
+    expect(q.$or).toEqual([
+      { scan_enqueued_at: { $exists: false } },
+      { scan_enqueued_at: { $lt: new Date(NOW.getTime() - 14 * 60_000) } },
+    ])
+  })
+
+  it('keeps going when one publish fails, and does not mark that mailbox as enqueued', async () => {
+    const { db, credentialUpdates } = makeFanoutDb({
+      credentials: [{ _id: 'c1', tenant_id: 'a' }, { _id: 'c2', tenant_id: 'b' }],
+    })
+    const publish = vi.fn()
+      .mockRejectedValueOnce(new Error('redis down'))
+      .mockResolvedValueOnce(undefined)
+
+    expect(await enqueueConnectedInboxScans(db, publish, NOW)).toBe(1)
+    expect(credentialUpdates).toHaveLength(1)
+    expect(credentialUpdates[0]!.filter).toEqual({ _id: 'c2' })
+  })
+
+  it('scans the tenant under a per-tenant lock and releases it afterwards', async () => {
+    const { db, lockReleases } = makeFanoutDb({ credentials: [{ ...VALID_CREDENTIAL_DOC, tenant_id: TENANT }] })
+    await runQueuedInboxScan(db, { tenant_id: TENANT })
+    expect(fetchRecentEmailsMock).toHaveBeenCalledTimes(1)
+    expect(lockReleases).toHaveLength(1)
+    expect((lockReleases[0] as { name: string }).name).toBe(`email-scan:${TENANT}`)
+  })
+
+  it('skips a duplicate job while another worker is scanning the same tenant', async () => {
+    const { db, lockReleases } = makeFanoutDb({ credentials: [{ ...VALID_CREDENTIAL_DOC, tenant_id: TENANT }], lockHeld: true })
+    await runQueuedInboxScan(db, { tenant_id: TENANT })
+    expect(fetchRecentEmailsMock).not.toHaveBeenCalled()
+    expect(lockReleases).toHaveLength(0)
+  })
+
+  it('ignores a malformed job and a mailbox disconnected after it was enqueued', async () => {
+    const { db } = makeFanoutDb({ credentials: [] })
+    await runQueuedInboxScan(db, null)
+    await runQueuedInboxScan(db, { tenant_id: 42 })
+    await runQueuedInboxScan(db, { tenant_id: 'gone' })
+    expect(fetchRecentEmailsMock).not.toHaveBeenCalled()
+  })
+
+  it('never throws on a failed scan (the queue would retry it at once) and still releases the lock', async () => {
+    fetchRecentEmailsMock.mockRejectedValue(new Error('IMAP auth failed'))
+    const { db, lockReleases } = makeFanoutDb({ credentials: [{ ...VALID_CREDENTIAL_DOC, tenant_id: TENANT }] })
+    await expect(runQueuedInboxScan(db, { tenant_id: TENANT })).resolves.toBeUndefined()
+    expect(lockReleases).toHaveLength(1)
   })
 })
