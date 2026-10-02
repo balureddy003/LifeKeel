@@ -23,6 +23,8 @@ export type OperatorPermission =
   | 'leads.manage'
   | 'promotions.read'
   | 'promotions.manage'
+  | 'support.read'
+  | 'support.manage'
 
 export interface OperatorContext {
   user_id: string
@@ -38,27 +40,46 @@ interface PlatformOperatorDoc {
 }
 
 const ROLE_PERMISSIONS: Record<PlatformRole, readonly OperatorPermission[]> = {
-  support: ['overview.read', 'users.read', 'tenants.read', 'operations.read', 'leads.read', 'audit.read'],
+  support: ['overview.read', 'users.read', 'tenants.read', 'operations.read', 'leads.read', 'audit.read', 'support.read', 'support.manage'],
   marketing_operator: ['overview.read', 'marketing.read', 'marketing.manage', 'leads.read', 'leads.manage', 'promotions.read', 'audit.read'],
   finance_operator: ['overview.read', 'billing.read', 'billing.manage', 'tenants.read', 'leads.read', 'promotions.read', 'promotions.manage', 'audit.read'],
-  operations: ['overview.read', 'users.read', 'tenants.read', 'marketing.read', 'operations.read', 'operations.manage', 'leads.read', 'audit.read'],
+  operations: ['overview.read', 'users.read', 'tenants.read', 'marketing.read', 'operations.read', 'operations.manage', 'leads.read', 'audit.read', 'support.read'],
   platform_admin: [
     'overview.read', 'users.read', 'users.manage', 'tenants.read', 'tenants.manage',
     'marketing.read', 'marketing.manage', 'operations.read', 'operations.manage',
     'billing.read', 'billing.manage', 'configuration.read', 'configuration.manage',
     'leads.read', 'leads.manage', 'promotions.read', 'promotions.manage', 'audit.read',
+    'support.read', 'support.manage',
   ],
   super_admin: [
     'overview.read', 'users.read', 'users.manage', 'tenants.read', 'tenants.manage',
     'marketing.read', 'marketing.manage', 'operations.read', 'operations.manage',
     'billing.read', 'billing.manage', 'configuration.read', 'configuration.manage',
     'leads.read', 'leads.manage', 'promotions.read', 'promotions.manage',
-    'operators.manage', 'audit.read',
+    'operators.manage', 'audit.read', 'support.read', 'support.manage',
   ],
 }
 
 export function hasOperatorPermission(roles: PlatformRole[], permission: OperatorPermission): boolean {
   return roles.some((role) => ROLE_PERMISSIONS[role]?.includes(permission))
+}
+
+/** Which roles carry a permission — used by autopilot assignment to find
+ *  operators eligible for a given work stream (platform_operators docs
+ *  store role names, not resolved permissions). */
+export function rolesWithPermission(permission: OperatorPermission): PlatformRole[] {
+  return (Object.keys(ROLE_PERMISSIONS) as PlatformRole[]).filter((r) => ROLE_PERMISSIONS[r].includes(permission))
+}
+
+/** Union of all permissions granted by the operator's roles — used by
+ *  /operator/me so the console can hide nav items that would 403. The
+ *  backend stays authoritative; this is for UX, not enforcement. */
+export function resolvePermissions(roles: PlatformRole[]): OperatorPermission[] {
+  const granted = new Set<OperatorPermission>()
+  for (const role of roles) {
+    for (const permission of ROLE_PERMISSIONS[role] ?? []) granted.add(permission)
+  }
+  return [...granted].sort()
 }
 
 function bootstrapUserIds(): Set<string> {

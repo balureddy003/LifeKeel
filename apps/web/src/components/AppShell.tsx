@@ -13,7 +13,7 @@ import { MeshGradient, Skeleton, SkeletonCard } from './Glass'
 import { EmergencyMode } from './EmergencyMode'
 import { CommandPalette } from './CommandPalette'
 import { DisclaimerFooter } from './Disclaimer'
-import { fetchInboxItems, fetchFamilyInsights, fetchPublicStatus } from '@/lib/api'
+import { fetchInboxItems, fetchFamilyInsights, fetchPublicStatus, type PublicStatus } from '@/lib/api'
 import { flushMutationQueue } from '@/lib/offline-queue'
 import { warmCache } from '@/lib/fetch-cache'
 import { useToast } from './Toast'
@@ -140,11 +140,11 @@ function OfflineBanner() {
 // is exempt from the 503 so this is the one signal that still gets through.
 // Polls slowly — the flag flips rarely, and a 60s lag on a banner is fine.
 function MaintenanceBanner() {
-  const [maintenance, setMaintenance] = useState(false)
+  const [status, setStatus] = useState<PublicStatus | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    const check = () => fetchPublicStatus().then((s) => { if (!cancelled) setMaintenance(s.maintenance_mode) })
+    const check = () => fetchPublicStatus().then((s) => { if (!cancelled) setStatus(s) })
     check()
     const id = window.setInterval(check, 60_000)
     return () => {
@@ -153,10 +153,16 @@ function MaintenanceBanner() {
     }
   }, [])
 
+  const win = status?.maintenance_window
+  const windowText = win
+    ? `${win.message} (${new Date(win.starts_at).toLocaleString()} – ${new Date(win.ends_at).toLocaleTimeString()})`
+    : null
+
   return (
     <AnimatePresence>
-      {maintenance && (
+      {status?.maintenance_mode && (
         <motion.div
+          key="maintenance"
           initial={{ y: -60, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -60, opacity: 0 }}
@@ -167,6 +173,19 @@ function MaintenanceBanner() {
           <span className="text-sm text-warning font-medium">
             Scheduled maintenance — things may not load right now. Back shortly.
           </span>
+        </motion.div>
+      )}
+      {!status?.maintenance_mode && windowText && (
+        <motion.div
+          key="window"
+          initial={{ y: -60, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: -60, opacity: 0 }}
+          role="status"
+          className="fixed top-0 left-0 right-0 z-banner glass safe-area-top px-4 py-2 flex items-center justify-center gap-2"
+        >
+          <Siren size={16} className="text-family-400 flex-shrink-0" />
+          <span className="text-sm text-ink-secondary font-medium">{windowText}</span>
         </motion.div>
       )}
     </AnimatePresence>
@@ -274,6 +293,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, family } = useAuth()
   const pathname = usePathname()
 
+  // /operator is exempt too: the operator shell has its own OperatorGate
+  // (a logged-in operator with no family group would otherwise hit the
+  // "Set up your family" wall and never reach the console).
   const isAuthRoute = pathname.startsWith('/welcome') ||
     pathname.startsWith('/signup') ||
     pathname.startsWith('/login') ||
@@ -285,6 +307,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/support') ||
     pathname.startsWith('/readiness') ||
     pathname.startsWith('/blog') ||
+    pathname.startsWith('/guides') ||
+    pathname.startsWith('/operator') ||
     pathname.startsWith('/invite')
 
   if (isLoading) {
@@ -457,9 +481,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/support') ||
     pathname.startsWith('/readiness') ||
     pathname.startsWith('/blog') ||
+    pathname.startsWith('/guides') ||
     pathname.startsWith('/invite')
 
-  const showNav = isAuthenticated && family && !isAuthRoute
+  // The operator console ships its own header/nav in app/operator/layout.
+  // Without this exclusion an operator who is also a signed-in family
+  // member gets the consumer rail, tab bar, SOS/Ask Oak buttons, and the
+  // phone-width wrapper layered on top of it.
+  const isOperatorRoute = pathname.startsWith('/operator')
+
+  const showNav = isAuthenticated && family && !isAuthRoute && !isOperatorRoute
   const showEmergency = showNav && pathname !== '/assistant' && config.showEmergencyButton
   const showAskOak = showNav && pathname !== '/assistant'
 
@@ -490,7 +521,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // reserves NavRail's own width so the content centers in what's left of
   // the viewport, not in the full viewport underneath the rail.
   const isMarketingPage = !isAuthenticated && pathname === '/'
-  const widthClass = isMarketingPage ? '' : 'max-w-md md:max-w-xl lg:max-w-2xl mx-auto'
+  const widthClass = isMarketingPage || isOperatorRoute ? '' : 'max-w-md md:max-w-xl lg:max-w-2xl mx-auto'
   const railGutter = showNav ? 'md:pl-[88px]' : ''
 
   return (

@@ -10,6 +10,7 @@ import {
   removeFamilyGroupMember,
   updateFamilyGroupMemberRole,
   updateFamilyGroupMemberDateOfBirth,
+  acceptFamilyInvite as apiAcceptFamilyInvite,
   type ApiFamilyGroup,
 } from './api'
 import { getApiBase } from './env'
@@ -22,6 +23,8 @@ interface AuthContextValue {
   isLoading: boolean
   signUp: (name: string, email: string, password: string, ref?: string) => Promise<User>
   signIn: (email: string, password: string) => Promise<void>
+  /** PRD-123: accept a per-member invite — verifies the token, lands signed in. */
+  acceptFamilyInvite: (token: string, password: string) => Promise<void>
   updateEmail: (email: string) => Promise<User>
   updateProfile: (patch: { name?: string; email?: string }) => Promise<User>
   signInWithProvider: (provider: 'google') => Promise<void>
@@ -230,6 +233,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     persist(u, f)
   }
 
+  // Accepting a per-member invite is both account creation/linking AND the
+  // first sign-in — the accept route returns a session token, so this mirrors
+  // signIn's persist path rather than routing the invitee back through login.
+  const acceptFamilyInvite = async (token: string, password: string) => {
+    const { token: sessionToken, user: apiUser } = await apiAcceptFamilyInvite(token, password)
+    if (sessionToken) localStorage.setItem(TOKEN_KEY, sessionToken)
+    const u: User = { id: apiUser.id, name: apiUser.name, email: apiUser.email, avatar: '' }
+    let f: FamilyGroup | null = null
+    try {
+      const apiFamily = await fetchFamilyGroup()
+      f = apiFamily ? toFamilyGroup(apiFamily) : null
+    } catch {
+      throw new Error("Invite accepted, but we couldn't load your family. Check your connection and sign in.")
+    }
+    persist(u, f)
+  }
+
   // Google sign-in: redirect to the API's OAuth flow with app=family so the
   // callback redirects back to the Agent Oak app after authentication.
   const signInWithProvider = async (provider: 'google') => {
@@ -358,6 +378,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         signUp,
         signIn,
+        acceptFamilyInvite,
         updateEmail,
         updateProfile,
         signInWithProvider,

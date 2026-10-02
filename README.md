@@ -2,8 +2,12 @@
 
 **The autonomous digital twin for your family.**
 
-Oak understands your family's life, protection and preferences, anticipates
-what you may need, and acts on your behalf when it matters most.
+Oak is a multi-agent family financial-readiness and crisis-protection
+ecosystem: a family orchestrator (Oak HQ) plus a digital twin per member,
+a Digital Estate Vault, and an automated ingestion engine that learns from
+the documents you upload. It understands your family's life, protection
+and preferences, anticipates what you may need, and acts on your behalf
+when it matters most.
 
 *When life doesn't go to plan, Oak knows what to do next.*
 

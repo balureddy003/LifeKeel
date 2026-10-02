@@ -23,6 +23,7 @@ import type { Db } from 'mongodb'
 import type { Insight } from '@agentoak/engine'
 import { createLogger, getTenantCollection } from '@agentoak/platform'
 import type { FamilyGroupDoc } from '../routes/family-group.js'
+import { memberMatchesUser } from '../lib/family-permissions.js'
 import type { LifeEventType } from './render-playbook.js'
 
 const log = createLogger({ service: 'vault-reminder', version: '0.0.0' })
@@ -107,9 +108,9 @@ export async function maybeSendVaultReminder(
 
   const family = await db.collection<FamilyGroupDoc>('family_groups').findOne({ tenant_id: tenantId })
   if (!family) return
-  const reporter = family.members.find((m) => m.id === reporterUserId)
+  const reporter = family.members.find((m) => memberMatchesUser(m, reporterUserId))
   const reporterName = reporter?.name ?? 'A family member'
-  const otherAdults = family.members.filter((m) => m.id !== reporterUserId && m.role !== 'child' && m.status === 'active')
+  const otherAdults = family.members.filter((m) => !memberMatchesUser(m, reporterUserId) && m.role !== 'child' && m.status === 'active')
   if (otherAdults.length === 0) return
 
   await Promise.all(

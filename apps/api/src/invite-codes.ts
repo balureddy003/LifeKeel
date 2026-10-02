@@ -66,8 +66,13 @@ export async function consumeInviteCode(db: Db, code?: string): Promise<InviteCo
 
   const { doc, normalized } = result
   const col = getInviteCodesCollection(db) as any
+  // max_uses <= 0 means unlimited — the conditional filter must only apply
+  // when a real cap exists (`used_count: { $lt: 0 }` never matches, which
+  // made unlimited codes permanently unredeemable).
   const update = await col.updateOne(
-    { code: normalized, used_count: { $lt: (doc as unknown as Record<string, number>).max_uses } },
+    doc.max_uses > 0
+      ? { code: normalized, used_count: { $lt: doc.max_uses } }
+      : { code: normalized },
     { $inc: { used_count: 1 } },
   )
 

@@ -85,7 +85,10 @@ export async function runAutoExecuteTrusted(
     const tenant = await db.collection('tenants').findOne({ $or: [{ tenant_id: tenantId }, { id: tenantId }] })
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
     const used = await insightsCol.countDocuments({ tenant_id: tenantId, approved_at: { $gte: monthStart } })
-    const quota = new FreeTierPolicy().check('monthly_move_approvals', used, String(tenant?.['tier'] ?? 'free'))
+    // `plan` is the field billing maintains on the tenant — `tier` is a
+    // kairos-era field name nothing writes, so reading it capped paid
+    // tenants at the free-tier limit.
+    const quota = new FreeTierPolicy().check('monthly_move_approvals', used, String(tenant?.['plan'] ?? 'free'))
     if (!quota.allowed) {
       summary.skipped++
       continue
@@ -100,9 +103,14 @@ export async function runAutoExecuteTrusted(
 
     for (const insight of candidates) {
       const actions = Array.isArray(insight['actions']) ? insight['actions'] as string[] : []
+      const intents = Array.isArray(insight['action_intents'])
+        ? insight['action_intents'] as { type: 'send_email' | 'send_whatsapp' | 'crm_tag' | 'log_only'; label: string; params?: Record<string, unknown> }[]
+        : undefined
       // Non-external only — one send_email/whatsapp/crm_tag anywhere on
       // the insight keeps it human-gated regardless of trust level.
-      if (!previewActions(actions).every((a) => !a.external)) {
+      // PRD-116: declared action_intents count here too — a detector that
+      // declares send_email must never auto-execute, period.
+      if (!previewActions(actions, intents).every((a) => !a.external)) {
         summary.skipped++
         continue
       }

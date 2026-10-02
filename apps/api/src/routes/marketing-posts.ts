@@ -332,6 +332,40 @@ export async function generateDailyMarketingDrafts(db: Db, llm: LlmFn): Promise<
   return queued
 }
 
+/** Generate one review-gated draft promoting a blog post on a tenant's
+ *  channel — extracted so the autopilot proposal-approve path produces
+ *  the same 'draft' state as the daily sweep and the generate route.
+ *  Returns null when the blog post is gone or the channel has no active
+ *  connection. Generated content still never skips human review. */
+export async function draftBlogPromoPost(
+  db: Db,
+  llm: LlmFn,
+  tenantId: string,
+  blogSlug: string,
+  channel: string,
+  createdBy = 'autopilot-approve',
+): Promise<MarketingPostDoc | null> {
+  const src = await blogSourceBlock(db, blogSlug, channel)
+  if (!src) return null
+  const learning = await learningContextBlock(db, tenantId, channel)
+  const { content, generated } = await draftPostText(llm, channel, src.sourceBlock, src.link, learning)
+  const post: MarketingPostDoc = {
+    id: randomUUID(),
+    tenant_id: tenantId,
+    channel,
+    integration_id: `${channel}:connection`,
+    content,
+    campaign: 'oak_social',
+    state: 'draft',
+    generated,
+    source_blog_slug: blogSlug,
+    created_by: createdBy,
+    created_at: new Date(),
+  }
+  await db.collection<MarketingPostDoc>('marketing_posts').insertOne(post)
+  return post
+}
+
 export interface MarketingPerformanceRow {
   slug: string
   title?: string
@@ -353,11 +387,26 @@ export async function marketingPerformance(db: Db): Promise<{
   channels: { channel: string; views: number; signups: number }[]
   campaigns: { campaign: string; views: number; signups: number; leads: number }[]
   totals: { views: number; cta_clicks: number; signups: number; leads: number }
+  /** "What works" — trait-level engagement analysis over measured posts.
+   *  Providers don't expose impressions, so engagement is normalized
+   *  against the account's own median (x=1.0) rather than per-impression:
+   *  a 2.1x multiplier reads "posts with this trait got ~2x the median
+   *  engagement for this account". Honest comparative signal, never an
+   *  absolute rate. */
+  insights: {
+    measured_posts: number
+    unmeasured_channels: string[]
+    rows: { label: string; measured: number; engagement_x: number }[]
+    top_post?: { channel: string; excerpt: string; engagement: number }
+  }
 }> {
   const events = await db.collection('growth_events').find({}).toArray()
   const users = await db.collection('users').find({}).toArray()
   const leads = await db.collection('leads').find({}).toArray()
   const blogs = await db.collection('blog_posts').find({}).toArray()
+  const publishedPosts = await db.collection<MarketingPostDoc>('marketing_posts')
+    .find({ state: 'published' }, { projection: { _id: 0, channel: 1, content: 1, metrics: 1, metrics_at: 1, source_blog_slug: 1, external_url: 1 } })
+    .toArray()
   const titleBy = new Map(blogs.map((b) => [b['slug'] as string, b['title'] as string]))
 
   const slugOf = (path: unknown) => /^\/blog\/([^/?#]+)/.exec(String(path ?? ''))?.[1]
@@ -372,6 +421,8 @@ export async function marketingPerformance(db: Db): Promise<{
   }
   const channelViews = new Map<string, number>()
   const channelSignups = new Map<string, number>()
+  const channelCtas = new Map<string, number>()
+  const channelLeads = new Map<string, number>()
   const campaignViews = new Map<string, number>()
   const campaignSignups = new Map<string, number>()
   const campaignLeads = new Map<string, number>()
@@ -392,6 +443,9 @@ export async function marketingPerformance(db: Db): Promise<{
       if (typeof camp === 'string') campaignViews.set(camp, (campaignViews.get(camp) ?? 0) + 1)
     } else if (e['event'] === 'blog_cta_click') {
       row(slug).cta_clicks += 1
+      const meta = e['meta'] as Record<string, unknown> | undefined
+      const src = meta?.['utm_source']
+      if (typeof src === 'string') channelCtas.set(src, (channelCtas.get(src) ?? 0) + 1)
     }
   }
   for (const u of users) {
@@ -409,13 +463,21 @@ export async function marketingPerformance(db: Db): Promise<{
     const slug = a!['utm_content']
     if (slug) row(slug).leads += 1
     campaignLeads.set(campOf(a), (campaignLeads.get(campOf(a)) ?? 0) + 1)
+    const src = a!['utm_source']
+    if (src) channelLeads.set(src, (channelLeads.get(src) ?? 0) + 1)
   }
 
   const posts = [...rows.values()]
     .map((r) => ({ ...r, title: titleBy.get(r.slug) }))
     .sort((a, b) => b.signups - a.signups || b.views - a.views)
-  const channels = [...new Set([...channelViews.keys(), ...channelSignups.keys()])]
-    .map((c) => ({ channel: c, views: channelViews.get(c) ?? 0, signups: channelSignups.get(c) ?? 0 }))
+  const channels = [...new Set([...channelViews.keys(), ...channelSignups.keys(), ...channelCtas.keys(), ...channelLeads.keys()])]
+    .map((c) => ({
+      channel: c,
+      views: channelViews.get(c) ?? 0,
+      cta_clicks: channelCtas.get(c) ?? 0,
+      leads: channelLeads.get(c) ?? 0,
+      signups: channelSignups.get(c) ?? 0,
+    }))
     .sort((a, b) => b.signups - a.signups || b.views - a.views)
   const campaigns = [...new Set([...campaignViews.keys(), ...campaignSignups.keys(), ...campaignLeads.keys()])]
     .map((c) => ({ campaign: c, views: campaignViews.get(c) ?? 0, signups: campaignSignups.get(c) ?? 0, leads: campaignLeads.get(c) ?? 0 }))
@@ -424,7 +486,47 @@ export async function marketingPerformance(db: Db): Promise<{
     (t, r) => ({ views: t.views + r.views, cta_clicks: t.cta_clicks + r.cta_clicks, signups: t.signups + r.signups, leads: t.leads + r.leads }),
     { views: 0, cta_clicks: 0, signups: 0, leads: 0 },
   )
-  return { posts, channels, campaigns, totals }
+
+  // ── "What works" — engagement normalized against the account median ──
+  const engagement = (p: MarketingPostDoc) => {
+    const m = p.metrics ?? {}
+    return (m.likes ?? 0) + (m.reposts ?? 0) * 3 + (m.replies ?? 0) * 2
+  }
+  const measured = publishedPosts.filter((p) => p.metrics_at)
+  const unmeasuredChannels = [...new Set(publishedPosts.filter((p) => !p.metrics_at).map((p) => p.channel))].sort()
+  const medianOf = (nums: number[]) => {
+    if (nums.length === 0) return 0
+    const s = [...nums].sort((a, b) => a - b)
+    return s.length % 2 === 1 ? s[Math.floor(s.length / 2)]! : (s[s.length / 2 - 1]! + s[s.length / 2]!) / 2
+  }
+  const accountMedian = medianOf(measured.map(engagement))
+  const traits: { label: string; match: (p: MarketingPostDoc) => boolean }[] = [
+    { label: 'Asks a question', match: (p) => p.content.includes('?') },
+    { label: 'Shares a number or stat', match: (p) => /\d/.test(p.content) },
+    { label: 'Promotes a blog post', match: (p) => Boolean(p.source_blog_slug) },
+    { label: 'Short (under 160 chars)', match: (p) => p.content.length < 160 },
+    { label: 'Long (240+ chars)', match: (p) => p.content.length >= 240 },
+  ]
+  const insightRows = traits
+    .map((t) => {
+      const inBucket = measured.filter(t.match)
+      if (inBucket.length < 3) return null // too thin to mean anything
+      const x = accountMedian === 0 ? null : Math.round((medianOf(inBucket.map(engagement)) / accountMedian) * 10) / 10
+      if (x === null || (x > 0.75 && x < 1.33)) return null // no signal either way
+      return { label: t.label, measured: inBucket.length, engagement_x: x }
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null)
+    .sort((a, b) => b.engagement_x - a.engagement_x)
+  const top = measured.length === 0 ? undefined : [...measured].sort((a, b) => engagement(b) - engagement(a))[0]
+  const insights = {
+    measured_posts: measured.length,
+    unmeasured_channels: unmeasuredChannels,
+    rows: insightRows,
+    ...(top
+      ? { top_post: { channel: top.channel, excerpt: top.content.replace(/\s+/g, ' ').trim().slice(0, 140), engagement: engagement(top) } }
+      : {}),
+  }
+  return { posts, channels, campaigns, totals, insights }
 }
 
 /** Engagement sweep — poll channel APIs for like/repost/reply counts on

@@ -83,17 +83,33 @@ import { registerReferralRoutes } from './routes/referrals.js'
 import { registerGrowthEventRoutes } from './routes/growth-events.js'
 import { registerFamilyFinancialProfileRoutes } from './routes/family-financial-profile.js'
 import { registerLifeEventRoutes } from './routes/life-events.js'
+import { runChecklistReminderSweep } from './life-events/checklist-reminder.js'
 import { registerFamilyInboxRoutes } from './routes/family-inbox.js'
 import { registerPushRoutes } from './routes/push.js'
 import { registerReminderRoutes } from './routes/reminders.js'
 import { registerMarketingPostRoutes, publishDueMarketingPosts, generateDailyMarketingDrafts, pollMarketingEngagement } from './routes/marketing-posts.js'
+import { runMetricsRollup } from './jobs/metrics-rollup.js'
+import { runWeeklyDigest } from './operator/weekly-digest.js'
+import { runLifecycleSweep } from './marketing/lifecycle-emails.js'
+import { runAutopilotSweep, ensureAutopilotIndexes } from './operator/autopilot.js'
 import { socialPublisherFromEnv, DbSocialPublisher } from './marketing/social-publisher.js'
 import { registerOperatorRoutes } from './routes/operator.js'
 import { getPlatformConfig, registerPublicStatusRoute } from './operator/platform-config.js'
 import { registerDetectorEvalRoutes, detectorEvalDir } from './routes/detector-evals.js'
 import { ensureReminderIndexes, runPolicyRenewalReminders } from './jobs/policy-renewal-reminders.js'
+import { runMemberAgentLoop } from './jobs/member-agent-loop.js'
+import { runStaleProfileEvaluationSweep } from './jobs/stale-profile-evaluation.js'
+import { ensureMemberNudgeIndexes } from './member-nudges.js'
+import { runContinuityCheck, ensureContinuityIndexes } from './jobs/continuity-check.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
+import { registerSupportRoutes } from './routes/support.js'
 import { registerReadinessQuizRoutes } from './routes/readiness-quiz.js'
+import { registerFamilyReadinessRoutes } from './routes/family-readiness.js'
+import { registerFamilyScenarioRoutes } from './routes/family-scenarios.js'
+import { registerMemberTwinRoutes } from './routes/member-twin.js'
+import { registerFamilyContinuityRoutes } from './routes/family-continuity.js'
+import { registerFamilyCashflowRoutes } from './routes/family-cashflow.js'
+import { registerFamilyAssetRoutes } from './routes/family-assets.js'
 import { registerLeadRoutes } from './routes/leads.js'
 import { sendOpsAlert } from './lib/ops-alerts.js'
 
@@ -269,6 +285,68 @@ try {
     }
   }, { missedExecutionTolerance: 600_000 })
 
+  // Daily metrics rollup — hourly at :40. Recomputes today + yesterday
+  // (late-arriving events) into metrics_daily; first run backfills 90 days.
+  // Operator dashboards read the rollup instead of scanning raw events.
+  cron.schedule('40 * * * *', async () => {
+    try {
+      await withCronLock(workflowDb, 'metrics-rollup', async () => {
+        const summary = await runMetricsRollup(workflowDb)
+        log.info({ ...summary }, 'Metrics rollup run')
+      })
+    } catch (err) {
+      log.error({ err }, 'Metrics rollup failed')
+    }
+  }, { missedExecutionTolerance: 1_800_000 })
+  log.info({}, 'Metrics rollup cron started')
+
+  // Autopilot sweep — hourly. Evaluates only enabled, off-cooldown Tier 0/1
+  // rules; each act writes an autopilot_actions ledger row (dedup-keyed so a
+  // target is never touched twice) plus an operator_audit_log entry under
+  // actor 'autopilot'. All rules default off — this cron is inert until an
+  // operator enables one.
+  cron.schedule('50 * * * *', async () => {
+    try {
+      await withCronLock(workflowDb, 'autopilot-sweep', async () => {
+        const actions = await runAutopilotSweep(workflowDb)
+        if (actions.length > 0) {
+          log.info({ count: actions.length, rules: [...new Set(actions.map((a) => a.rule))] }, 'Autopilot sweep')
+        }
+      })
+    } catch (err) {
+      log.error({ err }, 'Autopilot sweep failed')
+    }
+  }, { missedExecutionTolerance: 1_800_000 })
+  log.info({}, 'Autopilot sweep cron started')
+
+  // Weekly operator digest — Mondays 08:30. Persisted to operator_digests
+  // and posted to the ops Slack channel (best-effort, never throws).
+  cron.schedule('30 8 * * 1', async () => {
+    try {
+      await withCronLock(workflowDb, 'weekly-digest', async () => {
+        const digest = await runWeeklyDigest(workflowDb)
+        log.info({ id: digest.id }, 'Weekly operator digest')
+      })
+    } catch (err) {
+      log.error({ err }, 'Weekly digest failed')
+    }
+  }, { missedExecutionTolerance: 3_600_000 })
+  log.info({}, 'Weekly digest cron started')
+
+  // Lifecycle email sweep — hourly at :25. Lead nurture, activation and
+  // upgrade nudges; consent/suppression/marketing_paused gated, ledger-deduped.
+  cron.schedule('25 * * * *', async () => {
+    try {
+      await withCronLock(workflowDb, 'lifecycle-sweep', async () => {
+        const sent = await runLifecycleSweep(workflowDb)
+        if (sent.length > 0) log.info({ count: sent.length }, 'Lifecycle emails sent')
+      })
+    } catch (err) {
+      log.error({ err }, 'Lifecycle sweep failed')
+    }
+  }, { missedExecutionTolerance: 1_800_000 })
+  log.info({}, 'Lifecycle email cron started')
+
   // Policy renewal reminders — hourly. Tier 3 autonomy: deterministic,
   // deduped, consent re-checked at send time, push-only to the member's
   // own devices. Hourly (not daily) so a reminder deferred by quiet hours
@@ -290,6 +368,56 @@ try {
     }, { missedExecutionTolerance: 60_000 })
     log.info({}, 'Policy renewal reminder cron started')
   }
+
+  // Member agent loop — daily at 07:15. Rebuilds every member twin and
+  // reconciles the agent's nudges into member_nudges, so proactive member
+  // guidance exists even when nobody opens the page. Write-only state —
+  // no notifications are delivered (Tier 0, deterministic).
+  await ensureMemberNudgeIndexes(workflowDb)
+  cron.schedule('15 7 * * *', async () => {
+    try {
+      await withCronLock(workflowDb, 'member-agent-loop', async () => {
+        const summary = await runMemberAgentLoop(workflowDb)
+        if (summary.failed > 0) log.warn({ ...summary }, 'Member agent loop completed with failures')
+      })
+    } catch (err) {
+      log.error({ err }, 'Member agent loop failed')
+    }
+  }, { missedExecutionTolerance: 3_600_000, noOverlap: true })
+  log.info({}, 'Member agent loop cron started')
+
+  // Continuity check — daily at 07:45 (after the agent loop). Advances the
+  // watching → check_in_sent → alerted state machine for families whose
+  // organizer enabled the switch. Email-only; the state machine itself is
+  // the guarantee against double-sends.
+  await ensureContinuityIndexes(workflowDb)
+  cron.schedule('45 7 * * *', async () => {
+    try {
+      await withCronLock(workflowDb, 'continuity-check', async () => {
+        await runContinuityCheck(workflowDb)
+      })
+    } catch (err) {
+      log.error({ err }, 'Continuity check failed')
+    }
+  }, { missedExecutionTolerance: 3_600_000 })
+  log.info({}, 'Continuity check cron started')
+
+  // Checklist reminder — Tier 3, daily at 08:10. Nudges the reporting user
+  // (only — see checklist-reminder.ts) when a bereavement/disability/
+  // medical life event they reported 3+ days ago still has unchecked
+  // response-plan steps. One email ever per event, same dedupe shape as
+  // vault-reminder.ts.
+  cron.schedule('10 8 * * *', async () => {
+    try {
+      await withCronLock(workflowDb, 'checklist-reminder', async () => {
+        const sent = await runChecklistReminderSweep(workflowDb)
+        if (sent > 0) log.info({ sent }, 'Checklist reminder sweep')
+      })
+    } catch (err) {
+      log.error({ err }, 'Checklist reminder sweep failed')
+    }
+  }, { missedExecutionTolerance: 3_600_000 })
+  log.info({}, 'Checklist reminder cron started')
 
   // Trading (auto-trade confirmation, reconciliation, momentum rebalance)
   // and workflow-approval-timeout sweeps removed — Agent Oak has no trading
@@ -521,6 +649,27 @@ try {
   const persistAndDeliverInsights = async (insights: Insight[], tenantId: string): Promise<void> =>
     persistAndDeliverInsightsCore(workflowDb, insights, tenantId, deliveryRouter)
   insightsDeliveryHook = persistAndDeliverInsights
+
+  // Stale profile evaluation — daily at 06:30 (before the member agent
+  // loop at 07:15 and continuity check at 07:45). Closes the gap where a
+  // family autosaves real data across wizard steps but never clicks "Save
+  // & Generate Insights" — their profile sits fully accurate and fully
+  // un-evaluated otherwise. Tier 0: reuses the exact
+  // evaluateProfileAndGenerateInsights() + persistAndDeliverInsights path
+  // POST /family/financial-profile/evaluate already runs on demand; this
+  // only adds the "someone has to remember to click it" → "guaranteed to
+  // eventually happen" part.
+  cron.schedule('30 6 * * *', async () => {
+    try {
+      await withCronLock(workflowDb, 'stale-profile-evaluation', async () => {
+        const summary = await runStaleProfileEvaluationSweep(workflowDb, engine, persistAndDeliverInsights)
+        if (summary.failed > 0) log.warn({ ...summary }, 'Stale profile evaluation sweep completed with failures')
+      })
+    } catch (err) {
+      log.error({ err }, 'Stale profile evaluation sweep failed')
+    }
+  }, { missedExecutionTolerance: 3_600_000, noOverlap: true })
+  log.info({}, 'Stale profile evaluation cron started')
 
   const retentionWorker = new RetentionWorker(workflowDb)
   const insightSlaWorker = new InsightSlaWorker(workflowDb)
@@ -935,7 +1084,7 @@ app.addHook('onRequest', async (request, reply) => {
   // PRD-110: '/family/join' is deliberately NOT a prefix of the organizer-only
   // '/family/access-requests*' endpoints below — this array is matched by
   // startsWith, so '/family/join-requests' would have made those public too.
-  const open = ['/health', '/engine/health', '/status', '/metrics', '/auth/token', '/auth/demo-token', '/auth/signup', '/auth/login', '/auth/sso/', '/auth/google/', '/auth/github/', '/auth/request-password-reset', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/entitlements/plans', '/blog/posts', '/a/', '/why/', '/verify/', '/webhooks/', '/inbound/', '/insights/cleanup-stale-all', '/billing/webhook', '/documentation', '/documentation/json', '/documentation/uiOptions', '/documentation/static', '/growth/events', '/readiness-quiz', '/leads', '/family/join']
+  const open = ['/health', '/engine/health', '/status', '/metrics', '/auth/token', '/auth/demo-token', '/auth/signup', '/auth/login', '/auth/sso/', '/auth/google/', '/auth/github/', '/auth/request-password-reset', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/entitlements/plans', '/blog/posts', '/a/', '/why/', '/verify/', '/webhooks/', '/inbound/', '/insights/cleanup-stale-all', '/billing/webhook', '/documentation', '/documentation/json', '/documentation/uiOptions', '/documentation/static', '/growth/events', '/readiness-quiz', '/leads', '/users/unsubscribe', '/family/join', '/family/invite/']
   if (/^\/connectors\/[^/]+\/oauth\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/exchange/.test(request.url)) return
@@ -946,11 +1095,13 @@ app.addHook('onRequest', async (request, reply) => {
 
   try {
     const ctx = await auth.verify(token)
+    let authedUser: Record<string, unknown> | null = null
     if (workflowDb) {
       const user = await workflowDb.collection('users').findOne(
         { tenant_id: ctx.tenant_id, id: ctx.user_id },
-        { projection: { status: 1, sessions_revoked_at: 1 } },
+        { projection: { status: 1, sessions_revoked_at: 1, last_seen_at: 1 } },
       )
+      authedUser = user
       if (user?.['status'] === 'suspended') return reply.status(401).send({ error: 'User suspended' })
       // Operator session revocation: reject tokens issued before
       // sessions_revoked_at. JWT iat is seconds; <= guards a token minted
@@ -969,6 +1120,21 @@ app.addHook('onRequest', async (request, reply) => {
       }
     }
     request.authContext = ctx
+
+    // PRD-130: heartbeat for the continuity switch — throttled to one
+    // write per hour per user so an active session costs almost nothing
+    // but a silent organizer is still detectable. Fire-and-forget: a
+    // missed beat skews the inactivity clock by an hour at most, never
+    // blocks a request.
+    if (workflowDb && ctx.user_id) {
+      const lastSeen = authedUser?.['last_seen_at'] as Date | undefined
+      if (!lastSeen || Date.now() - lastSeen.getTime() > 60 * 60 * 1000) {
+        workflowDb.collection('users').updateOne(
+          { tenant_id: ctx.tenant_id, id: ctx.user_id },
+          { $set: { last_seen_at: new Date() } },
+        ).catch(() => {})
+      }
+    }
 
     // Demo tenant guard: block access to sensitive operations for demo users.
     // The demo token carries `demo: true` — even though it has admin roles,
@@ -1243,24 +1409,32 @@ if (workflowDb) {
   registerBillingRoutes(app, workflowDb)
   registerBlogRoutes(app, workflowDb)
   registerDocumentRoutes(app, workflowDb, engine, insightsDeliveryHook)
-  registerVaultRoutes(app, workflowDb)
+  registerVaultRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerAuditLogRoutes(app, workflowDb)
   registerAutomationSettingsRoutes(app, workflowDb)
   registerAccountRoutes(app, workflowDb)
   registerFamilyConnectorRoutes(app, workflowDb)
   registerFamilyGroupRoutes(app, workflowDb)
-  registerFamilyJoinRoutes(app, workflowDb)
+  registerFamilyJoinRoutes(app, workflowDb, auth)
   registerReferralRoutes(app, workflowDb)
   registerGrowthEventRoutes(app, workflowDb)
   registerFamilyInboxRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerAssistantRoutes(app, workflowDb)
+  registerSupportRoutes(app, workflowDb)
   registerReadinessQuizRoutes(app, workflowDb, engine)
+  registerFamilyReadinessRoutes(app, workflowDb)
+  registerFamilyScenarioRoutes(app, workflowDb)
+  registerMemberTwinRoutes(app, workflowDb)
+  registerFamilyContinuityRoutes(app, workflowDb)
+  registerFamilyCashflowRoutes(app, workflowDb)
+  registerFamilyAssetRoutes(app, workflowDb)
   await registerLeadRoutes(app, workflowDb)
   await registerFamilyFinancialProfileRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerLifeEventRoutes(app, workflowDb)
   registerPushRoutes(app, workflowDb, deliveryRouter)
   registerReminderRoutes(app, workflowDb)
   registerMarketingPostRoutes(app, workflowDb)
+  ensureAutopilotIndexes(workflowDb)
   await registerOperatorRoutes(app, workflowDb)
   registerDetectorEvalRoutes(app, workflowDb, engine, detectorEvalDir(ROOT))
 }

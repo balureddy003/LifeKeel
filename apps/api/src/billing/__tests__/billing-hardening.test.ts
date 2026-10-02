@@ -259,6 +259,30 @@ describe('Billing hardening — race conditions and guards', () => {
     expect(tenant?.['billing']?.['credits_balance']).toBe(110)
   })
 
+  it('C4: an unlimited promo code (max_uses: 0) is redeemable', async () => {
+    await seedTenant(db, { balance: 10 })
+    await db.collection('promo_codes').insertOne({
+      code: 'UNLIMITED50',
+      grant_credits: 50,
+      // 0 means unlimited — the operator schema defaults to it and the UI
+      // renders it as uncapped. The old atomic filter was
+      // `used_count < max_uses` → `$lt: 0` → never matched, so every
+      // unlimited code was permanently unredeemable.
+      max_uses: 0,
+      used_count: 0,
+      active: true,
+      created_at: new Date(),
+    })
+
+    const result = await redeemPromoCode(db, TENANT_ID, 'UNLIMITED50')
+
+    expect(result.ok).toBe(true)
+    const tenant = await db.collection('tenants').findOne({ tenant_id: TENANT_ID })
+    expect(tenant?.['billing']?.['credits_balance']).toBe(60)
+    const code = await db.collection('promo_codes').findOne({ code: 'UNLIMITED50' })
+    expect(code?.['used_count']).toBe(1)
+  })
+
   // ── L3: Credit reversal ────────────────────────────────────────────────────
 
   it('L3: reverses a credit charge and restores balance', async () => {

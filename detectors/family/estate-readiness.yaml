@@ -1,0 +1,43 @@
+id: family_estate_readiness
+name: Estate Document Completeness
+description: >
+  Checks the Digital Estate Vault for the two documents a household's estate
+  readiness minimally needs — a will and a power of attorney — and flags
+  what's missing. Driven by user-declared doc_type tags on vault uploads;
+  the vault does no OCR, so absence here means "not on file", nothing more.
+version: 1.0.0
+signal_types:
+  - family.estate
+industries: ["family", "estate", "protection"]
+
+rules:
+  - id: estate_no_will
+    name: No Will On File In The Estate Vault
+    condition: "data.has_will == 0"
+    confidence: 0.7
+    # Estate gaps have no honest minor-unit cost — impact is 0 by design.
+    impact_low: 0
+    impact_high: 0
+    reasoning_template: >
+      No document tagged as a will is stored in your family's Estate Vault. Without one on file, the people
+      managing an emergency can't be sure your wishes are recorded where they'll look. This is informational
+      only — a solicitor or will-writing professional can advise on making or updating a will.
+    actions:
+      - Check whether a current will exists and store a copy in the Estate Vault
+      - Consult a solicitor or will-writing professional about making or updating a will
+      - Tell the other adults in your family where the original document is kept
+
+  - id: estate_no_power_of_attorney
+    name: No Power Of Attorney On File In The Estate Vault
+    condition: "data.has_power_of_attorney == 0"
+    confidence: 0.7
+    impact_low: 0
+    impact_high: 0
+    reasoning_template: >
+      No document tagged as a power of attorney is stored in your family's Estate Vault. Without one on file,
+      nobody has documented authority to manage finances or decisions if a family member can't. This is
+      informational only — a solicitor can advise on putting a power of attorney in place.
+    actions:
+      - Check whether a power of attorney exists and store a copy in the Estate Vault
+      - Consult a solicitor about putting a lasting power of attorney in place
+      - Tell the other adults in your family who holds authority and where it's documented

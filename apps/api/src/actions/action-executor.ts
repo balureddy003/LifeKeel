@@ -109,6 +109,32 @@ function classifyAction(label: string): ActionType {
   return 'log_only'
 }
 
+// PRD-116: a detector-declared intent is authoritative over keyword
+// classification for its label — "Email me a reminder before this renews"
+// means send_email because the rule *said so*, not because the regex
+// happened to match. Free-text actions with no declared intent still
+// classify the old way (advisory strings → log_only).
+interface DeclaredIntent {
+  type: ActionType
+  label: string
+  params?: Record<string, unknown>
+}
+
+function intentsFor(actions: string[], declared: DeclaredIntent[] | undefined): ActionIntent[] {
+  const intents = (declared ?? []).map((i) => ({
+    type: i.type,
+    label: i.label,
+    params: i.params ?? {},
+  }))
+  const declaredLabels = new Set(intents.map((i) => i.label))
+  for (const label of actions) {
+    if (!declaredLabels.has(label)) {
+      intents.push({ type: classifyAction(label), label, params: {} })
+    }
+  }
+  return intents
+}
+
 // ── Action preview ────────────────────────────────────────────────────────────
 // The human-facing "what will actually happen" description of each action on an
 // insight. GET /insights/:id/action-preview renders this on the approval-gate
@@ -132,11 +158,10 @@ const ACTION_TYPE_EFFECTS: Record<ActionType, { external: boolean; summary: stri
   log_only:      { external: false, summary: 'Recorded as done — nothing is sent or changed automatically' },
 }
 
-export function previewActions(labels: string[]): ActionPreview[] {
-  return labels.map((label) => {
-    const type = classifyAction(label)
-    const effect = ACTION_TYPE_EFFECTS[type]
-    return { label, type, external: effect.external, summary: effect.summary }
+export function previewActions(labels: string[], declared?: DeclaredIntent[]): ActionPreview[] {
+  return intentsFor(labels, declared).map((intent) => {
+    const effect = ACTION_TYPE_EFFECTS[intent.type]
+    return { label: intent.label, type: intent.type, external: effect.external, summary: effect.summary }
   })
 }
 
@@ -163,12 +188,11 @@ export class ActionExecutor {
     const { dryRun = false } = opts
     const receipts: ActionReceipt[] = []
 
-    for (const actionLabel of insight.actions) {
-      const type = classifyAction(actionLabel)
+    for (const intent of intentsFor(insight.actions, insight.action_intents as DeclaredIntent[] | undefined)) {
       const receipt = await this.runAction({
         insight,
         tenantId,
-        intent: { type, label: actionLabel, params: { approved_by: opts.approvedBy } },
+        intent: { ...intent, params: { ...intent.params, approved_by: opts.approvedBy } },
         dryRun,
       })
       receipts.push(receipt)

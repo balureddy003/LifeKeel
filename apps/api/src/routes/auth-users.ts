@@ -41,7 +41,7 @@ export interface User {
   created_at: Date
   avatar_color: string
   roles: string[]
-  status: 'active' | 'suspended' | undefined
+  status: 'active' | 'suspended' | 'erased' | undefined
   failed_login_attempts: number | undefined
   locked_until: Date | undefined
   external_id: string | undefined
@@ -52,6 +52,11 @@ export interface User {
   password_reset_token: string | undefined
   password_reset_expires: Date | undefined
   updated_at: Date | undefined
+  // PRD-130: last authenticated request, throttled to one write per hour
+  // per user in the auth middleware. Feeds the continuity check-in — a
+  // login timestamp alone can't tell an active-but-long-lived session
+  // from a genuinely absent organizer.
+  last_seen_at?: Date | undefined
   // First-touch marketing attribution captured by apps/web's attribution.ts
   // — utm_*/referrer/landing_path, all short sanitized strings.
   attribution?: Record<string, string> | undefined
@@ -310,6 +315,12 @@ export async function registerAuthUserRoutes(
       // Timing-safe: still hash even on miss to prevent user enumeration
       scryptSync(password, randomBytes(16).toString('hex'), 32)
       recordLoginEvent(request, { email: emailKey, success: false, reason: 'unknown_email' })
+      return reply.status(401).send({ error: 'Invalid email or password' })
+    }
+    // Erased accounts are tombstones — no credentials remain, and the
+    // response mustn't distinguish them from an unknown email.
+    if (user.status === 'erased') {
+      recordLoginEvent(request, { email: emailKey, success: false, reason: 'erased', user_id: user.id, tenant_id: user.tenant_id })
       return reply.status(401).send({ error: 'Invalid email or password' })
     }
     if (user.status === 'suspended') {

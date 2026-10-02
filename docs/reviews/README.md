@@ -42,3 +42,12 @@ extraction → profile bridge) had already shipped before the pass — see
    PWA / Capacitor-wrap / RN-rewrite options with real costs, and the
    phased recommendation (ship the PWA deliberately → Capacitor when
    store presence earns it, gated on the IAP billing decision).
+6. [vision-vs-implementation-audit-2026-09.md](vision-vs-implementation-audit-2026-09.md) —
+   full inventory of every implemented surface mapped against the
+   multi-agent vision brief (Oak HQ + member twins, crisis resilience,
+   proactive intelligence, vault, ingestion engine). Key correction to
+   earlier docs: the Act layer is ahead of what ARCHITECTURE.md claimed —
+   approve→execute, earned-trust auto-execution, and opt-in autonomous
+   reminders all ship — while the real gaps are member-level reasoning,
+   the composite readiness score, time-shifted simulation, and the Action
+   Network. Produced 2026-09-28.

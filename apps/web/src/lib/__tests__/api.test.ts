@@ -101,8 +101,49 @@ describe('fetchFamilyInsights', () => {
 })
 
 describe('fetchFamilyReadinessScore', () => {
-  it('scores 100 with hasLiveData when detectors ran and found no open insights', async () => {
+  // PRD-114: the server is authoritative when it answers — the local
+  // penalty math only runs when /family/readiness is unreachable.
+  it('prefers the server composite score when /family/readiness reports live data', async () => {
+    mockFetchOnce({
+      score: 72,
+      has_live_data: true,
+      computed_at: '2026-09-20T00:00:00Z',
+      components: [],
+      insights: [],
+    })
+    const result = await fetchFamilyReadinessScore()
+    expect(result).toEqual({ score: 72, hasLiveData: true })
+  })
+
+  it('treats server has_live_data=false as unknown — never a flattering 100', async () => {
+    mockFetchOnce({
+      score: null,
+      has_live_data: false,
+      computed_at: '2026-09-20T00:00:00Z',
+      components: [],
+      insights: [],
+    })
+    const result = await fetchFamilyReadinessScore()
+    expect(result).toEqual({ score: 0, hasLiveData: false })
+  })
+
+  it('scores 0 with hasLiveData when the server ran but could not compute', async () => {
+    mockFetchOnce({
+      score: null,
+      has_live_data: true,
+      computed_at: '2026-09-20T00:00:00Z',
+      components: [],
+      insights: [],
+    })
+    const result = await fetchFamilyReadinessScore()
+    expect(result).toEqual({ score: 0, hasLiveData: true })
+  })
+
+  // Fallback path: /family/readiness unreachable → legacy insight-penalty
+  // math, still gated on insights_evaluated_at.
+  it('falls back to 100 with hasLiveData when readiness is unreachable, detectors ran, and no insights are open', async () => {
     mockFetchSequence(
+      { body: {}, ok: false },
       { body: { insights: [] } },
       { body: { profile: { household: {}, insights_evaluated_at: '2026-09-20T00:00:00Z' } } },
     )
@@ -110,8 +151,9 @@ describe('fetchFamilyReadinessScore', () => {
     expect(result).toEqual({ score: 100, hasLiveData: true })
   })
 
-  it('does not score a saved-but-never-evaluated profile as 100 — zero insights there means unknown, not on track', async () => {
+  it('does not score a saved-but-never-evaluated profile as 100 in the fallback — zero insights there means unknown, not on track', async () => {
     mockFetchSequence(
+      { body: {}, ok: false },
       { body: { insights: [] } },
       { body: { profile: { household: {} } } },
     )
@@ -119,53 +161,67 @@ describe('fetchFamilyReadinessScore', () => {
     expect(result).toEqual({ score: 0, hasLiveData: false })
   })
 
-  it('scores 0 without live data when there are no insights and no profile', async () => {
-    mockFetchSequence({ body: { insights: [] } }, { body: { profile: null } })
+  it('scores 0 without live data when the fallback finds no insights and no profile', async () => {
+    mockFetchSequence(
+      { body: {}, ok: false },
+      { body: { insights: [] } },
+      { body: { profile: null } },
+    )
     const result = await fetchFamilyReadinessScore()
     expect(result).toEqual({ score: 0, hasLiveData: false })
   })
 
-  it('subtracts a confidence-weighted penalty per open (unresolved) insight', async () => {
-    mockFetchOnce({
-      insights: [
-        {
-          id: '1',
-          detector_id: 'family_emergency_fund_adequacy',
-          rule_id: 'r1',
-          hypothesis: 'h',
-          reasoning: 'r',
-          actions: [],
-          confidence_breakdown: { combined_score: 0.5 },
-          urgency: 'medium',
-          category: 'savings',
-          state: 'open',
-          created_at: '2026-01-01',
+  it('subtracts a confidence-weighted penalty per open (unresolved) insight in the fallback', async () => {
+    mockFetchSequence(
+      { body: {}, ok: false },
+      {
+        body: {
+          insights: [
+            {
+              id: '1',
+              detector_id: 'family_emergency_fund_adequacy',
+              rule_id: 'r1',
+              hypothesis: 'h',
+              reasoning: 'r',
+              actions: [],
+              confidence_breakdown: { combined_score: 0.5 },
+              urgency: 'medium',
+              category: 'savings',
+              state: 'open',
+              created_at: '2026-01-01',
+            },
+          ],
         },
-      ],
-    })
+      },
+    )
     const result = await fetchFamilyReadinessScore()
     // 100 - (0.5 * 10) = 95
     expect(result).toEqual({ score: 95, hasLiveData: true })
   })
 
-  it('does not penalize resolved insights', async () => {
-    mockFetchOnce({
-      insights: [
-        {
-          id: '1',
-          detector_id: 'family_retirement_gap',
-          rule_id: 'r1',
-          hypothesis: 'h',
-          reasoning: 'r',
-          actions: [],
-          confidence_breakdown: { combined_score: 0.9 },
-          urgency: 'low',
-          category: 'retirement',
-          state: 'dismissed',
-          created_at: '2026-01-01',
+  it('does not penalize resolved insights in the fallback', async () => {
+    mockFetchSequence(
+      { body: {}, ok: false },
+      {
+        body: {
+          insights: [
+            {
+              id: '1',
+              detector_id: 'family_retirement_gap',
+              rule_id: 'r1',
+              hypothesis: 'h',
+              reasoning: 'r',
+              actions: [],
+              confidence_breakdown: { combined_score: 0.9 },
+              urgency: 'low',
+              category: 'retirement',
+              state: 'dismissed',
+              created_at: '2026-01-01',
+            },
+          ],
         },
-      ],
-    })
+      },
+    )
     expect(RESOLVED_INSIGHT_STATES).toContain('dismissed')
     const result = await fetchFamilyReadinessScore()
     expect(result).toEqual({ score: 100, hasLiveData: true })

@@ -1,4 +1,5 @@
 import type { MetadataRoute } from 'next'
+import { GUIDES } from './guides/guides-data'
 
 // Same base as layout.tsx's metadataBase — the real Firebase Hosting
 // target (.firebaserc). If a custom domain ever lands, both places change.
@@ -13,6 +14,7 @@ const PUBLIC_ROUTES: { path: string; changefreq: 'weekly' | 'monthly' | 'yearly'
   { path: '/', changefreq: 'weekly', priority: 1.0 },
   { path: '/readiness/', changefreq: 'monthly', priority: 0.8 },
   { path: '/blog/', changefreq: 'weekly', priority: 0.7 },
+  { path: '/guides/', changefreq: 'monthly', priority: 0.7 },
   { path: '/signup/', changefreq: 'monthly', priority: 0.6 },
   { path: '/support/', changefreq: 'monthly', priority: 0.4 },
   { path: '/login/', changefreq: 'monthly', priority: 0.3 },
@@ -53,5 +55,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     changeFrequency: r.changefreq,
     priority: r.priority,
   }))
-  return [...staticEntries, ...(await blogPostEntries())]
+  const guideEntries: MetadataRoute.Sitemap = GUIDES.map((g) => ({
+    url: `${SITE_URL}/guides/${g.slug}/`,
+    changeFrequency: 'yearly' as const,
+    priority: 0.8,
+  }))
+  return [...staticEntries, ...guideEntries, ...(await blogPostEntries())]
 }

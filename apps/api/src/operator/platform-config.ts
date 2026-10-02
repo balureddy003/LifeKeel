@@ -14,17 +14,36 @@
 
 import type { Db } from 'mongodb'
 
+export interface MaintenanceWindow {
+  starts_at: string
+  ends_at: string
+  message: string
+}
+
 export interface PlatformConfig {
   maintenance_mode: boolean
   signups_enabled: boolean
   marketing_paused: boolean
+  /** Scheduled maintenance notice — surfaced publicly via /status so the
+   *  product can warn users before maintenance_mode actually engages. */
+  maintenance_window: MaintenanceWindow | null
 }
 
 export const CONFIG_DOC_KEY = 'global'
-const DEFAULTS: PlatformConfig = { maintenance_mode: false, signups_enabled: true, marketing_paused: false }
+const DEFAULTS: PlatformConfig = { maintenance_mode: false, signups_enabled: true, marketing_paused: false, maintenance_window: null }
 const CACHE_TTL_MS = 10_000
 
 let cache: { config: PlatformConfig; at: number } | null = null
+
+function parseWindow(raw: unknown): MaintenanceWindow | null {
+  if (!raw || typeof raw !== 'object') return null
+  const w = raw as Record<string, unknown>
+  const starts = typeof w['starts_at'] === 'string' ? w['starts_at'] : ''
+  const ends = typeof w['ends_at'] === 'string' ? w['ends_at'] : ''
+  const message = typeof w['message'] === 'string' ? w['message'] : ''
+  if (!starts || !ends || !message) return null
+  return { starts_at: starts, ends_at: ends, message }
+}
 
 export async function getPlatformConfig(db: Db): Promise<PlatformConfig> {
   if (cache && Date.now() - cache.at < CACHE_TTL_MS) return cache.config
@@ -33,6 +52,7 @@ export async function getPlatformConfig(db: Db): Promise<PlatformConfig> {
     maintenance_mode: doc?.['maintenance_mode'] === true,
     signups_enabled: doc?.['signups_enabled'] !== false,
     marketing_paused: doc?.['marketing_paused'] === true,
+    maintenance_window: parseWindow(doc?.['maintenance_window']),
   }
   cache = { config, at: Date.now() }
   return config
@@ -55,6 +75,9 @@ export function invalidatePlatformConfigCache(): void {
 export interface PublicStatus {
   maintenance_mode: boolean
   signups_enabled: boolean
+  /** Present only while the window is upcoming or in progress — past
+   *  windows are dropped so stale banners can't linger. */
+  maintenance_window?: MaintenanceWindow
 }
 
 export function registerPublicStatusRoute(
@@ -65,6 +88,9 @@ export function registerPublicStatusRoute(
     const db = getDb()
     if (!db) return { maintenance_mode: false, signups_enabled: true }
     const config = await getPlatformConfig(db)
-    return { maintenance_mode: config.maintenance_mode, signups_enabled: config.signups_enabled }
+    const status: PublicStatus = { maintenance_mode: config.maintenance_mode, signups_enabled: config.signups_enabled }
+    const window = config.maintenance_window
+    if (window && new Date(window.ends_at).getTime() > Date.now()) status.maintenance_window = window
+    return status
   })
 }

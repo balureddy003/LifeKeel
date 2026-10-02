@@ -10,9 +10,12 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   fetchFamilyInsights,
   fetchFamilyGoals,
+  fetchFamilyReadiness,
   fetchFamilyReadinessScore,
   fetchFinancialProfile,
+  fetchEventReadiness as fetchEventReadinessApi,
   type FinancialProfile,
+  type ReadinessComponentKey,
   RESOLVED_INSIGHT_STATES,
   type FamilyInsight,
   type FamilyGoal,
@@ -121,22 +124,42 @@ function domainWasChecked(domain: HealthDomain, p: FinancialProfile | null): boo
       return p.retirement.target_retirement_income_minor > TARGET_SET_MINOR
     case 'goals':
       return p.education_funds.some((f) => f.target_savings_minor > TARGET_SET_MINOR)
+    case 'estate':
+      // Estate readiness is driven by vault contents, not the profile —
+      // only the server knows (the vault is adult-gated).
+      return false
   }
 }
 
-export type HealthDomain = 'protection' | 'wealth' | 'goals' | 'savings'
+export type HealthDomain = 'protection' | 'wealth' | 'goals' | 'savings' | 'estate'
 
 export interface DomainHealth {
   score: number
   hasLiveData: boolean
   insights: FamilyInsight[]
+  /** One-line explanation from the server's composite score (PRD-114), when available. */
+  detail?: string
+  /** True when this member can't see the underlying data (estate vault is adult-only). */
+  gated?: boolean
 }
 
-const DOMAIN_DETECTOR_MAP: Record<HealthDomain, string> = {
+const DOMAIN_DETECTOR_MAP: Record<HealthDomain, string | null> = {
   protection: 'family_protection_gap',
   wealth: 'family_retirement_gap',
   goals: 'family_education_shortfall',
   savings: 'family_emergency_fund_adequacy',
+  estate: 'family_estate_readiness', // PRD-121 — vault doc_type gaps are now detectable
+}
+
+// Server readiness component → health domain. When GET /family/readiness
+// is reachable, its deterministic subscores replace the client-side
+// insight-penalty math — same numbers the Family Readiness Score shows.
+const COMPONENT_TO_DOMAIN: Record<ReadinessComponentKey, HealthDomain> = {
+  emergency_fund: 'savings',
+  protection: 'protection',
+  retirement: 'wealth',
+  education: 'goals',
+  estate: 'estate',
 }
 
 // Fallback scores shown only when the API has no insights yet — labeled as
@@ -146,6 +169,7 @@ const DOMAIN_FALLBACK_SCORE: Record<HealthDomain, number> = {
   wealth: 65,
   goals: 80,
   savings: 85,
+  estate: 50,
 }
 
 /**
@@ -193,6 +217,7 @@ export function useFamilyHealthDomains() {
   // already correct while the fourth (whichever had no insights) was
   // transiently wrong. Gating loading on both fetches removes the flicker.
   const [profileLoading, setProfileLoading] = useState(true)
+  const [readiness, setReadiness] = useState<Awaited<ReturnType<typeof fetchFamilyReadiness>>>(null)
   const loading = insightsLoading || profileLoading
 
   useEffect(() => {
@@ -214,14 +239,43 @@ export function useFamilyHealthDomains() {
       .finally(() => {
         if (!cancelled) setProfileLoading(false)
       })
+    // PRD-114: the server's deterministic subscores, when reachable.
+    // Null on any failure — the insight-penalty math below is the fallback.
+    fetchFamilyReadiness().then((r) => {
+      if (!cancelled) setReadiness(r)
+    })
     return () => { cancelled = true }
   }, [])
+
+  const serverByDomain = new Map<HealthDomain, NonNullable<typeof readiness>['components'][number]>()
+  for (const c of readiness?.components ?? []) {
+    serverByDomain.set(COMPONENT_TO_DOMAIN[c.key], c)
+  }
 
   const domains: Record<HealthDomain, DomainHealth> = {} as Record<HealthDomain, DomainHealth>
 
   for (const domain of Object.keys(DOMAIN_DETECTOR_MAP) as HealthDomain[]) {
     const detectorId = DOMAIN_DETECTOR_MAP[domain]
-    const domainInsights = insights.filter((i) => i.detector_id === detectorId)
+    const domainInsights = detectorId ? insights.filter((i) => i.detector_id === detectorId) : []
+
+    // Server-side composite is authoritative when live: a real subscore
+    // for a domain with data, a null subscore meaning "not enough data" —
+    // which renders as the sample state, not a false 100.
+    const server = serverByDomain.get(domain)
+    if (server && readiness?.has_live_data) {
+      if (server.gated || server.score === null) {
+        domains[domain] = {
+          score: DOMAIN_FALLBACK_SCORE[domain],
+          hasLiveData: false,
+          insights: domainInsights,
+          detail: server.detail,
+          ...(server.gated ? { gated: true } : {}),
+        }
+      } else {
+        domains[domain] = { score: server.score, hasLiveData: true, insights: domainInsights, detail: server.detail }
+      }
+      continue
+    }
 
     if (domainInsights.length === 0) {
       // Zero insights is only "healthy" if the detector had inputs to
@@ -320,18 +374,35 @@ export function useEventReadiness(
 
   useEffect(() => {
     let cancelled = false
+
+    // event-readiness.ts on the API side — the fallback used below when
+    // EVENT_DETECTOR_MAP has no mapping (car/property/travel today) or the
+    // mapped detector hasn't produced a matching insight yet. Never backed
+    // by an Insight document, so insightId/ruleId always stay null on this
+    // path — the "Draft a message"/"Learn more" affordances that need one
+    // simply don't render for these event types, same as before.
+    async function loadFromEventReadiness() {
+      const result = await fetchEventReadinessApi(eventId)
+      if (cancelled) return
+      if ('stability' in result && result.hasLiveData) {
+        setStability(result.stability)
+        setExplanation(result.explanation)
+        setHasLiveData(true)
+      } else {
+        setStability(fallbackStability)
+        setExplanation(fallbackExplanation)
+        setHasLiveData(false)
+      }
+      setInsightId(null)
+      setRuleId(null)
+      setLoading(false)
+    }
+
     async function load() {
       setLoading(true)
       const mapping = EVENT_DETECTOR_MAP[eventId]
       if (!mapping) {
-        if (!cancelled) {
-          setStability(fallbackStability)
-          setExplanation(fallbackExplanation)
-          setHasLiveData(false)
-          setInsightId(null)
-          setRuleId(null)
-          setLoading(false)
-        }
+        await loadFromEventReadiness()
         return
       }
 
@@ -339,31 +410,23 @@ export function useEventReadiness(
         const insights = await fetchFamilyInsights()
         const candidates = insights.filter((i) => i.detector_id === mapping.detectorId)
         const matching = candidates.find((i) => i.rule_id === mapping.preferredRuleId) ?? candidates[0]
-        if (!cancelled) {
-          if (matching && (matching.reasoning || matching.hypothesis)) {
-            setStability(matching.confidence > 0 ? Math.round(matching.confidence * 100) : fallbackStability)
-            setExplanation(matching.reasoning || matching.hypothesis || fallbackExplanation)
-            setHasLiveData(true)
-            setInsightId(matching.id)
-            setRuleId(matching.rule_id)
-          } else {
-            setStability(fallbackStability)
-            setExplanation(fallbackExplanation)
-            setHasLiveData(false)
-            setInsightId(null)
-            setRuleId(null)
-          }
+        if (cancelled) return
+        if (matching && (matching.reasoning || matching.hypothesis)) {
+          setStability(matching.confidence > 0 ? Math.round(matching.confidence * 100) : fallbackStability)
+          setExplanation(matching.reasoning || matching.hypothesis || fallbackExplanation)
+          setHasLiveData(true)
+          setInsightId(matching.id)
+          setRuleId(matching.rule_id)
           setLoading(false)
+        } else {
+          // Mapped detector exists but hasn't flagged anything yet — fall
+          // back to the real-data computation rather than going straight
+          // to the static sample, so a clean-but-complete profile still
+          // shows a real number instead of a permanent "Sample scenario".
+          await loadFromEventReadiness()
         }
       } catch {
-        if (!cancelled) {
-          setStability(fallbackStability)
-          setExplanation(fallbackExplanation)
-          setHasLiveData(false)
-          setInsightId(null)
-          setRuleId(null)
-          setLoading(false)
-        }
+        if (!cancelled) await loadFromEventReadiness()
       }
     }
     load()

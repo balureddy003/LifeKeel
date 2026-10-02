@@ -268,6 +268,24 @@ export default function ReadinessQuizPage() {
       {result && result.score !== null && (
         <div ref={resultRef} tabIndex={-1} aria-label={`Your Family Readiness Check result: ${result.score} out of 100`} className="mt-6 flex flex-col items-center outline-none">
           <ScoreRing score={result.score} size={160} />
+
+          {/* PRD-125: the breakdown uses the same component labels + weights
+              the in-app readiness score does — scored only for what the
+              quiz collected. */}
+          {result.components && result.components.length > 0 && (
+            <GlassCard className="p-4 mt-4 w-full space-y-2">
+              {result.components.filter((c) => c.score !== null).map((c) => (
+                <div key={c.key}>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-sm font-medium text-ink-primary">{c.label}</span>
+                    <span className="text-xs text-ink-tertiary">{c.score}/100</span>
+                  </div>
+                  <p className="text-xs text-ink-tertiary">{c.detail}</p>
+                </div>
+              ))}
+            </GlassCard>
+          )}
+
           <ShareScore score={result.score} />
           <EmailCapture score={result.score} />
 
@@ -298,9 +316,9 @@ export default function ReadinessQuizPage() {
 
           <GlassCard className="p-4 mt-4 w-full">
             <p className="text-sm text-ink-secondary leading-relaxed mb-3">
-              This quick check is based on 2 of Oak&apos;s 6 signals — protection and emergency-fund coverage.
-              Your in-app Family Readiness Score reads your real linked data and covers retirement and
-              education funding too. See your full picture, free.
+              This score is the same composite readiness math a real account gets — the quiz just
+              only collected enough to score protection and emergency-fund coverage. Your in-app Family
+              Readiness Score adds retirement, education funding, and estate on top. See your full picture, free.
             </p>
             <Link href="/welcome" onClick={() => { haptic('light'); track('landing_get_started_click', { location: 'readiness_quiz' }) }}>
               <GlassButton>Get my full picture</GlassButton>

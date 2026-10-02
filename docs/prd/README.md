@@ -123,6 +123,136 @@ domain before going wide, prepare-only actions before anything that acts.
     invisibly on unsupported devices or any local failure. Tier 1 —
     unchanged from the feature it replaces the transport for; a human
     still reviews and sends every draft.
+14. [114-composite-family-readiness-score.md](114-composite-family-readiness-score.md) —
+    the dashboard's headline score was client-derived
+    `100 − Σ confidence×10` penalty math that couldn't see estate
+    readiness and couldn't distinguish "evaluated and clear" from
+    "never evaluated." Replaces it with a deterministic, server-side
+    composite (emergency fund, protection, retirement, education,
+    estate) computed fresh on every read, plus the vault `doc_type`
+    metadata the estate component is measured from. Tier 0.
+15. [115-time-shifted-persisted-scenarios.md](115-time-shifted-persisted-scenarios.md) —
+    `/assistant/simulate` could only do instant deltas and nothing
+    persisted — "job loss in 6 months" measured runway from today's
+    balance and vanished after the answer. Adds `monthsUntilChange`
+    (fund grows/drains under today's numbers until the change lands),
+    the `family_scenarios` collection + CRUD routes that recompute on
+    read, and the first real web surface for scenario math on the
+    job-loss tile. Tier 0.
+16. [116-detector-declared-action-intents.md](116-detector-declared-action-intents.md) —
+    the Act layer's execute machinery (approve → SendGrid/Twilio dispatch,
+    idempotent receipts, approval-gate preview) shipped before any
+    detector could feed it — every family action was a free-text string
+    regex-classified as `log_only`. Adds typed `action_intents` on
+    detector rules, authoritative over keyword classification in both
+    directions, and exercises the first real Tier-2 intent: a self-send
+    renewal-reminder email on `policy_renewal_window`. Tier 2, approve
+    still the consent gate; auto-execute stays categorically
+    log_only-only.
+17. [117-member-twin-read-model.md](117-member-twin-read-model.md) —
+    PRD-104 shipped per-member financial identity but nothing assembled
+    it back into a per-member view. Adds `GET /family/members/:id/twin`
+    (earner slice, attributed policies/funds/insights, computed fresh on
+    read), `?member_id=` on `/insights`, and the real twin section on
+    `/member/[id]` — the read-model foundation member micro-agents build
+    on. Tier 0.
+18. [118-member-readiness-score.md](118-member-readiness-score.md) —
+    first member-scoped reasoning: `computeMemberReadiness` scores each
+    member's own slice (their income protection + life cover, education
+    funds; retirement organizer-only; estate adult-gated) on the twin
+    endpoint and member page. Tier 0.
+19. [119-per-member-pension-fields.md](119-per-member-pension-fields.md) —
+    lifts PRD-104's "income only" scope: `members[]` gains optional
+    pension balance + contribution, collected in the wizard, so a second
+    earner's twin retirement component scores from their own pension
+    projected against their income share of the household target.
+    Tier 0.
+20. [120-per-member-retirement-detection.md](120-per-member-retirement-detection.md) —
+    closes the loop PRD-119 opened: members with pension data get the
+    existing `family_retirement_gap` rules evaluated on their own
+    trajectory (their age, salary, income-share target), producing
+    `member_id`-attributed insights the twin and `?member_id=` filter
+    already consume. Absent fields emit no event — never collected is
+    not zero. Tier 0.
+21. [121-estate-readiness-detector.md](121-estate-readiness-detector.md) —
+    the last readiness component with no detector: `family_estate_readiness`
+    turns missing will/PoA into persisted insights, evaluated both on
+    profile submit (so a never-opened vault still surfaces the gap and
+    stale-resolution can retire it) and on vault upload/delete.
+    Tier 0.
+22. [122-member-scoped-ask-oak.md](122-member-scoped-ask-oak.md) —
+    `member_id` on `POST /assistant/ask` grounds the answer on the
+    member's twin (extracted `getMemberTwin` — one assembly for route
+    and assistant), with an "Ask Oak about {name}" card on the member
+    page. The first member-scoped reasoning surface. Tier 0.
+23. [123-member-invite-flow.md](123-member-invite-flow.md) —
+    organizer-invites-a-specific-member, token-accept flips the existing
+    roster entry `pending → active` via a new `user_id` link — no
+    duplicate member, no shared-code roundtrip. Also fixes the PRD-110
+    approve path to link a pending entry by email. Tier 0.
+24. [124-youth-facing-twin.md](124-youth-facing-twin.md) —
+    `?mode=youth` on the member twin returns a server-side redacted
+    projection for minors — savings progress as percentages, zero
+    minor-unit fields in the payload — plus a "Kid view" toggle on the
+    member page. Tier 0.
+25. [125-readiness-quiz-alignment.md](125-readiness-quiz-alignment.md) —
+    the public quiz now scores through `computeReadiness` itself on a
+    synthesized profile — same components, same weights, same
+    "no data → null" honesty — and returns the component breakdown.
+    Tier 0.
+26. [126-member-agent-persona.md](126-member-agent-persona.md) —
+    `GET /family/members/:id/agent`: the micro-agent's voice —
+    deterministic prioritized nudges (insight → attention → progress)
+    read off the twin, `guardian` persona for minors, `provisional`
+    flagging for pending members. Tier 0.
+27. [127-member-agent-loop.md](127-member-agent-loop.md) —
+    the agent's memory: nudges persist in `member_nudges` with dedupe,
+    dismiss, and self-healing resolution; a daily cron pass reconciles
+    every member of every family even when nobody opens the page.
+    Tier 0 — writes state, never notifies.
+28. [128-member-life-cover-detection.md](128-member-life-cover-detection.md) —
+    `member_no_life_cover` in `family_protection_gap`: fires on
+    per-member earner events when a working second earner with
+    dependents has no life policy attributed to them — the gap the
+    aggregate household rule structurally can't see. Tier 0.
+29. [129-youth-literacy-curriculum.md](129-youth-literacy-curriculum.md) —
+    age-banded lesson cards (younger/teen) served inside the redacted
+    youth twin payload and rendered as "Things worth knowing" in Kid
+    view. Concepts + a parent-doable "Try it"; no amounts or products.
+    Tier 0.
+30. [130-continuity-check.md](130-continuity-check.md) — the dead man's
+    switch, shaped to the vault's standing-access model: a throttled
+    `last_seen_at` heartbeat feeds a persisted watching → check-in →
+    alert state machine that emails the organizer, then their designated
+    adults. Informational only — nothing is released or granted.
+31. [131-cashflow-substrate.md](131-cashflow-substrate.md) — the interim
+    cash-flow substrate until live bank feeds exist: a tenant-scoped
+    recurring income/expense ledger (`family_cashflow_entries`) with a
+    computed monthly in/out/net + runway summary, and the `/cashflow`
+    page to manage it. Tier 0.
+32. [132-multi-step-scenarios.md](132-multi-step-scenarios.md) —
+    `ScenarioChange.steps` turns scenario math into real timelines
+    (dip-and-recover, temporary cost spikes) with per-step balances,
+    runway under each regime, and mid-segment fund-depletion detection;
+    the scenario card generalizes beyond job-loss to bereavement,
+    disability, medical, new-child, and university tiles. Tier 0.
+33. [133-action-network-account-info.md](133-action-network-account-info.md) —
+    the Action Network's read-only half: an `AccountInfoProvider`
+    interface (env-gated sandbox + real TrueLayer token mode), sync into
+    `external_accounts` with credential-health flags, and the connect
+    surface on `/connect`. Permanently read-only — no payment
+    initiation. OAuth consent + sync cadence stay partnership-blocked.
+34. [134-vault-client-side-sealing.md](134-vault-client-side-sealing.md) —
+    the zero-knowledge decision: full per-user ZK rejected (it would
+    strand estate documents exactly when the family needs them); shipped
+    instead is opt-in client-side sealing — PBKDF2→AES-256-GCM under a
+    shared family passphrase, double-wrapped in the server layer. Tier 0.
+35. [135-assets-register-and-context.md](135-assets-register-and-context.md) —
+    gap 8's non-sensitive slice: a tenant-scoped assets register
+    (property/vehicles/valuables, `/assets`) plus an organizer-authored
+    household context note that Ask Oak reads as background.
+    Medical/health records and per-member preference modeling stay
+    deferred — see the PRD for why. Tier 0.
 
 ## 20x — marketing: the same engine as the growth mechanic
 
@@ -142,11 +272,14 @@ building disconnected marketing tooling.
 Per ARCHITECTURE.md's own sequencing, these aren't ready for an
 engineering PRD:
 
-- **Health & Life/Assets domains** — GDPR special-category data; the
-  architecture doc says to sequence this after the trust/consent model is
-  proven on lower-stakes domains, not before. This is also why PRD-108's
-  disability playbook personalizes against insurance *policy* data only,
-  never a diagnosis or other health record.
+- **Health/medical domain** — GDPR special-category data; deferred on
+  proportionality grounds, not just sequencing (see PRD-135). The
+  non-sensitive halves of the old "Life/Assets" grouping — the assets
+  register and the household context note — shipped in PRD-135; what
+  remains deferred is medical records and per-member preference/decision-
+  rights modeling. This is also why PRD-108's disability playbook
+  personalizes against insurance *policy* data only, never a diagnosis
+  or other health record.
 - **Action Network partnerships** (bank/insurer/airline API integrations) —
   "mostly a business-development problem wearing an engineering costume."
   Nothing here to write a technical PRD against until a partner exists.

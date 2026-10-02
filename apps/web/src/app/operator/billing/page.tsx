@@ -128,6 +128,40 @@ export default function OperatorBillingPage() {
               </div>
             </GlassCard>
           </div>
+
+          <GlassCard className="mt-5 p-4">
+            <h2 className="font-semibold">Churn</h2>
+            {Object.keys(overview.churn_by_reason ?? {}).length === 0 && overview.recent_churned?.length === 0 && (
+              <p className="mt-2 text-sm text-ink-tertiary">
+                No churned tenants. Stripe portal cancellation reasons land here once subscription cancellation
+                collection is enabled in the Stripe Dashboard.
+              </p>
+            )}
+            {Object.keys(overview.churn_by_reason ?? {}).length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {Object.entries(overview.churn_by_reason).map(([reason, count]) => (
+                  <span key={reason} className="rounded-full border border-tint/[0.1] px-2.5 py-1 text-xs text-ink-secondary">
+                    {reason.replaceAll('_', ' ')} · {count}
+                  </span>
+                ))}
+              </div>
+            )}
+            {(overview.recent_churned ?? []).length > 0 && (
+              <div className="mt-3 divide-y divide-tint/[0.06]">
+                {overview.recent_churned.map((c) => (
+                  <div key={c.tenant_id} className="py-2 text-sm">
+                    <div className="flex justify-between gap-2">
+                      <span className="text-ink-secondary">{c.name ?? c.tenant_id}</span>
+                      <span className="text-xs text-ink-tertiary">{c.churned_at ? new Date(c.churned_at).toLocaleDateString() : ''}</span>
+                    </div>
+                    <p className="text-xs text-ink-tertiary mt-0.5">
+                      {(c.reason ?? 'unstated').replaceAll('_', ' ')}{c.feedback ? ` — "${c.feedback}"` : ''}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </GlassCard>
         </>
       )}
 

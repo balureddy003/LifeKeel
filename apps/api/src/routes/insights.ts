@@ -157,6 +157,7 @@ export async function registerInsightRoutes(
       assignee?: string
       sla_breached?: string
       goal_id?: string
+      member_id?: string
       exclude_category?: string
       exclude_detector_id?: string
       detectors?: string
@@ -177,12 +178,30 @@ export async function registerInsightRoutes(
     if (query.assignee === 'me') filter['collaboration.assignee_id'] = request.authContext.user_id
     else if (query.assignee) filter['collaboration.assignee_id'] = query.assignee
     if (query.sla_breached === 'true') filter['collaboration.sla_breached_at'] = { $exists: true }
+    // Independent $or clauses compose under $and so goal_id and
+    // member_id can combine instead of the last writer clobbering the
+    // other's $or.
+    const orClauses: Record<string, unknown>[] = []
     if (query.goal_id) {
-      filter['$or'] = [
+      orClauses.push({ $or: [
         { goal_id: query.goal_id },
         { 'feature_snapshot.goal_id': query.goal_id },
-      ]
+      ] })
     }
+    // PRD-117: insights attributed to a specific roster member — the
+    // per-member earner signals (PRD-104) and renewal attribution carry
+    // member_id into feature_snapshot, and the engine derives entity_key
+    // from it. All three spellings checked because member attribution
+    // landed in feature_snapshot under different field names over time.
+    if (query.member_id) {
+      orClauses.push({ $or: [
+        { 'feature_snapshot.member_id': query.member_id },
+        { 'feature_snapshot.soonest_renewal_member_id': query.member_id },
+        { entity_key: query.member_id },
+      ] })
+    }
+    if (orClauses.length === 1) filter['$or'] = (orClauses[0] as { $or: unknown }).$or
+    else if (orClauses.length > 1) filter['$and'] = orClauses
     // Caller-driven exclusions, folded into the same filter used for both the
     // page of results and the `total` count below — so a preview list and its
     // "how many total" figure never disagree about what's excluded (Home uses
@@ -372,7 +391,10 @@ export async function registerInsightRoutes(
 
       return {
         insight,
-        actions: previewActions((insight as unknown as { actions?: string[] }).actions ?? []),
+        actions: previewActions(
+          (insight as unknown as { actions?: string[] }).actions ?? [],
+          (insight as unknown as { action_intents?: { type: 'send_email' | 'send_whatsapp' | 'crm_tag' | 'log_only'; label: string; params?: Record<string, unknown> }[] }).action_intents,
+        ),
         dry_run: dryRun,
       }
     } catch (err) {
@@ -451,7 +473,10 @@ export async function registerInsightRoutes(
           const now = new Date()
           const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
           const used = await db.collection('insights').countDocuments({ tenant_id, approved_at: { $gte: monthStart } })
-          const quota = new FreeTierPolicy().check('monthly_move_approvals', used, String(tenant?.['tier'] ?? 'free'))
+          // `plan` is the field billing actually maintains on the tenant —
+          // `tier` is a kairos-era field name nothing writes, so reading it
+          // silently capped paid tenants at the free-tier limit.
+          const quota = new FreeTierPolicy().check('monthly_move_approvals', used, String(tenant?.['plan'] ?? 'free'))
           if (!quota.allowed) return { code: 402, body: { error: 'Monthly Move approval quota exceeded', quota } }
 
           // Outcome-credit gate: require a positive balance to approve an insight.

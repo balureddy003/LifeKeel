@@ -58,6 +58,7 @@ async function claimWebhookEvent(db: Db, eventId: string, eventType: string): Pr
     await db.collection('stripe_webhook_events').insertOne({
       event_id: eventId,
       event_type: eventType,
+      status: 'processing',
       processed_at: new Date(),
     })
     return true
@@ -78,9 +79,6 @@ const PROMO_RATE_LIMIT_MAX = 10 // 10 attempts per hour
 async function checkPromoRateLimit(db: Db, tenantId: string): Promise<boolean> {
   const now = Date.now()
   const windowStart = new Date(now - PROMO_RATE_LIMIT_WINDOW_MS)
-
-  // Ensure index on first call
-  await db.collection('promo_rate_limits').createIndex({ tenant_id: 1, attempted_at: 1 }).catch(() => {})
 
   // Count attempts in the current window
   const count = await db.collection('promo_rate_limits').countDocuments({
@@ -115,6 +113,9 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
   // OAK-007: created once at registration, not on every webhook request —
   // claimWebhookEvent's atomicity depends on this index existing.
   db.collection('stripe_webhook_events').createIndex({ event_id: 1 }, { unique: true }).catch(() => {})
+  // Promo redemption rate-limit reads — was being created inside the
+  // request path on every redemption attempt.
+  db.collection('promo_rate_limits').createIndex({ tenant_id: 1, attempted_at: 1 }).catch(() => {})
 
   /**
    * POST /billing/checkout
@@ -153,6 +154,34 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
         return reply.status(404).send({ error: 'Tenant not found' })
       }
 
+      // A live subscription must not check out again — Stripe would
+      // happily create a second subscription and bill both. Send them to
+      // the portal to manage the existing one instead. The stored id alone
+      // isn't proof the subscription is live (a missed subscription.deleted
+      // webhook, or churn that predates the id cleanup), so confirm against
+      // Stripe and clear the stale id if it's dead there.
+      if (tenant['stripe_subscription_id']) {
+        const storedSubId = tenant['stripe_subscription_id'] as string
+        let liveInStripe = false
+        try {
+          const existing = await stripe.subscriptions.retrieve(storedSubId)
+          liveInStripe = existing.status !== 'canceled' && existing.status !== 'incomplete_expired'
+        } catch {
+          // Retrieve failed (deleted upstream, wrong key, network) — treat
+          // as not live rather than blocking the user from ever resubscribing.
+        }
+        if (liveInStripe) {
+          return reply.status(409).send({
+            error: 'An active subscription already exists — manage it from the billing portal',
+            code: 'ALREADY_SUBSCRIBED',
+          })
+        }
+        await db.collection('tenants').updateOne(
+          { tenant_id },
+          { $unset: { stripe_subscription_id: '' } },
+        )
+      }
+
       // M6: Resolve price ID based on tenant's billing currency
       const currency = String(tenant['billing']?.['currency'] ?? 'GBP')
       const priceId = getStripePriceId(plan, currency)
@@ -182,10 +211,22 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
           mode: 'subscription',
           success_url: success_url || defaultSuccessUrl,
           cancel_url: cancel_url || defaultCancelUrl,
-          customer_email: tenant.contact_email || undefined,
+          // Reuse the existing Stripe customer when there is one — passing
+          // only customer_email mints a duplicate customer per checkout
+          // (e.g. churn → re-subscribe).
+          ...(tenant['stripe_customer_id']
+            ? { customer: tenant['stripe_customer_id'] as string }
+            : { customer_email: tenant['contact_email'] || undefined }),
           metadata: {
             tenant_id,
             plan,
+          },
+          // tenant_id on the subscription itself — customer.subscription.*
+          // events don't carry checkout-session metadata, so this lets the
+          // webhook resolve the tenant even if checkout.session.completed
+          // never arrived.
+          subscription_data: {
+            metadata: { tenant_id, plan },
           },
         })
 
@@ -327,11 +368,18 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
     if (stripe && tenant.stripe_subscription_id) {
       try {
         const sub = await stripe.subscriptions.retrieve(tenant.stripe_subscription_id)
+        // SDK 22 / Basil: current_period_end moved off the Subscription
+        // onto its items — read it there, falling back to the legacy
+        // top-level field for events serialized by an older API version.
+        const periodEnd =
+          sub.items?.data?.[0]?.current_period_end ??
+          (sub as unknown as { current_period_end?: number }).current_period_end ??
+          null
         subscription = {
           id: sub.id,
           status: sub.status,
-          current_period_end: (sub as any).current_period_end,
-          cancel_at_period_end: (sub as any).cancel_at_period_end,
+          current_period_end: periodEnd,
+          cancel_at_period_end: sub.cancel_at_period_end,
         }
       } catch (error) {
         app.log.error(error)
@@ -380,27 +428,44 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
         return reply.status(400).send({ error: 'Webhook signature required' })
       }
 
+      // Signature verification and event processing are separate failure
+      // domains — a handler throwing must not be reported to Stripe as a
+      // bad signature (400 tells Stripe not to retry and logs the wrong
+      // metric), so they get their own try blocks.
+      const rawBody = (req as any).rawBody || JSON.stringify(req.body)
+      let event: Stripe.Event
       try {
-        // Get raw body from request
-        const rawBody = (req as any).rawBody || JSON.stringify(req.body)
-        const event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret)
+        event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret)
+      } catch (error) {
+        app.log.error(error)
+        recordWebhookError('signature')
+        return reply.status(400).send({ error: 'Webhook signature verification failed' })
+      }
 
-        // OAK-007: claim before any side effect runs — see claimWebhookEvent's
-        // doc comment. A false return means either a genuine replay or a
-        // concurrent delivery of the same event; either way, this call
-        // must not re-apply the switch below. Trade-off, deliberate: if the
-        // switch below throws partway through, the event is already
-        // claimed, so Stripe's automatic retry will be treated as a no-op
-        // duplicate rather than reprocessing — a stuck event needs manual
-        // investigation instead of silently retrying. For billing, a stuck
-        // webhook that pages someone is preferable to one that might
-        // silently double-grant credits or double-record a ledger entry.
+      // OAK-007: claim before any side effect runs — see claimWebhookEvent's
+      // doc comment. A false return means either a genuine replay or a
+      // concurrent delivery of the same event; either way, this call
+      // must not re-apply the switch below. Trade-off, deliberate: if the
+      // switch below throws partway through, the event is already
+      // claimed, so Stripe's automatic retry will be treated as a no-op
+      // duplicate rather than reprocessing — a stuck event needs manual
+      // investigation instead of silently retrying. For billing, a stuck
+      // webhook that pages someone is preferable to one that might
+      // silently double-grant credits or double-record a ledger entry.
+      try {
         if (!(await claimWebhookEvent(db, event.id, event.type))) {
           return { received: true, duplicate: true }
         }
+      } catch (error) {
+        // Non-duplicate claim failure (e.g. Mongo down) — 500 so Stripe retries.
+        app.log.error(error)
+        recordWebhookError('claim')
+        return reply.status(500).send({ error: 'Webhook claim failed' })
+      }
 
-        const audit = getAuditLogger()
+      const audit = getAuditLogger()
 
+      try {
         switch (event.type) {
           case 'checkout.session.completed': {
             const session = event.data.object as Stripe.Checkout.Session
@@ -452,6 +517,14 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
               const currency = String(tenant?.['billing']?.['currency'] ?? 'GBP')
               const planBilling = createPlanBilling(plan, currency)
 
+              // A plan grant tops the balance up, never reduces it — pack,
+              // promo, and referral credits the tenant already holds survive
+              // the upgrade.
+              const oldBalance = Number(tenant?.['billing']?.['credits_balance'] ?? 0)
+              const newBalance = planBilling.credits_balance === Number.MAX_SAFE_INTEGER
+                ? planBilling.credits_balance
+                : Math.max(oldBalance, planBilling.credits_balance)
+
               await db.collection('tenants').updateOne(
                 { tenant_id },
                 {
@@ -461,7 +534,7 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
                     plan,
                     quotas: PLAN_QUOTAS[plan],
                     status: 'active',
-                    'billing.credits_balance': planBilling.credits_balance,
+                    'billing.credits_balance': newBalance,
                     'billing.credits_included': planBilling.credits_included,
                     'billing.credits_used_this_period': 0,
                     'billing.billing_period_start': planBilling.billing_period_start,
@@ -484,27 +557,101 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
                 timestamp: new Date(),
               })
 
-              // Record in the append-only credit ledger
-              await recordLedgerEntry(db, {
-                tenantId: tenant_id,
-                type: 'plan_grant',
-                amount: planBilling.credits_balance === Number.MAX_SAFE_INTEGER ? 0 : planBilling.credits_balance,
-                reference: plan,
-                reason: `Plan upgraded to ${plan} via Stripe checkout`,
-                actor: 'stripe_webhook',
-              }).catch(() => {})
+              // Record in the append-only credit ledger. The amount is the
+              // actual balance movement, not the nominal grant — the ledger
+              // is summed for reconciliation, and recording the full grant
+              // when the balance only moved by the delta false-flags every
+              // upgrade/renewal where the tenant held prior credits.
+              const delta = newBalance === Number.MAX_SAFE_INTEGER ? 0 : newBalance - oldBalance
+              if (delta !== 0) {
+                await recordLedgerEntry(db, {
+                  tenantId: tenant_id,
+                  type: 'plan_grant',
+                  amount: delta,
+                  reference: plan,
+                  reason: `Plan upgraded to ${plan} via Stripe checkout`,
+                  actor: 'stripe_webhook',
+                }).catch(() => {})
+              }
             }
+            break
+          }
+
+          case 'customer.subscription.updated': {
+            const subscription = event.data.object as Stripe.Subscription
+            // Resolve by stored subscription id, falling back to the
+            // subscription-level tenant_id metadata set at checkout —
+            // covers subscriptions whose checkout.session.completed event
+            // never arrived.
+            const tenant = await db.collection('tenants').findOne({
+              $or: [
+                { stripe_subscription_id: subscription.id },
+                ...(subscription.metadata?.['tenant_id']
+                  ? [{ tenant_id: subscription.metadata['tenant_id'] }]
+                  : []),
+              ],
+            })
+            if (!tenant) break
+
+            const updates: Record<string, unknown> = { updated_at: new Date() }
+            // Stripe drives dunning itself; 'past_due'/'unpaid' map onto
+            // the same grace-period state invoice.payment_failed sets.
+            if ((subscription.status === 'unpaid' || subscription.status === 'past_due') && tenant['status'] !== 'suspended') {
+              updates['status'] = 'past_due'
+              if (!tenant['billing']?.['payment_failed_at']) {
+                updates['billing.payment_failed_at'] = new Date()
+              }
+            } else if (subscription.status === 'active' && tenant['status'] === 'past_due') {
+              updates['status'] = 'active'
+              updates['billing.payment_failed_at'] = null
+            }
+            // Plan sync for subscriptions carrying the checkout metadata —
+            // covers a plan change made in the Stripe portal.
+            const metaPlan = subscription.metadata?.['plan'] as Plan | undefined
+            if (metaPlan && metaPlan in PLAN_QUOTAS && metaPlan !== 'free' && metaPlan !== tenant['plan']) {
+              updates['plan'] = metaPlan
+              updates['quotas'] = PLAN_QUOTAS[metaPlan]
+            }
+            // Churn reason capture — Stripe's portal collects
+            // cancellation_details (reason enum + free-text feedback) when
+            // subscription-cancellation reasons are enabled in the
+            // Dashboard. Store whatever Stripe reports so the operator
+            // funnel can answer "why are people leaving" — the winback
+            // sequence reads the timestamp, not the reason.
+            const cancelDetail = subscription.cancellation_details
+            if (cancelDetail?.reason || cancelDetail?.feedback) {
+              updates['billing.churn_reason'] = cancelDetail.reason ?? null
+              if (cancelDetail.feedback) updates['billing.churn_feedback'] = String(cancelDetail.feedback).slice(0, 500)
+              updates['billing.cancel_at_period_end'] = subscription.cancel_at_period_end === true
+            }
+            await db.collection('tenants').updateOne(
+              { tenant_id: tenant['tenant_id'] },
+              { $set: updates },
+            )
             break
           }
 
           case 'customer.subscription.deleted': {
             const subscription = event.data.object as Stripe.Subscription
             const tenant = await db.collection('tenants').findOne({
-              stripe_subscription_id: subscription.id,
+              $or: [
+                { stripe_subscription_id: subscription.id },
+                ...(subscription.metadata?.['tenant_id']
+                  ? [{ tenant_id: subscription.metadata['tenant_id'] }]
+                  : []),
+              ],
             })
 
             if (tenant) {
-              // Downgrade to free plan with free-tier quotas and credits
+              // Downgrade to free plan with free-tier quotas and credits.
+              // trial_expired is set because paying means the trial is
+              // over — refillFreeTierCredits gates on it, and without this
+              // a tenant who upgraded mid-trial could never receive the
+              // free monthly refill after churning.
+              // cancellation_details is on the deleted subscription too —
+              // capture it here so a webhook gap on .updated can't lose
+              // the churn reason.
+              const cancelDetail = subscription.cancellation_details
               await db.collection('tenants').updateOne(
                 { tenant_id: tenant.tenant_id },
                 {
@@ -513,8 +660,21 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
                     quotas: PLAN_QUOTAS['free'],
                     status: 'active',
                     'billing.credits_included': PLAN_CREDITS['free'],
+                    'billing.trial_expired': true,
+                    'billing.churned_at': new Date(),
+                    ...(cancelDetail?.reason || cancelDetail?.feedback
+                      ? {
+                          'billing.churn_reason': cancelDetail.reason ?? null,
+                          ...(cancelDetail.feedback ? { 'billing.churn_feedback': String(cancelDetail.feedback).slice(0, 500) } : {}),
+                        }
+                      : {}),
                     updated_at: new Date(),
                   },
+                  // Clearing the subscription id lets the free-tier refill
+                  // and cycle-reset crons see this tenant again — both
+                  // filter on stripe_subscription_id being absent. The
+                  // customer id stays so a re-checkout reuses it.
+                  $unset: { stripe_subscription_id: '' },
                 }
               )
 
@@ -535,6 +695,12 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
 
           case 'invoice.payment_failed': {
             const invoice = event.data.object as Stripe.Invoice
+            // Only subscription invoices drive dunning state — a failed
+            // manual or one-off invoice (e.g. settled outcome charges)
+            // must not mark the tenant past_due and start the grace clock.
+            const failedReason = (invoice as { billing_reason?: string | null }).billing_reason
+            if (failedReason && !failedReason.startsWith('subscription')) break
+
             const tenant = await db.collection('tenants').findOne({
               stripe_customer_id: invoice.customer as string,
             })
@@ -578,6 +744,12 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
 
           case 'invoice.payment_succeeded': {
             const invoice = event.data.object as Stripe.Invoice
+            // Only subscription invoices drive the credit cycle — a
+            // successful manual/one-off invoice must not reset the billing
+            // period or top up credits early.
+            const paidReason = (invoice as { billing_reason?: string | null }).billing_reason
+            if (paidReason && !paidReason.startsWith('subscription')) break
+
             const tenant = await db.collection('tenants').findOne({
               stripe_customer_id: invoice.customer as string,
             })
@@ -588,12 +760,20 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
               const currency = String(tenant['billing']?.['currency'] ?? 'GBP')
               const planBilling = createPlanBilling(plan, currency)
 
+              // Top up to the plan amount rather than resetting to it —
+              // a renewal must not wipe credits the tenant paid for
+              // (credit packs, promos, referral rewards).
+              const oldBalance = Number(tenant['billing']?.['credits_balance'] ?? 0)
+              const newBalance = planBilling.credits_balance === Number.MAX_SAFE_INTEGER
+                ? planBilling.credits_balance
+                : Math.max(oldBalance, planBilling.credits_balance)
+
               await db.collection('tenants').updateOne(
                 { tenant_id: tenant.tenant_id },
                 {
                   $set: {
                     status: 'active',
-                    'billing.credits_balance': planBilling.credits_balance,
+                    'billing.credits_balance': newBalance,
                     'billing.credits_used_this_period': 0,
                     'billing.billing_period_start': planBilling.billing_period_start,
                     'billing.billing_period_end': planBilling.billing_period_end,
@@ -615,26 +795,50 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
                 timestamp: new Date(),
               })
 
-              // Record in the append-only credit ledger
-              await recordLedgerEntry(db, {
-                tenantId: tenant.tenant_id as string,
-                type: 'plan_grant',
-                amount: planBilling.credits_balance === Number.MAX_SAFE_INTEGER ? 0 : planBilling.credits_balance,
-                reference: plan,
-                reason: `Credits refilled on ${plan} renewal`,
-                actor: 'stripe_webhook',
-              }).catch(() => {})
+              // Record in the append-only credit ledger — the actual
+              // balance delta, not the nominal grant (see checkout grant
+              // above for why).
+              const delta = newBalance === Number.MAX_SAFE_INTEGER ? 0 : newBalance - oldBalance
+              if (delta !== 0) {
+                await recordLedgerEntry(db, {
+                  tenantId: tenant.tenant_id as string,
+                  type: 'plan_grant',
+                  amount: delta,
+                  reference: plan,
+                  reason: `Credits topped up on ${plan} renewal`,
+                  actor: 'stripe_webhook',
+                }).catch(() => {})
+              }
             }
             break
           }
         }
-
-        return { received: true }
       } catch (error) {
+        // The event is already claimed — Stripe's retry will arrive as a
+        // no-op duplicate, so a processing failure must be loud: mark the
+        // claim row 'failed' (sweepable) and alert, rather than just
+        // logging a metric nobody watches.
+        const errMsg = error instanceof Error ? error.message : String(error)
         app.log.error(error)
-        recordWebhookError('unknown')
-        return reply.status(400).send({ error: 'Webhook signature verification failed' })
+        await db.collection('stripe_webhook_events').updateOne(
+          { event_id: event.id },
+          { $set: { status: 'failed', error: errMsg.slice(0, 500), failed_at: new Date() } },
+        ).catch(() => {})
+        await sendBillingAlert({
+          title: 'Stripe webhook processing failed',
+          message: `Event ${event.id} (${event.type}) was claimed but threw during processing — Stripe retries arrive as duplicates, so the event needs manual re-delivery after investigation. Error: ${errMsg.slice(0, 300)}`,
+          severity: 'critical',
+        }).catch(() => {})
+        recordWebhookError(event.type)
+        return reply.status(500).send({ error: 'Webhook processing failed' })
       }
+
+      await db.collection('stripe_webhook_events').updateOne(
+        { event_id: event.id },
+        { $set: { status: 'completed' } },
+      ).catch(() => {})
+
+      return { received: true }
     }
   )
 

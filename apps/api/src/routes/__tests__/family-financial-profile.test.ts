@@ -49,9 +49,19 @@ const DETECTORS_DIR = path.resolve(__dirname, '../../../../../detectors')
 beforeEach(() => {
   recentLifeEvent = false
   rewardReferralIfPendingMock.mockClear()
+  rosterMembers = []
+  estateDocs = []
 })
 
 const TENANT = 'tenant-protection-domain-test'
+
+// PRD-120: roster members for the per-member retirement eval's DOB
+// lookup — reset per test alongside the other module-level state.
+let rosterMembers: Record<string, unknown>[] = []
+
+// PRD-121: vault docs the estate eval reads (tenant_id + category are set
+// at seed time so the mock's matchesFilter sees a realistic shape).
+let estateDocs: Record<string, unknown>[] = []
 
 function daysFromNow(days: number): string {
   return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10)
@@ -126,8 +136,30 @@ function makeDb() {
     }),
   }
 
+  // PRD-120: the per-member retirement eval looks up roster DOBs here.
+  const familyGroupsCol = {
+    findOne: vi.fn(async (filter: Record<string, unknown> = {}) =>
+      rosterMembers.length > 0 && (filter['tenant_id'] === undefined || filter['tenant_id'] === TENANT)
+        ? { tenant_id: TENANT, members: rosterMembers }
+        : null),
+    createIndex: vi.fn(async () => ({})),
+  }
+
+  // PRD-121: the estate eval reads vault doc types from 'documents' —
+  // without this mock the fallthrough returns profileCol (no .find()).
+  const documentsCol = {
+    find: vi.fn((filter: Record<string, unknown>) => ({
+      toArray: async () => estateDocs.filter((d) => matchesFilter(d, filter)),
+    })),
+  }
+
   return {
-    collection: (name: string) => (name === 'insights' ? insightsCol : name === 'family_life_change_nudge_state' ? nudgeStateCol : profileCol),
+    collection: (name: string) =>
+      name === 'insights' ? insightsCol
+        : name === 'family_life_change_nudge_state' ? nudgeStateCol
+        : name === 'family_groups' ? familyGroupsCol
+        : name === 'documents' ? documentsCol
+        : profileCol,
     _insightDocs: insightDocs,
     _nudgeStateDocs: nudgeStateDocs,
   } as any
@@ -532,6 +564,171 @@ describe('PRD-104: household.members[]', () => {
   })
 })
 
+describe('PRD-120: per-member retirement evaluation', () => {
+  let engine: Engine
+
+  beforeEach(async () => {
+    engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
+    await engine.load()
+    rosterMembers = [{ id: 'member-2', name: 'Sudha', role: 'adult', status: 'active', date_of_birth: '1990-01-01' }]
+  })
+
+  const profileWithMember = (member: Record<string, unknown>) => ({
+    ...BASE_PROFILE,
+    household: { ...BASE_PROFILE.household, members: [member] },
+    generate_insights: true,
+  })
+
+  it('evaluates the retirement detector on a member\'s own pension, attributed via member_id', async () => {
+    const { app, insights } = await buildApp(engine)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: profileWithMember({
+        member_id: 'member-2',
+        employment_status: 'employed',
+        monthly_salary_minor: 200_000,
+        income_protection_monthly_minor: 0,
+        // £1k balance + £0.10/mo vs a ~£10k/yr income-share target —
+        // an uncloseable-by-contributions gap, so a rule must fire.
+        pension_balance_minor: 100_000,
+        monthly_pension_contribution_minor: 10,
+      }),
+    })
+    expect(res.statusCode).toBe(200)
+
+    const memberInsights = insights.filter(
+      (i) => i.detector_id === 'family_retirement_gap' && i.feature_snapshot?.['member_id'] === 'member-2',
+    )
+    expect(memberInsights.length).toBeGreaterThanOrEqual(1)
+    // The member event's affordability gate used *their* salary.
+    expect(memberInsights[0]?.feature_snapshot?.['monthly_salary_minor']).toBe(200_000)
+    // The household event's own insights stay member-less — no cross-tagging.
+    const householdInsights = insights.filter(
+      (i) => i.detector_id === 'family_retirement_gap' && i.feature_snapshot?.['member_id'] === undefined,
+    )
+    expect(householdInsights.every((i) => i.feature_snapshot?.['member_id'] === undefined)).toBe(true)
+  })
+
+  it('does not evaluate a member whose pension fields were never entered — absent is not zero', async () => {
+    const { app, insights } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: profileWithMember({
+        member_id: 'member-2',
+        employment_status: 'employed',
+        monthly_salary_minor: 200_000,
+        income_protection_monthly_minor: 0,
+      }),
+    })
+    expect(
+      insights.filter(
+        (i) => i.detector_id === 'family_retirement_gap' && i.feature_snapshot?.['member_id'] === 'member-2',
+      ),
+    ).toHaveLength(0)
+  })
+
+  it('skips a member whose pension data exists but has no roster DOB — no invented age', async () => {
+    rosterMembers = [{ id: 'member-2', name: 'Sudha', role: 'adult', status: 'active' }] // no date_of_birth
+    const { app, insights } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: profileWithMember({
+        member_id: 'member-2',
+        employment_status: 'employed',
+        monthly_salary_minor: 200_000,
+        income_protection_monthly_minor: 0,
+        pension_balance_minor: 100_000,
+        monthly_pension_contribution_minor: 10,
+      }),
+    })
+    expect(
+      insights.filter(
+        (i) => i.detector_id === 'family_retirement_gap' && i.feature_snapshot?.['member_id'] === 'member-2',
+      ),
+    ).toHaveLength(0)
+  })
+})
+
+describe('PRD-128: per-member life-cover detection', () => {
+  let engine: Engine
+
+  beforeEach(async () => {
+    engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
+    await engine.load()
+  })
+
+  const memberEarner = {
+    member_id: 'member-2',
+    employment_status: 'employed' as const,
+    monthly_salary_minor: 300_000,
+    income_protection_monthly_minor: 200_000, // IP covered so only the life-cover rule is in play
+  }
+
+  it('fires member_no_life_cover for an employed second earner with dependents and no attributed life policy', async () => {
+    const { app, insights } = await buildApp(engine)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        household: { ...BASE_PROFILE.household, members: [memberEarner] },
+        generate_insights: true,
+      },
+    })
+    expect(res.statusCode).toBe(200)
+
+    const memberCover = insights.filter((i) => i.rule_id === 'member_no_life_cover')
+    // Exactly one firing, attributed to the member — never double-fired
+    // by the primary household event.
+    expect(memberCover).toHaveLength(1)
+    expect(memberCover[0]?.feature_snapshot?.['member_id']).toBe('member-2')
+    expect(memberCover[0]?.detector_id).toBe('family_protection_gap')
+  })
+
+  it('does not fire when the second earner has a life policy attributed to them', async () => {
+    const { app, insights } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        household: { ...BASE_PROFILE.household, members: [memberEarner] },
+        policies: [{ type: 'life', provider: 'Aviva', coverage_amount_minor: 15_000_000, monthly_premium_minor: 3000, member_id: 'member-2' }],
+        generate_insights: true,
+      },
+    })
+    expect(insights.filter((i) => i.rule_id === 'member_no_life_cover')).toHaveLength(0)
+  })
+
+  it('does not fire without dependents — nobody relies on the second income', async () => {
+    const { app, insights } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        household: { ...BASE_PROFILE.household, members: [memberEarner] },
+        education_funds: [],
+        generate_insights: true,
+      },
+    })
+    expect(insights.filter((i) => i.rule_id === 'member_no_life_cover')).toHaveLength(0)
+  })
+
+  it('never fires on the primary earner event — member_earner gates it', async () => {
+    const { app, insights } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, generate_insights: true },
+    })
+    expect(insights.filter((i) => i.rule_id === 'member_no_life_cover')).toHaveLength(0)
+  })
+})
+
 describe('OAK-006: optimistic concurrency on POST /family/financial-profile', () => {
   let engine: Engine
 
@@ -914,5 +1111,88 @@ describe('Financial Profile wizard: education_funds[].member_id (roster-linked c
       payload: BASE_PROFILE,
     })
     expect(res.statusCode).toBe(200)
+  })
+})
+
+describe('PRD-121: family_estate_readiness detector', () => {
+  let engine: Engine
+
+  beforeEach(async () => {
+    engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
+    await engine.load()
+  })
+
+  const seedEstateDoc = (doc_type: string) => {
+    estateDocs.push({ tenant_id: TENANT, category: 'estate_vault', doc_type })
+  }
+
+  it('fires estate_no_will and estate_no_power_of_attorney when the vault has no estate docs', async () => {
+    const { app, insights } = await buildApp(engine)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, generate_insights: true },
+    })
+    expect(res.statusCode).toBe(200)
+    const estate = insights.filter((i) => i.detector_id === 'family_estate_readiness')
+    expect(estate.map((i) => i.rule_id).sort()).toEqual(['estate_no_power_of_attorney', 'estate_no_will'])
+  })
+
+  it('fires only the missing-document rule when a will is already on file', async () => {
+    seedEstateDoc('will')
+    const { app, insights } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, generate_insights: true },
+    })
+    const estate = insights.filter((i) => i.detector_id === 'family_estate_readiness')
+    expect(estate.map((i) => i.rule_id)).toEqual(['estate_no_power_of_attorney'])
+  })
+
+  it('fires no estate insights when both documents are on file', async () => {
+    seedEstateDoc('will')
+    seedEstateDoc('power_of_attorney')
+    const { app, insights } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, generate_insights: true },
+    })
+    expect(insights.some((i) => i.detector_id === 'family_estate_readiness')).toBe(false)
+  })
+
+  it('ignores vault docs outside the estate category and unrecognised doc types', async () => {
+    estateDocs.push({ tenant_id: TENANT, category: 'receipts', doc_type: 'will' })
+    seedEstateDoc('other')
+    const { app, insights } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, generate_insights: true },
+    })
+    const estate = insights.filter((i) => i.detector_id === 'family_estate_readiness')
+    expect(estate.map((i) => i.rule_id).sort()).toEqual(['estate_no_power_of_attorney', 'estate_no_will'])
+  })
+
+  it('resolves an open estate insight once the document is on file', async () => {
+    const { app, insightDocs } = await buildApp(engine)
+    insightDocs.push({
+      id: 'ins-estate-will-open',
+      tenant_id: TENANT,
+      detector_id: 'family_estate_readiness',
+      rule_id: 'estate_no_will',
+      entity_key: '',
+      state: 'identified',
+      created_at: new Date(),
+    })
+    seedEstateDoc('will')
+    seedEstateDoc('power_of_attorney')
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, generate_insights: true },
+    })
+    expect(insightDocs.find((d) => d['id'] === 'ins-estate-will-open')?.['state']).toBe('resolved')
   })
 })

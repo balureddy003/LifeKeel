@@ -35,3 +35,31 @@ export async function generateDraft(llm: LlmFn, insight: DraftableInsight): Prom
     return null
   }
 }
+
+// Extends Tier 1 "prepare" to a life-event playbook step that has no one to
+// email (e.g. "Review your budget", "Check eligibility for unemployment
+// benefits") — these previously had no prepare affordance at all, since
+// generateDraft()'s prompt only makes sense for a contact-eligible step.
+// Same guarantees, different shape: a short starting-point note instead of
+// an outreach email, still never claiming anything has been done.
+const PREP_NOTE_SYSTEM_PROMPT = `You help a family get started on one item in their financial crisis checklist, for an app called Agent Oak. Given the step's title and its already-personalized description (which may already include the family's real numbers), write a short, concrete starting-point note (3-5 sentences, plain prose or a short list) that helps them actually begin this step right now.
+
+Rules:
+- This is a STARTING POINT for the family to act on themselves. Never claim anything has been checked, filed, contacted, or completed on their behalf.
+- Only use numbers or facts already given in the step description — never invent figures, eligibility rules, account details, or deadlines.
+- Never recommend, compare, or name a specific product or provider to switch to.
+- Output only the note itself, no heading, no commentary.`
+
+export interface DraftablePlaybookStep {
+  title: string
+  body: string
+}
+
+export async function generatePrepNote(llm: LlmFn, step: DraftablePlaybookStep): Promise<string | null> {
+  const prompt = `Checklist step: ${step.title}\n${step.body}\n\nWrite the starting-point note.`
+  try {
+    return await llm(PREP_NOTE_SYSTEM_PROMPT, prompt, 'tier:fast')
+  } catch {
+    return null
+  }
+}

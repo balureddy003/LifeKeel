@@ -172,9 +172,19 @@ describe('ML Tenant Isolation', () => {
   })
 
   describe('Queue Tenant Isolation', () => {
-    const TEST_QUEUE = 'ml-iso-test-queue'
+    // A fresh queue name per test, not a shared constant — shutdown() stops
+    // the polling loop but can't guarantee an in-flight, already-dispatched
+    // BRPOPLPUSH from the previous test's connection has been abandoned
+    // server-side by the time the next test publishes. Confirmed in CI: the
+    // previous test's now-orphaned poll loop occasionally won the race to
+    // claim this test's first job off a shared queue name, silently
+    // "losing" it from this test's own processedTenants/receivedJobs. A
+    // unique queue name per test makes that race impossible regardless of
+    // teardown timing, rather than trying to out-wait it.
+    let TEST_QUEUE: string
 
     beforeEach(async () => {
+      TEST_QUEUE = `ml-iso-test-queue-${Date.now()}-${Math.random().toString(36).slice(2)}`
       await queueManager.connect()
     })
 
@@ -182,6 +192,13 @@ describe('ML Tenant Isolation', () => {
       await queueManager.shutdown()
     })
 
+    // Both tests in this block poll via vi.waitFor with a 15s inner timeout
+    // specifically because a cold CI Redis can take >300ms just to
+    // establish the subscriber's duplicate() connection — but without a
+    // matching per-test timeout here, vitest's own default (5000ms) cuts
+    // the test off before that inner grace period ever gets a chance,
+    // making the waitFor's allowance moot. 20s mirrors the same margin on
+    // the outer test, confirmed flaky in CI with the default left in place.
     it('should include tenant_id in job payloads', async () => {
       const jobA = { tenant_id: TENANT_A, data: 'test-a' }
       const jobB = { tenant_id: TENANT_B, data: 'test-b' }
@@ -199,7 +216,7 @@ describe('ML Tenant Isolation', () => {
       await vi.waitFor(() => expect(receivedJobs).toHaveLength(2), { timeout: 15_000, interval: 50 })
       expect((receivedJobs[0] as { tenant_id: string }).tenant_id).toBe(TENANT_A)
       expect((receivedJobs[1] as { tenant_id: string }).tenant_id).toBe(TENANT_B)
-    })
+    }, 20_000)
 
     it('should prevent cross-tenant job inspection in handlers', async () => {
       const processedTenants: string[] = []
@@ -221,7 +238,7 @@ describe('ML Tenant Isolation', () => {
         () => expect(processedTenants).toEqual(expect.arrayContaining([TENANT_A, TENANT_B])),
         { timeout: 15_000, interval: 50 },
       )
-    })
+    }, 20_000)
   })
 
   describe('Cross-Component Isolation', () => {

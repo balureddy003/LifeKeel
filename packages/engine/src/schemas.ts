@@ -72,6 +72,25 @@ export const AlternativeSchema = z.object({
 })
 export type Alternative = z.infer<typeof AlternativeSchema>
 
+/**
+ * A detector-declared executable action (PRD-116). Until now `actions`
+ * were free-text labels that apps/api's executor keyword-matched into an
+ * action type — advisory strings like "Review the renewal terms" were
+ * classified by regex, which meant nothing could declare "this one really
+ * sends email" without accidentally sounding like it. `action_intents`
+ * are the typed, deliberate counterpart: a rule declares exactly which of
+ * its actions have an external side effect. The enum lives here (not
+ * imported from apps/api) so the engine package stays decoupled — the
+ * executor's ActionType mirrors it by value.
+ */
+export const ActionIntentSchema = z.object({
+  type: z.enum(['send_email', 'send_whatsapp', 'crm_tag', 'log_only']),
+  /** Human-readable label — also the dedup key against `actions`. */
+  label: z.string(),
+  params: z.record(z.unknown()).optional(),
+})
+export type ActionIntent = z.infer<typeof ActionIntentSchema>
+
 export const TriggerSchema = z.object({
   id: z.string(),
   tenant_id: z.string(),
@@ -82,6 +101,13 @@ export const TriggerSchema = z.object({
   estimated_impact_high: z.number().int(),
   reasoning: z.string(),
   actions: z.array(z.string()),
+  /**
+   * PRD-116: typed executable intents declared by the firing rule —
+   * authoritative over the free-text `actions` for the executor's
+   * classification (see ActionIntentSchema). Absent for detectors that
+   * declare none; their actions still classify by keyword.
+   */
+  action_intents: z.array(ActionIntentSchema).optional(),
   /**
    * Decision Support Quality (items 02/03):
    * Structured alternatives for A/B/C comparison, risk assessment, and
@@ -249,6 +275,12 @@ export const DetectorRuleSchema = z.object({
   impact_high: z.union([z.string(), z.number()]),
   reasoning_template: z.string(),  // supports {{data.field}} interpolation
   actions: z.array(z.string()).default([]),
+  /**
+   * PRD-116: declared executable intents — see ActionIntentSchema. Only
+   * declare an external type when a human approval gate stands between
+   * it and dispatch; the family's trust-tier rules (CLAUDE.md) apply.
+   */
+  action_intents: z.array(ActionIntentSchema).optional(),
   /**
    * Decision Support Quality (items 02/03):
    * Templates for alternatives, risk assessment, and exit criteria.

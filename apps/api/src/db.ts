@@ -175,8 +175,35 @@ export function getFamilyJoinRequestsCollection(database: Db) {
   return database.collection<Record<string, unknown>>('family_join_requests')
 }
 
+// PRD-123: same reasoning as join requests — an invite is resolved by its
+// bearer token before the acceptor has any tenant context, so the accessor
+// is raw (unscoped) rather than tenant-wrapped.
+export function getFamilyMemberInvitesCollection(database: Db) {
+  return database.collection<Record<string, unknown>>('family_member_invites')
+}
+
 export function getFamilyFinancialProfileCollection(database: Db) {
   return database.collection<Record<string, unknown>>('family_financial_profile')
+}
+
+// PRD-127: persisted member-agent nudges. Raw (unscoped) accessor because
+// the daily agent loop iterates every tenant — routes still filter by
+// tenant_id + member_id on every read/write.
+export function getMemberNudgesCollection(database: Db) {
+  return database.collection<Record<string, unknown>>('member_nudges')
+}
+
+// PRD-130: one doc per tenant holding the continuity switch's phase
+// (watching → check-in sent → alerted) so the daily job is idempotent
+// across replicas and restarts.
+export function getFamilyContinuityStateCollection(database: Db) {
+  return database.collection<Record<string, unknown>>('family_continuity_state')
+}
+
+// PRD-131: tenant-scoped ledger of declared income/expense entries — the
+// substrate a live feed writes into later.
+export function getFamilyCashflowCollection(database: Db) {
+  return database.collection<Record<string, unknown>>('family_cashflow_entries')
 }
 
 export function getGrowthEventsCollection(database: Db) {

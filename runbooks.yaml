@@ -1,0 +1,75 @@
+# Operator runbooks — surfaced next to the matching signal on
+# /operator/operations and the command-center attention feed.
+# Keyed by alert dedup_key / queue name. Keep entries short and actionable:
+# what the signal means, whether the retry button is safe, and what to check
+# when it isn't.
+
+dead_letters:
+  what: >-
+    A webhook-ingest job exhausted all retries and landed in the dead
+    letter queue. The payload is preserved — nothing is lost, but the
+    tenant's data is stale until it replays.
+  safe_to_requeue: >-
+    Yes, once. If it dead-letters again, read the job's last error first —
+    a poison payload will just loop.
+  escalate: Check the error on the job record; if it's a provider outage, wait and requeue — if it's a code bug, file an issue.
+
+expiring_tokens:
+  what: >-
+    A connector credential's access token expires within 7 days. The
+    refresh scheduler renews tokens every 10 minutes — an entry here means
+    refresh already failed or the connector doesn't support refresh.
+  safe_to_requeue: N/A — there is nothing to retry from this page.
+  escalate: The family must re-authenticate the connector. A credential-expiry insight is already pushed to them; follow up only if it persists past expiry.
+
+failed_reminders:
+  what: >-
+    A policy renewal reminder failed delivery (WhatsApp/SMS/email/push).
+    The reminder engine retries under an attempts cap — entries here
+    exhausted that path.
+  safe_to_requeue: >-
+    Yes — retry is per-reminder and deduped, so a double-send can't happen.
+    If it fails again, the tenant's contact channel is likely unreachable.
+  escalate: Check last_error — a channel auth failure points at the delivery router config, not the tenant.
+
+stale_crons:
+  what: >-
+    A cron lock whose lease expired but was never released — the job
+    crashed mid-run. The lock self-heals on the next acquire; the concern
+    is whether the job's work was left half-done.
+  safe_to_requeue: N/A — jobs re-acquire automatically.
+  escalate: If the same lock goes stale twice in a day, the job is crashing deterministically — check API logs for the job name.
+
+publish_failed:
+  what: >-
+    An approved marketing post failed to publish to its channel (auth
+    expired, rate limit, or provider error).
+  safe_to_requeue: >-
+    Yes — retry re-enters the publish sweep, which claims the post before
+    dispatching so it can't double-post.
+  escalate: Repeated auth failures on one channel → reconnect the integration. Rate limits → reschedule rather than retry in a loop.
+
+failed_logins:
+  what: >-
+    Failed sign-ins in the last 24 hours, grouped in the security feed.
+    A single account failing repeatedly is a forgotten password; many IPs
+    on one account is a credential-stuffing pattern.
+  safe_to_requeue: N/A
+  escalate: If one IP fails across many accounts, consider blocking it — no automated blocking exists yet.
+
+new_leads:
+  what: Leads in stage "new" that no operator has touched.
+  safe_to_requeue: N/A
+  escalate: A lead untouched >48h is a lost lead — assign it or move it to contacted.
+
+open_support_cases:
+  what: Support cases awaiting an operator reply after Oak's AI triage.
+  safe_to_requeue: N/A
+  escalate: The case thread shows what Oak already tried — read it before replying so the customer isn't asked twice.
+
+metrics-rollup:
+  what: >-
+    Hourly job that rolls raw growth/user/lead events into metrics_daily.
+    A stale lock here means dashboards silently serve stale series.
+  safe_to_requeue: Safe — the rollup is idempotent per day and recomputes.
+  escalate: If it fails twice, check whether a schema change broke an aggregation stage.

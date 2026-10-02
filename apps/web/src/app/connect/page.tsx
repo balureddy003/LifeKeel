@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { PageHeader, GlassCard, Skeleton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
-import { fetchConnectorStatuses, disconnectConnector, fetchConnectorSyncStatus, triggerConnectorBackfill, type ConnectorStatus, type ConnectorSyncResource } from '@/lib/api'
+import { fetchConnectorStatuses, disconnectConnector, fetchConnectorSyncStatus, triggerConnectorBackfill, fetchOpenBankingAccounts, syncOpenBanking, type ConnectorStatus, type ConnectorSyncResource, type ExternalAccount } from '@/lib/api'
 import { useAppStore } from '@/lib/store'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
 import { Mail, Landmark, Check, Loader2, Unlink, Shield, Lock, Clock, ChevronRight, RefreshCw } from 'lucide-react'
@@ -19,7 +19,7 @@ const CONNECTOR_ICONS: Record<string, LucideIcon> = {
 
 const CONNECTOR_DESCRIPTIONS: Record<string, string> = {
   email: 'Connect any email provider — Gmail, Outlook, Yahoo, iCloud, or a custom domain — to import financial documents automatically. Free on every plan. AI summaries in plain language are a paid upgrade.',
-  'open-banking': "We're working on secure bank account connections through a regulated banking partner. In the meantime, add your numbers directly in your Financial Profile to get personalized insights today.",
+  'open-banking': 'Read-only bank account connections — Oak can see account types and balances, never move money. Full bank consent flow arrives with our regulated partner.',
 }
 
 const CONNECTOR_CATEGORIES: Record<string, { label: string; icon: LucideIcon }> = {
@@ -116,6 +116,57 @@ function ConnectorSyncPanel({ connectorId }: { connectorId: string }) {
   )
 }
 
+/** PRD-133: the synced account list + manual re-sync for the read-only
+ *  account-info connector (no platform sync-definition, so the generic
+ *  ConnectorSyncPanel doesn't apply). */
+function OpenBankingPanel() {
+  const [accounts, setAccounts] = useState<ExternalAccount[] | null>(null)
+  const [syncing, setSyncing] = useState(false)
+
+  const load = useCallback(async () => {
+    setAccounts(await fetchOpenBankingAccounts())
+  }, [])
+  useEffect(() => { void load() }, [load])
+
+  const resync = async () => {
+    haptic('light')
+    setSyncing(true)
+    await syncOpenBanking()
+    await load()
+    setSyncing(false)
+  }
+
+  const typeLabel: Record<string, string> = { current: 'Current', savings: 'Savings', credit: 'Credit', mortgage: 'Mortgage', investment: 'Investment', other: 'Account' }
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      {accounts === null ? (
+        <Skeleton className="h-3.5 w-40" />
+      ) : accounts.length === 0 ? (
+        <p className="text-xs text-ink-tertiary">No accounts synced yet.</p>
+      ) : (
+        accounts.map((a) => (
+          <div key={a.id} className="flex items-center justify-between text-xs">
+            <span className="text-ink-secondary truncate">{a.name}</span>
+            <span className="text-ink-tertiary whitespace-nowrap ml-2">
+              {typeLabel[a.type] ?? 'Account'}{a.provider === 'sandbox' ? ' · demo' : ''}
+            </span>
+          </div>
+        ))
+      )}
+      <button
+        type="button"
+        onClick={resync}
+        disabled={syncing}
+        className="flex items-center gap-1.5 text-xs font-semibold text-family-400 disabled:opacity-50"
+      >
+        {syncing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+        {syncing ? 'Syncing…' : 'Sync now'}
+      </button>
+    </div>
+  )
+}
+
 export default function ConnectPage() {
   const router = useRouter()
   const confirm = useConfirm()
@@ -140,6 +191,10 @@ export default function ConnectPage() {
     haptic('light')
     if (connectorId === 'email') {
       router.push('/connect/email')
+      return
+    }
+    if (connectorId === 'open-banking') {
+      router.push('/connect/open-banking')
       return
     }
     setError(`${connectorId} isn't available to connect yet.`)
@@ -297,7 +352,8 @@ export default function ConnectPage() {
                           )}
                         </div>
 
-                        {isConnected && <ConnectorSyncPanel connectorId={connector.id} />}
+                        {isConnected && connector.id === 'open-banking' && <OpenBankingPanel />}
+                        {isConnected && connector.id !== 'open-banking' && <ConnectorSyncPanel connectorId={connector.id} />}
                       </div>
                     </div>
                   </GlassCard>

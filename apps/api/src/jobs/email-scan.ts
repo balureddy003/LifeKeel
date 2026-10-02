@@ -19,6 +19,7 @@ import { fetchRecentEmails, searchPolicyEmails, type ImapCredentials } from '../
 import { refreshGoogleAccessToken } from '../email/gmail-oauth.js'
 import { classifyEmail } from '../email/classify.js'
 import { processDocument } from '../ocr/extract.js'
+import { effectivePlan, hasFeature } from '../entitlements.js'
 import type { InboxItemDoc } from '../routes/family-inbox.js'
 
 const log = createLogger({ service: 'email-scan', version: '0.0.0' })
@@ -113,6 +114,20 @@ export async function scanTenantInbox(
   credentialDoc: EmailConnectorCredentialDoc,
   opts: { lookBackDays?: number } = {},
 ): Promise<ScanResult> {
+  // Plan gate: classifyEmail's LLM call produces ai_summary — the
+  // email_ai_summary entitlement — and attachment OCR is
+  // document_ai_extraction. Connecting the mailbox stays free on every
+  // plan, but the AI-powered inbox is paid, so a free tenant's scan is a
+  // no-op: no LLM/vision spend, and the UID cursor is left untouched so
+  // upgrading later backfills the mail received while on the free plan
+  // (dedup by email_message_id makes that backfill safe).
+  const tenant = await db.collection('tenants').findOne({ tenant_id: tenantId })
+  const plan = effectivePlan(tenant)
+  if (!hasFeature('email_ai_summary', plan)) {
+    return { scanned: 0, inboxItemsCreated: 0, documentsCreated: 0 }
+  }
+  const docExtractionEnabled = hasFeature('document_ai_extraction', plan)
+
   const creds = await toImapCredentials(db, credentialDoc)
   if (!creds) {
     return { scanned: 0, inboxItemsCreated: 0, documentsCreated: 0 }
@@ -190,7 +205,9 @@ export async function scanTenantInbox(
         mime_type: attachment.contentType,
         size: attachment.content.length,
         category: 'other',
-        status: 'uploaded',
+        // Same free/paid split as the upload route (documents.ts): the
+        // stored blob is always kept, the vision OCR is the paid step.
+        status: docExtractionEnabled ? 'uploaded' : 'stored',
         uploaded_at: new Date(),
         file_id: fileId,
         source: 'email',
@@ -198,13 +215,15 @@ export async function scanTenantInbox(
       })
       result.documentsCreated += 1
 
-      // Awaited (not fire-and-forget like the upload route) — there's no
-      // HTTP response waiting on this, and awaiting keeps attachments
-      // processed one at a time rather than bursting many concurrent
-      // vision calls at the OCR provider.
-      await processDocument(db, documentId, tenantId, attachment.content, attachment.contentType, attachment.filename).catch((err) => {
-        log.error({ err, documentId, tenantId }, 'OCR processing of email attachment failed')
-      })
+      if (docExtractionEnabled) {
+        // Awaited (not fire-and-forget like the upload route) — there's no
+        // HTTP response waiting on this, and awaiting keeps attachments
+        // processed one at a time rather than bursting many concurrent
+        // vision calls at the OCR provider.
+        await processDocument(db, documentId, tenantId, attachment.content, attachment.contentType, attachment.filename).catch((err) => {
+          log.error({ err, documentId, tenantId }, 'OCR processing of email attachment failed')
+        })
+      }
     }
   }
 

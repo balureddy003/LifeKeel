@@ -109,7 +109,10 @@ function StepDraft({ eventId, step }: { eventId: string; step: LifeEventPlaybook
     // browser actually supports it — any failure here (model not
     // loaded, generation error) falls through to the existing cloud
     // path transparently, never surfacing a raw error for this branch.
-    if (isOnDeviceEnabled() && isOnDeviceSupported()) {
+    // Scoped to contact (outreach-email) steps only, matching the
+    // on-device model's own narrow scope (onDeviceLlm.ts) — a starting-
+    // point note for a non-contact step goes straight to the cloud path.
+    if (step.contact && isOnDeviceEnabled() && isOnDeviceSupported()) {
       const onDeviceDraft = await generateDraftOnDevice(step.body)
       if (onDeviceDraft) {
         setDraftText(onDeviceDraft)
@@ -143,7 +146,7 @@ function StepDraft({ eventId, step }: { eventId: string; step: LifeEventPlaybook
         <>
           <GlassButton variant="secondary" onClick={handleDraft} disabled={drafting}>
             {drafting ? <Loader2 size={16} className="animate-spin" /> : <PenLine size={16} />}
-            <span>{drafting ? 'Drafting…' : 'Draft a message for me'}</span>
+            <span>{drafting ? 'Preparing…' : step.contact ? 'Draft a message for me' : "Get Oak's help with this"}</span>
           </GlassButton>
           {draftError && <p role="status" aria-live="polite" className="text-xs text-ink-tertiary mt-2">{draftError}</p>}
         </>
@@ -157,19 +160,23 @@ function StepDraft({ eventId, step }: { eventId: string; step: LifeEventPlaybook
             className="glass-input w-full rounded-xl px-3 py-2 text-sm text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
           />
           <p className="text-xs text-ink-tertiary">
-            This is a draft only — copy it or open it in your own email client. Oak never sends it for you.
+            {step.contact
+              ? 'This is a draft only — copy it or open it in your own email client. Oak never sends it for you.'
+              : "This is a starting point Oak put together from your real numbers — review it and take it from here. Oak hasn't checked, filed, or contacted anyone for you."}
           </p>
           <div className="flex gap-2">
             <GlassButton variant="secondary" onClick={handleCopy}>
               <Copy size={14} />
               <span>{copied ? 'Copied' : 'Copy'}</span>
             </GlassButton>
-            <a href={`mailto:?body=${encodeURIComponent(draftText)}`} onClick={() => haptic('light')} className="flex-1">
-              <GlassButton variant="secondary">
-                <Mail size={14} />
-                <span>Open in email</span>
-              </GlassButton>
-            </a>
+            {step.contact && (
+              <a href={`mailto:?body=${encodeURIComponent(draftText)}`} onClick={() => haptic('light')} className="flex-1">
+                <GlassButton variant="secondary">
+                  <Mail size={14} />
+                  <span>Open in email</span>
+                </GlassButton>
+              </a>
+            )}
           </div>
         </div>
       )}
@@ -332,12 +339,14 @@ export default function LifeEventPlaybookClient() {
                     <p className="text-sm text-ink-secondary leading-relaxed mt-1">{step.body}</p>
                   </div>
                 </button>
-                {(step.contact || (step.contacts && step.contacts.length > 0)) && (
-                  <div className="mt-3 pt-3 border-t border-tint/5 space-y-3">
-                    {step.contacts && step.contacts.length > 0 && <StepContacts contacts={step.contacts} />}
-                    {step.contact && <StepDraft eventId={event.id} step={step} />}
-                  </div>
-                )}
+                {/* Every step gets a prepare affordance now, not just
+                    contact:true ones — StepDraft itself adapts its copy
+                    (outreach email vs. starting-point note) based on
+                    step.contact. */}
+                <div className="mt-3 pt-3 border-t border-tint/5 space-y-3">
+                  {step.contacts && step.contacts.length > 0 && <StepContacts contacts={step.contacts} />}
+                  <StepDraft eventId={event.id} step={step} />
+                </div>
               </motion.div>
             )
           })}

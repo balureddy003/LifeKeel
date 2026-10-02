@@ -103,4 +103,18 @@ describe('POST /auth/login records login_events', () => {
     const suspEvents = await waitForEvents({ email: 'locked@example.com', reason: 'suspended' }, 1)
     expect(suspEvents[0]).toMatchObject({ success: false, user_id: 'user-2' })
   })
+
+  it('denies erased accounts with a generic invalid-credentials response', async () => {
+    // The erase path strips password_hash — the guard must run before the
+    // password check and must not reveal that the account was erased.
+    await db.collection('users').updateOne(
+      { id: USER.id },
+      { $set: { status: 'erased', email: 'erased-x@erased.invalid', name: 'Erased user' }, $unset: { password_hash: '', salt: '' } },
+    )
+    const res = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'erased-x@erased.invalid', password: PASSWORD } })
+    expect(res.statusCode).toBe(401)
+    expect(res.json().error).toBe('Invalid email or password')
+    const events = await waitForEvents({ reason: 'erased' }, 1)
+    expect(events[0]).toMatchObject({ success: false, user_id: USER.id })
+  })
 })

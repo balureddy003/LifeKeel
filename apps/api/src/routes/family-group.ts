@@ -58,6 +58,14 @@ export interface FamilyMemberDoc {
   email: string
   role: FamilyRole
   status: 'active' | 'pending'
+  // The `users.id` this roster entry is bound to once the person accepts a
+  // per-member invite (PRD-123). `id` stays the stable roster identity the
+  // rest of the product (member twins, attributed insights, profile
+  // earners) already keys on; `user_id` is the auth link. For the
+  // organizer and members approved through the older join-request flow
+  // both fields are the same value — `id` was set to the user's id at
+  // creation.
+  user_id?: string
   joined_at: string
   // Optional, ISO 'YYYY-MM-DD'. Added so the app can derive age and, for
   // children, years-until-university instead of asking for those as raw
@@ -73,6 +81,28 @@ export interface FamilyGroupDoc extends Record<string, unknown> {
   name: string
   invite_code: string
   members: FamilyMemberDoc[]
+  // PRD-130: the continuity switch ("dead man's switch" in the vision).
+  // Organizer-set: after check_in_after_days of organizer inactivity the
+  // job emails the organizer a check-in; after a further grace_days of
+  // silence it notifies the designated members so the family's emergency
+  // plan doesn't depend on one person's availability. Purely
+  // informational — it never grants access or releases anything (the
+  // vault's standing-adult-access model means there is nothing to
+  // "unlock"); it exists to surface readiness to the right people.
+  continuity?: {
+    enabled: boolean
+    designated_member_ids: string[]
+    check_in_after_days: number
+    grace_days: number
+  }
+  /**
+   * Gap-8 context slice: a short organizer-authored free-text note about
+   * the household ("we're a blended family; Maya finishes uni in 2027")
+   * that Ask Oak reads as context. User-authored and deletable — same
+   * sensitivity class as the financial profile, and the UI asks for no
+   * medical details (health stays GDPR-deferred).
+   */
+  context_note?: string
   created_at: Date
   updated_at: Date
 }
@@ -95,8 +125,10 @@ function toResponse(doc: FamilyGroupDoc) {
       role: m.role,
       status: m.status,
       joinedAt: m.joined_at,
+      ...(m.user_id ? { userId: m.user_id } : {}),
       ...(m.date_of_birth ? { dateOfBirth: m.date_of_birth } : {}),
     })),
+    ...(doc.context_note ? { contextNote: doc.context_note } : {}),
   }
 }
 
@@ -265,6 +297,26 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
     if (!result) return reply.status(404).send({ error: 'Family not found' })
 
     log.info({ tenant_id, memberId: req.params.id }, 'Family member removed')
+    return { family: toResponse(result) }
+  })
+
+  // ── PATCH /family/context ────────────────────────────────────────────
+  // Gap-8 context slice: a short organizer-authored note Ask Oak reads as
+  // household context. User-authored, organizer-gated, deletable (empty
+  // string clears). Not a channel for medical data — the UI says so and
+  // health stays deferred by design.
+  fastify.patch<{ Body: { note?: string } }>('/family/context', async (req, reply) => {
+    const { tenant_id } = req.authContext
+    if (!await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)) {
+      return reply.status(403).send({ error: 'Only the organizer can set the family context' })
+    }
+    const note = (req.body?.note ?? '').trim().slice(0, 500)
+    const result = (await groupsFor(tenant_id).findOneAndUpdate(
+      {},
+      note ? { $set: { context_note: note, updated_at: new Date() } } : { $unset: { context_note: '' }, $set: { updated_at: new Date() } },
+      { returnDocument: 'after' },
+    )) as FamilyGroupDoc | null
+    if (!result) return reply.status(404).send({ error: 'Family not found' })
     return { family: toResponse(result) }
   })
 }

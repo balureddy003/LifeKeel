@@ -17,6 +17,7 @@ import { z } from 'zod'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { getGrowthEventsCollection } from '../db.js'
+import { verifyUnsubscribeToken, verifyUserUnsubscribeToken } from '../marketing/lifecycle-emails.js'
 
 const LeadSchema = z.object({
   email: z.string().trim().email().max(320),
@@ -97,6 +98,55 @@ export async function registerLeadRoutes(app: FastifyInstance, db: Db): Promise<
         req.log.warn({ err }, 'Lead capture failed')
         return reply.status(500).send({ error: "Couldn't save your details right now — please try again later." })
       }
+    },
+  )
+
+  // One-click unsubscribe for lifecycle nurture email. The sig is an HMAC
+  // of the lead id — possession of the email is the proof; no login needed.
+  // Sets the same `suppressed` flag the operator suppress action uses.
+  app.get<{ Querystring: { id?: string; sig?: string } }>(
+    '/leads/unsubscribe',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const { id, sig } = req.query
+      const done = (msg: string, status = 200) =>
+        reply.status(status).type('text/html').send(
+          `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:80vh;"><p style="max-width:420px;text-align:center;color:#444;">${msg}</p></body></html>`,
+        )
+      if (!id || !sig || !verifyUnsubscribeToken(id, sig)) {
+        return done('This unsubscribe link is invalid or has expired.', 400)
+      }
+      const result = await leads.updateOne(
+        { id },
+        { $set: { suppressed: true, suppressed_at: new Date(), updated_at: new Date() } },
+      )
+      if (result.matchedCount === 0) return done('This unsubscribe link is invalid or has expired.', 400)
+      return done("You're unsubscribed — no more emails from us.")
+    },
+  )
+
+  // Same one-click opt-out for signed-up users — campaign email to users
+  // carries this link (List-Unsubscribe + footer). Sets `email_opt_out`
+  // on the user doc; account/transactional mail (trial-ending, security)
+  // is unaffected — it never checks this flag.
+  app.get<{ Querystring: { id?: string; sig?: string } }>(
+    '/users/unsubscribe',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const { id, sig } = req.query
+      const done = (msg: string, status = 200) =>
+        reply.status(status).type('text/html').send(
+          `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:80vh;"><p style="max-width:420px;text-align:center;color:#444;">${msg}</p></body></html>`,
+        )
+      if (!id || !sig || !verifyUserUnsubscribeToken(id, sig)) {
+        return done('This unsubscribe link is invalid or has expired.', 400)
+      }
+      const result = await db.collection('users').updateOne(
+        { id },
+        { $set: { email_opt_out: true, email_opt_out_at: new Date() } },
+      )
+      if (result.matchedCount === 0) return done('This unsubscribe link is invalid or has expired.', 400)
+      return done("You're unsubscribed — you'll still get account emails, but no more marketing.")
     },
   )
 }

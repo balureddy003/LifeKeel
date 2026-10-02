@@ -28,7 +28,7 @@ afterAll(async () => {
 describe('getPlatformConfig', () => {
   it('returns permissive defaults when no config doc exists', async () => {
     const config = await getPlatformConfig(db)
-    expect(config).toEqual({ maintenance_mode: false, signups_enabled: true, marketing_paused: false })
+    expect(config).toEqual({ maintenance_mode: false, maintenance_window: null, signups_enabled: true, marketing_paused: false })
   })
 
   it('reads stored flags and caches them for the TTL', async () => {

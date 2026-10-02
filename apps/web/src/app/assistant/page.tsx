@@ -89,9 +89,20 @@ function getContextSuggestions(context: string | null): string[] {
 
 export default function AssistantPage() {
   const { config } = useMode()
-  const [pageContext] = useState<string | null>(
-    () => typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('context') : null,
-  )
+  // Read on mount via an effect, not a useState/useRef initializer — a
+  // client-side <Link> navigation here (e.g. from EventDetailClient's
+  // "Ask AI About This") runs this component's first render before
+  // Next.js's router has committed the destination URL, so a synchronous
+  // `window.location.search` read during render silently sees the
+  // *previous* page's URL. An effect fires after that commit and reads
+  // the right one; a hard page load (URL already correct at script start)
+  // works either way, which is why this only showed up on in-app nav.
+  const [pageContext, setPageContext] = useState<string | null>(null)
+  // Workstream A bonus: a caller can hand Oak a ready-made question about
+  // the specific thing the user was just looking at, instead of landing
+  // on a blank chat. Guards the effect below against Strict Mode's
+  // double-invoke in dev sending the same prompt twice.
+  const initialPromptRead = useRef(false)
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome',
@@ -161,6 +172,19 @@ export default function AssistantPage() {
       haptic('success')
     }
   }
+
+  // Reads ?context=/?prompt= once the real destination URL has committed
+  // (see the comment on pageContext above), then fires the handed-off
+  // prompt. initialPromptRead guards against Strict Mode's double-invoke
+  // of effects in dev sending the same prompt twice.
+  useEffect(() => {
+    if (initialPromptRead.current) return
+    initialPromptRead.current = true
+    const params = new URLSearchParams(window.location.search)
+    setPageContext(params.get('context'))
+    const prompt = params.get('prompt')
+    if (prompt) sendMessage(prompt)
+  }, [])
 
   return (
     <div className="flex flex-col h-[calc(100vh-80px)]">

@@ -15,8 +15,8 @@ import { ROLE_LABELS, type FamilyRole } from '@/lib/auth-types'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
 import { useToast } from '@/components/Toast'
 import { isValidEmailFormat } from '@/components/ConversationalOnboarding'
-import { User, LogOut, Check, X, Crown, Shield, ShieldCheck, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle, Calculator, Sparkles, HelpCircle, ScrollText, Bot, Download, Trash2, Sun, Moon, MonitorSmartphone, RefreshCw, Bell, Copy, Gift } from 'lucide-react'
-import { exportAccountData, deleteAccount, fetchAccessRequests, approveAccessRequest, denyAccessRequest, resetInviteCode, fetchMyReferralCode, fetchReferralSummary, type AccessRequest } from '@/lib/api'
+import { User, LogOut, Check, X, Crown, Shield, ShieldCheck, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle, Calculator, Sparkles, HelpCircle, ScrollText, Bot, Download, Trash2, Sun, Moon, MonitorSmartphone, RefreshCw, Bell, Copy, Gift, HeartPulse } from 'lucide-react'
+import { exportAccountData, deleteAccount, fetchAccessRequests, approveAccessRequest, denyAccessRequest, resetInviteCode, fetchMyReferralCode, fetchReferralSummary, fetchFamilyContinuity, updateFamilyContinuity, updateFamilyContext, type AccessRequest, type FamilyContinuity } from '@/lib/api'
 import { useThemePreference, type ThemePreference } from '@/lib/theme'
 import { isPushSupported, isPushSubscribed, subscribeToPush, unsubscribeFromPush, fetchVapidKey } from '@/lib/push'
 import { isOnDeviceSupported, isOnDeviceEnabled, setOnDeviceEnabled as persistOnDeviceEnabled, enableOnDeviceModel } from '@/lib/onDeviceLlm'
@@ -70,7 +70,10 @@ export default function SettingsPage() {
   // Family sharing (PRD-110) — only the organizer can see or act on these;
   // the same check the backend enforces (a roster entry whose id matches
   // this user's real id, with role 'organizer').
-  const isOrganizer = family?.members.find((m) => m.id === user?.id)?.role === 'organizer'
+  // m.id === user.id covers the organizer + PRD-110 join-request members;
+  // m.userId covers PRD-123 invite-accepted members whose roster id predates
+  // their account.
+  const isOrganizer = family?.members.find((m) => m.id === user?.id || m.userId === user?.id)?.role === 'organizer'
   const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([])
   const [actingOnRequestId, setActingOnRequestId] = useState<string | null>(null)
   const [accessRequestError, setAccessRequestError] = useState<string | null>(null)
@@ -80,7 +83,52 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!isOrganizer) return
     fetchAccessRequests().then(setAccessRequests)
+    fetchFamilyContinuity().then(setContinuity)
   }, [isOrganizer])
+
+  // Continuity plan (PRD-130) — organizer-only "if I go quiet" switch.
+  // Changes save on each interaction; the state line underneath reflects
+  // the persisted phase so the organizer can see the machine is live.
+  const [continuity, setContinuity] = useState<FamilyContinuity | null>(null)
+  const [continuityBusy, setContinuityBusy] = useState(false)
+
+  const saveContinuity = async (next: FamilyContinuity['continuity']) => {
+    if (continuityBusy) return
+    setContinuityBusy(true)
+    try {
+      const saved = await updateFamilyContinuity(next)
+      setContinuity((c) => (c ? { ...c, continuity: saved } : c))
+      haptic('success')
+    } catch (err) {
+      haptic('warning')
+      toast({ message: err instanceof Error ? err.message : "Couldn't save continuity settings", variant: 'error' })
+    } finally {
+      setContinuityBusy(false)
+    }
+  }
+
+  // Household context note (gap 8) — organizer-authored free text Ask Oak
+  // reads as background. Seeded from the family record; save-on-click, not
+  // per keystroke.
+  const [contextNote, setContextNote] = useState(family?.contextNote ?? '')
+  const [contextBusy, setContextBusy] = useState(false)
+  const [contextSaved, setContextSaved] = useState(false)
+
+  const saveContextNote = async () => {
+    if (contextBusy) return
+    setContextBusy(true)
+    haptic('light')
+    const saved = await updateFamilyContext(contextNote)
+    setContextBusy(false)
+    if (saved) {
+      setContextSaved(true)
+      haptic('success')
+      setTimeout(() => setContextSaved(false), 2000)
+    } else {
+      haptic('warning')
+      toast({ message: "Couldn't save that — try again", variant: 'error' })
+    }
+  }
 
   // Friend referral (PRD-112) — any family member can refer a friend to
   // their own, separate account, unlike the organizer-only invite code.
@@ -626,6 +674,121 @@ export default function SettingsPage() {
         </ListSection>
       )}
 
+      {/* Continuity plan (PRD-130) — organizer-only. If the organizer
+          goes quiet past the threshold, Oak emails them a check-in, then
+          (after grace) notifies the designated adults. It never grants
+          access — the vault's standing adult access already covers that;
+          this exists so the right people get tapped on the shoulder. */}
+      {isOrganizer && continuity && (
+        <ListSection title="Continuity Plan">
+          <ListRow icon={HeartPulse}>
+            <div className="flex items-center justify-between w-full gap-3">
+              <div className="text-left min-w-0">
+                <div className="text-base font-medium">If I go quiet</div>
+                <div className="text-xs text-ink-tertiary mt-0.5">
+                  Check in with me after {continuity.continuity.check_in_after_days} days of no activity, then let the people below know
+                </div>
+              </div>
+              <button
+                role="switch"
+                aria-checked={continuity.continuity.enabled}
+                disabled={continuityBusy}
+                onClick={async (e) => {
+                  e.stopPropagation()
+                  haptic('light')
+                  await saveContinuity({ ...continuity.continuity, enabled: !continuity.continuity.enabled })
+                }}
+                className={`w-12 h-7 rounded-full flex-shrink-0 flex items-center px-1 transition-colors ${continuity.continuity.enabled ? 'bg-family-500' : 'bg-tint/10'}`}
+              >
+                <motion.div className="w-5 h-5 rounded-full bg-white" animate={{ x: continuity.continuity.enabled ? 20 : 0 }} />
+              </button>
+            </div>
+          </ListRow>
+          {continuity.continuity.enabled && (
+            <>
+              {family?.members
+                .filter((m) => m.role !== 'organizer' && m.role !== 'child' && m.status === 'active' && m.email)
+                .map((m) => {
+                  const picked = continuity.continuity.designated_member_ids.includes(m.id)
+                  return (
+                    <ListRow
+                      key={m.id}
+                      icon={User}
+                      onClick={async () => {
+                        haptic('light')
+                        const ids = picked
+                          ? continuity.continuity.designated_member_ids.filter((id) => id !== m.id)
+                          : [...continuity.continuity.designated_member_ids, m.id]
+                        await saveContinuity({ ...continuity.continuity, designated_member_ids: ids })
+                      }}
+                      pressed={picked}
+                      value={picked ? <Check size={18} className="text-family-400" /> : null}
+                    >
+                      <div className="text-base font-medium">Tell {m.name}</div>
+                    </ListRow>
+                  )
+                })}
+              <ListRow>
+                <div className="flex items-center justify-between w-full gap-3">
+                  <div className="text-left min-w-0">
+                    <div className="text-sm text-ink-secondary">Check in after</div>
+                  </div>
+                  <select
+                    value={continuity.continuity.check_in_after_days}
+                    disabled={continuityBusy}
+                    onChange={async (e) => {
+                      await saveContinuity({ ...continuity.continuity, check_in_after_days: Number(e.target.value) })
+                    }}
+                    className="glass-input rounded-lg px-3 py-1.5 text-sm text-ink-primary outline-none"
+                  >
+                    {[14, 30, 60, 90].map((d) => <option key={d} value={d}>{d} days</option>)}
+                  </select>
+                </div>
+              </ListRow>
+              <ListRow>
+                <p className="text-xs text-ink-tertiary">
+                  {continuity.state.phase === 'watching'
+                    ? 'Watching — opening the app resets the clock automatically.'
+                    : continuity.state.phase === 'check_in_sent'
+                      ? 'A check-in email has been sent — opening the app clears it.'
+                      : 'Designated contacts have been notified — opening the app resets everything.'}
+                </p>
+              </ListRow>
+            </>
+          )}
+        </ListSection>
+      )}
+
+      {/* Gap-8 context slice: a short organizer-authored note Ask Oak
+          reads as household background. Same sensitivity class as the
+          financial profile; the copy asks for no medical details. */}
+      {isOrganizer && (
+        <ListSection title="Household Context">
+          <ListRow>
+            <div className="w-full space-y-2 text-left">
+              <p className="text-xs text-ink-tertiary leading-relaxed">
+                Anything Oak should know that the profile doesn’t capture — “we’re a blended family”, “Maya finishes uni in 2027”. Please don’t include medical details.
+              </p>
+              <textarea
+                rows={3}
+                maxLength={500}
+                placeholder="e.g. We’re a blended family; the flat in Leeds is Mum’s."
+                value={contextNote}
+                onChange={(e) => setContextNote(e.target.value)}
+                className="glass-input w-full rounded-xl px-3 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 resize-none"
+              />
+              <button
+                type="button"
+                disabled={contextBusy || contextNote === (family?.contextNote ?? '')}
+                onClick={saveContextNote}
+                className="text-xs font-semibold text-family-400 disabled:opacity-40"
+              >
+                {contextBusy ? 'Saving…' : contextSaved ? 'Saved' : 'Save context'}
+              </button>
+            </div>
+          </ListRow>
+        </ListSection>
+      )}
       {/* Add Member form — plain conditional render, no AnimatePresence.
           Framer Motion's exit animations (including non-height variants)
           were observed getting stuck mid-transition in this dev environment,

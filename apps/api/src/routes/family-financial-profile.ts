@@ -29,12 +29,20 @@ import { persistSignal } from '../signals.js'
 import { resolveStaleInsights } from '../insights-persist.js'
 import { maybeFlagUnreportedLifeChange, type ProfileChangeSnapshot } from '../life-events/detect-unreported-change.js'
 import { rewardReferralIfPending } from './referrals.js'
+import { ageFromDob } from '../lib/family-permissions.js'
+import type { FamilyGroupDoc } from './family-group.js'
+import { ESTATE_VAULT_CATEGORY } from './documents.js'
 
 const FAMILY_DETECTOR_IDS = [
   'family_protection_gap',
   'family_emergency_fund_adequacy',
   'family_retirement_gap',
   'family_education_shortfall',
+  // Safe inside the stale-resolution loop only because evaluateProfile-
+  // AndGenerateInsights emits a fresh family.estate event every submit —
+  // vault.ts evaluates the same detector on upload/delete for the same
+  // reason (PRD-121).
+  'family_estate_readiness',
 ] as const
 
 export const FinancialProfileSchema = z.object({
@@ -68,9 +76,11 @@ export const FinancialProfileSchema = z.object({
     // existed. See the multi-event evaluation in the route below for how
     // this avoids double-firing the household detector's other,
     // genuinely joint rules (life cover, renewal window, health cover).
-    // Scoped to income + income protection only — not retirement or
-    // emergency-fund, which stay household-level (see PRD-104's own
-    // "Out of scope").
+    // Scoped to income + income protection, plus (PRD-119) optional
+    // per-member pension figures so a second earner's twin can score
+    // their own retirement trajectory instead of borrowing the
+    // organizer's. Emergency fund stays household-level — it's a
+    // shared pool, not any one member's.
     members: z
       .array(
         z.object({
@@ -78,6 +88,8 @@ export const FinancialProfileSchema = z.object({
           employment_status: z.enum(['employed', 'self_employed', 'unemployed', 'retired']),
           monthly_salary_minor: z.number().int().nonnegative(),
           income_protection_monthly_minor: z.number().int().nonnegative().default(0),
+          pension_balance_minor: z.number().int().nonnegative().optional(),
+          monthly_pension_contribution_minor: z.number().int().nonnegative().optional(),
         }),
       )
       .default([]),
@@ -195,7 +207,10 @@ export type FinancialProfile = z.infer<typeof FinancialProfileSchema>
  * current_age >= target_retirement_age, which reports today's real
  * sustainability instead of compounding forward as if still accumulating.
  */
-function projectRetirement(r: FinancialProfile['retirement']) {
+// Exported for readiness/score.ts — the composite readiness score reuses
+// exactly this projection (achievable_retirement_income_minor vs the
+// target) rather than duplicating the compounding math.
+export function projectRetirement(r: FinancialProfile['retirement']) {
   const rate = r.expected_annual_growth_pct / 100
   const requiredCorpusMinor = r.target_retirement_income_minor * 25
   const annualContribution = r.monthly_contribution_minor * 12
@@ -262,7 +277,7 @@ function projectRetirement(r: FinancialProfile['retirement']) {
   }
 }
 
-function educationFundingGapMinor(funds: FinancialProfile['education_funds']): number {
+export function educationFundingGapMinor(funds: FinancialProfile['education_funds']): number {
   return funds.reduce((sum, f) => sum + Math.max(0, f.target_savings_minor - f.current_savings_minor), 0)
 }
 
@@ -376,11 +391,27 @@ export async function evaluateProfileAndGenerateInsights(
       // (self-employed arguably more so, with no employer sick pay) —
       // only unemployed/retired genuinely have none via this policy type.
       const hasIncomeToProtect = earner.employment_status === 'employed' || earner.employment_status === 'self_employed'
+      // PRD-128: member_no_life_cover needs this earner's own attributed
+      // life cover (the household life_cover_minor is aggregate-only).
+      // Explicit values on BOTH events — the primary earner's
+      // member_earner: 0 is the flag that keeps the rule from firing
+      // twice alongside the household-level check.
+      const memberLifeCoverMinor = earner.member_id
+        ? profile.policies
+            .filter((p) => p.member_id === earner.member_id && p.type === 'life')
+            .reduce((sum, p) => sum + p.coverage_amount_minor, 0)
+        : 0
       const eventId = crypto.randomUUID()
       const data = {
         employed: Number(hasIncomeToProtect),
         monthly_salary_minor: earner.monthly_salary_minor,
         income_protection_monthly_minor: earner.income_protection_monthly_minor,
+        member_earner: earner.member_id ? 1 : 0,
+        member_life_cover_minor: earner.member_id ? memberLifeCoverMinor : Number.MAX_SAFE_INTEGER,
+        // Real dependents value on member events (the household rules it
+        // feeds are neutralized elsewhere in `shared`; this field only
+        // exists for member-scoped rules).
+        member_has_dependents: earner.member_id ? sharedHouseholdData.has_dependents : 0,
         // PRD-104: carried through to feature_snapshot so a fired
         // insight can be attributed back to a real roster member, not
         // just an anonymous "second earner" — and now load-bearing for
@@ -474,6 +505,76 @@ export async function evaluateProfileAndGenerateInsights(
       derived_from_signals: [signalId],
     })
     generatedInsights.push(...result.insights)
+
+    // PRD-120: the same detector evaluated once per earner with real
+    // pension figures — a second earner's retirement gap is theirs, not
+    // a share of the organizer's. Only members with pension fields
+    // entered qualify: absent fields can't mean "zero pension" (never
+    // collected vs declared £0 are indistinguishable), so no event is
+    // emitted for them — which is also the honest stale-resolution path:
+    // removing a member's pension data stops reproducing their insight.
+    const membersWithPension = profile.household.members.filter(
+      (m) => (m.pension_balance_minor ?? 0) > 0 || (m.monthly_pension_contribution_minor ?? 0) > 0,
+    )
+    if (membersWithPension.length > 0) {
+      const roster = await getTenantCollection<FamilyGroupDoc>(db, 'family_groups', tenantId).findOne({})
+      const ageByMemberId = new Map(
+        (roster?.members ?? []).map((m) => [m.id, ageFromDob(m.date_of_birth)]),
+      )
+      const totalSalaryMinor =
+        profile.household.monthly_salary_minor +
+        profile.household.members.reduce((s, m) => s + m.monthly_salary_minor, 0)
+      for (const member of membersWithPension) {
+        const age = ageByMemberId.get(member.member_id)
+        // No real DOB → no projection; an invented age is worse than no
+        // insight (same posture as the twin's readiness detail).
+        if (age === null || age === undefined) continue
+        // Their share of the joint target is proportional to what they
+        // earn — can't derive one without a salary on file.
+        if (totalSalaryMinor <= 0 || member.monthly_salary_minor <= 0) continue
+        const memberTargetMinor = Math.round(
+          (profile.retirement.target_retirement_income_minor * member.monthly_salary_minor) / totalSalaryMinor,
+        )
+        const memberProjection = projectRetirement({
+          current_age: age,
+          target_retirement_age: profile.retirement.target_retirement_age,
+          pension_balance_minor: member.pension_balance_minor ?? 0,
+          monthly_contribution_minor: member.monthly_pension_contribution_minor ?? 0,
+          target_retirement_income_minor: memberTargetMinor,
+          expected_annual_growth_pct: profile.retirement.expected_annual_growth_pct,
+        })
+        const memberEventId = crypto.randomUUID()
+        const memberData = {
+          current_age: age,
+          target_retirement_age: profile.retirement.target_retirement_age,
+          pension_balance_minor: member.pension_balance_minor ?? 0,
+          target_retirement_income_minor: memberTargetMinor,
+          projected_retirement_age: memberProjection.projected_retirement_age,
+          additional_monthly_contribution_needed_minor: memberProjection.additional_monthly_contribution_needed_minor,
+          achievable_retirement_income_minor: memberProjection.achievable_retirement_income_minor,
+          // Affordability gate uses *their* salary, not the household's.
+          monthly_salary_minor: member.monthly_salary_minor,
+          // member_id lands in feature_snapshot → entity_key — the twin
+          // and ?member_id= insight filter pick the insight up from it.
+          member_id: member.member_id,
+        }
+        const memberSignalId = await persistSignal({
+          tenant_id: tenantId,
+          signal_type: 'family.pension',
+          source: 'manual-entry',
+          external_id: memberEventId,
+          data: memberData,
+        })
+        const memberResult = await engine.evaluate({
+          event_type: 'family.pension',
+          tenant_id: tenantId,
+          event_id: memberEventId,
+          data: memberData,
+          derived_from_signals: [memberSignalId],
+        })
+        generatedInsights.push(...memberResult.insights)
+      }
+    }
   }
 
   // ── family_education_shortfall (one event per child) ─────────────────
@@ -501,6 +602,47 @@ export async function evaluateProfileAndGenerateInsights(
     })
     const result = await engine.evaluate({
       event_type: 'family.education_fund',
+      tenant_id: tenantId,
+      event_id: eventId,
+      data,
+      derived_from_signals: [signalId],
+    })
+    generatedInsights.push(...result.insights)
+  }
+
+  // ── family_estate_readiness (PRD-121) ────────────────────────────────
+  // Vault doc types drive the estate component of the readiness score —
+  // this detector makes "missing will / PoA" an actual insight, not just
+  // a score detail string. Household-level: no member attribution.
+  {
+    const estateDocTypes = new Set(
+      (
+        (await db
+          .collection('documents')
+          .find(
+            { tenant_id: tenantId, category: ESTATE_VAULT_CATEGORY },
+            { projection: { _id: 0, doc_type: 1 } },
+          )
+          .toArray()) as { doc_type?: string }[]
+      )
+        .map((d) => d.doc_type)
+        .filter((t): t is string => typeof t === 'string'),
+    )
+    const eventId = crypto.randomUUID()
+    const data = {
+      has_will: Number(estateDocTypes.has('will')),
+      has_power_of_attorney: Number(estateDocTypes.has('power_of_attorney')),
+      estate_doc_count: estateDocTypes.size,
+    }
+    const signalId = await persistSignal({
+      tenant_id: tenantId,
+      signal_type: 'family.estate',
+      source: 'manual-entry',
+      external_id: eventId,
+      data,
+    })
+    const result = await engine.evaluate({
+      event_type: 'family.estate',
       tenant_id: tenantId,
       event_id: eventId,
       data,

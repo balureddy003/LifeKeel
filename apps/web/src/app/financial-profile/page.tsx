@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Loader2, AlertCircle, CheckCircle2, Plus, X, ChevronLeft, Sparkles } from 'lucide-react'
+import { Loader2, AlertCircle, CheckCircle2, Plus, X, ChevronLeft, Sparkles, Wallet, ChevronRight, Home } from 'lucide-react'
 import { PageHeader, GlassCard, GlassButton, Skeleton, IfAdvanced } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { useToast } from '@/components/Toast'
@@ -44,6 +44,8 @@ interface FormState {
   secondEarnerEmploymentStatus: EmploymentStatus
   secondEarnerMonthlySalary: string
   secondEarnerIncomeProtectionMonthly: string
+  secondEarnerPensionBalance: string
+  secondEarnerPensionMonthly: string
   emergencySavings: string
   monthlyExpenses: string
   hasHighInterestDebt: boolean
@@ -114,6 +116,8 @@ const EMPTY_FORM: FormState = {
   secondEarnerEmploymentStatus: 'employed',
   secondEarnerMonthlySalary: '',
   secondEarnerIncomeProtectionMonthly: '0',
+  secondEarnerPensionBalance: '',
+  secondEarnerPensionMonthly: '',
   emergencySavings: '',
   monthlyExpenses: '',
   hasHighInterestDebt: false,
@@ -162,6 +166,10 @@ function fromProfile(profile: FinancialProfile): { form: FormState; funds: Educa
       secondEarnerEmploymentStatus: household.members?.[0]?.employment_status ?? EMPTY_FORM.secondEarnerEmploymentStatus,
       secondEarnerMonthlySalary: toWhole(household.members?.[0]?.monthly_salary_minor ?? 0),
       secondEarnerIncomeProtectionMonthly: toWhole(household.members?.[0]?.income_protection_monthly_minor ?? 0),
+      // Pension fields are optional — leave blank when never collected so
+      // "not on file" stays distinguishable from "declared £0".
+      secondEarnerPensionBalance: household.members?.[0]?.pension_balance_minor != null ? toWhole(household.members?.[0]?.pension_balance_minor ?? 0) : '',
+      secondEarnerPensionMonthly: household.members?.[0]?.monthly_pension_contribution_minor != null ? toWhole(household.members?.[0]?.monthly_pension_contribution_minor ?? 0) : '',
       emergencySavings: toWhole(emergencyFund.emergency_savings_minor ?? 0),
       monthlyExpenses: toWhole(emergencyFund.monthly_expenses_minor ?? 0),
       hasHighInterestDebt: emergencyFund.has_high_interest_debt ?? false,
@@ -237,6 +245,12 @@ function toPayload(form: FormState, funds: EducationFundForm[], policies: Policy
                 employment_status: form.secondEarnerEmploymentStatus,
                 monthly_salary_minor: toMinor(form.secondEarnerMonthlySalary),
                 income_protection_monthly_minor: toMinor(form.secondEarnerIncomeProtectionMonthly),
+                ...(form.secondEarnerPensionBalance !== ''
+                  ? { pension_balance_minor: toMinor(form.secondEarnerPensionBalance) }
+                  : {}),
+                ...(form.secondEarnerPensionMonthly !== ''
+                  ? { monthly_pension_contribution_minor: toMinor(form.secondEarnerPensionMonthly) }
+                  : {}),
               },
             ]
           : [],
@@ -505,7 +519,9 @@ export default function FinancialProfilePage() {
   // submitted) in sync so toPayload needs no change; the retirement step's
   // JSX below shows this as a derived, read-only value instead of a Field
   // whenever it's available.
-  const selfMember = (family?.members ?? []).find((m) => m.id === user?.id)
+  // m.id covers the organizer/join-request members; m.userId covers
+  // invite-accepted members (PRD-123) whose roster id isn't their user id.
+  const selfMember = (family?.members ?? []).find((m) => m.id === user?.id || m.userId === user?.id)
   useEffect(() => {
     if (!selfMember?.dateOfBirth) return
     set('currentAge', String(calculateAge(selfMember.dateOfBirth)))
@@ -795,6 +811,34 @@ export default function FinancialProfilePage() {
         </div>
       )}
 
+      {/* PRD-131 + gap 8: the cash-flow ledger and the assets register
+          live next to the profile — the monthly and ownership pictures
+          these figures feed into. */}
+      <Link href="/cashflow" onClick={() => haptic('light')} className="block">
+        <GlassCard className="p-3.5 border-family-500/20 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0">
+            <Wallet size={16} className="text-family-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-ink-primary">Monthly cash flow</div>
+            <div className="text-xs text-ink-tertiary">Track what comes in and goes out — feeds your runway picture</div>
+          </div>
+          <ChevronRight size={14} className="text-ink-tertiary flex-shrink-0" />
+        </GlassCard>
+      </Link>
+      <Link href="/assets" onClick={() => haptic('light')} className="block">
+        <GlassCard className="p-3.5 border-tint/[0.06] flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-tint/[0.05] border border-tint/[0.08] flex items-center justify-center flex-shrink-0">
+            <Home size={16} className="text-ink-secondary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-ink-primary">Assets register</div>
+            <div className="text-xs text-ink-tertiary">Property, vehicles, valuables — what your family owns</div>
+          </div>
+          <ChevronRight size={14} className="text-ink-tertiary flex-shrink-0" />
+        </GlassCard>
+      </Link>
+
       {/* Step progress */}
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -894,6 +938,20 @@ export default function FinancialProfilePage() {
                       value={form.secondEarnerIncomeProtectionMonthly}
                       onChange={(v) => set('secondEarnerIncomeProtectionMonthly', v)}
                       placeholder="0 if none"
+                      prefix="£"
+                    />
+                    <Field
+                      label="Their pension balance (optional)"
+                      value={form.secondEarnerPensionBalance}
+                      onChange={(v) => set('secondEarnerPensionBalance', v)}
+                      placeholder="Leave blank if unknown"
+                      prefix="£"
+                    />
+                    <Field
+                      label="Their monthly pension contribution (optional)"
+                      value={form.secondEarnerPensionMonthly}
+                      onChange={(v) => set('secondEarnerPensionMonthly', v)}
+                      placeholder="Leave blank if unknown"
                       prefix="£"
                     />
                   </>

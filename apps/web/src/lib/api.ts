@@ -93,6 +93,7 @@ const FAMILY_DETECTORS = [
   'family_education_shortfall',
   'family_emergency_fund_adequacy',
   'family_retirement_gap',
+  'family_estate_readiness',
 ] as const
 
 function getAuthToken(): string | null {
@@ -139,9 +140,17 @@ async function apiFetch<T>(path: string, fallback: T, onFailure?: () => void): P
 // Public product status — unauthenticated route that stays reachable during
 // maintenance so the shell can render the outage banner. apiFetch's fallback
 // doubles as the "API unreachable" answer: no banner, OfflineBanner owns that.
+export interface MaintenanceWindow {
+  starts_at: string
+  ends_at: string
+  message: string
+}
+
 export interface PublicStatus {
   maintenance_mode: boolean
   signups_enabled: boolean
+  /** Present only while the window is upcoming or in progress. */
+  maintenance_window?: MaintenanceWindow
 }
 
 export async function fetchPublicStatus(): Promise<PublicStatus> {
@@ -167,6 +176,121 @@ export async function fetchFamilyInsights(): Promise<FamilyInsight[]> {
   )
 }
 
+// PRD-117: member-attributed insights only — the member twin read model
+// already embeds them, but other surfaces (e.g. a member-scoped inbox
+// filter) can query the same attribution directly.
+export async function fetchMemberInsights(memberId: string): Promise<FamilyInsight[]> {
+  return cachedFetch(`member-insights:${memberId}`, 30_000, () =>
+    apiFetch<{ insights: RawInsight[] }>(
+      `/insights?detectors=${FAMILY_DETECTORS.join(',')}&member_id=${encodeURIComponent(memberId)}`,
+      { insights: [] },
+    ).then((r) => (r.insights ?? []).map(adaptInsight)),
+  )
+}
+
+// Real readiness for a /events "What If?" scenario — computed server-side
+// from the family's actual profile (apps/api's event-readiness.ts) rather
+// than /events' hardcoded EVENT_STABILITY fallback map. hasLiveData: false
+// (the only field guaranteed present) means "no real number for this
+// event id" — the caller falls back to its own static sample.
+export interface EventReadiness {
+  stability: number
+  explanation: string
+  hasLiveData: boolean
+}
+
+export async function fetchEventReadiness(eventId: string): Promise<EventReadiness | { hasLiveData: false }> {
+  return apiFetch<EventReadiness | { hasLiveData: false }>(
+    `/family/events/${encodeURIComponent(eventId)}/readiness`,
+    { hasLiveData: false },
+  )
+}
+
+// PRD-117: the member twin read model — roster record + earner slice +
+// attributed policies/funds/insights, assembled server-side per read.
+export interface MemberTwin {
+  member: {
+    id: string
+    name: string
+    role: string
+    status: string
+    date_of_birth?: string
+    age: number | null
+  }
+  financial: {
+    earner: {
+      employment_status: EmploymentStatus
+      monthly_salary_minor: number
+      income_protection_monthly_minor: number
+      pension_balance_minor?: number
+      monthly_pension_contribution_minor?: number
+    } | null
+    policies: Array<Pick<FinancialProfilePolicy, 'type' | 'provider' | 'coverage_amount_minor' | 'monthly_premium_minor' | 'renewal_date'>>
+    education_funds: Array<{
+      child_name?: string
+      current_savings_minor: number
+      target_savings_minor: number
+      years_remaining: number
+      months_remaining: number
+      needed_monthly_minor: number
+    }>
+    insights: RawInsight[]
+  }
+  /** PRD-118: per-member readiness — same component vocabulary as the
+   *  family score (minus emergency_fund, which is household-level).
+   *  Components carry no explaining insights here; financial.insights
+   *  already holds the member's open list. */
+  readiness: {
+    score: number | null
+    components: Array<Omit<ReadinessComponent, 'insights'>>
+  } | null
+  /** PRD-124: present only when fetched with mode='youth' — redacted
+   *  kid-legible projection; financial/readiness are empty in that mode. */
+  youth?: {
+    age_band: 'younger' | 'teen'
+    headline: string
+    savings_goals: Array<{ name: string; progress_pct: number; years_until_goal: number }>
+    /** PRD-129: age-banded literacy lessons — concepts + a "try it", no
+     *  amounts or products. */
+    lessons: Array<{ id: string; title: string; body: string; try_it: string }>
+  }
+  has_live_data: boolean
+}
+
+export async function fetchMemberTwin(memberId: string, mode?: 'youth'): Promise<MemberTwin | null> {
+  return apiFetch<MemberTwin | null>(`/family/members/${encodeURIComponent(memberId)}/twin${mode === 'youth' ? '?mode=youth' : ''}`, null)
+}
+
+/** PRD-126/127: the member's agent persona — proactive member-scoped
+ *  nudges read off the twin and persisted in member_nudges. 'guardian'
+ *  persona for minors (speaks to adults). */
+export interface MemberAgent {
+  member: { id: string; name: string; role: string; status: string; age: number | null }
+  persona: 'adult' | 'guardian'
+  nudges: Array<{
+    id: string
+    kind: 'attention' | 'insight' | 'progress'
+    title: string
+    detail: string
+    first_seen_at: string
+    source?: { component?: string; insight_id?: string }
+  }>
+  provisional: boolean
+}
+
+export async function fetchMemberAgent(memberId: string): Promise<MemberAgent | null> {
+  return apiFetch<MemberAgent | null>(`/family/members/${encodeURIComponent(memberId)}/agent`, null)
+}
+
+export async function dismissMemberNudge(memberId: string, nudgeId: string): Promise<boolean> {
+  const token = getAuthToken()
+  const res = await fetch(
+    `${getApiBase()}/family/members/${encodeURIComponent(memberId)}/agent/nudges/${encodeURIComponent(nudgeId)}/dismiss`,
+    { method: 'POST', headers: { Authorization: `Bearer ${token ?? ''}` } },
+  )
+  return res.ok
+}
+
 export async function fetchFamilyGoals(): Promise<FamilyGoal[]> {
   return apiFetch<{ goals: FamilyGoal[] }>(
     '/goals',
@@ -189,7 +313,55 @@ export async function fetchFamilyGoals(): Promise<FamilyGoal[]> {
 // well-covered family "you're verified and clear" instead of showing them
 // the same "No data yet, connect your accounts" prompt as someone who
 // hasn't done anything.
+// PRD-114: the composite Family Readiness Score, computed server-side from
+// deterministic subscores over the real profile + vault contents — see
+// apps/api/src/readiness/score.ts. Insights explain the subscores; they no
+// longer subtract from them directly.
+export interface ReadinessComponentInsight {
+  id: string
+  detector_id: string
+  rule_id: string
+  hypothesis: string
+  confidence: number
+}
+
+export type ReadinessComponentKey = 'emergency_fund' | 'protection' | 'retirement' | 'education' | 'estate'
+
+export interface ReadinessComponent {
+  key: ReadinessComponentKey
+  label: string
+  score: number | null
+  weight: number
+  detail: string
+  gated?: boolean
+  insights: ReadinessComponentInsight[]
+}
+
+export interface FamilyReadiness {
+  score: number | null
+  has_live_data: boolean
+  computed_at: string
+  components: ReadinessComponent[]
+  insights: ReadinessComponentInsight[]
+}
+
+export async function fetchFamilyReadiness(): Promise<FamilyReadiness | null> {
+  return apiFetch<FamilyReadiness | null>('/family/readiness', null)
+}
+
+// Starts from 100 (no known gaps) and subtracts a confidence-weighted
+// penalty per currently-open insight — kept only as the offline fallback
+// when /family/readiness can't be reached, since it still beats showing
+// nothing. The comment below documents why even that fallback must check
+// insights_evaluated_at before scoring an insight-free profile 100.
 export async function fetchFamilyReadinessScore(): Promise<{ score: number; hasLiveData: boolean }> {
+  const server = await fetchFamilyReadiness()
+  if (server && server.has_live_data && server.score !== null) {
+    return { score: server.score, hasLiveData: true }
+  }
+  if (server && !server.has_live_data) return { score: 0, hasLiveData: false }
+  if (server && server.has_live_data && server.score === null) return { score: 0, hasLiveData: true }
+
   const insights = await fetchFamilyInsights()
   if (insights.length === 0) {
     const profile = await fetchFinancialProfile()
@@ -207,6 +379,120 @@ export async function fetchFamilyReadinessScore(): Promise<{ score: number; hasL
   return { score: Math.round(Math.max(0, Math.min(100, 100 - openPenalty * 10))), hasLiveData: true }
 }
 
+// ── Saved scenarios (PRD-115) ───────────────────────────────────────────
+// "What if income drops in N months" projections — inputs are stored,
+// results are always recomputed server-side against the live profile on
+// read (see routes/family-scenarios.ts), so a saved scenario moves as the
+// family's real numbers move.
+export interface ScenarioInputs {
+  /** Household monthly income change in minor units — negative for a loss. */
+  monthlyIncomeDeltaMinor?: number
+  monthlyExtraSavingsMinor?: number
+  targetChildName?: string
+  /** Months until the income change takes effect; 0 = immediate. */
+  monthsUntilChange?: number
+  /**
+   * PRD-132: ordered regime changes — the flat delta/horizon fields are
+   * the one-step shorthand for this and are ignored when steps exist.
+   * Deltas accumulate: a later step's +X can undo an earlier −X.
+   */
+  steps?: ScenarioStep[]
+}
+
+export interface ScenarioStep {
+  atMonth: number
+  monthlyIncomeDeltaMinor?: number
+  monthlyExpenseDeltaMinor?: number
+}
+
+export interface ScenarioResult {
+  currentMonthlyIncomeMinor: number
+  projectedMonthlyIncomeMinor: number
+  currentMonthlySurplusMinor: number
+  projectedMonthlySurplusMinor: number
+  currentRunwayMonths: number | null
+  projectedRunwayMonths: number | null
+  savingsAtChangeMinor: number
+  monthsUntilChange: number
+  /** PRD-132: one point per timeline step — null for single-step inputs. */
+  timeline: Array<{
+    atMonth: number
+    monthlyIncomeMinor: number
+    monthlyExpensesMinor: number
+    savingsMinor: number
+    runwayMonths: number | null
+  }> | null
+  /** PRD-132: the month the fund runs out mid-timeline, if it does. */
+  fundDepletedAtMonth: number | null
+  educationFundProjection: {
+    childName: string
+    yearsRemaining: number
+    projectedMonthsToTarget: number | null
+    onTrack: boolean | null
+  } | null
+}
+
+export interface FamilyScenario {
+  id: string
+  name: string
+  inputs: ScenarioInputs
+  created_by: string
+  created_at: string
+  result: ScenarioResult | null
+  has_live_data: boolean
+}
+
+async function scenarioRequest<T>(path: string, init: RequestInit, fallback: T): Promise<T> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(`${base}${path}`, { ...init, headers })
+    if (!res.ok) return fallback
+    return (await res.json()) as T
+  } catch (err) {
+    reportError(err, { path })
+    return fallback
+  }
+}
+
+/** Pure-math preview — persists nothing, never calls an LLM. */
+export async function previewScenario(
+  inputs: ScenarioInputs,
+): Promise<{ result: ScenarioResult | null; has_live_data: boolean } | null> {
+  return scenarioRequest('/family/scenarios/preview', { method: 'POST', body: JSON.stringify(inputs) }, null)
+}
+
+export async function saveFamilyScenario(name: string, inputs: ScenarioInputs): Promise<FamilyScenario | null> {
+  const data = await scenarioRequest<{ scenario: FamilyScenario } | null>(
+    '/family/scenarios',
+    { method: 'POST', body: JSON.stringify({ name, ...inputs }) },
+    null,
+  )
+  return data?.scenario ?? null
+}
+
+export async function fetchFamilyScenarios(): Promise<FamilyScenario[]> {
+  return apiFetch<{ scenarios: FamilyScenario[] }>('/family/scenarios', { scenarios: [] }).then(
+    (r) => r.scenarios ?? [],
+  )
+}
+
+export async function deleteFamilyScenario(id: string): Promise<boolean> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(`${base}/family/scenarios/${id}`, { method: 'DELETE', headers })
+    return res.ok
+  } catch (err) {
+    reportError(err, { action: 'deleteFamilyScenario', id })
+    return false
+  }
+}
+
 /**
  * Fetches an AI-style response for a user query. Calls the backend
  * assistant endpoint (POST /assistant/ask), which reasons over the
@@ -219,7 +505,7 @@ export async function fetchFamilyReadinessScore(): Promise<{ score: number; hasL
  * Returns both the content and an `isLive` flag so the UI can distinguish
  * real API responses from mock fallbacks and label them accordingly.
  */
-export async function fetchAIResponse(query: string): Promise<{ content: string; isLive: boolean }> {
+export async function fetchAIResponse(query: string, memberId?: string): Promise<{ content: string; isLive: boolean }> {
   try {
     const base = getApiBase()
     const token = getAuthToken()
@@ -234,7 +520,8 @@ export async function fetchAIResponse(query: string): Promise<{ content: string;
     const res = await fetch(`${base}/assistant/ask`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ query }),
+      // PRD-122: memberId scopes the answer to one roster member's twin.
+      body: JSON.stringify(memberId ? { query, member_id: memberId } : { query }),
       signal: AbortSignal.timeout(30_000),
     })
     if (res.ok) {
@@ -343,6 +630,24 @@ export interface VaultDocument {
   mimeType: string
   uploadedAt: string
   uploadedBy: string | null
+  /** PRD-114: user-declared document type — feeds the estate component of
+   *  GET /family/readiness. null for documents uploaded before the field
+   *  existed. */
+  docType: VaultDocType | null
+  /** PRD-134: client-side-encrypted under a family passphrase — the
+   *  server returns the sealed envelope and the browser unseals it. */
+  sealed?: boolean
+}
+
+export const VAULT_DOC_TYPES = ['will', 'power_of_attorney', 'insurance_policy', 'estate_instruction', 'other'] as const
+export type VaultDocType = (typeof VAULT_DOC_TYPES)[number]
+
+export const VAULT_DOC_TYPE_LABELS: Record<VaultDocType, string> = {
+  will: 'Will',
+  power_of_attorney: 'Power of attorney',
+  insurance_policy: 'Insurance policy',
+  estate_instruction: 'Estate instructions',
+  other: 'Other',
 }
 
 export async function fetchVaultDocuments(): Promise<{ documents: VaultDocument[]; forbidden: boolean }> {
@@ -362,21 +667,44 @@ export async function fetchVaultDocuments(): Promise<{ documents: VaultDocument[
   }
 }
 
-export async function uploadVaultDocument(file: File): Promise<VaultDocument> {
+export async function uploadVaultDocument(
+  file: File,
+  docType?: VaultDocType,
+  /** PRD-134: when set, the file is sealed client-side before upload —
+   *  the server stores ciphertext it cannot read. */
+  sealPassphrase?: string,
+): Promise<VaultDocument> {
   const base = getApiBase()
   const token = getAuthToken()
   const formData = new FormData()
-  formData.append('file', file)
+  let upload: Blob = file
+  if (sealPassphrase) {
+    const { sealFile } = await import('./vault-seal')
+    upload = new Blob([await sealFile(await file.arrayBuffer(), sealPassphrase) as BlobPart], { type: 'application/octet-stream' })
+  }
+  formData.append('file', upload, file.name)
   const headers: Record<string, string> = {}
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`${base}/vault/documents/upload`, { method: 'POST', headers, body: formData })
+  const params = new URLSearchParams()
+  if (docType) params.set('doc_type', docType)
+  if (sealPassphrase) {
+    params.set('sealed', '1')
+    params.set('mime', file.type || 'application/octet-stream')
+  }
+  const qs = params.toString()
+  const res = await fetch(`${base}/vault/documents/upload${qs ? `?${qs}` : ''}`, { method: 'POST', headers, body: formData })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || `Upload failed: ${res.status}`)
   return data as VaultDocument
 }
 
-export async function fetchVaultDocumentFileUrl(id: string): Promise<{ url: string; mimeType: string } | null> {
+export async function fetchVaultDocumentFileUrl(
+  id: string,
+  /** PRD-134: sealed docs need the passphrase + declared mime to unseal
+   *  in-browser; unsealed docs pass nothing. */
+  seal?: { passphrase: string; mimeType: string },
+): Promise<{ url: string; mimeType: string } | 'wrong-passphrase' | null> {
   try {
     const base = getApiBase()
     const token = getAuthToken()
@@ -384,6 +712,17 @@ export async function fetchVaultDocumentFileUrl(id: string): Promise<{ url: stri
     if (token) headers['Authorization'] = `Bearer ${token}`
     const res = await fetch(`${base}/vault/documents/${id}/file`, { headers })
     if (!res.ok) return null
+    if (seal) {
+      const { unsealFile, VaultSealError } = await import('./vault-seal')
+      try {
+        const plaintext = await unsealFile(await res.arrayBuffer(), seal.passphrase)
+        const blob = new Blob([plaintext], { type: seal.mimeType })
+        return { url: URL.createObjectURL(blob), mimeType: seal.mimeType }
+      } catch (err) {
+        if (err instanceof VaultSealError) return 'wrong-passphrase'
+        throw err
+      }
+    }
     const blob = await res.blob()
     return { url: URL.createObjectURL(blob), mimeType: blob.type }
   } catch (err) {
@@ -636,6 +975,53 @@ export async function connectEmail(payload: ConnectEmailPayload): Promise<{ ok: 
   return { ok: true }
 }
 
+// ── Open Banking (PRD-133) — read-only account-info connector. The
+// provider list is deliberately tiny: 'sandbox' (dev/test demo accounts)
+// and 'truelayer' (a consented access token — the OAuth flow that mints
+// it is the partnership-dependent piece). No payment initiation exists
+// anywhere in this path.
+export interface ExternalAccount {
+  id: string
+  provider: string
+  name: string
+  type: string
+  currency: string
+  balance_minor: number
+  synced_at: string
+}
+
+export async function connectOpenBanking(
+  provider: 'sandbox' | 'truelayer',
+  accessToken?: string,
+): Promise<{ ok: true; accounts: number } | { ok: false; error: string }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/connectors/open-banking/credentials`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ provider, ...(accessToken ? { accessToken } : {}) }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return { ok: false, error: data.error || 'Could not connect — check the details and try again.' }
+  return { ok: true, accounts: data.accounts ?? 0 }
+}
+
+export async function syncOpenBanking(): Promise<boolean> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/connectors/open-banking/sync`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  return res.ok
+}
+
+export async function fetchOpenBankingAccounts(): Promise<ExternalAccount[]> {
+  return apiFetch<{ accounts: ExternalAccount[] }>('/connectors/open-banking/accounts', { accounts: [] }).then(
+    (r) => r.accounts ?? [],
+  )
+}
+
 /** Kicks off the Gmail OAuth flow — resolves to the Google consent-screen
  * URL to navigate the browser to. On success, the callback lands back on
  * this same /connect/email page with ?connected=email; on failure, with
@@ -732,6 +1118,8 @@ export interface ApiFamilyMember {
   role: 'organizer' | 'parent' | 'adult' | 'child'
   status: 'active' | 'pending'
   joinedAt: string
+  /** The `users.id` this roster entry is bound to after invite acceptance (PRD-123). */
+  userId?: string
   /** ISO 'YYYY-MM-DD', optional. */
   dateOfBirth?: string
 }
@@ -741,6 +1129,8 @@ export interface ApiFamilyGroup {
   name: string
   inviteCode: string
   members: ApiFamilyMember[]
+  /** Gap-8: the organizer-authored context note Ask Oak reads. */
+  contextNote?: string
 }
 
 async function familyGroupRequest(
@@ -854,6 +1244,61 @@ export async function fetchAccessRequests(): Promise<AccessRequest[]> {
   return apiFetch<{ requests: AccessRequest[] }>('/family/access-requests', { requests: [] }).then((r) => r.requests)
 }
 
+// ── Per-member invites (PRD-123) ──────────────────────────────────────────
+// The organizer-facing direction of family sharing: invite a specific pending
+// roster member by email, they accept via a one-time link, and their existing
+// roster entry flips to active — no duplicate member, no join-request queue.
+
+export interface MemberInviteResult {
+  invited: boolean
+  /** false when the API has no SendGrid key — share inviteUrl manually. */
+  emailed: boolean
+  inviteUrl: string
+}
+
+export async function inviteFamilyMember(memberId: string, email?: string): Promise<MemberInviteResult> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/family/members/${memberId}/invite`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(email ? { email } : {}),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || "Couldn't send the invite. Please try again.")
+  return { invited: data.invited, emailed: data.emailed, inviteUrl: data.invite_url }
+}
+
+export interface FamilyInviteInfo {
+  memberName: string
+  familyName: string
+  expiresAt: string
+}
+
+// Public — the invitee has no auth token yet.
+export async function fetchFamilyInvite(token: string): Promise<FamilyInviteInfo> {
+  const base = getApiBase()
+  const res = await fetch(`${base}/family/invite/${encodeURIComponent(token)}`)
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'This invite link is invalid or has expired')
+  return { memberName: data.member_name, familyName: data.family_name, expiresAt: data.expires_at }
+}
+
+// Public — accepting both verifies the token AND proves ownership of the
+// email (via a new or existing password). Returns a session token so the
+// acceptor lands signed in.
+export async function acceptFamilyInvite(token: string, password: string): Promise<{ token: string; user: { id: string; email: string; name: string } }> {
+  const base = getApiBase()
+  const res = await fetch(`${base}/family/invite/accept`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, password }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || "Couldn't accept the invite. Please try again.")
+  return { token: data.token, user: data.user }
+}
+
 async function accessRequestAction(id: string, action: 'approve' | 'deny'): Promise<Record<string, unknown>> {
   const base = getApiBase()
   const token = getAuthToken()
@@ -883,6 +1328,153 @@ export async function resetInviteCode(): Promise<string> {
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || "Couldn't reset the invite code")
   return data.inviteCode as string
+}
+
+// ── Family continuity (PRD-130) ─────────────────────────────────────────────
+
+export interface FamilyContinuity {
+  continuity: {
+    enabled: boolean
+    designated_member_ids: string[]
+    check_in_after_days: number
+    grace_days: number
+  }
+  state: { phase: 'watching' | 'check_in_sent' | 'alerted'; inactive_since?: string; check_in_sent_at?: string; alerted_at?: string }
+  is_organizer: boolean
+}
+
+export async function fetchFamilyContinuity(): Promise<FamilyContinuity | null> {
+  return apiFetch<FamilyContinuity | null>('/family/continuity', null)
+}
+
+export async function updateFamilyContinuity(input: FamilyContinuity['continuity']): Promise<FamilyContinuity['continuity']> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const res = await fetch(`${base}/family/continuity`, { method: 'PATCH', headers, body: JSON.stringify(input) })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || "Couldn't save continuity settings")
+  return data.continuity
+}
+
+// ── Family cash flow (PRD-131) ──────────────────────────────────────────────
+
+export interface CashflowEntry {
+  id: string
+  kind: 'income' | 'expense'
+  label: string
+  amount_minor: number
+  recurrence: 'weekly' | 'monthly' | 'yearly' | 'once'
+  monthly_minor: number
+  member_id?: string
+  created_at: string
+}
+
+export interface CashflowSummary {
+  entries: CashflowEntry[]
+  summary: { monthly_inflow_minor: number; monthly_outflow_minor: number; net_minor: number; runway_months: number | null }
+}
+
+export async function fetchFamilyCashflow(): Promise<CashflowSummary | null> {
+  return apiFetch<CashflowSummary | null>('/family/cashflow', null)
+}
+
+export async function addCashflowEntry(input: { kind: 'income' | 'expense'; label: string; amount_minor: number; recurrence: string }): Promise<boolean> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/family/cashflow/entries`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(input),
+  })
+  return res.ok
+}
+
+export async function deleteCashflowEntry(id: string): Promise<boolean> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/family/cashflow/entries/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  return res.ok
+}
+
+// ── Assets register (gap 8's non-sensitive slice) ────────────────────────
+// Declared assets — property, vehicles, valuables — any active adult can
+// maintain. Same sensitivity class as the financial profile; medical/health
+// stays deferred by design.
+export const ASSET_KINDS = ['property', 'vehicle', 'savings_account', 'investment', 'valuable', 'other'] as const
+export type AssetKind = (typeof ASSET_KINDS)[number]
+
+export const ASSET_KIND_LABELS: Record<AssetKind, string> = {
+  property: 'Property',
+  vehicle: 'Vehicle',
+  savings_account: 'Savings account',
+  investment: 'Investment',
+  valuable: 'Valuable',
+  other: 'Other',
+}
+
+export interface FamilyAsset {
+  id: string
+  kind: AssetKind
+  name: string
+  value_minor: number
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AssetList {
+  assets: FamilyAsset[]
+  summary: { total_minor: number; by_kind: Record<string, number> }
+}
+
+export async function fetchFamilyAssets(): Promise<AssetList> {
+  return apiFetch<AssetList>('/family/assets', { assets: [], summary: { total_minor: 0, by_kind: {} } })
+}
+
+async function assetRequest(path: string, method: 'POST' | 'PATCH' | 'DELETE', body?: Record<string, unknown>): Promise<FamilyAsset | null | boolean> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const res = await fetch(`${base}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    })
+    if (!res.ok) return method === 'DELETE' ? false : null
+    if (method === 'DELETE') return true
+    const data = (await res.json()) as { asset: FamilyAsset }
+    return data.asset
+  } catch (err) {
+    reportError(err, { path })
+    return method === 'DELETE' ? false : null
+  }
+}
+
+export async function addFamilyAsset(input: { kind: AssetKind; name: string; value_minor: number; notes?: string }): Promise<FamilyAsset | null> {
+  return (await assetRequest('/family/assets', 'POST', input)) as FamilyAsset | null
+}
+
+export async function updateFamilyAsset(id: string, patch: { name?: string; value_minor?: number; notes?: string | null }): Promise<FamilyAsset | null> {
+  return (await assetRequest(`/family/assets/${encodeURIComponent(id)}`, 'PATCH', patch)) as FamilyAsset | null
+}
+
+export async function deleteFamilyAsset(id: string): Promise<boolean> {
+  return (await assetRequest(`/family/assets/${encodeURIComponent(id)}`, 'DELETE')) as boolean
+}
+
+/** Gap-8: the organizer-authored context note Ask Oak reads as household
+ *  background. Empty string clears it. */
+export async function updateFamilyContext(note: string): Promise<ApiFamilyGroup | null> {
+  try {
+    return await familyGroupRequest('/family/context', 'PATCH', { note })
+  } catch {
+    return null
+  }
 }
 
 // ── Friend referral (PRD-112) ───────────────────────────────────────────────
@@ -1223,6 +1815,8 @@ export interface FinancialProfile {
       employment_status: EmploymentStatus
       monthly_salary_minor: number
       income_protection_monthly_minor: number
+      pension_balance_minor?: number
+      monthly_pension_contribution_minor?: number
     }>
   }
   emergency_fund: {
@@ -1543,6 +2137,9 @@ export interface ReadinessQuizInsight {
 
 export interface ReadinessQuizResult {
   score: number | null
+  /** PRD-125: the same composite components /family/readiness computes —
+   *  only the ones the quiz collects are scored; the rest read null. */
+  components?: Array<{ key: string; label: string; score: number | null; weight: number; detail: string }>
   insights: ReadinessQuizInsight[]
   error?: string
 }
@@ -1556,7 +2153,7 @@ export async function submitReadinessQuiz(answers: ReadinessQuizAnswers): Promis
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) return { score: null, insights: [], error: data.error || 'Request failed' }
-  return { score: data.score ?? null, insights: data.insights ?? [], error: data.error }
+  return { score: data.score ?? null, components: data.components ?? [], insights: data.insights ?? [], error: data.error }
 }
 
 // ── Blog / detector-driven content (PRD-202) ────────────────────────────
@@ -1601,10 +2198,16 @@ export async function fetchBlogPost(slug: string): Promise<BlogPost | null> {
 export interface BillingSubscription {
   plan: string
   status: string
+  subscription?: {
+    id: string
+    status: string
+    current_period_end?: number | null
+    cancel_at_period_end?: boolean
+  } | null
 }
 
 export async function fetchBillingSubscription(): Promise<BillingSubscription | null> {
-  return apiFetch<{ plan: string; status: string } | null>('/billing/subscription', null)
+  return apiFetch<BillingSubscription | null>('/billing/subscription', null)
 }
 
 export async function startOakPlusCheckout(): Promise<string> {
@@ -1621,6 +2224,40 @@ export async function startOakPlusCheckout(): Promise<string> {
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Could not start checkout')
   return data.checkout_url as string
+}
+
+/** Redeems a promo code — throws with the server's reason on failure. */
+export async function redeemPromoCode(code: string): Promise<{ grant_credits: number; credits_balance: number }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${base}/billing/redeem-promo-code`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ code }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Could not redeem code')
+  return data
+}
+
+/** Opens the Stripe customer portal — subscription management/cancel lives there. */
+export async function openBillingPortal(returnUrl?: string): Promise<string> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${base}/billing/portal`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ return_url: returnUrl }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Could not open subscription management')
+  return data.portal_url as string
 }
 
 // ── Marketing posts (social channels) ─────────────────────────────────────
@@ -1765,9 +2402,18 @@ export async function previewMarketingDrafts(input: {
 
 export interface MarketingPerformance {
   posts: { slug: string; title?: string; views: number; cta_clicks: number; signups: number; leads: number }[]
-  channels: { channel: string; views: number; signups: number }[]
+  channels: { channel: string; views: number; cta_clicks: number; leads: number; signups: number }[]
   campaigns: { campaign: string; views: number; signups: number; leads: number }[]
   totals: { views: number; cta_clicks: number; signups: number; leads: number }
+  /** "What works" — engagement normalized against the account median
+   *  (x=1.0); providers don't expose impressions so this is comparative,
+   *  not an absolute rate. */
+  insights: {
+    measured_posts: number
+    unmeasured_channels: string[]
+    rows: { label: string; measured: number; engagement_x: number }[]
+    top_post?: { channel: string; excerpt: string; engagement: number }
+  }
 }
 
 export async function fetchMarketingPerformance(): Promise<MarketingPerformance | null> {
@@ -1810,12 +2456,17 @@ export async function startXConnect(): Promise<{ auth_url: string } | null> {
 
 export interface OperatorOverview {
   generated_at: string
-  users: { total: number; active: number; suspended: number; signups_today: number; signups_week: number }
+  users: { total: number; active: number; suspended: number; signups_today: number; signups_week: number; signups_prev_week?: number }
   tenants: { total: number; active: number }
   marketing: { publish_failed: number; queued: number }
   leads: Record<string, number>
+  leads_7d?: number
+  leads_prev_7d?: number
   signups_by_source_7d: Record<string, number>
   growth_events_7d: Array<{ event: string; count: number }>
+  /** Per-day counts of funnel events over the last 30 days — sparkline feed. */
+  activity_30d?: Array<{ day: string; event: string; count: number }>
+  support?: { open: number }
 }
 
 export interface OperatorUser {
@@ -1834,6 +2485,11 @@ export interface OperatorUser {
   created_at: string
 }
 
+export interface OperatorTenantHealth {
+  score: number
+  factors: { label: string; points: number }[]
+}
+
 export interface OperatorTenant {
   tenant_id: string
   name?: string
@@ -1842,6 +2498,7 @@ export interface OperatorTenant {
   country?: string
   created_at?: string
   user_count: number
+  health?: OperatorTenantHealth
 }
 
 async function operatorRequest<T>(path: string): Promise<T> {
@@ -1862,22 +2519,115 @@ export interface OperatorIdentity {
   source: 'database' | 'bootstrap'
 }
 
+/** Mirrors the backend's OperatorPermission union — kept as a string here so
+ *  new permissions don't break older frontends; nav filtering uses `string`. */
+export type OperatorPermission = string
+
+export interface OperatorMe {
+  operator: OperatorIdentity
+  permissions: OperatorPermission[]
+}
+
 /** Cheap identity check for the operator shell's access gate — the full
  *  overview payload would be wasted work on every first paint. */
-export function fetchOperatorMe(): Promise<{ operator: OperatorIdentity }> {
-  return operatorRequest<{ operator: OperatorIdentity }>('/operator/me')
+export function fetchOperatorMe(): Promise<OperatorMe> {
+  return operatorRequest<OperatorMe>('/operator/me')
 }
 
 export function fetchOperatorOverview(): Promise<OperatorOverview> {
   return operatorRequest<OperatorOverview>('/operator/overview')
 }
 
-export function fetchOperatorUsers(query = ''): Promise<{ users: OperatorUser[]; total: number }> {
-  return operatorRequest(`/operator/users${query ? `?q=${encodeURIComponent(query)}` : ''}`)
+export interface OperatorListPage {
+  /** Absent on cursor-paginated responses — counting millions of rows on
+   *  every keystroke page is exactly what the cursor avoids. */
+  total?: number
+  limit: number
+  offset: number
+  next_cursor?: string
 }
 
-export function fetchOperatorTenants(query = ''): Promise<{ tenants: OperatorTenant[]; total: number }> {
-  return operatorRequest(`/operator/tenants${query ? `?q=${encodeURIComponent(query)}` : ''}`)
+export interface OperatorUserFilters {
+  status?: string | undefined
+  /** Exact tenant_id — the tenant drill-down from the tenants page. */
+  tenant?: string | undefined
+}
+
+export function fetchOperatorUsers(
+  query = '',
+  filters: OperatorUserFilters = {},
+  page: { limit?: number; offset?: number; cursor?: string } = {},
+): Promise<{ users: OperatorUser[] } & OperatorListPage> {
+  const params = new URLSearchParams()
+  if (query) params.set('q', query)
+  if (filters.status) params.set('status', filters.status)
+  if (filters.tenant) params.set('tenant', filters.tenant)
+  if (page.limit !== undefined) params.set('limit', String(page.limit))
+  if (page.cursor) params.set('cursor', page.cursor)
+  else if (page.offset !== undefined) params.set('offset', String(page.offset))
+  const qs = params.toString()
+  return operatorRequest(`/operator/users${qs ? `?${qs}` : ''}`)
+}
+
+export function fetchOperatorTenants(
+  query = '',
+  filters: { status?: string | undefined } = {},
+  page: { limit?: number; offset?: number; cursor?: string } = {},
+): Promise<{ tenants: OperatorTenant[] } & OperatorListPage> {
+  const params = new URLSearchParams()
+  if (query) params.set('q', query)
+  if (filters.status) params.set('status', filters.status)
+  if (page.limit !== undefined) params.set('limit', String(page.limit))
+  if (page.cursor) params.set('cursor', page.cursor)
+  else if (page.offset !== undefined) params.set('offset', String(page.offset))
+  const qs = params.toString()
+  return operatorRequest(`/operator/tenants${qs ? `?${qs}` : ''}`)
+}
+
+export interface OperatorTenantMember {
+  id: string
+  email: string
+  name: string
+  roles: string[]
+  status?: string
+  created_at: string
+}
+
+/** Tenant detail + member list — powers the inline member expansion on the
+ *  operator tenants page. */
+export function fetchOperatorTenant(id: string): Promise<{ tenant: OperatorTenant; members: OperatorTenantMember[]; health: OperatorTenantHealth }> {
+  return operatorRequest(`/operator/tenants/${encodeURIComponent(id)}`)
+}
+
+export interface OperatorLoginEvent {
+  created_at: string
+  success: boolean
+  method?: string
+  ip?: string
+}
+
+export interface OperatorCaseSummary {
+  id: string
+  subject: string
+  status: string
+  updated_at: string
+}
+
+export interface OperatorUserDossier {
+  user: OperatorUser
+  tenant: OperatorTenant | null
+  dossier: {
+    recent_logins: OperatorLoginEvent[]
+    insights: Record<string, number>
+    ledger_tail: { timestamp: string; type: string; amount: number; balance_after?: number; reason?: string }[]
+    support_cases: OperatorCaseSummary[]
+    audit_trail: OperatorAuditEntry[]
+  }
+}
+
+/** The one-screen support dossier for a single user. */
+export function fetchOperatorUser(id: string): Promise<OperatorUserDossier> {
+  return operatorRequest(`/operator/users/${encodeURIComponent(id)}`)
 }
 
 export interface OperatorRecord {
@@ -1923,6 +2673,42 @@ export interface OperatorOperations {
   queue: { available: true; pending: number; processing: number; delayed: number; dead: number; dead_jobs: Array<{ id: string; attempts?: number; enqueuedAt: number }> } | { available: false }
   growth_events_24h: number
   documents_pending: number
+  /** Triage notes from runbooks.yaml, keyed by alert/queue name. */
+  runbooks?: Record<string, { what: string; safe_to_requeue: string; escalate: string }>
+}
+
+export type OperatorAlertAction = 'ack' | 'snooze' | 'resolve' | 'reopen'
+
+export interface OperatorAlert {
+  dedup_key: string
+  status: 'open' | 'ack' | 'snoozed' | 'resolved'
+  title?: string
+  severity?: 'info' | 'warning' | 'danger'
+  signal_value?: number
+  resolved_signal_value?: number | null
+  snoozed_until?: string | null
+  updated_by?: string
+  updated_at: string
+}
+
+export function fetchOperatorAlerts(): Promise<{ alerts: OperatorAlert[] }> {
+  return operatorRequest('/operator/alerts')
+}
+
+export async function setOperatorAlertState(
+  dedupKey: string,
+  action: OperatorAlertAction,
+  context: { title?: string; severity?: string; href?: string; signal_value?: number } = {},
+): Promise<void> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/operator/alerts/state`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ dedup_key: dedupKey, action, ...context }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Alert action failed')
 }
 
 async function operatorAction(path: string, reason: string): Promise<void> {
@@ -1942,6 +2728,34 @@ export const reactivateOperatorUser = (id: string, reason: string) => operatorAc
 export const sendUserPasswordReset = (id: string, reason: string) => operatorAction(`/operator/users/${id}/password-reset`, reason)
 export const revokeUserSessions = (id: string, reason: string) => operatorAction(`/operator/users/${id}/revoke-sessions`, reason)
 export const unlockUser = (id: string, reason: string) => operatorAction(`/operator/users/${id}/unlock`, reason)
+
+export interface OperatorUserExport {
+  exported_at: string
+  requested_by?: string
+  reason: string
+  user: Record<string, unknown>
+  tenant: Record<string, unknown> | null
+  members: OperatorTenantMember[]
+  leads: Record<string, unknown>[]
+  operator_actions_on_record: Record<string, unknown>[]
+}
+
+/** Data-subject export — same POST+reason shape as other operator actions,
+ *  but returns the assembled bundle instead of void. */
+export async function exportOperatorUser(id: string, reason: string): Promise<OperatorUserExport> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/operator/users/${id}/export`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ reason }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Export failed')
+  return data as OperatorUserExport
+}
+
+export const eraseOperatorUser = (id: string, reason: string) => operatorAction(`/operator/users/${id}/erase`, reason)
 
 export interface OperatorSecurity {
   generated_at: string
@@ -1973,11 +2787,42 @@ export interface OperatorFunnel {
   window_days: number
   totals: { leads_30d: number; signups_30d: number; activated_tenants: number; paying_tenants: number }
   leads_by_stage: Record<string, number>
-  by_source: Array<{ source: string; leads: number; signups: number }>
+  by_source: Array<{ source: string; leads: number; signups: number; paying: number; trialing: number }>
+  /** Activation steps for the 30d signup cohort — measured from persisted
+   *  tenant state (profile exists / first insight / connector linked),
+   *  not anonymous client events. */
+  activation?: {
+    cohort_signups_30d: number
+    steps: { key: string; label: string; count: number; pct: number }[]
+    median_time_to_first_insight_hours: number | null
+  }
+  /** The funnel's paying end: conversions in-window (first credit ledger
+   *  plan_grant, or billing_period_start when the ledger is off), the
+   *  active-trial pipeline, and MRR over priced plans. */
+  revenue?: {
+    paying_tenants: number
+    paying_30d: number
+    trialing_tenants: number
+    mrr_pence: number
+    currency: string
+    median_days_to_paid: number | null
+  }
 }
 
 export function fetchOperatorFunnel(): Promise<OperatorFunnel> {
   return operatorRequest('/operator/funnel')
+}
+
+// ── Operator: referrals ───────────────────────────────────────────────────
+
+export interface OperatorReferrals {
+  totals: { codes_issued: number; referrals: number; pending: number; rewarded: number; credits_granted: number }
+  leaderboard: { tenant_id: string; tenant_name: string; code: string; pending: number; rewarded: number; referrals: number }[]
+  recent: { referrer_tenant_id: string; referrer_name: string; referred_name: string; code: string; status: string; created_at: string; rewarded_at: string | null }[]
+}
+
+export function fetchOperatorReferrals(): Promise<OperatorReferrals> {
+  return operatorRequest('/operator/referrals')
 }
 
 // ── Operator: configuration ───────────────────────────────────────────────
@@ -1986,6 +2831,7 @@ export interface PlatformConfig {
   maintenance_mode: boolean
   signups_enabled: boolean
   marketing_paused: boolean
+  maintenance_window: MaintenanceWindow | null
 }
 
 export interface ConfigHistoryEntry {
@@ -2070,6 +2916,104 @@ export function fetchOperatorOperations(): Promise<OperatorOperations> {
   return operatorRequest('/operator/operations')
 }
 
+// ── Operator: autopilot ───────────────────────────────────────────────────
+
+export interface AutopilotRule {
+  rule: string
+  label: string
+  description: string
+  enabled: boolean
+  max_blast_radius: number
+  cooldown_minutes: number
+  last_run_at?: string
+  updated_by?: string
+  updated_at?: string
+}
+
+export interface AutopilotAction {
+  id: string
+  rule: string
+  target_type: string
+  target_id: string
+  reason: string
+  status: 'executed' | 'failed' | 'proposed' | 'approved' | 'rejected'
+  result?: string
+  proposal?: {
+    kind: string
+    required_permission: string
+    summary: string
+  }
+  resolved_by?: string
+  resolved_at?: string
+  created_at: string
+}
+
+export function fetchOperatorAutopilot(): Promise<{ rules: AutopilotRule[]; recent_actions: AutopilotAction[]; never_autonomous: string[] }> {
+  return operatorRequest('/operator/autopilot')
+}
+
+export function updateOperatorAutopilot(rule: string, update: { enabled?: boolean; max_blast_radius?: number; cooldown_minutes?: number }, reason: string): Promise<{ rule: AutopilotRule }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  return fetch(`${base}/operator/autopilot/${encodeURIComponent(rule)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ ...update, reason }),
+  }).then(async (res) => {
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error((data.error as string) || 'Autopilot update failed')
+    return data
+  })
+}
+
+export function resolveAutopilotProposal(id: string, decision: 'approve' | 'reject', reason: string): Promise<{ ok: boolean; result?: string }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  return fetch(`${base}/operator/autopilot/proposals/${encodeURIComponent(id)}/${decision}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ reason }),
+  }).then(async (res) => {
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error((data.error as string) || `Proposal ${decision} failed`)
+    return data
+  })
+}
+
+export interface OperatorDigest {
+  id: string
+  window_days: number
+  signups_7d: number
+  signups_prev_7d: number
+  leads_new: number
+  leads_total_7d: number
+  open_alerts: number
+  autopilot_executed_7d: number
+  autopilot_pending_proposals: number
+  marketing_published_7d: number
+  lifecycle_sent_7d: number
+  upgrade_intent_7d: number
+  top_content?: { slug: string; signups: number }
+  created_at: string
+}
+
+export function fetchOperatorDigest(): Promise<{ digest: OperatorDigest | null }> {
+  return operatorRequest('/operator/digest')
+}
+
+export function sendOperatorDigest(): Promise<{ digest: OperatorDigest }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  return fetch(`${base}/operator/digest/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  }).then(async (res) => {
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error((data.error as string) || 'Digest generation failed')
+    return data
+  })
+}
+
 // ── Operator: leads ───────────────────────────────────────────────────────
 
 export type LeadStage = 'new' | 'qualified' | 'contacted' | 'trial' | 'converted' | 'lost'
@@ -2088,8 +3032,11 @@ export interface OperatorLead {
   updated_at?: string
 }
 
-export function fetchOperatorLeads(query: { q?: string; stage?: string; source?: string } = {}): Promise<{ leads: OperatorLead[]; total: number; stages: Record<string, number> }> {
-  const params = new URLSearchParams(Object.entries(query).filter(([, v]) => v) as [string, string][])
+export function fetchOperatorLeads(query: { q?: string; stage?: string; source?: string; suppressed?: 'true' | 'false'; limit?: number; offset?: number; cursor?: string } = {}): Promise<{ leads: OperatorLead[]; total?: number; next_cursor?: string; stages: Record<string, number>; sources: Record<string, number>; limit: number; offset: number }> {
+  const params = new URLSearchParams()
+  for (const [k, v] of Object.entries(query)) {
+    if (v !== undefined && v !== '') params.set(k, String(v))
+  }
   return operatorRequest(`/operator/leads${params.size ? `?${params}` : ''}`)
 }
 
@@ -2191,6 +3138,59 @@ export const updateOperatorBlogPost = (id: string, input: Partial<BlogPostInput>
 export const publishBlogPost = (id: string, reason: string) => operatorAction(`/operator/blog/posts/${id}/publish`, reason)
 export const unpublishBlogPost = (id: string, reason: string) => operatorAction(`/operator/blog/posts/${id}/unpublish`, reason)
 
+// ── Operator: segment campaigns ───────────────────────────────────────────
+
+export interface CampaignFilter {
+  audience: 'users' | 'leads' | 'both'
+  plans?: string[]
+  trialing?: boolean
+  has_profile?: boolean
+  lead_stages?: string[]
+  utm_sources?: string[]
+  created_within_days?: number
+  min_age_days?: number
+}
+
+export interface OperatorCampaign {
+  id: string
+  name: string
+  subject: string
+  body_text: string
+  cta_url?: string
+  cta_label?: string
+  filter: CampaignFilter
+  status: 'draft' | 'sent'
+  created_by: string
+  created_at: string
+  sent_at?: string
+  stats?: { targeted: number; sent: number; failed: number }
+}
+
+export function fetchOperatorCampaigns(): Promise<{ campaigns: OperatorCampaign[] }> {
+  return operatorRequest('/operator/campaigns')
+}
+
+async function campaignWrite(path: string, body: Record<string, unknown>): Promise<unknown> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Campaign request failed')
+  return data
+}
+
+export const createCampaign = async (input: Omit<OperatorCampaign, 'id' | 'status' | 'created_by' | 'created_at' | 'sent_at' | 'stats'>, reason: string): Promise<OperatorCampaign> =>
+  ((await campaignWrite('/operator/campaigns', { ...input, reason })) as { campaign: OperatorCampaign }).campaign
+
+export const previewCampaignAudience = (filter: CampaignFilter): Promise<{ count: number; users: number; leads: number }> =>
+  campaignWrite('/operator/campaigns/preview', { ...filter }) as Promise<{ count: number; users: number; leads: number }>
+
+export const sendCampaignNow = (id: string, reason: string) => operatorAction(`/operator/campaigns/${id}/send`, reason)
+
 // ── Operator: billing ─────────────────────────────────────────────────────
 
 export interface OperatorBillingOverview {
@@ -2202,6 +3202,10 @@ export interface OperatorBillingOverview {
   credits_outstanding: number
   recent_webhooks: Array<{ event_id: string; event_type: string; processed_at: string }>
   recent_adjustments: Array<{ tenant_id: string; amount: number; reason: string; actor: string; timestamp: string }>
+  /** Stripe portal cancellation-survey results, aggregated + recent rows.
+   *  'unstated' = churned before the survey existed or reason skipped. */
+  churn_by_reason: Record<string, number>
+  recent_churned: Array<{ tenant_id: string; name?: string; reason: string | null; feedback: string | null; churned_at: string | null }>
 }
 
 export interface BillingTenant {
@@ -2262,4 +3266,115 @@ export async function captureLead(input: { email: string; name?: string; source:
     reportError(err, { path: '/leads' })
     return false
   }
+}
+
+// ── Support channel (user-facing + operator inbox) ────────────────────────
+
+export interface SupportMessage {
+  id: string
+  author: 'user' | 'operator' | 'oak'
+  author_id?: string
+  author_name?: string
+  text: string
+  created_at: string
+}
+
+export interface SupportCase {
+  id: string
+  subject: string
+  status: 'open' | 'answered' | 'resolved'
+  ai_triaged: boolean
+  email?: string
+  user_id?: string
+  tenant_id?: string
+  messages: SupportMessage[]
+  created_at: string
+  updated_at: string
+}
+
+async function supportRequest<T>(path: string, method = 'GET', body?: Record<string, unknown>): Promise<T> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Request failed')
+  return data as T
+}
+
+/** AI triage — Oak answers product/account questions before a case exists. */
+export function askSupport(question: string): Promise<{ answer: string; isLive: boolean }> {
+  return supportRequest('/support/ask', 'POST', { question })
+}
+
+export function createSupportCase(subject: string, message: string, triage?: { question: string; answer: string }[]): Promise<{ case: SupportCase }> {
+  return supportRequest('/support/cases', 'POST', { subject, message, ...(triage?.length ? { triage } : {}) })
+}
+
+export function fetchMySupportCases(): Promise<{ cases: SupportCase[] }> {
+  return supportRequest('/support/cases')
+}
+
+export function fetchMySupportCase(id: string): Promise<{ case: SupportCase }> {
+  return supportRequest(`/support/cases/${encodeURIComponent(id)}`)
+}
+
+export function replyToMyCase(id: string, text: string): Promise<{ ok: boolean }> {
+  return supportRequest(`/support/cases/${encodeURIComponent(id)}/messages`, 'POST', { text })
+}
+
+// Operator inbox
+export interface OperatorCaseDetail {
+  case: SupportCase
+  user?: { id: string; email: string; name: string; status?: string; created_at: string } | null
+  tenant?: { tenant_id: string; name?: string; plan?: string; status?: string } | null
+  member_count: number
+}
+
+export function fetchOperatorSupportCases(
+  query: { q?: string; status?: string; cursor?: string; limit?: number } = {},
+): Promise<{ cases: SupportCase[]; total?: number; next_cursor?: string; statuses: Record<string, number> }> {
+  const params = new URLSearchParams()
+  for (const [k, v] of Object.entries(query)) {
+    if (v !== undefined && v !== '') params.set(k, String(v))
+  }
+  return operatorRequest(`/operator/support${params.size ? `?${params}` : ''}`)
+}
+
+export function fetchOperatorSupportCase(id: string): Promise<OperatorCaseDetail> {
+  return operatorRequest(`/operator/support/${encodeURIComponent(id)}`)
+}
+
+export async function replyOperatorCase(id: string, text: string): Promise<void> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await fetch(`${base}/operator/support/${encodeURIComponent(id)}/reply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ text }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Reply failed')
+}
+
+export const resolveOperatorCase = (id: string, reason: string) => operatorAction(`/operator/support/${id}/resolve`, reason)
+export const reopenOperatorCase = (id: string, reason: string) => operatorAction(`/operator/support/${id}/reopen`, reason)
+
+/** AI-drafted operator reply — proposal only, never sent without the
+ *  operator editing and submitting it themselves. */
+export function draftOperatorReply(id: string): Promise<{ draft: string }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  return fetch(`${base}/operator/support/${encodeURIComponent(id)}/draft`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: '{}',
+  }).then(async (res) => {
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error((data.error as string) || 'Draft failed')
+    return data as { draft: string }
+  })
 }

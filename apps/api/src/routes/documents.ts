@@ -28,7 +28,7 @@ import {
   mapExtractedFieldsToPolicySuggestion,
   type PolicyType,
 } from '../ocr/profile-mapping.js'
-import { hasFeature, type Plan } from '../entitlements.js'
+import { effectivePlan, hasFeature } from '../entitlements.js'
 
 const log = createLogger({ service: 'documents', version: '0.0.0' })
 
@@ -164,7 +164,7 @@ export function registerDocumentRoutes(
       // Upload and storage are free on every plan — AI field extraction
       // (GPT-4o vision, the actual cost driver) is gated to paid plans.
       const tenant = await getTenantCollection<DocumentRecord>(db, 'tenants', tenant_id).findOne()
-      const plan = (tenant?.['plan'] ?? 'free') as Plan
+      const plan = effectivePlan(tenant)
       const aiExtractionEnabled = hasFeature('document_ai_extraction', plan)
 
       if (aiExtractionEnabled) {
@@ -175,6 +175,13 @@ export function registerDocumentRoutes(
         })
       } else {
         log.info({ documentId, filename, tenant_id, plan }, 'Document stored — AI extraction requires a paid plan')
+        // They uploaded expecting extraction — the strongest upgrade-intent
+        // signal. Feeds the lifecycle upgrade sequence's targeting.
+        db.collection('growth_events').insertOne({
+          event: 'upgrade_intent',
+          meta: { tenant_id, feature: 'document_ai_extraction', plan },
+          created_at: new Date(),
+        }).catch(() => {})
         await documents.updateOne(
           { id: documentId },
           { $set: { status: 'stored' } },
@@ -220,7 +227,7 @@ export function registerDocumentRoutes(
         .toArray()
 
       const tenant = await getTenantCollection<DocumentRecord>(db, 'tenants', tenant_id).findOne()
-      const plan = (tenant?.['plan'] ?? 'free') as Plan
+      const plan = effectivePlan(tenant)
       const aiExtractionEnabled = hasFeature('document_ai_extraction', plan)
 
       return {

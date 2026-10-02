@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import { Send, Check, X, Loader2, Pencil, Sparkles } from 'lucide-react'
+import { Send, Check, X, Loader2, Pencil, Sparkles, Link2 } from 'lucide-react'
 import { GlassCard, GlassButton } from '@/components/Glass'
 import { useToast } from '@/components/Toast'
 import { haptic } from '@/lib/haptics'
@@ -37,9 +37,16 @@ import {
   fetchMarketingPerformance,
   type BlogPostSummary,
   type MarketingPerformance,
+  fetchOperatorCampaigns,
+  createCampaign,
+  previewCampaignAudience,
+  sendCampaignNow,
+  type OperatorCampaign,
+  type CampaignFilter,
 } from '@/lib/api'
 import { PostPreview } from './_components/PostPreview'
 import { PostCalendar } from './_components/PostCalendar'
+import { ReasonAction } from '../_components/ReasonAction'
 
 const STATE_STYLE: Record<MarketingPost['state'], string> = {
   draft: 'text-warning bg-warning/10 border-warning/25',
@@ -94,7 +101,7 @@ function toLocalInput(iso: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-type Tab = 'compose' | 'queue' | 'calendar' | 'performance'
+type Tab = 'compose' | 'queue' | 'calendar' | 'performance' | 'campaigns'
 
 export default function MarketingPage() {
   const toast = useToast()
@@ -125,6 +132,7 @@ export default function MarketingPage() {
   const [editContent, setEditContent] = useState('')
   const [editSchedule, setEditSchedule] = useState('')
   const [campaignFilter, setCampaignFilter] = useState<string | null>(null)
+  const [showLinkBuilder, setShowLinkBuilder] = useState(false)
 
   useEffect(() => {
     Promise.all([fetchMarketingPosts(), fetchMarketingIntegrations(), fetchAutomationSettings(), fetchSocialConnections(), fetchMarketingPerformance()])
@@ -460,6 +468,7 @@ export default function MarketingPage() {
                 ['queue', `Queue${pendingCount ? ` (${pendingCount})` : ''}`],
                 ['calendar', 'Calendar'],
                 ['performance', 'Performance'],
+                ['campaigns', 'Campaigns'],
               ] as [Tab, string][]
             ).map(([key, label]) => (
               <button
@@ -651,6 +660,13 @@ export default function MarketingPage() {
                       </div>
                     )}
                   </div>
+                  <div className="mt-3 pt-3 border-t border-tint/[0.06]">
+                    <button onClick={() => setShowLinkBuilder((v) => !v)} className="flex items-center gap-1.5 text-xs font-semibold text-family-400">
+                      <Link2 size={13} />
+                      {showLinkBuilder ? 'Close link builder' : 'Build a tracked link'}
+                    </button>
+                    {showLinkBuilder && <LinkBuilder blogs={blogs} campaigns={knownCampaigns} onToast={toast} />}
+                  </div>
                 </>
               )}
             </GlassCard>
@@ -823,48 +839,117 @@ export default function MarketingPage() {
           {tab === 'performance' && (
             <>
               {performance && (performance.totals.views > 0 || performance.totals.signups > 0 || performance.channels.length > 0) ? (
-                <GlassCard className="p-4">
-                  <div className="flex gap-4 mb-3 text-center">
-                    <div><p className="text-lg font-bold text-ink-primary">{performance.totals.views}</p><p className="text-caption text-ink-tertiary">views</p></div>
-                    <div><p className="text-lg font-bold text-ink-primary">{performance.totals.cta_clicks}</p><p className="text-caption text-ink-tertiary">CTA taps</p></div>
-                    <div><p className="text-lg font-bold text-ink-primary">{performance.totals.leads}</p><p className="text-caption text-ink-tertiary">leads</p></div>
-                    <div><p className="text-lg font-bold text-success">{performance.totals.signups}</p><p className="text-caption text-ink-tertiary">signups</p></div>
-                  </div>
-                  {performance.channels.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mb-3">
-                      {performance.channels.map((c) => (
-                        <span key={c.channel} className="text-caption rounded-full border border-family-500/25 text-family-400 px-2 py-0.5">
-                          {c.channel}: {c.views}v · {c.signups}s
-                        </span>
-                      ))}
+                <div className="space-y-4">
+                  <GlassCard className="p-4">
+                    <div className="flex gap-4 mb-1 text-center">
+                      <div><p className="text-lg font-bold text-ink-primary">{performance.totals.views}</p><p className="text-caption text-ink-tertiary">views</p></div>
+                      <div><p className="text-lg font-bold text-ink-primary">{performance.totals.cta_clicks}</p><p className="text-caption text-ink-tertiary">CTA taps</p></div>
+                      <div><p className="text-lg font-bold text-ink-primary">{performance.totals.leads}</p><p className="text-caption text-ink-tertiary">leads</p></div>
+                      <div><p className="text-lg font-bold text-success">{performance.totals.signups}</p><p className="text-caption text-ink-tertiary">signups</p></div>
                     </div>
+                    {performance.totals.views > 0 && (
+                      <p className="text-caption text-ink-tertiary">
+                        {((performance.totals.cta_clicks / performance.totals.views) * 100).toFixed(1)}% view→CTA
+                        {performance.totals.cta_clicks > 0 && ` · ${((performance.totals.signups / performance.totals.cta_clicks) * 100).toFixed(1)}% CTA→signup`}
+                      </p>
+                    )}
+                  </GlassCard>
+                  {performance.channels.length > 0 && (
+                    <GlassCard className="p-4">
+                      <p className="text-caption font-semibold text-ink-tertiary mb-2">Channel funnel — where the clicks actually convert</p>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="text-left text-ink-tertiary">
+                              <th className="pb-2 font-medium">Channel</th>
+                              <th className="pb-2 text-right font-medium">Views</th>
+                              <th className="pb-2 text-right font-medium">CTA</th>
+                              <th className="pb-2 text-right font-medium">Leads</th>
+                              <th className="pb-2 text-right font-medium">Signups</th>
+                              <th className="pb-2 text-right font-medium">View→signup</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-tint/[0.06]">
+                            {performance.channels.map((c) => (
+                              <tr key={c.channel}>
+                                <td className="py-2 font-medium text-ink-primary">{c.channel}</td>
+                                <td className="py-2 text-right text-ink-secondary">{c.views}</td>
+                                <td className="py-2 text-right text-ink-secondary">{c.cta_clicks}</td>
+                                <td className="py-2 text-right text-ink-secondary">{c.leads}</td>
+                                <td className="py-2 text-right font-semibold text-success">{c.signups}</td>
+                                <td className="py-2 text-right text-ink-tertiary">{c.views > 0 ? `${((c.signups / c.views) * 100).toFixed(1)}%` : '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </GlassCard>
                   )}
                   {performance.campaigns.length > 0 && (
-                    <div className="mb-3">
-                      <p className="text-caption text-ink-tertiary mb-1.5">By campaign</p>
+                    <GlassCard className="p-4">
+                      <p className="text-caption font-semibold text-ink-tertiary mb-2">Campaigns</p>
                       <ul className="space-y-1.5">
                         {performance.campaigns.map((c) => (
                           <li key={c.campaign} className="flex items-center justify-between gap-2 text-xs">
                             <span className="text-ink-secondary truncate">{c.campaign}</span>
                             <span className="text-ink-tertiary shrink-0">
                               {c.views}v · {c.leads}l · <span className="text-success">{c.signups}s</span>
+                              {c.views > 0 && <span className="ml-1">({((c.signups / c.views) * 100).toFixed(1)}%)</span>}
                             </span>
                           </li>
                         ))}
                       </ul>
-                    </div>
+                    </GlassCard>
                   )}
-                  <ul className="space-y-1.5">
-                    {performance.posts.slice(0, 8).map((p) => (
-                      <li key={p.slug} className="flex items-center justify-between gap-2 text-xs">
-                        <span className="text-ink-secondary truncate">{p.title ?? p.slug}</span>
-                        <span className="text-ink-tertiary shrink-0">
-                          {p.views}v · {p.cta_clicks}c · {p.leads}l · <span className="text-success">{p.signups}s</span>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </GlassCard>
+                  <GlassCard className="p-4">
+                    <p className="text-caption font-semibold text-ink-tertiary mb-2">Top content — the learning loop reads this same ranking</p>
+                    <ul className="space-y-1.5">
+                      {performance.posts.slice(0, 8).map((p) => (
+                        <li key={p.slug} className="flex items-center justify-between gap-2 text-xs">
+                          <span className="text-ink-secondary truncate">{p.title ?? p.slug}</span>
+                          <span className="text-ink-tertiary shrink-0">
+                            {p.views}v · {p.cta_clicks}c · {p.leads}l · <span className="text-success">{p.signups}s</span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </GlassCard>
+                  {(performance.insights.measured_posts > 0 || performance.insights.unmeasured_channels.length > 0) && (
+                    <GlassCard className="p-4">
+                      <p className="text-caption font-semibold text-ink-tertiary mb-1">What works</p>
+                      <p className="text-caption text-ink-tertiary mb-3">
+                        Engagement vs. this account&apos;s own median across {performance.insights.measured_posts} measured
+                        {performance.insights.measured_posts === 1 ? ' post' : ' posts'} — providers don&apos;t expose impressions, so multipliers are relative, not absolute rates.
+                      </p>
+                      {performance.insights.rows.length > 0 ? (
+                        <ul className="space-y-1.5">
+                          {performance.insights.rows.map((r) => (
+                            <li key={r.label} className="flex items-center justify-between gap-2 text-xs">
+                              <span className="text-ink-secondary">{r.label}</span>
+                              <span className={`shrink-0 font-semibold tabular-nums ${r.engagement_x >= 1 ? 'text-success' : 'text-danger'}`}>
+                                {r.engagement_x}× <span className="font-normal text-ink-tertiary">({r.measured} posts)</span>
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-ink-tertiary">No trait separates winners from flops yet — keep publishing.</p>
+                      )}
+                      {performance.insights.top_post && (
+                        <p className="text-xs text-ink-secondary mt-3 pt-3 border-t border-tint/[0.06]">
+                          Best post: <span className="text-ink-tertiary">[{performance.insights.top_post.channel}]</span>{' '}
+                          &ldquo;{performance.insights.top_post.excerpt}&rdquo;{' '}
+                          <span className="text-success">({performance.insights.top_post.engagement} engagement)</span>
+                        </p>
+                      )}
+                      {performance.insights.unmeasured_channels.length > 0 && (
+                        <p className="text-caption text-ink-tertiary mt-2">
+                          Unmeasured: {performance.insights.unmeasured_channels.join(', ')} — their APIs can&apos;t be polled for engagement yet.
+                        </p>
+                      )}
+                    </GlassCard>
+                  )}
+                </div>
               ) : (
                 <GlassCard className="p-4">
                   <p className="text-sm text-ink-secondary leading-relaxed">
@@ -874,6 +959,9 @@ export default function MarketingPage() {
               )}
             </>
           )}
+
+          {/* Campaigns — one-shot targeted email to filtered cohorts */}
+          {tab === 'campaigns' && <CampaignsPanel />}
         </>
       )}
     </div>
@@ -882,4 +970,372 @@ export default function MarketingPage() {
 
 function trustScope(channel: string): string {
   return `marketing_social:${channel}`
+}
+
+/** UTM link builder — share-ready tracked URLs with the same convention
+ *  the publisher stamps (utm_source=channel, utm_medium, utm_campaign,
+ *  utm_content=slug) so clicks land in attribution and the funnel joins
+ *  them back to the channel. Presets enforce naming hygiene — free text
+ *  stays possible for off-preset sources. */
+const LINK_SOURCE_PRESETS = ['x', 'linkedin', 'bluesky', 'threads', 'facebook', 'instagram', 'newsletter', 'bio']
+const LINK_MEDIUM_PRESETS = ['social', 'newsletter', 'referral', 'bio', 'paid']
+const LINK_PATH_PRESETS = ['/', '/readiness', '/signup']
+
+function LinkBuilder({
+  blogs,
+  campaigns,
+  onToast,
+}: {
+  blogs: BlogPostSummary[]
+  campaigns: string[]
+  onToast: (t: { message: string }) => void
+}) {
+  const [base, setBase] = useState('')
+  const [path, setPath] = useState('/readiness')
+  const [source, setSource] = useState('x')
+  const [medium, setMedium] = useState('social')
+  const [camp, setCamp] = useState(DEFAULT_CAMPAIGN)
+  const [contentTag, setContentTag] = useState('')
+
+  useEffect(() => {
+    if (!base && typeof window !== 'undefined') setBase(window.location.origin)
+  }, [base])
+
+  // utm_content convention: the blog slug for promoted posts, so the
+  // performance rollup can join traffic back to the post.
+  useEffect(() => {
+    const slug = /^\/blog\/([^/?#]+)/.exec(path)?.[1]
+    if (slug) setContentTag(slug)
+  }, [path])
+
+  const url = useMemo(() => {
+    const b = base.trim().replace(/\/$/, '')
+    if (!b || !path.trim()) return ''
+    try {
+      const u = new URL(`${b}${path.startsWith('/') ? path : `/${path}`}`)
+      u.searchParams.set('utm_source', source.trim())
+      u.searchParams.set('utm_medium', medium)
+      u.searchParams.set('utm_campaign', camp.trim() || DEFAULT_CAMPAIGN)
+      if (contentTag.trim()) u.searchParams.set('utm_content', contentTag.trim())
+      return u.toString()
+    } catch {
+      return ''
+    }
+  }, [base, path, source, medium, camp, contentTag])
+
+  const copy = async () => {
+    if (!url) return
+    await navigator.clipboard.writeText(url)
+    haptic('light')
+    onToast({ message: 'Link copied' })
+  }
+
+  return (
+    <div className="mt-2.5 space-y-2">
+      <div className="grid sm:grid-cols-2 gap-2">
+        <div>
+          <label className="block text-caption text-ink-tertiary mb-1">Destination base</label>
+          <input
+            value={base}
+            onChange={(e) => setBase(e.target.value)}
+            placeholder="https://agentoak.app"
+            className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-caption text-ink-tertiary mb-1">Path</label>
+          <input
+            list="link-paths"
+            value={path}
+            onChange={(e) => setPath(e.target.value)}
+            className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary outline-none"
+          />
+          <datalist id="link-paths">
+            {LINK_PATH_PRESETS.map((p) => (
+              <option key={p} value={p} />
+            ))}
+            {blogs.map((b) => (
+              <option key={b.slug} value={`/blog/${b.slug}`}>
+                {b.title}
+              </option>
+            ))}
+          </datalist>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div>
+          <label className="block text-caption text-ink-tertiary mb-1">Source (channel)</label>
+          <input
+            list="link-sources"
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary outline-none"
+          />
+          <datalist id="link-sources">
+            {LINK_SOURCE_PRESETS.map((s) => (
+              <option key={s} value={s} />
+            ))}
+          </datalist>
+        </div>
+        <div>
+          <label className="block text-caption text-ink-tertiary mb-1">Medium</label>
+          <select
+            value={medium}
+            onChange={(e) => setMedium(e.target.value)}
+            className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary outline-none"
+          >
+            {LINK_MEDIUM_PRESETS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-caption text-ink-tertiary mb-1">Campaign</label>
+          <input
+            list="link-campaigns"
+            value={camp}
+            onChange={(e) => setCamp(e.target.value)}
+            className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary outline-none"
+          />
+          <datalist id="link-campaigns">
+            {campaigns.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+        </div>
+        <div>
+          <label className="block text-caption text-ink-tertiary mb-1">Content tag</label>
+          <input
+            value={contentTag}
+            onChange={(e) => setContentTag(e.target.value)}
+            placeholder="slug or variant id"
+            className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
+          />
+        </div>
+      </div>
+      {url && (
+        <div className="flex items-center gap-2">
+          <code className="flex-1 truncate rounded-xl border border-tint/[0.08] bg-tint/[0.02] px-3 py-2 text-xs text-ink-secondary">{url}</code>
+          <GlassButton onClick={copy}>Copy</GlassButton>
+        </div>
+      )}
+      <p className="text-caption text-ink-tertiary leading-relaxed">
+        Keep <span className="font-semibold">medium = social</span> for channel posts — the performance tab only joins utm_medium=social traffic.
+      </p>
+    </div>
+  )
+}
+
+/** One-shot targeted email — operator drafts copy, previews the audience,
+ *  fires the send. Drafts render the filter as chips; sent campaigns show
+ *  their delivery stats. */
+function CampaignsPanel() {
+  const toast = useToast()
+  const [campaigns, setCampaigns] = useState<OperatorCampaign[] | null>(null)
+  const [showCreate, setShowCreate] = useState(false)
+  const [name, setName] = useState('')
+  const [subject, setSubject] = useState('')
+  const [body, setBody] = useState('')
+  const [ctaUrl, setCtaUrl] = useState('')
+  const [ctaLabel, setCtaLabel] = useState('')
+  const [audience, setAudience] = useState<CampaignFilter['audience']>('users')
+  const [planFilter, setPlanFilter] = useState('')
+  const [trialing, setTrialing] = useState('')
+  const [hasProfile, setHasProfile] = useState('')
+  const [sources, setSources] = useState('')
+  const [preview, setPreview] = useState<{ count: number; users: number; leads: number } | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchOperatorCampaigns().then((r) => setCampaigns(r.campaigns)).catch(() => setCampaigns([]))
+  }, [])
+
+  function buildFilter(): CampaignFilter {
+    const f: CampaignFilter = { audience }
+    if (planFilter) f.plans = [planFilter]
+    if (trialing === 'only') f.trialing = true
+    if (trialing === 'exclude') f.trialing = false
+    if (hasProfile === 'yes') f.has_profile = true
+    if (hasProfile === 'no') f.has_profile = false
+    const srcs = sources.split(',').map((s) => s.trim()).filter(Boolean)
+    if (srcs.length > 0) f.utm_sources = srcs
+    return f
+  }
+
+  async function runPreview() {
+    setBusy('preview')
+    try {
+      setPreview(await previewCampaignAudience(buildFilter()))
+    } catch (err) {
+      toast({ message: err instanceof Error ? err.message : 'Preview failed', variant: 'error' })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function create(reason: string) {
+    setBusy('create')
+    try {
+      await createCampaign(
+        {
+          name: name.trim(),
+          subject: subject.trim(),
+          body_text: body.trim(),
+          ...(ctaUrl.trim() ? { cta_url: ctaUrl.trim() } : {}),
+          ...(ctaLabel.trim() ? { cta_label: ctaLabel.trim() } : {}),
+          filter: buildFilter(),
+        },
+        reason,
+      )
+      toast({ message: 'Campaign draft created' })
+      setShowCreate(false)
+      setName(''); setSubject(''); setBody(''); setCtaUrl(''); setCtaLabel(''); setPreview(null)
+      const r = await fetchOperatorCampaigns()
+      setCampaigns(r.campaigns)
+    } catch (err) {
+      toast({ message: err instanceof Error ? err.message : 'Create failed', variant: 'error' })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function send(id: string, reason: string) {
+    await sendCampaignNow(id, reason)
+    toast({ message: 'Campaign sent' })
+    const r = await fetchOperatorCampaigns()
+    setCampaigns(r.campaigns)
+  }
+
+  const selectCls = 'glass-input w-full rounded-xl px-3 py-2 text-sm text-ink-primary outline-none'
+
+  return (
+    <div className="space-y-4">
+      <GlassCard className="p-4">
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-sm font-semibold text-ink-primary">Email campaigns</p>
+          <button onClick={() => setShowCreate((v) => !v)} className="text-xs font-semibold text-family-400">
+            {showCreate ? 'Close' : 'New campaign'}
+          </button>
+        </div>
+        <p className="text-caption text-ink-tertiary leading-relaxed">
+          One-shot email to a filtered cohort — users honor <code>email_opt_out</code>, leads honor consent +
+          suppression. The send button is the approval gate: once fired, a campaign can&apos;t re-send.
+        </p>
+
+        {showCreate && (
+          <div className="mt-3 pt-3 border-t border-tint/[0.06] space-y-2.5">
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Campaign name — e.g. trial-nudge-march"
+              className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none" />
+            <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject line"
+              className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none" />
+            <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={5}
+              placeholder={'Body — blank lines split paragraphs.\nUse {{first_name}} to personalize.'}
+              className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none resize-y" />
+            <div className="flex gap-2">
+              <input value={ctaUrl} onChange={(e) => setCtaUrl(e.target.value)} placeholder="CTA URL (optional)"
+                className="glass-input flex-1 rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none" />
+              <input value={ctaLabel} onChange={(e) => setCtaLabel(e.target.value)} placeholder="CTA label"
+                className="glass-input w-40 rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <select value={audience} onChange={(e) => setAudience(e.target.value as CampaignFilter['audience'])} className={selectCls}>
+                <option value="users">Users only</option>
+                <option value="leads">Leads only</option>
+                <option value="both">Users + leads</option>
+              </select>
+              <select value={planFilter} onChange={(e) => setPlanFilter(e.target.value)} className={selectCls}>
+                <option value="">Any plan</option>
+                <option value="free">Free</option>
+                <option value="starter">Oak Plus</option>
+              </select>
+              <select value={trialing} onChange={(e) => setTrialing(e.target.value)} className={selectCls}>
+                <option value="">Trial: any</option>
+                <option value="only">Trialing only</option>
+                <option value="exclude">Not trialing</option>
+              </select>
+              <select value={hasProfile} onChange={(e) => setHasProfile(e.target.value)} className={selectCls}>
+                <option value="">Profile: any</option>
+                <option value="yes">Has profile</option>
+                <option value="no">No profile</option>
+              </select>
+            </div>
+            <input value={sources} onChange={(e) => setSources(e.target.value)} placeholder="utm_source filter — comma-separated, optional"
+              className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none" />
+
+            <div className="flex items-center gap-3">
+              <button onClick={runPreview} disabled={busy === 'preview'}
+                className="rounded-lg border border-tint/[0.1] px-3 py-1.5 text-xs font-medium text-ink-secondary hover:text-ink-primary disabled:opacity-40">
+                {busy === 'preview' ? 'Counting…' : 'Preview audience'}
+              </button>
+              {preview && (
+                <p className="text-xs text-ink-secondary">
+                  <span className="font-semibold text-ink-primary">{preview.count}</span> recipients
+                  <span className="text-ink-tertiary"> ({preview.users} users · {preview.leads} leads)</span>
+                </p>
+              )}
+            </div>
+
+            <ReasonAction
+              label="Create draft"
+              description="Creates a draft — nothing sends until you fire it from the list below."
+              onConfirm={async (reason) => {
+                if (name.trim().length < 3 || subject.trim().length < 3 || body.trim().length < 20) {
+                  throw new Error('Name, subject, and a 20+ character body are required')
+                }
+                await create(reason)
+              }}
+            />
+          </div>
+        )}
+      </GlassCard>
+
+      {campaigns === null ? (
+        <div className="shimmer h-20 rounded-2xl" />
+      ) : campaigns.length === 0 ? (
+        <GlassCard className="p-4">
+          <p className="text-sm text-ink-secondary">No campaigns yet — the lifecycle sequences handle the always-on mail; campaigns are for the moments in between.</p>
+        </GlassCard>
+      ) : (
+        <GlassCard className="p-4">
+          <ul className="space-y-3">
+            {campaigns.map((c) => (
+              <li key={c.id} className="border-b border-tint/[0.06] last:border-0 pb-3 last:pb-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-ink-primary truncate">{c.name}</p>
+                    <p className="text-xs text-ink-tertiary truncate">{c.subject}</p>
+                    <p className="text-caption text-ink-tertiary mt-0.5">
+                      {c.filter.audience}
+                      {c.filter.plans?.length ? ` · ${c.filter.plans.join(',')}` : ''}
+                      {c.filter.trialing !== undefined ? (c.filter.trialing ? ' · trialing' : ' · not trialing') : ''}
+                      {c.filter.has_profile !== undefined ? (c.filter.has_profile ? ' · has profile' : ' · no profile') : ''}
+                      {c.filter.utm_sources?.length ? ` · src: ${c.filter.utm_sources.join(',')}` : ''}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    {c.status === 'sent' ? (
+                      <p className="text-xs text-ink-tertiary">
+                        sent {c.stats ? `${c.stats.sent}/${c.stats.targeted}` : ''}
+                        {c.stats?.failed ? <span className="text-danger"> ({c.stats.failed} failed)</span> : ''}
+                      </p>
+                    ) : (
+                      <ReasonAction
+                        label="Send now"
+                        destructive
+                        description="One-shot — sends real email to the matching audience and can't be re-run."
+                        onConfirm={(reason) => send(c.id, reason)}
+                      />
+                    )}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </GlassCard>
+      )}
+    </div>
+  )
 }

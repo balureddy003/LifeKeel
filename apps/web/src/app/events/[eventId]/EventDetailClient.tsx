@@ -12,6 +12,7 @@ import { useEventReadiness } from '@/lib/useFamilyData'
 import { useAuth } from '@/lib/auth-context'
 import { prepareInsightDraft, fetchFinancialProfile, type FinancialProfilePolicy, type PolicyType } from '@/lib/api'
 import { learnMoreHref } from '@/lib/detector-content'
+import EventScenarioCard, { eventHasScenario } from './ScenarioCard'
 
 export interface Action {
   id: string
@@ -150,7 +151,8 @@ export default function EventDetailClient() {
   useEffect(() => {
     let cancelled = false
     fetchFinancialProfile().then((profile) => {
-      if (!cancelled) setPolicies(profile?.policies ?? [])
+      if (cancelled) return
+      setPolicies(profile?.policies ?? [])
     })
     return () => { cancelled = true }
   }, [])
@@ -281,6 +283,20 @@ export default function EventDetailClient() {
         </GlassCard>
       </motion.div>
 
+      {/* PRD-115/132: the "what if" card — job-loss plus every event with
+          a defensible template (bereavement, disability, medical,
+          new-child, university); renders nothing when the profile lacks
+          the inputs the template needs. */}
+      {eventHasScenario(event.id) && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+        >
+          <EventScenarioCard eventId={event.id} />
+        </motion.div>
+      )}
+
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -402,7 +418,19 @@ export default function EventDetailClient() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
       >
-        <Link href="/assistant" onClick={() => haptic('light')} className="block">
+        {/* Workstream A bonus: used to link to a blank chat with no idea
+            what the user was just looking at. Now hands Oak the specific
+            scenario by name so its first answer is grounded in this event
+            instead of starting from zero — Oak still computes the actual
+            numbers itself from the live profile, this just points it at
+            the right question. */}
+        <Link
+          href={`/assistant?context=/events&prompt=${encodeURIComponent(
+            `What would happen to my family financially if "${event.label}" happened, and what should we prepare?`,
+          )}`}
+          onClick={() => haptic('light')}
+          className="block"
+        >
           <GlassButton variant="secondary">
             <Bot size={18} />
             <span>Ask AI About This</span>

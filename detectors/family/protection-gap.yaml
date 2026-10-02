@@ -87,6 +87,44 @@ rules:
       - Review the renewal terms and any premium change
       - Compare against current market quotes before renewing automatically
       - Confirm the coverage amount still matches your household's needs
+      - Email me a reminder before this policy renews
+    # PRD-116: the first detector-declared executable intent in the family
+    # vertical — a renewal reminder emailed to the family's own address
+    # (the executor's send_email is always a self-send, never to the
+    # insurer). Declared explicitly rather than keyword-matched so the
+    # approval gate names a real side effect; auto-execute-trusted excludes
+    # it categorically — an external intent never auto-dispatches.
+    action_intents:
+      - type: send_email
+        label: Email me a reminder before this policy renews
+
+  - id: member_no_life_cover
+    name: Second Earner Has No Life Cover
+    # PRD-128: the household rule above checks AGGREGATE cover vs need —
+    # £250k on the organizer passes it even when the second earner's
+    # income is entirely uninsured. This rule only evaluates on the
+    # per-member earner events (member_earner == 1), where
+    # member_life_cover_minor is the sum of 'life' policies attributed to
+    # that member — not the primary event (member_earner == 0), so it can
+    # never double-fire alongside the household check. member_has_dependents
+    # mirrors the household rule's gate: dependents are shared, and both
+    # earners' incomes support them.
+    condition: >
+      data.member_earner == 1 and data.employed >= 1 and
+      data.member_has_dependents >= 1 and data.member_life_cover_minor <= 0 and
+      data.years_to_retirement > 1
+    confidence: 0.78
+    impact_low: "data.monthly_salary_minor * 12 * 2"
+    impact_high: "data.monthly_salary_minor * 12 * 5"
+    reasoning_template: >
+      A second earner in your household has income on file but no life insurance policy attributed to them,
+      even though dependents are on file. If they were unable to provide, the household would lose
+      roughly {{data.monthly_salary_minor * 12}} per year of their income with no cover in place.
+      This is an informational estimate — please consult a licensed insurance professional.
+    actions:
+      - Review whether each earner's income has life cover attributed to them
+      - Consider consulting a licensed insurance broker about per-earner coverage
+      - Compare quotes from multiple insurers before making any changes
 
   - id: no_health_or_critical_illness_cover
     name: No Health or Critical Illness Cover Listed

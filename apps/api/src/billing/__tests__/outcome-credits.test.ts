@@ -256,4 +256,26 @@ describe('Outcome Pass billing', () => {
 
     process.env['INVITE_CODE_REQUIRED'] = 'false'
   })
+
+  it('consumes an unlimited invite code (max_uses: 0)', async () => {
+    const saved = process.env['INVITE_CODE_REQUIRED']
+    process.env['INVITE_CODE_REQUIRED'] = 'true'
+    try {
+      await seedInviteCodes(db, [{ code: 'OPEN', grant_credits: 20, max_uses: 0 }])
+
+      const first = await consumeInviteCode(db, 'OPEN')
+      expect(first.ok).toBe(true)
+      expect(first.grant_credits).toBe(20)
+
+      // Unlimited — a second tenant consuming the same code must succeed too.
+      const second = await consumeInviteCode(db, 'OPEN')
+      expect(second.ok).toBe(true)
+
+      const doc = await db.collection('invite_codes').findOne({ code: 'OPEN' })
+      expect(doc?.['used_count']).toBe(2)
+    } finally {
+      if (saved === undefined) delete process.env['INVITE_CODE_REQUIRED']
+      else process.env['INVITE_CODE_REQUIRED'] = saved
+    }
+  })
 })

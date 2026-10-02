@@ -2,10 +2,16 @@
  * POST /readiness-quiz — public, unauthenticated "Family Readiness Score"
  * (PRD-201, the marketing-PRD sequence's first entry).
  *
- * Cold visitors get a real number produced by the exact same
- * `@agentoak/engine` detector rules a logged-in family's data runs
- * through (family_protection_gap, family_emergency_fund_adequacy) — not a
- * simplified marketing-only approximation. Deliberately Tier 0: nothing
+ * Cold visitors get a real number produced by the exact same composite
+ * scoring a logged-in family's GET /family/readiness returns
+ * (readiness/score.ts's computeReadiness, PRD-114/125) — not a
+ * simplified marketing-only approximation. The answers are folded into a
+ * synthetic FinancialProfile, and only the components the quiz actually
+ * collects contribute: retirement/education/estate come back null and
+ * drop out of the weighted mean, the same "no data → no score" honesty
+ * rule the authenticated score follows. Detector evaluation still runs
+ * (family_protection_gap, family_emergency_fund_adequacy) purely to
+ * produce explanatory insights for the score. Deliberately Tier 0: nothing
  * about the visitor is persisted against an identifier. Unlike
  * /family/financial-profile (the authenticated route this mirrors), this
  * route never calls persistSignal — there is no tenant to persist a
@@ -21,6 +27,8 @@ import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import type { Engine } from '@agentoak/engine'
 import { getGrowthEventsCollection } from '../db.js'
+import { computeReadiness } from '../readiness/score.js'
+import type { FinancialProfile } from './family-financial-profile.js'
 
 const QuizSchema = z.object({
   monthly_salary_minor: z.number().int().nonnegative(),
@@ -112,8 +120,54 @@ export async function registerReadinessQuizRoutes(app: FastifyInstance, db: Db, 
         })
 
         const insights = [...protectionResult.insights, ...emergencyFundResult.insights] as unknown as EngineInsight[]
-        const openPenalty = insights.reduce((sum, i) => sum + confidenceOf(i), 0)
-        const score = Math.round(Math.max(0, Math.min(100, 100 - openPenalty * 10)))
+
+        // PRD-125: the score itself is the same composite the authenticated
+        // product computes — the answers become a minimal FinancialProfile
+        // and only collected components count (protection/emergency fund).
+        // dependents become empty synthetic education funds (targets unset,
+        // so they mark "has dependants" for protection without pretending
+        // to be a real savings goal). Estate is passed null — the vault is
+        // adult-gated and the quiz doesn't ask, so it comes back gated and
+        // drops out of the mean rather than reading as a dishonest 0.
+        const quizProfile: FinancialProfile = {
+          household: {
+            employment_status: 'employed',
+            monthly_salary_minor: answers.monthly_salary_minor,
+            annual_living_expenses_minor: answers.monthly_expenses_minor * 12,
+            mortgage_outstanding_minor: answers.mortgage_outstanding_minor,
+            life_cover_minor: answers.life_cover_minor,
+            income_protection_monthly_minor: 0,
+            members: [],
+          },
+          emergency_fund: {
+            emergency_savings_minor: answers.emergency_savings_minor,
+            monthly_expenses_minor: answers.monthly_expenses_minor,
+            has_high_interest_debt: false,
+            high_interest_debt_balance_minor: 0,
+          },
+          // Ages are placeholders for the protection gate's "earning years
+          // left" check (a quiz answerer who's employed and asking is
+          // assumed mid-career); retirement never scores — no target was
+          // collected, so the component honestly returns null.
+          retirement: {
+            current_age: 30,
+            target_retirement_age: 65,
+            pension_balance_minor: 0,
+            monthly_contribution_minor: 0,
+            target_retirement_income_minor: 0,
+            expected_annual_growth_pct: 5,
+          },
+          education_funds: Array.from({ length: answers.dependents }, (_, i) => ({
+            child_name: `dependant-${i + 1}`,
+            child_age: 0,
+            current_savings_minor: 0,
+            target_savings_minor: 0,
+            years_remaining: 0,
+          })),
+          policies: [],
+        }
+        const readiness = computeReadiness(quizProfile, null)
+        const score = readiness.score
 
         const topInsights = [...insights]
           .sort((a, b) => confidenceOf(b) - confidenceOf(a))
@@ -131,10 +185,19 @@ export async function registerReadinessQuizRoutes(app: FastifyInstance, db: Db, 
         // score band (e.g. "60-70") for conversion analysis. A logging
         // failure must never surface as a broken quiz result.
         await getGrowthEventsCollection(db)
-          .insertOne({ event: 'readiness_quiz_completed', meta: { score_band: scoreBand(score) }, created_at: new Date() })
+          .insertOne({ event: 'readiness_quiz_completed', meta: { score_band: score === null ? 'unscored' : scoreBand(score) }, created_at: new Date() })
           .catch(() => {})
 
-        return reply.send({ score, insights: topInsights })
+        return reply.send({
+          score,
+          // The same component vocabulary /family/readiness returns — so
+          // the quiz page can show "Emergency fund 50 · Protection 20"
+          // with the real labels instead of a bare number.
+          components: readiness.components
+            .filter((c) => !c.gated)
+            .map((c) => ({ key: c.key, label: c.label, score: c.score, weight: c.weight, detail: c.detail })),
+          insights: topInsights,
+        })
       } catch (err) {
         req.log.warn({ err }, 'Readiness quiz evaluation failed')
         return reply.send({ score: null, insights: [], error: "Couldn't calculate your score right now — please try again later." })

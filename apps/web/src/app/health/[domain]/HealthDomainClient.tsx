@@ -3,7 +3,7 @@
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Heart, Wallet, Target, PiggyBank, HelpCircle, Bot, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, Heart, Wallet, Target, PiggyBank, FileLock2, HelpCircle, Bot, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { GlassCard, PageHeader, ScoreRing } from '@/components/Glass'
 import { useFamilyHealthDomains, type HealthDomain } from '@/lib/useFamilyData'
@@ -38,10 +38,16 @@ const DOMAIN_META: Record<HealthDomain, { label: string; icon: LucideIcon; color
     color: 'rgb(var(--info))',
     description: 'Emergency fund adequacy and short-term liquidity.',
   },
+  estate: {
+    label: 'Estate',
+    icon: FileLock2,
+    color: 'rgb(var(--family-400))',
+    description: 'Wills, power of attorney, and estate documents held in your vault.',
+  },
 }
 
 function isHealthDomain(value: string): value is HealthDomain {
-  return value === 'protection' || value === 'wealth' || value === 'goals' || value === 'savings'
+  return value === 'protection' || value === 'wealth' || value === 'goals' || value === 'savings' || value === 'estate'
 }
 
 // insight.hypothesis is the detector rule's internal snake_case id (e.g.
@@ -112,19 +118,27 @@ export default function HealthDomainClient() {
                   {meta.label}
                 </span>
               </div>
-              {!loading && !domain.hasLiveData && (
+              {!loading && domain.gated ? (
+                <div className="flex items-center gap-1.5 text-xs text-ink-tertiary mb-1">
+                  <AlertTriangle size={12} />
+                  <span>Visible to adult family members only</span>
+                </div>
+              ) : !loading && !domain.hasLiveData ? (
                 <div className="flex items-center gap-1.5 text-xs text-warning mb-1">
                   <AlertTriangle size={12} />
                   <span>Sample score — connect your data for a real one</span>
                 </div>
-              )}
-              {!loading && domain.hasLiveData && (
+              ) : null}
+              {!loading && domain.hasLiveData && !domain.gated && (
                 <div className="flex items-center gap-1.5 text-xs text-success mb-1">
                   <CheckCircle2 size={12} />
                   <span>Based on your family's data</span>
                 </div>
               )}
               <p className="text-xs text-ink-tertiary leading-relaxed">{meta.description}</p>
+              {domain.detail && (
+                <p className="text-xs text-ink-secondary leading-relaxed mt-1.5">{domain.detail}</p>
+              )}
             </div>
           </div>
         </GlassCard>

@@ -174,6 +174,7 @@ function MarketingNav() {
           <a href="#pricing" className="hover:text-ink-primary transition-colors">Pricing</a>
           <a href="#security" className="hover:text-ink-primary transition-colors">Security</a>
           <Link href="/blog" className="hover:text-ink-primary transition-colors">Blog</Link>
+          <Link href="/guides" className="hover:text-ink-primary transition-colors">Guides</Link>
         </nav>
         <div className="flex items-center gap-4">
           <Link
@@ -455,6 +456,7 @@ export function MarketingLanding() {
       <div className="max-w-6xl mx-auto px-6 sm:px-10 py-8 border-t border-tint/[0.06] flex flex-col items-center gap-4">
         <div className="flex gap-5 text-subhead text-ink-secondary">
           <Link href="/blog">Blog</Link>
+          <Link href="/guides">Guides</Link>
           <Link href="/terms">Terms</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/support">Support</Link>
