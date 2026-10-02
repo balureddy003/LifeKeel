@@ -23,6 +23,31 @@ advice/provider-steering cases, PII, an ungrounded figure, vague copy),
 - Six cases is a smoke test, not an evaluation. Re-measure on `detector-evals/`
   and a larger labelled set before relying on it.
 
+## Email classifier (same server)
+
+`apps/api/src/email/classify.ts` also runs on this server when
+`LOCAL_JUDGE_BASE_URL` is set, behind a keyword prefilter
+(`email/prefilter.ts`) that skips the model for mail with no policy or
+protection terms. Measured on 16 synthetic labelled emails
+(`email/__fixtures__/labelled-emails.ts`), model only, no prefilter:
+
+| Model | Classified correctly | Recall | False positives | Avg/email |
+|---|---|---|---|---|
+| qwen2.5:3b | 15/16 | 7/8 | 0 | ~10s |
+| qwen2.5:7b | 15/16 | 7/8 | 0 | ~19s |
+
+- Both resisted the prompt-injection email and both missed the same borderline
+  "review your will" email.
+- Policy-field extraction is the weaker part: 7b is conservative and often
+  leaves out the provider, 3b fills it more often. Extracted fields only ever
+  *propose* a profile update that a human approves, never auto-applied.
+- Classification quality was equal, so `LOCAL_CLASSIFIER_MODEL=qwen2.5:3b`
+  halves latency, at the cost of keeping a second model resident (~2 GB more RAM).
+  Left at the judge model by default so only one model is loaded.
+- Sample is small and synthetic. Re-measure on real mail before widening use.
+- Classifier errors fall back to "not financial" (same as the cloud path
+  today), so a model outage can silently drop an email. The UID cursor still advances.
+
 ## Deploy (manual, like the API)
 
 Needs roughly 8 GiB RAM and 4 vCPU for the 7b model. Judging is asynchronous

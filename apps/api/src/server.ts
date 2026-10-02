@@ -43,7 +43,7 @@ import { recordApiRequest, registerMetricsRoutes, recordLlmCacheHitMiss, buildFe
 import { initAuditLogger } from './audit/audit-log.js'
 import { registerAuthUserRoutes } from './routes/auth-users.js'
 import { registerSocialAuthRoutes } from './routes/auth-social.js'
-import { createLlmRouterFromEnv, createLocalDecisionFn, LlmResponseCache, MongoLlmCacheStore, LlmBudgetGuard, LocalEmbeddingProvider } from '@agentoak/platform'
+import { createLlmRouterFromEnv, LlmResponseCache, MongoLlmCacheStore, LlmBudgetGuard, LocalEmbeddingProvider } from '@agentoak/platform'
 import {
   ScoreCalibrator, IntentClassifier,
   NoveltyTracker, ChangePointDetector, FeatureHashScorer, TenantLevelScorer,
@@ -52,6 +52,7 @@ import { ApiLlmScorer } from './llm-scorer.js'
 import { registerConnectorCredentialRoutes } from './routes/connector-credentials.js'
 import { DeliveryRouter } from './delivery/delivery-router.js'
 import { createMoveJudge } from './delivery/move-judge.js'
+import { localDecisionFromEnv } from './local-model.js'
 import { ConnectorSyncEngine, TokenRefreshScheduler } from '@agentoak/pipeline'
 import { connectorSchemaRegistry } from '@agentoak/workflows'
 import cron from 'node-cron'
@@ -172,10 +173,7 @@ try {
   workflowDb = mongoClient.db(process.env['MONGODB_DB'] ?? 'kairos')
   // Self-hosted judge model (infra/local-judge): when configured, no insight text
   // is sent to a cloud LLM and the judge spends no tokens.
-  const localJudgeUrl = process.env['LOCAL_JUDGE_BASE_URL']
-  const localJudge = localJudgeUrl
-    ? createLocalDecisionFn({ baseUrl: localJudgeUrl, model: process.env['LOCAL_JUDGE_MODEL'] ?? 'qwen2.5:7b', timeoutMs: 120_000 })
-    : undefined
+  const localJudge = localDecisionFromEnv('judge')
   log.info({ judge: localJudge ? 'local' : 'llm' }, 'Move judge backend')
   deliveryRouter = new DeliveryRouter(workflowDb, createMoveJudge(globalLlmFn, workflowDb, localJudge))
   // OAK-003: every cron.schedule job below runs under this lock, keyed by

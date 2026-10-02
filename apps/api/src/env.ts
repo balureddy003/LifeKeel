@@ -55,6 +55,7 @@ const ConfigSchema = z.object({
   // the judge never calls a cloud LLM.
   LOCAL_JUDGE_BASE_URL: z.string().optional(),
   LOCAL_JUDGE_MODEL: z.string().optional(),
+  LOCAL_CLASSIFIER_MODEL: z.string().optional(),
 
   // Billing
   BILLING_V2_ENABLED: z.enum(['true', 'false']).optional(),
