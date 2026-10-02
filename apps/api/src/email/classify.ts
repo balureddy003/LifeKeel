@@ -20,6 +20,12 @@ export interface EmailClassification {
   priority: 'high' | 'medium' | 'low'
   /** Policy facts the email itself states (nothing inferred). */
   policy?: EmailPolicyDetails
+  /**
+   * True when the model could not produce a verdict (outage, timeout, unparseable
+   * output). Not the same as "not financial": the caller must retry rather than
+   * treat the email as handled, or a real policy email is silently lost.
+   */
+  failed?: true
 }
 
 export interface EmailPolicyDetails {
@@ -146,6 +152,7 @@ const VALID_ACTION_TYPES = new Set(['review', 'renew', 'compare', 'update', 'inf
 const VALID_PRIORITIES = new Set(['high', 'medium', 'low'])
 
 const NOT_FINANCIAL: EmailClassification = { isFinancial: false, summary: '', actionLabel: '', actionType: 'info', priority: 'low' }
+const FAILED: EmailClassification = { ...NOT_FINANCIAL, failed: true }
 
 interface RawClassification {
   is_financial?: boolean
@@ -208,9 +215,9 @@ export async function classifyEmail(llm: LlmFn, email: FetchedEmail, opts: Class
 
     const response = await llm(SYSTEM_PROMPT, prompt, 'tier:fast')
     const jsonMatch = response.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) return NOT_FINANCIAL
+    if (!jsonMatch) return FAILED
     return toClassification(JSON.parse(jsonMatch[0]) as RawClassification)
   } catch {
-    return NOT_FINANCIAL
+    return FAILED
   }
 }

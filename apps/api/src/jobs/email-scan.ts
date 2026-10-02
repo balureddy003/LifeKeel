@@ -102,6 +102,27 @@ export interface ScanResult {
   scanned: number
   inboxItemsCreated: number
   documentsCreated: number
+  /** Emails the model could not classify this scan; the cursor is held so they are retried. */
+  classificationRetries?: number
+}
+
+/** Stop a scan after this many failures in a row: the model is down, so each further email would only burn a full timeout. */
+const MAX_CONSECUTIVE_CLASSIFY_FAILURES = 3
+/** An email that fails this many scans while others succeed is a poison pill, not an outage: give up so it cannot hold the cursor forever. */
+const MAX_CLASSIFY_ATTEMPTS = 5
+
+/**
+ * Counts one failed attempt for a message and returns the new total. Only called
+ * when other emails in the same scan succeeded, which is what tells a poison
+ * pill apart from a model outage (an outage must never use up the retries).
+ */
+async function recordClassifyFailure(db: Db, tenantId: string, messageId: string): Promise<number> {
+  const doc = await db.collection('email_classify_failures').findOneAndUpdate(
+    { tenant_id: tenantId, email_message_id: messageId },
+    { $inc: { attempts: 1 }, $set: { last_failed_at: new Date() } },
+    { upsert: true, returnDocument: 'after' },
+  )
+  return (doc?.['attempts'] as number | undefined) ?? 1
 }
 
 /**
@@ -154,11 +175,28 @@ export async function scanTenantInbox(
   const bucket = new GridFSBucket(db, { bucketName: 'documents' })
   const documents = getTenantCollection<Record<string, unknown>>(db, 'documents', tenantId)
 
+  // Emails the model could not classify. The cursor is held just before the
+  // earliest of them so the next scan retries it instead of skipping it forever.
+  const failedEmails: Array<{ uid: number; messageId: string }> = []
+  let classifiedOk = 0
+  let consecutiveFailures = 0
+
   for (const email of emails) {
     const existing = await inboxItems.findOne({ tenant_id: tenantId, email_message_id: email.messageId })
     if (existing) continue
 
     const classification = await classifyEmail(llm, email, { decide, prefilter: true })
+    if (classification.failed) {
+      failedEmails.push({ uid: email.uid, messageId: email.messageId })
+      consecutiveFailures += 1
+      if (consecutiveFailures >= MAX_CONSECUTIVE_CLASSIFY_FAILURES) {
+        log.warn({ tenantId, consecutiveFailures }, 'Classifier failing repeatedly — stopping scan early; remaining mail is retried next scan')
+        break
+      }
+      continue
+    }
+    consecutiveFailures = 0
+    classifiedOk += 1
     if (!classification.isFinancial) continue
 
     const itemId = randomUUID()
@@ -232,9 +270,31 @@ export async function scanTenantInbox(
     }
   }
 
+  // Hold the cursor before the earliest email still awaiting a retry. If other
+  // emails succeeded this scan the failure is specific to that email, so count an
+  // attempt and give up on it after MAX_CLASSIFY_ATTEMPTS (a poison pill must not
+  // block the mailbox forever). If nothing succeeded it is an outage: count nothing.
+  let cursor = highestUid
+  const stillRetrying: number[] = []
+  for (const failed of failedEmails) {
+    if (classifiedOk > 0) {
+      const attempts = await recordClassifyFailure(db, tenantId, failed.messageId)
+      if (attempts >= MAX_CLASSIFY_ATTEMPTS) {
+        log.error({ tenantId, messageId: failed.messageId, attempts }, 'Giving up classifying email after repeated failures')
+        continue
+      }
+    }
+    stillRetrying.push(failed.uid)
+  }
+  if (stillRetrying.length > 0 && highestUid !== undefined) {
+    cursor = Math.max(credentialDoc.last_synced_uid ?? 0, Math.min(...stillRetrying) - 1)
+    result.classificationRetries = stillRetrying.length
+    log.warn({ tenantId, retrying: stillRetrying.length, cursor }, 'Holding email cursor so unclassified mail is retried')
+  }
+
   await getTenantCollection<EmailConnectorCredentialDoc>(db, 'connector_credentials', tenantId).updateOne(
     { connector_id: credentialDoc.connector_id },
-    { $set: { ...(highestUid !== undefined ? { last_synced_uid: highestUid } : {}), last_synced_at: new Date() } },
+    { $set: { ...(cursor !== undefined ? { last_synced_uid: cursor } : {}), last_synced_at: new Date() } },
   )
 
   log.info({ tenantId, ...result }, 'Email scan complete')

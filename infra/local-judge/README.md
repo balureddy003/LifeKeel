@@ -46,8 +46,15 @@ protection terms. Measured on 16 synthetic labelled emails
   halves latency, at the cost of keeping a second model resident (~2 GB more RAM).
   Left at the judge model by default so only one model is loaded.
 - Sample is small and synthetic. Re-measure on real mail before widening use.
-- Classifier errors fall back to "not financial" (same as the cloud path
-  today), so a model outage can silently drop an email. The UID cursor still advances.
+- **Failures are retried, not dropped.** A model failure is a distinct `failed`
+  result, not a "not financial" verdict. The scan holds its cursor before the
+  first unclassified email so the next scan retries it, and stops after 3
+  consecutive failures (a down model would otherwise cost a full timeout per
+  email). Attempts are only counted against an email when others succeed in the
+  same scan (a poison pill, not an outage), and after 5 the email is given up on
+  and logged so it cannot block the mailbox forever. Emails after a held cursor
+  that were already handled are skipped by message-id dedup; not-financial ones
+  are re-classified (cheap: most are skipped by the prefilter).
 
 ## Document OCR (same server + Tesseract in the API image)
 
@@ -73,6 +80,12 @@ rendered clean and degraded with rotation, blur and noise), 4 CPU cores:
   text, tables spanning pages, scanned PDFs (still skipped, as before). The
   synthetic renders are cleaner than real scans, and the cloud vision model was
   not available to compare against. Re-measure on real uploads before relying on it.
+- **Failures are retried.** An OCR-engine or model failure marks the document
+  `status: 'error'` with a `retry_count` (never a fake "extracted" result). A cron
+  (`document-ocr-retry`, every 10 min, under the cron lock) retries documents that
+  failed at least 5 minutes ago, up to 3 attempts total and 5 documents per sweep.
+  After that the document stays in `error` for a human; `POST /documents/:id/reprocess`
+  still works. Documents that failed before `retry_count` existed are not retried.
 - Needs `tesseract-ocr` in the API image (added to `apps/api/Dockerfile`, not
   build-tested here).
 

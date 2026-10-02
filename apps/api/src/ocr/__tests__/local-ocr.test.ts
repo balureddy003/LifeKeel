@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { DecisionFn } from '@agentoak/platform'
 import { isOcrableImage, LocalOcrError, ocrImageToText } from '../local-ocr.js'
-import { extractDocumentFieldsLocal } from '../extract.js'
+import { extractDocumentFieldsLocal, LocalExtractionError, processDocument } from '../extract.js'
 
 let dir: string
 let okBin: string
@@ -116,17 +116,47 @@ describe('extractDocumentFieldsLocal', () => {
     expect(calls).toHaveLength(1)
   })
 
-  it('returns a safe empty result, not a cloud call, when the model or engine fails', async () => {
+  it('throws LocalExtractionError, not a fake empty result, when the model fails, so the failure can be retried', async () => {
     const down = (async () => { throw new Error('refused') }) as unknown as DecisionFn
     process.env['TESSERACT_BIN'] = okBin
     try {
-      const result = await extractDocumentFieldsLocal(png, 'image/png', 'a.png', down)
-      expect(result).toMatchObject({ category: 'other', fields: {} })
-      expect(result.rawText).toContain('Extraction error')
+      await expect(extractDocumentFieldsLocal(png, 'image/png', 'a.png', down)).rejects.toThrow(/Local model failed: refused/)
+      await expect(extractDocumentFieldsLocal(png, 'image/png', 'a.png', down)).rejects.toBeInstanceOf(LocalExtractionError)
     } finally {
       delete process.env['TESSERACT_BIN']
     }
-    const unsupported = await extractDocumentFieldsLocal(png, 'application/zip', 'a.zip', down)
+  })
+
+  it('throws when the OCR engine itself is missing or fails', async () => {
+    process.env['TESSERACT_BIN'] = path.join(dir, 'does-not-exist')
+    try {
+      await expect(extractDocumentFieldsLocal(png, 'image/png', 'a.png', vi.fn() as unknown as DecisionFn)).rejects.toThrow(/OCR engine failed/)
+    } finally {
+      delete process.env['TESSERACT_BIN']
+    }
+  })
+
+  it('still returns a plain empty result for unsupported types (nothing to retry)', async () => {
+    const unsupported = await extractDocumentFieldsLocal(png, 'application/zip', 'a.zip', vi.fn() as unknown as DecisionFn)
     expect(unsupported.rawText).toContain('Unsupported')
+  })
+})
+
+describe('processDocument with a failing local model', () => {
+  it('records a retryable error with a retry count instead of an "extracted" status', async () => {
+    process.env['TESSERACT_BIN'] = okBin
+    const updates: Array<Record<string, unknown>> = []
+    const db = { collection: () => ({ updateOne: vi.fn(async (_f: unknown, u: Record<string, unknown>) => { updates.push(u) }) }) } as any
+    const down = (async () => { throw new Error('refused') }) as unknown as DecisionFn
+    try {
+      await processDocument(db, 'doc-1', 'tenant-1', png, 'image/png', 'a.png', down)
+    } finally {
+      delete process.env['TESSERACT_BIN']
+    }
+    const last = updates.at(-1) as { $set: Record<string, unknown>; $inc: Record<string, number> }
+    expect(last.$set['status']).toBe('error')
+    expect(String(last.$set['error_message'])).toContain('Local model failed')
+    expect(last.$inc['retry_count']).toBe(1)
+    expect(updates.some(u => (u as any).$set?.status === 'extracted')).toBe(false)
   })
 })

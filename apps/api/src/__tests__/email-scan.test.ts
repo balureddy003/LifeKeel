@@ -56,10 +56,12 @@ function makeEmail(overrides: Record<string, unknown> = {}) {
 function makeDb(
   existingMessageIds: string[] = [],
   tenant: Record<string, unknown> | null = { plan: 'starter' },
+  initialFailureAttempts: Array<[string, number]> = [],
 ) {
   const inboxInserts: Record<string, unknown>[] = []
   const documentInserts: Record<string, unknown>[] = []
   const credentialUpdates: Record<string, unknown>[] = []
+  const failureAttempts = new Map<string, number>(initialFailureAttempts)
 
   const collections: Record<string, unknown> = {
     tenants: {
@@ -74,6 +76,13 @@ function makeDb(
     documents: {
       insertOne: vi.fn(async (doc: Record<string, unknown>) => { documentInserts.push(doc); return { insertedId: doc.id } }),
     },
+    email_classify_failures: {
+      findOneAndUpdate: vi.fn(async (filter: { email_message_id: string }) => {
+        const n = (failureAttempts.get(filter.email_message_id) ?? 0) + 1
+        failureAttempts.set(filter.email_message_id, n)
+        return { attempts: n }
+      }),
+    },
     connector_credentials: {
       updateOne: vi.fn(async (_filter: unknown, update: Record<string, unknown>) => { credentialUpdates.push(update); return {} }),
     },
@@ -84,6 +93,7 @@ function makeDb(
     _inboxInserts: inboxInserts,
     _documentInserts: documentInserts,
     _credentialUpdates: credentialUpdates,
+    _failureAttempts: failureAttempts,
   } as any
 }
 
@@ -256,5 +266,89 @@ describe('scanTenantInbox', () => {
 
     expect(result).toEqual({ scanned: 0, inboxItemsCreated: 0, documentsCreated: 0 })
     expect(db._credentialUpdates).toHaveLength(0)
+  })
+})
+
+describe('scanTenantInbox when the classifier fails', () => {
+  const ok = { isFinancial: false, summary: '', actionLabel: '', actionType: 'info', priority: 'low' }
+  const failed = { ...ok, failed: true }
+  const cursorOf = (db: any) => (db._credentialUpdates.at(-1)?.$set as { last_synced_uid?: number }).last_synced_uid
+
+  beforeEach(() => {
+    fetchRecentEmailsMock.mockReset()
+    classifyEmailMock.mockReset()
+  })
+
+  it('holds the cursor before the first unclassified email so it is retried, not skipped', async () => {
+    const emails = [1, 2, 3, 4].map(uid => makeEmail({ uid, messageId: `m${uid}` }))
+    fetchRecentEmailsMock.mockResolvedValue({ emails, highestUid: 4 })
+    classifyEmailMock
+      .mockResolvedValueOnce(ok)      // m1
+      .mockResolvedValueOnce(failed)  // m2
+      .mockResolvedValueOnce(ok)      // m3
+      .mockResolvedValueOnce(ok)      // m4
+    const db = makeDb()
+
+    const result = await scanTenantInbox(db, TENANT, { ...VALID_CREDENTIAL_DOC, last_synced_uid: 0 } as any)
+
+    expect(cursorOf(db)).toBe(1) // next scan fetches uid 2 onward
+    expect(result.classificationRetries).toBe(1)
+  })
+
+  it('advances the cursor normally when every email is classified', async () => {
+    fetchRecentEmailsMock.mockResolvedValue({ emails: [makeEmail({ uid: 7, messageId: 'm7' })], highestUid: 7 })
+    classifyEmailMock.mockResolvedValue(ok)
+    const db = makeDb()
+    const result = await scanTenantInbox(db, TENANT, { ...VALID_CREDENTIAL_DOC, last_synced_uid: 3 } as any)
+    expect(cursorOf(db)).toBe(7)
+    expect(result.classificationRetries).toBeUndefined()
+  })
+
+  it('stops after repeated failures instead of burning a timeout on every remaining email', async () => {
+    const emails = Array.from({ length: 10 }, (_, i) => makeEmail({ uid: i + 1, messageId: `m${i + 1}` }))
+    fetchRecentEmailsMock.mockResolvedValue({ emails, highestUid: 10 })
+    classifyEmailMock.mockResolvedValue(failed)
+    const db = makeDb()
+
+    await scanTenantInbox(db, TENANT, { ...VALID_CREDENTIAL_DOC, last_synced_uid: 0 } as any)
+
+    expect(classifyEmailMock).toHaveBeenCalledTimes(3)
+    expect(cursorOf(db)).toBe(0) // nothing consumed; everything is retried
+  })
+
+  it('does not count attempts during an outage, so an outage cannot exhaust the retries', async () => {
+    fetchRecentEmailsMock.mockResolvedValue({ emails: [makeEmail({ uid: 1, messageId: 'm1' })], highestUid: 1 })
+    classifyEmailMock.mockResolvedValue(failed)
+    const db = makeDb([], { plan: 'starter' }, [['m1', 4]])
+
+    await scanTenantInbox(db, TENANT, { ...VALID_CREDENTIAL_DOC, last_synced_uid: 0 } as any)
+
+    expect(db._failureAttempts.get('m1')).toBe(4) // unchanged: nothing else succeeded
+    expect(cursorOf(db)).toBe(0)
+  })
+
+  it('gives up on a poison-pill email once others succeed and attempts run out, so it cannot block the mailbox forever', async () => {
+    const emails = [makeEmail({ uid: 1, messageId: 'bad' }), makeEmail({ uid: 2, messageId: 'good' })]
+    fetchRecentEmailsMock.mockResolvedValue({ emails, highestUid: 2 })
+    classifyEmailMock.mockResolvedValueOnce(failed).mockResolvedValueOnce(ok)
+    const db = makeDb([], { plan: 'starter' }, [['bad', 4]]) // this scan is the 5th failure
+
+    const result = await scanTenantInbox(db, TENANT, { ...VALID_CREDENTIAL_DOC, last_synced_uid: 0 } as any)
+
+    expect(db._failureAttempts.get('bad')).toBe(5)
+    expect(cursorOf(db)).toBe(2) // moved past it
+    expect(result.classificationRetries).toBeUndefined()
+  })
+
+  it('counts an attempt and keeps retrying while a failing email is under the limit and others succeed', async () => {
+    const emails = [makeEmail({ uid: 1, messageId: 'bad' }), makeEmail({ uid: 2, messageId: 'good' })]
+    fetchRecentEmailsMock.mockResolvedValue({ emails, highestUid: 2 })
+    classifyEmailMock.mockResolvedValueOnce(failed).mockResolvedValueOnce(ok)
+    const db = makeDb()
+
+    await scanTenantInbox(db, TENANT, { ...VALID_CREDENTIAL_DOC, last_synced_uid: 0 } as any)
+
+    expect(db._failureAttempts.get('bad')).toBe(1)
+    expect(cursorOf(db)).toBe(0)
   })
 })

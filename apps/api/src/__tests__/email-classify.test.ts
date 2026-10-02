@@ -226,3 +226,29 @@ describe('classifyEmail with a local decision model', () => {
     expect(calls).toHaveLength(1)
   })
 })
+
+describe('classifyEmail failure vs verdict', () => {
+  it('marks a model error as failed, not as a not-financial verdict', async () => {
+    const llm: LlmFn = async () => { throw new Error('provider timeout') }
+    const result = await classifyEmail(llm, makeEmail())
+    expect(result).toMatchObject({ isFinancial: false, failed: true })
+  })
+
+  it('marks unparseable output as failed so the email is retried', async () => {
+    const llm: LlmFn = async () => 'I cannot classify this email.'
+    expect((await classifyEmail(llm, makeEmail())).failed).toBe(true)
+  })
+
+  it('marks a local model failure as failed (no cloud fallback)', async () => {
+    const down = (async () => { throw new Error('refused') }) as unknown as import('@agentoak/platform').DecisionFn
+    const result = await classifyEmail((async () => { throw new Error('cloud must not run') }) as LlmFn, makeEmail(), { decide: down })
+    expect(result.failed).toBe(true)
+  })
+
+  it('does not mark a genuine not-financial verdict or a prefilter skip as failed', async () => {
+    const llm: LlmFn = async () => JSON.stringify({ is_financial: false, summary: '', action_label: '', action_type: 'info', priority: 'low' })
+    expect((await classifyEmail(llm, makeEmail())).failed).toBeUndefined()
+    const skipped = await classifyEmail(llm, makeEmail({ from: 'a@b.example', subject: 'hi', textSnippet: 'lunch?' }), { prefilter: true })
+    expect(skipped.failed).toBeUndefined()
+  })
+})

@@ -64,6 +64,7 @@ import { InsightSlaWorker } from './jobs/insight-sla-worker.js'
 import { EscalationWorker } from './jobs/escalation-worker.js'
 import { createCredentialExpiryInsights } from './jobs/connector-health-alert.js'
 import { scanAllConnectedInboxes } from './jobs/email-scan.js'
+import { retryFailedDocuments } from './ocr/retry-failed.js'
 import { withCronLock, acquireCronLock, releaseCronLock, ensureCronLockIndex } from './jobs/cron-lock.js'
 import { registerApiVersioning, rewriteVersionedUrl } from './api-versioning.js'
 import { registerBillingRoutes } from './routes/billing.js'
@@ -250,6 +251,21 @@ try {
     }
   }, { missedExecutionTolerance: 30_000, noOverlap: true })
   log.info({}, 'Email scan cron started')
+
+  // Retry documents whose local OCR/extraction failed (status 'error'). Only
+  // relevant when the self-hosted model is configured; bounded per document by
+  // MAX_DOCUMENT_ATTEMPTS and per sweep by SWEEP_LIMIT (see ocr/retry-failed.ts).
+  const ocrRetryDecide = localDecisionFromEnv('ocr')
+  if (ocrRetryDecide) {
+    cron.schedule('*/10 * * * *', async () => {
+      try {
+        await withCronLock(workflowDb, 'document-ocr-retry', () => retryFailedDocuments(workflowDb, ocrRetryDecide))
+      } catch (err) {
+        log.error({ err }, 'Document OCR retry cron failed')
+      }
+    }, { missedExecutionTolerance: 30_000, noOverlap: true })
+    log.info({}, 'Document OCR retry cron started')
+  }
 
   // Marketing publish sweep — every minute. Channels can't hold schedules,
   // so approved posts with a due scheduled_at are dispatched here; the lock
