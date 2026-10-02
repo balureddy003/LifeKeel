@@ -702,14 +702,20 @@ export class DeliveryRouter {
     if (!this.moveJudge || typeof insight['id'] !== 'string') return true
 
     const reasoning = typeof insight['reasoning'] === 'string' ? insight['reasoning'] : ''
+    // Digits are masked so the same detector rule with different figures reuses
+    // one verdict instead of paying for a fresh judge call per number change.
+    // Figures are interpolated from the profile by the YAML template, and the
+    // MoveJudge guard (not the model) screens the copy itself.
+    const maskDigits = (text: string): string => text.replace(/\d[\d,.]*/g, '#')
+    const actions = Array.isArray(insight['actions'])
+      ? (insight['actions'] as unknown[]).map(a => typeof a === 'string' ? maskDigits(a) : a)
+      : insight['actions']
     const reasoningHash = crypto.createHash('sha256').update(JSON.stringify({
-      version: 2,
-      reasoning: reasoning.trim(),
-      actions: insight['actions'],
-      confidence: insight['confidence_breakdown'],
-      evidence: insight['feature_snapshot'],
-      signals: insight['derived_from_signals'],
-      impact: [insight['estimated_impact_low'], insight['estimated_impact_high']],
+      version: 3,
+      detector: insight['detector_id'],
+      rule: insight['rule_id'],
+      reasoning: maskDigits(reasoning.trim()),
+      actions,
     })).digest('hex')
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
     const duplicate = await this.db.collection('move_judge_verdicts').findOne({
@@ -731,6 +737,8 @@ export class DeliveryRouter {
     }, { duplicateReasoning: duplicate !== null })
 
     await this.persistJudgeVerdict(insight, tenantId, reasoningHash, verdict)
+    // 'skipped' (below the delivery threshold) is only a pass because MoveJudge's
+    // guard has already screened the copy for advice/PII; see move-judge.ts.
     if (verdict.decision === 'pass' || verdict.decision === 'skipped') return true
 
     const queue = verdict.decision === 'rewrite' ? 'move_rewrite_queue' : 'manual_review_queue'

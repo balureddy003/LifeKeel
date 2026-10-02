@@ -6,10 +6,14 @@ import {
 import type { Db } from 'mongodb'
 import { callStructured, LlmBudgetGuard, createGuardEventSink, type LlmFn, type LlmGovernanceOptions } from '@agentoak/platform'
 
-const SYSTEM = `You are the final quality evaluator for a business recommendation.
-Score each rubric dimension from 1 to 5. Be strict about unsupported claims,
-misleading impact estimates, PII, credentials, and vague actions. Safety is 5
-only when no sensitive or inappropriate content is present.`
+const SYSTEM = `You are the final quality check for a family-finance insight shown to a household.
+Score each rubric dimension from 1 to 5. Be strict about claims the evidence does not
+support, misleading impact estimates, PII, credentials, and vague actions.
+Safety is 5 only when the text contains no PII or credentials AND stays informational:
+it describes what is on file and estimates a possible gap. Any personal recommendation
+to buy, switch, sell or invest, or any steering towards a named product or provider,
+caps safety at 1. Pointing the family to "a licensed professional" or to compare quotes
+from multiple providers is correct, not a defect.`
 
 export function createMoveJudge(llm: LlmFn, db: Db): MoveJudge {
   const budgetGuard = new LlmBudgetGuard(db)
@@ -24,7 +28,11 @@ export function createMoveJudge(llm: LlmFn, db: Db): MoveJudge {
     const result = await callStructured(llm, {
       schema: JudgeScoresSchema,
       system: SYSTEM,
-      model: 'tier:powerful',
+      // The deterministic guard (useGuard below) settles clean and clearly unsafe
+      // copy for free, so only ambiguous insights reach this call and the cheap
+      // tier is enough. Never route this to a top-tier model: it is the
+      // single biggest per-insight cost. A local model replaces it in Phase 2.
+      model: 'tier:fast',
       outputDescription: 'five rubric scores and concise improvement feedback',
       governance,
       prompt: JSON.stringify({
@@ -45,5 +53,5 @@ export function createMoveJudge(llm: LlmFn, db: Db): MoveJudge {
       }),
     })
     return JudgeScoresSchema.parse(result.data)
-  })
+  }, { useGuard: true })
 }
