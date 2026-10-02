@@ -19,8 +19,44 @@ export interface LocalDecisionConfig {
   timeoutMs?: number
   /** Cap on generated tokens. Decisions are short; default 256. */
   maxTokens?: number
+  /**
+   * Max calls in flight from this process. A CPU-served model handles roughly one
+   * call at a time, so unbounded concurrency only turns queueing into client-side
+   * timeouts. Further calls wait their turn (the wait counts toward `queued_ms`,
+   * not the per-attempt timeout). Default: unlimited.
+   */
+  maxConcurrent?: number
+  /** Called once per decide() with the outcome, for metrics. Must not throw. */
+  onCall?: (event: LocalDecisionCallEvent) => void
   /** Injectable for tests. */
   fetchImpl?: typeof fetch
+}
+
+export interface LocalDecisionCallEvent {
+  model: string
+  ok: boolean
+  /** Time spent waiting for a concurrency slot. */
+  queued_ms: number
+  /** Time spent in the model call itself, including retries. */
+  latency_ms: number
+}
+
+/** Minimal FIFO semaphore. */
+class Semaphore {
+  private active = 0
+  private readonly waiters: Array<() => void> = []
+  constructor(private readonly limit: number) {}
+
+  async acquire(): Promise<void> {
+    if (this.active < this.limit) { this.active += 1; return }
+    await new Promise<void>(resolve => this.waiters.push(resolve))
+  }
+
+  release(): void {
+    const next = this.waiters.shift()
+    if (next) next() // hand the slot straight to the next waiter
+    else this.active -= 1
+  }
 }
 
 export interface LocalDecisionRequest<T> {
@@ -57,9 +93,24 @@ export function createLocalDecisionFn(cfg: LocalDecisionConfig): DecisionFn {
   const timeoutMs = cfg.timeoutMs ?? 60_000
   const maxTokens = cfg.maxTokens ?? 256
   const doFetch = cfg.fetchImpl ?? fetch
+  const gate = cfg.maxConcurrent && cfg.maxConcurrent > 0 ? new Semaphore(cfg.maxConcurrent) : undefined
 
   return async function decide<T>(req: LocalDecisionRequest<T>): Promise<LocalDecisionResult<T>> {
+    const queuedAt = Date.now()
+    await gate?.acquire()
     const started = Date.now()
+    let ok = false
+    try {
+      const result = await callModel(req, started)
+      ok = true
+      return result
+    } finally {
+      gate?.release()
+      try { cfg.onCall?.({ model: cfg.model, ok, queued_ms: started - queuedAt, latency_ms: Date.now() - started }) } catch { /* metrics must never fail a call */ }
+    }
+  }
+
+  async function callModel<T>(req: LocalDecisionRequest<T>, started: number): Promise<LocalDecisionResult<T>> {
     let lastError: unknown
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {

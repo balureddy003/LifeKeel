@@ -14,6 +14,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import { createLogger } from '@agentoak/platform'
+import { optionalFlag } from './env-helpers.js'
 
 const log = createLogger({ service: 'env', version: '0.0.0' })
 
@@ -58,7 +59,11 @@ const ConfigSchema = z.object({
   LOCAL_CLASSIFIER_MODEL: z.string().optional(),
   LOCAL_OCR_MODEL: z.string().optional(),
   // Opt in to the self-hosted model for interactive text (Ask Oak, drafts, support).
-  LOCAL_TEXT_ENABLED: z.enum(['true', 'false']).optional(),
+  // Fan email scans out through the queue (parallel across workers) instead of one sequential cron loop.
+  EMAIL_SCAN_FANOUT: optionalFlag(),
+  EMAIL_SCAN_CONCURRENCY: z.string().optional(),
+  LOCAL_MODEL_MAX_CONCURRENT: z.string().optional(),
+  LOCAL_TEXT_ENABLED: optionalFlag(),
   LOCAL_TEXT_MODEL: z.string().optional(),
 
   // Billing

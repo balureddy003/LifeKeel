@@ -1,4 +1,5 @@
 import { scanText } from '@agentoak/engine'
+import { recordLocalModelCall, recordOutputGuardBlock } from './routes/metrics.js'
 import { createLlmRouter, createLlmRouterFromEnv, createLocalDecisionFn, type DecisionFn, type LlmFn } from '@agentoak/platform'
 
 /** Default is the smallest size that did not pass unsafe copy in testing (see infra/local-judge/README.md). */
@@ -18,7 +19,17 @@ export function localDecisionFromEnv(purpose: 'judge' | 'classifier' | 'ocr'): D
   const model = purpose === 'judge' ? judgeModel
     : purpose === 'classifier' ? classifierModel
     : (process.env['LOCAL_OCR_MODEL'] || classifierModel)
-  return createLocalDecisionFn({ baseUrl, model, timeoutMs: 120_000 })
+  return createLocalDecisionFn({
+    baseUrl,
+    model,
+    timeoutMs: 120_000,
+    // Measured on 4 CPU cores (qwen2.5:3b): 1, 2 and 4 parallel calls all gave ~3.8
+    // emails/min, while per-call time rose 16s -> 28s -> 47s. Parallel calls to one
+    // CPU model add latency and timeout risk, not throughput, so default to 1. Raise
+    // it only to match the number of model instances behind the URL.
+    maxConcurrent: Number(process.env['LOCAL_MODEL_MAX_CONCURRENT']) || 1,
+    onCall: (e) => recordLocalModelCall(purpose, e.ok, e.latency_ms / 1000, e.queued_ms / 1000),
+  })
 }
 
 /** Output that the guard rejected; callers' existing failure paths turn this into their safe fallback. */
@@ -97,7 +108,11 @@ export function withOutputGuard(llm: LlmFn): LlmFn {
     if (volunteered.length > 0) reasons.push(`provider_steering(${volunteered.join(',')})`)
     const invented = ungroundedNumbers(text, `${prompt}\n${system}`)
     if (invented.length > 0) reasons.push(`ungrounded_numbers(${invented.slice(0, 3).join(',')})`)
-    if (reasons.length > 0) throw new BlockedLocalOutputError(reasons)
+    if (reasons.length > 0) {
+      // Reason codes only (strip the "(figures)" detail) so labels stay low-cardinality.
+      for (const r of new Set(reasons.map(x => x.replace(/\(.*$/, '')))) recordOutputGuardBlock(r)
+      throw new BlockedLocalOutputError(reasons)
+    }
     return text
   }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { createLocalDecisionFn, LocalDecisionError } from '../local-decision.js'
+import { createLocalDecisionFn, LocalDecisionError, type LocalDecisionCallEvent } from '../local-decision.js'
 
 const schema = z.object({ ok: z.boolean() })
 const jsonSchema = { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] }
@@ -53,5 +53,74 @@ describe('createLocalDecisionFn', () => {
 
   it('rejects a non-http base URL up front', () => {
     expect(() => createLocalDecisionFn({ baseUrl: 'judge:11434', model: 'm' })).toThrow(LocalDecisionError)
+  })
+})
+
+describe('createLocalDecisionFn concurrency and metrics hook', () => {
+  const deferred = () => {
+    let resolve!: (r: Response) => void
+    const promise = new Promise<Response>(r => { resolve = r })
+    return { promise, resolve }
+  }
+
+  it('never runs more calls at once than maxConcurrent, and later calls still complete in order', async () => {
+    let inFlight = 0
+    let peak = 0
+    const gates = [deferred(), deferred(), deferred(), deferred()]
+    let call = 0
+    const fetchImpl = vi.fn(async () => {
+      const mine = gates[call++]!
+      inFlight += 1
+      peak = Math.max(peak, inFlight)
+      const res = await mine.promise
+      inFlight -= 1
+      return res
+    })
+    const decide = createLocalDecisionFn({ baseUrl: 'http://judge:11434', model: 'm', fetchImpl, maxConcurrent: 2 })
+
+    const results = [0, 1, 2, 3].map(() => decide(req))
+    await new Promise(r => setTimeout(r, 10))
+    expect(inFlight).toBe(2) // two running, two waiting for a slot
+
+    gates[0]!.resolve(reply('{"ok":true}'))
+    await new Promise(r => setTimeout(r, 10))
+    expect(inFlight).toBe(2) // the slot went straight to the next waiter
+    gates[1]!.resolve(reply('{"ok":true}'))
+    gates[2]!.resolve(reply('{"ok":true}'))
+    gates[3]!.resolve(reply('{"ok":true}'))
+
+    expect((await Promise.all(results)).map(r => r.value.ok)).toEqual([true, true, true, true])
+    expect(peak).toBe(2)
+  })
+
+  it('releases the slot when a call fails so one failure cannot wedge the queue', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(reply('', 500)).mockResolvedValueOnce(reply('', 500)) // first decide: both attempts fail
+      .mockResolvedValue(reply('{"ok":true}'))
+    const decide = createLocalDecisionFn({ baseUrl: 'http://judge:11434', model: 'm', fetchImpl, maxConcurrent: 1 })
+    const first = decide(req)
+    const second = decide(req)
+    await expect(first).rejects.toBeInstanceOf(LocalDecisionError)
+    expect((await second).value.ok).toBe(true)
+  })
+
+  it('reports each call with its outcome and queue wait, and survives a throwing hook', async () => {
+    const events: LocalDecisionCallEvent[] = []
+    const fetchImpl = vi.fn(async () => reply('{"ok":true}'))
+    const decide = createLocalDecisionFn({
+      baseUrl: 'http://judge:11434', model: 'qwen', fetchImpl,
+      onCall: (e) => { events.push(e); throw new Error('metrics down') },
+    })
+    await expect(decide(req)).resolves.toBeDefined()
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({ model: 'qwen', ok: true })
+    expect(events[0]!.queued_ms).toBeGreaterThanOrEqual(0)
+
+    const failing = createLocalDecisionFn({
+      baseUrl: 'http://judge:11434', model: 'qwen', fetchImpl: vi.fn(async () => reply('', 500)),
+      onCall: (e) => events.push(e),
+    })
+    await expect(failing(req)).rejects.toBeInstanceOf(LocalDecisionError)
+    expect(events.at(-1)).toMatchObject({ ok: false })
   })
 })
