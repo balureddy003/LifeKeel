@@ -126,7 +126,7 @@ export type {
 } from './goal-detector-activation.js'
 export { runMoveGuard, scanText } from './move-guard.js'
 export type { GuardOutcome, GuardReason, GuardResult } from './move-guard.js'
-export { MoveJudge, JudgeScoresSchema } from './move-judge.js'
+export { MoveJudge, JudgeScoresSchema, decideScores } from './move-judge.js'
 export type {
   JudgeDecision,
   JudgeEvaluator,

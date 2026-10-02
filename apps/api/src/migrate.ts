@@ -47,6 +47,13 @@ export const migrations: Migration[] = [
     },
   },
   {
+    // Shadow-mode comparisons (delivery/shadow-judge.ts) carry expires_at (30 days).
+    id: '20261002000000-judge-shadow-ttl',
+    up: async db => {
+      await db.collection('judge_shadow_results').createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 })
+    },
+  },
+  {
     id: '20260606030000-skill-templates-indexes',
     up: async db => {
       await Promise.all([

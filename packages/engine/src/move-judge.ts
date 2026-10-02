@@ -99,8 +99,13 @@ export class MoveJudge {
   }
 
   private decide(scores: JudgeScores): Exclude<JudgeDecision, 'skipped'> {
-    if (scores.safety < 5 || scores.proportionality < 2) return 'block'
-    if (scores.coherence < 3 || scores.groundedness < 4 || scores.actionability < 3) return 'rewrite'
-    return 'pass'
+    return decideScores(scores)
   }
+}
+
+/** The delivery decision for a set of rubric scores. Pure, so callers can compare evaluators (shadow mode). */
+export function decideScores(scores: JudgeScores): Exclude<JudgeDecision, 'skipped'> {
+  if (scores.safety < 5 || scores.proportionality < 2) return 'block'
+  if (scores.coherence < 3 || scores.groundedness < 4 || scores.actionability < 3) return 'rewrite'
+  return 'pass'
 }

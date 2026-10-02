@@ -1,5 +1,6 @@
 import { scanText } from '@agentoak/engine'
 import { recordLocalModelCall, recordOutputGuardBlock } from './routes/metrics.js'
+import { cloudRunIdTokenProvider } from './cloud-run-auth.js'
 import { createLlmRouter, createLlmRouterFromEnv, createLocalDecisionFn, type DecisionFn, type LlmFn } from '@agentoak/platform'
 
 /** Default is the smallest size that did not pass unsafe copy in testing (see infra/local-judge/README.md). */
@@ -11,6 +12,21 @@ const DEFAULT_LOCAL_MODEL = 'qwen2.5:7b'
  * the move judge, the email classifier and document extraction; LOCAL_CLASSIFIER_MODEL
  * and LOCAL_OCR_MODEL optionally override the model for those tasks.
  */
+/**
+ * Auth headers for the model service. With LOCAL_JUDGE_AUTH=cloudrun-iam every call
+ * carries a Google identity token (the service is deployed with
+ * --no-allow-unauthenticated, so Cloud Run rejects anything else). Undefined = no auth.
+ */
+function authHeadersFromEnv(baseUrl: string): (() => Promise<Record<string, string>>) | undefined {
+  return process.env['LOCAL_JUDGE_AUTH'] === 'cloudrun-iam' ? cloudRunIdTokenProvider(baseUrl) : undefined
+}
+
+/** USD per hour of one model instance (for the busy-time cost estimate); 0 disables the estimate. */
+function costPerHourUsd(): number {
+  const v = Number(process.env['LOCAL_MODEL_COST_PER_HOUR_USD'])
+  return Number.isFinite(v) && v > 0 ? v : 0
+}
+
 export function localDecisionFromEnv(purpose: 'judge' | 'classifier' | 'ocr'): DecisionFn | undefined {
   const baseUrl = process.env['LOCAL_JUDGE_BASE_URL']
   if (!baseUrl) return undefined
@@ -28,7 +44,8 @@ export function localDecisionFromEnv(purpose: 'judge' | 'classifier' | 'ocr'): D
     // CPU model add latency and timeout risk, not throughput, so default to 1. Raise
     // it only to match the number of model instances behind the URL.
     maxConcurrent: Number(process.env['LOCAL_MODEL_MAX_CONCURRENT']) || 1,
-    onCall: (e) => recordLocalModelCall(purpose, e.ok, e.latency_ms / 1000, e.queued_ms / 1000),
+    getHeaders: authHeadersFromEnv(baseUrl),
+    onCall: (e) => recordLocalModelCall(purpose, e.ok, e.latency_ms / 1000, e.queued_ms / 1000, (e.latency_ms / 3_600_000) * costPerHourUsd()),
   })
 }
 
@@ -137,6 +154,7 @@ export function familyDataLlmFromEnv(): LlmFn {
   return withOutputGuard(createLlmRouter({
     provider: 'ollama',
     ollamaBaseUrl: baseUrl,
+    ollamaHeaders: authHeadersFromEnv(baseUrl),
     tierModels: { fast: model, balanced: model, powerful: model },
     maxTokens: 700,
     temperature: 0.2,

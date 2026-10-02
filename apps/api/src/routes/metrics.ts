@@ -70,6 +70,8 @@ let featureHashCacheMisses: Counter | null = null
 let localModelCalls: Counter | null = null
 let localModelLatency: Histogram | null = null
 let localModelQueueWait: Histogram | null = null
+let localModelCost: Counter | null = null
+let shadowComparisons: Counter | null = null
 let outputGuardBlocks: Counter | null = null
 let emailClassifyFailures: Counter | null = null
 let documentExtractionRetries: Counter | null = null
@@ -230,6 +232,18 @@ function initMetrics(registry: Registry): void {
     buckets: [0.1, 1, 5, 15, 30, 60, 120, 300],
     registers: [registry],
   })
+  shadowComparisons = new Counter({
+    name: 'agentoak_shadow_comparisons_total',
+    help: 'Candidate-vs-authoritative comparisons by purpose and outcome (agree | shadow_more_permissive | shadow_stricter | shadow_error | dropped)',
+    labelNames: ['purpose', 'outcome'],
+    registers: [registry],
+  })
+  localModelCost = new Counter({
+    name: 'agentoak_local_model_estimated_cost_usd_total',
+    help: 'Estimated USD for busy model time (seconds in calls x LOCAL_MODEL_COST_PER_HOUR_USD); excludes idle instance time',
+    labelNames: ['purpose'],
+    registers: [registry],
+  })
   outputGuardBlocks = new Counter({
     name: 'agentoak_output_guard_blocks_total',
     help: 'Generated text rejected by the output guard, by reason',
@@ -306,11 +320,18 @@ export function recordLlmCacheHitMiss(tenantId: string, task: string, hit: boole
 }
 
 /** Self-hosted model: record one decision (outcome, model time, and wait for a slot). */
-export function recordLocalModelCall(purpose: string, ok: boolean, latencySeconds: number, queueWaitSeconds: number): void {
+export function recordLocalModelCall(purpose: string, ok: boolean, latencySeconds: number, queueWaitSeconds: number, costUsd = 0): void {
   initMetrics(getRegistry())
+  if (costUsd > 0) localModelCost!.inc({ purpose }, costUsd)
   localModelCalls!.inc({ purpose, outcome: ok ? 'ok' : 'error' })
   localModelLatency!.observe({ purpose }, latencySeconds)
   localModelQueueWait!.observe({ purpose }, queueWaitSeconds)
+}
+
+/** Shadow mode: record one comparison of a candidate against the authoritative evaluator. */
+export function recordShadowComparison(purpose: string, outcome: string): void {
+  initMetrics(getRegistry())
+  shadowComparisons!.inc({ purpose, outcome })
 }
 
 /** Output guard: record one rejected generation. `reason` is the guard reason code (no free text). */
