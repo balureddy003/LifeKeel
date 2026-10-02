@@ -43,7 +43,7 @@ import { recordApiRequest, registerMetricsRoutes, recordLlmCacheHitMiss, buildFe
 import { initAuditLogger } from './audit/audit-log.js'
 import { registerAuthUserRoutes } from './routes/auth-users.js'
 import { registerSocialAuthRoutes } from './routes/auth-social.js'
-import { createLlmRouterFromEnv, LlmResponseCache, MongoLlmCacheStore, LlmBudgetGuard, LocalEmbeddingProvider } from '@agentoak/platform'
+import { createLlmRouterFromEnv, createLocalDecisionFn, LlmResponseCache, MongoLlmCacheStore, LlmBudgetGuard, LocalEmbeddingProvider } from '@agentoak/platform'
 import {
   ScoreCalibrator, IntentClassifier,
   NoveltyTracker, ChangePointDetector, FeatureHashScorer, TenantLevelScorer,
@@ -170,7 +170,14 @@ let deliveryRouter: DeliveryRouter | undefined
 try {
   const mongoClient = await getMongoClient()
   workflowDb = mongoClient.db(process.env['MONGODB_DB'] ?? 'kairos')
-  deliveryRouter = new DeliveryRouter(workflowDb, createMoveJudge(globalLlmFn, workflowDb))
+  // Self-hosted judge model (infra/local-judge): when configured, no insight text
+  // is sent to a cloud LLM and the judge spends no tokens.
+  const localJudgeUrl = process.env['LOCAL_JUDGE_BASE_URL']
+  const localJudge = localJudgeUrl
+    ? createLocalDecisionFn({ baseUrl: localJudgeUrl, model: process.env['LOCAL_JUDGE_MODEL'] ?? 'qwen2.5:7b', timeoutMs: 120_000 })
+    : undefined
+  log.info({ judge: localJudge ? 'local' : 'llm' }, 'Move judge backend')
+  deliveryRouter = new DeliveryRouter(workflowDb, createMoveJudge(globalLlmFn, workflowDb, localJudge))
   // OAK-003: every cron.schedule job below runs under this lock, keyed by
   // its own name — deploy-api.yml allows up to 4 Cloud Run replicas, and
   // without this, two replicas racing the same job could both act on the
