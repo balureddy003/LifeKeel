@@ -51,6 +51,15 @@ const ConfigSchema = z.object({
   AZURE_OPENAI_DEPLOYMENT: z.string().optional(),
   AZURE_OPENAI_API_VERSION: z.string().optional(),
   OLLAMA_BASE_URL: z.string().optional(),
+  // Self-hosted small model for the move judge (see infra/local-judge). When set,
+  // the judge never calls a cloud LLM.
+  LOCAL_JUDGE_BASE_URL: z.string().optional(),
+  LOCAL_JUDGE_MODEL: z.string().optional(),
+  LOCAL_CLASSIFIER_MODEL: z.string().optional(),
+  LOCAL_OCR_MODEL: z.string().optional(),
+  // Opt in to the self-hosted model for interactive text (Ask Oak, drafts, support).
+  LOCAL_TEXT_ENABLED: z.enum(['true', 'false']).optional(),
+  LOCAL_TEXT_MODEL: z.string().optional(),
 
   // Billing
   BILLING_V2_ENABLED: z.enum(['true', 'false']).optional(),

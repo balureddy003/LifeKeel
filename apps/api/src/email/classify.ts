@@ -7,8 +7,10 @@
  * client extract.ts needs for document images.
  */
 
-import type { LlmFn } from '@agentoak/platform'
+import { z } from 'zod'
+import type { DecisionFn, LlmFn } from '@agentoak/platform'
 import type { FetchedEmail } from './imap-client.js'
+import { mightBePolicyRelated } from './prefilter.js'
 
 export interface EmailClassification {
   isFinancial: boolean
@@ -35,6 +37,61 @@ export interface EmailPolicyDetails {
 
 const POLICY_TYPES = new Set(['life', 'health', 'critical_illness', 'income_protection', 'travel', 'home', 'car', 'pension', 'mortgage', 'other'])
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+
+// Typed output for the local model path. Ollama constrains decoding to
+// LOCAL_EMAIL_JSON_SCHEMA; the parsed value then goes through the same
+// sanitizers as the cloud path, so the model's output is still untrusted.
+const LocalEmailSchema = z.object({
+  is_financial: z.boolean(),
+  summary: z.string(),
+  action_label: z.string(),
+  action_type: z.enum(['review', 'renew', 'compare', 'update', 'info']),
+  priority: z.enum(['high', 'medium', 'low']),
+  policy: z.object({
+    provider: z.string().nullish(),
+    type: z.string().nullish(),
+    policy_number: z.string().nullish(),
+    cover_amount: z.number().nullish(),
+    currency: z.string().nullish(),
+    monthly_premium: z.number().nullish(),
+    renewal_date: z.string().nullish(),
+    contact_phone: z.string().nullish(),
+    contact_email: z.string().nullish(),
+  }).nullish(),
+})
+
+// Every policy key is required with an explicit null option: measured on the OCR
+// path, optional keys let a small model skip fields it could read.
+const nullableString = { anyOf: [{ type: 'string' }, { type: 'null' }] } as const
+const nullableNumber = { anyOf: [{ type: 'number' }, { type: 'null' }] } as const
+const POLICY_JSON_PROPERTIES = {
+  provider: nullableString,
+  type: nullableString,
+  policy_number: nullableString,
+  cover_amount: nullableNumber,
+  currency: nullableString,
+  monthly_premium: nullableNumber,
+  renewal_date: nullableString,
+  contact_phone: nullableString,
+  contact_email: nullableString,
+} as const
+const LOCAL_EMAIL_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    is_financial: { type: 'boolean' },
+    summary: { type: 'string' },
+    action_label: { type: 'string' },
+    action_type: { type: 'string', enum: ['review', 'renew', 'compare', 'update', 'info'] },
+    priority: { type: 'string', enum: ['high', 'medium', 'low'] },
+    policy: {
+      anyOf: [
+        { type: 'object', properties: POLICY_JSON_PROPERTIES, required: Object.keys(POLICY_JSON_PROPERTIES) },
+        { type: 'null' },
+      ],
+    },
+  },
+  required: ['is_financial', 'summary', 'action_label', 'action_type', 'priority', 'policy'],
+} as const
 
 /** Keeps only well-typed, bounded fields — the model's output is untrusted. */
 function sanitizePolicy(raw: unknown): EmailPolicyDetails | undefined {
@@ -88,7 +145,49 @@ If not relevant, return {"is_financial": false, "summary": "", "action_label": "
 const VALID_ACTION_TYPES = new Set(['review', 'renew', 'compare', 'update', 'info'])
 const VALID_PRIORITIES = new Set(['high', 'medium', 'low'])
 
-export async function classifyEmail(llm: LlmFn, email: FetchedEmail): Promise<EmailClassification> {
+const NOT_FINANCIAL: EmailClassification = { isFinancial: false, summary: '', actionLabel: '', actionType: 'info', priority: 'low' }
+
+interface RawClassification {
+  is_financial?: boolean
+  summary?: string
+  action_label?: string
+  action_type?: string
+  priority?: string
+  policy?: unknown
+}
+
+function toClassification(parsed: RawClassification): EmailClassification {
+  const actionType = VALID_ACTION_TYPES.has(parsed.action_type ?? '') ? (parsed.action_type as EmailClassification['actionType']) : 'info'
+  const priority = VALID_PRIORITIES.has(parsed.priority ?? '') ? (parsed.priority as EmailClassification['priority']) : 'low'
+
+  return {
+    isFinancial: Boolean(parsed.is_financial),
+    // OAK-016: the model's output is otherwise unbounded — a malicious or
+    // malformed email could push back an arbitrarily long "summary" that
+    // then renders as an inbox item. Clamped generously beyond what the
+    // prompt actually asks for (one sentence / a 2-4 word action).
+    summary: (parsed.summary ?? '').slice(0, 300),
+    actionLabel: (parsed.action_label ?? '').slice(0, 80),
+    actionType,
+    priority,
+    policy: sanitizePolicy(parsed.policy),
+  }
+}
+
+export interface ClassifyEmailOptions {
+  /**
+   * Run the classification on a self-hosted model instead of `llm`. Email text
+   * then never leaves our infrastructure, and there is no cloud fallback: a
+   * local failure classifies as not-financial, same as an LLM error today.
+   */
+  decide?: DecisionFn
+  /** Skip the model for mail with no policy/protection terms (see prefilter.ts). */
+  prefilter?: boolean
+}
+
+export async function classifyEmail(llm: LlmFn, email: FetchedEmail, opts: ClassifyEmailOptions = {}): Promise<EmailClassification> {
+  if (opts.prefilter && !mightBePolicyRelated(email)) return NOT_FINANCIAL
+
   // OAK-016: previously string-concatenated directly with no delimiter and
   // no "this is data, not instructions" framing — an inbound email's
   // sender/subject/body is fully attacker-controlled. Explicit tags here,
@@ -97,35 +196,21 @@ export async function classifyEmail(llm: LlmFn, email: FetchedEmail): Promise<Em
   const prompt = `<email_from>${email.from}</email_from>\n<email_subject>${email.subject}</email_subject>\nDate: ${email.date.toISOString()}\n\n<email_body>\n${email.textSnippet}\n</email_body>`
 
   try {
+    if (opts.decide) {
+      const { value } = await opts.decide({
+        system: SYSTEM_PROMPT,
+        prompt,
+        schema: LocalEmailSchema,
+        jsonSchema: LOCAL_EMAIL_JSON_SCHEMA as unknown as Record<string, unknown>,
+      })
+      return toClassification(value)
+    }
+
     const response = await llm(SYSTEM_PROMPT, prompt, 'tier:fast')
     const jsonMatch = response.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) return { isFinancial: false, summary: '', actionLabel: '', actionType: 'info', priority: 'low' }
-
-    const parsed = JSON.parse(jsonMatch[0]) as {
-      is_financial?: boolean
-      summary?: string
-      action_label?: string
-      action_type?: string
-      priority?: string
-      policy?: unknown
-    }
-
-    const actionType = VALID_ACTION_TYPES.has(parsed.action_type ?? '') ? (parsed.action_type as EmailClassification['actionType']) : 'info'
-    const priority = VALID_PRIORITIES.has(parsed.priority ?? '') ? (parsed.priority as EmailClassification['priority']) : 'low'
-
-    return {
-      isFinancial: Boolean(parsed.is_financial),
-      // OAK-016: the model's output is otherwise unbounded — a malicious or
-      // malformed email could push back an arbitrarily long "summary" that
-      // then renders as an inbox item. Clamped generously beyond what the
-      // prompt actually asks for (one sentence / a 2-4 word action).
-      summary: (parsed.summary ?? '').slice(0, 300),
-      actionLabel: (parsed.action_label ?? '').slice(0, 80),
-      actionType,
-      priority,
-      policy: sanitizePolicy(parsed.policy),
-    }
+    if (!jsonMatch) return NOT_FINANCIAL
+    return toClassification(JSON.parse(jsonMatch[0]) as RawClassification)
   } catch {
-    return { isFinancial: false, summary: '', actionLabel: '', actionType: 'info', priority: 'low' }
+    return NOT_FINANCIAL
   }
 }

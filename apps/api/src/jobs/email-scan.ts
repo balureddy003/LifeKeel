@@ -18,6 +18,7 @@ import { createLogger, getTenantCollection, createLlmRouterFromEnv, encryptIfNee
 import { fetchRecentEmails, searchPolicyEmails, type ImapCredentials } from '../email/imap-client.js'
 import { refreshGoogleAccessToken } from '../email/gmail-oauth.js'
 import { classifyEmail } from '../email/classify.js'
+import { localDecisionFromEnv } from '../local-model.js'
 import { processDocument } from '../ocr/extract.js'
 import { effectivePlan, hasFeature } from '../entitlements.js'
 import type { InboxItemDoc } from '../routes/family-inbox.js'
@@ -145,6 +146,10 @@ export async function scanTenantInbox(
   if (emails.length === 0) return result
 
   const llm = createLlmRouterFromEnv()
+  // Self-hosted classifier when LOCAL_JUDGE_BASE_URL is set; the prefilter
+  // skips the model entirely for mail with no policy/protection terms.
+  const decide = localDecisionFromEnv('classifier')
+  const ocrDecide = localDecisionFromEnv('ocr')
   const inboxItems = db.collection<InboxItemDoc>('inbox_items')
   const bucket = new GridFSBucket(db, { bucketName: 'documents' })
   const documents = getTenantCollection<Record<string, unknown>>(db, 'documents', tenantId)
@@ -153,7 +158,7 @@ export async function scanTenantInbox(
     const existing = await inboxItems.findOne({ tenant_id: tenantId, email_message_id: email.messageId })
     if (existing) continue
 
-    const classification = await classifyEmail(llm, email)
+    const classification = await classifyEmail(llm, email, { decide, prefilter: true })
     if (!classification.isFinancial) continue
 
     const itemId = randomUUID()
@@ -220,7 +225,7 @@ export async function scanTenantInbox(
         // HTTP response waiting on this, and awaiting keeps attachments
         // processed one at a time rather than bursting many concurrent
         // vision calls at the OCR provider.
-        await processDocument(db, documentId, tenantId, attachment.content, attachment.contentType, attachment.filename).catch((err) => {
+        await processDocument(db, documentId, tenantId, attachment.content, attachment.contentType, attachment.filename, ocrDecide).catch((err) => {
           log.error({ err, documentId, tenantId }, 'OCR processing of email attachment failed')
         })
       }

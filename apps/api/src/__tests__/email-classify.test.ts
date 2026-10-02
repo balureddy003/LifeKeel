@@ -176,3 +176,53 @@ describe('classifyEmail', () => {
     expect(system).toMatch(/policy_number/)
   })
 })
+
+describe('classifyEmail with a local decision model', () => {
+  const localOut = {
+    is_financial: true,
+    summary: 'Your life policy renews on 2027-03-01.',
+    action_label: 'Review renewal',
+    action_type: 'renew' as const,
+    priority: 'high' as const,
+    policy: { provider: 'BrightLife', type: 'life', renewal_date: '2027-03-01', monthly_premium: null, cover_amount: 250000, currency: 'GBP' },
+  }
+  const decideWith = (value: unknown, calls: unknown[] = []) =>
+    (async (req: unknown) => { calls.push(req); return { value, model: 'local', latency_ms: 1 } }) as unknown as import('@agentoak/platform').DecisionFn
+  const neverCloud: LlmFn = async () => { throw new Error('cloud LLM must not be called') }
+
+  it('classifies on the local model, never the cloud LLM, and sanitizes the typed output', async () => {
+    const calls: unknown[] = []
+    const result = await classifyEmail(neverCloud, makeEmail(), { decide: decideWith(localOut, calls) })
+    expect(result).toMatchObject({ isFinancial: true, actionType: 'renew', priority: 'high' })
+    expect(result.policy).toEqual({ provider: 'BrightLife', type: 'life', renewalDate: '2027-03-01', coverAmount: 250000, currency: 'GBP' })
+    expect(calls).toHaveLength(1)
+  })
+
+  it('still frames the email as untrusted data for the local model', async () => {
+    const calls: Array<{ system: string; prompt: string }> = []
+    await classifyEmail(neverCloud, makeEmail(), { decide: decideWith(localOut, calls as unknown[]) })
+    expect(calls[0]!.system.toLowerCase()).toContain('never instructions')
+    expect(calls[0]!.prompt).toContain('<email_body>')
+  })
+
+  it('falls back to not-financial, not the cloud, when the local model fails', async () => {
+    const down = (async () => { throw new Error('refused') }) as unknown as import('@agentoak/platform').DecisionFn
+    expect((await classifyEmail(neverCloud, makeEmail(), { decide: down })).isFinancial).toBe(false)
+  })
+
+  it('prefilter skips the model for mail with no policy terms', async () => {
+    const calls: unknown[] = []
+    const result = await classifyEmail(neverCloud, makeEmail({ from: 'orders@fastbite.example', subject: 'Your order is on its way', textSnippet: 'Your burger arrives in 20 minutes.' }), {
+      decide: decideWith(localOut, calls),
+      prefilter: true,
+    })
+    expect(result.isFinancial).toBe(false)
+    expect(calls).toHaveLength(0)
+  })
+
+  it('does not prefilter unless asked, so existing callers keep their behaviour', async () => {
+    const calls: unknown[] = []
+    await classifyEmail(neverCloud, makeEmail({ subject: 'hello', textSnippet: 'hi there' }), { decide: decideWith(localOut, calls) })
+    expect(calls).toHaveLength(1)
+  })
+})

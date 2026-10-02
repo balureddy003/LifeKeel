@@ -18,7 +18,8 @@
 import { z } from 'zod'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { createLlmRouterFromEnv, getTenantCollection, type LlmFn } from '@agentoak/platform'
+import { getTenantCollection, type LlmFn } from '@agentoak/platform'
+import { familyDataLlmFromEnv } from '../local-model.js'
 import { getInsightsCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { calculateScenario, type ScenarioResult } from '../scenarios/calculate.js'
@@ -48,7 +49,7 @@ const SimulateSchema = z.object({
   question: z.string().max(2000).optional(),
 })
 
-const SYSTEM_PROMPT = `You are Oak, the assistant inside Agent Oak — a family's financial digital twin. Answer the family's question using ONLY the data provided below.
+export const SYSTEM_PROMPT = `You are Oak, the assistant inside Agent Oak — a family's financial digital twin. Answer the family's question using ONLY the data provided below.
 
 Rules:
 - Never give definitive financial, investment, insurance, tax, or legal advice, and never recommend, compare, or steer toward a specific product or provider. Always frame guidance as informational — describe what's on file and possible gaps — and recommend consulting a licensed professional for decisions.
@@ -382,7 +383,7 @@ function formatScenarioResult(result: ScenarioResult): string {
 }
 
 export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
-  const llmFn: LlmFn = createLlmRouterFromEnv()
+  const llmFn: LlmFn = familyDataLlmFromEnv()
 
   app.post<{ Body: { query?: string } }>(
     '/assistant/ask',

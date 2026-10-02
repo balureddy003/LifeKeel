@@ -22,7 +22,8 @@ import crypto from 'node:crypto'
 import { z } from 'zod'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { createLlmRouterFromEnv, getTenantCollection } from '@agentoak/platform'
+import { getTenantCollection } from '@agentoak/platform'
+import { familyDataLlmFromEnv } from '../local-model.js'
 import { getSignalsCollection, getLifeChangeNudgeStateCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { persistSignal } from '../signals.js'
@@ -68,7 +69,7 @@ interface LifeEventSignalDoc {
 }
 
 export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
-  const prepareLlmFn = createLlmRouterFromEnv()
+  const prepareLlmFn = familyDataLlmFromEnv()
 
   const profileFor = (tenantId: string) =>
     getTenantCollection<FinancialProfile & { tenant_id: string }>(db, 'family_financial_profile', tenantId)

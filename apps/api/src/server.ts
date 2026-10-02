@@ -52,6 +52,7 @@ import { ApiLlmScorer } from './llm-scorer.js'
 import { registerConnectorCredentialRoutes } from './routes/connector-credentials.js'
 import { DeliveryRouter } from './delivery/delivery-router.js'
 import { createMoveJudge } from './delivery/move-judge.js'
+import { localDecisionFromEnv } from './local-model.js'
 import { ConnectorSyncEngine, TokenRefreshScheduler } from '@agentoak/pipeline'
 import { connectorSchemaRegistry } from '@agentoak/workflows'
 import cron from 'node-cron'
@@ -170,7 +171,11 @@ let deliveryRouter: DeliveryRouter | undefined
 try {
   const mongoClient = await getMongoClient()
   workflowDb = mongoClient.db(process.env['MONGODB_DB'] ?? 'kairos')
-  deliveryRouter = new DeliveryRouter(workflowDb, createMoveJudge(globalLlmFn, workflowDb))
+  // Self-hosted judge model (infra/local-judge): when configured, no insight text
+  // is sent to a cloud LLM and the judge spends no tokens.
+  const localJudge = localDecisionFromEnv('judge')
+  log.info({ judge: localJudge ? 'local' : 'llm' }, 'Move judge backend')
+  deliveryRouter = new DeliveryRouter(workflowDb, createMoveJudge(globalLlmFn, workflowDb, localJudge))
   // OAK-003: every cron.schedule job below runs under this lock, keyed by
   // its own name — deploy-api.yml allows up to 4 Cloud Run replicas, and
   // without this, two replicas racing the same job could both act on the

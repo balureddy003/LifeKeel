@@ -48,6 +48,8 @@ const DEFAULT_PRICING: Record<string, ModelPricing> = {
   'llama3.2:3b':                  { input_per_1k: 0,     output_per_1k: 0 },
   'qwen2.5:7b':                   { input_per_1k: 0,     output_per_1k: 0 },
   'qwen2.5:14b':                  { input_per_1k: 0,     output_per_1k: 0 },
+  'qwen2.5:1.5b':                 { input_per_1k: 0,     output_per_1k: 0 },
+  'qwen2.5:3b':                   { input_per_1k: 0,     output_per_1k: 0 },
 }
 
 function loadPricingTable(): Record<string, ModelPricing> {

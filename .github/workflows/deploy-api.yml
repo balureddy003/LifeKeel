@@ -71,6 +71,12 @@ jobs:
             LOG_LEVEL=info
             AGENT_OAK_URL=${{ vars.AGENT_OAK_URL || secrets.AGENT_OAK_URL }}
             API_BASE_URL=${{ vars.API_BASE_URL }}
+            LOCAL_JUDGE_BASE_URL=${{ vars.LOCAL_JUDGE_BASE_URL }}
+            LOCAL_JUDGE_MODEL=${{ vars.LOCAL_JUDGE_MODEL }}
+            LOCAL_CLASSIFIER_MODEL=${{ vars.LOCAL_CLASSIFIER_MODEL }}
+            LOCAL_OCR_MODEL=${{ vars.LOCAL_OCR_MODEL }}
+            LOCAL_TEXT_ENABLED=${{ vars.LOCAL_TEXT_ENABLED }}
+            LOCAL_TEXT_MODEL=${{ vars.LOCAL_TEXT_MODEL }}
           secrets: |
             MONGODB_URL=agentoak-mongodb-url:latest
             REDIS_URL=agentoak-redis-url:latest
