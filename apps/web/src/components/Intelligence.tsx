@@ -9,6 +9,7 @@ import { useAppStore } from '@/lib/store'
 import { fetchFinancialProfile, fetchDocuments, fetchConnectorStatuses, fetchProfileSuggestions, fetchVaultDocuments, RESOLVED_INSIGHT_STATES } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { useFamilyInsights } from '@/lib/useFamilyData'
+import { displayDocName } from '@/lib/doc-name'
 import { orderIncompleteTrustLadderSteps } from '@/lib/trustLadderOrder'
 import { TrendingUp, FileText, Landmark, Mail, BarChart3, Scale, Car, Check, Sparkles, ChevronRight, ChevronDown, Users } from 'lucide-react'
 
@@ -283,7 +284,7 @@ export async function loadDocumentPrompts(): Promise<MemoryPrompt[]> {
         id: doc.id,
         icon: meta.icon,
         title: meta.title,
-        message: `I read "${doc.filename}" from your uploads. Want to review what I found and ${meta.what}?`,
+        message: `I read "${displayDocName(doc)}" from your uploads. Want to review what I found and ${meta.what}?`,
         action: 'Review',
         route: `/documents/${doc.id}`,
       } satisfies MemoryPrompt

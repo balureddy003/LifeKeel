@@ -15,7 +15,7 @@ import { AuthService, getCurrencyForCountry, getLocaleForCountry } from '@agento
 import { getDb, getLoginEventsCollection } from '../db.js'
 import { checkInviteCode, consumeInviteCode } from '../invite-codes.js'
 import { PLAN_QUOTAS, createInitialBilling } from '../billing/billing-constants.js'
-import { sendPasswordResetEmail } from '../auth-email.js'
+import { sendPasswordResetEmail, sendEmailVerificationEmail } from '../auth-email.js'
 import { recordLedgerEntry } from '../billing/credit-ledger.js'
 import { getPlatformConfig } from '../operator/platform-config.js'
 import { attributeReferral } from './referrals.js'
@@ -102,6 +102,14 @@ export function hashPassword(password: string, salt: string): string {
 
 function generateEmailVerificationToken(): string {
   return randomBytes(32).toString('hex')
+}
+
+/** The link in the verification email — goes to the web /verify-email
+ *  page, which POSTs the token back to /auth/verify-email. Never logged:
+ *  possession of this URL proves mailbox ownership. */
+function verificationUrl(token: string): string {
+  const appUrl = (process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
+  return `${appUrl}/verify-email?token=${token}`
 }
 
 export async function getUsersCollection() {
@@ -232,10 +240,15 @@ export async function registerAuthUserRoutes(
       if (EMAIL_VERIFICATION_ENABLED) {
         user.email_verification_token = generateEmailVerificationToken()
         user.email_verification_expires = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
-        // TODO: Send verification email here
       }
 
       await col.insertOne(user)
+
+      // Send only after the account exists — a failed insert must not
+      // leave a recipient holding a token that can never verify.
+      if (EMAIL_VERIFICATION_ENABLED && user.email_verification_token) {
+        await sendEmailVerificationEmail(user.email, user.name, verificationUrl(user.email_verification_token))
+      }
 
       // Create the tenant record — existingTenant was already confirmed null
       // above, so this always creates a fresh tenant here (the tenants.tenant_id
@@ -485,7 +498,7 @@ export async function registerAuthUserRoutes(
         }
       )
 
-      // TODO: Send verification email here
+      await sendEmailVerificationEmail(user.email, user.name, verificationUrl(newToken))
 
       return reply.send({ sent: true })
     }
@@ -517,7 +530,7 @@ export async function registerAuthUserRoutes(
       }
     )
 
-    // TODO: Send verification email here
+    await sendEmailVerificationEmail(user.email, user.name, verificationUrl(newToken))
 
     return reply.send({ sent: true })
   })
@@ -561,6 +574,14 @@ export async function registerAuthUserRoutes(
       { id: user_id, tenant_id },
       { $set: updateData }
     )
+
+    // New address must prove ownership — the link goes to the new inbox,
+    // never the old one. Send only after the update lands so a failure
+    // can't strand a token.
+    if (updateData.email && updateData.email_verification_token) {
+      const displayName = updateData.name ?? user.name
+      await sendEmailVerificationEmail(updateData.email, displayName, verificationUrl(updateData.email_verification_token))
+    }
 
     const updatedUser = await col.findOne({ id: user_id, tenant_id })
     

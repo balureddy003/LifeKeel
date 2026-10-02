@@ -28,6 +28,7 @@ import { getSignalsCollection, getLifeChangeNudgeStateCollection } from '../db.j
 import { getAuditLogger } from '../audit/audit-log.js'
 import { persistSignal } from '../signals.js'
 import { generateDraft, generatePrepNote } from '../insights/generate-draft.js'
+import { extractDraftProvenance } from '../insights/draft-provenance.js'
 import { renderPlaybook, type LifeEventType } from '../life-events/render-playbook.js'
 import { computeEventReadiness } from '../life-events/event-readiness.js'
 import { maybeSendVaultReminder } from '../life-events/vault-reminder.js'
@@ -234,7 +235,9 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
       if (!content) {
         return reply.send({ draft: null, error: "Couldn't generate a draft right now — please try again later." })
       }
-      return reply.send({ draft: { content, generated_at: new Date() } })
+      // Same provenance contract as /insights/:id/prepare — step.body is the
+      // personalized source text the model was grounded on here.
+      return reply.send({ draft: { content, generated_at: new Date(), provenance: extractDraftProvenance(step.body, content) } })
     },
   )
 

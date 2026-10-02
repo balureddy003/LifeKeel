@@ -748,18 +748,15 @@ export default function HomePage() {
 
       {!hasLiveData && !scoreLoading && <GettingStarted />}
 
-      {/* At lg+ (max-w-2xl container, NavRail layout) the score card and
-          the life-event link pair up 2:1 — the phone-first single column
-          stays unchanged below that. Only unconditional sections are
-          paired this way; conditional banners/cards keep full width so a
-          hidden sibling never leaves a half-empty row. */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* The score card used to share its row with the "Report a life
+          event" link at lg+ — that card moved to the bottom of the page
+          (a crisis entry point read as daily-dashboard clutter at the
+          top), so the score now takes the full row again. */}
       {(scoreLoading || hasLiveData) && (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05 }}
-        className="lg:col-span-2"
       >
         <GlassCard className="p-5 h-full">
           <div className="flex items-center gap-3 mb-3">
@@ -790,14 +787,19 @@ export default function HomePage() {
                   <p className="text-sm text-ink-secondary leading-relaxed">
                     {config.simpleLanguage
                       ? simpleHomeCopy({ hasLiveData, onTrack: onTrack }).body
-                      : 'Your family readiness score reflects the gaps found in your profile so far. Connect more data sources for a complete picture.'}
+                      : 'Your readiness score reflects the gaps found in your profile so far — it gets more accurate as the profile fills in.'}
                   </p>
                   {profileCompleteness > 0 && profileCompleteness < 100 && (
-                    <Link href="/financial-profile" className="flex items-center gap-2 mt-2 group" onClick={() => haptic('light')}>
+                    <Link
+                      href="/financial-profile"
+                      className="flex items-center gap-2 mt-2 group"
+                      onClick={() => haptic('light')}
+                      title="How much of the financial profile is filled in — a fuller profile sharpens the readiness score above"
+                    >
                       <div className="w-16 h-1.5 rounded-full bg-tint/10 overflow-hidden">
                         <div className="h-full rounded-full bg-family-400 transition-all" style={{ width: `${profileCompleteness}%` }} />
                       </div>
-                      <span className="text-xs font-semibold text-family-400 group-active:opacity-70">Profile {profileCompleteness}%</span>
+                      <span className="text-xs font-semibold text-family-400 group-active:opacity-70">Profile {profileCompleteness}% complete</span>
                     </Link>
                   )}
                 </div>
@@ -807,28 +809,6 @@ export default function HomePage() {
         </GlassCard>
       </motion.div>
       )}
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.08 }}
-      >
-        <Link href="/life-events" onClick={() => haptic('light')} className="h-full block">
-          <GlassCard className="p-4 h-full flex flex-col justify-center" interactive>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-danger/10 border border-danger/20 flex items-center justify-center flex-shrink-0">
-                <Siren size={18} className="text-danger" strokeWidth={1.5} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-ink-primary">Report a life event</div>
-                <div className="text-xs text-ink-tertiary">Job loss, bereavement, or disability — get a plan based on your real data</div>
-              </div>
-              <ChevronRight size={16} className="text-ink-tertiary" />
-            </div>
-          </GlassCard>
-        </Link>
-      </motion.div>
-      </div>
 
       <IfAdvanced>
         <motion.div
@@ -946,6 +926,31 @@ export default function HomePage() {
         </GlassCard>
       </motion.div>
       )}
+
+      {/* Crisis reporting lives at the bottom of the daily dashboard, not
+          beside the score — top-of-page placement made the calm overview
+          read as an emergency surface every day. Still one scroll away;
+          the SOS floating button remains the immediate entry point. */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.35 }}
+      >
+        <Link href="/life-events" onClick={() => haptic('light')} className="block">
+          <GlassCard className="p-4 flex flex-col justify-center" interactive>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-danger/10 border border-danger/20 flex items-center justify-center flex-shrink-0">
+                <Siren size={18} className="text-danger" strokeWidth={1.5} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-ink-primary">Report a life event</div>
+                <div className="text-xs text-ink-tertiary">Job loss, bereavement, or disability — get a plan based on your real data</div>
+              </div>
+              <ChevronRight size={16} className="text-ink-tertiary" />
+            </div>
+          </GlassCard>
+        </Link>
+      </motion.div>
 
       <FeatureTip />
     </div>

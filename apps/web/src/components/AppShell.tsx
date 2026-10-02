@@ -215,9 +215,13 @@ function ModeEffects() {
 // like AskOakButton below — the two floating buttons used to differ only
 // by color (purple vs red), which fails colorblind users and is exactly
 // the wrong differentiator under crisis stress, when a mis-tap matters
-// most. Shape + a text label make this unmistakable at a glance without
-// touching either button's position (avoids a wider layout regression
-// across every page that reserves scroll-gutter space for these).
+// most. Shape + a text label make this unmistakable at a glance.
+//
+// SOS also sits at the TOP of the floating stack (bottom-52), not beside
+// the nav bar — Ask Oak owns the bottom-32 slot nearest the thumb. The
+// dangerous mis-tap direction is wanting chat and hitting emergency; with
+// SOS a full button-height above Ask Oak, a fumbled Ask Oak tap lands on
+// the tab bar or empty space, never on the emergency sequence.
 function EmergencyButton() {
   const { config, activateEmergency } = useMode()
   if (!config.showEmergencyButton) return null
@@ -229,7 +233,7 @@ function EmergencyButton() {
         activateEmergency()
       }}
       whileTap={{ scale: 0.95 }}
-      className="fixed bottom-32 right-4 z-fab h-12 pl-3 pr-4 rounded-full flex items-center gap-1.5"
+      className="fixed bottom-52 right-4 z-fab h-12 pl-3 pr-4 rounded-full flex items-center gap-1.5"
       style={{
         background: 'linear-gradient(135deg, #f87171, #dc2626)',
         border: '1px solid rgba(255,255,255,0.2)',
@@ -267,7 +271,7 @@ function EmergencyButton() {
 // PRD-101 endpoint /assistant/page.tsx correctly calls. Rather than
 // resurrect a second, wrong chat implementation, this reuses the one real
 // implementation by linking straight to it.
-function AskOakButton({ stacked, context }: { stacked: boolean; context?: string }) {
+function AskOakButton({ context }: { context?: string }) {
   const router = useRouter()
   return (
     <motion.button
@@ -276,7 +280,9 @@ function AskOakButton({ stacked, context }: { stacked: boolean; context?: string
         router.push(context ? `/assistant?context=${encodeURIComponent(context)}` : '/assistant')
       }}
       whileTap={{ scale: 0.9 }}
-      className={`fixed right-4 z-fab w-12 h-12 rounded-full flex items-center justify-center ${stacked ? 'bottom-52' : 'bottom-32'}`}
+      // Always the bottom slot (bottom-32): the frequent, harmless action
+      // stays nearest the thumb; SOS — the dangerous mis-tap — is above it.
+      className="fixed bottom-32 right-4 z-fab w-12 h-12 rounded-full flex items-center justify-center"
       style={{
         background: 'linear-gradient(135deg, #8b80f8, #6b5ce0)',
         border: '1px solid rgba(255,255,255,0.2)',
@@ -301,6 +307,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/login') ||
     pathname.startsWith('/family-setup') ||
     pathname.startsWith('/reset-password') ||
+    pathname.startsWith('/verify-email') ||
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/terms') ||
     pathname.startsWith('/privacy') ||
@@ -475,6 +482,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/login') ||
     pathname.startsWith('/family-setup') ||
     pathname.startsWith('/reset-password') ||
+    pathname.startsWith('/verify-email') ||
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/terms') ||
     pathname.startsWith('/privacy') ||
@@ -552,7 +560,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
       {showNav && <LiquidTabBar />}
       {showEmergency && <EmergencyButton />}
-      {showAskOak && <AskOakButton stacked={!!showEmergency} context={pathname} />}
+      {showAskOak && <AskOakButton context={pathname} />}
       <EmergencyMode
         active={emergencyActive}
         onDeactivate={deactivateEmergency}

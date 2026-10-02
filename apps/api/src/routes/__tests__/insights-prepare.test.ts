@@ -81,6 +81,20 @@ describe('POST /insights/:id/prepare', () => {
     expect(res.statusCode).toBe(404)
   })
 
+  it('marks which source figures the draft carried over as provenance facts', async () => {
+    const insight = {
+      ...BASE_INSIGHT,
+      reasoning: 'Your life cover is £250,000 but the estimated gap is about £55,000 a year.',
+    }
+    llmMock.mockImplementation(async () => 'I am writing to ask about our life cover of £250,000.')
+    const { app } = await buildApp(insight)
+    const res = await app.inject({ method: 'POST', url: `/insights/${INSIGHT_ID}/prepare` })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.draft.provenance.facts).toEqual(['£250,000'])
+  })
+
   it('degrades gracefully (200, draft: null) when the LLM call fails', async () => {
     llmMock.mockImplementation(async () => { throw new Error('ANTHROPIC_API_KEY not set') })
     const { app } = await buildApp(BASE_INSIGHT)

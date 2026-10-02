@@ -5,13 +5,13 @@ import { motion } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Components } from 'react-markdown'
-import { Bot, Send } from 'lucide-react'
+import { Bot, Send, CloudOff, RotateCcw } from 'lucide-react'
 import { AI_SUGGESTIONS } from '@/lib/life-data'
 import { AIAnswerCard } from '@/components/AIAnswer'
-import { PageHeader, CURRENCY_PATTERN } from '@/components/Glass'
+import { PageHeader, CURRENCY_PATTERN, GlassCard } from '@/components/Glass'
 import { useMode } from '@/lib/mode-context'
 import { haptic } from '@/lib/haptics'
-import { fetchAIResponse } from '@/lib/api'
+import { fetchAIResponse, type AssistantAnswerStatus } from '@/lib/api'
 
 // Oak's live answers were rendering as a single whitespace-pre-wrap plain
 // text blob — a multi-part answer (narrating a scenario, listing several
@@ -56,13 +56,23 @@ interface ChatMessage {
   content: string
   showPerplexity?: boolean
   userQuery?: string
-  isLive?: boolean
+  status?: AssistantAnswerStatus
 }
 
-function getAIResponse(query: string): string {
-  // Synchronous fallback — the async fetchAIResponse is used in sendMessage.
-  // This is kept for any synchronous call sites that may exist.
-  return "Based on the information you've entered, here is a summary from your family's data. This is for informational purposes only — please consult a qualified professional before making financial decisions. Would you like to see the specific numbers from your family's profile?"
+function assistantMessage(query: string, content: string, status: AssistantAnswerStatus, id?: string): ChatMessage {
+  return {
+    id: id ?? `ai-${Date.now()}`,
+    role: 'assistant',
+    content,
+    // Canned answers render through AIAnswerCard, which carries its own
+    // honest "Sample answer" disclosure — the plain bubble has no way to
+    // label itself, so every canned response goes through the labeled card.
+    // 'unavailable' renders as its own card below, never as a canned answer
+    // (a backend outage must not masquerade as "no live answer for this").
+    showPerplexity: status === 'canned',
+    userQuery: query,
+    status,
+  }
 }
 
 // Page-context-aware suggestions — when the user arrives from a specific
@@ -145,31 +155,28 @@ export default function AssistantPage() {
     setThinking(true)
 
     try {
-      const { content, isLive } = await fetchAIResponse(text)
-      setMessages((prev) => [...prev, {
-        id: `ai-${Date.now()}`,
-        role: 'assistant',
-        content,
-        // Non-live answers render through AIAnswerCard, which carries its
-        // own honest "Sample answer" disclosure — the plain bubble below
-        // has no way to label itself, so every canned response needs to
-        // go through the labeled card, not just a handful of keywords.
-        showPerplexity: !isLive,
-        userQuery: text,
-        isLive,
-      }])
+      const { content, status } = await fetchAIResponse(text)
+      setMessages((prev) => [...prev, assistantMessage(text, content, status)])
     } catch {
-      setMessages((prev) => [...prev, {
-        id: `ai-${Date.now()}`,
-        role: 'assistant',
-        content: getAIResponse(text),
-        showPerplexity: true,
-        userQuery: text,
-        isLive: false,
-      }])
+      // fetchAIResponse swallows its own errors into 'unavailable' — this
+      // catch is defensive only.
+      setMessages((prev) => [...prev, assistantMessage(text, '', 'unavailable')])
     } finally {
       setThinking(false)
       haptic('success')
+    }
+  }
+
+  // A failed answer stays in the transcript as its own card; retry replaces
+  // it in place rather than re-asking the question as a new user message.
+  const retryMessage = async (id: string, query: string) => {
+    haptic('light')
+    setThinking(true)
+    try {
+      const { content, status } = await fetchAIResponse(query)
+      setMessages((prev) => prev.map((m) => (m.id === id ? assistantMessage(query, content, status, id) : m)))
+    } finally {
+      setThinking(false)
     }
   }
 
@@ -216,7 +223,24 @@ export default function AssistantPage() {
                   <Bot size={12} /> Oak
                 </div>
               )}
-              {msg.showPerplexity && msg.userQuery ? (
+              {msg.status === 'unavailable' && msg.userQuery ? (
+                <GlassCard className="p-4">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <CloudOff size={15} className="text-warning flex-shrink-0" />
+                    <span className="text-sm font-semibold text-ink-primary">Oak&apos;s assistant is temporarily unavailable</span>
+                  </div>
+                  <p className="text-xs text-ink-tertiary leading-relaxed mb-2.5">
+                    That&apos;s a real outage, not a missing answer — nothing below is a sample. Try again in a moment.
+                  </p>
+                  <button
+                    onClick={() => void retryMessage(msg.id, msg.userQuery!)}
+                    disabled={thinking}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-family-400 disabled:opacity-50"
+                  >
+                    <RotateCcw size={12} /> Try again
+                  </button>
+                </GlassCard>
+              ) : msg.showPerplexity && msg.userQuery ? (
                 <AIAnswerCard query={msg.userQuery} />
               ) : msg.role === 'assistant' ? (
                 <div className="text-sm leading-relaxed">

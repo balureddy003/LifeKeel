@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/auth-context'
 import { useMode } from '@/lib/mode-context'
 import { ROLE_LABELS } from '@/lib/auth-types'
 import { PageHeader, PageTransition, Money } from '@/components/Glass'
-import { fetchMemberTwin, fetchMemberAgent, dismissMemberNudge, fetchAIResponse, inviteFamilyMember, type MemberTwin, type MemberAgent } from '@/lib/api'
+import { fetchMemberTwin, fetchMemberAgent, dismissMemberNudge, fetchAIResponse, inviteFamilyMember, type MemberTwin, type MemberAgent, type AssistantAnswerStatus } from '@/lib/api'
 import { useToast } from '@/components/Toast'
 import { calculateAge } from '@/lib/age'
 import { haptic } from '@/lib/haptics'
@@ -33,7 +33,7 @@ export default function MemberProfileClient() {
   const [kidView, setKidView] = useState(false)
   const [askInput, setAskInput] = useState('')
   const [asking, setAsking] = useState(false)
-  const [answer, setAnswer] = useState<{ content: string; isLive: boolean } | null>(null)
+  const [answer, setAnswer] = useState<{ content: string; status: AssistantAnswerStatus } | null>(null)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
   const [inviteSent, setInviteSent] = useState<{ emailed: boolean; inviteUrl: string } | null>(null)
@@ -419,9 +419,15 @@ export default function MemberProfileClient() {
         <div className="text-sm font-semibold text-ink-primary">Ask Oak about {member.name.split(' ')[0]}</div>
         {answer && (
           <div className="text-sm text-ink-secondary leading-relaxed">
-            {answer.content}
-            {!answer.isLive && (
-              <p className="text-xs text-ink-tertiary mt-2">Sample answer — Oak couldn&apos;t reach the live assistant.</p>
+            {answer.status === 'unavailable' ? (
+              <p className="text-xs text-warning">Oak&apos;s assistant is temporarily unavailable — that&apos;s an outage, not a missing answer. Try again in a moment.</p>
+            ) : (
+              <>
+                {answer.content}
+                {answer.status === 'canned' && (
+                  <p className="text-xs text-ink-tertiary mt-2">Sample answer — connect more of your family&apos;s data for a personalized response.</p>
+                )}
+              </>
             )}
           </div>
         )}
