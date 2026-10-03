@@ -43,6 +43,11 @@ RUN apk add --no-cache python3 make g++ py3-setuptools py3-pip
 # being sent to a cloud vision model. NOT build-tested here; verify the image once.
 RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-eng
 
+# fontconfig + DejaVu — the /share/readiness/og.png route rasterizes SVG text
+# via sharp/librsvg; Alpine ships zero fonts, so digits would render blank
+# without these.
+RUN apk add --no-cache fontconfig ttf-dejavu
+
 # Install yfinance + pandas for the yfinance market-data connector
 # (scripts/fetch-yfinance.py). Required by the momentum engine to fetch
 # 252-day price history for portfolio tickers. No API key needed — yfinance

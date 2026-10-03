@@ -38,4 +38,29 @@ describe('GET /share/readiness', () => {
     const res = await app.inject({ method: 'GET', url: '/share/readiness?s=<script>' })
     expect(res.body).not.toContain('<script>')
   })
+
+  it('points og:image at the per-score API render', async () => {
+    const res = await app.inject({ method: 'GET', url: '/share/readiness?s=74' })
+    expect(res.body).toContain('/share/readiness/og.png?s=74')
+    expect(res.body).toContain('og:image:width')
+  })
+})
+
+describe('GET /share/readiness/og.png', () => {
+  const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+
+  it('renders a real PNG for a valid score', async () => {
+    const res = await app.inject({ method: 'GET', url: '/share/readiness/og.png?s=74' })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toContain('image/png')
+    expect(res.headers['cache-control']).toContain('immutable')
+    expect(res.rawPayload.subarray(0, 4)).toEqual(PNG_MAGIC)
+    expect(res.rawPayload.length).toBeGreaterThan(1000)
+  })
+
+  it('renders the generic card for an invalid score', async () => {
+    const res = await app.inject({ method: 'GET', url: '/share/readiness/og.png?s=999' })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toContain('image/png')
+  })
 })
