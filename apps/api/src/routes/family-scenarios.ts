@@ -34,7 +34,7 @@ import { type ScenarioChange, type ScenarioResult } from '../scenarios/calculate
 import { projectScenario } from '../scenarios/project.js'
 import type { FamilyGroupDoc } from './family-group.js'
 
-const ScenarioStepSchema = z.object({
+export const ScenarioStepSchema = z.object({
   atMonth: z.number().int().min(0).max(360),
   monthlyIncomeDeltaMinor: z.number().int().optional(),
   monthlyExpenseDeltaMinor: z.number().int().optional(),

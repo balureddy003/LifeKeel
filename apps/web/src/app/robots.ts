@@ -13,7 +13,7 @@ export default function robots(): MetadataRoute.Robots {
       allow: '/',
       // Auth-required and transactional surfaces are pointless to index —
       // keep crawlers on the public marketing/content pages.
-      disallow: ['/operator/', '/marketing/', '/auth/', '/reset-password/', '/settings/'],
+      disallow: ['/operator/', '/marketing/', '/auth/', '/reset-password/', '/settings/', '/legacy/'],
     },
     sitemap: `${SITE_URL}/sitemap.xml`,
   }

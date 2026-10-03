@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { Home, Inbox, Users, AlertTriangle, Settings, Bot, Siren, Crown, Shield, Baby, Accessibility, Search, CornerDownLeft, ArrowUpDown, User, Heart, Wallet, Target, PiggyBank, Map, Upload, Plug } from 'lucide-react'
+import { Home, Inbox, Users, AlertTriangle, Settings, Bot, Siren, Crown, Shield, Baby, Accessibility, Search, CornerDownLeft, ArrowUpDown, User, Heart, Wallet, Target, PiggyBank, Map, Upload, Plug, Landmark } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { useMode } from '@/lib/mode-context'
@@ -59,6 +59,7 @@ export function CommandPalette() {
     { id: 'settings', label: 'Settings', icon: Settings, shortcut: 'G S', section: 'navigate', action: () => router.push('/settings') },
     { id: 'assistant', label: 'Ask AI', icon: Bot, shortcut: 'G A', section: 'navigate', action: () => router.push('/assistant') },
     { id: 'map', label: 'Family Map', icon: Map, shortcut: 'G M', section: 'navigate', action: () => router.push('/map') },
+    { id: 'legacy', label: 'Legacy Register', icon: Landmark, shortcut: 'G L', section: 'navigate', action: () => router.push('/legacy') },
     { id: 'upload', label: 'Upload Documents', icon: Upload, shortcut: 'G U', section: 'navigate', action: () => router.push('/upload') },
     { id: 'connect', label: 'Connect Services', icon: Plug, shortcut: 'G C', section: 'navigate', action: () => router.push('/connect') },
     { id: 'emergency', label: 'Emergency Mode', icon: Siren, shortcut: 'E', section: 'actions', action: () => { activateEmergency(); setCmdkOpen(false) } },

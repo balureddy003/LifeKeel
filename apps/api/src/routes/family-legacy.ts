@@ -36,6 +36,7 @@ import { ESTATE_VAULT_CATEGORY } from './documents.js'
 import type { FamilyGroupDoc } from './family-group.js'
 import type { Engine, Insight } from '@agentoak/engine'
 import { evaluateEstate } from '../legacy/evaluate-estate.js'
+import { buildLegacyGraph } from '../legacy/graph.js'
 
 const log = createLogger({ service: 'family-legacy', version: '0.0.0' })
 
@@ -409,6 +410,34 @@ export function registerFamilyLegacyRoutes(
     }
     reevaluate(tenant_id)
     return reply.status(204).send()
+  })
+
+  // ── Legacy graph (PRD-137 §5) ──────────────────────────────────────────
+  // The register as nodes+edges for the /legacy "Family map" tab and Ask
+  // Oak. ?mode=youth resolves the caller's roster member like family-feed
+  // and returns the existence-only slice — no roles, assets, or policies.
+  app.get<{ Querystring: { mode?: string } }>('/family/legacy/graph', async (req, reply) => {
+    const { tenant_id, user_id } = req.authContext
+    const family = await db.collection<FamilyGroupDoc>('family_groups').findOne({ tenant_id })
+    const member = family?.members.find((m) => memberMatchesUser(m, user_id)) ?? null
+
+    if (req.query.mode === 'youth') {
+      return buildLegacyGraph(db, tenant_id, {
+        user_id,
+        is_organizer: false,
+        member_id: member?.id ?? null,
+        youth: true,
+      })
+    }
+    if (!(await isFamilyAdult(db, tenant_id, user_id))) {
+      return reply.status(403).send({ error: 'The legacy register is visible to adult family members only.' })
+    }
+    return buildLegacyGraph(db, tenant_id, {
+      user_id,
+      is_organizer: await isFamilyOrganizer(db, tenant_id, user_id).catch(() => false),
+      member_id: member?.id ?? null,
+      youth: false,
+    })
   })
 
   // ── Continuity rehearsal (PRD-137 §6) ──────────────────────────────────

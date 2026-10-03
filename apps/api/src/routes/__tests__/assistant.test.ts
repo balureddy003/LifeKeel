@@ -46,6 +46,9 @@ let familyFixture: Record<string, unknown> | null = null
 let insightsFixture: Array<Record<string, unknown>> = []
 let unreviewedDocsFixture: Array<Record<string, unknown>> = []
 let lifeEventSignalsFixture: Array<Record<string, unknown>> = []
+let legacyDocsFixture: Array<Record<string, unknown>> = []
+let legacyContactsFixture: Array<Record<string, unknown>> = []
+let assetsFixture: Array<Record<string, unknown>> = []
 
 // Mongo-filter matcher just capable enough for the member-twin's insight
 // attribution filter (equality + $in + $or + dotted paths) — the member-
@@ -81,6 +84,9 @@ function makeDb() {
         const docs = () => {
           if (name === 'documents') return unreviewedDocsFixture
           if (name === 'insights') return insightsFixture.filter((d) => matchesFilter(d, filter))
+          if (name === 'legacy_documents') return legacyDocsFixture
+          if (name === 'legacy_contacts') return legacyContactsFixture
+          if (name === 'family_assets') return assetsFixture
           return []
         }
         return {
@@ -112,6 +118,9 @@ describe('POST /assistant/ask', () => {
     insightsFixture = []
     unreviewedDocsFixture = []
     lifeEventSignalsFixture = []
+    legacyDocsFixture = []
+    legacyContactsFixture = []
+    assetsFixture = []
   })
 
   it('returns a live, grounded answer referencing the tenant\'s real numbers', async () => {
@@ -386,6 +395,9 @@ describe('POST /assistant/simulate', () => {
     familyFixture = null
     insightsFixture = []
     unreviewedDocsFixture = []
+    legacyDocsFixture = []
+    legacyContactsFixture = []
+    assetsFixture = []
   })
 
   it('computes a real scenario and asks the LLM to narrate the given numbers, not invent its own', async () => {
@@ -436,5 +448,132 @@ describe('POST /assistant/simulate', () => {
     expect(body.isLive).toBe(false)
     expect(body.scenario.projectedRunwayMonths).toBe(0)
     expect(body.content).toContain('0 months')
+  })
+})
+
+describe('POST /assistant/simulate — steps[] and member_id (G14/PRD-132)', () => {
+  beforeEach(() => {
+    llmMock.mockClear()
+    llmMock.mockImplementation(async (_s: string, prompt: string) => `LLM saw: ${prompt}`)
+    profileFixture = {
+      household: { monthly_salary_minor: 500000 },
+      emergency_fund: { emergency_savings_minor: 1200000, monthly_expenses_minor: 300000 },
+    }
+    familyFixture = {
+      tenant_id: TENANT_A,
+      members: [
+        { id: 'm1', user_id: 'user-1', name: 'Alex', role: 'organizer', status: 'active' },
+        { id: 'm2', user_id: 'user-2', name: 'Sam', role: 'adult', status: 'active' },
+      ],
+    }
+    insightsFixture = []
+    unreviewedDocsFixture = []
+    lifeEventSignalsFixture = []
+    legacyDocsFixture = []
+  })
+
+  it('accepts a two-step body and narrates every regime in the grounding', async () => {
+    const app = await buildApp(TENANT_A)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/assistant/simulate',
+      payload: {
+        steps: [
+          { atMonth: 0, monthlyIncomeDeltaMinor: -240000 },
+          { atMonth: 4, monthlyIncomeDeltaMinor: 192000 },
+        ],
+        question: 'What if I take a sabbatical?',
+      },
+    })
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.isLive).toBe(true)
+    expect(body.scenario.timeline).toHaveLength(2)
+    // The LLM prompt (echoed back by the mock) names both regimes.
+    expect(body.content).toContain('months 1–3')
+    expect(body.content).toContain('from month 4')
+    expect(body.content).toContain('income −£2400.00/mo')
+  })
+
+  it('the raw-numbers fallback describes each step when the LLM fails', async () => {
+    llmMock.mockImplementation(async () => { throw new Error('down') })
+    const app = await buildApp(TENANT_A)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/assistant/simulate',
+      payload: { steps: [{ atMonth: 0, monthlyIncomeDeltaMinor: -240000 }, { atMonth: 4, monthlyIncomeDeltaMinor: 192000 }] },
+    })
+    const body = response.json()
+    expect(body.isLive).toBe(false)
+    expect(body.content).toContain('months 1–3')
+    expect(body.content).toContain('from month 4')
+  })
+
+  it('400s on a malformed step', async () => {
+    const app = await buildApp(TENANT_A)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/assistant/simulate',
+      payload: { steps: [{ atMonth: 'soon' }] },
+    })
+    expect(response.statusCode).toBe(400)
+  })
+
+  it('scopes the projection to a member via member_id and 400s on a stranger', async () => {
+    const app = await buildApp(TENANT_A)
+    const ok = await app.inject({
+      method: 'POST',
+      url: '/assistant/simulate',
+      payload: { member_id: 'm1', monthlyIncomeDeltaMinor: -100000 },
+    })
+    expect(ok.statusCode).toBe(200)
+    const bad = await app.inject({
+      method: 'POST',
+      url: '/assistant/simulate',
+      payload: { member_id: 'ghost', monthlyIncomeDeltaMinor: -100000 },
+    })
+    expect(bad.statusCode).toBe(400)
+  })
+})
+
+describe('legacy register grounding (PRD-137 §5)', () => {
+  beforeEach(() => {
+    llmMock.mockClear()
+    llmMock.mockImplementation(async (_s: string, prompt: string) => `LLM saw: ${prompt}`)
+    profileFixture = { household: { monthly_salary_minor: 500000 } }
+    familyFixture = {
+      tenant_id: TENANT_A,
+      members: [
+        { id: 'm1', user_id: 'user-1', name: 'Alex', role: 'organizer', status: 'active' },
+        { id: 'm2', user_id: 'user-2', name: 'Sam', role: 'adult', status: 'active' },
+      ],
+    }
+    insightsFixture = []
+    unreviewedDocsFixture = []
+    lifeEventSignalsFixture = []
+    legacyContactsFixture = []
+    assetsFixture = []
+    legacyDocsFixture = [
+      {
+        id: 'd1', tenant_id: TENANT_A, type: 'will', subject_member_id: 'm1',
+        jurisdiction: 'England & Wales', signed_on: '2019-03-01', last_reviewed_on: '2019-03-01',
+        roles: [{ role: 'executor', member_id: 'm2', verification: 'user_declared' }],
+        covers_asset_ids: [], verification: 'user_declared', visibility: 'adults',
+      },
+    ]
+  })
+
+  it('adds the legacy map block to the context when records exist', async () => {
+    const app = await buildApp(TENANT_A)
+    const res = await app.inject({ method: 'POST', url: '/assistant/ask', payload: { query: 'who is the executor?' } })
+    expect(res.json().content).toContain('Family legacy map')
+    expect(res.json().content).toContain('executor: Sam [user-declared]')
+  })
+
+  it('omits the block when the register is empty', async () => {
+    legacyDocsFixture = []
+    const app = await buildApp(TENANT_A)
+    const res = await app.inject({ method: 'POST', url: '/assistant/ask', payload: { query: 'anything recorded?' } })
+    expect(res.json().content).not.toContain('Family legacy map')
   })
 })

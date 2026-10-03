@@ -815,6 +815,32 @@ export async function fetchLegacyRehearsal(memberId: string): Promise<LegacyRehe
   )
 }
 
+/** PRD-137 §5: the register as nodes+edges for the Family map tab. No
+ *  amounts — ids, labels and verification only. */
+export interface LegacyGraphNode {
+  id: string
+  kind: 'member' | 'contact' | 'document' | 'asset' | 'policy'
+  label: string
+  sublabel?: string
+  verification?: LegacyVerification
+  meta?: Record<string, unknown>
+}
+export interface LegacyGraphEdge {
+  from: string
+  to: string
+  kind: 'subject_of' | 'names_as' | 'covers' | 'evidence_for' | 'owns' | 'occupies' | 'advises'
+  label?: string
+  verification?: LegacyVerification
+}
+export interface LegacyGraph {
+  nodes: LegacyGraphNode[]
+  edges: LegacyGraphEdge[]
+}
+
+export async function fetchLegacyGraph(): Promise<LegacyGraph | null> {
+  return apiFetch<LegacyGraph | null>('/family/legacy/graph', null)
+}
+
 // ── PRD-136 §5: notification preference center ────────────────────────────
 // Tenant-level today; organizer edits, all adults read. The exempt criticals
 // ride every response so the UI renders "always sent" without hardcoding.
@@ -1811,6 +1837,9 @@ export interface FamilyAsset {
   name: string
   value_minor: number
   notes: string | null
+  /** PRD-137 §1: the declared property-legacy sub-record, when the asset
+   *  is property — null otherwise. */
+  legacy?: PropertyLegacy | null
   created_at: string
   updated_at: string
 }
