@@ -1320,6 +1320,12 @@ function CampaignsPanel() {
                       <p className="text-xs text-ink-tertiary">
                         sent {c.stats ? `${c.stats.sent}/${c.stats.targeted}` : ''}
                         {c.stats?.failed ? <span className="text-danger"> ({c.stats.failed} failed)</span> : ''}
+                        {c.engagement && (
+                          <span>
+                            {' · '}{c.engagement.opened} opened · {c.engagement.clicked} clicked
+                            {c.engagement.bounced ? <span className="text-danger"> · {c.engagement.bounced} bounced</span> : ''}
+                          </span>
+                        )}
                       </p>
                     ) : (
                       <ReasonAction

@@ -114,6 +114,7 @@ import { registerFamilyCashflowRoutes } from './routes/family-cashflow.js'
 import { registerFamilyAssetRoutes } from './routes/family-assets.js'
 import { registerLeadRoutes } from './routes/leads.js'
 import { registerShareRoutes } from './routes/share.js'
+import { registerSendgridWebhookRoutes } from './routes/webhooks-sendgrid.js'
 import { sendOpsAlert } from './lib/ops-alerts.js'
 
 // Inject the connector schema registry so the engine can validate event schema compatibility.
@@ -1479,6 +1480,7 @@ if (workflowDb) {
   registerFamilyAssetRoutes(app, workflowDb)
   await registerLeadRoutes(app, workflowDb)
   await registerShareRoutes(app)
+  registerSendgridWebhookRoutes(app, workflowDb)
   await registerFamilyFinancialProfileRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerLifeEventRoutes(app, workflowDb)
   registerPushRoutes(app, workflowDb, deliveryRouter)

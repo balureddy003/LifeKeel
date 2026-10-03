@@ -3201,6 +3201,9 @@ export interface OperatorCampaign {
   created_at: string
   sent_at?: string
   stats?: { targeted: number; sent: number; failed: number }
+  /** SendGrid event-webhook rollup — null until events arrive (or webhook
+   *  unconfigured). */
+  engagement?: { opened: number; clicked: number; bounced: number } | null
 }
 
 export function fetchOperatorCampaigns(): Promise<{ campaigns: OperatorCampaign[] }> {

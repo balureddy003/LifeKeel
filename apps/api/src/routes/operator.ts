@@ -17,6 +17,7 @@ import { getRunbooks } from '../operator/runbooks.js'
 import { listAutopilotRules, getAutopilotRule, NEVER_AUTONOMOUS, PROPOSAL_HANDLERS, type AutopilotActionDoc } from '../operator/autopilot.js'
 import { runWeeklyDigest } from '../operator/weekly-digest.js'
 import { campaignsCol, resolveAudience, sendCampaign, type CampaignDoc } from '../marketing/campaigns.js'
+import { lifecycleSendsCol } from '../marketing/lifecycle-emails.js'
 import type { SupportCaseDoc, SupportMessage } from './support.js'
 
 const QuerySchema = z.object({
@@ -1248,7 +1249,21 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       .sort({ created_at: -1 })
       .limit(100)
       .toArray()
-    return { campaigns: list }
+    // Roll the SendGrid event-webhook engagement up per campaign — the ledger
+    // rows carry campaign_id, so opens/clicks/bounces join back exactly.
+    const engagement = await lifecycleSendsCol(db).aggregate<{
+      _id: string; opened: number; clicked: number; bounced: number
+    }>([
+      { $match: { campaign_id: { $in: list.map((c) => c.id) } } },
+      { $group: {
+        _id: '$campaign_id',
+        opened: { $sum: { $cond: [{ $ifNull: ['$opened_at', false] }, 1, 0] } },
+        clicked: { $sum: { $cond: [{ $ifNull: ['$clicked_at', false] }, 1, 0] } },
+        bounced: { $sum: { $cond: [{ $ifNull: ['$bounced', false] }, 1, 0] } },
+      } },
+    ]).toArray()
+    const byId = new Map(engagement.map((e) => [e._id, e]))
+    return { campaigns: list.map((c) => ({ ...c, engagement: byId.get(c.id) ?? null })) }
   })
 
   app.post('/operator/campaigns', { preHandler: requireOperator(db, 'marketing.manage') }, async (request, reply) => {

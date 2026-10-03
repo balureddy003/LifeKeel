@@ -180,7 +180,7 @@ function renderBody(campaign: CampaignDoc, r: Recipient, appUrl: string): string
  *  One-shot — status 'sent' campaigns 409 upstream. */
 export async function sendCampaign(db: Db, campaign: CampaignDoc, opts: { appUrl?: string } = {}): Promise<CampaignDoc['stats']> {
   ensureCampaignIndexes(db)
-  ensureLifecycleIndexes(db) // the ledger's unique key index is the dedup lock
+  await ensureLifecycleIndexes(db) // the ledger's unique key index is the dedup lock
   if ((await getPlatformConfig(db)).marketing_paused) {
     throw Object.assign(new Error('marketing_paused is set — campaign sends are halted'), { statusCode: 409 })
   }
@@ -192,6 +192,7 @@ export async function sendCampaign(db: Db, campaign: CampaignDoc, opts: { appUrl
     const key = `campaign:${campaign.id}:${r.id}`
     const claimed = await lifecycleSendsCol(db).insertOne({
       id: randomUUID(), key, sequence: 'campaign', step: campaign.name.slice(0, 80),
+      campaign_id: campaign.id,
       recipient: r.id, email: r.email, status: 'sent', created_at: new Date(),
     }).then(() => true).catch(() => false)
     if (!claimed) continue // already mailed by a prior/racing send
@@ -199,7 +200,7 @@ export async function sendCampaign(db: Db, campaign: CampaignDoc, opts: { appUrl
       const unsub = r.kind === 'lead'
         ? `${appUrl}/leads/unsubscribe?id=${encodeURIComponent(r.id)}&sig=${unsubscribeToken(r.id)}`
         : userUnsubUrl(appUrl, r.id)
-      await sendEmail(r.email, campaign.subject, renderBody(campaign, r, appUrl), unsub)
+      await sendEmail(r.email, campaign.subject, renderBody(campaign, r, appUrl), unsub, { lk: key })
       stats.sent++
     } catch (err) {
       stats.failed++

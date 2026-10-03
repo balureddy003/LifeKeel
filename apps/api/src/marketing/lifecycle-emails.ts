@@ -49,15 +49,31 @@ interface LifecycleSendDoc {
   status: 'sent' | 'skipped' | 'failed'
   error?: string
   created_at: Date
+  /** Set on campaign claims so engagement can roll up per campaign. */
+  campaign_id?: string
+  // Engagement, filled in by the SendGrid event webhook (POST /webhooks/sendgrid).
+  delivered_at?: Date
+  opened_at?: Date
+  open_count?: number
+  clicked_at?: Date
+  click_count?: number
+  bounced?: boolean
+  spam_reported?: boolean
 }
 
 export function lifecycleSendsCol(db: Db) {
   return db.collection<LifecycleSendDoc>('lifecycle_sends')
 }
 
-export function ensureLifecycleIndexes(db: Db): void {
-  lifecycleSendsCol(db).createIndex({ key: 1 }, { unique: true }).catch(() => {})
-  lifecycleSendsCol(db).createIndex({ created_at: -1 }).catch(() => {})
+// Returns a promise — the unique `key` index IS the dedup lock, so callers
+// that are about to insert must await this or a racing claim can slip
+// through before the index exists (createIndex is async even in tests).
+export function ensureLifecycleIndexes(db: Db): Promise<void> {
+  const col = lifecycleSendsCol(db)
+  return Promise.all([
+    col.createIndex({ key: 1 }, { unique: true }),
+    col.createIndex({ created_at: -1 }),
+  ]).then(() => undefined).catch(() => {})
 }
 
 // ── Unsubscribe tokens ─────────────────────────────────────────────────────
@@ -105,7 +121,15 @@ function getFromEmail(): string {
   return process.env['SENDGRID_FROM_EMAIL'] ?? 'hello@agentoak.ai'
 }
 
-export async function sendEmail(to: string, subject: string, html: string, unsubLink?: string): Promise<void> {
+export async function sendEmail(
+  to: string,
+  subject: string,
+  html: string,
+  unsubLink?: string,
+  /** `lk` = the lifecycle_sends ledger key; SendGrid echoes it back on every
+   *  event webhook so opens/clicks/bounces join to the exact send. */
+  customArgs?: Record<string, string>,
+): Promise<void> {
   const apiKey = process.env['SENDGRID_API_KEY']
   if (!apiKey) {
     log.warn({ to, subject }, 'No SENDGRID_API_KEY — skipping lifecycle email')
@@ -117,6 +141,11 @@ export async function sendEmail(to: string, subject: string, html: string, unsub
     from: { email: getFromEmail(), name: 'Agent Oak' },
     subject,
     html,
+    trackingSettings: {
+      openTracking: { enable: true },
+      clickTracking: { enable: true },
+    },
+    ...(customArgs ? { customArgs } : {}),
     ...(unsubLink ? { headers: { 'List-Unsubscribe': `<${unsubLink}>` } } : {}),
   })
 }
@@ -464,7 +493,7 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
 /** One lifecycle pass — collects due steps, claims each in the ledger, sends.
  *  Honors marketing_paused globally. Returns the claimed rows. */
 export async function runLifecycleSweep(db: Db, opts: { maxPerSweep?: number; appUrl?: string } = {}): Promise<LifecycleSendDoc[]> {
-  ensureLifecycleIndexes(db)
+  await ensureLifecycleIndexes(db)
   if ((await getPlatformConfig(db)).marketing_paused) {
     log.info({}, 'marketing_paused — lifecycle sweep skipped')
     return []
@@ -485,7 +514,7 @@ export async function runLifecycleSweep(db: Db, opts: { maxPerSweep?: number; ap
       continue // dedup — another sweep already claimed this send
     }
     try {
-      await sendEmail(job.email, job.subject, job.html, job.leadId ? unsubUrl(appUrl, job.leadId) : undefined)
+      await sendEmail(job.email, job.subject, job.html, job.leadId ? unsubUrl(appUrl, job.leadId) : undefined, { lk: job.key })
       // First nurture touch promotes the lead out of "new".
       if (job.leadId) {
         await db.collection('leads').updateOne(
