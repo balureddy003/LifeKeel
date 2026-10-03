@@ -116,7 +116,8 @@ Concretely:
 - `apps/api`'s integration tests that hit a real MongoDB/Redis (currently
   just `ml-tenant-isolation.test.ts`) will fail locally without one running —
   that's expected, not a regression. CI provisions both via service
-  containers (`.github/workflows/ci.yml`).
+  containers (`.github/workflows/ci.yml`). To run MongoDB/Redis locally and every other CI check (boot smoke test, integration
+  tests, image builds), see [docs/local-testing.md](docs/local-testing.md).
 
 ## PRD → production, using Claude Code
 
