@@ -116,9 +116,13 @@ import { registerLeadRoutes } from './routes/leads.js'
 import { registerShareRoutes } from './routes/share.js'
 import { registerSendgridWebhookRoutes } from './routes/webhooks-sendgrid.js'
 import { sendOpsAlert } from './lib/ops-alerts.js'
+import { registerFamilySignalSchemas } from './lib/family-signal-schemas.js'
 
 // Inject the connector schema registry so the engine can validate event schema compatibility.
 setSchemaRegistry(connectorSchemaRegistry)
+// Register family.* signal schemas so persistSignal's validation doesn't
+// log "No schema registered" for every financial-profile evaluation.
+registerFamilySignalSchemas()
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '../../..')

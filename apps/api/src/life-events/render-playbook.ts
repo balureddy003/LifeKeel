@@ -29,6 +29,13 @@ export interface PlaybookStep {
   contact: boolean
   /** Real phone/email Oak has on file for this step, when a matching policy states one — see resolveStepContacts. */
   contacts?: StepContact[]
+  /**
+   * The family's data already covers this step's concern — e.g. income
+   * protection is on file for the "check income protection" step. Doesn't
+   * mean the step is done (the family may still want to read it), but the
+   * UI can show it differently from a genuinely-open action.
+   */
+  covered?: boolean
 }
 
 export interface Playbook {
@@ -356,6 +363,51 @@ function resolveStepContacts(
   return []
 }
 
+/**
+ * Whether the family's data already covers this step's concern — the step
+ * still renders (the family should see what's on file), but marked so the
+ * UI can show "already on file" rather than "needs action."
+ */
+function isStepCovered(
+  eventType: LifeEventType,
+  stepId: string,
+  profile: FinancialProfile,
+  affectedMemberId: string | undefined,
+): boolean {
+  const earner = resolveEarner(profile, affectedMemberId)
+
+  if (eventType === 'job_loss') {
+    if (stepId === 'income_protection') return earner.income_protection_monthly_minor > 0
+    if (stepId === 'notify_mortgage_lender') return profile.household.mortgage_outstanding_minor <= 0
+  }
+  if (eventType === 'bereavement') {
+    if (stepId === 'mortgage_protection_check') {
+      const { mortgage_outstanding_minor, life_cover_minor } = profile.household
+      return mortgage_outstanding_minor <= 0 || life_cover_minor >= mortgage_outstanding_minor
+    }
+  }
+  if (eventType === 'disability') {
+    if (stepId === 'check_cover') {
+      return earner.income_protection_monthly_minor > 0 || profile.policies.some((p) => p.type === 'critical_illness')
+    }
+  }
+  if (eventType === 'medical') {
+    if (stepId === 'check_health_cover') {
+      return profile.policies.some((p) => p.type === 'health' || p.type === 'critical_illness')
+    }
+  }
+  if (eventType === 'car' && stepId === 'check_car_insurance') {
+    return profile.policies.some((p) => p.type === 'car')
+  }
+  if (eventType === 'property' && stepId === 'check_home_cover') {
+    return profile.policies.some((p) => p.type === 'home')
+  }
+  if (eventType === 'travel' && stepId === 'check_travel_cover') {
+    return profile.policies.some((p) => p.type === 'travel')
+  }
+  return false
+}
+
 function renderComputedStep(
   eventType: LifeEventType,
   stepId: string,
@@ -383,6 +435,7 @@ export function renderPlaybook(
     intro: raw.intro,
     steps: raw.steps.map((step) => {
       const contacts = step.contact ? resolveStepContacts(eventType, step.id, profile, affectedMemberId) : []
+      const covered = step.computed ? isStepCovered(eventType, step.id, profile, affectedMemberId) : false
       return {
         id: step.id,
         title: step.title,
@@ -391,6 +444,7 @@ export function renderPlaybook(
           : (step.body ?? '').trim(),
         contact: step.contact,
         ...(contacts.length > 0 ? { contacts } : {}),
+        ...(covered ? { covered } : {}),
       }
     }),
   }

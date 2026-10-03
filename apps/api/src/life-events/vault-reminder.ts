@@ -36,7 +36,7 @@ const DETECTOR_ID = 'family_vault_reminder'
 const RULE_ID = 'life_event_vault_reminder'
 
 function getFromEmail(): string {
-  return process.env['SENDGRID_FROM_EMAIL'] ?? 'accounts@kairos.dev'
+  return process.env['SENDGRID_FROM_EMAIL'] ?? 'accounts@agentoak.ai'
 }
 
 async function sendVaultReminderEmail(

@@ -22,7 +22,7 @@ function isDiagramBlock(className: string | undefined, text: string): boolean {
   return !lang && text.includes('\n') && DIAGRAM_START.test(text.trim())
 }
 
-const SITE_URL = 'https://kairos-trellis.web.app'
+const SITE_URL = 'https://agent-oak.ai'
 
 /**
  * Static export means every /blog/<slug> serves the same placeholder HTML,

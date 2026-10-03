@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation'
 import { GUIDES, getGuide, guideQuizUrl, QUIZ_CTA } from '../guides-data'
 import { GuideTracker } from './GuideTracker'
 
-const SITE_URL = 'https://kairos-trellis.web.app'
+const SITE_URL = 'https://agent-oak.ai'
 
 // Real static generation — every guide is a build-time constant, so unlike
 // /blog (dynamic posts behind a placeholder rewrite) each guide emits its

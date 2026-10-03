@@ -17,7 +17,7 @@ action on a family's behalf without a human approving each step.
 - "What happens if...?" scenarios — a specific answer built from what the
   family has told Oak, not a canned response.
 - Family Readiness Score — a snapshot across protection, wealth, goals, and
-  savings, read from the family's own data: https://kairos-trellis.web.app/readiness
+  savings, read from the family's own data: https://agent-oak.ai/readiness
 - Document upload and secure storage for insurance policies, pension
   statements, and other financial documents.
 - Connect any email provider (Gmail, Outlook, Yahoo, iCloud, or a custom
@@ -44,9 +44,9 @@ action on a family's behalf without a human approving each step.
 
 ## Pages
 
-- Marketing / product overview: https://kairos-trellis.web.app/
-- Family Readiness Score (free quiz, no signup): https://kairos-trellis.web.app/readiness
-- Blog (plain-language explainers): https://kairos-trellis.web.app/blog
-- Terms: https://kairos-trellis.web.app/terms
-- Privacy: https://kairos-trellis.web.app/privacy
-- Support: https://kairos-trellis.web.app/support
+- Marketing / product overview: https://agent-oak.ai/
+- Family Readiness Score (free quiz, no signup): https://agent-oak.ai/readiness
+- Blog (plain-language explainers): https://agent-oak.ai/blog
+- Terms: https://agent-oak.ai/terms
+- Privacy: https://agent-oak.ai/privacy
+- Support: https://agent-oak.ai/support

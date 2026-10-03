@@ -8,11 +8,11 @@ import type { Metadata } from 'next'
 export const metadata: Metadata = {
   title: 'From Agent Oak — plain-language readiness explainers',
   description: 'Plain-language explainers behind what Oak checks for your family — job loss, medical bills, coverage gaps, and the stuff that surprises households.',
-  alternates: { canonical: 'https://kairos-trellis.web.app/blog/' },
+  alternates: { canonical: 'https://agent-oak.ai/blog/' },
   openGraph: {
     title: 'From Agent Oak — plain-language readiness explainers',
     description: 'Plain-language explainers behind what Oak checks for your family.',
-    url: 'https://kairos-trellis.web.app/blog/',
+    url: 'https://agent-oak.ai/blog/',
     type: 'website',
   },
 }

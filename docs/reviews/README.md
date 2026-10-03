@@ -51,3 +51,41 @@ extraction → profile bridge) had already shipped before the pass — see
    reminders all ship — while the real gaps are member-level reasoning,
    the composite readiness score, time-shifted simulation, and the Action
    Network. Produced 2026-09-28.
+7. [market-positioning-october-2026.md](market-positioning-october-2026.md) —
+   comprehensive market positioning and competitive landscape analysis
+   updating the September deep-dive: maps every competitor category (AI
+   financial advisors, family vaults, financial digital twins, insurance
+   gap tools, crisis support, UK-specific), identifies LifeOS as the
+   closest new direct competitor (£100/mo UK AI family office), and
+   recommends positioning Agent Oak as the "family crisis readiness
+   platform" in the proactive + protection quadrant. Produced 2026-10-03.
+8. [built-vs-market-and-innovation-flywheel-2026-10.md](built-vs-market-and-innovation-flywheel-2026-10.md) —
+   bridges document 7's external landscape with document 6's internal
+   inventory: scores every positioning claim against what's actually
+   built (continuous detection 7/10, whole-family 8/10, proactive 6/10,
+   crisis-native 8/10, neutral 9/10), maps 14 gaps by competitive
+   impact, designs a 5-stage innovation flywheel (Data Depth → Detection
+   Breadth → Insight Value → Trust & Engagement → Growth Loop) with a
+   sequenced acceleration plan, competitive response playbook, and a
+   full capability-vs-competitor matrix. Produced 2026-10-03.
+9. [synthetic-flow-validation-2026-10.md](synthetic-flow-validation-2026-10.md) —
+   end-to-end validation of every major product flow against a running
+   local stack (API + Web + MongoDB Atlas + Redis Cloud + Azure OpenAI).
+   Tests 17 flows via real HTTP requests: readiness quiz, signup, family
+   roster, financial profile + detector evaluation (9 insights from 5
+   detectors), readiness score, Ask Oak, scenario simulation, life-event
+   playbooks, vault, document OCR, insight approval gate, family sharing,
+   member twin/agent, assets, cashflow. Finds 4 bugs (persisted scenario
+   timeline zeroed, duplicate roster on join-approve, context note not
+   serialized, mock data leaking into production via CommandPalette/
+   AIAnswerCard/assets-data). Documents missing production configurations
+   (Stripe, SendGrid, encryption key). Includes a UX/UI innovation audit
+   scoring the frontend against competitors (overall 8/10 — persona-
+   adaptive UI, emergency mode, glass design system, and conversational
+   onboarding are differentiators; data visualization and visual
+   distinctiveness are the biggest gaps). Includes a remediation table
+   tracking fixes: join-request roster dedup, mock-data purge, Kairos
+   branding cleanup, time-based proactive nudges (age milestones +
+   policy renewals), adaptive playbook covered-steps, family signal
+   schema registration, scenario timeline chart, readiness history
+   sparkline, and cashflow visualization. Produced 2026-10-03.

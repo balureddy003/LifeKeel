@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useState } from 'react'
+import { motion } from 'framer-motion'
 import { Plus, Trash2, TrendingDown, TrendingUp, Wallet, Loader2 } from 'lucide-react'
 import { PageHeader, GlassCard, Money, ListSection, ListRow } from '@/components/Glass'
 import { useToast } from '@/components/Toast'
@@ -82,10 +83,69 @@ export default function CashflowPage() {
               />
             </div>
           </div>
+
+          {/* Proportional in/out bar — the visual "how much goes where" */}
+          {s.monthly_inflow_minor > 0 || s.monthly_outflow_minor > 0 ? (
+            <div className="space-y-1.5">
+              <div className="flex h-3 rounded-full overflow-hidden bg-tint/[0.05]">
+                <motion.div
+                  className="bg-success rounded-l-full"
+                  initial={{ width: 0 }}
+                  animate={{
+                    width: `${s.monthly_inflow_minor + s.monthly_outflow_minor > 0
+                      ? Math.max(2, (s.monthly_inflow_minor / (s.monthly_inflow_minor + s.monthly_outflow_minor)) * 100)
+                      : 50}%`,
+                  }}
+                  transition={{ duration: 0.8, ease: 'easeOut' }}
+                />
+                <motion.div
+                  className="bg-danger/60 rounded-r-full"
+                  initial={{ width: 0 }}
+                  animate={{
+                    width: `${s.monthly_inflow_minor + s.monthly_outflow_minor > 0
+                      ? Math.max(2, (s.monthly_outflow_minor / (s.monthly_inflow_minor + s.monthly_outflow_minor)) * 100)
+                      : 50}%`,
+                  }}
+                  transition={{ duration: 0.8, ease: 'easeOut', delay: 0.2 }}
+                />
+              </div>
+              <div className="flex justify-between text-[10px] text-ink-tertiary">
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-success inline-block" />
+                  {Math.round((s.monthly_inflow_minor / (s.monthly_inflow_minor + s.monthly_outflow_minor)) * 100)}% in
+                </span>
+                <span className="flex items-center gap-1">
+                  {Math.round((s.monthly_outflow_minor / (s.monthly_inflow_minor + s.monthly_outflow_minor)) * 100)}% out
+                  <span className="w-2 h-2 rounded-full bg-danger/60 inline-block" />
+                </span>
+              </div>
+            </div>
+          ) : null}
+
           {s.runway_months !== null && (
-            <p className="text-xs text-ink-secondary text-center pt-1 border-t border-tint/10">
-              At this burn, your emergency savings cover about <strong>{s.runway_months} months</strong>.
-            </p>
+            <div className="pt-1 border-t border-tint/10">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Wallet size={12} className="text-ink-tertiary" />
+                <span className="text-xs text-ink-secondary">
+                  Emergency savings cover <strong>{s.runway_months} months</strong>
+                </span>
+              </div>
+              {/* Runway gauge — 0–12 month scale */}
+              <div className="h-2 rounded-full bg-tint/[0.05] overflow-hidden">
+                <motion.div
+                  className={`h-full rounded-full ${s.runway_months >= 6 ? 'bg-success' : s.runway_months >= 3 ? 'bg-warning' : 'bg-danger'}`}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.min(100, (s.runway_months / 12) * 100)}%` }}
+                  transition={{ duration: 0.8, ease: 'easeOut', delay: 0.3 }}
+                />
+              </div>
+              <div className="flex justify-between text-[10px] text-ink-tertiary mt-1">
+                <span>0</span>
+                <span>3 mo</span>
+                <span>6 mo</span>
+                <span>12+ mo</span>
+              </div>
+            </div>
           )}
           {s.net_minor >= 0 && data!.entries.length > 0 && (
             <p className="text-xs text-ink-tertiary text-center pt-1 border-t border-tint/10">

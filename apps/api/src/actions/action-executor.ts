@@ -380,7 +380,7 @@ export class ActionExecutor {
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         personalizations: [{ to: [{ email: recipientEmail }] }],
-        from: { email: 'insights@kairos.dev', name: 'Kairos' },
+        from: { email: 'insights@agentoak.ai', name: 'Agent Oak' },
         subject: `Action recommended: ${intent.label}`,
         content: [{
           type: 'text/plain',
@@ -424,7 +424,7 @@ export class ActionExecutor {
     const res = await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ properties: { kairos_insight: insight.hypothesis, kairos_insight_at: new Date().toISOString() } }),
+      body: JSON.stringify({ properties: { oak_insight: insight.hypothesis, oak_insight_at: new Date().toISOString() } }),
     })
     if (!res.ok) throw new Error(`HubSpot ${res.status}: ${await res.text()}`)
   }
@@ -439,6 +439,6 @@ export class ActionExecutor {
 
   private async getTenantContactEmail(tenantId: string): Promise<string> {
     const settings = await this.db.collection('tenant_settings').findOne({ tenant_id: tenantId }) as { contact_email?: string } | null
-    return settings?.contact_email ?? `ops+${tenantId}@kairos.dev`
+    return settings?.contact_email ?? `ops+${tenantId}@agentoak.ai`
   }
 }

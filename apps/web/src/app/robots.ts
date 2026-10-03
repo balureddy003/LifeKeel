@@ -1,7 +1,7 @@
 import type { MetadataRoute } from 'next'
 
 // Same base as layout.tsx / sitemap.ts.
-const SITE_URL = 'https://kairos-trellis.web.app'
+const SITE_URL = 'https://agent-oak.ai'
 
 // Required under output:'export' — the file is generated at build time.
 export const dynamic = 'force-static'

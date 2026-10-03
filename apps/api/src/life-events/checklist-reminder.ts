@@ -54,7 +54,7 @@ interface LifeEventSignalDoc {
 }
 
 function getFromEmail(): string {
-  return process.env['SENDGRID_FROM_EMAIL'] ?? 'accounts@kairos.dev'
+  return process.env['SENDGRID_FROM_EMAIL'] ?? 'accounts@agentoak.ai'
 }
 
 async function sendChecklistReminderEmail(

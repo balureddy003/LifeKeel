@@ -29,6 +29,9 @@ import { ESTATE_VAULT_CATEGORY } from './documents.js'
 import { computeReadiness, type ReadinessComponentKey } from '../readiness/score.js'
 import { FinancialProfileSchema, type FinancialProfile } from './family-financial-profile.js'
 
+const HISTORY_COLLECTION = 'family_readiness_history'
+const HISTORY_LIMIT = 90
+
 const FAMILY_DETECTORS = new Set([
   'family_protection_gap',
   'family_emergency_fund_adequacy',
@@ -114,6 +117,31 @@ export function registerFamilyReadinessRoutes(app: FastifyInstance, db: Db): voi
         .map((i) => ({ id: i.id, rule_id: i.rule_id, hypothesis: i.hypothesis, confidence: i.confidence })),
     }))
 
+    // Snapshot the score for trend history — one per day max (upsert on
+    // the date boundary), only when the score is real. This creates the
+    // "how has your readiness changed" data the dashboard sparkline needs
+    // without a separate cron or write path.
+    if (result.score !== null && insights_evaluated_at) {
+      const today = new Date().toISOString().slice(0, 10)
+      void db.collection(HISTORY_COLLECTION).updateOne(
+        { tenant_id, date: today },
+        {
+          $set: {
+            tenant_id,
+            date: today,
+            score: result.score,
+            components: Object.fromEntries(
+              result.components
+                .filter((c) => c.score !== null && !c.gated)
+                .map((c) => [c.key, c.score]),
+            ),
+            computed_at: new Date(),
+          },
+        },
+        { upsert: true },
+      ).catch(() => {}) // history is best-effort, never block the read
+    }
+
     return {
       score: result.score,
       // A profile saved by wizard autosave but never evaluated doesn't
@@ -124,5 +152,17 @@ export function registerFamilyReadinessRoutes(app: FastifyInstance, db: Db): voi
       components,
       insights: openInsights,
     }
+  })
+
+  /** GET /family/readiness/history — score snapshots for the trend sparkline. */
+  app.get('/family/readiness/history', async (req) => {
+    const { tenant_id } = req.authContext
+    const snapshots = await db
+      .collection(HISTORY_COLLECTION)
+      .find({ tenant_id }, { projection: { _id: 0, date: 1, score: 1, components: 1, computed_at: 1 } })
+      .sort({ date: -1 })
+      .limit(HISTORY_LIMIT)
+      .toArray()
+    return { history: snapshots.reverse() } // oldest → newest for charting
   })
 }

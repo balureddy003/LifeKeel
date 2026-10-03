@@ -18,7 +18,7 @@ import { createLogger } from '@agentoak/platform'
 const log = createLogger({ service: 'auth-email', version: '0.0.0' })
 
 function getFromEmail(): string {
-  return process.env['SENDGRID_FROM_EMAIL'] ?? 'accounts@kairos.dev'
+  return process.env['SENDGRID_FROM_EMAIL'] ?? 'accounts@agentoak.ai'
 }
 
 // Sent on signup, email change, and resend-verification. The token-bearing

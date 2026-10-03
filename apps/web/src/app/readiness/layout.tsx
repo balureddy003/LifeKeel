@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Family Readiness Check — Agent Oak',
     description: 'Six quick questions, no signup. See your Family Readiness Check result in about a minute.',
-    url: 'https://kairos-trellis.web.app/readiness',
+    url: 'https://agent-oak.ai/readiness',
     type: 'website',
   },
   twitter: {

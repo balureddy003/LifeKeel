@@ -3,15 +3,14 @@
 import { useEffect, useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { Home, Inbox, Users, AlertTriangle, Settings, Bot, Siren, Crown, Shield, Baby, Accessibility, Search, CornerDownLeft, ArrowUpDown, User, Heart, Wallet, Target, PiggyBank, House, TrendingUp, Landmark, Map, Upload, Plug } from 'lucide-react'
+import { Home, Inbox, Users, AlertTriangle, Settings, Bot, Siren, Crown, Shield, Baby, Accessibility, Search, CornerDownLeft, ArrowUpDown, User, Heart, Wallet, Target, PiggyBank, Map, Upload, Plug } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { useMode } from '@/lib/mode-context'
 import { haptic } from '@/lib/haptics'
 import { useFocusTrap } from '@/lib/useFocusTrap'
-import { FAMILY_MEMBERS } from '@/lib/data'
 import { LIFE_EVENTS } from '@/lib/life-data'
-import { ASSETS } from '@/lib/assets-data'
+import { useAuth } from '@/lib/auth-context'
 
 interface Command {
   id: string
@@ -25,13 +24,14 @@ interface Command {
 export function CommandPalette() {
   const { cmdkOpen, setCmdkOpen } = useAppStore()
   const { setMode, activateEmergency } = useMode()
+  const { family } = useAuth()
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const router = useRouter()
   const containerRef = useFocusTrap<HTMLDivElement>(cmdkOpen)
 
   const contentCommands: Command[] = useMemo(() => [
-    ...FAMILY_MEMBERS.map((m) => ({
+    ...(family?.members ?? []).map((m) => ({
       id: `member-${m.id}`,
       label: m.name,
       icon: User,
@@ -45,18 +45,11 @@ export function CommandPalette() {
       section: 'content' as const,
       action: () => router.push(`/events/${e.id}`),
     })),
-    ...Object.values(ASSETS).map((a) => ({
-      id: `asset-${a.id}`,
-      label: a.label,
-      icon: a.icon === 'House' ? House : a.icon === 'TrendingUp' ? TrendingUp : Landmark,
-      section: 'content' as const,
-      action: () => router.push(`/asset/${a.id}`),
-    })),
     { id: 'health-protection', label: 'Health: Protection', icon: Heart, section: 'content' as const, action: () => router.push('/health/protection') },
     { id: 'health-wealth', label: 'Health: Wealth', icon: Wallet, section: 'content' as const, action: () => router.push('/health/wealth') },
     { id: 'health-goals', label: 'Health: Goals', icon: Target, section: 'content' as const, action: () => router.push('/health/goals') },
     { id: 'health-savings', label: 'Health: Savings', icon: PiggyBank, section: 'content' as const, action: () => router.push('/health/savings') },
-  ], [router])
+  ], [router, family?.members])
 
   const commands: Command[] = [
     { id: 'home', label: 'Go to Home', icon: Home, shortcut: 'G H', section: 'navigate', action: () => router.push('/') },

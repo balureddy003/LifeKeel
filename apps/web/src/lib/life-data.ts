@@ -1,7 +1,5 @@
 import type { LifeEvent } from './modes'
 
-export { FAMILY_MEMBERS } from './data'
-
 export const LIFE_EVENTS: LifeEvent[] = [
   {
     id: 'bereavement',

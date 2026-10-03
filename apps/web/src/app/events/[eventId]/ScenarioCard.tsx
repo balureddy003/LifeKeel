@@ -16,6 +16,7 @@
 import { useEffect, useState } from 'react'
 import { CheckCircle2, Loader2, Trash2 } from 'lucide-react'
 import { GlassCard, GlassButton, Money, MoneyText } from '@/components/Glass'
+import { ScenarioTimeline } from '@/components/ScenarioTimeline'
 import { haptic } from '@/lib/haptics'
 import {
   fetchFamilyGroup,
@@ -331,16 +332,7 @@ export default function EventScenarioCard({ eventId }: { eventId: string }) {
           <div className="space-y-2">
             <MoneyText text={template.narrate(result, sel)} className="text-sm text-ink-secondary leading-relaxed" />
             {result.timeline && result.timeline.length > 1 && (
-              <div className="flex items-center gap-1.5 text-xs text-ink-tertiary flex-wrap">
-                {result.timeline.map((p, i) => (
-                  <span key={p.atMonth} className="flex items-center gap-1.5">
-                    {i > 0 && <span aria-hidden>→</span>}
-                    <span>
-                      mo {p.atMonth}: <Money value={gbp(p.savingsMinor)} />
-                    </span>
-                  </span>
-                ))}
-              </div>
+              <ScenarioTimeline timeline={result.timeline} fundDepletedAtMonth={result.fundDepletedAtMonth} />
             )}
           </div>
         ) : (

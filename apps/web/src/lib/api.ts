@@ -349,6 +349,17 @@ export async function fetchFamilyReadiness(): Promise<FamilyReadiness | null> {
   return apiFetch<FamilyReadiness | null>('/family/readiness', null)
 }
 
+export interface ReadinessHistoryPoint {
+  date: string
+  score: number
+  components: Record<string, number>
+}
+
+export async function fetchReadinessHistory(): Promise<ReadinessHistoryPoint[]> {
+  const res = await apiFetch<{ history: ReadinessHistoryPoint[] }>('/family/readiness/history', { history: [] })
+  return res.history
+}
+
 // Starts from 100 (no known gaps) and subtracts a confidence-weighted
 // penalty per currently-open insight — kept only as the offline fallback
 // when /family/readiness can't be reached, since it still beats showing
@@ -1957,6 +1968,10 @@ export interface LifeEventPlaybookStep {
   contacts?: LifeEventStepContact[]
   // insight cards use (PRD-103) — see prepareLifeEventStepDraft below.
   contact: boolean
+  // The family's data already covers this step's concern — the step still
+  // renders (transparency about what's on file), but the UI shows it
+  // differently from a genuinely-open action.
+  covered?: boolean
 }
 
 export interface LifeEventPlaybook {

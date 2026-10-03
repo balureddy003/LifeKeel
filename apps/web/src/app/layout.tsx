@@ -28,7 +28,8 @@ const DESCRIPTION = 'A guided response plan for job loss, medical crises, and th
 // kairos-trellis is this site's actual Firebase Hosting target (see
 // apps/web/.firebaserc) — used as a real, verifiable base rather than a
 // guessed custom domain, since none is configured anywhere in this repo.
-const SITE_URL = 'https://kairos-trellis.web.app'
+// TODO: replace with the production domain when it's configured.
+const SITE_URL = 'https://agent-oak.ai'
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

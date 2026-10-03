@@ -6,8 +6,12 @@
   "type": "module",
   "main": "./dist/server.js",
   "scripts": {
+    "build:workspace-deps": "pnpm --filter \"@agentoak/api^...\" build",
+    "predev": "pnpm build:workspace-deps",
     "dev": "set -a; [ ! -f ../../.env ] || . ../../.env; set +a; tsx src/server.ts",
+    "predev:watch": "pnpm build:workspace-deps",
     "dev:watch": "set -a; [ ! -f ../../.env ] || . ../../.env; set +a; tsx watch src/server.ts",
+    "predebug": "pnpm build:workspace-deps",
     "debug": "set -a; [ ! -f ../../.env ] || . ../../.env; set +a; tsx watch --inspect=9229 src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "set -a; [ ! -f ../../.env ] || . ../../.env; set +a; node dist/server.js",

@@ -10,6 +10,7 @@ import { LifeTimeline } from '@/components/LifeTimeline'
 import { ScoreRing, GlassCard, PageHeader, IfAdvanced, Skeleton, Money } from '@/components/Glass'
 import { TrustLadder, MemoryPrompts } from '@/components/Intelligence'
 import { HealthSummary } from '@/components/HealthSummary'
+import { ReadinessSparkline } from '@/components/ReadinessSparkline'
 import { useMode } from '@/lib/mode-context'
 import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@/lib/useFamilyData'
 import { useAppStore } from '@/lib/store'
@@ -802,6 +803,7 @@ export default function HomePage() {
                       <span className="text-xs font-semibold text-family-400 group-active:opacity-70">Profile {profileCompleteness}% complete</span>
                     </Link>
                   )}
+                  {hasLiveData && <ReadinessSparkline />}
                 </div>
               </>
             )}

@@ -337,8 +337,15 @@ export default function LifeEventPlaybookClient() {
                     {done && <Check size={14} color="#08080c" />}
                   </motion.div>
                   <div className="flex-1 min-w-0">
-                    <div className={`text-sm font-semibold ${done ? 'text-ink-tertiary line-through' : 'text-ink-primary'}`}>
-                      {step.title}
+                    <div className="flex items-center gap-2">
+                      <div className={`text-sm font-semibold ${done ? 'text-ink-tertiary line-through' : 'text-ink-primary'}`}>
+                        {step.title}
+                      </div>
+                      {step.covered && !done && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-success/10 text-success border border-success/20 flex-shrink-0">
+                          On file
+                        </span>
+                      )}
                     </div>
                     <p className="text-sm text-ink-secondary leading-relaxed mt-1">{step.body}</p>
                   </div>

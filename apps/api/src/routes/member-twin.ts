@@ -316,6 +316,23 @@ export interface MemberAgentResult {
  *  they're either fine (>80) or genuinely nothing to say (null). */
 const ATTENTION_THRESHOLD = 80
 
+// Time-based nudge thresholds — the proactive "always-on" half of the
+// member agent. These fire based on time passing, not on what the data
+// says right now: an approaching 18th birthday, a stale profile, a
+// renewal coming due. Time nudges are only added when there isn't already
+// an insight/attention nudge about the same subject (the detector system
+// is still the primary source of truth; these are the "nothing changed
+// but time passed" catch-all).
+const AGE_MILESTONE_MONTHS_AHEAD = 6
+const AGE_MILESTONES: Array<{ from: number; to: number; label: string; detail: string }> = [
+  { from: 17, to: 18, label: 'Adulthood approaching', detail: 'Their education fund and any child-specific arrangements may transition. Worth reviewing what changes at 18.' },
+  { from: 15, to: 16, label: 'Approaching working age', detail: 'In the UK, 16 is the minimum school-leaving age. Any apprenticeship or part-time earnings may affect household figures.' },
+  { from: 12, to: 13, label: 'Entering teenage years', detail: 'Education fund targets and financial literacy lessons may need updating for secondary school.' },
+  { from: 24, to: 25, label: 'Age band change', detail: 'Insurance premiums and financial products often reprice at 25.' },
+  { from: 49, to: 50, label: 'Age band change', detail: 'Life insurance and income protection typically reprice at 50 — worth reviewing coverage before the birthday.' },
+  { from: 59, to: 60, label: 'Approaching common retirement window', detail: 'Review pension drawdown timing, state pension forecast, and whether the retirement plan is on track.' },
+]
+
 // Pure — the agent's whole persona is a deterministic read of the twin.
 // No LLM: proactive member guidance that's wrong is worse than none, and
 // deterministic copy stays inside the informational-only boundary.
@@ -323,6 +340,7 @@ export function buildMemberAgent(twin: MemberTwinResult): MemberAgentResult {
   const first = twin.member.name.split(' ')[0] ?? twin.member.name
   const isMinor = twin.member.role === 'child' || (twin.member.age !== null && twin.member.age < 18)
   const nudges: MemberAgentNudge[] = []
+  const now = new Date()
 
   // 1. Readiness components that need attention — scored by how far they
   //    fall short, which doubles as the sort priority.
@@ -347,7 +365,53 @@ export function buildMemberAgent(twin: MemberTwinResult): MemberAgentResult {
     })
   }
 
-  // 3. Progress — a member agent that only reports gaps reads as an alarm
+  // 3. Time-based nudges — fire when time itself changed something, even
+  //    if the data hasn't. Only added when no insight/attention nudge
+  //    already covers the same subject (avoid duplicates).
+  if (twin.member.date_of_birth) {
+    const dob = new Date(twin.member.date_of_birth)
+    const ageMonths = Math.floor((now.getTime() - dob.getTime()) / (30.44 * 24 * 60 * 60 * 1000))
+    const ageYears = Math.floor(ageMonths / 12)
+    const nextBirthdayMonths = 12 - (ageMonths % 12)
+
+    for (const milestone of AGE_MILESTONES) {
+      // Fires when the member is within AGE_MILESTONE_MONTHS_AHEAD of the
+      // milestone's `to` age — the "about to cross" window, not the
+      // birthday itself (too late to plan by then).
+      if (ageYears === milestone.from && nextBirthdayMonths <= AGE_MILESTONE_MONTHS_AHEAD) {
+        const alreadyFlagged = nudges.some((n) => n.title.toLowerCase().includes(milestone.label.toLowerCase()))
+        if (!alreadyFlagged) {
+          nudges.push({
+            kind: 'attention',
+            title: `${first} is approaching ${milestone.to} — ${milestone.label.toLowerCase()}`,
+            detail: milestone.detail,
+            source: { component: 'time_milestone' },
+          })
+        }
+      }
+    }
+  }
+
+  // Approaching renewal nudges — a policy renewing within the lead time
+  // is a time-based fact the detector system may not have flagged yet
+  // (the detector fires on renewal_date, but the agent should also surface
+  // it proactively even if the insight was resolved or dismissed).
+  const RENEWAL_LEAD_DAYS = 45
+  for (const p of twin.financial.policies) {
+    if (!p.renewal_date) continue
+    const renewalDate = new Date(p.renewal_date)
+    const daysUntil = Math.ceil((renewalDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
+    if (daysUntil > 0 && daysUntil <= RENEWAL_LEAD_DAYS) {
+      nudges.push({
+        kind: 'attention',
+        title: `${p.provider ?? 'A policy'} ${p.type ?? 'policy'} renews in ${daysUntil} days`,
+        detail: `${p.provider ?? 'A policy'} (${p.type ?? 'insurance'}) renews on ${renewalDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}. Worth reviewing the cover and comparing before it auto-renews.`,
+        source: { component: 'policy_renewal' },
+      })
+    }
+  }
+
+  // 4. Progress — a member agent that only reports gaps reads as an alarm
   //    bell, so genuinely-on-track components get one quiet positive.
   for (const c of twin.readiness?.components ?? []) {
     if (c.gated || c.score === null || c.score <= ATTENTION_THRESHOLD) continue

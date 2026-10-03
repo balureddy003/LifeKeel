@@ -22,14 +22,19 @@ interface AIAnswer {
   followUps: string[]
 }
 
+// Sample answers for when there's no live data — labeled as "Sample" in the
+// UI (never presented as real). Currency is £ to match the product's actual
+// data, and no specific provider names are used (consistent with the
+// no-provider-names policy — the real assistant's sources come from the
+// family's own documents, not a fictional account list).
 const MOCK_ANSWERS: Record<string, AIAnswer> = {
   'retire': {
     query: 'Can I retire at 55?',
-    answer: "A projection based on your data suggests that retiring at 55 may be possible with adjustments to your savings rate. Your current trajectory estimates retirement around 65. One scenario shows that increasing monthly retirement contributions by $800 could shift that to approximately 55. At 55, the projection estimates roughly $1.6M saved, which could translate to about $64,000/year. Your mortgage may also be paid off by then. These are estimates and not guaranteed — consider reviewing with a qualified financial professional.",
+    answer: "A projection based on your data suggests that retiring at 55 may be possible with adjustments to your savings rate. Your current trajectory estimates retirement around 65. One scenario shows that increasing monthly retirement contributions by £800 could shift that to approximately 55. At 55, the projection estimates roughly £1.6M saved, which could translate to about £64,000/year. Your mortgage may also be paid off by then. These are estimates and not guaranteed — consider reviewing with a qualified financial professional.",
     sources: [
-      { label: 'Pension Statement (Q3 2026)', type: 'document', icon: FileText },
-      { label: 'Investment Account — Vanguard', type: 'account', icon: TrendingUp },
-      { label: 'Mortgage — First National', type: 'account', icon: Landmark },
+      { label: 'Pension Statement', type: 'document', icon: FileText },
+      { label: 'Investment Account', type: 'account', icon: TrendingUp },
+      { label: 'Mortgage', type: 'account', icon: Landmark },
       { label: 'Retirement projection model', type: 'calculation', icon: Calculator },
     ],
     confidence: 'medium',
@@ -37,9 +42,9 @@ const MOCK_ANSWERS: Record<string, AIAnswer> = {
   },
   'protected': {
     query: 'Are my children fully protected?',
-    answer: "Based on the data you entered, your children appear to have significant coverage. Life insurance lists $750,000 for upbringing and education. Emma's university fund is 72% of the $120,000 target ($86,400) and Lucas's is 45% ($54,000). Both have future goals insurance. One option to consider: critical illness coverage for Lucas. Please consult a licensed insurance professional to evaluate whether this is appropriate.",
+    answer: "Based on the data you entered, your children appear to have significant coverage. Life insurance lists £750,000 for upbringing and education. Emma's university fund is 72% of the £120,000 target (£86,400) and Lucas's is 45% (£54,000). Both have future goals insurance. One option to consider: critical illness coverage for Lucas. Please consult a licensed insurance professional to evaluate whether this is appropriate.",
     sources: [
-      { label: 'Life Insurance Policy #LI-2024-001', type: 'policy', icon: Shield },
+      { label: 'Life Insurance Policy', type: 'policy', icon: Shield },
       { label: "Emma's Education Fund", type: 'account', icon: GraduationCap },
       { label: "Lucas's Education Fund", type: 'account', icon: GraduationCap },
     ],
@@ -48,7 +53,7 @@ const MOCK_ANSWERS: Record<string, AIAnswer> = {
   },
   'job': {
     query: 'What happens if I lose my job?',
-    answer: "Based on the information you entered, one projection estimates your family may be covered for approximately 14 months. You have $55,000 in emergency savings (estimated 14 months of expenses) and income protection insurance listing $5,000/month for up to 2 years. This is an estimate based on your inputs — consider reviewing with a qualified professional.",
+    answer: "Based on the information you entered, one projection estimates your family may be covered for approximately 14 months. You have £55,000 in emergency savings (estimated 14 months of expenses) and income protection insurance listing £5,000/month for up to 2 years. This is an estimate based on your inputs — consider reviewing with a qualified professional.",
     sources: [
       { label: 'Emergency Savings Account', type: 'account', icon: Wallet },
       { label: 'Income Protection Policy', type: 'policy', icon: Briefcase },

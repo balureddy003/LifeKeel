@@ -6,11 +6,11 @@ import type { Metadata } from 'next'
 export const metadata: Metadata = {
   title: 'Family finance guides — Agent Oak',
   description: 'Plain-language guides to the checks Oak runs for your family — emergency funds, protection gaps, retirement projections, and education savings.',
-  alternates: { canonical: 'https://kairos-trellis.web.app/guides/' },
+  alternates: { canonical: 'https://agent-oak.ai/guides/' },
   openGraph: {
     title: 'Family finance guides — Agent Oak',
     description: 'Plain-language guides to the checks Oak runs for your family.',
-    url: 'https://kairos-trellis.web.app/guides/',
+    url: 'https://agent-oak.ai/guides/',
     type: 'website',
   },
 }

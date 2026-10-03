@@ -223,8 +223,16 @@ export function registerFamilyJoinRoutes(fastify: FastifyInstance, db: Db, auth?
     // pending member (matched by the request's email), activate THAT entry
     // rather than appending a second row for the same human — `id` stays
     // the stable identity member twins/insights already reference and the
-    // new user is linked via `user_id`.
-    const pendingMatch = family.members.find((m) => m.email === request.email && m.status === 'pending')
+    // new user is linked via `user_id`. A member added by name without an
+    // email is also a candidate — the join request supplies the email.
+    const pendingMatch = family.members.find(
+      (m) => m.status === 'pending' && (
+        m.email === request.email ||
+        // Name match on a member with no email yet — the organizer added
+        // them by name, the joiner supplies the email for the first time.
+        (!m.email && m.name.toLowerCase() === request.name.toLowerCase())
+      ),
+    )
     if (pendingMatch) {
       await groupsFor(tenant_id).updateOne(
         { 'members.id': pendingMatch.id },
