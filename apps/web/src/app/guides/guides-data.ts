@@ -23,6 +23,9 @@ export interface GuideFaq {
 
 export interface Guide {
   slug: string
+  /** 'detector' explains one check; 'life-stage' shows how several checks
+   *  converge on a moment (new baby, first home) — different search intent. */
+  kind: 'detector' | 'life-stage'
   /** SEO title + on-page h1 (kept identical so SERP matches the page). */
   title: string
   /** Meta description + index-card blurb. */
@@ -38,6 +41,7 @@ const QUIZ_CTA = 'Take the free Family Readiness Check — six questions, no sig
 export const GUIDES: Guide[] = [
   {
     slug: 'emergency-fund-how-much',
+    kind: 'detector',
     title: 'How Much Should a Family Emergency Fund Be?',
     description: 'The 3-6 month guideline, how to compute your household number, and what to consider when savings sit far above — or below — the target.',
     tagline: 'The first buffer between a bad month and a bad year',
@@ -93,6 +97,7 @@ export const GUIDES: Guide[] = [
   },
   {
     slug: 'family-protection-gap',
+    kind: 'detector',
     title: 'The Family Protection Gap: What If a Household Income Stops?',
     description: 'How families estimate the coverage gap — mortgage, education costs, and living expenses — and what the gap looks like in real numbers.',
     tagline: 'The difference between what is covered and what the household would need',
@@ -149,6 +154,7 @@ export const GUIDES: Guide[] = [
   },
   {
     slug: 'retirement-gap-check',
+    kind: 'detector',
     title: 'Is Your Retirement Savings on Track? The Gap Check',
     description: 'How to compare your projected retirement age against your target, what the contribution math looks like, and when contributions alone are not the answer.',
     tagline: 'Two numbers decide everything: when you want to stop, and when the savings say you can',
@@ -205,6 +211,7 @@ export const GUIDES: Guide[] = [
   },
   {
     slug: 'education-savings-plan',
+    kind: 'detector',
     title: 'Saving for a Child\'s Education: How Far Ahead Should You Be?',
     description: 'How to measure progress toward an education savings target, why years remaining matter more than the balance, and what starting from zero looks like.',
     tagline: 'The target is fixed; the runway is what changes',
@@ -250,6 +257,312 @@ export const GUIDES: Guide[] = [
       {
         q: 'Are education savings projections guaranteed?',
         a: 'No — they are estimates based on contribution, growth, and time assumptions. Review them periodically, especially as the deadline approaches.',
+      },
+    ],
+  },
+  {
+    slug: 'new-baby-financial-checklist',
+    kind: 'life-stage',
+    title: 'New Baby, New Numbers: The Financial Checklist for New Parents',
+    description: 'The first child changes every financial number a household has — emergency fund, protection cover, education savings, and the budget itself. What to check, and why the first months matter.',
+    tagline: 'Every check on this site gets bigger the day the baby arrives',
+    intro: [
+      'A first child is the single largest simultaneous change to a household\'s finances. Expenses rise, income often drops during leave, a new dependent exists for the next eighteen-plus years — and every financial check a family runs changes its answer on the same day.',
+      'None of the arithmetic is new. What changes is that the numbers all move at once, which is why the weeks after a birth are when families most often discover a gap that had been quietly fine before.',
+    ],
+    sections: [
+      {
+        heading: 'The emergency fund target just moved',
+        paragraphs: [
+          'Essential expenses rise — childcare, food, the hundred small recurring costs — which means the three-to-six-month fund target computed on the old budget is now understated. A household that was comfortably at four months may find the same balance now covers barely three.',
+          'Leave periods matter too: if one income pauses or drops for months, the fund is not just future insurance — it may be carrying the household sooner than expected.',
+        ],
+      },
+      {
+        heading: 'A dependent means a protection gap exists now',
+        paragraphs: [
+          'Before children, a stopped income affects the earners. After, it affects someone who cannot replace it. The standard estimate — mortgage, remaining education costs, roughly five years of living expenses — was theoretical before; now it has a name.',
+          'Employer death-in-service benefits and existing cover may close part of the gap automatically — worth checking the actual amounts rather than assuming either way.',
+        ],
+      },
+      {
+        heading: 'Eighteen years of runway starts today',
+        paragraphs: [
+          'An education fund started at birth has the longest possible runway — the case where small monthly contributions outgrow later large ones. Even a token amount establishes the account and the habit while the runway is maximal.',
+          'And the practical items: a will naming guardians, updated beneficiaries on existing policies and pensions. The paperwork is tedious and the cost of not doing it is borne by the person this is all for.',
+        ],
+        bullets: [
+          'Recompute the emergency fund on the new budget',
+          'Check existing cover against the new dependent',
+          'Start the education fund while the runway is longest',
+          'Guardianship in a will; beneficiaries on policies and pensions',
+        ],
+      },
+      {
+        heading: 'How Oak checks this',
+        paragraphs: [
+          'Adding a child to an Oak profile re-evaluates all four checks at once — the fund target against new expenses, cover against a household that now includes a dependent, the education runway starting at eighteen years, and the retirement projection under changed contributions. The gaps arrive as a list, not a surprise.',
+        ],
+      },
+    ],
+    faq: [
+      {
+        q: 'What should new parents sort out first financially?',
+        a: 'The two time-sensitive items are protection cover (a dependent now relies on the income) and guardianship arrangements in a will. The emergency fund and education savings matter but tolerate slower ramp-up.',
+      },
+      {
+        q: 'How much does a first child change the emergency fund target?',
+        a: 'By the increase in monthly essential spending — childcare alone often adds a large recurring cost. Recomputing the three-to-six-month target on the new budget usually moves it meaningfully.',
+      },
+      {
+        q: 'Is it too early to start saving for education at birth?',
+        a: 'It is the point of maximum runway — eighteen years of compounding, which is when the small-early-beats-large-late math is strongest. The right vehicle and amount depend on your country and situation; a qualified professional can advise.',
+      },
+      {
+        q: 'Do we need life insurance after a baby?',
+        a: 'A new dependent is the classic reason the protection question becomes concrete — the household\'s need estimate (mortgage, education, living costs) now has someone it exists for. Compare quotes from multiple insurers or speak with a licensed broker.',
+      },
+    ],
+  },
+  {
+    slug: 'first-home-financial-checklist',
+    kind: 'life-stage',
+    title: 'Buying a First Home: The Financial Checks That Come With the Keys',
+    description: 'A mortgage changes the math on everything — the emergency fund, the protection gap, and the monthly budget. What to recheck the day the purchase completes.',
+    tagline: 'The mortgage is the visible part; the recheck is the important part',
+    intro: [
+      'Buying a first home is planned for months — the deposit, the rate, the conveyancing. What gets less attention is the day after: the household now carries the largest debt it has ever had, a new set of essential costs, and a property that must be maintained.',
+      'Three checks change their answers the day completion happens. They are the same checks this site covers individually — here is how they interact at this specific moment.',
+    ],
+    sections: [
+      {
+        heading: 'The emergency fund, post-deposit',
+        paragraphs: [
+          'The deposit usually empties the savings the fund was built from — a household can move from a six-month cushion to near zero on completion day, precisely when it takes on a mortgage payment that cannot pause.',
+          'Essential expenses change too: mortgage payment, buildings insurance, maintenance, council tax. The three-to-six-month target should be recomputed on the new cost base, not the rental one.',
+        ],
+      },
+      {
+        heading: 'The mortgage is now the largest line in the protection estimate',
+        paragraphs: [
+          'The standard household need — mortgage plus education costs plus five years of living expenses — jumps the moment a mortgage exists. Cover sized for a renting household, or none at all, is a different calculation with a £200,000 balance attached.',
+          'Many buyers take out mortgage-linked cover at completion because it is offered then; worth checking what it actually covers — the outstanding balance only, or the household\'s fuller need — and comparing it against standalone options.',
+        ],
+      },
+      {
+        heading: 'The budget absorbs a house',
+        paragraphs: [
+          'Houses generate irregular costs on their own schedule — boilers, roofs, appliances — that renters never saw. A common approach is a separate maintenance sinking fund alongside the emergency fund, so a broken boiler is a maintenance event rather than an emergency.',
+          'Retirement contributions sometimes quietly stop in the first months of ownership. Worth a deliberate decision rather than a drift.',
+        ],
+      },
+      {
+        heading: 'How Oak checks this',
+        paragraphs: [
+          'Listing a mortgage and home in an Oak profile re-evaluates the fund target against the new essentials, adds the mortgage balance to the protection estimate, and keeps watching for the renewal and maintenance windows a house introduces — the checks run on the household as it actually is now, not as it was.',
+        ],
+      },
+    ],
+    faq: [
+      {
+        q: 'How much should I keep in savings after buying a house?',
+        a: 'Enough to rebuild toward three to six months of the new essential costs — mortgage, insurance, utilities, maintenance. The first months after completion are often the thinnest a household\'s buffer ever gets; rebuilding it deliberately matters more than any target number.',
+      },
+      {
+        q: 'Is mortgage life cover enough?',
+        a: 'Mortgage-linked cover typically clears the outstanding loan — the household keeps the house, but the income question remains. Compare what it covers against the fuller estimate (mortgage plus living costs plus dependents) before assuming it is sufficient.',
+      },
+      {
+        q: 'Should I pause retirement contributions to rebuild savings?',
+        a: 'That is a real trade-off households make — the cost is years of compounding, the benefit is resilience now. A qualified financial professional can help weigh the order for your numbers; making it a decision rather than a drift is the important part.',
+      },
+      {
+        q: 'What insurance does a new homeowner actually need?',
+        a: 'Buildings insurance is usually a mortgage condition. Beyond that — contents, life cover, income protection — the need depends on the household\'s obligations and dependents. Compare multiple quotes and consider a licensed broker for the protection questions.',
+      },
+    ],
+  },
+  {
+    slug: 'single-income-family-checklist',
+    kind: 'life-stage',
+    title: 'The Single-Income Family Checklist: When One Paycheck Carries Everything',
+    description: 'Why single-earner households need a bigger buffer and a sharper view of protection — the math that changes when there is no second income to fall back on.',
+    tagline: 'No second income means no built-in backup plan',
+    intro: [
+      'In a two-income household, a lost paycheck is a crisis with a partial cushion — the other income keeps arriving. In a single-income household the same event is total: income goes to zero while every expense continues. The financial checks are identical; the margins are not.',
+      'Single-earner is sometimes permanent — one parent at home, one carer, one business owner — and sometimes a season, like parental leave or a career break. Either way, the arithmetic below applies for as long as the arrangement does.',
+    ],
+    sections: [
+      {
+        heading: 'Six months is the floor, not the ceiling',
+        paragraphs: [
+          'The three-to-six-month emergency fund guideline scales with income risk — and a single income is the maximum-risk case. Six months of essentials is the defensible floor; households with variable or self-employed income often aim beyond it.',
+          'The fund is also the timeline: it is how long the household has to find new income before decisions get forced. More runway means better decisions.',
+        ],
+      },
+      {
+        heading: 'Protection is not optional when one income is everything',
+        paragraphs: [
+          'The need estimate — mortgage, education costs, five years of living expenses — assumes the earner\'s income stops permanently. In a single-income household that scenario has no buffer whatsoever, which makes the cover question sharper than in almost any other arrangement.',
+          'Income protection deserves specific attention here: statistically the more likely disruption is the earner alive but unable to work for months — an event the emergency fund alone may not outlast.',
+        ],
+        bullets: [
+          'Emergency fund toward six-plus months of essentials',
+          'Life cover against the full household need estimate',
+          'Income protection — the unable-to-work case',
+          'Legal basics: will, beneficiaries, guardians for dependents',
+        ],
+      },
+      {
+        heading: 'What about the non-earning partner?',
+        paragraphs: [
+          'The contribution a non-earning partner makes — childcare, household management — has a real replacement cost that vanishes into the same single-point-of-failure problem. If that partner became unable to do that work, the household would have to buy it. Some households include this in their protection thinking.',
+        ],
+      },
+      {
+        heading: 'How Oak checks this',
+        paragraphs: [
+          'Oak sees the household\'s actual income structure — a single-income profile automatically weights the fund check toward the higher band, surfaces the protection estimate against listed cover, and keeps the renewal windows watched. The risk profile of one income is read from the data, not assumed.',
+        ],
+      },
+    ],
+    faq: [
+      {
+        q: 'How much should a single-income family keep in emergency savings?',
+        a: 'Six months of essential expenses is the common floor — the single income means a job loss is total rather than partial. Variable or self-employed income often justifies more. A financial professional can help size it for your situation.',
+      },
+      {
+        q: 'Is income protection worth it for a single earner?',
+        a: 'It addresses the most likely disruption — the earner unable to work for months — which is also the case with no fallback. Whether the cost makes sense is individual; compare quotes and consider a licensed advisor.',
+      },
+      {
+        q: 'Should the non-earning partner be covered too?',
+        a: 'Their contribution has a real replacement cost — childcare and household work the family would otherwise pay for. Some households include this in their protection review; a licensed broker can evaluate the household as a whole.',
+      },
+      {
+        q: 'What if the single income is temporary?',
+        a: 'The higher margins still apply for the duration — a leave period or career break is exactly when the cushion gets used. Re-run the checks when the second income returns; the targets will relax.',
+      },
+    ],
+  },
+  {
+    slug: 'retirement-in-your-50s',
+    kind: 'life-stage',
+    title: 'Retirement Planning in Your Fifties: The Last Decade of Leverage',
+    description: 'What the projection-vs-target check looks like when the runway is ten to fifteen years — the contribution math, the honest limits, and the levers that are not contributions.',
+    tagline: 'The math gets steeper — and more honest',
+    intro: [
+      'In your thirties, a retirement gap is a number with decades of runway to close it. In your fifties it is a decision. The projection-versus-target comparison is the same check — what changes is which levers are still strong enough to move it.',
+      'The fifties are also when the vague sense of being behind tends to harden into either a plan or an avoidance. Getting the actual projected age — not a feeling, a number — is the step that separates the two.',
+    ],
+    sections: [
+      {
+        heading: 'The contribution math at ten to fifteen years',
+        paragraphs: [
+          'With a decade of runway left, each year of delay costs more than the year before — compounding has less time to work, so more of the pot has to come from contributions directly. The monthly figure that would have closed a gap at forty can be half what the same gap needs at fifty-five.',
+          'This is the uncomfortable version of the check, and also the useful one: the projected-versus-target number turns a vague worry into a specific monthly figure that can be weighed against the household\'s actual capacity.',
+        ],
+      },
+      {
+        heading: 'When the number exceeds what contributions can do',
+        paragraphs: [
+          'If the required contribution climbs beyond what the household can carry — Oak flags the case where it would exceed half of monthly income — the honest conclusion is that contributions are not the whole answer. That is not failure; it is a signal to look at the other levers.',
+          'Retirement date moves the projection powerfully at this stage: retiring two years later adds contribution years and removes withdrawal years simultaneously — a double effect. Expected spending, other assets, and part-time transitions all move it too.',
+        ],
+        bullets: [
+          'Contribution increase — still works, just costs more per year of gap',
+          'Retirement timing — moves both sides of the equation at once',
+          'Spending target — a lower target pulls the projected age forward',
+          'Other assets — the projection is about the pension, but retirement is about everything',
+        ],
+      },
+      {
+        heading: 'The catch-up window',
+        paragraphs: [
+          'The fifties are often peak-earning years with reduced child-related costs — a genuine catch-up window some households deliberately use. The decision is easier to make when the gap is a specific monthly number rather than an ambient worry.',
+        ],
+      },
+      {
+        heading: 'How Oak checks this',
+        paragraphs: [
+          'Oak projects the retirement age from the listed pension balance, contribution rate, and target age — at this stage of life the output tends to be concrete rather than advisory: a projected age, and the monthly contribution change that would bring it back to target. When that figure exceeds half of income, the finding says so plainly.',
+        ],
+      },
+    ],
+    faq: [
+      {
+        q: 'Is it too late to fix a retirement gap at 55?',
+        a: 'Not too late, but the levers shift — contributions cost more per year of gap, and timing, spending, and other assets matter more. The first step is getting the projected age as a number rather than a feeling.',
+      },
+      {
+        q: 'How much extra should I contribute in my fifties?',
+        a: 'Whatever the projection says the gap needs — there is no universal percentage that is honest at this stage. A qualified financial advisor can model contribution, timing, and tax-relief interactions for your situation.',
+      },
+      {
+        q: 'Should I work longer or save harder?',
+        a: 'Retiring later works on both sides of the equation — more contribution years and fewer withdrawal years — so it is often the strongest single lever. Whether it is available or desirable is personal; the projection makes the trade-off visible in years.',
+      },
+      {
+        q: 'What about pensions from old employers?',
+        a: 'Forgotten pots are common — tracing and consolidating them is worth doing before the projection, since missing balances make the gap look worse than it is. Pension-tracing services exist in most countries; a qualified advisor can help.',
+      },
+    ],
+  },
+  {
+    slug: 'saving-for-university-countdown',
+    kind: 'life-stage',
+    title: 'The University Costs Countdown: Saving When the Deadline Is a Person',
+    description: 'Education saving has a fixed deadline — the child turns eighteen on schedule. How to read the runway, what behind-pace looks like in real numbers, and when the window gets tight.',
+    tagline: 'Most savings goals can slip; this one has a birthday',
+    intro: [
+      'A retirement can move; a house purchase can wait. Education saving is unusual because the deadline is fixed — the child\'s eighteenth birthday arrives on schedule regardless of the fund\'s balance. That makes the check unusually readable: progress is simply current savings against target, weighed against years left.',
+      'The same balance means opposite things at different runways — half-funded with fifteen years left is comfortable; half-funded with five is urgent. This is the countdown logic.',
+    ],
+    sections: [
+      {
+        heading: 'Reading the runway',
+        paragraphs: [
+          'Divide current savings by the target cost — that percentage only means something against the years remaining. Oak\'s check flags the sharp case: below half the target inside five years, when the monthly contribution needed to close it climbs steeply.',
+          'The useful output is not the percentage but the monthly figure — the contribution that closes the gap in the time left. A specific number can be planned around; a shortfall percentage cannot.',
+        ],
+      },
+      {
+        heading: 'Starting from zero at different ages',
+        paragraphs: [
+          'Zero saved at age two is a plan waiting to start — sixteen years of compounding ahead. Zero at age twelve is a different problem: six years left means most of the funding has to come from contributions, not growth.',
+          'The math is the same either way; what the runway changes is how much of the work the contributions have to do themselves.',
+        ],
+      },
+      {
+        heading: 'When the fund cannot get there',
+        paragraphs: [
+          'A fund that projects short of target is information, not failure — education funding has levers other goals lack: the target itself can adjust (local versus away, covered versus shared), and loans, scholarships, and part-time work all exist on the student\'s side too.',
+          'The order most guidance suggests: the child\'s education has alternatives; the parents\' retirement does not. Funding education at the expense of retirement is a trade worth making deliberately rather than by default.',
+        ],
+      },
+      {
+        heading: 'How Oak checks this',
+        paragraphs: [
+          'For each child listed in a profile, Oak tracks savings against target and years remaining — flagging a fund below half-target inside the five-year window, and a fund not started for a child under sixteen, so the countdown is watched continuously rather than remembered annually.',
+        ],
+      },
+    ],
+    faq: [
+      {
+        q: 'How much do I need saved by the time my child is 18?',
+        a: 'Work backward from the expected cost — tuition, living costs, years of study — then let the runway tell you the monthly figure. A qualified financial advisor can help set a realistic target for your plans and country.',
+      },
+      {
+        q: 'My child is 13 and we have saved nothing — is it too late?',
+        a: 'Not too late, but different — five years of runway means contributions do nearly all the work with little compounding. The monthly figure may be higher than expected; knowing it early is still better than finding it at eighteen.',
+      },
+      {
+        q: 'Should education saving come before retirement?',
+        a: 'Most guidance says no — education has loans, scholarships, and flexibility that retirement lacks. Funding a child\'s education at the cost of an unfunded retirement shifts the burden rather than removing it.',
+      },
+      {
+        q: 'What accounts exist for education savings?',
+        a: 'Most countries offer tax-advantaged education vehicles — the specifics differ by jurisdiction and change over time. Research what applies where you live, or ask a qualified financial professional.',
       },
     ],
   },

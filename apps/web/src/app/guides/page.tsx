@@ -16,8 +16,22 @@ export default function GuidesIndex() {
           bad month — the same checks Oak runs continuously once you sign up.
         </p>
 
-        <div className="mt-8 space-y-4">
-          {GUIDES.map((g) => (
+        <h2 className="mt-10 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">The checks</h2>
+        <div className="mt-4 space-y-4">
+          {GUIDES.filter((g) => g.kind === 'detector').map((g) => (
+            <Link key={g.slug} href={`/guides/${g.slug}/`} className="block">
+              <article className="glass rounded-2xl border border-tint/[0.08] p-5 transition-colors hover:border-family-500/40">
+                <h2 className="text-lg font-semibold text-ink-primary">{g.title}</h2>
+                <p className="mt-1 text-sm leading-relaxed text-ink-secondary">{g.description}</p>
+                <p className="mt-2 text-xs font-semibold text-family-400">Read the guide →</p>
+              </article>
+            </Link>
+          ))}
+        </div>
+
+        <h2 className="mt-10 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">Moments that change the numbers</h2>
+        <div className="mt-4 space-y-4">
+          {GUIDES.filter((g) => g.kind === 'life-stage').map((g) => (
             <Link key={g.slug} href={`/guides/${g.slug}/`} className="block">
               <article className="glass rounded-2xl border border-tint/[0.08] p-5 transition-colors hover:border-family-500/40">
                 <h2 className="text-lg font-semibold text-ink-primary">{g.title}</h2>
