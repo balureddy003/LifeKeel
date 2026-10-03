@@ -13,6 +13,7 @@ import type { Db } from 'mongodb'
 import { randomUUID } from 'node:crypto'
 import { createLogger, getTenantCollection } from '@agentoak/platform'
 import { ReadinessEventSchema, type ReadinessEventType } from './event-schema.js'
+import { findEventMute } from './mutes.js'
 
 const log = createLogger({ service: 'readiness-feed', version: '0.0.0' })
 
@@ -32,6 +33,11 @@ export interface ReadinessEventDoc extends Record<string, unknown> {
   dedupe_key: string
   created_at: Date
   feedback?: { user_id: string; value: 'useful' | 'not_relevant' | 'handled' | 'remind_later' | 'data_wrong'; at: Date }[]
+  /** Set at emit time when a feed_mutes row covers this event. */
+  muted?: boolean
+  muted_reason?: string | null
+  snoozed_until?: Date
+  handled_at?: Date
 }
 
 /**
@@ -67,10 +73,22 @@ export function emitReadinessEvent(
       }
       const col = getTenantCollection<ReadinessEventDoc>(db, 'readiness_events', tenantId)
       if (typeof col.updateOne !== 'function') return
+      // PRD-136 §3: a live mute doesn't suppress the write — the event
+      // is still recorded, marked muted so the read API can hide it by
+      // default and explain why when asked.
+      const mute = await findEventMute(db, tenantId, parsed.data as ReadinessEventDoc)
+      // Written explicitly every emit — a mute that expired (or was
+      // undone) must clear the flag on the next event, not linger.
+      const mutedFields = {
+        muted: mute !== null,
+        muted_reason: mute
+          ? `You marked this not relevant on ${new Date(mute.created_at).toISOString().slice(0, 10)}.`
+          : null,
+      }
       await col.updateOne(
         { dedupe_key: parsed.data.dedupe_key },
         {
-          $set: { ...parsed.data },
+          $set: { ...parsed.data, ...mutedFields },
           $setOnInsert: { id: randomUUID(), created_at: new Date() },
         },
         { upsert: true },

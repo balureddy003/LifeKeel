@@ -103,12 +103,14 @@ import { runMemberAgentLoop } from './jobs/member-agent-loop.js'
 import { runStaleProfileEvaluationSweep } from './jobs/stale-profile-evaluation.js'
 import { ensureMemberNudgeIndexes } from './member-nudges.js'
 import { runContinuityCheck, ensureContinuityIndexes } from './jobs/continuity-check.js'
+import { runFamilyHeartbeat } from './jobs/family-heartbeat.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
 import { registerSupportRoutes } from './routes/support.js'
 import { registerReadinessQuizRoutes } from './routes/readiness-quiz.js'
 import { registerFamilyReadinessRoutes } from './routes/family-readiness.js'
 import { registerFamilyScenarioRoutes } from './routes/family-scenarios.js'
 import { registerFamilyFeedRoutes } from './routes/family-feed.js'
+import { registerFamilyNotificationRoutes } from './routes/family-notifications.js'
 import { runScenarioWatchlist } from './jobs/scenario-watchlist.js'
 import { registerMemberTwinRoutes } from './routes/member-twin.js'
 import { registerFamilyContinuityRoutes } from './routes/family-continuity.js'
@@ -454,6 +456,28 @@ try {
     }
   }, { missedExecutionTolerance: 3_600_000 })
   log.info({}, 'Checklist reminder cron started')
+
+  // Family heartbeat — PRD-136 §4. Weekly Monday 08:00 and monthly on the
+  // 1st 08:00; sends one "what moved" email per active adult roster member
+  // for each tenant whose heartbeat_cadence matches. Idempotent per
+  // (tenant, member, window) via heartbeat_sends, so a retried run sends
+  // nothing twice.
+  for (const [name, schedule, cadence] of [
+    ['family-heartbeat-weekly', '0 8 * * 1', 'weekly'],
+    ['family-heartbeat-monthly', '0 8 1 * *', 'monthly'],
+  ] as const) {
+    cron.schedule(schedule, async () => {
+      try {
+        await withCronLock(workflowDb, name, async () => {
+          const r = await runFamilyHeartbeat(workflowDb, { cadence })
+          if (r.sent > 0) log.info({ cadence, ...r }, 'Family heartbeat sent')
+        })
+      } catch (err) {
+        log.error({ err, cadence }, 'Family heartbeat sweep failed')
+      }
+    }, { missedExecutionTolerance: 3_600_000 })
+    log.info({ schedule, cadence }, 'Family heartbeat cron started')
+  }
 
   // Trading (auto-trade confirmation, reconciliation, momentum rebalance)
   // and workflow-approval-timeout sweeps removed — Agent Oak has no trading
@@ -1498,6 +1522,7 @@ if (workflowDb) {
   registerFamilyReadinessRoutes(app, workflowDb)
   registerFamilyScenarioRoutes(app, workflowDb)
   registerFamilyFeedRoutes(app, workflowDb)
+  registerFamilyNotificationRoutes(app, workflowDb)
   registerMemberTwinRoutes(app, workflowDb)
   registerFamilyContinuityRoutes(app, workflowDb)
   registerFamilyCashflowRoutes(app, workflowDb)

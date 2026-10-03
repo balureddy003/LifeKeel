@@ -11,13 +11,17 @@ import {
   uploadVaultDocument,
   fetchVaultDocumentFileUrl,
   deleteVaultDocument,
+  fetchFamilyGroup,
+  fetchLegacyRehearsal,
   VAULT_DOC_TYPES,
   VAULT_DOC_TYPE_LABELS,
+  type ApiFamilyMember,
+  type LegacyRehearsal,
   type VaultDocument,
   type VaultDocType,
 } from '@/lib/api'
 import { displayDocName } from '@/lib/doc-name'
-import { Camera, Upload, FileLock2, Loader2, AlertCircle, Lock, Trash2, X } from 'lucide-react'
+import { Camera, Upload, FileLock2, Loader2, AlertCircle, Lock, Trash2, X, Users } from 'lucide-react'
 
 export default function VaultPage() {
   const toast = useToast()
@@ -45,6 +49,12 @@ export default function VaultPage() {
   const [unsealPass, setUnsealPass] = useState('')
   const [unsealError, setUnsealError] = useState<string | null>(null)
   const [unsealing, setUnsealing] = useState(false)
+  // PRD-137 §6: continuity rehearsal — "could this adult find what the
+  // register says exists?" Read-only preview, nothing changes.
+  const [rehearsalAdults, setRehearsalAdults] = useState<ApiFamilyMember[]>([])
+  const [rehearsalAs, setRehearsalAs] = useState('')
+  const [rehearsal, setRehearsal] = useState<LegacyRehearsal | null>(null)
+  const [rehearsalLoading, setRehearsalLoading] = useState(false)
 
   const load = useCallback(async () => {
     const { documents: docs, forbidden: f } = await fetchVaultDocuments()
@@ -55,7 +65,21 @@ export default function VaultPage() {
 
   useEffect(() => {
     load()
+    void fetchFamilyGroup().then((g) => {
+      const adults = (g?.members ?? []).filter(
+        (m) => m.status === 'active' && m.role !== 'child',
+      )
+      setRehearsalAdults(adults)
+      setRehearsalAs((prev) => prev || adults[0]?.id || '')
+    })
   }, [load])
+
+  const runRehearsal = useCallback(async () => {
+    if (!rehearsalAs) return
+    setRehearsalLoading(true)
+    setRehearsal(await fetchLegacyRehearsal(rehearsalAs))
+    setRehearsalLoading(false)
+  }, [rehearsalAs])
 
   // Revoke the preview's object URL when it's closed or replaced — same
   // cleanup DocumentDetailClient.tsx's split-view preview already does.
@@ -258,6 +282,75 @@ export default function VaultPage() {
               <p className="text-xs text-ink-secondary leading-relaxed">{error}</p>
             </GlassCard>
           )}
+
+          {/* PRD-137 §6: continuity rehearsal — could another adult find
+              what's recorded here? Read-only; deep-links to the surfaces
+              where each gap lives. */}
+          <GlassCard className="p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Users size={16} className="text-family-400 flex-shrink-0" />
+              <span className="text-sm font-semibold">Could someone else find this?</span>
+            </div>
+            <p className="text-xs text-ink-tertiary leading-relaxed">
+              Pick an adult to rehearse what they could actually locate if they had to step in tomorrow — documents they'd see, gaps in locations, roles naming them.
+            </p>
+            <div className="flex items-center gap-2">
+              <select
+                value={rehearsalAs}
+                onChange={(e) => { setRehearsalAs(e.target.value); setRehearsal(null) }}
+                className="glass-input flex-1 rounded-xl px-3 py-2 text-sm text-ink-primary"
+                aria-label="Rehearse as"
+              >
+                {rehearsalAdults.length === 0 && <option value="">No adults on the roster</option>}
+                {rehearsalAdults.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => void runRehearsal()}
+                disabled={!rehearsalAs || rehearsalLoading}
+                className="rounded-xl px-3 py-2 text-sm font-semibold text-white bg-family-500/80 disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {rehearsalLoading && <Loader2 size={14} className="animate-spin" />}
+                Rehearse
+              </button>
+            </div>
+            {rehearsal && (
+              <div className="space-y-2 text-xs text-ink-secondary">
+                <p className="text-footnote text-ink-tertiary">
+                  {rehearsal.as.name} could find {rehearsal.findability_pct}% of what's recorded.
+                </p>
+                {rehearsal.hidden_documents.map((d) => (
+                  <a key={d.id} href="/vault" className="block rounded-xl bg-tint/[0.04] px-3 py-2 active:opacity-70">
+                    <span className="font-medium">{d.type.replace(/_/g, ' ')}</span>
+                    {d.subject_name ? ` for ${d.subject_name}` : ''} — {d.reason}
+                  </a>
+                ))}
+                {rehearsal.documents_without_location.map((d) => (
+                  <a key={d.id} href="/vault" className="block rounded-xl bg-tint/[0.04] px-3 py-2 active:opacity-70">
+                    {d.type.replace(/_/g, ' ')} — no original location recorded
+                  </a>
+                ))}
+                {rehearsal.properties_without_title.map((p) => (
+                  <a key={p.id} href="/assets" className="block rounded-xl bg-tint/[0.04] px-3 py-2 active:opacity-70">
+                    {p.name} — no title evidence recorded
+                  </a>
+                ))}
+                {rehearsal.only_one_person_knows.map((o) => (
+                  <a key={`${o.kind}-${o.id}`} href={o.kind === 'asset' ? '/assets' : '/vault'} className="block rounded-xl bg-tint/[0.04] px-3 py-2 active:opacity-70">
+                    {o.label} — only one person knows about this
+                  </a>
+                ))}
+                {rehearsal.hidden_documents.length === 0 &&
+                  rehearsal.documents_without_location.length === 0 &&
+                  rehearsal.properties_without_title.length === 0 &&
+                  rehearsal.only_one_person_knows.length === 0 && (
+                  <p className="text-ink-tertiary">No gaps — everything recorded is findable by {rehearsal.as.name}.</p>
+                )}
+              </div>
+            )}
+          </GlassCard>
 
           <div className="space-y-2">
             <div className="text-sm font-semibold text-ink-secondary px-1">

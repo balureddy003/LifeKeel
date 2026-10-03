@@ -13,12 +13,13 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   BarChart3, Bell, CheckCircle2, TrendingUp, TrendingDown, Clock,
   FileText, Eye, Siren, Sparkles, ChevronDown,
 } from 'lucide-react'
 import { GlassCard, Skeleton } from '@/components/Glass'
-import { fetchFeed, fetchFeedSummary, type FeedEvent, type FeedSummary } from '@/lib/api'
+import { fetchFeed, fetchFeedSummary, submitFeedback, type FeedEvent, type FeedFeedbackValue, type FeedSummary } from '@/lib/api'
 
 const TYPE_ICON: Record<FeedEvent['type'], typeof BarChart3> = {
   score_moved: BarChart3,
@@ -55,9 +56,29 @@ export interface ReadinessFeedProps {
 }
 
 export function ReadinessFeed({ members = [], mode }: ReadinessFeedProps) {
+  const router = useRouter()
   const [events, setEvents] = useState<FeedEvent[] | null>(null)
   const [summary, setSummary] = useState<FeedSummary | null>(null)
   const [failed, setFailed] = useState(false)
+  // Feedback row collapses to a one-line confirmation after a response —
+  // 'muted' keeps the undo affordance live until the next fetch.
+  const [feedbackDone, setFeedbackDone] = useState<Record<string, 'noted' | 'muted'>>({})
+
+  const sendFeedback = async (evt: FeedEvent, value: FeedFeedbackValue) => {
+    if (value === 'data_wrong') {
+      void submitFeedback(evt.id, value)
+      router.push('/financial-profile')
+      return
+    }
+    const res = await submitFeedback(evt.id, value)
+    if (!res.ok) return
+    setFeedbackDone((s) => ({ ...s, [evt.id]: value === 'not_relevant' ? 'muted' : 'noted' }))
+  }
+
+  const undoMute = async (evt: FeedEvent) => {
+    const res = await submitFeedback(evt.id, 'useful')
+    if (res.ok) setFeedbackDone((s) => ({ ...s, [evt.id]: 'noted' }))
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -156,6 +177,46 @@ export function ReadinessFeed({ members = [], mode }: ReadinessFeedProps) {
                     )}
                     {evt.next_check_at && (
                       <p className="text-footnote text-ink-tertiary/70 mt-1.5">Oak checks again tomorrow</p>
+                    )}
+                    {/* PRD-136 §3: per-user feedback — collapses to a
+                        one-line ack after a response. Youth mode has no
+                        muting (child accounts can't shape the feed). */}
+                    {mode !== 'youth' && (
+                      feedbackDone[evt.id] ? (
+                        <p className="text-footnote text-ink-tertiary mt-2 pt-2 border-t border-tint/[0.06]">
+                          {feedbackDone[evt.id] === 'muted' ? (
+                            <>
+                              Muted for 90 days ·{' '}
+                              <button type="button" onClick={() => void undoMute(evt)} className="text-family-400 font-medium">
+                                undo?
+                              </button>
+                            </>
+                          ) : (
+                            'Thanks — noted'
+                          )}
+                        </p>
+                      ) : (
+                        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 pt-2 border-t border-tint/[0.06]">
+                          {(
+                            [
+                              ['useful', 'Useful'],
+                              ['not_relevant', 'Not relevant'],
+                              ['handled', 'Handled'],
+                              ['remind_later', 'Later'],
+                              ['data_wrong', 'Wrong data'],
+                            ] as [FeedFeedbackValue, string][]
+                          ).map(([value, label]) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => void sendFeedback(evt, value)}
+                              className="text-footnote text-ink-tertiary hover:text-ink-secondary active:text-family-400"
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      )
                     )}
                   </div>
                 </div>

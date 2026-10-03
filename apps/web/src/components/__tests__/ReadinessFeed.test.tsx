@@ -7,10 +7,17 @@ import { render, screen, waitFor } from '@testing-library/react'
 
 const fetchFeed = vi.fn()
 const fetchFeedSummary = vi.fn()
+const submitFeedback = vi.fn()
+const push = vi.fn()
 
 vi.mock('@/lib/api', () => ({
   fetchFeed: (...a: unknown[]) => fetchFeed(...a),
   fetchFeedSummary: (...a: unknown[]) => fetchFeedSummary(...a),
+  submitFeedback: (...a: unknown[]) => submitFeedback(...a),
+}))
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push }),
 }))
 
 // next/link renders fine in jsdom but pulls in app-router internals in
@@ -45,6 +52,9 @@ const emptySummary = { window: '7d', total: 0, by_type: {}, up: 0, down: 0, comp
 beforeEach(() => {
   fetchFeed.mockReset()
   fetchFeedSummary.mockReset()
+  submitFeedback.mockReset()
+  push.mockReset()
+  submitFeedback.mockResolvedValue({ ok: true })
   fetchFeedSummary.mockResolvedValue(emptySummary)
 })
 
@@ -89,5 +99,37 @@ describe('ReadinessFeed', () => {
     fetchFeed.mockResolvedValue([])
     render(<ReadinessFeed mode="youth" />)
     await waitFor(() => expect(fetchFeed).toHaveBeenCalledWith(expect.objectContaining({ mode: 'youth' })))
+  })
+
+  // PRD-136 §3 — the feedback row collapses to a one-line ack after a
+  // response, and 'not relevant' keeps an undo affordance.
+  it('renders the feedback row and collapses it after a response', async () => {
+    fetchFeed.mockResolvedValue([evt({ id: 'e1' })])
+    render(<ReadinessFeed />)
+    const btn = await screen.findByText('Handled')
+    btn.click()
+    await waitFor(() => expect(submitFeedback).toHaveBeenCalledWith('e1', 'handled'))
+    expect(await screen.findByText('Thanks — noted')).toBeTruthy()
+    expect(screen.queryByText('Not relevant')).toBeNull()
+  })
+
+  it('shows "Muted for 90 days" with undo after not_relevant', async () => {
+    fetchFeed.mockResolvedValue([evt({ id: 'e1' })])
+    render(<ReadinessFeed />)
+    const btn = await screen.findByText('Not relevant')
+    btn.click()
+    await waitFor(() => expect(submitFeedback).toHaveBeenCalledWith('e1', 'not_relevant'))
+    expect(await screen.findByText(/Muted for 90 days/)).toBeTruthy()
+    const undo = screen.getByText('undo?')
+    submitFeedback.mockResolvedValue({ ok: true })
+    undo.click()
+    await waitFor(() => expect(submitFeedback).toHaveBeenCalledWith('e1', 'useful'))
+  })
+
+  it('hides the feedback row in youth mode', async () => {
+    fetchFeed.mockResolvedValue([evt({ type: 'milestone', member_id: 'kid1' })])
+    render(<ReadinessFeed mode="youth" members={[{ id: 'kid1', name: 'Kid' }]} />)
+    await screen.findByText('Something happened')
+    expect(screen.queryByText('Not relevant')).toBeNull()
   })
 })

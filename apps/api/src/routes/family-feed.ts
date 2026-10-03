@@ -15,9 +15,11 @@
  */
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
+import { z } from 'zod'
 import { getTenantCollection } from '@agentoak/platform'
 import { isFamilyAdult, memberMatchesUser } from '../lib/family-permissions.js'
 import type { ReadinessEventDoc } from '../feed/emit.js'
+import { upsertEventMute, deleteEventMutes } from '../feed/mutes.js'
 import type { FamilyGroupDoc } from './family-group.js'
 
 const HISTORY_COLLECTION = 'family_readiness_history'
@@ -31,13 +33,29 @@ interface FeedQuery {
   domain?: string
   limit?: string
   mode?: string
+  include_muted?: string
 }
 
+const FeedbackBody = z.object({
+  value: z.enum(['useful', 'not_relevant', 'handled', 'remind_later', 'data_wrong']),
+})
+
+const REMIND_LATER_MS = 7 * 86_400_000
+const MUTE_MS = 90 * 86_400_000
+
 function toView(doc: ReadinessEventDoc): Record<string, unknown> {
-  // feedback is a write-side concern (PRD-136 feedback controls are a
-  // later batch) — never read back out of the feed payload.
+  // feedback entries are write-side bookkeeping — never read back out of
+  // the feed payload. muted/muted_reason stay: the client's "Muted ·
+  // undo?" affordance needs them.
   const { feedback: _feedback, ...view } = doc
   return view
+}
+
+/** Default read-side filter: muted events and not-yet-due snoozes hide. */
+function isVisible(evt: ReadinessEventDoc, now: number): boolean {
+  if (evt.muted === true) return false
+  if (evt.snoozed_until && new Date(evt.snoozed_until).getTime() > now) return false
+  return true
 }
 
 /**
@@ -114,16 +132,66 @@ export function registerFamilyFeedRoutes(app: FastifyInstance, db: Db): void {
     const sinceMs = req.query.since ? Date.parse(req.query.since) : Number.NaN
     if (!Number.isNaN(sinceMs)) filter['created_at'] = { $gte: new Date(sinceMs) }
 
+    const includeMuted = req.query.include_muted === '1' || req.query.include_muted === 'true'
+    const now = Date.now()
     const docs = (await getTenantCollection<ReadinessEventDoc>(db, 'readiness_events', tenant_id)
       .find(filter)
       .toArray()) as ReadinessEventDoc[]
     const events = collapseSweepQuiet(
       docs
+        .filter((d) => includeMuted || isVisible(d, now))
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         .slice(0, limit)
         .map(toView),
     )
     return { events }
+  })
+
+  // PRD-136 §3: per-user feedback. 'not_relevant' writes a 90-day
+  // feed_mutes row the emitter honours; 'useful' is also the undo — it
+  // clears any mute this event created. 'remind_later' snoozes the event
+  // for 7 days; 'handled' stamps it; 'data_wrong' records the signal and
+  // lets the client deep-link to the profile field.
+  app.post<{ Params: { id: string } }>('/family/feed/:id/feedback', async (req, reply) => {
+    const { tenant_id, user_id } = req.authContext
+    if (!(await isFamilyAdult(db, tenant_id, user_id))) {
+      return reply.status(403).send({ error: 'The readiness feed is visible to adult family members only.' })
+    }
+    const parsed = FeedbackBody.safeParse(req.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid feedback value' })
+
+    const events = getTenantCollection<ReadinessEventDoc>(db, 'readiness_events', tenant_id)
+    const event = await events.findOne({ id: req.params.id })
+    if (!event) return reply.status(404).send({ error: 'Feed event not found' })
+
+    const value = parsed.data.value
+    const now = new Date()
+    const feedback = (event.feedback ?? []).filter((f) => f.user_id !== user_id)
+    feedback.push({ user_id, value, at: now })
+
+    const set: Record<string, unknown> = { feedback }
+    const unset: Record<string, unknown> = {}
+    let muted_until: string | undefined
+    if (value === 'not_relevant') {
+      const until = new Date(now.getTime() + MUTE_MS)
+      await upsertEventMute(db, tenant_id, user_id, event, until)
+      set['muted'] = true
+      set['muted_reason'] = `You marked this not relevant on ${now.toISOString().slice(0, 10)}.`
+      muted_until = until.toISOString()
+    }
+    if (value === 'useful') {
+      await deleteEventMutes(db, tenant_id, event)
+      unset['muted'] = ''
+      unset['muted_reason'] = ''
+    }
+    if (value === 'remind_later') set['snoozed_until'] = new Date(now.getTime() + REMIND_LATER_MS)
+    if (value === 'handled') set['handled_at'] = now
+
+    const update: Record<string, unknown> = { $set: set }
+    if (Object.keys(unset).length > 0) update['$unset'] = unset
+    await events.updateOne({ id: event.id }, update)
+
+    return { ok: true, ...(muted_until ? { muted_until } : {}) }
   })
 
   app.get<{ Querystring: { window?: string } }>('/family/feed/summary', async (req, reply) => {
@@ -137,11 +205,14 @@ export function registerFamilyFeedRoutes(app: FastifyInstance, db: Db): void {
     const docs = (await getTenantCollection<ReadinessEventDoc>(db, 'readiness_events', tenant_id)
       .find({ created_at: { $gte: since } })
       .toArray()) as ReadinessEventDoc[]
+    // Muted/snoozed events are the family's explicit "don't show me
+    // this" — the summary counts what they actually see.
+    const visible = docs.filter((d) => isVisible(d, Date.now()))
 
     const byType: Record<string, number> = {}
     let up = 0
     let down = 0
-    for (const d of docs) {
+    for (const d of visible) {
       byType[d.type] = (byType[d.type] ?? 0) + 1
       if (d.direction === 'up') up++
       else if (d.direction === 'down') down++
@@ -158,6 +229,6 @@ export function registerFamilyFeedRoutes(app: FastifyInstance, db: Db): void {
     const compositeDelta =
       ordered.length >= 2 ? ordered[ordered.length - 1]!.score - ordered[0]!.score : null
 
-    return { window: `${days}d`, total: docs.length, by_type: byType, up, down, composite_delta: compositeDelta }
+    return { window: `${days}d`, total: visible.length, by_type: byType, up, down, composite_delta: compositeDelta }
   })
 }

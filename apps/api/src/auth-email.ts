@@ -173,3 +173,34 @@ export async function sendContinuityAlertEmail(to: string, memberName: string, o
     log.error({ to, err }, 'Failed to send continuity alert email')
   }
 }
+
+// PRD-136 §4: the family heartbeat — same shell conventions as the
+// continuity emails above. Content comes pre-rendered from
+// feed/render-heartbeat.ts so this stays a thin transport.
+export async function sendHeartbeatEmail(
+  to: string,
+  name: string,
+  rendered: { subject: string; text: string; html: string },
+): Promise<void> {
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (!apiKey) {
+    log.warn({ to }, 'No SENDGRID_API_KEY — skipping heartbeat email')
+    return
+  }
+  sgMail.setApiKey(apiKey)
+  const firstName = name.split(' ')[0] || 'there'
+  try {
+    await sgMail.send({
+      to,
+      from: { email: getFromEmail(), name: 'Kairos' },
+      subject: rendered.subject,
+      // rendered.text/html are addressed generically ("Hi,") — prepend the
+      // name in text so the email reads personally.
+      text: `Hi ${firstName},\n\n${rendered.text}`,
+      html: rendered.html.replace('<p>Hi,</p>', `<p>Hi ${firstName},</p>`),
+    })
+    log.info({ to }, 'Heartbeat email sent')
+  } catch (err) {
+    log.error({ to, err }, 'Failed to send heartbeat email')
+  }
+}

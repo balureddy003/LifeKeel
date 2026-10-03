@@ -410,6 +410,100 @@ export function registerFamilyLegacyRoutes(
     reevaluate(tenant_id)
     return reply.status(204).send()
   })
+
+  // ── Continuity rehearsal (PRD-137 §6) ──────────────────────────────────
+  // "If <as> couldn't act tomorrow, could they find what matters?" — a
+  // pure read model over the register: what the chosen adult can see,
+  // what's locatable, who they're named on, and the records only one
+  // person knows about. Nothing is notified and nothing is released —
+  // rehearsal answers the question, it doesn't act on the answer.
+  app.get<{ Querystring: { as?: string } }>('/family/legacy/rehearsal', async (req, reply) => {
+    if (!(await requireAdult(req, reply))) return
+    const { tenant_id } = req.authContext
+    const asId = req.query.as
+    if (!asId) return reply.status(400).send({ error: 'as=<member_id> is required' })
+
+    const family = await db.collection<FamilyGroupDoc>('family_groups').findOne({ tenant_id })
+    const members = family?.members ?? []
+    const subject = members.find((m) => m.id === asId)
+    if (!subject || subject.status !== 'active' || !['organizer', 'parent', 'adult'].includes(subject.role)) {
+      return reply.status(400).send({ error: 'as must be an active adult member of the family' })
+    }
+    const asOrganizer = subject.role === 'organizer'
+
+    const [docs, contacts, notes, assets] = await Promise.all([
+      docsFor(tenant_id).find({}).toArray() as Promise<LegacyDocumentDoc[]>,
+      contactsFor(tenant_id).find({}).toArray().catch(() => []) as Promise<LegacyContactDoc[]>,
+      notesFor(tenant_id).find({}).toArray().catch(() => []) as Promise<KnowledgeNoteDoc[]>,
+      getTenantCollection<Record<string, unknown>>(db, 'family_assets', tenant_id)
+        .find({})
+        .toArray()
+        .catch(() => [] as Record<string, unknown>[]),
+    ])
+
+    const memberName = (id?: string) => members.find((m) => m.id === id)?.name ?? 'Someone'
+    // The §7 visibility predicate evaluated for the `as` member — this is
+    // the question the rehearsal answers, not what the caller can see.
+    const visibleTo = (d: LegacyDocumentDoc) =>
+      d.visibility === 'adults' ||
+      asOrganizer ||
+      (d.visibility === 'named_roles' &&
+        (d.subject_member_id === subject.id || d.roles.some((r) => r.member_id === subject.id)))
+
+    const visible = docs.filter(visibleTo)
+    const hidden = docs.filter((d) => !visibleTo(d))
+    const withLocation = visible.filter((d) => Boolean(d.original_location))
+
+    const noteTargets = new Set(notes.map((n) => `${n.node.kind}:${n.node.id}`))
+    const propertyAssets = assets.filter((a: Record<string, unknown>) => a['kind'] === 'property' && a['legacy'])
+    const onlyOnePersonKnows = [
+      ...docs
+        .filter((d) => d.visibility === 'organizer' && !noteTargets.has(`document:${d.id}`))
+        .map((d) => ({ kind: 'document' as const, id: d.id, label: `${d.type.replace(/_/g, ' ')} — ${memberName(d.subject_member_id)}` })),
+      ...propertyAssets
+        .filter((a: Record<string, unknown>) => {
+          const legacy = a['legacy'] as { recorded_owners?: unknown[] }
+          return (legacy.recorded_owners ?? []).length === 0 && !noteTargets.has(`asset:${a['id']}`)
+        })
+        .map((a: Record<string, unknown>) => ({ kind: 'asset' as const, id: String(a['id']), label: String(a['name'] ?? 'Property') })),
+    ]
+
+    // Roles the `as` member is named in across every visible document, and
+    // the professional/family contacts those documents can still reach.
+    const namedRoles = visible.flatMap((d) =>
+      d.roles
+        .filter((r) => r.member_id === subject.id)
+        .map((r) => ({ document_id: d.id, type: d.type, role: r.role })),
+    )
+    const contactIds = new Set(visible.flatMap((d) => d.roles.map((r) => r.contact_id).filter((x): x is string => typeof x === 'string')))
+    const reachable = contacts
+      .filter((c) => contactIds.has(c.id) && (c.email || c.phone || c.firm))
+      .map((c) => ({ id: c.id, name: c.name, kind: c.kind }))
+
+    return {
+      as: { id: subject.id, name: subject.name },
+      findability_pct: docs.length === 0 ? 100 : Math.round((withLocation.length / docs.length) * 100),
+      visible_documents: visible.map((d) => ({ id: d.id, type: d.type, subject_name: memberName(d.subject_member_id), original_location: d.original_location ?? null })),
+      hidden_documents: hidden.map((d) => ({
+        id: d.id,
+        type: d.type,
+        subject_name: memberName(d.subject_member_id),
+        reason: d.visibility === 'organizer' ? 'organizer only' : 'named roles only',
+      })),
+      documents_without_location: visible
+        .filter((d) => ['will', 'power_of_attorney', 'trust_deed'].includes(d.type) && !d.original_location)
+        .map((d) => ({ id: d.id, type: d.type, subject_name: memberName(d.subject_member_id) })),
+      properties_without_title: propertyAssets
+        .filter((a: Record<string, unknown>) => {
+          const legacy = a['legacy'] as { title_document_id?: string; title_reference?: string }
+          return !legacy.title_document_id && !legacy.title_reference
+        })
+        .map((a: Record<string, unknown>) => ({ id: String(a['id']), name: String(a['name'] ?? 'Property') })),
+      named_roles: namedRoles,
+      reachable_contacts: reachable,
+      only_one_person_knows: onlyOnePersonKnows,
+    }
+  })
 }
 
 /**

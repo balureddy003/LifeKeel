@@ -49,6 +49,16 @@ export interface DeliveryPreferences {
   quiet_hours_end?: number | null     // e.g. 8
   /** Digest mode — batch low-urgency into a daily summary instead of per-insight. */
   digest_mode?: boolean
+  /** PRD-136 §5: family heartbeat + feed-shaping preferences. Tenant-level
+   *  for now — per-member cadence is a noted follow-up. */
+  heartbeat_cadence?: 'weekly' | 'monthly' | 'off'
+  /** When true, a week/month where nothing moved still earns the
+   *  "nothing moved" one-liner email. */
+  heartbeat_quiet_weeks?: boolean
+  /** Readiness domains the family doesn't want insights/feed items for. */
+  domains_muted?: string[]
+  /** 'mine' scopes heartbeat/digest content to the recipient's member. */
+  member_scope?: 'all' | 'mine'
   enabled: boolean
 }
 

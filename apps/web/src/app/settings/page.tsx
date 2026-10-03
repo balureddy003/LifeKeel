@@ -13,10 +13,11 @@ import { useAppStore } from '@/lib/store'
 import type { AppMode } from '@/lib/modes'
 import { ROLE_LABELS, type FamilyRole } from '@/lib/auth-types'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
+import { NotificationsCard } from '@/components/NotificationsCard'
 import { useToast } from '@/components/Toast'
 import { isValidEmailFormat } from '@/components/ConversationalOnboarding'
 import { User, LogOut, Check, X, Crown, Shield, ShieldCheck, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle, Calculator, Sparkles, HelpCircle, ScrollText, Bot, Download, Trash2, Sun, Moon, MonitorSmartphone, RefreshCw, Bell, Copy, Gift, HeartPulse } from 'lucide-react'
-import { exportAccountData, deleteAccount, fetchAccessRequests, approveAccessRequest, denyAccessRequest, resetInviteCode, fetchMyReferralCode, fetchReferralSummary, fetchFamilyContinuity, updateFamilyContinuity, updateFamilyContext, type AccessRequest, type FamilyContinuity } from '@/lib/api'
+import { exportAccountData, deleteAccount, fetchAccessRequests, approveAccessRequest, denyAccessRequest, resetInviteCode, fetchMyReferralCode, fetchReferralSummary, fetchFamilyContinuity, updateFamilyContinuity, updateFamilyContext, fetchNotificationPrefs, updateNotificationPrefs, type AccessRequest, type FamilyContinuity, type NotificationPrefsResponse, type NotificationPrefsPatch } from '@/lib/api'
 import { useThemePreference, type ThemePreference } from '@/lib/theme'
 import { isPushSupported, isPushSubscribed, subscribeToPush, unsubscribeFromPush, fetchVapidKey } from '@/lib/push'
 import { isOnDeviceSupported, isOnDeviceEnabled, setOnDeviceEnabled as persistOnDeviceEnabled, enableOnDeviceModel } from '@/lib/onDeviceLlm'
@@ -127,6 +128,30 @@ export default function SettingsPage() {
     } else {
       haptic('warning')
       toast({ message: "Couldn't save that — try again", variant: 'error' })
+    }
+  }
+
+  // Notification preference center (PRD-136 §5) — tenant-level delivery
+  // prefs. Any adult reads them (children get a 403 → card hidden); only
+  // the organizer edits. Each change saves immediately.
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPrefsResponse | null>(null)
+  const [notifBusy, setNotifBusy] = useState(false)
+
+  useEffect(() => {
+    fetchNotificationPrefs().then(setNotifPrefs)
+  }, [])
+
+  const saveNotifPrefs = async (patch: NotificationPrefsPatch) => {
+    if (notifBusy || !isOrganizer) return
+    setNotifBusy(true)
+    const saved = await updateNotificationPrefs(patch)
+    setNotifBusy(false)
+    if (saved) {
+      setNotifPrefs(saved)
+      haptic('success')
+    } else {
+      haptic('warning')
+      toast({ message: "Couldn't save notification settings — try again", variant: 'error' })
     }
   }
 
@@ -921,6 +946,21 @@ export default function SettingsPage() {
             </div>
           </ListRow>
         </ListSection>
+      )}
+
+      {/* PRD-136 §5: notification preference center — how Oak reaches the
+          family (channel order, quiet hours, digest, urgency floor), the
+          heartbeat cadence, and which domains/members the feed-shaped
+          messages cover. Hidden for children (the API 403s them); adults
+          who aren't the organizer see the same card read-only. */}
+      {notifPrefs && (
+        <NotificationsCard
+          prefs={notifPrefs.preferences}
+          exemptCriticals={notifPrefs.exempt_criticals}
+          isOrganizer={isOrganizer ?? false}
+          busy={notifBusy}
+          onPatch={(patch) => void saveNotifPrefs(patch)}
+        />
       )}
 
       {/* Financial profile */}

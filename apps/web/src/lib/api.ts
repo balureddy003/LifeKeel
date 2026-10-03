@@ -578,6 +578,10 @@ export interface FeedEvent {
   created_at: string
   /** Present on the synthetic collapsed sweep_quiet item. */
   quiet_days?: number
+  /** Set when a feed mute covers this event (only with include_muted=1,
+   *  or right after feedback in the same session). */
+  muted?: boolean
+  muted_reason?: string | null
 }
 
 export interface FeedSummary {
@@ -620,6 +624,21 @@ export async function fetchFeedSummary(window: '7d' | '30d' = '7d'): Promise<Fee
     down: 0,
     composite_delta: null,
   })
+}
+
+export type FeedFeedbackValue = 'useful' | 'not_relevant' | 'handled' | 'remind_later' | 'data_wrong'
+
+/** PRD-136 §3: one feedback entry per user per event — 'useful' also
+ *  undoes a 'not_relevant' mute server-side. */
+export async function submitFeedback(
+  eventId: string,
+  value: FeedFeedbackValue,
+): Promise<{ ok: boolean; muted_until?: string }> {
+  return scenarioRequest<{ ok: boolean; muted_until?: string }>(
+    `/family/feed/${encodeURIComponent(eventId)}/feedback`,
+    { method: 'POST', body: JSON.stringify({ value }) },
+    { ok: false },
+  )
 }
 
 // ── PRD-137: family legacy register ────────────────────────────────────────
@@ -773,6 +792,84 @@ export async function updateAssetLegacy(assetId: string, legacy: PropertyLegacy)
     null,
   )
   return res !== null
+}
+
+/** PRD-137 §6: continuity rehearsal — what a given adult could actually
+ *  find if they had to step in tomorrow. Read model, nothing moves. */
+export interface LegacyRehearsal {
+  as: { id: string; name: string }
+  findability_pct: number
+  visible_documents: { id: string; type: string; subject_name: string | null }[]
+  hidden_documents: { id: string; type: string; subject_name: string | null; reason: string }[]
+  documents_without_location: { id: string; type: string }[]
+  properties_without_title: { id: string; name: string }[]
+  named_roles: { document_id: string; type: string; role: string }[]
+  reachable_contacts: { id: string; name: string; kind: string }[]
+  only_one_person_knows: { kind: 'document' | 'asset'; id: string; label: string }[]
+}
+
+export async function fetchLegacyRehearsal(memberId: string): Promise<LegacyRehearsal | null> {
+  return apiFetch<LegacyRehearsal | null>(
+    `/family/legacy/rehearsal?as=${encodeURIComponent(memberId)}`,
+    null,
+  )
+}
+
+// ── PRD-136 §5: notification preference center ────────────────────────────
+// Tenant-level today; organizer edits, all adults read. The exempt criticals
+// ride every response so the UI renders "always sent" without hardcoding.
+
+export interface NotificationPrefs {
+  channels: string[]
+  whatsapp_to: string | null
+  sms_to: string | null
+  email_to: string | null
+  web_push_enabled: boolean
+  mobile_push_enabled: boolean
+  min_urgency: 'critical' | 'high' | 'medium' | 'low'
+  business_name: string
+  quiet_hours_start: number | null
+  quiet_hours_end: number | null
+  digest_mode: boolean
+  enabled: boolean
+  heartbeat_cadence: 'weekly' | 'monthly' | 'off'
+  heartbeat_quiet_weeks: boolean
+  domains_muted: string[]
+  member_scope: 'all' | 'mine'
+}
+
+export interface NotificationPrefsResponse {
+  preferences: NotificationPrefs
+  exempt_criticals: string[]
+}
+
+export type NotificationPrefsPatch = Partial<
+  Pick<
+    NotificationPrefs,
+    | 'channels'
+    | 'quiet_hours_start'
+    | 'quiet_hours_end'
+    | 'digest_mode'
+    | 'min_urgency'
+    | 'heartbeat_cadence'
+    | 'heartbeat_quiet_weeks'
+    | 'domains_muted'
+    | 'member_scope'
+  >
+>
+
+export async function fetchNotificationPrefs(): Promise<NotificationPrefsResponse | null> {
+  return apiFetch<NotificationPrefsResponse | null>('/family/notifications', null)
+}
+
+export async function updateNotificationPrefs(
+  patch: NotificationPrefsPatch,
+): Promise<NotificationPrefsResponse | null> {
+  return scenarioRequest<NotificationPrefsResponse | null>(
+    '/family/notifications',
+    { method: 'PATCH', body: JSON.stringify(patch) },
+    null,
+  )
 }
 
 /**

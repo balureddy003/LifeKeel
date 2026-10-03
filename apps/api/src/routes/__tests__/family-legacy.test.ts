@@ -305,6 +305,88 @@ describe('member deletion cascade', () => {
   })
 })
 
+describe('GET /family/legacy/rehearsal (§6)', () => {
+  it('400s without as, and for a child or unknown member', async () => {
+    const { app } = await build()
+    expect((await app.inject({ method: 'GET', url: '/family/legacy/rehearsal' })).statusCode).toBe(400)
+    expect((await app.inject({ method: 'GET', url: '/family/legacy/rehearsal?as=m-kid' })).statusCode).toBe(400)
+    expect((await app.inject({ method: 'GET', url: '/family/legacy/rehearsal?as=ghost' })).statusCode).toBe(400)
+    await app.close()
+  })
+
+  it('403s a child caller', async () => {
+    const { app } = await build(CHILD)
+    const res = await app.inject({ method: 'GET', url: '/family/legacy/rehearsal?as=m-adult' })
+    expect(res.statusCode).toBe(403)
+    await app.close()
+  })
+
+  it('shows what the chosen adult could find — hidden docs, unlocated docs, only-one-person-knows', async () => {
+    const { app } = await build()
+    // A will only the organizer can see, with no original location.
+    await app.inject({
+      method: 'POST',
+      url: '/family/legacy/documents',
+      payload: willDoc({ visibility: 'organizer', subject_member_id: 'm-org' }),
+    })
+    // A will adults can see, located — gives findability a numerator.
+    await app.inject({
+      method: 'POST',
+      url: '/family/legacy/documents',
+      payload: willDoc({ visibility: 'adults', original_location: 'Study drawer', roles: [{ role: 'executor', member_id: 'm-adult', verification: 'user_declared' }] }),
+    })
+    // A property whose recorded_owners is empty and has no note.
+    assets.push({
+      id: 'a-prop', tenant_id: TENANT, kind: 'property', name: 'Cottage',
+      value_minor: 30_000_000, created_at: new Date(), updated_at: new Date(),
+      legacy: { ownership_basis: 'inherited', jurisdiction: 'England & Wales', recorded_owners: [], claimed_owners: [], verification: 'user_declared' },
+    })
+
+    const res = await app.inject({ method: 'GET', url: '/family/legacy/rehearsal?as=m-adult' })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.as).toEqual({ id: 'm-adult', name: 'Adult' })
+    // 1 of 2 docs is visible AND located → 50%.
+    expect(body.findability_pct).toBe(50)
+    expect(body.visible_documents).toHaveLength(1)
+    expect(body.hidden_documents).toHaveLength(1)
+    expect(body.hidden_documents[0]).toMatchObject({ type: 'will', reason: 'organizer only' })
+    expect(body.only_one_person_knows).toHaveLength(2)
+    expect(body.only_one_person_knows.map((o: { kind: string }) => o.kind).sort()).toEqual(['asset', 'document'])
+    expect(body.properties_without_title).toEqual([{ id: 'a-prop', name: 'Cottage' }])
+    // m-adult is named executor on the visible will.
+    expect(body.named_roles).toEqual([
+      { document_id: body.visible_documents[0].id, type: 'will', role: 'executor' },
+    ])
+    await app.close()
+  })
+
+  it('a note attached to an organizer-only document removes it from only_one_person_knows', async () => {
+    const { app } = await build()
+    const created = await app.inject({
+      method: 'POST',
+      url: '/family/legacy/documents',
+      payload: willDoc({ visibility: 'organizer' }),
+    })
+    const docId = created.json().document.id
+    await app.inject({
+      method: 'POST',
+      url: '/family/legacy/notes',
+      payload: { node: { kind: 'document', id: docId }, text: 'Spare key is with Sam' },
+    })
+    const res = await app.inject({ method: 'GET', url: '/family/legacy/rehearsal?as=m-adult' })
+    expect(res.json().only_one_person_knows).toHaveLength(0)
+    await app.close()
+  })
+
+  it('100 findability when the register is empty', async () => {
+    const { app } = await build()
+    const res = await app.inject({ method: 'GET', url: '/family/legacy/rehearsal?as=m-adult' })
+    expect(res.json().findability_pct).toBe(100)
+    await app.close()
+  })
+})
+
 describe('PATCH /family/assets/:id/legacy', () => {
   it('400s on a non-property asset; attaches on property', async () => {
     const { app } = await build()

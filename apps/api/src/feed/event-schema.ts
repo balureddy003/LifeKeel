@@ -49,6 +49,13 @@ export const ReadinessEventSchema = z.object({
     )
     .default([]),
   next_check_at: z.date().nullable(),
+  // PRD-136 §3: written by the emitter when a feed_mutes row covers this
+  // event, or by the feedback route (remind_later snooze / handled). The
+  // event is still persisted — muting is a read-side filter.
+  muted: z.boolean().optional(),
+  muted_reason: z.string().nullable().optional(),
+  snoozed_until: z.date().optional(),
+  handled_at: z.date().optional(),
   dedupe_key: z.string().min(1),
   feedback: z
     .array(
