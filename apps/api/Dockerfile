@@ -78,7 +78,9 @@ COPY --from=builder /app/scripts ./scripts
 
 # Install only production dependencies (workspace packages are resolved from the
 # copied package.json files and their pre-built dist directories).
-RUN pnpm install --frozen-lockfile --prod
+# The root "prepare" script runs husky (a devDependency), which is absent under --prod and
+# fails the install. Git hooks are meaningless in an image, so drop the script first.
+RUN pnpm pkg delete scripts.prepare && pnpm install --frozen-lockfile --prod
 
 EXPOSE 3001
 
