@@ -64,6 +64,10 @@ const FAMILY_DETECTOR_IDS = [
   'family_emergency_fund_adequacy',
   'family_retirement_gap',
   'family_education_shortfall',
+  'family_education_pacing',
+  'family_emergency_trajectory',
+  'family_debt_health',
+  'family_policy_review',
 ]
 
 const ageFrom = ageFromDob

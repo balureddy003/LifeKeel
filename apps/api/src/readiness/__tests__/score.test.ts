@@ -17,6 +17,7 @@ const base: FinancialProfile = {
     mortgage_outstanding_minor: 0,
     life_cover_minor: 0,
     income_protection_monthly_minor: 0,
+    monthly_debt_payments_minor: 0,
     members: [],
   },
   emergency_fund: {
@@ -82,6 +83,7 @@ describe('computeReadiness', () => {
       household: {
         ...base.household,
         income_protection_monthly_minor: 20_000, // primary covered
+        monthly_debt_payments_minor: 0,
         members: [
           { member_id: 'm2', employment_status: 'employed', monthly_salary_minor: 200_000, income_protection_monthly_minor: 0 },
         ],

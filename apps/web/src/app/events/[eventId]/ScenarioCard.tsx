@@ -36,7 +36,8 @@ function gbp(minor: number): string {
 }
 
 interface EarnerOption {
-  /** null = the organizer's salary (household-level income). */
+  /** Roster member id (null = the "whole household" chip some templates
+      prepend — picks the aggregate projection, not a member scope). */
   memberId: string | null
   name: string
   monthlySalaryMinor: number
@@ -80,15 +81,32 @@ function runwayLine(result: ScenarioResult): string {
 const SCENARIO_TEMPLATES: Record<string, ScenarioTemplate> = {
   'job-loss': {
     title: 'If it happened later',
+    // G7: scope chips — "Whole household" plus one option per earner. A
+    // member-scoped scenario projects that earner's slice alone against
+    // the shared costs ("if Priya's income were the only one and it
+    // stopped"), which is the question a second earner actually asks;
+    // the household option keeps the aggregate version.
+    earners: true,
     horizons: HORIZONS,
-    build: ({ horizonMonths }, { totalIncomeMinor }) => ({
-      inputs: { monthlyIncomeDeltaMinor: -totalIncomeMinor, monthsUntilChange: horizonMonths },
-      name: horizonMonths === 0 ? 'Job loss starting now' : `Job loss in ${horizonMonths} months`,
-    }),
-    narrate: (r, { horizonMonths }) =>
-      horizonMonths > 0
-        ? `If your household income stopped in ${horizonMonths} months, savings would reach about ${gbp(r.savingsAtChangeMinor)} by then — ${runwayLine(r)}.`
-        : `If income stopped now, ${runwayLine(r)}.`,
+    build: ({ horizonMonths, earner }, { totalIncomeMinor }) => {
+      const scoped = earner?.memberId ? earner : null
+      const incomeMinor = scoped ? scoped.monthlySalaryMinor : totalIncomeMinor
+      const who = scoped ? `${scoped.name}'s income` : 'Household income'
+      return {
+        inputs: {
+          monthlyIncomeDeltaMinor: -incomeMinor,
+          monthsUntilChange: horizonMonths,
+          ...(scoped ? { member_id: scoped.memberId! } : {}),
+        },
+        name: horizonMonths === 0 ? `${who} stops now` : `${who} stops in ${horizonMonths} months`,
+      }
+    },
+    narrate: (r, { horizonMonths, earner }) => {
+      const who = earner?.memberId ? `${earner.name}'s income alone` : 'your household income'
+      return horizonMonths > 0
+        ? `If ${who} stopped in ${horizonMonths} months, savings would reach about ${gbp(r.savingsAtChangeMinor)} by then — ${runwayLine(r)}.`
+        : `If ${who} stopped now, ${runwayLine(r)}.`
+    },
   },
   bereavement: {
     title: 'If one income stopped',
@@ -230,10 +248,18 @@ export default function EventScenarioCard({ eventId }: { eventId: string }) {
       if (cancelled || !p) return
       setProfile(p)
       const byId = new Map((family?.members ?? []).map((m) => [m.id, m]))
-      const organizerName = (family?.members ?? []).find((m) => m.role === 'organizer')?.name ?? 'You'
+      const organizerMember = (family?.members ?? []).find((m) => m.role === 'organizer')
+      const organizerName = organizerMember?.name ?? 'You'
       const list: EarnerOption[] = []
+      // G7: job-loss offers a household aggregate chip before the earners —
+      // memberId null, labelled for what it is. Other earner templates
+      // keep memberId purely as a roster link.
+      const total = p.household.monthly_salary_minor + (p.household.members ?? []).reduce((s, m) => s + m.monthly_salary_minor, 0)
+      if (eventId === 'job-loss' && (p.household.members ?? []).some((m) => m.monthly_salary_minor > 0) && total > 0) {
+        list.push({ memberId: null, name: 'Whole household', monthlySalaryMinor: total })
+      }
       if (p.household.monthly_salary_minor > 0) {
-        list.push({ memberId: null, name: organizerName, monthlySalaryMinor: p.household.monthly_salary_minor })
+        list.push({ memberId: organizerMember?.id ?? null, name: organizerName, monthlySalaryMinor: p.household.monthly_salary_minor })
       }
       for (const m of p.household.members ?? []) {
         if (m.monthly_salary_minor > 0) {
@@ -299,7 +325,7 @@ export default function EventScenarioCard({ eventId }: { eventId: string }) {
       <span className="text-sm font-semibold text-ink-secondary">{template.title}</span>
 
       <div className="space-y-3 mt-3">
-        {template.earners && (
+        {template.earners && earners.length > 1 && (
           <div>
             <div className="text-xs text-ink-tertiary mb-1.5">Whose income?</div>
             {chipRow(earners.map((_, i) => i), earnerIdx, (i) => earners[i]?.name ?? '', setEarnerIdx)}
@@ -356,7 +382,10 @@ export default function EventScenarioCard({ eventId }: { eventId: string }) {
           <span className="text-xs font-semibold text-ink-tertiary">Saved scenarios</span>
           {saved.map((s) => (
             <div key={s.id} className="flex items-center justify-between gap-2">
-              <span className="text-xs text-ink-secondary truncate">{s.name}</span>
+              <span className="text-xs text-ink-secondary truncate">
+                {s.name}
+                {s.member_name && <span className="text-ink-tertiary"> · {s.member_name}</span>}
+              </span>
               <span className="text-xs text-ink-tertiary whitespace-nowrap">
                 {s.result?.projectedRunwayMonths != null
                   ? `${s.result.projectedRunwayMonths} mo runway`

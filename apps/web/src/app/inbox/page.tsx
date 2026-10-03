@@ -485,6 +485,16 @@ export default function InboxPage() {
                     </div>
                     <div className={`text-sm font-semibold ${item.read ? 'text-ink-secondary' : 'text-ink-primary'}`}>
                       {item.subject}
+                      {item.repeatCount !== undefined && item.repeatCount > 1 && (
+                        <span className="ml-2 text-[10px] font-semibold text-amber-400/90 bg-amber-400/10 rounded-full px-1.5 py-0.5 align-middle">
+                          Flagged {item.repeatCount} times
+                        </span>
+                      )}
+                      {item.actedOn && (
+                        <span className="ml-2 text-[10px] font-semibold text-success/90 bg-success/10 rounded-full px-1.5 py-0.5 align-middle">
+                          Acted on
+                        </span>
+                      )}
                     </div>
                     {!isExpanded && (
                       <p className="text-xs text-ink-tertiary mt-1 line-clamp-2">

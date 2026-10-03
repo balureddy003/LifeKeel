@@ -54,6 +54,13 @@ export interface ScenarioChange {
    * of the event being modelled.
    */
   steps?: ScenarioStep[]
+  /**
+   * G7: roster member this scenario is scoped to (family_groups
+   * member id). The calculator itself doesn't read it — the routes layer
+   * scopes the ScenarioProfileInput before calling — but it must live on
+   * ScenarioChange so a saved scenario round-trips its scope.
+   */
+  member_id?: string
 }
 
 /**

@@ -11,6 +11,7 @@ function makeProfile(overrides: Partial<FinancialProfile> = {}): FinancialProfil
       mortgage_outstanding_minor: 0,
       life_cover_minor: 10_000_000,
       income_protection_monthly_minor: 400000,
+      monthly_debt_payments_minor: 0,
       members: [],
     },
     emergency_fund: {
@@ -59,7 +60,7 @@ describe('PRD-108: renderPlaybook', () => {
 
   it('job-loss mortgage step reflects a real outstanding balance when one is on file, and an honest absence otherwise', () => {
     const withMortgage = renderPlaybook('job_loss', makeProfile({
-      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 3600000, mortgage_outstanding_minor: 25_000_000, life_cover_minor: 10_000_000, income_protection_monthly_minor: 400000, members: [] },
+      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 3600000, mortgage_outstanding_minor: 25_000_000, life_cover_minor: 10_000_000, income_protection_monthly_minor: 400000, monthly_debt_payments_minor: 0, members: [] },
     }))
     const withoutMortgage = renderPlaybook('job_loss', makeProfile())
 
@@ -121,7 +122,7 @@ describe('PRD-108: renderPlaybook', () => {
       policies: [{ type: 'critical_illness', provider: 'Bupa', coverage_amount_minor: 5_000_000, monthly_premium_minor: 1500 }],
     }))
     const uncovered = renderPlaybook('disability', makeProfile({
-      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 3600000, mortgage_outstanding_minor: 0, life_cover_minor: 10_000_000, income_protection_monthly_minor: 0, members: [] },
+      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 3600000, mortgage_outstanding_minor: 0, life_cover_minor: 10_000_000, income_protection_monthly_minor: 0, monthly_debt_payments_minor: 0, members: [] },
     }))
     expect(covered.steps.find((s) => s.id === 'check_cover')!.body).toMatch(/how to claim/i)
     expect(uncovered.steps.find((s) => s.id === 'check_cover')!.body).toMatch(/why that matters/i)
@@ -136,6 +137,7 @@ describe('PRD-108: renderPlaybook', () => {
         mortgage_outstanding_minor: 0,
         life_cover_minor: 10_000_000,
         income_protection_monthly_minor: 0,
+        monthly_debt_payments_minor: 0,
         members: [{ member_id: 'member-1', employment_status: 'employed', monthly_salary_minor: 300000, income_protection_monthly_minor: 300000 }],
       },
     }), 'member-1')
@@ -144,7 +146,7 @@ describe('PRD-108: renderPlaybook', () => {
 
   it('falls back to household-level fields when affectedMemberId does not match any roster member', () => {
     const playbook = renderPlaybook('disability', makeProfile({
-      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 3600000, mortgage_outstanding_minor: 0, life_cover_minor: 10_000_000, income_protection_monthly_minor: 0, members: [] },
+      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 3600000, mortgage_outstanding_minor: 0, life_cover_minor: 10_000_000, income_protection_monthly_minor: 0, monthly_debt_payments_minor: 0, members: [] },
     }), 'no-such-member')
     expect(playbook.steps.find((s) => s.id === 'check_cover')!.body).toMatch(/why that matters/i)
   })
@@ -215,7 +217,7 @@ describe('step contacts — real phone/email a "contact" step can put in front o
 
   it('a step with no matching policy field (e.g. a mortgage lender or employer) legitimately has no contacts to offer', () => {
     const playbook = renderPlaybook('job_loss', makeProfile({
-      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 3600000, mortgage_outstanding_minor: 20_000_000, life_cover_minor: 0, income_protection_monthly_minor: 0, members: [] },
+      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 3600000, mortgage_outstanding_minor: 20_000_000, life_cover_minor: 0, income_protection_monthly_minor: 0, monthly_debt_payments_minor: 0, members: [] },
     }))
     const step = playbook.steps.find((s) => s.id === 'notify_mortgage_lender')!
     expect(step.contacts).toBeUndefined()

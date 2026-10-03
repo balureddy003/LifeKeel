@@ -1,0 +1,67 @@
+# Golden eval cases for detectors/family/education-pacing.yaml.
+# event_type mirrors family-financial-profile.ts: 'family.education_fund',
+# one event per fund with the computed pace fields.
+cases:
+  - id: fund-behind-pace
+    description: Child halfway through the window but the fund is far under the linear pace
+    event_type: family.education_fund
+    data:
+      child_name: Sam
+      child_age: 10
+      years_remaining: 8
+      current_savings_minor: 100000
+      target_savings_minor: 3600000
+      pace_expected_minor: 2000000
+      required_monthly_minor: 36458
+      household_monthly_income_minor: 500000
+      member_id: m_sam
+    expected_insights:
+      - rule_id: education_fund_behind_pace
+        min_or_score: 0.65
+
+  - id: catchup-unaffordable
+    description: On pace but the catch-up monthly exceeds 15% of household income
+    event_type: family.education_fund
+    data:
+      child_name: Sam
+      child_age: 14
+      years_remaining: 4
+      current_savings_minor: 800000
+      target_savings_minor: 2000000
+      pace_expected_minor: 1555555
+      required_monthly_minor: 25000
+      household_monthly_income_minor: 150000
+      member_id: m_sam
+    expected_insights:
+      - rule_id: education_catchup_needs_large_contribution
+        min_or_score: 0.65
+
+  - id: fund-on-pace
+    description: At or ahead of the linear pace — nothing fires
+    event_type: family.education_fund
+    data:
+      child_name: Sam
+      child_age: 10
+      years_remaining: 8
+      current_savings_minor: 1800000
+      target_savings_minor: 3600000
+      pace_expected_minor: 2000000
+      required_monthly_minor: 18750
+      household_monthly_income_minor: 500000
+      member_id: m_sam
+    expected_insights: []
+
+  - id: newborn-no-pace
+    description: child_age 0 — pace undefined, must not fire
+    event_type: family.education_fund
+    data:
+      child_name: Sam
+      child_age: 0
+      years_remaining: 18
+      current_savings_minor: 0
+      target_savings_minor: 3600000
+      pace_expected_minor: 0
+      required_monthly_minor: 16666
+      household_monthly_income_minor: 500000
+      member_id: m_sam
+    expected_insights: []

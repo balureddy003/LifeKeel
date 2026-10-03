@@ -34,6 +34,7 @@ import { startGoalExperimentsForApproval } from '../outcomes/causal-experiments.
 import { generateDraft } from '../insights/generate-draft.js'
 import { extractDraftProvenance } from '../insights/draft-provenance.js'
 import { isFamilyOrganizer } from '../lib/family-permissions.js'
+import { listInsightAttributions, recordInsightAction } from '../lib/insight-attribution.js'
 import {
   consolidateInsights,
   getDetectorPrioritySettings,
@@ -309,6 +310,34 @@ export async function registerInsightRoutes(
   })
 
   /**
+   * GET /insights/attribution — which family-detector insights were
+   * followed by a real family action (profile updated, policy added,
+   * document applied, insight approved, playbook step completed) within
+   * 30 days of firing. Association, not causation — the UI words it
+   * "acted on", never "Oak made them do it".
+   */
+  app.get('/insights/attribution', async (request, reply) => {
+    const { tenant_id } = request.authContext
+    if (!db) return { attributions: [] }
+    try {
+      const rows = await listInsightAttributions(db, tenant_id)
+      return {
+        attributions: rows.map((r) => ({
+          insight_id: r.insight_id,
+          detector_id: r.detector_id,
+          rule_id: r.rule_id,
+          action_type: r.action_type,
+          action_at: r.action_at,
+          insight_created_at: r.insight_created_at,
+        })),
+      }
+    } catch (err) {
+      log.warn({ err }, 'GET /insights/attribution failed')
+      return reply.status(500).send({ error: 'Failed to load attribution' })
+    }
+  })
+
+  /**
    * GET /insights/entity/:entityKey
    * EPIC-001: Returns all raw insights for a given entity_key — the
    * "See all factors" drill-down view.
@@ -516,6 +545,13 @@ export async function registerInsightRoutes(
 
         if (!result) {
           return { code: 404, body: { error: 'Insight not found or not in identified state' } }
+        }
+
+        // Insight→action attribution: approving IS the action — attribute
+        // it to this insight specifically (not the ambient window-wide
+        // sweep a profile save uses). Best-effort; never blocks approval.
+        if (db) {
+          await recordInsightAction(db, tenant_id, 'insight_approved', { insightIds: [id] }).catch(() => {})
         }
 
         // Check learning health before creating receipt

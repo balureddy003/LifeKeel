@@ -324,11 +324,17 @@ export default function ReadinessQuizPage() {
             <p className="text-sm text-ink-secondary leading-relaxed mb-3">
               This score is the same composite readiness math a real account gets — the quiz just
               only collected enough to score protection and emergency-fund coverage. Your in-app Family
-              Readiness Score adds retirement, education funding, and estate on top. See your full picture, free.
+              Readiness Score adds retirement, education funding, and estate on top.
             </p>
+            <ul className="text-xs text-ink-tertiary leading-relaxed space-y-1.5 mb-3">
+              <li>• All five health domains scored, not just the two the quiz covers</li>
+              <li>• Detectors keep watching as your numbers change — insights arrive in your inbox</li>
+              <li>• A family vault for the documents a crisis actually asks for</li>
+            </ul>
             <Link href="/welcome" onClick={() => { haptic('light'); track('landing_get_started_click', { location: 'readiness_quiz' }) }}>
-              <GlassButton>Get my full picture</GlassButton>
+              <GlassButton>Get my full picture — free</GlassButton>
             </Link>
+            <p className="text-[11px] text-ink-tertiary mt-2">No card required. Oak informs, never sells — no commissions, no product pushing.</p>
           </GlassCard>
         </div>
       )}

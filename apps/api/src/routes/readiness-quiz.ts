@@ -137,6 +137,7 @@ export async function registerReadinessQuizRoutes(app: FastifyInstance, db: Db, 
             mortgage_outstanding_minor: answers.mortgage_outstanding_minor,
             life_cover_minor: answers.life_cover_minor,
             income_protection_monthly_minor: 0,
+            monthly_debt_payments_minor: 0,
             members: [],
           },
           emergency_fund: {

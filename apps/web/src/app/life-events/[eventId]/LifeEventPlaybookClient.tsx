@@ -290,6 +290,18 @@ export default function LifeEventPlaybookClient() {
         </GlassCard>
       </motion.div>
 
+      {/* G6: the reporter's own account — visible to every family member
+          who opens this event, so "what actually happened" doesn't live
+          only in the reporter's head. */}
+      {event.context && (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+          <GlassCard className="p-4">
+            <div className="text-xs font-semibold text-ink-tertiary mb-1">What happened, in their words</div>
+            <p className="text-sm text-ink-secondary leading-relaxed whitespace-pre-wrap">{event.context}</p>
+          </GlassCard>
+        </motion.div>
+      )}
+
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
         <div className="flex items-center justify-between mb-3">
           <span className="text-sm font-semibold text-ink-secondary">Steps</span>

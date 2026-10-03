@@ -31,8 +31,9 @@ import { z } from 'zod'
 import { getTenantCollection } from '@agentoak/platform'
 import { isFamilyAdult } from '../lib/family-permissions.js'
 import { calculateScenario, type ScenarioChange, type ScenarioResult } from '../scenarios/calculate.js'
-import { toScenarioProfileInput } from '../scenarios/profile-input.js'
+import { toScenarioProfileInput, type MemberScope } from '../scenarios/profile-input.js'
 import type { FinancialProfile } from './family-financial-profile.js'
+import type { FamilyGroupDoc } from './family-group.js'
 
 const ScenarioStepSchema = z.object({
   atMonth: z.number().int().min(0).max(360),
@@ -49,6 +50,12 @@ const ScenarioInputsSchema = z.object({
   // months"). Overrides the flat income-delta/horizon shorthand when
   // present; extra savings still applies throughout.
   steps: z.array(ScenarioStepSchema).max(12).optional(),
+  // G7: scope the scenario to one roster member — "what happens to MY
+  // income" for a second earner, not only the household aggregate. When
+  // set, the projection runs on that member's earner slice and their
+  // linked education funds; the shared emergency pool and household
+  // expenses stay as-is (they're joint by nature).
+  member_id: z.string().min(1).optional(),
 })
 
 const CreateSchema = ScenarioInputsSchema.extend({
@@ -68,32 +75,58 @@ interface ScenarioView {
   id: string
   name: string
   inputs: ScenarioChange
+  // G7: resolved display name of the scoped member, so the list can say
+  // "Priya's income stops" without every client re-joining the roster.
+  // null = household scope.
+  member_name: string | null
   created_by: string
   created_at: string
   result: ScenarioResult | null
   has_live_data: boolean
 }
 
+type ProjectOutcome =
+  | { status: 'ok'; result: ScenarioResult | null; has_live_data: boolean }
+  | { status: 'bad_member' }
+
 export function registerFamilyScenarioRoutes(app: FastifyInstance, db: Db): void {
   const scenariosFor = (tenantId: string) => getTenantCollection<FamilyScenarioDoc>(db, 'family_scenarios', tenantId)
 
-  const project = async (tenantId: string, inputs: ScenarioChange): Promise<{ result: ScenarioResult | null; has_live_data: boolean }> => {
+  const project = async (
+    tenantId: string,
+    inputs: ScenarioChange,
+  ): Promise<{ outcome: ProjectOutcome; memberName: string | null }> => {
     const profile = await getTenantCollection<FinancialProfile>(db, 'family_financial_profile', tenantId).findOne({})
-    const input = toScenarioProfileInput(profile)
-    if (!input) return { result: null, has_live_data: false }
-    return { result: calculateScenario(input, inputs), has_live_data: true }
+    let memberScope: MemberScope | undefined
+    let memberName: string | null = null
+    if (inputs.member_id) {
+      const family = await getTenantCollection<FamilyGroupDoc>(db, 'family_groups', tenantId).findOne({})
+      const member = family?.members.find((m) => m.id === inputs.member_id)
+      // An unknown id is a client bug, not a data gap — refuse rather
+      // than silently running a household projection under a member's name.
+      if (!member) return { outcome: { status: 'bad_member' }, memberName: null }
+      memberName = member.name
+      memberScope = { member_id: inputs.member_id, is_organizer: member.role === 'organizer' }
+    }
+    const input = toScenarioProfileInput(profile, memberScope)
+    if (!input) return { outcome: { status: 'ok', result: null, has_live_data: false }, memberName }
+    return { outcome: { status: 'ok', result: calculateScenario(input, inputs), has_live_data: true }, memberName }
   }
 
   const toView = async (tenantId: string, doc: FamilyScenarioDoc): Promise<ScenarioView> => {
-    const { result, has_live_data } = await project(tenantId, doc.inputs)
+    const { outcome, memberName } = await project(tenantId, doc.inputs)
+    // A scenario saved against a member who was later removed can't be
+    // projected honestly — report it as dataless, not wrong.
+    const ok = outcome.status === 'ok'
     return {
       id: doc.id,
       name: doc.name,
       inputs: doc.inputs,
+      member_name: memberName,
       created_by: doc.created_by,
       created_at: doc.created_at,
-      result,
-      has_live_data,
+      result: ok ? outcome.result : null,
+      has_live_data: ok ? outcome.has_live_data : false,
     }
   }
 
@@ -103,7 +136,11 @@ export function registerFamilyScenarioRoutes(app: FastifyInstance, db: Db): void
       return reply.status(400).send({ error: 'Invalid scenario', issues: parsed.error.issues })
     }
     const { tenant_id } = req.authContext
-    return reply.send(await project(tenant_id, parsed.data))
+    const { outcome } = await project(tenant_id, parsed.data)
+    if (outcome.status === 'bad_member') {
+      return reply.status(400).send({ error: 'Family member not found for member_id' })
+    }
+    return reply.send({ result: outcome.result, has_live_data: outcome.has_live_data })
   })
 
   app.post<{ Body: z.infer<typeof CreateSchema> }>('/family/scenarios', async (req, reply) => {
@@ -113,6 +150,14 @@ export function registerFamilyScenarioRoutes(app: FastifyInstance, db: Db): void
     }
     const { tenant_id, user_id } = req.authContext
     const { name, ...inputs } = parsed.data
+    if (inputs.member_id) {
+      // Fail the save, not the later read — a scenario scoped to a
+      // member who isn't on the roster can never project correctly.
+      const family = await getTenantCollection<FamilyGroupDoc>(db, 'family_groups', tenant_id).findOne({})
+      if (!family?.members.some((m) => m.id === inputs.member_id)) {
+        return reply.status(400).send({ error: 'Family member not found for member_id' })
+      }
+    }
     const doc: FamilyScenarioDoc = {
       id: crypto.randomUUID(),
       tenant_id,

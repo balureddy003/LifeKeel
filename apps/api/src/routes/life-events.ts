@@ -32,6 +32,7 @@ import { extractDraftProvenance } from '../insights/draft-provenance.js'
 import { renderPlaybook, type LifeEventType } from '../life-events/render-playbook.js'
 import { computeEventReadiness } from '../life-events/event-readiness.js'
 import { maybeSendVaultReminder } from '../life-events/vault-reminder.js'
+import { recordInsightAction } from '../lib/insight-attribution.js'
 import type { FinancialProfile } from './family-financial-profile.js'
 
 // Full Emergency-Mode taxonomy: the 5 crisis tiles (bereavement, medical,
@@ -43,6 +44,12 @@ const LIFE_EVENT_TYPES = ['job_loss', 'bereavement', 'disability', 'medical', 'c
 const ReportLifeEventSchema = z.object({
   event_type: z.enum(LIFE_EVENT_TYPES),
   affected_member_id: z.string().min(1).optional(),
+  // G6: free-text context in the reporter's own words — "Mum's at County
+  // Hospital, kids need pickup Thursday". Stored verbatim on the signal,
+  // shown to other family members reading the event, and fed to Ask Oak's
+  // grounding so crisis questions answer against what the family actually
+  // said, not just the event type. Never parsed, never used to infer.
+  context: z.string().max(2000).optional(),
 })
 
 interface LifeEventSignalDoc {
@@ -57,6 +64,8 @@ interface LifeEventSignalDoc {
     // the reporter specifically (not every adult, unlike vault-reminder)
     // without re-deriving it from context it no longer has by then.
     reported_by_user_id?: string
+    // G6: the reporter's own free-text account of the situation.
+    context?: string
     // Checklist completion (remediation item 19) — previously localStorage-
     // only on the web client, so checking off "call your insurer" on a phone
     // never showed on a laptop and was invisible to Oak entirely. Persisted
@@ -103,6 +112,7 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
           affected_member_id: doc.data.affected_member_id ?? null,
           reported_at: doc.data.reported_at,
           completed_step_ids: validCompletedIds(doc, playbook),
+          context: doc.data.context ?? null,
           playbook,
         }
       }),
@@ -127,7 +137,7 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
     return reply.send(computeEventReadiness(req.params.eventId, profile))
   })
 
-  app.post<{ Body: { event_type: string; affected_member_id?: string } }>(
+  app.post<{ Body: { event_type: string; affected_member_id?: string; context?: string } }>(
     '/family/life-events',
     async (req, reply) => {
       const parsed = ReportLifeEventSchema.safeParse(req.body)
@@ -135,7 +145,7 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
         return reply.status(400).send({ error: 'Invalid life event', issues: parsed.error.issues })
       }
       const { tenant_id } = req.authContext
-      const { event_type, affected_member_id } = parsed.data
+      const { event_type, affected_member_id, context } = parsed.data
 
       const profile = await profileFor(tenant_id).findOne({})
       if (!profile) {
@@ -153,6 +163,7 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
         data: {
           event_type,
           ...(affected_member_id ? { affected_member_id } : {}),
+          ...(context?.trim() ? { context: context.trim() } : {}),
           reported_at,
           reported_by_user_id: req.authContext.user_id,
         },
@@ -185,6 +196,7 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
         affected_member_id: affected_member_id ?? null,
         reported_at,
         completed_step_ids: [],
+        context: context?.trim() ?? null,
         playbook,
       })
     },
@@ -291,6 +303,13 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
         ? { $addToSet: { 'data.completed_step_ids': stepId } }
         : { $pull: { 'data.completed_step_ids': stepId } }
       await col.updateOne({ tenant_id, signal_type: 'family.life_event', id }, op)
+
+      // Insight→action attribution: checking off a playbook step is a
+      // real action on whatever flagged it — recorded against the ambient
+      // window, same posture as a profile save.
+      if (done) {
+        await recordInsightAction(db, tenant_id, 'step_completed').catch(() => {})
+      }
 
       const stored = ((doc.data.completed_step_ids ?? []).filter((s) => s !== stepId))
       if (done) stored.push(stepId)

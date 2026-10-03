@@ -38,6 +38,10 @@ const FAMILY_DETECTORS = new Set([
   'family_retirement_gap',
   'family_education_shortfall',
   'family_estate_readiness',
+  'family_education_pacing',
+  'family_emergency_trajectory',
+  'family_debt_health',
+  'family_policy_review',
 ])
 
 // Which composite component a family detector explains.
@@ -47,6 +51,12 @@ const DETECTOR_TO_COMPONENT: Record<string, ReadinessComponentKey> = {
   family_retirement_gap: 'retirement',
   family_education_shortfall: 'education',
   family_estate_readiness: 'estate',
+  family_education_pacing: 'education',
+  // Debt burden and fund-building pace both bear on liquidity — closest
+  // composite component is the emergency fund.
+  family_emergency_trajectory: 'emergency_fund',
+  family_debt_health: 'emergency_fund',
+  family_policy_review: 'protection',
 }
 
 // The insight states that count as still-open problems — mirrors
@@ -123,23 +133,30 @@ export function registerFamilyReadinessRoutes(app: FastifyInstance, db: Db): voi
     // without a separate cron or write path.
     if (result.score !== null && insights_evaluated_at) {
       const today = new Date().toISOString().slice(0, 10)
-      void db.collection(HISTORY_COLLECTION).updateOne(
-        { tenant_id, date: today },
-        {
-          $set: {
-            tenant_id,
-            date: today,
-            score: result.score,
-            components: Object.fromEntries(
-              result.components
-                .filter((c) => c.score !== null && !c.gated)
-                .map((c) => [c.key, c.score]),
-            ),
-            computed_at: new Date(),
-          },
-        },
-        { upsert: true },
-      ).catch(() => {}) // history is best-effort, never block the read
+      // Deferred via .then so a synchronous driver error (missing method
+      // on a partial db, closed client) lands in the catch too — history
+      // is best-effort, it must never block or break the read.
+      void Promise.resolve()
+        .then(() =>
+          db.collection(HISTORY_COLLECTION).updateOne(
+            { tenant_id, date: today },
+            {
+              $set: {
+                tenant_id,
+                date: today,
+                score: result.score,
+                components: Object.fromEntries(
+                  result.components
+                    .filter((c) => c.score !== null && !c.gated)
+                    .map((c) => [c.key, c.score]),
+                ),
+                computed_at: new Date(),
+              },
+            },
+            { upsert: true },
+          ),
+        )
+        .catch(() => {})
     }
 
     return {

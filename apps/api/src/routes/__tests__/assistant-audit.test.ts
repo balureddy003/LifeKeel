@@ -26,6 +26,17 @@ vi.mock('../../db.js', () => ({
       }),
     }),
   })),
+  // G6 life-event context grounding also reads family.life_event signals
+  // via the db.ts singleton — same hang-without-mock problem.
+  getSignalsCollection: vi.fn(async () => ({
+    find: () => ({
+      sort: () => ({
+        limit: () => ({
+          toArray: async () => [],
+        }),
+      }),
+    }),
+  })),
 }))
 
 function makeFakeDb() {

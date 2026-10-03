@@ -10,13 +10,15 @@ describe('family signal schemas', () => {
 
   const registry = () => getSchemaRegistry()
 
-  it('registers all six family signal types', () => {
+  it('registers every family signal type', () => {
     const reg = registry()
     for (const type of [
       'family.household',
       'family.savings',
       'family.pension',
       'family.education_fund',
+      'family.debt',
+      'family.policy_review',
       'family.estate',
       'family.life_event',
     ]) {
@@ -28,10 +30,9 @@ describe('family signal schemas', () => {
     const reg = registry()
     const result = reg.validate(
       {
-        household_income_minor: 9500000,
+        employed: 1,
         monthly_salary_minor: 630000,
-        employment_status: 'employed',
-        protection_gaps: ['life_insurance', 'income_protection'],
+        member_id: 'member-1',
       },
       'family.household',
     )
@@ -42,11 +43,37 @@ describe('family signal schemas', () => {
   it('rejects a family.household signal missing required fields', () => {
     const reg = registry()
     const result = reg.validate(
-      { household_income_minor: 9500000 },
+      { member_id: 'member-1' },
       'family.household',
     )
     expect(result.valid).toBe(false)
     expect(result.errors.length).toBeGreaterThan(0)
+  })
+
+  it('validates a family.debt signal', () => {
+    const reg = registry()
+    const result = reg.validate(
+      {
+        monthly_debt_payments_minor: 150000,
+        monthly_income_minor: 400000,
+        debt_to_income_ratio: 0.375,
+      },
+      'family.debt',
+    )
+    expect(result.valid).toBe(true)
+  })
+
+  it('validates a family.policy_review signal', () => {
+    const reg = registry()
+    const result = reg.validate(
+      {
+        member_id: 'member-1',
+        orphaned_policy_count: 1,
+        orphaned_policy_descriptions: ['life policy with Aviva'],
+      },
+      'family.policy_review',
+    )
+    expect(result.valid).toBe(true)
   })
 
   it('validates a family.savings signal', () => {

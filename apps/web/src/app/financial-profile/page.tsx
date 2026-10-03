@@ -14,6 +14,8 @@ import { useConfirm } from '@/components/ConfirmSheetProvider'
 import { calculateAge, yearsUntil } from '@/lib/age'
 import {
   fetchFinancialProfileWithVersion,
+  fetchProfileReview,
+  respondToProfileReview,
   submitFinancialProfile,
   type EmploymentStatus,
   type FinancialProfile,
@@ -50,6 +52,10 @@ interface FormState {
   monthlyExpenses: string
   hasHighInterestDebt: boolean
   highInterestDebtBalance: string
+  // Total non-mortgage monthly debt service (cards, loans, finance
+  // agreements) — feeds family_debt_health's DTI check. Mortgage is
+  // captured separately above.
+  monthlyDebtPayments: string
   currentAge: string
   targetRetirementAge: string
   pensionBalance: string
@@ -79,6 +85,10 @@ interface PolicyForm {
   // PRD-110: roster member this policy belongs to — '' means unset
   // (household-wide; the only option for car/home).
   memberId: string
+  // Who the policy *protects* (pays out to) — a roster member. Distinct
+  // from memberId (the holder): e.g. the organizer's life policy naming a
+  // partner as beneficiary. '' = not recorded.
+  beneficiaryMemberId: string
   // Claims/24-7-assistance line — display and tel:/mailto: only in the
   // crisis playbooks later, never dialed or sent automatically.
   contactPhone: string
@@ -93,6 +103,7 @@ const EMPTY_POLICY: PolicyForm = {
   renewalDate: '',
   policyNumber: '',
   memberId: '',
+  beneficiaryMemberId: '',
   contactPhone: '',
   contactEmail: '',
 }
@@ -122,6 +133,7 @@ const EMPTY_FORM: FormState = {
   monthlyExpenses: '',
   hasHighInterestDebt: false,
   highInterestDebtBalance: '',
+  monthlyDebtPayments: '0',
   // Server requires both ages to be positive integers (even on autosave, before
   // the user has reached this step) — default to plausible values rather than
   // leaving them blank, same as expectedAnnualGrowthPct's '5' below.
@@ -174,6 +186,7 @@ function fromProfile(profile: FinancialProfile): { form: FormState; funds: Educa
       monthlyExpenses: toWhole(emergencyFund.monthly_expenses_minor ?? 0),
       hasHighInterestDebt: emergencyFund.has_high_interest_debt ?? false,
       highInterestDebtBalance: toWhole(emergencyFund.high_interest_debt_balance_minor ?? 0),
+      monthlyDebtPayments: toWhole(household.monthly_debt_payments_minor ?? 0),
       currentAge: String(retirement.current_age ?? EMPTY_FORM.currentAge),
       targetRetirementAge: String(retirement.target_retirement_age ?? EMPTY_FORM.targetRetirementAge),
       pensionBalance: toWhole(retirement.pension_balance_minor ?? 0),
@@ -197,6 +210,7 @@ function fromProfile(profile: FinancialProfile): { form: FormState; funds: Educa
       renewalDate: p.renewal_date ?? '',
       policyNumber: p.policy_number ?? '',
       memberId: p.member_id ?? '',
+      beneficiaryMemberId: p.beneficiary_member_id ?? '',
       contactPhone: p.contact_phone ?? '',
       contactEmail: p.contact_email ?? '',
     })),
@@ -225,6 +239,7 @@ function toPayload(form: FormState, funds: EducationFundForm[], policies: Policy
       ...(p.renewalDate ? { renewal_date: p.renewalDate } : {}),
       ...(p.policyNumber.trim() ? { policy_number: p.policyNumber.trim() } : {}),
       ...(PERSON_SCOPED_POLICY_TYPES.has(p.type) && p.memberId ? { member_id: p.memberId } : {}),
+      ...(PERSON_SCOPED_POLICY_TYPES.has(p.type) && p.beneficiaryMemberId ? { beneficiary_member_id: p.beneficiaryMemberId } : {}),
       ...(p.contactPhone.trim() ? { contact_phone: p.contactPhone.trim() } : {}),
       ...(p.contactEmail.trim() ? { contact_email: p.contactEmail.trim() } : {}),
     }))
@@ -237,6 +252,7 @@ function toPayload(form: FormState, funds: EducationFundForm[], policies: Policy
       mortgage_outstanding_minor: toMinor(form.mortgageOutstanding),
       life_cover_minor: toMinor(form.lifeCover),
       income_protection_monthly_minor: toMinor(form.incomeProtectionMonthly),
+      monthly_debt_payments_minor: toMinor(form.monthlyDebtPayments),
       members:
         form.hasSecondEarner && form.secondEarnerMemberId
           ? [
@@ -468,6 +484,10 @@ export default function FinancialProfilePage() {
   // answers were persisted when nothing was. Cleared on the next
   // successful save.
   const [autosaveFailed, setAutosaveFailed] = useState(false)
+  // Annual review prompt — due once a year since the last explicit
+  // confirmation; 'confirm' stamps reviewed_at server-side, 'later'
+  // snoozes 30 days. Null until fetched; hidden unless due.
+  const [reviewDue, setReviewDue] = useState<{ due: boolean; changed: string[] } | null>(null)
 
   // Remediation item 27: reached straight from onboarding — the flow ends
   // on this form instead of a blank dashboard, because saving it is what
@@ -495,6 +515,10 @@ export default function FinancialProfilePage() {
     }
     stepLabelRef.current?.focus()
   }, [stepIndex])
+
+  useEffect(() => {
+    void fetchProfileReview().then((r) => setReviewDue({ due: r.due, changed: r.changed }))
+  }, [])
 
   // Live-verification finding: "Annual living expenses" (step 1) and
   // "Monthly expenses" (step 2, used for the emergency-fund-months
@@ -768,6 +792,38 @@ export default function FinancialProfilePage() {
         subtitle="This replaces sample scenarios with real, personalized readiness scores"
       />
 
+      {reviewDue?.due && result === null && (
+        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
+          <GlassCard className="p-4 border-warning/20">
+            <div className="text-sm font-semibold text-ink-primary mb-0.5">A yearly check-in</div>
+            <p className="text-xs text-ink-tertiary leading-relaxed">
+              It&apos;s been over a year since you confirmed these figures. Everything below is what&apos;s
+              currently on file{reviewDue.changed.length > 0 ? ' — and since your last review, ' + reviewDue.changed.slice(0, 5).join(', ') + (reviewDue.changed.length > 5 ? ` and ${reviewDue.changed.length - 5} more` : '') + ' changed' : ''}.
+            </p>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={async () => {
+                  haptic('light')
+                  if (await respondToProfileReview('confirm')) setReviewDue(null)
+                }}
+                className="flex-1 rounded-xl py-2.5 text-sm font-semibold bg-family-500 text-white"
+              >
+                Still accurate
+              </button>
+              <button
+                onClick={async () => {
+                  haptic('light')
+                  if (await respondToProfileReview('later')) setReviewDue(null)
+                }}
+                className="flex-1 rounded-xl py-2.5 text-sm font-semibold glass text-ink-secondary"
+              >
+                Remind me later
+              </button>
+            </div>
+          </GlassCard>
+        </motion.div>
+      )}
+
       {fromOnboarding && result === null && (
         <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
           <GlassCard className="p-4 border-family-500/20 flex items-start gap-3">
@@ -988,6 +1044,21 @@ export default function FinancialProfilePage() {
                         </select>
                       </label>
                     )}
+                    {PERSON_SCOPED_POLICY_TYPES.has(p.type) && (family?.members ?? []).length > 0 && (
+                      <label className="block">
+                        <div className="text-xs text-ink-tertiary mb-1.5">Who does it protect? (beneficiary — optional)</div>
+                        <select
+                          value={p.beneficiaryMemberId}
+                          onChange={(e) => updatePolicy(i, { beneficiaryMemberId: e.target.value })}
+                          className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all bg-transparent"
+                        >
+                          <option value="">Not recorded</option>
+                          {(family?.members ?? []).map((m) => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     <label className="block">
                       <div className="text-xs text-ink-tertiary mb-1.5">Provider</div>
                       <input
@@ -1073,6 +1144,13 @@ export default function FinancialProfilePage() {
                     prefix="£"
                   />
                 )}
+                <Field
+                  label="Monthly debt payments (not counting the mortgage)"
+                  value={form.monthlyDebtPayments}
+                  onChange={(v) => set('monthlyDebtPayments', v)}
+                  placeholder="0 if none — cards, loans, car finance"
+                  prefix="£"
+                />
               </div>
             </GlassCard>
           )}

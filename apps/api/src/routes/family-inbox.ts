@@ -18,6 +18,7 @@ import type { Db } from 'mongodb'
 import type { Engine, Insight } from '@agentoak/engine'
 import { createLogger, getTenantCollection } from '@agentoak/platform'
 import { evaluateProfileAndGenerateInsights, FinancialProfileSchema } from './family-financial-profile.js'
+import { listInsightAttributions, recordInsightAction } from '../lib/insight-attribution.js'
 import type { PolicyType } from '../ocr/profile-mapping.js'
 
 const log = createLogger({ service: 'family-inbox', version: '0.0.0' })
@@ -81,7 +82,12 @@ const DETECTOR_ROUTE: Record<string, string> = {
   family_protection_gap: '/health/protection',
   family_retirement_gap: '/health/wealth',
   family_education_shortfall: '/health/goals',
+  family_education_pacing: '/health/goals',
   family_emergency_fund_adequacy: '/health/savings',
+  family_emergency_trajectory: '/health/savings',
+  family_estate_readiness: '/health/estate',
+  family_debt_health: '/cashflow',
+  family_policy_review: '/health/protection',
   family_vault_reminder: '/vault',
 }
 
@@ -174,6 +180,10 @@ function insightToFeedItem(i: Record<string, unknown>) {
     date: created,
     read: false,
     route: DETECTOR_ROUTE[String(i['detector_id'])] ?? '/health/protection',
+    // Adaptive-copy count (insights-persist.ts) — the client renders a
+    // "Flagged N times" marker so a re-firing gap reads as a recurrence,
+    // not a fresh discovery.
+    ...(typeof i['repeat_count'] === 'number' ? { repeatCount: i['repeat_count'] } : {}),
   }
 }
 
@@ -235,7 +245,17 @@ export function registerFamilyInboxRoutes(
             .limit(limit)
             .toArray()
 
-      const fromInsights = insightDocs.map((i: Record<string, unknown>) => insightToFeedItem(i))
+      // Insight→action attribution — an insight the family already acted
+      // on (profile update, policy added, approval, playbook step) within
+      // its window gets the "acted on" marker rather than reading as
+      // still-untouched.
+      const actedOn = new Set(
+        (await listInsightAttributions(db, tenant_id, { sinceDays: 30 }).catch(() => [])).map((a) => a.insight_id),
+      )
+      const fromInsights = insightDocs.map((i: Record<string, unknown>) => ({
+        ...insightToFeedItem(i),
+        ...(actedOn.has(String(i['id'])) ? { actedOn: true } : {}),
+      }))
 
       // Insurance documents Oak has read (uploaded or found in email) — a
       // claim form with a deadline, or a policy not yet on the profile.
@@ -326,6 +346,11 @@ export function registerFamilyInboxRoutes(
       // document's suggestion gets (documents.ts sets feed_dismissed;
       // dismissing this item is this collection's equivalent).
       await col.updateOne({ id: req.params.id, tenant_id }, { $set: { dismissed: true, dismissed_at: new Date() } })
+
+      // Insight→action attribution before the re-run, same reasoning as
+      // documents.ts — this apply is a response to what was flagged, not
+      // to what regenerateInsights is about to create.
+      await recordInsightAction(db, tenant_id, 'policy_added').catch(() => {})
 
       const insightsGenerated = await regenerateInsights(tenant_id)
 

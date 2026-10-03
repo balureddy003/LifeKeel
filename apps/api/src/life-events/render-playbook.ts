@@ -423,11 +423,51 @@ function renderComputedStep(
   return renderDisabilityStep(stepId, profile, affectedMemberId)
 }
 
+// Every renderer below assumes the full schema shape — but a profile doc
+// isn't guaranteed to be schema-complete: documents.ts's
+// apply-to-profile upserts a bare {household.life_cover_minor: X} profile
+// long before the user ever opens the wizard, so policies[],
+// education_funds[] and household.members[] can be genuinely absent on a
+// real read. Normalize once here so no per-step renderer needs its own
+// null-shuffle.
+function normalizeProfile(profile: FinancialProfile): FinancialProfile {
+  const partial = profile as {
+    household?: Partial<FinancialProfile['household']>
+    emergency_fund?: Partial<FinancialProfile['emergency_fund']>
+    education_funds?: FinancialProfile['education_funds']
+    policies?: FinancialProfile['policies']
+  }
+  return {
+    ...profile,
+    household: {
+      employment_status: 'employed',
+      monthly_salary_minor: 0,
+      income_protection_monthly_minor: 0,
+      life_cover_minor: 0,
+      mortgage_outstanding_minor: 0,
+      annual_living_expenses_minor: 0,
+      monthly_debt_payments_minor: 0,
+      members: [],
+      ...partial.household,
+    },
+    emergency_fund: {
+      emergency_savings_minor: 0,
+      monthly_expenses_minor: 0,
+      has_high_interest_debt: false,
+      high_interest_debt_balance_minor: 0,
+      ...partial.emergency_fund,
+    },
+    education_funds: partial.education_funds ?? [],
+    policies: partial.policies ?? [],
+  }
+}
+
 export function renderPlaybook(
   eventType: LifeEventType,
-  profile: FinancialProfile,
+  rawProfile: FinancialProfile,
   affectedMemberId?: string,
 ): Playbook {
+  const profile = normalizeProfile(rawProfile)
   const raw = loadRawPlaybook(eventType)
   return {
     event_type: raw.event_type,

@@ -1,0 +1,53 @@
+id: family_debt_health
+name: Household Debt Health Detection
+description: >
+  Measures a family's debt-service burden — total monthly debt payments
+  (cards, loans, finance agreements — mortgage excluded) against gross
+  monthly household income. The 36% debt-to-income guideline is the
+  conventional UK/US affordability threshold; above it, debt service
+  crowds out savings, protection, and resilience building.
+version: 1.0.0
+signal_types:
+  - family.debt
+industries: ["family", "finance", "debt"]
+
+rules:
+  - id: debt_to_income_above_guideline
+    name: Debt-to-Income Above Guideline
+    # monthly_income_minor == 0 with debt payments > 0 is itself worth
+    # flagging (payments with no income), so the gate is on payments,
+    # not on the ratio — a divide-by-zero upstream already floors the
+    # ratio at MAX_SAFE_INTEGER/100 for that case.
+    condition: "data.monthly_debt_payments_minor > 0 and data.debt_to_income_ratio > 0.36"
+    confidence: 0.75
+    impact_low: "data.monthly_debt_payments_minor * 12"
+    impact_high: "data.monthly_debt_payments_minor * 12 * 3"
+    reasoning_template: >
+      Monthly debt payments of {{data.monthly_debt_payments_minor}} against a household income of
+      {{data.monthly_income_minor}} works out to a debt-to-income ratio of roughly
+      {{(data.debt_to_income_ratio * 100)}}% — above the 36% guideline often used as an affordability
+      threshold. This is an informational estimate — consider reviewing repayment options with a
+      qualified financial professional or a free debt-advice charity.
+    actions:
+      - List each debt's balance, interest rate, and minimum payment
+      - Consider whether a repayment strategy (avalanche or snowball) fits your situation
+      - Contact a free debt-advice service (e.g. StepChange, Citizens Advice) if payments feel unmanageable
+
+  - id: debt_to_income_severe
+    name: Debt-to-Income Severely Elevated
+    # >50% of income servicing debt leaves essentially no room for
+    # savings or shocks — a distinct severity tier from the 36%
+    # guideline, so a family here hears both the gap and the urgency.
+    condition: "data.monthly_debt_payments_minor > 0 and data.debt_to_income_ratio > 0.5"
+    confidence: 0.8
+    impact_low: "data.monthly_debt_payments_minor * 12"
+    impact_high: "data.monthly_debt_payments_minor * 12 * 5"
+    reasoning_template: >
+      Roughly {{(data.debt_to_income_ratio * 100)}}% of the household's monthly income is going to debt
+      payments ({{data.monthly_debt_payments_minor}} of {{data.monthly_income_minor}}). Above ~50%, most
+      guidance suggests seeking structured support rather than managing alone. This is informational
+      only — free debt-advice charities and licensed professionals can review your options.
+    actions:
+      - Contact a free debt-advice charity about a structured repayment plan
+      - Ask lenders about hardship or reduced-payment arrangements before missing payments
+      - Pause non-essential savings contributions until the ratio improves

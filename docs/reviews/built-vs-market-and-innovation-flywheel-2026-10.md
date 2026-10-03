@@ -347,6 +347,22 @@ This alone moves Claim 1 from 7/10 to 8/10.
 | **Detector-driven SEO content** | — | PRD-202's content engine: one explainer post per detector rule, cross-linked from insight cards and the marketing blog | M | P1 |
 | **B2B2C positioning doc** | G11 | A one-pager for insurance carriers: "Oak prepares families before the claim; Empathy supports them after. Offer both." | XS (content) | P2 |
 
+### Implementation status (October 2026 batch)
+
+All P0 and P1 items above are shipped. Detector count went from 5 to 9
+(`family_debt_health`, `family_policy_review` — covering beneficiary
+staleness *and* policy overlap via `beneficiary_member_id` +
+holder-composite entity keys — `family_education_pacing`,
+`family_emergency_trajectory`), each with a `detector-evals/` golden
+dataset at F1 = 1.0. Adaptive insight copy (G10), readiness drivers
+(G13), free-text crisis context (G6), member-scoped scenarios (G7),
+insight→action attribution, annual profile review, quiz CTA,
+beneficiary field, and the Kairos branding cleanup are all live.
+Quiz CTA uses factual benefits, not the invented "improved by 23
+points" social-proof stat — we don't have that data yet. Remaining:
+P2 items, Open Banking (blocked on TrueLayer partnership), detector
+SEO content, and the shareable score card.
+
 ---
 
 ## Part 4 — The Flywheel Metrics

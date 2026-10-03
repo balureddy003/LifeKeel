@@ -27,6 +27,9 @@ export interface FamilyInsight {
   category: string
   state: string
   created_at: string
+  /** How many times this (rule, entity) has fired — >1 means the gap
+   *  re-occurred after being dismissed/resolved. Absent on first fires. */
+  repeat_count?: number
 }
 
 // Real engine output (packages/engine's Trigger/Insight schema) has no flat
@@ -53,6 +56,7 @@ interface RawInsight {
   category: string
   state: string
   created_at: string
+  repeat_count?: number
 }
 
 export const RESOLVED_INSIGHT_STATES = ['approved', 'completed', 'dismissed', 'archived', 'resolved']
@@ -70,6 +74,7 @@ function adaptInsight(raw: RawInsight): FamilyInsight {
     category: raw.category,
     state: raw.state,
     created_at: raw.created_at,
+    ...(typeof raw.repeat_count === 'number' ? { repeat_count: raw.repeat_count } : {}),
   }
 }
 
@@ -94,6 +99,10 @@ const FAMILY_DETECTORS = [
   'family_emergency_fund_adequacy',
   'family_retirement_gap',
   'family_estate_readiness',
+  'family_education_pacing',
+  'family_emergency_trajectory',
+  'family_debt_health',
+  'family_policy_review',
 ] as const
 
 function getAuthToken(): string | null {
@@ -333,6 +342,8 @@ export interface ReadinessComponent {
   score: number | null
   weight: number
   detail: string
+  /** The profile figures behind the score — the "why" audit trail. */
+  drivers?: { label: string; value_minor?: number; value?: string }[]
   gated?: boolean
   insights: ReadinessComponentInsight[]
 }
@@ -408,6 +419,9 @@ export interface ScenarioInputs {
    * Deltas accumulate: a later step's +X can undo an earlier −X.
    */
   steps?: ScenarioStep[]
+  /** G7: scope the projection to one roster member's earner slice and
+   * their beneficiary education funds. Omit for the household aggregate. */
+  member_id?: string
 }
 
 export interface ScenarioStep {
@@ -447,6 +461,8 @@ export interface FamilyScenario {
   id: string
   name: string
   inputs: ScenarioInputs
+  /** G7: display name of the scoped member; null = household scope. */
+  member_name: string | null
   created_by: string
   created_at: string
   result: ScenarioResult | null
@@ -1815,6 +1831,9 @@ export interface FinancialProfilePolicy {
   contact_email?: string
   // policy it is; car/home stay unset (household-wide by nature).
   member_id?: string
+  // Who the policy *protects* — distinct from member_id (the holder). Lets
+  // family_policy_review flag beneficiaries who've left the roster.
+  beneficiary_member_id?: string
 }
 
 export interface FinancialProfile {
@@ -1827,6 +1846,8 @@ export interface FinancialProfile {
     mortgage_outstanding_minor: number
     life_cover_minor: number
     income_protection_monthly_minor: number
+    /** Total non-mortgage monthly debt service — feeds family_debt_health's DTI check. */
+    monthly_debt_payments_minor: number
     // PRD-104: additive — a mixed-earner household (one partner retired,
     // one still working; one salaried, one self-employed) couldn't be
     // represented at all before this, so the arbitrary single status
@@ -1866,6 +1887,39 @@ async function fetchFinancialProfileRaw(): Promise<{ profile: FinancialProfile |
     '/family/financial-profile',
     { profile: null },
   ).then((r) => ({ profile: r.profile ?? null, version: r.version ?? 0 }))
+}
+
+/** Annual review state — due when it's been >365 days since the family
+ *  last confirmed the profile (or last touched it, if never reviewed). */
+export interface ProfileReviewState {
+  due: boolean
+  last_reviewed_at: string | null
+  /** Human-readable labels of what changed since the last confirmation. */
+  changed: string[]
+}
+
+export async function fetchProfileReview(): Promise<ProfileReviewState> {
+  return apiFetch<ProfileReviewState>('/family/financial-profile/review', {
+    due: false,
+    last_reviewed_at: null,
+    changed: [],
+  })
+}
+
+export async function respondToProfileReview(action: 'confirm' | 'later'): Promise<boolean> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const res = await fetch(`${base}/family/financial-profile/review`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ action }),
+    })
+    return res.ok
+  } catch (err) {
+    reportError(err, { action: 'respondToProfileReview' })
+    return false
+  }
 }
 
 // Live-verification finding: page.tsx, family/page.tsx, FamilyRoster.tsx,
@@ -1986,6 +2040,9 @@ export interface LifeEvent {
   event_type: LifeEventType
   affected_member_id: string | null
   reported_at: string
+  // G6: the reporter's own free-text account of the situation — shown to
+  // the family and fed to Ask Oak's grounding. null when not provided.
+  context: string | null
   // Server-persisted checklist completion (was localStorage-only — see the
   // complete endpoint below). Only ids the current playbook contains.
   completed_step_ids: string[]
@@ -1996,7 +2053,11 @@ export async function fetchLifeEvents(): Promise<LifeEvent[]> {
   return apiFetch<{ events: LifeEvent[] }>('/family/life-events', { events: [] }).then((r) => r.events ?? [])
 }
 
-export async function reportLifeEvent(eventType: LifeEventType, affectedMemberId?: string): Promise<LifeEvent | null> {
+export async function reportLifeEvent(
+  eventType: LifeEventType,
+  affectedMemberId?: string,
+  context?: string,
+): Promise<LifeEvent | null> {
   try {
     const base = getApiBase()
     const token = getAuthToken()
@@ -2009,6 +2070,7 @@ export async function reportLifeEvent(eventType: LifeEventType, affectedMemberId
       body: JSON.stringify({
         event_type: eventType,
         ...(affectedMemberId ? { affected_member_id: affectedMemberId } : {}),
+        ...(context?.trim() ? { context: context.trim() } : {}),
       }),
     })
     const data = await res.json().catch(() => ({}))

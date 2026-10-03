@@ -1,0 +1,64 @@
+id: family_education_pacing
+name: Education Fund Pacing Detection
+description: >
+  Distinct from family_education_shortfall's "will it reach the target"
+  check — this measures the *pace*: whether the fund is where a linear
+  savings trajectory says it should be by now, and how large the monthly
+  contribution would need to be to catch up. Catches the "target set but
+  contributions never started" case early, while there's still time to
+  adjust.
+version: 1.0.0
+signal_types:
+  - family.education_fund
+industries: ["family", "education", "wealth"]
+
+rules:
+  - id: education_fund_behind_pace
+    name: Education Fund Behind Expected Pace
+    # pace_expected_minor = what a linear trajectory from birth would have
+    # accumulated by now: target * child_age / (child_age + years_remaining).
+    # 0.6 tolerance keeps normal lumpiness (grandparent gifts, irregular
+    # contributions) from firing this — only a fund materially behind
+    # where it should be at this point flags. Requires child_age > 0
+    # (pace is undefined at birth) and years remaining.
+    condition: >
+      data.child_age > 0 and data.years_remaining > 0 and
+      data.pace_expected_minor > 0 and
+      data.current_savings_minor < data.pace_expected_minor * 0.6
+    confidence: 0.72
+    impact_low: "data.pace_expected_minor - data.current_savings_minor"
+    impact_high: "data.pace_expected_minor - data.current_savings_minor"
+    reasoning_template: >
+      {{data.child_name}}'s education fund holds {{data.current_savings_minor}} — a linear pace toward the
+      {{data.target_savings_minor}} target would have it around {{data.pace_expected_minor}} by now, with
+      {{data.years_remaining}} years left. Catching up from here needs roughly {{data.required_monthly_minor}}
+      per month. This is an estimate — consider reviewing the contribution plan with a qualified
+      financial professional.
+    actions:
+      - Review whether the target or timeline is still realistic
+      - Consider setting a regular monthly contribution if none is running
+      - Consult a financial advisor about education savings options in your country
+
+  - id: education_catchup_needs_large_contribution
+    name: Education Catch-Up Needs A Large Monthly Contribution
+    # The gap is closable but expensive: the required monthly figure is a
+    # large share of household income (>15%). A family can only judge
+    # "is that feasible?" if the number is in front of them.
+    condition: >
+      data.years_remaining > 0 and
+      data.required_monthly_minor > 0 and
+      data.household_monthly_income_minor > 0 and
+      data.required_monthly_minor > data.household_monthly_income_minor * 0.15
+    confidence: 0.7
+    impact_low: "data.required_monthly_minor * 12"
+    impact_high: "data.required_monthly_minor * data.years_remaining * 12"
+    reasoning_template: >
+      Reaching {{data.child_name}}'s {{data.target_savings_minor}} education target in {{data.years_remaining}}
+      years would take roughly {{data.required_monthly_minor}} per month — more than 15% of the household's
+      monthly income on file. Options include revisiting the target, extending the timeline, or starting
+      earlier contributions on other goals. This is informational only — a financial professional can
+      help weigh the trade-offs.
+    actions:
+      - Re-check whether the target reflects current education costs
+      - Compare the required monthly figure against the household budget
+      - Consult a financial advisor about balancing this against other goals

@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Heart, Wallet, Target, PiggyBank, FileLock2, HelpCircle, Bot, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { GlassCard, PageHeader, ScoreRing } from '@/components/Glass'
+import { GlassCard, PageHeader, ScoreRing, Money } from '@/components/Glass'
 import { useFamilyHealthDomains, type HealthDomain } from '@/lib/useFamilyData'
 import { learnMoreHref } from '@/lib/detector-content'
 import { RESOLVED_INSIGHT_STATES, type FamilyInsight } from '@/lib/api'
@@ -141,6 +141,24 @@ export default function HealthDomainClient() {
               )}
             </div>
           </div>
+
+          {/* G13 explainability — the actual profile figures the score
+              was computed from, so "why this number" shows real inputs
+              rather than just the conclusion. */}
+          {!loading && domain.drivers && domain.drivers.length > 0 && (
+            <dl className="mt-4 pt-4 border-t border-tint/[0.06] grid grid-cols-2 gap-x-3 gap-y-1.5">
+              {domain.drivers.map((d) => (
+                <div key={d.label} className="contents">
+                  <dt className="text-xs text-ink-tertiary">{d.label}</dt>
+                  <dd className="text-xs text-ink-secondary font-medium text-right">
+                    {d.value_minor !== undefined
+                      ? <Money value={`£${Math.round(d.value_minor / 100).toLocaleString('en-GB')}`} />
+                      : d.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
         </GlassCard>
       </motion.div>
 

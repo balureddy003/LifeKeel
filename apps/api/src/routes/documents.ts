@@ -30,6 +30,7 @@ import {
   type PolicyType,
 } from '../ocr/profile-mapping.js'
 import { effectivePlan, hasFeature } from '../entitlements.js'
+import { recordInsightAction } from '../lib/insight-attribution.js'
 
 const log = createLogger({ service: 'documents', version: '0.0.0' })
 
@@ -365,6 +366,11 @@ export function registerDocumentRoutes(
       // document already applied to the profile).
       await documents.updateOne({ id: req.params.id }, { $set: { feed_dismissed: true } })
 
+      // Insight→action attribution before regenerateInsights — the apply
+      // is a response to whatever was already flagged, not to what this
+      // re-run is about to create.
+      await recordInsightAction(db, tenant_id, 'document_applied').catch(() => {})
+
       const insightsGenerated = await regenerateInsights(tenant_id)
 
       log.info(
@@ -442,6 +448,8 @@ export function registerDocumentRoutes(
 
       // See the matching comment in apply-to-profile above.
       await documents.updateOne({ id: req.params.id }, { $set: { feed_dismissed: true } })
+
+      await recordInsightAction(db, tenant_id, 'policy_added').catch(() => {})
 
       const insightsGenerated = await regenerateInsights(tenant_id)
 

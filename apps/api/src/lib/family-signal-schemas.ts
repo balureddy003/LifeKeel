@@ -26,16 +26,12 @@ const FAMILY_SCHEMAS = [
   {
     signal_type: 'family.household',
     schema: z.object({
-      household_income_minor: z.number().int().nonnegative(),
+      employed: z.number().int().min(0).max(1),
       monthly_salary_minor: z.number().int().nonnegative(),
-      employment_status: z.string(),
-      other_income_minor: minorField,
-      annual_living_expenses_minor: minorField,
-      protection_gaps: z.array(z.string()).optional(),
       member_id: optionalMemberId,
     }).passthrough(),
-    required_fields: ['household_income_minor', 'monthly_salary_minor', 'employment_status'],
-    optional_fields: ['other_income_minor', 'annual_living_expenses_minor', 'protection_gaps', 'member_id'],
+    required_fields: ['employed', 'monthly_salary_minor'],
+    optional_fields: ['member_id'],
   },
   {
     signal_type: 'family.savings',
@@ -44,9 +40,11 @@ const FAMILY_SCHEMAS = [
       monthly_expenses_minor: z.number().int().nonnegative(),
       has_high_interest_debt: z.number().int().min(0).max(1),
       high_interest_debt_balance_minor: minorField,
+      monthly_surplus_minor: z.number().int().optional(),
+      months_to_six_month_target: z.number().int().nonnegative().optional(),
     }).passthrough(),
     required_fields: ['emergency_savings_minor', 'monthly_expenses_minor', 'has_high_interest_debt'],
-    optional_fields: ['high_interest_debt_balance_minor'],
+    optional_fields: ['high_interest_debt_balance_minor', 'monthly_surplus_minor', 'months_to_six_month_target'],
   },
   {
     signal_type: 'family.pension',
@@ -73,8 +71,32 @@ const FAMILY_SCHEMAS = [
       target_savings_minor: z.number().int().nonnegative(),
       years_remaining: z.number().nonnegative(),
       member_id: optionalMemberId,
+      pace_expected_minor: minorField,
+      required_monthly_minor: minorField,
+      household_monthly_income_minor: minorField,
     }).passthrough(),
     required_fields: ['child_name', 'child_age', 'current_savings_minor', 'target_savings_minor', 'years_remaining'],
+    optional_fields: ['member_id', 'pace_expected_minor', 'required_monthly_minor', 'household_monthly_income_minor'],
+  },
+  {
+    signal_type: 'family.debt',
+    schema: z.object({
+      monthly_debt_payments_minor: z.number().int().nonnegative(),
+      monthly_income_minor: z.number().int().nonnegative(),
+      debt_to_income_ratio: z.number().nonnegative(),
+    }).passthrough(),
+    required_fields: ['monthly_debt_payments_minor', 'monthly_income_minor', 'debt_to_income_ratio'],
+    optional_fields: [],
+  },
+  {
+    // One signal type carries both overlap findings (overlap_count > 0)
+    // and orphan findings (orphaned_policy_count > 0) — each event sets
+    // whichever fields its subject needs; the other set may be absent.
+    signal_type: 'family.policy_review',
+    schema: z.object({
+      member_id: optionalMemberId,
+    }).passthrough(),
+    required_fields: [],
     optional_fields: ['member_id'],
   },
   {
@@ -95,9 +117,10 @@ const FAMILY_SCHEMAS = [
       affected_member_id: optionalMemberId,
       reported_by_user_id: z.string().optional(),
       completed_step_ids: z.array(z.string()).optional(),
+      context: z.string().max(2000).optional(),
     }).passthrough(),
     required_fields: ['event_type', 'reported_at'],
-    optional_fields: ['affected_member_id', 'reported_by_user_id', 'completed_step_ids'],
+    optional_fields: ['affected_member_id', 'reported_by_user_id', 'completed_step_ids', 'context'],
   },
 ] as const
 

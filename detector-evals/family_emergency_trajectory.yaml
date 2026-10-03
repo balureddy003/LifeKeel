@@ -1,0 +1,64 @@
+# Golden eval cases for detectors/family/emergency-trajectory.yaml.
+# event_type mirrors family-financial-profile.ts: 'family.savings' with the
+# computed months_to_six_month_target field.
+cases:
+  - id: fund-stalled-no-surplus
+    description: Below target with zero surplus — the fund can never get there
+    event_type: family.savings
+    data:
+      emergency_savings_minor: 300000
+      monthly_expenses_minor: 300000
+      monthly_surplus_minor: 0
+      months_to_six_month_target: 9999
+      target_months: 6
+    expected_insights:
+      - rule_id: emergency_fund_stalled
+        min_or_score: 0.7
+
+  - id: deficit-savings
+    description: Negative surplus also counts as stalled
+    event_type: family.savings
+    data:
+      emergency_savings_minor: 300000
+      monthly_expenses_minor: 300000
+      monthly_surplus_minor: -50000
+      months_to_six_month_target: 9999
+      target_months: 6
+    expected_insights:
+      - rule_id: emergency_fund_stalled
+        min_or_score: 0.7
+
+  - id: slow-build
+    description: Building but over two years out at the current pace
+    event_type: family.savings
+    data:
+      emergency_savings_minor: 300000
+      monthly_expenses_minor: 300000
+      monthly_surplus_minor: 50000
+      months_to_six_month_target: 30
+      target_months: 6
+    expected_insights:
+      - rule_id: emergency_fund_slow_build
+        min_or_score: 0.65
+
+  - id: healthy-trajectory
+    description: Under target but reaching it inside two years — nothing fires
+    event_type: family.savings
+    data:
+      emergency_savings_minor: 900000
+      monthly_expenses_minor: 300000
+      monthly_surplus_minor: 100000
+      months_to_six_month_target: 9
+      target_months: 6
+    expected_insights: []
+
+  - id: already-at-target
+    description: Fund at/above the 6-month cushion — nothing fires
+    event_type: family.savings
+    data:
+      emergency_savings_minor: 1800000
+      monthly_expenses_minor: 300000
+      monthly_surplus_minor: 100000
+      months_to_six_month_target: 0
+      target_months: 6
+    expected_insights: []

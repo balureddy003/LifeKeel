@@ -25,6 +25,17 @@ vi.mock('../../db.js', () => ({
       }),
     }),
   })),
+  // life-event context grounding (G6) reads family.life_event signals —
+  // empty by default; individual tests can swap the fixture.
+  getSignalsCollection: vi.fn(async () => ({
+    find: () => ({
+      sort: () => ({
+        limit: () => ({
+          toArray: async () => lifeEventSignalsFixture,
+        }),
+      }),
+    }),
+  })),
 }))
 
 const TENANT_A = 'tenant-assistant-a'
@@ -34,6 +45,7 @@ let profileFixture: Record<string, unknown> | null = null
 let familyFixture: Record<string, unknown> | null = null
 let insightsFixture: Array<Record<string, unknown>> = []
 let unreviewedDocsFixture: Array<Record<string, unknown>> = []
+let lifeEventSignalsFixture: Array<Record<string, unknown>> = []
 
 // Mongo-filter matcher just capable enough for the member-twin's insight
 // attribution filter (equality + $in + $or + dotted paths) — the member-
@@ -99,6 +111,7 @@ describe('POST /assistant/ask', () => {
     familyFixture = null
     insightsFixture = []
     unreviewedDocsFixture = []
+    lifeEventSignalsFixture = []
   })
 
   it('returns a live, grounded answer referencing the tenant\'s real numbers', async () => {

@@ -25,6 +25,11 @@ const FAMILY_DETECTORS = [
   'family_emergency_fund_adequacy',
   'family_retirement_gap',
   'family_education_shortfall',
+  'family_estate_readiness',
+  'family_debt_health',
+  'family_policy_review',
+  'family_education_pacing',
+  'family_emergency_trajectory',
 ]
 
 describe('family detector golden datasets', () => {
@@ -40,7 +45,7 @@ describe('family detector golden datasets', () => {
     })
   }
 
-  it('runAll covers exactly the four family detectors', async () => {
+  it('runAll covers every family detector with a golden dataset', async () => {
     const reports = await runner.runAll()
     expect([...reports.keys()].sort()).toEqual([...FAMILY_DETECTORS].sort())
   })

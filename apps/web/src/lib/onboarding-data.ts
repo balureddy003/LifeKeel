@@ -167,6 +167,13 @@ export interface InboxItem {
   route?: string
   /** Policy facts the source email stated. */
   policy?: { provider?: string; type?: string; policyNumber?: string; coverAmount?: number; currency?: string; monthlyPremium?: number; renewalDate?: string; contactPhone?: string; contactEmail?: string }
+  /** Detector insights only: how many times this finding has re-fired
+   *  after being closed — >1 earns a "Flagged N times" marker. */
+  repeatCount?: number
+  /** Detector insights only: the family took a real action (profile
+   *  update, policy added, approval, playbook step) within 30 days of
+   *  this firing — association, never a causation claim. */
+  actedOn?: boolean
 }
 
 export const INBOX_ITEMS: InboxItem[] = [

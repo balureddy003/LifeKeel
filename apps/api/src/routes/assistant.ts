@@ -20,7 +20,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { getTenantCollection, type LlmFn } from '@agentoak/platform'
 import { familyDataLlmFromEnv } from '../local-model.js'
-import { getInsightsCollection } from '../db.js'
+import { getInsightsCollection, getSignalsCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { calculateScenario, type ScenarioResult } from '../scenarios/calculate.js'
 import { toScenarioProfileInput } from '../scenarios/profile-input.js'
@@ -142,6 +142,20 @@ interface UnreviewedDocumentDoc extends Record<string, unknown> {
   uploaded_at?: Date
 }
 
+// G6: a life event with the reporter's free-text account attached — the
+// only channel through which "Mum's at County Hospital, kids need pickup"
+// reaches Ask Oak's grounding. Bounded to recent events (90 days): a
+// bereavement from last year is context for readiness, not for today's
+// crisis question.
+interface LifeEventContextDoc extends Record<string, unknown> {
+  data?: {
+    event_type?: string
+    context?: string
+    reported_at?: string
+    affected_member_id?: string
+  }
+}
+
 function toMajor(minor: number | undefined): string {
   return typeof minor === 'number' ? (minor / 100).toFixed(2) : 'not provided'
 }
@@ -157,6 +171,7 @@ function buildContext(
   family: FamilyGroupDoc | null,
   insights: Array<{ reasoning: string; category: string; detector_id: string }>,
   unreviewedDocs: UnreviewedDocumentDoc[],
+  lifeEventContexts: LifeEventContextDoc[] = [],
 ): string {
   const parts: string[] = []
 
@@ -237,6 +252,20 @@ function buildContext(
   // in Leeds"). User-authored, not a verified fact.
   if (family?.context_note) {
     parts.push(`Household context, in the organizer's own words: "${family.context_note}"`)
+  }
+
+  // G6: recent life events the family reported, in the reporter's own
+  // words — what Ask Oak needs to answer "who's picking up the kids" or
+  // "what did we say about the hospital" during a crisis. Reported facts,
+  // not verified ones — labeled as such.
+  for (const ev of lifeEventContexts) {
+    if (!ev.data?.context) continue
+    const when = ev.data.reported_at?.slice(0, 10) ?? 'recently'
+    const who = ev.data.affected_member_id ? memberLabel(family, ev.data.affected_member_id, 'a family member') : 'the family'
+    parts.push(
+      `Life event reported ${when} (${ev.data.event_type?.replace(/_/g, ' ') ?? 'event'}, affecting ${who}), ` +
+      `in the reporter's own words: "${ev.data.context}"`,
+    )
   }
 
   if (insights.length === 0) {
@@ -328,9 +357,11 @@ function buildMemberContext(twin: MemberTwinResult, profile: FinancialProfileDoc
 }
 
 // Shared by /ask and /simulate — both ground the LLM in the same tenant
-// data (profile, roster, open insights, unreviewed documents).
+// data (profile, roster, open insights, unreviewed documents, and recent
+// life events the family described in their own words).
 async function loadAssistantData(db: Db, tenant_id: string) {
-  const [profileDoc, familyDoc, insightDocs, unreviewedDocs] = await Promise.all([
+  const lifeEventCutoff = new Date(Date.now() - 90 * 86_400_000)
+  const [profileDoc, familyDoc, insightDocs, unreviewedDocs, lifeEventContexts] = await Promise.all([
     getTenantCollection<FinancialProfileDoc>(db, 'family_financial_profile', tenant_id).findOne({}),
     getTenantCollection<FamilyGroupDoc>(db, 'family_groups', tenant_id).findOne({}),
     getInsightsCollection().then((col) =>
@@ -345,8 +376,15 @@ async function loadAssistantData(db: Db, tenant_id: string) {
       .sort({ uploaded_at: -1 })
       .limit(5)
       .toArray(),
+    getSignalsCollection().then((col) =>
+      col
+        .find({ tenant_id, signal_type: 'family.life_event', 'data.context': { $exists: true }, created_at: { $gte: lifeEventCutoff } })
+        .sort({ created_at: -1 })
+        .limit(5)
+        .toArray(),
+    ),
   ])
-  return { profileDoc, familyDoc, insightDocs, unreviewedDocs }
+  return { profileDoc, familyDoc, insightDocs, unreviewedDocs, lifeEventContexts: lifeEventContexts as LifeEventContextDoc[] }
 }
 
 // toScenarioProfileInput moved to ../scenarios/profile-input.ts for
@@ -401,7 +439,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
       const { tenant_id, user_id } = req.authContext
       const { query, member_id } = parsed.data
 
-      const { profileDoc, familyDoc, insightDocs, unreviewedDocs } = await loadAssistantData(db, tenant_id)
+      const { profileDoc, familyDoc, insightDocs, unreviewedDocs, lifeEventContexts } = await loadAssistantData(db, tenant_id)
 
       let context: string
       if (member_id) {
@@ -414,6 +452,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
           familyDoc,
           insightDocs.map((i) => ({ reasoning: i.reasoning, category: i.category, detector_id: i.detector_id })),
           unreviewedDocs,
+          lifeEventContexts,
         )
       }
       const prompt = `Family data:\n${context}\n\nQuestion: ${query}`
@@ -441,7 +480,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
       const { tenant_id } = req.authContext
       const { monthlyIncomeDeltaMinor, monthlyExtraSavingsMinor, targetChildName, monthsUntilChange, question } = parsed.data
 
-      const { profileDoc, familyDoc, insightDocs, unreviewedDocs } = await loadAssistantData(db, tenant_id)
+      const { profileDoc, familyDoc, insightDocs, unreviewedDocs, lifeEventContexts } = await loadAssistantData(db, tenant_id)
       const scenarioInput = toScenarioProfileInput(profileDoc)
       if (!scenarioInput) {
         return reply.send({
@@ -463,6 +502,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
         familyDoc,
         insightDocs.map((i) => ({ reasoning: i.reasoning, category: i.category, detector_id: i.detector_id })),
         unreviewedDocs,
+        lifeEventContexts,
       )
       const prompt =
         `Family data:\n${context}\n\n` +

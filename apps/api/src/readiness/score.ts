@@ -35,6 +35,10 @@ export interface ReadinessComponent {
   weight: number
   /** One plain-language line explaining the number ("covers ~4.2 months of expenses"). */
   detail: string
+  /** The profile figures the score was computed from — the audit trail
+   *  behind `detail`, so "why this score" shows real inputs, not just a
+   *  conclusion. Minor units stay minor: the client formats. */
+  drivers?: { label: string; value_minor?: number; value?: string }[]
   /** True when the caller can't see the underlying data at all (non-adult member and the estate vault). */
   gated?: boolean
 }
@@ -84,6 +88,11 @@ function emergencyFundComponent(profile: FinancialProfile): ReadinessComponent {
     score,
     weight: READINESS_WEIGHTS.emergency_fund,
     detail: `Savings cover ~${rounded} month${rounded === 1 ? '' : 's'} of expenses (target: ${MONTHS_OF_COVER_TARGET}).`,
+    drivers: [
+      { label: 'Emergency savings', value_minor: profile.emergency_fund.emergency_savings_minor },
+      { label: 'Monthly expenses', value_minor: expenses },
+      { label: 'Months covered', value: `${rounded} of ${MONTHS_OF_COVER_TARGET}` },
+    ],
   }
 }
 
@@ -161,6 +170,30 @@ function protectionComponent(profile: FinancialProfile): ReadinessComponent {
     score,
     weight: READINESS_WEIGHTS.protection,
     detail: gaps.length === 0 ? 'All applicable cover is in place.' : `Gaps: ${gaps.join(', ')}.`,
+    drivers: [
+      ...(hasDependents || profile.household.mortgage_outstanding_minor > 0
+        ? [
+            { label: 'Life cover on file', value_minor: profile.household.life_cover_minor },
+            { label: 'Estimated household need', value_minor: need },
+          ]
+        : []),
+      ...(protectable.length > 0
+        ? [
+            {
+              label: 'Earners with income protection',
+              value: `${protectable.filter((e) => e.income_protection_monthly_minor > 0 || profile.policies.some((p) => p.type === 'income_protection' && (e.member_id ? p.member_id === e.member_id : p.member_id === undefined))).length} of ${protectable.length}`,
+            },
+          ]
+        : []),
+      ...(hasDependents
+        ? [
+            {
+              label: 'Health / critical illness policy',
+              value: profile.policies.some((p) => p.type === 'health' || p.type === 'critical_illness') ? 'On file' : 'Not on file',
+            },
+          ]
+        : []),
+    ],
   }
 }
 
@@ -186,6 +219,12 @@ function retirementComponent(profile: FinancialProfile): ReadinessComponent {
       score >= 100
         ? `On track — projected to fund the target income by age ${r.target_retirement_age}.`
         : `Current trajectory funds ~${score}% of the target retirement income.`,
+    drivers: [
+      { label: 'Pension balance', value_minor: r.pension_balance_minor },
+      { label: 'Monthly contribution', value_minor: r.monthly_contribution_minor },
+      { label: 'Projected sustainable income', value_minor: projection.achievable_retirement_income_minor },
+      { label: 'Target income', value_minor: r.target_retirement_income_minor },
+    ],
   }
 }
 
@@ -211,6 +250,10 @@ function educationComponent(profile: FinancialProfile): ReadinessComponent {
       funded.length === 1
         ? `${funded[0]!.child_name}'s fund is ~${score}% of target.`
         : `Average ${score}% of target across ${funded.length} funds.`,
+    drivers: funded.map((f) => ({
+      label: `${f.child_name}: saved vs target`,
+      value: `${Math.round((f.current_savings_minor / 100)).toLocaleString('en-GB')} / ${Math.round((f.target_savings_minor / 100)).toLocaleString('en-GB')}`,
+    })),
   }
 }
 
