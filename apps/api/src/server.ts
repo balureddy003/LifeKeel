@@ -1123,7 +1123,20 @@ app.addHook('onRequest', async (request, reply) => {
   if (/^\/connectors\/[^/]+\/oauth\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/exchange/.test(request.url)) return
-  if (open.some((p) => request.url.startsWith(p))) return
+  if (open.some((p) => request.url.startsWith(p))) {
+    // Dual-mode open routes (e.g. /auth/resend-verification) behave
+    // differently when a valid Bearer token rides along — authenticate it
+    // opportunistically instead of dropping it. A bad/absent token just
+    // falls through to the route's public path; only a request that would
+    // have been auth-gated anyway should ever see 401 here.
+    const bearer = extractBearerToken(request.headers.authorization)
+    if (bearer) {
+      try {
+        request.authContext = await auth.verify(bearer)
+      } catch { /* stay on the public path */ }
+    }
+    return
+  }
 
   const token = extractBearerToken(request.headers.authorization)
   if (!token) return reply.status(401).send({ error: 'Missing Bearer token' })

@@ -7,6 +7,9 @@ export interface User {
   avatar: string
   /** ISO-3166 alpha-2 (e.g. 'GB'), from /auth/me — used to localize the emergency-services number. */
   country?: string
+  /** Only meaningful when the server flags it false — undefined (older
+   *  accounts, verification disabled) must not read as unverified. */
+  emailVerified?: boolean | undefined
 }
 
 export interface FamilyMemberUser {

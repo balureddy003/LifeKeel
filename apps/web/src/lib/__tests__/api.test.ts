@@ -261,23 +261,38 @@ describe('fetchEmailConnectorStatus', () => {
 })
 
 describe('fetchAIResponse', () => {
-  it('returns the backend response as-is when the call succeeds', async () => {
+  it('returns a live status when the backend answers with live data', async () => {
     mockFetchOnce({ content: 'Your emergency fund covers 0.33 months.', isLive: true })
     const result = await fetchAIResponse('How is my emergency fund?')
-    expect(result).toEqual({ content: 'Your emergency fund covers 0.33 months.', isLive: true })
+    expect(result).toEqual({ content: 'Your emergency fund covers 0.33 months.', status: 'live' })
   })
 
-  it('falls back to the local AI_RESPONSES map when the backend is unreachable', async () => {
+  it('returns canned when the backend deliberately answers non-live', async () => {
+    mockFetchOnce({ content: 'Generic answer.', isLive: false })
+    const result = await fetchAIResponse('How is my emergency fund?')
+    expect(result).toEqual({ content: 'Generic answer.', status: 'canned' })
+  })
+
+  it('reports unavailable when the network request itself throws while online', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
     const result = await fetchAIResponse('Where is my travel insurance?')
-    expect(result.isLive).toBe(false)
-    expect(result.content.length).toBeGreaterThan(0)
+    // The distinguishing fix: an online failure must not degrade into a
+    // canned/sample answer — it surfaces as unavailable so the UI can say so.
+    expect(result.status).toBe('unavailable')
   })
 
-  it('falls back to the local map when the backend returns a non-2xx status', async () => {
+  it('reports unavailable on a non-2xx response while online', async () => {
     mockFetchOnce({ error: 'unauthorized' }, false)
     const result = await fetchAIResponse('Where is my travel insurance?')
-    expect(result.isLive).toBe(false)
+    expect(result.status).toBe('unavailable')
+  })
+
+  it('still serves the canned map when the device is genuinely offline', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
+    const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    const result = await fetchAIResponse('Where is my travel insurance?')
+    onLine.mockRestore()
+    expect(result.status).toBe('canned')
     expect(result.content.length).toBeGreaterThan(0)
   })
 })

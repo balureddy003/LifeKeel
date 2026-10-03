@@ -9,6 +9,7 @@ import { PageHeader, GlassCard, GlassButton, EmptyState, Skeleton, PageTransitio
 import { haptic } from '@/lib/haptics'
 import { useAuth } from '@/lib/auth-context'
 import { CATEGORY_ICONS, CATEGORY_LABELS } from '@/lib/document-categories'
+import { displayDocName } from '@/lib/doc-name'
 import { POLICY_TYPE_LABELS, POLICY_TYPES, PERSON_SCOPED_POLICY_TYPES } from '@/lib/policyTypes'
 import {
   fetchDocument,
@@ -194,18 +195,19 @@ export default function DocumentDetailClient() {
 
   const Icon = CATEGORY_ICONS[doc.category] ?? FileQuestion
   const fields = Object.entries(doc.extractedData ?? {})
+  const docName = displayDocName(doc)
 
   return (
     <PageTransition>
     <div className="px-5 pt-2 pb-10 space-y-4">
-      <PageHeader title={doc.filename} backHref="/upload" subtitle={CATEGORY_LABELS[doc.category] ?? 'Document'} />
+      <PageHeader title={docName} backHref="/upload" subtitle={CATEGORY_LABELS[doc.category] ?? 'Document'} />
 
       <GlassCard className="p-4 flex items-center gap-3">
         <div className="w-10 h-10 rounded-2xl bg-tint/[0.05] flex items-center justify-center flex-shrink-0">
           <Icon size={18} className="text-ink-secondary" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold truncate">{doc.filename}</div>
+          <div className="text-sm font-semibold truncate">{docName}</div>
           <div className="text-xs text-ink-tertiary mt-0.5">
             Uploaded {new Date(doc.uploadedAt).toLocaleDateString()}
           </div>

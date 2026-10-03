@@ -21,6 +21,38 @@ function getFromEmail(): string {
   return process.env['SENDGRID_FROM_EMAIL'] ?? 'accounts@kairos.dev'
 }
 
+// Sent on signup, email change, and resend-verification. The token-bearing
+// URL is how the recipient proves mailbox ownership, so it never lands in
+// logs — only `to` is logged, matching every helper in this file.
+export async function sendEmailVerificationEmail(to: string, name: string, verifyUrl: string): Promise<void> {
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (!apiKey) {
+    log.warn({ to }, 'No SENDGRID_API_KEY — skipping email verification email')
+    return
+  }
+
+  sgMail.setApiKey(apiKey)
+  const firstName = name.split(' ')[0] || 'there'
+
+  try {
+    await sgMail.send({
+      to,
+      from: { email: getFromEmail(), name: 'Kairos' },
+      subject: 'Verify your email',
+      text: `Hi ${firstName},\n\nPlease verify this email address for your Agent Oak account (link expires in 24 hours):\n${verifyUrl}\n\nIf you didn't request this, you can safely ignore this email.`,
+      html: `
+        <p>Hi ${firstName},</p>
+        <p>Please verify this email address for your Agent Oak account. This link expires in 24 hours.</p>
+        <p><a href="${verifyUrl}" style="display:inline-block;padding:12px 20px;background:#7c6ef0;color:#fff;border-radius:10px;text-decoration:none;font-weight:600;">Verify email</a></p>
+        <p style="color:#888;font-size:13px;">If you didn't request this, you can safely ignore this email.</p>
+      `,
+    })
+    log.info({ to }, 'Email verification sent')
+  } catch (err) {
+    log.error({ to, err }, 'Failed to send email verification')
+  }
+}
+
 export async function sendPasswordResetEmail(to: string, name: string, resetUrl: string): Promise<void> {
   const apiKey = process.env['SENDGRID_API_KEY']
   if (!apiKey) {

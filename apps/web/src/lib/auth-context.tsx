@@ -70,6 +70,7 @@ interface ApiUser {
   email: string
   name: string
   tenant_id: string
+  email_verified?: boolean
 }
 
 async function apiAuthRequest(path: string, body: Record<string, unknown>): Promise<{ token: string; user: ApiUser }> {
@@ -125,7 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const me = await res.json()
         const raw = localStorage.getItem(STORAGE_KEY)
         const cached = raw ? JSON.parse(raw) : null
-        setUser({ id: me.user_id, name: me.name ?? cached?.user?.name ?? '', email: me.email ?? cached?.user?.email ?? '', avatar: '', country: me.country })
+        setUser({ id: me.user_id, name: me.name ?? cached?.user?.name ?? '', email: me.email ?? cached?.user?.email ?? '', avatar: '', country: me.country, emailVerified: me.email_verified })
 
         // The family roster is persisted server-side now — fetch the real
         // one instead of only trusting the local cache, so a login on a
@@ -177,7 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ...(attribution ? { attribution } : {}),
     })
     localStorage.setItem(TOKEN_KEY, token)
-    const u: User = { id: apiUser.id, name: apiUser.name, email: apiUser.email, avatar: '' }
+    const u: User = { id: apiUser.id, name: apiUser.name, email: apiUser.email, avatar: '', emailVerified: apiUser.email_verified }
     persist(u, null)
     return u
   }
@@ -202,7 +203,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!res.ok) {
       throw new Error(data.error || 'Could not update profile.')
     }
-    const u: User = { id: data.user.id, name: data.user.name, email: data.user.email, avatar: '' }
+    const u: User = { id: data.user.id, name: data.user.name, email: data.user.email, avatar: '', emailVerified: data.user.email_verified }
     persist(u, family)
     return u
   }
@@ -216,7 +217,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = async (email: string, password: string) => {
     const { token, user: apiUser } = await apiAuthRequest('/auth/login', { email, password })
     localStorage.setItem(TOKEN_KEY, token)
-    const u: User = { id: apiUser.id, name: apiUser.name, email: apiUser.email, avatar: '' }
+    const u: User = { id: apiUser.id, name: apiUser.name, email: apiUser.email, avatar: '', emailVerified: apiUser.email_verified }
     // Restore the real family roster on login, same as the mount rehydration
     // path — a returning user who already built a household shouldn't be
     // routed back through family-setup. A failed fetch used to be
@@ -239,7 +240,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const acceptFamilyInvite = async (token: string, password: string) => {
     const { token: sessionToken, user: apiUser } = await apiAcceptFamilyInvite(token, password)
     if (sessionToken) localStorage.setItem(TOKEN_KEY, sessionToken)
-    const u: User = { id: apiUser.id, name: apiUser.name, email: apiUser.email, avatar: '' }
+    const u: User = { id: apiUser.id, name: apiUser.name, email: apiUser.email, avatar: '', emailVerified: apiUser.email_verified }
     let f: FamilyGroup | null = null
     try {
       const apiFamily = await fetchFamilyGroup()

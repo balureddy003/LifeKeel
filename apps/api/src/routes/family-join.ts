@@ -208,7 +208,9 @@ export function registerFamilyJoinRoutes(fastify: FastifyInstance, db: Db, auth?
       locked_until: undefined,
       external_id: undefined,
       external_provider: undefined,
-      email_verified: undefined,
+      // The invite link itself proves mailbox ownership — it only reached
+      // this address because the organizer's invite email landed there.
+      email_verified: true,
       email_verification_token: undefined,
       email_verification_expires: undefined,
       password_reset_token: undefined,
@@ -449,7 +451,9 @@ export function registerFamilyJoinRoutes(fastify: FastifyInstance, db: Db, auth?
           locked_until: undefined,
           external_id: undefined,
           external_provider: undefined,
-          email_verified: undefined,
+          // Invite-accepted account — the emailed token link is the
+          // mailbox-ownership proof, same as the join-request path above.
+          email_verified: true,
           email_verification_token: undefined,
           email_verification_expires: undefined,
           password_reset_token: undefined,
@@ -497,7 +501,9 @@ export function registerFamilyJoinRoutes(fastify: FastifyInstance, db: Db, auth?
       return {
         accepted: true,
         token: sessionToken,
-        user: { id: userId, email: invite.email, name: member.name },
+        // Accepting via the emailed link proved mailbox ownership — the
+        // client carries it forward instead of prompting to re-verify.
+        user: { id: userId, email: invite.email, name: member.name, email_verified: true },
       }
     },
   )

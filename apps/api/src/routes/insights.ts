@@ -32,6 +32,7 @@ import { ActionExecutor, previewActions } from '../actions/action-executor.js'
 import { recordMomentDecision } from '../verified-moments.js'
 import { startGoalExperimentsForApproval } from '../outcomes/causal-experiments.js'
 import { generateDraft } from '../insights/generate-draft.js'
+import { extractDraftProvenance } from '../insights/draft-provenance.js'
 import { isFamilyOrganizer } from '../lib/family-permissions.js'
 import {
   consolidateInsights,
@@ -1160,7 +1161,10 @@ export async function registerInsightRoutes(
           return reply.send({ draft: null, error: "Couldn't generate a draft right now — please try again later." })
         }
 
-        const draft = { content, generated_at: new Date() }
+        // provenance: which of the reasoning's concrete figures the draft
+        // actually carried over — the UI's "from your data" vs "Oak's
+        // wording" split. See insights/draft-provenance.ts.
+        const draft = { content, generated_at: new Date(), provenance: extractDraftProvenance(insight.reasoning, content) }
         await col.updateOne({ id, tenant_id }, { $set: { draft } })
         getAuditLogger()?.fromRequest(request, 'insight.prepare', 'insight', id, {})
         return reply.send({ draft })
