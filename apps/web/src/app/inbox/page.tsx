@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { Bot, Info, Home, Landmark, Wallet, Plane, CreditCard, Car, Loader2, CheckCircle2, Share2, Copy } from 'lucide-react'
+import { Bot, Info, Home, Landmark, Wallet, Plane, CreditCard, Car, Loader2, CheckCircle2, Share2, Copy, MessageCircle } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { GlassCard, PageHeader, EmptyState, MoneyText, Skeleton, PageTransition } from '@/components/Glass'
 import { PullToRefresh } from '@/components/PullToRefresh'
@@ -654,6 +654,20 @@ function ReferralPrompt() {
     }
   }
 
+  // WhatsApp is where families actually coordinate — a wa.me deep link puts
+  // the referral URL straight into a WhatsApp compose window on any platform
+  // (app on mobile, WhatsApp Web on desktop), unlike navigator.share which
+  // is mobile-only and leaves desktop users at a clipboard.
+  const whatsappShare = () => {
+    if (!link) return
+    haptic('light')
+    window.open(
+      `https://wa.me/?text=${encodeURIComponent(`Check your family's readiness — free, about a minute: ${link}`)}`,
+      '_blank',
+      'noopener,noreferrer',
+    )
+  }
+
   const snooze = () => {
     haptic('light')
     try { localStorage.setItem(REFERRAL_SNOOZE_KEY, String(Date.now())) } catch {}
@@ -682,6 +696,16 @@ function ReferralPrompt() {
         >
           {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
           {copied ? 'Link copied' : 'Share your link'}
+        </motion.button>
+        <motion.button
+          whileTap={{ scale: 0.95 }}
+          onClick={whatsappShare}
+          disabled={!code}
+          title="Share on WhatsApp"
+          aria-label="Share on WhatsApp"
+          className="rounded-2xl px-3.5 py-2.5 text-sm font-semibold text-success bg-success/10 border border-success/20 disabled:opacity-50"
+        >
+          <MessageCircle size={16} />
         </motion.button>
         <button onClick={snooze} className="px-3 py-2.5 text-xs font-semibold text-ink-tertiary">
           Not now

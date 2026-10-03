@@ -10,6 +10,7 @@ import { PasswordInput } from '@/components/PasswordInput'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
+import { trackConversion } from '@/lib/ad-track'
 import { fetchPublicStatus } from '@/lib/api'
 
 export default function SignUpPage() {
@@ -44,6 +45,7 @@ export default function SignUpPage() {
       await signUp(name, email, password, refCode)
       haptic('success')
       track('signup_completed', { method: 'password' })
+      trackConversion('signup')
       router.push('/family-setup')
     } catch (err) {
       haptic('warning')
@@ -58,6 +60,7 @@ export default function SignUpPage() {
       await signInWithProvider('google')
       haptic('medium')
       track('signup_completed', { method: 'google' })
+      trackConversion('signup')
       router.push('/family-setup')
     } catch (err) {
       haptic('warning')

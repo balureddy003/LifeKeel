@@ -7,6 +7,7 @@ import { ModeProvider } from '@/lib/mode-context'
 import { AppShell } from '@/components/AppShell'
 import { Observability } from '@/components/Observability'
 import { GoogleAnalytics } from '@/components/GoogleAnalytics'
+import { AdPixels } from '@/components/AdPixels'
 import { ConfirmSheetProvider } from '@/components/ConfirmSheetProvider'
 import { ToastProvider } from '@/components/Toast'
 
@@ -173,6 +174,7 @@ export default function RootLayout({
       <body suppressHydrationWarning>
         <Observability />
         <GoogleAnalytics />
+        <AdPixels />
         {/* Live-verification finding: the global CSS prefers-reduced-motion
             rule only zeroes out native CSS animations/transitions — it
             can't touch Framer Motion's own animation engine, which drives

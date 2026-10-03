@@ -19,6 +19,7 @@ import { Share2, Check } from 'lucide-react'
 import { GlassCard, GlassButton, PageHeader, ScoreRing } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
+import { trackConversion } from '@/lib/ad-track'
 import { submitReadinessQuiz, captureLead, type ReadinessQuizResult } from '@/lib/api'
 import { learnMoreHref } from '@/lib/detector-content'
 
@@ -147,6 +148,7 @@ function EmailCapture({ score }: { score: number }) {
     const band = `${Math.floor(score / 10) * 10}-${Math.floor(score / 10) * 10 + 10}`
     const ok = await captureLead({ email: email.trim(), source: 'readiness_quiz', score_band: band })
     setState(ok ? 'done' : 'error')
+    if (ok) trackConversion('lead')
     // No client-side funnel event needed — POST /leads already records
     // 'lead_captured' server-side with source/score_band.
   }
