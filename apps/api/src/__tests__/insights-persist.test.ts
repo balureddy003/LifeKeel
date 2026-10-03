@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { resolveStaleInsights, persistAndDeliverInsights } from '../insights-persist.js'
 
-const ensureVerifiedMomentsMock = vi.fn(async () => {})
+const ensureVerifiedMomentsMock = vi.fn(async (..._args: unknown[]) => {})
 vi.mock('../verified-moments.js', () => ({
   ensureVerifiedMoments: (...args: unknown[]) => ensureVerifiedMomentsMock(...args),
 }))
