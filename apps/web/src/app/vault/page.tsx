@@ -16,6 +16,7 @@ import {
   type VaultDocument,
   type VaultDocType,
 } from '@/lib/api'
+import { displayDocName } from '@/lib/doc-name'
 import { Camera, Upload, FileLock2, Loader2, AlertCircle, Lock, Trash2, X } from 'lucide-react'
 
 export default function VaultPage() {
@@ -124,7 +125,7 @@ export default function VaultPage() {
 
   const handleDelete = useCallback(async (doc: VaultDocument) => {
     const ok = await confirm({
-      title: `Delete "${doc.filename}"?`,
+      title: `Delete "${displayDocName(doc)}"?`,
       message: 'This removes it from the vault permanently. This can\'t be undone.',
       confirmLabel: 'Delete',
       destructive: true,
@@ -283,7 +284,7 @@ export default function VaultPage() {
                         {doc.sealed ? <Lock size={18} className="text-family-400" /> : <FileLock2 size={18} className="text-ink-secondary" />}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold truncate">{doc.filename}</div>
+                        <div className="text-sm font-semibold truncate">{displayDocName(doc)}</div>
                         <div className="text-xs text-ink-tertiary mt-0.5 flex items-center gap-1.5">
                           {doc.sealed && (
                             <span className="rounded-full bg-family-500/15 text-family-300 px-1.5 py-px text-[10px] font-medium">
@@ -302,7 +303,7 @@ export default function VaultPage() {
                     <button
                       onClick={() => handleDelete(doc)}
                       disabled={deletingId === doc.id}
-                      aria-label={`Delete ${doc.filename}`}
+                      aria-label={`Delete ${displayDocName(doc)}`}
                       className="w-8 h-8 rounded-full flex items-center justify-center text-danger flex-shrink-0 disabled:opacity-50"
                     >
                       {deletingId === doc.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
@@ -336,7 +337,7 @@ export default function VaultPage() {
                 <Lock size={16} className="text-family-400" />
                 <span className="text-sm font-semibold">Sealed document</span>
               </div>
-              <p className="text-xs text-ink-tertiary">"{unsealPrompt.filename}" is encrypted with a passphrase only your family knows. Oak can’t open it for you.</p>
+              <p className="text-xs text-ink-tertiary">"{displayDocName({ filename: unsealPrompt.filename })}" is encrypted with a passphrase only your family knows. Oak can’t open it for you.</p>
               <input
                 type="password"
                 autoFocus
@@ -387,7 +388,7 @@ export default function VaultPage() {
               className="glass rounded-2xl p-3 max-w-lg w-full max-h-[85vh] flex flex-col"
             >
               <div className="flex items-center justify-between mb-2 px-1">
-                <div className="text-sm font-semibold truncate">{preview.filename}</div>
+                <div className="text-sm font-semibold truncate">{displayDocName({ filename: preview.filename })}</div>
                 <button onClick={() => setPreview(null)} aria-label="Close" className="w-7 h-7 rounded-full flex items-center justify-center text-ink-tertiary flex-shrink-0">
                   <X size={16} />
                 </button>

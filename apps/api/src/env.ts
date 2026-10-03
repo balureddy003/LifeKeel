@@ -14,7 +14,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import { createLogger } from '@agentoak/platform'
-import { optionalEnum, optionalFlag } from './env-helpers.js'
+import { dropEmptyEnv, optionalEnum, optionalFlag } from './env-helpers.js'
 
 const log = createLogger({ service: 'env', version: '0.0.0' })
 
@@ -22,6 +22,11 @@ const log = createLogger({ service: 'env', version: '0.0.0' })
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const envPath = path.resolve(__dirname, '../../..', '.env')
 dotenv.config({ path: envPath })
+
+// An empty value (e.g. an unset deploy variable passed as KEY=) must behave as unset everywhere:
+// code reads process.env['X'] ?? default, and '' is not nullish. See env-helpers.ts.
+const droppedEmpty = dropEmptyEnv()
+if (droppedEmpty.length > 0) log.info({ vars: droppedEmpty.join(',') }, 'Treating empty environment variables as unset')
 
 // ── Config schema ─────────────────────────────────────────────────────────────
 //

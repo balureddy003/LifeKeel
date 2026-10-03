@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Home, Inbox, Users, CalendarClock, Settings, WifiOff, Siren, Network, Bot } from 'lucide-react'
+import { Home, Inbox, Users, CalendarClock, Settings, WifiOff, Siren, Network, Bot, MailWarning, X } from 'lucide-react'
 import { useNetworkStatus } from '@/lib/useNetworkStatus'
 import { useAuth } from '@/lib/auth-context'
 import { useMode } from '@/lib/mode-context'
@@ -13,7 +13,7 @@ import { MeshGradient, Skeleton, SkeletonCard } from './Glass'
 import { EmergencyMode } from './EmergencyMode'
 import { CommandPalette } from './CommandPalette'
 import { DisclaimerFooter } from './Disclaimer'
-import { fetchInboxItems, fetchFamilyInsights, fetchPublicStatus, type PublicStatus } from '@/lib/api'
+import { fetchInboxItems, fetchFamilyInsights, fetchPublicStatus, resendVerificationEmail, type PublicStatus } from '@/lib/api'
 import { flushMutationQueue } from '@/lib/offline-queue'
 import { warmCache } from '@/lib/fetch-cache'
 import { useToast } from './Toast'
@@ -192,6 +192,74 @@ function MaintenanceBanner() {
   )
 }
 
+// Signed-in but unverified email — the other side of /verify-email.
+// Without this the verification email is a dead end: nothing in the app
+// ever told the user it existed or offered a resend. Dismisses per
+// session (not permanently — it's a trust property, not a promo) and
+// clears itself once the account flips to verified.
+const VERIFY_BANNER_DISMISSED = 'oak:verify-banner-dismissed'
+
+function VerifyEmailBanner() {
+  const { isAuthenticated, user } = useAuth()
+  const [dismissed, setDismissed] = useState(true)
+  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
+
+  useEffect(() => {
+    try { setDismissed(sessionStorage.getItem(VERIFY_BANNER_DISMISSED) === '1') } catch { /* private mode */ }
+  }, [])
+
+  const resend = async () => {
+    setState('sending')
+    try {
+      await resendVerificationEmail()
+      setState('sent')
+    } catch {
+      setState('error')
+    }
+  }
+
+  const dismiss = () => {
+    setDismissed(true)
+    try { sessionStorage.setItem(VERIFY_BANNER_DISMISSED, '1') } catch { /* private mode */ }
+  }
+
+  const show = isAuthenticated && user?.emailVerified === false && !dismissed
+
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          initial={{ y: -60, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: -60, opacity: 0 }}
+          role="status"
+          aria-live="polite"
+          className="fixed top-0 left-0 right-0 z-banner glass safe-area-top px-4 py-2 flex items-center justify-center gap-2"
+        >
+          <MailWarning size={16} className="text-warning flex-shrink-0" />
+          <span className="text-sm text-ink-secondary font-medium">
+            {state === 'sent' ? 'Verification link sent — check your inbox' :
+             state === 'error' ? "Couldn't send the link — try again in a moment" :
+             'Verify your email so invites and recovery reach you'}
+          </span>
+          {state !== 'sent' && (
+            <button
+              onClick={resend}
+              disabled={state === 'sending'}
+              className="text-sm text-family-400 font-semibold disabled:opacity-50"
+            >
+              {state === 'sending' ? 'Sending…' : 'Resend link'}
+            </button>
+          )}
+          <button onClick={dismiss} aria-label="Dismiss" className="text-ink-tertiary">
+            <X size={14} />
+          </button>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
 function PwaInit() {
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
@@ -215,9 +283,13 @@ function ModeEffects() {
 // like AskOakButton below — the two floating buttons used to differ only
 // by color (purple vs red), which fails colorblind users and is exactly
 // the wrong differentiator under crisis stress, when a mis-tap matters
-// most. Shape + a text label make this unmistakable at a glance without
-// touching either button's position (avoids a wider layout regression
-// across every page that reserves scroll-gutter space for these).
+// most. Shape + a text label make this unmistakable at a glance.
+//
+// SOS also sits at the TOP of the floating stack (bottom-52), not beside
+// the nav bar — Ask Oak owns the bottom-32 slot nearest the thumb. The
+// dangerous mis-tap direction is wanting chat and hitting emergency; with
+// SOS a full button-height above Ask Oak, a fumbled Ask Oak tap lands on
+// the tab bar or empty space, never on the emergency sequence.
 function EmergencyButton() {
   const { config, activateEmergency } = useMode()
   if (!config.showEmergencyButton) return null
@@ -229,7 +301,7 @@ function EmergencyButton() {
         activateEmergency()
       }}
       whileTap={{ scale: 0.95 }}
-      className="fixed bottom-32 right-4 z-fab h-12 pl-3 pr-4 rounded-full flex items-center gap-1.5"
+      className="fixed bottom-52 right-4 z-fab h-12 pl-3 pr-4 rounded-full flex items-center gap-1.5"
       style={{
         background: 'linear-gradient(135deg, #f87171, #dc2626)',
         border: '1px solid rgba(255,255,255,0.2)',
@@ -267,7 +339,7 @@ function EmergencyButton() {
 // PRD-101 endpoint /assistant/page.tsx correctly calls. Rather than
 // resurrect a second, wrong chat implementation, this reuses the one real
 // implementation by linking straight to it.
-function AskOakButton({ stacked, context }: { stacked: boolean; context?: string }) {
+function AskOakButton({ context }: { context?: string }) {
   const router = useRouter()
   return (
     <motion.button
@@ -276,7 +348,9 @@ function AskOakButton({ stacked, context }: { stacked: boolean; context?: string
         router.push(context ? `/assistant?context=${encodeURIComponent(context)}` : '/assistant')
       }}
       whileTap={{ scale: 0.9 }}
-      className={`fixed right-4 z-fab w-12 h-12 rounded-full flex items-center justify-center ${stacked ? 'bottom-52' : 'bottom-32'}`}
+      // Always the bottom slot (bottom-32): the frequent, harmless action
+      // stays nearest the thumb; SOS — the dangerous mis-tap — is above it.
+      className="fixed bottom-32 right-4 z-fab w-12 h-12 rounded-full flex items-center justify-center"
       style={{
         background: 'linear-gradient(135deg, #8b80f8, #6b5ce0)',
         border: '1px solid rgba(255,255,255,0.2)',
@@ -301,6 +375,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/login') ||
     pathname.startsWith('/family-setup') ||
     pathname.startsWith('/reset-password') ||
+    pathname.startsWith('/verify-email') ||
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/terms') ||
     pathname.startsWith('/privacy') ||
@@ -475,6 +550,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/login') ||
     pathname.startsWith('/family-setup') ||
     pathname.startsWith('/reset-password') ||
+    pathname.startsWith('/verify-email') ||
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/terms') ||
     pathname.startsWith('/privacy') ||
@@ -542,6 +618,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <MeshGradient />
       <OfflineBanner />
       <MaintenanceBanner />
+      <VerifyEmailBanner />
       <ModeEffects />
       {showNav && <NavRail />}
       <div className={[railGutter, 'min-h-screen'].filter(Boolean).join(' ')}>
@@ -552,7 +629,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
       {showNav && <LiquidTabBar />}
       {showEmergency && <EmergencyButton />}
-      {showAskOak && <AskOakButton stacked={!!showEmergency} context={pathname} />}
+      {showAskOak && <AskOakButton context={pathname} />}
       <EmergencyMode
         active={emergencyActive}
         onDeactivate={deactivateEmergency}

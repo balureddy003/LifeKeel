@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { ArrowLeft, Check, Copy, HelpCircle, Loader2, Mail, Phone, PenLine, Printer } from 'lucide-react'
 import { GlassCard, GlassButton, PageHeader, PageTransition } from '@/components/Glass'
 import { LifeSafetyNotice } from '@/components/LifeSafetyNotice'
+import { DraftProvenanceNote } from '@/components/DraftProvenance'
 import { haptic } from '@/lib/haptics'
 import { fetchLifeEvents, prepareLifeEventStepDraft, setLifeEventStepDone, pingOnDeviceDraftUsed, type LifeEvent, type LifeEventPlaybookStep, type LifeEventStepContact, type LifeEventType } from '@/lib/api'
 import { isOnDeviceEnabled, isOnDeviceSupported, generateDraftOnDevice } from '@/lib/onDeviceLlm'
@@ -89,6 +90,7 @@ function StepContacts({ contacts }: { contacts: LifeEventStepContact[] }) {
 function StepDraft({ eventId, step }: { eventId: string; step: LifeEventPlaybookStep }) {
   const [drafting, setDrafting] = useState(false)
   const [draftText, setDraftText] = useState<string | null>(null)
+  const [draftFacts, setDraftFacts] = useState<string[] | undefined>(undefined)
   const [draftError, setDraftError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -124,6 +126,7 @@ function StepDraft({ eventId, step }: { eventId: string; step: LifeEventPlaybook
 
     const draft = await prepareLifeEventStepDraft(eventId, step.id)
     setDraftText(draft?.content ?? null)
+    setDraftFacts(draft?.provenance?.facts)
     if (!draft) setDraftError("Oak couldn't write that draft just now — nothing was lost, try again in a moment.")
     setDrafting(false)
   }
@@ -164,6 +167,7 @@ function StepDraft({ eventId, step }: { eventId: string; step: LifeEventPlaybook
               ? 'This is a draft only — copy it or open it in your own email client. Oak never sends it for you.'
               : "This is a starting point Oak put together from your real numbers — review it and take it from here. Oak hasn't checked, filed, or contacted anyone for you."}
           </p>
+          <DraftProvenanceNote facts={draftFacts} />
           <div className="flex gap-2">
             <GlassButton variant="secondary" onClick={handleCopy}>
               <Copy size={14} />

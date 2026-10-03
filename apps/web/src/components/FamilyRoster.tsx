@@ -124,6 +124,28 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
         })}
       </div>
 
+      {/* Pending members used to look identical to active ones below the
+          roster row — a badge with no next action. Surface the actual
+          thing the organizer can do about it (invite them / finish their
+          profile) inline, straight into the member page that owns it. */}
+      {selected.status === 'pending' && (
+        <Link
+          href={`/member/${selected.id}`}
+          onClick={() => haptic('light')}
+          className="flex items-center gap-2 rounded-xl px-3 py-2.5 mb-2 bg-warning/10 border border-warning/20 active:opacity-70"
+        >
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-semibold text-warning">
+              {selected.name.split(' ')[0]} hasn&apos;t joined yet
+            </div>
+            <div className="text-caption text-ink-tertiary">
+              Send an invite or finish their profile — their data counts toward the family score either way.
+            </div>
+          </div>
+          <ChevronRight size={14} className="text-warning flex-shrink-0" />
+        </Link>
+      )}
+
       {/* Sections for the selected member */}
       {sections.length === 0 ? (
         <p className="text-sm text-ink-tertiary px-1 py-2">

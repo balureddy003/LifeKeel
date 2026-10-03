@@ -82,7 +82,7 @@ function ActivityRing({
   if (!href) return content
 
   return (
-    <Link href={href} onClick={() => haptic('light')} aria-label={`View ${label} details`}>
+    <Link href={href} onClick={() => haptic('light')} aria-label={isSample ? `Set up ${label}` : `View ${label} details`}>
       {content}
     </Link>
   )
@@ -93,12 +93,12 @@ function ActivityRing({
 // theme-aware twin used for the percentage text and icon: the pastel
 // literals are decorative on dark but fail WCAG AA as text on the light
 // background, so they come from the semantic vars instead (same hues).
-const DOMAIN_META: Record<HealthDomain, { color: string; textColor: string; label: string; icon: LucideIcon }> = {
-  protection: { color: '#f87171', textColor: 'rgb(var(--danger))', label: 'Protection', icon: Heart },
-  wealth: { color: '#fbbf24', textColor: 'rgb(var(--warning))', label: 'Wealth', icon: Wallet },
-  goals: { color: '#4ade80', textColor: 'rgb(var(--success))', label: 'Goals', icon: Target },
-  savings: { color: '#60a5fa', textColor: 'rgb(var(--info))', label: 'Savings', icon: PiggyBank },
-  estate: { color: '#8b80f8', textColor: 'rgb(var(--family-400))', label: 'Estate', icon: FileLock2 },
+const DOMAIN_META: Record<HealthDomain, { color: string; textColor: string; label: string; icon: LucideIcon; setupHref: string }> = {
+  protection: { color: '#f87171', textColor: 'rgb(var(--danger))', label: 'Protection', icon: Heart, setupHref: '/financial-profile' },
+  wealth: { color: '#fbbf24', textColor: 'rgb(var(--warning))', label: 'Wealth', icon: Wallet, setupHref: '/financial-profile' },
+  goals: { color: '#4ade80', textColor: 'rgb(var(--success))', label: 'Goals', icon: Target, setupHref: '/financial-profile' },
+  savings: { color: '#60a5fa', textColor: 'rgb(var(--info))', label: 'Savings', icon: PiggyBank, setupHref: '/financial-profile' },
+  estate: { color: '#8b80f8', textColor: 'rgb(var(--family-400))', label: 'Estate', icon: FileLock2, setupHref: '/vault' },
 }
 
 export function HealthSummary() {
@@ -186,7 +186,10 @@ export function HealthSummary() {
             textColor={DOMAIN_META[d].textColor}
             label={DOMAIN_META[d].label}
             icon={DOMAIN_META[d].icon}
-            href={`/health/${d}`}
+            // An unconfigured ring (the "—") used to open a /health page
+            // that only restated "nothing here yet" — the useful action
+            // is the setup surface that fills the domain in.
+            href={domains[d].hasLiveData ? `/health/${d}` : DOMAIN_META[d].setupHref}
             isSample={!domains[d].hasLiveData}
           />
         ))}

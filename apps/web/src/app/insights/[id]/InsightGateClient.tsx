@@ -34,6 +34,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { GlassButton, GlassCard, PageHeader, PageTransition } from '@/components/Glass'
+import { DraftProvenanceNote } from '@/components/DraftProvenance'
 import { useAppStore } from '@/lib/store'
 import { haptic } from '@/lib/haptics'
 import {
@@ -128,6 +129,7 @@ export default function InsightGateClient() {
   const [acting, setActing] = useState<'approve' | 'dismiss' | 'draft' | 'retry' | null>(null)
   const [outcome, setOutcome] = useState<{ kind: 'completed' | 'execution_failed' | 'dismissed'; message: string } | null>(null)
   const [draftText, setDraftText] = useState<string | null>(null)
+  const [draftFacts, setDraftFacts] = useState<string[] | undefined>(undefined)
   const [draftError, setDraftError] = useState<string | null>(null)
   const noteDetectorDismissal = useAppStore((s) => s.noteDetectorDismissal)
 
@@ -201,6 +203,7 @@ export default function InsightGateClient() {
     const draft = await prepareInsightDraft(params.id)
     setActing(null)
     setDraftText(draft?.content ?? null)
+    setDraftFacts(draft?.provenance?.facts)
     if (!draft) setDraftError("Oak couldn't write that draft just now — nothing was lost, try again in a moment.")
   }
 
@@ -365,14 +368,15 @@ export default function InsightGateClient() {
             </div>
 
             {draftText && (
-              <GlassCard className="p-4 mt-3">
-                <p className="text-xs text-ink-tertiary mb-2">Draft — copy and send it yourself; Oak never sends on its own.</p>
+              <GlassCard className="p-4 mt-3 space-y-2">
+                <p className="text-xs text-ink-tertiary">Draft — copy and send it yourself; Oak never sends on its own.</p>
                 <textarea
                   value={draftText}
                   onChange={(e) => setDraftText(e.target.value)}
                   rows={6}
                   className="w-full bg-transparent text-sm text-ink-primary resize-y focus:outline-none"
                 />
+                <DraftProvenanceNote facts={draftFacts} />
               </GlassCard>
             )}
             {draftError && <p className="text-sm text-danger mt-2 px-1">{draftError}</p>}

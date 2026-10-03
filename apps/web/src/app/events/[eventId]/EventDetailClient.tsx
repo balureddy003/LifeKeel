@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { AlertTriangle, ArrowLeft, Bot, Check, CheckCircle2, Copy, HelpCircle, Loader2, Mail, PenLine } from 'lucide-react'
 import { LIFE_EVENTS } from '@/lib/life-data'
 import { GlassCard, GlassButton, PageHeader, PageTransition } from '@/components/Glass'
+import { DraftProvenanceNote } from '@/components/DraftProvenance'
 import { haptic } from '@/lib/haptics'
 import { useEventReadiness } from '@/lib/useFamilyData'
 import { useAuth } from '@/lib/auth-context'
@@ -177,6 +178,7 @@ export default function EventDetailClient() {
   // never a send call from this app.
   const [drafting, setDrafting] = useState(false)
   const [draftText, setDraftText] = useState<string | null>(null)
+  const [draftFacts, setDraftFacts] = useState<string[] | undefined>(undefined)
   const [draftError, setDraftError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -198,6 +200,7 @@ export default function EventDetailClient() {
     setDraftError(null)
     const draft = await prepareInsightDraft(insightId)
     setDraftText(draft?.content ?? null)
+    setDraftFacts(draft?.provenance?.facts)
     if (!draft) setDraftError("Oak couldn't write that draft just now — nothing was lost, try again in a moment.")
     setDrafting(false)
   }
@@ -391,6 +394,7 @@ export default function EventDetailClient() {
                 <p className="text-xs text-ink-tertiary">
                   This is a draft only — copy it or open it in your own email client. Oak never sends it for you.
                 </p>
+                <DraftProvenanceNote facts={draftFacts} />
                 <div className="flex gap-2">
                   <GlassButton variant="secondary" onClick={handleCopy}>
                     <Copy size={16} />

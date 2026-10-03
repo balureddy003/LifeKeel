@@ -8,6 +8,7 @@ import { haptic } from '@/lib/haptics'
 import { useToast } from '@/components/Toast'
 import { uploadDocument, fetchDocuments, type FamilyDocument } from '@/lib/api'
 import { useAppStore } from '@/lib/store'
+import { displayDocName } from '@/lib/doc-name'
 import { CATEGORY_ICONS, CATEGORY_LABELS } from '@/lib/document-categories'
 import { Camera, FileText, Upload, Check, Loader2, AlertCircle, ChevronRight, ShieldCheck, Sparkles } from 'lucide-react'
 
@@ -275,7 +276,7 @@ export default function UploadPage() {
                       <Icon size={18} className="text-ink-secondary" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold truncate">{doc.filename}</div>
+                      <div className="text-sm font-semibold truncate">{displayDocName(doc)}</div>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-xs text-ink-tertiary">{CATEGORY_LABELS[doc.category] ?? 'Document'}</span>
                         <span className="text-xs text-ink-tertiary">·</span>

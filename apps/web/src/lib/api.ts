@@ -497,15 +497,24 @@ export async function deleteFamilyScenario(id: string): Promise<boolean> {
  * Fetches an AI-style response for a user query. Calls the backend
  * assistant endpoint (POST /assistant/ask), which reasons over the
  * tenant's real financial profile and open insights via an LLM. Falls
- * back to the local AI_RESPONSES map (compliance-safe, isLive: false)
- * when the backend is unreachable or returns a non-2xx status — this
- * keeps the previous behavior as a genuine offline degradation path
- * rather than the whole feature.
- *
- * Returns both the content and an `isLive` flag so the UI can distinguish
- * real API responses from mock fallbacks and label them accordingly.
+ * Three honest outcomes, not two:
+ * - 'live'        — the backend answered against the family's real data.
+ * - 'canned'      — the backend answered but chose the generic/local text,
+ *                   or the device is genuinely offline. Renders as a
+ *                   labeled sample.
+ * - 'unavailable' — the call itself failed while online (backend down,
+ *                   5xx, timeout, malformed body). The distinguishing
+ *                   state: a real outage must never render as either a
+ *                   live answer OR a routine sample — it gets its own
+ *                   "temporarily unavailable" surface with a retry.
  */
-export async function fetchAIResponse(query: string, memberId?: string): Promise<{ content: string; isLive: boolean }> {
+export type AssistantAnswerStatus = 'live' | 'canned' | 'unavailable'
+
+export async function fetchAIResponse(query: string, memberId?: string): Promise<{ content: string; status: AssistantAnswerStatus }> {
+  // Read once up front: a dead-connection failure is honest "canned"
+  // fallback territory (the offline banner is already telling the user),
+  // while an online failure means the assistant itself is broken.
+  const wasOffline = typeof navigator !== 'undefined' && !navigator.onLine
   try {
     const base = getApiBase()
     const token = getAuthToken()
@@ -527,25 +536,25 @@ export async function fetchAIResponse(query: string, memberId?: string): Promise
     if (res.ok) {
       const data = (await res.json()) as { content?: string; isLive?: boolean }
       if (typeof data.content === 'string') {
-        return { content: data.content, isLive: Boolean(data.isLive) }
+        return { content: data.content, status: data.isLive ? 'live' : 'canned' }
       }
-    } else if (res.status >= 500) {
+      reportError(new Error('assistant/ask returned no content'), { path: '/assistant/ask' })
+    } else {
       reportError(new Error(`API ${res.status}`), { path: '/assistant/ask' })
     }
   } catch (err) {
-    // Network failure or unreachable backend — report it (this function
-    // predates apiFetch's reporting convention and was a blind spot), then
-    // fall through to the labeled local map.
     reportError(err, { path: '/assistant/ask' })
   }
 
+  if (!wasOffline) return { content: '', status: 'unavailable' }
+
   const lower = query.toLowerCase()
   for (const [key, response] of Object.entries(AI_RESPONSES)) {
-    if (lower.includes(key)) return { content: response, isLive: false }
+    if (lower.includes(key)) return { content: response, status: 'canned' }
   }
   return {
     content: "Based on the information you've entered, here is a summary from your family's data. This is for informational purposes only — please consult a qualified professional before making financial decisions. Would you like to see the specific numbers from your family's profile?",
-    isLive: false,
+    status: 'canned',
   }
 }
 
@@ -1287,7 +1296,7 @@ export async function fetchFamilyInvite(token: string): Promise<FamilyInviteInfo
 // Public — accepting both verifies the token AND proves ownership of the
 // email (via a new or existing password). Returns a session token so the
 // acceptor lands signed in.
-export async function acceptFamilyInvite(token: string, password: string): Promise<{ token: string; user: { id: string; email: string; name: string } }> {
+export async function acceptFamilyInvite(token: string, password: string): Promise<{ token: string; user: { id: string; email: string; name: string; email_verified?: boolean } }> {
   const base = getApiBase()
   const res = await fetch(`${base}/family/invite/accept`, {
     method: 'POST',
@@ -1493,6 +1502,10 @@ export async function fetchReferralSummary(): Promise<{ pending: number; rewarde
 export interface InsightDraft {
   content: string
   generated_at: string
+  /** Figures in the draft that appear verbatim in the family's data —
+   *  the only part the UI may label "from your data" (draft-provenance.ts).
+   *  Everything else is generated wording the reviewer should check. */
+  provenance?: { facts: string[] }
 }
 
 // Copy-to-clipboard / open-in-email-client only — there is no "send"
@@ -2086,18 +2099,23 @@ export async function fetchAuditLog(before?: string): Promise<AuditLogEntry[]> {
   return apiFetch<{ entries: AuditLogEntry[] }>(`/audit-log${qs}`, { entries: [] }).then((r) => r.entries ?? [])
 }
 
-// ── Password reset ───────────────────────────────────────────────────────
+// ── Password reset & email verification ─────────────────────────────────
 
-// Someone reaching either of these two is very possibly locked out of an
-// account they need right now — a raw browser network error ("Failed to
-// fetch") leaking straight into that moment is the wrong kind of scary.
-// Distinguish "we couldn't even reach the server" from "the server said no."
-async function passwordResetRequest(path: string, body: Record<string, unknown>): Promise<void> {
+// Someone reaching these is very possibly locked out of an account they
+// need right now — a raw browser network error ("Failed to fetch") leaking
+// straight into that moment is the wrong kind of scary. Distinguish "we
+// couldn't even reach the server" from "the server said no."
+async function authPostRequest(path: string, body: Record<string, unknown>): Promise<void> {
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  // resend-verification is dual-mode server-side: an Authorization header
+  // resolves the user, otherwise the email in the body does.
+  if (token) headers['Authorization'] = `Bearer ${token}`
   let res: Response
   try {
     res = await fetch(`${getApiBase()}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
     })
   } catch {
@@ -2108,11 +2126,21 @@ async function passwordResetRequest(path: string, body: Record<string, unknown>)
 }
 
 export async function requestPasswordReset(email: string): Promise<void> {
-  return passwordResetRequest('/auth/request-password-reset', { email, app: 'family' })
+  return authPostRequest('/auth/request-password-reset', { email, app: 'family' })
 }
 
 export async function confirmPasswordReset(token: string, newPassword: string): Promise<void> {
-  return passwordResetRequest('/auth/reset-password', { token, new_password: newPassword })
+  return authPostRequest('/auth/reset-password', { token, new_password: newPassword })
+}
+
+export async function verifyEmail(token: string): Promise<void> {
+  return authPostRequest('/auth/verify-email', { token })
+}
+
+// Signed-in callers omit `email` (the server reads them from the token);
+// the link can also be requested logged-out by passing one.
+export async function resendVerificationEmail(email?: string): Promise<void> {
+  return authPostRequest('/auth/resend-verification', email ? { email } : {})
 }
 
 // ── Public readiness quiz (PRD-201) ─────────────────────────────────────
