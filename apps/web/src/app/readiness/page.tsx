@@ -20,16 +20,20 @@ import { GlassCard, GlassButton, PageHeader, ScoreRing } from '@/components/Glas
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
 import { trackConversion } from '@/lib/ad-track'
-import { submitReadinessQuiz, captureLead, type ReadinessQuizResult } from '@/lib/api'
+import { submitReadinessQuiz, captureLead, readinessShareUrl, type ReadinessQuizResult } from '@/lib/api'
 import { learnMoreHref } from '@/lib/detector-content'
 
-const QUIZ_URL = 'https://kairos-trellis.web.app/readiness/'
+// (Share links route through readinessShareUrl → the API's per-score OG
+// card, not a hardcoded site URL — see lib/api.ts.)
 
 // The quiz's own pitch is "no signup, no email required" — sharing has to
 // hold to that: only the score itself, never any of the six numbers behind
 // it, so a shared link never leaks the household finances that produced it.
 function ShareScore({ score }: { score: number }) {
   const [copied, setCopied] = useState(false)
+  // Per-score share URL — the API serves per-score OG tags to scrapers and
+  // redirects humans to the quiz with share-attribution UTMs.
+  const shareUrl = readinessShareUrl(score)
   const shareText = `I scored ${score}/100 on Agent Oak's Family Readiness Check. What's yours?`
 
   async function handleShare() {
@@ -37,14 +41,14 @@ function ShareScore({ score }: { score: number }) {
     track('readiness_share_click', { method: 'native' })
     if (navigator.share) {
       try {
-        await navigator.share({ text: shareText, url: QUIZ_URL })
+        await navigator.share({ text: shareText, url: shareUrl })
       } catch {
         // User dismissed the share sheet — not an error worth surfacing.
       }
       return
     }
     try {
-      await navigator.clipboard.writeText(`${shareText} ${QUIZ_URL}`)
+      await navigator.clipboard.writeText(`${shareText} ${shareUrl}`)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
@@ -64,7 +68,7 @@ function ShareScore({ score }: { score: number }) {
           {copied ? 'Copied' : 'Share your score'}
         </button>
         <a
-          href={`https://wa.me/?text=${encodeURIComponent(`${shareText} ${QUIZ_URL}`)}`}
+          href={`https://wa.me/?text=${encodeURIComponent(`${shareText} ${shareUrl}`)}`}
           target="_blank"
           rel="noopener noreferrer"
           onClick={() => { haptic('light'); track('readiness_share_click', { method: 'whatsapp' }) }}
@@ -74,7 +78,7 @@ function ShareScore({ score }: { score: number }) {
           <span className="text-footnote font-bold">WA</span>
         </a>
         <a
-          href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(QUIZ_URL)}`}
+          href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`}
           target="_blank"
           rel="noopener noreferrer"
           onClick={() => { haptic('light'); track('readiness_share_click', { method: 'x' }) }}

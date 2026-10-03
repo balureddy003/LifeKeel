@@ -2184,6 +2184,15 @@ export async function submitReadinessQuiz(answers: ReadinessQuizAnswers): Promis
   return { score: data.score ?? null, components: data.components ?? [], insights: data.insights ?? [], error: data.error }
 }
 
+/** Per-score share card — points at the API route that serves per-score
+ *  Open Graph tags to scrapers and redirects humans to the quiz. The
+ *  score rides in the URL: the quiz persists nothing about the visitor,
+ *  so a share can only carry what the sharer typed themselves. */
+export function readinessShareUrl(score: number | null): string {
+  const base = getApiBase()
+  return score !== null ? `${base}/share/readiness?s=${score}` : `${base}/share/readiness`
+}
+
 // ── Blog / detector-driven content (PRD-202) ────────────────────────────
 
 export interface BlogPostSummary {

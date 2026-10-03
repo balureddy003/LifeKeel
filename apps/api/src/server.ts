@@ -113,6 +113,7 @@ import { registerFamilyContinuityRoutes } from './routes/family-continuity.js'
 import { registerFamilyCashflowRoutes } from './routes/family-cashflow.js'
 import { registerFamilyAssetRoutes } from './routes/family-assets.js'
 import { registerLeadRoutes } from './routes/leads.js'
+import { registerShareRoutes } from './routes/share.js'
 import { sendOpsAlert } from './lib/ops-alerts.js'
 
 // Inject the connector schema registry so the engine can validate event schema compatibility.
@@ -1119,7 +1120,7 @@ app.addHook('onRequest', async (request, reply) => {
   // PRD-110: '/family/join' is deliberately NOT a prefix of the organizer-only
   // '/family/access-requests*' endpoints below — this array is matched by
   // startsWith, so '/family/join-requests' would have made those public too.
-  const open = ['/health', '/engine/health', '/status', '/metrics', '/auth/token', '/auth/demo-token', '/auth/signup', '/auth/login', '/auth/sso/', '/auth/google/', '/auth/github/', '/auth/request-password-reset', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/entitlements/plans', '/blog/posts', '/a/', '/why/', '/verify/', '/webhooks/', '/inbound/', '/insights/cleanup-stale-all', '/billing/webhook', '/documentation', '/documentation/json', '/documentation/uiOptions', '/documentation/static', '/growth/events', '/readiness-quiz', '/leads', '/users/unsubscribe', '/family/join', '/family/invite/']
+  const open = ['/health', '/engine/health', '/status', '/metrics', '/auth/token', '/auth/demo-token', '/auth/signup', '/auth/login', '/auth/sso/', '/auth/google/', '/auth/github/', '/auth/request-password-reset', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/entitlements/plans', '/blog/posts', '/a/', '/why/', '/verify/', '/webhooks/', '/inbound/', '/insights/cleanup-stale-all', '/billing/webhook', '/documentation', '/documentation/json', '/documentation/uiOptions', '/documentation/static', '/growth/events', '/readiness-quiz', '/leads', '/users/unsubscribe', '/share/', '/family/join', '/family/invite/']
   if (/^\/connectors\/[^/]+\/oauth\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/exchange/.test(request.url)) return
@@ -1477,6 +1478,7 @@ if (workflowDb) {
   registerFamilyCashflowRoutes(app, workflowDb)
   registerFamilyAssetRoutes(app, workflowDb)
   await registerLeadRoutes(app, workflowDb)
+  await registerShareRoutes(app)
   await registerFamilyFinancialProfileRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerLifeEventRoutes(app, workflowDb)
   registerPushRoutes(app, workflowDb, deliveryRouter)
