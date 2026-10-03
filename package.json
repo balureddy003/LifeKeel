@@ -8,6 +8,7 @@
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "debug": "pnpm --parallel --filter @agentoak/api --filter @agentoak/web run debug",
     "prepare": "husky"
   },
   "devDependencies": {

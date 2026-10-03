@@ -44,6 +44,28 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build
 `apps/api/docker-compose.yml` starts a local MongoDB + Redis if you don't
 have them running already.
 
+## Local debugging
+
+Make sure MongoDB and any Redis instance configured in the root `.env` are
+already running. To start both apps in watch mode with Node inspectors:
+
+```bash
+pnpm debug
+```
+
+The API runs at `http://localhost:3001` with its inspector on port 9229. The
+Next.js app runs at `http://localhost:3002`; its inspectors start at port 9230,
+and child processes may use the next available port. The same scripts can be
+run separately with
+`pnpm --filter @agentoak/api debug` and
+`pnpm --filter @agentoak/web debug`.
+
+In VS Code, select **Debug Web + API** to launch both servers and open a Chrome
+debugger for the web app. Use **Debug API**, **Debug Web Server**, or
+**Debug Web Browser** when only one execution context is needed. API and
+server-side Next.js breakpoints attach to their server launch targets; client
+component breakpoints attach to the browser target.
+
 ## Status
 
 Greenfield — pre-launch, no production users yet. `apps/web` currently
