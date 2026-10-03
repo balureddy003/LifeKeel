@@ -73,6 +73,11 @@ jobs:
             API_BASE_URL=${{ vars.API_BASE_URL }}
             LOCAL_JUDGE_BASE_URL=${{ vars.LOCAL_JUDGE_BASE_URL }}
             LOCAL_JUDGE_MODEL=${{ vars.LOCAL_JUDGE_MODEL }}
+            LOCAL_JUDGE_AUTH=${{ vars.LOCAL_JUDGE_AUTH }}
+            LOCAL_MODEL_COST_PER_HOUR_USD=${{ vars.LOCAL_MODEL_COST_PER_HOUR_USD }}
+            JUDGE_SHADOW=${{ vars.JUDGE_SHADOW }}
+            EMAIL_ENCODER_URL=${{ vars.EMAIL_ENCODER_URL }}
+            EMAIL_ENCODER_MODE=${{ vars.EMAIL_ENCODER_MODE }}
             LOCAL_CLASSIFIER_MODEL=${{ vars.LOCAL_CLASSIFIER_MODEL }}
             LOCAL_OCR_MODEL=${{ vars.LOCAL_OCR_MODEL }}
             LOCAL_TEXT_ENABLED=${{ vars.LOCAL_TEXT_ENABLED }}

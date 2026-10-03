@@ -1,0 +1,146 @@
+name: Deploy local judge (self-hosted model service)
+
+# Manual, like deploy-api.yml. NOT yet run end to end: build, deploy and eval this once
+# and watch it before relying on it. See infra/local-judge/README.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref (branch, tag, or SHA) to deploy'
+        type: string
+        required: true
+        default: 'main'
+      model:
+        description: 'Ollama model baked into the image (do not go below 3b: 1.5b approved unsafe copy in testing)'
+        type: string
+        required: true
+        default: 'qwen2.5:7b'
+      min_instances:
+        description: 'Always-on instances. 1 avoids ~30s+ cold starts but is a standing cost; 0 scales to zero.'
+        type: string
+        required: true
+        default: '1'
+      max_instances:
+        description: 'Upper bound; each instance serves one call at a time, so this is the parallel-call ceiling.'
+        type: string
+        required: true
+        default: '2'
+      run_eval:
+        description: 'Run the model eval against the deployed service and fail on a gate failure'
+        type: boolean
+        required: true
+        default: true
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ secrets.GCP_REGION || 'us-central1' }}
+  REGISTRY_HOST: ${{ secrets.GCP_REGION || 'us-central1' }}-docker.pkg.dev
+  JUDGE_IMAGE: ${{ secrets.GCP_ARTIFACT_REGISTRY || format('{0}-docker.pkg.dev/{1}/agentoak-docker', secrets.GCP_REGION || 'us-central1', secrets.GCP_PROJECT_ID) }}/local-judge
+  JUDGE_SERVICE: ${{ secrets.LOCAL_JUDGE_SERVICE_NAME || 'agentoak-local-judge' }}
+  # Runtime service account of the API service; it is granted run.invoker on this service.
+  API_RUNTIME_SA: ${{ secrets.API_RUNTIME_SERVICE_ACCOUNT }}
+
+jobs:
+  deploy-local-judge:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.ref || 'main' }}
+
+      - name: Require the API runtime service account
+        run: |
+          if [ -z "$API_RUNTIME_SA" ]; then
+            echo "::error::Set the API_RUNTIME_SERVICE_ACCOUNT secret. The service is deployed without public access, so the API's service account needs run.invoker."
+            exit 1
+          fi
+
+      - name: Refuse models below 3b
+        run: |
+          case "${{ github.event.inputs.model }}" in
+            *:0.5b|*:1b|*:1.5b|*:1.1b) echo "::error::Models below 3b approved unsafe copy in testing (see infra/local-judge/README.md)."; exit 1 ;;
+          esac
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGISTRY_HOST }} --quiet
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push the model image
+        uses: docker/build-push-action@v7
+        with:
+          context: infra/local-judge
+          file: infra/local-judge/Dockerfile
+          push: true
+          build-args: |
+            MODEL=${{ github.event.inputs.model }}
+          tags: |
+            ${{ env.JUDGE_IMAGE }}:${{ github.sha }}
+            ${{ env.JUDGE_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # No public access: Cloud Run itself rejects any request without a Google identity
+      # token for this service, which replaces an auth proxy (Ollama has no auth of its own).
+      # concurrency=1: parallel calls to one CPU model only add latency (measured).
+      - name: Deploy to Cloud Run
+        id: deploy
+        run: |
+          gcloud run deploy "$JUDGE_SERVICE" \
+            --image "$JUDGE_IMAGE:${{ github.sha }}" \
+            --region "$GCP_REGION" \
+            --port 11434 \
+            --cpu 4 --memory 8Gi \
+            --no-cpu-throttling \
+            --concurrency 1 \
+            --timeout 300 \
+            --min-instances "${{ github.event.inputs.min_instances }}" \
+            --max-instances "${{ github.event.inputs.max_instances }}" \
+            --no-allow-unauthenticated
+          URL=$(gcloud run services describe "$JUDGE_SERVICE" --region "$GCP_REGION" --format 'value(status.url)')
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Allow the API service account to call it
+        run: |
+          gcloud run services add-iam-policy-binding "$JUDGE_SERVICE" \
+            --region "$GCP_REGION" \
+            --member "serviceAccount:$API_RUNTIME_SA" \
+            --role roles/run.invoker
+
+      - uses: pnpm/action-setup@v4
+        if: ${{ github.event.inputs.run_eval == 'true' }}
+      - uses: actions/setup-node@v6
+        if: ${{ github.event.inputs.run_eval == 'true' }}
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Run the model eval against the deployed service
+        if: ${{ github.event.inputs.run_eval == 'true' }}
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec turbo run build --filter=@agentoak/api
+          # Audience is the service URL, matching what the API itself sends (cloud-run-auth.ts).
+          TOKEN=$(gcloud auth print-identity-token --audiences="${{ steps.deploy.outputs.url }}")
+          # Fail the job if a gate fails. The new revision is already serving, so a failure means: roll back.
+          LOCAL_JUDGE_BASE_URL="${{ steps.deploy.outputs.url }}" \
+          LOCAL_JUDGE_MODEL="${{ github.event.inputs.model }}" \
+          LOCAL_JUDGE_BEARER="$TOKEN" \
+          node apps/api/dist/eval/local-model-eval.js || {
+            echo "::error::Model eval failed its gates. Roll back: gcloud run services update-traffic $JUDGE_SERVICE --to-revisions PREV_REVISION=100 --region $GCP_REGION --project $GCP_PROJECT_ID"
+            exit 1
+          }

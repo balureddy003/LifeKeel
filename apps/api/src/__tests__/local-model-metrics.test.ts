@@ -16,7 +16,10 @@ describe('local model metrics', () => {
     const text = await metricsText()
     expect(text).toMatch(/agentoak_output_guard_blocks_total\{reason="ungrounded_numbers"\} \d+/)
     expect(text).toMatch(/agentoak_output_guard_blocks_total\{reason="provider_steering"\} \d+/)
-    expect(text).not.toContain('640')
+    // Labels carry the reason code only: no figure detail, no model text.
+    expect(text).not.toContain('ungrounded_numbers(')
+    expect(text).not.toContain('Acme')
+    expect(text).not.toMatch(/agentoak_output_guard_blocks_total\{[^}]*640/)
   })
 
   it('exposes the model, queue-wait, classifier-failure and OCR-retry series', async () => {
@@ -32,5 +35,14 @@ describe('local model metrics', () => {
     expect(text).toContain('agentoak_local_model_queue_wait_seconds_count{purpose="ocr"}')
     expect(text).toMatch(/agentoak_email_classify_failures_total \d+/)
     expect(text).toMatch(/agentoak_document_extraction_retries_total [2-9]/)
+  })
+
+  it('estimates cost from busy model time only when a rate is configured', async () => {
+    const { recordLocalModelCall } = await import('../routes/metrics.js')
+    recordLocalModelCall('judge', true, 10, 0, 0) // no rate configured: nothing recorded
+    recordLocalModelCall('classifier', true, 3600, 0, 0.5) // one busy hour at $0.50/h
+    const text = await metricsText()
+    expect(text).toContain('agentoak_local_model_estimated_cost_usd_total{purpose="classifier"} 0.5')
+    expect(text).not.toContain('estimated_cost_usd_total{purpose="judge"}')
   })
 })

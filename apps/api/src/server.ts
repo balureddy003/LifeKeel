@@ -175,8 +175,8 @@ try {
   // Self-hosted judge model (infra/local-judge): when configured, no insight text
   // is sent to a cloud LLM and the judge spends no tokens.
   const localJudge = localDecisionFromEnv('judge')
-  log.info({ judge: localJudge ? 'local' : 'llm' }, 'Move judge backend')
-  deliveryRouter = new DeliveryRouter(workflowDb, createMoveJudge(globalLlmFn, workflowDb, localJudge))
+  log.info({ judge: localJudge ? (process.env['JUDGE_SHADOW'] === 'true' ? 'cloud-with-local-shadow' : 'local') : 'llm' }, 'Move judge backend')
+  deliveryRouter = new DeliveryRouter(workflowDb, createMoveJudge(globalLlmFn, workflowDb, localJudge, { shadow: process.env['JUDGE_SHADOW'] === 'true' }))
   // OAK-003: every cron.schedule job below runs under this lock, keyed by
   // its own name — deploy-api.yml allows up to 4 Cloud Run replicas, and
   // without this, two replicas racing the same job could both act on the

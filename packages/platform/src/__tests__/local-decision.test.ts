@@ -124,3 +124,29 @@ describe('createLocalDecisionFn concurrency and metrics hook', () => {
     expect(events.at(-1)).toMatchObject({ ok: false })
   })
 })
+
+describe('createLocalDecisionFn auth headers', () => {
+  it('attaches headers resolved per call so a refreshed token is picked up', async () => {
+    let n = 0
+    const fetchImpl = vi.fn(async () => reply('{"ok":true}'))
+    const decide = createLocalDecisionFn({
+      baseUrl: 'http://judge:11434', model: 'm', fetchImpl,
+      getHeaders: async () => ({ Authorization: `Bearer token-${++n}` }),
+    })
+    await decide(req)
+    await decide(req)
+    const auths = (fetchImpl.mock.calls as unknown as Array<[string, RequestInit]>).map(c => (c[1].headers as Record<string, string>)['Authorization'])
+    expect(auths).toEqual(['Bearer token-1', 'Bearer token-2'])
+  })
+
+  it('counts a failing header provider as a failed attempt rather than crashing the caller', async () => {
+    const fetchImpl = vi.fn(async () => reply('{"ok":true}'))
+    const decide = createLocalDecisionFn({
+      baseUrl: 'http://judge:11434', model: 'm', fetchImpl,
+      getHeaders: async () => { throw new Error('metadata server unreachable') },
+    })
+    await expect(decide(req)).rejects.toBeInstanceOf(LocalDecisionError)
+    expect(fetchImpl).not.toHaveBeenCalled() // never sent an unauthenticated request
+  })
+})
+
