@@ -23,6 +23,7 @@ import { randomUUID, randomBytes } from 'node:crypto'
 import { createLogger, getTenantCollection } from '@agentoak/platform'
 import { getFamilyGroupsCollection } from '../db.js'
 import { isFamilyOrganizer } from '../lib/family-permissions.js'
+import { cascadeLegacyMemberRemoval } from './family-legacy.js'
 
 const log = createLogger({ service: 'family-group', version: '0.0.0' })
 
@@ -295,6 +296,12 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
       { returnDocument: 'after' },
     )) as FamilyGroupDoc | null
     if (!result) return reply.status(404).send({ error: 'Family not found' })
+
+    // PRD-137: roles the removed member held on legacy documents flip to
+    // 'unverified' rather than disappearing silently — the register keeps
+    // the record honest about who it used to name. Best-effort; deletion
+    // already committed.
+    await cascadeLegacyMemberRemoval(db, tenant_id, req.params.id)
 
     log.info({ tenant_id, memberId: req.params.id }, 'Family member removed')
     return { family: toResponse(result) }

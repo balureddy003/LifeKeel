@@ -34,6 +34,7 @@ import type { Db } from 'mongodb'
 import { createHash, randomUUID } from 'node:crypto'
 import { createLogger } from '@agentoak/platform'
 import { getAuditLogger } from '../audit/audit-log.js'
+import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 
 const log = createLogger({ service: 'policy-renewal-reminders', version: '0.0.0' })
 
@@ -167,7 +168,7 @@ export async function runPolicyRenewalReminders(
           expected.add(key)
           // $setOnInsert only — a re-run must never resurrect or mutate a
           // sent/cancelled/failed reminder for the same policy+date+lead.
-          await reminders.updateOne(
+          const inserted = await reminders.updateOne(
             { dedupe_key: key },
             {
               $setOnInsert: {
@@ -193,6 +194,28 @@ export async function runPolicyRenewalReminders(
             },
             { upsert: true },
           )
+          // PRD-136: narrate a newly-scheduled reminder into the feed.
+          // Only on insert — a re-run that found the reminder already
+          // scheduled must not re-announce it.
+          if ((inserted as { upsertedCount?: number }).upsertedCount) {
+            const typeLabel = (policy.type ?? 'policy').replace(/_/g, ' ')
+            emitReadinessEvent(db, tenantId, {
+              type: 'renewal_approaching',
+              severity: lead <= 7 ? 'critical' : 'attention',
+              direction: null,
+              member_id: policy.member_id ?? null,
+              domain: 'protection',
+              title: `${policy.provider ?? 'A'} ${typeLabel} policy renews on ${policy.renewal_date}`.slice(0, 120),
+              summary: `Renewal in ${lead} days — review the renewal terms before it rolls over.`,
+              evidence: [
+                { label: 'Renews', value: policy.renewal_date },
+                { label: 'Reminder', value: `${lead} days ahead` },
+              ],
+              links: [{ kind: 'profile_field', id: 'policies' }],
+              next_check_at: new Date(renewalMs),
+              dedupe_key: buildDedupeKey('renewal_approaching', `${fingerprint}:${policy.renewal_date}:${lead}`),
+            })
+          }
         }
       }
     }

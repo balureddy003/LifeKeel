@@ -32,8 +32,9 @@ import { rewardReferralIfPending } from './referrals.js'
 import { recordInsightAction } from '../lib/insight-attribution.js'
 import { ageFromDob } from '../lib/family-permissions.js'
 import type { FamilyGroupDoc } from './family-group.js'
-import { ESTATE_VAULT_CATEGORY } from './documents.js'
 import { monthlyEquivalentMinor, type CashflowEntryDoc } from './family-cashflow.js'
+import { buildEstateSignal } from '../legacy/estate-signal.js'
+import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 
 const FAMILY_DETECTOR_IDS = [
   'family_protection_gap',
@@ -820,25 +821,10 @@ export async function evaluateProfileAndGenerateInsights(
   // this detector makes "missing will / PoA" an actual insight, not just
   // a score detail string. Household-level: no member attribution.
   {
-    const estateDocTypes = new Set(
-      (
-        (await db
-          .collection('documents')
-          .find(
-            { tenant_id: tenantId, category: ESTATE_VAULT_CATEGORY },
-            { projection: { _id: 0, doc_type: 1 } },
-          )
-          .toArray()) as { doc_type?: string }[]
-      )
-        .map((d) => d.doc_type)
-        .filter((t): t is string => typeof t === 'string'),
-    )
+    // PRD-137: the same enriched signal every emission site shares —
+    // legacy register fields layered on top of the vault doc types.
+    const data = await buildEstateSignal(db, tenantId)
     const eventId = crypto.randomUUID()
-    const data = {
-      has_will: Number(estateDocTypes.has('will')),
-      has_power_of_attorney: Number(estateDocTypes.has('power_of_attorney')),
-      estate_doc_count: estateDocTypes.size,
-    }
     const signalId = await persistSignal({
       tenant_id: tenantId,
       signal_type: 'family.estate',
@@ -1018,6 +1004,31 @@ export async function registerFamilyFinancialProfileRoutes(
     return changed
   }
 
+  // Same humanizer as diffSinceReview but keeps the dotted path — the
+  // readiness feed's profile_changed event needs it for the deep link.
+  function diffProfileChanges(
+    previous: Record<string, unknown>,
+    current: Record<string, unknown>,
+  ): { path: string; label: string }[] {
+    const before: Record<string, unknown> = {}
+    const after: Record<string, unknown> = {}
+    flattenLeaves(previous, '', before)
+    flattenLeaves(current, '', after)
+    const changed: { path: string; label: string }[] = []
+    for (const path of new Set([...Object.keys(before), ...Object.keys(after)])) {
+      if (before[path] === after[path]) continue
+      const leaf = path.split('.').pop() ?? path
+      changed.push({
+        path,
+        label:
+          REVIEW_FIELD_LABELS[path] ??
+          leaf.replace(/_minor$|_/g, ' ').trim() +
+            (path.includes('policies') || path.includes('education_funds') ? ' count' : ''),
+      })
+    }
+    return changed
+  }
+
   app.get('/family/financial-profile/review', async (req) => {
     const { tenant_id } = req.authContext
     const doc = await profileFor(tenant_id).findOne({})
@@ -1123,6 +1134,37 @@ export async function registerFamilyFinancialProfileRoutes(
       const prevPolicyCount = Array.isArray(previousDoc.policies) ? previousDoc.policies.length : 0
       const actionType = profile.policies.length > prevPolicyCount ? 'policy_added' : 'profile_updated'
       await recordInsightAction(db, tenant_id, actionType).catch(() => {})
+
+      // PRD-136: narrate the save itself — after attribution, before the
+      // evaluation runs. First-ever save has no baseline, so nothing to
+      // narrate; a save with no field changes isn't a move either.
+      try {
+        const {
+          tenant_id: _t, updated_at: _u, version: _v, _id: _i,
+          reviewed_at: _r, review_snapshot: _rs, review_snoozed_until: _sn, insights_evaluated_at: _e,
+          ...previousProfile
+        } = previousDoc as Record<string, unknown>
+        const changed = diffProfileChanges(previousProfile, profile as unknown as Record<string, unknown>)
+        if (changed.length > 0) {
+          const names = changed.slice(0, 3).map((c) => c.label)
+          const list = names.length === 1 ? names[0]! : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+          emitReadinessEvent(db, tenant_id, {
+            type: 'profile_changed',
+            severity: 'info',
+            direction: null,
+            member_id: null,
+            domain: null,
+            title: `${list[0]!.toUpperCase()}${list.slice(1)} changed`,
+            summary: `Your financial profile was updated: ${list}.`,
+            evidence: changed.slice(0, 3).map((c) => ({ label: c.label })),
+            links: [{ kind: 'profile_field', id: changed[0]!.path }],
+            next_check_at: null,
+            dedupe_key: buildDedupeKey('profile_changed', tenant_id),
+          })
+        }
+      } catch {
+        // feed bookkeeping never breaks the save path
+      }
     }
 
     const insightsGenerated = await evaluateProfileAndGenerateInsights(profile, tenant_id, engine, db, onInsightsGenerated)

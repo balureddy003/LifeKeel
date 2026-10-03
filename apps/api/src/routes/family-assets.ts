@@ -22,6 +22,9 @@ import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { getTenantCollection } from '@agentoak/platform'
 import { isFamilyAdult } from '../lib/family-permissions.js'
+import { PropertyLegacy, validateLegacyRefs, type PropertyLegacy as PropertyLegacyT } from './family-legacy.js'
+import type { Engine, Insight } from '@agentoak/engine'
+import { evaluateEstate } from '../legacy/evaluate-estate.js'
 
 export const ASSET_KINDS = ['property', 'vehicle', 'savings_account', 'investment', 'valuable', 'other'] as const
 export type AssetKind = (typeof ASSET_KINDS)[number]
@@ -33,6 +36,8 @@ export interface AssetDoc extends Record<string, unknown> {
   name: string
   value_minor: number
   notes?: string
+  /** PRD-137: ownership/legacy detail — only on kind 'property'. */
+  legacy?: PropertyLegacyT
   created_by: string
   created_at: Date
   updated_at: Date
@@ -51,7 +56,12 @@ const PatchBody = z.object({
   notes: z.string().trim().max(500).nullable().optional(),
 })
 
-export function registerFamilyAssetRoutes(app: FastifyInstance, db: Db): void {
+export function registerFamilyAssetRoutes(
+  app: FastifyInstance,
+  db: Db,
+  engine?: Engine,
+  onInsightsGenerated?: (insights: Insight[], tenantId: string) => Promise<void>,
+): void {
   const assetsFor = (tenantId: string) => getTenantCollection<AssetDoc>(db, 'family_assets', tenantId)
 
   const requireAdult = async (req: { authContext: { tenant_id: string; user_id: string } }, reply: { status: (code: number) => { send: (body: unknown) => unknown } }): Promise<boolean> => {
@@ -67,6 +77,7 @@ export function registerFamilyAssetRoutes(app: FastifyInstance, db: Db): void {
     name: a.name,
     value_minor: a.value_minor,
     notes: a.notes ?? null,
+    legacy: a.legacy ?? null,
     created_at: a.created_at instanceof Date ? a.created_at.toISOString() : a.created_at,
     updated_at: a.updated_at instanceof Date ? a.updated_at.toISOString() : a.updated_at,
   })
@@ -110,6 +121,35 @@ export function registerFamilyAssetRoutes(app: FastifyInstance, db: Db): void {
     if (!existing) return reply.status(404).send({ error: 'Asset not found' })
     await assetsFor(tenant_id).updateOne({ id: req.params.id }, update)
     const doc = await assetsFor(tenant_id).findOne({ id: req.params.id })
+    return reply.send({ asset: toView(doc as AssetDoc) })
+  })
+
+  // PRD-137: a property's legacy detail (ownership basis, recorded vs
+  // claimed owners, title evidence) lives embedded on the asset. Other
+  // kinds have no legacy sub-document.
+  app.patch<{ Params: { id: string } }>('/family/assets/:id/legacy', async (req, reply) => {
+    if (!(await requireAdult(req, reply))) return
+    const { tenant_id } = req.authContext
+    const existing = await assetsFor(tenant_id).findOne({ id: req.params.id })
+    if (!existing) return reply.status(404).send({ error: 'Asset not found' })
+    if (existing.kind !== 'property') {
+      return reply.status(400).send({ error: 'Legacy details apply to property assets only' })
+    }
+    const parsed = PropertyLegacy.safeParse(req.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid property legacy', issues: parsed.error.issues })
+    const roles = [...parsed.data.recorded_owners, ...parsed.data.claimed_owners]
+    const refError = await validateLegacyRefs(db, tenant_id, {
+      memberIds: roles.map((r) => r.member_id).filter((x): x is string => typeof x === 'string'),
+      contactIds: [
+        ...roles.map((r) => r.contact_id).filter((x): x is string => typeof x === 'string'),
+        ...(parsed.data.professional_contact_id ? [parsed.data.professional_contact_id] : []),
+      ],
+      vaultDocIds: parsed.data.title_document_id ? [parsed.data.title_document_id] : [],
+    })
+    if (refError) return reply.status(400).send({ error: refError })
+    await assetsFor(tenant_id).updateOne({ id: req.params.id }, { $set: { legacy: parsed.data, updated_at: new Date() } })
+    const doc = await assetsFor(tenant_id).findOne({ id: req.params.id })
+    void evaluateEstate(db, engine, tenant_id, onInsightsGenerated)
     return reply.send({ asset: toView(doc as AssetDoc) })
   })
 

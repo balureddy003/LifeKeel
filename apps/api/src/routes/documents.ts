@@ -31,6 +31,42 @@ import {
 } from '../ocr/profile-mapping.js'
 import { effectivePlan, hasFeature } from '../entitlements.js'
 import { recordInsightAction } from '../lib/insight-attribution.js'
+import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
+
+// PRD-136: one feed event per document pipeline stage (uploaded /
+// extracted / applied), deduped per (document, stage) so a reprocess or
+// retry refreshes the day's row rather than stacking copies.
+function emitDocumentEvent(
+  db: Db,
+  tenantId: string,
+  documentId: string,
+  filename: string,
+  stage: 'uploaded' | 'extracted' | 'applied',
+): void {
+  const titles = {
+    uploaded: `Document uploaded: ${filename}`,
+    extracted: `Document read: ${filename}`,
+    applied: `Document applied to your profile: ${filename}`,
+  } as const
+  const summaries = {
+    uploaded: 'Oak stored the file and queued it for field extraction.',
+    extracted: 'Oak finished reading the document — extracted fields are ready to review.',
+    applied: 'Fields you confirmed from this document are now on your financial profile.',
+  } as const
+  emitReadinessEvent(db, tenantId, {
+    type: 'document_processed',
+    severity: 'info',
+    direction: 'up',
+    member_id: null,
+    domain: 'documents',
+    title: titles[stage].slice(0, 120),
+    summary: summaries[stage],
+    evidence: [{ label: 'Stage', value: stage }],
+    links: [{ kind: 'document', id: documentId }],
+    next_check_at: null,
+    dedupe_key: buildDedupeKey('document_processed', `${documentId}:${stage}`),
+  })
+}
 
 const log = createLogger({ service: 'documents', version: '0.0.0' })
 
@@ -162,6 +198,7 @@ export function registerDocumentRoutes(
         )
         throw metaErr
       }
+      emitDocumentEvent(db, tenant_id, documentId, filename, 'uploaded')
 
       // Upload and storage are free on every plan — AI field extraction
       // (GPT-4o vision, the actual cost driver) is gated to paid plans.
@@ -370,6 +407,7 @@ export function registerDocumentRoutes(
       // is a response to whatever was already flagged, not to what this
       // re-run is about to create.
       await recordInsightAction(db, tenant_id, 'document_applied').catch(() => {})
+      emitDocumentEvent(db, tenant_id, req.params.id, String(doc['filename'] ?? 'document'), 'applied')
 
       const insightsGenerated = await regenerateInsights(tenant_id)
 

@@ -139,6 +139,9 @@ export default function HealthDomainClient() {
               {domain.detail && (
                 <p className="text-xs text-ink-secondary leading-relaxed mt-1.5">{domain.detail}</p>
               )}
+              {domain.caption && (
+                <p className="text-footnote text-ink-tertiary mt-1.5">{domain.caption}</p>
+              )}
             </div>
           </div>
 

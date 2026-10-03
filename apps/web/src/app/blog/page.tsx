@@ -33,8 +33,17 @@ export default function BlogPage() {
       )}
 
       {!loading && posts.length === 0 && (
-        <GlassCard className="p-4 mt-4">
-          <p className="text-sm text-ink-secondary leading-relaxed">No posts yet — check back soon.</p>
+        <GlassCard className="p-5 mt-4">
+          <div className="text-center">
+            <div className="w-12 h-12 rounded-2xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mx-auto mb-3">
+              <span className="text-xl">🌱</span>
+            </div>
+            <p className="text-sm font-semibold text-ink-primary mb-1">We&apos;re just getting started</p>
+            <p className="text-sm text-ink-secondary leading-relaxed mb-3">
+              Plain-language explainers for what Oak checks for your family are on the way. In the meantime, our guides cover the same ground.
+            </p>
+            <Link href="/guides" className="text-sm text-family-400 font-semibold">Read the guides →</Link>
+          </div>
         </GlassCard>
       )}
 

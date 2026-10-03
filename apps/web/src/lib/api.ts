@@ -345,6 +345,8 @@ export interface ReadinessComponent {
   /** The profile figures behind the score — the "why" audit trail. */
   drivers?: { label: string; value_minor?: number; value?: string }[]
   gated?: boolean
+  /** PRD-137: scope disclaimer rendered with the score (estate). */
+  caption?: string
   insights: ReadinessComponentInsight[]
 }
 
@@ -506,6 +508,30 @@ export async function fetchFamilyScenarios(): Promise<FamilyScenario[]> {
   )
 }
 
+/** PRD-136: opt a saved scenario in/out of the nightly watchlist recompute. */
+export async function setScenarioWatch(id: string, watch: boolean): Promise<boolean> {
+  const res = await scenarioRequest<{ ok: boolean }>(
+    `/family/scenarios/${encodeURIComponent(id)}`,
+    { method: 'PATCH', body: JSON.stringify({ watch }) },
+    { ok: false },
+  )
+  return res.ok === true
+}
+
+export interface FamilyScenarioWatchEntry {
+  id: string
+  name: string
+  inputs: ScenarioInputs
+  watch: boolean
+  last_projection: { runway_months: number | null; depletion_month: number | null; at: string } | null
+}
+
+export async function fetchScenarioWatchlist(): Promise<FamilyScenarioWatchEntry[]> {
+  return apiFetch<{ scenarios: FamilyScenarioWatchEntry[] }>('/family/scenarios/watchlist', { scenarios: [] }).then(
+    (r) => r.scenarios ?? [],
+  )
+}
+
 export async function deleteFamilyScenario(id: string): Promise<boolean> {
   try {
     const base = getApiBase()
@@ -518,6 +544,235 @@ export async function deleteFamilyScenario(id: string): Promise<boolean> {
     reportError(err, { action: 'deleteFamilyScenario', id })
     return false
   }
+}
+
+// ── PRD-136: readiness feed ───────────────────────────────────────────────
+
+export type ReadinessEventType =
+  | 'score_moved'
+  | 'insight_opened'
+  | 'insight_repeated'
+  | 'insight_resolved'
+  | 'action_attributed'
+  | 'scenario_moved'
+  | 'renewal_approaching'
+  | 'document_processed'
+  | 'profile_changed'
+  | 'playbook_steps_pending'
+  | 'milestone'
+  | 'sweep_quiet'
+
+export interface FeedEvent {
+  id: string
+  type: ReadinessEventType
+  severity: 'info' | 'notice' | 'attention' | 'critical'
+  direction: 'up' | 'down' | 'flat' | null
+  member_id: string | null
+  domain: string | null
+  title: string
+  summary: string
+  evidence: { label: string; value?: string; value_minor?: number }[]
+  links: { kind: 'insight' | 'component' | 'document' | 'scenario' | 'member' | 'profile_field'; id: string }[]
+  next_check_at: string | null
+  dedupe_key: string
+  created_at: string
+  /** Present on the synthetic collapsed sweep_quiet item. */
+  quiet_days?: number
+}
+
+export interface FeedSummary {
+  window: string
+  total: number
+  by_type: Record<string, number>
+  up: number
+  down: number
+  composite_delta: number | null
+}
+
+export interface FetchFeedParams {
+  since?: string
+  member_id?: string
+  domain?: string
+  limit?: number
+  /** 'youth' returns the child's redacted slice (server-side). */
+  mode?: 'youth'
+}
+
+export async function fetchFeed(params: FetchFeedParams = {}): Promise<FeedEvent[]> {
+  const qs = new URLSearchParams()
+  if (params.since) qs.set('since', params.since)
+  if (params.member_id) qs.set('member_id', params.member_id)
+  if (params.domain) qs.set('domain', params.domain)
+  if (params.limit !== undefined) qs.set('limit', String(params.limit))
+  if (params.mode) qs.set('mode', params.mode)
+  const query = qs.toString()
+  return apiFetch<{ events: FeedEvent[] }>(`/family/feed${query ? `?${query}` : ''}`, { events: [] }).then(
+    (r) => r.events ?? [],
+  )
+}
+
+export async function fetchFeedSummary(window: '7d' | '30d' = '7d'): Promise<FeedSummary> {
+  return apiFetch<FeedSummary>(`/family/feed/summary?window=${window}`, {
+    window,
+    total: 0,
+    by_type: {},
+    up: 0,
+    down: 0,
+    composite_delta: null,
+  })
+}
+
+// ── PRD-137: family legacy register ────────────────────────────────────────
+// Every record is a family declaration — the verification label rides every
+// payload so the UI can never present it as a legal fact.
+
+export type LegacyVerification = 'document_linked' | 'user_declared' | 'family_understanding' | 'unverified'
+
+export interface LegacyRole {
+  role: 'executor' | 'trustee' | 'attorney' | 'guardian' | 'beneficiary' | 'witness' | 'caretaker' | 'successor_intended'
+  member_id?: string
+  contact_id?: string
+  share_pct?: number
+  verification: LegacyVerification
+}
+
+export interface LegacyDocument {
+  id: string
+  type:
+    | 'will' | 'codicil' | 'power_of_attorney' | 'advance_directive' | 'trust_deed'
+    | 'letter_of_wishes' | 'guardianship_nomination' | 'funeral_wishes'
+    | 'probate_record' | 'civil_certificate'
+  subject_member_id: string
+  jurisdiction: string
+  signed_on?: string
+  last_reviewed_on?: string
+  review_due_on?: string
+  original_location?: string
+  vault_document_id?: string
+  roles: LegacyRole[]
+  covers_asset_ids: string[]
+  verification: LegacyVerification
+  notes?: string
+  visibility: 'adults' | 'organizer' | 'named_roles'
+  created_at: string
+  updated_at: string
+}
+
+export type LegacyDocumentInput = Omit<LegacyDocument, 'id' | 'created_at' | 'updated_at'>
+
+export interface LegacyContact {
+  id: string
+  name: string
+  relationship: string
+  email?: string
+  phone?: string
+  firm?: string
+  kind: 'family' | 'solicitor' | 'notary' | 'accountant' | 'land_agent' | 'other'
+  created_at: string
+}
+
+export type LegacyContactInput = Omit<LegacyContact, 'id' | 'created_at'>
+
+export interface LegacyNote {
+  id: string
+  node: { kind: 'member' | 'document' | 'asset' | 'contact'; id: string }
+  text: string
+  author_user_id: string
+  created_at: string
+  verification: 'family_understanding'
+}
+
+export type LegacyNoteInput = Pick<LegacyNote, 'node' | 'text'>
+
+export interface PropertyLegacy {
+  ownership_basis: 'purchase' | 'inherited' | 'gift' | 'trust' | 'customary_succession' | 'unknown'
+  jurisdiction: string
+  recorded_owners: LegacyRole[]
+  claimed_owners: LegacyRole[]
+  title_reference?: string
+  title_document_id?: string
+  acquired_on?: string
+  occupants?: string
+  insured: 'yes' | 'no' | 'unknown'
+  mortgage_outstanding_minor?: number
+  dispute: 'none' | 'possible' | 'active' | 'unknown'
+  professional_contact_id?: string
+  verification: LegacyVerification
+}
+
+export async function fetchLegacyDocuments(): Promise<LegacyDocument[]> {
+  return apiFetch<{ documents: LegacyDocument[] }>('/family/legacy/documents', { documents: [] }).then(
+    (r) => r.documents ?? [],
+  )
+}
+
+export async function createLegacyDocument(input: LegacyDocumentInput): Promise<LegacyDocument | null> {
+  const res = await scenarioRequest<{ document: LegacyDocument } | null>(
+    '/family/legacy/documents',
+    { method: 'POST', body: JSON.stringify(input) },
+    null,
+  )
+  return res?.document ?? null
+}
+
+export async function updateLegacyDocument(id: string, patch: Partial<LegacyDocumentInput>): Promise<LegacyDocument | null> {
+  const res = await scenarioRequest<{ document: LegacyDocument } | null>(
+    `/family/legacy/documents/${encodeURIComponent(id)}`,
+    { method: 'PATCH', body: JSON.stringify(patch) },
+    null,
+  )
+  return res?.document ?? null
+}
+
+export async function deleteLegacyDocument(id: string): Promise<boolean> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(`${base}/family/legacy/documents/${encodeURIComponent(id)}`, { method: 'DELETE', headers })
+    return res.ok
+  } catch (err) {
+    reportError(err, { action: 'deleteLegacyDocument', id })
+    return false
+  }
+}
+
+export async function fetchLegacyContacts(): Promise<LegacyContact[]> {
+  return apiFetch<{ contacts: LegacyContact[] }>('/family/legacy/contacts', { contacts: [] }).then(
+    (r) => r.contacts ?? [],
+  )
+}
+
+export async function createLegacyContact(input: LegacyContactInput): Promise<LegacyContact | null> {
+  const res = await scenarioRequest<{ contact: LegacyContact } | null>(
+    '/family/legacy/contacts',
+    { method: 'POST', body: JSON.stringify(input) },
+    null,
+  )
+  return res?.contact ?? null
+}
+
+export async function fetchLegacyNotes(): Promise<LegacyNote[]> {
+  return apiFetch<{ notes: LegacyNote[] }>('/family/legacy/notes', { notes: [] }).then((r) => r.notes ?? [])
+}
+
+export async function createLegacyNote(input: LegacyNoteInput): Promise<LegacyNote | null> {
+  const res = await scenarioRequest<{ note: LegacyNote } | null>(
+    '/family/legacy/notes',
+    { method: 'POST', body: JSON.stringify(input) },
+    null,
+  )
+  return res?.note ?? null
+}
+
+export async function updateAssetLegacy(assetId: string, legacy: PropertyLegacy): Promise<boolean> {
+  const res = await scenarioRequest<{ asset: unknown } | null>(
+    `/family/assets/${encodeURIComponent(assetId)}/legacy`,
+    { method: 'PATCH', body: JSON.stringify(legacy) },
+    null,
+  )
+  return res !== null
 }
 
 /**

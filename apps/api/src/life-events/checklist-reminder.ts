@@ -24,6 +24,7 @@ import { getSignalsCollection } from '../db.js'
 import type { FamilyGroupDoc } from '../routes/family-group.js'
 import { memberMatchesUser } from '../lib/family-permissions.js'
 import { renderPlaybook, type LifeEventType } from './render-playbook.js'
+import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 import type { FinancialProfile } from '../routes/family-financial-profile.js'
 
 const log = createLogger({ service: 'checklist-reminder', version: '0.0.0' })
@@ -170,6 +171,28 @@ async function maybeSendChecklistReminder(db: Db, doc: LifeEventSignalDoc): Prom
     },
   }
   await db.collection<Insight>('insights').insertOne(insight)
+
+  // PRD-136: the reminder is exactly the kind of movement the family feed
+  // narrates — one event per event per day, best-effort.
+  try {
+    const memberId = data.affected_member_id ?? null
+    emitReadinessEvent(db, tenant_id, {
+      type: 'playbook_steps_pending',
+      severity: 'notice',
+      direction: null,
+      member_id: memberId,
+      domain: null,
+      title: `${playbook.title}: ${remaining.length} ${remaining.length === 1 ? 'step' : 'steps'} still open`,
+      summary: `The response plan for ${playbook.title} still has ${remaining.length} unchecked ${remaining.length === 1 ? 'step' : 'steps'}.`,
+      evidence: [{ label: 'Steps remaining', value: String(remaining.length) }],
+      links: memberId ? [{ kind: 'member', id: memberId }] : [],
+      next_check_at: null,
+      dedupe_key: buildDedupeKey('playbook_steps_pending', id),
+    })
+  } catch {
+    // feed bookkeeping never breaks the reminder pass
+  }
+
   await markDone()
   return true
 }

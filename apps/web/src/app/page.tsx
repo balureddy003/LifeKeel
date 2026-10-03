@@ -11,6 +11,7 @@ import { ScoreRing, GlassCard, PageHeader, IfAdvanced, Skeleton, Money } from '@
 import { TrustLadder, MemoryPrompts } from '@/components/Intelligence'
 import { HealthSummary } from '@/components/HealthSummary'
 import { ReadinessSparkline } from '@/components/ReadinessSparkline'
+import { ReadinessFeed } from '@/components/ReadinessFeed'
 import { useMode } from '@/lib/mode-context'
 import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@/lib/useFamilyData'
 import { useAppStore } from '@/lib/store'
@@ -689,6 +690,7 @@ function ChildDobPrompt() {
 
 export default function HomePage() {
   const { config } = useMode()
+  const { family } = useAuth()
   const { score: readinessScore, hasLiveData, loading: scoreLoading } = useFamilyReadinessScore()
   const { events: timelineEvents, hasData: hasTimelineData, hasChildren } = useFamilyTimeline()
   const { insights, loading: insightsLoading } = useFamilyInsights()
@@ -810,6 +812,18 @@ export default function HomePage() {
           </div>
         </GlassCard>
       </motion.div>
+      )}
+
+      {/* PRD-136: "What changed" — the feed narration of everything the
+          daily checks found, straight below the score it explains. */}
+      {hasLiveData && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.08 }}
+        >
+          <ReadinessFeed members={(family?.members ?? []).map((m) => ({ id: m.id, name: m.name }))} />
+        </motion.div>
       )}
 
       <IfAdvanced>

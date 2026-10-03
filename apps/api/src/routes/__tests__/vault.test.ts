@@ -293,7 +293,9 @@ describe('Digital Estate Vault', () => {
     })
     expect(res.statusCode).toBe(201)
     const estate = delivered.filter((i) => i.detector_id === 'family_estate_readiness')
-    expect(estate.map((i) => i.rule_id)).toEqual(['estate_no_power_of_attorney'])
+    // PRD-137: the enriched detector also flags the test family's child
+    // having no guardianship nomination on file.
+    expect(estate.map((i) => i.rule_id).sort()).toEqual(['estate_no_power_of_attorney', 'legacy_guardianship_gap'])
     await app.close()
   })
 
@@ -312,7 +314,7 @@ describe('Digital Estate Vault', () => {
     const delRes = await app.inject({ method: 'DELETE', url: `/vault/documents/${id}` })
     expect(delRes.statusCode).toBe(200)
     const estate = delivered.filter((i) => i.detector_id === 'family_estate_readiness')
-    expect(estate.map((i) => i.rule_id).sort()).toEqual(['estate_no_power_of_attorney', 'estate_no_will'])
+    expect(estate.map((i) => i.rule_id).sort()).toEqual(['estate_no_power_of_attorney', 'estate_no_will', 'legacy_guardianship_gap'])
     await app.close()
   })
 

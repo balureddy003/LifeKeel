@@ -98,6 +98,40 @@ describe('family signal schemas', () => {
     expect(result.valid).toBe(true)
   })
 
+  it('validates the enriched PRD-137 family.estate signal', () => {
+    const reg = registry()
+    const result = reg.validate(
+      {
+        has_will: 1,
+        has_power_of_attorney: 0,
+        estate_doc_count: 2,
+        adults_total: 2,
+        adults_with_will: 1,
+        adults_with_poa: 0,
+        adults_with_directive: 0,
+        wills_stale: 1,
+        wills_with_dead_or_missing_executor: 0,
+        minors_total: 2,
+        minors_with_guardian_nomination: 1,
+        properties_total: 1,
+        properties_without_title_evidence: 1,
+        properties_ownership_unknown: 1,
+        properties_foreign_without_contact: 0,
+        properties_disputed: 0,
+        properties_uninsured_or_unknown: 1,
+        documents_without_original_location: 1,
+        assets_unreferenced_by_any_will: 0,
+        beneficiary_conflicts: 0,
+        businesses_without_successor: 0,
+        has_legacy_records: 1,
+        wills_total: 1,
+        original_location_total: 2,
+      },
+      'family.estate',
+    )
+    expect(result.valid).toBe(true)
+  })
+
   it('validates a family.life_event signal', () => {
     const reg = registry()
     const result = reg.validate(

@@ -41,8 +41,7 @@ import { randomUUID } from 'node:crypto'
 import { createLogger, getTenantCollection, encryptBuffer, decryptBuffer } from '@agentoak/platform'
 import { isFamilyAdult } from '../lib/family-permissions.js'
 import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE, ESTATE_VAULT_CATEGORY } from './documents.js'
-import { persistSignal } from '../signals.js'
-import { resolveStaleInsights } from '../insights-persist.js'
+import { evaluateEstate } from '../legacy/evaluate-estate.js'
 
 const log = createLogger({ service: 'vault', version: '0.0.0' })
 
@@ -59,12 +58,6 @@ type VaultDocumentRecord = Record<string, unknown> & {
 export const VAULT_DOC_TYPES = ['will', 'power_of_attorney', 'insurance_policy', 'estate_instruction', 'other'] as const
 export type VaultDocType = (typeof VAULT_DOC_TYPES)[number]
 
-// PRD-121: the estate detector's rules — resolved on vault mutations when
-// the upload/delete no longer reproduces them (e.g. a will lands, or the
-// last PoA is removed).
-const ESTATE_DETECTOR_ID = 'family_estate_readiness'
-const ESTATE_RULE_IDS = ['estate_no_will', 'estate_no_power_of_attorney'] as const
-
 export function registerVaultRoutes(
   fastify: FastifyInstance,
   db: Db,
@@ -79,49 +72,10 @@ export function registerVaultRoutes(
   // Re-evaluate estate readiness after any vault mutation. Runs inside a
   // vault-only path so the mutation itself never fails on a detector
   // hiccup — the insight is best-effort, the document write is not.
+  // PRD-137: shared with the legacy routes via evaluate-estate.ts — the
+  // enriched family.estate signal is built by the single builder.
   async function reevaluateEstate(tenantId: string): Promise<void> {
-    if (!engine) return
-    try {
-      const docTypes = new Set(
-        (
-          (await db
-            .collection('documents')
-            .find({ tenant_id: tenantId, category: ESTATE_VAULT_CATEGORY }, { projection: { _id: 0, doc_type: 1 } })
-            .toArray()) as { doc_type?: string }[]
-        )
-          .map((d) => d.doc_type)
-          .filter((t): t is string => typeof t === 'string'),
-      )
-      const eventId = randomUUID()
-      const data = {
-        has_will: Number(docTypes.has('will')),
-        has_power_of_attorney: Number(docTypes.has('power_of_attorney')),
-        estate_doc_count: docTypes.size,
-      }
-      const signalId = await persistSignal(
-        {
-          tenant_id: tenantId,
-          signal_type: 'family.estate',
-          source: 'manual-entry',
-          external_id: eventId,
-          data,
-        },
-        db,
-      )
-      const result = await engine.evaluate({
-        event_type: 'family.estate',
-        tenant_id: tenantId,
-        event_id: eventId,
-        data,
-        derived_from_signals: [signalId],
-      })
-      if (result.insights.length > 0) await onInsightsGenerated?.(result.insights, tenantId)
-      // Fresh eval just happened for every rule — anything not reproduced
-      // (e.g. the will was just uploaded) resolves now.
-      await resolveStaleInsights(db, tenantId, ESTATE_DETECTOR_ID, [...ESTATE_RULE_IDS], result.insights.map((i) => ({ rule_id: i.rule_id, entity_key: i.entity_key ?? '' })))
-    } catch (err) {
-      log.warn({ err, tenant_id: tenantId }, 'Estate readiness re-evaluation failed — vault mutation already committed')
-    }
+    await evaluateEstate(db, engine, tenantId, onInsightsGenerated)
   }
 
   async function requireAdult(req: { authContext: { tenant_id: string; user_id: string } }, reply: { status: (code: number) => { send: (body: unknown) => unknown } }): Promise<boolean> {

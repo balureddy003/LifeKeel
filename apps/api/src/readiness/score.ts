@@ -22,6 +22,7 @@
  */
 
 import type { FinancialProfile } from '../routes/family-financial-profile.js'
+import type { EstateSignalData } from '../legacy/estate-signal.js'
 import { educationFundingGapMinor, isUnsetTarget, projectRetirement } from '../routes/family-financial-profile.js'
 
 export type ReadinessComponentKey = 'emergency_fund' | 'protection' | 'retirement' | 'education' | 'estate'
@@ -41,6 +42,9 @@ export interface ReadinessComponent {
   drivers?: { label: string; value_minor?: number; value?: string }[]
   /** True when the caller can't see the underlying data at all (non-adult member and the estate vault). */
   gated?: boolean
+  /** PRD-137: scope disclaimer the web must render with the score —
+   *  lives in the component so no client can show the number without it. */
+  caption?: string
 }
 
 export interface ReadinessResult {
@@ -262,7 +266,36 @@ function educationComponent(profile: FinancialProfile): ReadinessComponent {
  *  but don't move the score — presence of a will and PoA is the signal. */
 export const ESTATE_EXPECTED_DOC_TYPES = ['will', 'power_of_attorney'] as const
 
-function estateComponent(docTypesPresent: string[] | null): ReadinessComponent {
+// PRD-137 §4: the disclaimer every presentation of the estate score
+// must carry — the register records what the family declared, so the
+// number says nothing about legal validity.
+const ESTATE_CAPTION = "Completeness and freshness of what's recorded — not legal validity."
+
+/**
+ * One scored check from PRD-137 §4: a label, the fraction of its
+ * applicable population that's complete, and its weight. Checks with no
+ * applicable population (no minors, no properties, no wills) return
+ * null and drop out — the remaining weights renormalise to 100.
+ */
+function legacyCheck(
+  label: string,
+  total: number,
+  complete: number,
+  weight: number,
+  unit: string,
+): { earned: number; weight: number; driver: { label: string; value: string } } | null {
+  if (total <= 0) return null
+  return {
+    earned: weight * (Math.min(complete, total) / total),
+    weight,
+    driver: { label, value: `${Math.min(complete, total)} of ${total} ${unit}` },
+  }
+}
+
+function estateComponent(
+  docTypesPresent: string[] | null,
+  legacy?: EstateSignalData | null,
+): ReadinessComponent {
   if (docTypesPresent === null) {
     return {
       key: 'estate',
@@ -273,6 +306,44 @@ function estateComponent(docTypesPresent: string[] | null): ReadinessComponent {
       gated: true,
     }
   }
+
+  // PRD-137 §4: once the family has recorded anything in the legacy
+  // register, the score reflects it — pro-rata per adult / minor /
+  // property / will, with inapplicable checks dropped and the remaining
+  // weights renormalised. No legacy records → the original vault-
+  // boolean behaviour below.
+  if (legacy?.has_legacy_records) {
+    const wills = legacy.wills_total ?? 0
+    const locationDocs = legacy.original_location_total ?? 0
+    const checks = [
+      legacyCheck('Wills recorded', legacy.adults_total, legacy.adults_with_will, 25, 'adults'),
+      legacyCheck('Powers of attorney recorded', legacy.adults_total, legacy.adults_with_poa, 20, 'adults'),
+      legacyCheck('Guardian nominations', legacy.minors_total, legacy.minors_with_guardian_nomination, 15, 'minors'),
+      legacyCheck('Executors resolvable', wills, wills - legacy.wills_with_dead_or_missing_executor, 10, 'wills'),
+      legacyCheck('Property title evidence', legacy.properties_total, legacy.properties_total - legacy.properties_without_title_evidence, 15, 'properties'),
+      legacyCheck('Original location known', locationDocs, locationDocs - legacy.documents_without_original_location, 10, 'documents'),
+      legacyCheck('Reviewed within 3 years', wills, wills - legacy.wills_stale, 5, 'wills'),
+    ].filter((c): c is NonNullable<typeof c> => c !== null)
+
+    const totalWeight = checks.reduce((s, c) => s + c.weight, 0)
+    const score = totalWeight === 0 ? null : Math.round((checks.reduce((s, c) => s + c.earned, 0) / totalWeight) * 100)
+    const incomplete = checks.filter((c) => c.earned < c.weight).length
+    return {
+      key: 'estate',
+      label: 'Estate',
+      score,
+      weight: READINESS_WEIGHTS.estate,
+      detail:
+        score === null
+          ? 'Nothing in the legacy register is scorable yet.'
+          : incomplete === 0
+            ? "Everything recorded in the legacy register is complete and current."
+            : `${incomplete} of ${checks.length} legacy checks need attention.`,
+      drivers: checks.map((c) => c.driver),
+      caption: ESTATE_CAPTION,
+    }
+  }
+
   const present = ESTATE_EXPECTED_DOC_TYPES.filter((t) => docTypesPresent.includes(t))
   const score = Math.round((present.length / ESTATE_EXPECTED_DOC_TYPES.length) * 100)
   const missing = ESTATE_EXPECTED_DOC_TYPES.filter((t) => !docTypesPresent.includes(t))
@@ -285,6 +356,7 @@ function estateComponent(docTypesPresent: string[] | null): ReadinessComponent {
       missing.length === 0
         ? 'Will and power of attorney are both in the vault.'
         : `Missing from the vault: ${missing.map((t) => (t === 'power_of_attorney' ? 'power of attorney' : t)).join(', ')}.`,
+    caption: ESTATE_CAPTION,
   }
 }
 
@@ -294,13 +366,17 @@ function estateComponent(docTypesPresent: string[] | null): ReadinessComponent {
  * isn't an adult family member (the vault is adult-gated), which yields a
  * gated estate component excluded from the weighted mean.
  */
-export function computeReadiness(profile: FinancialProfile, estateDocTypes: string[] | null): ReadinessResult {
+export function computeReadiness(
+  profile: FinancialProfile,
+  estateDocTypes: string[] | null,
+  legacy?: EstateSignalData | null,
+): ReadinessResult {
   const components = [
     emergencyFundComponent(profile),
     protectionComponent(profile),
     retirementComponent(profile),
     educationComponent(profile),
-    estateComponent(estateDocTypes),
+    estateComponent(estateDocTypes, legacy),
   ]
   return combineComponents(components)
 }
@@ -500,6 +576,7 @@ export function computeMemberReadiness(
   profile: FinancialProfile | null,
   slice: MemberSlice,
   estateDocTypes: string[] | null,
+  legacy?: EstateSignalData | null,
 ): ReadinessResult {
   const components: ReadinessComponent[] = []
   if (ADULT_ROLES.has(slice.role)) {
@@ -515,7 +592,7 @@ export function computeMemberReadiness(
     components.push(memberEducationComponent(slice))
   }
   if (ADULT_ROLES.has(slice.role)) {
-    const estate = estateComponent(estateDocTypes)
+    const estate = estateComponent(estateDocTypes, legacy)
     components.push({ ...estate, weight: MEMBER_READINESS_WEIGHTS.estate! })
   }
   return combineComponents(components)

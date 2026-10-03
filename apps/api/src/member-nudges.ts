@@ -22,6 +22,7 @@
 import type { Db } from 'mongodb'
 import { createHash, randomUUID } from 'node:crypto'
 import { getMemberNudgesCollection } from './db.js'
+import { emitReadinessEvent } from './feed/emit.js'
 import type { MemberAgentNudge, MemberAgentResult } from './routes/member-twin.js'
 
 export interface MemberNudgeDoc extends Record<string, unknown> {
@@ -98,6 +99,31 @@ export async function reconcileMemberNudges(
         },
         { upsert: true },
       )
+      // PRD-136: a fresh age-milestone nudge is also a feed milestone —
+      // once ever per (member, age) via a dateless dedupe key, so neither
+      // the cron loop nor repeated page renders can re-announce it.
+      if (nudge.source?.component === 'time_milestone') {
+        try {
+          const age = /approaching (\d+)/.exec(nudge.title)?.[1]
+          if (age) {
+            emitReadinessEvent(db, tenantId, {
+              type: 'milestone',
+              severity: 'notice',
+              direction: 'up',
+              member_id: agent.member.id,
+              domain: null,
+              title: nudge.title,
+              summary: nudge.detail.slice(0, 280),
+              evidence: [{ label: 'Milestone', value: `turning ${age}` }],
+              links: [{ kind: 'member', id: agent.member.id }],
+              next_check_at: null,
+              dedupe_key: `milestone:${agent.member.id}:age-${age}`,
+            })
+          }
+        } catch {
+          // feed bookkeeping never breaks reconciliation
+        }
+      }
       continue
     }
 

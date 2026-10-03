@@ -20,6 +20,7 @@
 import type { Db } from 'mongodb'
 import { getTenantCollection } from '@agentoak/platform'
 import type { Insight } from '@agentoak/engine'
+import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 
 export type InsightActionType =
   | 'profile_updated'
@@ -92,8 +93,29 @@ async function recordInsightActionInner(
 
   const col = attributionCol(db, tenantId)
   await Promise.all(
-    recent.map((i: { id: string; detector_id: string; rule_id: string; entity_key?: string; created_at?: Date }) =>
-      col.updateOne(
+    recent.map((i: { id: string; detector_id: string; rule_id: string; entity_key?: string; created_at?: Date; hypothesis?: string }) => {
+      // PRD-136: the feed event goes alongside the attribution row — one
+      // per (insight, action_type) pair, deduped the same way so a repeat
+      // action refreshes rather than duplicates. Fire-and-forget like the
+      // rest of this module.
+      try {
+      emitReadinessEvent(db, tenantId, {
+        type: 'action_attributed',
+        severity: 'notice',
+        direction: 'up',
+        member_id: null,
+        domain: null,
+        title: `You acted on: ${(i.hypothesis ?? i.rule_id?.replace(/_/g, ' ') ?? 'a flagged gap').slice(0, 80)}`,
+        summary: 'Something on file changed within 30 days of this flag.',
+        evidence: [],
+        links: [{ kind: 'insight', id: i.id }],
+        next_check_at: null,
+        dedupe_key: buildDedupeKey('action_attributed', `${i.id}:${actionType}`),
+      })
+      } catch {
+        // Feed narration must never take the attribution write down with it.
+      }
+      return col.updateOne(
         { insight_id: i.id, action_type: actionType },
         {
           $set: { action_at: now },
@@ -107,8 +129,8 @@ async function recordInsightActionInner(
           },
         },
         { upsert: true },
-      ),
-    ),
+      )
+    }),
   )
   return recent.length
 }

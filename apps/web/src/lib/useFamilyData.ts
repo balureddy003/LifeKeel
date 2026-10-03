@@ -144,6 +144,8 @@ export interface DomainHealth {
   drivers?: { label: string; value_minor?: number; value?: string }[]
   /** True when this member can't see the underlying data (estate vault is adult-only). */
   gated?: boolean
+  /** PRD-137: server-supplied scope disclaimer shown under the score (estate). */
+  caption?: string
 }
 
 // A domain can be explained by more than one detector — the adequacy
@@ -275,6 +277,7 @@ export function useFamilyHealthDomains() {
           insights: domainInsights,
           detail: server.detail,
           ...(server.gated ? { gated: true } : {}),
+          ...(server.caption ? { caption: server.caption } : {}),
         }
       } else {
         domains[domain] = {
@@ -283,6 +286,7 @@ export function useFamilyHealthDomains() {
           insights: domainInsights,
           detail: server.detail,
           ...(server.drivers ? { drivers: server.drivers } : {}),
+          ...(server.caption ? { caption: server.caption } : {}),
         }
       }
       continue

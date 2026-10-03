@@ -20,6 +20,7 @@ import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { createLogger, getTenantCollection, isValidAzureEndpoint, isAzureFoundryEndpoint, type DecisionFn } from '@agentoak/platform'
 import { isOcrableImage, ocrImageToText } from './local-ocr.js'
+import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 
 const log = createLogger({ service: 'ocr', version: '0.0.0' })
 
@@ -367,6 +368,20 @@ export async function processDocument(
     )
 
     log.info({ documentId: docId, category: result.category }, 'Document processed successfully')
+    // PRD-136: feed narration for the extraction-complete stage.
+    emitReadinessEvent(db, tenantId, {
+      type: 'document_processed',
+      severity: 'info',
+      direction: 'up',
+      member_id: null,
+      domain: 'documents',
+      title: `Document read: ${filename}`.slice(0, 120),
+      summary: 'Oak finished reading the document — extracted fields are ready to review.',
+      evidence: [{ label: 'Stage', value: 'extracted' }],
+      links: [{ kind: 'document', id: docId }],
+      next_check_at: null,
+      dedupe_key: buildDedupeKey('document_processed', `${docId}:extracted`),
+    })
   } catch (err) {
     log.error({ err, documentId: docId }, 'Document processing failed')
     await documents.updateOne(

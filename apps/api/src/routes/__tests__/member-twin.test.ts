@@ -18,6 +18,7 @@ let profileDoc: Record<string, unknown> | null
 let insights: Record<string, unknown>[]
 let members: Record<string, unknown>[]
 let nudges: Record<string, unknown>[] = []
+let readinessEvents: Record<string, unknown>[] = []
 
 const PROFILE = {
   household: {
@@ -109,6 +110,7 @@ function makeDb(tenantId: string) {
       if (name === 'family_groups') return col([{ tenant_id: TENANT, members }])
       if (name === 'insights') return col(insights.map((d) => ({ tenant_id: tenantId, ...d })))
       if (name === 'member_nudges') return col(nudges)
+      if (name === 'readiness_events') return col(readinessEvents)
       return col([])
     },
   } as never
@@ -367,6 +369,33 @@ describe('member nudge persistence (PRD-127)', () => {
     profileDoc = { ...PROFILE }
     insights = []
     nudges = []
+    readinessEvents = []
+  })
+
+  it('emits a milestone feed event once ever per (member, age)', async () => {
+    // Age 17 with a birthday ~3 months out → the "approaching 18" milestone.
+    const dob = new Date()
+    dob.setUTCFullYear(dob.getUTCFullYear() - 18)
+    dob.setUTCMonth(dob.getUTCMonth() + 3)
+    members[2]!['date_of_birth'] = dob.toISOString().slice(0, 10)
+    const app = await buildApp()
+
+    const first = await app.inject({ method: 'GET', url: `/family/members/${CHILD_ID}/agent` })
+    expect(first.statusCode).toBe(200)
+    await new Promise((r) => setTimeout(r, 20))
+    const milestones = readinessEvents.filter((e) => e['type'] === 'milestone')
+    expect(milestones).toHaveLength(1)
+    expect(milestones[0]).toMatchObject({
+      severity: 'notice',
+      direction: 'up',
+      member_id: CHILD_ID,
+      dedupe_key: `milestone:${CHILD_ID}:age-18`,
+    })
+
+    await app.inject({ method: 'GET', url: `/family/members/${CHILD_ID}/agent` })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(readinessEvents.filter((e) => e['type'] === 'milestone')).toHaveLength(1)
+    await app.close()
   })
 
   it('persists nudges with stable ids — a second read dedupes instead of duplicating', async () => {

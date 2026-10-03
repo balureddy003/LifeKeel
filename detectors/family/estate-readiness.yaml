@@ -3,9 +3,12 @@ name: Estate Document Completeness
 description: >
   Checks the Digital Estate Vault for the two documents a household's estate
   readiness minimally needs — a will and a power of attorney — and flags
-  what's missing. Driven by user-declared doc_type tags on vault uploads;
-  the vault does no OCR, so absence here means "not on file", nothing more.
-version: 1.0.0
+  what's missing, then layers the PRD-137 legacy register on top: stale
+  wills, guardianship nominations, executor and title-evidence gaps.
+  Driven by user-declared doc_type tags and family-declared register
+  entries; the vault does no OCR, so absence here means "not on file",
+  nothing more.
+version: 2.0.0
 signal_types:
   - family.estate
 industries: ["family", "estate", "protection"]
@@ -41,3 +44,123 @@ rules:
       - Check whether a power of attorney exists and store a copy in the Estate Vault
       - Consult a solicitor about putting a lasting power of attorney in place
       - Tell the other adults in your family who holds authority and where it's documented
+
+  - id: legacy_will_review_due
+    name: A Will On File May Predate A Recorded Change
+    condition: "data.wills_stale > 0"
+    confidence: 0.7
+    impact_low: 0
+    impact_high: 0
+    reasoning_template: >
+      A will on file predates a change recorded since — a new child, a civil record, or a property entered after
+      its last review date. Oak can't judge whether it still reflects your wishes; it only knows the register
+      shows a later change. A solicitor or will-writing professional can confirm whether a review is needed.
+    actions:
+      - Note which family or property change postdates the will's last review
+      - Ask a solicitor whether the will still reflects your wishes
+      - Record the fresh review date in the legacy register when it's done
+
+  - id: legacy_guardianship_gap
+    name: Guardian Nomination Not Recorded For A Dependent Child
+    condition: "data.minors_total > 0 and data.minors_with_guardian_nomination < data.minors_total"
+    confidence: 0.7
+    impact_low: 0
+    impact_high: 0
+    reasoning_template: >
+      A dependent child on the family roster has no guardianship nomination recorded — not as its own register
+      entry and not inside a will that names a guardian. This is a record-keeping gap, not a judgement about
+      any arrangement the family has already made. A solicitor can advise on recording guardian wishes properly.
+    actions:
+      - Check whether each child's guardian wishes are written down anywhere
+      - Record the nomination in the legacy register once confirmed
+      - Consult a solicitor about formalising guardianship wishes for each child
+
+  - id: legacy_executor_missing
+    name: A Named Executor Is No Longer Reachable In The Register
+    condition: "data.wills_with_dead_or_missing_executor > 0"
+    confidence: 0.7
+    impact_low: 0
+    impact_high: 0
+    reasoning_template: >
+      A will on file names an executor who is no longer a roster member or recorded contact, or whose role was
+      marked unverified when they left the family. Oak can't tell whether that appointment still stands —
+      a solicitor can advise on whether the executor named in the will should be updated.
+    actions:
+      - Check who the will on file names as executor and whether they're still the right person
+      - Record a current contact for the executor, or note the change needed
+      - Consult a solicitor about updating the executor named in the will
+
+  - id: legacy_property_title_gap
+    name: Property Ownership Documentation Incomplete
+    condition: "data.properties_without_title_evidence > 0 or data.properties_ownership_unknown > 0"
+    confidence: 0.7
+    impact_low: 0
+    impact_high: 0
+    reasoning_template: >
+      A recorded property has no title evidence on file, or its ownership basis is marked unknown — Oak cannot
+      determine title, only that the register lacks the record. Locating the deed or land-registry entry is
+      the first step; a qualified local professional can confirm what the ownership record shows.
+    actions:
+      - Locate the deed or land-registry record for the property and note the reference
+      - Record the ownership basis and any named owners in the property's legacy detail
+      - Consult a qualified local professional if the ownership record is unclear or contested
+
+  - id: legacy_foreign_property_review
+    name: Property In Another Jurisdiction Has No Local Professional Recorded
+    condition: "data.properties_foreign_without_contact > 0"
+    confidence: 0.7
+    impact_low: 0
+    impact_high: 0
+    reasoning_template: >
+      A recorded property sits in a different jurisdiction from the family's wills, and no local professional
+      is recorded for it. Rules about property and estates differ by place; Oak doesn't compare them —
+      a notary or qualified local professional where the property is can advise on what applies.
+    actions:
+      - Note which jurisdiction the property sits in versus the family's wills
+      - Record a local solicitor, notary, or land agent as the property's professional contact
+      - Ask that professional how local rules treat the property
+
+  - id: legacy_will_asset_mismatch
+    name: A Recorded Property Is Not Referenced By Any Will On File
+    condition: "data.assets_unreferenced_by_any_will > 0"
+    confidence: 0.7
+    impact_low: 0
+    impact_high: 0
+    reasoning_template: >
+      A property in the legacy register isn't referenced by any will on file. That may be fine — many wills
+      cover assets by a general clause rather than naming them — so this is a review prompt, not a legal
+      conclusion. A solicitor can confirm whether the will needs to reference the property explicitly.
+    actions:
+      - Check whether the will is meant to cover the property explicitly or by general clause
+      - Link the property to the will in the register if it's already covered
+      - Consult a solicitor about whether the will should name the property
+
+  - id: legacy_beneficiary_conflict
+    name: Named Beneficiaries Differ Across Recorded Documents
+    condition: "data.beneficiary_conflicts > 0"
+    confidence: 0.7
+    impact_low: 0
+    impact_high: 0
+    reasoning_template: >
+      The beneficiaries named on a recorded will differ from those on a policy for the same person. That may
+      be intentional — different instruments follow different rules by asset type and jurisdiction — so Oak
+      flags the mismatch rather than resolving it. A qualified local professional can confirm which applies.
+    actions:
+      - Compare the beneficiaries named on the will and on each policy
+      - Record the intended beneficiary on each document if the difference is deliberate
+      - Consult a qualified local professional to confirm which designation applies where
+
+  - id: legacy_original_location_unknown
+    name: Original Document Location Not Recorded
+    condition: "data.documents_without_original_location > 0"
+    confidence: 0.7
+    impact_low: 0
+    impact_high: 0
+    reasoning_template: >
+      A will, power of attorney, or trust deed on file has no original-location note — the other adults may
+      not be able to find the original when it matters. This is a record-keeping gap only. A solicitor or
+      notary holding the original can also confirm it is the current version.
+    actions:
+      - Record where each original document is kept — a named office, safe, or registry
+      - Tell the other adults in the family where the originals are
+      - Confirm with the solicitor or notary holding the original that it is the current version

@@ -52,6 +52,7 @@ import type { FinancialProfile } from './family-financial-profile.js'
 import { isFamilyAdult, ageFromDob } from '../lib/family-permissions.js'
 import { ESTATE_VAULT_CATEGORY } from './documents.js'
 import { computeMemberReadiness } from '../readiness/score.js'
+import { buildEstateSignal } from '../legacy/estate-signal.js'
 import { reconcileMemberNudges, dismissMemberNudge } from '../member-nudges.js'
 import { youthLessonsFor, type YouthLesson } from '../youth-curriculum.js'
 
@@ -230,6 +231,10 @@ export async function getMemberTwin(
         .map((d) => d.doc_type)
         .filter((t): t is string => typeof t === 'string')
     : null
+  // PRD-137: legacy-aware estate component, same adult gating as the
+  // vault doc types. Best-effort — builder failure degrades to the
+  // vault-boolean path.
+  const estateSignal = viewerIsAdult ? await buildEstateSignal(db, tenantId).catch(() => null) : null
 
   const age = ageFrom(member.date_of_birth)
   const isMinor = member.role === 'child' || (age !== null && age < 18)
@@ -273,6 +278,7 @@ export async function getMemberTwin(
     profile ?? null,
     { memberId, role: member.role, age, earner, policies, educationFunds: education_funds },
     estateDocTypes,
+    estateSignal,
   )
 
   return {

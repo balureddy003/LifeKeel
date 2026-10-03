@@ -108,10 +108,13 @@ import { registerSupportRoutes } from './routes/support.js'
 import { registerReadinessQuizRoutes } from './routes/readiness-quiz.js'
 import { registerFamilyReadinessRoutes } from './routes/family-readiness.js'
 import { registerFamilyScenarioRoutes } from './routes/family-scenarios.js'
+import { registerFamilyFeedRoutes } from './routes/family-feed.js'
+import { runScenarioWatchlist } from './jobs/scenario-watchlist.js'
 import { registerMemberTwinRoutes } from './routes/member-twin.js'
 import { registerFamilyContinuityRoutes } from './routes/family-continuity.js'
 import { registerFamilyCashflowRoutes } from './routes/family-cashflow.js'
 import { registerFamilyAssetRoutes } from './routes/family-assets.js'
+import { registerFamilyLegacyRoutes } from './routes/family-legacy.js'
 import { registerLeadRoutes } from './routes/leads.js'
 import { registerShareRoutes } from './routes/share.js'
 import { registerSendgridWebhookRoutes } from './routes/webhooks-sendgrid.js'
@@ -703,6 +706,22 @@ try {
     }
   }, { missedExecutionTolerance: 3_600_000, noOverlap: true })
   log.info({}, 'Stale profile evaluation cron started')
+
+  // PRD-136: nightly scenario watchlist recompute — emits scenario_moved
+  // feed events when a watched scenario's runway/depletion month moves by
+  // ≥0.5 months. Runs after the 06:30 stale-profile sweep so projections
+  // see yesterday's freshest data.
+  cron.schedule('30 5 * * *', async () => {
+    try {
+      await withCronLock(workflowDb, 'scenario-watchlist', async () => {
+        const summary = await runScenarioWatchlist(workflowDb)
+        if (summary.moved > 0) log.info({ ...summary }, 'Scenario watchlist recomputed')
+      })
+    } catch (err) {
+      log.error({ err }, 'Scenario watchlist failed')
+    }
+  }, { missedExecutionTolerance: 3_600_000, noOverlap: true })
+  log.info({}, 'Scenario watchlist cron started')
 
   const retentionWorker = new RetentionWorker(workflowDb)
   const insightSlaWorker = new InsightSlaWorker(workflowDb)
@@ -1478,10 +1497,12 @@ if (workflowDb) {
   registerReadinessQuizRoutes(app, workflowDb, engine)
   registerFamilyReadinessRoutes(app, workflowDb)
   registerFamilyScenarioRoutes(app, workflowDb)
+  registerFamilyFeedRoutes(app, workflowDb)
   registerMemberTwinRoutes(app, workflowDb)
   registerFamilyContinuityRoutes(app, workflowDb)
   registerFamilyCashflowRoutes(app, workflowDb)
-  registerFamilyAssetRoutes(app, workflowDb)
+  registerFamilyAssetRoutes(app, workflowDb, engine, insightsDeliveryHook)
+  registerFamilyLegacyRoutes(app, workflowDb, engine, insightsDeliveryHook)
   await registerLeadRoutes(app, workflowDb)
   await registerShareRoutes(app)
   registerSendgridWebhookRoutes(app, workflowDb)

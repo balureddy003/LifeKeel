@@ -253,6 +253,25 @@ domain before going wide, prepare-only actions before anything that acts.
     household context note that Ask Oak reads as background.
     Medical/health records and per-member preference modeling stay
     deferred — see the PRD for why. Tier 0.
+36. [136-readiness-feed-and-family-heartbeat.md](136-readiness-feed-and-family-heartbeat.md) —
+    **proposed.** The detectors, score snapshots, attribution, nudges and
+    scenario recomputes already run silently; nothing narrates them.
+    Adds a `readiness_events` model with ten emitter hooks, a "What
+    changed" feed on the home page, a weekly/monthly heartbeat per
+    adult through the existing `DeliveryRouter`, saved-scenario
+    watchlists, per-event feedback/mutes, and the notification
+    preference center. Tier 0 — narrates, never acts.
+37. [137-family-legacy-map.md](137-family-legacy-map.md) — **proposed.**
+    Estate coverage today is two vault booleans. Adds a legacy register
+    (wills, codicils, POA/LPA, directives, trusts, guardianship, probate
+    records with named roles, jurisdiction, review dates, original
+    location), an inherited/ancestral-property model on the assets
+    register (ownership basis, recorded vs. claimed owners, title
+    evidence, disputes, foreign jurisdiction), a mandatory verification
+    label on every claim, a person↔document↔property graph Ask Oak can
+    read, a `legacy` readiness component, 10 detector rules replacing
+    `estate-readiness.yaml`, and a continuity rehearsal. Register and
+    detectors Tier 0; any *release* of documents stays out of scope.
 
 ## 20x — marketing: the same engine as the growth mechanic
 

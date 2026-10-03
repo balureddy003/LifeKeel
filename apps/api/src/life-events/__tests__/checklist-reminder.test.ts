@@ -68,18 +68,31 @@ function makeDb(opts: {
   members: FakeMember[] | null
 }) {
   const insights: FakeInsight[] = []
+  const events: Record<string, unknown>[] = []
   const profileCol = { findOne: async () => opts.profile }
   const familyGroupsCol = { findOne: async () => (opts.members ? { tenant_id: TENANT, members: opts.members } : null) }
   const insightsCol = { insertOne: async (doc: FakeInsight) => { insights.push(doc); return { insertedId: doc['id'] } } }
+  const readinessEventsCol = {
+    updateOne: async (
+      filter: Record<string, unknown>,
+      update: { $set?: Record<string, unknown>; $setOnInsert?: Record<string, unknown> },
+    ) => {
+      const existing = events.find((e) => e['dedupe_key'] === filter['dedupe_key'])
+      if (existing) Object.assign(existing, update.$set)
+      else events.push({ ...update.$setOnInsert, ...update.$set })
+      return { upsertedCount: 1 }
+    },
+  }
   const db = {
     collection: (name: string) => {
       if (name === 'family_financial_profile') return profileCol
       if (name === 'family_groups') return familyGroupsCol
       if (name === 'insights') return insightsCol
+      if (name === 'readiness_events') return readinessEventsCol
       throw new Error(`unexpected collection ${name}`)
     },
   }
-  return { db: db as any, insights }
+  return { db: db as any, insights, events }
 }
 
 function makeProfile(overrides: Partial<FinancialProfile> = {}): FinancialProfile {
@@ -237,5 +250,34 @@ describe('runChecklistReminderSweep', () => {
     expect(sent).toBe(1)
     expect(sendMock).not.toHaveBeenCalled()
     expect(insights).toHaveLength(1)
+  })
+
+  it('emits a playbook_steps_pending feed event when the reminder fires', async () => {
+    makeSignal({ event_type: 'bereavement', affected_member_id: 'adult-2' })
+    const { db, events } = makeDb({ profile: makeProfile(), members: [REPORTER, OTHER_ADULT] })
+
+    await runChecklistReminderSweep(db)
+    await new Promise((r) => setTimeout(r, 20))
+
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      type: 'playbook_steps_pending',
+      severity: 'notice',
+      member_id: 'adult-2',
+      links: [{ kind: 'member', id: 'adult-2' }],
+    })
+    expect(events[0]!['title']).toMatch(/steps? still open$/)
+    expect(events[0]!['dedupe_key']).toMatch(/^playbook_steps_pending:event-\d+:\d{4}-\d{2}-\d{2}$/)
+  })
+
+  it('emits without a member link when the event has no affected member', async () => {
+    makeSignal({ event_type: 'bereavement' })
+    const { db, events } = makeDb({ profile: makeProfile(), members: [REPORTER, OTHER_ADULT] })
+
+    await runChecklistReminderSweep(db)
+    await new Promise((r) => setTimeout(r, 20))
+
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({ type: 'playbook_steps_pending', member_id: null, links: [] })
   })
 })
