@@ -404,6 +404,19 @@ them:
 | **Blocked** | Open Banking consent + sync (G8) → becomes additional feed emitters (income stopped, savings drained, new recurring premium) — detect-before-declared | 133 | Detection Breadth | L | TrueLayer partnership |
 | Blocked | Executor / trustee time-boxed access (Tier 2) and any document release | follow-up PRD | — | M | 137 + legal review |
 
+**Status (3 Oct 2026, commits 24c90ae → 344bd1c):** Phase A and
+Phase B are shipped in full — events model, all ten emitters, feed +
+feedback/mutes, scenario watchlist, weekly/monthly heartbeat (email;
+push deferred until `channels.ts` accepts a non-insight payload),
+preference center, legacy register with visibility + audit, enriched
+`family.estate` signal, estate detector 2→10 rules at F1 = 1.0, estate
+score from the register, legacy graph into Ask Oak, `/legacy` page,
+rehearsal, knowledge notes. Phase C: `steps[]` in `/assistant/simulate`
+shipped; the shareable score card already existed (`routes/share.ts`).
+Open: youth literacy progression (G9), detector-driven SEO posts, and
+the two blocked rows. Gate at 344bd1c: typecheck 24/24 · lint 0 errors
+· API 1,291 tests / web suite green · build 72 pages.
+
 **Definition of done per phase:** every PRD acceptance test passing,
 golden evals at F1 = 1.0 for any new detector, root `pnpm typecheck &&
 pnpm lint && pnpm test && pnpm build` green, and the Part 4 leading
