@@ -12,7 +12,7 @@
  * and eliminates 401 errors during scheduled syncs.
  */
 import { safeFetch } from './safe-fetch.js'
-import { createLogger, decryptIfNeeded, encryptIfNeeded } from '@agentoak/platform'
+import { createLogger, decryptIfNeeded, encryptIfNeeded } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'token-refresh', version: '0.0.0' })
 
@@ -24,7 +24,7 @@ const GOOGLE_CONNECTORS = ['google_calendar', 'gmail', 'google_drive', 'youtube'
 
 function getGoogleClientId(connectorId: string): string {
   // Try connector-specific first for backward compatibility
-  const specificId = process.env[`KAIROS_${connectorId.toUpperCase()}_CLIENT_ID`]
+  const specificId = process.env[`LIFEKEEL_${connectorId.toUpperCase()}_CLIENT_ID`]
   if (specificId) return specificId
 
   if (connectorId === 'twitter_x') return process.env['X_CLIENT_ID'] ?? ''
@@ -39,7 +39,7 @@ function getGoogleClientId(connectorId: string): string {
 
 function getGoogleClientSecret(connectorId: string): string {
   // Try connector-specific first for backward compatibility
-  const specificSecret = process.env[`KAIROS_${connectorId.toUpperCase()}_CLIENT_SECRET`]
+  const specificSecret = process.env[`LIFEKEEL_${connectorId.toUpperCase()}_CLIENT_SECRET`]
   if (specificSecret) return specificSecret
 
   if (connectorId === 'twitter_x') return process.env['X_CLIENT_SECRET'] ?? ''

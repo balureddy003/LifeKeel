@@ -99,7 +99,7 @@ export interface AuditEntry {
   timestamp: Date
 }
 
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 
 const auditLog = createLogger({ service: 'audit', version: '0.0.0' })
 

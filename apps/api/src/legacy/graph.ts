@@ -2,7 +2,7 @@
  * Legacy graph read model (PRD-137 §5) — the register as nodes and edges:
  * members, named contacts, legacy documents, property assets, policies,
  * and vault documents that evidence them. Two consumers: the /legacy
- * "Family map" tab and Ask Oak's context builder.
+ * "Family map" tab and Ask Keel's context builder.
  *
  * Everything is a family declaration — `verification` rides every node
  * and edge so neither surface can present belief as legal fact. No
@@ -14,7 +14,7 @@
  * no assets/policies/contacts, no sublabels or edge labels.
  */
 import type { Db } from 'mongodb'
-import { getTenantCollection } from '@agentoak/platform'
+import { getTenantCollection } from '@lifekeel/platform'
 import type { FamilyGroupDoc } from '../routes/family-group.js'
 import type { LegacyDocumentDoc, LegacyRole, Verification } from '../routes/family-legacy.js'
 
@@ -218,7 +218,7 @@ const VERIFICATION_TEXT: Record<string, string> = {
 const vlabel = (v?: string) => VERIFICATION_TEXT[v ?? ''] ?? 'unverified'
 
 /**
- * ≤1,200-char plain-text rendering for Ask Oak's context — one line per
+ * ≤1,200-char plain-text rendering for Ask Keel's context — one line per
  * document and per property, every claim carrying its verification label
  * in brackets. Names/roles/dates yes; amounts never (policies and values
  * are deliberately absent here — the profile block already covers them).

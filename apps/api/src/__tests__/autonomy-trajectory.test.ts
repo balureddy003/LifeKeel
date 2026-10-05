@@ -17,7 +17,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest'
 import path from 'node:path'
 import { MongoClient, type Db } from 'mongodb'
 import { MongoMemoryServer } from 'mongodb-memory-server'
-import { Engine, type Insight } from '@agentoak/engine'
+import { Engine, type Insight } from '@lifekeel/engine'
 import { persistAndDeliverInsights, resolveStaleInsights } from '../insights-persist.js'
 import { runAutoExecuteTrusted, AUTO_EXECUTE_TRUST_THRESHOLD, AUTO_EXECUTE_GRACE_MS } from '../jobs/auto-execute-trusted.js'
 

@@ -10,8 +10,8 @@ import { registerAssistantRoutes } from '../assistant.js'
 
 const llmMock = vi.fn(async (_system: string, prompt: string) => `LLM saw: ${prompt}`)
 
-vi.mock('@agentoak/platform', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@agentoak/platform')>()
+vi.mock('@lifekeel/platform', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@lifekeel/platform')>()
   return { ...actual, createLlmRouterFromEnv: () => llmMock }
 })
 
@@ -173,7 +173,7 @@ describe('POST /assistant/ask', () => {
     // and target_retirement_income_minor is still 0 — the same signal the
     // family_retirement_gap detector itself already uses (isUnsetTarget in
     // family-financial-profile.ts) to know this section was never engaged
-    // with. Live-verification finding: without this gate, Oak told a user
+    // with. Live-verification finding: without this gate, Keel told a user
     // with no date of birth on file "Current age: 30" as if it were a
     // confirmed fact.
     profileFixture = {
@@ -296,7 +296,7 @@ describe('POST /assistant/ask', () => {
     expect(response.json().content).not.toContain('pending')
   })
 
-  it('surfaces an unreviewed uploaded document so Oak can mention it', async () => {
+  it('surfaces an unreviewed uploaded document so Keel can mention it', async () => {
     unreviewedDocsFixture = [{ filename: 'travel-policy.pdf', category: 'insurance', uploaded_at: new Date('2026-01-01') }]
     const app = await buildApp(TENANT_A)
     const response = await app.inject({ method: 'POST', url: '/assistant/ask', payload: { query: 'anything unreviewed?' } })

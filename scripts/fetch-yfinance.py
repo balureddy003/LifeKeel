@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-yfinance bridge for the Kairos connector sync engine.
+yfinance bridge for the LifeKeel connector sync engine.
 
 Yahoo Finance has no official REST API. This script wraps the yfinance
 Python library and emits JSON to stdout in the normalized shape that the
@@ -105,7 +105,7 @@ def fetch_fundamentals(symbol: str) -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="yfinance bridge for Kairos connector sync")
+    parser = argparse.ArgumentParser(description="yfinance bridge for LifeKeel connector sync")
     parser.add_argument("--resource", required=True, help="Resource name: DailyHistory or Fundamentals")
     parser.add_argument("--symbol", required=True, help="Ticker symbol, e.g. AAPL")
     parser.add_argument("--from", dest="date_from", default=None, help="Start date YYYY-MM-DD (default: 20 years ago)")

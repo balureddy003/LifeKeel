@@ -19,9 +19,9 @@
 
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import type { Engine, FeatureHashScorer, TenantLevelScorer, RecentInsight } from '@agentoak/engine'
-import type { ActionReceipt } from '@agentoak/workflows'
-import { ApprovalSignalHealthMonitor, createLogger } from '@agentoak/platform'
+import type { Engine, FeatureHashScorer, TenantLevelScorer, RecentInsight } from '@lifekeel/engine'
+import type { ActionReceipt } from '@lifekeel/workflows'
+import { ApprovalSignalHealthMonitor, createLogger } from '@lifekeel/platform'
 import { familyDataLlmFromEnv } from '../local-model.js'
 import { getInsightsCollection, getReceiptsCollection } from '../db.js'
 import { getAuditLogger, type AuditAction } from '../audit/audit-log.js'
@@ -43,7 +43,7 @@ import {
 
 const log = createLogger({ service: 'insights', version: '0.0.0' })
 
-// OAK-008: every catch block below only ever runs for a genuine unexpected
+// KEEL-008: every catch block below only ever runs for a genuine unexpected
 // failure — the legitimate not-found case is always handled by an explicit
 // check inside the try, never a throw. Before this, a real DB outage was
 // indistinguishable from "nothing here" to both the client and to ops.
@@ -59,9 +59,9 @@ function reportInsightRouteError(route: string, err: unknown, tenantId: string):
     tenant_id: tenantId,
   }).catch(() => {})
 }
-import { MongoMemoryRepository } from '@agentoak/mongodb-adapter'
+import { MongoMemoryRepository } from '@lifekeel/mongodb-adapter'
 import { createHash, randomUUID } from 'node:crypto'
-import { FreeTierPolicy } from '@agentoak/platform'
+import { FreeTierPolicy } from '@lifekeel/platform'
 
 /**
  * Fetch recent insights for an entity (last 7 days) — used by the
@@ -208,7 +208,7 @@ export async function registerInsightRoutes(
     // Caller-driven exclusions, folded into the same filter used for both the
     // page of results and the `total` count below — so a preview list and its
     // "how many total" figure never disagree about what's excluded (Home uses
-    // this to keep its opportunities count in sync with what Kairos Pulse
+    // this to keep its opportunities count in sync with what LifeKeel Pulse
     // actually renders, instead of filtering client-side after slicing).
     if (query.exclude_category) filter['category'] = { $nin: query.exclude_category.split(',') }
     if (query.exclude_detector_id) filter['detector_id'] = { $nin: query.exclude_detector_id.split(',') }
@@ -236,7 +236,7 @@ export async function registerInsightRoutes(
         has_more: offset + limit < total,
       }
     } catch (err) {
-      // OAK-008: was a silent catch — a real DB outage looked identical to
+      // KEEL-008: was a silent catch — a real DB outage looked identical to
       // "no insights yet" in the response, with nothing to tell them apart
       // in the logs either.
       log.warn({ err }, 'GET /insights failed')
@@ -283,7 +283,7 @@ export async function registerInsightRoutes(
         .sort({ created_at: -1 })
         .skip(offset)
         .limit(limit)
-        .toArray() as unknown as import('@agentoak/engine').Insight[]
+        .toArray() as unknown as import('@lifekeel/engine').Insight[]
 
       if (!db) {
         return { groups: [], total: 0, limit, offset, has_more: false }
@@ -314,7 +314,7 @@ export async function registerInsightRoutes(
    * followed by a real family action (profile updated, policy added,
    * document applied, insight approved, playbook step completed) within
    * 30 days of firing. Association, not causation — the UI words it
-   * "acted on", never "Oak made them do it".
+   * "acted on", never "Keel made them do it".
    */
   app.get('/insights/attribution', async (request, reply) => {
     const { tenant_id } = request.authContext
@@ -358,7 +358,7 @@ export async function registerInsightRoutes(
         .find(filter)
         .sort({ created_at: -1 })
         .limit(limit)
-        .toArray() as unknown as import('@agentoak/engine').Insight[]
+        .toArray() as unknown as import('@lifekeel/engine').Insight[]
 
       if (!db || insights.length === 0) {
         return { entity_key: entityKey, insights: [], count: 0 }
@@ -505,7 +505,7 @@ export async function registerInsightRoutes(
           const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
           const used = await db.collection('insights').countDocuments({ tenant_id, approved_at: { $gte: monthStart } })
           // `plan` is the field billing actually maintains on the tenant —
-          // `tier` is a kairos-era field name nothing writes, so reading it
+          // `tier` is a lifekeel-era field name nothing writes, so reading it
           // silently capped paid tenants at the free-tier limit.
           const quota = new FreeTierPolicy().check('monthly_move_approvals', used, String(tenant?.['plan'] ?? 'free'))
           if (!quota.allowed) return { code: 402, body: { error: 'Monthly Move approval quota exceeded', quota } }
@@ -994,7 +994,7 @@ export async function registerInsightRoutes(
     `button{font:inherit;font-weight:600;padding:.8rem 1.6rem;border-radius:10px;border:0;cursor:pointer}` +
     `.primary{background:#6d4fc4;color:#fff}.secondary{background:#eceaf4;color:#443d66}</style></head><body>${inner}</body></html>`
 
-  const expiredPage = linkPage('Link expired', `<h1>This link has expired</h1><p>Open Agent Oak to review the insight directly — notification links are valid for 7 days.</p>`)
+  const expiredPage = linkPage('Link expired', `<h1>This link has expired</h1><p>Open LifeKeel to review the insight directly — notification links are valid for 7 days.</p>`)
 
   if (deliveryRouter) {
     const router = deliveryRouter
@@ -1073,7 +1073,7 @@ export async function registerInsightRoutes(
       const score = typeof confidence === 'number'
         ? `<p>Confidence: ${(confidence * 100).toFixed(0)}%</p>` : ''
       return reply.type('text/html').send(linkPage('Why this insight', `
-        <h1>Why Oak flagged this</h1>
+        <h1>Why Keel flagged this</h1>
         <div class="card"><strong>${escHtml(insight['hypothesis'] ?? 'Insight')}</strong>
         <p>${escHtml(insight['reasoning'] ?? '')}</p>
         ${score}${impact}
@@ -1083,7 +1083,7 @@ export async function registerInsightRoutes(
     /**
      * GET /insights/review — the family's view of what the judge held back.
      * Pending rows are still auto-retrying; exhausted rows need a human
-     * call. Transparency posture: the family sees Oak's own rejections,
+     * call. Transparency posture: the family sees Keel's own rejections,
      * with the judge's scores and feedback attached.
      */
     app.get('/insights/review', async (request, reply) => {
@@ -1177,7 +1177,7 @@ export async function registerInsightRoutes(
    */
   app.post<{ Params: { id: string } }>(
     '/insights/:id/prepare',
-    // OAK-015: this route calls an LLM on every request — see the matching
+    // KEEL-015: this route calls an LLM on every request — see the matching
     // rate-limit note on POST /assistant/ask.
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (request, reply) => {
@@ -1198,7 +1198,7 @@ export async function registerInsightRoutes(
         }
 
         // provenance: which of the reasoning's concrete figures the draft
-        // actually carried over — the UI's "from your data" vs "Oak's
+        // actually carried over — the UI's "from your data" vs "Keel's
         // wording" split. See insights/draft-provenance.ts.
         const draft = { content, generated_at: new Date(), provenance: extractDraftProvenance(insight.reasoning, content) }
         await col.updateOne({ id, tenant_id }, { $set: { draft } })

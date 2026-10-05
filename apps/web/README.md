@@ -1,6 +1,6 @@
-# @agentoak/web
+# @lifekeel/web
 
-The Agent Oak frontend — Next.js App Router, static-exported (`pnpm build:export`)
+The LifeKeel frontend — Next.js App Router, static-exported (`pnpm build:export`)
 and served from Firebase Hosting (see `firebase.json`/`.firebaserc`). No
 server runtime in production; all state comes from `apps/api` over HTTP
 (`NEXT_PUBLIC_API_URL`, currently the shared kairos-ai backend — see

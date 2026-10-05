@@ -4,7 +4,7 @@ import {
   canTransition,
   evaluateReadiness,
   transitionOutcome,
-} from '@agentoak/outcome-kernel'
+} from '@lifekeel/outcome-kernel'
 import { runOutcomeKernelConformance } from '../index.js'
 
 describe('reference outcome kernel conformance', () => {

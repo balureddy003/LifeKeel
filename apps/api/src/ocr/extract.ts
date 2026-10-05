@@ -5,7 +5,7 @@
  * uploaded documents (insurance policies, pension statements, mortgage
  * letters, etc.). Tries OPENAI_API_KEY first, then falls back to Azure
  * OpenAI (AZURE_OPENAI_*) — the same credentials the rest of the app's LLM
- * calls use via @agentoak/platform's createLlmRouter. That router's LlmFn is
+ * calls use via @lifekeel/platform's createLlmRouter. That router's LlmFn is
  * text-only (no image content), so it can't be reused directly here; this
  * builds an Azure-pointed OpenAI SDK client the same way llm.ts's callAzure
  * does, but sends vision message content instead of plain text.
@@ -18,7 +18,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { createLogger, getTenantCollection, isValidAzureEndpoint, isAzureFoundryEndpoint, type DecisionFn } from '@agentoak/platform'
+import { createLogger, getTenantCollection, isValidAzureEndpoint, isAzureFoundryEndpoint, type DecisionFn } from '@lifekeel/platform'
 import { isOcrableImage, ocrImageToText } from './local-ocr.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 
@@ -376,7 +376,7 @@ export async function processDocument(
       member_id: null,
       domain: 'documents',
       title: `Document read: ${filename}`.slice(0, 120),
-      summary: 'Oak finished reading the document — extracted fields are ready to review.',
+      summary: 'Keel finished reading the document — extracted fields are ready to review.',
       evidence: [{ label: 'Stage', value: 'extracted' }],
       links: [{ kind: 'document', id: docId }],
       next_check_at: null,

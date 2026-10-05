@@ -175,7 +175,7 @@ export default function VaultPage() {
         <Lock size={16} className="text-family-400 flex-shrink-0 mt-0.5" />
         <p className="text-xs text-ink-tertiary leading-relaxed">
           For wills, power of attorney, and similar documents. Encrypted at rest and visible only to adult
-          family members — Oak never opens, shares, or releases these to anyone automatically. A human always
+          family members — Keel never opens, shares, or releases these to anyone automatically. A human always
           has to sign in and choose to view one.
         </p>
       </div>
@@ -216,7 +216,7 @@ export default function VaultPage() {
                 onChange={(e) => { setSealUpload(e.target.checked); setSealPass(''); setSealPassConfirm('') }}
                 className="accent-family-500"
               />
-              Seal with a passphrase — even Oak can’t read it
+              Seal with a passphrase — even Keel can’t read it
             </label>
             {sealUpload && (
               <div className="space-y-2">
@@ -239,7 +239,7 @@ export default function VaultPage() {
                   />
                 </div>
                 <p className="text-[11px] text-ink-tertiary leading-relaxed">
-                  The passphrase never leaves this device and can’t be recovered — share it with the family members who should be able to open this. Document name and type stay visible to Oak.
+                  The passphrase never leaves this device and can’t be recovered — share it with the family members who should be able to open this. Document name and type stay visible to Keel.
                 </p>
               </div>
             )}
@@ -430,7 +430,7 @@ export default function VaultPage() {
                 <Lock size={16} className="text-family-400" />
                 <span className="text-sm font-semibold">Sealed document</span>
               </div>
-              <p className="text-xs text-ink-tertiary">"{displayDocName({ filename: unsealPrompt.filename })}" is encrypted with a passphrase only your family knows. Oak can’t open it for you.</p>
+              <p className="text-xs text-ink-tertiary">"{displayDocName({ filename: unsealPrompt.filename })}" is encrypted with a passphrase only your family knows. Keel can’t open it for you.</p>
               <input
                 type="password"
                 autoFocus

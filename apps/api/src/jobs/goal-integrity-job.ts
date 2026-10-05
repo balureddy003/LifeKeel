@@ -11,7 +11,7 @@
  */
 
 import type { Db } from 'mongodb'
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'goal-integrity', version: '0.0.0' })
 

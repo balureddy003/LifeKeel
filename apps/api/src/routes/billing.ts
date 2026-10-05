@@ -35,15 +35,15 @@ import { recordLedgerEntry, getLedgerHistory, reconcileCredits } from '../billin
 import { sendBillingAlert } from '../billing/billing-alerts.js'
 
 function adminAuthorized(headers: Record<string, unknown>): boolean {
-  const expected = process.env['KAIROS_ADMIN_KEY']
-  return Boolean(expected && headers['x-kairos-admin-key'] === expected)
+  const expected = process.env['LIFEKEEL_ADMIN_KEY']
+  return Boolean(expected && headers['x-lifekeel-admin-key'] === expected)
 }
 
 // ── Webhook idempotency ──────────────────────────────────────────────────────
 //
 // C3 fix: store every processed Stripe event ID so retries don't re-process.
 //
-// OAK-007: this used to be read-then-process-then-write — isWebhookProcessed
+// KEEL-007: this used to be read-then-process-then-write — isWebhookProcessed
 // checked first, the full side-effect switch ran, and only then did
 // markWebhookProcessed record the event id (itself .catch(()=>{})-swallowed).
 // A crash, or any transient failure on that final insert, between the side
@@ -110,7 +110,7 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
   const stripe = process.env['STRIPE_SECRET_KEY']
     ? new Stripe(process.env['STRIPE_SECRET_KEY'])
     : null
-  // OAK-007: created once at registration, not on every webhook request —
+  // KEEL-007: created once at registration, not on every webhook request —
   // claimWebhookEvent's atomicity depends on this index existing.
   db.collection('stripe_webhook_events').createIndex({ event_id: 1 }, { unique: true }).catch(() => {})
   // Promo redemption rate-limit reads — was being created inside the
@@ -140,7 +140,7 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
         return reply.status(400).send({ error: 'Free plan does not require checkout' })
       }
 
-      // Remediation item 23: only `starter` ("Oak Plus") is actually for
+      // Remediation item 23: only `starter` ("Keel Plus") is actually for
       // sale — growth/enterprise entries in PLAN_PRICES are placeholder
       // strings, so a checkout request for either used to sail past the
       // getStripePriceId lookup and die inside Stripe with a 500. Reject
@@ -190,7 +190,7 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
       }
 
       const appUrl = originApp === 'family'
-        ? (process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002')
+        ? (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002')
         : (process.env['STUDIO_URL'] ?? 'http://localhost:3000')
       const defaultSuccessUrl = originApp === 'family'
         ? `${appUrl}/upgrade?success=true`
@@ -420,9 +420,9 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
       }
 
       const sig = req.headers['stripe-signature'] as string
-      // Read from the validated config var (KAIROS_STRIPE_WEBHOOK_SECRET),
+      // Read from the validated config var (LIFEKEEL_STRIPE_WEBHOOK_SECRET),
       // with fallback to the legacy name for backward compatibility
-      const webhookSecret = process.env['KAIROS_STRIPE_WEBHOOK_SECRET'] ?? process.env['STRIPE_WEBHOOK_SECRET']
+      const webhookSecret = process.env['LIFEKEEL_STRIPE_WEBHOOK_SECRET'] ?? process.env['STRIPE_WEBHOOK_SECRET']
 
       if (!sig || !webhookSecret) {
         return reply.status(400).send({ error: 'Webhook signature required' })
@@ -442,7 +442,7 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
         return reply.status(400).send({ error: 'Webhook signature verification failed' })
       }
 
-      // OAK-007: claim before any side effect runs — see claimWebhookEvent's
+      // KEEL-007: claim before any side effect runs — see claimWebhookEvent's
       // doc comment. A false return means either a genuine replay or a
       // concurrent delivery of the same event; either way, this call
       // must not re-apply the switch below. Trade-off, deliberate: if the

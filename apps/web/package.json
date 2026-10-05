@@ -1,8 +1,8 @@
 {
-  "name": "@agentoak/web",
+  "name": "@lifekeel/web",
   "version": "0.1.0",
   "private": true,
-  "description": "Agent Oak web app — the autonomous digital twin for your family",
+  "description": "LifeKeel web app — the autonomous digital twin for your family",
   "scripts": {
     "dev": "next dev --port 3002",
     "debug": "NODE_OPTIONS=--inspect=9230 next dev --port 3002",

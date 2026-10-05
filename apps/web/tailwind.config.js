@@ -101,7 +101,7 @@ module.exports = {
         raised: '10',    // in-component stacking above sibling layers
         sticky: '20',    // sticky page headers (PageHeader)
         nav: '30',       // primary navigation (tab bar, rail, marketing nav)
-        fab: '40',       // floating action buttons (Ask Oak, Emergency)
+        fab: '40',       // floating action buttons (Ask Keel, Emergency)
         banner: '50',    // status banners (OfflineBanner)
         overlay: '60',   // EmergencyMode full-screen overlay
         modal: '100',    // BottomSheet, CommandPalette

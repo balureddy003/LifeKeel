@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { elderlyHomeCopy } from '../elderlyHomeCopy'
 
-describe('OAK-027: elderlyHomeCopy never claims "safe" when the real score says otherwise', () => {
+describe('KEEL-027: elderlyHomeCopy never claims "safe" when the real score says otherwise', () => {
   it('shows a loading state while the score is still loading', () => {
     expect(elderlyHomeCopy({ loading: true, hasLiveData: false, score: 0 })).toEqual({
       headline: 'Checking In...',

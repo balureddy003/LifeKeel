@@ -32,9 +32,9 @@
  * pending claim is in flight) written back after execution.
  */
 import type { Db } from 'mongodb'
-import { FreeTierPolicy, createLogger } from '@agentoak/platform'
+import { FreeTierPolicy, createLogger } from '@lifekeel/platform'
 import { ActionExecutor, previewActions } from '../actions/action-executor.js'
-import type { ActionReceipt } from '@agentoak/workflows'
+import type { ActionReceipt } from '@lifekeel/workflows'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { randomUUID, createHash } from 'node:crypto'
 
@@ -86,7 +86,7 @@ export async function runAutoExecuteTrusted(
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
     const used = await insightsCol.countDocuments({ tenant_id: tenantId, approved_at: { $gte: monthStart } })
     // `plan` is the field billing maintains on the tenant — `tier` is a
-    // kairos-era field name nothing writes, so reading it capped paid
+    // lifekeel-era field name nothing writes, so reading it capped paid
     // tenants at the free-tier limit.
     const quota = new FreeTierPolicy().check('monthly_move_approvals', used, String(tenant?.['plan'] ?? 'free'))
     if (!quota.allowed) {

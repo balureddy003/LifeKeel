@@ -23,7 +23,7 @@
 import crypto from 'node:crypto'
 import type { FastifyRequest } from 'fastify'
 import type { Db } from 'mongodb'
-import { decryptIfNeeded } from '@agentoak/platform'
+import { decryptIfNeeded } from '@lifekeel/platform'
 
 export interface WebhookConfig {
   signature_header?: string

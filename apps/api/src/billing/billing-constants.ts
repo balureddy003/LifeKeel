@@ -8,7 +8,7 @@
  * ── Dormancy decision (remediation item 23, 2026-09) ──────────────────────
  * The 4-tier model (free/starter/growth/enterprise), credit packs, and
  * outcome-based pricing were inherited from kairos-ai's B2B billing system.
- * Agent Oak only ever sells ONE plan: "Oak Plus" (starter, £7.99/mo).
+ * LifeKeel only ever sells ONE plan: "Keel Plus" (starter, £7.99/mo).
  * Decision: KEEP the scaffolding, deliberately — the Plan type, quotas,
  * credits, and webhook/checkout code paths all iterate these tables, so
  * deleting the unused tiers means churning entitlements, the Stripe
@@ -147,7 +147,7 @@ export function getCreditPack(packId: string): CreditPack | undefined {
 
 const PLAN_PRICES: Record<Plan, string | null> = {
   free: null,
-  // Real Stripe test-mode price ("Oak Plus", £7.99/mo GBP) — created via
+  // Real Stripe test-mode price ("Keel Plus", £7.99/mo GBP) — created via
   // the Stripe API since no products/prices existed in this account at all.
   // growth/enterprise stay placeholders; nothing currently checks out into them.
   starter: 'price_1U0hS5LkkF6tCgs0cSt7ivDx',

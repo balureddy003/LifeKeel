@@ -23,7 +23,7 @@
 import path from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { DetectorEvalRunner, type Engine } from '@agentoak/engine'
+import { DetectorEvalRunner, type Engine } from '@lifekeel/engine'
 import { getAuditLogger } from '../audit/audit-log.js'
 
 const MIN_F1 = 0.8

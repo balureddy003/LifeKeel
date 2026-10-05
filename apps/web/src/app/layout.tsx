@@ -23,13 +23,11 @@ const inter = Inter({
   display: 'swap',
 })
 
-const TITLE = 'Agent Oak — When life doesn\'t go to plan, Oak knows what to do next'
+const TITLE = 'LifeKeel — When life doesn\'t go to plan, LifeKeel knows what to do next'
 const DESCRIPTION = 'A guided response plan for job loss, medical crises, and the unexpected — built for families of all ages. Informational only, not financial advice.'
-// kairos-trellis is this site's actual Firebase Hosting target (see
-// apps/web/.firebaserc) — used as a real, verifiable base rather than a
-// guessed custom domain, since none is configured anywhere in this repo.
-// TODO: replace with the production domain when it's configured.
-const SITE_URL = 'https://agent-oak.ai'
+// Canonical public domain — served via the Firebase Hosting site
+// "lifekeel-trellis" (apps/web/.firebaserc). lifekeel.si redirects here.
+const SITE_URL = 'https://lifekeel.co.uk'
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -39,15 +37,15 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Agent Oak',
+    title: 'LifeKeel',
   },
   openGraph: {
     title: TITLE,
     description: DESCRIPTION,
     url: SITE_URL,
-    siteName: 'Agent Oak',
-    images: [{ url: '/og-image.png', width: 1200, height: 630, alt: 'Agent Oak' }],
-    locale: 'en_US',
+    siteName: 'LifeKeel',
+    images: [{ url: '/og-image.png', width: 1200, height: 630, alt: 'LifeKeel' }],
+    locale: 'en_GB',
     type: 'website',
   },
   twitter: {
@@ -72,7 +70,7 @@ export const viewport: Viewport = {
 // the CSS tokens flip off [data-theme] on <html>, and SSR can't know the
 // localStorage preference, so the client has to set it in <head>. Keep the
 // storage key and resolution logic identical to lib/theme.ts.
-const THEME_INIT = `(function(){try{var p=localStorage.getItem('agentoak-theme');document.documentElement.dataset.theme=p==='light'?'light':p==='dark'?'dark':(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark')}catch(e){document.documentElement.dataset.theme='dark'}})()`
+const THEME_INIT = `(function(){try{var p=localStorage.getItem('lifekeel-theme');document.documentElement.dataset.theme=p==='light'?'light':p==='dark'?'dark':(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark')}catch(e){document.documentElement.dataset.theme='dark'}})()`
 
 export default function RootLayout({
   children,
@@ -109,13 +107,13 @@ export default function RootLayout({
               '@graph': [
                 {
                   '@type': 'Organization',
-                  name: 'Agent Oak',
+                  name: 'LifeKeel',
                   url: SITE_URL,
                   logo: `${SITE_URL}/icon.svg`,
                 },
                 {
                   '@type': 'WebSite',
-                  name: 'Agent Oak',
+                  name: 'LifeKeel',
                   url: SITE_URL,
                   description: DESCRIPTION,
                 },
@@ -124,18 +122,26 @@ export default function RootLayout({
                   mainEntity: [
                     {
                       '@type': 'Question',
-                      name: 'Is Agent Oak financial advice?',
+                      name: 'Is LifeKeel financial advice?',
                       acceptedAnswer: {
                         '@type': 'Answer',
-                        text: 'No. Agent Oak is informational and educational only — not financial, investment, tax, or legal advice, and not a substitute for a licensed professional or for calling 911 in a real emergency.',
+                        text: 'No. LifeKeel is informational and educational only — not financial, investment, tax, or legal advice, and not a substitute for a licensed professional or for calling emergency services (999, 112, 911) in a real emergency.',
                       },
                     },
                     {
                       '@type': 'Question',
-                      name: 'How much does Agent Oak cost?',
+                      name: 'Will Keel move money or act on my behalf?',
                       acceptedAnswer: {
                         '@type': 'Answer',
-                        text: 'Agent Oak is free to start, no credit card required. Oak Plus is £7.99/month and adds AI document reading (provider, policy number, amount, and dates pulled automatically) and an AI-summarized inbox on top of everything in the free plan.',
+                        text: 'No. Keel shows you what is on file and estimates possible gaps. It never moves money, buys products, or contacts anyone for you without you approving each step — and it has no commercial relationship with any insurer or provider.',
+                      },
+                    },
+                    {
+                      '@type': 'Question',
+                      name: 'How much does LifeKeel cost?',
+                      acceptedAnswer: {
+                        '@type': 'Answer',
+                        text: 'LifeKeel is free to start, no credit card required. Keel Plus is £7.99/month and adds AI document reading (provider, policy number, amount, and dates pulled automatically) and an AI-summarized inbox on top of everything in the free plan.',
                       },
                     },
                     {
@@ -148,15 +154,15 @@ export default function RootLayout({
                     },
                     {
                       '@type': 'Question',
-                      name: 'Can I cancel Oak Plus anytime?',
+                      name: 'Can I cancel Keel Plus anytime?',
                       acceptedAnswer: {
                         '@type': 'Answer',
-                        text: 'Yes. No credit card is required to start free, and you can cancel Oak Plus anytime from your account.',
+                        text: 'Yes. No credit card is required to start free, and you can cancel Keel Plus anytime from your account.',
                       },
                     },
                     {
                       '@type': 'Question',
-                      name: 'Does Agent Oak work for the whole family, not just one person?',
+                      name: 'Does LifeKeel work for the whole family, not just one person?',
                       acceptedAnswer: {
                         '@type': 'Answer',
                         text: "Yes. Add your partner and kids to your family's roster and every score, insight, and \"what if\" scenario accounts for the whole household, not just the person who signed up.",

@@ -26,8 +26,8 @@ vi.mock('../../actions/action-executor.js', () => ({
   }),
 }))
 
-vi.mock('@agentoak/platform', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@agentoak/platform')>()
+vi.mock('@lifekeel/platform', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@lifekeel/platform')>()
   return {
     ...actual,
     ApprovalSignalHealthMonitor: vi.fn().mockImplementation(function ApprovalSignalHealthMonitorMock() {

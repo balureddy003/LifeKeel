@@ -40,7 +40,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 const STORAGE_KEY = 'family-auth'
-const TOKEN_KEY = 'agentoak_token'
+const TOKEN_KEY = 'lifekeel_token'
 
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'family'
@@ -86,7 +86,7 @@ async function apiAuthRequest(path: string, body: Record<string, unknown>): Prom
     // like "Failed to fetch" — exactly the wrong moment to surface raw
     // technical text to someone trying to get back into the app. Nothing
     // was sent, so there's nothing at risk either way.
-    throw new Error("Couldn't reach Agent Oak — check your connection and try again. Nothing was saved.")
+    throw new Error("Couldn't reach LifeKeel — check your connection and try again. Nothing was saved.")
   }
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
@@ -208,7 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return u
   }
 
-  // OAK-017 follow-up: links a real email to an already-authenticated
+  // KEEL-017 follow-up: links a real email to an already-authenticated
   // account — used when onboarding's recovery-email question is answered
   // by someone who signed up first, whose account therefore already
   // exists and isn't touched by signUp() above.
@@ -252,7 +252,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   // Google sign-in: redirect to the API's OAuth flow with app=family so the
-  // callback redirects back to the Agent Oak app after authentication.
+  // callback redirects back to the LifeKeel app after authentication.
   const signInWithProvider = async (provider: 'google') => {
     window.location.href = `${getApiBase()}/auth/${provider}/login?app=family`
   }

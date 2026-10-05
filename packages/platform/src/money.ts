@@ -38,7 +38,7 @@ export function formatMoney(minorUnits: number, currency: Currency = 'GBP'): str
   }
   const symbol = symbols[currency] ?? currency
   // Every detector-generated insight/playbook/notification renders money
-  // through this function (via @agentoak/engine's template interpolation) —
+  // through this function (via @lifekeel/engine's template interpolation) —
   // without a grouping separator, a real figure like a life-cover shortfall
   // reads as "£200000.00", genuinely harder to parse at a glance than
   // "£200,000.00" and working against this app's any-age-accessible goal.

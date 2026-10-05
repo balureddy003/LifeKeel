@@ -1,5 +1,5 @@
 /**
- * OAK-008: insights.ts's catch blocks only ever run for a genuine
+ * KEEL-008: insights.ts's catch blocks only ever run for a genuine
  * unexpected failure (a legitimate not-found is always handled by an
  * explicit check inside the try, never a throw) — but before this fix,
  * that failure was indistinguishable from "nothing here" to both the
@@ -41,7 +41,7 @@ async function buildApp() {
   return app
 }
 
-describe('OAK-008: insight route DB errors reach metrics + ops alerting', () => {
+describe('KEEL-008: insight route DB errors reach metrics + ops alerting', () => {
   beforeEach(() => {
     recordInsightRouteErrorMock.mockClear()
     sendOpsAlertMock.mockClear()

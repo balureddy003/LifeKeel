@@ -4,7 +4,7 @@ import type {
   OutcomeContract,
   OutcomeLifecycleState,
   ReadinessCheck,
-} from '@agentoak/specifications'
+} from '@lifekeel/specifications'
 
 const TERMINAL_STATES = new Set<OutcomeLifecycleState>(['achieved', 'failed'])
 

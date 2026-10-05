@@ -15,7 +15,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import Fastify from 'fastify'
 import multipart from '@fastify/multipart'
-import { Engine, type Insight } from '@agentoak/engine'
+import { Engine, type Insight } from '@lifekeel/engine'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { registerDocumentRoutes } from '../routes/documents.js'

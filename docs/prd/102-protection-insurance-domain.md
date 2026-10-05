@@ -19,7 +19,7 @@ See [000-market-landscape-and-positioning.md](000-market-landscape-and-positioni
 Policygenius/Ladder-style tools compute a coverage number once against a
 calculator input and stop — they don't know if the family's situation
 changed six months later. Trustworthy stores policy documents but doesn't
-reason about whether they're adequate. Agent Oak's differentiated bar:
+reason about whether they're adequate. LifeKeel's differentiated bar:
 **continuously monitored, whole-family, reasoning-backed coverage
 tracking** — something neither category does today.
 

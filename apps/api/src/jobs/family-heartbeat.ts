@@ -14,7 +14,7 @@
  * a crash.
  */
 import type { Db } from 'mongodb'
-import { createLogger, getTenantCollection } from '@agentoak/platform'
+import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { sendHeartbeatEmail } from '../auth-email.js'
 import { renderHeartbeat, type HeartbeatData } from '../feed/render-heartbeat.js'
 import type { FamilyGroupDoc } from '../routes/family-group.js'
@@ -89,7 +89,7 @@ export async function runFamilyHeartbeat(
   opts: { cadence: 'weekly' | 'monthly'; now?: Date },
 ): Promise<HeartbeatResult> {
   const now = opts.now ?? new Date()
-  const appUrl = process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002'
+  const appUrl = process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002'
 
   const families = await safe(db.collection<FamilyGroupDoc>('family_groups').find({}).toArray(), [] as FamilyGroupDoc[])
 

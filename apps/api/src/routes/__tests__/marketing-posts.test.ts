@@ -164,7 +164,7 @@ function makeDb() {
 
 function fakePostiz(overrides: Record<string, unknown> = {}) {
   return {
-    listIntegrations: vi.fn(async () => [{ id: 'int-1', name: 'Oak on X', identifier: 'x' }]),
+    listIntegrations: vi.fn(async () => [{ id: 'int-1', name: 'Keel on X', identifier: 'x' }]),
     createPost: vi.fn(async () => [{ id: 'postiz-1' }]),
     ...overrides,
   } as any
@@ -354,13 +354,13 @@ describe('/marketing/posts', () => {
 
   it('stores the channel response external id/url on a successful publish', async () => {
     const postiz = fakePostiz({
-      createPost: vi.fn(async () => ({ external_id: 'at://did:plc:1/app.bsky.feed.post/3k1', url: 'https://bsky.app/profile/oak/post/3k1' })),
+      createPost: vi.fn(async () => ({ external_id: 'at://did:plc:1/app.bsky.feed.post/3k1', url: 'https://bsky.app/profile/keel/post/3k1' })),
     })
     const { app, posts } = await buildApp({ postiz })
     await app.inject({ method: 'POST', url: '/marketing/posts', payload: { ...DRAFT, channel: 'bluesky' } })
     await app.inject({ method: 'POST', url: `/marketing/posts/${posts[0]!['id']}/approve` })
     expect(posts[0]!['external_id']).toBe('at://did:plc:1/app.bsky.feed.post/3k1')
-    expect(posts[0]!['external_url']).toBe('https://bsky.app/profile/oak/post/3k1')
+    expect(posts[0]!['external_url']).toBe('https://bsky.app/profile/keel/post/3k1')
   })
 
   it('dry_run_mode flips state without a Postiz call; the human review still earns trust', async () => {
@@ -443,10 +443,10 @@ describe('/marketing/connections', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/marketing/connections/bluesky',
-      payload: { handle: '@Oak.Bsky.Social', app_password: 'abcd-efgh-ijkl-mnop' },
+      payload: { handle: '@Keel.Bsky.Social', app_password: 'abcd-efgh-ijkl-mnop' },
     })
     expect(res.statusCode).toBe(201)
-    expect(res.json().connection.handle).toBe('oak.bsky.social')
+    expect(res.json().connection.handle).toBe('keel.bsky.social')
     expect(connections).toHaveLength(1)
     const stored = connections[0]!
     // Credential is AES-256-GCM'd at rest — the raw password must not appear.
@@ -461,7 +461,7 @@ describe('/marketing/connections', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/marketing/connections/bluesky',
-      payload: { handle: 'oak.bsky.social', app_password: 'wrong' },
+      payload: { handle: 'keel.bsky.social', app_password: 'wrong' },
     })
     expect(res.statusCode).toBe(502)
     expect(res.json().error).toContain('bluesky_auth_failed')
@@ -474,12 +474,12 @@ describe('/marketing/connections', () => {
     await app.inject({
       method: 'POST',
       url: '/marketing/connections/bluesky',
-      payload: { handle: 'oak.bsky.social', app_password: 'abcd-efgh-ijkl-mnop' },
+      payload: { handle: 'keel.bsky.social', app_password: 'abcd-efgh-ijkl-mnop' },
     })
     const list = await app.inject({ method: 'GET', url: '/marketing/connections' })
     expect(list.statusCode).toBe(200)
     const conn = list.json().connections[0]
-    expect(conn.handle).toBe('oak.bsky.social')
+    expect(conn.handle).toBe('keel.bsky.social')
     expect(conn.credentials).toBeUndefined()
 
     const del = await app.inject({ method: 'DELETE', url: '/marketing/connections/bluesky' })
@@ -494,7 +494,7 @@ describe('/marketing/connections', () => {
     await app.inject({
       method: 'POST',
       url: '/marketing/connections/bluesky',
-      payload: { handle: 'oak.bsky.social', app_password: 'abcd-efgh-ijkl-mnop' },
+      payload: { handle: 'keel.bsky.social', app_password: 'abcd-efgh-ijkl-mnop' },
     })
     // Rebuild the default client path the same way the route does when no
     // publisher is injected — DbSocialPublisher over env + db.
@@ -530,11 +530,11 @@ describe('/marketing/posts/generate', () => {
   })
 
   it('promotes a published blog post — prompt carries title, excerpt and verbatim link', async () => {
-    vi.stubEnv('AGENT_OAK_URL', 'https://oak.example')
+    vi.stubEnv('LIFEKEEL_URL', 'https://keel.example')
     const seen: string[] = []
     const llm = async (_s: string, prompt: string) => {
       seen.push(prompt)
-      return 'Read this https://oak.example/blog/cover-gap'
+      return 'Read this https://keel.example/blog/cover-gap'
     }
     const { app, blogPosts } = await buildApp({ llm })
     blogPosts.push({ slug: 'cover-gap', published: true, title: 'The cover gap', excerpt: 'Most families miss it.' })
@@ -547,7 +547,7 @@ describe('/marketing/posts/generate', () => {
     expect(seen[0]).toContain('The cover gap')
     expect(seen[0]).toContain('Most families miss it.')
     expect(seen[0]).toContain(
-      'Link to include verbatim: https://oak.example/blog/cover-gap?utm_source=bluesky&utm_medium=social&utm_campaign=oak_social&utm_content=cover-gap',
+      'Link to include verbatim: https://keel.example/blog/cover-gap?utm_source=bluesky&utm_medium=social&utm_campaign=lifekeel_social&utm_content=cover-gap',
     )
   })
 
@@ -577,7 +577,7 @@ describe('/marketing/posts/generate', () => {
   })
 
   it('reserves room for the link — a full-length body cannot push it past the clamp', async () => {
-    vi.stubEnv('AGENT_OAK_URL', 'https://oak.example')
+    vi.stubEnv('LIFEKEEL_URL', 'https://keel.example')
     const { app, blogPosts } = await buildApp({ llm: async () => 'word '.repeat(100) })
     blogPosts.push({ slug: 'cover-gap', published: true, title: 'The cover gap', excerpt: 'Most families miss it.' })
     const res = await app.inject({
@@ -587,17 +587,17 @@ describe('/marketing/posts/generate', () => {
     })
     const post = res.json().post
     expect(post.content).toContain(
-      'https://oak.example/blog/cover-gap?utm_source=x&utm_medium=social&utm_campaign=oak_social&utm_content=cover-gap',
+      'https://keel.example/blog/cover-gap?utm_source=x&utm_medium=social&utm_campaign=lifekeel_social&utm_content=cover-gap',
     )
     expect(post.content.length).toBeLessThanOrEqual(280)
   })
 
   it('free-topic drafts carry a UTM link to the readiness check', async () => {
-    vi.stubEnv('AGENT_OAK_URL', 'https://oak.example')
+    vi.stubEnv('LIFEKEEL_URL', 'https://keel.example')
     const { app } = await buildApp({ llm: async () => 'A family safety net starts with one question.' })
     const res = await app.inject({ method: 'POST', url: '/marketing/posts/generate', payload: GEN })
     const post = res.json().post
-    expect(post.content).toContain('https://oak.example/readiness?utm_source=x')
+    expect(post.content).toContain('https://keel.example/readiness?utm_source=x')
     expect(post.content).toContain('utm_content=topic')
   })
 
@@ -616,7 +616,7 @@ describe('/marketing/posts/generate', () => {
   })
 
   it('posts carry their campaign into the UTM link and the doc', async () => {
-    vi.stubEnv('AGENT_OAK_URL', 'https://oak.example')
+    vi.stubEnv('LIFEKEEL_URL', 'https://keel.example')
     const llm = async () => 'campaign post'
     const { app, posts } = await buildApp({ llm })
     const res = await app.inject({
@@ -654,7 +654,7 @@ describe('generateDailyMarketingDrafts', () => {
   it('queues a review-first draft for an opted-in tenant with a connection and an unpromoted post', async () => {
     const { db, settingsDocs, connections, blogPosts, posts } = await buildApp()
     settingsDocs.push({ tenant_id: TENANT, automation: { daily_marketing_drafts_enabled: true } })
-    connections.push({ tenant_id: TENANT, channel: 'bluesky', status: 'active', handle: 'oak.bsky.social', credentials: {} })
+    connections.push({ tenant_id: TENANT, channel: 'bluesky', status: 'active', handle: 'keel.bsky.social', credentials: {} })
     blogPosts.push({ slug: 'cover-gap', published: true, title: 'The cover gap', excerpt: 'Most families miss it.' })
     const n = await generateDailyMarketingDrafts(db, async () => 'morning draft')
     expect(n).toBe(1)
@@ -698,7 +698,7 @@ describe('/marketing/performance', () => {
     const { app, growthEvents, users, leads, blogPosts } = await buildApp()
     blogPosts.push({ slug: 'cover-gap', title: 'The cover gap', published: true })
     growthEvents.push(
-      { event: 'blog_view', path: '/blog/cover-gap', meta: { utm_source: 'bluesky', utm_campaign: 'oak_social' } },
+      { event: 'blog_view', path: '/blog/cover-gap', meta: { utm_source: 'bluesky', utm_campaign: 'lifekeel_social' } },
       { event: 'blog_view', path: '/blog/cover-gap', meta: { utm_source: 'bluesky' } },
       { event: 'blog_view', path: '/blog/cover-gap', meta: { utm_source: 'x' } },
       { event: 'blog_view', path: '/blog/other-post' },                    // no utm — view counts, channel doesn't
@@ -708,12 +708,12 @@ describe('/marketing/performance', () => {
       { event: 'blog_view', path: '/settings' },                           // non-blog path — ignored
     )
     users.push(
-      { attribution: { utm_source: 'bluesky', utm_medium: 'social', utm_campaign: 'oak_social', utm_content: 'cover-gap' } },
+      { attribution: { utm_source: 'bluesky', utm_medium: 'social', utm_campaign: 'lifekeel_social', utm_content: 'cover-gap' } },
       { attribution: { utm_source: 'bluesky', utm_medium: 'social', utm_campaign: 'autumn_push', utm_content: 'cover-gap' } },
       { attribution: { utm_source: 'google', utm_medium: 'cpc', utm_campaign: 'ads', utm_content: 'cover-gap' } }, // non-social medium — excluded
-      { attribution: { utm_source: 'x', utm_medium: 'social', utm_campaign: 'oak_social' } },                      // campaign but no slug — channel only
+      { attribution: { utm_source: 'x', utm_medium: 'social', utm_campaign: 'lifekeel_social' } },                      // campaign but no slug — channel only
     )
-    leads.push({ attribution: { utm_source: 'x', utm_medium: 'social', utm_campaign: 'oak_social', utm_content: 'cover-gap' } })
+    leads.push({ attribution: { utm_source: 'x', utm_medium: 'social', utm_campaign: 'lifekeel_social', utm_content: 'cover-gap' } })
 
     const res = await app.inject({ method: 'GET', url: '/marketing/performance' })
     expect(res.statusCode).toBe(200)
@@ -739,7 +739,7 @@ describe('/marketing/performance', () => {
     expect(channels.find((c) => c.channel === 'google')).toBeUndefined()
 
     // Campaign rollup — named pushes bucket separately from the default.
-    const oakSocial = campaigns.find((c) => c.campaign === 'oak_social')!
+    const oakSocial = campaigns.find((c) => c.campaign === 'lifekeel_social')!
     expect(oakSocial).toMatchObject({ views: 1, signups: 2, leads: 1 })
     expect(campaigns.find((c) => c.campaign === 'autumn_push')).toMatchObject({ signups: 1 })
     expect(campaigns.find((c) => c.campaign === 'ads')).toBeUndefined()
@@ -769,7 +769,7 @@ describe('/marketing/performance', () => {
       post({ id: 'q2', content: 'When did you last check your beneficiaries?', metrics: { likes: 30 }, metrics_at: new Date() }),
       post({ id: 'q3', content: 'Know what your policy excludes?', metrics: { likes: 50 }, metrics_at: new Date() }),
       post({ id: 's1', content: 'We published a new blog post about cover gaps', metrics: { likes: 2 }, metrics_at: new Date() }),
-      post({ id: 's2', content: 'Oak helps families see their whole picture', metrics: { likes: 1 }, metrics_at: new Date() }),
+      post({ id: 's2', content: 'Keel helps families see their whole picture', metrics: { likes: 1 }, metrics_at: new Date() }),
       post({ id: 's3', content: 'New feature shipped this week for families', metrics: { likes: 0 }, metrics_at: new Date() }),
       // LinkedIn can't be polled — published, never measured, gets flagged.
       post({ id: 'li1', channel: 'linkedin', content: 'A LinkedIn post' }),
@@ -840,7 +840,7 @@ describe('X OAuth connection (connector_credentials)', () => {
     refresh_token: 'x-refresh-1',
     token_expires_at: new Date(Date.now() + 3600_000),
     token_type: 'Bearer',
-    extra: { username: 'agent_oak' },
+    extra: { username: 'lifekeel' },
     updated_at: new Date(),
     ...over,
   })
@@ -852,7 +852,7 @@ describe('X OAuth connection (connector_credentials)', () => {
     expect(res.statusCode).toBe(200)
     const conns = res.json().connections
     const x = conns.find((c: Record<string, unknown>) => c.channel === 'x')
-    expect(x).toMatchObject({ channel: 'x', handle: 'agent_oak', status: 'active' })
+    expect(x).toMatchObject({ channel: 'x', handle: 'lifekeel', status: 'active' })
     expect(x.access_token).toBeUndefined()
     expect(x.refresh_token).toBeUndefined()
   })

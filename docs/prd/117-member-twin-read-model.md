@@ -8,7 +8,7 @@ financial literacy) — presuppose something the codebase didn't have: a
 per-member *view* of the Family Twin. PRD-104 shipped per-member
 financial identity (`household.members[]` earners, `member_id` on
 policies and education funds, member-attributed detector signals), but
-nothing assembled it back into "what does Oak know about *this*
+nothing assembled it back into "what does Keel know about *this*
 person?" — the `/member/[id]` page showed only name, role, and DOB and
 explicitly told users per-member finances "aren't collected per-member
 yet" (stale copy — they were, by then).

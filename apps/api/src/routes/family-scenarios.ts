@@ -3,7 +3,7 @@
  *
  * The assistant's /simulate endpoint computes a scenario and narrates it
  * once — nothing persisted, and before this route the only surface that
- * ever called it lived inside Ask Oak. This adds the durable half the
+ * ever called it lived inside Ask Keel. This adds the durable half the
  * vision calls for ("proactive nudges and scenario simulations"): a
  * family can save the *inputs* of a scenario ("our income drops by £3,000
  * a month, starting in 6 months") and read it back later, always
@@ -28,7 +28,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { z } from 'zod'
-import { getTenantCollection } from '@agentoak/platform'
+import { getTenantCollection } from '@lifekeel/platform'
 import { isFamilyAdult } from '../lib/family-permissions.js'
 import { type ScenarioChange, type ScenarioResult } from '../scenarios/calculate.js'
 import { projectScenario } from '../scenarios/project.js'

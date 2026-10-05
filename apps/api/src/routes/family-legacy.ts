@@ -29,12 +29,12 @@ import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { createLogger, getTenantCollection } from '@agentoak/platform'
+import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { isFamilyAdult, isFamilyOrganizer, memberMatchesUser } from '../lib/family-permissions.js'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { ESTATE_VAULT_CATEGORY } from './documents.js'
 import type { FamilyGroupDoc } from './family-group.js'
-import type { Engine, Insight } from '@agentoak/engine'
+import type { Engine, Insight } from '@lifekeel/engine'
 import { evaluateEstate } from '../legacy/evaluate-estate.js'
 import { buildLegacyGraph } from '../legacy/graph.js'
 
@@ -414,7 +414,7 @@ export function registerFamilyLegacyRoutes(
 
   // ── Legacy graph (PRD-137 §5) ──────────────────────────────────────────
   // The register as nodes+edges for the /legacy "Family map" tab and Ask
-  // Oak. ?mode=youth resolves the caller's roster member like family-feed
+  // Keel. ?mode=youth resolves the caller's roster member like family-feed
   // and returns the existence-only slice — no roles, assets, or policies.
   app.get<{ Querystring: { mode?: string } }>('/family/legacy/graph', async (req, reply) => {
     const { tenant_id, user_id } = req.authContext

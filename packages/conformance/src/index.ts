@@ -3,8 +3,8 @@ import type {
   OutcomeContract,
   OutcomeLifecycleState,
   ReadinessCheck,
-} from '@agentoak/specifications'
-import type { MemoryRecord, MemoryRepository } from '@agentoak/runtime'
+} from '@lifekeel/specifications'
+import type { MemoryRecord, MemoryRepository } from '@lifekeel/runtime'
 
 export interface OutcomeKernelAdapter {
   canTransition(from: OutcomeLifecycleState, to: OutcomeLifecycleState): boolean
@@ -50,7 +50,7 @@ export async function runOutcomeRepositoryConformance(
 
 function fixture(): OutcomeContract {
   return {
-    api_version: 'kairos.io/v1',
+    api_version: 'lifekeel.io/v1',
     kind: 'OutcomeContract',
     id: 'conformance-goal',
     tenant_id: 'conformance-tenant',

@@ -1,5 +1,5 @@
 /**
- * React hooks for fetching family data from the Kairos API.
+ * React hooks for fetching family data from the LifeKeel API.
  * Returns an honest empty/zero state when the API is unreachable or has
  * no data yet, rather than falling back to fabricated content.
  */

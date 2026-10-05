@@ -2,7 +2,7 @@ import { MongoClient, ObjectId, type Db } from 'mongodb'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import yaml from 'js-yaml'
-import { repoRoot } from '@agentoak/platform'
+import { repoRoot } from '@lifekeel/platform'
 import { DETECTOR_CONTENT_POSTS } from './detector-content-posts.js'
 
 export interface Migration {
@@ -315,7 +315,7 @@ export async function runMigrations(): Promise<void> {
   const client = new MongoClient(process.env['MONGODB_URL'] ?? process.env['MONGODB_URI'] ?? 'mongodb://localhost:27017')
   await client.connect()
   try {
-    const db = client.db(process.env['MONGODB_DB'] ?? 'kairos')
+    const db = client.db(process.env['MONGODB_DB'] ?? 'lifekeel')
     const history = db.collection('migrations')
     await history.createIndex({ id: 1 }, { unique: true })
     for (const migration of migrations) {

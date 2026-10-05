@@ -2,9 +2,9 @@ import type {
   EvidenceState,
   Goal,
   OutcomeLifecycleState,
-} from '@agentoak/specifications'
+} from '@lifekeel/specifications'
 
-/** @deprecated Import Goal from @agentoak/specifications in new code. */
+/** @deprecated Import Goal from @lifekeel/specifications in new code. */
 export type OutcomeContract = Goal
 
 export interface LegacyKpi {
@@ -78,7 +78,7 @@ export function legacyGoalToOutcomeContract(
     .map(capability => capability.capability)
 
   return {
-    api_version: 'kairos.io/v1',
+    api_version: 'lifekeel.io/v1',
     kind: 'OutcomeContract',
     id: goal.id,
     tenant_id: goal.tenant_id,

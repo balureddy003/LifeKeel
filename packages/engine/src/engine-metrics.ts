@@ -1,5 +1,5 @@
 /**
- * EngineMetrics — production-grade observability for the Kairos Engine
+ * EngineMetrics — production-grade observability for the LifeKeel Engine
  *
  * Tracks per-detector and aggregate statistics without any external dependency.
  * Emit these to Prometheus / Datadog / OTel via the `snapshot()` method.

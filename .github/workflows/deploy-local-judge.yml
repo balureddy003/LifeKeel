@@ -36,8 +36,8 @@ env:
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   GCP_REGION: ${{ secrets.GCP_REGION || 'us-central1' }}
   REGISTRY_HOST: ${{ secrets.GCP_REGION || 'us-central1' }}-docker.pkg.dev
-  JUDGE_IMAGE: ${{ secrets.GCP_ARTIFACT_REGISTRY || format('{0}-docker.pkg.dev/{1}/agentoak-docker', secrets.GCP_REGION || 'us-central1', secrets.GCP_PROJECT_ID) }}/local-judge
-  JUDGE_SERVICE: ${{ secrets.LOCAL_JUDGE_SERVICE_NAME || 'agentoak-local-judge' }}
+  JUDGE_IMAGE: ${{ secrets.GCP_ARTIFACT_REGISTRY || format('{0}-docker.pkg.dev/{1}/lifekeel-docker', secrets.GCP_REGION || 'us-central1', secrets.GCP_PROJECT_ID) }}/local-judge
+  JUDGE_SERVICE: ${{ secrets.LOCAL_JUDGE_SERVICE_NAME || 'lifekeel-local-judge' }}
   # Runtime service account of the API service; it is granted run.invoker on this service.
   API_RUNTIME_SA: ${{ secrets.API_RUNTIME_SERVICE_ACCOUNT }}
 
@@ -133,7 +133,7 @@ jobs:
         if: ${{ github.event.inputs.run_eval == 'true' }}
         run: |
           pnpm install --frozen-lockfile
-          pnpm exec turbo run build --filter=@agentoak/api
+          pnpm exec turbo run build --filter=@lifekeel/api
           # Audience is the service URL, matching what the API itself sends (cloud-run-auth.ts).
           TOKEN=$(gcloud auth print-identity-token --audiences="${{ steps.deploy.outputs.url }}")
           # Fail the job if a gate fails. The new revision is already serving, so a failure means: roll back.

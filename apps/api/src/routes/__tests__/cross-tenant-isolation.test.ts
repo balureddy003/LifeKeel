@@ -1,5 +1,5 @@
 /**
- * OAK-009: the audit found zero HTTP-level tests anywhere proving one
+ * KEEL-009: the audit found zero HTTP-level tests anywhere proving one
  * tenant's JWT cannot read/write another tenant's data through the real
  * routes — only unit-level tests of getTenantCollection's isolation
  * existed (ml-tenant-isolation.test.ts), which never goes through an
@@ -18,7 +18,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import Fastify from 'fastify'
-import { Engine } from '@agentoak/engine'
+import { Engine } from '@lifekeel/engine'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { registerFamilyFinancialProfileRoutes } from '../family-financial-profile.js'
@@ -72,7 +72,7 @@ function makeFakeCollection() {
     }),
     // Returns the document directly (not wrapped in `.value`) and null on
     // no match — matches the real MongoDB driver's shape, which
-    // family-financial-profile.ts's OAK-006 optimistic-concurrency check
+    // family-financial-profile.ts's KEEL-006 optimistic-concurrency check
     // depends on.
     findOneAndUpdate: vi.fn(async (filter: Record<string, unknown>, update: { $set?: Record<string, unknown>; $inc?: Record<string, number> }, options?: { upsert?: boolean }) => {
       let doc = docs.find((d) => matchesFilter(d, filter))
@@ -129,7 +129,7 @@ const BASE_PROFILE = {
   education_funds: [],
 }
 
-describe('OAK-009: HTTP-level cross-tenant isolation', () => {
+describe('KEEL-009: HTTP-level cross-tenant isolation', () => {
   describe('family-financial-profile.ts (via real getTenantCollection)', () => {
     it('tenant B cannot read tenant A\'s financial profile via GET /family/financial-profile', async () => {
       const engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
@@ -244,7 +244,7 @@ describe('OAK-009: HTTP-level cross-tenant isolation', () => {
       expect(list.json().total).toBe(1)
     })
 
-    // OAK-009: the tests above only cover GET routes. approve/dismiss are
+    // KEEL-009: the tests above only cover GET routes. approve/dismiss are
     // the state-mutating endpoints closest to the original exploit chain
     // (a tenant acting on data that isn't theirs), and had zero HTTP-level
     // isolation coverage — both already filter correctly

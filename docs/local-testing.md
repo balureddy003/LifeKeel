@@ -56,13 +56,13 @@ export MONGODB_URL=mongodb://127.0.0.1:27099 REDIS_URL=redis://127.0.0.1:6390
 ## 3. Unit and integration tests
 
 ```bash
-export MONGODB_DB=agentoak_test JWT_SECRET=test-secret-not-for-production NODE_ENV=test
+export MONGODB_DB=lifekeel_test JWT_SECRET=test-secret-not-for-production NODE_ENV=test
 pnpm typecheck && pnpm lint
 pnpm test          # runs through turbo, which builds the packages the tests import first
 ```
 
 - Run tests from the **repo root** with `pnpm test`. Running `vitest` inside one package can show false
-  "cannot find module `@agentoak/...`" errors when a sibling package has not been built (see CLAUDE.md).
+  "cannot find module `@lifekeel/...`" errors when a sibling package has not been built (see CLAUDE.md).
 - Without MongoDB/Redis the 10 `ml-tenant-isolation` tests fail (expected) and the fan-out integration
   test is skipped. Set `CI=true` to make the integration test **fail** instead of skip when a service
   is missing, which is what CI does so an infrastructure problem cannot hide as a pass.
@@ -85,8 +85,8 @@ last 40 log lines. Options: `SMOKE_PORT` (default 3991), `SMOKE_TIMEOUT_S` (defa
 To boot a built **image** instead of `node` (needs Docker; not run locally while writing this):
 
 ```bash
-docker build -f apps/api/Dockerfile -t agentoak-api:local .
-SMOKE_IMAGE=agentoak-api:local scripts/boot-smoke.sh
+docker build -f apps/api/Dockerfile -t lifekeel-api:local .
+SMOKE_IMAGE=lifekeel-api:local scripts/boot-smoke.sh
 ```
 
 ## 5. Python service tests
@@ -103,17 +103,17 @@ These have not been run on a machine without Docker; CI is where they are first 
 
 ```bash
 # API image, then check Tesseract (local document OCR depends on it)
-docker build -f apps/api/Dockerfile -t agentoak-api:local .
-docker run --rm --entrypoint tesseract agentoak-api:local --version
+docker build -f apps/api/Dockerfile -t lifekeel-api:local .
+docker run --rm --entrypoint tesseract lifekeel-api:local --version
 
 # Ollama image with a tiny model baked in, then confirm the model is there
-docker build -f infra/local-judge/Dockerfile --build-arg MODEL=qwen2.5:0.5b -t agentoak-local-judge:local infra/local-judge
-docker run -d --name judge -p 11434:11434 agentoak-local-judge:local
+docker build -f infra/local-judge/Dockerfile --build-arg MODEL=qwen2.5:0.5b -t lifekeel-local-judge:local infra/local-judge
+docker run -d --name judge -p 11434:11434 lifekeel-local-judge:local
 curl -s localhost:11434/api/tags          # should list qwen2.5:0.5b
 
 # Encoder image, dependencies only (skips the ~1.7 GB model), then its tests inside the image
-docker build -f infra/encoder-service/Dockerfile --build-arg BAKE_MODEL=false -t agentoak-encoder:local infra/encoder-service
-docker run --rm -v "$PWD/infra/encoder-service:/t" -w /t agentoak-encoder:local python -m unittest test_server -v
+docker build -f infra/encoder-service/Dockerfile --build-arg BAKE_MODEL=false -t lifekeel-encoder:local infra/encoder-service
+docker run --rm -v "$PWD/infra/encoder-service:/t" -w /t lifekeel-encoder:local python -m unittest test_server -v
 ```
 
 ## 7. Running the models locally
@@ -141,7 +141,7 @@ export EMAIL_ENCODER_URL=http://127.0.0.1:8080 EMAIL_ENCODER_MODE=shadow   # or 
 ```
 
 Start with `shadow` (no effect on results) and watch
-`agentoak_email_encoder_total{outcome="encoder_missed"}` on the metrics endpoint.
+`lifekeel_email_encoder_total{outcome="encoder_missed"}` on the metrics endpoint.
 
 ## 8. What these checks do not cover
 

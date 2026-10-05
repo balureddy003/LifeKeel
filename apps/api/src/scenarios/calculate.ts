@@ -1,5 +1,5 @@
 /**
- * Deterministic "what if" scenario math for Ask Oak — see docs/plan
+ * Deterministic "what if" scenario math for Ask Keel — see docs/plan
  * (Digital Twin gap audit, Phase 2): the assistant had no way to answer a
  * hypothetical ("what if Sudha returns to work and we save £500/month
  * more?") beyond either declining or an LLM inventing a plausible-looking

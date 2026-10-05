@@ -6,7 +6,7 @@ candidate — see market bar below.*
 
 ## Problem it solves
 
-"When life doesn't go to plan, Oak knows what to do next" is the entire
+"When life doesn't go to plan, LifeKeel knows what to do next" is the entire
 tagline. Most financial tools show you a dashboard; none of them let you
 rehearse the bad day before it happens. This feature is the tagline made
 literal — pick a situation (job loss, medical emergency, a death in the
@@ -24,7 +24,7 @@ consumer products) for testing "what if" scenarios against live data
 before risks materialize — which is structurally exactly what this
 feature does, just aimed at a family instead of a balance sheet. **This is
 not a feature to bring up to parity with competitors — it's the one place
-Agent Oak is ahead of the category**, and should be resourced and
+LifeKeel is ahead of the category**, and should be resourced and
 marketed accordingly (see PRD-201).
 
 ## Who it's for

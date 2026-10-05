@@ -2,7 +2,7 @@
  * SkillOptimizerQuota — Unit tests for TASK-005 and TASK-006
  *
  * MIT License
- * Copyright (c) 2026 Kairos
+ * Copyright (c) 2026 LifeKeel
  *
  * Tests:
  * - TASK-005: SkillOptimizerQuota enforces per-detector and per-tenant daily limits

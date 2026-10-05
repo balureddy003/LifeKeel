@@ -2,14 +2,14 @@
 
 ## Product vision
 
-> Agent Oak: the autonomous digital twin for your family.
-> Oak understands your family's life, protection and preferences,
+> LifeKeel: the autonomous digital twin for your family.
+> Keel understands your family's life, protection and preferences,
 > anticipates what you may need, and acts on your behalf when it matters
 > most.
 >
-> When life doesn't go to plan, Oak knows what to do next.
+> When life doesn't go to plan, LifeKeel knows what to do next.
 
-Agent Oak isn't meant to be an AI chatbot with a memory. It's meant to
+LifeKeel isn't meant to be an AI chatbot with a memory. It's meant to
 become a *living model* of the family — who they are, what they own, what
 protects them, what matters to them, how they make decisions — paired with
 an agent that reasons over that model and, within limits, acts on it.
@@ -34,7 +34,7 @@ actually needs:
 
 ```
                           ┌──────────────────────────┐
-                          │     OAK HQ (Oak Agent)   │
+                          │     KEEL HQ (Keel Agent)   │
                           │ Family Readiness & Vault │
                           └─────────────┬────────────┘
                                         │
@@ -46,9 +46,9 @@ actually needs:
   └─────────────────┘└─────────────────┘└─────────────────┘└─────────────────┘
 ```
 
-- **Oak HQ (family orchestrator)** — synthesizes cross-member financial
+- **Keel HQ (family orchestrator)** — synthesizes cross-member financial
   dependencies, owns the dynamic **Family Readiness Score** (emergency
-  funds, insurance coverage, estate completion) and the **Ask Oak**
+  funds, insurance coverage, estate completion) and the **Ask Keel**
   conversational co-pilot.
 - **Adult twins** — career income, pension consolidation, term and
   critical-illness cover, tax efficiency, estate planning (wills, power of
@@ -69,7 +69,7 @@ Two supporting subsystems sit beside the agent graph:
   feeding proposed coverage-status updates back into the twin.
 
 The multi-agent shape refines the four layers below rather than replacing
-them: member twins are the Family Twin decomposed per person, Oak HQ and
+them: member twins are the Family Twin decomposed per person, Keel HQ and
 the micro-agents together are the agent layer, the ingestion engine is the
 Observe step industrialised, and the vault is storage today and a gated
 Act surface tomorrow.
@@ -82,12 +82,12 @@ Act surface tomorrow.
                        we make decisions?
 2. Family Intelligence The reasoning engine. What's happening? What does
                        it mean? What could happen next?
-3. Agent Oak          The autonomous agent — Oak HQ plus the member
+3. LifeKeel          The autonomous agent — Keel HQ plus the member
                        micro-agents. What should be done? What can I do?
                        What requires permission?
 4. Action Network     The external world — insurers, hospitals, banks,
                        airlines, employers, assistance providers — that
-                       Oak eventually acts through.
+                       Keel eventually acts through.
 ```
 
 ### The reasoning loop
@@ -108,16 +108,16 @@ a fallback, because it's what makes the rest of this trustworthy.
 
 | Layer | Vision | What's actually built |
 |---|---|---|
-| **Family Twin** | Per-member twins — adult (career, pension, protection, estate) and youth (education, savings, literacy) — across people, health, protection, financial life, life & assets, context, and preferences | Roster with real adult/child roles, dates of birth, and per-member email invites that activate a member's own login (PRD-123, `family-group.ts`/`family-join.ts`), a financial-profile schema (household, emergency fund, retirement, education funds, policy-level `policies[]` coverage/renewal tracking — PRD-102, `family-financial-profile.ts`), and the Digital Estate Vault (`vault.ts` — AES-256-GCM-encrypted, adult-gated storage for wills and estate documents). Per-member reasoning is real but young: twin read model + member readiness + member-attributed insights + member-scoped Ask Oak + a deterministic nudge persona (`member-twin.ts`, PRDs 117–122, 126), plus a redacted youth twin (`?mode=youth`, PRD-124). Not built: a scheduled/persisted agent loop, literacy curriculum, and the health, physical-assets, context, and explicit decision-rights domains. |
-| **Family Intelligence** | Understand + predict across all domains; nudges and scenario simulation | Real for the financial + protection domains: 5 deterministic YAML detectors (`detectors/family/*.yaml`) evaluated by `@agentoak/engine` — protection gap (including a `policy_renewal_window` rule off the real `policies[]` data), per-child education shortfall, emergency-fund adequacy, retirement gap, and estate readiness (`family_estate_readiness`, PRD-121 — missing will/PoA as persisted insights, evaluated on profile submit and vault upload/delete). The crisis surface exists: life-event playbooks (PRD-108 — seven event types rendered against the live profile), `GET /family/events/:eventId/readiness` backing the What-If tiles, an unreported-life-change nudge (PRD-111), and vault-awareness emails + insights on bereavement/disability/medical events (`life-events/vault-reminder.ts`). The Family Readiness Score is now the composite the vision calls for: `GET /family/readiness` (PRD-114) returns deterministic server-side subscores — emergency fund, protection, retirement, education, and estate (scored from vault `doc_type` coverage, adult-gated) — computed fresh from the live profile on every read, with the open insights that explain each drop riding along. The client keeps the old `100 − penalties` math only as a labeled offline fallback. Scenario simulation is deterministic and now time-shifted + persisted (PRD-115): `POST /assistant/simulate` accepts `monthsUntilChange` and narrates the timing; `POST/GET/DELETE /family/scenarios` (+ a pure-math `/preview`) store inputs and recompute against the live profile on read; the `/events/job-loss` tile is the first-class surface. What's still missing: multi-step sequenced scenarios (a timeline engine, not a single transition) and per-member scenario scoping. |
-| **Agent Oak (Oak HQ + member agents)** | Decide, act, escalate — an orchestrator plus per-member micro-agents | One agent surface, not per-member. Decide is real: insights surface in an inbox (Decide/Escalate-shaped). Ask Oak (`POST /assistant/ask`, PRD-101) does live, grounded LLM reasoning over the family's real financial-profile and open-insight data, falling back honestly (`isLive: false`) if the LLM call fails. Tier 1 "prepare, don't send" (PRD-103) has shipped, and life-event playbook steps reuse it. The Act machinery goes further than the tier list used to admit: `POST /insights/:id/approve` executes real actions (`actions/action-executor.ts` can dispatch `send_email`/`send_whatsapp`/`crm_tag` — exercised via detector-declared `action_intents` since PRD-116 — first live intent is a self-send renewal reminder on `policy_renewal_window`), signed one-click approve/dismiss links ship in notifications (`/a/:token`), and two opt-in Tier 3 surfaces exist — `jobs/auto-execute-trusted.ts` (auto-executes `log_only` insights once a scope earns trust) and `jobs/policy-renewal-reminders.ts` (scheduled sends), both gated behind `automation-settings.ts` toggles, off by default. No member micro-agents. |
+| **Family Twin** | Per-member twins — adult (career, pension, protection, estate) and youth (education, savings, literacy) — across people, health, protection, financial life, life & assets, context, and preferences | Roster with real adult/child roles, dates of birth, and per-member email invites that activate a member's own login (PRD-123, `family-group.ts`/`family-join.ts`), a financial-profile schema (household, emergency fund, retirement, education funds, policy-level `policies[]` coverage/renewal tracking — PRD-102, `family-financial-profile.ts`), and the Digital Estate Vault (`vault.ts` — AES-256-GCM-encrypted, adult-gated storage for wills and estate documents). Per-member reasoning is real but young: twin read model + member readiness + member-attributed insights + member-scoped Ask Keel + a deterministic nudge persona (`member-twin.ts`, PRDs 117–122, 126), plus a redacted youth twin (`?mode=youth`, PRD-124). Not built: a scheduled/persisted agent loop, literacy curriculum, and the health, physical-assets, context, and explicit decision-rights domains. |
+| **Family Intelligence** | Understand + predict across all domains; nudges and scenario simulation | Real for the financial + protection domains: 5 deterministic YAML detectors (`detectors/family/*.yaml`) evaluated by `@lifekeel/engine` — protection gap (including a `policy_renewal_window` rule off the real `policies[]` data), per-child education shortfall, emergency-fund adequacy, retirement gap, and estate readiness (`family_estate_readiness`, PRD-121 — missing will/PoA as persisted insights, evaluated on profile submit and vault upload/delete). The crisis surface exists: life-event playbooks (PRD-108 — seven event types rendered against the live profile), `GET /family/events/:eventId/readiness` backing the What-If tiles, an unreported-life-change nudge (PRD-111), and vault-awareness emails + insights on bereavement/disability/medical events (`life-events/vault-reminder.ts`). The Family Readiness Score is now the composite the vision calls for: `GET /family/readiness` (PRD-114) returns deterministic server-side subscores — emergency fund, protection, retirement, education, and estate (scored from vault `doc_type` coverage, adult-gated) — computed fresh from the live profile on every read, with the open insights that explain each drop riding along. The client keeps the old `100 − penalties` math only as a labeled offline fallback. Scenario simulation is deterministic and now time-shifted + persisted (PRD-115): `POST /assistant/simulate` accepts `monthsUntilChange` and narrates the timing; `POST/GET/DELETE /family/scenarios` (+ a pure-math `/preview`) store inputs and recompute against the live profile on read; the `/events/job-loss` tile is the first-class surface. What's still missing: multi-step sequenced scenarios (a timeline engine, not a single transition) and per-member scenario scoping. |
+| **LifeKeel (Keel HQ + member agents)** | Decide, act, escalate — an orchestrator plus per-member micro-agents | One agent surface, not per-member. Decide is real: insights surface in an inbox (Decide/Escalate-shaped). Ask Keel (`POST /assistant/ask`, PRD-101) does live, grounded LLM reasoning over the family's real financial-profile and open-insight data, falling back honestly (`isLive: false`) if the LLM call fails. Tier 1 "prepare, don't send" (PRD-103) has shipped, and life-event playbook steps reuse it. The Act machinery goes further than the tier list used to admit: `POST /insights/:id/approve` executes real actions (`actions/action-executor.ts` can dispatch `send_email`/`send_whatsapp`/`crm_tag` — exercised via detector-declared `action_intents` since PRD-116 — first live intent is a self-send renewal reminder on `policy_renewal_window`), signed one-click approve/dismiss links ship in notifications (`/a/:token`), and two opt-in Tier 3 surfaces exist — `jobs/auto-execute-trusted.ts` (auto-executes `log_only` insights once a scope earns trust) and `jobs/policy-renewal-reminders.ts` (scheduled sends), both gated behind `automation-settings.ts` toggles, off by default. No member micro-agents. |
 | **Action Network** | Insurers, airlines, hospitals, banks as real integrations | Doesn't exist. Only generic connector plumbing (email/Gmail scanning) and a dormant Stripe billing integration. |
 
 This isn't a gap to be embarrassed about — it's exactly what a two-domain,
 pre-Act-layer digital twin looks like on the way to the full vision. The
 roadmap below is about closing it deliberately, not all at once.
 
-Mapped against the vision's named capabilities: **Oak HQ** is the
+Mapped against the vision's named capabilities: **Keel HQ** is the
 assistant + inbox + readiness score today. **Member micro-agents** are the
 largest structural gap — the roster knows who's an adult or child, and
 detectors already consume per-child education data, but nothing holds or
@@ -148,13 +148,13 @@ implemented no higher than the tier it's actually earned:
 - **Tier 0 — Observe/Understand/Predict.** Pure analysis. Zero external
   side effects. Most of what's shipped lives here: detectors, the family
   roster/financial-profile Twin, the grounded assistant's Q&A.
-- **Tier 1 — Decide + Prepare.** Oak drafts something — a checklist, a
+- **Tier 1 — Decide + Prepare.** Keel drafts something — a checklist, a
   pre-filled form, a draft email — but a human sends/submits it. Still zero
   external side effects. **Shipped** (PRD-103): `POST /insights/:id/prepare`
   drafts an email from an insight's reasoning; the user edits, copies, or
   opens it in their own mail client — the only exits, never a send call
   from this app.
-- **Tier 2 — Act with narrow, named, revocable consent.** Oak performs one
+- **Tier 2 — Act with narrow, named, revocable consent.** Keel performs one
   specific, previously-agreed action ("contact your insurer's assistance
   line for travel disruptions") — never a blanket "act for me" grant.
   Requires an explicit per-action opt-in, not a global toggle. The
@@ -219,7 +219,7 @@ it, as new domains get added.
    filing yet.
 3. **Introduce Tier 1 "prepare" actions.** **Shipped** (PRD-103): an
    insight can generate a draft email a human reviews and sends
-   themselves — Oak never sends on the family's behalf — and life-event
+   themselves — Keel never sends on the family's behalf — and life-event
    playbook steps reuse the same mechanism (PRD-108). Next: more action
    types under the same prepare-don't-send discipline.
 4. **Close the crisis-resilience loop.** **Partially shipped**: life-event
@@ -234,7 +234,7 @@ it, as new domains get added.
    `GET /family/members/:id/twin` + `?member_id=` insight filter + the
    `/member/[id]` twin section) are the foundation — plus member-scoped
    reasoning on top of it (member readiness PRD-118, per-member pension
-   fields and detection PRD-119/120, and member-scoped Ask Oak via
+   fields and detection PRD-119/120, and member-scoped Ask Keel via
    `member_id` on `/assistant/ask` in PRD-122). The full Adult/Youth
    micro-agent personas from the vision build on that read model, not on
    a new data model — remaining steps are the agent persona itself and
@@ -281,11 +281,11 @@ apps/web (Next.js, static export → Firebase Hosting)
               │    jobs/email-scan.ts                  │  GPT-4o OCR (+ Gmail attachments)
               ├─ insights.ts                           │  Family Intelligence output
               │    └─ POST /insights/:id/prepare       │  Tier 1 "prepare" draft (PRD-103)
-              ├─ assistant.ts                          │  Ask Oak — grounded LLM Q&A (PRD-101)
+              ├─ assistant.ts                          │  Ask Keel — grounded LLM Q&A (PRD-101)
               ├─ family-inbox.ts                       │  Decide/Escalate surface
               ├─ readiness-quiz.ts / leads.ts          │  Public readiness quiz (PRD-201)
               │                                        │  + lead capture — same engine
-              ├─ billing.ts                            │  Stripe (Oak Plus)
+              ├─ billing.ts                            │  Stripe (Keel Plus)
               ├─ operator.ts + operator/*,             │  Ops console, autopilot, queues,
               │    marketing-posts.ts, lifecycle-*     │  marketing + lifecycle email
               ├─ blog.ts, case-studies.ts, growth-events.ts   Marketing/growth —
@@ -293,20 +293,20 @@ apps/web (Next.js, static export → Firebase Hosting)
               ├─ reminders.ts, push.ts, audit-log.ts   │  Notifications + audit trail
               └─ metrics.ts                             Prometheus ops metrics
                                                           │
-              @agentoak/engine ◄────────────────────────┘
+              @lifekeel/engine ◄────────────────────────┘
               (YAML detector evaluation — detectors/family/*.yaml)
-                  depends on: @agentoak/platform (auth/mongo/telemetry primitives)
+                  depends on: @lifekeel/platform (auth/mongo/telemetry primitives)
 
-              @agentoak/workflows  → connector OAuth/credential plumbing,
+              @lifekeel/workflows  → connector OAuth/credential plumbing,
                                      ConnectorActionExecutor, schema registry
                                      (the WorkflowEngine/WorkflowLoader
                                      automation engine and its 25 legacy
                                      workflow YAMLs were deleted outright on
                                      2026-09-12, not just left unrouted —
                                      see SECURITY.md)
-              @agentoak/pipeline   → connector event normalization
-              @agentoak/mongodb-adapter, @agentoak/runtime, @agentoak/specifications,
-              @agentoak/legacy-compat, @agentoak/conformance, @agentoak/outcome-kernel
+              @lifekeel/pipeline   → connector event normalization
+              @lifekeel/mongodb-adapter, @lifekeel/runtime, @lifekeel/specifications,
+              @lifekeel/legacy-compat, @lifekeel/conformance, @lifekeel/outcome-kernel
                                    → outcome-lifecycle data model plumbing
 ```
 

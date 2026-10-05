@@ -77,9 +77,9 @@ export function renderHeartbeat(d: HeartbeatData): RenderedHeartbeat {
     lines.push(`· Some profile details are over six months old — worth a quick check.`)
   }
   if (lines.length === 0) {
-    lines.push(`Nothing moved this ${d.period} — Oak checked daily and everything looked the same.`)
+    lines.push(`Nothing moved this ${d.period} — Keel checked daily and everything looked the same.`)
   }
-  lines.push(`Open Agent Oak: ${d.app_url}`)
+  lines.push(`Open LifeKeel: ${d.app_url}`)
 
   const footer = 'Why you got this · Manage notifications'
   const footerUrl = `${d.app_url}/settings#notifications`
@@ -93,7 +93,7 @@ export function renderHeartbeat(d: HeartbeatData): RenderedHeartbeat {
     <p>Hi,</p>
     <p>Here's what moved in your family's readiness this ${d.period}:</p>
     <ul style="padding-left:18px;">${items}</ul>
-    <p><a href="${d.app_url}" style="display:inline-block;padding:12px 20px;background:#7c6ef0;color:#fff;border-radius:10px;text-decoration:none;font-weight:600;">Open Agent Oak</a></p>
+    <p><a href="${d.app_url}" style="display:inline-block;padding:12px 20px;background:#7c6ef0;color:#fff;border-radius:10px;text-decoration:none;font-weight:600;">Open LifeKeel</a></p>
     <p style="color:#888;font-size:13px;"><a href="${footerUrl}" style="color:#888;">Why you got this · Manage notifications</a></p>
   `
 

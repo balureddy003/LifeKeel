@@ -31,8 +31,8 @@
  */
 
 import type { Db } from 'mongodb'
-import type { Engine, Insight } from '@agentoak/engine'
-import { createLogger } from '@agentoak/platform'
+import type { Engine, Insight } from '@lifekeel/engine'
+import { createLogger } from '@lifekeel/platform'
 import { OutcomeCredits, type KpiLike } from '../billing/outcome-credits.js'
 import {
   computeKpiProgress as sharedComputeKpiProgress,

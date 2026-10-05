@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kairos.io/schemas/alpha-vantage/market.price/v1.0.0",
+  "$id": "https://lifekeel.io/schemas/alpha-vantage/market.price/v1.0.0",
   "title": "Alpha Vantage Market Price",
   "description": "Daily market price for a single ticker from a market-data provider.",
   "type": "object",
-  "kairos": {
+  "lifekeel": {
     "connector_id": "alpha-vantage",
     "event_type": "market.price",
     "schema_version": "1.0.0",

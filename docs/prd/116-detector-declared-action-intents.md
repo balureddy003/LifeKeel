@@ -22,7 +22,7 @@ which meant:
 
 ## Who it's for
 
-A family who wants Oak to *do* the small, reversible thing — email them
+A family who wants Keel to *do* the small, reversible thing — email them
 a renewal reminder — after they approve it, rather than only ever
 rendering a checklist they must act on themselves.
 

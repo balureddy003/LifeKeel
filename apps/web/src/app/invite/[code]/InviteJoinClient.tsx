@@ -85,8 +85,8 @@ function AcceptMemberInvite({ token }: { token: string }) {
         </div>
         <h1 className="text-2xl font-bold">You're invited, {info.memberName}</h1>
         <p className="text-sm text-ink-tertiary mt-1">
-          {info.familyName} set you up on Agent Oak. Set a password to finish joining — you'll be signed in
-          right away. If you already have an Oak account for this family, use that password to link it instead.
+          {info.familyName} set you up on LifeKeel. Set a password to finish joining — you'll be signed in
+          right away. If you already have an Keel account for this family, use that password to link it instead.
         </p>
       </div>
 
@@ -191,7 +191,7 @@ function RequestJoin({ code }: { code: string }) {
         <div className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-3 mx-auto">
           <Users size={32} className="text-family-400" />
         </div>
-        <h1 className="text-2xl font-bold">Join your family on Oak</h1>
+        <h1 className="text-2xl font-bold">Join your family on Keel</h1>
         <p className="text-sm text-ink-tertiary mt-1">
           The organizer will need to approve your request before you can sign in.
         </p>

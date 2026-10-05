@@ -15,7 +15,7 @@
  * feed write, no notification, nothing acted on.
  */
 import type { Db } from 'mongodb'
-import { createLogger, getTenantCollection } from '@agentoak/platform'
+import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { projectScenario } from '../scenarios/project.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 import type { FamilyScenarioDoc } from '../routes/family-scenarios.js'

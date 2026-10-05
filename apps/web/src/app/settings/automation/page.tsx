@@ -7,7 +7,7 @@
  *
  *  - Dry-run mode (writable): when on, approving an insight records the
  *    decision and what would have run without dispatching anything —
- *    the safest way to watch Oak before letting it act for real.
+ *    the safest way to watch Keel before letting it act for real.
  *  - Trust levels (read-only): earned per workflow by real approvals —
  *    deliberately not editable. A trust level you could just type in
  *    wouldn't be trust.
@@ -90,7 +90,7 @@ export default function AutomationSettingsPage() {
       <PageHeader
         title="Automation & approvals"
         backHref="/settings"
-        subtitle="What Oak is allowed to do on your behalf"
+        subtitle="What Keel is allowed to do on your behalf"
       />
 
       {loading ? (
@@ -145,12 +145,12 @@ export default function AutomationSettingsPage() {
                 <div className="flex-1">
                   <div className="text-base font-semibold text-ink-primary">Policy renewal reminders</div>
                   <p className="text-sm text-ink-secondary leading-relaxed mt-1">
-                    Oak automatically reminds you on your devices before a policy on your financial
+                    Keel automatically reminds you on your devices before a policy on your financial
                     profile renews — nothing is sent to your insurer, and no changes are made.
                   </p>
                   <div className="flex items-center justify-between mt-4">
                     <span className="text-sm font-medium text-ink-primary">
-                      {settings?.renewal_reminders_enabled ? 'On — Oak reminds you' : 'Off'}
+                      {settings?.renewal_reminders_enabled ? 'On — Keel reminds you' : 'Off'}
                     </span>
                     <button
                       role="switch"
@@ -191,7 +191,7 @@ export default function AutomationSettingsPage() {
 
                   {recentAutomatic.length > 0 && (
                     <div className="mt-4 space-y-1.5">
-                      <div className="text-xs font-semibold text-ink-tertiary uppercase tracking-wide">Oak handled automatically</div>
+                      <div className="text-xs font-semibold text-ink-tertiary uppercase tracking-wide">Keel handled automatically</div>
                       {recentAutomatic.map((r) => (
                         <div key={r.id} className="text-sm text-ink-tertiary truncate">
                           {r.status === 'sent' ? 'Reminded' : r.status === 'failed' ? 'Couldn’t send' : 'Cancelled'} · {r.policy.provider} {r.policy.type.replace(/_/g, ' ')} · {r.renewal_date}
@@ -209,9 +209,9 @@ export default function AutomationSettingsPage() {
               <div className="flex items-start gap-3">
                 <Zap size={20} className="text-family-400 shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <div className="text-base font-semibold text-ink-primary">Let Oak act on earned trust</div>
+                  <div className="text-base font-semibold text-ink-primary">Let Keel act on earned trust</div>
                   <p className="text-sm text-ink-secondary leading-relaxed mt-1">
-                    Once a kind of insight has earned full trust (5 approvals), Oak records its
+                    Once a kind of insight has earned full trust (5 approvals), Keel records its
                     recommendations as done automatically — after a one-hour window for you to
                     dismiss first. This only ever covers actions with no outside effect; anything
                     that sends a message or changes something external still always asks you.
@@ -223,7 +223,7 @@ export default function AutomationSettingsPage() {
                     <button
                       role="switch"
                       aria-checked={settings?.auto_execute_enabled ?? false}
-                      aria-label="Let Oak act on earned trust"
+                      aria-label="Let Keel act on earned trust"
                       onClick={() => applyPatch({ auto_execute_enabled: !settings?.auto_execute_enabled })}
                       disabled={saving || settings === null}
                       className={`relative w-12 h-7 rounded-full transition-colors disabled:opacity-40 ${
@@ -247,9 +247,9 @@ export default function AutomationSettingsPage() {
               <div className="flex items-start gap-3">
                 <TrendingUp size={20} className="text-family-400 shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <div className="text-base font-semibold text-ink-primary">Trust Oak earns</div>
+                  <div className="text-base font-semibold text-ink-primary">Trust Keel earns</div>
                   <p className="text-sm text-ink-secondary leading-relaxed mt-1">
-                    Every time you approve a recommendation, Oak's trust for that kind of action grows.
+                    Every time you approve a recommendation, Keel's trust for that kind of action grows.
                     It's earned, not set — which is why there's no edit control here.
                   </p>
                   {trustEntries.length === 0 ? (
@@ -283,7 +283,7 @@ export default function AutomationSettingsPage() {
               <p className="text-sm text-ink-secondary leading-relaxed">
                 Approving an insight goes through its own review screen first. Earned-trust mode is
                 the only exception, and only for kinds of insight you've approved five times — and
-                even then, never for anything that sends a message or changes something outside Oak.
+                even then, never for anything that sends a message or changes something outside Keel.
                 Dry-run decides whether approved actions actually dispatch.
               </p>
             </GlassCard>

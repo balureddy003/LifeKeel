@@ -1,6 +1,6 @@
 import { pathToFileURL } from 'node:url'
-import { decideScores, type Insight } from '@agentoak/engine'
-import { createLocalDecisionFn, type DecisionFn } from '@agentoak/platform'
+import { decideScores, type Insight } from '@lifekeel/engine'
+import { createLocalDecisionFn, type DecisionFn } from '@lifekeel/platform'
 import { createLocalJudgeEvaluator } from '../delivery/local-judge.js'
 import { LABELLED_JUDGE_CASES, type LabelledJudgeCase } from '../delivery/__fixtures__/labelled-judge-cases.js'
 import { classifyEmail } from '../email/classify.js'

@@ -6,7 +6,7 @@
 
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import Fastify from 'fastify'
-import { Engine, type Insight } from '@agentoak/engine'
+import { Engine, type Insight } from '@lifekeel/engine'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { registerFamilyFinancialProfileRoutes } from '../family-financial-profile.js'
@@ -82,7 +82,7 @@ function makeDb() {
   let stored: Record<string, unknown> | null = null
   const profileCol = {
     findOne: vi.fn(async () => stored),
-    // OAK-006: mirrors the real MongoDB driver's findOneAndUpdate — returns
+    // KEEL-006: mirrors the real MongoDB driver's findOneAndUpdate — returns
     // the matched-and-updated document directly (not wrapped in `.value`),
     // or null when the filter (e.g. a version match) doesn't match anything
     // existing, which is exactly the conflict case the route now checks for.
@@ -746,7 +746,7 @@ describe('PRD-128: per-member life-cover detection', () => {
   })
 })
 
-describe('OAK-006: optimistic concurrency on POST /family/financial-profile', () => {
+describe('KEEL-006: optimistic concurrency on POST /family/financial-profile', () => {
   let engine: Engine
 
   beforeEach(async () => {

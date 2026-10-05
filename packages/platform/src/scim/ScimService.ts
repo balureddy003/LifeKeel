@@ -2,7 +2,7 @@
  * SCIM 2.0 Service
  *
  * Implements SCIM 2.0 protocol for user and group provisioning.
- * Maps Kairos users/groups to SCIM resources for enterprise integration.
+ * Maps LifeKeel users/groups to SCIM resources for enterprise integration.
  *
  * ADR-0028: SSO and Enterprise Auth - SCIM endpoints
  */
@@ -38,8 +38,8 @@ export interface ScimUser extends ScimResource {
     type?: string
   }>
   displayName?: string
-  // Kairos-specific extensions
-  kairos?: {
+  // LifeKeel-specific extensions
+  lifekeel?: {
     tenant_id: string
     roles: string[]
     identity_source: string
@@ -53,8 +53,8 @@ export interface ScimGroup extends ScimResource {
     display?: string
     $ref?: string
   }>
-  // Kairos-specific extensions
-  kairos?: {
+  // LifeKeel-specific extensions
+  lifekeel?: {
     tenant_id: string
   }
 }
@@ -73,63 +73,63 @@ export interface ScimError {
   detail: string
 }
 
-// ── Kairos to SCIM Mapper ───────────────────────────────────────────────────────
+// ── LifeKeel to SCIM Mapper ───────────────────────────────────────────────────────
 
 export class ScimMapper {
   /**
-   * Convert Kairos user to SCIM user
+   * Convert LifeKeel user to SCIM user
    */
-  kairosUserToScim(kairosUser: KairosUser, baseUrl: string): ScimUser {
+  lifekeelUserToScim(lifekeelUser: LifeKeelUser, baseUrl: string): ScimUser {
     const result: ScimUser = {
       schemas: ['urn:ietf:params:scim:schemas:core:2.0:User'],
-      id: kairosUser.id,
+      id: lifekeelUser.id,
       meta: {
         resourceType: 'User',
-        location: `${baseUrl}/scim/v2/Users/${kairosUser.id}`,
-        created: kairosUser.created_at.toISOString(),
-        lastModified: kairosUser.updated_at.toISOString(),
+        location: `${baseUrl}/scim/v2/Users/${lifekeelUser.id}`,
+        created: lifekeelUser.created_at.toISOString(),
+        lastModified: lifekeelUser.updated_at.toISOString(),
       },
-      userName: kairosUser.email,
+      userName: lifekeelUser.email,
       name: {
-        givenName: kairosUser.first_name,
-        familyName: kairosUser.last_name,
+        givenName: lifekeelUser.first_name,
+        familyName: lifekeelUser.last_name,
       },
-      active: kairosUser.status === 'active',
+      active: lifekeelUser.status === 'active',
       emails: [
         {
-          value: kairosUser.email,
+          value: lifekeelUser.email,
           primary: true,
           type: 'work',
         },
       ],
-      displayName: `${kairosUser.first_name} ${kairosUser.last_name}`.trim(),
-      kairos: {
-        tenant_id: kairosUser.tenant_id,
-        roles: kairosUser.roles,
-        identity_source: kairosUser.identity_source,
+      displayName: `${lifekeelUser.first_name} ${lifekeelUser.last_name}`.trim(),
+      lifekeel: {
+        tenant_id: lifekeelUser.tenant_id,
+        roles: lifekeelUser.roles,
+        identity_source: lifekeelUser.identity_source,
       },
     }
 
-    if (kairosUser.external_id !== undefined) {
-      result.externalId = kairosUser.external_id
+    if (lifekeelUser.external_id !== undefined) {
+      result.externalId = lifekeelUser.external_id
     }
 
     return result
   }
 
   /**
-   * Convert SCIM user to Kairos user
+   * Convert SCIM user to LifeKeel user
    */
-  scimUserToKairos(scimUser: ScimUser, tenantId: string): KairosUser {
+  scimUserToLifeKeel(scimUser: ScimUser, tenantId: string): LifeKeelUser {
     const now = new Date()
-    const result: KairosUser = {
+    const result: LifeKeelUser = {
       id: scimUser.id,
       tenant_id: tenantId,
       email: scimUser.userName,
       first_name: scimUser.name?.givenName || '',
       last_name: scimUser.name?.familyName || '',
       status: scimUser.active !== false ? 'active' : 'inactive',
-      roles: scimUser.kairos?.roles || [],
+      roles: scimUser.lifekeel?.roles || [],
       identity_source: 'scim',
       created_at: scimUser.meta?.created ? new Date(scimUser.meta.created) : now,
       updated_at: scimUser.meta?.lastModified ? new Date(scimUser.meta.lastModified) : now,
@@ -143,33 +143,33 @@ export class ScimMapper {
   }
 
   /**
-   * Convert Kairos group to SCIM group
+   * Convert LifeKeel group to SCIM group
    */
-  kairosGroupToScim(kairosGroup: KairosGroup, baseUrl: string): ScimGroup {
+  lifekeelGroupToScim(lifekeelGroup: LifeKeelGroup, baseUrl: string): ScimGroup {
     return {
       schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
-      id: kairosGroup.id,
+      id: lifekeelGroup.id,
       meta: {
         resourceType: 'Group',
-        location: `${baseUrl}/scim/v2/Groups/${kairosGroup.id}`,
-        created: kairosGroup.created_at.toISOString(),
-        lastModified: kairosGroup.updated_at.toISOString(),
+        location: `${baseUrl}/scim/v2/Groups/${lifekeelGroup.id}`,
+        created: lifekeelGroup.created_at.toISOString(),
+        lastModified: lifekeelGroup.updated_at.toISOString(),
       },
-      displayName: kairosGroup.name,
-      members: kairosGroup.members.map(member => ({
+      displayName: lifekeelGroup.name,
+      members: lifekeelGroup.members.map(member => ({
         value: member.user_id,
         display: member.display_name,
       })),
-      kairos: {
-        tenant_id: kairosGroup.tenant_id,
+      lifekeel: {
+        tenant_id: lifekeelGroup.tenant_id,
       },
     }
   }
 
   /**
-   * Convert SCIM group to Kairos group
+   * Convert SCIM group to LifeKeel group
    */
-  scimGroupToKairos(scimGroup: ScimGroup, tenantId: string): KairosGroup {
+  scimGroupToLifeKeel(scimGroup: ScimGroup, tenantId: string): LifeKeelGroup {
     const now = new Date()
     return {
       id: scimGroup.id,
@@ -185,9 +185,9 @@ export class ScimMapper {
   }
 }
 
-// ── Kairos Types ───────────────────────────────────────────────────────────────
+// ── LifeKeel Types ───────────────────────────────────────────────────────────────
 
-export interface KairosUser {
+export interface LifeKeelUser {
   id: string
   tenant_id: string
   email: string
@@ -201,7 +201,7 @@ export interface KairosUser {
   updated_at: Date
 }
 
-export interface KairosGroup {
+export interface LifeKeelGroup {
   id: string
   tenant_id: string
   name: string
@@ -235,7 +235,7 @@ export class ScimService {
 
     if (!user) return null
 
-    return this.mapper.kairosUserToScim(user, this.options.baseUrl)
+    return this.mapper.lifekeelUserToScim(user, this.options.baseUrl)
   }
 
   /**
@@ -272,8 +272,8 @@ export class ScimService {
 
     const totalResults = await db.collection('users').countDocuments(query)
 
-    const resources = users.map((user: KairosUser) =>
-      this.mapper.kairosUserToScim(user, this.options.baseUrl)
+    const resources = users.map((user: LifeKeelUser) =>
+      this.mapper.lifekeelUserToScim(user, this.options.baseUrl)
     )
 
     return {
@@ -289,16 +289,16 @@ export class ScimService {
    * Create SCIM user
    */
   async createUser(tenantId: string, scimUser: ScimUser, db: any): Promise<ScimUser> {
-    const kairosUser = this.mapper.scimUserToKairos(scimUser, tenantId)
-    kairosUser.id = this.generateId()
-    kairosUser.created_at = new Date()
-    kairosUser.updated_at = new Date()
+    const lifekeelUser = this.mapper.scimUserToLifeKeel(scimUser, tenantId)
+    lifekeelUser.id = this.generateId()
+    lifekeelUser.created_at = new Date()
+    lifekeelUser.updated_at = new Date()
 
-    await db.collection('users').insertOne(kairosUser)
+    await db.collection('users').insertOne(lifekeelUser)
 
-    log.info({ tenant_id: tenantId, user_id: kairosUser.id }, 'SCIM user created')
+    log.info({ tenant_id: tenantId, user_id: lifekeelUser.id }, 'SCIM user created')
 
-    return this.mapper.kairosUserToScim(kairosUser, this.options.baseUrl)
+    return this.mapper.lifekeelUserToScim(lifekeelUser, this.options.baseUrl)
   }
 
   /**
@@ -314,19 +314,19 @@ export class ScimService {
       throw new Error('User not found')
     }
 
-    const kairosUser = this.mapper.scimUserToKairos(scimUser, tenantId)
-    kairosUser.id = userId
-    kairosUser.created_at = existing.created_at
-    kairosUser.updated_at = new Date()
+    const lifekeelUser = this.mapper.scimUserToLifeKeel(scimUser, tenantId)
+    lifekeelUser.id = userId
+    lifekeelUser.created_at = existing.created_at
+    lifekeelUser.updated_at = new Date()
 
     await db.collection('users').replaceOne(
       { tenant_id: tenantId, id: userId },
-      kairosUser
+      lifekeelUser
     )
 
     log.info({ tenant_id: tenantId, user_id: userId }, 'SCIM user updated')
 
-    return this.mapper.kairosUserToScim(kairosUser, this.options.baseUrl)
+    return this.mapper.lifekeelUserToScim(lifekeelUser, this.options.baseUrl)
   }
 
   /**
@@ -371,7 +371,7 @@ export class ScimService {
 
     log.info({ tenant_id: tenantId, user_id: userId }, 'SCIM user patched')
 
-    return this.mapper.kairosUserToScim(updated, this.options.baseUrl)
+    return this.mapper.lifekeelUserToScim(updated, this.options.baseUrl)
   }
 
   /**
@@ -401,7 +401,7 @@ export class ScimService {
 
     if (!group) return null
 
-    return this.mapper.kairosGroupToScim(group, this.options.baseUrl)
+    return this.mapper.lifekeelGroupToScim(group, this.options.baseUrl)
   }
 
   /**
@@ -429,8 +429,8 @@ export class ScimService {
       tenant_id: tenantId,
     })
 
-    const resources = groups.map((group: KairosGroup) =>
-      this.mapper.kairosGroupToScim(group, this.options.baseUrl)
+    const resources = groups.map((group: LifeKeelGroup) =>
+      this.mapper.lifekeelGroupToScim(group, this.options.baseUrl)
     )
 
     return {
@@ -446,16 +446,16 @@ export class ScimService {
    * Create SCIM group
    */
   async createGroup(tenantId: string, scimGroup: ScimGroup, db: any): Promise<ScimGroup> {
-    const kairosGroup = this.mapper.scimGroupToKairos(scimGroup, tenantId)
-    kairosGroup.id = this.generateId()
-    kairosGroup.created_at = new Date()
-    kairosGroup.updated_at = new Date()
+    const lifekeelGroup = this.mapper.scimGroupToLifeKeel(scimGroup, tenantId)
+    lifekeelGroup.id = this.generateId()
+    lifekeelGroup.created_at = new Date()
+    lifekeelGroup.updated_at = new Date()
 
-    await db.collection('groups').insertOne(kairosGroup)
+    await db.collection('groups').insertOne(lifekeelGroup)
 
-    log.info({ tenant_id: tenantId, group_id: kairosGroup.id }, 'SCIM group created')
+    log.info({ tenant_id: tenantId, group_id: lifekeelGroup.id }, 'SCIM group created')
 
-    return this.mapper.kairosGroupToScim(kairosGroup, this.options.baseUrl)
+    return this.mapper.lifekeelGroupToScim(lifekeelGroup, this.options.baseUrl)
   }
 
   /**
@@ -471,19 +471,19 @@ export class ScimService {
       throw new Error('Group not found')
     }
 
-    const kairosGroup = this.mapper.scimGroupToKairos(scimGroup, tenantId)
-    kairosGroup.id = groupId
-    kairosGroup.created_at = existing.created_at
-    kairosGroup.updated_at = new Date()
+    const lifekeelGroup = this.mapper.scimGroupToLifeKeel(scimGroup, tenantId)
+    lifekeelGroup.id = groupId
+    lifekeelGroup.created_at = existing.created_at
+    lifekeelGroup.updated_at = new Date()
 
     await db.collection('groups').replaceOne(
       { tenant_id: tenantId, id: groupId },
-      kairosGroup
+      lifekeelGroup
     )
 
     log.info({ tenant_id: tenantId, group_id: groupId }, 'SCIM group updated')
 
-    return this.mapper.kairosGroupToScim(kairosGroup, this.options.baseUrl)
+    return this.mapper.lifekeelGroupToScim(lifekeelGroup, this.options.baseUrl)
   }
 
   /**

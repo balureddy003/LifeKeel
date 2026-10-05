@@ -2,7 +2,7 @@
  * Event Generator — The Bridge Between Connectors and the Engine
  *
  * Converts raw connector data (REST responses, webhook payloads) into
- * typed RawEvent documents ready for the Kairos engine.
+ * typed RawEvent documents ready for the LifeKeel engine.
  *
  * Key guarantees:
  *   1. SHA-256 content-addressed deduplication — zero duplicate events

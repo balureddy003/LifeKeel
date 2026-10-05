@@ -46,7 +46,7 @@ class OtelSpanAdapter implements Span {
 
 class OtelTracerAdapter implements Tracer {
   startSpan(name: string): Span {
-    return new OtelSpanAdapter(trace.getTracer('kairos').startSpan(name))
+    return new OtelSpanAdapter(trace.getTracer('lifekeel').startSpan(name))
   }
 }
 
@@ -70,7 +70,7 @@ export function getTracer(): Tracer {
  *
  * Call once at server startup before any spans are created.
  */
-export async function initTelemetry(serviceName = 'kairos-api'): Promise<void> {
+export async function initTelemetry(serviceName = 'lifekeel-api'): Promise<void> {
   const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT
   if (!endpoint) return // Noop — OTel API's default NoopTracerProvider
 

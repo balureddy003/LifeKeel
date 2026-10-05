@@ -1,6 +1,6 @@
 # Built vs Market & Innovation Flywheel (October 2026)
 
-What Agent Oak has actually built, scored against the competitive
+What LifeKeel has actually built, scored against the competitive
 positioning it claims, with every gap that weakens the claim and an
 innovation flywheel that closes them in a self-reinforcing cycle.
 
@@ -62,7 +62,7 @@ flywheel (Part 3) for sequencing.
 - Member twin read model (`GET /family/members/:id/twin`): earner slice,
   attributed policies, education funds, member-scoped insights,
   `computeMemberReadiness`.
-- Member-scoped Ask Oak (`member_id` on `/assistant/ask`).
+- Member-scoped Ask Keel (`member_id` on `/assistant/ask`).
 - Youth twin (`?mode=youth`): server-side redacted, age-banded lessons,
   savings progress without amounts.
 - Member agent persona (`GET /family/members/:id/agent`): deterministic
@@ -120,7 +120,7 @@ meaningfully increase the "surfaces what wasn't asked" claim.
 
 ---
 
-### Claim 4: "Crisis-native — Oak knows what to do next"
+### Claim 4: "Crisis-native — LifeKeel knows what to do next"
 
 **What's built:**
 - Emergency Mode overlay with life-safety notice, 7-event taxonomy
@@ -136,7 +136,7 @@ meaningfully increase the "surfaces what wasn't asked" claim.
 - Persisted named scenarios recomputed against live profile on every read.
 - Scenario tiles for job-loss, bereavement, disability, medical,
   new-child, university.
-- Tier 1 draft outreach from playbook steps (never sent by Oak).
+- Tier 1 draft outreach from playbook steps (never sent by Keel).
 - Vault awareness notifications on crisis events.
 - Continuity check (dead-man's-switch-shaped notification system).
 
@@ -147,7 +147,7 @@ meaningfully increase the "surfaces what wasn't asked" claim.
 | No competitor found combines crisis playbooks + real financial data + scenario simulation | Playbooks are static templates — no adaptive branching based on family specifics beyond provider-name substitution |
 | Emergency Mode's emotional design (life-safety notice, escape key, event de-dupe) is validated by 2026 banking UX research | No free-text context capture during crisis reporting ("tell me what happened" — the council review's top recommendation) |
 | Multi-step scenarios with fund-depletion are genuinely novel | Scenarios are household-level only — "what happens to *my* runway" isn't possible for a second earner |
-| Vault reminders on crisis events are a trust-building touch | No integration with Empathy or similar post-crisis support — the handoff from "Oak prepared you" to "here's professional help" doesn't exist |
+| Vault reminders on crisis events are a trust-building touch | No integration with Empathy or similar post-crisis support — the handoff from "Keel prepared you" to "here's professional help" doesn't exist |
 
 **What would make this 9/10:** Adaptive playbook branching (the family
 has income protection → skip the "apply for benefits" step, show the
@@ -171,7 +171,7 @@ crisis.
   (any 3+ digit figure not in the prompt), and regulated-advice patterns.
 - No affiliate links, no referral commissions, no insurance partner
   integrations.
-- `billing-constants.ts`: Oak Plus at £7.99/mo — subscription revenue
+- `billing-constants.ts`: Keel Plus at £7.99/mo — subscription revenue
   only.
 
 **Score: 9/10 — structurally true and well-enforced.**
@@ -180,12 +180,12 @@ crisis.
 |---|---|
 | The neutrality is enforced at three layers: YAML copy, LLM system prompt, and output guard — defense in depth | The claim is never stated to the user in-product; it's implied by the absence of product links, not explicitly communicated |
 | Business model (subscription-only) structurally can't have commissions | No "how we make money" transparency page (LifeOS has one; Trustworthy doesn't need one because they're free) |
-| Output guard blocks provider names even in local inference | Residual "Kairos" branding in email sender defaults and SMS copy undermines trust/identity |
+| Output guard blocks provider names even in local inference | Residual "LifeKeel" branding in email sender defaults and SMS copy undermines trust/identity |
 
 **What would make this 10/10:** A visible neutrality badge or statement
-on every protection-gap insight card: "Oak has no financial relationship
+on every protection-gap insight card: "Keel has no financial relationship
 with any insurer. This analysis is based solely on your family's data."
-Fix the Kairos branding residue.
+Fix the LifeKeel branding residue.
 
 ---
 
@@ -198,36 +198,36 @@ engineering size, but by how much each one undermines the market claim.
 
 | # | Gap | Weakens which claim | Why it matters competitively | Size |
 |---|---|---|---|---|
-| G1 | **Only 5 detectors / 13 rules** — a family finance product with no debt-ratio, tax, pension consolidation, beneficiary, or spending-pattern detection | Continuous detection | LifeOS's "Sage" conversation covers all these topics reactively; Origin's proactive checks cover 100+ dimensions. Oak's 13 rules are a proof of concept, not a moat. | M per detector (YAML + signal mapping) |
-| G2 | **No in-product neutrality statement** — the single most defensible claim is invisible to users | Neutral | A family comparing Oak's insight against State Farm's AI or PolicyPilot's score has no reason to believe Oak is less self-interested unless told. | XS (copy) |
+| G1 | **Only 5 detectors / 13 rules** — a family finance product with no debt-ratio, tax, pension consolidation, beneficiary, or spending-pattern detection | Continuous detection | LifeOS's "Sage" conversation covers all these topics reactively; Origin's proactive checks cover 100+ dimensions. Keel's 13 rules are a proof of concept, not a moat. | M per detector (YAML + signal mapping) |
+| G2 | **No in-product neutrality statement** — the single most defensible claim is invisible to users | Neutral | A family comparing Keel's insight against State Farm's AI or PolicyPilot's score has no reason to believe Keel is less self-interested unless told. | XS (copy) |
 | G3 | **No time-based proactive nudges** — detection only fires on data change, never on the *absence* of expected change | Proactive intelligence | "You haven't updated your profile in 6 months" or "your child turns 18 in 90 days" are trivially implementable and would meaningfully increase the "always-on" claim. | S per nudge |
-| G4 | **Residual Kairos branding** in email sender names, SMS copy, and SendGrid from-address defaults | Neutral, trust | A user receiving a "Kairos Studio" email from their "Agent Oak" family twin has reason to question who they're actually dealing with. | XS |
+| G4 | **Residual LifeKeel branding** in email sender names, SMS copy, and SendGrid from-address defaults | Neutral, trust | A user receiving a "LifeKeel Studio" email from their "LifeKeel" family twin has reason to question who they're actually dealing with. | XS |
 
 ### Significant gaps (the position holds but is weaker than it should be)
 
 | # | Gap | Weakens which claim | Why it matters competitively | Size |
 |---|---|---|---|---|
-| G5 | **Playbooks are static templates** — no adaptive branching based on what the family actually has (income protection? → skip "apply for benefits", show "file claim") | Crisis-native | ShockPlan (a hackathon project) already branches based on what you tell it. Oak has the data to branch *without asking* and doesn't. | M |
-| G6 | **No free-text context capture during crisis** — Oak can't personalize beyond event-type + profile data | Crisis-native | The product-review council's #1 recommendation for Emergency Mode. "My spouse is at County Hospital, kids need pickup" is information Oak should capture and show to other family members. | M |
+| G5 | **Playbooks are static templates** — no adaptive branching based on what the family actually has (income protection? → skip "apply for benefits", show "file claim") | Crisis-native | ShockPlan (a hackathon project) already branches based on what you tell it. Keel has the data to branch *without asking* and doesn't. | M |
+| G6 | **No free-text context capture during crisis** — Keel can't personalize beyond event-type + profile data | Crisis-native | The product-review council's #1 recommendation for Emergency Mode. "My spouse is at County Hospital, kids need pickup" is information Keel should capture and show to other family members. | M |
 | G7 | **Scenarios are household-level only** — no per-member "what happens to *my* retirement" | Whole-family | The member twin exists, member readiness exists, but scenarios can't scope to a member. A second earner can't explore their own trajectory. | M |
-| G8 | **No Open Banking live feeds** — detection runs on declared data only, not real account balances | Continuous detection, Proactive intelligence | Trustworthy "Next" has Gmail sync for documents; Oak has that too. But neither has live financial feeds. The first to get them has a detection advantage the other can't match from documents alone. | L (partnership-blocked) |
-| G9 | **Youth financial literacy is thin** — age-banded lesson cards with no progression, gamification, or savings challenges | Whole-family | Nova Financial AI and Monia both pitch family financial education as a headline feature. Oak's youth twin is carefully designed (redacted, guardian-personed) but content-thin. | M |
-| G10 | **No adaptive insight copy** — all insights use the same reasoning_template regardless of how many times the family has seen it, whether they've acted on it before, or what else changed | Proactive intelligence | The first time "your emergency fund is short" fires, it's valuable. The 5th time, it's noise. Origin's proactive system resolves or escalates; Oak re-fires the same template. | M |
+| G8 | **No Open Banking live feeds** — detection runs on declared data only, not real account balances | Continuous detection, Proactive intelligence | Trustworthy "Next" has Gmail sync for documents; Keel has that too. But neither has live financial feeds. The first to get them has a detection advantage the other can't match from documents alone. | L (partnership-blocked) |
+| G9 | **Youth financial literacy is thin** — age-banded lesson cards with no progression, gamification, or savings challenges | Whole-family | Nova Financial AI and Monia both pitch family financial education as a headline feature. Keel's youth twin is carefully designed (redacted, guardian-personed) but content-thin. | M |
+| G10 | **No adaptive insight copy** — all insights use the same reasoning_template regardless of how many times the family has seen it, whether they've acted on it before, or what else changed | Proactive intelligence | The first time "your emergency fund is short" fires, it's valuable. The 5th time, it's noise. Origin's proactive system resolves or escalates; Keel re-fires the same template. | M |
 
 ### Latent gaps (not urgent but will matter in 6-12 months)
 
 | # | Gap | Weakens which claim | Notes |
 |---|---|---|---|
-| G11 | **No Empathy-style post-crisis handoff** — the playbook ends with Oak's own checklist, no referral to professional support | Crisis-native | Empathy expanded to the UK in 2025. A natural partnership, not a build. |
+| G11 | **No Empathy-style post-crisis handoff** — the playbook ends with Keel's own checklist, no referral to professional support | Crisis-native | Empathy expanded to the UK in 2025. A natural partnership, not a build. |
 | G12 | **No on-device inference for crisis flows** (PRD-113 scoped but not built) | Trust, differentiation | Still unclaimed by any competitor. The most sensitive flows (bereavement, disability) routing through a cloud LLM is a reasonable privacy concern for some families. |
-| G13 | **No "explain this score" on the readiness score itself** — subscores are shown but the reasoning behind each (which rules fired, what data drove it) isn't exposed to the user | Proactive intelligence | PolicyPilot and CoverageGap.ai both show a score *with* the reasoning. Oak's readiness score is a number without a visible audit trail on the client side. |
+| G13 | **No "explain this score" on the readiness score itself** — subscores are shown but the reasoning behind each (which rules fired, what data drove it) isn't exposed to the user | Proactive intelligence | PolicyPilot and CoverageGap.ai both show a score *with* the reasoning. Keel's readiness score is a number without a visible audit trail on the client side. |
 | G14 | **`/assistant/simulate` doesn't expose multi-step `steps[]`** — only the persisted `/family/scenarios` routes do | Crisis-native | The conversational assistant can't do "what if I lose my job for 3 months, then get a new job at 80% salary?" in a single question. |
 
 ---
 
 ## Part 3 — The Innovation Flywheel
 
-The flywheel is the self-reinforcing loop that makes Agent Oak
+The flywheel is the self-reinforcing loop that makes LifeKeel
 progressively harder to compete with. Every turn of the wheel makes the
 next turn easier and more valuable.
 
@@ -262,7 +262,7 @@ next turn easier and more valuable.
                                  │
                     ┌────────────▼────────────┐
                     │   TRUST & ENGAGEMENT     │
-                    │   (family trusts Oak,    │
+                    │   (family trusts Keel,    │
                     │    returns, updates       │
                     │    profile, uploads docs, │
                     │    connects accounts)     │
@@ -279,7 +279,7 @@ next turn easier and more valuable.
 **Why this is defensible:** every turn of the wheel deposits data and
 earned trust that a competitor can't replicate by copying features. A
 family that has uploaded 12 insurance policies, built 3 scenarios, and
-acted on 8 insights has an Oak that *knows them* — switching to LifeOS
+acted on 8 insights has an Keel that *knows them* — switching to LifeOS
 or Trustworthy means re-entering everything and losing the detection
 history. The flywheel's switching cost is the data + the trust + the
 history, not the UI.
@@ -313,17 +313,17 @@ This alone moves Claim 1 from 7/10 to 8/10.
 
 | Initiative | Gap closed | What it does | Effort | Priority |
 |---|---|---|---|---|
-| **Adaptive insight copy** | G10 | Track per-rule fire count per tenant; after 2 fires for the same rule+entity, escalate language from "consider reviewing" to "this is the Nth time Oak has flagged this" and include what changed since last fire | M | P0 |
-| **In-product neutrality statement** | G2 | A visible badge/line on every protection-gap insight card: "Oak has no financial relationship with any insurer" | XS | P0 |
+| **Adaptive insight copy** | G10 | Track per-rule fire count per tenant; after 2 fires for the same rule+entity, escalate language from "consider reviewing" to "this is the Nth time Keel has flagged this" and include what changed since last fire | M | P0 |
+| **In-product neutrality statement** | G2 | A visible badge/line on every protection-gap insight card: "Keel has no financial relationship with any insurer" | XS | P0 |
 | **Readiness score explainability** | G13 | Expose the rules that drove each subscore on the readiness endpoint + a client-side "why this score" expandable section | S | P1 |
 | **Adaptive playbook branching** | G5 | Playbook steps gain `condition` fields (same filtrex as detectors) — "skip if family has income_protection", "show if no will on file" | M | P1 |
-| **Free-text crisis context** | G6 | A `context` field on `POST /family/life-events` stored with the event, displayed to other family members, fed to Ask Oak for grounded crisis Q&A | S | P1 |
+| **Free-text crisis context** | G6 | A `context` field on `POST /family/life-events` stored with the event, displayed to other family members, fed to Ask Keel for grounded crisis Q&A | S | P1 |
 
 #### Turn 3 — Trust & Engagement (making families return and deepen data)
 
 | Initiative | Gap closed | What it does | Effort | Priority |
 |---|---|---|---|---|
-| **Kairos branding cleanup** | G4 | Replace all `kairos`/`Kairos Studio` defaults in SendGrid from-address, SMS copy, email HTML, and action-executor with `Agent Oak` / `oak@agentoak.com` | XS | P0 |
+| **LifeKeel branding cleanup** | G4 | Replace all `lifekeel`/`LifeKeel Studio` defaults in SendGrid from-address, SMS copy, email HTML, and action-executor with `LifeKeel` / `keel@lifekeel.com` | XS | P0 |
 | **Member-scoped scenarios** | G7 | `member_id` on scenario inputs → compute against the member's earner slice + pension, not the household aggregate | M | P1 |
 | **Youth literacy progression** | G9 | Track lesson completion per member; unlock age-appropriate next lessons; parent-visible progress | M | P2 |
 | **Insight-to-action conversion tracking** | — | When a family dismisses + acts (e.g., uploads a new policy within 30 days of a protection-gap insight), attribute the action to the insight. Visible in the audit log + readiness score history. | M | P1 |
@@ -345,7 +345,7 @@ This alone moves Claim 1 from 7/10 to 8/10.
 | **Readiness quiz → signup conversion** | — | Quiz result page shows "you scored 62/100 — families like yours improved by 23 points in their first month" with a direct signup CTA | S | P0 |
 | **Shareable readiness score card** | — | A branded, privacy-safe image (score + components, no personal data) for social sharing from the quiz result | S | P1 |
 | **Detector-driven SEO content** | — | PRD-202's content engine: one explainer post per detector rule, cross-linked from insight cards and the marketing blog | M | P1 |
-| **B2B2C positioning doc** | G11 | A one-pager for insurance carriers: "Oak prepares families before the claim; Empathy supports them after. Offer both." | XS (content) | P2 |
+| **B2B2C positioning doc** | G11 | A one-pager for insurance carriers: "Keel prepares families before the claim; Empathy supports them after. Offer both." | XS (content) | P2 |
 
 ### Implementation status (October 2026 batch)
 
@@ -357,7 +357,7 @@ holder-composite entity keys — `family_education_pacing`,
 dataset at F1 = 1.0. Adaptive insight copy (G10), readiness drivers
 (G13), free-text crisis context (G6), member-scoped scenarios (G7),
 insight→action attribution, annual profile review, quiz CTA,
-beneficiary field, and the Kairos branding cleanup are all live.
+beneficiary field, and the LifeKeel branding cleanup are all live.
 Quiz CTA uses factual benefits, not the invented "improved by 23
 points" social-proof stat — we don't have that data yet. Remaining:
 P2 items, Open Banking (blocked on TrueLayer partnership), detector
@@ -375,7 +375,7 @@ math:
   never sees what moved, why, or who it affects. Weakens Trust &
   Engagement directly: there is no reason to return between crises.
 - **G16 — estate is two booleans.** "Will on file? POA on file?" is
-  the whole of Oak's continuity reasoning. Who a document covers, who
+  the whole of Keel's continuity reasoning. Who a document covers, who
   it names, when it was reviewed, where the original is, and how an
   inherited or ancestral property is actually owned — the knowledge
   families lose between generations — isn't modelled at all. No
@@ -395,7 +395,7 @@ them:
 | A | `family.legacy` signal + `legacy-readiness.yaml` (10 rules) + golden evals; `legacy` readiness component | 137 | Detection Breadth | S | register |
 | **B** | Weekly/monthly heartbeat per adult via `DeliveryRouter` + preference center (channels, quiet hours, domain/member scope, cadence, exempt criticals) | 136 | Trust & Engagement | M | events model |
 | B | Feed feedback (useful / not relevant / handled / remind / data wrong) + 90-day mutes shown with reason | 136 | Insight Value → Data Depth | S | feed |
-| B | Legacy graph read model + Ask Oak grounding + `/legacy` page + vault/assets/member hooks | 137 | Data Depth | L | register |
+| B | Legacy graph read model + Ask Keel grounding + `/legacy` page + vault/assets/member hooks | 137 | Data Depth | L | register |
 | B | Continuity rehearsal ("could Jordan find it?") + family knowledge notes | 137 | Trust & Engagement | S | graph |
 | **C** | Youth literacy progression (G9) — lesson completion as `milestone` feed events | flywheel P2 | Trust & Engagement | M | feed |
 | C | `steps[]` in `/assistant/simulate` (G14) | flywheel P2 | Crisis-native | S | — |
@@ -410,7 +410,7 @@ feedback/mutes, scenario watchlist, weekly/monthly heartbeat (email;
 push deferred until `channels.ts` accepts a non-insight payload),
 preference center, legacy register with visibility + audit, enriched
 `family.estate` signal, estate detector 2→10 rules at F1 = 1.0, estate
-score from the register, legacy graph into Ask Oak, `/legacy` page,
+score from the register, legacy graph into Ask Keel, `/legacy` page,
 rehearsal, knowledge notes. Phase C: `steps[]` in `/assistant/simulate`
 shipped; the shareable score card already existed (`routes/share.ts`).
 Open: youth literacy progression (G9), detector-driven SEO posts, and
@@ -423,8 +423,8 @@ pnpm lint && pnpm test && pnpm build` green, and the Part 4 leading
 metric for the phase's flywheel turn instrumented (30-day return rate
 for A/B; % families with ≥1 legacy document for 137).
 
-**Positioning effect:** Phase A+B move the landing claim from "Oak
-monitors whether your family is protected" to "Oak monitors whether
+**Positioning effect:** Phase A+B move the landing claim from "Keel
+monitors whether your family is protected" to "Keel monitors whether
 your family is protected, shows you what changed each week, and knows
 what exists, who it belongs to, and what to do when responsibility
 passes to someone else." The second half is a claim no funded
@@ -461,9 +461,9 @@ What to do when a competitor makes a move:
 |---|---|---|
 | **Origin adds protection/insurance domain** to their proactive checks | Double down on crisis-native UX (playbooks, scenarios, Emergency Mode) — Origin's DNA is wealth management, not crisis readiness | Try to match Origin's 100+ daily checks across wealth/tax/investing |
 | **Trustworthy ships gap detection** on top of their household data graph | Emphasize per-member reasoning + continuous re-evaluation (Trustworthy's model is household-aggregate, document-stored) | Compete on document organization — Trustworthy has years of UX investment there |
-| **LifeOS drops to £50/mo** or adds a free tier | Lead with the detection engine + scenario simulation — LifeOS's value depends on conversations, Oak's value accrues silently | Compete on price (£7.99 is already value-priced; going lower signals low quality) |
+| **LifeOS drops to £50/mo** or adds a free tier | Lead with the detection engine + scenario simulation — LifeOS's value depends on conversations, Keel's value accrues silently | Compete on price (£7.99 is already value-priced; going lower signals low quality) |
 | **An insurer ships a neutral-looking gap tool** | Make the neutrality claim explicit and visible in-product (G2); publish the business model ("subscription only, zero commissions") | Assume families will infer neutrality from the absence of affiliate links |
-| **Empathy enters the pre-event space** | Explore partnership (Oak before, Empathy after) rather than competing; their B2B distribution is a channel, not a threat | Build grief counseling, bereavement support, or care-management features |
+| **Empathy enters the pre-event space** | Explore partnership (Keel before, Empathy after) rather than competing; their B2B distribution is a channel, not a threat | Build grief counseling, bereavement support, or care-management features |
 | **A competitor ships detect-before-declared** | Accelerate Open Banking integration and the unreported-life-change detection — this is the highest-stakes land grab in the category | Panic-ship a half-baked version; this feature needs trust-tier design more than speed |
 
 ---
@@ -478,12 +478,12 @@ What to do when a competitor makes a move:
 
 2. **Make the neutrality claim visible (G2, G4).** The most defensible
    positioning advantage is invisible to users. A one-line badge on
-   protection-gap insights + fixing the Kairos branding residue is an
+   protection-gap insights + fixing the LifeKeel branding residue is an
    afternoon of work that strengthens the one claim no funded competitor
    can copy without changing their business model.
 
 3. **Ship time-based proactive nudges (G3).** The "always-on" claim
-   requires that Oak contacts the family *even when nothing changed in
+   requires that Keel contacts the family *even when nothing changed in
    the profile* — child age milestones, stale data, approaching
    retirement targets. These are trivial new detector rules
    (time-comparison conditions) that meaningfully increase the
@@ -497,10 +497,10 @@ the competitive consequence of *not* doing them is most acute.
 
 ## Appendix: Full Capability Inventory vs. Competitor Feature Matrix
 
-| Capability | Agent Oak | Origin | Monarch | Trustworthy | LifeOS | PolicyPilot | Empathy |
+| Capability | LifeKeel | Origin | Monarch | Trustworthy | LifeOS | PolicyPilot | Empathy |
 |---|---|---|---|---|---|---|---|
 | Continuous detection engine | ✅ 13 rules | ✅ 100+ daily checks | ❌ | ❌ | ⚠ conversation-initiated | ❌ one-shot | ❌ |
-| Per-member reasoning | ✅ twin + readiness + scoped Ask Oak | ❌ household only | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Per-member reasoning | ✅ twin + readiness + scoped Ask Keel | ❌ household only | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Protection gap analysis | ✅ 5 rules | ⚠ (as part of broader checks) | ❌ | ❌ | ✅ GOV.UK-grounded | ✅ per-policy | ❌ |
 | Emergency/crisis mode | ✅ 7 event types + playbooks | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ post-event |
 | Scenario simulation | ✅ multi-step, time-shifted, persisted | ⚠ Monte Carlo for retirement | ❌ | ❌ | ❌ | ❌ | ❌ |

@@ -7,7 +7,7 @@ deliberately scoped to adding a real household member to an existing
 family — reusing it for growth would mean loosening a trust gate that
 was a considered decision, not an oversight. Nothing today lets an
 existing family invite a *friend* — someone starting their own,
-completely separate Agent Oak account — the standard "invite a friend"
+completely separate LifeKeel account — the standard "invite a friend"
 growth loop every fintech in
 [competitive-differentiation-deep-dive-2026.md](../reviews/competitive-differentiation-deep-dive-2026.md#angle-5--distribution-the-invite-code-is-already-a-growth-loop-not-just-an-access-mechanism)'s
 research runs. There's no shareable referral link, no attribution, no
@@ -24,7 +24,7 @@ two-sided reward).
 
 ## Who it's for
 
-An existing Agent Oak family who wants to tell a friend about it — not a
+An existing LifeKeel family who wants to tell a friend about it — not a
 household member, a genuinely separate family who'd get their own
 account. The reward should make that one tap worth taking, for both
 sides.

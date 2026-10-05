@@ -15,7 +15,7 @@ depends on.
 
 See [000](000-market-landscape-and-positioning.md). Trustworthy's whole
 category is built around document storage as the primary interaction;
-Agent Oak's free/paid split (store for free, extract for a fee) is a
+LifeKeel's free/paid split (store for free, extract for a fee) is a
 reasonable monetization wedge on top of that same mechanic, not a novel
 one — the bar is Trustworthy's document-organization quality, which this
 feature should be benchmarked against directly.
@@ -23,7 +23,7 @@ feature should be benchmarked against directly.
 ## Who it's for
 
 Two different users of the same feature: free-tier households who just
-want a secure place to keep a document, and paid households who want Oak
+want a secure place to keep a document, and paid households who want Keel
 to read it for them.
 
 ## What's shipped

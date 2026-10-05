@@ -28,7 +28,7 @@ describe('AuthProvider.signUp', () => {
       await result.current.signUp('Jane Doe', 'jane@example.com', 'password123')
     })
 
-    expect(localStorage.getItem('agentoak_token')).toBe('tok_123')
+    expect(localStorage.getItem('lifekeel_token')).toBe('tok_123')
     expect(result.current.user?.email).toBe('jane@example.com')
 
     const [, requestInit] = fetchMock.mock.calls[0]!
@@ -66,7 +66,7 @@ describe('AuthProvider.signIn', () => {
 
 describe('AuthProvider.updateEmail', () => {
   it('PUTs to /auth/profile with the Authorization header and persists the returned user', async () => {
-    localStorage.setItem('agentoak_token', 'existing-token')
+    localStorage.setItem('lifekeel_token', 'existing-token')
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       // /auth/me must succeed here — the mount-time rehydrate effect wipes
       // the stored token on a failed /auth/me, which would defeat this
@@ -122,7 +122,7 @@ describe('AuthProvider.signOut', () => {
       return jsonResponse({}, false)
     })
     vi.stubGlobal('fetch', fetchMock)
-    localStorage.setItem('agentoak_token', 'existing-token')
+    localStorage.setItem('lifekeel_token', 'existing-token')
 
     const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -132,7 +132,7 @@ describe('AuthProvider.signOut', () => {
       result.current.signOut()
     })
 
-    expect(localStorage.getItem('agentoak_token')).toBeNull()
+    expect(localStorage.getItem('lifekeel_token')).toBeNull()
     expect(localStorage.getItem('family-auth')).toBeNull()
     expect(result.current.isAuthenticated).toBe(false)
   })

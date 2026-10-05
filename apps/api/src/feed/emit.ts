@@ -11,7 +11,7 @@
  */
 import type { Db } from 'mongodb'
 import { randomUUID } from 'node:crypto'
-import { createLogger, getTenantCollection } from '@agentoak/platform'
+import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { ReadinessEventSchema, type ReadinessEventType } from './event-schema.js'
 import { findEventMute } from './mutes.js'
 

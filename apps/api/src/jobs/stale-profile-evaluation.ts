@@ -44,8 +44,8 @@
  */
 
 import type { Db } from 'mongodb'
-import type { Engine, Insight } from '@agentoak/engine'
-import { createLogger } from '@agentoak/platform'
+import type { Engine, Insight } from '@lifekeel/engine'
+import { createLogger } from '@lifekeel/platform'
 import { getFamilyFinancialProfileCollection } from '../db.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 import {
@@ -150,7 +150,7 @@ export async function runStaleProfileEvaluationSweep(
             member_id: null,
             domain: null,
             title: 'Daily check ran — nothing changed',
-            summary: 'Oak re-ran the readiness checks against the saved profile and found nothing new.',
+            summary: 'Keel re-ran the readiness checks against the saved profile and found nothing new.',
             evidence: [],
             links: [],
             next_check_at: nextCheck,

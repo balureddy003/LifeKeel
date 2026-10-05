@@ -25,7 +25,7 @@ import crypto from 'node:crypto'
 import { z } from 'zod'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import type { Engine } from '@agentoak/engine'
+import type { Engine } from '@lifekeel/engine'
 import { getGrowthEventsCollection } from '../db.js'
 import { computeReadiness } from '../readiness/score.js'
 import type { FinancialProfile } from './family-financial-profile.js'
@@ -63,7 +63,7 @@ function scoreBand(score: number): string {
 export async function registerReadinessQuizRoutes(app: FastifyInstance, db: Db, engine: Engine): Promise<void> {
   app.post<{ Body: QuizAnswers }>(
     '/readiness-quiz',
-    // OAK-026: this route is unauthenticated by design (no tenant_id, so
+    // KEEL-026: this route is unauthenticated by design (no tenant_id, so
     // the global rate limit keys purely off req.ip) — a tighter ceiling
     // than the shared default limits casual abuse, though it doesn't fully
     // close the gap: a caller distributing requests across many IPs still

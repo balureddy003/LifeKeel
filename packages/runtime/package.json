@@ -1,5 +1,5 @@
 {
-  "name": "@agentoak/runtime",
+  "name": "@lifekeel/runtime",
   "version": "0.1.0",
   "description": "Replaceable runtime ports and reference adapters for the outcome-lifecycle model",
   "type": "module",
@@ -20,7 +20,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@agentoak/specifications": "workspace:*"
+    "@lifekeel/specifications": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

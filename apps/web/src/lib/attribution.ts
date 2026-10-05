@@ -9,7 +9,7 @@
  * minimal — five utm_* fields plus referrer/path, no fingerprinting.
  */
 
-const KEY = 'agentoak_attribution'
+const KEY = 'lifekeel_attribution'
 
 export interface Attribution {
   utm_source?: string

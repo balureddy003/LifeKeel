@@ -24,7 +24,7 @@
  */
 
 import type { Db } from 'mongodb'
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 import { getFamilyGroupsCollection } from '../db.js'
 import type { FamilyGroupDoc } from '../routes/family-group.js'
 import { getMemberTwin, buildMemberAgent } from '../routes/member-twin.js'

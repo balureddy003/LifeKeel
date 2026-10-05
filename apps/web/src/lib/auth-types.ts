@@ -31,7 +31,7 @@ export interface FamilyGroup {
   name: string
   members: FamilyMemberUser[]
   inviteCode: string
-  /** Organizer-authored household note Ask Oak reads as background (gap 8). */
+  /** Organizer-authored household note Ask Keel reads as background (gap 8). */
   contextNote?: string
 }
 

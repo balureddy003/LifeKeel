@@ -1,12 +1,12 @@
 /**
- * Kairos Connector Registry
+ * LifeKeel Connector Registry
  *
  * Unified connector abstraction for 30+ SMB integrations.
  * Each connector declares:
  *   - auth method (oauth2 | api_key | basic | webhook_only)
  *   - available actions (POST/GET/PUT mapped to business verbs)
  *   - available triggers (webhook events → normalized EventPayload)
- *   - field mappings (connector schema → Kairos unified schema)
+ *   - field mappings (connector schema → LifeKeel unified schema)
  *
  * Categories:
  *   Finance       Xero, QuickBooks, FreshBooks, Wave
@@ -1008,12 +1008,12 @@ export const CONNECTORS: ConnectorDef[] = [
     // Read-only sync (connectors/trading-212.yaml `resources:`) plus three
     // order-placement write actions below. Write access was enabled as an
     // explicit, dated product decision: personal single-tenant use, the
-    // account owner acting on their own Trading 212 account through Kairos
+    // account owner acting on their own Trading 212 account through LifeKeel
     // as their own assistant — not a multi-tenant offering to other
     // customers, so the PRD's Phase-4 "compliance review" gate (aimed at a
     // firm serving the public) doesn't apply here. What does still apply,
     // and is enforced in packages/engine/src/trading/trade-executor.ts, not
-    // here: nothing places an order unless (a) KAIROS_ALLOW_LIVE_TRADING=true,
+    // here: nothing places an order unless (a) LIFEKEEL_ALLOW_LIVE_TRADING=true,
     // (b) the tenant has opted in via /portfolio/live-trading/opt-in, and
     // (c) the stored credential has extra.live_mode=true — all off by
     // default. This entry must stay factually aligned with
@@ -1110,7 +1110,7 @@ export const CONNECTORS: ConnectorDef[] = [
     // POST /connectors/zerodha/credentials). See connectors/zerodha.yaml auth
     // notes for the full flow. Order placement endpoints require a static
     // egress IP (NSE retail algo circular) — infra concern, not encoded here.
-    // Live trading is gated the same way as Trading 212: KAIROS_ALLOW_LIVE_TRADING,
+    // Live trading is gated the same way as Trading 212: LIFEKEEL_ALLOW_LIVE_TRADING,
     // tenant opt-in, and extra.live_mode=true on the credential.
     description: 'Sync of holdings, positions, funds, and order events from Zerodha Kite Connect, plus order placement/cancellation gated behind explicit tenant opt-in.',
     icon: '🪁',
@@ -1238,7 +1238,7 @@ export const CONNECTORS: ConnectorDef[] = [
   // ── INTERNAL ─────────────────────────────────────────────────────────────
 
   {
-    id: 'kairos_webhook',
+    id: 'lifekeel_webhook',
     name: 'Webhook (generic)',
     category: 'internal',
     description: 'Send or receive data via any HTTP webhook',
@@ -1255,7 +1255,7 @@ export const CONNECTORS: ConnectorDef[] = [
       ]},
     ],
     triggers: [
-      { id: 'webhook_received', label: 'Webhook received', event_type: 'webhook.received', webhook_event: 'kairos.webhook', description: 'Any inbound webhook payload' },
+      { id: 'webhook_received', label: 'Webhook received', event_type: 'webhook.received', webhook_event: 'lifekeel.webhook', description: 'Any inbound webhook payload' },
     ],
   },
 ]

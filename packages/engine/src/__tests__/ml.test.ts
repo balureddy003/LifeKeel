@@ -1,5 +1,5 @@
 /**
- * @agentoak/engine — lightweight ML layer unit tests
+ * @lifekeel/engine — lightweight ML layer unit tests
  *
  * Covers: NoveltyTracker, ChangePointDetector, FeatureHashScorer,
  *         ExponentialSmoother, fitIsotonic/applyIsotonic, ScoreCalibrator (Platt + isotonic).

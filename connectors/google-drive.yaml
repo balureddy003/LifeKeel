@@ -2,7 +2,7 @@ id: google_drive
 name: Google Drive
 provider: google
 version: 1.0.0
-description: Sync CSV, Excel, and JSON files from Google Drive folders directly into the Kairos engine
+description: Sync CSV, Excel, and JSON files from Google Drive folders directly into the LifeKeel engine
 category: cloud_storage
 base_url: https://www.googleapis.com
 

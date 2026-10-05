@@ -74,8 +74,8 @@ function makeFakeDb() {
   } as any
 }
 
-vi.mock('@agentoak/platform', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@agentoak/platform')>()
+vi.mock('@lifekeel/platform', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@lifekeel/platform')>()
   return {
     ...actual,
     getTenantCollection: (db: any, name: string, tenantId: string) => ({

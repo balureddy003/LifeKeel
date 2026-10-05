@@ -10,17 +10,17 @@
  * Do NOT include in any public technical blog post, conference presentation,
  * or open-source repository before filing the non-provisional application.
  *
- * Contact: legal@kairos.dev before any distribution decision.
+ * Contact: legal@lifekeel.dev before any distribution decision.
  * ─────────────────────────────────────────────────────────────────────────────
  *
- * SkillOptimizer — Self-evolving skill prompt optimization for Kairos.
+ * SkillOptimizer — Self-evolving skill prompt optimization for LifeKeel.
  *
  * Implements the SkillOpt architecture (Microsoft Research, 2025):
  * treat natural-language skill documents as trainable artifacts and
  * optimize them via a Rollout → Reflect → Edit → Gate loop without
  * touching model weights.
  *
- * Kairos-specific adaptations:
+ * LifeKeel-specific adaptations:
  *  - Uses AttributionTracker outcomes as the training signal (approved/rejected)
  *  - Gates against DetectorEvalRunner F1 or skill approval rate
  *  - Stores optimized prompts in MongoDB; Studio picks them up automatically
@@ -45,7 +45,7 @@
  */
 
 import { randomUUID } from 'crypto'
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'skill-optimizer', version: '0.0.0' })
 
@@ -54,7 +54,7 @@ const REJECTION_MEMORY_LIMIT = 10
 /** Max history documents scanned when rebuilding rejection memory. */
 const REJECTION_MEMORY_DOC_LIMIT = 20
 
-/** LLM function signature — matches @agentoak/platform LlmFn */
+/** LLM function signature — matches @lifekeel/platform LlmFn */
 type LlmFn = (system: string, prompt: string, model: string) => Promise<string>
 
 // ── MongoDB structural type (no hard dep on mongodb package) ──────────────────

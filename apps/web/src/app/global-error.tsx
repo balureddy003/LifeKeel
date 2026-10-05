@@ -39,7 +39,7 @@ export default function GlobalError({
           Something went wrong
         </h1>
         <p style={{ color: '#9a9aa5', marginBottom: '2rem', maxWidth: '20rem' }}>
-          Agent Oak hit an unexpected error loading the app. Your data is safe — reload to try again.
+          LifeKeel hit an unexpected error loading the app. Your data is safe — reload to try again.
         </p>
         <button
           onClick={reset}

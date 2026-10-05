@@ -5,9 +5,9 @@
  * minor units (USD cents × 100 = "micro-dollars"), and writes to MongoDB.
  *
  * This is the #1 missing feature for enterprise B2B: without cost attribution,
- * tenants cannot budget their AI usage and Kairos cannot offer usage-based pricing.
+ * tenants cannot budget their AI usage and LifeKeel cannot offer usage-based pricing.
  *
- * Pricing table: static defaults, overridable via KAIROS_LLM_PRICING_JSON env var.
+ * Pricing table: static defaults, overridable via LIFEKEEL_LLM_PRICING_JSON env var.
  * Prices are per 1,000 tokens, in micro-dollars (USD cents × 100).
  *
  * Usage:
@@ -54,7 +54,7 @@ const DEFAULT_PRICING: Record<string, ModelPricing> = {
 
 function loadPricingTable(): Record<string, ModelPricing> {
   try {
-    const override = process.env['KAIROS_LLM_PRICING_JSON']
+    const override = process.env['LIFEKEEL_LLM_PRICING_JSON']
     if (override) return { ...DEFAULT_PRICING, ...JSON.parse(override) } as Record<string, ModelPricing>
   } catch { /* ignore malformed override */ }
   return DEFAULT_PRICING

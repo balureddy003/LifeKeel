@@ -22,7 +22,7 @@ export const X_AGENT_TOOL_PACK: AgentToolPack = {
   label: 'X Agent Tools',
   description: 'Agent-native X API tools based on X MCP/OpenAPI operation naming.',
   source: 'https://docs.x.com/tools/ai',
-  allowlist_env: 'KAIROS_X_TOOL_ALLOWLIST',
+  allowlist_env: 'LIFEKEEL_X_TOOL_ALLOWLIST',
   recommended_allowlist: [
     'createPosts',
     'deletePosts',
@@ -186,7 +186,7 @@ export const X_AGENT_ACTIONS: ConnectorAction[] = [
 ]
 
 export function resolveXAgentActions(allowlist?: string): ConnectorAction[] {
-  const requested = (allowlist ?? process.env['KAIROS_X_TOOL_ALLOWLIST'] ?? '')
+  const requested = (allowlist ?? process.env['LIFEKEEL_X_TOOL_ALLOWLIST'] ?? '')
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean)

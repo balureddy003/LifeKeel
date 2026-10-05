@@ -76,7 +76,7 @@ describe('ReadinessFeed', () => {
   it('shows the empty state when nothing has moved', async () => {
     fetchFeed.mockResolvedValue([])
     render(<ReadinessFeed />)
-    expect(await screen.findByText('Nothing has moved yet — Oak checks daily')).toBeTruthy()
+    expect(await screen.findByText('Nothing has moved yet — Keel checks daily')).toBeTruthy()
   })
 
   it('renders a member chip resolved from the roster', async () => {

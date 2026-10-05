@@ -23,7 +23,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { getTenantCollection } from '@agentoak/platform'
+import { getTenantCollection } from '@lifekeel/platform'
 import { getFamilyCashflowCollection, getFamilyFinancialProfileCollection } from '../db.js'
 
 export interface CashflowEntryDoc extends Record<string, unknown> {

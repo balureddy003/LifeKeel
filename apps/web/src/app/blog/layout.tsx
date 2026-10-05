@@ -6,13 +6,13 @@ import type { Metadata } from 'next'
 // placeholder, see blog/[slug]/page.tsx); BlogPostClient injects them
 // client-side once the post loads.
 export const metadata: Metadata = {
-  title: 'From Agent Oak — plain-language readiness explainers',
-  description: 'Plain-language explainers behind what Oak checks for your family — job loss, medical bills, coverage gaps, and the stuff that surprises households.',
-  alternates: { canonical: 'https://agent-oak.ai/blog/' },
+  title: 'From LifeKeel — plain-language readiness explainers',
+  description: 'Plain-language explainers behind what Keel checks for your family — job loss, medical bills, coverage gaps, and the stuff that surprises households.',
+  alternates: { canonical: 'https://lifekeel.co.uk/blog/' },
   openGraph: {
-    title: 'From Agent Oak — plain-language readiness explainers',
-    description: 'Plain-language explainers behind what Oak checks for your family.',
-    url: 'https://agent-oak.ai/blog/',
+    title: 'From LifeKeel — plain-language readiness explainers',
+    description: 'Plain-language explainers behind what Keel checks for your family.',
+    url: 'https://lifekeel.co.uk/blog/',
     type: 'website',
   },
 }

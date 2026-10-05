@@ -49,7 +49,7 @@ export class ConnectorSchemaRegistry {
 
     try {
       const schema = JSON.parse(readFileSync(schemaPath, 'utf-8'))
-      const kairos = schema.kairos as {
+      const lifekeel = schema.lifekeel as {
         connector_id?: string
         event_type?: string
         schema_version?: string
@@ -58,11 +58,11 @@ export class ConnectorSchemaRegistry {
       } | undefined
 
       const connectorSchema: ConnectorSchema = {
-        connector_id: kairos?.connector_id || connectorId,
-        event_type: kairos?.event_type || eventType,
-        schema_version: kairos?.schema_version || '1.0.0',
-        signal_type: kairos?.signal_type || eventType,
-        min_schema_version: kairos?.min_schema_version || '1.0.0',
+        connector_id: lifekeel?.connector_id || connectorId,
+        event_type: lifekeel?.event_type || eventType,
+        schema_version: lifekeel?.schema_version || '1.0.0',
+        signal_type: lifekeel?.signal_type || eventType,
+        min_schema_version: lifekeel?.min_schema_version || '1.0.0',
         schema,
       }
 

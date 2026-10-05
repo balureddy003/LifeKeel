@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kairos.io/schemas/trading-212/order.event/v1.0.0",
+  "$id": "https://lifekeel.io/schemas/trading-212/order.event/v1.0.0",
   "title": "Trading 212 Order Event",
   "description": "Executed order or transaction event (buy, sell, dividend).",
   "type": "object",
-  "kairos": {
+  "lifekeel": {
     "connector_id": "trading-212",
     "event_type": "order.event",
     "schema_version": "1.0.0",

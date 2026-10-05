@@ -22,7 +22,7 @@ function isDiagramBlock(className: string | undefined, text: string): boolean {
   return !lang && text.includes('\n') && DIAGRAM_START.test(text.trim())
 }
 
-const SITE_URL = 'https://agent-oak.ai'
+const SITE_URL = 'https://lifekeel.co.uk'
 
 /**
  * Static export means every /blog/<slug> serves the same placeholder HTML,
@@ -37,7 +37,7 @@ function applyPostSeo(post: BlogPost, slug: string): () => void {
   const description = (post.meta_description || post.excerpt).trim()
   const url = `${SITE_URL}/blog/${slug}/`
   const prevTitle = document.title
-  document.title = `${post.title} — Agent Oak`
+  document.title = `${post.title} — LifeKeel`
 
   const created: HTMLElement[] = []
   const restored: { el: HTMLMetaElement | HTMLLinkElement; prev: string | null }[] = []
@@ -86,10 +86,10 @@ function applyPostSeo(post: BlogPost, slug: string): () => void {
     url,
     datePublished: post.published_at,
     dateModified: post.updated_at ?? post.published_at,
-    author: { '@type': 'Organization', name: post.author || 'Agent Oak', url: SITE_URL },
+    author: { '@type': 'Organization', name: post.author || 'LifeKeel', url: SITE_URL },
     publisher: {
       '@type': 'Organization',
-      name: 'Agent Oak',
+      name: 'LifeKeel',
       logo: { '@type': 'ImageObject', url: `${SITE_URL}/icon.svg` },
     },
     ...(post.cover_image ? { image: post.cover_image } : {}),
@@ -166,7 +166,7 @@ export default function BlogPostClient() {
   if (loading) {
     return (
       <div className="px-5 pt-2 pb-12">
-        <PageHeader title="From Agent Oak" backHref="/blog" action={<></>} />
+        <PageHeader title="From LifeKeel" backHref="/blog" action={<></>} />
         <div className="shimmer h-4 rounded mt-4 mb-2" />
         <div className="shimmer h-4 rounded w-2/3" />
       </div>

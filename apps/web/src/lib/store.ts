@@ -86,7 +86,7 @@ interface AppState {
   setInboxUnreadCount: (count: number) => void
 
   // Insight dismissal learning — per-detector count of explicit dismisses.
-  // A family that dismisses the same kind of insight twice is telling Oak
+  // A family that dismisses the same kind of insight twice is telling Keel
   // it's noise; surfaces that *feature* an insight (the Home hero card)
   // should stop picking that detector, while the insight itself still
   // exists and still counts as open elsewhere.

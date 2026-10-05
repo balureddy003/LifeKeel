@@ -86,7 +86,7 @@ Out of scope: per-member retirement/pension tracking (a household usually
 shares one retirement *goal* even with two earners — splitting that is a
 bigger, separately-justified change) and per-member emergency-fund
 tracking (the fund itself is typically shared). This PRD is scoped to
-income and income-protection, where the OAK-029 evidence is concrete.
+income and income-protection, where the KEEL-029 evidence is concrete.
 
 ## Success metrics
 

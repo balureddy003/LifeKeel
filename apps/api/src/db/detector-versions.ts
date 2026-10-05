@@ -5,7 +5,7 @@
  */
 
 import type { Collection, Db } from 'mongodb'
-import type { DetectorVersion } from '@agentoak/engine'
+import type { DetectorVersion } from '@lifekeel/engine'
 
 let detectorVersionsCollection: Collection<DetectorVersion> | null = null
 

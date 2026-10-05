@@ -10,9 +10,9 @@ are the same sensitivity class as data already collected:
 
 - **Real assets** — property, vehicles, savings accounts, valuables. No
   medical data, no regulated advice. Estate planning and the continuity
-  switch both get sharper when Oak knows what the family actually owns.
+  switch both get sharper when LifeKeel knows what the family actually owns.
 - **Family context** — the free-text facts profiles can't express
-  ("we're a blended family", "the flat in Leeds is Mum's"). Ask Oak's
+  ("we're a blended family", "the flat in Leeds is Mum's"). Ask Keel's
   answers are noticeably poorer without them.
 
 **Individual preferences** stay deferred: modeling decision-rights
@@ -41,7 +41,7 @@ rosters first.
   member names).
 - A "Household Context" card on `/settings` (organizer-only) with
   "please don't include medical details" guidance in the copy.
-- `buildContext` in `assistant.ts` appends the note to Ask Oak's
+- `buildContext` in `assistant.ts` appends the note to Ask Keel's
   assembled context — it's user-authored background, labeled as such,
   and deletable by clearing the field.
 

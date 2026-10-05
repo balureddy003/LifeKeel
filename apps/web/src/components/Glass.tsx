@@ -290,7 +290,7 @@ export function PageHeader({
   backHref?: string
   action?: ReactNode
 }) {
-  const assistantAction = title !== 'Oak' ? (
+  const assistantAction = title !== 'Keel' ? (
     <Link
       href="/assistant"
       onClick={() => haptic('light')}
@@ -388,7 +388,7 @@ export function Money({ value, className = '' }: { value: string; className?: st
 // with showMoney off (e.g. Child), silently defeating the one feature this
 // component exists for. Matches both symbols — $ still appears in sample/
 // mock copy elsewhere that isn't live data.
-// Exported for assistant/page.tsx — Ask Oak's rich-text rendering redacts
+// Exported for assistant/page.tsx — Ask Keel's rich-text rendering redacts
 // currency in the raw markdown *string* (before ReactMarkdown parses it),
 // since MoneyText's own JSX-wrapping approach only works on a single text
 // node, not a whole tree of parsed markdown elements.

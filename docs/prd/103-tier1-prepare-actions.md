@@ -1,12 +1,12 @@
-# PRD-103: Tier 1 "prepare" actions — Oak drafts, a human sends
+# PRD-103: Tier 1 "prepare" actions — Keel drafts, a human sends
 
 ## Problem
 
 Every insight today is Decide/Escalate-shaped but not Prepare-shaped: an
 insight moves through `identified → approve/dismiss/archive`
 ([insights.ts](../../apps/api/src/routes/insights.ts)) with no
-intermediate step where Oak actually does anything to reduce the family's
-effort. ARCHITECTURE.md's roadmap names this the natural next step: "Oak
+intermediate step where Keel actually does anything to reduce the family's
+effort. ARCHITECTURE.md's roadmap names this the natural next step: "Keel
 drafts something — a checklist, a pre-filled form, a draft email — but a
 human sends/submits it... stays Tier 1."
 
@@ -44,7 +44,7 @@ exit actions: **copy to clipboard** and **open in your email client**
 **Tier 1 — Decide + Prepare.** Not Tier 2: no per-action consent flow is
 needed because nothing external ever happens — the draft never leaves the
 app except through the user's own email client, which they control after
-that point. If a future PRD proposes Oak sending on the family's behalf,
+that point. If a future PRD proposes Keel sending on the family's behalf,
 that is a new, separately-justified Tier 2 decision per CLAUDE.md's rule
 ("name its tier in the PR description... if you can't confidently name
 one, it's not ready to ship") — not an incremental extension of this one.

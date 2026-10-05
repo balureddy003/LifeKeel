@@ -30,10 +30,10 @@ interface TriageTurn {
   isLive: boolean
 }
 
-/** Oak triage — the user asks; Oak answers grounded in their account state.
+/** Keel triage — the user asks; Keel answers grounded in their account state.
  *  Only "still need help" creates a human-visible case, carrying the triage
  *  transcript so the operator sees what was already tried. */
-function AskOak({ onCaseCreated }: { onCaseCreated: (c: SupportCase) => void }) {
+function AskKeel({ onCaseCreated }: { onCaseCreated: (c: SupportCase) => void }) {
   const toast = useToast()
   const [question, setQuestion] = useState('')
   const [turns, setTurns] = useState<TriageTurn[]>([])
@@ -84,10 +84,10 @@ function AskOak({ onCaseCreated }: { onCaseCreated: (c: SupportCase) => void }) 
     <div className="rounded-2xl border border-tint/[0.08] bg-tint/[0.03] p-4 mb-6">
       <div className="flex items-center gap-2 mb-3">
         <Sparkles size={16} className="text-family-400" />
-        <span className="text-sm font-semibold text-ink-primary">Ask Oak first</span>
+        <span className="text-sm font-semibold text-ink-primary">Ask Keel first</span>
       </div>
       <p className="text-xs text-ink-tertiary mb-3 leading-relaxed">
-        Most questions are answered instantly. If Oak can&apos;t resolve it, escalate to a human — the conversation is carried over so you never re-explain.
+        Most questions are answered instantly. If Keel can&apos;t resolve it, escalate to a human — the conversation is carried over so you never re-explain.
       </p>
 
       {turns.map((turn, i) => (
@@ -99,7 +99,7 @@ function AskOak({ onCaseCreated }: { onCaseCreated: (c: SupportCase) => void }) 
           </div>
         </div>
       ))}
-      {asking && <p className="mb-3 text-xs text-ink-tertiary">Oak is thinking…</p>}
+      {asking && <p className="mb-3 text-xs text-ink-tertiary">Keel is thinking…</p>}
 
       {turns.length > 0 && !escalating && (
         <div className="mb-3 flex items-center gap-2">
@@ -124,7 +124,7 @@ function AskOak({ onCaseCreated }: { onCaseCreated: (c: SupportCase) => void }) 
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder="Describe what you need — include anything Oak missed."
+            placeholder="Describe what you need — include anything Keel missed."
             rows={3}
             className="glass-input w-full rounded-lg px-3 py-2 text-sm"
             required
@@ -144,7 +144,7 @@ function AskOak({ onCaseCreated }: { onCaseCreated: (c: SupportCase) => void }) 
             placeholder="How do I…? / Why does…?"
             className="glass-input min-w-0 flex-1 rounded-xl px-4 py-2.5 text-sm"
           />
-          <button disabled={asking || !question.trim()} className="rounded-xl bg-family-500 px-4 text-white disabled:opacity-40" aria-label="Ask Oak">
+          <button disabled={asking || !question.trim()} className="rounded-xl bg-family-500 px-4 text-white disabled:opacity-40" aria-label="Ask Keel">
             <Send size={16} />
           </button>
         </form>
@@ -199,7 +199,7 @@ function CaseCard({ c, onUpdated }: { c: SupportCase; onUpdated: (c: SupportCase
           <div className="text-sm font-medium text-ink-primary truncate">{c.subject}</div>
           <div className="text-xs text-ink-tertiary">
             {new Date(c.updated_at).toLocaleDateString()} · {c.messages.length} message{c.messages.length === 1 ? '' : 's'}
-            {c.ai_triaged ? ' · started with Oak' : ''}
+            {c.ai_triaged ? ' · started with Keel' : ''}
           </div>
         </div>
         <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${CASE_STATUS_STYLES[c.status]}`}>{c.status}</span>
@@ -211,7 +211,7 @@ function CaseCard({ c, onUpdated }: { c: SupportCase; onUpdated: (c: SupportCase
             <div key={m.id} className={`w-fit max-w-[90%] rounded-xl px-3 py-2 ${m.author === 'user' ? 'ml-auto bg-family-500/15' : 'bg-tint/[0.06]'}`}>
               <p className="text-xs leading-relaxed text-ink-secondary">{m.text}</p>
               <p className="mt-1 text-[10px] text-ink-tertiary">
-                {m.author === 'oak' ? 'Oak · AI' : m.author === 'operator' ? `${m.author_name ?? 'Operator'} · support team` : 'You'}
+                {m.author === 'keel' ? 'Keel · AI' : m.author === 'operator' ? `${m.author_name ?? 'Operator'} · support team` : 'You'}
                 {' · '}{new Date(m.created_at).toLocaleString()}
               </p>
             </div>
@@ -256,7 +256,7 @@ export default function SupportPage() {
 
       {user ? (
         <>
-          <AskOak onCaseCreated={(c) => setCases((prev) => [c, ...prev])} />
+          <AskKeel onCaseCreated={(c) => setCases((prev) => [c, ...prev])} />
 
           {(loading || cases.length > 0) && (
             <>
@@ -277,7 +277,7 @@ export default function SupportPage() {
         <div className="rounded-2xl border border-tint/[0.08] bg-tint/[0.03] p-4 mb-6 flex items-start gap-2.5">
           <MessageCircle size={16} className="text-family-400 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-ink-secondary leading-relaxed">
-            Sign in to chat with Oak and open a support case — the conversation stays in-app so you never re-explain.
+            Sign in to chat with Keel and open a support case — the conversation stays in-app so you never re-explain.
           </p>
         </div>
       )}
@@ -294,7 +294,7 @@ export default function SupportPage() {
 
       <H2>Account or billing questions</H2>
       <P>
-        For anything about your account, an Oak Plus subscription, or a charge you don&apos;t recognize, open a
+        For anything about your account, an Keel Plus subscription, or a charge you don&apos;t recognize, open a
         case above — it lands in the operator inbox with your account context attached.
       </P>
 
@@ -313,7 +313,7 @@ export default function SupportPage() {
 
       <H2>In a real emergency</H2>
       <P>
-        Agent Oak is not emergency services and can&apos;t dispatch help. If you&apos;re in immediate danger, call{' '}
+        LifeKeel is not emergency services and can&apos;t dispatch help. If you&apos;re in immediate danger, call{' '}
         <EmergencyNumberText /> first.
       </P>
     </div>

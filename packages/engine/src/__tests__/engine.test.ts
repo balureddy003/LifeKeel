@@ -1,5 +1,5 @@
 /**
- * @agentoak/engine — unit tests
+ * @lifekeel/engine — unit tests
  *
  * Tests: detector loading, event evaluation, rule scoring, multi-tenant isolation.
  */

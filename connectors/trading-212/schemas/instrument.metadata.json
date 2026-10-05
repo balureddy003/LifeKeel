@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kairos.io/schemas/trading-212/instrument.metadata/v1.0.0",
+  "$id": "https://lifekeel.io/schemas/trading-212/instrument.metadata/v1.0.0",
   "title": "Trading 212 Instrument Metadata",
   "description": "Reference metadata for an instrument traded in a Trading 212 account.",
   "type": "object",
-  "kairos": {
+  "lifekeel": {
     "connector_id": "trading-212",
     "event_type": "instrument.metadata",
     "schema_version": "1.0.0",

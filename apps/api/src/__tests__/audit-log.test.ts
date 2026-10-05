@@ -31,7 +31,7 @@ const TEST_ENTRY = {
   resource_id: 'trade-123',
   metadata: { ticker: 'AAPL', status: 'executed' },
   ip: 'internal',
-  user_agent: 'kairos-cron',
+  user_agent: 'lifekeel-cron',
   timestamp: new Date(),
 }
 

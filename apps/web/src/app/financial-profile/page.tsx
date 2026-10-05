@@ -473,7 +473,7 @@ export default function FinancialProfilePage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<number | null>(null)
-  // OAK-006: tracked from the initial GET and updated after every
+  // KEEL-006: tracked from the initial GET and updated after every
   // successful save — sent back on the next save so the server can tell
   // a concurrent edit from another tab/device apart from this tab's own
   // sequential autosaves, instead of silently last-writer-wins overwriting.
@@ -833,7 +833,7 @@ export default function FinancialProfilePage() {
             <div>
               <div className="text-sm font-semibold text-ink-primary mb-0.5">This powers your readiness score</div>
               <p className="text-xs text-ink-tertiary leading-relaxed">
-                The more you share, the more specific Oak&apos;s insights become — your family names are already filled in. You can skip steps and come back later.
+                The more you share, the more specific Keel&apos;s insights become — your family names are already filled in. You can skip steps and come back later.
               </p>
             </div>
           </GlassCard>
@@ -1113,7 +1113,7 @@ export default function FinancialProfilePage() {
                       </label>
                     </div>
                     <div className="text-[11px] text-ink-tertiary">
-                      Shown in your emergency playbooks so the family can call or email fast — Oak never contacts anyone for you.
+                      Shown in your emergency playbooks so the family can call or email fast — Keel never contacts anyone for you.
                     </div>
                   </div>
                 ))}

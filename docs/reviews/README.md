@@ -1,6 +1,6 @@
 # Reviews
 
-Point-in-time product reviews of Agent Oak, distinct from `docs/prd/`'s
+Point-in-time product reviews of LifeKeel, distinct from `docs/prd/`'s
 forward-looking requirement briefs: these audit what's actually shipped
 against acceptance criteria and the product vision, rather than proposing
 new work in PRD format. Findings here that warrant engineering work should
@@ -37,14 +37,14 @@ extraction → profile bridge) had already shipped before the pass — see
    Story), six differentiation angles with recommendations, and what's
    durable vs. catching up. Re-verify before citing beyond ~6 months.
 5. [mobile-apps-distribution-analysis-2026.md](mobile-apps-distribution-analysis-2026.md) —
-   what it takes to offer Agent Oak as native iOS/Android apps alongside
+   what it takes to offer LifeKeel as native iOS/Android apps alongside
    the web app: how much of "mobile" is already shipped as a PWA, the
    PWA / Capacitor-wrap / RN-rewrite options with real costs, and the
    phased recommendation (ship the PWA deliberately → Capacitor when
    store presence earns it, gated on the IAP billing decision).
 6. [vision-vs-implementation-audit-2026-09.md](vision-vs-implementation-audit-2026-09.md) —
    full inventory of every implemented surface mapped against the
-   multi-agent vision brief (Oak HQ + member twins, crisis resilience,
+   multi-agent vision brief (Keel HQ + member twins, crisis resilience,
    proactive intelligence, vault, ingestion engine). Key correction to
    earlier docs: the Act layer is ahead of what ARCHITECTURE.md claimed —
    approve→execute, earned-trust auto-execution, and opt-in autonomous
@@ -57,7 +57,7 @@ extraction → profile bridge) had already shipped before the pass — see
    financial advisors, family vaults, financial digital twins, insurance
    gap tools, crisis support, UK-specific), identifies LifeOS as the
    closest new direct competitor (£100/mo UK AI family office), and
-   recommends positioning Agent Oak as the "family crisis readiness
+   recommends positioning LifeKeel as the "family crisis readiness
    platform" in the proactive + protection quadrant. Produced 2026-10-03.
 8. [built-vs-market-and-innovation-flywheel-2026-10.md](built-vs-market-and-innovation-flywheel-2026-10.md) —
    bridges document 7's external landscape with document 6's internal
@@ -73,7 +73,7 @@ extraction → profile bridge) had already shipped before the pass — see
    local stack (API + Web + MongoDB Atlas + Redis Cloud + Azure OpenAI).
    Tests 17 flows via real HTTP requests: readiness quiz, signup, family
    roster, financial profile + detector evaluation (9 insights from 5
-   detectors), readiness score, Ask Oak, scenario simulation, life-event
+   detectors), readiness score, Ask Keel, scenario simulation, life-event
    playbooks, vault, document OCR, insight approval gate, family sharing,
    member twin/agent, assets, cashflow. Finds 4 bugs (persisted scenario
    timeline zeroed, duplicate roster on join-approve, context note not
@@ -84,7 +84,7 @@ extraction → profile bridge) had already shipped before the pass — see
    adaptive UI, emergency mode, glass design system, and conversational
    onboarding are differentiators; data visualization and visual
    distinctiveness are the biggest gaps). Includes a remediation table
-   tracking fixes: join-request roster dedup, mock-data purge, Kairos
+   tracking fixes: join-request roster dedup, mock-data purge, LifeKeel
    branding cleanup, time-based proactive nudges (age milestones +
    policy renewals), adaptive playbook covered-steps, family signal
    schema registration, scenario timeline chart, readiness history

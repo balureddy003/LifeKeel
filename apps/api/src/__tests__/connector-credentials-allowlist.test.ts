@@ -1,5 +1,5 @@
 /**
- * OAK-002: POST /connectors/:id/credentials must reject any connector id
+ * KEEL-002: POST /connectors/:id/credentials must reject any connector id
  * outside the family app's own allowlist. Before this fix, any
  * authenticated tenant could attach a stripe/linkedin/twitter_x credential
  * directly against the API — connectors the family app's UI never offers —
@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from 'vitest'
 import Fastify from 'fastify'
 import { registerConnectorCredentialRoutes } from '../routes/connector-credentials.js'
 
-vi.mock('@agentoak/pipeline', () => ({
+vi.mock('@lifekeel/pipeline', () => ({
   ConnectorSyncEngine: class {
     backfill = vi.fn(async () => [])
     testConnection = vi.fn(async () => ({ success: true, message: 'ok' }))
@@ -39,7 +39,7 @@ async function buildApp() {
   return app
 }
 
-describe('OAK-002: connector allowlist on POST /connectors/:id/credentials', () => {
+describe('KEEL-002: connector allowlist on POST /connectors/:id/credentials', () => {
   it.each(['stripe', 'linkedin', 'twitter_x', 'xero', 'hubspot', 'sendgrid', 'twilio'])(
     'rejects %s with 403 — not a family-app connector',
     async (connectorId) => {
@@ -71,8 +71,8 @@ describe('OAK-002: connector allowlist on POST /connectors/:id/credentials', () 
 // POST /connectors/:id/credentials — GET /connectors/:id/oauth/start could
 // still walk the full OAuth handshake for any of the 30+ registered
 // connectors (twitter_x included) with zero gating, reachable via a direct
-// API call even though no in-repo UI ever requests it. Studio/kairos-web/
-// kairos-mobile legitimately use connectors this app doesn't (twitter_x for
+// API call even though no in-repo UI ever requests it. Studio/lifekeel-web/
+// lifekeel-mobile legitimately use connectors this app doesn't (twitter_x for
 // real social actions), so the fix is scoped to `?app=family` only.
 describe('follow-up: connector allowlist on GET /connectors/:id/oauth/start', () => {
   it('rejects twitter_x with 403 when the request claims to be the family app', async () => {

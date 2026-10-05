@@ -13,7 +13,7 @@
  */
 
 import type { Db } from 'mongodb'
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 import Stripe from 'stripe'
 import {
   PLAN_QUOTAS,

@@ -11,7 +11,7 @@
 #
 # Relationship to other verticals: this is the only vertical focused on the
 # household as the unit of analysis, rather than a business, portfolio, or
-# audience. It composes new family-specific detectors with the shared Kairos
+# audience. It composes new family-specific detectors with the shared LifeKeel
 # engine core — no new engine surface, same as every other vertical.
 
 id: family

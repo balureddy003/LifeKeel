@@ -35,10 +35,10 @@
  */
 
 import type { FastifyInstance } from 'fastify'
-import type { Engine, Insight } from '@agentoak/engine'
+import type { Engine, Insight } from '@lifekeel/engine'
 import { GridFSBucket, type Db, type ObjectId } from 'mongodb'
 import { randomUUID } from 'node:crypto'
-import { createLogger, getTenantCollection, encryptBuffer, decryptBuffer } from '@agentoak/platform'
+import { createLogger, getTenantCollection, encryptBuffer, decryptBuffer } from '@lifekeel/platform'
 import { isFamilyAdult } from '../lib/family-permissions.js'
 import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE, ESTATE_VAULT_CATEGORY } from './documents.js'
 import { evaluateEstate } from '../legacy/evaluate-estate.js'

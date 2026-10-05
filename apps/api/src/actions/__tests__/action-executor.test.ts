@@ -1,5 +1,5 @@
 /**
- * OAK-002: the action executor must never trigger a real Stripe refund/
+ * KEEL-002: the action executor must never trigger a real Stripe refund/
  * subscription cancellation or a public LinkedIn/Twitter post — those
  * action types were deleted outright (see the file's own header comment).
  * Guardrail (source-level) + behavioral (the classifier/dispatcher no
@@ -16,7 +16,7 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-import type { Insight } from '@agentoak/engine'
+import type { Insight } from '@lifekeel/engine'
 import { ActionExecutor } from '../action-executor.js'
 
 function makeInsight(
@@ -142,7 +142,7 @@ function seedReceipt(overrides: Partial<ReceiptDoc>): ReceiptDoc {
   }
 }
 
-describe('OAK-002: dangerous action types deleted', () => {
+describe('KEEL-002: dangerous action types deleted', () => {
   it('guardrail: source no longer contains the deleted refund/cancel/publish endpoints or action types', () => {
     const source = readFileSync(new URL('../action-executor.ts', import.meta.url), 'utf-8')
 

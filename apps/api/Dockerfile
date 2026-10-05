@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Production Dockerfile for Kairos API Server
+# Production Dockerfile for LifeKeel API Server
 # Builds all workspace packages and starts the compiled API server.
 
 FROM node:22-alpine AS builder
@@ -21,7 +21,7 @@ COPY . .
 RUN pnpm install --frozen-lockfile
 
 # Build workspace packages and the API
-RUN pnpm exec turbo run build --filter=@agentoak/api
+RUN pnpm exec turbo run build --filter=@lifekeel/api
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Production stage — keeps only runtime files and production dependencies

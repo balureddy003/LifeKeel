@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kairos.io/schemas/stripe/charge.succeeded/v1.0.0",
+  "$id": "https://lifekeel.io/schemas/stripe/charge.succeeded/v1.0.0",
   "title": "Stripe Charge Succeeded Event",
   "description": "Schema for Stripe charge.succeeded webhook events",
   "type": "object",
-  "kairos": {
+  "lifekeel": {
     "connector_id": "stripe",
     "event_type": "charge.succeeded",
     "schema_version": "1.0.0",

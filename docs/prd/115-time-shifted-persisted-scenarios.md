@@ -12,7 +12,7 @@ to our runway if a job transition occurs in 6 months?":
    warning would actually arrive at the job loss with a larger fund —
    the honest answer differs, and the old math couldn't produce it.
 2. **Nothing persisted.** A scenario was computed and narrated once,
-   inside Ask Oak, then gone. There was no way to keep "job loss in 6
+   inside Ask Keel, then gone. There was no way to keep "job loss in 6
    months" around and watch it improve as the family saved — and no web
    surface ever called `/simulate` at all; the endpoint was dead code in
    the UI.
@@ -42,7 +42,7 @@ they'll be ready when it lands, not just whether they'd be ready today.
   `DELETE` (creator or any family adult — deleting someone else's saved
   projection isn't a child's call).
 - `POST /assistant/simulate` accepts `monthsUntilChange` and narrates the
-  timing explicitly, so Ask Oak answers "in six months" questions
+  timing explicitly, so Ask Keel answers "in six months" questions
   correctly.
 - The `/events/job-loss` tile gains "If it happened later" — horizon
   chips (now / 3 / 6 / 12 months), the projected runway sentence,

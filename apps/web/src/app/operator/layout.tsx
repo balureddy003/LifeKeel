@@ -14,7 +14,7 @@ export default function OperatorLayout({ children }: { children: ReactNode }) {
         {/* Mobile: no room for a rail — compact header + scrollable tabs. */}
         <header className="sticky top-0 z-sticky border-b border-tint/[0.08] bg-navbg/90 backdrop-blur-xl md:hidden">
           <div className="flex items-center justify-between gap-4 px-5 pt-4">
-            <Link href="/operator" className="font-semibold text-family-400">Agent Oak Operator</Link>
+            <Link href="/operator" className="font-semibold text-family-400">LifeKeel Operator</Link>
             <div className="flex items-center gap-1">
               <Link href="/" className="px-2 text-sm text-ink-tertiary">Product</Link>
               <OperatorSignOutButton />

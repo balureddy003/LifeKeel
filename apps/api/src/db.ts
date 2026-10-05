@@ -11,8 +11,8 @@
  */
 
 import { MongoClient, type Db, type Collection } from 'mongodb'
-import type { Insight } from '@agentoak/engine'
-import type { ActionReceipt } from '@agentoak/workflows'
+import type { Insight } from '@lifekeel/engine'
+import type { ActionReceipt } from '@lifekeel/workflows'
 import { initDetectorVersionsCollection } from './db/detector-versions.js'
 
 let client: MongoClient | null = null
@@ -30,7 +30,7 @@ export async function getDb(): Promise<Db> {
     socketTimeoutMS: 45000,
   })
   await client.connect()
-  db = client.db(process.env['MONGODB_DB'] ?? 'kairos')
+  db = client.db(process.env['MONGODB_DB'] ?? 'lifekeel')
 
   // Ensure indexes — wrapped in try/catch because createIndex throws if an
   // index with the same name exists but with different specs (e.g. from a

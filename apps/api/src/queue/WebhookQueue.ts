@@ -1,6 +1,6 @@
 import type { Db } from 'mongodb'
-import type { Engine } from '@agentoak/engine'
-import type { ConnectorLoader, EventGenerator } from '@agentoak/pipeline'
+import type { Engine } from '@lifekeel/engine'
+import type { ConnectorLoader, EventGenerator } from '@lifekeel/pipeline'
 import { queueManager } from './QueueManager.js'
 import { persistSignal } from '../signals.js'
 import { persistAndDeliverInsights } from '../insights-persist.js'

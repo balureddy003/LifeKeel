@@ -1,5 +1,5 @@
 /**
- * Kairos LLM Router
+ * LifeKeel LLM Router
  *
  * Provider-agnostic LLM abstraction.  Configure once, use everywhere.
  *
@@ -193,7 +193,7 @@ export interface LlmConfig {
   onUsage?: LlmUsageCallback
 }
 
-/** The canonical LLM function type used everywhere in Kairos */
+/** The canonical LLM function type used everywhere in LifeKeel */
 export type LlmFn = (system: string, prompt: string, model?: string) => Promise<string>
 
 /**

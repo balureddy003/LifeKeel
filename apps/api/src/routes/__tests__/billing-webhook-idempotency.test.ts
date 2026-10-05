@@ -1,11 +1,11 @@
 /**
- * OAK-007 + OAK-018: unlike billing-webhook.test.ts's idempotency block
+ * KEEL-007 + KEEL-018: unlike billing-webhook.test.ts's idempotency block
  * (which only re-implements the check against raw Mongo, never calling
  * registerBillingRoutes at all — see that file's own header comment) and
  * billing-webhook-signature.test.ts (real route, but only rejection
  * paths — never a validly-signed event that reaches the side-effect
  * switch), this file drives the actual POST /billing/webhook handler with
- * a genuinely valid Stripe signature and proves the OAK-007 claim-first
+ * a genuinely valid Stripe signature and proves the KEEL-007 claim-first
  * fix end to end: the first delivery applies its side effect exactly
  * once, and a replay of the identical event id is a true no-op — not
  * just that a row exists in stripe_webhook_events.
@@ -28,7 +28,7 @@ function signStripePayload(payload: string, secret: string): string {
   return `t=${timestamp},v1=${signature}`
 }
 
-describe('OAK-007: POST /billing/webhook claims before processing (real route, valid signature)', () => {
+describe('KEEL-007: POST /billing/webhook claims before processing (real route, valid signature)', () => {
   let mongod: MongoMemoryServer
   let client: MongoClient
   let db: Db
@@ -130,7 +130,7 @@ describe('OAK-007: POST /billing/webhook claims before processing (real route, v
     expect(replay.json().duplicate).toBe(true)
 
     const tenant = await db.collection('tenants').findOne({ tenant_id: TENANT_ID })
-    // Exactly one 500-credit grant, not two — this is the property OAK-007
+    // Exactly one 500-credit grant, not two — this is the property KEEL-007
     // actually protects; the old code path also eventually recorded the
     // event id, but only after the side effect, leaving a crash-shaped
     // window where a replay in that window would have double-applied it.

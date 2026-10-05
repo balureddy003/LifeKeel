@@ -338,7 +338,7 @@ describe('/operator control plane', () => {
       method: 'POST', url: '/operator/blog/posts',
       payload: {
         title: 'Emergency funds', slug: 'emergency-funds', content: '# Body', excerpt: 'An excerpt',
-        category: 'tutorial', author: 'Oak', meta_description: 'SEO description', reason: 'Content calendar week 12',
+        category: 'tutorial', author: 'Keel', meta_description: 'SEO description', reason: 'Content calendar week 12',
       },
     })
     expect(create.statusCode).toBe(200)
@@ -1131,13 +1131,13 @@ describe('security monitoring', () => {
   it('serves the referral leaderboard with totals and tenant names', async () => {
     await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     await db.collection('referral_codes').insertMany([
-      { tenant_id: 'family-1', code: 'OAK-AAAA', created_at: new Date() },
-      { tenant_id: 'family-2', code: 'OAK-BBBB', created_at: new Date() },
+      { tenant_id: 'family-1', code: 'KEEL-AAAA', created_at: new Date() },
+      { tenant_id: 'family-2', code: 'KEEL-BBBB', created_at: new Date() },
     ])
     await db.collection('tenants').insertOne({ tenant_id: 'family-2', name: 'Family Two', status: 'active', created_at: new Date() })
     await db.collection('referrals').insertMany([
-      { referrer_tenant_id: 'family-1', referred_tenant_id: 'family-9', code: 'OAK-AAAA', status: 'rewarded', created_at: new Date(), rewarded_at: new Date() },
-      { referrer_tenant_id: 'family-1', referred_tenant_id: 'family-8', code: 'OAK-AAAA', status: 'pending', created_at: new Date() },
+      { referrer_tenant_id: 'family-1', referred_tenant_id: 'family-9', code: 'KEEL-AAAA', status: 'rewarded', created_at: new Date(), rewarded_at: new Date() },
+      { referrer_tenant_id: 'family-1', referred_tenant_id: 'family-8', code: 'KEEL-AAAA', status: 'pending', created_at: new Date() },
     ])
     const app = await buildApp()
     const response = await app.inject({ method: 'GET', url: '/operator/referrals' })
@@ -1146,8 +1146,8 @@ describe('security monitoring', () => {
     expect(body.totals).toEqual({ codes_issued: 2, referrals: 2, pending: 1, rewarded: 1, credits_granted: 50 })
     // Family One tops the board; the zero-referral code still appears as a signal.
     expect(body.leaderboard[0].tenant_name).toBe('Family One')
-    expect(body.leaderboard[0]).toMatchObject({ code: 'OAK-AAAA', rewarded: 1, pending: 1, referrals: 2 })
-    expect(body.leaderboard[1]).toMatchObject({ tenant_name: 'Family Two', code: 'OAK-BBBB', referrals: 0 })
+    expect(body.leaderboard[0]).toMatchObject({ code: 'KEEL-AAAA', rewarded: 1, pending: 1, referrals: 2 })
+    expect(body.leaderboard[1]).toMatchObject({ tenant_name: 'Family Two', code: 'KEEL-BBBB', referrals: 0 })
     expect(body.recent[0].referrer_name).toBe('Family One')
     await app.close()
   })

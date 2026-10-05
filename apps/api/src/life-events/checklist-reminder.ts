@@ -17,9 +17,9 @@
 
 import sgMail from '@sendgrid/mail'
 import type { Db } from 'mongodb'
-import type { Insight } from '@agentoak/engine'
+import type { Insight } from '@lifekeel/engine'
 import { randomUUID } from 'node:crypto'
-import { createLogger, getTenantCollection } from '@agentoak/platform'
+import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { getSignalsCollection } from '../db.js'
 import type { FamilyGroupDoc } from '../routes/family-group.js'
 import { memberMatchesUser } from '../lib/family-permissions.js'
@@ -55,7 +55,7 @@ interface LifeEventSignalDoc {
 }
 
 function getFromEmail(): string {
-  return process.env['SENDGRID_FROM_EMAIL'] ?? 'accounts@agentoak.ai'
+  return process.env['SENDGRID_FROM_EMAIL'] ?? 'accounts@lifekeel.co.uk'
 }
 
 async function sendChecklistReminderEmail(
@@ -76,7 +76,7 @@ async function sendChecklistReminderEmail(
   try {
     await sgMail.send({
       to,
-      from: { email: getFromEmail(), name: 'Agent Oak' },
+      from: { email: getFromEmail(), name: 'LifeKeel' },
       subject: `Your ${playbookTitle} checklist`,
       text: `Hi ${firstName},\n\nA few days ago you reported: ${playbookTitle}. ${remainingCount} ${stepWord} on that response plan are still unchecked.\n\nSign in any time to pick back up — no rush, this is just a reminder it's still there.`,
       html: `

@@ -24,7 +24,7 @@ vi.mock('../ocr/extract.js', () => ({
   processDocument: (...args: unknown[]) => processDocumentMock(...args),
 }))
 
-// OAK-019: the real route now awaits the upload stream's 'finish' event
+// KEEL-019: the real route now awaits the upload stream's 'finish' event
 // (not just calling .end()) before proceeding, and calls bucket.delete()
 // to clean up if the metadata insert that follows fails — this fake needs
 // to behave like the real GridFSBucketWriteStream (a real EventEmitter)

@@ -23,7 +23,7 @@
  * idempotent (webhook ingest is, via signal/insight dedupe).
  */
 
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'queue-manager', version: '0.0.0' })
 

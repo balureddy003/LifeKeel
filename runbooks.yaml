@@ -63,9 +63,9 @@ new_leads:
   escalate: A lead untouched >48h is a lost lead — assign it or move it to contacted.
 
 open_support_cases:
-  what: Support cases awaiting an operator reply after Oak's AI triage.
+  what: Support cases awaiting an operator reply after Keel's AI triage.
   safe_to_requeue: N/A
-  escalate: The case thread shows what Oak already tried — read it before replying so the customer isn't asked twice.
+  escalate: The case thread shows what Keel already tried — read it before replying so the customer isn't asked twice.
 
 metrics-rollup:
   what: >-

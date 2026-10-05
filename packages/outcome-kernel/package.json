@@ -1,5 +1,5 @@
 {
-  "name": "@agentoak/outcome-kernel",
+  "name": "@lifekeel/outcome-kernel",
   "version": "0.1.0",
   "description": "Dependency-light reference kernel for outcome lifecycle semantics",
   "type": "module",
@@ -19,7 +19,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@agentoak/specifications": "workspace:*"
+    "@lifekeel/specifications": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

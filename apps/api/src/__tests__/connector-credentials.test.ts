@@ -5,7 +5,7 @@
  * historical backfill — only the OAuth2 callback did. A tenant could
  * connect a connector and see nothing sync until someone manually called
  * POST /connectors/:id/backfill, which nothing in the UI does. Uses
- * 'gmail' (one of the family app's own allowed connectors — see OAK-002's
+ * 'gmail' (one of the family app's own allowed connectors — see KEEL-002's
  * FAMILY_CONNECTOR_ALLOWLIST in connector-credentials.ts) rather than the
  * original 'trading-212' example, which isn't a connector this app
  * actually offers and would now be rejected before reaching the backfill
@@ -19,7 +19,7 @@ import { registerConnectorCredentialRoutes } from '../routes/connector-credentia
 const backfillMock = vi.fn(async () => [{ records_fetched: 3, insights_triggered: 1, resource: 'Account' }])
 const testConnectionMock = vi.fn(async () => ({ success: true, message: 'ok' }))
 
-vi.mock('@agentoak/pipeline', () => ({
+vi.mock('@lifekeel/pipeline', () => ({
   ConnectorSyncEngine: class {
     backfill = backfillMock
     testConnection = testConnectionMock

@@ -18,7 +18,7 @@
 import { z } from 'zod'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { getTenantCollection, type LlmFn } from '@agentoak/platform'
+import { getTenantCollection, type LlmFn } from '@lifekeel/platform'
 import { familyDataLlmFromEnv } from '../local-model.js'
 import { getInsightsCollection, getSignalsCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
@@ -58,17 +58,17 @@ const SimulateSchema = z.object({
   question: z.string().max(2000).optional(),
 })
 
-export const SYSTEM_PROMPT = `You are Oak, the assistant inside Agent Oak — a family's financial digital twin. Answer the family's question using ONLY the data provided below.
+export const SYSTEM_PROMPT = `You are Keel, the assistant inside LifeKeel — a family's financial digital twin. Answer the family's question using ONLY the data provided below.
 
 Rules:
 - Never give definitive financial, investment, insurance, tax, or legal advice, and never recommend, compare, or steer toward a specific product or provider. Always frame guidance as informational — describe what's on file and possible gaps — and recommend consulting a licensed professional for decisions.
 - If the provided data doesn't answer the question, say so honestly rather than guessing or inventing numbers.
 - Be concise and specific — reference the family's actual figures where relevant instead of generic advice.
-- Do not suggest Oak can take any action on the family's behalf (send money, contact anyone, file anything) — Oak only explains and summarizes.
+- Do not suggest Keel can take any action on the family's behalf (send money, contact anyone, file anything) — Keel only explains and summarizes.
 - Some figures below are marked "profile pending" — that household member hasn't joined and confirmed their own details yet. If your answer relies on one of those figures, say plainly that it's provisional and based on data entered by someone else on their behalf, rather than presenting it as confirmed.
 - Some figures below come from an unreviewed uploaded document — the family hasn't confirmed those numbers are correct or added them to the profile yet. If your answer relies on one of those, say so and suggest they review it, rather than treating it as an established fact.
 - Never invent a hypothetical projection (e.g. "if income changed by X"). If asked one and no computed scenario result is provided below, say you can't calculate that yet and point to what's currently on file instead.
-- The "Open insights" list below is the only set of gaps Oak has formally flagged — each one already passed a specific threshold (e.g. an education fund is only flagged once it's within 5 years of its target date). When a question leads you to describe a gap that ISN'T in that list — a figure that's merely below target but not close enough to be flagged yet — say so plainly (e.g. "on track for now, but worth revisiting closer to the date") rather than using the same urgent language ("shortfall", "not fully funded", "gap") you'd use for a flagged insight. Matching tone to formal flags keeps a distant, low-priority observation from reading as equally urgent to a real one.
+- The "Open insights" list below is the only set of gaps Keel has formally flagged — each one already passed a specific threshold (e.g. an education fund is only flagged once it's within 5 years of its target date). When a question leads you to describe a gap that ISN'T in that list — a figure that's merely below target but not close enough to be flagged yet — say so plainly (e.g. "on track for now, but worth revisiting closer to the date") rather than using the same urgent language ("shortfall", "not fully funded", "gap") you'd use for a flagged insight. Matching tone to formal flags keeps a distant, low-priority observation from reading as equally urgent to a real one.
 - The family legacy map below lists estate and inheritance records the family declared — you may describe what records exist and who they name, label unverified claims as such, but you must never state that a document is legally valid, who legally owns a property, or what anyone will inherit.`
 
 const FALLBACK_CONTENT = "Based on the information you've entered, here is a summary from your family's data. This is for informational purposes only — please consult a qualified professional before making financial decisions. Would you like to see the specific numbers from your family's profile?"
@@ -140,7 +140,7 @@ interface FamilyGroupDoc extends Record<string, unknown> {
 }
 
 // A recently-extracted-but-unreviewed document (AI Memory) — surfaced so
-// Oak can mention it rather than stay silent about data sitting right
+// Keel can mention it rather than stay silent about data sitting right
 // there unconfirmed. Mirrors the same `status === 'extracted'` convention
 // apps/web/src/components/Intelligence.tsx's MemoryPrompts already uses;
 // applying a suggestion never flips this status (a pre-existing gap, not
@@ -154,7 +154,7 @@ interface UnreviewedDocumentDoc extends Record<string, unknown> {
 
 // G6: a life event with the reporter's free-text account attached — the
 // only channel through which "Mum's at County Hospital, kids need pickup"
-// reaches Ask Oak's grounding. Bounded to recent events (90 days): a
+// reaches Ask Keel's grounding. Bounded to recent events (90 days): a
 // bereavement from last year is context for readiness, not for today's
 // crisis question.
 interface LifeEventContextDoc extends Record<string, unknown> {
@@ -222,10 +222,10 @@ function buildContext(
     // with plausible-looking placeholders (30/65) so autosave can satisfy
     // the schema before the user has ever reached that step — unlike every
     // other blank-defaulted field here, an unedited placeholder age reads
-    // exactly like a real answer, so Oak must not repeat it as fact. Gate
+    // exactly like a real answer, so Keel must not repeat it as fact. Gate
     // on the same isUnsetTarget threshold the retirement detector itself
     // already uses (family-financial-profile.ts) to decide the section was
-    // never really engaged with — confirmed live: without this gate Oak
+    // never really engaged with — confirmed live: without this gate Keel
     // told a user with no date of birth on file "Current age: 30" as data.
     if (r) {
       if (isUnsetTarget(r.target_retirement_income_minor ?? 0)) {
@@ -269,7 +269,7 @@ function buildContext(
   }
 
   // G6: recent life events the family reported, in the reporter's own
-  // words — what Ask Oak needs to answer "who's picking up the kids" or
+  // words — what Ask Keel needs to answer "who's picking up the kids" or
   // "what did we say about the hospital" during a crisis. Reported facts,
   // not verified ones — labeled as such.
   for (const ev of lifeEventContexts) {
@@ -291,7 +291,7 @@ function buildContext(
   if (insights.length === 0) {
     parts.push('No open insights currently identified.')
   } else {
-    parts.push('Open insights Oak has already identified for this family:')
+    parts.push('Open insights Keel has already identified for this family:')
     for (const insight of insights) {
       parts.push(`- [${insight.category}/${insight.detector_id}] ${insight.reasoning}`)
     }
@@ -505,7 +505,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
 
   app.post<{ Body: { query?: string } }>(
     '/assistant/ask',
-    // OAK-015: this route calls an LLM on every request — the shared
+    // KEEL-015: this route calls an LLM on every request — the shared
     // global rate limit (100/min per tenant in cloud mode) was the only
     // ceiling on it, same as any plain CRUD route. A tighter, dedicated
     // limit bounds LLM spend/abuse specifically on the routes that
@@ -595,7 +595,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
       )
       const prompt =
         `Family data:\n${context}\n\n` +
-        `Oak's calculator has already computed this scenario (these numbers are exact — narrate them, do not recompute or second-guess them):\n${formatScenarioResult(scenario)}\n\n` +
+        `Keel's calculator has already computed this scenario (these numbers are exact — narrate them, do not recompute or second-guess them):\n${formatScenarioResult(scenario)}\n\n` +
         `Question: ${question ?? 'What does this scenario mean for our finances?'}`
 
       try {

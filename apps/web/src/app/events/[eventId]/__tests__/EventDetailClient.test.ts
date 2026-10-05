@@ -12,7 +12,7 @@ function makePolicy(overrides: Partial<FinancialProfilePolicy> = {}): FinancialP
   }
 }
 
-describe('OAK-014: personalizeAction swaps in a real provider name when one exists', () => {
+describe('KEEL-014: personalizeAction swaps in a real provider name when one exists', () => {
   it('personalizes the bereavement life-insurance action when a matching policy exists', () => {
     const action = EVENT_ACTIONS.bereavement!.find((a) => a.id === '1')!
     const result = personalizeAction(action, [makePolicy({ type: 'life', provider: 'Aviva' })])

@@ -43,7 +43,7 @@ export function PostPreview({ channel, content, accountName }: { channel: string
           AO
         </div>
         <div className="min-w-0 leading-tight">
-          <p className="text-sm font-semibold text-ink-primary truncate">{accountName || 'Agent Oak'}</p>
+          <p className="text-sm font-semibold text-ink-primary truncate">{accountName || 'LifeKeel'}</p>
           <p className="text-xs text-ink-tertiary truncate">{CHANNEL_LABEL[channel] ?? channel} preview</p>
         </div>
       </div>

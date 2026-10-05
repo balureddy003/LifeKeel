@@ -12,7 +12,7 @@
  */
 
 import type { Db } from 'mongodb'
-import { createLogger, getTenantCollection } from '@agentoak/platform'
+import { createLogger, getTenantCollection } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'low-credit-alerts', version: '0.0.0' })
 
@@ -102,7 +102,7 @@ export async function checkAndSendLowCreditAlert(
 async function sendEmail(_db: Db, to: string, type: 'low' | 'zero', tenant: TenantForAlert): Promise<void> {
   // Use the existing EmailChannel if available, otherwise log
 
-  const studioUrl = process.env['STUDIO_URL'] ?? 'https://studio.kairos.dev'
+  const studioUrl = process.env['STUDIO_URL'] ?? 'https://studio.lifekeel.dev'
   const upgradeUrl = `${studioUrl}/settings/billing?upgrade=true`
   const creditsUrl = `${studioUrl}/settings/billing?buy_credits=true`
 
@@ -115,8 +115,8 @@ async function sendEmail(_db: Db, to: string, type: 'low' | 'zero', tenant: Tena
     : `You have ${tenant.billing?.credits_balance} outcome credits remaining`
 
   const bodyText = type === 'zero'
-    ? 'Your outcome credits are at zero. This means Kairos will stop measuring and charging for verified outcomes \u2014 you\u2019ll miss out on attributed results until your credits refill or you upgrade.'
-    : 'You\u2019re running low on outcome credits. When they run out, Kairos will stop measuring verified outcomes. Upgrade your plan or buy a credit pack to keep getting attributed results.'
+    ? 'Your outcome credits are at zero. This means LifeKeel will stop measuring and charging for verified outcomes \u2014 you\u2019ll miss out on attributed results until your credits refill or you upgrade.'
+    : 'You\u2019re running low on outcome credits. When they run out, LifeKeel will stop measuring verified outcomes. Upgrade your plan or buy a credit pack to keep getting attributed results.'
 
   const html = `<!DOCTYPE html>
 <html>
@@ -124,7 +124,7 @@ async function sendEmail(_db: Db, to: string, type: 'low' | 'zero', tenant: Tena
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#09090b;color:#fff;margin:0;padding:20px">
   <div style="max-width:560px;margin:0 auto;background:#0c0c0e;border:1px solid rgba(255,255,255,0.08);border-radius:16px;overflow:hidden">
     <div style="background:#09090b;padding:20px 24px;border-bottom:1px solid rgba(255,255,255,0.06)">
-      <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;color:#6366f1;text-transform:uppercase">Kairos Studio</div>
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;color:#6366f1;text-transform:uppercase">LifeKeel Studio</div>
     </div>
     <div style="padding:24px">
       <div style="display:inline-block;background:rgba(234,179,8,0.15);border:1px solid rgba(234,179,8,0.4);border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;color:#eab308;text-transform:uppercase;letter-spacing:0.05em">${type === 'zero' ? 'Out of Credits' : 'Low Credits'}</div>
@@ -145,7 +145,7 @@ async function sendEmail(_db: Db, to: string, type: 'low' | 'zero', tenant: Tena
       </div>
     </div>
     <div style="padding:12px 24px;font-size:11px;color:#52525b;border-top:1px solid rgba(255,255,255,0.06)">
-      Kairos Studio \u00b7 <a href="${studioUrl}/settings/billing" style="color:#6366f1;text-decoration:none">Manage billing</a>
+      LifeKeel Studio \u00b7 <a href="${studioUrl}/settings/billing" style="color:#6366f1;text-decoration:none">Manage billing</a>
     </div>
   </div>
 </body>
@@ -161,10 +161,10 @@ async function sendEmail(_db: Db, to: string, type: 'low' | 'zero', tenant: Tena
     return
   }
   sgMail.setApiKey(apiKey)
-  const fromEmail = process.env['SENDGRID_FROM_EMAIL'] ?? 'insights@kairos.dev'
+  const fromEmail = process.env['SENDGRID_FROM_EMAIL'] ?? 'insights@lifekeel.dev'
   await sgMail.send({
     to,
-    from: { email: fromEmail, name: 'Kairos Studio' },
+    from: { email: fromEmail, name: 'LifeKeel Studio' },
     subject,
     html,
     text,

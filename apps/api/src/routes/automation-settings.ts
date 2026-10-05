@@ -14,7 +14,7 @@
  *  - renewal_reminders_enabled — the Tier 3 opt-IN for policy-renewal
  *    reminders (jobs/policy-renewal-reminders.ts). Default off: autonomy
  *    is never assumed — a member must explicitly enable it here before
- *    Oak schedules or sends anything on the family's behalf. The send
+ *    Keel schedules or sends anything on the family's behalf. The send
  *    path re-checks this flag at execution time, so disabling takes
  *    effect immediately for already-scheduled reminders.
  *  - renewal_reminder_lead_days — how many days before a renewal to notify
@@ -27,7 +27,7 @@
  *    human-gated forever regardless of this flag).
  *
  * Trust levels are earned state (incremented by real approvals, capped at
- * 5) — a PATCH that let a client set them directly would make "Oak has
+ * 5) — a PATCH that let a client set them directly would make "Keel has
  * earned enough trust to auto-run" a UI flag instead of a record of actual
  * behavior, so they're read-only here.
  *

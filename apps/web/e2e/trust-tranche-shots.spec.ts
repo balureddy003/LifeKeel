@@ -7,10 +7,10 @@ import path from 'node:path'
  * PR #27 against the live dev stack (API running with
  * EMAIL_VERIFICATION_ENABLED=true — global-setup signs up a fresh account,
  * which is exactly the unverified-user case the banner exists for).
- * Screenshots land in /tmp/oak-shots for visual review.
+ * Screenshots land in /tmp/keel-shots for visual review.
  */
 
-const SHOTS = '/tmp/oak-shots'
+const SHOTS = '/tmp/keel-shots'
 
 async function gotoWithWarmup(page: import('@playwright/test').Page, url: string) {
   await page.goto(url)

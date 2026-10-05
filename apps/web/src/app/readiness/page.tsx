@@ -34,7 +34,7 @@ function ShareScore({ score }: { score: number }) {
   // Per-score share URL — the API serves per-score OG tags to scrapers and
   // redirects humans to the quiz with share-attribution UTMs.
   const shareUrl = readinessShareUrl(score)
-  const shareText = `I scored ${score}/100 on Agent Oak's Family Readiness Check. What's yours?`
+  const shareText = `I scored ${score}/100 on LifeKeel's Family Readiness Check. What's yours?`
 
   async function handleShare() {
     haptic('light')
@@ -182,7 +182,7 @@ function EmailCapture({ score }: { score: number }) {
       />
       <label className="mt-3 flex items-start gap-2.5 text-xs text-ink-secondary leading-relaxed cursor-pointer">
         <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 accent-family-500" />
-        I agree to Agent Oak contacting me at this address.
+        I agree to LifeKeel contacting me at this address.
       </label>
       {state === 'error' && <p className="text-xs text-danger mt-2">Couldn&apos;t save that — please try again.</p>}
       <GlassButton onClick={submit} disabled={state === 'busy' || !email.trim() || !consent} className="mt-3">
@@ -363,7 +363,7 @@ export default function ReadinessQuizPage() {
           {result.insights.length === 0 ? (
             <GlassCard className="p-4 mt-6 w-full">
               <p className="text-sm text-ink-secondary leading-relaxed">
-                Oak didn&apos;t find an obvious gap in the two areas this quick quiz checks. A full profile covers
+                Keel didn&apos;t find an obvious gap in the two areas this quick quiz checks. A full profile covers
                 four more areas, including retirement and education funding.
               </p>
             </GlassCard>
@@ -387,7 +387,7 @@ export default function ReadinessQuizPage() {
 
           <GlassCard className="p-4 mt-4 w-full">
             <p className="text-sm font-semibold text-ink-primary mb-2">
-              This was a snapshot. Oak is a system that keeps watching.
+              This was a snapshot. Keel is a system that keeps watching.
             </p>
             <p className="text-sm text-ink-secondary leading-relaxed mb-3">
               The quiz scored two domains from six questions. A full account scores five domains, monitors
@@ -398,12 +398,12 @@ export default function ReadinessQuizPage() {
               <li>• Protection, wealth, goals, savings, and estate &mdash; scored and monitored daily</li>
               <li>• Every family member gets their own readiness view, scoped to their life stage</li>
               <li>• Crisis playbooks built from your real data, not generic checklists</li>
-              <li>• Zero commissions &mdash; Oak has no financial relationship with any insurer</li>
+              <li>• Zero commissions &mdash; Keel has no financial relationship with any insurer</li>
             </ul>
             <Link href="/welcome" onClick={() => { haptic('light'); track('landing_get_started_click', { location: 'readiness_quiz' }) }}>
               <GlassButton>Start monitoring for free</GlassButton>
             </Link>
-            <p className="text-[11px] text-ink-tertiary mt-2">No card required. Free forever for core features. Oak Plus (£7.99/mo) adds AI document reading.</p>
+            <p className="text-[11px] text-ink-tertiary mt-2">No card required. Free forever for core features. Keel Plus (£7.99/mo) adds AI document reading.</p>
           </GlassCard>
         </div>
         )

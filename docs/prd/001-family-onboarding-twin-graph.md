@@ -7,9 +7,9 @@ product-owner analysis, not implemented.*
 
 ## Problem it solves
 
-A family's first five minutes decide whether they trust Oak with anything
+A family's first five minutes decide whether they trust Keel with anything
 real. A form with 20 fields loses people before they see any value; no
-structure at all means Oak never actually has a family graph to reason
+structure at all means Keel never actually has a family graph to reason
 over. The product needs a way to build the Family Twin's people domain
 (ARCHITECTURE.md's first of six domains) that feels like a conversation,
 not paperwork.
@@ -19,7 +19,7 @@ not paperwork.
 See [000-market-landscape-and-positioning.md](000-market-landscape-and-positioning.md).
 Trustworthy is the closest competitor with a genuine family-wide (not
 single-user) model. Most AI money apps (Monarch, Copilot) onboard around a
-single user's linked accounts, not a household graph — Agent Oak's
+single user's linked accounts, not a household graph — LifeKeel's
 conversational, visibly-growing-graph onboarding is closer to the bar this
 category should be held to than what most competitors actually ship.
 

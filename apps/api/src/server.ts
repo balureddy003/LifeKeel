@@ -3,18 +3,18 @@ import './env.js'
 import { randomUUID } from 'node:crypto'
 
 /**
- * Agent Oak API Server — Fastify
+ * LifeKeel API Server — Fastify
  *
- * A full copy of kairos-ai's apps/api, trimmed to what Agent Oak (apps/web)
+ * A full copy of kairos-ai's apps/api, trimmed to what LifeKeel (apps/web)
  * actually calls plus the marketing surfaces (blog, case studies, growth
  * events) that support self-serve growth. See SECURITY.md for the full
  * list of routes/crons/packages removed and why.
  *
  * Packages wired together:
- *   @agentoak/engine    — evaluate detectors (family_* only) on incoming events
- *   @agentoak/pipeline  — connector data ingestion (email/Gmail)
- *   @agentoak/workflows — connector credential/OAuth plumbing, schema registry
- *   @agentoak/platform  — JWT auth, money utilities, telemetry
+ *   @lifekeel/engine    — evaluate detectors (family_* only) on incoming events
+ *   @lifekeel/pipeline  — connector data ingestion (email/Gmail)
+ *   @lifekeel/workflows — connector credential/OAuth plumbing, schema registry
+ *   @lifekeel/platform  — JWT auth, money utilities, telemetry
  *
  * Route map (registered further down — search "Modular route handlers"):
  *   /auth/*, /connectors/*, /family*, /documents*, /billing/*, /inbox*,
@@ -32,9 +32,9 @@ import sensible from '@fastify/sensible'
 import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
 import { ZodTypeProvider, jsonSchemaTransform } from 'fastify-type-provider-zod'
-import { Engine, type Insight, setSchemaRegistry } from '@agentoak/engine'
-import { ConnectorLoader, EventGenerator } from '@agentoak/pipeline'
-import { AuthService, canPerform, extractBearerToken, enforceQuota, getAllCircuitBreakers, QuotaExceededError, validateLicenseKey, createLogger, initTelemetry, type ProductAction, type ProductResource } from '@agentoak/platform'
+import { Engine, type Insight, setSchemaRegistry } from '@lifekeel/engine'
+import { ConnectorLoader, EventGenerator } from '@lifekeel/pipeline'
+import { AuthService, canPerform, extractBearerToken, enforceQuota, getAllCircuitBreakers, QuotaExceededError, validateLicenseKey, createLogger, initTelemetry, type ProductAction, type ProductResource } from '@lifekeel/platform'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -43,18 +43,18 @@ import { recordApiRequest, registerMetricsRoutes, recordLlmCacheHitMiss, buildFe
 import { initAuditLogger } from './audit/audit-log.js'
 import { registerAuthUserRoutes } from './routes/auth-users.js'
 import { registerSocialAuthRoutes } from './routes/auth-social.js'
-import { createLlmRouterFromEnv, LlmResponseCache, MongoLlmCacheStore, LlmBudgetGuard, LocalEmbeddingProvider } from '@agentoak/platform'
+import { createLlmRouterFromEnv, LlmResponseCache, MongoLlmCacheStore, LlmBudgetGuard, LocalEmbeddingProvider } from '@lifekeel/platform'
 import {
   ScoreCalibrator, IntentClassifier,
   NoveltyTracker, ChangePointDetector, FeatureHashScorer, TenantLevelScorer,
-} from '@agentoak/engine'
+} from '@lifekeel/engine'
 import { ApiLlmScorer } from './llm-scorer.js'
 import { registerConnectorCredentialRoutes } from './routes/connector-credentials.js'
 import { DeliveryRouter } from './delivery/delivery-router.js'
 import { createMoveJudge } from './delivery/move-judge.js'
 import { localDecisionFromEnv } from './local-model.js'
-import { ConnectorSyncEngine, TokenRefreshScheduler } from '@agentoak/pipeline'
-import { connectorSchemaRegistry } from '@agentoak/workflows'
+import { ConnectorSyncEngine, TokenRefreshScheduler } from '@lifekeel/pipeline'
+import { connectorSchemaRegistry } from '@lifekeel/workflows'
 import cron from 'node-cron'
 import { queueManager } from './queue/QueueManager.js'
 import { startWebhookWorker } from './queue/WebhookQueue.js'
@@ -134,7 +134,7 @@ const ROOT = path.resolve(__dirname, '../../..')
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
-await initTelemetry('kairos-api')
+await initTelemetry('lifekeel-api')
 
 const log = createLogger({ service: 'api', version: process.env['npm_package_version'] ?? '0.0.0' })
 
@@ -166,9 +166,9 @@ if (process.env['NODE_ENV'] === 'production' && jwtSecret.length < 32) {
   throw new Error('JWT_SECRET must be set to a strong value in production')
 }
 const auth = new AuthService(jwtSecret || 'change-me-in-production')
-if (process.env['KAIROS_LICENSE_KEY'] && process.env['KAIROS_LICENSE_PUBLIC_KEY']) {
-  const license = await validateLicenseKey(process.env['KAIROS_LICENSE_KEY'], process.env['KAIROS_LICENSE_PUBLIC_KEY'])
-  if (license.expired && !license.grace_period) process.env['KAIROS_EDITION'] = 'busl'
+if (process.env['LIFEKEEL_LICENSE_KEY'] && process.env['LIFEKEEL_LICENSE_PUBLIC_KEY']) {
+  const license = await validateLicenseKey(process.env['LIFEKEEL_LICENSE_KEY'], process.env['LIFEKEEL_LICENSE_PUBLIC_KEY'])
+  if (license.expired && !license.grace_period) process.env['LIFEKEEL_EDITION'] = 'busl'
 }
 // LLM function available module-wide for the goal compiler and other routes
 const globalLlmFn = createLlmRouterFromEnv()
@@ -182,13 +182,13 @@ let deliveryRouter: DeliveryRouter | undefined
 
 try {
   const mongoClient = await getMongoClient()
-  workflowDb = mongoClient.db(process.env['MONGODB_DB'] ?? 'kairos')
+  workflowDb = mongoClient.db(process.env['MONGODB_DB'] ?? 'lifekeel')
   // Self-hosted judge model (infra/local-judge): when configured, no insight text
   // is sent to a cloud LLM and the judge spends no tokens.
   const localJudge = localDecisionFromEnv('judge')
   log.info({ judge: localJudge ? (process.env['JUDGE_SHADOW'] === 'true' ? 'cloud-with-local-shadow' : 'local') : 'llm' }, 'Move judge backend')
   deliveryRouter = new DeliveryRouter(workflowDb, createMoveJudge(globalLlmFn, workflowDb, localJudge, { shadow: process.env['JUDGE_SHADOW'] === 'true' }))
-  // OAK-003: every cron.schedule job below runs under this lock, keyed by
+  // KEEL-003: every cron.schedule job below runs under this lock, keyed by
   // its own name — deploy-api.yml allows up to 4 Cloud Run replicas, and
   // without this, two replicas racing the same job could both act on the
   // same overdue insight/expiring credential and double-fire it.
@@ -480,7 +480,7 @@ try {
   }
 
   // Trading (auto-trade confirmation, reconciliation, momentum rebalance)
-  // and workflow-approval-timeout sweeps removed — Agent Oak has no trading
+  // and workflow-approval-timeout sweeps removed — LifeKeel has no trading
   // vertical and no workflow engine to create approval gates in the first
   // place. See SECURITY.md for the full list of what was trimmed.
 
@@ -697,14 +697,14 @@ try {
   }, { missedExecutionTolerance: 60_000 })
   log.info({}, 'Billing cron started (daily 4 AM)')
 
-  // Goal integrity job removed — goals are dead code in Agent Oak's frontend
+  // Goal integrity job removed — goals are dead code in LifeKeel's frontend
   // (useFamilyGoals() is defined but never rendered).
 
   // Social analytics polling, Universal/Intraday KPI compute, goal
   // summarisation, goal migration, and adaptive thresholds (Bollinger Band
   // recompute for invoice/payment/portfolio signal types) all removed —
   // social/goals/trading-vertical specific, none of it reachable from
-  // Agent Oak. `persistAndDeliverInsights` stays: registerFamilyFinancialProfileRoutes
+  // LifeKeel. `persistAndDeliverInsights` stays: registerFamilyFinancialProfileRoutes
   // (kept) needs it as `insightsDeliveryHook`.
   const persistAndDeliverInsights = async (insights: Insight[], tenantId: string): Promise<void> =>
     persistAndDeliverInsightsCore(workflowDb, insights, tenantId, deliveryRouter)
@@ -761,7 +761,7 @@ try {
   cron.schedule('*/15 * * * *', async () => {
     try {
       await withCronLock(workflowDb, 'insight-sla-escalation', async () => {
-        // OAK-003: this previously had zero error logging at all — a bare
+        // KEEL-003: this previously had zero error logging at all — a bare
         // Promise.allSettled with no per-job check, unlike every other
         // cron job in this file. A rejection here (e.g. escalationWorker
         // throwing) was silently swallowed with no way to ever notice.
@@ -843,7 +843,7 @@ try {
   if (emailScanFanout) {
     // Per-process concurrency; total parallelism is this x replicas. Size it with the
     // model service: each in-flight scan can hold one local-model call (see
-    // LOCAL_MODEL_MAX_CONCURRENT and the agentoak_local_model_queue_wait_seconds metric).
+    // LOCAL_MODEL_MAX_CONCURRENT and the lifekeel_local_model_queue_wait_seconds metric).
     const scanConcurrency = Number(process.env['EMAIL_SCAN_CONCURRENCY']) || 2
     queueManager.subscribe(EMAIL_SCAN_QUEUE, (payload) => runQueuedInboxScan(workflowDb, payload), { concurrency: scanConcurrency })
     log.info({ concurrency: scanConcurrency }, 'Email scan fan-out workers started')
@@ -1055,7 +1055,7 @@ app.addHook('onResponse', async (request, reply) => {
     (performance.now() - startedAt) / 1000,
   )
 })
-// In production set CORS_ORIGIN to the Studio's exact origin (e.g. https://studio.kairos.dev).
+// In production set CORS_ORIGIN to the Studio's exact origin (e.g. https://studio.lifekeel.dev).
 // Wildcard is only used in dev/test; cloud mode enforces the env var.
 const corsOrigin = deploymentConfig.mode === 'cloud'
   ? (process.env['CORS_ORIGIN'] ?? false)
@@ -1109,7 +1109,7 @@ app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => 
 await app.register(swagger, {
   openapi: {
     info: {
-      title: 'Kairos API',
+      title: 'LifeKeel API',
       description: 'AI decision platform for SMBs — detectors, connectors, and outcome packs.',
       version: '0.1.0',
     },
@@ -1341,7 +1341,7 @@ app.get('/', async (_request, reply) => {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kairos Studio</title>
+<title>LifeKeel Studio</title>
 <style>
   :root{color-scheme:light dark;}
   body{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:720px;margin:60px auto;padding:24px;line-height:1.5;background:#fafafa;color:#111;}
@@ -1358,7 +1358,7 @@ app.get('/', async (_request, reply) => {
 </style>
 </head>
 <body>
-  <h1>Kairos Studio</h1>
+  <h1>LifeKeel Studio</h1>
   <p class="subtitle">AI decision platform</p>
 
   <div class="card" id="authCard">
@@ -1401,12 +1401,12 @@ app.get('/', async (_request, reply) => {
     }
     function init() {
       const { token, tenant } = parseHash()
-      const savedToken = getCookie('kairos_token') || token
-      const savedTenant = getCookie('kairos_tenant') || tenant
+      const savedToken = getCookie('lifekeel_token') || token
+      const savedTenant = getCookie('lifekeel_tenant') || tenant
 
       if (token) {
-        setCookie('kairos_token', token, 30)
-        if (tenant) setCookie('kairos_tenant', tenant, 30)
+        setCookie('lifekeel_token', token, 30)
+        if (tenant) setCookie('lifekeel_tenant', tenant, 30)
         // remove token from URL fragment for cleanliness
         history.replaceState(null, '', window.location.pathname)
       }
@@ -1472,8 +1472,8 @@ app.get('/health/ready', async (_request, reply) => {
       migration_version: process.env['MIGRATION_VERSION'] ?? 'unmanaged',
     },
     circuits: Object.fromEntries([...getAllCircuitBreakers()].map(([key, breaker]) => [key, breaker.getState()])),
-    adapter: process.env['KAIROS_STORAGE_ADAPTER'] === 'sqlite' ? 'sqlite' : 'mongodb',
-    mode: process.env['KAIROS_STORAGE_ADAPTER'] === 'sqlite' ? 'offline' : 'cloud',
+    adapter: process.env['LIFEKEEL_STORAGE_ADAPTER'] === 'sqlite' ? 'sqlite' : 'mongodb',
+    mode: process.env['LIFEKEEL_STORAGE_ADAPTER'] === 'sqlite' ? 'offline' : 'cloud',
   })
 })
 
@@ -1488,11 +1488,11 @@ app.get('/pipeline-connectors', async () => ({
 }))
 
 // Modular route handlers
-// Trimmed to what Agent Oak (apps/web) actually calls, plus the marketing
+// Trimmed to what LifeKeel (apps/web) actually calls, plus the marketing
 // surfaces (blog, case studies, growth events) that support self-serve
 // growth. Everything else kairos-ai's apps/api serves — trading/property/
 // social verticals, workflows/goals, SCIM, federated learning, the
-// marketplace, teams — isn't reachable from Agent Oak and was removed rather
+// marketplace, teams — isn't reachable from LifeKeel and was removed rather
 // than left dead in the route table. See SECURITY.md for the full list of
 // what was dropped and why.
 await registerInsightRoutes(app, engine, featureHashScorer, workflowDb, tenantLevelScorer, deliveryRouter)
@@ -1558,7 +1558,7 @@ try {
 
 const port = parseInt(process.env['PORT'] ?? '3001', 10)
 await app.listen({ port, host: '0.0.0.0' })
-log.info({ port }, 'Kairos API started')
+log.info({ port }, 'LifeKeel API started')
 
 // ─── Graceful shutdown ────────────────────────────────────────────────────────
 

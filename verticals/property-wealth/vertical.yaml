@@ -1,6 +1,6 @@
 # Property & Wealth — Vertical #1 (reference template)
 #
-# A vertical is pure composition + identity over the shared Kairos core.
+# A vertical is pure composition + identity over the shared LifeKeel core.
 # It references content by id; the ids resolve against the flat detectors/,
 # connectors/, and definitions/ directories that the existing loaders read.
 # See docs/prd/vertical-template-framework.md.

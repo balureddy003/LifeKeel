@@ -17,7 +17,7 @@ import type { FamilyMemberDraft } from '@/lib/onboarding-data'
 // here first so signing in resumes the flow instead of discarding the two
 // minutes of answers the user just gave. sessionStorage, not localStorage:
 // it's a single interrupted flow, not a preference.
-const ONBOARDING_DRAFT_KEY = 'agentoak_onboarding_draft'
+const ONBOARDING_DRAFT_KEY = 'lifekeel_onboarding_draft'
 
 interface OnboardingDraft {
   answers: Record<string, string>
@@ -65,7 +65,7 @@ export type SignupOutcome<T> =
   | { ok: false; reason: 'collision'; message: string }
   | { ok: false; reason: 'other'; message: string }
 
-// OAK-017: onboarding used to generate a synthetic, unreceivable
+// KEEL-017: onboarding used to generate a synthetic, unreceivable
 // `@family.ai` email and silently retry with a random suffix on collision
 // — that account could never be recovered via the existing password-reset
 // flow, since nothing lives at that domain. Now takes the family's real
@@ -157,7 +157,7 @@ export function ConversationalOnboarding() {
     {
       id: 'intro',
       role: 'ai',
-      text: "Welcome! Let's grow your family's Oak. I'll ask a few quick questions — it takes about 2 minutes. After each answer, you'll see your family graph grow.",
+      text: "Welcome! Let's grow your family's Keel. I'll ask a few quick questions — it takes about 2 minutes. After each answer, you'll see your family graph grow.",
     },
     {
       id: 'q-0',
@@ -398,7 +398,7 @@ export function ConversationalOnboarding() {
     }
 
     haptic('success')
-    addAIMessage('Your family graph is ready! Let me grow your Oak now.')
+    addAIMessage('Your family graph is ready! Let me grow your Keel now.')
     setFinished(true)
 
     await createFamily(`${owner.name}'s Family`, owner)
@@ -500,7 +500,7 @@ export function ConversationalOnboarding() {
               >
                 <PartyPopper size={32} className="text-family-400" />
               </motion.div>
-              <h1 className="text-2xl font-bold mb-2">Growing your Oak...</h1>
+              <h1 className="text-2xl font-bold mb-2">Growing your Keel...</h1>
               <p className="text-sm text-ink-tertiary">Your family profile is taking shape</p>
               <motion.div
                 className="mt-6 w-48 h-2 rounded-full bg-tint/5 overflow-hidden"
@@ -545,7 +545,7 @@ export function ConversationalOnboarding() {
           reader announces each new question/confirmation as it arrives,
           instead of the conversation silently advancing underneath the
           user. */}
-      <div ref={scrollRef} role="log" aria-label="Onboarding conversation with Oak" className="flex-1 overflow-y-auto px-4 py-2 space-y-3 no-scrollbar">
+      <div ref={scrollRef} role="log" aria-label="Onboarding conversation with Keel" className="flex-1 overflow-y-auto px-4 py-2 space-y-3 no-scrollbar">
         {messages.map((msg) => (
           <motion.div
             key={msg.id}
@@ -562,7 +562,7 @@ export function ConversationalOnboarding() {
             >
               {msg.role === 'ai' && (
                 <div className="text-xs text-family-400 mb-1 flex items-center gap-1">
-                  <Bot size={12} /> Oak
+                  <Bot size={12} /> Keel
                 </div>
               )}
               <p className="text-sm leading-relaxed">{msg.text}</p>

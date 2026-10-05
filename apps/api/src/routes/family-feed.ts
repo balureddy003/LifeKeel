@@ -16,7 +16,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { z } from 'zod'
-import { getTenantCollection } from '@agentoak/platform'
+import { getTenantCollection } from '@lifekeel/platform'
 import { isFamilyAdult, memberMatchesUser } from '../lib/family-permissions.js'
 import type { ReadinessEventDoc } from '../feed/emit.js'
 import { upsertEventMute, deleteEventMutes } from '../feed/mutes.js'

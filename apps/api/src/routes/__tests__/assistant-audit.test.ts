@@ -1,5 +1,5 @@
 /**
- * OAK-012: POST /assistant/ask previously wrote no audit trail at all —
+ * KEEL-012: POST /assistant/ask previously wrote no audit trail at all —
  * every other insight-affecting action (approve, dismiss, prepare) is
  * audited, but asking the assistant a question about a family's real
  * financial data wasn't. Verifies the route now calls
@@ -63,7 +63,7 @@ function makeAuditDb() {
   return { db, insertOneFn }
 }
 
-describe('OAK-012: POST /assistant/ask writes an audit log entry', () => {
+describe('KEEL-012: POST /assistant/ask writes an audit log entry', () => {
   let auditInsertOne: ReturnType<typeof vi.fn>
 
   beforeEach(() => {

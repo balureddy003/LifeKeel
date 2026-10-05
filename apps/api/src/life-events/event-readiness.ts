@@ -22,7 +22,7 @@
  *   about later") — so a matching policy on file raises the score to
  *   reflect "you have real cover", not a fabricated gap percentage.
  */
-import { formatMoney } from '@agentoak/platform'
+import { formatMoney } from '@lifekeel/platform'
 import type { FinancialProfile } from '../routes/family-financial-profile.js'
 import { educationFundingGapMinor } from '../routes/family-financial-profile.js'
 

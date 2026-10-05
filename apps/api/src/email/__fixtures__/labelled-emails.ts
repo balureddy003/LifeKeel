@@ -37,7 +37,7 @@ export const LABELLED_EMAILS: LabelledEmail[] = [
     subject: 'Changes to your pension plan charges',
     textSnippet: 'We are writing to tell you that the annual management charge on your workplace pension plan will change from 0.45% to 0.60% from 1 January.',
     isFinancial: true,
-    policy: { provider: 'Oak Pensions', type: 'pension' },
+    policy: { provider: 'Keel Pensions', type: 'pension' },
   },
   {
     name: 'mortgage-rate',
