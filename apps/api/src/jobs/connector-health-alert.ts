@@ -19,7 +19,7 @@
  */
 
 import type { Db } from 'mongodb'
-import type { Insight } from '@agentoak/engine'
+import type { Insight } from '@lifekeel/engine'
 import { randomUUID } from 'node:crypto'
 
 const DETECTOR_ID = 'system_connector_health'
@@ -110,7 +110,7 @@ export async function createCredentialExpiryInsights(
     const cred = await credCol.findOne({ tenant_id: tid, connector_id: connectorId })
     const connectorName = (cred?.['name'] as string) ?? connectorId
 
-    // OAK-003: dedupe (don't alert for the same tenant+connector within the
+    // KEEL-003: dedupe (don't alert for the same tenant+connector within the
     // 24h window) used to be a findOne-then-insertOne pair — two replicas
     // of this */15-minute cron could both find no existing alert before
     // either inserted one, producing duplicate health-alert insights for

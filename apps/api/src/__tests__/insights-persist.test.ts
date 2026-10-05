@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { resolveStaleInsights, persistAndDeliverInsights } from '../insights-persist.js'
 
-const ensureVerifiedMomentsMock = vi.fn(async () => {})
+const ensureVerifiedMomentsMock = vi.fn(async (..._args: unknown[]) => {})
 vi.mock('../verified-moments.js', () => ({
   ensureVerifiedMoments: (...args: unknown[]) => ensureVerifiedMomentsMock(...args),
 }))
@@ -89,7 +89,27 @@ function makeInsightsDb(seed: Record<string, unknown>[] = []) {
       return { matchedCount: 0, upsertedCount: 0 }
     }),
   }
-  return { db: { collection: () => collection } as any, docs, updateMany }
+  // readiness_events needs its own sink — the shared `docs` array is the
+  // insights collection, and PRD-136 emit calls upsert into it too.
+  const events: Record<string, unknown>[] = []
+  const readinessEventsCol = {
+    updateOne: async (filter: Record<string, unknown>, update: { $set?: Record<string, unknown>; $setOnInsert?: Record<string, unknown> }) => {
+      const existing = events.find((d) => matchesFilter(d, filter))
+      if (existing) {
+        Object.assign(existing, update.$set)
+        return { modifiedCount: 1 }
+      }
+      events.push({ ...update.$setOnInsert, ...update.$set })
+      return { upsertedCount: 1 }
+    },
+    find: (filter: Record<string, unknown>) => ({ toArray: async () => events.filter((d) => matchesFilter(d, filter)) }),
+  }
+  return {
+    db: { collection: (name: string) => (name === 'readiness_events' ? readinessEventsCol : collection) } as any,
+    docs,
+    events,
+    updateMany,
+  }
 }
 
 function makeInsight(over: Partial<Record<string, unknown>> = {}) {

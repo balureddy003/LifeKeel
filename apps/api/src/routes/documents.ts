@@ -18,8 +18,8 @@
 import type { FastifyInstance } from 'fastify'
 import { GridFSBucket, type Db, type ObjectId } from 'mongodb'
 import { randomUUID } from 'node:crypto'
-import type { Engine, Insight } from '@agentoak/engine'
-import { createLogger, getTenantCollection } from '@agentoak/platform'
+import type { Engine, Insight } from '@lifekeel/engine'
+import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { processDocument } from '../ocr/extract.js'
 import { localDecisionFromEnv } from '../local-model.js'
 import { evaluateProfileAndGenerateInsights, FinancialProfileSchema } from './family-financial-profile.js'
@@ -30,6 +30,43 @@ import {
   type PolicyType,
 } from '../ocr/profile-mapping.js'
 import { effectivePlan, hasFeature } from '../entitlements.js'
+import { recordInsightAction } from '../lib/insight-attribution.js'
+import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
+
+// PRD-136: one feed event per document pipeline stage (uploaded /
+// extracted / applied), deduped per (document, stage) so a reprocess or
+// retry refreshes the day's row rather than stacking copies.
+function emitDocumentEvent(
+  db: Db,
+  tenantId: string,
+  documentId: string,
+  filename: string,
+  stage: 'uploaded' | 'extracted' | 'applied',
+): void {
+  const titles = {
+    uploaded: `Document uploaded: ${filename}`,
+    extracted: `Document read: ${filename}`,
+    applied: `Document applied to your profile: ${filename}`,
+  } as const
+  const summaries = {
+    uploaded: 'Keel stored the file and queued it for field extraction.',
+    extracted: 'Keel finished reading the document — extracted fields are ready to review.',
+    applied: 'Fields you confirmed from this document are now on your financial profile.',
+  } as const
+  emitReadinessEvent(db, tenantId, {
+    type: 'document_processed',
+    severity: 'info',
+    direction: 'up',
+    member_id: null,
+    domain: 'documents',
+    title: titles[stage].slice(0, 120),
+    summary: summaries[stage],
+    evidence: [{ label: 'Stage', value: stage }],
+    links: [{ kind: 'document', id: documentId }],
+    next_check_at: null,
+    dedupe_key: buildDedupeKey('document_processed', `${documentId}:${stage}`),
+  })
+}
 
 const log = createLogger({ service: 'documents', version: '0.0.0' })
 
@@ -116,7 +153,7 @@ export function registerDocumentRoutes(
     log.info({ documentId, filename, mimeType, size: fileBuffer.length, tenant_id }, 'Uploading document')
 
     try {
-      // Store file in GridFS. OAK-019: previously `.end(fileBuffer)` wasn't
+      // Store file in GridFS. KEEL-019: previously `.end(fileBuffer)` wasn't
       // awaited at all — the metadata insert below could race ahead of the
       // GridFS write actually completing. Waiting on 'finish' (the
       // documented way to know a GridFS write has fully landed) closes
@@ -151,7 +188,7 @@ export function registerDocumentRoutes(
           file_id: fileId,
         })
       } catch (metaErr) {
-        // OAK-019: the GridFS write above already succeeded — without this,
+        // KEEL-019: the GridFS write above already succeeded — without this,
         // a metadata-insert failure orphaned that blob forever (no
         // `documents` row exists to ever look it up by again). Best-effort:
         // if the cleanup delete itself fails, log and still surface the
@@ -161,6 +198,7 @@ export function registerDocumentRoutes(
         )
         throw metaErr
       }
+      emitDocumentEvent(db, tenant_id, documentId, filename, 'uploaded')
 
       // Upload and storage are free on every plan — AI field extraction
       // (GPT-4o vision, the actual cost driver) is gated to paid plans.
@@ -274,7 +312,7 @@ export function registerDocumentRoutes(
 
   // ── GET /documents/:id/file ──────────────────────────────────────────────
   // Streams the original uploaded bytes back from GridFS — added for the AI
-  // Memory review drawer (show the source PDF/JPEG next to what Oak
+  // Memory review drawer (show the source PDF/JPEG next to what Keel
   // extracted from it), which had no way to display the document itself
   // before this. Same tenant-scoped lookup and GridFS read `/reprocess`
   // already uses; this just returns the bytes instead of re-running OCR.
@@ -365,6 +403,12 @@ export function registerDocumentRoutes(
       // document already applied to the profile).
       await documents.updateOne({ id: req.params.id }, { $set: { feed_dismissed: true } })
 
+      // Insight→action attribution before regenerateInsights — the apply
+      // is a response to whatever was already flagged, not to what this
+      // re-run is about to create.
+      await recordInsightAction(db, tenant_id, 'document_applied').catch(() => {})
+      emitDocumentEvent(db, tenant_id, req.params.id, String(doc['filename'] ?? 'document'), 'applied')
+
       const insightsGenerated = await regenerateInsights(tenant_id)
 
       log.info(
@@ -442,6 +486,8 @@ export function registerDocumentRoutes(
 
       // See the matching comment in apply-to-profile above.
       await documents.updateOne({ id: req.params.id }, { $set: { feed_dismissed: true } })
+
+      await recordInsightAction(db, tenant_id, 'policy_added').catch(() => {})
 
       const insightsGenerated = await regenerateInsights(tenant_id)
 

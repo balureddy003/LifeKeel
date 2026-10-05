@@ -1,4 +1,4 @@
-# PRD-006 (backfill): Oak Plus billing
+# PRD-006 (backfill): Keel Plus billing
 
 *Retroactive PRD. See [001](001-family-onboarding-twin-graph.md) for the
 template note.*
@@ -17,7 +17,7 @@ See [000](000-market-landscape-and-positioning.md). This is a standard
 freemium SaaS pattern, not a differentiation opportunity — the bar here is
 "don't get this wrong," not "be novel." Money apps in this category
 (Monarch, Copilot) gate around account-linking limits or advanced
-budgeting; Agent Oak's gate (AI extraction + inbox summaries) is a
+budgeting; LifeKeel's gate (AI extraction + inbox summaries) is a
 reasonable, defensible choice already, since it keeps every safety-net
 detector (protection gap, retirement gap, etc.) free.
 
@@ -31,7 +31,7 @@ paid tier is worth it.
 
 Stripe-backed billing ([billing.ts](../../apps/api/src/routes/billing.ts)),
 gating AI document extraction (PRD-003) and inbox AI summaries (PRD-004)
-behind "Oak Plus." ARCHITECTURE.md itself currently labels this
+behind "Keel Plus." ARCHITECTURE.md itself currently labels this
 "dormant" — present in the codebase, registered as a route, but per
 `SECURITY.md`'s deployment notes, `apps/web` isn't yet pointed at this
 repo's own `apps/api` in production, so no real subscriptions exist yet.
@@ -47,7 +47,7 @@ in the product becomes automated.
 
 - **The gate doesn't yet cover PRD-102's Protection domain or PRD-103's
   Tier 1 drafts** — as those ship, a monetization decision is needed for
-  each: is policy-document OCR extraction part of the existing "Oak Plus"
+  each: is policy-document OCR extraction part of the existing "Keel Plus"
   tier (likely yes, same mechanic as PRD-003), and are Tier 1 prepared
   drafts (PRD-103) free or paid? Given drafts are LLM-cost-bearing the
   same way extraction and inbox summaries are, the consistent answer is
@@ -61,7 +61,7 @@ in the product becomes automated.
   this feature doesn't use yet.
 - **Pricing/plan structure isn't verifiable from the code alone** — this
   gap analysis is scoped to what's inspectable in `apps/api`; an actual
-  pricing-tier PRD needs input from whoever owns Oak Plus's commercial
+  pricing-tier PRD needs input from whoever owns Keel Plus's commercial
   terms, not just the engineering surface.
 
 ## Success metrics
@@ -75,7 +75,7 @@ in the product becomes automated.
   (detectors, onboarding, scenario simulator) is generous enough to build
   trust before asking for money, matching the landing page's own framing
   ("Free to start · No credit card").
-- **Churn rate on Oak Plus** — since this is currently dormant with no
+- **Churn rate on Keel Plus** — since this is currently dormant with no
   real subscribers, this metric doesn't exist yet; flagging it here so
   it's tracked from day one once production billing goes live, not added
   retroactively after a churn problem is already visible.

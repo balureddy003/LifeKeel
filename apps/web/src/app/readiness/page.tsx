@@ -34,7 +34,7 @@ function ShareScore({ score }: { score: number }) {
   // Per-score share URL — the API serves per-score OG tags to scrapers and
   // redirects humans to the quiz with share-attribution UTMs.
   const shareUrl = readinessShareUrl(score)
-  const shareText = `I scored ${score}/100 on Agent Oak's Family Readiness Check. What's yours?`
+  const shareText = `I scored ${score}/100 on LifeKeel's Family Readiness Check. What's yours?`
 
   async function handleShare() {
     haptic('light')
@@ -182,7 +182,7 @@ function EmailCapture({ score }: { score: number }) {
       />
       <label className="mt-3 flex items-start gap-2.5 text-xs text-ink-secondary leading-relaxed cursor-pointer">
         <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 accent-family-500" />
-        I agree to Agent Oak contacting me at this address.
+        I agree to LifeKeel contacting me at this address.
       </label>
       {state === 'error' && <p className="text-xs text-danger mt-2">Couldn&apos;t save that — please try again.</p>}
       <GlassButton onClick={submit} disabled={state === 'busy' || !email.trim() || !consent} className="mt-3">
@@ -201,8 +201,25 @@ const EMPTY_FORM = {
   dependents: '',
 }
 
+const STEPS: { key: keyof typeof EMPTY_FORM; label: string; hint: string; prefix?: string; placeholder?: string }[] = [
+  { key: 'monthlySalary', label: 'Monthly household income', hint: 'All earners combined, before tax.', prefix: '£' },
+  { key: 'monthlyExpenses', label: 'Monthly living expenses', hint: 'Rent/mortgage, food, transport, bills — the costs that don\'t stop.', prefix: '£' },
+  { key: 'emergencySavings', label: 'Emergency savings on hand', hint: 'Cash you could access within a week if you needed to.', prefix: '£' },
+  { key: 'mortgageOutstanding', label: 'Mortgage still outstanding', hint: 'The remaining balance, not the monthly payment. Enter 0 if you rent.', prefix: '£' },
+  { key: 'lifeCover', label: 'Life insurance coverage', hint: 'The total payout amount across all policies. Enter 0 if none.', prefix: '£' },
+  { key: 'dependents', label: 'Number of dependents', hint: 'Children, elderly relatives — anyone who relies on this household\'s income.', placeholder: '0' },
+]
+
+function scoreBand(score: number): { label: string; color: string; description: string } {
+  if (score >= 80) return { label: 'Strong', color: 'text-success', description: 'Your household has solid buffers in the areas this quiz covers.' }
+  if (score >= 60) return { label: 'Fair', color: 'text-warning', description: 'Some areas are covered, but there are gaps worth knowing about.' }
+  if (score >= 40) return { label: 'Needs attention', color: 'text-orange-400', description: 'Meaningful gaps exist — knowing them is the first step to addressing them.' }
+  return { label: 'At risk', color: 'text-danger', description: 'Significant gaps in coverage or savings — worth reviewing with a professional.' }
+}
+
 export default function ReadinessQuizPage() {
   const [form, setForm] = useState(EMPTY_FORM)
+  const [step, setStep] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<ReadinessQuizResult | null>(null)
 
@@ -245,6 +262,10 @@ export default function ReadinessQuizPage() {
     }
   }
 
+  const isLastStep = step === STEPS.length - 1
+  const currentStep = STEPS[step]
+  const progress = result ? 100 : Math.round((step / STEPS.length) * 100)
+
   return (
     <div className="px-5 pt-2 pb-12">
       <PageHeader
@@ -253,27 +274,71 @@ export default function ReadinessQuizPage() {
         action={<></>}
       />
 
+      {/* Progress bar — visible during quiz and on result */}
+      <div className="h-1.5 rounded-full bg-tint/5 overflow-hidden mt-2 mb-4">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-family-400 to-family-500 transition-all duration-500"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+
       {!result && (
-        <div className="mt-4">
+        <div className="mt-2">
           <p className="text-xs text-ink-tertiary mb-4">
             Used only to calculate your score right now — nothing is saved or linked to you.
           </p>
-          <Field label="Monthly household income" value={form.monthlySalary} onChange={set('monthlySalary')} prefix="£" />
-          <Field label="Monthly living expenses" value={form.monthlyExpenses} onChange={set('monthlyExpenses')} prefix="£" />
-          <Field label="Emergency savings on hand" value={form.emergencySavings} onChange={set('emergencySavings')} prefix="£" />
-          <Field label="Mortgage still outstanding" value={form.mortgageOutstanding} onChange={set('mortgageOutstanding')} prefix="£" />
-          <Field label="Life insurance coverage" value={form.lifeCover} onChange={set('lifeCover')} prefix="£" />
-          <Field label="Number of dependents" value={form.dependents} onChange={set('dependents')} placeholder="0" />
 
-          <GlassButton onClick={handleSubmit} disabled={submitting}>
-            {submitting ? 'Calculating…' : 'See my score'}
-          </GlassButton>
+          {/* Step-through: one question at a time on mobile, all visible on desktop */}
+          <div className="hidden sm:block">
+            {STEPS.map((s) => (
+              <div key={s.key}>
+                <Field label={s.label} value={form[s.key]} onChange={set(s.key)} {...(s.prefix ? { prefix: s.prefix } : {})} {...(s.placeholder ? { placeholder: s.placeholder } : {})} />
+                <p className="text-[11px] text-ink-tertiary -mt-2 mb-4 px-1">{s.hint}</p>
+              </div>
+            ))}
+            <GlassButton onClick={handleSubmit} disabled={submitting}>
+              {submitting ? 'Calculating…' : 'See my score'}
+            </GlassButton>
+          </div>
+
+          {/* Mobile step-by-step */}
+          <div className="sm:hidden">
+            {currentStep && (
+              <>
+                <p className="text-xs font-semibold text-family-400 mb-1">Question {step + 1} of {STEPS.length}</p>
+                <Field label={currentStep.label} value={form[currentStep.key]} onChange={set(currentStep.key)} {...(currentStep.prefix ? { prefix: currentStep.prefix } : {})} {...(currentStep.placeholder ? { placeholder: currentStep.placeholder } : {})} />
+                <p className="text-[11px] text-ink-tertiary -mt-2 mb-4 px-1">{currentStep.hint}</p>
+                <div className="flex gap-2">
+                  {step > 0 && (
+                    <button onClick={() => { haptic('light'); setStep(step - 1) }} className="flex-1 rounded-xl py-3 text-sm font-semibold bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary">
+                      Back
+                    </button>
+                  )}
+                  {isLastStep ? (
+                    <GlassButton onClick={handleSubmit} disabled={submitting} className="flex-1">
+                      {submitting ? 'Calculating…' : 'See my score'}
+                    </GlassButton>
+                  ) : (
+                    <GlassButton onClick={() => { haptic('light'); setStep(step + 1) }} className="flex-1">
+                      Next
+                    </GlassButton>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
 
-      {result && result.score !== null && (
+      {result && result.score !== null && (() => {
+        const band = scoreBand(result.score)
+        return (
         <div ref={resultRef} tabIndex={-1} aria-label={`Your Family Readiness Check result: ${result.score} out of 100`} className="mt-6 flex flex-col items-center outline-none">
           <ScoreRing score={result.score} size={160} />
+          <div className="mt-3 text-center">
+            <span className={`text-lg font-bold ${band.color}`}>{band.label}</span>
+            <p className="text-sm text-ink-secondary mt-1 max-w-xs">{band.description}</p>
+          </div>
 
           {/* PRD-125: the breakdown uses the same component labels + weights
               the in-app readiness score does — scored only for what the
@@ -298,7 +363,7 @@ export default function ReadinessQuizPage() {
           {result.insights.length === 0 ? (
             <GlassCard className="p-4 mt-6 w-full">
               <p className="text-sm text-ink-secondary leading-relaxed">
-                Oak didn&apos;t find an obvious gap in the two areas this quick quiz checks. A full profile covers
+                Keel didn&apos;t find an obvious gap in the two areas this quick quiz checks. A full profile covers
                 four more areas, including retirement and education funding.
               </p>
             </GlassCard>
@@ -321,17 +386,28 @@ export default function ReadinessQuizPage() {
           )}
 
           <GlassCard className="p-4 mt-4 w-full">
-            <p className="text-sm text-ink-secondary leading-relaxed mb-3">
-              This score is the same composite readiness math a real account gets — the quiz just
-              only collected enough to score protection and emergency-fund coverage. Your in-app Family
-              Readiness Score adds retirement, education funding, and estate on top. See your full picture, free.
+            <p className="text-sm font-semibold text-ink-primary mb-2">
+              This was a snapshot. Keel is a system that keeps watching.
             </p>
+            <p className="text-sm text-ink-secondary leading-relaxed mb-3">
+              The quiz scored two domains from six questions. A full account scores five domains, monitors
+              them continuously with 9 detectors, and alerts you when something changes &mdash; even when
+              nobody logs in.
+            </p>
+            <ul className="text-xs text-ink-tertiary leading-relaxed space-y-1.5 mb-3">
+              <li>• Protection, wealth, goals, savings, and estate &mdash; scored and monitored daily</li>
+              <li>• Every family member gets their own readiness view, scoped to their life stage</li>
+              <li>• Crisis playbooks built from your real data, not generic checklists</li>
+              <li>• Zero commissions &mdash; Keel has no financial relationship with any insurer</li>
+            </ul>
             <Link href="/welcome" onClick={() => { haptic('light'); track('landing_get_started_click', { location: 'readiness_quiz' }) }}>
-              <GlassButton>Get my full picture</GlassButton>
+              <GlassButton>Start monitoring for free</GlassButton>
             </Link>
+            <p className="text-[11px] text-ink-tertiary mt-2">No card required. Free forever for core features. Keel Plus (£7.99/mo) adds AI document reading.</p>
           </GlassCard>
         </div>
-      )}
+        )
+      })()}
 
       {result && result.score === null && (
         <div ref={resultRef} tabIndex={-1} role="status" aria-live="polite" className="outline-none">

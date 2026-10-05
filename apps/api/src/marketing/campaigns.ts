@@ -21,7 +21,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import type { Db } from 'mongodb'
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 import { getPlatformConfig } from '../operator/platform-config.js'
 import { getGrowthEventsCollection } from '../db.js'
 import { lifecycleSendsCol, ensureLifecycleIndexes, sendEmail, wrap, cta, unsubscribeToken, userUnsubUrl } from './lifecycle-emails.js'
@@ -184,7 +184,7 @@ export async function sendCampaign(db: Db, campaign: CampaignDoc, opts: { appUrl
   if ((await getPlatformConfig(db)).marketing_paused) {
     throw Object.assign(new Error('marketing_paused is set — campaign sends are halted'), { statusCode: 409 })
   }
-  const appUrl = (opts.appUrl ?? process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
+  const appUrl = (opts.appUrl ?? process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
   const recipients = await resolveAudience(db, campaign.filter)
   const stats = { targeted: recipients.length, sent: 0, failed: 0 }
 

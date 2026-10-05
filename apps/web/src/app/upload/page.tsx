@@ -230,7 +230,7 @@ export default function UploadPage() {
         >
           <Sparkles size={16} className="text-family-400 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-ink-secondary leading-relaxed flex-1">
-            Documents are saved and stored for free. <span className="text-family-400 font-semibold">Upgrade to Oak Plus</span> to have AI automatically pull out the provider, policy number, amounts, and dates.
+            Documents are saved and stored for free. <span className="text-family-400 font-semibold">Upgrade to Keel Plus</span> to have AI automatically pull out the provider, policy number, amounts, and dates.
           </p>
           <ChevronRight size={14} className="text-ink-tertiary flex-shrink-0 mt-0.5" />
         </GlassCard>

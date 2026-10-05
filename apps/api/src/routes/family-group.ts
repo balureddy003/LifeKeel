@@ -20,9 +20,10 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { randomUUID, randomBytes } from 'node:crypto'
-import { createLogger, getTenantCollection } from '@agentoak/platform'
+import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { getFamilyGroupsCollection } from '../db.js'
 import { isFamilyOrganizer } from '../lib/family-permissions.js'
+import { cascadeLegacyMemberRemoval } from './family-legacy.js'
 
 const log = createLogger({ service: 'family-group', version: '0.0.0' })
 
@@ -98,7 +99,7 @@ export interface FamilyGroupDoc extends Record<string, unknown> {
   /**
    * Gap-8 context slice: a short organizer-authored free-text note about
    * the household ("we're a blended family; Maya finishes uni in 2027")
-   * that Ask Oak reads as context. User-authored and deletable — same
+   * that Ask Keel reads as context. User-authored and deletable — same
    * sensitivity class as the financial profile, and the UI asks for no
    * medical details (health stays GDPR-deferred).
    */
@@ -296,12 +297,18 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
     )) as FamilyGroupDoc | null
     if (!result) return reply.status(404).send({ error: 'Family not found' })
 
+    // PRD-137: roles the removed member held on legacy documents flip to
+    // 'unverified' rather than disappearing silently — the register keeps
+    // the record honest about who it used to name. Best-effort; deletion
+    // already committed.
+    await cascadeLegacyMemberRemoval(db, tenant_id, req.params.id)
+
     log.info({ tenant_id, memberId: req.params.id }, 'Family member removed')
     return { family: toResponse(result) }
   })
 
   // ── PATCH /family/context ────────────────────────────────────────────
-  // Gap-8 context slice: a short organizer-authored note Ask Oak reads as
+  // Gap-8 context slice: a short organizer-authored note Ask Keel reads as
   // household context. User-authored, organizer-gated, deletable (empty
   // string clears). Not a channel for medical data — the UI says so and
   // health stays deferred by design.

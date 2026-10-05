@@ -22,6 +22,7 @@
  */
 
 import type { FinancialProfile } from '../routes/family-financial-profile.js'
+import type { EstateSignalData } from '../legacy/estate-signal.js'
 import { educationFundingGapMinor, isUnsetTarget, projectRetirement } from '../routes/family-financial-profile.js'
 
 export type ReadinessComponentKey = 'emergency_fund' | 'protection' | 'retirement' | 'education' | 'estate'
@@ -35,8 +36,15 @@ export interface ReadinessComponent {
   weight: number
   /** One plain-language line explaining the number ("covers ~4.2 months of expenses"). */
   detail: string
+  /** The profile figures the score was computed from — the audit trail
+   *  behind `detail`, so "why this score" shows real inputs, not just a
+   *  conclusion. Minor units stay minor: the client formats. */
+  drivers?: { label: string; value_minor?: number; value?: string }[]
   /** True when the caller can't see the underlying data at all (non-adult member and the estate vault). */
   gated?: boolean
+  /** PRD-137: scope disclaimer the web must render with the score —
+   *  lives in the component so no client can show the number without it. */
+  caption?: string
 }
 
 export interface ReadinessResult {
@@ -84,6 +92,11 @@ function emergencyFundComponent(profile: FinancialProfile): ReadinessComponent {
     score,
     weight: READINESS_WEIGHTS.emergency_fund,
     detail: `Savings cover ~${rounded} month${rounded === 1 ? '' : 's'} of expenses (target: ${MONTHS_OF_COVER_TARGET}).`,
+    drivers: [
+      { label: 'Emergency savings', value_minor: profile.emergency_fund.emergency_savings_minor },
+      { label: 'Monthly expenses', value_minor: expenses },
+      { label: 'Months covered', value: `${rounded} of ${MONTHS_OF_COVER_TARGET}` },
+    ],
   }
 }
 
@@ -161,6 +174,30 @@ function protectionComponent(profile: FinancialProfile): ReadinessComponent {
     score,
     weight: READINESS_WEIGHTS.protection,
     detail: gaps.length === 0 ? 'All applicable cover is in place.' : `Gaps: ${gaps.join(', ')}.`,
+    drivers: [
+      ...(hasDependents || profile.household.mortgage_outstanding_minor > 0
+        ? [
+            { label: 'Life cover on file', value_minor: profile.household.life_cover_minor },
+            { label: 'Estimated household need', value_minor: need },
+          ]
+        : []),
+      ...(protectable.length > 0
+        ? [
+            {
+              label: 'Earners with income protection',
+              value: `${protectable.filter((e) => e.income_protection_monthly_minor > 0 || profile.policies.some((p) => p.type === 'income_protection' && (e.member_id ? p.member_id === e.member_id : p.member_id === undefined))).length} of ${protectable.length}`,
+            },
+          ]
+        : []),
+      ...(hasDependents
+        ? [
+            {
+              label: 'Health / critical illness policy',
+              value: profile.policies.some((p) => p.type === 'health' || p.type === 'critical_illness') ? 'On file' : 'Not on file',
+            },
+          ]
+        : []),
+    ],
   }
 }
 
@@ -186,6 +223,12 @@ function retirementComponent(profile: FinancialProfile): ReadinessComponent {
       score >= 100
         ? `On track — projected to fund the target income by age ${r.target_retirement_age}.`
         : `Current trajectory funds ~${score}% of the target retirement income.`,
+    drivers: [
+      { label: 'Pension balance', value_minor: r.pension_balance_minor },
+      { label: 'Monthly contribution', value_minor: r.monthly_contribution_minor },
+      { label: 'Projected sustainable income', value_minor: projection.achievable_retirement_income_minor },
+      { label: 'Target income', value_minor: r.target_retirement_income_minor },
+    ],
   }
 }
 
@@ -211,6 +254,10 @@ function educationComponent(profile: FinancialProfile): ReadinessComponent {
       funded.length === 1
         ? `${funded[0]!.child_name}'s fund is ~${score}% of target.`
         : `Average ${score}% of target across ${funded.length} funds.`,
+    drivers: funded.map((f) => ({
+      label: `${f.child_name}: saved vs target`,
+      value: `${Math.round((f.current_savings_minor / 100)).toLocaleString('en-GB')} / ${Math.round((f.target_savings_minor / 100)).toLocaleString('en-GB')}`,
+    })),
   }
 }
 
@@ -219,7 +266,36 @@ function educationComponent(profile: FinancialProfile): ReadinessComponent {
  *  but don't move the score — presence of a will and PoA is the signal. */
 export const ESTATE_EXPECTED_DOC_TYPES = ['will', 'power_of_attorney'] as const
 
-function estateComponent(docTypesPresent: string[] | null): ReadinessComponent {
+// PRD-137 §4: the disclaimer every presentation of the estate score
+// must carry — the register records what the family declared, so the
+// number says nothing about legal validity.
+const ESTATE_CAPTION = "Completeness and freshness of what's recorded — not legal validity."
+
+/**
+ * One scored check from PRD-137 §4: a label, the fraction of its
+ * applicable population that's complete, and its weight. Checks with no
+ * applicable population (no minors, no properties, no wills) return
+ * null and drop out — the remaining weights renormalise to 100.
+ */
+function legacyCheck(
+  label: string,
+  total: number,
+  complete: number,
+  weight: number,
+  unit: string,
+): { earned: number; weight: number; driver: { label: string; value: string } } | null {
+  if (total <= 0) return null
+  return {
+    earned: weight * (Math.min(complete, total) / total),
+    weight,
+    driver: { label, value: `${Math.min(complete, total)} of ${total} ${unit}` },
+  }
+}
+
+function estateComponent(
+  docTypesPresent: string[] | null,
+  legacy?: EstateSignalData | null,
+): ReadinessComponent {
   if (docTypesPresent === null) {
     return {
       key: 'estate',
@@ -230,6 +306,44 @@ function estateComponent(docTypesPresent: string[] | null): ReadinessComponent {
       gated: true,
     }
   }
+
+  // PRD-137 §4: once the family has recorded anything in the legacy
+  // register, the score reflects it — pro-rata per adult / minor /
+  // property / will, with inapplicable checks dropped and the remaining
+  // weights renormalised. No legacy records → the original vault-
+  // boolean behaviour below.
+  if (legacy?.has_legacy_records) {
+    const wills = legacy.wills_total ?? 0
+    const locationDocs = legacy.original_location_total ?? 0
+    const checks = [
+      legacyCheck('Wills recorded', legacy.adults_total, legacy.adults_with_will, 25, 'adults'),
+      legacyCheck('Powers of attorney recorded', legacy.adults_total, legacy.adults_with_poa, 20, 'adults'),
+      legacyCheck('Guardian nominations', legacy.minors_total, legacy.minors_with_guardian_nomination, 15, 'minors'),
+      legacyCheck('Executors resolvable', wills, wills - legacy.wills_with_dead_or_missing_executor, 10, 'wills'),
+      legacyCheck('Property title evidence', legacy.properties_total, legacy.properties_total - legacy.properties_without_title_evidence, 15, 'properties'),
+      legacyCheck('Original location known', locationDocs, locationDocs - legacy.documents_without_original_location, 10, 'documents'),
+      legacyCheck('Reviewed within 3 years', wills, wills - legacy.wills_stale, 5, 'wills'),
+    ].filter((c): c is NonNullable<typeof c> => c !== null)
+
+    const totalWeight = checks.reduce((s, c) => s + c.weight, 0)
+    const score = totalWeight === 0 ? null : Math.round((checks.reduce((s, c) => s + c.earned, 0) / totalWeight) * 100)
+    const incomplete = checks.filter((c) => c.earned < c.weight).length
+    return {
+      key: 'estate',
+      label: 'Estate',
+      score,
+      weight: READINESS_WEIGHTS.estate,
+      detail:
+        score === null
+          ? 'Nothing in the legacy register is scorable yet.'
+          : incomplete === 0
+            ? "Everything recorded in the legacy register is complete and current."
+            : `${incomplete} of ${checks.length} legacy checks need attention.`,
+      drivers: checks.map((c) => c.driver),
+      caption: ESTATE_CAPTION,
+    }
+  }
+
   const present = ESTATE_EXPECTED_DOC_TYPES.filter((t) => docTypesPresent.includes(t))
   const score = Math.round((present.length / ESTATE_EXPECTED_DOC_TYPES.length) * 100)
   const missing = ESTATE_EXPECTED_DOC_TYPES.filter((t) => !docTypesPresent.includes(t))
@@ -242,6 +356,7 @@ function estateComponent(docTypesPresent: string[] | null): ReadinessComponent {
       missing.length === 0
         ? 'Will and power of attorney are both in the vault.'
         : `Missing from the vault: ${missing.map((t) => (t === 'power_of_attorney' ? 'power of attorney' : t)).join(', ')}.`,
+    caption: ESTATE_CAPTION,
   }
 }
 
@@ -251,13 +366,17 @@ function estateComponent(docTypesPresent: string[] | null): ReadinessComponent {
  * isn't an adult family member (the vault is adult-gated), which yields a
  * gated estate component excluded from the weighted mean.
  */
-export function computeReadiness(profile: FinancialProfile, estateDocTypes: string[] | null): ReadinessResult {
+export function computeReadiness(
+  profile: FinancialProfile,
+  estateDocTypes: string[] | null,
+  legacy?: EstateSignalData | null,
+): ReadinessResult {
   const components = [
     emergencyFundComponent(profile),
     protectionComponent(profile),
     retirementComponent(profile),
     educationComponent(profile),
-    estateComponent(estateDocTypes),
+    estateComponent(estateDocTypes, legacy),
   ]
   return combineComponents(components)
 }
@@ -457,6 +576,7 @@ export function computeMemberReadiness(
   profile: FinancialProfile | null,
   slice: MemberSlice,
   estateDocTypes: string[] | null,
+  legacy?: EstateSignalData | null,
 ): ReadinessResult {
   const components: ReadinessComponent[] = []
   if (ADULT_ROLES.has(slice.role)) {
@@ -472,7 +592,7 @@ export function computeMemberReadiness(
     components.push(memberEducationComponent(slice))
   }
   if (ADULT_ROLES.has(slice.role)) {
-    const estate = estateComponent(estateDocTypes)
+    const estate = estateComponent(estateDocTypes, legacy)
     components.push({ ...estate, weight: MEMBER_READINESS_WEIGHTS.estate! })
   }
   return combineComponents(components)

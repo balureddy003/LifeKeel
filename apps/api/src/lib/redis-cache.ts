@@ -6,7 +6,7 @@
  */
 
 import { createClient } from 'redis'
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'redis-cache', version: '0.0.0' })
 

@@ -10,7 +10,7 @@
  * configured, alerts are only logged via pino.
  */
 
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'billing-alerts', version: '0.0.0' })
 
@@ -46,8 +46,8 @@ export async function sendBillingAlert(opts: BillingAlertOpts): Promise<void> {
     `Billing alert: ${title}`,
   )
 
-  const token = process.env['KAIROS_SLACK_BOT_TOKEN']
-  const channel = process.env['KAIROS_BILLING_ALERT_CHANNEL'] ?? '#alerts'
+  const token = process.env['LIFEKEEL_SLACK_BOT_TOKEN']
+  const channel = process.env['LIFEKEEL_BILLING_ALERT_CHANNEL'] ?? '#alerts'
 
   if (!token) {
     // No Slack token configured — alert already logged above.

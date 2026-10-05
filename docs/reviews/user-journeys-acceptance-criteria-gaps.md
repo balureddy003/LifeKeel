@@ -1,10 +1,10 @@
-# AgentOak User Journeys — Acceptance Criteria & Gaps
+# LifeKeel User Journeys — Acceptance Criteria & Gaps
 
 As of 2026-09-18 · reviewed by Claude Code
 
 ## Overview
 
-This reviews every user-facing journey in AgentOak's web app (`apps/web`) against what the backend (`apps/api`) actually supports, based on a full code read of both — not a live-testing pass. Each section lists the journeys in that area as a table: acceptance criteria (what "done" should mean), what's implemented today, and the gap between them. The riskier findings get a short expanded note under their table.
+This reviews every user-facing journey in LifeKeel's web app (`apps/web`) against what the backend (`apps/api`) actually supports, based on a full code read of both — not a live-testing pass. Each section lists the journeys in that area as a table: acceptance criteria (what "done" should mean), what's implemented today, and the gap between them. The riskier findings get a short expanded note under their table.
 
 Branch: `main`, with a large amount of in-progress uncommitted work across the app — this reflects the code as currently checked out.
 
@@ -60,7 +60,7 @@ Branch: `main`, with a large amount of in-progress uncommitted work across the a
 
 `policies[]` ([family-financial-profile.ts:113-131](../../apps/api/src/routes/family-financial-profile.ts)) has no field linking a policy to a specific family-roster member — confirmed directly against the schema, which carries `type/provider/coverage_amount_minor/monthly_premium_minor/renewal_date/policy_number` and nothing else. That's a reasonable design for policy types that are genuinely household-wide (car, home), but four of the six recordable types — life, income protection, critical illness, health — are insurance *on a specific person's life or income*. Today, if both parents each hold a separate life policy, they land in one undifferentiated list with no way to tell whose is whose, and no way for a detector or the assistant to answer "is *everyone* covered?" — only "does at least one qualifying policy exist somewhere?"
 
-This is the same shape of gap PRD-104 already fixed once, for a different slice of the same schema: `household.employment_status`/`monthly_salary_minor` used to be single, household-level fields that silently hid a real protection gap in mixed-earner households (OAK-029) until PRD-104 added `household.members[]` with per-member `employment_status`, `monthly_salary_minor`, and `income_protection_monthly_minor`. Checked PRD-104's own "Out of scope" section directly — it explicitly defers per-member retirement and emergency-fund tracking, but never mentions `policies[]` at all. This isn't a deliberate deferral, it's a gap that slipped through the schema's redesign.
+This is the same shape of gap PRD-104 already fixed once, for a different slice of the same schema: `household.employment_status`/`monthly_salary_minor` used to be single, household-level fields that silently hid a real protection gap in mixed-earner households (KEEL-029) until PRD-104 added `household.members[]` with per-member `employment_status`, `monthly_salary_minor`, and `income_protection_monthly_minor`. Checked PRD-104's own "Out of scope" section directly — it explicitly defers per-member retirement and emergency-fund tracking, but never mentions `policies[]` at all. This isn't a deliberate deferral, it's a gap that slipped through the schema's redesign.
 
 **Ideal acceptance criteria** (the bar this should be held to before it's considered closed):
 
@@ -90,7 +90,7 @@ All 5 crisis tiles in the overlay (bereavement, medical, car, property, travel) 
 
 | Journey | Acceptance criteria | Implemented today | Gap |
 | --- | --- | --- | --- |
-| Ask Oak assistant | Answers use real family data when available, are clearly labeled sample when not, and genuine failures are distinguishable from "no answer available" | `/assistant` — live answers when backend has data; canned answers routed through a second keyword-based live-check with an explicit "Sample answer" disclosure | See detailed finding below |
+| Ask Keel assistant | Answers use real family data when available, are clearly labeled sample when not, and genuine failures are distinguishable from "no answer available" | `/assistant` — live answers when backend has data; canned answers routed through a second keyword-based live-check with an explicit "Sample answer" disclosure | See detailed finding below |
 | Inbox | AI-summarized financial mail when connected, clearly-labeled sample data otherwise | `/inbox` — live if email connected, falls back to sample `INBOX_ITEMS` with a visible banner | None found — correctly split between live dismiss (real API call) and local-only dismiss for sample items |
 
 ### Assistant error-masking — detailed finding
@@ -104,7 +104,7 @@ All 5 crisis tiles in the overlay (bereavement, medical, car, property, travel) 
 | Journey | Acceptance criteria | Implemented today | Gap |
 | --- | --- | --- | --- |
 | Settings hub | Edit profile, manage family members, switch persona mode, reach connected services / financial profile / upgrade, sign out | `/settings` — all of the above wired to real endpoints | None found |
-| Oak Plus upgrade | Clear plan comparison, working checkout, honest handling of return states | `/upgrade` — benefits list, price card, `startOakPlusCheckout()` redirect, `?success=true` / `?canceled=true` banners | Success banner admits eventual-consistency lag ("refresh if it doesn't update") with no auto-poll — user must manually refresh to see the upgrade take effect |
+| Keel Plus upgrade | Clear plan comparison, working checkout, honest handling of return states | `/upgrade` — benefits list, price card, `startLifeKeelPlusCheckout()` redirect, `?success=true` / `?canceled=true` banners | Success banner admits eventual-consistency lag ("refresh if it doesn't update") with no auto-poll — user must manually refresh to see the upgrade take effect |
 | Free vs. paid boundary | Consistently and honestly communicated everywhere it applies | Upload, connect, inbox, and upgrade pages all draw the line the same way (extraction / summarization paid, storage / connection free) | None found — one of the more polished aspects of the current build |
 
 ## Cross-cutting states
@@ -131,12 +131,12 @@ These are capabilities that exist on one side of the stack but have no correspon
 | Insight approval → autonomous action execution | `POST /insights/:id/approve` triggers real SendGrid email, Twilio WhatsApp, HubSpot CRM tagging via `action-executor.ts` | None — no caller anywhere in `apps/web` | Backend-ready, no frontend (intentional per `ARCHITECTURE.md`: "no autonomous Act exists" today) |
 | Dry-run mode / per-workflow trust level | `GET`/`PATCH /settings/automation`, auto-incrementing trust levels on approval | None — the "TrustLadder" component on Home is an unrelated onboarding checklist, not this | Backend-ready, no frontend |
 | Family invite acceptance | An invite code is generated and displayed to the user | Nothing redeems it — no `/family/join` endpoint, no `/invite/[code]` page. Backend explicitly documents self-serve signup cannot join an existing tenant | Doesn't exist on either side — "family sharing" today is organizer-adds-roster-entries only, no second real login |
-| Studio/admin backend (~15 endpoints: LLM provider config, SSO, detector priority, ML isolation, benchmarks) | `apps/api/src/routes/settings.ts` (970 lines) | None called from `apps/web` | Backend-ready, no frontend — likely leftover from the pre-pivot "Kairos" product |
+| Studio/admin backend (~15 endpoints: LLM provider config, SSO, detector priority, ML isolation, benchmarks) | `apps/api/src/routes/settings.ts` (970 lines) | None called from `apps/web` | Backend-ready, no frontend — likely leftover from the pre-pivot "LifeKeel" product |
 | Audit log viewer | Every security-relevant action logged with a 7-year TTL | No `/audit` route or page anywhere in `apps/web` | Backend-ready, no frontend |
 | Case studies (marketing feature) | Submit/approve endpoints exist | No page anywhere | Backend-ready, no frontend |
 | Blog authoring | Admin-key-gated create/update/delete endpoints | Only public read (`GET /blog/posts`) is wired | Admin half backend-ready, no frontend |
 | Connector backfill / sync status | `POST /connectors/:id/backfill`, `GET /connectors/:id/sync/status` | Not called — only "scan now" and disconnect are wired | Backend-ready, no frontend (may be intentional if backfill auto-triggers server-side) |
-| `AIFloatingButton` component | — | Exists in the tree, imported nowhere | Confirmed dead code, superseded by `AskOakButton` |
+| `AIFloatingButton` component | — | Exists in the tree, imported nowhere | Confirmed dead code, superseded by `AskKeelButton` |
 | `/support` for logged-in users | — | Page exists, but nothing in Settings links to it once authenticated | Frontend built, unreachable from nav |
 | `/readiness` quiz for logged-in users | — | Only linked from the pre-login marketing page; in-app "readiness score" is a different, unrelated metric with the same name | By design, but worth flagging as a naming collision |
 
@@ -148,7 +148,7 @@ Cross-referencing this review against `ARCHITECTURE.md`'s own "where the vision 
 
 **Family Intelligence — matches.** Vision calls for Understand/Predict; journeys confirm this is real for the financial + protection domains (insights, health-domain drill-down, inbox), consistently and honestly labeled sample where live data doesn't exist yet.
 
-**Agent Oak / trust tiers — the most important misalignment found.** `ARCHITECTURE.md` states "Nothing beyond Tier 1 exists; no autonomous Act" — but the missing-journeys findings above show `action-executor.ts` already contains live Tier 2+ dispatch code: real SendGrid email, Twilio WhatsApp, and HubSpot CRM tagging, reachable via `POST /insights/:id/approve`. No frontend calls that endpoint today, so this isn't user-reachable yet — but the code contradicts the architecture doc's own claim, and CLAUDE.md's rule ("never implement autonomous execution of a financial, legal, medical, or otherwise irreversible action without an explicit human approval gate") has no enforcement point here: there's no approval-gate UI, and no dry-run/trust-level settings screen either. `action-executor.ts`'s own header comment documents that more dangerous action types (Stripe refund/pause, Xero credit notes, social posting) were already deleted once after this same generic-approve pattern let free-text keyword matching trigger them with no per-action confirmation — that lesson doesn't appear to have been applied to the email/WhatsApp/CRM actions that remain.
+**LifeKeel / trust tiers — the most important misalignment found.** `ARCHITECTURE.md` states "Nothing beyond Tier 1 exists; no autonomous Act" — but the missing-journeys findings above show `action-executor.ts` already contains live Tier 2+ dispatch code: real SendGrid email, Twilio WhatsApp, and HubSpot CRM tagging, reachable via `POST /insights/:id/approve`. No frontend calls that endpoint today, so this isn't user-reachable yet — but the code contradicts the architecture doc's own claim, and CLAUDE.md's rule ("never implement autonomous execution of a financial, legal, medical, or otherwise irreversible action without an explicit human approval gate") has no enforcement point here: there's no approval-gate UI, and no dry-run/trust-level settings screen either. `action-executor.ts`'s own header comment documents that more dangerous action types (Stripe refund/pause, Xero credit notes, social posting) were already deleted once after this same generic-approve pattern let free-text keyword matching trigger them with no per-action confirmation — that lesson doesn't appear to have been applied to the email/WhatsApp/CRM actions that remain.
 
 **Positive finding: one journey is ahead of the documented roadmap.** Roadmap item 3 lists "extend prepare beyond insights (e.g. event-response checklists)" as a *next* step — but the life-events journey review found `prepareLifeEventStepDraft` already shipped and wired into `/life-events/[eventId]`, scoped per checklist step. Worth updating the roadmap doc, or confirming this was intentional early delivery.
 
@@ -156,7 +156,7 @@ Cross-referencing this review against `ARCHITECTURE.md`'s own "where the vision 
 
 **Marketing/growth backend (blog, case studies, growth events) — re-contextualized, not a new gap.** `ARCHITECTURE.md` confirms these are deliberate, named backend surfaces (PRD-201 readiness quiz, PRD-202 detector-driven content). The earlier finding that they have no in-app authoring UI still stands, but this reads as intentional scope (an external CMS/script is the expected caller), not orphaned work — worth a quick confirmation rather than a fix.
 
-**Everything else under "Missing or orphaned journeys" falls outside the vision's four layers entirely** — the Studio/admin backend (LLM config, SSO, detector priority, ML isolation, benchmarks) and the audit-log viewer aren't mentioned anywhere in `ARCHITECTURE.md`. Given the doc's own framing (extracted from a larger "kairos-ai" monorepo, trimmed to what Agent Oak needs), these read as pre-pivot leftovers rather than deferred roadmap items — worth an explicit decide-and-document (delete, or fold into a named future PRD) rather than leaving them live and undocumented.
+**Everything else under "Missing or orphaned journeys" falls outside the vision's four layers entirely** — the Studio/admin backend (LLM config, SSO, detector priority, ML isolation, benchmarks) and the audit-log viewer aren't mentioned anywhere in `ARCHITECTURE.md`. Given the doc's own framing (extracted from a larger "kairos-ai" monorepo, trimmed to what LifeKeel needs), these read as pre-pivot leftovers rather than deferred roadmap items — worth an explicit decide-and-document (delete, or fold into a named future PRD) rather than leaving them live and undocumented.
 
 ## Priority recommendations
 

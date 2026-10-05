@@ -14,13 +14,101 @@
  * tick) just piled up a near-duplicate insight every cycle, forever.
  */
 import type { Db } from 'mongodb'
-import type { Insight } from '@agentoak/engine'
-import { getTenantCollection } from '@agentoak/platform'
+import type { Insight } from '@lifekeel/engine'
+import { getTenantCollection } from '@lifekeel/platform'
 import { ensureVerifiedMoments } from './verified-moments.js'
 import type { DeliveryRouter } from './delivery/delivery-router.js'
+import { buildDedupeKey, emitReadinessEvent } from './feed/emit.js'
+import { DETECTOR_TO_COMPONENT } from './routes/family-readiness.js'
+
+// Feed domain for an insight: the detector→component map, except debt
+// which is its own feed domain rather than folding into emergency_fund.
+function insightDomain(detectorId: string): string | null {
+  if (detectorId === 'family_debt_health') return 'debt'
+  return DETECTOR_TO_COMPONENT[detectorId] ?? null
+}
+
+// PRD-136: narrate the insight lifecycle into the readiness feed. Shared
+// by insight_opened/insight_repeated/insight_resolved; emitReadinessEvent
+// is fire-and-forget so this never affects the persist path.
+function emitInsightEvent(
+  db: Db,
+  tenantId: string,
+  insight: Insight,
+  type: 'insight_opened' | 'insight_repeated' | 'insight_resolved',
+): void {
+  try {
+    const urgency = insight.urgency
+    emitReadinessEvent(db, tenantId, {
+      type,
+      severity:
+        type === 'insight_resolved'
+          ? 'info'
+          : type === 'insight_repeated' || urgency === 'high' || urgency === 'critical'
+            ? 'attention'
+            : 'notice',
+      direction: type === 'insight_resolved' ? 'up' : null,
+      member_id: (insight as { member_id?: string }).member_id ?? null,
+      domain: insightDomain(insight.detector_id),
+      title: (insight.hypothesis ?? insight.rule_id.replace(/_/g, ' ')).slice(0, 120),
+      summary: (insight.reasoning ?? '').slice(0, 280),
+      evidence: [],
+      links: [{ kind: 'insight', id: insight.id }],
+      next_check_at: null,
+      dedupe_key: buildDedupeKey(type, insight.id),
+    })
+  } catch {
+    // Bookkeeping, not behavior — same posture as emitReadinessEvent itself.
+  }
+}
 
 /** Matches DetectorRuleSchema's own default in packages/engine/src/schemas.ts. */
 const DEFAULT_DEDUP_WINDOW_MS = 86_400_000
+
+// Human-readable labels for feature_snapshot fields that move between
+// firings — keeps the "what changed" list out of raw_field_name territory.
+const FEATURE_FIELD_LABELS: Record<string, string> = {
+  monthly_salary_minor: 'monthly income',
+  income_protection_monthly_minor: 'income protection',
+  life_cover_minor: 'life cover',
+  mortgage_outstanding_minor: 'outstanding mortgage',
+  annual_living_expenses_minor: 'living expenses',
+  emergency_savings_minor: 'emergency savings',
+  monthly_expenses_minor: 'monthly expenses',
+  monthly_debt_payments_minor: 'monthly debt payments',
+  pension_balance_minor: 'pension balance',
+  monthly_contribution_minor: 'pension contribution',
+  current_savings_minor: 'fund balance',
+  target_savings_minor: 'fund target',
+  years_remaining: 'years remaining',
+  monthly_surplus_minor: 'monthly surplus',
+  has_high_interest_debt: 'high-interest debt',
+  high_interest_debt_balance_minor: 'high-interest debt balance',
+  employed: 'employment status',
+  overlap_count: 'policy count',
+  orphaned_policy_count: 'policy attribution',
+}
+
+/**
+ * Which profile fields moved between the previous firing's snapshot and
+ * this one — the "what changed" an adaptive insight names. Capped at 3 so
+ * the suffix stays a sentence, not a diff dump. Unknown keys render as a
+ * lightly humanized field name rather than being dropped — a changed
+ * field the label table doesn't know is still real information.
+ */
+function diffFeatureFields(
+  prev: Record<string, string | number | boolean> | undefined,
+  next: Record<string, string | number | boolean> | undefined,
+): string[] {
+  if (!prev || !next) return []
+  const changed: string[] = []
+  for (const key of Object.keys(next)) {
+    if (prev[key] === undefined || prev[key] === next[key]) continue
+    changed.push(FEATURE_FIELD_LABELS[key] ?? key.replace(/_minor$|_/g, ' ').trim())
+    if (changed.length === 3) break
+  }
+  return changed
+}
 
 // 'identified'/'sent' = still awaiting a human decision. Everything else
 // (approved/dismissed/completed/resolved/archived) is closed.
@@ -92,6 +180,38 @@ export async function persistAndDeliverInsights(
     })
     if (recentlyClosed) continue
 
+    // Adaptive copy (G10): a rule firing again after its last insight was
+    // closed (dismissed/resolved) re-announces the same gap with the same
+    // template — the 5th fire reads identical to the 1st, which trains
+    // families to ignore it. Count prior fires for this (rule, entity)
+    // and annotate: the repeat count itself, plus which profile fields
+    // moved since the last firing so "what changed" is visible rather
+    // than the insight reading as a carbon copy. Deliberately appended
+    // after the detector's own reasoning so the rule's neutral,
+    // informational voice is untouched.
+    const priors = await insightsCol
+      .find(key)
+      .sort({ created_at: -1 })
+      .toArray()
+    if (priors.length > 0) {
+      const repeatCount = priors.length + 1
+      const changed = diffFeatureFields(
+        priors[0]!.feature_snapshot as Record<string, string | number | boolean> | undefined,
+        insight.feature_snapshot as Record<string, string | number | boolean> | undefined,
+      )
+      const ordinal = repeatCount === 2 ? 'second' : repeatCount === 3 ? 'third' : `${repeatCount}th`
+      const suffix =
+        changed.length > 0
+          ? ` Keel has flagged this before — this is the ${ordinal} time. Since then: ${changed.join(', ')} changed.`
+          : ` Keel has flagged this before — this is the ${ordinal} time. The figures on file are unchanged since the last flag.`
+      insight.reasoning = `${insight.reasoning}${suffix}`
+      // Stored on the doc (not in the engine schema — engine output is
+      // generated per-fire; the count is a persistence-layer concern the
+      // client reads for its "Flagged N times" badge).
+      ;(insight as Record<string, unknown>).repeat_count = repeatCount
+      emitInsightEvent(db, tenantId, insight, 'insight_repeated')
+    }
+
     newInsights.push(insight)
   }
   if (newInsights.length === 0) return
@@ -106,6 +226,11 @@ export async function persistAndDeliverInsights(
     ),
   )
   await ensureVerifiedMoments(db, newInsights, tenantId)
+  for (const insight of newInsights) {
+    if ((insight as Record<string, unknown>).repeat_count === undefined) {
+      emitInsightEvent(db, tenantId, insight, 'insight_opened')
+    }
+  }
 
   if (deliveryRouter) {
     await Promise.allSettled(
@@ -151,13 +276,12 @@ export async function resolveStaleInsights(
     state: { $in: OPEN_STATES },
   }).toArray()
 
-  const staleIds = open
-    .filter((i) => !fired.has(`${i.rule_id}${i.entity_key ?? ''}`))
-    .map((i) => i.id)
-  if (staleIds.length === 0) return
+  const stale = open.filter((i) => !fired.has(`${i.rule_id}${i.entity_key ?? ''}`))
+  if (stale.length === 0) return
 
   await insightsCol.updateMany(
-    { id: { $in: staleIds } },
+    { id: { $in: stale.map((i) => i.id) } },
     { $set: { state: 'resolved', resolved_at: new Date() } },
   )
+  for (const insight of stale) emitInsightEvent(db, tenantId, insight, 'insight_resolved')
 }

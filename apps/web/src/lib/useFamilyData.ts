@@ -1,5 +1,5 @@
 /**
- * React hooks for fetching family data from the Kairos API.
+ * React hooks for fetching family data from the LifeKeel API.
  * Returns an honest empty/zero state when the API is unreachable or has
  * no data yet, rather than falling back to fabricated content.
  */
@@ -139,16 +139,23 @@ export interface DomainHealth {
   insights: FamilyInsight[]
   /** One-line explanation from the server's composite score (PRD-114), when available. */
   detail?: string
+  /** The profile figures the server score was computed from — shown under
+   *  "Why this score" on the domain page (G13 explainability). */
+  drivers?: { label: string; value_minor?: number; value?: string }[]
   /** True when this member can't see the underlying data (estate vault is adult-only). */
   gated?: boolean
+  /** PRD-137: server-supplied scope disclaimer shown under the score (estate). */
+  caption?: string
 }
 
-const DOMAIN_DETECTOR_MAP: Record<HealthDomain, string | null> = {
-  protection: 'family_protection_gap',
-  wealth: 'family_retirement_gap',
-  goals: 'family_education_shortfall',
-  savings: 'family_emergency_fund_adequacy',
-  estate: 'family_estate_readiness', // PRD-121 — vault doc_type gaps are now detectable
+// A domain can be explained by more than one detector — the adequacy
+// check plus its pacing/trajectory/hygiene companions.
+const DOMAIN_DETECTOR_MAP: Record<HealthDomain, string[]> = {
+  protection: ['family_protection_gap', 'family_policy_review'],
+  wealth: ['family_retirement_gap'],
+  goals: ['family_education_shortfall', 'family_education_pacing'],
+  savings: ['family_emergency_fund_adequacy', 'family_emergency_trajectory', 'family_debt_health'],
+  estate: ['family_estate_readiness'], // PRD-121 — vault doc_type gaps are now detectable
 }
 
 // Server readiness component → health domain. When GET /family/readiness
@@ -255,8 +262,8 @@ export function useFamilyHealthDomains() {
   const domains: Record<HealthDomain, DomainHealth> = {} as Record<HealthDomain, DomainHealth>
 
   for (const domain of Object.keys(DOMAIN_DETECTOR_MAP) as HealthDomain[]) {
-    const detectorId = DOMAIN_DETECTOR_MAP[domain]
-    const domainInsights = detectorId ? insights.filter((i) => i.detector_id === detectorId) : []
+    const detectorIds = DOMAIN_DETECTOR_MAP[domain]
+    const domainInsights = insights.filter((i) => detectorIds.includes(i.detector_id))
 
     // Server-side composite is authoritative when live: a real subscore
     // for a domain with data, a null subscore meaning "not enough data" —
@@ -270,9 +277,17 @@ export function useFamilyHealthDomains() {
           insights: domainInsights,
           detail: server.detail,
           ...(server.gated ? { gated: true } : {}),
+          ...(server.caption ? { caption: server.caption } : {}),
         }
       } else {
-        domains[domain] = { score: server.score, hasLiveData: true, insights: domainInsights, detail: server.detail }
+        domains[domain] = {
+          score: server.score,
+          hasLiveData: true,
+          insights: domainInsights,
+          detail: server.detail,
+          ...(server.drivers ? { drivers: server.drivers } : {}),
+          ...(server.caption ? { caption: server.caption } : {}),
+        }
       }
       continue
     }

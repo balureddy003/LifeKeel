@@ -10,7 +10,7 @@ import { queueManager } from '../queue/QueueManager.js'
 import { WEBHOOK_INGEST_QUEUE } from '../queue/WebhookQueue.js'
 import { getPlatformConfig, invalidatePlatformConfigCache, CONFIG_DOC_KEY, type PlatformConfig } from '../operator/platform-config.js'
 import { getLoginEventsCollection } from '../db.js'
-import { createLlmRouterFromEnv } from '@agentoak/platform'
+import { createLlmRouterFromEnv } from '@lifekeel/platform'
 import { computeTenantHealth } from '../operator/tenant-health.js'
 import { isRollupReady, readDailyRollup } from '../jobs/metrics-rollup.js'
 import { getRunbooks } from '../operator/runbooks.js'
@@ -454,7 +454,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       { id: request.params.id },
       { $set: { password_reset_token: token, password_reset_expires: new Date(Date.now() + 60 * 60 * 1000), updated_at: new Date() } },
     )
-    const appUrl = (process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
+    const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
     await sendPasswordResetEmail(user['email'] as string, user['name'] as string, `${appUrl}/reset-password/confirm?token=${token}`)
     await audit.log(request, 'operator.user.password_reset', 'user', request.params.id, parsed.data.reason)
     return { sent: true }
@@ -1002,7 +1002,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         paying_tenants: payingTenantDocs.length,
         paying_30d: newPayers.length,
         trialing_tenants: trialing.size,
-        // Only starter ("Oak Plus") has a real price — £7.99/mo. Dormant
+        // Only starter ("Keel Plus") has a real price — £7.99/mo. Dormant
         // growth/enterprise tiers count toward paying totals but not MRR.
         mrr_pence: payingTenantDocs.filter((t) => t['plan'] === 'starter').length * 799,
         currency: 'GBP',
@@ -1422,7 +1422,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   })
 
   // ── Support inbox ────────────────────────────────────────────────────────
-  // Human half of the AI-first support channel. Users hit Oak triage first
+  // Human half of the AI-first support channel. Users hit Keel triage first
   // (POST /support/ask); cases land here only when AI couldn't resolve. The
   // inbox sorts by updated_at — it's a queue, not a log.
   const supportCases = db.collection<SupportCaseDoc>('support_cases')
@@ -1510,14 +1510,14 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     const user = await users.findOne({ id: doc['user_id'] }, { projection: { name: 1, email: 1, status: 1 } })
     const tenant = await tenants.findOne({ tenant_id: doc['tenant_id'] }, { projection: { plan: 1 } })
     const thread = (doc['messages'] as Array<{ author: string; text: string }> ?? [])
-      .map((m) => `${m.author === 'user' ? 'Customer' : m.author === 'oak' ? 'Oak (AI)' : 'Operator'}: ${m.text}`)
+      .map((m) => `${m.author === 'user' ? 'Customer' : m.author === 'keel' ? 'Keel (AI)' : 'Operator'}: ${m.text}`)
       .join('\n')
     const prompt =
       `Customer: ${(user?.['name'] as string) ?? 'unknown'} (${(user?.['email'] as string) ?? 'no email'}), account status ${(user?.['status'] as string) ?? 'active'}, plan ${(tenant?.['plan'] as string) ?? 'free'}.\n` +
       `Case subject: ${doc['subject']}\n\nThread so far:\n${thread}\n\nDraft a reply for the operator.`
     try {
       const draft = await llmFn(
-        `You draft support replies for Agent Oak operators. Write a helpful, honest reply to the customer's latest message. Never give financial/investment/insurance/legal advice or recommend specific providers. If the request needs an account change (billing, deletion, reset), say the team will handle it — never promise specifics you can't verify. Plain text, 2–5 sentences, no greeting sign-off boilerplate beyond a name placeholder if needed.`,
+        `You draft support replies for LifeKeel operators. Write a helpful, honest reply to the customer's latest message. Never give financial/investment/insurance/legal advice or recommend specific providers. If the request needs an account change (billing, deletion, reset), say the team will handle it — never promise specifics you can't verify. Plain text, 2–5 sentences, no greeting sign-off boilerplate beyond a name placeholder if needed.`,
         prompt,
         'tier:fast',
       )

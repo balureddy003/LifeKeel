@@ -17,7 +17,7 @@ import { initObservability, reportWebVital } from '@/lib/observability'
 // exactly what's needed. Guarded to fire once per navigation (a
 // sessionStorage flag, not a counter) so a chunk that's genuinely missing
 // — not just slow — fails visibly on the second load instead of looping.
-const RELOAD_GUARD_KEY = 'agentoak:chunk-reload-guard'
+const RELOAD_GUARD_KEY = 'lifekeel:chunk-reload-guard'
 
 function isChunkLoadError(reason: unknown): boolean {
   const name = (reason as { name?: string } | undefined)?.name
@@ -31,9 +31,9 @@ function isChunkLoadError(reason: unknown): boolean {
 // boundary (full-screen, family-500 button) for consistency, without
 // depending on either the framework or its styles being loaded.
 function showManualReloadFallback(): void {
-  if (document.getElementById('agentoak-chunk-fallback')) return
+  if (document.getElementById('lifekeel-chunk-fallback')) return
   const el = document.createElement('div')
-  el.id = 'agentoak-chunk-fallback'
+  el.id = 'lifekeel-chunk-fallback'
   el.setAttribute(
     'style',
     'position:fixed;inset:0;z-index:2147483647;display:flex;flex-direction:column;' +
@@ -44,10 +44,10 @@ function showManualReloadFallback(): void {
     '<h1 style="font-size:22px;font-weight:700;margin-bottom:8px;">Something went wrong</h1>' +
     '<p style="color:#6b7280;max-width:320px;margin-bottom:24px;">' +
     'This page couldn’t load. Your data is safe — try reloading.</p>' +
-    '<button id="agentoak-chunk-fallback-btn" style="width:100%;max-width:320px;background:#6b5ce0;' +
+    '<button id="lifekeel-chunk-fallback-btn" style="width:100%;max-width:320px;background:#6b5ce0;' +
     'color:#fff;font-weight:600;border:none;border-radius:16px;padding:16px;font-size:16px;">Reload</button>'
   document.body.appendChild(el)
-  document.getElementById('agentoak-chunk-fallback-btn')?.addEventListener('click', () => location.reload())
+  document.getElementById('lifekeel-chunk-fallback-btn')?.addEventListener('click', () => location.reload())
 }
 
 function recoverFromChunkLoadError(reason: unknown): void {

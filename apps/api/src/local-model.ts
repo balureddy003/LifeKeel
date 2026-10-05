@@ -1,8 +1,8 @@
-import { scanText } from '@agentoak/engine'
+import { scanText } from '@lifekeel/engine'
 import { recordLocalModelCall, recordOutputGuardBlock } from './routes/metrics.js'
 import { createEncoderClassifier, type EncoderClassifier } from './email/encoder-classifier.js'
 import { cloudRunIdTokenProvider } from './cloud-run-auth.js'
-import { createLlmRouter, createLlmRouterFromEnv, createLocalDecisionFn, type DecisionFn, type LlmFn } from '@agentoak/platform'
+import { createLlmRouter, createLlmRouterFromEnv, createLocalDecisionFn, type DecisionFn, type LlmFn } from '@lifekeel/platform'
 
 /** Default is the smallest size that did not pass unsafe copy in testing (see infra/local-judge/README.md). */
 const DEFAULT_LOCAL_MODEL = 'qwen2.5:7b'
@@ -136,7 +136,7 @@ export function withOutputGuard(llm: LlmFn): LlmFn {
 }
 
 /**
- * Text LlmFn for calls that carry family data (Ask Oak, support, drafts, prep
+ * Text LlmFn for calls that carry family data (Ask Keel, support, drafts, prep
  * notes). With LOCAL_TEXT_ENABLED=true (and LOCAL_JUDGE_BASE_URL set) it runs on
  * the self-hosted model with an output guard and never falls back to a cloud
  * provider; otherwise it is the normal cloud router.
@@ -166,7 +166,7 @@ export function familyDataLlmFromEnv(): LlmFn {
  * The email encoder (infra/encoder-service), or undefined when EMAIL_ENCODER_URL is unset or the mode is
  * off. EMAIL_ENCODER_MODE: 'shadow' measures it against the LLM with no effect on results; 'gate' lets it
  * skip the LLM for emails it judges irrelevant. Run shadow first and move to gate only when
- * agentoak_email_encoder_total{outcome="encoder_missed"} stays at zero over real volume.
+ * lifekeel_email_encoder_total{outcome="encoder_missed"} stays at zero over real volume.
  * Reuses LOCAL_JUDGE_AUTH for service-to-service auth.
  */
 export function emailEncoderFromEnv(): { classify: EncoderClassifier; mode: 'gate' | 'shadow' } | undefined {

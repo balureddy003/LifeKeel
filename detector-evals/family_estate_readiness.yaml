@@ -1,0 +1,447 @@
+# Golden eval cases for detectors/family/estate-readiness.yaml.
+# event_type mirrors what family-financial-profile.ts emits: 'family.estate',
+# with has_will / has_power_of_attorney as 0 or 1 from vault doc_type tags.
+cases:
+  - id: no-estate-docs
+    description: Neither a will nor a power of attorney is on file — both rules fire
+    event_type: family.estate
+    data:
+      has_will: 0
+      has_power_of_attorney: 0
+    expected_insights:
+      - rule_id: estate_no_will
+        min_or_score: 0.7
+      - rule_id: estate_no_power_of_attorney
+        min_or_score: 0.7
+
+  - id: will-only
+    description: Will on file but no power of attorney — only the PoA rule fires
+    event_type: family.estate
+    data:
+      has_will: 1
+      has_power_of_attorney: 0
+    expected_insights:
+      - rule_id: estate_no_power_of_attorney
+        min_or_score: 0.7
+
+  - id: poa-only
+    description: Power of attorney on file but no will — only the will rule fires
+    event_type: family.estate
+    data:
+      has_will: 0
+      has_power_of_attorney: 1
+    expected_insights:
+      - rule_id: estate_no_will
+        min_or_score: 0.7
+
+  - id: complete-estate
+    description: Both documents on file — nothing fires
+    event_type: family.estate
+    data:
+      has_will: 1
+      has_power_of_attorney: 1
+    expected_insights: []
+
+  # PRD-137: the eight legacy-register rules. Each positive case carries a
+  # clean baseline (will + PoA on file, zero counts elsewhere) with only the
+  # field under test raised; each negative case confirms the rule stays quiet.
+
+  - id: legacy-will-stale
+    description: A will on file predates a recorded change — the review rule fires
+    event_type: family.estate
+    data:
+      has_will: 1
+      has_power_of_attorney: 1
+      adults_total: 1
+      adults_with_will: 1
+      adults_with_poa: 1
+      minors_total: 0
+      minors_with_guardian_nomination: 0
+      wills_stale: 1
+      wills_with_dead_or_missing_executor: 0
+      properties_total: 0
+      properties_without_title_evidence: 0
+      properties_ownership_unknown: 0
+      properties_foreign_without_contact: 0
+      properties_disputed: 0
+      properties_uninsured_or_unknown: 0
+      documents_without_original_location: 0
+      assets_unreferenced_by_any_will: 0
+      beneficiary_conflicts: 0
+    expected_insights:
+      - rule_id: legacy_will_review_due
+        min_or_score: 0.7
+
+  - id: legacy-will-fresh
+    description: All wills reviewed recently — the review rule stays quiet
+    event_type: family.estate
+    data:
+      has_will: 1
+      has_power_of_attorney: 1
+      adults_total: 1
+      adults_with_will: 1
+      adults_with_poa: 1
+      minors_total: 0
+      minors_with_guardian_nomination: 0
+      wills_stale: 0
+      wills_with_dead_or_missing_executor: 0
+      properties_total: 0
+      properties_without_title_evidence: 0
+      properties_ownership_unknown: 0
+      properties_foreign_without_contact: 0
+      properties_disputed: 0
+      properties_uninsured_or_unknown: 0
+      documents_without_original_location: 0
+      assets_unreferenced_by_any_will: 0
+      beneficiary_conflicts: 0
+    expected_insights: []
+
+  - id: legacy-guardian-missing
+    description: A child has no guardian nomination recorded — the gap fires
+    event_type: family.estate
+    data:
+      has_will: 1
+      has_power_of_attorney: 1
+      adults_total: 1
+      adults_with_will: 1
+      adults_with_poa: 1
+      minors_total: 2
+      minors_with_guardian_nomination: 1
+      wills_stale: 0
+      wills_with_dead_or_missing_executor: 0
+      properties_total: 0
+      properties_without_title_evidence: 0
+      properties_ownership_unknown: 0
+      properties_foreign_without_contact: 0
+      properties_disputed: 0
+      properties_uninsured_or_unknown: 0
+      documents_without_original_location: 0
+      assets_unreferenced_by_any_will: 0
+      beneficiary_conflicts: 0
+    expected_insights:
+      - rule_id: legacy_guardianship_gap
+        min_or_score: 0.7
+
+  - id: legacy-guardian-covered
+    description: Every child has a nomination on file — the gap stays quiet
+    event_type: family.estate
+    data:
+      has_will: 1
+      has_power_of_attorney: 1
+      adults_total: 1
+      adults_with_will: 1
+      adults_with_poa: 1
+      minors_total: 2
+      minors_with_guardian_nomination: 2
+      wills_stale: 0
+      wills_with_dead_or_missing_executor: 0
+      properties_total: 0
+      properties_without_title_evidence: 0
+      properties_ownership_unknown: 0
+      properties_foreign_without_contact: 0
+      properties_disputed: 0
+      properties_uninsured_or_unknown: 0
+      documents_without_original_location: 0
+      assets_unreferenced_by_any_will: 0
+      beneficiary_conflicts: 0
+    expected_insights: []
+
+  - id: legacy-executor-unreachable
+    description: A will names an executor no longer resolvable — the rule fires
+    event_type: family.estate
+    data:
+      has_will: 1
+      has_power_of_attorney: 1
+      adults_total: 1
+      adults_with_will: 1
+      adults_with_poa: 1
+      minors_total: 0
+      minors_with_guardian_nomination: 0
+      wills_stale: 0
+      wills_with_dead_or_missing_executor: 1
+      properties_total: 0
+      properties_without_title_evidence: 0
+      properties_ownership_unknown: 0
+      properties_foreign_without_contact: 0
+      properties_disputed: 0
+      properties_uninsured_or_unknown: 0
+      documents_without_original_location: 0
+      assets_unreferenced_by_any_will: 0
+      beneficiary_conflicts: 0
+    expected_insights:
+      - rule_id: legacy_executor_missing
+        min_or_score: 0.7
+
+  - id: legacy-executor-resolvable
+    description: Every named executor resolves — the rule stays quiet
+    event_type: family.estate
+    data:
+      has_will: 1
+      has_power_of_attorney: 1
+      adults_total: 1
+      adults_with_will: 1
+      adults_with_poa: 1
+      minors_total: 0
+      minors_with_guardian_nomination: 0
+      wills_stale: 0
+      wills_with_dead_or_missing_executor: 0
+      properties_total: 0
+      properties_without_title_evidence: 0
+      properties_ownership_unknown: 0
+      properties_foreign_without_contact: 0
+      properties_disputed: 0
+      properties_uninsured_or_unknown: 0
+      documents_without_original_location: 0
+      assets_unreferenced_by_any_will: 0
+      beneficiary_conflicts: 0
+    expected_insights: []
+
+  - id: legacy-title-gap
+    description: A property lacks title evidence — the title rule fires
+    event_type: family.estate
+    data:
+      has_will: 1
+      has_power_of_attorney: 1
+      adults_total: 1
+      adults_with_will: 1
+      adults_with_poa: 1
+      minors_total: 0
+      minors_with_guardian_nomination: 0
+      wills_stale: 0
+      wills_with_dead_or_missing_executor: 0
+      properties_total: 1
+      properties_without_title_evidence: 1
+      properties_ownership_unknown: 0
+      properties_foreign_without_contact: 0
+      properties_disputed: 0
+      properties_uninsured_or_unknown: 0
+      documents_without_original_location: 0
+      assets_unreferenced_by_any_will: 0
+      beneficiary_conflicts: 0
+    expected_insights:
+      - rule_id: legacy_property_title_gap
+        min_or_score: 0.7
+
+  - id: legacy-title-complete
+    description: All properties carry title evidence and known ownership — quiet
+    event_type: family.estate
+    data:
+      has_will: 1
+      has_power_of_attorney: 1
+      adults_total: 1
+      adults_with_will: 1
+      adults_with_poa: 1
+      minors_total: 0
+      minors_with_guardian_nomination: 0
+      wills_stale: 0
+      wills_with_dead_or_missing_executor: 0
+      properties_total: 1
+      properties_without_title_evidence: 0
+      properties_ownership_unknown: 0
+      properties_foreign_without_contact: 0
+      properties_disputed: 0
+      properties_uninsured_or_unknown: 0
+      documents_without_original_location: 0
+      assets_unreferenced_by_any_will: 0
+      beneficiary_conflicts: 0
+    expected_insights: []
+
+  - id: legacy-foreign-no-contact
+    description: A foreign-jurisdiction property has no local professional — fires
+    event_type: family.estate
+    data:
+      has_will: 1
+      has_power_of_attorney: 1
+      adults_total: 1
+      adults_with_will: 1
+      adults_with_poa: 1
+      minors_total: 0
+      minors_with_guardian_nomination: 0
+      wills_stale: 0
+      wills_with_dead_or_missing_executor: 0
+      properties_total: 1
+      properties_without_title_evidence: 0
+      properties_ownership_unknown: 0
+      properties_foreign_without_contact: 1
+      properties_disputed: 0
+      properties_uninsured_or_unknown: 0
+      documents_without_original_location: 0
+      assets_unreferenced_by_any_will: 0
+      beneficiary_conflicts: 0
+    expected_insights:
+      - rule_id: legacy_foreign_property_review
+        min_or_score: 0.7
+
+  - id: legacy-foreign-with-contact
+    description: The foreign property has a local professional recorded — quiet
+    event_type: family.estate
+    data:
+      has_will: 1
+      has_power_of_attorney: 1
+      adults_total: 1
+      adults_with_will: 1
+      adults_with_poa: 1
+      minors_total: 0
+      minors_with_guardian_nomination: 0
+      wills_stale: 0
+      wills_with_dead_or_missing_executor: 0
+      properties_total: 1
+      properties_without_title_evidence: 0
+      properties_ownership_unknown: 0
+      properties_foreign_without_contact: 0
+      properties_disputed: 0
+      properties_uninsured_or_unknown: 0
+      documents_without_original_location: 0
+      assets_unreferenced_by_any_will: 0
+      beneficiary_conflicts: 0
+    expected_insights: []
+
+  - id: legacy-asset-unreferenced
+    description: A recorded property appears in no will — the mismatch fires
+    event_type: family.estate
+    data:
+      has_will: 1
+      has_power_of_attorney: 1
+      adults_total: 1
+      adults_with_will: 1
+      adults_with_poa: 1
+      minors_total: 0
+      minors_with_guardian_nomination: 0
+      wills_stale: 0
+      wills_with_dead_or_missing_executor: 0
+      properties_total: 1
+      properties_without_title_evidence: 0
+      properties_ownership_unknown: 0
+      properties_foreign_without_contact: 0
+      properties_disputed: 0
+      properties_uninsured_or_unknown: 0
+      documents_without_original_location: 0
+      assets_unreferenced_by_any_will: 1
+      beneficiary_conflicts: 0
+    expected_insights:
+      - rule_id: legacy_will_asset_mismatch
+        min_or_score: 0.7
+
+  - id: legacy-asset-referenced
+    description: Every recorded property is covered by a will — quiet
+    event_type: family.estate
+    data:
+      has_will: 1
+      has_power_of_attorney: 1
+      adults_total: 1
+      adults_with_will: 1
+      adults_with_poa: 1
+      minors_total: 0
+      minors_with_guardian_nomination: 0
+      wills_stale: 0
+      wills_with_dead_or_missing_executor: 0
+      properties_total: 1
+      properties_without_title_evidence: 0
+      properties_ownership_unknown: 0
+      properties_foreign_without_contact: 0
+      properties_disputed: 0
+      properties_uninsured_or_unknown: 0
+      documents_without_original_location: 0
+      assets_unreferenced_by_any_will: 0
+      beneficiary_conflicts: 0
+    expected_insights: []
+
+  - id: legacy-beneficiary-mismatch
+    description: Will and policy name different beneficiaries — the conflict fires
+    event_type: family.estate
+    data:
+      has_will: 1
+      has_power_of_attorney: 1
+      adults_total: 1
+      adults_with_will: 1
+      adults_with_poa: 1
+      minors_total: 0
+      minors_with_guardian_nomination: 0
+      wills_stale: 0
+      wills_with_dead_or_missing_executor: 0
+      properties_total: 0
+      properties_without_title_evidence: 0
+      properties_ownership_unknown: 0
+      properties_foreign_without_contact: 0
+      properties_disputed: 0
+      properties_uninsured_or_unknown: 0
+      documents_without_original_location: 0
+      assets_unreferenced_by_any_will: 0
+      beneficiary_conflicts: 1
+    expected_insights:
+      - rule_id: legacy_beneficiary_conflict
+        min_or_score: 0.7
+
+  - id: legacy-beneficiary-aligned
+    description: Beneficiaries match across documents — quiet
+    event_type: family.estate
+    data:
+      has_will: 1
+      has_power_of_attorney: 1
+      adults_total: 1
+      adults_with_will: 1
+      adults_with_poa: 1
+      minors_total: 0
+      minors_with_guardian_nomination: 0
+      wills_stale: 0
+      wills_with_dead_or_missing_executor: 0
+      properties_total: 0
+      properties_without_title_evidence: 0
+      properties_ownership_unknown: 0
+      properties_foreign_without_contact: 0
+      properties_disputed: 0
+      properties_uninsured_or_unknown: 0
+      documents_without_original_location: 0
+      assets_unreferenced_by_any_will: 0
+      beneficiary_conflicts: 0
+    expected_insights: []
+
+  - id: legacy-location-missing
+    description: A will's original location isn't recorded — the rule fires
+    event_type: family.estate
+    data:
+      has_will: 1
+      has_power_of_attorney: 1
+      adults_total: 1
+      adults_with_will: 1
+      adults_with_poa: 1
+      minors_total: 0
+      minors_with_guardian_nomination: 0
+      wills_stale: 0
+      wills_with_dead_or_missing_executor: 0
+      properties_total: 0
+      properties_without_title_evidence: 0
+      properties_ownership_unknown: 0
+      properties_foreign_without_contact: 0
+      properties_disputed: 0
+      properties_uninsured_or_unknown: 0
+      documents_without_original_location: 1
+      assets_unreferenced_by_any_will: 0
+      beneficiary_conflicts: 0
+    expected_insights:
+      - rule_id: legacy_original_location_unknown
+        min_or_score: 0.7
+
+  - id: legacy-location-recorded
+    description: Every will and deed has its location on file — quiet
+    event_type: family.estate
+    data:
+      has_will: 1
+      has_power_of_attorney: 1
+      adults_total: 1
+      adults_with_will: 1
+      adults_with_poa: 1
+      minors_total: 0
+      minors_with_guardian_nomination: 0
+      wills_stale: 0
+      wills_with_dead_or_missing_executor: 0
+      properties_total: 0
+      properties_without_title_evidence: 0
+      properties_ownership_unknown: 0
+      properties_foreign_without_contact: 0
+      properties_disputed: 0
+      properties_uninsured_or_unknown: 0
+      documents_without_original_location: 0
+      assets_unreferenced_by_any_will: 0
+      beneficiary_conflicts: 0
+    expected_insights: []

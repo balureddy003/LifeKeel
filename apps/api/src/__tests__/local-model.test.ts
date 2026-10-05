@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import type { LlmFn } from '@agentoak/platform'
+import type { LlmFn } from '@lifekeel/platform'
 import { BlockedLocalOutputError, familyDataLlmFromEnv, localDecisionFromEnv, ungroundedNumbers, volunteeredProviders, withOutputGuard } from '../local-model.js'
 
 const say = (text: string): LlmFn => async () => text

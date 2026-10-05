@@ -1,0 +1,60 @@
+id: family_emergency_trajectory
+name: Emergency Fund Trajectory Detection
+description: >
+  Distinct from family_emergency_fund_adequacy's level check — this looks
+  at direction of travel: given the household's current monthly surplus
+  (declared income minus expenses, or real cashflow entries when they
+  exist), how long until the fund reaches a 6-month cushion, and whether
+  the surplus leaves any room to build at all.
+version: 1.0.0
+signal_types:
+  - family.savings
+industries: ["family", "finance", "wealth"]
+
+rules:
+  - id: emergency_fund_stalled
+    name: Emergency Fund Not Growing
+    # Below the 6-month target AND no surplus to build with — the fund
+    # will never get there on its own. Distinct from
+    # emergency_fund_below_3_months (which fires on the level alone even
+    # when the household saves plenty and just needs time).
+    condition: >
+      data.emergency_savings_minor < data.monthly_expenses_minor * 6 and
+      data.monthly_expenses_minor > 0 and
+      data.monthly_surplus_minor <= 0
+    confidence: 0.78
+    impact_low: "data.monthly_expenses_minor * 6 - data.emergency_savings_minor"
+    impact_high: "data.monthly_expenses_minor * 6 - data.emergency_savings_minor"
+    reasoning_template: >
+      Your emergency savings of {{data.emergency_savings_minor}} sit below the 6-month target
+      ({{data.monthly_expenses_minor * 6}}), and the current income-minus-expenses figures on file leave no
+      monthly surplus to build it with. At this rate the fund stays where it is. This is an informational
+      estimate — consider reviewing the budget or speaking with a qualified financial professional.
+    actions:
+      - Review the monthly income and expense figures on file — is the surplus really zero?
+      - Look for one expense category that could free up a monthly amount, even a small one
+      - Consult a financial advisor or free budgeting service about building the cushion
+
+  - id: emergency_fund_slow_build
+    name: Emergency Fund Reaches Target Slowly
+    # On track but >2 years out at the current pace — worth surfacing so
+    # the family can decide whether that timeline is acceptable. The
+    # months_to_six_month_target field is 9999 when the surplus can't
+    # build the fund at all (that case is the stalled rule's job —
+    # monthly_surplus_minor > 0 keeps them mutually exclusive).
+    condition: >
+      data.monthly_surplus_minor > 0 and
+      data.months_to_six_month_target > 24 and
+      data.months_to_six_month_target < 9999
+    confidence: 0.7
+    impact_low: 0
+    impact_high: 0
+    reasoning_template: >
+      At the current monthly surplus of {{data.monthly_surplus_minor}}, reaching a 6-month emergency
+      cushion would take about {{data.months_to_six_month_target}} months — more than two years. Whether
+      that pace is acceptable depends on how much income uncertainty the household carries. This is
+      informational only — consider reviewing with a qualified financial professional.
+    actions:
+      - Review whether a higher monthly contribution to the fund is feasible
+      - Check whether any short-term savings could top up the fund now
+      - Consult a financial advisor about an appropriate target and timeline

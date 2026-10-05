@@ -66,7 +66,7 @@ class RecordingScorer implements LlmScorer {
 let dir: string
 
 beforeAll(async () => {
-  dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kairos-cascade-'))
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lifekeel-cascade-'))
   await fs.writeFile(path.join(dir, 'cascade.yaml'), DETECTOR_YAML)
 })
 

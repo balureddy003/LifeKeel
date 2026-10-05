@@ -2,7 +2,7 @@
  * Vertical (Template) Schema
  *
  * A **vertical** is a first-class, brandable bundle that composes the primitives
- * Kairos already loads — connectors, detectors, outcome packs, goal templates,
+ * LifeKeel already loads — connectors, detectors, outcome packs, goal templates,
  * workflows — and adds the two things those primitives lack at bundle level:
  * **personas** (who the vertical serves) and **domain vocabulary/theme** (how
  * the product talks to them).

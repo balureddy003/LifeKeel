@@ -20,7 +20,7 @@ Stages](https://moderawealth.com/financial-planning-through-a-clients-life-stage
 [SmartAsset — Understanding the Life-Cycle Approach for Your
 Clients](https://smartasset.com/advisor-resources/financial-planning-life-cycle))
 
-Agent Oak's own retirement-gap detector already implements one slice of
+LifeKeel's own retirement-gap detector already implements one slice of
 this correctly (the current-age-25 gate on `no_retirement_savings`,
 verified live). The framework matters here because it's the organizing
 structure PRD-104 and PRD-106 are checked against — not a new invention,
@@ -90,7 +90,7 @@ these as a distinct category from routine life-stage planning:
   [Kiplinger — Survival Guide for the Sandwich
   Generation](https://www.kiplinger.com/retirement/retirement-planning/expert-survival-guide-for-the-sandwich-generation))
 - **UK-specific guidance shape.** MoneyHelper (the UK's government-backed
-  Money and Pensions Service — relevant since Agent Oak's schema is
+  Money and Pensions Service — relevant since LifeKeel's schema is
   GBP-denominated) organizes its own guidance around the identical pattern:
   routine life-stage help (starting a pension, then investing it) plus a
   named list of life events that trigger dedicated guidance — buying or

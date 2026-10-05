@@ -91,7 +91,7 @@ export function OperatorSidebar() {
   return (
     <aside className="hidden md:fixed md:inset-y-0 md:left-0 md:z-sticky md:flex md:w-56 md:flex-col border-r border-tint/[0.08] bg-navbg/80 backdrop-blur-xl">
       <div className="border-b border-tint/[0.08] px-5 py-4">
-        <Link href="/operator" className="font-semibold text-family-400">Agent Oak Operator</Link>
+        <Link href="/operator" className="font-semibold text-family-400">LifeKeel Operator</Link>
         <p className="mt-0.5 text-caption text-ink-tertiary">Platform console</p>
       </div>
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">

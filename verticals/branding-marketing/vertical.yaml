@@ -8,9 +8,9 @@
 # definitions/ and detectors/ directories. See
 # docs/prd/vertical-template-framework.md.
 #
-# Dogfooding: Kairos itself is the first tenant of this vertical. The
-# `marketing_kairos_social_presence` and `marketing_kairos_x_daily_capability`
-# workflows are Kairos's own daily marketing automation — listed under
+# Dogfooding: LifeKeel itself is the first tenant of this vertical. The
+# `marketing_lifekeel_social_presence` and `marketing_lifekeel_x_daily_capability`
+# workflows are LifeKeel's own daily marketing automation — listed under
 # `workflows:` below because they aren't bundled by any outcome pack, they're
 # the vertical's own daily-content engine. Eating our own dog food is the
 # proof the vertical works for any business, not just a demo.
@@ -57,7 +57,7 @@ personas:
       Runs marketing for a small business or team and wants the full
       acquisition-to-retention loop to run itself — lead qualify + nurture,
       cart recovery, upsell, win-back, and review requests — with a human
-      approval gate on outbound. Kairos's own marketing team is the first
+      approval gate on outbound. LifeKeel's own marketing team is the first
       tenant of this persona (dogfooding).
     jobs_to_be_done:
       - Qualify and nurture new leads without manual CRM work
@@ -120,13 +120,13 @@ goal_templates:
   - trial-conversion
 
 # Workflows bundled by the outcome packs above are inherited automatically;
-# these are the vertical's own daily-content engine — Kairos dogfoods them
+# these are the vertical's own daily-content engine — LifeKeel dogfoods them
 # as its first tenant. Not referentially checked (checkVerticalReferences
 # covers detectors/packs/connectors/goal-templates), but all ids resolve
 # against definitions/workflows/.
 workflows:
-  - marketing_kairos_social_presence
-  - marketing_kairos_x_daily_capability
+  - marketing_lifekeel_social_presence
+  - marketing_lifekeel_x_daily_capability
 
 kpi_vocabulary:
   - Lead conversion rate

@@ -14,8 +14,8 @@ nodes:
     label: "Generate YouTube video script"
     inputs:
       prompt: |
-        Write a short (60-second) YouTube video script showcasing one Kairos capability.
-        Make it educational, engaging, and end with a call-to-action to try Kairos.
+        Write a short (60-second) YouTube video script showcasing one LifeKeel capability.
+        Make it educational, engaging, and end with a call-to-action to try LifeKeel.
         Today's focus: {{theme}}
 
   - id: generate_instagram_caption
@@ -24,7 +24,7 @@ nodes:
     label: "Generate Instagram caption + hashtags"
     inputs:
       prompt: |
-        Write an Instagram caption (max 150 words) for a post about Kairos AI automation.
+        Write an Instagram caption (max 150 words) for a post about LifeKeel AI automation.
         Include 10 relevant hashtags. Make it visual and action-oriented.
         Today's theme: {{theme}}
 
@@ -34,8 +34,8 @@ nodes:
     label: "Generate Facebook page post"
     inputs:
       prompt: |
-        Write a Facebook post (max 200 words) for the Kairos AI page.
-        Focus on a business benefit — how Kairos saves time or grows revenue.
+        Write a Facebook post (max 200 words) for the LifeKeel AI page.
+        Focus on a business benefit — how LifeKeel saves time or grows revenue.
         Today's theme: {{theme}}
 
   - id: review_content
@@ -63,9 +63,9 @@ nodes:
     label: "Upload to YouTube"
     condition: "approval.action in ['approve_all']"
     inputs:
-      title: "Kairos AI — {{theme}}"
+      title: "LifeKeel AI — {{theme}}"
       description: "{{generate_video_script.output}}"
-      tags: ["kairos", "ai", "automation", "productivity"]
+      tags: ["lifekeel", "ai", "automation", "productivity"]
 
   - id: post_instagram
     type: connector_action
@@ -91,7 +91,7 @@ nodes:
     label: "Record KPI snapshot"
     inputs:
       prompt: |
-        A social media post was just published. Record a KPI event so Kairos can track progress.
+        A social media post was just published. Record a KPI event so LifeKeel can track progress.
         Platforms published: {{approved_platforms}}
         Emit event type: social.post.published
 

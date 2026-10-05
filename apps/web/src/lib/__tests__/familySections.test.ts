@@ -28,7 +28,7 @@ function makePolicy(overrides: Partial<FinancialProfilePolicy> = {}): FinancialP
   }
 }
 
-describe('OAK-013: getMemberSections surfaces the soonest policy renewal', () => {
+describe('KEEL-013: getMemberSections surfaces the soonest policy renewal', () => {
   it('appends a renewal badge when a policy renews within 60 days', () => {
     const sections = getMemberSections(makeMember(), [makePolicy({ renewal_date: daysFromNow(10) })])
     const protection = sections.find((s) => s.label === 'Protection')

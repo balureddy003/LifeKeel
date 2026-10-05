@@ -1,7 +1,7 @@
 /**
  * Sandbox Seed Data
  * 
- * Sample data for sandbox mode to show users what Kairos looks like
+ * Sample data for sandbox mode to show users what LifeKeel looks like
  * before they connect real data sources.
  * 
  * Includes:

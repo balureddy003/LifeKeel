@@ -232,7 +232,7 @@ export default function OperatorUsersPage() {
                     const url = URL.createObjectURL(blob)
                     const a = document.createElement('a')
                     a.href = url
-                    a.download = `agentoak-export-${user.id}.json`
+                    a.download = `lifekeel-export-${user.id}.json`
                     a.click()
                     URL.revokeObjectURL(url)
                     toast({ message: 'Export downloaded', variant: 'success' })

@@ -54,7 +54,7 @@ export function hasFeature(feature: Feature, plan: Plan): boolean {
 /**
  * The plan to use for feature checks. A free-plan tenant whose signup
  * trial is still running gets starter-level feature access — the trial
- * exists to demo what Oak Plus sells, so gating the flagship features off
+ * exists to demo what Keel Plus sells, so gating the flagship features off
  * during it would make the trial dead weight. Once `trial_ends_at` passes
  * (or `trial_expired` was set — e.g. a paid subscription that churned),
  * this falls back to the stored plan.

@@ -61,7 +61,7 @@ function collectAttention(overview: OperatorOverview, ops: OperatorOperations | 
   const newLeads = overview.leads?.['new'] ?? 0
   if (newLeads > 0) items.push({ severity: 'info', text: `${newLeads} new lead${newLeads === 1 ? '' : 's'} awaiting triage`, href: '/operator/leads', dedup_key: 'new_leads', value: newLeads })
   const openCases = overview.support?.open ?? 0
-  if (openCases > 0) items.push({ severity: 'warning', text: `${openCases} open support case${openCases === 1 ? '' : 's'} — Oak already triaged`, href: '/operator/support', dedup_key: 'open_support_cases', value: openCases })
+  if (openCases > 0) items.push({ severity: 'warning', text: `${openCases} open support case${openCases === 1 ? '' : 's'} — Keel already triaged`, href: '/operator/support', dedup_key: 'open_support_cases', value: openCases })
   return items
 }
 
@@ -132,7 +132,7 @@ export default function OperatorOverviewPage() {
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-semibold">Command center</h1>
-        <p className="mt-1 text-sm text-ink-tertiary">Platform health and growth signals across Agent Oak.</p>
+        <p className="mt-1 text-sm text-ink-tertiary">Platform health and growth signals across LifeKeel.</p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Metric

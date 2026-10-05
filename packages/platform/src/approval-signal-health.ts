@@ -7,7 +7,7 @@
  */
 
 import type { Db } from 'mongodb'
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'approval-signal-health', version: '0.0.0' })
 

@@ -8,7 +8,7 @@ import { invalidateCache } from './fetch-cache'
  * generated; rejects with a user-presentable message otherwise.
  */
 export async function evaluateSavedProfile(): Promise<number> {
-  const token = typeof window === 'undefined' ? null : localStorage.getItem('agentoak_token')
+  const token = typeof window === 'undefined' ? null : localStorage.getItem('lifekeel_token')
   const res = await fetch(`${getApiBase()}/family/financial-profile/evaluate`, {
     method: 'POST',
     headers: token ? { Authorization: `Bearer ${token}` } : {},

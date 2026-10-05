@@ -112,7 +112,7 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
     })
 
     return reply
-      .header('Content-Disposition', `attachment; filename="agentoak-export-${tenant_id}.json"`)
+      .header('Content-Disposition', `attachment; filename="lifekeel-export-${tenant_id}.json"`)
       .send({
         exported_at: new Date().toISOString(),
         tenant_id,

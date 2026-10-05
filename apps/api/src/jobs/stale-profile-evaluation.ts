@@ -44,9 +44,10 @@
  */
 
 import type { Db } from 'mongodb'
-import type { Engine, Insight } from '@agentoak/engine'
-import { createLogger } from '@agentoak/platform'
+import type { Engine, Insight } from '@lifekeel/engine'
+import { createLogger } from '@lifekeel/platform'
 import { getFamilyFinancialProfileCollection } from '../db.js'
+import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 import {
   FinancialProfileSchema,
   evaluateProfileAndGenerateInsights,
@@ -122,7 +123,43 @@ export async function runStaleProfileEvaluationSweep(
         summary.skippedIncomplete++
         continue
       }
+      // PRD-136 sweep_quiet: the evaluate callback reports new insights but
+      // not resolutions, so "nothing changed" is measured by counting open
+      // (non-resolved) insights before and after the pass. Unreadable
+      // insight collection → null → no event rather than a wrong one.
+      const openCount = async (): Promise<number | null> => {
+        try {
+          const docs = (await db.collection('insights').find({ tenant_id: tenantId }).toArray()) as Record<string, unknown>[]
+          return docs.filter((d) => d['state'] !== 'resolved').length
+        } catch {
+          return null
+        }
+      }
+      const openBefore = await openCount()
       await evaluateProfileAndGenerateInsights(parsed.data, tenantId, engine, db, onInsightsGenerated)
+      const openAfter = await openCount()
+      if (openBefore !== null && openAfter === openBefore) {
+        try {
+          const nextCheck = new Date(now)
+          nextCheck.setUTCDate(nextCheck.getUTCDate() + 1)
+          nextCheck.setUTCHours(6, 30, 0, 0)
+          emitReadinessEvent(db, tenantId, {
+            type: 'sweep_quiet',
+            severity: 'info',
+            direction: null,
+            member_id: null,
+            domain: null,
+            title: 'Daily check ran — nothing changed',
+            summary: 'Keel re-ran the readiness checks against the saved profile and found nothing new.',
+            evidence: [],
+            links: [],
+            next_check_at: nextCheck,
+            dedupe_key: buildDedupeKey('sweep_quiet', tenantId),
+          })
+        } catch {
+          // feed bookkeeping never breaks the sweep
+        }
+      }
       await col.updateOne({ tenant_id: tenantId }, { $set: { insights_evaluated_at: now } })
       summary.evaluated++
     } catch (err) {

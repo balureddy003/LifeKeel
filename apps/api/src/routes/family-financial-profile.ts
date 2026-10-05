@@ -22,16 +22,19 @@ import crypto from 'node:crypto'
 import { z } from 'zod'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import type { Engine, Insight } from '@agentoak/engine'
-import { getTenantCollection } from '@agentoak/platform'
+import type { Engine, Insight } from '@lifekeel/engine'
+import { getTenantCollection } from '@lifekeel/platform'
 import { getFamilyFinancialProfileCollection } from '../db.js'
 import { persistSignal } from '../signals.js'
 import { resolveStaleInsights } from '../insights-persist.js'
 import { maybeFlagUnreportedLifeChange, type ProfileChangeSnapshot } from '../life-events/detect-unreported-change.js'
 import { rewardReferralIfPending } from './referrals.js'
+import { recordInsightAction } from '../lib/insight-attribution.js'
 import { ageFromDob } from '../lib/family-permissions.js'
 import type { FamilyGroupDoc } from './family-group.js'
-import { ESTATE_VAULT_CATEGORY } from './documents.js'
+import { monthlyEquivalentMinor, type CashflowEntryDoc } from './family-cashflow.js'
+import { buildEstateSignal } from '../legacy/estate-signal.js'
+import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 
 const FAMILY_DETECTOR_IDS = [
   'family_protection_gap',
@@ -43,6 +46,13 @@ const FAMILY_DETECTOR_IDS = [
   // vault.ts evaluates the same detector on upload/delete for the same
   // reason (PRD-121).
   'family_estate_readiness',
+  // family_education_pacing + family_emergency_trajectory subscribe to
+  // the same education_fund/savings events the originals emit — the extra
+  // fields they read are added to those emissions below.
+  'family_education_pacing',
+  'family_emergency_trajectory',
+  'family_debt_health',
+  'family_policy_review',
 ] as const
 
 export const FinancialProfileSchema = z.object({
@@ -61,13 +71,19 @@ export const FinancialProfileSchema = z.object({
     mortgage_outstanding_minor: z.number().int().nonnegative().default(0),
     life_cover_minor: z.number().int().nonnegative().default(0),
     income_protection_monthly_minor: z.number().int().nonnegative().default(0),
+    // Total monthly debt-service payments excluding the mortgage (cards,
+    // loans, finance agreements) — feeds family_debt_health's DTI check.
+    // Mortgage is deliberately separate (mortgage_outstanding_minor
+    // already exists, and the 36% guideline conventionally measures
+    // non-housing debt service).
+    monthly_debt_payments_minor: z.number().int().nonnegative().default(0),
     // PRD-104: the fields above are single-valued for the whole
     // household — a genuinely common shape (one partner retired, one
     // still working; one salaried, one self-employed) had no way to be
     // entered as what it actually is, so the family had to pick one
     // arbitrary label, and that choice — not the real underlying
     // finances — decided whether no_income_protection could ever fire
-    // (OAK-029). Each entry links to a real family-roster member
+    // (KEEL-029). Each entry links to a real family-roster member
     // (member_id — see FamilyMemberDoc in family-group.ts) rather than
     // an anonymous second earner, which is what lets the wizard
     // pre-populate names and the assistant resolve "does my husband have
@@ -147,7 +163,7 @@ export const FinancialProfileSchema = z.object({
         // rule, rather than being rejected.
         renewal_date: z.string().optional(),
         // Not read by any detector — purely a reference field so a family
-        // (or Oak, drafting a message on their behalf) can quote the right
+        // (or Keel, drafting a message on their behalf) can quote the right
         // number back to the insurer without digging out the original
         // document again.
         policy_number: z.string().optional(),
@@ -157,6 +173,14 @@ export const FinancialProfileSchema = z.object({
         // unset deliberately). Never guessed from OCR: attribution only ever
         // comes from an explicit user pick in the wizard or document review.
         member_id: z.string().min(1).optional(),
+        // Who the policy *protects* — distinct from member_id (who holds/
+        // pays for it). A parent's life policy held by the organizer can
+        // name a child beneficiary; recording it lets family_policy_review
+        // flag beneficiaries who've left the roster, and lets playbooks
+        // answer "who does this cover?" without re-reading documents.
+        // Optional and never guessed — attribution only comes from an
+        // explicit user pick, same posture as member_id.
+        beneficiary_member_id: z.string().min(1).optional(),
         // The number/address a life-event playbook's "contact" steps can
         // actually put in front of the family instead of "find the number
         // and call" — only ever what a document or a scanned email stated
@@ -357,7 +381,7 @@ export async function evaluateProfileAndGenerateInsights(
       // non-dedup-affecting pattern as member_id on household earner events.
       ...(soonestRenewal.member_id ? { soonest_renewal_member_id: soonestRenewal.member_id } : {}),
     }
-    // OAK-029: neutralizes protection-gap.yaml's other 3 rules
+    // KEEL-029: neutralizes protection-gap.yaml's other 3 rules
     // (life_insurance_below_household_needs, policy_renewal_window,
     // no_health_or_critical_illness_cover) for the second-earner event
     // below, so they cannot mathematically fire a second time — they
@@ -443,19 +467,58 @@ export async function evaluateProfileAndGenerateInsights(
     }
   }
 
-  // ── family_emergency_fund_adequacy ───────────────────────────────────
+  // ── family_emergency_fund_adequacy + family_emergency_trajectory ─────
+  // One family.savings event feeds both detectors — adequacy reads the
+  // level fields it always has; the trajectory detector reads the surplus
+  // fields added here (real cashflow entries win over the income-minus-
+  // expenses estimate, same source the /family/cashflow summary computes).
   {
+    const monthlyExpenses =
+      profile.emergency_fund.monthly_expenses_minor > 0
+        ? profile.emergency_fund.monthly_expenses_minor
+        : Math.round(profile.household.annual_living_expenses_minor / 12)
+    const monthlyIncome =
+      profile.household.monthly_salary_minor +
+      profile.household.members.reduce((s, m) => s + m.monthly_salary_minor, 0)
+    // The real ledger is an enhancement over the declared figures, not a
+    // requirement — an unreadable/partial cashflow collection degrades to
+    // the income-minus-expenses estimate rather than failing the whole
+    // evaluation.
+    let cashflowEntries: Pick<CashflowEntryDoc, 'kind' | 'amount_minor' | 'recurrence'>[] = []
+    try {
+      const found: unknown = await getTenantCollection<CashflowEntryDoc>(db, 'family_cashflow_entries', tenantId)
+        .find({})
+        .toArray()
+      if (Array.isArray(found)) cashflowEntries = found
+    } catch { /* fall through to declared figures */ }
+    const monthlyFromEntries = (kind: string) =>
+      cashflowEntries
+        .filter((e) => e.kind === kind)
+        .reduce((s, e) => s + monthlyEquivalentMinor(e), 0)
+    // Declared income minus the figure the rest of the profile already
+    // uses as the monthly spend — or the real ledger when the family has
+    // started recording actual inflows/outflows.
+    const monthlySurplusMinor =
+      cashflowEntries.length > 0
+        ? monthlyFromEntries('income') - monthlyFromEntries('expense')
+        : monthlyIncome - monthlyExpenses
+    const sixMonthTargetMinor = monthlyExpenses * 6
+    const shortfallMinor = Math.max(0, sixMonthTargetMinor - profile.emergency_fund.emergency_savings_minor)
+    const monthsToTarget =
+      shortfallMinor === 0 ? 0 : monthlySurplusMinor > 0 ? Math.ceil(shortfallMinor / monthlySurplusMinor) : 9999
+
     const eventId = crypto.randomUUID()
     const data = {
       emergency_savings_minor: profile.emergency_fund.emergency_savings_minor,
       // Not entered separately? Fall back to the household's stated annual
       // living expenses / 12 so the check runs on real numbers instead of 0.
-      monthly_expenses_minor:
-        profile.emergency_fund.monthly_expenses_minor > 0
-          ? profile.emergency_fund.monthly_expenses_minor
-          : Math.round(profile.household.annual_living_expenses_minor / 12),
+      monthly_expenses_minor: monthlyExpenses,
       has_high_interest_debt: Number(profile.emergency_fund.has_high_interest_debt),
       high_interest_debt_balance_minor: profile.emergency_fund.high_interest_debt_balance_minor,
+      // family_emergency_trajectory fields — 9999 is the "can't get there"
+      // sentinel, same posture as soonest_renewal_days.
+      monthly_surplus_minor: monthlySurplusMinor,
+      months_to_six_month_target: monthsToTarget,
     }
     const signalId = await persistSignal({
       tenant_id: tenantId,
@@ -577,9 +640,18 @@ export async function evaluateProfileAndGenerateInsights(
     }
   }
 
-  // ── family_education_shortfall (one event per child) ─────────────────
+  // ── family_education_shortfall + family_education_pacing ─────────────
+  // One family.education_fund event per child feeds both detectors —
+  // shortfall reads the level fields; pacing reads the pace fields added
+  // here (where a linear trajectory from birth would have the fund by
+  // now, and the monthly contribution catching up requires).
+  const householdMonthlyIncomeMinor =
+    profile.household.monthly_salary_minor +
+    profile.household.members.reduce((s, m) => s + m.monthly_salary_minor, 0)
   for (const fund of profile.education_funds) {
     if (isUnsetTarget(fund.target_savings_minor)) continue
+    const monthsRemaining = Math.max(0, Math.round(fund.years_remaining * 12))
+    const remainingMinor = Math.max(0, fund.target_savings_minor - fund.current_savings_minor)
     const eventId = crypto.randomUUID()
     const data = {
       child_name: fund.child_name,
@@ -587,6 +659,17 @@ export async function evaluateProfileAndGenerateInsights(
       current_savings_minor: fund.current_savings_minor,
       target_savings_minor: fund.target_savings_minor,
       years_remaining: fund.years_remaining,
+      // family_education_pacing fields. pace_expected is the linear-share
+      // checkpoint — at age A with Y years left, an even trajectory that
+      // started at birth would hold target * A/(A+Y) by now. 0 when the
+      // baseline doesn't apply (child_age 0), which the rule conditions
+      // gate on rather than trusting a degenerate 0.
+      pace_expected_minor:
+        fund.child_age > 0 && fund.years_remaining > 0
+          ? Math.round((fund.target_savings_minor * fund.child_age) / (fund.child_age + fund.years_remaining))
+          : 0,
+      required_monthly_minor: monthsRemaining > 0 ? Math.ceil(remainingMinor / monthsRemaining) : 0,
+      household_monthly_income_minor: householdMonthlyIncomeMinor,
       // Stable entity binding: a linked roster member gives the insight a
       // durable identity (entity_key via ENTITY_KEY_FIELDS) so per-child
       // dedup and stale-resolution work; child_name already in this event
@@ -610,30 +693,138 @@ export async function evaluateProfileAndGenerateInsights(
     generatedInsights.push(...result.insights)
   }
 
+  // ── family_debt_health ───────────────────────────────────────────────
+  // Non-mortgage debt service vs gross household income. Emitted even
+  // when payments are 0 so a family that pays off their last card sees
+  // the insight resolve on the next evaluation rather than lingering.
+  {
+    const monthlyIncomeMinor = householdMonthlyIncomeMinor
+    // Profiles saved before this field existed carry no key at all — ?? 0,
+    // not a NaN ratio that silently poisons every rule comparison.
+    const debtPaymentsMinor = profile.household.monthly_debt_payments_minor ?? 0
+    const eventId = crypto.randomUUID()
+    const data = {
+      monthly_debt_payments_minor: debtPaymentsMinor,
+      monthly_income_minor: monthlyIncomeMinor,
+      // Debt service against zero income is the worst case the detector
+      // exists to flag — the ratio floors at 1 rather than dividing by 0.
+      debt_to_income_ratio:
+        monthlyIncomeMinor > 0 ? debtPaymentsMinor / monthlyIncomeMinor : debtPaymentsMinor > 0 ? 1 : 0,
+    }
+    const signalId = await persistSignal({
+      tenant_id: tenantId,
+      signal_type: 'family.debt',
+      source: 'manual-entry',
+      external_id: eventId,
+      data,
+    })
+    const result = await engine.evaluate({
+      event_type: 'family.debt',
+      tenant_id: tenantId,
+      event_id: eventId,
+      data,
+      derived_from_signals: [signalId],
+    })
+    generatedInsights.push(...result.insights)
+  }
+
+  // ── family_policy_review ─────────────────────────────────────────────
+  // Register hygiene, one event per finding subject so entity_key stays
+  // per-(member,type): a life-cover overlap on dad resolves without
+  // clearing a health overlap on mum.
+  {
+    const roster = await getTenantCollection<FamilyGroupDoc>(db, 'family_groups', tenantId).findOne({})
+    const rosterIds = new Set((roster?.members ?? []).map((m) => m.id))
+    const rosterName = new Map((roster?.members ?? []).map((m) => [m.id, m.name]))
+
+    const holderKey = (p: FinancialProfile['policies'][number]) => p.member_id ?? 'household'
+    const holderLabel = (p: FinancialProfile['policies'][number]) =>
+      p.member_id ? (rosterName.get(p.member_id) ?? 'a former member') : 'the household'
+
+    // Duplicate cover: same type + same holder, more than one policy.
+    const groups = new Map<string, FinancialProfile['policies']>()
+    for (const p of profile.policies) {
+      const key = `${p.type}|${holderKey(p)}`
+      groups.set(key, [...(groups.get(key) ?? []), p])
+    }
+    for (const group of groups.values()) {
+      if (group.length < 2) continue
+      const first = group[0]!
+      const eventId = crypto.randomUUID()
+      const data = {
+        overlap_count: group.length,
+        overlap_type: first.type,
+        overlap_holder: holderLabel(first),
+        overlap_providers: group.map((p) => p.provider).join(' + '),
+        overlap_monthly_premium_minor: group.reduce((s, p) => s + p.monthly_premium_minor, 0),
+        // Composite so two overlap types for the same holder stay
+        // distinct entities for dedup/stale-resolution.
+        member_id: `${holderKey(first)}:${first.type}`,
+      }
+      const signalId = await persistSignal({
+        tenant_id: tenantId,
+        signal_type: 'family.policy_review',
+        source: 'manual-entry',
+        external_id: eventId,
+        data,
+      })
+      const result = await engine.evaluate({
+        event_type: 'family.policy_review',
+        tenant_id: tenantId,
+        event_id: eventId,
+        data,
+        derived_from_signals: [signalId],
+      })
+      generatedInsights.push(...result.insights)
+    }
+
+    // Orphaned attribution: a policy (or its beneficiary) still points at
+    // a member who's since left the roster.
+    const orphaned = profile.policies.filter(
+      (p) =>
+        (p.member_id && !rosterIds.has(p.member_id)) ||
+        (p.beneficiary_member_id && !rosterIds.has(p.beneficiary_member_id)),
+    )
+    // Emitted even when orphaned.length is 0 — the event itself is what
+    // lets stale-resolution retract a previously-fired orphan insight
+    // once the family re-attributes or removes the policy.
+    {
+
+      const eventId = crypto.randomUUID()
+      const data = {
+        orphaned_policy_count: orphaned.length,
+        orphaned_policy_descriptions: orphaned
+          .map((p) => `${p.type} policy with ${p.provider}`)
+          .slice(0, 4)
+          .join('; '),
+      }
+      const signalId = await persistSignal({
+        tenant_id: tenantId,
+        signal_type: 'family.policy_review',
+        source: 'manual-entry',
+        external_id: eventId,
+        data,
+      })
+      const result = await engine.evaluate({
+        event_type: 'family.policy_review',
+        tenant_id: tenantId,
+        event_id: eventId,
+        data,
+        derived_from_signals: [signalId],
+      })
+      generatedInsights.push(...result.insights)
+    }
+  }
+
   // ── family_estate_readiness (PRD-121) ────────────────────────────────
   // Vault doc types drive the estate component of the readiness score —
   // this detector makes "missing will / PoA" an actual insight, not just
   // a score detail string. Household-level: no member attribution.
   {
-    const estateDocTypes = new Set(
-      (
-        (await db
-          .collection('documents')
-          .find(
-            { tenant_id: tenantId, category: ESTATE_VAULT_CATEGORY },
-            { projection: { _id: 0, doc_type: 1 } },
-          )
-          .toArray()) as { doc_type?: string }[]
-      )
-        .map((d) => d.doc_type)
-        .filter((t): t is string => typeof t === 'string'),
-    )
+    // PRD-137: the same enriched signal every emission site shares —
+    // legacy register fields layered on top of the vault doc types.
+    const data = await buildEstateSignal(db, tenantId)
     const eventId = crypto.randomUUID()
-    const data = {
-      has_will: Number(estateDocTypes.has('will')),
-      has_power_of_attorney: Number(estateDocTypes.has('power_of_attorney')),
-      estate_doc_count: estateDocTypes.size,
-    }
     const signalId = await persistSignal({
       tenant_id: tenantId,
       signal_type: 'family.estate',
@@ -704,17 +895,23 @@ export async function registerFamilyFinancialProfileRoutes(
   rawProfiles.createIndex({ tenant_id: 1 }, { unique: true }).catch(() => {})
 
   const profileFor = (tenantId: string) =>
-    getTenantCollection<FinancialProfile & { tenant_id: string; updated_at: Date; version?: number }>(
-      db,
-      'family_financial_profile',
-      tenantId,
-    )
+    getTenantCollection<FinancialProfile & {
+      tenant_id: string
+      updated_at: Date
+      version?: number
+      reviewed_at?: Date
+      review_snoozed_until?: Date
+      review_snapshot?: Record<string, unknown>
+    }>(db, 'family_financial_profile', tenantId)
 
   app.get('/family/financial-profile', async (req) => {
     const { tenant_id } = req.authContext
     const doc = await profileFor(tenant_id).findOne({})
     if (!doc) return { profile: null }
-    const { tenant_id: _tenantId, updated_at, version, ...profile } = doc
+    // reviewed_at/review_snapshot/review_snoozed_until are the annual
+    // review flow's bookkeeping — never part of the profile contract the
+    // client round-trips (the snapshot is a full duplicate of the doc).
+    const { tenant_id: _tenantId, updated_at, version, reviewed_at: _r, review_snapshot: _s, review_snoozed_until: _sn, ...profile } = doc
     return { profile, updatedAt: updated_at, version: version ?? 0 }
   })
 
@@ -736,6 +933,140 @@ export async function registerFamilyFinancialProfileRoutes(
     return reply.send({ ok: true, insights_generated: insightsGenerated })
   })
 
+  // ── Annual profile review ────────────────────────────────────────────
+  // A family's numbers drift — salary rises, debts clear, children age —
+  // but nothing asks "is this still accurate?" on a schedule, so scores
+  // quietly compute on stale data. Once a year the profile surfaces a
+  // "confirm or update" prompt: one tap confirms (stamps reviewed_at and
+  // stores a snapshot so next year's prompt can say what changed), an
+  // edit refreshes updated_at, or the family snoozes for 30 days.
+  //
+  // reviewed_at is deliberate human confirmation, distinct from
+  // updated_at (any autosave touches it) — a mid-wizard keystroke must
+  // not read as "the family says this is still right."
+  const REVIEW_INTERVAL_MS = 365 * 86_400_000
+  const REVIEW_SNOOZE_MS = 30 * 86_400_000
+
+  // Human labels for the "what changed since your last review" list —
+  // a dotted path can always fall back to its humanized leaf name.
+  const REVIEW_FIELD_LABELS: Record<string, string> = {
+    'household.employment_status': 'employment status',
+    'household.monthly_salary_minor': 'monthly income',
+    'household.annual_living_expenses_minor': 'living expenses',
+    'household.mortgage_outstanding_minor': 'mortgage balance',
+    'household.life_cover_minor': 'life cover',
+    'household.income_protection_monthly_minor': 'income protection',
+    'household.monthly_debt_payments_minor': 'monthly debt payments',
+    'emergency_fund.emergency_savings_minor': 'emergency savings',
+    'emergency_fund.monthly_expenses_minor': 'monthly expenses',
+    'emergency_fund.has_high_interest_debt': 'high-interest debt',
+    'emergency_fund.high_interest_debt_balance_minor': 'debt balance',
+    'retirement.current_age': 'age',
+    'retirement.target_retirement_age': 'retirement age',
+    'retirement.pension_balance_minor': 'pension balance',
+    'retirement.monthly_contribution_minor': 'pension contribution',
+    'retirement.target_retirement_income_minor': 'retirement income target',
+  }
+
+  function flattenLeaves(value: unknown, prefix: string, out: Record<string, unknown>): void {
+    if (Array.isArray(value)) {
+      // Array identity is meaningful ("a policy was added"), not each row's
+      // internals — compare the array's shape as one leaf.
+      out[prefix] = value.length
+      return
+    }
+    if (value !== null && typeof value === 'object') {
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        flattenLeaves(v, prefix ? `${prefix}.${k}` : k, out)
+      }
+      return
+    }
+    out[prefix] = value
+  }
+
+  function diffSinceReview(snapshot: Record<string, unknown> | undefined, current: Record<string, unknown>): string[] {
+    if (!snapshot) return []
+    const before: Record<string, unknown> = {}
+    const after: Record<string, unknown> = {}
+    flattenLeaves(snapshot, '', before)
+    flattenLeaves(current, '', after)
+    const changed: string[] = []
+    for (const path of new Set([...Object.keys(before), ...Object.keys(after)])) {
+      if (before[path] === after[path]) continue
+      const leaf = path.split('.').pop() ?? path
+      changed.push(
+        REVIEW_FIELD_LABELS[path] ??
+          leaf.replace(/_minor$|_/g, ' ').trim() +
+            (path.includes('policies') || path.includes('education_funds') ? ' count' : ''),
+      )
+      if (changed.length === 8) break
+    }
+    return changed
+  }
+
+  // Same humanizer as diffSinceReview but keeps the dotted path — the
+  // readiness feed's profile_changed event needs it for the deep link.
+  function diffProfileChanges(
+    previous: Record<string, unknown>,
+    current: Record<string, unknown>,
+  ): { path: string; label: string }[] {
+    const before: Record<string, unknown> = {}
+    const after: Record<string, unknown> = {}
+    flattenLeaves(previous, '', before)
+    flattenLeaves(current, '', after)
+    const changed: { path: string; label: string }[] = []
+    for (const path of new Set([...Object.keys(before), ...Object.keys(after)])) {
+      if (before[path] === after[path]) continue
+      const leaf = path.split('.').pop() ?? path
+      changed.push({
+        path,
+        label:
+          REVIEW_FIELD_LABELS[path] ??
+          leaf.replace(/_minor$|_/g, ' ').trim() +
+            (path.includes('policies') || path.includes('education_funds') ? ' count' : ''),
+      })
+    }
+    return changed
+  }
+
+  app.get('/family/financial-profile/review', async (req) => {
+    const { tenant_id } = req.authContext
+    const doc = await profileFor(tenant_id).findOne({})
+    if (!doc) return { due: false, last_reviewed_at: null, changed: [] }
+    const now = Date.now()
+    // Reference point = last explicit confirmation, else when the data
+    // was last touched — a profile edited this month isn't due regardless
+    // of when it was first created.
+    const reference = doc.reviewed_at?.getTime() ?? doc.updated_at?.getTime() ?? now
+    const snoozed = doc.review_snoozed_until && doc.review_snoozed_until.getTime() > now
+    const due = !snoozed && now - reference > REVIEW_INTERVAL_MS
+    const { tenant_id: _t, updated_at: _u, version: _v, _id: _i, reviewed_at: _r, review_snoozed_until: _s, review_snapshot: _snap, ...current } = doc as Record<string, unknown>
+    return {
+      due,
+      last_reviewed_at: doc.reviewed_at ?? null,
+      changed: due ? diffSinceReview(doc.review_snapshot, current) : [],
+    }
+  })
+
+  app.post<{ Body: { action?: 'confirm' | 'later' } }>('/family/financial-profile/review', async (req, reply) => {
+    const { tenant_id } = req.authContext
+    const doc = await profileFor(tenant_id).findOne({})
+    if (!doc) return reply.status(404).send({ error: 'No financial profile on file yet' })
+    if (req.body?.action === 'later') {
+      await profileFor(tenant_id).updateOne({}, { $set: { review_snoozed_until: new Date(Date.now() + REVIEW_SNOOZE_MS) } })
+      return { ok: true, reviewed_at: doc.reviewed_at ?? null }
+    }
+    // Confirm: stamp the moment and snapshot the profile so next year's
+    // prompt can answer "what changed since you last confirmed".
+    const { tenant_id: _t, updated_at: _u, version: _v, _id: _i, reviewed_at: _r, review_snoozed_until: _s, review_snapshot: _snap, ...snapshot } = doc as Record<string, unknown>
+    const reviewedAt = new Date()
+    await profileFor(tenant_id).updateOne(
+      {},
+      { $set: { reviewed_at: reviewedAt, review_snapshot: snapshot }, $unset: { review_snoozed_until: '' } },
+    )
+    return { ok: true, reviewed_at: reviewedAt }
+  })
+
   app.post<{ Body: FinancialProfile & { generate_insights?: boolean; version?: number } }>('/family/financial-profile', async (req, reply) => {
     const { generate_insights, version: clientVersion, ...body } = req.body
     const parsed = FinancialProfileSchema.safeParse(body)
@@ -750,7 +1081,7 @@ export async function registerFamilyFinancialProfileRoutes(
     // entirely separate from the optimistic-concurrency filter below.
     const previousDoc = await profileFor(tenant_id).findOne({})
 
-    // OAK-006: optimistic concurrency. The multi-step wizard autosaves
+    // KEEL-006: optimistic concurrency. The multi-step wizard autosaves
     // after every step, and two tabs/devices editing the same profile
     // used to silently last-writer-wins overwrite each other's fields —
     // the whole document is $set wholesale with no merge. A client that
@@ -791,6 +1122,49 @@ export async function registerFamilyFinancialProfileRoutes(
     // persist progress so closing the tab mid-form doesn't lose it.
     if (!generate_insights) {
       return reply.send({ ok: true, insights_generated: 0, version: newVersion })
+    }
+
+    // Insight→action attribution: a final submit while insights are open
+    // (or recently fired) is the family *responding* — record the
+    // association before this pass runs, so insights created by this very
+    // evaluation don't get credited to the save that produced them.
+    // 'policy_added' is the sharper signal when the register grew;
+    // otherwise the generic 'profile_updated'.
+    if (previousDoc) {
+      const prevPolicyCount = Array.isArray(previousDoc.policies) ? previousDoc.policies.length : 0
+      const actionType = profile.policies.length > prevPolicyCount ? 'policy_added' : 'profile_updated'
+      await recordInsightAction(db, tenant_id, actionType).catch(() => {})
+
+      // PRD-136: narrate the save itself — after attribution, before the
+      // evaluation runs. First-ever save has no baseline, so nothing to
+      // narrate; a save with no field changes isn't a move either.
+      try {
+        const {
+          tenant_id: _t, updated_at: _u, version: _v, _id: _i,
+          reviewed_at: _r, review_snapshot: _rs, review_snoozed_until: _sn, insights_evaluated_at: _e,
+          ...previousProfile
+        } = previousDoc as Record<string, unknown>
+        const changed = diffProfileChanges(previousProfile, profile as unknown as Record<string, unknown>)
+        if (changed.length > 0) {
+          const names = changed.slice(0, 3).map((c) => c.label)
+          const list = names.length === 1 ? names[0]! : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+          emitReadinessEvent(db, tenant_id, {
+            type: 'profile_changed',
+            severity: 'info',
+            direction: null,
+            member_id: null,
+            domain: null,
+            title: `${list[0]!.toUpperCase()}${list.slice(1)} changed`,
+            summary: `Your financial profile was updated: ${list}.`,
+            evidence: changed.slice(0, 3).map((c) => ({ label: c.label })),
+            links: [{ kind: 'profile_field', id: changed[0]!.path }],
+            next_check_at: null,
+            dedupe_key: buildDedupeKey('profile_changed', tenant_id),
+          })
+        }
+      } catch {
+        // feed bookkeeping never breaks the save path
+      }
     }
 
     const insightsGenerated = await evaluateProfileAndGenerateInsights(profile, tenant_id, engine, db, onInsightsGenerated)

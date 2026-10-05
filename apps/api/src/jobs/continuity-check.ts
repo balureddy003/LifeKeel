@@ -30,7 +30,7 @@
  */
 
 import type { Db } from 'mongodb'
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 import { getFamilyGroupsCollection, getFamilyContinuityStateCollection } from '../db.js'
 import type { FamilyGroupDoc } from '../routes/family-group.js'
 import type { User } from '../routes/auth-users.js'
@@ -77,7 +77,7 @@ export async function runContinuityCheck(
   opts: { now?: Date; appUrl?: string } = {},
 ): Promise<ContinuityRunSummary> {
   const now = opts.now ?? new Date()
-  const appUrl = opts.appUrl ?? process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002'
+  const appUrl = opts.appUrl ?? process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002'
   const summary: ContinuityRunSummary = { families: 0, checkInsSent: 0, alertsSent: 0, reset: 0 }
   const states = getFamilyContinuityStateCollection(db)
 

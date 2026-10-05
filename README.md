@@ -1,15 +1,15 @@
-# Agent Oak
+# LifeKeel
 
 **The autonomous digital twin for your family.**
 
-Oak is a multi-agent family financial-readiness and crisis-protection
-ecosystem: a family orchestrator (Oak HQ) plus a digital twin per member,
+Keel is a multi-agent family financial-readiness and crisis-protection
+ecosystem: a family orchestrator (Keel HQ) plus a digital twin per member,
 a Digital Estate Vault, and an automated ingestion engine that learns from
 the documents you upload. It understands your family's life, protection
 and preferences, anticipates what you may need, and acts on your behalf
 when it matters most.
 
-*When life doesn't go to plan, Oak knows what to do next.*
+*When life doesn't go to plan, LifeKeel knows what to do next.*
 
 Full product vision, current architecture, and phased roadmap:
 [ARCHITECTURE.md](ARCHITECTURE.md). Repo conventions, gotchas, and the
@@ -19,8 +19,8 @@ the original codebase and known deferred issues: [SECURITY.md](SECURITY.md).
 ## Repo layout
 
 ```
-apps/web      Next.js frontend — @agentoak/web
-apps/api      Fastify backend  — @agentoak/api
+apps/web      Next.js frontend — @lifekeel/web
+apps/api      Fastify backend  — @lifekeel/api
 packages/*    Shared libraries (engine, platform, connector pipeline, ...)
 ```
 
@@ -31,8 +31,8 @@ pnpm install
 cp .env.example .env               # apps/api — needs JWT_SECRET, MONGODB_URL
 cp apps/web/.env.example apps/web/.env   # apps/web — NEXT_PUBLIC_API_URL
 
-pnpm --filter @agentoak/api dev    # http://localhost:3001
-pnpm --filter @agentoak/web dev    # http://localhost:3002
+pnpm --filter @lifekeel/api dev    # http://localhost:3001
+pnpm --filter @lifekeel/web dev    # http://localhost:3002
 ```
 
 Or from repo root, across the whole workspace:
@@ -57,8 +57,8 @@ The API runs at `http://localhost:3001` with its inspector on port 9229. The
 Next.js app runs at `http://localhost:3002`; its inspectors start at port 9230,
 and child processes may use the next available port. The same scripts can be
 run separately with
-`pnpm --filter @agentoak/api debug` and
-`pnpm --filter @agentoak/web debug`.
+`pnpm --filter @lifekeel/api debug` and
+`pnpm --filter @lifekeel/web debug`.
 
 In VS Code, select **Debug Web + API** to launch both servers and open a Chrome
 debugger for the web app. Use **Debug API**, **Debug Web Server**, or

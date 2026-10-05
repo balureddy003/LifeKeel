@@ -3,7 +3,7 @@
 A point-in-time research pass answering: given the market as it actually
 stands today (not as it stood when
 [000-market-landscape-and-positioning.md](../prd/000-market-landscape-and-positioning.md)
-was written), what makes Agent Oak stand out, what's newly closing the
+was written), what makes LifeKeel stand out, what's newly closing the
 gap, and what should we do about each? Findings below are grounded in
 external research (cited inline) cross-checked against the real codebase
 — not aspirational claims. Re-verify before using this to justify a build
@@ -20,7 +20,7 @@ a direct answer, not just noting:
 metadata extraction, natural-language summaries, and a
 "how much did I spend on car insurance last year?" query interface, plus
 linking an insurance agent/broker to policies. ([Trustworthy AI features](https://www.trustworthy.com/blog/revolutionary-ai-features))
-This is Agent Oak's OCR pipeline + Ask Oak assistant, shipped by the
+This is LifeKeel's OCR pipeline + Ask Keel assistant, shipped by the
 closest existing competitor. **What still doesn't overlap:** Trustworthy
 organizes and answers questions about what's stored; it doesn't run a
 detector engine that proactively tells a family their coverage is
@@ -35,19 +35,19 @@ wide as 000 recorded it.
 "Next Gen Good Neighbor" push, announced May 2026) is an AI tool that
 analyzes coverage gaps across a household and surfaces product
 recommendations to agents. ([State Farm AI roadmap](https://getperspective.ai/blog/state-farm-s-ai-roadmap-how-the-largest-us-insurer-is-modernizing-customer-experience-in-2026), [State Farm OpenAI partnership](https://actuary.info/insights/state-farm-openai-next-gen-good-neighbor-2026/))
-This is, functionally, Agent Oak's core protection-gap detector story —
+This is, functionally, LifeKeel's core protection-gap detector story —
 built by an insurer, for insurance agents, to sell more State Farm
 coverage. **This is the more important finding of this research pass.**
-It means "we detect your coverage gap" is no longer a category Agent Oak
+It means "we detect your coverage gap" is no longer a category LifeKeel
 owns alone; it's about to be table stakes at every major insurer. What
 State Farm structurally cannot offer, by construction: a gap analysis
 that's neutral across providers (their tool's success metric is
 "recommends State Farm products," not "tells you the truth even if the
-answer is 'you're fine, don't buy anything'"). **Agent Oak's answer isn't
+answer is 'you're fine, don't buy anything'"). **LifeKeel's answer isn't
 a feature — it's a trust claim: "we have no commission on any policy we
 tell you to check."** That claim needs to be said out loud in-product
 (a line on every protection-gap insight card, not just implied by
-business model), because a family comparing Oak's insight against their
+business model), because a family comparing Keel's insight against their
 insurer's own AI copilot will otherwise reasonably assume both are
 equally self-interested.
 
@@ -62,16 +62,16 @@ in the US. ([FCA Mills Review](https://www.regulationtomorrow.com/2026/07/fca-pu
 
 **Correction (2026-09-19):** the recommendation originally here suggested
 leaning into compliance-readiness as a selling point. That's the wrong
-direction for Agent Oak specifically — see CLAUDE.md's "second rule."
+direction for LifeKeel specifically — see CLAUDE.md's "second rule."
 Building toward "ready for AI-advice regulation" implicitly accepts that
-Oak gives advice, which is exactly the ground it's meant to stay off.
+Keel gives advice, which is exactly the ground it's meant to stay off.
 Origin, State Farm, and every SM&CR-liable firm in this research face
 the Mills Review because they *are* regulated advisers/arrangers; Agent
-Oak's answer isn't a better compliance posture, it's not being in that
+Keel's answer isn't a better compliance posture, it's not being in that
 category in the first place — informational insights, always deferring
 to a licensed professional, never naming or steering toward a specific
 product. The audit log (#22) stays a real internal safety/debugging tool
-and a legitimate "show your work" trust signal for *what data Oak used
+and a legitimate "show your work" trust signal for *what data Keel used
 and what it said*, but it should not be marketed or positioned as
 regulatory readiness — that framing invites the exact classification
 question ("if you need an audit trail like a regulated adviser, are you
@@ -112,7 +112,7 @@ around — surfacing an emerging life event (income drop, a spending
 pattern consistent with medical costs) to the family itself, framed as
 help rather than risk-scoring.
 
-This is a real, unclaimed angle, and it fits Agent Oak's existing shape
+This is a real, unclaimed angle, and it fits LifeKeel's existing shape
 better than almost any competitor: the life-event playbook engine
 (PRD-108) already exists and already personalizes by declared event —
 the only missing piece is *detecting* the event before it's declared,
@@ -120,14 +120,14 @@ the same way the protection-gap detectors already re-evaluate
 continuously on data change. **Recommendation, not for this pass:** flag
 as a future PRD candidate (not scoped here), explicitly framed as
 Tier 0 (observe/suggest only — "it looks like something's changed;
-want to tell Oak what happened?" prompting the existing report flow,
+want to tell Keel what happened?" prompting the existing report flow,
 never auto-filing a life event on the family's behalf). This needs its
 own trust-tier design pass given how sensitive an unprompted "we noticed
 your income dropped" message is — likely the single highest care/reward
 ratio idea in this document, and correspondingly the one most worth
 scoping carefully rather than rushing. It also needs to stay on the
 right side of CLAUDE.md's "second rule": the prompt can only ever be
-"tell Oak what happened" (information-gathering), never "here's what
+"tell Keel what happened" (information-gathering), never "here's what
 you should buy" — pairing a distress signal with a product nudge is the
 one combination that would read as an unsolicited personal
 recommendation.
@@ -140,7 +140,7 @@ project. ([Local LLM guide 2026](https://www.sitepoint.com/definitive-guide-loca
 Nothing in the family life-admin or AI-money-app categories researched
 offers this; everyone routes through cloud inference.
 
-Agent Oak's most sensitive single flow — bereavement, disability, medical
+LifeKeel's most sensitive single flow — bereavement, disability, medical
 emergency playbooks, i.e. exactly the crisis-mode content this session
 spent the most validation effort on — is also the flow where "your
 family's grief/health data went to a cloud LLM provider" is most likely
@@ -175,7 +175,7 @@ still requires the organizer to approve before they see any shared data
 just pointed at a different growth intent. Flagging as a future PRD
 candidate, not scoping it here.
 
-## Angle 6 — Business model: where Oak Plus should land on price
+## Angle 6 — Business model: where Keel Plus should land on price
 
 2026 benchmarks: Monarch's family tier is $99.99/yr for up to 5 members;
 Copilot's Family tier is $155/yr; category-wide, hard paywalls convert at
@@ -185,7 +185,7 @@ around $9.99/mo. ([Subscription app benchmarks 2026](https://www.airbridge.io/en
 **Correction (2026-09-19):** this section originally recommended a price
 anchor (~$9.99–12.99/mo) as if the number were still open. It isn't —
 `billing-constants.ts` already documents a deliberate decision from
-remediation item #23: **Oak Plus is £7.99/mo**, with a real (non-
+remediation item #23: **Keel Plus is £7.99/mo**, with a real (non-
 placeholder) Stripe price id already wired in `PLAN_PRICES.starter`. At
 typical GBP/USD rates that lands almost exactly on the ~$9.99 category
 median this research found, positioned as a value price rather than a
@@ -205,12 +205,12 @@ question for this doc to keep revisiting.
   the CFP exam, multi-agent, deterministic math" positioning) — this is
   an arms race against players with materially more funding and a
   head start; competing on "our AI is smarter" is the wrong axis for
-  Agent Oak's actual advantage (whole-family + crisis-native + neutral).
+  LifeKeel's actual advantage (whole-family + crisis-native + neutral).
 - **Standalone bereavement/life-event support as its own product** —
   Empathy ($30M Series A) and Bereave already own that as a dedicated
   category, partnering with employers and financial institutions
   specifically because grief support benefits from being *external* to
-  a family's own financial software. Agent Oak's playbooks should stay
+  a family's own financial software. LifeKeel's playbooks should stay
   scoped to the financial/insurance admin slice (already the explicit
   PRD-108 boundary — never diagnosis, never grief counseling) rather
   than trying to out-build a funded specialist.
@@ -222,6 +222,6 @@ question for this doc to keep revisiting.
 | Continuous detection (vs. one-shot calculators) | Still true, but insurers (State Farm) are now building this too — reframe as *neutral* continuous detection |
 | Whole-family / digital twin framing | Still uniquely framed; Trustworthy is family-wide storage, not family-wide reasoning |
 | Emergency Mode / crisis-native UX | Validated as a real 2026 industry gap ("emotionally devoid" banking UX), worth deepening past Emergency Mode itself |
-| Prepare-not-send trust discipline | Increasingly regulatory *required*, not just a safety choice — Agent Oak already has what others are being told to retrofit |
+| Prepare-not-send trust discipline | Increasingly regulatory *required*, not just a safety choice — LifeKeel already has what others are being told to retrofit |
 | Detect-before-declared life events | Genuinely unclaimed by any competitor found — highest-upside, needs its own careful trust-tier scoping |
 | On-device inference for crisis flows | Genuinely unclaimed, technically practical now, narrow enough scope to be feasible |

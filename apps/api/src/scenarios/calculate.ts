@@ -1,5 +1,5 @@
 /**
- * Deterministic "what if" scenario math for Ask Oak — see docs/plan
+ * Deterministic "what if" scenario math for Ask Keel — see docs/plan
  * (Digital Twin gap audit, Phase 2): the assistant had no way to answer a
  * hypothetical ("what if Sudha returns to work and we save £500/month
  * more?") beyond either declining or an LLM inventing a plausible-looking
@@ -54,6 +54,13 @@ export interface ScenarioChange {
    * of the event being modelled.
    */
   steps?: ScenarioStep[]
+  /**
+   * G7: roster member this scenario is scoped to (family_groups
+   * member id). The calculator itself doesn't read it — the routes layer
+   * scopes the ScenarioProfileInput before calling — but it must live on
+   * ScenarioChange so a saved scenario round-trips its scope.
+   */
+  member_id?: string
 }
 
 /**

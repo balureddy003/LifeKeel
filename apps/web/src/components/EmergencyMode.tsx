@@ -58,8 +58,8 @@ export function EmergencyMode({
           ref={containerRef}
           tabIndex={-1}
         >
-          {/* Life-safety notice — this screen is Oak's crisis entry point, but
-              Oak is a financial/insurance assistant, not emergency services.
+          {/* Life-safety notice — this screen is Keel's crisis entry point, but
+              Keel is a financial/insurance assistant, not emergency services.
               Every tile below leads into insurance and financial admin steps;
               a family in real physical danger needs this line before any of
               that, not after. Shown unconditionally, above the fold, on every

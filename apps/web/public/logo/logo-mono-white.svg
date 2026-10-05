@@ -1,13 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
   <!-- Monochrome, no container — for a single-color context: merchandise, a stamp, a favicon over a busy background. Drop straight onto any sufficiently dark ground. -->
-  <g stroke="#ffffff" stroke-width="9" stroke-linecap="round">
-    <path d="M96 34 L34 96 L96 158 L158 96 Z" fill="none"/>
-    <path d="M96 34 L96 158"/>
-    <path d="M34 96 L158 96"/>
+  <g stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <!-- mast + sail -->
+    <path d="M96 26 L96 58"/>
+    <path d="M96 30 L124 58 L96 58 Z" fill="#ffffff" stroke="none"/>
+    <!-- waterline -->
+    <path d="M20 74 Q36 66 52 74 T84 74 T116 74 T148 74 T172 74" fill="none" stroke-width="6" opacity="0.65"/>
+    <!-- hull -->
+    <path d="M48 92 Q96 136 144 92" fill="none"/>
+    <!-- keel fin -->
+    <path d="M96 116 L96 150"/>
+    <!-- keel bulb -->
+    <rect x="80" y="148" width="32" height="13" rx="6.5" fill="#ffffff" stroke="none"/>
   </g>
-  <circle cx="96" cy="34" r="9" fill="#ffffff"/>
-  <circle cx="34" cy="96" r="9" fill="#ffffff"/>
-  <circle cx="158" cy="96" r="9" fill="#ffffff"/>
-  <circle cx="96" cy="158" r="9" fill="#ffffff"/>
-  <circle cx="96" cy="96" r="12" fill="#ffffff"/>
 </svg>

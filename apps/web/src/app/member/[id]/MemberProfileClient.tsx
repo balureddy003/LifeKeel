@@ -255,7 +255,7 @@ export default function MemberProfileClient() {
           <div className="flex items-center gap-2">
             <Sparkles size={14} className="text-family-400" />
             <div className="text-sm font-semibold text-ink-primary">
-              {agent.persona === 'guardian' ? `What ${member.name.split(' ')[0]}'s twin notices` : `What Oak notices about ${member.name.split(' ')[0]}`}
+              {agent.persona === 'guardian' ? `What ${member.name.split(' ')[0]}'s twin notices` : `What Keel notices about ${member.name.split(' ')[0]}`}
             </div>
             {agent.provisional && (
               <span className="text-[10px] font-semibold text-warning bg-warning/10 px-1.5 py-0.5 rounded-full">provisional</span>
@@ -409,18 +409,18 @@ export default function MemberProfileClient() {
         </div>
       )}
 
-      {/* PRD-122: member-scoped Ask Oak — the question is grounded on this
+      {/* PRD-122: member-scoped Ask Keel — the question is grounded on this
           member's twin (their slice, attributed insights, member
           readiness), not the whole household. Hidden in kid view: assistant
           prose can reference figures even though MoneyText redacts them,
           so the surface stays out of reach. */}
       {!kidViewActive && (
       <div className="card space-y-3">
-        <div className="text-sm font-semibold text-ink-primary">Ask Oak about {member.name.split(' ')[0]}</div>
+        <div className="text-sm font-semibold text-ink-primary">Ask Keel about {member.name.split(' ')[0]}</div>
         {answer && (
           <div className="text-sm text-ink-secondary leading-relaxed">
             {answer.status === 'unavailable' ? (
-              <p className="text-xs text-warning">Oak&apos;s assistant is temporarily unavailable — that&apos;s an outage, not a missing answer. Try again in a moment.</p>
+              <p className="text-xs text-warning">Keel&apos;s assistant is temporarily unavailable — that&apos;s an outage, not a missing answer. Try again in a moment.</p>
             ) : (
               <>
                 {answer.content}
@@ -444,7 +444,7 @@ export default function MemberProfileClient() {
             onClick={() => void askAboutMember()}
             disabled={asking || !askInput.trim()}
             className="btn-primary px-4 py-3 flex items-center justify-center disabled:opacity-50"
-            aria-label="Ask Oak"
+            aria-label="Ask Keel"
           >
             {asking ? <Loader2 size={16} className="animate-spin" /> : 'Ask'}
           </button>

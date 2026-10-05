@@ -1,0 +1,58 @@
+# Golden eval cases for detectors/family/debt-health.yaml.
+# event_type mirrors what family-financial-profile.ts emits: 'family.debt',
+# one event per evaluation with the computed debt_to_income_ratio.
+cases:
+  - id: dti-above-guideline
+    description: Non-mortgage debt service above the 36% affordability guideline
+    event_type: family.debt
+    data:
+      monthly_debt_payments_minor: 150000
+      monthly_income_minor: 400000
+      debt_to_income_ratio: 0.375
+    expected_insights:
+      - rule_id: debt_to_income_above_guideline
+        min_or_score: 0.7
+
+  - id: dti-severe
+    description: Debt service above 50% of income — fires both tiers
+    event_type: family.debt
+    data:
+      monthly_debt_payments_minor: 260000
+      monthly_income_minor: 500000
+      debt_to_income_ratio: 0.52
+    expected_insights:
+      - rule_id: debt_to_income_above_guideline
+        min_or_score: 0.7
+      - rule_id: debt_to_income_severe
+        min_or_score: 0.75
+
+  - id: debt-with-no-income
+    description: Payments > 0 with zero income — ratio floored at 1, severe tier fires
+    event_type: family.debt
+    data:
+      monthly_debt_payments_minor: 80000
+      monthly_income_minor: 0
+      debt_to_income_ratio: 1
+    expected_insights:
+      - rule_id: debt_to_income_above_guideline
+        min_or_score: 0.7
+      - rule_id: debt_to_income_severe
+        min_or_score: 0.75
+
+  - id: dti-healthy
+    description: Modest debt load — nothing fires
+    event_type: family.debt
+    data:
+      monthly_debt_payments_minor: 100000
+      monthly_income_minor: 400000
+      debt_to_income_ratio: 0.25
+    expected_insights: []
+
+  - id: no-debt
+    description: Zero payments must never fire, regardless of income
+    event_type: family.debt
+    data:
+      monthly_debt_payments_minor: 0
+      monthly_income_minor: 400000
+      debt_to_income_ratio: 0
+    expected_insights: []

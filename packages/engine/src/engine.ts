@@ -1,5 +1,5 @@
 /**
- * Kairos Engine — The Deterministic Intelligence Layer
+ * LifeKeel Engine — The Deterministic Intelligence Layer
  *
  * Five invariants enforced by the type system and runtime:
  *
@@ -56,11 +56,11 @@ import type { ChangePointDetector } from './change-point.js'
 import type { FeatureHashScorer } from './feature-hash-scorer.js'
 import type { TenantLevelScorer, RecentInsight } from './tenant-level-scorer.js'
 import { CorrelationBuffer } from './correlation-buffer.js'
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 import { CascadeScorer, type CascadePolicy, type ConformalGateProvider, type CascadeTelemetry } from './cascade.js'
 import { DatabaseIndexManager, createIndexManager } from './database-indexes.js'
 
-const log = createLogger({ service: 'kairos-engine', version: '0.0.0' })
+const log = createLogger({ service: 'lifekeel-engine', version: '0.0.0' })
 
 // ─── Public contracts ─────────────────────────────────────────────────────────
 

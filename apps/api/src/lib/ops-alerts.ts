@@ -2,13 +2,13 @@
  * Generic operational alerting — sends critical errors to Slack.
  *
  * Reuses the same Slack bot token as billing alerts but posts to a
- * separate ops channel (configurable via KAIROS_OPS_ALERT_CHANNEL).
+ * separate ops channel (configurable via LIFEKEEL_OPS_ALERT_CHANNEL).
  * Falls back to the billing alert channel if not set.
  *
  * Never throws — alert failures are logged but never interrupt the caller.
  */
 
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'ops-alerts', version: '0.0.0' })
 
@@ -44,8 +44,8 @@ export async function sendOpsAlert(opts: OpsAlertOpts): Promise<void> {
   if (now - lastAlerted < ALERT_COOLDOWN_MS) return
   recentAlerts.set(dedupKey, now)
 
-  const token = process.env['KAIROS_SLACK_BOT_TOKEN']
-  const channel = process.env['KAIROS_OPS_ALERT_CHANNEL'] ?? process.env['KAIROS_BILLING_ALERT_CHANNEL'] ?? '#alerts'
+  const token = process.env['LIFEKEEL_SLACK_BOT_TOKEN']
+  const channel = process.env['LIFEKEEL_OPS_ALERT_CHANNEL'] ?? process.env['LIFEKEEL_BILLING_ALERT_CHANNEL'] ?? '#alerts'
 
   if (!token) return // Slack not configured — alert already logged
 

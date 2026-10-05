@@ -29,7 +29,7 @@ which claims are backed by working code.
 
 | Config | What it blocks |
 |---|---|
-| ~~`STRIPE_SECRET_KEY`~~ | ✅ Resolved — test key configured, `POST /billing/checkout` (plan: `starter`) returns a live `checkout.stripe.com` URL against the Oak Plus £7.99/mo price. |
+| ~~`STRIPE_SECRET_KEY`~~ | ✅ Resolved — test key configured, `POST /billing/checkout` (plan: `starter`) returns a live `checkout.stripe.com` URL against the Keel Plus £7.99/mo price. |
 | `STRIPE_WEBHOOK_SECRET` | Checkout works, but payment confirmation (`checkout.session.completed` → plan upgrade) needs the webhook signing secret. Get it from `stripe listen --forward-to localhost:3001/billing/webhook` (local) or Stripe Dashboard → Webhooks (deployed). |
 | `SENDGRID_API_KEY` (per-tenant connector credential) | Tier 2 `send_email` actions would fail at dispatch. Tier 1 drafts still work (they never call SendGrid). |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` (per-tenant) | WhatsApp/SMS delivery channels non-functional. |
@@ -115,7 +115,7 @@ stale resolution, and evidence trails.
 
 ---
 
-### 6. Ask Oak Assistant ✅
+### 6. Ask Keel Assistant ✅
 
 | Step | Result |
 |---|---|
@@ -261,7 +261,7 @@ redaction is real (no minor-unit amounts in the payload).
 | **Automation settings** | ✅ Returns all fields: `dry_run_mode`, `trust_level_by_workflow` (1 for estate after our approval), `renewal_reminders_enabled`, etc. |
 | **Account export** | ✅ Returns full JSON bundle: user, family_group, financial_profile, documents, insights, goals, signals, action_receipts, etc. |
 | **Blog posts** | ✅ 6 posts returned (public, no auth needed). |
-| **Billing checkout** | ✅ `POST /billing/checkout` returns a live Stripe Checkout URL for the `starter` (Oak Plus £7.99/mo) plan. Webhook secret still needed for post-payment fulfillment. |
+| **Billing checkout** | ✅ `POST /billing/checkout` returns a live Stripe Checkout URL for the `starter` (Keel Plus £7.99/mo) plan. Webhook secret still needed for post-payment fulfillment. |
 | **Context note** | ✅ False positive — request body expects `note` (not `context_note`); response correctly serializes `contextNote`. |
 | **Unreported change nudge** | `active: false` after employment change — correct: the change was made by the user themselves in the profile save, not "unreported." |
 | **Consolidated insights** | Returns grouped by entity_key (household + Jordan). |
@@ -291,7 +291,7 @@ All 24+ routes return HTTP 200:
 | Token refresh for `twitter_x` failed (TLS cert issue, unrelated to product flows) | Low — marketing only |
 | Signal validation warnings: "No schema registered for signal type: family.* version: 0.0.0" | Low — signals still persist and evaluate correctly; validation schemas not registered for family signals (cosmetic logging issue) |
 | Migration index conflict (initial indexes already exist) | None — cosmetic, existing index matches |
-| Residual "Kairos" branding in email headers/defaults | Medium — trust/identity issue per the market review |
+| Residual "LifeKeel" branding in email headers/defaults | Medium — trust/identity issue per the market review |
 
 ---
 
@@ -303,7 +303,7 @@ All 24+ routes return HTTP 200:
    stale resolution, evidence trails, and the full insight lifecycle.
 2. **Readiness score** — 5 weighted components, real-time recalculation,
    honest handling of absent data.
-3. **Ask Oak** — grounded in real profile data, member-scoped, informational
+3. **Ask Keel** — grounded in real profile data, member-scoped, informational
    tone enforced.
 4. **Life-event playbooks** — 7 event types, real financial data in every
    step, server-persisted checklist, Tier 1 draft outreach.
@@ -358,7 +358,7 @@ All 24+ routes return HTTP 200:
 | B2 | Duplicate roster on join-request approve | ✅ Fixed | `family-join.ts` now matches pending members by name when email is absent |
 | B3 | Context note not serialized | ✅ False positive | API uses `note` in body, returns `contextNote` correctly |
 | B4 | Mock data in production surfaces | ✅ Fixed | `CommandPalette` now reads live family data; `AIAnswerCard` mock answers updated to `£`/generic UK language; `assets-data.ts` and `data.ts` stripped to types |
-| G4 | Kairos branding residue | ✅ Fixed | Sender defaults, SEO URLs, sitemap, robots, llms.txt all changed to `agent-oak.ai` / `Agent Oak` |
+| G4 | LifeKeel branding residue | ✅ Fixed | Sender defaults, SEO URLs, sitemap, robots, llms.txt all changed to `lifekeel.ai` / `LifeKeel` |
 | G3 | Time-based proactive nudges | ✅ Added | Age-milestone nudges (13, 16, 18, 25, 50, 60) and policy-renewal nudges (45-day lead) in `buildMemberAgent` |
 | G2 | Neutrality statement visibility | ✅ Already present | "No commission" language on inbox, insight detail, homepage, footer disclaimer |
 | G5 | Adaptive playbook branching | ✅ Added | `isStepCovered()` marks steps where profile data already covers the concern — UI shows "On file" badge |
@@ -377,8 +377,8 @@ All 24+ routes return HTTP 200:
 | `SENDGRID_API_KEY` (per-tenant or global) | **Blocking for Tier 2:** approve→send_email fails at dispatch |
 | `SETTINGS_ENCRYPTION_KEY` | **Security:** Using dev zero-key for credential encryption in non-production |
 | Real email connector credentials | **Feature:** Email scanning/ingestion non-functional |
-| `KAIROS_ADMIN_KEY` | Blog admin writes (parked, not customer-facing) |
-| Rename all `kairos` sender defaults to `agentoak` | **Trust:** Residual branding in outbound communications |
+| `LIFEKEEL_ADMIN_KEY` | Blog admin writes (parked, not customer-facing) |
+| Rename all `lifekeel` sender defaults to `lifekeel` | **Trust:** Residual branding in outbound communications |
 
 ### Signal validation warnings — resolved
 
@@ -466,7 +466,7 @@ Each mode gets a completely different homepage:
 `MoneyText` redacts embedded currency in assistant prose too.
 
 **This is per-member UX at a level no competitor matches.** Monarch shows
-the same dashboard to every user. Oak adapts the entire interface per
+the same dashboard to every user. Keel adapts the entire interface per
 persona.
 
 ### The "Since Last Visit" Delta — Apple-style
@@ -484,7 +484,7 @@ Copilot Money pioneered:
 ### Feature Tips — progressive disclosure
 
 A rotating tip system (6 tips, one per visit, localStorage-dismissed):
-- "Ask Oak anything about your family finances — tap the purple button."
+- "Ask Keel anything about your family finances — tap the purple button."
 - "Swipe left on an inbox item to dismiss it — you can undo within 5 seconds."
 - Each tip links to the relevant page
 
@@ -566,7 +566,7 @@ live" elsewhere can't have three fake-data leaks in production.
 
 ### UX/UI Score vs Competitors
 
-| UX dimension | Agent Oak | Monarch | Copilot | Origin | Trustworthy | LifeOS |
+| UX dimension | LifeKeel | Monarch | Copilot | Origin | Trustworthy | LifeOS |
 |---|---|---|---|---|---|---|
 | Visual polish | 9/10 | 9/10 | 9/10 | 8/10 | 8/10 | 6/10 |
 | Mobile-first design | 9/10 | 9/10 | 9/10 | 8/10 | 7/10 | 5/10 |
@@ -589,6 +589,6 @@ localized emergency number ("call 999" for UK users, "call 911" for US,
 The remaining UX gap: **visual distinctiveness** — the design is polished
 but reads as generic-premium fintech rather than a signature brand. Needs
 a display typeface pairing, bespoke illustration language, or a
-recognizable visual motif to be unmistakably "Oak."
+recognizable visual motif to be unmistakably "Keel."
 (Data visualization and mock-data gaps are now resolved — see the
 remediation table above.)

@@ -10,7 +10,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Engine, type Insight } from '@agentoak/engine'
+import { Engine, type Insight } from '@lifekeel/engine'
 import { runStaleProfileEvaluationSweep, isSubstantivelyComplete } from '../stale-profile-evaluation.js'
 import type { FinancialProfile } from '../../routes/family-financial-profile.js'
 
@@ -132,9 +132,25 @@ function makeProfileCollection(docs: Record<string, unknown>[]) {
 }
 
 let profileDocs: Record<string, unknown>[]
+let insightDocs: Record<string, unknown>[]
 
 function makeDb() {
-  const insightsCol = { find: () => ({ toArray: async () => [] }), updateMany: vi.fn(async () => ({ modifiedCount: 0 })) }
+  const insightsCol = {
+    find: () => ({ toArray: async () => insightDocs }),
+    updateMany: vi.fn(async () => ({ modifiedCount: 0 })),
+  }
+  const events: Record<string, unknown>[] = []
+  const readinessEventsCol = {
+    updateOne: async (
+      filter: Record<string, unknown>,
+      update: { $set?: Record<string, unknown>; $setOnInsert?: Record<string, unknown> },
+    ) => {
+      const existing = events.find((e) => e['dedupe_key'] === filter['dedupe_key'])
+      if (existing) Object.assign(existing, update.$set)
+      else events.push({ ...update.$setOnInsert, ...update.$set })
+      return { upsertedCount: 1 }
+    },
+  }
   const familyGroupsCol = { findOne: async () => null }
   const documentsCol = { find: () => ({ toArray: async () => [] }) }
   const profileCol = makeProfileCollection(profileDocs)
@@ -144,7 +160,9 @@ function makeDb() {
         : name === 'insights' ? insightsCol
         : name === 'family_groups' ? familyGroupsCol
         : name === 'documents' ? documentsCol
+        : name === 'readiness_events' ? readinessEventsCol
         : profileCol,
+    _events: events,
   } as never
 }
 
@@ -157,6 +175,7 @@ beforeEach(() => {
   engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
   onInsightsGenerated = vi.fn(async (_insights: Insight[], _tenantId: string) => {})
   profileDocs = []
+  insightDocs = []
 })
 
 describe('isSubstantivelyComplete', () => {
@@ -251,5 +270,35 @@ describe('runStaleProfileEvaluationSweep', () => {
     const second = await runStaleProfileEvaluationSweep(db, engine, onInsightsGenerated)
     expect(second).toMatchObject({ candidates: 0, evaluated: 0 })
     expect(onInsightsGenerated).not.toHaveBeenCalled()
+  })
+
+  // Fire-and-forget feed writes settle on the next microtask/macrotask.
+  const flush = () => new Promise((r) => setTimeout(r, 20))
+
+  it('emits sweep_quiet when the pass changed no open insights', async () => {
+    profileDocs = [{ tenant_id: TENANT_A, ...makeCompleteProfile(), updated_at: daysAgo(1) }]
+    const db = makeDb()
+    await runStaleProfileEvaluationSweep(db, engine, onInsightsGenerated)
+    await flush()
+
+    const quiet = (db as unknown as { _events: Record<string, unknown>[] })._events
+    expect(quiet).toHaveLength(1)
+    expect(quiet[0]).toMatchObject({ type: 'sweep_quiet', severity: 'info', title: 'Daily check ran — nothing changed' })
+    expect(quiet[0]!['dedupe_key']).toMatch(/^sweep_quiet:tenant-stale-sweep-a:\d{4}-\d{2}-\d{2}$/)
+    expect(quiet[0]!['next_check_at']).toBeInstanceOf(Date)
+  })
+
+  it('does not emit sweep_quiet when an insight opened during the pass', async () => {
+    profileDocs = [{ tenant_id: TENANT_A, ...makeCompleteProfile(), updated_at: daysAgo(1) }]
+    const db = makeDb()
+    // Persist what the callback receives, the way persistAndDeliverInsights does.
+    const persisting: DeliveryHook = async (insights) => {
+      for (const i of insights) insightDocs.push({ tenant_id: i.tenant_id, state: 'identified' })
+    }
+    await runStaleProfileEvaluationSweep(db, engine, persisting)
+    await flush()
+
+    const events = (db as unknown as { _events: Record<string, unknown>[] })._events
+    expect(events.some((e) => e['type'] === 'sweep_quiet')).toBe(false)
   })
 })

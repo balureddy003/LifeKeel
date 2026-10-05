@@ -26,8 +26,8 @@ export default function AuthCallbackPage() {
     }
 
     if (token) {
-      localStorage.setItem('agentoak_token', token)
-      if (tenant) localStorage.setItem('agentoak_tenant', tenant)
+      localStorage.setItem('lifekeel_token', token)
+      if (tenant) localStorage.setItem('lifekeel_tenant', tenant)
       refresh().then(() => router.push('/'))
     } else {
       router.push('/login')

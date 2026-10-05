@@ -19,7 +19,7 @@ export interface Action {
   id: string
   label: string
   done: boolean
-  // OAK-014: when set, and a policy of one of these types exists on the
+  // KEEL-014: when set, and a policy of one of these types exists on the
   // household's financial profile, personalize() replaces the generic
   // label with one naming the real provider — otherwise the generic label
   // (above) renders unchanged.
@@ -100,8 +100,8 @@ const EVENT_AI_EXPLANATION: Record<string, string> = {
 // state into another's, and by event so action ids (which repeat across
 // events, e.g. '1'-'5') don't bleed into each other.
 function checklistStorageKey(eventId: string): string {
-  const tenant = typeof window !== 'undefined' ? localStorage.getItem('agentoak_tenant') ?? 'anon' : 'anon'
-  return `agentoak:event-checklist:${tenant}:${eventId}`
+  const tenant = typeof window !== 'undefined' ? localStorage.getItem('lifekeel_tenant') ?? 'anon' : 'anon'
+  return `lifekeel:event-checklist:${tenant}:${eventId}`
 }
 
 function loadDoneIds(eventId: string): Set<string> {
@@ -122,8 +122,8 @@ function saveDoneIds(eventId: string, doneIds: Set<string>): void {
   }
 }
 
-// OAK-014: the checklist used to be 100% generic strings even when the
-// family had already told Oak who their real provider is — this swaps in
+// KEEL-014: the checklist used to be 100% generic strings even when the
+// family had already told Keel who their real provider is — this swaps in
 // that real name wherever a matching policy exists, leaving the generic
 // text alone otherwise.
 export function personalizeAction(action: Action, policies: FinancialProfilePolicy[]): string {
@@ -201,7 +201,7 @@ export default function EventDetailClient() {
     const draft = await prepareInsightDraft(insightId)
     setDraftText(draft?.content ?? null)
     setDraftFacts(draft?.provenance?.facts)
-    if (!draft) setDraftError("Oak couldn't write that draft just now — nothing was lost, try again in a moment.")
+    if (!draft) setDraftError("Keel couldn't write that draft just now — nothing was lost, try again in a moment.")
     setDrafting(false)
   }
 
@@ -372,7 +372,7 @@ export default function EventDetailClient() {
             {!draftText ? (
               <>
                 <p className="text-sm text-ink-tertiary leading-relaxed mb-3">
-                  Oak can draft an email based on this — you review and send it yourself. Oak never sends anything on your behalf.
+                  Keel can draft an email based on this — you review and send it yourself. Keel never sends anything on your behalf.
                 </p>
                 <GlassButton variant="secondary" onClick={handleDraft} disabled={drafting}>
                   {drafting ? <Loader2 size={18} className="animate-spin" /> : <PenLine size={18} />}
@@ -392,7 +392,7 @@ export default function EventDetailClient() {
                   className="glass-input w-full rounded-xl px-4 py-3 text-sm text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
                 />
                 <p className="text-xs text-ink-tertiary">
-                  This is a draft only — copy it or open it in your own email client. Oak never sends it for you.
+                  This is a draft only — copy it or open it in your own email client. Keel never sends it for you.
                 </p>
                 <DraftProvenanceNote facts={draftFacts} />
                 <div className="flex gap-2">
@@ -423,9 +423,9 @@ export default function EventDetailClient() {
         transition={{ delay: 0.5 }}
       >
         {/* Workstream A bonus: used to link to a blank chat with no idea
-            what the user was just looking at. Now hands Oak the specific
+            what the user was just looking at. Now hands Keel the specific
             scenario by name so its first answer is grounded in this event
-            instead of starting from zero — Oak still computes the actual
+            instead of starting from zero — Keel still computes the actual
             numbers itself from the live profile, this just points it at
             the right question. */}
         <Link

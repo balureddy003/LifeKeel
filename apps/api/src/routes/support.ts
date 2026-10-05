@@ -1,7 +1,7 @@
 /**
  * Support Routes — the user-facing half of the AI-first support channel.
  *
- * POST /support/ask is the triage layer (Intercom-Fin pattern): Oak answers
+ * POST /support/ask is the triage layer (Intercom-Fin pattern): Keel answers
  * product/account questions immediately, grounded only in light account
  * state — never the financial profile, since support questions aren't
  * financial questions and routing them through the profile would leak more
@@ -17,14 +17,14 @@ import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { getTenantCollection, type LlmFn } from '@agentoak/platform'
+import { getTenantCollection, type LlmFn } from '@lifekeel/platform'
 import { familyDataLlmFromEnv } from '../local-model.js'
 
 const AskSchema = z.object({ question: z.string().trim().min(1).max(2000) })
 const CreateCaseSchema = z.object({
   subject: z.string().trim().min(3).max(200),
   message: z.string().trim().min(1).max(4000),
-  // The Ask-Oak conversation that preceded escalation — stored as 'oak'
+  // The Ask-Keel conversation that preceded escalation — stored as 'keel'
   // messages so the operator sees what was already tried instead of
   // re-answering it.
   triage: z
@@ -38,7 +38,7 @@ export type SupportCaseStatus = 'open' | 'answered' | 'resolved'
 
 export interface SupportMessage {
   id: string
-  author: 'user' | 'operator' | 'oak'
+  author: 'user' | 'operator' | 'keel'
   author_id?: string
   author_name?: string
   text: string
@@ -60,15 +60,15 @@ export interface SupportCaseDoc {
   resolved_at?: Date
 }
 
-const SUPPORT_PROMPT = `You are Oak, the in-app support assistant for Agent Oak — a family's financial digital twin. You answer product and account questions before a human teammate sees them.
+const SUPPORT_PROMPT = `You are Keel, the in-app support assistant for LifeKeel — a family's financial digital twin. You answer product and account questions before a human teammate sees them.
 
-What Agent Oak does:
+What LifeKeel does:
 - Household financial profile: income, expenses, policies, education funds, retirement targets — entered in Financial Profile, confirmed per-member.
-- Insights: Oak flags specific gaps (e.g. an education fund nearing its target date) as Insights in the app.
-- Assistant: the family can ask Oak questions grounded in their own profile.
+- Insights: Keel flags specific gaps (e.g. an education fund nearing its target date) as Insights in the app.
+- Assistant: the family can ask Keel questions grounded in their own profile.
 - Documents: uploaded statements/policies are extracted and suggested as profile updates; the family confirms before they're applied.
 - Family: members join via invite codes; each confirms their own details.
-- Billing: Oak Plus subscriptions and credit-based usage are managed in Settings.
+- Billing: Keel Plus subscriptions and credit-based usage are managed in Settings.
 
 Rules:
 - Answer only product/how-to/account questions. Never give financial, investment, insurance, tax, or legal advice and never recommend or compare specific products or providers — that line is permanent, not a support decision. If a question needs that, say a licensed professional is the right next step.
@@ -124,7 +124,7 @@ export function registerSupportRoutes(app: FastifyInstance, db: Db): void {
     for (const turn of triage ?? []) {
       messages.push(
         { id: randomUUID(), author: 'user', author_id: user_id, text: turn.question, created_at: now },
-        { id: randomUUID(), author: 'oak', text: turn.answer, created_at: now },
+        { id: randomUUID(), author: 'keel', text: turn.answer, created_at: now },
       )
     }
     messages.push({ id: randomUUID(), author: 'user', author_id: user_id, author_name: (user?.['name'] as string) ?? undefined, text: message, created_at: now })

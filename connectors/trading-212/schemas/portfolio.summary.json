@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kairos.io/schemas/trading-212/portfolio.summary/v1.0.0",
+  "$id": "https://lifekeel.io/schemas/trading-212/portfolio.summary/v1.0.0",
   "title": "Trading 212 Portfolio Summary",
   "description": "Account-level summary including cash, invested value, and total value.",
   "type": "object",
-  "kairos": {
+  "lifekeel": {
     "connector_id": "trading-212",
     "event_type": "portfolio.summary",
     "schema_version": "1.0.0",

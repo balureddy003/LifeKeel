@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { LlmFn } from '@agentoak/platform'
+import type { LlmFn } from '@lifekeel/platform'
 import { renderMetrics } from '../routes/metrics.js'
 import { withOutputGuard } from '../local-model.js'
 
@@ -14,12 +14,12 @@ describe('local model metrics', () => {
     const llm: LlmFn = async () => 'Your surplus would be 640 GBP. The best insurer is Acme.'
     await expect(withOutputGuard(llm)('s', 'salary 3,200 GBP')).rejects.toBeDefined()
     const text = await metricsText()
-    expect(text).toMatch(/agentoak_output_guard_blocks_total\{reason="ungrounded_numbers"\} \d+/)
-    expect(text).toMatch(/agentoak_output_guard_blocks_total\{reason="provider_steering"\} \d+/)
+    expect(text).toMatch(/lifekeel_output_guard_blocks_total\{reason="ungrounded_numbers"\} \d+/)
+    expect(text).toMatch(/lifekeel_output_guard_blocks_total\{reason="provider_steering"\} \d+/)
     // Labels carry the reason code only: no figure detail, no model text.
     expect(text).not.toContain('ungrounded_numbers(')
     expect(text).not.toContain('Acme')
-    expect(text).not.toMatch(/agentoak_output_guard_blocks_total\{[^}]*640/)
+    expect(text).not.toMatch(/lifekeel_output_guard_blocks_total\{[^}]*640/)
   })
 
   it('exposes the model, queue-wait, classifier-failure and OCR-retry series', async () => {
@@ -29,12 +29,12 @@ describe('local model metrics', () => {
     recordEmailClassifyFailure()
     recordDocumentExtractionRetries(2)
     const text = await metricsText()
-    expect(text).toContain('agentoak_local_model_calls_total{purpose="judge",outcome="ok"}')
-    expect(text).toContain('agentoak_local_model_calls_total{purpose="ocr",outcome="error"}')
-    expect(text).toContain('agentoak_local_model_latency_seconds_bucket{le="20",purpose="judge"}')
-    expect(text).toContain('agentoak_local_model_queue_wait_seconds_count{purpose="ocr"}')
-    expect(text).toMatch(/agentoak_email_classify_failures_total \d+/)
-    expect(text).toMatch(/agentoak_document_extraction_retries_total [2-9]/)
+    expect(text).toContain('lifekeel_local_model_calls_total{purpose="judge",outcome="ok"}')
+    expect(text).toContain('lifekeel_local_model_calls_total{purpose="ocr",outcome="error"}')
+    expect(text).toContain('lifekeel_local_model_latency_seconds_bucket{le="20",purpose="judge"}')
+    expect(text).toContain('lifekeel_local_model_queue_wait_seconds_count{purpose="ocr"}')
+    expect(text).toMatch(/lifekeel_email_classify_failures_total \d+/)
+    expect(text).toMatch(/lifekeel_document_extraction_retries_total [2-9]/)
   })
 
   it('estimates cost from busy model time only when a rate is configured', async () => {
@@ -42,7 +42,7 @@ describe('local model metrics', () => {
     recordLocalModelCall('judge', true, 10, 0, 0) // no rate configured: nothing recorded
     recordLocalModelCall('classifier', true, 3600, 0, 0.5) // one busy hour at $0.50/h
     const text = await metricsText()
-    expect(text).toContain('agentoak_local_model_estimated_cost_usd_total{purpose="classifier"} 0.5')
+    expect(text).toContain('lifekeel_local_model_estimated_cost_usd_total{purpose="classifier"} 0.5')
     expect(text).not.toContain('estimated_cost_usd_total{purpose="judge"}')
   })
 })

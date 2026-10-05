@@ -1,5 +1,5 @@
 /**
- * OAK-019: POST /documents/upload writes to GridFS, then inserts a
+ * KEEL-019: POST /documents/upload writes to GridFS, then inserts a
  * metadata record — if the metadata insert fails after the GridFS write
  * already succeeded, the blob used to be orphaned forever (no `documents`
  * row ever existed to find it by again). Verifies the fix: the upload
@@ -75,7 +75,7 @@ function multipartPayload(filename: string, content: Buffer) {
   return { body, boundary }
 }
 
-describe('OAK-019: document upload GridFS/metadata consistency', () => {
+describe('KEEL-019: document upload GridFS/metadata consistency', () => {
   beforeEach(() => {
     gridFsDeleteMock.mockClear()
     failMetadataInsert = false

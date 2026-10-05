@@ -13,10 +13,11 @@ import { useAppStore } from '@/lib/store'
 import type { AppMode } from '@/lib/modes'
 import { ROLE_LABELS, type FamilyRole } from '@/lib/auth-types'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
+import { NotificationsCard } from '@/components/NotificationsCard'
 import { useToast } from '@/components/Toast'
 import { isValidEmailFormat } from '@/components/ConversationalOnboarding'
 import { User, LogOut, Check, X, Crown, Shield, ShieldCheck, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle, Calculator, Sparkles, HelpCircle, ScrollText, Bot, Download, Trash2, Sun, Moon, MonitorSmartphone, RefreshCw, Bell, Copy, Gift, HeartPulse } from 'lucide-react'
-import { exportAccountData, deleteAccount, fetchAccessRequests, approveAccessRequest, denyAccessRequest, resetInviteCode, fetchMyReferralCode, fetchReferralSummary, fetchFamilyContinuity, updateFamilyContinuity, updateFamilyContext, type AccessRequest, type FamilyContinuity } from '@/lib/api'
+import { exportAccountData, deleteAccount, fetchAccessRequests, approveAccessRequest, denyAccessRequest, resetInviteCode, fetchMyReferralCode, fetchReferralSummary, fetchFamilyContinuity, updateFamilyContinuity, updateFamilyContext, fetchNotificationPrefs, updateNotificationPrefs, type AccessRequest, type FamilyContinuity, type NotificationPrefsResponse, type NotificationPrefsPatch } from '@/lib/api'
 import { useThemePreference, type ThemePreference } from '@/lib/theme'
 import { isPushSupported, isPushSubscribed, subscribeToPush, unsubscribeFromPush, fetchVapidKey } from '@/lib/push'
 import { isOnDeviceSupported, isOnDeviceEnabled, setOnDeviceEnabled as persistOnDeviceEnabled, enableOnDeviceModel } from '@/lib/onDeviceLlm'
@@ -107,7 +108,7 @@ export default function SettingsPage() {
     }
   }
 
-  // Household context note (gap 8) — organizer-authored free text Ask Oak
+  // Household context note (gap 8) — organizer-authored free text Ask Keel
   // reads as background. Seeded from the family record; save-on-click, not
   // per keystroke.
   const [contextNote, setContextNote] = useState(family?.contextNote ?? '')
@@ -127,6 +128,30 @@ export default function SettingsPage() {
     } else {
       haptic('warning')
       toast({ message: "Couldn't save that — try again", variant: 'error' })
+    }
+  }
+
+  // Notification preference center (PRD-136 §5) — tenant-level delivery
+  // prefs. Any adult reads them (children get a 403 → card hidden); only
+  // the organizer edits. Each change saves immediately.
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPrefsResponse | null>(null)
+  const [notifBusy, setNotifBusy] = useState(false)
+
+  useEffect(() => {
+    fetchNotificationPrefs().then(setNotifPrefs)
+  }, [])
+
+  const saveNotifPrefs = async (patch: NotificationPrefsPatch) => {
+    if (notifBusy || !isOrganizer) return
+    setNotifBusy(true)
+    const saved = await updateNotificationPrefs(patch)
+    setNotifBusy(false)
+    if (saved) {
+      setNotifPrefs(saved)
+      haptic('success')
+    } else {
+      haptic('warning')
+      toast({ message: "Couldn't save notification settings — try again", variant: 'error' })
     }
   }
 
@@ -356,7 +381,7 @@ export default function SettingsPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `agentoak-export-${new Date().toISOString().slice(0, 10)}.json`
+    a.download = `lifekeel-export-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
     haptic('success')
@@ -435,7 +460,7 @@ export default function SettingsPage() {
         </ListRow>
       </ListSection>
 
-      {/* How Oak acts on your behalf — the app's own trust-tier model
+      {/* How Keel acts on your behalf — the app's own trust-tier model
           (ARCHITECTURE.md: Tier 1 "prepare, don't send" today, nothing
           beyond it) was previously only a developer-facing concept. An
           app pitched as a family's "digital twin" that can draft things on
@@ -446,9 +471,9 @@ export default function SettingsPage() {
           <ShieldCheck size={18} className="text-family-400" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-ink-primary mb-1">How Oak acts on your behalf</div>
+          <div className="text-sm font-semibold text-ink-primary mb-1">How Keel acts on your behalf</div>
           <p className="text-xs text-ink-tertiary leading-relaxed">
-            Oak can draft messages, checklists, and next steps from your family&apos;s data — but it never sends
+            Keel can draft messages, checklists, and next steps from your family&apos;s data — but it never sends
             anything, changes your accounts, or takes action on its own. You always review and approve first.
           </p>
         </div>
@@ -675,7 +700,7 @@ export default function SettingsPage() {
       )}
 
       {/* Continuity plan (PRD-130) — organizer-only. If the organizer
-          goes quiet past the threshold, Oak emails them a check-in, then
+          goes quiet past the threshold, Keel emails them a check-in, then
           (after grace) notifies the designated adults. It never grants
           access — the vault's standing adult access already covers that;
           this exists so the right people get tapped on the shoulder. */}
@@ -759,7 +784,7 @@ export default function SettingsPage() {
         </ListSection>
       )}
 
-      {/* Gap-8 context slice: a short organizer-authored note Ask Oak
+      {/* Gap-8 context slice: a short organizer-authored note Ask Keel
           reads as household background. Same sensitivity class as the
           financial profile; the copy asks for no medical details. */}
       {isOrganizer && (
@@ -767,7 +792,7 @@ export default function SettingsPage() {
           <ListRow>
             <div className="w-full space-y-2 text-left">
               <p className="text-xs text-ink-tertiary leading-relaxed">
-                Anything Oak should know that the profile doesn’t capture — “we’re a blended family”, “Maya finishes uni in 2027”. Please don’t include medical details.
+                Anything Keel should know that the profile doesn’t capture — “we’re a blended family”, “Maya finishes uni in 2027”. Please don’t include medical details.
               </p>
               <textarea
                 rows={3}
@@ -888,7 +913,7 @@ export default function SettingsPage() {
 
       {/* Push notifications — only shown on browsers that support them.
           Subscribing is the opt-in: the OS permission prompt is the
-          explicit gesture, and Oak pushes what the detectors produce
+          explicit gesture, and Keel pushes what the detectors produce
           (renewals, new insights) — never marketing. */}
       {pushSupported && (
         <ListSection title="Notifications">
@@ -923,6 +948,21 @@ export default function SettingsPage() {
         </ListSection>
       )}
 
+      {/* PRD-136 §5: notification preference center — how Keel reaches the
+          family (channel order, quiet hours, digest, urgency floor), the
+          heartbeat cadence, and which domains/members the feed-shaped
+          messages cover. Hidden for children (the API 403s them); adults
+          who aren't the organizer see the same card read-only. */}
+      {notifPrefs && (
+        <NotificationsCard
+          prefs={notifPrefs.preferences}
+          exemptCriticals={notifPrefs.exempt_criticals}
+          isOrganizer={isOrganizer ?? false}
+          busy={notifBusy}
+          onPatch={(patch) => void saveNotifPrefs(patch)}
+        />
+      )}
+
       {/* Financial profile */}
       <ListSection title="Personalized Insights">
         <ListRow
@@ -940,14 +980,14 @@ export default function SettingsPage() {
         </ListRow>
       </ListSection>
 
-      {/* Oak Plus */}
+      {/* Keel Plus */}
       <ListSection title="Plan">
         <ListRow
           icon={Sparkles}
           onClick={() => { haptic('light'); router.push('/upgrade') }}
           chevron
         >
-          <div className="text-base font-medium">Oak Plus</div>
+          <div className="text-base font-medium">Keel Plus</div>
           <div className="text-xs text-ink-tertiary mt-0.5">AI document extraction and inbox summaries</div>
         </ListRow>
       </ListSection>
@@ -960,7 +1000,7 @@ export default function SettingsPage() {
           chevron
         >
           <div className="text-base font-medium">Automation & Approvals</div>
-          <div className="text-xs text-ink-tertiary mt-0.5">Dry-run mode and the trust Oak earns from your approvals</div>
+          <div className="text-xs text-ink-tertiary mt-0.5">Dry-run mode and the trust Keel earns from your approvals</div>
         </ListRow>
         <ListRow
           icon={ScrollText}

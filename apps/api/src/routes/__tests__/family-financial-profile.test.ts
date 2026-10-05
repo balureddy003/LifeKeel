@@ -6,7 +6,7 @@
 
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import Fastify from 'fastify'
-import { Engine, type Insight } from '@agentoak/engine'
+import { Engine, type Insight } from '@lifekeel/engine'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { registerFamilyFinancialProfileRoutes } from '../family-financial-profile.js'
@@ -82,7 +82,7 @@ function makeDb() {
   let stored: Record<string, unknown> | null = null
   const profileCol = {
     findOne: vi.fn(async () => stored),
-    // OAK-006: mirrors the real MongoDB driver's findOneAndUpdate — returns
+    // KEEL-006: mirrors the real MongoDB driver's findOneAndUpdate — returns
     // the matched-and-updated document directly (not wrapped in `.value`),
     // or null when the filter (e.g. a version match) doesn't match anything
     // existing, which is exactly the conflict case the route now checks for.
@@ -153,19 +153,36 @@ function makeDb() {
     })),
   }
 
+  // PRD-136: profile_changed feed events upsert here — a real sink so the
+  // emit doesn't fall through to profileCol and pollute the stored profile.
+  const eventDocs: Record<string, unknown>[] = []
+  const readinessEventsCol = {
+    updateOne: vi.fn(async (
+      filter: Record<string, unknown>,
+      update: { $set?: Record<string, unknown>; $setOnInsert?: Record<string, unknown> },
+    ) => {
+      const existing = eventDocs.find((d) => d['dedupe_key'] === filter['dedupe_key'])
+      if (existing) Object.assign(existing, update.$set)
+      else eventDocs.push({ ...update.$setOnInsert, ...update.$set })
+      return { upsertedCount: 1 }
+    }),
+  }
+
   return {
     collection: (name: string) =>
       name === 'insights' ? insightsCol
         : name === 'family_life_change_nudge_state' ? nudgeStateCol
         : name === 'family_groups' ? familyGroupsCol
         : name === 'documents' ? documentsCol
+        : name === 'readiness_events' ? readinessEventsCol
         : profileCol,
     _insightDocs: insightDocs,
     _nudgeStateDocs: nudgeStateDocs,
+    _eventDocs: eventDocs,
   } as any
 }
 
-async function buildApp(engine: Engine): Promise<{ app: ReturnType<typeof Fastify>; insights: Insight[]; insightDocs: Record<string, unknown>[]; nudgeStateDocs: Record<string, unknown>[] }> {
+async function buildApp(engine: Engine): Promise<{ app: ReturnType<typeof Fastify>; insights: Insight[]; insightDocs: Record<string, unknown>[]; nudgeStateDocs: Record<string, unknown>[]; eventDocs: Record<string, unknown>[] }> {
   const app = Fastify()
   app.addHook('onRequest', async (request) => {
     ;(request as any).authContext = { tenant_id: TENANT, user_id: 'user-1' }
@@ -175,7 +192,7 @@ async function buildApp(engine: Engine): Promise<{ app: ReturnType<typeof Fastif
   await registerFamilyFinancialProfileRoutes(app, db, engine, async (generated) => {
     insights.push(...generated)
   })
-  return { app, insights, insightDocs: db._insightDocs, nudgeStateDocs: db._nudgeStateDocs }
+  return { app, insights, insightDocs: db._insightDocs, nudgeStateDocs: db._nudgeStateDocs, eventDocs: db._eventDocs }
 }
 
 const BASE_PROFILE = {
@@ -729,7 +746,7 @@ describe('PRD-128: per-member life-cover detection', () => {
   })
 })
 
-describe('OAK-006: optimistic concurrency on POST /family/financial-profile', () => {
+describe('KEEL-006: optimistic concurrency on POST /family/financial-profile', () => {
   let engine: Engine
 
   beforeEach(async () => {
@@ -1194,5 +1211,58 @@ describe('PRD-121: family_estate_readiness detector', () => {
       payload: { ...BASE_PROFILE, generate_insights: true },
     })
     expect(insightDocs.find((d) => d['id'] === 'ins-estate-will-open')?.['state']).toBe('resolved')
+  })
+})
+
+describe('PRD-136: profile_changed feed event', () => {
+  let engine: Engine
+
+  beforeEach(async () => {
+    engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
+    await engine.load()
+  })
+
+  const flush = () => new Promise((r) => setTimeout(r, 20))
+
+  it('first save emits nothing — no baseline to diff against', async () => {
+    const { app, eventDocs } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    await flush()
+    expect(eventDocs.filter((e) => e['type'] === 'profile_changed')).toHaveLength(0)
+    await app.close()
+  })
+
+  it('a second save with changed fields emits one event naming them', async () => {
+    const { app, eventDocs } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    const changed = {
+      ...BASE_PROFILE,
+      household: { ...BASE_PROFILE.household, monthly_salary_minor: 500_000, life_cover_minor: 12_000_000 },
+      emergency_fund: { ...BASE_PROFILE.emergency_fund, emergency_savings_minor: 4_000_000 },
+      generate_insights: true,
+    }
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: changed })
+    await flush()
+
+    const events = eventDocs.filter((e) => e['type'] === 'profile_changed')
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      severity: 'info',
+      direction: null,
+      domain: null,
+      links: [{ kind: 'profile_field', id: 'household.monthly_salary_minor' }],
+    })
+    expect(events[0]!['title']).toBe('Monthly income, life cover and emergency savings changed')
+    expect(events[0]!['dedupe_key']).toMatch(/^profile_changed:/)
+    await app.close()
+  })
+
+  it('an identical re-save emits nothing — same data is not a change', async () => {
+    const { app, eventDocs } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    await flush()
+    expect(eventDocs.filter((e) => e['type'] === 'profile_changed')).toHaveLength(0)
+    await app.close()
   })
 })

@@ -1,5 +1,5 @@
 {
-  "name": "@agentoak/platform",
+  "name": "@lifekeel/platform",
   "version": "0.1.0",
   "description": "Shared platform primitives — JWT auth, MongoDB, OTel, Decimal money, multi-tenant middleware",
   "main": "./dist/index.js",
@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.0",
-    "@agentoak/runtime": "workspace:*",
+    "@lifekeel/runtime": "workspace:*",
     "@opentelemetry/api": "^1.9.0",
     "jose": "^5.9.0",
     "lru-cache": "^11.5.2",

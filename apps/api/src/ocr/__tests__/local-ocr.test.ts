@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, writeFileSync, chmodSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import type { DecisionFn } from '@agentoak/platform'
+import type { DecisionFn } from '@lifekeel/platform'
 import { isOcrableImage, LocalOcrError, ocrImageToText } from '../local-ocr.js'
 import { extractDocumentFieldsLocal, LocalExtractionError, processDocument } from '../extract.js'
 

@@ -1,5 +1,5 @@
 /**
- * Family app API client — bridges the family frontend to the shared Kairos API.
+ * Family app API client — bridges the family frontend to the shared LifeKeel API.
  *
  * Uses the same /insights and /goals endpoints as Studio, filtered by the
  * family vertical's detector ids. Falls back to an empty/null result when
@@ -27,6 +27,9 @@ export interface FamilyInsight {
   category: string
   state: string
   created_at: string
+  /** How many times this (rule, entity) has fired — >1 means the gap
+   *  re-occurred after being dismissed/resolved. Absent on first fires. */
+  repeat_count?: number
 }
 
 // Real engine output (packages/engine's Trigger/Insight schema) has no flat
@@ -53,6 +56,7 @@ interface RawInsight {
   category: string
   state: string
   created_at: string
+  repeat_count?: number
 }
 
 export const RESOLVED_INSIGHT_STATES = ['approved', 'completed', 'dismissed', 'archived', 'resolved']
@@ -70,6 +74,7 @@ function adaptInsight(raw: RawInsight): FamilyInsight {
     category: raw.category,
     state: raw.state,
     created_at: raw.created_at,
+    ...(typeof raw.repeat_count === 'number' ? { repeat_count: raw.repeat_count } : {}),
   }
 }
 
@@ -94,11 +99,15 @@ const FAMILY_DETECTORS = [
   'family_emergency_fund_adequacy',
   'family_retirement_gap',
   'family_estate_readiness',
+  'family_education_pacing',
+  'family_emergency_trajectory',
+  'family_debt_health',
+  'family_policy_review',
 ] as const
 
 function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null
-  return localStorage.getItem('agentoak_token')
+  return localStorage.getItem('lifekeel_token')
 }
 
 // `onFailure` fires only for what the fallback can't honestly explain away
@@ -333,7 +342,11 @@ export interface ReadinessComponent {
   score: number | null
   weight: number
   detail: string
+  /** The profile figures behind the score — the "why" audit trail. */
+  drivers?: { label: string; value_minor?: number; value?: string }[]
   gated?: boolean
+  /** PRD-137: scope disclaimer rendered with the score (estate). */
+  caption?: string
   insights: ReadinessComponentInsight[]
 }
 
@@ -408,6 +421,9 @@ export interface ScenarioInputs {
    * Deltas accumulate: a later step's +X can undo an earlier −X.
    */
   steps?: ScenarioStep[]
+  /** G7: scope the projection to one roster member's earner slice and
+   * their beneficiary education funds. Omit for the household aggregate. */
+  member_id?: string
 }
 
 export interface ScenarioStep {
@@ -447,6 +463,8 @@ export interface FamilyScenario {
   id: string
   name: string
   inputs: ScenarioInputs
+  /** G7: display name of the scoped member; null = household scope. */
+  member_name: string | null
   created_by: string
   created_at: string
   result: ScenarioResult | null
@@ -490,6 +508,30 @@ export async function fetchFamilyScenarios(): Promise<FamilyScenario[]> {
   )
 }
 
+/** PRD-136: opt a saved scenario in/out of the nightly watchlist recompute. */
+export async function setScenarioWatch(id: string, watch: boolean): Promise<boolean> {
+  const res = await scenarioRequest<{ ok: boolean }>(
+    `/family/scenarios/${encodeURIComponent(id)}`,
+    { method: 'PATCH', body: JSON.stringify({ watch }) },
+    { ok: false },
+  )
+  return res.ok === true
+}
+
+export interface FamilyScenarioWatchEntry {
+  id: string
+  name: string
+  inputs: ScenarioInputs
+  watch: boolean
+  last_projection: { runway_months: number | null; depletion_month: number | null; at: string } | null
+}
+
+export async function fetchScenarioWatchlist(): Promise<FamilyScenarioWatchEntry[]> {
+  return apiFetch<{ scenarios: FamilyScenarioWatchEntry[] }>('/family/scenarios/watchlist', { scenarios: [] }).then(
+    (r) => r.scenarios ?? [],
+  )
+}
+
 export async function deleteFamilyScenario(id: string): Promise<boolean> {
   try {
     const base = getApiBase()
@@ -502,6 +544,358 @@ export async function deleteFamilyScenario(id: string): Promise<boolean> {
     reportError(err, { action: 'deleteFamilyScenario', id })
     return false
   }
+}
+
+// ── PRD-136: readiness feed ───────────────────────────────────────────────
+
+export type ReadinessEventType =
+  | 'score_moved'
+  | 'insight_opened'
+  | 'insight_repeated'
+  | 'insight_resolved'
+  | 'action_attributed'
+  | 'scenario_moved'
+  | 'renewal_approaching'
+  | 'document_processed'
+  | 'profile_changed'
+  | 'playbook_steps_pending'
+  | 'milestone'
+  | 'sweep_quiet'
+
+export interface FeedEvent {
+  id: string
+  type: ReadinessEventType
+  severity: 'info' | 'notice' | 'attention' | 'critical'
+  direction: 'up' | 'down' | 'flat' | null
+  member_id: string | null
+  domain: string | null
+  title: string
+  summary: string
+  evidence: { label: string; value?: string; value_minor?: number }[]
+  links: { kind: 'insight' | 'component' | 'document' | 'scenario' | 'member' | 'profile_field'; id: string }[]
+  next_check_at: string | null
+  dedupe_key: string
+  created_at: string
+  /** Present on the synthetic collapsed sweep_quiet item. */
+  quiet_days?: number
+  /** Set when a feed mute covers this event (only with include_muted=1,
+   *  or right after feedback in the same session). */
+  muted?: boolean
+  muted_reason?: string | null
+}
+
+export interface FeedSummary {
+  window: string
+  total: number
+  by_type: Record<string, number>
+  up: number
+  down: number
+  composite_delta: number | null
+}
+
+export interface FetchFeedParams {
+  since?: string
+  member_id?: string
+  domain?: string
+  limit?: number
+  /** 'youth' returns the child's redacted slice (server-side). */
+  mode?: 'youth'
+}
+
+export async function fetchFeed(params: FetchFeedParams = {}): Promise<FeedEvent[]> {
+  const qs = new URLSearchParams()
+  if (params.since) qs.set('since', params.since)
+  if (params.member_id) qs.set('member_id', params.member_id)
+  if (params.domain) qs.set('domain', params.domain)
+  if (params.limit !== undefined) qs.set('limit', String(params.limit))
+  if (params.mode) qs.set('mode', params.mode)
+  const query = qs.toString()
+  return apiFetch<{ events: FeedEvent[] }>(`/family/feed${query ? `?${query}` : ''}`, { events: [] }).then(
+    (r) => r.events ?? [],
+  )
+}
+
+export async function fetchFeedSummary(window: '7d' | '30d' = '7d'): Promise<FeedSummary> {
+  return apiFetch<FeedSummary>(`/family/feed/summary?window=${window}`, {
+    window,
+    total: 0,
+    by_type: {},
+    up: 0,
+    down: 0,
+    composite_delta: null,
+  })
+}
+
+export type FeedFeedbackValue = 'useful' | 'not_relevant' | 'handled' | 'remind_later' | 'data_wrong'
+
+/** PRD-136 §3: one feedback entry per user per event — 'useful' also
+ *  undoes a 'not_relevant' mute server-side. */
+export async function submitFeedback(
+  eventId: string,
+  value: FeedFeedbackValue,
+): Promise<{ ok: boolean; muted_until?: string }> {
+  return scenarioRequest<{ ok: boolean; muted_until?: string }>(
+    `/family/feed/${encodeURIComponent(eventId)}/feedback`,
+    { method: 'POST', body: JSON.stringify({ value }) },
+    { ok: false },
+  )
+}
+
+// ── PRD-137: family legacy register ────────────────────────────────────────
+// Every record is a family declaration — the verification label rides every
+// payload so the UI can never present it as a legal fact.
+
+export type LegacyVerification = 'document_linked' | 'user_declared' | 'family_understanding' | 'unverified'
+
+export interface LegacyRole {
+  role: 'executor' | 'trustee' | 'attorney' | 'guardian' | 'beneficiary' | 'witness' | 'caretaker' | 'successor_intended'
+  member_id?: string
+  contact_id?: string
+  share_pct?: number
+  verification: LegacyVerification
+}
+
+export interface LegacyDocument {
+  id: string
+  type:
+    | 'will' | 'codicil' | 'power_of_attorney' | 'advance_directive' | 'trust_deed'
+    | 'letter_of_wishes' | 'guardianship_nomination' | 'funeral_wishes'
+    | 'probate_record' | 'civil_certificate'
+  subject_member_id: string
+  jurisdiction: string
+  signed_on?: string
+  last_reviewed_on?: string
+  review_due_on?: string
+  original_location?: string
+  vault_document_id?: string
+  roles: LegacyRole[]
+  covers_asset_ids: string[]
+  verification: LegacyVerification
+  notes?: string
+  visibility: 'adults' | 'organizer' | 'named_roles'
+  created_at: string
+  updated_at: string
+}
+
+export type LegacyDocumentInput = Omit<LegacyDocument, 'id' | 'created_at' | 'updated_at'>
+
+export interface LegacyContact {
+  id: string
+  name: string
+  relationship: string
+  email?: string
+  phone?: string
+  firm?: string
+  kind: 'family' | 'solicitor' | 'notary' | 'accountant' | 'land_agent' | 'other'
+  created_at: string
+}
+
+export type LegacyContactInput = Omit<LegacyContact, 'id' | 'created_at'>
+
+export interface LegacyNote {
+  id: string
+  node: { kind: 'member' | 'document' | 'asset' | 'contact'; id: string }
+  text: string
+  author_user_id: string
+  created_at: string
+  verification: 'family_understanding'
+}
+
+export type LegacyNoteInput = Pick<LegacyNote, 'node' | 'text'>
+
+export interface PropertyLegacy {
+  ownership_basis: 'purchase' | 'inherited' | 'gift' | 'trust' | 'customary_succession' | 'unknown'
+  jurisdiction: string
+  recorded_owners: LegacyRole[]
+  claimed_owners: LegacyRole[]
+  title_reference?: string
+  title_document_id?: string
+  acquired_on?: string
+  occupants?: string
+  insured: 'yes' | 'no' | 'unknown'
+  mortgage_outstanding_minor?: number
+  dispute: 'none' | 'possible' | 'active' | 'unknown'
+  professional_contact_id?: string
+  verification: LegacyVerification
+}
+
+export async function fetchLegacyDocuments(): Promise<LegacyDocument[]> {
+  return apiFetch<{ documents: LegacyDocument[] }>('/family/legacy/documents', { documents: [] }).then(
+    (r) => r.documents ?? [],
+  )
+}
+
+export async function createLegacyDocument(input: LegacyDocumentInput): Promise<LegacyDocument | null> {
+  const res = await scenarioRequest<{ document: LegacyDocument } | null>(
+    '/family/legacy/documents',
+    { method: 'POST', body: JSON.stringify(input) },
+    null,
+  )
+  return res?.document ?? null
+}
+
+export async function updateLegacyDocument(id: string, patch: Partial<LegacyDocumentInput>): Promise<LegacyDocument | null> {
+  const res = await scenarioRequest<{ document: LegacyDocument } | null>(
+    `/family/legacy/documents/${encodeURIComponent(id)}`,
+    { method: 'PATCH', body: JSON.stringify(patch) },
+    null,
+  )
+  return res?.document ?? null
+}
+
+export async function deleteLegacyDocument(id: string): Promise<boolean> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(`${base}/family/legacy/documents/${encodeURIComponent(id)}`, { method: 'DELETE', headers })
+    return res.ok
+  } catch (err) {
+    reportError(err, { action: 'deleteLegacyDocument', id })
+    return false
+  }
+}
+
+export async function fetchLegacyContacts(): Promise<LegacyContact[]> {
+  return apiFetch<{ contacts: LegacyContact[] }>('/family/legacy/contacts', { contacts: [] }).then(
+    (r) => r.contacts ?? [],
+  )
+}
+
+export async function createLegacyContact(input: LegacyContactInput): Promise<LegacyContact | null> {
+  const res = await scenarioRequest<{ contact: LegacyContact } | null>(
+    '/family/legacy/contacts',
+    { method: 'POST', body: JSON.stringify(input) },
+    null,
+  )
+  return res?.contact ?? null
+}
+
+export async function fetchLegacyNotes(): Promise<LegacyNote[]> {
+  return apiFetch<{ notes: LegacyNote[] }>('/family/legacy/notes', { notes: [] }).then((r) => r.notes ?? [])
+}
+
+export async function createLegacyNote(input: LegacyNoteInput): Promise<LegacyNote | null> {
+  const res = await scenarioRequest<{ note: LegacyNote } | null>(
+    '/family/legacy/notes',
+    { method: 'POST', body: JSON.stringify(input) },
+    null,
+  )
+  return res?.note ?? null
+}
+
+export async function updateAssetLegacy(assetId: string, legacy: PropertyLegacy): Promise<boolean> {
+  const res = await scenarioRequest<{ asset: unknown } | null>(
+    `/family/assets/${encodeURIComponent(assetId)}/legacy`,
+    { method: 'PATCH', body: JSON.stringify(legacy) },
+    null,
+  )
+  return res !== null
+}
+
+/** PRD-137 §6: continuity rehearsal — what a given adult could actually
+ *  find if they had to step in tomorrow. Read model, nothing moves. */
+export interface LegacyRehearsal {
+  as: { id: string; name: string }
+  findability_pct: number
+  visible_documents: { id: string; type: string; subject_name: string | null }[]
+  hidden_documents: { id: string; type: string; subject_name: string | null; reason: string }[]
+  documents_without_location: { id: string; type: string }[]
+  properties_without_title: { id: string; name: string }[]
+  named_roles: { document_id: string; type: string; role: string }[]
+  reachable_contacts: { id: string; name: string; kind: string }[]
+  only_one_person_knows: { kind: 'document' | 'asset'; id: string; label: string }[]
+}
+
+export async function fetchLegacyRehearsal(memberId: string): Promise<LegacyRehearsal | null> {
+  return apiFetch<LegacyRehearsal | null>(
+    `/family/legacy/rehearsal?as=${encodeURIComponent(memberId)}`,
+    null,
+  )
+}
+
+/** PRD-137 §5: the register as nodes+edges for the Family map tab. No
+ *  amounts — ids, labels and verification only. */
+export interface LegacyGraphNode {
+  id: string
+  kind: 'member' | 'contact' | 'document' | 'asset' | 'policy'
+  label: string
+  sublabel?: string
+  verification?: LegacyVerification
+  meta?: Record<string, unknown>
+}
+export interface LegacyGraphEdge {
+  from: string
+  to: string
+  kind: 'subject_of' | 'names_as' | 'covers' | 'evidence_for' | 'owns' | 'occupies' | 'advises'
+  label?: string
+  verification?: LegacyVerification
+}
+export interface LegacyGraph {
+  nodes: LegacyGraphNode[]
+  edges: LegacyGraphEdge[]
+}
+
+export async function fetchLegacyGraph(): Promise<LegacyGraph | null> {
+  return apiFetch<LegacyGraph | null>('/family/legacy/graph', null)
+}
+
+// ── PRD-136 §5: notification preference center ────────────────────────────
+// Tenant-level today; organizer edits, all adults read. The exempt criticals
+// ride every response so the UI renders "always sent" without hardcoding.
+
+export interface NotificationPrefs {
+  channels: string[]
+  whatsapp_to: string | null
+  sms_to: string | null
+  email_to: string | null
+  web_push_enabled: boolean
+  mobile_push_enabled: boolean
+  min_urgency: 'critical' | 'high' | 'medium' | 'low'
+  business_name: string
+  quiet_hours_start: number | null
+  quiet_hours_end: number | null
+  digest_mode: boolean
+  enabled: boolean
+  heartbeat_cadence: 'weekly' | 'monthly' | 'off'
+  heartbeat_quiet_weeks: boolean
+  domains_muted: string[]
+  member_scope: 'all' | 'mine'
+}
+
+export interface NotificationPrefsResponse {
+  preferences: NotificationPrefs
+  exempt_criticals: string[]
+}
+
+export type NotificationPrefsPatch = Partial<
+  Pick<
+    NotificationPrefs,
+    | 'channels'
+    | 'quiet_hours_start'
+    | 'quiet_hours_end'
+    | 'digest_mode'
+    | 'min_urgency'
+    | 'heartbeat_cadence'
+    | 'heartbeat_quiet_weeks'
+    | 'domains_muted'
+    | 'member_scope'
+  >
+>
+
+export async function fetchNotificationPrefs(): Promise<NotificationPrefsResponse | null> {
+  return apiFetch<NotificationPrefsResponse | null>('/family/notifications', null)
+}
+
+export async function updateNotificationPrefs(
+  patch: NotificationPrefsPatch,
+): Promise<NotificationPrefsResponse | null> {
+  return scenarioRequest<NotificationPrefsResponse | null>(
+    '/family/notifications',
+    { method: 'PATCH', body: JSON.stringify(patch) },
+    null,
+  )
 }
 
 /**
@@ -868,7 +1262,7 @@ export async function applyPolicySuggestion(
 }
 
 /**
- * Same as applyPolicySuggestion, for a policy Oak found in a connected
+ * Same as applyPolicySuggestion, for a policy Keel found in a connected
  * email rather than an uploaded document — the Inbox item's own reviewed,
  * possibly-edited fields, never applied unconfirmed.
  */
@@ -1149,7 +1543,7 @@ export interface ApiFamilyGroup {
   name: string
   inviteCode: string
   members: ApiFamilyMember[]
-  /** Gap-8: the organizer-authored context note Ask Oak reads. */
+  /** Gap-8: the organizer-authored context note Ask Keel reads. */
   contextNote?: string
 }
 
@@ -1443,6 +1837,9 @@ export interface FamilyAsset {
   name: string
   value_minor: number
   notes: string | null
+  /** PRD-137 §1: the declared property-legacy sub-record, when the asset
+   *  is property — null otherwise. */
+  legacy?: PropertyLegacy | null
   created_at: string
   updated_at: string
 }
@@ -1487,7 +1884,7 @@ export async function deleteFamilyAsset(id: string): Promise<boolean> {
   return (await assetRequest(`/family/assets/${encodeURIComponent(id)}`, 'DELETE')) as boolean
 }
 
-/** Gap-8: the organizer-authored context note Ask Oak reads as household
+/** Gap-8: the organizer-authored context note Ask Keel reads as household
  *  background. Empty string clears it. */
 export async function updateFamilyContext(note: string): Promise<ApiFamilyGroup | null> {
   try {
@@ -1815,6 +2212,9 @@ export interface FinancialProfilePolicy {
   contact_email?: string
   // policy it is; car/home stay unset (household-wide by nature).
   member_id?: string
+  // Who the policy *protects* — distinct from member_id (the holder). Lets
+  // family_policy_review flag beneficiaries who've left the roster.
+  beneficiary_member_id?: string
 }
 
 export interface FinancialProfile {
@@ -1827,11 +2227,13 @@ export interface FinancialProfile {
     mortgage_outstanding_minor: number
     life_cover_minor: number
     income_protection_monthly_minor: number
+    /** Total non-mortgage monthly debt service — feeds family_debt_health's DTI check. */
+    monthly_debt_payments_minor: number
     // PRD-104: additive — a mixed-earner household (one partner retired,
     // one still working; one salaried, one self-employed) couldn't be
     // represented at all before this, so the arbitrary single status
     // picked for the household decided whether a real protection gap was
-    // ever surfaced (OAK-029). Each entry links to a real family-roster
+    // ever surfaced (KEEL-029). Each entry links to a real family-roster
     // member (member_id) rather than an anonymous second earner. See
     // family-financial-profile.ts's multi-event evaluation.
     members: Array<{
@@ -1868,6 +2270,39 @@ async function fetchFinancialProfileRaw(): Promise<{ profile: FinancialProfile |
   ).then((r) => ({ profile: r.profile ?? null, version: r.version ?? 0 }))
 }
 
+/** Annual review state — due when it's been >365 days since the family
+ *  last confirmed the profile (or last touched it, if never reviewed). */
+export interface ProfileReviewState {
+  due: boolean
+  last_reviewed_at: string | null
+  /** Human-readable labels of what changed since the last confirmation. */
+  changed: string[]
+}
+
+export async function fetchProfileReview(): Promise<ProfileReviewState> {
+  return apiFetch<ProfileReviewState>('/family/financial-profile/review', {
+    due: false,
+    last_reviewed_at: null,
+    changed: [],
+  })
+}
+
+export async function respondToProfileReview(action: 'confirm' | 'later'): Promise<boolean> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const res = await fetch(`${base}/family/financial-profile/review`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ action }),
+    })
+    return res.ok
+  } catch (err) {
+    reportError(err, { action: 'respondToProfileReview' })
+    return false
+  }
+}
+
 // Live-verification finding: page.tsx, family/page.tsx, FamilyRoster.tsx,
 // Intelligence.tsx, EventDetailClient.tsx, AssetProfileClient.tsx, and
 // useFamilyData.ts's hook each call this independently on mount — on the
@@ -1876,7 +2311,7 @@ async function fetchFinancialProfileRaw(): Promise<{ profile: FinancialProfile |
 // first paint feel stuck. Cached the same way fetchFamilyInsights already
 // is: concurrent callers share one in-flight request, and the result stays
 // fresh for 30s. fetchFinancialProfileWithVersion (the wizard's own read,
-// below) deliberately stays uncached — OAK-006's concurrency check needs a
+// below) deliberately stays uncached — KEEL-006's concurrency check needs a
 // genuinely current version, not a 30s-old one.
 export async function fetchFinancialProfile(): Promise<FinancialProfile | null> {
   return cachedFetch('financial-profile', 30_000, () => fetchFinancialProfileRaw().then((r) => r.profile))
@@ -1884,7 +2319,7 @@ export async function fetchFinancialProfile(): Promise<FinancialProfile | null> 
 
 /**
  * Same as fetchFinancialProfile, plus the document's current version —
- * OAK-006: the wizard needs this to detect (rather than silently overwrite)
+ * KEEL-006: the wizard needs this to detect (rather than silently overwrite)
  * a concurrent edit from another tab/device. Only the wizard needs the
  * version; every other caller keeps using the plain fetchFinancialProfile.
  */
@@ -1900,7 +2335,7 @@ export async function fetchFinancialProfileWithVersion(): Promise<{ profile: Fin
 // step should pass true.
 //
 // `version`, when passed, is sent so the server can detect a concurrent
-// edit from another tab/device (OAK-006) — omit it for a first-ever save.
+// edit from another tab/device (KEEL-006) — omit it for a first-ever save.
 export async function submitFinancialProfile(
   profile: FinancialProfile,
   generateInsights = false,
@@ -1986,6 +2421,9 @@ export interface LifeEvent {
   event_type: LifeEventType
   affected_member_id: string | null
   reported_at: string
+  // G6: the reporter's own free-text account of the situation — shown to
+  // the family and fed to Ask Keel's grounding. null when not provided.
+  context: string | null
   // Server-persisted checklist completion (was localStorage-only — see the
   // complete endpoint below). Only ids the current playbook contains.
   completed_step_ids: string[]
@@ -1996,7 +2434,11 @@ export async function fetchLifeEvents(): Promise<LifeEvent[]> {
   return apiFetch<{ events: LifeEvent[] }>('/family/life-events', { events: [] }).then((r) => r.events ?? [])
 }
 
-export async function reportLifeEvent(eventType: LifeEventType, affectedMemberId?: string): Promise<LifeEvent | null> {
+export async function reportLifeEvent(
+  eventType: LifeEventType,
+  affectedMemberId?: string,
+  context?: string,
+): Promise<LifeEvent | null> {
   try {
     const base = getApiBase()
     const token = getAuthToken()
@@ -2009,6 +2451,7 @@ export async function reportLifeEvent(eventType: LifeEventType, affectedMemberId
       body: JSON.stringify({
         event_type: eventType,
         ...(affectedMemberId ? { affected_member_id: affectedMemberId } : {}),
+        ...(context?.trim() ? { context: context.trim() } : {}),
       }),
     })
     const data = await res.json().catch(() => ({}))
@@ -2134,7 +2577,7 @@ async function authPostRequest(path: string, body: Record<string, unknown>): Pro
       body: JSON.stringify(body),
     })
   } catch {
-    throw new Error("Couldn't reach Agent Oak — check your connection and try again.")
+    throw new Error("Couldn't reach LifeKeel — check your connection and try again.")
   }
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || "That didn't go through — try again in a moment.")
@@ -2245,7 +2688,7 @@ export async function fetchBlogPost(slug: string): Promise<BlogPost | null> {
   return res.json().catch(() => null)
 }
 
-// ── Billing (Oak Plus) ───────────────────────────────────────────────────
+// ── Billing (Keel Plus) ───────────────────────────────────────────────────
 
 export interface BillingSubscription {
   plan: string
@@ -2262,7 +2705,7 @@ export async function fetchBillingSubscription(): Promise<BillingSubscription | 
   return apiFetch<BillingSubscription | null>('/billing/subscription', null)
 }
 
-export async function startOakPlusCheckout(): Promise<string> {
+export async function startLifeKeelPlusCheckout(): Promise<string> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -3327,7 +3770,7 @@ export async function captureLead(input: { email: string; name?: string; source:
 
 export interface SupportMessage {
   id: string
-  author: 'user' | 'operator' | 'oak'
+  author: 'user' | 'operator' | 'keel'
   author_id?: string
   author_name?: string
   text: string
@@ -3360,7 +3803,7 @@ async function supportRequest<T>(path: string, method = 'GET', body?: Record<str
   return data as T
 }
 
-/** AI triage — Oak answers product/account questions before a case exists. */
+/** AI triage — Keel answers product/account questions before a case exists. */
 export function askSupport(question: string): Promise<{ answer: string; isLive: boolean }> {
   return supportRequest('/support/ask', 'POST', { question })
 }

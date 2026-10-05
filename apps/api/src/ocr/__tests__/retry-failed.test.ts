@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { DecisionFn } from '@agentoak/platform'
+import type { DecisionFn } from '@lifekeel/platform'
 
 const processDocumentMock = vi.fn(async (..._args: unknown[]) => {})
 vi.mock('../extract.js', () => ({ processDocument: (...a: unknown[]) => processDocumentMock(...a) }))

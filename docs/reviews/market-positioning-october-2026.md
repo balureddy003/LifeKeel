@@ -1,8 +1,8 @@
-# Agent Oak — Market Positioning & Competitive Landscape (October 2026)
+# LifeKeel — Market Positioning & Competitive Landscape (October 2026)
 
 A comprehensive market research and positioning analysis, building on (and
 updating) the September 2026 competitive deep-dive. This document maps
-every relevant competitor category, identifies where Agent Oak should be
+every relevant competitor category, identifies where LifeKeel should be
 positioned, and recommends the go-to-market framing.
 
 Research current as of 3 October 2026. Re-verify before using to justify
@@ -13,7 +13,7 @@ faster than any previous cycle.
 
 ## Executive Summary
 
-Agent Oak sits at an intersection that **no single competitor occupies**:
+LifeKeel sits at an intersection that **no single competitor occupies**:
 family-wide financial digital twin + continuous protection/readiness
 detection + crisis-mode response + neutral (non-advisory, non-brokerage)
 positioning. Since September 2026, the market has shifted significantly:
@@ -23,7 +23,7 @@ positioning. Since September 2026, the market has shifted significantly:
    with daily automated checks. Competing on "smarter AI advice" is a
    losing fight.
 2. **Trustworthy shipped "Next"** — Gmail sync, automatic organization,
-   household data graph. The gap between Trustworthy and Oak's ingestion
+   household data graph. The gap between Trustworthy and Keel's ingestion
    engine is narrower than ever, but Trustworthy still doesn't *reason*
    proactively over what it stores.
 3. **The "financial digital twin" category now exists** — Trovana, Plan
@@ -38,12 +38,12 @@ positioning. Since September 2026, the market has shifted significantly:
    crisis + family twin.
 5. **Empathy raised $72M Series C and expanded to the UK** — they own
    the bereavement logistics category with 40M+ lives covered through
-   insurance/employer partnerships. Agent Oak should not compete here.
+   insurance/employer partnerships. LifeKeel should not compete here.
 
-**The positioning recommendation**: Agent Oak is the **family crisis
+**The positioning recommendation**: LifeKeel is the **family crisis
 readiness platform** — not a money management app, not an AI financial
 advisor, not a vault. The closest analogy: what Empathy does for life's
-hardest moments *after* they happen, Oak does *before* they happen.
+hardest moments *after* they happen, Keel does *before* they happen.
 
 ---
 
@@ -52,7 +52,7 @@ hardest moments *after* they happen, Oak does *before* they happen.
 ### Category 1: AI Financial Advisors & Money Management
 
 These tools are the largest and most-funded competitors — but they compete
-on a different axis than Agent Oak should.
+on a different axis than LifeKeel should.
 
 | Product | What it does | Family? | Protection/Insurance? | Crisis mode? | Business model |
 |---|---|---|---|---|---|
@@ -62,17 +62,17 @@ on a different axis than Agent Oak should.
 | **Promi** | Automated household financial model, FIRE variants, Monte Carlo, peer benchmarks | Household-level model | No | No | $139.99/yr |
 | **Cleo / YNAB / Rocket Money** | Budgeting, subscription management, spending insights | Minimal | No | No | Various |
 
-**Why Agent Oak should not compete here**: Origin has $100M+ in funding,
+**Why LifeKeel should not compete here**: Origin has $100M+ in funding,
 an SEC registration, and a multi-model architecture with 150+ proprietary
 MCP tools. Monarch has PCMag Editors' Choice and best-in-class UX.
 Competing on "our AI gives better financial advice" is an arms race
-against players with materially more resources. Agent Oak's detector
+against players with materially more resources. LifeKeel's detector
 engine is not trying to be an AI advisor — it's trying to tell a family
 whether they're ready if something goes wrong.
 
 ### Category 2: Family Life-Admin & Digital Vault Platforms
 
-The closest existing competitors to Agent Oak's "Family Twin" framing.
+The closest existing competitors to LifeKeel's "Family Twin" framing.
 
 | Product | What it does | Detection? | Crisis mode? | Pricing |
 |---|---|---|---|---|
@@ -84,19 +84,19 @@ The closest existing competitors to Agent Oak's "Family Twin" framing.
 
 **Key insight**: Trustworthy "Next" is the most important development
 here. They've shipped the automatic ingestion and organization pipeline
-that Agent Oak also has, plus a household data graph that links entities
+that LifeKeel also has, plus a household data graph that links entities
 across documents. **What Trustworthy still does not do**: run a
 protection-gap detector that tells a family "your life insurance is
 £200K short of what you'd need" or "your emergency fund covers 2.1
 months, not 6." That gap — from *storage and querying* to *proactive
-reasoning and readiness scoring* — is Agent Oak's primary differentiation
+reasoning and readiness scoring* — is LifeKeel's primary differentiation
 against the vault category.
 
 ### Category 3: Financial Digital Twin & Scenario Simulators
 
 This is a new and rapidly growing sub-category — but all entrants define
 "digital twin" as "scenario simulator for wealth projection," not as
-Agent Oak's "living model of who the family is and what protects them."
+LifeKeel's "living model of who the family is and what protects them."
 
 | Product | What it does | Family-scoped? | Protection? | Crisis? |
 |---|---|---|---|---|
@@ -108,7 +108,7 @@ Agent Oak's "living model of who the family is and what protects them."
 
 **Key insight**: These tools validate that "digital twin" is an emerging
 consumer concept — but they all use it to mean "what does my wealth look
-like in 20 years?" Agent Oak's twin is fundamentally different: it models
+like in 20 years?" LifeKeel's twin is fundamentally different: it models
 *readiness* (protection, coverage, estate, emergency fund) not just
 *trajectory* (net worth, retirement). This is a genuine framing
 distinction, not a marketing one. Worth protecting in all positioning.
@@ -133,7 +133,7 @@ competitive threat is now even more acute — insurers are building
 AI-powered gap analysis as standard toolkit. However, **every one of
 these tools has a commission relationship**: they're either an insurer
 selling their own products, or an agent/broker tool that monetizes
-through referrals. Agent Oak's neutrality — "we have no commission on
+through referrals. LifeKeel's neutrality — "we have no commission on
 any policy we tell you to check" — is a genuine, structural
 differentiator. **This claim must be made explicit in-product, not just
 implied by business model.**
@@ -149,7 +149,7 @@ implied by business model.**
 
 **Key insight**: Empathy is the $72M gorilla in crisis support — but
 their model is B2B distribution through insurance carriers and employers,
-supporting people *after* a life event. Agent Oak's model is B2C,
+supporting people *after* a life event. LifeKeel's model is B2C,
 supporting families *before* something happens. These are complementary,
 not competitive. The danger is trying to out-build Empathy on
 bereavement support (which the September deep-dive already flagged as a
@@ -158,10 +158,10 @@ need Empathy as much* — because they were already ready.
 
 ### Category 6: UK-Specific Family Financial Planning
 
-Agent Oak's GBP-denominated schema and UK-focused regulatory positioning
+LifeKeel's GBP-denominated schema and UK-focused regulatory positioning
 makes this sub-category especially relevant.
 
-| Product | What it does | Agent Oak overlap? | Price |
+| Product | What it does | LifeKeel overlap? | Price |
 |---|---|---|---|
 | **LifeOS** (familylifeos.com) | AI family office, "Sage" AI advisor (voice + text), protection gap analysis, will/LPA guidance, GOV.UK integration, proactive monitoring | **Highest overlap of any competitor found** — protection gap analysis, proactive alerts, UK-focused, family-scoped, informational (not regulated advice) | £100/mo |
 | **Meet Warren** | AI retirement planning for UK couples, voice-first, deterministic modeling, pension/ISA/tax-aware | Retirement domain only | TBD (early) |
@@ -173,7 +173,7 @@ makes this sub-category especially relevant.
 protection gap analysis, will/LPA guidance, proactive monitoring, and
 voice-first discovery — all grounded in GOV.UK sources. It explicitly
 positions as informational (not regulated advice), the same regulatory
-posture as Agent Oak. The overlap is significant: family-scoped,
+posture as LifeKeel. The overlap is significant: family-scoped,
 protection-aware, proactive, UK-focused, non-advisory.
 
 **What LifeOS doesn't have**: continuous detection via a YAML detector
@@ -183,11 +183,11 @@ scenario simulation, or emergency/crisis-mode UX. LifeOS is
 advice-shaped (a conversation with an AI) rather than system-shaped (a
 living model the family builds and the system monitors). But at £100/mo
 with a working product, LifeOS is the closest direct competitor in Agent
-Oak's target UK market.
+Keel's target UK market.
 
 ---
 
-## Where Agent Oak Should Be Positioned
+## Where LifeKeel Should Be Positioned
 
 ### The positioning matrix
 
@@ -197,7 +197,7 @@ Every competitor can be placed on two axes:
                          PROACTIVE
                             ↑
                             |
-         Agent Oak ★        |    Origin
+         LifeKeel ★        |    Origin
          LifeOS             |    Promi
                             |
   PROTECTION ←──────────────┼──────────────→ WEALTH
@@ -211,7 +211,7 @@ Every competitor can be placed on two axes:
                          REACTIVE
 ```
 
-Agent Oak occupies the **upper-left quadrant**: proactive + protection/
+LifeKeel occupies the **upper-left quadrant**: proactive + protection/
 readiness. This is the least contested space. Origin owns the upper-right
 (proactive + wealth). Trustworthy and the insurance tools are in the
 lower-left (reactive + protection). Monarch and the PFM tools are in the
@@ -219,58 +219,58 @@ lower-right (reactive + wealth).
 
 ### The recommended positioning
 
-> **Agent Oak: the always-on readiness system for your family.**
+> **LifeKeel: the always-on readiness system for your family.**
 >
 > Not a budgeting app. Not an AI financial advisor. Not a vault.
 >
-> Oak continuously monitors whether your family is protected — emergency
+> Keel continuously monitors whether your family is protected — emergency
 > fund, insurance coverage, estate documents, retirement trajectory —
 > and surfaces what's missing before you need it. When life doesn't go
-> to plan, Oak already knows what to do next.
+> to plan, Keel already knows what to do next.
 
 This positioning:
 
 1. **Avoids the Origin arms race** — "readiness" is a different job than
    "wealth management." Nobody searching for a budget tracker or AI
-   advisor expects what Oak does. Nobody searching for "am I protected"
+   advisor expects what Keel does. Nobody searching for "am I protected"
    expects Monarch.
 
 2. **Distinguishes from Trustworthy** — Trustworthy stores and organizes.
-   Oak stores, organizes, *and continuously reasons over* what's stored.
+   Keel stores, organizes, *and continuously reasons over* what's stored.
    The distinction is the detector engine — the thing that goes from
    "your policy is filed" to "your policy is £200K short."
 
 3. **Distinguishes from insurance tools** — PolicyPilot gives you a
-   score on one policy today. Oak monitors your entire protection
+   score on one policy today. Keel monitors your entire protection
    picture continuously, across policies, and factors in your family
    situation (a new child, a new mortgage, an income change).
 
 4. **Distinguishes from LifeOS** — LifeOS is a conversation with an AI
-   advisor. Oak is a system that watches and alerts, with an AI
+   advisor. Keel is a system that watches and alerts, with an AI
    assistant as one surface, not the only surface. LifeOS's value
-   depends on the user initiating a conversation; Oak's value accrues
+   depends on the user initiating a conversation; Keel's value accrues
    even when the user doesn't log in (detectors run, notifications
    fire).
 
 5. **Complements Empathy** — Empathy helps you through the crisis.
-   Oak helps you be ready for it. The relationship is sequential, not
-   competitive. A future integration is natural: "Oak detected a gap
-   → Oak prepared you → an event happened → Empathy supports you
+   Keel helps you be ready for it. The relationship is sequential, not
+   competitive. A future integration is natural: "Keel detected a gap
+   → Keel prepared you → an event happened → Empathy supports you
    through it."
 
 ### The one-liner variants
 
 - **For the landing page**: "Is your family ready if something goes
-  wrong tomorrow? Oak tells you — continuously, honestly, before
+  wrong tomorrow? Keel tells you — continuously, honestly, before
   you need to ask."
-- **For the App Store**: "Family crisis readiness. Oak monitors your
+- **For the App Store**: "Family crisis readiness. Keel monitors your
   protection, coverage, and emergency preparedness — and tells you
   what's missing."
 - **For investors/press**: "The first consumer product that continuously
   evaluates whether a family is protected — not just whether they're
   saving. Think of it as a home security system for your financial life."
 - **Against LifeOS specifically**: "LifeOS gives you an AI advisor you
-  talk to. Oak gives you a system that watches while you don't."
+  talk to. Keel gives you a system that watches while you don't."
 
 ---
 
@@ -283,7 +283,7 @@ This positioning:
 | **Family-scoped twin** (per-member reasoning, not just household aggregate) | Partially shipped (roster + member twins + member readiness) | Medium-high — no consumer product found does per-member financial reasoning within a shared household |
 | **Crisis-native UX** (Emergency Mode, life-event playbooks, vault awareness) | Shipped | Medium — the UX can be copied, but the emotional design investment and the trust earned through careful crisis handling compounds |
 | **Document ingestion → detection loop** (upload a policy PDF → OCR → proposed profile update → detector re-evaluates) | Shipped | Medium — the pipeline is standard (GPT-4o OCR), the integration with the detector engine is the value |
-| **Trust-tier discipline** (prepare-not-send, earned trust, explicit approval gates) | Shipped and codified | High — this is becoming regulatory table stakes (FCA Mills Review, SM&CR), and Oak already has it while others are retrofitting |
+| **Trust-tier discipline** (prepare-not-send, earned trust, explicit approval gates) | Shipped and codified | High — this is becoming regulatory table stakes (FCA Mills Review, SM&CR), and Keel already has it while others are retrofitting |
 
 ---
 
@@ -298,14 +298,14 @@ This positioning:
 | Promi | $139.99/yr | Automated financial model + retirement |
 | LifeOS | £100/mo (~£1,200/yr) | AI family office, protection gaps, will/LPA |
 | Trustworthy | Free + Premium | Document vault + AI organization |
-| **Agent Oak (Oak Plus)** | **£7.99/mo (~£96/yr)** | Detectors, readiness score, vault, assistant, scenarios |
+| **LifeKeel (Keel Plus)** | **£7.99/mo (~£96/yr)** | Detectors, readiness score, vault, assistant, scenarios |
 
-Agent Oak at £7.99/mo is positioned as a **value play against LifeOS**
+LifeKeel at £7.99/mo is positioned as a **value play against LifeOS**
 (13x cheaper) and **comparable to the PFM category** (~$9.99/mo
-equivalent). This is the right position: Oak's job (readiness monitoring)
+equivalent). This is the right position: Keel's job (readiness monitoring)
 is narrower than LifeOS's (full family office) or Origin's (full
 financial advisor), so the price should be lower. The value story is: "for
-less than what you pay for a streaming service, Oak watches whether your
+less than what you pay for a streaming service, Keel watches whether your
 family is protected."
 
 ---
@@ -326,16 +326,16 @@ detail, not the headline.
 ### 2. Make the neutrality claim loud and visible
 
 State Farm's Household Story, CoverageGap.ai, PolicyPilot — every
-insurance-adjacent tool has a commission relationship. Agent Oak's
+insurance-adjacent tool has a commission relationship. LifeKeel's
 structural neutrality (no commissions, no product recommendations, always
 defer to a licensed professional) is the single most defensible
-positioning claim. **Put it on every protection-gap insight card**: "Oak
+positioning claim. **Put it on every protection-gap insight card**: "Keel
 has no financial relationship with any insurer. This analysis is based
 solely on your family's data."
 
 ### 3. Ship the public readiness quiz as the primary growth loop
 
-The readiness-score quiz (PRD-201) is Agent Oak's equivalent of
+The readiness-score quiz (PRD-201) is LifeKeel's equivalent of
 PolicyPilot's free policy score — but family-scoped and across multiple
 domains. This is the top-of-funnel surface that converts curiosity into
 a signup. Every competitor with a free tier or calculator uses this
@@ -343,11 +343,11 @@ pattern (PolicyPilot, Policygenius, Ladder, FamilyForecast.AI).
 
 ### 4. Position against LifeOS directly in UK go-to-market
 
-LifeOS at £100/mo is the UK's closest direct competitor. Agent Oak at
+LifeOS at £100/mo is the UK's closest direct competitor. LifeKeel at
 £7.99/mo does more continuous monitoring (detector engine vs.
 conversation-initiated), more document intelligence (OCR pipeline vs.
 none), and more crisis readiness (Emergency Mode, playbooks) for 1/12th
-the price. The messaging: "LifeOS gives you a conversation. Oak gives you
+the price. The messaging: "LifeOS gives you a conversation. Keel gives you
 a system that never stops watching."
 
 ### 5. Don't build a financial advisor
@@ -355,8 +355,8 @@ a system that never stops watching."
 Origin's trajectory (SEC registration, multi-agent with Claude 4.1 +
 GPT 5.4, 150+ MCP tools, proactive daily checks) makes it clear that
 "AI financial advisor" is a well-funded, regulated, winner-take-most
-category. Agent Oak's CLAUDE.md "second rule" — staying outside regulated
-advice — is not a limitation but a **strategic advantage**: it means Oak
+category. LifeKeel's CLAUDE.md "second rule" — staying outside regulated
+advice — is not a limitation but a **strategic advantage**: it means Keel
 doesn't need SEC/FCA registration, doesn't face the compliance overhead,
 and can move faster on the readiness/protection domain where no one with
 Origin's resources is competing.
@@ -365,22 +365,22 @@ Origin's resources is competing.
 
 Empathy's $72M raise and expansion to the UK validates that
 insurance carriers and employers will pay for family-support tools
-distributed through their own channels. Agent Oak's pre-event readiness
+distributed through their own channels. LifeKeel's pre-event readiness
 complements Empathy's post-event support. A natural B2B2C model: an
-insurer offers Oak to policyholders as a retention/engagement tool
+insurer offers Keel to policyholders as a retention/engagement tool
 ("understand your coverage and be ready"), the way they now offer
 Empathy for bereavement support. This doesn't require abandoning DTC
 but opens a second distribution channel.
 
 ### 7. LifeOS partnership or differentiation — decide early
 
-LifeOS's voice-first, conversation-driven model and Oak's system-first,
+LifeOS's voice-first, conversation-driven model and Keel's system-first,
 detection-driven model are genuinely complementary. A family could use
-LifeOS for the advisory conversation and Oak for continuous monitoring.
+LifeOS for the advisory conversation and Keel for continuous monitoring.
 Decide early whether LifeOS is a competitor to out-position or a
-potential integration/partnership. Their £100/mo price point and Oak's
+potential integration/partnership. Their £100/mo price point and Keel's
 £7.99/mo suggest different market segments — LifeOS for families who
-want a concierge, Oak for families who want a background watchdog.
+want a concierge, Keel for families who want a background watchdog.
 
 ---
 
@@ -390,11 +390,11 @@ want a concierge, Oak for families who want a background watchdog.
 |---|---|
 | "No single competitor combines all three categories" | **Still true**, but the gap is narrowing. LifeOS is the closest, combining family + protection + proactive (via conversation), and Trustworthy "Next" added automatic organization and querying. |
 | "Digital twin is enterprise jargon, not a consumer category" | **No longer true.** Trovana, Futurez, and Plan with Flow all use "financial digital twin" as their consumer positioning. Panze uses "life simulator." The term is entering consumer vocabulary — but all define it as wealth projection, not readiness. |
-| "State Farm Household Story is the biggest threat" | **Confirmed and amplified.** The insurance-gap-analysis category has exploded (MyPolicyReview, CoverageGap, PolicyPilot, GetCoveredAI). Oak's neutrality claim matters more than ever. |
+| "State Farm Household Story is the biggest threat" | **Confirmed and amplified.** The insurance-gap-analysis category has exploded (MyPolicyReview, CoverageGap, PolicyPilot, GetCoveredAI). Keel's neutrality claim matters more than ever. |
 | "Trustworthy doesn't reason over data" | **Partially overtaken.** Trustworthy "Next" has a household data graph, automatic organization, and NL querying. Still no proactive gap detection, but the distance shrank. |
 | "Detect-before-declared life events is genuinely unclaimed" | **Still true.** No competitor found does this. Remains the highest-upside future capability. |
 | "On-device inference for crisis flows is unclaimed" | **Still true.** No competitor found offers this. |
-| "£7.99/mo is close to category median" | **Confirmed.** Origin/LifeOS are premium; Monarch/Copilot/Promi cluster around $10–13/mo; Oak at £7.99 (~$10) is right at the value end. Nova at $9–19/mo, Monia free/premium, FamilyForecast free-to-paid — all validate the range. |
+| "£7.99/mo is close to category median" | **Confirmed.** Origin/LifeOS are premium; Monarch/Copilot/Promi cluster around $10–13/mo; Keel at £7.99 (~$10) is right at the value end. Nova at $9–19/mo, Monia free/premium, FamilyForecast free-to-paid — all validate the range. |
 
 ---
 

@@ -5,7 +5,7 @@
 `blog.ts` already exists as a real markdown CMS (categories: product,
 tutorial, case-study, news) but nothing systematically feeds it. Content
 marketing in this category runs on exactly the kind of specific,
-credible claim Agent Oak's detectors already produce as their normal
+credible claim LifeKeel's detectors already produce as their normal
 output — "a family with £0 life insurance and a £250k mortgage is
 underinsured by roughly £450k" is a stronger, more citable hook than
 generic advice, and it's already sitting in `reasoning_template` strings
@@ -18,7 +18,7 @@ See [000-market-landscape-and-positioning.md](000-market-landscape-and-positioni
 Policygenius' content strategy is built entirely on this pattern —
 specific, numbers-driven explainers ("What Is a Life Insurance Coverage
 Gap?") that rank on the exact question a worried visitor searches. Agent
-Oak has a structural advantage Policygenius doesn't: six (soon more, per
+Keel has a structural advantage Policygenius doesn't: six (soon more, per
 PRD-102) detector rules that already encode the *logic* of these
 explainers as executable YAML, not just prose someone has to keep
 separately in sync with the product.
@@ -45,7 +45,7 @@ promising more topics than there are real detectors behind them.
 
 - **Content**: one post per detector rule, each opening with the same
   category-education framing the landing page already uses (a cited
-  stat, then "here's exactly how Oak checks this for your family") and
+  stat, then "here's exactly how Keel checks this for your family") and
   ending with a link into PRD-201's quiz.
 - **Product surface**: a `learn_more_url` field on each detector rule's
   YAML (or a lookup table keyed by `rule_id`) that the insight card UI

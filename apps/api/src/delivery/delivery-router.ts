@@ -15,7 +15,7 @@
  */
 
 import crypto from 'node:crypto'
-import type { Insight, JudgeVerdict, MoveJudge } from '@agentoak/engine'
+import type { Insight, JudgeVerdict, MoveJudge } from '@lifekeel/engine'
 import {
   WhatsAppChannel, SmsChannel, EmailChannel, WebPushChannel, MobilePushChannel, RealMobilePushSender,
   type InsightNotification, type DeliveryResult,
@@ -49,6 +49,16 @@ export interface DeliveryPreferences {
   quiet_hours_end?: number | null     // e.g. 8
   /** Digest mode — batch low-urgency into a daily summary instead of per-insight. */
   digest_mode?: boolean
+  /** PRD-136 §5: family heartbeat + feed-shaping preferences. Tenant-level
+   *  for now — per-member cadence is a noted follow-up. */
+  heartbeat_cadence?: 'weekly' | 'monthly' | 'off'
+  /** When true, a week/month where nothing moved still earns the
+   *  "nothing moved" one-liner email. */
+  heartbeat_quiet_weeks?: boolean
+  /** Readiness domains the family doesn't want insights/feed items for. */
+  domains_muted?: string[]
+  /** 'mine' scopes heartbeat/digest content to the recipient's member. */
+  member_scope?: 'all' | 'mine'
   enabled: boolean
 }
 
@@ -77,9 +87,9 @@ export class DeliveryRouter {
     this.moveJudge = moveJudge
     this.signingSecret = process.env['DELIVERY_SIGNING_SECRET'] ?? process.env['JWT_SECRET'] ?? 'change-me'
     // Deep links in notifications point at the family app (apps/web), not
-    // kairos-ai's Studio — AGENT_OAK_URL is the same env var auth-social.ts,
+    // kairos-ai's Studio — LIFEKEEL_URL is the same env var auth-social.ts,
     // billing.ts, and connector-credentials.ts already use for it.
-    this.webBaseUrl = process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002'
+    this.webBaseUrl = process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002'
     this.apiBaseUrl = process.env['API_BASE_URL'] ?? 'http://localhost:3001'
 
     // Wire web push channel only if VAPID keys are configured
@@ -134,7 +144,7 @@ export class DeliveryRouter {
   /**
    * Registering a device token from the app is itself the opt-in gesture
    * (granting OS notification permission already required explicit user
-   * action) — there's no separate delivery-preferences screen in Agent Oak
+   * action) — there's no separate delivery-preferences screen in LifeKeel
    * the way Studio had one, so this surgically ensures 'mobile_push' is in the
    * tenant's channel list rather than requiring a settings UI that doesn't
    * exist yet. Preserves every other existing preference untouched.
@@ -436,7 +446,7 @@ export class DeliveryRouter {
       return this.sms.send((to ?? prefs.sms_to) as string, notification)
     }
     if (channel === 'email' && (to ?? prefs.email_to)) {
-      return this.email.send((to ?? prefs.email_to) as string, prefs.business_name ?? 'Agent Oak', notification)
+      return this.email.send((to ?? prefs.email_to) as string, prefs.business_name ?? 'LifeKeel', notification)
     }
     if (channel === 'web_push' && this.webPush && prefs.web_push_enabled) {
       const subs = await this.getPushSubscriptions(tenantId)
@@ -840,13 +850,13 @@ export class DeliveryRouter {
       or_score: 1,
       estimated_impact_high: totalImpact,
       currency: 'GBP',
-      reasoning: `You have ${queued.length} insights worth up to ${(totalImpact / 100).toFixed(0)} in total. Open Agent Oak to review them all.`,
+      reasoning: `You have ${queued.length} insights worth up to ${(totalImpact / 100).toFixed(0)} in total. Open LifeKeel to review them all.`,
       action_url: `${this.webBaseUrl}/`,
       approve_url: `${this.webBaseUrl}/`,
       dismiss_url: `${this.webBaseUrl}/`,
     }
 
-    const result = await this.email.send(prefs.email_to, prefs.business_name ?? 'Agent Oak', digestNotification)
+    const result = await this.email.send(prefs.email_to, prefs.business_name ?? 'LifeKeel', digestNotification)
 
     if (result.success) {
       const ids = queued.map(q => q._id)

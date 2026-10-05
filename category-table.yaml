@@ -14,7 +14,7 @@
 # green value styling — no visual distinction between genuine risk and
 # genuine opportunity, on every card, in every vertical. See
 # packages/entity-model/src/insight.ts's riskTierFor() and
-# apps/kairos/src/components/entity/PotentialGapCard.tsx's RISK_COLOR/
+# apps/lifekeel/src/components/entity/PotentialGapCard.tsx's RISK_COLOR/
 # RISK_LABEL maps for how category flows into what the user actually sees.
 #
 # Both pattern fields are glob-style ('*' = wildcard). Matched against the

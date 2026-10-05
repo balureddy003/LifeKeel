@@ -85,6 +85,7 @@ export type AuditAction =
   | 'marketing.connection_disconnect'
   | 'marketing.post_generate'
   | 'marketing.post_update'
+  | 'legacy.document.read'
 
 export interface AuditEntry {
   tenant_id: string
@@ -98,7 +99,7 @@ export interface AuditEntry {
   timestamp: Date
 }
 
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 
 const auditLog = createLogger({ service: 'audit', version: '0.0.0' })
 

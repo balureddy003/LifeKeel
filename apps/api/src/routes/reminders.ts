@@ -1,7 +1,7 @@
 /**
  * /reminders — the transparency surface for Tier 3 automatic actions.
  *
- * A reminder Oak scheduled or sent on the family's behalf must be visible
+ * A reminder Keel scheduled or sent on the family's behalf must be visible
  * and reversible: GET lists everything (upcoming, sent, cancelled) and
  * POST /:id/cancel lets any signed-in member of the tenant stop a pending
  * one. Cancelling a reminder can't recall a notification that already

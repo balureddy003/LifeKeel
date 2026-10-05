@@ -16,7 +16,7 @@ interface PasswordInputProps {
 const DEFAULT_INPUT_CLASSES =
   'glass-input w-full rounded-2xl px-4 py-4 pr-12 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all'
 
-// OAK-024: password fields had no way to check what you'd typed before
+// KEEL-024: password fields had no way to check what you'd typed before
 // submitting. Wraps a standard password input with a show/hide toggle,
 // matching the app's existing glass-input styling.
 export function PasswordInput({ id, value, onChange, placeholder, autoComplete, onKeyDown, inputClassName }: PasswordInputProps) {

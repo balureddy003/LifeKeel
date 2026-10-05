@@ -2,22 +2,25 @@
   <!-- Stacked lockup — square contexts: social avatars, splash screens, deck title slides. Same font-portability note as logo-horizontal.svg. -->
   <defs>
     <linearGradient id="mark-bg-v" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#8b80f8"/>
-      <stop offset="1" stop-color="#6b5ce0"/>
+      <stop offset="0" stop-color="#0b3b5c"/>
+      <stop offset="1" stop-color="#0e7490"/>
     </linearGradient>
   </defs>
   <g transform="translate(40, 0)">
     <rect width="120" height="120" rx="26" fill="url(#mark-bg-v)"/>
-    <g stroke="#ffffff" stroke-width="5.5" stroke-linecap="round">
-      <path d="M60 21 L21 60 L60 99 L99 60 Z" fill="none" opacity="0.95"/>
-      <path d="M60 21 L60 99" opacity="0.65"/>
-      <path d="M21 60 L99 60" opacity="0.65"/>
+    <g stroke="#ffffff" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round">
+      <!-- mast + sail -->
+      <path d="M60 17 L60 36" opacity="0.85"/>
+      <path d="M60 19 L77 36 L60 36 Z" fill="#ffffff" stroke="none" opacity="0.95"/>
+      <!-- waterline -->
+      <path d="M13 46 Q23 41 33 46 T53 46 T73 46 T93 46 T107 46" fill="none" opacity="0.55" stroke-width="3.1"/>
+      <!-- hull -->
+      <path d="M30 57 Q60 85 90 57" fill="none" opacity="0.95"/>
+      <!-- keel fin -->
+      <path d="M60 72 L60 94" opacity="0.9"/>
+      <!-- keel bulb -->
+      <rect x="50" y="93" width="20" height="8" rx="4" fill="#ffffff" stroke="none"/>
     </g>
-    <circle cx="60" cy="21" r="5" fill="#ffffff"/>
-    <circle cx="21" cy="60" r="5" fill="#ffffff"/>
-    <circle cx="99" cy="60" r="5" fill="#ffffff"/>
-    <circle cx="60" cy="99" r="5" fill="#ffffff"/>
-    <circle cx="60" cy="60" r="7" fill="#ffffff"/>
   </g>
-  <text x="100" y="158" text-anchor="middle" font-family="Fraunces, Georgia, serif" font-weight="600" font-size="30" letter-spacing="-0.3" fill="#16151a">Agent Oak</text>
+  <text x="100" y="158" text-anchor="middle" font-family="Fraunces, Georgia, serif" font-weight="600" font-size="30" letter-spacing="-0.3" fill="#16151a">LifeKeel</text>
 </svg>

@@ -2,10 +2,10 @@
 
 ## Problem
 
-Every detector Agent Oak has today is a static financial-ratio rule
+Every detector LifeKeel has today is a static financial-ratio rule
 (protection gap, emergency-fund adequacy, education shortfall, retirement
 gap) evaluated against whatever the family last entered. None of them
-represent a *declared life event* — a family has no way to tell Oak "I
+represent a *declared life event* — a family has no way to tell Keel "I
 just lost my job" or "my spouse died" and get a sequenced, personalized
 response back. ARCHITECTURE.md's own roadmap already names this as the
 next step after PRD-103 shipped: "extend 'prepare' beyond insights, e.g.
@@ -18,7 +18,7 @@ See [007](007-life-stage-and-crisis-response-research.md#life-events-are-the-par
 Every researched crisis checklist (U.S. Bank, Prudential, Wells Fargo,
 MoneyHelper) is generic — the same static PDF for every reader, with no
 knowledge of *this* family's actual mortgage, actual policies, actual
-emergency fund. Agent Oak's differentiated bar, matching 000's
+emergency fund. LifeKeel's differentiated bar, matching 000's
 "reasoning grounded in the family's real data, not templated advice":
 a playbook that already knows the family has £0 income protection and a
 £250k mortgage outstanding doesn't need to ask, and can open with the one
@@ -28,7 +28,7 @@ step that matters most for *this* household, not a generic step 1 of 12.
 
 Families mid-crisis, at the exact moment researched guidance says the
 first-week decisions matter most and are also when people are least able
-to research calmly — the entire premise behind "Oak knows what to do
+to research calmly — the entire premise behind "LifeKeel knows what to do
 next" in the product's own tagline.
 
 ## What "done" looks like
@@ -55,7 +55,7 @@ reused rather than rebuilt.
 **Tier 0 for the playbook display itself** (rendering a personalized
 checklist is pure Understand/Predict, same as any insight card). **Tier 1
 where a step offers a draft** — identical posture to PRD-103, reusing its
-exact mechanism: Oak drafts, a human copies or opens in their own email
+exact mechanism: Keel drafts, a human copies or opens in their own email
 client, nothing is ever sent from this app. This PRD introduces no new
 trust tier and no new Act-layer surface; it's a new *presentation* of
 Tier 0 data plus a new *entry point* into the already-shipped Tier 1

@@ -38,7 +38,7 @@ record.
 3. **Sign-out destination.** `signOut()` routes to `/welcome` instead of
    `/login` — a small inconsistency for a returning user. One-line fix.
 4. **Delete `AIFloatingButton.tsx`.** Confirmed dead code, imported
-   nowhere, superseded by `AskOakButton`. Pure deletion.
+   nowhere, superseded by `AskKeelButton`. Pure deletion.
 5. **Link `/support` from Settings.** The page exists and works for
    logged-out users; nothing links to it once authenticated. One link.
 6. **Surface onboarding's silent recovery-email failure.** Currently
@@ -93,7 +93,7 @@ record.
     and travel have no real-flow equivalent at all. Extend `EVENT_TYPES`
     to cover the full taxonomy, carry the picked type through as a route
     param, add a lightweight confirm + de-dupe check. This is the one
-    place the product's core "Oak knows what to do next" promise fails a
+    place the product's core "LifeKeel knows what to do next" promise fails a
     user at the exact moment it matters — see the Journey 1 write-up in
     `product-review-council.md` for the full redesign.
 19. **Life-event checklist backend sync.** Step-completion is currently
@@ -117,7 +117,7 @@ record.
 23. **Dormant 4-tier billing system — decide and document.** `free` /
     `starter` / `growth` / `enterprise` with quotas, credit packs, and
     outcome-based pricing exist in `billing-constants.ts`, but the
-    consumer product only ever sells one real plan ("Oak Plus" via
+    consumer product only ever sells one real plan ("Keel Plus" via
     `starter`). Mostly a decision task (delete the unused tiers' scaffolding,
     or explicitly document why they're kept for a future B2B path) —
     sized M because touching billing code always warrants care and tests,
@@ -442,7 +442,7 @@ with a clear 400 instead of the previous silent path to a Stripe 500 from
 an unconfigured placeholder price id. #24: `settings.ts` (~970 unused
 lines) genuinely deleted; `blog.ts`'s and `case-studies.ts`'s write
 surfaces deliberately parked, not deleted, each with a documented reason
-(blog: `KAIROS_ADMIN_KEY`-gated, unusable without the env var set —
+(blog: `LIFEKEEL_ADMIN_KEY`-gated, unusable without the env var set —
 verified directly, `Boolean(undefined && ...)` short-circuits false
 regardless of header; case-studies: `GET /case-studies` is a live public
 marketing endpoint, deleting the file on spec would remove more than dead

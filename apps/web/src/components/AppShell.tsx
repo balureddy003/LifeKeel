@@ -197,7 +197,7 @@ function MaintenanceBanner() {
 // ever told the user it existed or offered a resend. Dismisses per
 // session (not permanently — it's a trust property, not a promo) and
 // clears itself once the account flips to verified.
-const VERIFY_BANNER_DISMISSED = 'oak:verify-banner-dismissed'
+const VERIFY_BANNER_DISMISSED = 'keel:verify-banner-dismissed'
 
 function VerifyEmailBanner() {
   const { isAuthenticated, user } = useAuth()
@@ -280,15 +280,15 @@ function ModeEffects() {
 }
 
 // Deliberately a wider labeled pill, not a same-size/same-shape circle
-// like AskOakButton below — the two floating buttons used to differ only
+// like AskKeelButton below — the two floating buttons used to differ only
 // by color (purple vs red), which fails colorblind users and is exactly
 // the wrong differentiator under crisis stress, when a mis-tap matters
 // most. Shape + a text label make this unmistakable at a glance.
 //
 // SOS also sits at the TOP of the floating stack (bottom-52), not beside
-// the nav bar — Ask Oak owns the bottom-32 slot nearest the thumb. The
+// the nav bar — Ask Keel owns the bottom-32 slot nearest the thumb. The
 // dangerous mis-tap direction is wanting chat and hitting emergency; with
-// SOS a full button-height above Ask Oak, a fumbled Ask Oak tap lands on
+// SOS a full button-height above Ask Keel, a fumbled Ask Keel tap lands on
 // the tab bar or empty space, never on the emergency sequence.
 function EmergencyButton() {
   const { config, activateEmergency } = useMode()
@@ -339,7 +339,7 @@ function EmergencyButton() {
 // PRD-101 endpoint /assistant/page.tsx correctly calls. Rather than
 // resurrect a second, wrong chat implementation, this reuses the one real
 // implementation by linking straight to it.
-function AskOakButton({ context }: { context?: string }) {
+function AskKeelButton({ context }: { context?: string }) {
   const router = useRouter()
   return (
     <motion.button
@@ -356,7 +356,7 @@ function AskOakButton({ context }: { context?: string }) {
         border: '1px solid rgba(255,255,255,0.2)',
         boxShadow: '0 12px 24px -6px rgba(0,0,0,0.55), 0 8px 20px rgba(139,128,248,0.3)',
       }}
-      aria-label="Ask Oak"
+      aria-label="Ask Keel"
     >
       <Bot size={20} color="#fff" />
     </motion.button>
@@ -427,7 +427,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         <div className="w-16 h-16 rounded-2xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-6">
           <Network size={32} className="text-family-400" />
         </div>
-        <h1 className="text-3xl font-bold mb-2 text-gradient">Agent Oak</h1>
+        <h1 className="text-3xl font-bold mb-2 text-gradient">LifeKeel</h1>
         <p className="text-ink-tertiary mb-8 max-w-xs">
           Your family&apos;s first responder for financial emergencies &mdash; ready before you need it.
         </p>
@@ -562,22 +562,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // The operator console ships its own header/nav in app/operator/layout.
   // Without this exclusion an operator who is also a signed-in family
-  // member gets the consumer rail, tab bar, SOS/Ask Oak buttons, and the
+  // member gets the consumer rail, tab bar, SOS/Ask Keel buttons, and the
   // phone-width wrapper layered on top of it.
   const isOperatorRoute = pathname.startsWith('/operator')
 
   const showNav = isAuthenticated && family && !isAuthRoute && !isOperatorRoute
   const showEmergency = showNav && pathname !== '/assistant' && config.showEmergencyButton
-  const showAskOak = showNav && pathname !== '/assistant'
+  const showAskKeel = showNav && pathname !== '/assistant'
 
   // Below md, LiquidTabBar owns the bottom band and this reserves scroll
   // room for it. At md+ NavRail replaces it (a left rail, no bottom band),
   // so only a small resting gutter is needed there — not the full
-  // bottom-bar-sized one. When both floating buttons stack (Ask Oak above
+  // bottom-bar-sized one. When both floating buttons stack (Ask Keel above
   // Emergency), the reserved band needs to be taller than either alone.
   const bottomPadding =
-    showEmergency && showAskOak ? 'pb-56 md:pb-10' :
-    showEmergency || showAskOak ? 'pb-32 md:pb-10' :
+    showEmergency && showAskKeel ? 'pb-56 md:pb-10' :
+    showEmergency || showAskKeel ? 'pb-32 md:pb-10' :
     showNav ? 'pb-20 md:pb-10' : ''
   // The floating button(s) sit fixed bottom-right, independent of scroll
   // position — without a matching permanent gutter, any list row that
@@ -585,7 +585,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // target covered, not just during a scroll gesture but at rest on first
   // load. Reserving the space here (rather than hunting down every list row
   // across every page) guarantees it never happens.
-  const emergencyGutter = showEmergency || showAskOak ? 'pr-16' : ''
+  const emergencyGutter = showEmergency || showAskKeel ? 'pr-16' : ''
 
   // The public marketing page manages its own responsive width (it's the
   // screen most likely to actually be opened on a laptop — a link from
@@ -629,7 +629,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
       {showNav && <LiquidTabBar />}
       {showEmergency && <EmergencyButton />}
-      {showAskOak && <AskOakButton context={pathname} />}
+      {showAskKeel && <AskKeelButton context={pathname} />}
       <EmergencyMode
         active={emergencyActive}
         onDeactivate={deactivateEmergency}

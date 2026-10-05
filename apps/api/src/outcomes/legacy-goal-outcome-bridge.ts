@@ -1,11 +1,11 @@
 import type { Db } from 'mongodb'
-import type { OutcomeContract } from '@agentoak/specifications'
-import type { OutcomeRepository } from '@agentoak/runtime'
+import type { OutcomeContract } from '@lifekeel/specifications'
+import type { OutcomeRepository } from '@lifekeel/runtime'
 import {
   legacyGoalToOutcomeContract,
   type LegacyEvidenceObservation,
   type LegacyGoal,
-} from '@agentoak/legacy-compat'
+} from '@lifekeel/legacy-compat'
 
 interface GoalKpiSnapshot {
   tenant_id: string

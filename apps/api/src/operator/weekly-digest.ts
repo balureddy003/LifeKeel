@@ -104,7 +104,7 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
   ]
   if (top) lines.push(`Top content: ${top[0]} → ${top[1]} signups`)
   await sendOpsAlert({
-    title: 'Agent Oak — weekly operator digest',
+    title: 'LifeKeel — weekly operator digest',
     message: lines.join('\n'),
     severity: 'info',
     fingerprint: `weekly-digest-${now.toISOString().slice(0, 10)}`,

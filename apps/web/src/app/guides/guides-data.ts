@@ -3,7 +3,7 @@
  * Copy is derived from the same heuristics the detectors evaluate (3-6
  * month emergency fund, mortgage + education + 5y living expenses cover,
  * projected-vs-target retirement age, education target vs years left) so
- * what a visitor reads is exactly what Oak later checks for their family.
+ * what a visitor reads is exactly what Keel later checks for their family.
  *
  * Same rule as the detectors' reasoning_template: informational only —
  * never name a product or provider, always point to licensed
@@ -36,7 +36,7 @@ export interface Guide {
   faq: GuideFaq[]
 }
 
-const QUIZ_CTA = 'Take the free Family Readiness Check — six questions, no signup, and see which of these areas Oak would flag for your household.'
+const QUIZ_CTA = 'Take the free Family Readiness Check — six questions, no signup, and see which of these areas Keel would flag for your household.'
 
 export const GUIDES: Guide[] = [
   {
@@ -70,9 +70,9 @@ export const GUIDES: Guide[] = [
         ],
       },
       {
-        heading: 'How Oak checks this',
+        heading: 'How Keel checks this',
         paragraphs: [
-          'Oak compares your listed emergency savings against your monthly expenses and flags a fund below three months or above twelve alongside high-interest debt — the same arithmetic on this page, run continuously against your actual numbers rather than a worksheet you fill in once.',
+          'Keel compares your listed emergency savings against your monthly expenses and flags a fund below three months or above twelve alongside high-interest debt — the same arithmetic on this page, run continuously against your actual numbers rather than a worksheet you fill in once.',
         ],
       },
     ],
@@ -127,9 +127,9 @@ export const GUIDES: Guide[] = [
         ],
       },
       {
-        heading: 'How Oak checks this',
+        heading: 'How Keel checks this',
         paragraphs: [
-          'Oak computes the same need estimate — mortgage plus education gap plus five years of living expenses — against the cover in a family\'s profile, and flags when listed cover falls below it, when no income protection is listed, and when a policy renewal window is approaching.',
+          'Keel computes the same need estimate — mortgage plus education gap plus five years of living expenses — against the cover in a family\'s profile, and flags when listed cover falls below it, when no income protection is listed, and when a policy renewal window is approaching.',
         ],
       },
     ],
@@ -148,7 +148,7 @@ export const GUIDES: Guide[] = [
       },
       {
         q: 'How do we fill a gap if we find one?',
-        a: 'Compare quotes from multiple insurers and consider speaking with a licensed insurance broker who can assess the household\'s coverage needs. Product and provider choices are individual — Oak surfaces the gap; licensed professionals advise on filling it.',
+        a: 'Compare quotes from multiple insurers and consider speaking with a licensed insurance broker who can assess the household\'s coverage needs. Product and provider choices are individual — Keel surfaces the gap; licensed professionals advise on filling it.',
       },
     ],
   },
@@ -184,9 +184,9 @@ export const GUIDES: Guide[] = [
         ],
       },
       {
-        heading: 'How Oak checks this',
+        heading: 'How Keel checks this',
         paragraphs: [
-          'Oak projects the retirement age from the pension balance, contribution rate, and target in a family\'s profile — then flags when the projection lands late, when the required contribution would exceed half of monthly income (the contributions-alone-are-not-enough case), and when no retirement savings are listed at all.',
+          'Keel projects the retirement age from the pension balance, contribution rate, and target in a family\'s profile — then flags when the projection lands late, when the required contribution would exceed half of monthly income (the contributions-alone-are-not-enough case), and when no retirement savings are listed at all.',
         ],
       },
     ],
@@ -235,9 +235,9 @@ export const GUIDES: Guide[] = [
         ],
       },
       {
-        heading: 'How Oak checks this',
+        heading: 'How Keel checks this',
         paragraphs: [
-          'For each child in a family\'s profile, Oak compares current education savings against the target and the years remaining — flagging funds below half-target inside five years, and funds not started for children under sixteen, so the runway shrinks visibly rather than silently.',
+          'For each child in a family\'s profile, Keel compares current education savings against the target and the years remaining — flagging funds below half-target inside five years, and funds not started for children under sixteen, so the runway shrinks visibly rather than silently.',
         ],
       },
     ],
@@ -299,9 +299,9 @@ export const GUIDES: Guide[] = [
         ],
       },
       {
-        heading: 'How Oak checks this',
+        heading: 'How Keel checks this',
         paragraphs: [
-          'Adding a child to an Oak profile re-evaluates all four checks at once — the fund target against new expenses, cover against a household that now includes a dependent, the education runway starting at eighteen years, and the retirement projection under changed contributions. The gaps arrive as a list, not a surprise.',
+          'Adding a child to an Keel profile re-evaluates all four checks at once — the fund target against new expenses, cover against a household that now includes a dependent, the education runway starting at eighteen years, and the retirement projection under changed contributions. The gaps arrive as a list, not a surprise.',
         ],
       },
     ],
@@ -357,9 +357,9 @@ export const GUIDES: Guide[] = [
         ],
       },
       {
-        heading: 'How Oak checks this',
+        heading: 'How Keel checks this',
         paragraphs: [
-          'Listing a mortgage and home in an Oak profile re-evaluates the fund target against the new essentials, adds the mortgage balance to the protection estimate, and keeps watching for the renewal and maintenance windows a house introduces — the checks run on the household as it actually is now, not as it was.',
+          'Listing a mortgage and home in an Keel profile re-evaluates the fund target against the new essentials, adds the mortgage balance to the protection estimate, and keeps watching for the renewal and maintenance windows a house introduces — the checks run on the household as it actually is now, not as it was.',
         ],
       },
     ],
@@ -420,9 +420,9 @@ export const GUIDES: Guide[] = [
         ],
       },
       {
-        heading: 'How Oak checks this',
+        heading: 'How Keel checks this',
         paragraphs: [
-          'Oak sees the household\'s actual income structure — a single-income profile automatically weights the fund check toward the higher band, surfaces the protection estimate against listed cover, and keeps the renewal windows watched. The risk profile of one income is read from the data, not assumed.',
+          'Keel sees the household\'s actual income structure — a single-income profile automatically weights the fund check toward the higher band, surfaces the protection estimate against listed cover, and keeps the renewal windows watched. The risk profile of one income is read from the data, not assumed.',
         ],
       },
     ],
@@ -466,7 +466,7 @@ export const GUIDES: Guide[] = [
       {
         heading: 'When the number exceeds what contributions can do',
         paragraphs: [
-          'If the required contribution climbs beyond what the household can carry — Oak flags the case where it would exceed half of monthly income — the honest conclusion is that contributions are not the whole answer. That is not failure; it is a signal to look at the other levers.',
+          'If the required contribution climbs beyond what the household can carry — Keel flags the case where it would exceed half of monthly income — the honest conclusion is that contributions are not the whole answer. That is not failure; it is a signal to look at the other levers.',
           'Retirement date moves the projection powerfully at this stage: retiring two years later adds contribution years and removes withdrawal years simultaneously — a double effect. Expected spending, other assets, and part-time transitions all move it too.',
         ],
         bullets: [
@@ -483,9 +483,9 @@ export const GUIDES: Guide[] = [
         ],
       },
       {
-        heading: 'How Oak checks this',
+        heading: 'How Keel checks this',
         paragraphs: [
-          'Oak projects the retirement age from the listed pension balance, contribution rate, and target age — at this stage of life the output tends to be concrete rather than advisory: a projected age, and the monthly contribution change that would bring it back to target. When that figure exceeds half of income, the finding says so plainly.',
+          'Keel projects the retirement age from the listed pension balance, contribution rate, and target age — at this stage of life the output tends to be concrete rather than advisory: a projected age, and the monthly contribution change that would bring it back to target. When that figure exceeds half of income, the finding says so plainly.',
         ],
       },
     ],
@@ -522,7 +522,7 @@ export const GUIDES: Guide[] = [
       {
         heading: 'Reading the runway',
         paragraphs: [
-          'Divide current savings by the target cost — that percentage only means something against the years remaining. Oak\'s check flags the sharp case: below half the target inside five years, when the monthly contribution needed to close it climbs steeply.',
+          'Divide current savings by the target cost — that percentage only means something against the years remaining. Keel\'s check flags the sharp case: below half the target inside five years, when the monthly contribution needed to close it climbs steeply.',
           'The useful output is not the percentage but the monthly figure — the contribution that closes the gap in the time left. A specific number can be planned around; a shortfall percentage cannot.',
         ],
       },
@@ -541,9 +541,9 @@ export const GUIDES: Guide[] = [
         ],
       },
       {
-        heading: 'How Oak checks this',
+        heading: 'How Keel checks this',
         paragraphs: [
-          'For each child listed in a profile, Oak tracks savings against target and years remaining — flagging a fund below half-target inside the five-year window, and a fund not started for a child under sixteen, so the countdown is watched continuously rather than remembered annually.',
+          'For each child listed in a profile, Keel tracks savings against target and years remaining — flagging a fund below half-target inside the five-year window, and a fund not started for a child under sixteen, so the countdown is watched continuously rather than remembered annually.',
         ],
       },
     ],

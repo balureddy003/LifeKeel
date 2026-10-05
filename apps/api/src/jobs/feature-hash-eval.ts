@@ -24,7 +24,7 @@
  * Or via the weekly cron in server.ts (see runFeatureHashEval).
  */
 import type { Db } from 'mongodb'
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'feature-hash-eval', version: '0.0.0' })
 
@@ -85,7 +85,7 @@ export async function evaluateFeatureHashScorer(
   // Build a scorer and train it on the train set
   // We use a fresh in-memory scorer (not the persisted one) to get a clean
   // train-on-past evaluation
-  const { FeatureHashScorer } = await import('@agentoak/engine')
+  const { FeatureHashScorer } = await import('@lifekeel/engine')
   // Use a lightweight in-memory DB mock — we don't need persistence for eval
   const memDb = {
     collection: () => ({

@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kairos.io/schemas/{{connector_id}}/{{event_type}}/v{{version}}",
+  "$id": "https://lifekeel.io/schemas/{{connector_id}}/{{event_type}}/v{{version}}",
   "title": "{{title}}",
   "description": "{{description}}",
   "type": "object",
-  "kairos": {
+  "lifekeel": {
     "connector_id": "{{connector_id}}",
     "event_type": "{{event_type}}",
     "schema_version": "{{version}}",

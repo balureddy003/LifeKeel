@@ -13,7 +13,7 @@ fallback string, and the UI itself honestly labels it "Sample answer —
 connect your data for a personalized response."
 
 ARCHITECTURE.md already names this "a known, honest gap," and it's the
-single most visible place where the product's core promise — "Oak
+single most visible place where the product's core promise — "Keel
 understands your family's life... and reasons over that model" — doesn't
 hold up, since it's a chat surface every family will try immediately.
 
@@ -22,7 +22,7 @@ hold up, since it's a chat surface every family will try immediately.
 See [000-market-landscape-and-positioning.md](000-market-landscape-and-positioning.md).
 Origin's AI Advisor is the reference point competitors will be judged
 against — deterministic math grounded in the user's real accounts, not
-generic templated output. Agent Oak doesn't need to match Origin's
+generic templated output. LifeKeel doesn't need to match Origin's
 CFP-exam-scoring breadth (tax, estate, investing) in this PRD — only
 needs to stop being *worse than a FAQ page* on the one domain it already
 has real data for (financial profile + the 4 family detectors). That's
@@ -30,7 +30,7 @@ the honest, achievable bar for v1.
 
 ## Who it's for
 
-Every family using Agent Oak, the moment they open `/assistant` and ask
+Every family using LifeKeel, the moment they open `/assistant` and ask
 anything not in the 11-entry map.
 
 ## What "done" looks like

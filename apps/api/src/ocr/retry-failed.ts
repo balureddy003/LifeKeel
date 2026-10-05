@@ -1,5 +1,5 @@
 import { GridFSBucket, type Db, type ObjectId } from 'mongodb'
-import { createLogger, type DecisionFn } from '@agentoak/platform'
+import { createLogger, type DecisionFn } from '@lifekeel/platform'
 import { processDocument } from './extract.js'
 import { recordDocumentExtractionRetries } from '../routes/metrics.js'
 

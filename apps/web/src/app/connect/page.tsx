@@ -19,7 +19,7 @@ const CONNECTOR_ICONS: Record<string, LucideIcon> = {
 
 const CONNECTOR_DESCRIPTIONS: Record<string, string> = {
   email: 'Connect any email provider — Gmail, Outlook, Yahoo, iCloud, or a custom domain — to import financial documents automatically. Free on every plan. AI summaries in plain language are a paid upgrade.',
-  'open-banking': 'Read-only bank account connections — Oak can see account types and balances, never move money. Full bank consent flow arrives with our regulated partner.',
+  'open-banking': 'Read-only bank account connections — Keel can see account types and balances, never move money. Full bank consent flow arrives with our regulated partner.',
 }
 
 const CONNECTOR_CATEGORIES: Record<string, { label: string; icon: LucideIcon }> = {

@@ -15,7 +15,7 @@
 
 import twilio from 'twilio'
 import sgMail from '@sendgrid/mail'
-import { formatMoney } from '@agentoak/platform'
+import { formatMoney } from '@lifekeel/platform'
 
 // ── Shared types ───────────────────────────────────────────────────────────────
 
@@ -72,7 +72,7 @@ export class WebPushChannel {
   }
 }
 
-// ── Mobile push (Expo push service — apps/kairos-mobile) ───────────────────────
+// ── Mobile push (Expo push service — apps/lifekeel-mobile) ───────────────────────
 //
 // Expo's push API takes an Expo push token directly (no per-tenant API key,
 // unlike WebPush's VAPID keypair) — the token itself routes the notification
@@ -196,7 +196,7 @@ export function buildSmsMessage(n: InsightNotification): string {
   const impact = impactRange(n)
   const conf = Math.round(n.or_score * 100)
   const impact_str = impact ? ` (${impact})` : ''
-  return `${emoji} Kairos: ${n.hypothesis}${impact_str} – ${conf}% confidence. Approve: ${n.approve_url} | Why: ${n.why_url ?? n.action_url}`
+  return `${emoji} LifeKeel: ${n.hypothesis}${impact_str} – ${conf}% confidence. Approve: ${n.approve_url} | Why: ${n.why_url ?? n.action_url}`
 }
 
 // ── HTML email builder ─────────────────────────────────────────────────────────
@@ -219,7 +219,7 @@ export function buildEmailHtml(n: InsightNotification): { subject: string; html:
   <div style="max-width:560px;margin:0 auto;background:#0c0c0e;border:1px solid rgba(255,255,255,0.08);border-radius:16px;overflow:hidden">
     <!-- Header -->
     <div style="background:#09090b;padding:20px 24px;border-bottom:1px solid rgba(255,255,255,0.06)">
-      <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;color:#6366f1;text-transform:uppercase">Kairos Studio</div>
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;color:#6366f1;text-transform:uppercase">LifeKeel Studio</div>
     </div>
     <!-- Urgency badge + title -->
     <div style="padding:24px 24px 0">
@@ -257,7 +257,7 @@ export function buildEmailHtml(n: InsightNotification): { subject: string; html:
     </div>
     <!-- Footer -->
     <div style="padding:12px 24px;font-size:11px;color:#52525b">
-      Kairos Studio · <a href="${n.action_url}" style="color:#6366f1;text-decoration:none">Unsubscribe</a>
+      LifeKeel Studio · <a href="${n.action_url}" style="color:#6366f1;text-decoration:none">Unsubscribe</a>
     </div>
   </div>
 </body>
@@ -327,10 +327,10 @@ export class EmailChannel {
   async send(to: string, fromName: string, notification: InsightNotification): Promise<DeliveryResult> {
     try {
       const { subject, html, text } = buildEmailHtml(notification)
-      const fromEmail = process.env['SENDGRID_FROM_EMAIL'] ?? 'insights@kairos.dev'
+      const fromEmail = process.env['SENDGRID_FROM_EMAIL'] ?? 'insights@lifekeel.dev'
       await sgMail.send({
         to,
-        from: { email: fromEmail, name: fromName || 'Kairos Studio' },
+        from: { email: fromEmail, name: fromName || 'LifeKeel Studio' },
         subject,
         html,
         text,

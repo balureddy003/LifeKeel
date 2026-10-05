@@ -1,5 +1,5 @@
 /**
- * POST /inbox/:id/apply-policy — turns a policy Oak found in email (the
+ * POST /inbox/:id/apply-policy — turns a policy Keel found in email (the
  * `policy` object on an email-backed feed item) into a real policies[]
  * entry, the same review-then-confirm shape as documents.ts's identically-
  * named endpoint. See that file's own test for the shared mechanics
@@ -9,7 +9,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import Fastify from 'fastify'
-import { Engine, type Insight } from '@agentoak/engine'
+import { Engine, type Insight } from '@lifekeel/engine'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { registerFamilyInboxRoutes } from '../routes/family-inbox.js'

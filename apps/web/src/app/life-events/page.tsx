@@ -33,6 +33,10 @@ export default function LifeEventsPage() {
   const { family } = useAuth()
   const [selectedType, setSelectedType] = useState<LifeEventType | null>(null)
   const [affectedMemberId, setAffectedMemberId] = useState<string>('')
+  // G6: the reporter's own account of the situation ("Mum's at County
+  // Hospital — kids need pickup Thursday"). Optional, stored verbatim,
+  // shown to the family on the event page and used to ground Ask Keel.
+  const [context, setContext] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Most recent already-reported event of the picked type, if any — the
@@ -69,7 +73,7 @@ export default function LifeEventsPage() {
     haptic('light')
     setSubmitting(true)
     setError(null)
-    const event = await reportLifeEvent(selectedType, affectedMemberId || undefined)
+    const event = await reportLifeEvent(selectedType, affectedMemberId || undefined, context || undefined)
     setSubmitting(false)
     if (!event) {
       setError("That didn't go through — nothing was recorded. You can try again whenever you're ready.")
@@ -82,7 +86,7 @@ export default function LifeEventsPage() {
     <div className="px-5 pt-2 space-y-5">
       <PageHeader
         title="Report a life event"
-        subtitle="Tell Oak what's actually happening and get a plan based on your real data"
+        subtitle="Tell Keel what's actually happening and get a plan based on your real data"
       />
 
       {!selectedType ? (
@@ -167,6 +171,24 @@ export default function LifeEventsPage() {
               </div>
             )}
 
+            <div className="mb-4">
+              <label htmlFor="life-event-context" className="text-xs text-ink-tertiary mb-2 block">
+                Anything Keel and the family should know? (optional)
+              </label>
+              <textarea
+                id="life-event-context"
+                value={context}
+                onChange={(e) => setContext(e.target.value.slice(0, 2000))}
+                rows={3}
+                maxLength={2000}
+                placeholder="e.g. She's at County Hospital, stable — kids need pickup Thursday and Friday"
+                className="glass-input w-full rounded-xl px-4 py-3 text-sm text-ink-primary outline-none resize-none"
+              />
+              <p className="text-[11px] text-ink-tertiary mt-1">
+                Shared with your family on this event, and Keel uses it to answer questions about what happened.
+              </p>
+            </div>
+
             <GlassButton onClick={handleSubmit} disabled={submitting}>
               {submitting ? <Loader2 size={18} className="animate-spin" /> : null}
               <span>{submitting ? 'Building your plan…' : existingSameType ? 'Report anyway' : 'Get my plan'}</span>
@@ -174,7 +196,7 @@ export default function LifeEventsPage() {
             {error && <p role="status" aria-live="polite" className="text-sm text-danger mt-3">{error}</p>}
 
             <button
-              onClick={() => { setSelectedType(null); setAffectedMemberId('') }}
+              onClick={() => { setSelectedType(null); setAffectedMemberId(''); setContext('') }}
               className="text-xs text-ink-tertiary font-semibold mt-3"
             >
               Choose a different event

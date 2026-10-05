@@ -46,12 +46,13 @@
 
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { getTenantCollection } from '@agentoak/platform'
+import { getTenantCollection } from '@lifekeel/platform'
 import type { FamilyGroupDoc, FamilyMemberDoc } from './family-group.js'
 import type { FinancialProfile } from './family-financial-profile.js'
 import { isFamilyAdult, ageFromDob } from '../lib/family-permissions.js'
 import { ESTATE_VAULT_CATEGORY } from './documents.js'
 import { computeMemberReadiness } from '../readiness/score.js'
+import { buildEstateSignal } from '../legacy/estate-signal.js'
 import { reconcileMemberNudges, dismissMemberNudge } from '../member-nudges.js'
 import { youthLessonsFor, type YouthLesson } from '../youth-curriculum.js'
 
@@ -64,6 +65,10 @@ const FAMILY_DETECTOR_IDS = [
   'family_emergency_fund_adequacy',
   'family_retirement_gap',
   'family_education_shortfall',
+  'family_education_pacing',
+  'family_emergency_trajectory',
+  'family_debt_health',
+  'family_policy_review',
 ]
 
 const ageFrom = ageFromDob
@@ -129,7 +134,7 @@ export interface MemberTwinResult {
 }
 
 // The twin assembled as a value — PRD-122 reuses it to ground member-
-// scoped Ask Oak answers on the same read model the member page renders.
+// scoped Ask Keel answers on the same read model the member page renders.
 // mode 'youth' (PRD-124) is a redacted projection for minors: savings
 // progress as percentages with no minor-unit amounts anywhere in the
 // payload, no earner/policies/insights/readiness, and age-banded copy —
@@ -226,6 +231,10 @@ export async function getMemberTwin(
         .map((d) => d.doc_type)
         .filter((t): t is string => typeof t === 'string')
     : null
+  // PRD-137: legacy-aware estate component, same adult gating as the
+  // vault doc types. Best-effort — builder failure degrades to the
+  // vault-boolean path.
+  const estateSignal = viewerIsAdult ? await buildEstateSignal(db, tenantId).catch(() => null) : null
 
   const age = ageFrom(member.date_of_birth)
   const isMinor = member.role === 'child' || (age !== null && age < 18)
@@ -269,6 +278,7 @@ export async function getMemberTwin(
     profile ?? null,
     { memberId, role: member.role, age, earner, policies, educationFunds: education_funds },
     estateDocTypes,
+    estateSignal,
   )
 
   return {

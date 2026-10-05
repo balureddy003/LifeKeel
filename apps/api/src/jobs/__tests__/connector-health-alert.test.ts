@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { createCredentialExpiryInsights } from '../connector-health-alert.js'
 
 /**
- * OAK-003: createCredentialExpiryInsights now atomically claims a dedup
+ * KEEL-003: createCredentialExpiryInsights now atomically claims a dedup
  * marker (connector_health_dedup, unique on tenant_id+connector_id)
  * before inserting an insight, instead of a plain findOne-then-insertOne
  * pair. A fresh in-memory store per call, faithful enough to real Mongo's
@@ -53,7 +53,7 @@ describe('createCredentialExpiryInsights', () => {
           created_at: new Date(Date.now() - 1 * 60 * 60 * 1000),
         }]
       : []
-    // OAK-003: dedup now lives in connector_health_dedup, not a findOne
+    // KEEL-003: dedup now lives in connector_health_dedup, not a findOne
     // against `insights` — "an alert already exists" means a marker doc
     // was already claimed for this tenant+connector within the window.
     const dedupSeed = existingInsight

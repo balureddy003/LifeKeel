@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
-import { Map, MessageSquare, ShieldQuestion, Users, ArrowLeft } from 'lucide-react'
+import { Map, MessageSquare, ShieldQuestion, Users, ArrowLeft, Lock } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
 const SLIDES = [
   {
@@ -29,6 +29,12 @@ const SLIDES = [
     title: 'Built for Every Age',
     subtitle: 'From your 8-year-old to your 70-year-old grandparent — the app adapts to each person.',
     bg: 'from-success/20 to-transparent',
+  },
+  {
+    icon: Lock,
+    title: 'Your Data, Your Control',
+    subtitle: 'Nothing is sold. Nothing trains models. Encrypted at rest, exportable and deletable by you from Settings — because trust isn\'t a feature, it\'s the foundation.',
+    bg: 'from-family-500/20 to-transparent',
   },
 ]
 

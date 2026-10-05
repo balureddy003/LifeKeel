@@ -11,7 +11,7 @@
 
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
-import { AuthService, getCurrencyForCountry, getLocaleForCountry } from '@agentoak/platform'
+import { AuthService, getCurrencyForCountry, getLocaleForCountry } from '@lifekeel/platform'
 import { getDb, getLoginEventsCollection } from '../db.js'
 import { checkInviteCode, consumeInviteCode } from '../invite-codes.js'
 import { PLAN_QUOTAS, createInitialBilling } from '../billing/billing-constants.js'
@@ -82,7 +82,7 @@ function sanitizeAttribution(input: Record<string, unknown> | undefined): Record
 interface LoginBody  { email: string; password: string; rememberMe?: boolean }
 interface UpdateProfileBody { name?: string; email?: string; avatar_color?: string }
 interface ChangePasswordBody { current_password: string; new_password: string }
-interface RequestResetBody { email: string; app?: 'family' | 'studio' | 'kairos' }
+interface RequestResetBody { email: string; app?: 'family' | 'studio' | 'lifekeel' }
 interface ResetPasswordBody { token: string; new_password: string }
 
 export const AVATAR_COLORS = ['#f59e0b','#10b981','#3b82f6','#8b5cf6','#ef4444','#06b6d4','#f97316']
@@ -108,7 +108,7 @@ function generateEmailVerificationToken(): string {
  *  page, which POSTs the token back to /auth/verify-email. Never logged:
  *  possession of this URL proves mailbox ownership. */
 function verificationUrl(token: string): string {
-  const appUrl = (process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
+  const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
   return `${appUrl}/verify-email?token=${token}`
 }
 
@@ -151,7 +151,7 @@ export async function registerAuthUserRoutes(
   /** POST /auth/signup */
   app.post<{ Body: SignupBody }>(
     '/auth/signup',
-    // OAK-025: the 409 on an existing email is a genuine UX need (a user
+    // KEEL-025: the 409 on an existing email is a genuine UX need (a user
     // needs to know why signup failed) — making it generic would break
     // that without meaningfully stopping a determined attacker. This
     // route-level limit raises the cost of a bulk enumeration sweep
@@ -393,7 +393,7 @@ export async function registerAuthUserRoutes(
     // to onboarding without waiting for /auth/me. Without this, the login
     // response has active_vertical: undefined, the AuthContext redirect
     // effect fires before /auth/me resolves, and the user sees the
-    // "Welcome to Kairos" onboarding screen on every login.
+    // "Welcome to LifeKeel" onboarding screen on every login.
     const db = await getDb()
     const settings = await db.collection('tenant_settings').findOne({ tenant_id: user.tenant_id })
 
@@ -670,16 +670,16 @@ export async function registerAuthUserRoutes(
 
       // Only apps with a page that actually consumes this token get a real
       // email — family (apps/family/src/app/reset-password/confirm) and now
-      // kairos (apps/kairos/src/app/reset-password/confirm). Studio's
+      // lifekeel (apps/lifekeel/src/app/reset-password/confirm). Studio's
       // /reset-password is request-only with no completion step, so sending
       // a Studio link here would just be a dead end. Skip sending (keeping
       // prior behavior) until Studio has a matching confirm page.
       if (originApp === 'family') {
-        const appUrl = (process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
+        const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
         const resetUrl = `${appUrl}/reset-password/confirm?token=${resetToken}`
         await sendPasswordResetEmail(user.email, user.name, resetUrl)
-      } else if (originApp === 'kairos') {
-        const appUrl = (process.env['KAIROS_URL'] ?? 'http://localhost:3003').replace(/\/$/, '')
+      } else if (originApp === 'lifekeel') {
+        const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3003').replace(/\/$/, '')
         const resetUrl = `${appUrl}/reset-password/confirm?token=${resetToken}`
         await sendPasswordResetEmail(user.email, user.name, resetUrl)
       }

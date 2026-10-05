@@ -5,10 +5,10 @@ or contact the repo owner directly rather than filing publicly.
 
 ## Repo layout
 
-- `apps/web` — the Agent Oak Next.js frontend (static-exported to Firebase Hosting).
+- `apps/web` — the LifeKeel Next.js frontend (static-exported to Firebase Hosting).
 - `apps/api` — kairos-ai's `apps/api` Fastify backend, copied wholesale on
   2026-09-12 (to keep parity with the source repo and minimize risk), then
-  trimmed on the same day to what Agent Oak actually calls plus the marketing
+  trimmed on the same day to what LifeKeel actually calls plus the marketing
   surfaces (blog, case studies, growth events) that support self-serve
   growth. See "Trimmed from the full copy" below for exactly what was
   removed. Currently NOT deployed — `apps/web` still points at the shared
@@ -31,7 +31,7 @@ or contact the repo owner directly rather than filing publicly.
 
 The full copy included kairos-ai's entire multi-vertical SaaS surface —
 trading, property, social, SCIM/enterprise identity, federated learning,
-marketplace, teams, goals/workflows — none of it reachable from Agent Oak.
+marketplace, teams, goals/workflows — none of it reachable from LifeKeel.
 Trimmed down `apps/api/src/server.ts` from 67 registered route modules to
 13 (auth, connector-credentials, family group/financial-profile/connectors/
 inbox, documents, billing, insights, blog, case-studies, growth-events),
@@ -45,8 +45,8 @@ regardless of vertical). Also removed:
   invoice/payment/portfolio signals). Kept: billing cron, calibration
   drift/fitting, daily digest, retention worker, insight SLA/escalation,
   FeatureHashScorer offline eval, connector sync/health/token-refresh,
-  email-scan — all generic or directly relevant to Agent Oak's kept features.
-- The `@kairos/skills` package entirely (was only referenced in a doc
+  email-scan — all generic or directly relevant to LifeKeel's kept features.
+- The `@lifekeel/skills` package entirely (was only referenced in a doc
   comment after its one consumer route was removed).
 - ~18 test files whose target route/job was deleted; kept 10 covering
   still-live code (auth-users, auth-social, connector-credentials, billing,
@@ -116,7 +116,7 @@ data, not a functional read of the deleted YAML.
 
 ## Removed: the action executor's money-moving and public-publishing action types (2026-09-13)
 
-A go-live readiness audit (OAK-002) found that `apps/api/src/actions/action-executor.ts`
+A go-live readiness audit (KEEL-002) found that `apps/api/src/actions/action-executor.ts`
 — reachable, live, and wired into `POST /insights/:id/approve` — keyword-
 matched an insight's free-text action label into 5 real external side
 effects: `stripe_refund` (a real Stripe refund), `stripe_pause` (cancels a
@@ -152,7 +152,7 @@ executor was left wired into a currently-shipped route instead.
 
 - **Auth token in `localStorage`.** `apps/web/src/lib/auth-context.tsx` and
   `apps/web/src/lib/api.ts` store the bearer token in `localStorage`
-  (`agentoak_token`), which is readable by any script running on the page (XSS).
+  (`lifekeel_token`), which is readable by any script running on the page (XSS).
   The correct fix is for `apps/api` to set an `httpOnly`, `Secure`, `SameSite`
   cookie instead of returning a bearer token. Now that `apps/api` lives in
   this repo, this is fixable here — just not done yet.

@@ -16,7 +16,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import yaml from 'js-yaml'
-import { repoRoot, formatMoney } from '@agentoak/platform'
+import { repoRoot, formatMoney } from '@lifekeel/platform'
 import type { FinancialProfile } from '../routes/family-financial-profile.js'
 
 export type LifeEventType = 'job_loss' | 'bereavement' | 'disability' | 'medical' | 'car' | 'property' | 'travel'
@@ -27,7 +27,7 @@ export interface PlaybookStep {
   body: string
   /** Eligible for the prepare/draft affordance (PRD-103's insight.prepare, reused). */
   contact: boolean
-  /** Real phone/email Oak has on file for this step, when a matching policy states one — see resolveStepContacts. */
+  /** Real phone/email Keel has on file for this step, when a matching policy states one — see resolveStepContacts. */
   contacts?: StepContact[]
   /**
    * The family's data already covers this step's concern — e.g. income
@@ -269,7 +269,7 @@ function renderCarStep(stepId: string, profile: FinancialProfile): string {
       const list = car.map((p) => p.provider + (p.policy_number ? ` (policy ${p.policy_number})` : '')).join(', ')
       return `Based on your real data, your car insurance on file: ${list}. Report the accident to the insurer within their notification window — have the policy number and the other party's details ready.`
     }
-    return "We don't have a car insurance policy on file for your family. If you're covered, find the policy number and the insurer's claim line now — and add the policy to your financial profile later so Oak can quote it back to you here."
+    return "We don't have a car insurance policy on file for your family. If you're covered, find the policy number and the insurer's claim line now — and add the policy to your financial profile later so Keel can quote it back to you here."
   }
   return ''
 }
@@ -423,11 +423,51 @@ function renderComputedStep(
   return renderDisabilityStep(stepId, profile, affectedMemberId)
 }
 
+// Every renderer below assumes the full schema shape — but a profile doc
+// isn't guaranteed to be schema-complete: documents.ts's
+// apply-to-profile upserts a bare {household.life_cover_minor: X} profile
+// long before the user ever opens the wizard, so policies[],
+// education_funds[] and household.members[] can be genuinely absent on a
+// real read. Normalize once here so no per-step renderer needs its own
+// null-shuffle.
+function normalizeProfile(profile: FinancialProfile): FinancialProfile {
+  const partial = profile as {
+    household?: Partial<FinancialProfile['household']>
+    emergency_fund?: Partial<FinancialProfile['emergency_fund']>
+    education_funds?: FinancialProfile['education_funds']
+    policies?: FinancialProfile['policies']
+  }
+  return {
+    ...profile,
+    household: {
+      employment_status: 'employed',
+      monthly_salary_minor: 0,
+      income_protection_monthly_minor: 0,
+      life_cover_minor: 0,
+      mortgage_outstanding_minor: 0,
+      annual_living_expenses_minor: 0,
+      monthly_debt_payments_minor: 0,
+      members: [],
+      ...partial.household,
+    },
+    emergency_fund: {
+      emergency_savings_minor: 0,
+      monthly_expenses_minor: 0,
+      has_high_interest_debt: false,
+      high_interest_debt_balance_minor: 0,
+      ...partial.emergency_fund,
+    },
+    education_funds: partial.education_funds ?? [],
+    policies: partial.policies ?? [],
+  }
+}
+
 export function renderPlaybook(
   eventType: LifeEventType,
-  profile: FinancialProfile,
+  rawProfile: FinancialProfile,
   affectedMemberId?: string,
 ): Playbook {
+  const profile = normalizeProfile(rawProfile)
   const raw = loadRawPlaybook(eventType)
   return {
     event_type: raw.event_type,

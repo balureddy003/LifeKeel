@@ -1,6 +1,6 @@
 // ── Action Receipt ─────────────────────────────────────────────────────────
 //
-// The only types from the original Kairos Workflow Engine's type universe
+// The only types from the original LifeKeel Workflow Engine's type universe
 // still consumed outside this package (apps/api/src/db.ts, routes/insights.ts).
 // Everything else (WorkflowDef, node configs, approval types, etc.) belonged
 // to the WorkflowEngine/WorkflowLoader machinery removed on 2026-09-12 —
@@ -11,7 +11,7 @@ export type ActionReceiptOutcome =
   | 'dismissed'         // human dismissed — action skipped
   | 'auto_approved'     // timeout auto-approve — action executed
   | 'auto_dismissed'    // timeout auto-dismiss — action skipped
-  | 'policy_blocked'    // kairos-guard or dry_run blocked action
+  | 'policy_blocked'    // lifekeel-guard or dry_run blocked action
   | 'budget_blocked'    // LLM budget guard stopped action
   // Per-action execution outcomes (apps/api/src/actions/action-executor.ts) —
   // one receipt per recommended action on an approved insight, distinct from

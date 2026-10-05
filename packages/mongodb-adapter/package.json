@@ -1,5 +1,5 @@
 {
-  "name": "@agentoak/mongodb-adapter",
+  "name": "@lifekeel/mongodb-adapter",
   "version": "0.1.0",
   "description": "MongoDB adapters for the outcome-lifecycle runtime ports",
   "type": "module",
@@ -19,12 +19,12 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@agentoak/runtime": "workspace:*",
-    "@agentoak/specifications": "workspace:*",
+    "@lifekeel/runtime": "workspace:*",
+    "@lifekeel/specifications": "workspace:*",
     "mongodb": "^7.3.0"
   },
   "devDependencies": {
-    "@agentoak/conformance": "workspace:*",
+    "@lifekeel/conformance": "workspace:*",
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0",
     "vitest": "^4.1.9"

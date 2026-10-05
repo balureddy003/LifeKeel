@@ -14,7 +14,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { GridFSBucket, type Db } from 'mongodb'
-import { createLogger, getTenantCollection, createLlmRouterFromEnv, encryptIfNeeded, decryptIfNeeded } from '@agentoak/platform'
+import { createLogger, getTenantCollection, createLlmRouterFromEnv, encryptIfNeeded, decryptIfNeeded } from '@lifekeel/platform'
 import { fetchRecentEmails, searchPolicyEmails, type ImapCredentials } from '../email/imap-client.js'
 import { refreshGoogleAccessToken } from '../email/gmail-oauth.js'
 import { classifyEmail } from '../email/classify.js'

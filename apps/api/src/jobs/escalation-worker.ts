@@ -10,7 +10,7 @@ export class EscalationWorker {
       const cutoff = new Date(now.getTime() - escalation.timeout_minutes * 60_000)
       const insights = await this.db.collection('insights').find({ tenant_id: preference['tenant_id'], state: 'sent', delivered_at: { $lte: cutoff }, escalated_at: { $exists: false } }).toArray()
       for (const insight of insights) {
-        // OAK-003: the "not already escalated" check must live in the
+        // KEEL-003: the "not already escalated" check must live in the
         // filter of the atomic write that claims it, not in the find()
         // above — that find() and this write used to be a separate
         // insertOne+updateOne pair, so two API replicas running this same

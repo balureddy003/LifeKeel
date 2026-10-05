@@ -26,7 +26,7 @@ primary intake channel; manual entry is the fallback"). Since
 `policy_renewal_window` and the PRD-102/105 protection-gap rules read
 exclusively from `policies[]`, this meant the entire protection-gap
 detector story ran on manually-typed data regardless of how good OCR was —
-this is the one gap that sits upstream of everything else "Oak understands
+this is the one gap that sits upstream of everything else "Keel understands
 your family's protection" depends on.
 
 ## Market bar

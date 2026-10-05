@@ -19,7 +19,7 @@ import { queueManager } from '../queue/QueueManager.js'
 import { WEBHOOK_INGEST_QUEUE } from '../queue/WebhookQueue.js'
 import { rolesWithPermission, type PlatformRole } from './operator-auth.js'
 import { draftBlogPromoPost } from '../routes/marketing-posts.js'
-import type { LlmFn } from '@agentoak/platform'
+import type { LlmFn } from '@lifekeel/platform'
 
 export interface AutopilotRuleConfig {
   rule: string

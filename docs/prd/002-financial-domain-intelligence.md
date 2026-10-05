@@ -14,7 +14,7 @@ and it's the only domain where the vision is fully real today.
 ## Market bar
 
 See [000](000-market-landscape-and-positioning.md). Policygenius/Ladder
-compute a number once, on demand. Agent Oak's version already beats that
+compute a number once, on demand. LifeKeel's version already beats that
 bar structurally — it re-evaluates whenever the profile is resubmitted —
 but doesn't yet re-evaluate on a schedule or in response to new data
 (a document upload, a connected account), which is the next increment

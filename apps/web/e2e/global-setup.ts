@@ -101,7 +101,7 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     origins: [
       {
         origin: WEB_BASE,
-        localStorage: [{ name: 'agentoak_token', value: token }],
+        localStorage: [{ name: 'lifekeel_token', value: token }],
       },
     ],
   }

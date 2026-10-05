@@ -8,7 +8,7 @@
  * (/blog/posts, /blog/posts/:slug, /blog/posts/category/:category) are
  * live — apps/web calls them. The write surface (POST/PUT/DELETE and
  * /admin/blog/posts) has no caller in any shipped UI; it is PARKED, not
- * deleted: it's auth-gated via x-kairos-admin-key (absent the env var it
+ * deleted: it's auth-gated via x-lifekeel-admin-key (absent the env var it
  * can never authorize), it's how blog content plausibly gets managed
  * out-of-band today, and removing it buys nothing — ~100 lines, already
  * small. If an admin UI is never built, the write surface can go in a
@@ -42,8 +42,8 @@ type BlogPost = z.infer<typeof BlogPostSchema> & {
 }
 
 function adminAuthorized(headers: Record<string, unknown>): boolean {
-  const expected = process.env['KAIROS_ADMIN_KEY']
-  return Boolean(expected && headers['x-kairos-admin-key'] === expected)
+  const expected = process.env['LIFEKEEL_ADMIN_KEY']
+  return Boolean(expected && headers['x-lifekeel-admin-key'] === expected)
 }
 
 export function registerBlogRoutes(app: FastifyInstance, db: Db): void {

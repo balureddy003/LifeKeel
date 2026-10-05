@@ -3,7 +3,7 @@ import { GUIDES } from './guides/guides-data'
 
 // Same base as layout.tsx's metadataBase — the real Firebase Hosting
 // target (.firebaserc). If a custom domain ever lands, both places change.
-const SITE_URL = 'https://agent-oak.ai'
+const SITE_URL = 'https://lifekeel.co.uk'
 
 // Required under output:'export' — the file is generated at build time.
 export const dynamic = 'force-static'

@@ -1,5 +1,5 @@
 /**
- * OAK-012: POST /assistant/ask previously wrote no audit trail at all —
+ * KEEL-012: POST /assistant/ask previously wrote no audit trail at all —
  * every other insight-affecting action (approve, dismiss, prepare) is
  * audited, but asking the assistant a question about a family's real
  * financial data wasn't. Verifies the route now calls
@@ -18,6 +18,17 @@ import { registerAssistantRoutes } from '../assistant.js'
 // the test. Same pattern as assistant.test.ts.
 vi.mock('../../db.js', () => ({
   getInsightsCollection: vi.fn(async () => ({
+    find: () => ({
+      sort: () => ({
+        limit: () => ({
+          toArray: async () => [],
+        }),
+      }),
+    }),
+  })),
+  // G6 life-event context grounding also reads family.life_event signals
+  // via the db.ts singleton — same hang-without-mock problem.
+  getSignalsCollection: vi.fn(async () => ({
     find: () => ({
       sort: () => ({
         limit: () => ({
@@ -52,7 +63,7 @@ function makeAuditDb() {
   return { db, insertOneFn }
 }
 
-describe('OAK-012: POST /assistant/ask writes an audit log entry', () => {
+describe('KEEL-012: POST /assistant/ask writes an audit log entry', () => {
   let auditInsertOne: ReturnType<typeof vi.fn>
 
   beforeEach(() => {

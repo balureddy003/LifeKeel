@@ -20,7 +20,7 @@
 
 import { FileIngestor } from './file-ingestor.js'
 import type { ColumnMapping, ParsedEvent } from './file-ingestor.js'
-import type { Engine, Insight } from '@agentoak/engine'
+import type { Engine, Insight } from '@lifekeel/engine'
 import { safeFetch } from './safe-fetch.js'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

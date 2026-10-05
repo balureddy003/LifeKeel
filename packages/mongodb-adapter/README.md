@@ -1,5 +1,5 @@
-# @agentoak/mongodb-adapter
+# @lifekeel/mongodb-adapter
 
 MongoDB implementation of the outcome-lifecycle runtime ports from
-`@agentoak/runtime`/`@agentoak/specifications` — the real backing store for
-outcome tracking. Verified against `@agentoak/conformance`'s test suite.
+`@lifekeel/runtime`/`@lifekeel/specifications` — the real backing store for
+outcome tracking. Verified against `@lifekeel/conformance`'s test suite.

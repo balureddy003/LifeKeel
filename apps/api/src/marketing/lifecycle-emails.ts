@@ -29,7 +29,7 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
 import type { Db } from 'mongodb'
 import sgMail from '@sendgrid/mail'
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 import { getPlatformConfig } from '../operator/platform-config.js'
 import { getGrowthEventsCollection } from '../db.js'
 
@@ -118,7 +118,7 @@ function unsubUrl(base: string, leadId: string): string {
 // ── Sending ────────────────────────────────────────────────────────────────
 
 function getFromEmail(): string {
-  return process.env['SENDGRID_FROM_EMAIL'] ?? 'hello@agentoak.ai'
+  return process.env['SENDGRID_FROM_EMAIL'] ?? 'hello@lifekeel.co.uk'
 }
 
 export async function sendEmail(
@@ -138,7 +138,7 @@ export async function sendEmail(
   sgMail.setApiKey(apiKey)
   await sgMail.send({
     to,
-    from: { email: getFromEmail(), name: 'Agent Oak' },
+    from: { email: getFromEmail(), name: 'LifeKeel' },
     subject,
     html,
     trackingSettings: {
@@ -154,7 +154,7 @@ export function wrap(body: string, unsubLink?: string): string {
   return `<div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;color:#1a1a2e;">
 ${body}
 <p style="color:#9a9ab0;font-size:11px;margin-top:32px;border-top:1px solid #eee;padding-top:12px;">
-Agent Oak — your family's digital twin.${unsubLink ? ` <a href="${unsubLink}" style="color:#9a9ab0;">Unsubscribe</a>` : ''}
+LifeKeel — your family's digital twin.${unsubLink ? ` <a href="${unsubLink}" style="color:#9a9ab0;">Unsubscribe</a>` : ''}
 </p></div>`
 }
 
@@ -167,8 +167,8 @@ function leadWelcomeBody(firstName: string, scoreBand: string | undefined, appUr
   const band = scoreBand ? ` Your readiness check came back <strong>${scoreBand}</strong>.` : ''
   return wrap(`
     <p>Hi ${firstName},</p>
-    <p>Thanks for checking your family's readiness with Agent Oak.${band}</p>
-    <p>Oak watches the signals families usually find out too late — coverage gaps,
+    <p>Thanks for checking your family's readiness with LifeKeel.${band}</p>
+    <p>Keel watches the signals families usually find out too late — coverage gaps,
     savings drift, renewal deadlines — and tells you what's on file before it matters.
     Your free account holds your result and starts your family's profile.</p>
     ${cta(`${appUrl}/signup?utm_source=lifecycle&utm_medium=email&utm_campaign=lead_nurture&utm_content=welcome`, 'See your result')}
@@ -181,7 +181,7 @@ function leadEducationBody(firstName: string, appUrl: string, unsub: string): st
     <p>Most families have the same three blind spots: an emergency buffer that looks
     fine until it isn't, a policy that renewed into a worse rate, and an education
     fund that's quietly behind target.</p>
-    <p>Oak's detectors look for exactly these — on your numbers, not averages.
+    <p>Keel's detectors look for exactly these — on your numbers, not averages.
     A few minutes of setup is all it takes.</p>
     ${cta(`${appUrl}/signup?utm_source=lifecycle&utm_medium=email&utm_campaign=lead_nurture&utm_content=day3`, 'Set up your family profile')}
   `, unsub)
@@ -193,7 +193,7 @@ function leadLastCallBody(firstName: string, appUrl: string, unsub: string): str
     <p>Last note from us — your readiness result is still saved. If the timing's
     not right, no problem; if you'd rather not hear from us again, the unsubscribe
     link below is one click.</p>
-    <p>Whenever you're ready, Oak is.</p>
+    <p>Whenever you're ready, Keel is.</p>
     ${cta(`${appUrl}/signup?utm_source=lifecycle&utm_medium=email&utm_campaign=lead_nurture&utm_content=day7`, 'Pick up where you left off')}
   `, unsub)
 }
@@ -201,8 +201,8 @@ function leadLastCallBody(firstName: string, appUrl: string, unsub: string): str
 function activationBody(firstName: string, appUrl: string): string {
   return wrap(`
     <p>Hi ${firstName},</p>
-    <p>Your Agent Oak account is set up — the last step is your family profile
-    (about 2 minutes). That's what turns Oak's detectors on: until then it has
+    <p>Your LifeKeel account is set up — the last step is your family profile
+    (about 2 minutes). That's what turns Keel's detectors on: until then it has
     nothing to watch.</p>
     ${cta(`${appUrl}/family-setup?utm_source=lifecycle&utm_medium=email&utm_campaign=activation`, 'Finish family setup')}
   `)
@@ -211,10 +211,10 @@ function activationBody(firstName: string, appUrl: string): string {
 function upgradeBody(firstName: string, appUrl: string): string {
   return wrap(`
     <p>Hi ${firstName},</p>
-    <p>You've been using Agent Oak to watch your family's finances — nice work.
+    <p>You've been using LifeKeel to watch your family's finances — nice work.
     Paid plans unlock the two things free can't do: AI extraction from uploaded
     documents (policies, statements — no manual entry) and AI summaries of the
-    emails Oak scans.</p>
+    emails Keel scans.</p>
     <p>If you're mid-document-pile, that's the upgrade worth it.</p>
     ${cta(`${appUrl}/upgrade?utm_source=lifecycle&utm_medium=email&utm_campaign=upgrade`, 'See paid plans')}
   `)
@@ -224,10 +224,10 @@ function trialEndingBody(firstName: string, endsAt: Date, appUrl: string): strin
   const date = endsAt.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
   return wrap(`
     <p>Hi ${firstName},</p>
-    <p>Your Agent Oak trial ends <strong>${date}</strong>. After that, AI document
+    <p>Your LifeKeel trial ends <strong>${date}</strong>. After that, AI document
     extraction and inbox summaries pause — everything you've already extracted
     stays exactly where it is.</p>
-    <p>If Oak's been pulling signal out of your family's paperwork, upgrading keeps
+    <p>If Keel's been pulling signal out of your family's paperwork, upgrading keeps
     it running without a gap.</p>
     ${cta(`${appUrl}/upgrade?utm_source=lifecycle&utm_medium=email&utm_campaign=trial&utm_content=ending`, 'Keep AI features on')}
   `)
@@ -236,8 +236,8 @@ function trialEndingBody(firstName: string, endsAt: Date, appUrl: string): strin
 function trialExpiredBody(firstName: string, appUrl: string): string {
   return wrap(`
     <p>Hi ${firstName},</p>
-    <p>Your Agent Oak trial has ended — AI document extraction and inbox summaries
-    are paused. Your documents, insights, and everything Oak already found are
+    <p>Your LifeKeel trial has ended — AI document extraction and inbox summaries
+    are paused. Your documents, insights, and everything Keel already found are
     untouched.</p>
     <p>Any time you want the AI back on, it's one upgrade away.</p>
     ${cta(`${appUrl}/upgrade?utm_source=lifecycle&utm_medium=email&utm_campaign=trial&utm_content=expired`, 'Reactivate AI features')}
@@ -247,10 +247,10 @@ function trialExpiredBody(firstName: string, appUrl: string): string {
 function winbackBody(firstName: string, appUrl: string): string {
   return wrap(`
     <p>Hi ${firstName},</p>
-    <p>Your Oak Plus subscription has ended — your account moved back to the free
+    <p>Your Keel Plus subscription has ended — your account moved back to the free
     plan, and nothing was deleted: your family's profile, documents, and every
-    insight Oak already found are still there.</p>
-    <p>The free plan keeps working — your credit balance refills monthly, so Oak
+    insight Keel already found are still there.</p>
+    <p>The free plan keeps working — your credit balance refills monthly, so Keel
     keeps watching the basics. If it was the paid features you miss — AI document
     extraction and inbox summaries — they're one step away.</p>
     ${cta(`${appUrl}/upgrade?utm_source=lifecycle&utm_medium=email&utm_campaign=winback`, 'See your account')}
@@ -380,7 +380,7 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
       const firstName = String(u['name'] ?? 'there').split(' ')[0] || 'there'
       jobs.push({
         key, sequence: 'trial', step, recipient: u['id'] as string, email: u['email'] as string,
-        subject: ending ? 'Your Agent Oak trial ends soon' : 'Your trial has ended — AI is paused',
+        subject: ending ? 'Your LifeKeel trial ends soon' : 'Your trial has ended — AI is paused',
         html: ending ? trialEndingBody(firstName, endsAt, appUrl) : trialExpiredBody(firstName, appUrl),
       })
     }
@@ -430,7 +430,7 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
         if (sentKeys.has(key)) continue
         jobs.push({
           key, sequence: 'winback', step: 'return', recipient: u['id'] as string, email: u['email'] as string,
-          subject: 'Your Oak data is still here',
+          subject: 'Your Keel data is still here',
           html: winbackBody(String(u['name'] ?? 'there').split(' ')[0] || 'there', appUrl),
         })
       }
@@ -498,7 +498,7 @@ export async function runLifecycleSweep(db: Db, opts: { maxPerSweep?: number; ap
     log.info({}, 'marketing_paused — lifecycle sweep skipped')
     return []
   }
-  const appUrl = (opts.appUrl ?? process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
+  const appUrl = (opts.appUrl ?? process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
   const max = opts.maxPerSweep ?? 100
   const jobs = await collectJobs(db, appUrl)
   const sent: LifecycleSendDoc[] = []

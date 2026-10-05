@@ -1,4 +1,4 @@
-# @agentoak/workflows
+# @lifekeel/workflows
 
 What `apps/api` genuinely uses from this package today:
 - Connector OAuth/credential plumbing (`connector-credentials.ts` shares

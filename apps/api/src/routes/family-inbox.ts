@@ -1,7 +1,7 @@
 /**
- * Family Inbox Routes — Oak's recommendations feed (NOT a mail reader).
+ * Family Inbox Routes — Keel's recommendations feed (NOT a mail reader).
  *
- * GET  /inbox           — what Oak noticed and what to do next: open family
+ * GET  /inbox           — what Keel noticed and what to do next: open family
  *                         insights (protection/retirement/… gaps) plus
  *                         policy details found in the connected mailbox
  * POST /inbox/:id/dismiss — dismiss an inbox item
@@ -15,9 +15,10 @@
 
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import type { Engine, Insight } from '@agentoak/engine'
-import { createLogger, getTenantCollection } from '@agentoak/platform'
+import type { Engine, Insight } from '@lifekeel/engine'
+import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { evaluateProfileAndGenerateInsights, FinancialProfileSchema } from './family-financial-profile.js'
+import { listInsightAttributions, recordInsightAction } from '../lib/insight-attribution.js'
 import type { PolicyType } from '../ocr/profile-mapping.js'
 
 const log = createLogger({ service: 'family-inbox', version: '0.0.0' })
@@ -81,7 +82,12 @@ const DETECTOR_ROUTE: Record<string, string> = {
   family_protection_gap: '/health/protection',
   family_retirement_gap: '/health/wealth',
   family_education_shortfall: '/health/goals',
+  family_education_pacing: '/health/goals',
   family_emergency_fund_adequacy: '/health/savings',
+  family_emergency_trajectory: '/health/savings',
+  family_estate_readiness: '/health/estate',
+  family_debt_health: '/cashflow',
+  family_policy_review: '/health/protection',
   family_vault_reminder: '/vault',
 }
 
@@ -92,7 +98,7 @@ const DETECTOR_ROUTE: Record<string, string> = {
  */
 function feedTitle(i: Record<string, unknown>): string {
   const raw = String(i['hypothesis'] ?? i['rule_id'] ?? '')
-  if (!raw) return 'Oak noticed something'
+  if (!raw) return 'Keel noticed something'
   if (/\s/.test(raw)) return raw
   const words = raw.replace(/_/g, ' ')
   return words.charAt(0).toUpperCase() + words.slice(1)
@@ -111,10 +117,10 @@ function parseDocDate(raw: unknown): Date | null {
 const DEADLINE_WINDOW_DAYS = 30
 
 /**
- * An insurance document Oak has read, as a feed item: a deadline inside the
+ * An insurance document Keel has read, as a feed item: a deadline inside the
  * next 30 days (e.g. a claim form) ranks high; otherwise a policy that was
  * found gets a "review and add to your profile" nudge. Informational only —
- * Oak never files or submits anything.
+ * Keel never files or submits anything.
  */
 function documentToFeedItem(d: Record<string, unknown>) {
   const fields = (d['extracted_data'] as Record<string, string> | undefined) ?? {}
@@ -132,9 +138,9 @@ function documentToFeedItem(d: Record<string, unknown>) {
     return {
       id: `${DOC_PREFIX}${String(d['id'])}`,
       emoji: '',
-      source: 'Oak',
+      source: 'Keel',
       subject: `${who} form due ${daysLeft === 0 ? 'today' : daysLeft === 1 ? 'tomorrow' : `in ${daysLeft} days`}`,
-      aiSummary: `A document from ${who} lists ${fields['due_date']} as a due date.${facts ? ` ${facts}.` : ''} Check it with your provider — Oak only reads it and does not submit anything.`,
+      aiSummary: `A document from ${who} lists ${fields['due_date']} as a due date.${facts ? ` ${facts}.` : ''} Check it with your provider — Keel only reads it and does not submit anything.`,
       actionLabel: 'Open document',
       actionType: 'review' as const,
       priority: 'high' as const,
@@ -146,9 +152,9 @@ function documentToFeedItem(d: Record<string, unknown>) {
   return {
     id: `${DOC_PREFIX}${String(d['id'])}`,
     emoji: '',
-    source: 'Oak',
+    source: 'Keel',
     subject: `Policy found: ${who}${type ? ` ${type}` : ''}`,
-    aiSummary: `Oak read a document from ${who}.${facts ? ` ${facts}.` : ''} Review it and add it to your profile so your protection check reflects it.`,
+    aiSummary: `Keel read a document from ${who}.${facts ? ` ${facts}.` : ''} Review it and add it to your profile so your protection check reflects it.`,
     actionLabel: 'Review policy',
     actionType: 'review' as const,
     priority: 'medium' as const,
@@ -158,14 +164,14 @@ function documentToFeedItem(d: Record<string, unknown>) {
   }
 }
 
-/** An open insight, shaped as a feed item ("Oak noticed X — here's the next step"). */
+/** An open insight, shaped as a feed item ("Keel noticed X — here's the next step"). */
 function insightToFeedItem(i: Record<string, unknown>) {
   const actions = Array.isArray(i['actions']) ? (i['actions'] as unknown[]).filter((a): a is string => typeof a === 'string') : []
   const created = i['created_at'] instanceof Date ? i['created_at'].toISOString() : String(i['created_at'] ?? '')
   return {
     id: `${INSIGHT_PREFIX}${String(i['id'])}`,
     emoji: '',
-    source: 'Oak',
+    source: 'Keel',
     subject: feedTitle(i),
     aiSummary: String(i['reasoning'] ?? '').slice(0, 400),
     actionLabel: (actions[0] ?? 'Review').slice(0, 80),
@@ -174,6 +180,10 @@ function insightToFeedItem(i: Record<string, unknown>) {
     date: created,
     read: false,
     route: DETECTOR_ROUTE[String(i['detector_id'])] ?? '/health/protection',
+    // Adaptive-copy count (insights-persist.ts) — the client renders a
+    // "Flagged N times" marker so a re-firing gap reads as a recurrence,
+    // not a fresh discovery.
+    ...(typeof i['repeat_count'] === 'number' ? { repeatCount: i['repeat_count'] } : {}),
   }
 }
 
@@ -235,9 +245,19 @@ export function registerFamilyInboxRoutes(
             .limit(limit)
             .toArray()
 
-      const fromInsights = insightDocs.map((i: Record<string, unknown>) => insightToFeedItem(i))
+      // Insight→action attribution — an insight the family already acted
+      // on (profile update, policy added, approval, playbook step) within
+      // its window gets the "acted on" marker rather than reading as
+      // still-untouched.
+      const actedOn = new Set(
+        (await listInsightAttributions(db, tenant_id, { sinceDays: 30 }).catch(() => [])).map((a) => a.insight_id),
+      )
+      const fromInsights = insightDocs.map((i: Record<string, unknown>) => ({
+        ...insightToFeedItem(i),
+        ...(actedOn.has(String(i['id'])) ? { actedOn: true } : {}),
+      }))
 
-      // Insurance documents Oak has read (uploaded or found in email) — a
+      // Insurance documents Keel has read (uploaded or found in email) — a
       // claim form with a deadline, or a policy not yet on the profile.
       const insuranceDocs = unreadOnly
         ? []
@@ -270,7 +290,7 @@ export function registerFamilyInboxRoutes(
   )
 
   // ── POST /inbox/:id/apply-policy ────────────────────────────────────────
-  // Turns a policy Oak found in email (item.policy — see classify.ts) into
+  // Turns a policy Keel found in email (item.policy — see classify.ts) into
   // a real policies[] entry on the Financial Profile, the same review-then-
   // confirm shape documents.ts's identically-named endpoint already uses
   // for OCR'd documents. The email item's own extracted facts only ever
@@ -326,6 +346,11 @@ export function registerFamilyInboxRoutes(
       // document's suggestion gets (documents.ts sets feed_dismissed;
       // dismissing this item is this collection's equivalent).
       await col.updateOne({ id: req.params.id, tenant_id }, { $set: { dismissed: true, dismissed_at: new Date() } })
+
+      // Insight→action attribution before the re-run, same reasoning as
+      // documents.ts — this apply is a response to what was flagged, not
+      // to what regenerateInsights is about to create.
+      await recordInsightAction(db, tenant_id, 'policy_added').catch(() => {})
 
       const insightsGenerated = await regenerateInsights(tenant_id)
 

@@ -1,31 +1,56 @@
-# Agent Oak
+# LifeKeel
 
-> Agent Oak is a family finance and preparedness app: a guided, step-by-step
-> response plan for job loss, medical emergencies, retirement, and other life
-> events — built from a family's own data, not generic advice. Informational
-> and educational only; not financial, investment, tax, or legal advice, and
-> not a substitute for professional emergency services.
+> The always-on readiness system for your family. LifeKeel continuously
+> monitors whether a family is protected — emergency fund, insurance coverage,
+> estate documents, retirement trajectory — and surfaces what's missing before
+> anyone needs to ask. Not a budgeting app, not an AI financial advisor, not
+> a vault. Informational and educational only; not financial, investment, tax,
+> or legal advice, and not a substitute for professional emergency services.
 
-Agent Oak is free to start, with no credit card required. It is not an
+LifeKeel is free to start, with no credit card required. It is not an
 autonomous financial agent — it does not move money, execute trades, or take
 action on a family's behalf without a human approving each step.
 
+## What makes it different
+
+- Continuous detection — 9 YAML-based detectors across protection, savings,
+  retirement, education, debt, and estate run on every data change and on a
+  daily sweep, even when nobody logs in. Most tools wait for a question.
+- Per-member reasoning — each family member (earner, partner, child) gets
+  their own digital twin, readiness score, insights, and scenarios scoped to
+  their life stage. No competitor found does per-member financial reasoning
+  within a shared household.
+- Crisis-native — Emergency Mode with 7 event types and step-by-step
+  playbooks built from the family's real income, policies, and savings, not
+  generic checklists. The closest parallel (Empathy) handles post-event
+  support; Keel handles pre-event readiness.
+- Structurally neutral — subscription-only revenue (£7.99/mo). Zero
+  commissions, zero affiliate links, zero product recommendations. Every
+  insurance gap tool, coverage scorer, and "AI advisor" found in market
+  research makes money when you buy what they suggest. Keel doesn't.
+
 ## Core features (free)
 
-- Emergency Mode — a one-tap, guided checklist for a specific crisis (medical
-  emergency, job loss, bereavement, disability), not a generic FAQ.
-- "What happens if...?" scenarios — a specific answer built from what the
-  family has told Oak, not a canned response.
-- Family Readiness Score — a snapshot across protection, wealth, goals, and
-  savings, read from the family's own data: https://agent-oak.ai/readiness
+- Emergency Mode — one-tap guided checklist for a specific crisis (medical
+  emergency, job loss, bereavement, disability, car, property, travel).
+- "What happens if...?" scenarios — member-scoped, multi-step simulations
+  with fund-depletion detection and timeline visualization.
+- Family Readiness Score — five health domains (protection, wealth, goals,
+  savings, estate) with drivers explaining each subscore.
+- 9 detectors: protection gap, emergency fund, retirement gap, education
+  shortfall, estate readiness, debt-to-income, policy review, education
+  pacing, emergency trajectory.
 - Document upload and secure storage for insurance policies, pension
   statements, and other financial documents.
-- Connect any email provider (Gmail, Outlook, Yahoo, iCloud, or a custom
-  domain) so Oak can watch for financial mail.
-- A multi-person family roster — one household's data, not five separate
-  accounts.
+- Connect any email provider (Gmail, Outlook, Yahoo, iCloud, or custom
+  domain) so Keel can watch for financial mail.
+- Per-member digital twins — each family member gets their own readiness
+  score, insights, and scenarios.
+- Adaptive insights — detectors escalate language after repeated fires and
+  show what changed since the last alert.
+- Annual profile review prompt with a diff of what changed.
 
-## Oak Plus (paid, £7.99/month)
+## Keel Plus (paid, £7.99/month)
 
 - AI reads uploaded documents and extracts the provider, policy number,
   amount, and dates automatically.
@@ -39,14 +64,29 @@ action on a family's behalf without a human approving each step.
   transit.
 - Financial data is never sold and is not used to train models beyond the
   request that needs it.
-- Users can ask to have their account and data deleted; this is currently
-  handled by a person, not a self-serve flow.
+- No commissions, no affiliate links, no partner arrangements with insurers
+  or financial product providers.
+- Users can export their data and delete their account themselves from
+  Settings; deletion is immediate and irreversible.
 
 ## Pages
 
-- Marketing / product overview: https://agent-oak.ai/
-- Family Readiness Score (free quiz, no signup): https://agent-oak.ai/readiness
-- Blog (plain-language explainers): https://agent-oak.ai/blog
-- Terms: https://agent-oak.ai/terms
-- Privacy: https://agent-oak.ai/privacy
-- Support: https://agent-oak.ai/support
+- Marketing / product overview: https://lifekeel.co.uk/
+- Family Readiness Check (free quiz, no signup): https://lifekeel.co.uk/readiness
+- Blog (plain-language explainers): https://lifekeel.co.uk/blog
+- Guides (evergreen SEO guides): https://lifekeel.co.uk/guides
+- Terms: https://lifekeel.co.uk/terms
+- Privacy: https://lifekeel.co.uk/privacy
+- Support: https://lifekeel.co.uk/support
+
+## Guides (static, build-time content)
+
+- How Much Should a Family Emergency Fund Be?: https://lifekeel.co.uk/guides/emergency-fund-how-much
+- The Family Protection Gap: https://lifekeel.co.uk/guides/family-protection-gap
+- Is Your Retirement Savings on Track?: https://lifekeel.co.uk/guides/retirement-gap-check
+- Saving for a Child's Education: https://lifekeel.co.uk/guides/education-savings-plan
+- New Baby Financial Checklist: https://lifekeel.co.uk/guides/new-baby-financial-checklist
+- Buying a First Home Financial Checks: https://lifekeel.co.uk/guides/first-home-financial-checklist
+- Single-Income Family Checklist: https://lifekeel.co.uk/guides/single-income-family-checklist
+- Retirement Planning in Your Fifties: https://lifekeel.co.uk/guides/retirement-in-your-50s
+- The University Costs Countdown: https://lifekeel.co.uk/guides/saving-for-university-countdown

@@ -1,5 +1,5 @@
 /**
- * Agent Oak — Service Worker
+ * LifeKeel — Service Worker
  *
  * Offline-first strategy for non-technical family users:
  *   - App shell (pages) → Cache First with network update (stale-while-revalidate)
@@ -8,8 +8,8 @@
  *   - Push notifications for urgent family alerts
  */
 
-const CACHE_NAME = 'agentoak-v2'
-const STATIC_CACHE = 'agentoak-static-v2'
+const CACHE_NAME = 'lifekeel-v2'
+const STATIC_CACHE = 'lifekeel-static-v2'
 
 const APP_SHELL = [
   '/',
@@ -119,11 +119,11 @@ self.addEventListener('push', (e) => {
   if (!e.data) return
   const data = e.data.json()
   e.waitUntil(
-    self.registration.showNotification(data.title ?? 'Agent Oak', {
+    self.registration.showNotification(data.title ?? 'LifeKeel', {
       body: data.body ?? '',
       icon: '/icon.svg',
       badge: '/icon.svg',
-      tag: data.tag ?? 'agentoak',
+      tag: data.tag ?? 'lifekeel',
       data: data.url ? { url: data.url } : undefined,
       vibrate: [200, 100, 200],
     })

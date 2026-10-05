@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { MoveJudge, type Insight } from '@agentoak/engine'
-import type { DecisionFn } from '@agentoak/platform'
+import { MoveJudge, type Insight } from '@lifekeel/engine'
+import type { DecisionFn } from '@lifekeel/platform'
 import {
   checklistToScores,
   createLocalJudgeEvaluator,

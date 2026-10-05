@@ -1,5 +1,5 @@
 {
-  "name": "@agentoak/specifications",
+  "name": "@lifekeel/specifications",
   "version": "0.1.0",
   "description": "Portable outcome specifications and provider contracts",
   "type": "module",

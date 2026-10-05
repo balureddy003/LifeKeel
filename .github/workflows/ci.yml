@@ -36,7 +36,7 @@ jobs:
 
     env:
       MONGODB_URL: mongodb://localhost:27017
-      MONGODB_DB: agentoak_test
+      MONGODB_DB: lifekeel_test
       REDIS_URL: redis://localhost:6379
       JWT_SECRET: test-secret-not-for-production
       NODE_ENV: test

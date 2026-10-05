@@ -1,5 +1,5 @@
 import type { Db } from 'mongodb'
-import { decryptIfNeeded } from '@agentoak/platform'
+import { decryptIfNeeded } from '@lifekeel/platform'
 
 interface XCredential {
   tenant_id: string

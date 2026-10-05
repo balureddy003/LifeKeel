@@ -20,28 +20,28 @@ importers:
 
   apps/api:
     dependencies:
-      '@agentoak/engine':
+      '@lifekeel/engine':
         specifier: workspace:*
         version: link:../../packages/engine
-      '@agentoak/legacy-compat':
+      '@lifekeel/legacy-compat':
         specifier: workspace:*
         version: link:../../packages/legacy-compat
-      '@agentoak/mongodb-adapter':
+      '@lifekeel/mongodb-adapter':
         specifier: workspace:*
         version: link:../../packages/mongodb-adapter
-      '@agentoak/pipeline':
+      '@lifekeel/pipeline':
         specifier: workspace:*
         version: link:../../packages/pipeline
-      '@agentoak/platform':
+      '@lifekeel/platform':
         specifier: workspace:*
         version: link:../../packages/platform
-      '@agentoak/runtime':
+      '@lifekeel/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
-      '@agentoak/specifications':
+      '@lifekeel/specifications':
         specifier: workspace:*
         version: link:../../packages/specifications
-      '@agentoak/workflows':
+      '@lifekeel/workflows':
         specifier: workspace:*
         version: link:../../packages/workflows
       '@fastify/compress':
@@ -247,14 +247,14 @@ importers:
 
   packages/conformance:
     dependencies:
-      '@agentoak/runtime':
+      '@lifekeel/runtime':
         specifier: workspace:*
         version: link:../runtime
-      '@agentoak/specifications':
+      '@lifekeel/specifications':
         specifier: workspace:*
         version: link:../specifications
     devDependencies:
-      '@agentoak/outcome-kernel':
+      '@lifekeel/outcome-kernel':
         specifier: workspace:*
         version: link:../outcome-kernel
       '@types/node':
@@ -269,7 +269,7 @@ importers:
 
   packages/engine:
     dependencies:
-      '@agentoak/platform':
+      '@lifekeel/platform':
         specifier: workspace:^
         version: link:../platform
       chokidar:
@@ -309,7 +309,7 @@ importers:
 
   packages/legacy-compat:
     dependencies:
-      '@agentoak/specifications':
+      '@lifekeel/specifications':
         specifier: workspace:*
         version: link:../specifications
     devDependencies:
@@ -325,17 +325,17 @@ importers:
 
   packages/mongodb-adapter:
     dependencies:
-      '@agentoak/runtime':
+      '@lifekeel/runtime':
         specifier: workspace:*
         version: link:../runtime
-      '@agentoak/specifications':
+      '@lifekeel/specifications':
         specifier: workspace:*
         version: link:../specifications
       mongodb:
         specifier: ^7.3.0
         version: 7.6.0
     devDependencies:
-      '@agentoak/conformance':
+      '@lifekeel/conformance':
         specifier: workspace:*
         version: link:../conformance
       '@types/node':
@@ -350,7 +350,7 @@ importers:
 
   packages/outcome-kernel:
     dependencies:
-      '@agentoak/specifications':
+      '@lifekeel/specifications':
         specifier: workspace:*
         version: link:../specifications
     devDependencies:
@@ -366,10 +366,10 @@ importers:
 
   packages/pipeline:
     dependencies:
-      '@agentoak/engine':
+      '@lifekeel/engine':
         specifier: workspace:*
         version: link:../engine
-      '@agentoak/platform':
+      '@lifekeel/platform':
         specifier: workspace:^
         version: link:../platform
       exceljs:
@@ -403,7 +403,7 @@ importers:
 
   packages/platform:
     dependencies:
-      '@agentoak/runtime':
+      '@lifekeel/runtime':
         specifier: workspace:*
         version: link:../runtime
       '@anthropic-ai/sdk':
@@ -440,7 +440,7 @@ importers:
 
   packages/runtime:
     dependencies:
-      '@agentoak/specifications':
+      '@lifekeel/specifications':
         specifier: workspace:*
         version: link:../specifications
     devDependencies:
@@ -472,7 +472,7 @@ importers:
 
   packages/workflows:
     dependencies:
-      '@agentoak/platform':
+      '@lifekeel/platform':
         specifier: workspace:^
         version: link:../platform
       mongodb:

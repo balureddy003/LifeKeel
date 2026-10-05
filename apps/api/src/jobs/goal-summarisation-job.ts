@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { Db } from 'mongodb'
 import { z } from 'zod'
-import { callStructured, LlmBudgetGuard, createGuardEventSink, type LlmFn, type LlmGovernanceOptions } from '@agentoak/platform'
-import { MongoMemoryRepository } from '@agentoak/mongodb-adapter'
-import type { GoalEvidenceSummary } from '@agentoak/specifications'
+import { callStructured, LlmBudgetGuard, createGuardEventSink, type LlmFn, type LlmGovernanceOptions } from '@lifekeel/platform'
+import { MongoMemoryRepository } from '@lifekeel/mongodb-adapter'
+import type { GoalEvidenceSummary } from '@lifekeel/specifications'
 
 const SummarySchema = z.object({ summary_text: z.string().max(1600) })
 const DAY_MS = 86_400_000

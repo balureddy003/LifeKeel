@@ -9,8 +9,8 @@
 
 import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest'
 import { MongoClient, Db } from 'mongodb'
-import { ScoreCalibrator } from '@agentoak/engine'
-import { NoveltyTracker } from '@agentoak/engine'
+import { ScoreCalibrator } from '@lifekeel/engine'
+import { NoveltyTracker } from '@lifekeel/engine'
 import { queueManager } from '../queue/QueueManager.js'
 
 describe('ML Tenant Isolation', () => {
@@ -37,7 +37,7 @@ describe('ML Tenant Isolation', () => {
   beforeEach(async () => {
     mongoClient = new MongoClient(process.env.MONGODB_URL ?? 'mongodb://localhost:27017')
     await mongoClient.connect()
-    db = mongoClient.db('kairos-ml-iso-test')
+    db = mongoClient.db('lifekeel-ml-iso-test')
 
     calibrator = new ScoreCalibrator(db)
     noveltyTracker = new NoveltyTracker(db)

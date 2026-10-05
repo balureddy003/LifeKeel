@@ -19,7 +19,7 @@ const POLICY_TYPE_LABELS: Record<PolicyType, string> = {
 
 const RENEWAL_WINDOW_DAYS = 60
 
-// OAK-013: client-side mirror of family-financial-profile.ts's
+// KEEL-013: client-side mirror of family-financial-profile.ts's
 // soonestPolicyRenewal — surfaces the same "days until renewal" data the
 // policy_renewal_window detector already computes server-side, as a badge
 // on the Protection story instead of leaving it uncomputed on the client.

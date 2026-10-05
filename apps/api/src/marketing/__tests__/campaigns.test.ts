@@ -39,7 +39,7 @@ afterAll(async () => {
 
 function seedUser(over: Record<string, unknown> = {}) {
   return db.collection('users').insertOne({
-    id: 'u1', email: 'user@example.com', name: 'Sam Oak', tenant_id: 't1',
+    id: 'u1', email: 'user@example.com', name: 'Sam Keel', tenant_id: 't1',
     status: 'active', created_at: new Date(Date.now() - 10 * DAY),
     ...over,
   })

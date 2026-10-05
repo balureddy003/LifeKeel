@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kairos.io/schemas/zerodha/portfolio.summary/v1.0.0",
+  "$id": "https://lifekeel.io/schemas/zerodha/portfolio.summary/v1.0.0",
   "title": "Zerodha Portfolio Summary",
   "description": "Account-level funds and margins for the equity segment, synced from Zerodha via Kite Connect v3.",
   "type": "object",
-  "kairos": {
+  "lifekeel": {
     "connector_id": "zerodha",
     "event_type": "portfolio.summary",
     "schema_version": "1.0.0",

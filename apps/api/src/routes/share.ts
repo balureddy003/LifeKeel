@@ -56,7 +56,7 @@ function scoreCardSvg(score: number | null): string {
   <text x="480" y="398" font-size="30" fill="#9b9baa">${score !== null ? `Someone scored ${score}/100 — how does` : 'The signals families usually'}</text>
   <text x="480" y="440" font-size="30" fill="#9b9baa">${score !== null ? 'yours compare?' : 'find out too late.'}</text>
   <text x="480" y="520" font-size="26" fill="#6b6b78">Free &#183; anonymous &#183; about a minute</text>
-  <text x="1080" y="586" text-anchor="end" font-size="28" font-weight="700" fill="#8b80f8">Agent Oak</text>
+  <text x="1080" y="586" text-anchor="end" font-size="28" font-weight="700" fill="#8b80f8">LifeKeel</text>
 </svg>`
 }
 
@@ -67,7 +67,7 @@ export async function registerShareRoutes(app: FastifyInstance): Promise<void> {
     async (req, reply) => {
       const score = parseScore(req.query.s)
 
-      const appUrl = (process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
+      const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
       const apiUrl = (process.env['API_BASE_URL'] ?? 'http://localhost:3001').replace(/\/$/, '')
       const target = `${appUrl}/readiness/?utm_source=share&utm_medium=social&utm_campaign=score_share`
       // Per-score rendered PNG served by this API — og:image must be an
@@ -79,8 +79,8 @@ export async function registerShareRoutes(app: FastifyInstance): Promise<void> {
         ? `Family Readiness ${score}/100 — how does yours compare?`
         : 'Check your family\u2019s readiness — free, about a minute'
       const description = score !== null
-        ? `Someone scored ${score}/100 on Agent Oak\u2019s Family Readiness Check — the signals families usually find out too late. Anonymous, free, no signup.`
-        : 'Agent Oak checks the signals families usually find out too late — coverage gaps, savings drift, renewal deadlines. Free and anonymous.'
+        ? `Someone scored ${score}/100 on LifeKeel\u2019s Family Readiness Check — the signals families usually find out too late. Anonymous, free, no signup.`
+        : 'LifeKeel checks the signals families usually find out too late — coverage gaps, savings drift, renewal deadlines. Free and anonymous.'
 
       reply.type('text/html').send(`<!DOCTYPE html>
 <html lang="en">
@@ -89,7 +89,7 @@ export async function registerShareRoutes(app: FastifyInstance): Promise<void> {
 <title>${esc(title)}</title>
 <meta name="robots" content="noindex">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="Agent Oak">
+<meta property="og:site_name" content="LifeKeel">
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(description)}">
 <meta property="og:url" content="${appUrl}/readiness/">

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { MoveJudge, type Insight, type JudgeScores } from '@agentoak/engine'
-import type { DecisionFn, LlmFn } from '@agentoak/platform'
+import { MoveJudge, type Insight, type JudgeScores } from '@lifekeel/engine'
+import type { DecisionFn, LlmFn } from '@lifekeel/platform'
 import { compareDecisions, withShadow, type ShadowRecord } from '../shadow-judge.js'
 import { createMoveJudge } from '../move-judge.js'
 

@@ -1,5 +1,5 @@
 /**
- * OAK-003: the shared distributed cron lock. Uses a real MongoDB
+ * KEEL-003: the shared distributed cron lock. Uses a real MongoDB
  * (mongodb-memory-server) rather than a hand-rolled mock, since atomicity
  * of the underlying findOneAndUpdate is exactly the property under test —
  * a mock would only prove the code calls the right method, not that two

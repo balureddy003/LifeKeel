@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { DecisionFn } from '@agentoak/platform'
+import type { DecisionFn } from '@lifekeel/platform'
 import { LABELLED_JUDGE_CASES } from '../../delivery/__fixtures__/labelled-judge-cases.js'
 import { LABELLED_EMAILS } from '../../email/__fixtures__/labelled-emails.js'
 import { evalAuthHeaders, formatReport, runLocalModelEval } from '../local-model-eval.js'

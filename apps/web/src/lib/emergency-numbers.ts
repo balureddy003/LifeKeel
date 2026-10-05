@@ -4,7 +4,7 @@
  *
  * Found live: every one of these notices hardcoded "call 911" regardless of
  * the signed-in family's actual country — a UK family (or one travelling
- * abroad, the exact real scenario Agent Oak exists for) was being told the
+ * abroad, the exact real scenario LifeKeel exists for) was being told the
  * wrong number on the one screen where that matters most. This is a small,
  * deliberately non-exhaustive table (a handful of countries this product
  * actually has users in, from the same ISO-3166 alpha-2 codes /auth/me

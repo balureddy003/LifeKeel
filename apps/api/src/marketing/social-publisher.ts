@@ -69,8 +69,8 @@ export interface SocialPublisher {
 }
 
 import type { Db } from 'mongodb'
-import { decryptIfNeeded } from '@agentoak/platform'
-import { ConnectorActionExecutor } from '@agentoak/workflows'
+import { decryptIfNeeded } from '@lifekeel/platform'
+import { ConnectorActionExecutor } from '@lifekeel/workflows'
 
 interface ChannelHandler {
   info: ChannelInfo

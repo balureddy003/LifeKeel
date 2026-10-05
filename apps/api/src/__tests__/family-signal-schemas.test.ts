@@ -10,13 +10,15 @@ describe('family signal schemas', () => {
 
   const registry = () => getSchemaRegistry()
 
-  it('registers all six family signal types', () => {
+  it('registers every family signal type', () => {
     const reg = registry()
     for (const type of [
       'family.household',
       'family.savings',
       'family.pension',
       'family.education_fund',
+      'family.debt',
+      'family.policy_review',
       'family.estate',
       'family.life_event',
     ]) {
@@ -28,10 +30,9 @@ describe('family signal schemas', () => {
     const reg = registry()
     const result = reg.validate(
       {
-        household_income_minor: 9500000,
+        employed: 1,
         monthly_salary_minor: 630000,
-        employment_status: 'employed',
-        protection_gaps: ['life_insurance', 'income_protection'],
+        member_id: 'member-1',
       },
       'family.household',
     )
@@ -42,11 +43,37 @@ describe('family signal schemas', () => {
   it('rejects a family.household signal missing required fields', () => {
     const reg = registry()
     const result = reg.validate(
-      { household_income_minor: 9500000 },
+      { member_id: 'member-1' },
       'family.household',
     )
     expect(result.valid).toBe(false)
     expect(result.errors.length).toBeGreaterThan(0)
+  })
+
+  it('validates a family.debt signal', () => {
+    const reg = registry()
+    const result = reg.validate(
+      {
+        monthly_debt_payments_minor: 150000,
+        monthly_income_minor: 400000,
+        debt_to_income_ratio: 0.375,
+      },
+      'family.debt',
+    )
+    expect(result.valid).toBe(true)
+  })
+
+  it('validates a family.policy_review signal', () => {
+    const reg = registry()
+    const result = reg.validate(
+      {
+        member_id: 'member-1',
+        orphaned_policy_count: 1,
+        orphaned_policy_descriptions: ['life policy with Aviva'],
+      },
+      'family.policy_review',
+    )
+    expect(result.valid).toBe(true)
   })
 
   it('validates a family.savings signal', () => {
@@ -66,6 +93,40 @@ describe('family signal schemas', () => {
     const reg = registry()
     const result = reg.validate(
       { has_will: 1, has_power_of_attorney: 1, estate_doc_count: 2 },
+      'family.estate',
+    )
+    expect(result.valid).toBe(true)
+  })
+
+  it('validates the enriched PRD-137 family.estate signal', () => {
+    const reg = registry()
+    const result = reg.validate(
+      {
+        has_will: 1,
+        has_power_of_attorney: 0,
+        estate_doc_count: 2,
+        adults_total: 2,
+        adults_with_will: 1,
+        adults_with_poa: 0,
+        adults_with_directive: 0,
+        wills_stale: 1,
+        wills_with_dead_or_missing_executor: 0,
+        minors_total: 2,
+        minors_with_guardian_nomination: 1,
+        properties_total: 1,
+        properties_without_title_evidence: 1,
+        properties_ownership_unknown: 1,
+        properties_foreign_without_contact: 0,
+        properties_disputed: 0,
+        properties_uninsured_or_unknown: 1,
+        documents_without_original_location: 1,
+        assets_unreferenced_by_any_will: 0,
+        beneficiary_conflicts: 0,
+        businesses_without_successor: 0,
+        has_legacy_records: 1,
+        wills_total: 1,
+        original_location_total: 2,
+      },
       'family.estate',
     )
     expect(result.valid).toBe(true)

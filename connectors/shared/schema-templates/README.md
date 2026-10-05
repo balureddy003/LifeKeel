@@ -23,16 +23,16 @@ connectors/
 
 ## Schema Format
 
-Schemas follow JSON Schema Draft 2020-12 format with Kairos-specific extensions:
+Schemas follow JSON Schema Draft 2020-12 format with LifeKeel-specific extensions:
 
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kairos.io/schemas/stripe/charge.succeeded/v1.0.0",
+  "$id": "https://lifekeel.io/schemas/stripe/charge.succeeded/v1.0.0",
   "title": "Stripe Charge Succeeded Event",
   "description": "Schema for Stripe charge.succeeded webhook events",
   "type": "object",
-  "kairos": {
+  "lifekeel": {
     "connector_id": "stripe",
     "event_type": "charge.succeeded",
     "schema_version": "1.0.0",
@@ -62,13 +62,13 @@ Schemas follow JSON Schema Draft 2020-12 format with Kairos-specific extensions:
 }
 ```
 
-## Kairos Extensions
+## LifeKeel Extensions
 
-- `kairos.connector_id`: Connector identifier
-- `kairos.event_type`: Original provider event type
-- `kairos.schema_version`: Schema version (semver)
-- `kairos.signal_type`: Mapped Kairos signal type
-- `kairos.min_schema_version`: Minimum schema version for detectors
+- `lifekeel.connector_id`: Connector identifier
+- `lifekeel.event_type`: Original provider event type
+- `lifekeel.schema_version`: Schema version (semver)
+- `lifekeel.signal_type`: Mapped LifeKeel signal type
+- `lifekeel.min_schema_version`: Minimum schema version for detectors
 
 ## Schema Versioning
 

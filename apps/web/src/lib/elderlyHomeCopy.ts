@@ -1,4 +1,4 @@
-// OAK-027: ElderlyHome's headline used to be hardcoded to "You're Safe" /
+// KEEL-027: ElderlyHome's headline used to be hardcoded to "You're Safe" /
 // "Your family appears well covered" regardless of the real score rendered
 // two lines below it — a genuine 0/100 account was told, unconditionally,
 // that it was safe. Mirrors the default (organizer) home's existing

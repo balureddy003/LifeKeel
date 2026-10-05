@@ -5,7 +5,7 @@ each feature is written against, so individual PRDs can cite this instead
 of re-deriving it. Research current as of September 2026; re-verify before
 using it to justify a build decision more than ~6 months out.
 
-## The three categories Agent Oak sits between
+## The three categories LifeKeel sits between
 
 No single competitor combines all three. That gap is the product.
 
@@ -24,7 +24,7 @@ Family Operating System®", Everplans, Cake). Strong at document storage,
 family-wide access (not just single-user), and emergency-contact/estate
 organization. Trustworthy in particular already frames itself around
 family-wide document and policy storage — the closest existing competitor
-to Agent Oak's "Family Twin" framing — but stops at *storage and
+to LifeKeel's "Family Twin" framing — but stops at *storage and
 organization*; it doesn't run detectors over the data or reason about
 whether coverage is adequate. Everplans is comparatively single-user and
 skews toward end-of-life planning specifically. ([Trustworthy vs
@@ -41,7 +41,7 @@ changing situation (a new mortgage, a new child, income change).
 ## What "world-class" means for each PRD in this set
 
 - **Continuous, not one-shot.** Policygenius-style calculators run once;
-  Agent Oak's detectors should re-evaluate whenever the underlying data
+  LifeKeel's detectors should re-evaluate whenever the underlying data
   changes (a document upload, a profile edit), the way none of the point
   tools above do.
 - **Whole-family, not single-user.** Match Trustworthy's family-wide model
@@ -50,12 +50,12 @@ changing situation (a new mortgage, a new child, income change).
   not one login.
 - **Reasoning grounded in the family's real data, not templated advice.**
   Match the AI-money-app category's bar (Origin's deterministic-math
-  multi-agent approach is the reference point) rather than Agent Oak's
+  multi-agent approach is the reference point) rather than LifeKeel's
   current hardcoded response map — see PRD-101.
 - **"Prepare, not send" as the hard boundary for Tier 1, matching 2026
   fintech HITL consensus.** The emerging standard pattern: the agent
   drafts, plans, and proposes; a human owns anything that sends, pays, or
-  commits — "never auto-send." Agent Oak's roadmap already independently
+  commits — "never auto-send." LifeKeel's roadmap already independently
   arrived at this shape (see CLAUDE.md's trust tiers); external practice
   confirms it's the right bar, not overcaution. ([Human-in-the-loop AI
   agents 2026](https://www.buildmvpfast.com/blog/human-in-the-loop-ai-agents-implementation-patterns-2026), [HITL governance](https://www.arthur.ai/column/human-in-the-loop-governance-for-ai-agents))
@@ -63,7 +63,7 @@ changing situation (a new mortgage, a new child, income change).
   framing, not table stakes to catch up on.** Searches for a consumer
   "family digital twin" or scenario-rehearsal product turned up nothing —
   "digital twin" is presently enterprise-finance jargon (Capgemini, TCS)
-  for corporate risk modeling, not a consumer category. Agent Oak's
+  for corporate risk modeling, not a consumer category. LifeKeel's
   Events/"What If?" scenario simulator (see PRD-005) is closer to a novel
   mechanic than a catch-up feature — worth protecting and investing in
   deliberately, not treating as a generic "insights" screen.

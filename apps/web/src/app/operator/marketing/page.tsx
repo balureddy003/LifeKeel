@@ -92,7 +92,7 @@ const OAUTH_CHANNELS: { channel: string; connector: string; label: string }[] = 
 ]
 
 const CAMPAIGN_RE = /^[a-z0-9][a-z0-9_-]{0,59}$/
-const DEFAULT_CAMPAIGN = 'oak_social'
+const DEFAULT_CAMPAIGN = 'lifekeel_social'
 
 /** ISO date → the `YYYY-MM-DDTHH:MM` a datetime-local input wants. */
 function toLocalInput(iso: string): string {
@@ -261,7 +261,7 @@ export default function MarketingPage() {
 
   const selected = (integrations ?? []).find((i) => i.id === integrationId)
   const channel = selected?.identifier ?? 'other'
-  const selectedAccount = selected?.name ?? 'Agent Oak'
+  const selectedAccount = selected?.name ?? 'LifeKeel'
   const trustLevel = automation?.trust_level_by_workflow?.[trustScope(channel)] ?? 0
   const autoEnabled = automation?.auto_execute_enabled === true
   const limit = channelLimit(channel)
@@ -435,7 +435,7 @@ export default function MarketingPage() {
                     <input
                       value={bskyHandle}
                       onChange={(e) => setBskyHandle(e.target.value)}
-                      placeholder="handle — e.g. oak.bsky.social"
+                      placeholder="handle — e.g. keel.bsky.social"
                       className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
                     />
                     <input
@@ -585,13 +585,13 @@ export default function MarketingPage() {
                   )}
                   <p className="text-xs text-ink-tertiary mt-2.5 leading-relaxed">
                     {autoEnabled
-                      ? `${Math.min(trustLevel, 5)}/5 approvals on ${channelLabel(channel)} — at 5, Oak publishes new drafts here itself.`
+                      ? `${Math.min(trustLevel, 5)}/5 approvals on ${channelLabel(channel)} — at 5, Keel publishes new drafts here itself.`
                       : `Earned-trust publishing is off (Settings → Automation). ${Math.min(trustLevel, 5)}/5 approvals on ${channelLabel(channel)} so far.`}
                   </p>
                   <div className="mt-3 pt-3 border-t border-tint/[0.06]">
                     <button onClick={openGenerator} className="flex items-center gap-1.5 text-xs font-semibold text-family-400">
                       <Sparkles size={13} />
-                      {showGenerate ? 'Close generator' : 'Generate variants with Oak'}
+                      {showGenerate ? 'Close generator' : 'Generate variants with Keel'}
                     </button>
                     {showGenerate && (
                       <div className="mt-2.5 space-y-2">
@@ -1038,7 +1038,7 @@ function LinkBuilder({
           <input
             value={base}
             onChange={(e) => setBase(e.target.value)}
-            placeholder="https://agentoak.app"
+            placeholder="https://lifekeel.co.uk"
             className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
           />
         </div>
@@ -1249,7 +1249,7 @@ function CampaignsPanel() {
               <select value={planFilter} onChange={(e) => setPlanFilter(e.target.value)} className={selectCls}>
                 <option value="">Any plan</option>
                 <option value="free">Free</option>
-                <option value="starter">Oak Plus</option>
+                <option value="starter">Keel Plus</option>
               </select>
               <select value={trialing} onChange={(e) => setTrialing(e.target.value)} className={selectCls}>
                 <option value="">Trial: any</option>

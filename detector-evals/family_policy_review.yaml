@@ -1,0 +1,38 @@
+# Golden eval cases for detectors/family/policy-review.yaml.
+# event_type mirrors what family-financial-profile.ts emits:
+# 'family.policy_review' — one event per (type, holder) overlap group, plus
+# one summary event for orphaned attribution.
+cases:
+  - id: duplicate-life-cover
+    description: Two life policies on the same member — possible leftover from a switch
+    event_type: family.policy_review
+    data:
+      overlap_count: 2
+      overlap_type: life
+      overlap_holder: Priya
+      overlap_providers: Aviva + Legal & General
+      overlap_monthly_premium_minor: 6500
+      orphaned_policy_count: 0
+      member_id: 'm_priya:life'
+    expected_insights:
+      - rule_id: duplicate_policy_coverage
+        min_or_score: 0.6
+
+  - id: orphaned-beneficiary
+    description: A policy still points at a member no longer on the roster
+    event_type: family.policy_review
+    data:
+      overlap_count: 0
+      orphaned_policy_count: 1
+      orphaned_policy_descriptions: life policy with Aviva
+    expected_insights:
+      - rule_id: policy_attributed_to_removed_member
+        min_or_score: 0.65
+
+  - id: clean-register
+    description: Single policy per (type, holder), all attributions current
+    event_type: family.policy_review
+    data:
+      overlap_count: 1
+      orphaned_policy_count: 0
+    expected_insights: []

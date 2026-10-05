@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Engine } from '@agentoak/engine'
+import { Engine } from '@lifekeel/engine'
 import { migrations } from '../migrate.js'
 import { DETECTOR_CONTENT_POSTS } from '../detector-content-posts.js'
 

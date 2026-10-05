@@ -26,7 +26,7 @@ export class RealWebPushSender {
   constructor() {
     const publicKey = process.env['VAPID_PUBLIC_KEY']
     const privateKey = process.env['VAPID_PRIVATE_KEY']
-    const subject = process.env['VAPID_SUBJECT'] ?? 'mailto:hello@kairos.ai'
+    const subject = process.env['VAPID_SUBJECT'] ?? 'mailto:hello@lifekeel.ai'
 
     if (publicKey && privateKey) {
       webpush.setVapidDetails(subject, publicKey, privateKey)

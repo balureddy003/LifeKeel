@@ -11,6 +11,7 @@ import { ScoreRing, GlassCard, PageHeader, IfAdvanced, Skeleton, Money } from '@
 import { TrustLadder, MemoryPrompts } from '@/components/Intelligence'
 import { HealthSummary } from '@/components/HealthSummary'
 import { ReadinessSparkline } from '@/components/ReadinessSparkline'
+import { ReadinessFeed } from '@/components/ReadinessFeed'
 import { useMode } from '@/lib/mode-context'
 import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@/lib/useFamilyData'
 import { useAppStore } from '@/lib/store'
@@ -101,7 +102,7 @@ function ElderlyHome() {
   const router = useRouter()
   const { headline, subheadline } = elderlyHomeCopy({ loading, hasLiveData, score })
 
-  // OAK-004: every tile here was a dead button — no onClick anywhere, on
+  // KEEL-004: every tile here was a dead button — no onClick anywhere, on
   // the persona this large-target, simplified UI was explicitly designed
   // for, and the tile most likely to be tapped in a real crisis
   // (Emergency Help) was one of them. No phone number is captured
@@ -258,8 +259,8 @@ function InviteFamilyBanner() {
 // Scoped by tenant so a shared device doesn't leak one user's history into
 // another's, same pattern as the AI Memory dismissals below.
 function lastVisitStorageKey(): string {
-  const tenant = typeof window !== 'undefined' ? localStorage.getItem('agentoak_tenant') ?? 'anon' : 'anon'
-  return `agentoak:last-visit-snapshot:${tenant}`
+  const tenant = typeof window !== 'undefined' ? localStorage.getItem('lifekeel_tenant') ?? 'anon' : 'anon'
+  return `lifekeel:last-visit-snapshot:${tenant}`
 }
 
 interface VisitSnapshot {
@@ -392,7 +393,7 @@ function SinceLastVisit({
 // major change (income dropped, employment status flipped) that hasn't
 // been reported as a life event yet. Deliberately content-free — never
 // names or guesses what changed, never mentions a product; just an
-// invitation to tell Oak. Same dismissible-card shape as UrgencyBanner
+// invitation to tell Keel. Same dismissible-card shape as UrgencyBanner
 // below, kept as its own component since it has its own data source and
 // dismiss action.
 function LifeChangeNudge() {
@@ -422,7 +423,7 @@ function LifeChangeNudge() {
             <div className="text-sm font-semibold text-ink-primary">
               It looks like something changed
             </div>
-            <div className="text-xs text-ink-tertiary">Want to tell Oak what&apos;s going on?</div>
+            <div className="text-xs text-ink-tertiary">Want to tell Keel what&apos;s going on?</div>
           </Link>
           <button
             onClick={() => {
@@ -485,17 +486,17 @@ function UrgencyBanner() {
 // Rotating feature-discovery tip — one per visit, never repeated, dismissible.
 // Stored in localStorage so it persists across sessions.
 const FEATURE_TIPS = [
-  { text: 'Ask Oak anything about your family finances — tap the purple button.', href: '/assistant', cta: 'Try it' },
+  { text: 'Ask Keel anything about your family finances — tap the purple button.', href: '/assistant', cta: 'Try it' },
   { text: 'Swipe left on an inbox item to dismiss it — you can undo within 5 seconds.', href: '/inbox', cta: 'Open Inbox' },
-  { text: 'Oak can scan your email for renewals and policy changes.', href: '/connect/email', cta: 'Connect email' },
+  { text: 'Keel can scan your email for renewals and policy changes.', href: '/connect/email', cta: 'Connect email' },
   { text: 'Upload a will, insurance policy, or bank statement to get insights.', href: '/upload', cta: 'Upload' },
   { text: 'Run a "What If?" scenario to see how your cover holds up.', href: '/events', cta: 'Explore' },
   { text: 'Switch to Light mode in Settings under Appearance.', href: '/settings', cta: 'Settings' },
 ]
 
 function tipStorageKey(): string {
-  const tenant = typeof window !== 'undefined' ? localStorage.getItem('agentoak_tenant') ?? 'anon' : 'anon'
-  return `agentoak:dismissed-tips:${tenant}`
+  const tenant = typeof window !== 'undefined' ? localStorage.getItem('lifekeel_tenant') ?? 'anon' : 'anon'
+  return `lifekeel:dismissed-tips:${tenant}`
 }
 
 function FeatureTip() {
@@ -689,6 +690,7 @@ function ChildDobPrompt() {
 
 export default function HomePage() {
   const { config } = useMode()
+  const { family } = useAuth()
   const { score: readinessScore, hasLiveData, loading: scoreLoading } = useFamilyReadinessScore()
   const { events: timelineEvents, hasData: hasTimelineData, hasChildren } = useFamilyTimeline()
   const { insights, loading: insightsLoading } = useFamilyInsights()
@@ -812,6 +814,18 @@ export default function HomePage() {
       </motion.div>
       )}
 
+      {/* PRD-136: "What changed" — the feed narration of everything the
+          daily checks found, straight below the score it explains. */}
+      {hasLiveData && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.08 }}
+        >
+          <ReadinessFeed members={(family?.members ?? []).map((m) => ({ id: m.id, name: m.name }))} />
+        </motion.div>
+      )}
+
       <IfAdvanced>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -912,7 +926,7 @@ export default function HomePage() {
                 See retirement plan <ChevronRight size={14} />
               </Link>
               <p className="text-xs text-ink-tertiary mt-3 leading-relaxed">
-                Oak earns no commission from any insurer or provider — this is information
+                Keel earns no commission from any insurer or provider — this is information
                 from your own data, not a recommendation to buy anything.
               </p>
             </>

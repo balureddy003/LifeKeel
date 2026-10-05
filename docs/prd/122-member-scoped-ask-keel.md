@@ -1,9 +1,9 @@
-# PRD-122: member-scoped Ask Oak
+# PRD-122: member-scoped Ask Keel
 
 ## Problem
 
 PRDs 117–120 gave each family member a twin read model, member readiness,
-per-member pension data, and member-attributed insights — but Ask Oak
+per-member pension data, and member-attributed insights — but Ask Keel
 still grounds every answer on the *household* context. "Is Sam's pension
 on track?" was answerable only because the model happened to see Sam's
 row in a household-level dump; there was no member-scoped reasoning
@@ -33,7 +33,7 @@ entry point.
   about an adult member gets a gated estate component, never the doc
   list.
 - Web: `fetchAIResponse(query, memberId)` threads the scope through; the
-  member page gains an "Ask Oak about {name}" card with the same
+  member page gains an "Ask Keel about {name}" card with the same
   honest `isLive` labeling the assistant page uses.
 - Tier 0 — read-only grounding on existing data; the same informational-
   only SYSTEM_PROMPT applies unchanged.

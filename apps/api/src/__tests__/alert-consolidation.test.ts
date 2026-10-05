@@ -6,7 +6,7 @@ import {
   DEFAULT_TIER_PRIORITIES,
   type DetectorPrioritySettings,
 } from '../insights/consolidation.js'
-import type { Insight } from '@agentoak/engine'
+import type { Insight } from '@lifekeel/engine'
 
 function makeInsight(overrides: Partial<Insight> & { id: string }): Insight {
   return {

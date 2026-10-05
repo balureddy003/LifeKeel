@@ -1,7 +1,7 @@
 /**
  * Distributed cron lock — shared by every scheduled job in server.ts.
  *
- * OAK-003: only billing-cron.ts had this (hardcoded to the lock name
+ * KEEL-003: only billing-cron.ts had this (hardcoded to the lock name
  * 'billing', local to that file). The other 9 `cron.schedule(...)` jobs in
  * server.ts had no lock at all, while deploy-api.yml configures Cloud Run
  * for up to 4 replicas — two replicas racing the same job (e.g. the

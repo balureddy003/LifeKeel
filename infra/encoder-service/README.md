@@ -22,7 +22,7 @@ Off by default. Set `EMAIL_ENCODER_URL` and `EMAIL_ENCODER_MODE`:
 | `gate` | an email the encoder calls irrelevant skips the LLM; relevant ones still go to the LLM | fewer LLM calls |
 
 **Roll-out:** run `shadow` first, then move to `gate` only when
-`agentoak_email_encoder_total{outcome="encoder_missed"}` stays at zero over real volume.
+`lifekeel_email_encoder_total{outcome="encoder_missed"}` stays at zero over real volume.
 `encoder_missed` means the LLM found a policy email the encoder called irrelevant, which in
 gate mode would be a silently dropped email. The other outcomes: `agree`, `encoder_extra`
 (costs an LLM call in gate mode, not safety), `gated_skip`, `gated_pass`, `shadow_error`,
@@ -30,7 +30,7 @@ gate mode would be a silently dropped email. The other outcomes: `agree`, `encod
 
 **Failure behaviour:** an encoder error, timeout or bad response never drops an email; the LLM
 path runs as if no encoder were configured. Latency and errors appear under
-`agentoak_local_model_*{purpose="encoder"}`.
+`lifekeel_local_model_*{purpose="encoder"}`.
 
 ## Run locally
 

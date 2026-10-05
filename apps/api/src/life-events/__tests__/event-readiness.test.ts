@@ -11,6 +11,7 @@ function makeProfile(overrides: Partial<FinancialProfile> = {}): FinancialProfil
       mortgage_outstanding_minor: 0,
       life_cover_minor: 0,
       income_protection_monthly_minor: 0,
+      monthly_debt_payments_minor: 0,
       members: [],
     },
     emergency_fund: {
@@ -56,14 +57,14 @@ describe('computeEventReadiness', () => {
 
   it('bereavement and medical: reflect the same life-cover-vs-need formula protection-gap.yaml uses', () => {
     const wellCovered = computeEventReadiness('bereavement', makeProfile({
-      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 250000, mortgage_outstanding_minor: 20_000_000, life_cover_minor: 40_000_000, income_protection_monthly_minor: 0, members: [] },
+      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 250000, mortgage_outstanding_minor: 20_000_000, life_cover_minor: 40_000_000, income_protection_monthly_minor: 0, monthly_debt_payments_minor: 0, members: [] },
     }))
     expect(wellCovered.hasLiveData).toBe(true)
     expect(wellCovered.stability).toBeGreaterThan(50)
     expect(wellCovered.explanation).toContain('£400,000.00') // life cover, 40,000,000 minor units
 
     const underCovered = computeEventReadiness('medical', makeProfile({
-      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 250000, mortgage_outstanding_minor: 20_000_000, life_cover_minor: 0, income_protection_monthly_minor: 0, members: [] },
+      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 250000, mortgage_outstanding_minor: 20_000_000, life_cover_minor: 0, income_protection_monthly_minor: 0, monthly_debt_payments_minor: 0, members: [] },
     }))
     expect(underCovered.stability).toBeLessThan(wellCovered.stability)
   })

@@ -13,7 +13,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { dirname } from 'node:path'
 
-export const EVAL_ROOT = process.env.KAIROS_EVAL_ROOT ?? '/home/ubuntu/kairos-eval'
+export const EVAL_ROOT = process.env.LIFEKEEL_EVAL_ROOT ?? '/home/ubuntu/lifekeel-eval'
 
 /** Datasets live outside the repo; evals self-skip in CI where they are absent. */
 export function hasData(rel: string): boolean {

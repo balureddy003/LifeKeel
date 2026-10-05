@@ -31,7 +31,7 @@ const inCi = process.env['CI'] === 'true'
 let available = false
 let unavailableReason = ''
 let db: import('mongodb').Db | undefined
-const dbName = `agentoak_fanout_it_${randomUUID().slice(0, 8)}`
+const dbName = `lifekeel_fanout_it_${randomUUID().slice(0, 8)}`
 
 try {
   await queueManager.connect()

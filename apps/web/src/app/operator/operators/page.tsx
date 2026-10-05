@@ -55,7 +55,7 @@ export default function OperatorsPage() {
       <GlassCard className="mt-5 p-4">
         <h2 className="flex items-center gap-2 font-semibold"><UserPlus size={16} className="text-family-400" /> Grant access</h2>
         <form onSubmit={add} className="mt-3 space-y-3">
-          <input value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="Agent Oak user ID" className="glass-input w-full rounded-xl px-3 py-2.5 text-sm" required />
+          <input value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="LifeKeel user ID" className="glass-input w-full rounded-xl px-3 py-2.5 text-sm" required />
           <div className="flex flex-wrap gap-2">
             {ROLE_CHOICES.map((role) => (
               <button

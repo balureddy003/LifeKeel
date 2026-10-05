@@ -1,12 +1,12 @@
 /**
  * Deployment mode configuration.
  *
- * KAIROS_DEPLOYMENT_MODE=airgap   → forces Ollama, blocks external LLM/connector calls
- * KAIROS_DEPLOYMENT_MODE=cloud    → full external connectivity, audit logging enabled
- * KAIROS_DEPLOYMENT_MODE=dev      → default (no restrictions)
+ * LIFEKEEL_DEPLOYMENT_MODE=airgap   → forces Ollama, blocks external LLM/connector calls
+ * LIFEKEEL_DEPLOYMENT_MODE=cloud    → full external connectivity, audit logging enabled
+ * LIFEKEEL_DEPLOYMENT_MODE=dev      → default (no restrictions)
  */
 
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'deployment', version: '0.0.0' })
 
@@ -22,7 +22,7 @@ export interface DeploymentConfig {
   maxWorkflowRunsPerMinute: number
 }
 
-const rawMode = (process.env['KAIROS_DEPLOYMENT_MODE'] ?? (process.env['NODE_ENV'] === 'production' ? 'cloud' : 'dev')).toLowerCase()
+const rawMode = (process.env['LIFEKEEL_DEPLOYMENT_MODE'] ?? (process.env['NODE_ENV'] === 'production' ? 'cloud' : 'dev')).toLowerCase()
 if (process.env['NODE_ENV'] === 'production' && !['cloud', 'airgap', 'accountant'].includes(rawMode)) {
   throw new Error('Production requires cloud, airgap, or accountant deployment mode')
 }

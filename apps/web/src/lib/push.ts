@@ -1,5 +1,5 @@
 /**
- * Web push client — subscribes this browser to Oak's push notifications.
+ * Web push client — subscribes this browser to Keel's push notifications.
  *
  * Flow: Notification permission → service worker → PushManager.subscribe
  * (with the server's VAPID public key) → POST the subscription to the API.
@@ -15,7 +15,7 @@ import { getApiBase } from './env'
 
 function getToken(): string | null {
   try {
-    return localStorage.getItem('agentoak_token')
+    return localStorage.getItem('lifekeel_token')
   } catch {
     return null
   }

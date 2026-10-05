@@ -8,7 +8,7 @@
  */
 
 import { z } from 'zod'
-import type { DecisionFn, LlmFn } from '@agentoak/platform'
+import type { DecisionFn, LlmFn } from '@lifekeel/platform'
 import type { FetchedEmail } from './imap-client.js'
 import { mightBePolicyRelated } from './prefilter.js'
 import type { EncoderClassifier } from './encoder-classifier.js'
@@ -170,7 +170,7 @@ function toClassification(parsed: RawClassification): EmailClassification {
 
   return {
     isFinancial: Boolean(parsed.is_financial),
-    // OAK-016: the model's output is otherwise unbounded — a malicious or
+    // KEEL-016: the model's output is otherwise unbounded — a malicious or
     // malformed email could push back an arbitrarily long "summary" that
     // then renders as an inbox item. Clamped generously beyond what the
     // prompt actually asks for (one sentence / a 2-4 word action).
@@ -247,7 +247,7 @@ export async function classifyEmail(llm: LlmFn, email: FetchedEmail, opts: Class
 
 async function classifyWithModel(llm: LlmFn, email: FetchedEmail, opts: ClassifyEmailOptions): Promise<EmailClassification> {
 
-  // OAK-016: previously string-concatenated directly with no delimiter and
+  // KEEL-016: previously string-concatenated directly with no delimiter and
   // no "this is data, not instructions" framing — an inbound email's
   // sender/subject/body is fully attacker-controlled. Explicit tags here,
   // paired with the instruction in SYSTEM_PROMPT above, are the standard

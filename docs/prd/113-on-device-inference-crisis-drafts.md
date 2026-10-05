@@ -2,7 +2,7 @@
 
 ## Problem
 
-Agent Oak's most sensitive single flow — the life-event playbooks
+LifeKeel's most sensitive single flow — the life-event playbooks
 (bereavement, disability, medical) this session spent the most
 validation effort on — routes its one real LLM call through a cloud
 provider like everything else. `renderPlaybook()` itself is fully
@@ -53,7 +53,7 @@ download (size shown before the download starts, progress shown during
 it) into IndexedDB via WebLLM. Once enabled, opening the "prepare a
 draft" affordance on a life-event step
 ([LifeEventPlaybookClient.tsx](../../apps/web/src/app/life-events/[eventId]/LifeEventPlaybookClient.tsx)
-only — this PRD's crisis-flow scope, not the general Ask Oak assistant or
+only — this PRD's crisis-flow scope, not the general Ask Keel assistant or
 regular insight drafts, both of which stay on the existing cloud path)
 runs inference **entirely client-side**, using the step's already-
 fetched `body` text as context and mirroring `generateDraft()`'s exact
@@ -117,7 +117,7 @@ moment's edit, not a sent recommendation.
    metrics below something real to measure without compromising the
    privacy property the feature exists for.
 
-Out of scope: the general Ask Oak assistant (`POST /assistant/ask`) and
+Out of scope: the general Ask Keel assistant (`POST /assistant/ask`) and
 regular insight drafts (`InsightGateClient.tsx`) — both stay cloud-only;
 open-ended assistant chat is a materially harder quality bar for a small
 local model than a narrow, templated draft-polish task, and revisiting

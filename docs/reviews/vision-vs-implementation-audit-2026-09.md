@@ -1,7 +1,7 @@
 # Vision vs implementation audit — what's actually built (2026-09-28)
 
 A point-in-time inventory of every implemented surface in this repo, mapped
-against the multi-agent vision brief (Oak HQ + member twins, crisis
+against the multi-agent vision brief (Keel HQ + member twins, crisis
 resilience, proactive intelligence, vault, ingestion engine). Produced by a
 full read of `apps/api`, `apps/web`, `packages/`, `detectors/`,
 `playbooks/`, `verticals/`, and `connectors/` — no live testing.
@@ -17,7 +17,7 @@ see `user-journeys-acceptance-criteria-gaps.md` and
 Act layer exists (approve→execute, earned-trust auto-execution, opt-in
 autonomous reminders), a full notification delivery stack exists
 (WhatsApp→SMS→email fallback, push, signed one-click links), deterministic
-scenario math exists inside Ask Oak, and there's a 14-page operator
+scenario math exists inside Ask Keel, and there's a 14-page operator
 console with billing, lifecycle email, and social publishing. The doc
 described "nothing beyond Tier 1"; in fact Tier 2 machinery is wired and
 narrow Tier 3 autonomy ships behind explicit opt-ins.
@@ -39,7 +39,7 @@ integrations).
 | Per-member email invite → pending-to-active lifecycle | `routes/family-join.ts` (PRD-123) | Organizer invites a specific roster member by email; token accept links `member.user_id` (stable roster `id` preserved — no duplicate), deletes the one-time invite, signs them in. Approve path now activates a matching pending entry instead of appending a duplicate row. |
 | Financial profile: household income/expenses, emergency fund, retirement, per-child education funds, `policies[]` coverage/renewal | `routes/family-financial-profile.ts` (PRD-102) | Submit → `persistSignal` → `engine.evaluate()` → insights. The load-bearing bridge between data intake and detectors. |
 | Assets register: property/vehicles/savings/investments/valuables, declared values, adult-gated | `routes/family-assets.ts`, `/assets` (PRD-135) | Tenant-scoped `family_assets`; totals + by-kind summary. Declared values only — no auto-valuation. |
-| Household context note, organizer-authored, read by Ask Oak | `routes/family-group.ts`, `routes/assistant.ts` (PRD-135) | Free-text background the profile can't express; deletable, ≤500 chars, settings UI asks for no medical details. |
+| Household context note, organizer-authored, read by Ask Keel | `routes/family-group.ts`, `routes/assistant.ts` (PRD-135) | Free-text background the profile can't express; deletable, ≤500 chars, settings UI asks for no medical details. |
 | Digital Estate Vault: encrypted, adult-gated wills/POA storage | `routes/vault.ts` | AES-256-GCM **server-side** (`platform/crypto.ts`), adult-only via `isFamilyAdult`. Explicitly no release/dead-man's-switch logic — see Gaps. |
 | Document storage (GridFS) + metadata | `routes/documents.ts` | Storage free on all plans; OCR extraction entitlement-gated (`document_ai_extraction`). |
 | GDPR export + immediate delete | `routes/account.ts` | Single JSON export; typed-email confirmation delete. |
@@ -50,7 +50,7 @@ integrations).
 
 | Capability | Where | Notes |
 |---|---|---|
-| Deterministic YAML detector engine + evidence chains + confidence calibration | `@agentoak/engine`, `category-table.yaml` | `category-table.yaml` fixes category inference for non-SaaS rule IDs. |
+| Deterministic YAML detector engine + evidence chains + confidence calibration | `@lifekeel/engine`, `category-table.yaml` | `category-table.yaml` fixes category inference for non-SaaS rule IDs. |
 | 5 family detectors: protection gap (incl. `policy_renewal_window`), per-child education shortfall, emergency-fund adequacy, retirement gap, estate readiness (PRD-121) | `detectors/family/*.yaml` | Genuine Understand/Predict over real profile signals. |
 | Golden eval sets + promotion gate (F1 ≥ 0.80, regression vs baseline) | `detector-evals/*.yaml`, `routes/detector-evals.ts` | `POST /detectors/:id/eval` is a human verdict, never auto-promotes. |
 | LLM confidence enrichment, per-tenant opt-in | `llm-scorer.ts` | `llm_scoring_enabled` in tenant_settings; rule-only score otherwise. |
@@ -65,11 +65,11 @@ integrations).
 | Readiness score (signed-in) | `fetchFamilyReadinessScore`, `useFamilyData` per-domain scores (protection/wealth/goals/savings), `/health/[domain]` pages | `100 − Σ open confidence × 10`, client-side. Honest empty-state handling (unfinalized profile ≠ 100). **Superseded by PRD-114** — see gap-table row 2. |
 | Public readiness quiz | `POST /readiness-quiz` (PRD-201) | Same engine + 2 detectors, unauthenticated, anonymous by design; `/readiness` page + `/leads` opt-in capture. |
 
-### Agent Oak (decide / act / escalate)
+### LifeKeel (decide / act / escalate)
 
 | Capability | Where | Tier |
 |---|---|---|
-| Ask Oak — grounded LLM Q&A over real profile + open insights | `routes/assistant.ts` (PRD-101) | 0 |
+| Ask Keel — grounded LLM Q&A over real profile + open insights | `routes/assistant.ts` (PRD-101) | 0 |
 | Inbox — open insights + email-derived items | `routes/family-inbox.ts` | Decide/Escalate surface |
 | Draft outreach from an insight or playbook step — never sent | `insights/generate-draft.ts`, `POST /insights/:id/prepare`, life-event step prepare (PRD-103/108) | 1 |
 | **Approve → execute real actions**: `send_email` (SendGrid), `send_whatsapp` (Twilio), `crm_tag`, `log_only` | `actions/action-executor.ts`, `POST /insights/:id/approve`, `action-preview` gate, `retry-execution` | 2 machinery — **see caveat below** |
@@ -99,7 +99,7 @@ plumbing.
   the same pipeline, entitlement-gated (`email_ai_summary`).
 - **Connectors**: generic OAuth + encrypted credential store
   (`connector-credentials.ts`), `ConnectorSyncEngine` +
-  `TokenRefreshScheduler` (`@agentoak/pipeline`), webhook ingest queue +
+  `TokenRefreshScheduler` (`@lifekeel/pipeline`), webhook ingest queue +
   worker with dead-letter + operator requeue. **Only email (Gmail OAuth +
   generic IMAP via `family-connectors.ts`) is functionally live**; the
   other ~33 `connectors/*.yaml` (open-banking, stripe, xero, trading-212,
@@ -140,7 +140,7 @@ plumbing.
   fully severed.
 - `outcomes/` (`causal-experiments`, `legacy-goal-outcome-bridge`,
   `reasoning-context-builder`) — no route imports found.
-- `@agentoak/workflows`' rebuilt durable engine (`src/engine/`) — per its
+- `@lifekeel/workflows`' rebuilt durable engine (`src/engine/`) — per its
   own package.json, "not yet wired to any apps/api route."
 - `verticals/` non-family definitions (trading, property, SMB,
   audience-growth, branding) and most connector YAMLs — definitions only.
@@ -158,7 +158,7 @@ plumbing.
 | 5 | **Client-side (zero-knowledge) vault encryption** | ✅ **Resolved as scoped to the product (PRD-134):** full per-user ZK rejected — a vault nobody can open in a crisis betrays the product's purpose. Shipped: opt-in client-side sealing (PBKDF2→AES-256-GCM under a shared family passphrase, browser-side), double-wrapped in the server layer — sealed bytes are unreadable by the operator. Honest limits: no passphrase recovery, metadata (name/doc_type/size) stays server-visible. | — |
 | 6 | **Action Network** — real bank/insurer/airline/hospital integrations | **Partially resolved (PRD-133):** the read-only account-info pipeline is real end-to-end — `AccountInfoProvider` interface, env-gated sandbox provider, TrueLayer token mode, sync into `external_accounts` with `needs_reauth` credential health, and the `/connect` surface. Permanently read-only (no payment initiation). Remaining: the AISP OAuth consent flow + scheduled sync cadence — still partnerships-blocked. | L — OAuth onboarding + BD. |
 | 7 | ~~**Youth-twin specifics** — savings buckets, progressive financial literacy, age-appropriate surfaces~~ | ✅ **Resolved (PRD-124 + PRD-129):** `?mode=youth` twin — server-side redacted (no amounts ever leave the API), age-banded copy, savings goals as progress-only views, and an **age-banded literacy curriculum** (younger/teen lesson cards) served inside the redacted payload and rendered in Kid view. Minors-and-data posture: children have no logins (PRD-123 refuses child invites), guardian-persona agent (PRD-126). | — |
-| 8 | **Health / life-assets / context / preferences domains** | **Partially resolved (PRD-135):** the four bundled domains split by risk, not by convenience — the non-sensitive two shipped. `family_assets` + `/assets` give the twin a declared-asset register (property/vehicles/savings/investments/valuables, adult-gated, minor-unit values); `context_note` on the family group is an organizer-editable note Ask Oak reads as background. Still deferred: **medical/health records** (GDPR special-category — proportionality, not just consent) and **per-member preference/decision-rights modeling** (needs a consent model that isn't organizer-centric). `/health/[domain]` remains *financial-health* scoring, not medical. | S residual — medical + preferences stay deliberately deferred per PRD-135. |
+| 8 | **Health / life-assets / context / preferences domains** | **Partially resolved (PRD-135):** the four bundled domains split by risk, not by convenience — the non-sensitive two shipped. `family_assets` + `/assets` give the twin a declared-asset register (property/vehicles/savings/investments/valuables, adult-gated, minor-unit values); `context_note` on the family group is an organizer-editable note Ask Keel reads as background. Still deferred: **medical/health records** (GDPR special-category — proportionality, not just consent) and **per-member preference/decision-rights modeling** (needs a consent model that isn't organizer-centric). `/health/[domain]` remains *financial-health* scoring, not medical. | S residual — medical + preferences stay deliberately deferred per PRD-135. |
 | 9 | **Live cash-flow / runway feed** | **Partially resolved (PRD-131):** `family_cashflow_entries` — a tenant-scoped recurring income/expense ledger any active adult can maintain — computes monthly in/out/net and a runway figure against emergency savings, surfaced on the `/cashflow` page. The entries are declarations a real transaction feed can later write into the same shape; the *live* half stays blocked on #6. | — substrate landed; live feed still blocked on #6. |
 | 10 | ~~**Tier 2 actions exercised in the family vertical**~~ | ✅ **Resolved (PRD-116, same session):** detector-declared `action_intents` (typed, authoritative over the keyword classifier in both directions) on `DetectorRuleSchema`/`TriggerSchema`; first live intent is `policy_renewal_window`'s self-send renewal-reminder email — approve remains the consent gate, declared external intents are categorically ineligible for auto-execute. Third-party-directed sends stay Tier-1 draft-only per PRD-103. | — |
 

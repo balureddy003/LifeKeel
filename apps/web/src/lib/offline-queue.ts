@@ -17,7 +17,7 @@
 
 import { getApiBase } from './env'
 
-const DB_NAME = 'agentoak-offline'
+const DB_NAME = 'lifekeel-offline'
 const STORE = 'pending_mutations'
 
 export interface QueuedMutation {
@@ -92,7 +92,7 @@ export async function fetchOrQueue(
   init: RequestInit,
   label: string,
 ): Promise<Response | 'queued'> {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('agentoak_token') : null
+  const token = typeof window !== 'undefined' ? localStorage.getItem('lifekeel_token') : null
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...((init.headers as Record<string, string>) ?? {}),
@@ -125,7 +125,7 @@ export async function fetchOrQueue(
 export async function flushMutationQueue(): Promise<number> {
   const pending = await listMutations()
   if (pending.length === 0) return 0
-  const token = localStorage.getItem('agentoak_token')
+  const token = localStorage.getItem('lifekeel_token')
   let replayed = 0
   for (const m of pending) {
     try {

@@ -18,7 +18,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import crypto from 'node:crypto'
-import { AuthService, createLogger } from '@agentoak/platform'
+import { AuthService, createLogger } from '@lifekeel/platform'
 import { getPlatformConfig } from '../operator/platform-config.js'
 
 const log = createLogger({ service: 'auth-social', version: '0.0.0' })
@@ -78,13 +78,11 @@ export async function registerSocialAuthRoutes(
     return
   }
   const studioUrl = process.env['STUDIO_URL'] ?? 'http://localhost:3000'
-  const agentOakUrl = process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002'
-  const kairosUrl = process.env['KAIROS_URL'] ?? 'http://localhost:3003'
+  const lifekeelUrl = process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002'
 
   // Remove trailing slashes
   const cleanStudioUrl = studioUrl.replace(/\/$/, '')
-  const cleanAgentOakUrl = agentOakUrl.replace(/\/$/, '')
-  const cleanKairosUrl = kairosUrl.replace(/\/$/, '')
+  const cleanLifeKeelUrl = lifekeelUrl.replace(/\/$/, '')
 
   // The redirect URI is always the API's own callback endpoint — Google
   // redirects back to the API, which then redirects to the appropriate app.
@@ -96,22 +94,17 @@ export async function registerSocialAuthRoutes(
   /**
    * Where the token/tenant fragment (success) or ?error= (failure) lands,
    * keyed by which app initiated the flow (see `app` in the signed OAuth
-   * state). kairos-mobile has no web page to land on — expo-web-browser's
-   * openAuthSessionAsync watches for a redirect to the app's registered
-   * custom scheme (apps/kairos-mobile/app.config.js's `scheme: 'kairos'`)
-   * and hands control back to the app with the full URL, fragment included.
+   * state). 'family' is the LifeKeel web app; anything else falls back to
+   * STUDIO_URL (legacy default kept for older clients).
    */
   function getCallbackUrl(app?: string): string {
-    if (app === 'family') return `${cleanAgentOakUrl}/auth/callback`
-    if (app === 'kairos-web') return `${cleanKairosUrl}/auth/callback`
-    if (app === 'kairos-mobile') return 'kairos://oauth-callback'
+    if (app === 'family') return `${cleanLifeKeelUrl}/auth/callback`
     return `${cleanStudioUrl}/auth/callback`
   }
 
   /** Same app-keyed resolution as getCallbackUrl, but for the pre-token error path (?error=... instead of #token=...). */
   function getLoginErrorUrl(app: string | undefined, error: string): string {
-    if (app === 'kairos-mobile') return `kairos://oauth-callback?error=${error}`
-    const base = app === 'family' ? cleanAgentOakUrl : app === 'kairos-web' ? cleanKairosUrl : cleanStudioUrl
+    const base = app === 'family' ? cleanLifeKeelUrl : cleanStudioUrl
     return `${base}/login?error=${error}`
   }
 
@@ -227,7 +220,7 @@ export async function registerSocialAuthRoutes(
           { external_id: googleUser.id, external_provider: 'google' }
         ]
       })
-      // OAK-005: computed from the pre-update `user` doc, before any write —
+      // KEEL-005: computed from the pre-update `user` doc, before any write —
       // if the external_id+provider $or clause matched, this is definitionally
       // true (same OAuth identity re-authenticating, safe regardless of
       // verified_email); if false, only the email clause could have matched,
@@ -237,7 +230,7 @@ export async function registerSocialAuthRoutes(
       if (!user) {
         const tenantId = googleUser.email.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
 
-        // OAK-001: without this check, anyone whose OAuth email's local-part
+        // KEEL-001: without this check, anyone whose OAuth email's local-part
         // happens to collide with an already-claimed tenant slug (e.g. any
         // "sarah@<any domain>" after tenant_id "sarah" is taken) was silently
         // admitted as a brand-new admin of that existing tenant — full
@@ -306,7 +299,7 @@ export async function registerSocialAuthRoutes(
           updated_at: new Date(),
         })
       } else {
-        // OAK-005: a merge onto an existing account by email match alone
+        // KEEL-005: a merge onto an existing account by email match alone
         // (not an already-linked identity re-authenticating) requires the
         // provider to attest the email as verified — otherwise anyone who
         // creates an OAuth account with an unverified copy of someone
@@ -447,7 +440,7 @@ export async function registerSocialAuthRoutes(
       if (!user) {
         const tenantId = googleUser.email.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
 
-        // OAK-001 — see the same guard in GET /auth/google/callback above
+        // KEEL-001 — see the same guard in GET /auth/google/callback above
         // for the full explanation. This route is JSON-only (called
         // directly by the frontend, no browser redirect), so it rejects
         // with the same 409 shape auth-users.ts's password signup uses.
@@ -507,7 +500,7 @@ export async function registerSocialAuthRoutes(
           updated_at: new Date(),
         })
       } else {
-        // OAK-005 — see the matching Google callback guard for the full
+        // KEEL-005 — see the matching Google callback guard for the full
         // explanation. This route is JSON-only, so it rejects with 403
         // rather than a redirect.
         if (!matchedByExternalId && !googleUser.verified_email) {
@@ -646,7 +639,7 @@ export async function registerSocialAuthRoutes(
         avatar_url?: string
       }
 
-      // OAK-005: previously only fetched when `/user` didn't already
+      // KEEL-005: previously only fetched when `/user` didn't already
       // return an email — meaning for the common case (public email set),
       // no verification signal was ever available at the merge-decision
       // point below. Now always fetched so `emailVerified` is meaningful
@@ -678,7 +671,7 @@ export async function registerSocialAuthRoutes(
       if (!user) {
         const tenantId = email!.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
 
-        // OAK-001 — see the matching Google guard earlier in this file for
+        // KEEL-001 — see the matching Google guard earlier in this file for
         // the full explanation. This callback redirects the browser, so it
         // rejects via redirect (a JSON body here would just render as text
         // mid redirect chain), matching this handler's existing
@@ -739,7 +732,7 @@ export async function registerSocialAuthRoutes(
           updated_at: new Date(),
         })
       } else {
-        // OAK-005 — see the matching Google callback guard for the full
+        // KEEL-005 — see the matching Google callback guard for the full
         // explanation.
         if (!matchedByExternalId && !emailVerified) {
           return reply.redirect(`${studioUrl}/login?error=email_not_verified`)
@@ -852,7 +845,7 @@ export async function registerSocialAuthRoutes(
         avatar_url?: string
       }
 
-      // OAK-005: previously only fetched when `/user` didn't already
+      // KEEL-005: previously only fetched when `/user` didn't already
       // return an email — meaning for the common case (public email set),
       // no verification signal was ever available at the merge-decision
       // point below. Now always fetched so `emailVerified` is meaningful
@@ -884,7 +877,7 @@ export async function registerSocialAuthRoutes(
       if (!user) {
         const tenantId = email!.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
 
-        // OAK-001 — see the matching Google guard earlier in this file for
+        // KEEL-001 — see the matching Google guard earlier in this file for
         // the full explanation. This route is JSON-only (called directly by
         // the frontend, no browser redirect), so it rejects with the same
         // 409 shape auth-users.ts's password signup uses.
@@ -944,7 +937,7 @@ export async function registerSocialAuthRoutes(
           updated_at: new Date(),
         })
       } else {
-        // OAK-005 — see the matching Google guard for the full
+        // KEEL-005 — see the matching Google guard for the full
         // explanation. This route is JSON-only, so it rejects with 403.
         if (!matchedByExternalId && !emailVerified) {
           return reply.status(403).send({ error: 'This email is not verified with the OAuth provider — sign in with your existing account instead.' })
