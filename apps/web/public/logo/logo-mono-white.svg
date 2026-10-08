@@ -1,16 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
   <!-- Monochrome, no container — for a single-color context: merchandise, a stamp, a favicon over a busy background. Drop straight onto any sufficiently dark ground. -->
-  <g stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
-    <!-- mast + sail -->
-    <path d="M96 26 L96 58"/>
-    <path d="M96 30 L124 58 L96 58 Z" fill="#ffffff" stroke="none"/>
-    <!-- waterline -->
-    <path d="M20 74 Q36 66 52 74 T84 74 T116 74 T148 74 T172 74" fill="none" stroke-width="6" opacity="0.65"/>
-    <!-- hull -->
-    <path d="M48 92 Q96 136 144 92" fill="none"/>
-    <!-- keel fin -->
-    <path d="M96 116 L96 150"/>
-    <!-- keel bulb -->
-    <rect x="80" y="148" width="32" height="13" rx="6.5" fill="#ffffff" stroke="none"/>
-  </g>
+  <path d="M96 30 L96 160" stroke="#ffffff" stroke-width="9" stroke-linecap="round"/>
+  <path d="M96 34 C122 48 130 66 126 84 L96 84 Z" fill="#ffffff"/>
+  <path d="M96 112 L126 112 C130 130 122 148 96 162 Z" fill="#ffffff" opacity="0.55"/>
+  <rect x="80" y="156" width="32" height="12" rx="6" fill="#ffffff"/>
+  <path d="M26 98 Q38 92 50 98 T74 98" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.7"/>
+  <path d="M118 98 Q130 92 142 98 T166 98" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.7"/>
 </svg>

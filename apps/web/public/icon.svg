@@ -1,22 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <!--
+    LifeKeel mark: the sail's reflection below the waterline IS the keel.
+    What you see above the surface (the family, sailing) has a twin below
+    holding it steady — the product's "digital twin" premise drawn as one
+    continuous spar: mast above, keel below, bulb at the bottom.
+  -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="192" y2="192" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#0b3b5c"/>
       <stop offset="1" stop-color="#0e7490"/>
     </linearGradient>
+    <linearGradient id="twin" x1="96" y1="112" x2="96" y2="162" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7dd3fc" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#7dd3fc" stop-opacity="0.25"/>
+    </linearGradient>
   </defs>
   <rect width="192" height="192" rx="42" fill="url(#bg)"/>
-  <g stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
-    <!-- mast + sail -->
-    <path d="M96 26 L96 58" opacity="0.85"/>
-    <path d="M96 30 L124 58 L96 58 Z" fill="#ffffff" stroke="none" opacity="0.95"/>
-    <!-- waterline -->
-    <path d="M20 74 Q36 66 52 74 T84 74 T116 74 T148 74 T172 74" fill="none" opacity="0.55" stroke-width="5"/>
-    <!-- hull -->
-    <path d="M48 92 Q96 136 144 92" fill="none" opacity="0.95"/>
-    <!-- keel fin -->
-    <path d="M96 116 L96 150" opacity="0.9"/>
-    <!-- keel bulb -->
-    <rect x="80" y="148" width="32" height="13" rx="6.5" fill="#ffffff" stroke="none"/>
-  </g>
+  <!-- continuous spar: mast above the waterline, keel spine below -->
+  <path d="M96 30 L96 160" stroke="#ffffff" stroke-width="7" stroke-linecap="round" opacity="0.9"/>
+  <!-- sail (the family, above water) -->
+  <path d="M96 34 C122 48 130 66 126 84 L96 84 Z" fill="#ffffff" opacity="0.95"/>
+  <!-- its reflection below = the keel fin (the twin, dimmer as a reflection is) -->
+  <path d="M96 112 L126 112 C130 130 122 148 96 162 Z" fill="url(#twin)"/>
+  <!-- keel bulb: the weight that rights the boat -->
+  <rect x="80" y="156" width="32" height="12" rx="6" fill="#7dd3fc"/>
+  <!-- waterline: broken where the spar passes through -->
+  <path d="M26 98 Q38 92 50 98 T74 98" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" opacity="0.5"/>
+  <path d="M118 98 Q130 92 142 98 T166 98" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" opacity="0.5"/>
 </svg>
