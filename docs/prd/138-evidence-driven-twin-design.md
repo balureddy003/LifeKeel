@@ -1,6 +1,7 @@
 # PRD-138: Evidence-driven twin — history, freshness, and change-triggered recompute (design)
 
-Status: **design for review. Nothing here is built.**
+Status: **design for review. Nothing here is built.** Reviewed 2026-10; phasing and several
+corrections are in [PRD-139](139-platform-end-to-end-model.md), which supersedes the phasing below.
 Trust tier: **Tier 0** (read models, ledger, notifications). No new Act surface.
 
 ## Problem
@@ -22,7 +23,8 @@ That gives three gaps that matter more than any missing domain:
    world moves and the twin does not know.
 3. **Recompute is coarse.** Profile submit re-evaluates broadly
    (`family-financial-profile.ts` calls `engine.evaluate()` in ~10 places) and a
-   daily sweep (`jobs/stale-profile-evaluation.ts`) catches the rest. Cost
+   daily sweep (`jobs/stale-profile-evaluation.ts`, which keys on `updated_at`, so it does not
+   catch time-driven changes such as a renewal date passing) catches the rest. Cost
    grows with families, not with activity.
 
 Research context (papers surveyed 2026-10; abstracts only for most, none about
@@ -46,8 +48,9 @@ and the judge meaningful on real data.
 - A change **re-runs only the detectors that depend on it**.
 - Physical-world facts enter through **evidence** (document, email, manual
   confirmation), always proposed and human-approved — never auto-applied.
-- Lower cost per family than today: model calls only on new evidence or when a
-  field needs re-confirming.
+- Keep cost flat: model calls only on new evidence. (This design improves correctness and
+  trust; it is **not** expected to lower cost. The big cost levers are the always-on judge
+  service and model busy time, see PRD-139 §5.)
 
 ## Non-goals
 
@@ -80,7 +83,9 @@ and the judge meaningful on real data.
   is a **Proposal**, as today (`ocr/profile-mapping.ts`). Extraction never
   writes state.
 - "Confirm still correct" is a first-class evidence source with no extraction
-  cost: one tap re-stamps freshness without changing the value.
+  cost: one tap re-stamps freshness without changing the value. It extends the
+  existing annual review (`reviewed_at`, `review_snapshot`) rather than adding a
+  parallel mechanism.
 
 ### 2. Data model (all tenant-scoped via `getTenantCollection`)
 
@@ -172,9 +177,9 @@ twin_change(path) ─► signalsFor(path) ─► detectorsFor(signal) ─► enq
   dedupe window, per-tenant lock, handler never throws). Reuse it.
 - Coalesce within a short window so a form submit that changes ten fields
   enqueues each affected detector once.
-- The daily sweep stays as a safety net (it also expires time-based facts,
-  e.g. a renewal date passing), but becomes cheap because most tenants have no
-  stale or changed fields.
+- The daily sweep stays as a safety net. It does **not** currently handle
+  time-driven facts (it only picks up profiles edited since the last evaluation), so
+  renewal expiry and freshness decay need their own bucketed scheduled job.
 - Per-member scope: a change carries `subject.member_id`, so only that
   member's twin and insights are recomputed.
 
@@ -251,7 +256,9 @@ or a classifier skip the guard.
 ## Phasing
 
 1. **Ledger + projection + freshness read model** (no behaviour change): append
-   on existing writes, backfill an initial `import` event per current field,
+   on existing writes, backfill silently (no recompute) an initial `import` event per current field,
+   with `last_confirmed_at = reviewed_at`, else unknown age (not `updated_at`, which
+   autosaves touch),
    expose `/family/changes` and `/family/freshness`. Add the measurement counter.
 2. **Freshness in consumers**: Ask Keel "as of" dates, `data_confidence` on the
    readiness score, detector opt-in, weekly confirm batch.
@@ -271,8 +278,9 @@ or a classifier skip the guard.
   so they start partly stale instead of falsely fresh.
 - **Projection drift.** Mitigated by rebuild job and the replay property test.
 - **Double bookkeeping.** Two writers (document + ledger) can disagree.
-  Mitigated by one write helper that owns both; routes may not write either
-  directly after Phase 1.
+  Today the profile has **several** writers (e.g. `routes/documents.ts` writes it
+  directly). A single `applyProfileChange()` funnel with all writers migrated and a
+  CI ban on direct writes is the main Phase 1 workstream, not a footnote.
 
 ## Open questions
 
