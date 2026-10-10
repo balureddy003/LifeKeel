@@ -149,3 +149,29 @@ Start with `shadow` (no effect on results) and watch
 - Model quality beyond the small synthetic sets in `apps/api/src/**/__fixtures__` and
   `infra/encoder-eval`.
 - Cloud Run behaviour: IAM auth, cold starts, autoscaling. The deploy workflows have not been run end to end.
+
+## 9. Running on macOS
+
+**Not tested on a Mac** (the checks above were run on Linux). This is what should differ, from reading the
+scripts and tools; tell us what you hit.
+
+- **Prerequisites:** Node >= 22.12 (`brew install node@22` or nvm), then
+  `corepack enable && corepack prepare pnpm@8.15.5 --activate`, and Xcode Command Line Tools
+  (`xcode-select --install`) in case a native module needs to build. Then `pnpm install --frozen-lockfile`.
+- **MongoDB and Redis:** use Homebrew (`brew tap mongodb/brew && brew install mongodb-community@7.0 redis`,
+  then `brew services start mongodb-community@7.0 redis`) **or** the Docker compose command in section 2.
+  Do not use the Linux `mongod` download from section 2: it is a Linux binary.
+- **Tests:** `pnpm typecheck && pnpm lint && pnpm test && pnpm build` work the same way. The API tests use
+  `mongodb-memory-server`, which downloads a macOS `mongod` on first run (needs internet; the first run is slow).
+- **Boot smoke test:** `scripts/boot-smoke.sh` is bash 3.2 compatible (macOS's built-in bash), so it runs as-is
+  against a built API. The `SMOKE_IMAGE` mode uses `--network host`, which Docker Desktop for Mac only supports
+  if host networking is enabled in its settings (recent versions; verify), so use CI for the image smoke test if
+  that is awkward.
+- **Models (Ollama):** install the macOS app. On Apple Silicon it runs on the GPU, so it is usually much faster
+  than the CPU timings quoted in this repo. Pass/fail on the safety eval should not depend on speed, but
+  **do not use Mac timings in the cost model**: cloud instances are CPU-only.
+- **Container images:** Docker Desktop on Apple Silicon builds `linux/arm64`. The API and Ollama images should
+  build natively. The encoder image installs PyTorch from the CPU wheel index and may not find arm64 wheels
+  (untested); if it fails, build with `--platform linux/amd64` (slow under emulation) or rely on CI.
+- **Shell habits:** macOS lacks `timeout` and `setsid`; `brew install coreutils` gives `gtimeout`. The repo's
+  scripts do not need them.

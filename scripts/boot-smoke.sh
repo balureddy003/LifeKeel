@@ -29,7 +29,9 @@ if [ -z "${SMOKE_IMAGE:-}" ]; then
 fi
 
 # Names the deploy workflow passes as KEY=${{ ... }} (everything under env_vars: up to secrets:).
-mapfile -t DEPLOY_VARS < <(awk '/env_vars: \|/{f=1;next} /secrets: \|/{f=0} f && /=\$\{\{/{sub(/^[ \t]+/,""); sub(/=.*/,""); print}' "$WORKFLOW")
+# (A read loop, not `mapfile`: macOS ships bash 3.2, which has no mapfile.)
+DEPLOY_VARS=()
+while IFS= read -r v; do DEPLOY_VARS+=("$v"); done < <(awk '/env_vars: \|/{f=1;next} /secrets: \|/{f=0} f && /=\$\{\{/{sub(/^[ \t]+/,""); sub(/=.*/,""); print}' "$WORKFLOW")
 [ "${#DEPLOY_VARS[@]}" -gt 0 ] || { echo "found no \${{ }} variables in $WORKFLOW: parser out of date?" >&2; exit 2; }
 
 env_args=(NODE_ENV=production LIFEKEEL_DEPLOYMENT_MODE=cloud LOG_LEVEL=info PORT="$PORT"
