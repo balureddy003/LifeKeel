@@ -40,7 +40,7 @@ import { getAuditLogger } from '../audit/audit-log.js'
 // Collections holding tenant-tagged family data, wiped on delete. Anything
 // tenant-scoped the family product writes must be in this list — internal
 // ML/billing/platform collections are intentionally not (see header).
-const DELETABLE_COLLECTIONS = [
+export const DELETABLE_COLLECTIONS = [
   'users',
   'family_groups',
   'family_financial_profile',
@@ -66,7 +66,38 @@ const DELETABLE_COLLECTIONS = [
   'reminders',
   'web_push_subscriptions',
   'mobile_push_tokens',
+  // PRD-139 Phase 0: tenant-owned family data that account deletion previously left behind
+  // (found by the privacy review; the guard test in __tests__/account-erasure-coverage.test.ts
+  // keeps new tenant-scoped collections from being missed again).
+  'external_accounts',
+  'family_assets',
+  'family_cashflow_entries',
+  'family_continuity_state',
+  'family_join_requests',
+  'family_life_change_nudge_state',
+  'family_member_invites',
+  'family_scenarios',
+  'feed_mutes',
+  'heartbeat_sends',
+  'insight_attribution',
+  'invite_codes',
+  'legacy_contacts',
+  'legacy_documents',
+  'legacy_notes',
+  'member_nudges',
+  'readiness_events',
+  'email_classify_failures',
 ] as const
+
+/**
+ * Tenant-scoped collections (opened through getTenantCollection) that deliberately survive account
+ * deletion, with the reason. Anything tenant-scoped must be in DELETABLE_COLLECTIONS or here; the
+ * coverage test fails otherwise.
+ */
+export const ERASURE_RETAINED: Readonly<Record<string, string>> = {
+  tenants: 'row is kept but made dead so outstanding JWTs 403 (see the delete handler)',
+  audit_log: 'retained compliance record, including the account.deleted entry (see the header)',
+}
 
 // Fields stripped from the exported user record — auth material, not data
 // about the family.
@@ -165,6 +196,8 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
     for (const name of DELETABLE_COLLECTIONS) {
       await db.collection(name).deleteMany({ tenant_id })
     }
+    // judge_shadow_results (ids and decisions only, 30-day TTL) is keyed `tenantId`, not `tenant_id`.
+    await db.collection('judge_shadow_results').deleteMany({ tenantId: tenant_id })
 
     // Keep the tenants row but make it dead: the auth middleware admits only
     // 'active'/'trial' tenants, so every outstanding JWT 403s from here on.
