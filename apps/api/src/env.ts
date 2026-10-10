@@ -69,6 +69,10 @@ const ConfigSchema = z.object({
   // Opt in to the self-hosted model for interactive text (Ask Keel, drafts, support).
   // Fan email scans out through the queue (parallel across workers) instead of one sequential cron loop.
   EMAIL_SCAN_FANOUT: optionalFlag(),
+  // 'external' = scheduled jobs are driven by Cloud Scheduler calling POST /internal/cron/tick (lets Cloud
+  // Run scale to zero); default 'internal' = node-cron in-process. CRON_TICK_SECRET authenticates the tick.
+  CRON_MODE: optionalEnum(['internal', 'external']),
+  CRON_TICK_SECRET: z.string().optional(),
   EMAIL_SCAN_CONCURRENCY: z.string().optional(),
   // USD per hour of one model instance; enables the busy-time cost estimate metric.
   LOCAL_MODEL_COST_PER_HOUR_USD: z.string().optional(),

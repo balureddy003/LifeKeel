@@ -66,6 +66,8 @@ import { createCredentialExpiryInsights } from './jobs/connector-health-alert.js
 import { scanAllConnectedInboxes, enqueueConnectedInboxScans, runQueuedInboxScan, EMAIL_SCAN_QUEUE } from './jobs/email-scan.js'
 import { retryFailedDocuments } from './ocr/retry-failed.js'
 import { withCronLock, acquireCronLock, releaseCronLock, ensureCronLockIndex } from './jobs/cron-lock.js'
+import { createCronScheduler } from './jobs/cron-schedule.js'
+import { registerInternalCronRoutes } from './routes/internal-cron.js'
 import { registerApiVersioning, rewriteVersionedUrl } from './api-versioning.js'
 import { registerBillingRoutes } from './routes/billing.js'
 import { registerBlogRoutes } from './routes/blog.js'
@@ -173,6 +175,16 @@ if (process.env['LIFEKEEL_LICENSE_KEY'] && process.env['LIFEKEEL_LICENSE_PUBLIC_
 // LLM function available module-wide for the goal compiler and other routes
 const globalLlmFn = createLlmRouterFromEnv()
 
+// Scheduled jobs. 'internal' (default) runs them under node-cron in this process, as before.
+// 'external' only registers them; Cloud Scheduler calls POST /internal/cron/tick each minute, which
+// lets Cloud Run scale to zero (node-cron cannot fire on a scaled-to-zero or CPU-throttled instance).
+// See jobs/cron-schedule.ts and routes/internal-cron.ts.
+const cronScheduler = createCronScheduler(
+  process.env['CRON_MODE'] === 'external' ? 'external' : 'internal',
+  (expr, fn, opts) => cron.schedule(expr, fn as never, opts as never),
+)
+const scheduleJob = cronScheduler.schedule.bind(cronScheduler)
+
 // MongoDB-backed app database (shares the singleton client from db.ts) —
 // "workflowDb" is a legacy name from before the workflow engine was removed;
 // it's really just the app's main Db handle, used throughout this file.
@@ -226,7 +238,7 @@ try {
   log.info({}, 'Token refresh scheduler started')
 
   // Connector poll every 15 minutes — incremental sync of all connected tenants
-  cron.schedule('*/15 * * * *', async () => {
+  scheduleJob('*/15 * * * *', async () => {
     try {
       await withCronLock(workflowDb, 'connector-sync', () => syncEngine.pollAll(connectorLoader.list()))
     } catch (err) {
@@ -238,7 +250,7 @@ try {
   // Connector credential-health alert — runs shortly after each poll so tenants
   // are notified immediately when an API key expires or is revoked in the
   // background. Creates a deduplicated high-urgency insight per tenant+connector.
-  cron.schedule('*/15 * * * *', async () => {
+  scheduleJob('*/15 * * * *', async () => {
     try {
       await withCronLock(workflowDb, 'connector-health', async () => {
         await createCredentialExpiryInsights({ db: workflowDb, lookbackMs: 20 * 60 * 1000 })
@@ -257,7 +269,7 @@ try {
   // Opt-in (EMAIL_SCAN_FANOUT=true): one queue job per mailbox so scans run in parallel
   // across workers instead of one after another (see jobs/email-scan.ts).
   const emailScanFanout = process.env['EMAIL_SCAN_FANOUT'] === 'true'
-  cron.schedule('*/15 * * * *', async () => {
+  scheduleJob('*/15 * * * *', async () => {
     try {
       await withCronLock(workflowDb, 'email-scan', () => emailScanFanout
         // Fan-out: this tick only enqueues (fast); workers below do the scans in parallel.
@@ -274,7 +286,7 @@ try {
   // MAX_DOCUMENT_ATTEMPTS and per sweep by SWEEP_LIMIT (see ocr/retry-failed.ts).
   const ocrRetryDecide = localDecisionFromEnv('ocr')
   if (ocrRetryDecide) {
-    cron.schedule('*/10 * * * *', async () => {
+    scheduleJob('*/10 * * * *', async () => {
       try {
         await withCronLock(workflowDb, 'document-ocr-retry', () => retryFailedDocuments(workflowDb, ocrRetryDecide))
       } catch (err) {
@@ -287,7 +299,7 @@ try {
   // Marketing publish sweep — every minute. Channels can't hold schedules,
   // so approved posts with a due scheduled_at are dispatched here; the lock
   // plus the 'publishing' claim guard against double-posting.
-  cron.schedule('* * * * *', async () => {
+  scheduleJob('* * * * *', async () => {
     try {
       await withCronLock(workflowDb, 'marketing-publish', async () => {
         await publishDueMarketingPosts(workflowDb, new DbSocialPublisher(workflowDb, socialPublisherFromEnv()))
@@ -300,7 +312,7 @@ try {
 
   // Daily draft generation — queues one AI draft per opted-in tenant for
   // review. Never publishes; it only fills the morning review queue.
-  cron.schedule('23 8 * * *', async () => {
+  scheduleJob('23 8 * * *', async () => {
     try {
       await withCronLock(workflowDb, 'marketing-generate', async () => {
         await generateDailyMarketingDrafts(workflowDb, globalLlmFn)
@@ -313,7 +325,7 @@ try {
 
   // Engagement polling — hourly; refreshes like/repost/reply counts on
   // published posts where the channel exposes public metrics (Bluesky).
-  cron.schedule('17 * * * *', async () => {
+  scheduleJob('17 * * * *', async () => {
     try {
       await withCronLock(workflowDb, 'marketing-engagement', async () => {
         await pollMarketingEngagement(workflowDb)
@@ -326,7 +338,7 @@ try {
   // Daily metrics rollup — hourly at :40. Recomputes today + yesterday
   // (late-arriving events) into metrics_daily; first run backfills 90 days.
   // Operator dashboards read the rollup instead of scanning raw events.
-  cron.schedule('40 * * * *', async () => {
+  scheduleJob('40 * * * *', async () => {
     try {
       await withCronLock(workflowDb, 'metrics-rollup', async () => {
         const summary = await runMetricsRollup(workflowDb)
@@ -343,7 +355,7 @@ try {
   // target is never touched twice) plus an operator_audit_log entry under
   // actor 'autopilot'. All rules default off — this cron is inert until an
   // operator enables one.
-  cron.schedule('50 * * * *', async () => {
+  scheduleJob('50 * * * *', async () => {
     try {
       await withCronLock(workflowDb, 'autopilot-sweep', async () => {
         const actions = await runAutopilotSweep(workflowDb)
@@ -359,7 +371,7 @@ try {
 
   // Weekly operator digest — Mondays 08:30. Persisted to operator_digests
   // and posted to the ops Slack channel (best-effort, never throws).
-  cron.schedule('30 8 * * 1', async () => {
+  scheduleJob('30 8 * * 1', async () => {
     try {
       await withCronLock(workflowDb, 'weekly-digest', async () => {
         const digest = await runWeeklyDigest(workflowDb)
@@ -373,7 +385,7 @@ try {
 
   // Lifecycle email sweep — hourly at :25. Lead nurture, activation and
   // upgrade nudges; consent/suppression/marketing_paused gated, ledger-deduped.
-  cron.schedule('25 * * * *', async () => {
+  scheduleJob('25 * * * *', async () => {
     try {
       await withCronLock(workflowDb, 'lifecycle-sweep', async () => {
         const sent = await runLifecycleSweep(workflowDb)
@@ -392,7 +404,7 @@ try {
   if (deliveryRouter) {
     const dr = deliveryRouter
     await ensureReminderIndexes(workflowDb)
-    cron.schedule('17 * * * *', async () => {
+    scheduleJob('17 * * * *', async () => {
       try {
         await withCronLock(workflowDb, 'policy-renewal-reminders', async () => {
           const summary = await runPolicyRenewalReminders(workflowDb, (tenantId, reminder) => dr.deliverReminder(tenantId, reminder))
@@ -412,7 +424,7 @@ try {
   // guidance exists even when nobody opens the page. Write-only state —
   // no notifications are delivered (Tier 0, deterministic).
   await ensureMemberNudgeIndexes(workflowDb)
-  cron.schedule('15 7 * * *', async () => {
+  scheduleJob('15 7 * * *', async () => {
     try {
       await withCronLock(workflowDb, 'member-agent-loop', async () => {
         const summary = await runMemberAgentLoop(workflowDb)
@@ -429,7 +441,7 @@ try {
   // organizer enabled the switch. Email-only; the state machine itself is
   // the guarantee against double-sends.
   await ensureContinuityIndexes(workflowDb)
-  cron.schedule('45 7 * * *', async () => {
+  scheduleJob('45 7 * * *', async () => {
     try {
       await withCronLock(workflowDb, 'continuity-check', async () => {
         await runContinuityCheck(workflowDb)
@@ -445,7 +457,7 @@ try {
   // medical life event they reported 3+ days ago still has unchecked
   // response-plan steps. One email ever per event, same dedupe shape as
   // vault-reminder.ts.
-  cron.schedule('10 8 * * *', async () => {
+  scheduleJob('10 8 * * *', async () => {
     try {
       await withCronLock(workflowDb, 'checklist-reminder', async () => {
         const sent = await runChecklistReminderSweep(workflowDb)
@@ -466,7 +478,7 @@ try {
     ['family-heartbeat-weekly', '0 8 * * 1', 'weekly'],
     ['family-heartbeat-monthly', '0 8 1 * *', 'monthly'],
   ] as const) {
-    cron.schedule(schedule, async () => {
+    scheduleJob(schedule, async () => {
       try {
         await withCronLock(workflowDb, name, async () => {
           const r = await runFamilyHeartbeat(workflowDb, { cadence })
@@ -488,7 +500,7 @@ try {
   // Runs at 08:00 daily; sends each tenant their queued insights as one email.
   if (deliveryRouter) {
     const dr = deliveryRouter
-    cron.schedule('0 8 * * *', async () => {
+    scheduleJob('0 8 * * *', async () => {
       try {
         await withCronLock(workflowDb, 'daily-digest', async () => {
           const tenants = await workflowDb.collection('digest_queue').distinct('tenant_id', { sent: false })
@@ -506,7 +518,7 @@ try {
   // ── Calibration drift alerting — 2 AM nightly ────────────────────────────
   // Compares per-detector ECE against previous run; alerts when ECE > 0.10 or
   // increases by > 0.05 since last check.
-  cron.schedule('0 2 * * *', async () => {
+  scheduleJob('0 2 * * *', async () => {
     if (!scoreCalibrator) return
     const lockOwner = await acquireCronLock(workflowDb, 'calibration-drift')
     if (!lockOwner) return
@@ -568,7 +580,7 @@ try {
   //   approved, auto_approved → 1 (positive signal — user or policy endorsed)
   //   dismissed, auto_dismissed → 0 (negative signal — user or policy rejected)
   //   policy_blocked, budget_blocked → excluded (not user decisions, no signal)
-  cron.schedule('0 3 * * *', async () => {
+  scheduleJob('0 3 * * *', async () => {
     if (!scoreCalibrator) return
     const lockOwner = await acquireCronLock(workflowDb, 'calibration-fit')
     if (!lockOwner) return
@@ -687,7 +699,7 @@ try {
   // Handles outcome charge settlement (H3), trial expiration (H5),
   // payment failure recovery (H6), and billing cycle resets (H4).
   // All jobs are idempotent — safe to run multiple times.
-  cron.schedule('0 4 * * *', async () => {
+  scheduleJob('0 4 * * *', async () => {
     try {
       const { runBillingCron } = await import('./jobs/billing-cron.js')
       await runBillingCron(workflowDb)
@@ -719,7 +731,7 @@ try {
   // POST /family/financial-profile/evaluate already runs on demand; this
   // only adds the "someone has to remember to click it" → "guaranteed to
   // eventually happen" part.
-  cron.schedule('30 6 * * *', async () => {
+  scheduleJob('30 6 * * *', async () => {
     try {
       await withCronLock(workflowDb, 'stale-profile-evaluation', async () => {
         const summary = await runStaleProfileEvaluationSweep(workflowDb, engine, persistAndDeliverInsights)
@@ -735,7 +747,7 @@ try {
   // feed events when a watched scenario's runway/depletion month moves by
   // ≥0.5 months. Runs after the 06:30 stale-profile sweep so projections
   // see yesterday's freshest data.
-  cron.schedule('30 5 * * *', async () => {
+  scheduleJob('30 5 * * *', async () => {
     try {
       await withCronLock(workflowDb, 'scenario-watchlist', async () => {
         const summary = await runScenarioWatchlist(workflowDb)
@@ -751,14 +763,14 @@ try {
   const insightSlaWorker = new InsightSlaWorker(workflowDb)
   const escalationWorker = new EscalationWorker(workflowDb)
   await retentionWorker.ensureIndexes()
-  cron.schedule('0 2 * * *', async () => {
+  scheduleJob('0 2 * * *', async () => {
     try {
       await withCronLock(workflowDb, 'retention', () => retentionWorker.run())
     } catch (err) {
       log.error({ err }, 'Retention worker failed')
     }
   }, { missedExecutionTolerance: 60_000 })
-  cron.schedule('*/15 * * * *', async () => {
+  scheduleJob('*/15 * * * *', async () => {
     try {
       await withCronLock(workflowDb, 'insight-sla-escalation', async () => {
         // KEEL-003: this previously had zero error logging at all — a bare
@@ -822,7 +834,7 @@ try {
   //    calibration for the online-learning layer against held-out
   //    approve/dismiss history. Runs at 7 AM every Monday.
   //    Persists per-detector reports to `feature_hash_eval_reports`.
-  cron.schedule('0 7 * * 1', async () => {
+  scheduleJob('0 7 * * 1', async () => {
     try {
       await withCronLock(workflowDb, 'feature-hash-eval', async () => {
         const { runFeatureHashEval } = await import('./jobs/feature-hash-eval.js')
@@ -1168,7 +1180,7 @@ app.addHook('onRequest', async (request, reply) => {
   // PRD-110: '/family/join' is deliberately NOT a prefix of the organizer-only
   // '/family/access-requests*' endpoints below — this array is matched by
   // startsWith, so '/family/join-requests' would have made those public too.
-  const open = ['/health', '/engine/health', '/status', '/metrics', '/auth/token', '/auth/demo-token', '/auth/signup', '/auth/login', '/auth/sso/', '/auth/google/', '/auth/github/', '/auth/request-password-reset', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/entitlements/plans', '/blog/posts', '/a/', '/why/', '/verify/', '/webhooks/', '/inbound/', '/insights/cleanup-stale-all', '/billing/webhook', '/documentation', '/documentation/json', '/documentation/uiOptions', '/documentation/static', '/growth/events', '/readiness-quiz', '/leads', '/users/unsubscribe', '/share/', '/family/join', '/family/invite/']
+  const open = ['/health', '/engine/health', '/status', '/metrics', '/internal/cron/tick', '/auth/token', '/auth/demo-token', '/auth/signup', '/auth/login', '/auth/sso/', '/auth/google/', '/auth/github/', '/auth/request-password-reset', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/entitlements/plans', '/blog/posts', '/a/', '/why/', '/verify/', '/webhooks/', '/inbound/', '/insights/cleanup-stale-all', '/billing/webhook', '/documentation', '/documentation/json', '/documentation/uiOptions', '/documentation/static', '/growth/events', '/readiness-quiz', '/leads', '/users/unsubscribe', '/share/', '/family/join', '/family/invite/']
   if (/^\/connectors\/[^/]+\/oauth\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/exchange/.test(request.url)) return
@@ -1539,6 +1551,7 @@ if (workflowDb) {
   ensureAutopilotIndexes(workflowDb)
   await registerOperatorRoutes(app, workflowDb)
   registerDetectorEvalRoutes(app, workflowDb, engine, detectorEvalDir(ROOT))
+  registerInternalCronRoutes(app, workflowDb, cronScheduler)
 }
 // Prometheus metrics — generic ops/observability, not vertical-specific.
 await registerMetricsRoutes(app, engine, scoreCalibrator)
@@ -1547,6 +1560,7 @@ await registerMetricsRoutes(app, engine, scoreCalibrator)
 
 logDeploymentMode()
 log.info({ mode: deploymentConfig.mode }, 'Queue mode')
+log.info({ mode: cronScheduler.mode, jobs: cronScheduler.count() }, 'Scheduled jobs registered')
 
 // Run pending database migrations before accepting traffic
 try {

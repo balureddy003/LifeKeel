@@ -10,6 +10,8 @@
 #
 # Needs: a built API (pnpm build), MongoDB and Redis.  Usage:
 #   MONGODB_URL=mongodb://127.0.0.1:27017 REDIS_URL=redis://127.0.0.1:6379 scripts/boot-smoke.sh
+# Set SMOKE_CRON=external to boot with CRON_MODE=external (scheduled jobs driven by Cloud Scheduler) and
+# additionally check POST /internal/cron/tick: refused without the secret, runs with it.
 # Set SMOKE_IMAGE=<image> to boot that Docker image instead of node (host networking, so the
 # MongoDB/Redis URLs must be reachable from the host, e.g. 127.0.0.1). Needs no local build.
 set -euo pipefail
@@ -34,7 +36,13 @@ env_args=(NODE_ENV=production LIFEKEEL_DEPLOYMENT_MODE=cloud LOG_LEVEL=info PORT
   MONGODB_URL="$MONGODB_URL" MONGODB_DB="${MONGODB_DB:-lifekeel_smoke}" REDIS_URL="$REDIS_URL"
   JWT_SECRET="smoke-jwt-secret-smoke-jwt-secret-0123456789"
   SETTINGS_ENCRYPTION_KEY="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
-for v in "${DEPLOY_VARS[@]}"; do env_args+=("$v="); done   # empty, like an unset repo variable
+TICK_SECRET="smoke-tick-secret-0123456789abcdef"
+for v in "${DEPLOY_VARS[@]}"; do
+  # In external-cron mode CRON_MODE is set for real (below) instead of being left empty.
+  if [ "${SMOKE_CRON:-}" = "external" ] && [ "$v" = "CRON_MODE" ]; then continue; fi
+  env_args+=("$v=")   # empty, like an unset repo variable
+done
+if [ "${SMOKE_CRON:-}" = "external" ]; then env_args+=(CRON_MODE=external CRON_TICK_SECRET="$TICK_SECRET"); fi
 echo "Booting with ${#DEPLOY_VARS[@]} deploy-style EMPTY variables: ${DEPLOY_VARS[*]}"
 
 if [ -n "${SMOKE_IMAGE:-}" ]; then
@@ -62,4 +70,14 @@ done
 [ "${code:-}" = "200" ] || fail "/health/ready did not return 200 within ${TIMEOUT_S}s (last status: ${code:-none})"
 grep -q 'FATAL' "$LOG" && fail "log contains FATAL"
 [ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/health/live")" = "200" ] || fail "/health/live is not 200"
+
+if [ "${SMOKE_CRON:-}" = "external" ]; then
+  url="http://127.0.0.1:$PORT/internal/cron/tick"
+  [ "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$url")" = "401" ] || fail "tick without a secret was not refused (401)"
+  [ "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'x-cron-secret: wrong' "$url")" = "401" ] || fail "tick with a wrong secret was not refused (401)"
+  body="$(curl -s -w '\n%{http_code}' -X POST -H "x-cron-secret: $TICK_SECRET" "$url")"
+  [ "$(printf '%s' "$body" | tail -n1)" = "200" ] || fail "tick with the right secret did not return 200 (got: $(printf '%s' "$body" | tail -n1))"
+  printf '%s' "$body" | head -n1 | grep -q '"due"' || fail "tick response has no job summary"
+  echo "OK: external cron mode: tick refuses a bad secret and runs with the right one"
+fi
 echo "OK: API booted with empty deploy variables and /health/ready is 200"
