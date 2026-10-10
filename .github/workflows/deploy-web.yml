@@ -41,6 +41,12 @@ jobs:
           NEXT_PUBLIC_API_URL: ${{ env.NEXT_PUBLIC_API_URL }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ env.NEXT_PUBLIC_SENTRY_DSN }}
 
+      # The CSP in firebase.json must allow the API origin baked into this build, or the browser refuses
+      # every API call. This adds it to connect-src (a no-op for *.run.app URLs). Requires https.
+      - name: Sync CSP connect-src with the API URL
+        working-directory: apps/web
+        run: node scripts/sync-csp.mjs
+
       - name: Authenticate to Firebase project
         uses: google-github-actions/auth@v3
         with:

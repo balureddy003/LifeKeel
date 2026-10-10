@@ -30,6 +30,9 @@ scale-to-zero. The financial model (`lifekeel-financial-model.xlsx`) lets you ch
 > catches those cases first in production, but the eval gate is deliberately model-alone, so do not
 > lower the model without re-running it and getting a pass.
 
+> **Domains.** `lifekeel.co.uk` and `lifekeel.si` are at Hostinger and currently show a parking page. How to map
+> them to Firebase Hosting (and why the API stays on its `*.run.app` URL for now): [docs/domains.md](../../docs/domains.md).
+
 ## One-time setup
 
 ```bash

@@ -89,6 +89,13 @@ debugger for the web app. Use **Debug API**, **Debug Web Server**, or
 server-side Next.js breakpoints attach to their server launch targets; client
 component breakpoints attach to the browser target.
 
+## Deploying
+
+Deploys are manual GitHub Actions (`workflow_dispatch`): **Deploy** (web, Firebase Hosting), **Deploy API** and
+**Deploy Local Judge** (Cloud Run). The lowest-cost GCP setup and how it scales: [infra/gcp/README.md](infra/gcp/README.md).
+Mapping `lifekeel.co.uk` and `lifekeel.si` (Hostinger DNS to Firebase), with a checker: [docs/domains.md](docs/domains.md).
+CI/CD minutes on the free tier: [docs/ci-cd-cost.md](docs/ci-cd-cost.md).
+
 ## Troubleshooting
 
 | Symptom | Likely cause and fix |
