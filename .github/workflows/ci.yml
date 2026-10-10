@@ -9,9 +9,30 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
+# Cost control: this is a private repo on the free Actions allowance, so heavy jobs run only when
+# something other than docs changed. A job skipped by `if:` reports as passing for branch
+# protection, so docs-only PRs are not blocked. See docs/ci-cd-cost.md.
 jobs:
-  build:
+  changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: diff
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: scripts/ci-changed.sh >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
 
     # apps/api's ml-tenant-isolation test connects to a real Mongo/Redis
     # rather than mongodb-memory-server — matches the services kairos-ai's
@@ -48,6 +69,13 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      # Turbo's local cache: unchanged packages replay typecheck/lint/build instead of rerunning.
+      # `test` is deliberately uncached in turbo.json (it needs the live Mongo/Redis above).
+      - uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm lint
@@ -58,10 +86,16 @@ jobs:
       # catches a bad deploy-time environment. See scripts/boot-smoke.sh.
       - name: Boot smoke (deploy-like environment)
         run: scripts/boot-smoke.sh
+      # Same boot in external-cron mode (Cloud Scheduler drives jobs): the tick must refuse a bad secret and run with the right one.
+      - name: Boot smoke (external cron mode)
+        run: SMOKE_CRON=external scripts/boot-smoke.sh
 
   # The encoder service's request handling is plain stdlib Python and needs no model or torch.
   python-services:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v5

@@ -1,15 +1,29 @@
 version: 2
+
+# Cost control: every Dependabot PR triggers a full CI run, and this private repo runs on the free
+# Actions allowance. Monthly + grouped keeps that to a handful of PRs a month instead of a stream.
+# Security updates are separate and still arrive immediately (they ignore this schedule).
 updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 3
     groups:
       next:
         patterns:
           - "next"
           - "eslint-config-next"
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    groups:
+      actions:
+        patterns:
+          - "*"

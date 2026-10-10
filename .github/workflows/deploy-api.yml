@@ -10,6 +10,8 @@ on:
         default: 'main'
 
 env:
+  DOCKER_BUILD_RECORD_UPLOAD: 'false'
+  DOCKER_BUILD_SUMMARY: 'false'
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   GCP_REGION: ${{ secrets.GCP_REGION || 'us-central1' }}
   # Full Artifact Registry image prefix: <region>-docker.pkg.dev/<project>/<repo>
@@ -54,7 +56,7 @@ jobs:
             ${{ env.API_IMAGE }}:${{ github.sha }}
             ${{ env.API_IMAGE }}:latest
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
 
       - name: Deploy to Cloud Run
         id: deploy
@@ -63,7 +65,14 @@ jobs:
           service: ${{ env.API_SERVICE }}
           region: ${{ env.GCP_REGION }}
           image: ${{ env.API_IMAGE }}:${{ github.sha }}
-          flags: --port=3001 --allow-unauthenticated --cpu=1 --memory=512Mi --max-instances=4 --concurrency=80 --min-instances=0
+          # Lowest-cost scaling: min-instances=0 (no idle charge), request-billed CPU, --cpu-boost to shorten
+          # cold starts, and --timeout=900 so a Cloud Scheduler tick can run the due jobs to completion.
+          # max-instances is the cost ceiling: raise the API_MAX_INSTANCES repo variable as signups grow.
+          flags: --port=3001 --allow-unauthenticated --cpu=1 --memory=512Mi --max-instances=${{ vars.API_MAX_INSTANCES || 4 }} --concurrency=80 --min-instances=0 --cpu-boost --timeout=900
+          # CRON_MODE: set the CRON_MODE repo variable to external once Cloud Scheduler exists, so the
+          # service can scale to zero; leave it unset (node-cron in-process) until then. Cloud Scheduler
+          # calls POST /internal/cron/tick. CRON_TICK_SECRET must exist in Secret Manager BEFORE the next
+          # deploy or the deploy fails: infra/gcp/setup-lean.sh creates it.
           env_vars: |
             NODE_ENV=production
             LIFEKEEL_DEPLOYMENT_MODE=cloud
@@ -85,6 +94,7 @@ jobs:
             LOCAL_MODEL_MAX_CONCURRENT=${{ vars.LOCAL_MODEL_MAX_CONCURRENT }}
             EMAIL_SCAN_FANOUT=${{ vars.EMAIL_SCAN_FANOUT }}
             EMAIL_SCAN_CONCURRENCY=${{ vars.EMAIL_SCAN_CONCURRENCY }}
+            CRON_MODE=${{ vars.CRON_MODE }}
           secrets: |
             MONGODB_URL=lifekeel-mongodb-url:latest
             REDIS_URL=lifekeel-redis-url:latest
@@ -101,6 +111,7 @@ jobs:
             VAPID_PUBLIC_KEY=lifekeel-vapid-public-key:latest
             VAPID_PRIVATE_KEY=lifekeel-vapid-private-key:latest
             VAPID_SUBJECT=lifekeel-vapid-subject:latest
+            CRON_TICK_SECRET=lifekeel-cron-tick-secret:latest
           secrets_update_strategy: overwrite
 
       - name: Smoke test new revision

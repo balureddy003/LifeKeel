@@ -15,6 +15,26 @@ flags for counsel, not legal advice, and the cost figures include recalled list 
 checked against a real bill. Claims marked *verified* were re-checked against the code by the
 author; the rest are reviewer findings.
 
+## Phase 0 build status (this branch)
+
+Built, and verified locally with the full root pipeline (typecheck, lint, 1,330 API tests, build) plus the
+boot smoke test against the real built server:
+
+| Item | State |
+|---|---|
+| Scheduled jobs on a scaled-to-zero instance | **Built.** `CRON_MODE=external` + one Cloud Scheduler job calling `POST /internal/cron/tick`; secret-gated, catch-up capped at 15 min, duplicate-delivery safe, heartbeat metric `lifekeel_cron_last_tick_timestamp_seconds`. Default stays in-process (no behaviour change until switched). Not yet run on GCP. |
+| Erasure coverage | **Built.** 18 tenant collections added to account deletion; a CI guard fails when a new tenant-scoped collection is in neither the deletion list nor `ERASURE_RETAINED`. Data export deliberately **not** extended: it is tenant-wide for any member today, so it needs per-member access control first (open item). |
+| Metric cardinality | **Built.** `tenant_id` dropped from 10 metrics' labels. |
+| Judge default model / scale-to-zero default | **Built** in `deploy-local-judge.yml` (3b, `min_instances=0`). Not deployed. |
+| CI/CD on free limits | **Built.** See `docs/ci-cd-cost.md`. Savings not yet measured. |
+| Lean GCP footprint | **Written, not run.** `infra/gcp/setup-lean.sh` (syntax-checked only) and `infra/gcp/README.md`. |
+
+Not done yet from Phase 0: confirm Mongo is a replica set; measure model cold start and Cloud Run
+queueing/429 behaviour; the email-enqueue herd fix (jitter/bucketing) and the stale-sweep index; the
+Ask Keel cloud-fallback and member-route authorization decisions; the DPIA; running the deploy
+workflows end to end. Deploying needs a person: this environment has no GCP credentials, and
+`CLAUDE.md` keeps deploys a deliberate manual step.
+
 ## 1. The end-to-end model
 
 ```
@@ -119,8 +139,8 @@ export coverage, cost counters.
 ## 4. Existing platform risks surfaced by the reviews (fix regardless of PRD-138)
 
 1. **Scheduled jobs may not run in production.** *Verified:* the API deploys with
-   `--min-instances=0` and default CPU throttling (`deploy-api.yml:66`) while `server.ts` runs 26
-   in-process `node-cron` jobs. A scaled-to-zero or throttled instance does not fire timers. The
+   `--min-instances=0` and default CPU throttling (`deploy-api.yml:66`) while `server.ts` runs 24
+   in-process `node-cron` job registrations (some env-gated). A scaled-to-zero or throttled instance does not fire timers. The
    email scan, stale sweep, reminders and escalation SLA are exposed. Fix options: Cloud Scheduler
    (or Cloud Run Jobs) calling authenticated endpoints, or `min-instances=1` with
    `--no-cpu-throttling`. Add a cron-heartbeat alert either way.

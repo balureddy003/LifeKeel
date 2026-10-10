@@ -1,8 +1,9 @@
 name: Images
 
 # Builds the container images WITHOUT pushing them, so a broken Dockerfile or a missing system
-# package fails a PR instead of the first deploy. Path-filtered (the builds are heavy), run weekly
-# to catch base-image drift, and runnable by hand.
+# package fails a PR instead of the first deploy. The builds are heavy (about 2-8 min each) and the
+# repo is private on the free Actions allowance, so each image builds only when its own inputs
+# changed (scripts/ci-changed.sh), monthly to catch base-image drift, and by hand.
 
 on:
   pull_request:
@@ -13,7 +14,7 @@ on:
       - 'scripts/boot-smoke.sh'
       - '.github/workflows/images.yml'
   schedule:
-    - cron: '17 5 * * 1'
+    - cron: '17 5 1 * *'
   workflow_dispatch:
 
 concurrency:
@@ -23,9 +24,33 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # Docker's build record is uploaded as a workflow artifact by default; artifacts count against the
+  # free 500 MB storage, and we never read them.
+  DOCKER_BUILD_RECORD_UPLOAD: 'false'
+  DOCKER_BUILD_SUMMARY: 'false'
+
 jobs:
-  api-image:
+  changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      api_image: ${{ steps.diff.outputs.api_image }}
+      judge_image: ${{ steps.diff.outputs.judge_image }}
+      encoder_image: ${{ steps.diff.outputs.encoder_image }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: diff
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CI_FORCE_ALL: ${{ github.event_name != 'pull_request' }}
+        run: scripts/ci-changed.sh >> "$GITHUB_OUTPUT"
+
+  api-image:
+    needs: changes
+    if: needs.changes.outputs.api_image == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       mongodb:
         image: mongo:7
@@ -61,7 +86,10 @@ jobs:
         run: SMOKE_IMAGE=lifekeel-api:ci MONGODB_URL=mongodb://127.0.0.1:27017 REDIS_URL=redis://127.0.0.1:6379 scripts/boot-smoke.sh
 
   local-judge-image:
+    needs: changes
+    if: needs.changes.outputs.judge_image == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       # The Ollama base image alone is ~4 GB unpacked and `load: true` stores it twice (buildx cache
       # plus the Docker image store); the default runner runs out of disk. Drop preinstalled toolchains
@@ -88,7 +116,10 @@ jobs:
           curl -sf localhost:11434/api/tags | tee /dev/stderr | grep -q 'qwen2.5:0.5b' || { docker logs judge; exit 1; }
 
   encoder-image:
+    needs: changes
+    if: needs.changes.outputs.encoder_image == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       # The Ollama base image alone is ~4 GB unpacked and `load: true` stores it twice (buildx cache
       # plus the Docker image store); the default runner runs out of disk. Drop preinstalled toolchains
