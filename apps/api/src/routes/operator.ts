@@ -163,7 +163,10 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   users.createIndex({ tenant_id: 1, created_at: -1 }).catch(() => {})
   // Operator search hits these — at scale a regex scan over unindexed
   // fields is a full collection scan.
-  users.createIndex({ email: 1 }).catch(() => {})
+  // Same spec as routes/auth-users.ts (unique), which owns this index. A NON-unique definition here ran at
+  // boot, before the first signup, and made auth's unique createIndex throw on every signup/login against
+  // a fresh database (found by following the README quick start).
+  users.createIndex({ email: 1 }, { unique: true }).catch(() => {})
   users.createIndex({ name: 1 }).catch(() => {})
   tenants.createIndex({ name: 1 }).catch(() => {})
   db.collection('leads').createIndex({ created_at: -1 }).catch(() => {})

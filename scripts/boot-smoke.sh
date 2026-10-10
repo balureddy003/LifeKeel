@@ -21,6 +21,9 @@ WORKFLOW="$ROOT/.github/workflows/deploy-api.yml"
 PORT="${SMOKE_PORT:-3991}"
 TIMEOUT_S="${SMOKE_TIMEOUT_S:-90}"
 LOG="$(mktemp -t boot-smoke.XXXXXX.log)"
+# A FRESH database every run (ignore any ambient MONGODB_DB): index-creation bugs only show up on an empty
+# database, e.g. two startup paths creating the same index with different options broke signup for new installs.
+SMOKE_DB="${SMOKE_MONGODB_DB:-lifekeel_smoke_$(date +%s)_$$}"
 
 : "${MONGODB_URL:?set MONGODB_URL}"
 : "${REDIS_URL:?set REDIS_URL}"
@@ -35,7 +38,7 @@ while IFS= read -r v; do DEPLOY_VARS+=("$v"); done < <(awk '/env_vars: \|/{f=1;n
 [ "${#DEPLOY_VARS[@]}" -gt 0 ] || { echo "found no \${{ }} variables in $WORKFLOW: parser out of date?" >&2; exit 2; }
 
 env_args=(NODE_ENV=production LIFEKEEL_DEPLOYMENT_MODE=cloud LOG_LEVEL=info PORT="$PORT"
-  MONGODB_URL="$MONGODB_URL" MONGODB_DB="${MONGODB_DB:-lifekeel_smoke}" REDIS_URL="$REDIS_URL"
+  MONGODB_URL="$MONGODB_URL" MONGODB_DB="$SMOKE_DB" REDIS_URL="$REDIS_URL"
   JWT_SECRET="smoke-jwt-secret-smoke-jwt-secret-0123456789"
   SETTINGS_ENCRYPTION_KEY="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 TICK_SECRET="smoke-tick-secret-0123456789abcdef"
@@ -47,17 +50,23 @@ done
 if [ "${SMOKE_CRON:-}" = "external" ]; then env_args+=(CRON_MODE=external CRON_TICK_SECRET="$TICK_SECRET"); fi
 echo "Booting with ${#DEPLOY_VARS[@]} deploy-style EMPTY variables: ${DEPLOY_VARS[*]}"
 
+# Best effort: remove the throwaway database (uses the driver already installed for the API).
+drop_db() {
+  [ -d "$ROOT/apps/api/node_modules/mongodb" ] || return 0
+  U="$MONGODB_URL" D="$SMOKE_DB" node -e "const {MongoClient}=require('$ROOT/apps/api/node_modules/mongodb');(async()=>{const c=await MongoClient.connect(process.env.U,{serverSelectionTimeoutMS:3000});await c.db(process.env.D).dropDatabase();await c.close()})().catch(()=>{})" >/dev/null 2>&1 || true
+}
+
 if [ -n "${SMOKE_IMAGE:-}" ]; then
   ENV_FILE="$(mktemp -t boot-smoke-env.XXXXXX)"
   printf '%s\n' "${env_args[@]}" >"$ENV_FILE"
   CONTAINER="boot-smoke-$$"
   docker run --rm --name "$CONTAINER" --network host --env-file "$ENV_FILE" "$SMOKE_IMAGE" >"$LOG" 2>&1 &
   SERVER_PID=$!
-  cleanup() { docker stop "$CONTAINER" >/dev/null 2>&1 || true; wait "$SERVER_PID" 2>/dev/null || true; rm -f "$ENV_FILE"; }
+  cleanup() { docker stop "$CONTAINER" >/dev/null 2>&1 || true; wait "$SERVER_PID" 2>/dev/null || true; rm -f "$ENV_FILE"; drop_db; }
 else
   env "${env_args[@]}" node "$ROOT/apps/api/dist/server.js" >"$LOG" 2>&1 &
   SERVER_PID=$!
-  cleanup() { kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true; }
+  cleanup() { kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true; drop_db; }
 fi
 trap cleanup EXIT
 
@@ -72,6 +81,16 @@ done
 [ "${code:-}" = "200" ] || fail "/health/ready did not return 200 within ${TIMEOUT_S}s (last status: ${code:-none})"
 grep -q 'FATAL' "$LOG" && fail "log contains FATAL"
 [ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/health/live")" = "200" ] || fail "/health/live is not 200"
+
+# A new user can sign up and log in on a fresh database (this is the path a README quick start walks).
+email="smoke-$(date +%s)-$$@example.com"
+signup_code="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' \
+  -d "{\"email\":\"$email\",\"password\":\"smoke-test-Passw0rd-123\",\"name\":\"Smoke Test\"}" "http://127.0.0.1:$PORT/auth/signup")"
+case "$signup_code" in 2??) ;; *) fail "signup on a fresh database returned HTTP $signup_code (expected 2xx)";; esac
+login_code="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' \
+  -d "{\"email\":\"$email\",\"password\":\"smoke-test-Passw0rd-123\"}" "http://127.0.0.1:$PORT/auth/login")"
+case "$login_code" in 2??) ;; *) fail "login after signup returned HTTP $login_code (expected 2xx)";; esac
+echo "OK: signup and login work on a fresh database"
 
 if [ "${SMOKE_CRON:-}" = "external" ]; then
   url="http://127.0.0.1:$PORT/internal/cron/tick"

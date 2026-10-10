@@ -1,4 +1,6 @@
-version: "3.9"
+# Local development. To run only the databases (the usual case, with `pnpm dev` for the API):
+#   docker compose -f apps/api/docker-compose.yml up -d mongodb redis
+# `up` with no service names also builds and starts the API image.
 services:
   api:
     build:
@@ -9,7 +11,10 @@ services:
     environment:
       - MONGODB_URL=mongodb://mongodb:27017/lifekeel
       - REDIS_URL=redis://redis:6379
-      - JWT_SECRET=change-me-in-production
+      # LOCAL DEV ONLY - do not reuse either value anywhere real. The image runs with NODE_ENV=production,
+      # which requires JWT_SECRET (>= 32 chars) and SETTINGS_ENCRYPTION_KEY (64 hex chars) or the API exits.
+      - JWT_SECRET=local-dev-only-jwt-secret-min-32-chars
+      - SETTINGS_ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000
       - PORT=3001
     depends_on:
       - mongodb
