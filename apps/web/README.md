@@ -3,8 +3,8 @@
 The LifeKeel frontend — Next.js App Router, static-exported (`pnpm build:export`)
 and served from Firebase Hosting (see `firebase.json`/`.firebaserc`). No
 server runtime in production; all state comes from `apps/api` over HTTP
-(`NEXT_PUBLIC_API_URL`, currently the shared kairos-ai backend — see
-`ARCHITECTURE.md`).
+(`NEXT_PUBLIC_API_URL`). Locally that is `http://localhost:3001`, your own `apps/api`
+(`apps/web/.env.example`); the deployed app may still point at a shared backend (see `ARCHITECTURE.md`).
 
 ## Layout
 
@@ -27,7 +27,13 @@ server runtime in production; all state comes from `apps/api` over HTTP
 
 ```bash
 pnpm dev            # http://localhost:3002
+pnpm debug          # same, with the Node inspector on port 9230 (VS Code: "Debug Web Server")
 pnpm build:export   # production build (Firebase static export)
 pnpm test           # vitest
+pnpm test:e2e       # Playwright end-to-end tests
 pnpm typecheck / lint
 ```
+
+Do not run the root `pnpm build` or `pnpm typecheck` while `pnpm dev` is running: they overwrite
+`apps/web/.next` and the dev server serves broken pages (stop it, delete `apps/web/.next`, restart).
+Start the API first (`pnpm --filter @lifekeel/api dev`); browser calls go to `NEXT_PUBLIC_API_URL`.

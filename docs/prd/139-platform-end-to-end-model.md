@@ -139,7 +139,7 @@ export coverage, cost counters.
 ## 4. Existing platform risks surfaced by the reviews (fix regardless of PRD-138)
 
 1. **Scheduled jobs may not run in production.** *Verified:* the API deploys with
-   `--min-instances=0` and default CPU throttling (`deploy-api.yml:66`) while `server.ts` runs 24
+   `--min-instances=0` and default CPU throttling (`deploy-api.yml:66`) while `server.ts` runs 25
    in-process `node-cron` job registrations (some env-gated). A scaled-to-zero or throttled instance does not fire timers. The
    email scan, stale sweep, reminders and escalation SLA are exposed. Fix options: Cloud Scheduler
    (or Cloud Run Jobs) calling authenticated endpoints, or `min-instances=1` with
