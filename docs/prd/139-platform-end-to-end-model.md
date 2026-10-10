@@ -25,7 +25,7 @@ boot smoke test against the real built server:
 | Scheduled jobs on a scaled-to-zero instance | **Built.** `CRON_MODE=external` + one Cloud Scheduler job calling `POST /internal/cron/tick`; secret-gated, catch-up capped at 15 min, duplicate-delivery safe, heartbeat metric `lifekeel_cron_last_tick_timestamp_seconds`. Default stays in-process (no behaviour change until switched). Not yet run on GCP. |
 | Erasure coverage | **Built.** 18 tenant collections added to account deletion; a CI guard fails when a new tenant-scoped collection is in neither the deletion list nor `ERASURE_RETAINED`. Data export deliberately **not** extended: it is tenant-wide for any member today, so it needs per-member access control first (open item). |
 | Metric cardinality | **Built.** `tenant_id` dropped from 10 metrics' labels. |
-| Judge default model / scale-to-zero default | **Built** in `deploy-local-judge.yml` (3b, `min_instances=0`). Not deployed. |
+| Judge default model / scale-to-zero default | **Partly built; corrected.** `deploy-local-judge.yml` now defaults to `min_instances=0`. The model default stays **7b**: an earlier edit switched it to 3b on the SRE review's advice, but the safety eval shows 3b fails the judge gate (approves a credential-leak case when judging alone; 7b passes). Not deployed. |
 | CI/CD on free limits | **Built.** See `docs/ci-cd-cost.md`. Savings not yet measured. |
 | Lean GCP footprint | **Written, not run.** `infra/gcp/setup-lean.sh` (syntax-checked only) and `infra/gcp/README.md`. |
 
@@ -149,8 +149,10 @@ export coverage, cost counters.
 3. **Stale-profile sweep is a collection scan** (`$expr` over two fields) with no sort; use a
    sequence/dirty flag with a sparse index and fan out via the queue.
 4. **Metric cardinality:** `tenant_id` labels grow with families.
-5. **Judge default model** in the deploy workflow is 7b although 3b measured better on OCR and is
-   roughly 1.5–2× faster; verify Cloud Run's queueing/429 behaviour and default to 3b.
+5. **Judge model vs speed.** The SRE review suggested defaulting to 3b because it is roughly 1.5–2× faster.
+   **Rejected after running the eval:** 3b fails the model-alone safety gate and 7b passes, so 7b stays the
+   default. 3b may still serve OCR/email if a second model is baked in (bigger image). Verify Cloud Run's
+   queueing/429 behaviour.
 6. **Ask Keel fallback:** unless `LOCAL_TEXT_ENABLED=true` it uses the unguarded cloud router
    (*verified*; documented opt-in). Decide whether that default is acceptable for family data.
 7. **Authorization on member routes:** any authenticated family member can read any member's twin
@@ -174,7 +176,7 @@ export coverage, cost counters.
 | Variable per family | ~40 emails reach the model, ~2 docs, ~10 insights a month | latencies measured, volumes assumed | **~$0.05–0.30** |
 
 Per family ≈ floor ÷ families + variable: roughly $3–4 at 100 families, $0.40–0.70 at 1,000.
-Idle compute dominates, so the lever is batching with scale-to-zero and defaulting to the 3b model,
+Idle compute dominates, so the lever is batching with scale-to-zero and keeping the model as small as the safety eval allows (7b today),
 not the ledger (<$0.01 per family). **Unmeasured:** cold start, real 429/queue behaviour, mail
 volume per family, Mongo working set.
 

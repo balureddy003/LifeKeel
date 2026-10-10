@@ -12,10 +12,10 @@ on:
         required: true
         default: 'main'
       model:
-        description: 'Ollama model baked into the image (do not go below 3b: 1.5b approved unsafe copy in testing)'
+        description: 'Ollama model baked into the image. 7b is the default because it is the only size that passes the safety eval (node apps/api/dist/eval/local-model-eval.js); 3b approved a credential-leak case when judging alone, 1.5b approved unsafe copy. Run the eval before changing this.'
         type: string
         required: true
-        default: 'qwen2.5:3b'
+        default: 'qwen2.5:7b'
       min_instances:
         description: 'Always-on instances. 0 (default) scales to zero and costs nothing idle, at the price of a 30s+ cold start (unmeasured); 1 avoids cold starts but is a standing cost (about $230/month, price recalled).'
         type: string

@@ -13,7 +13,7 @@ and your first bill. Treat every number as an estimate.
 |---|---|---|---|
 | API (Cloud Run) | `min-instances=0`, CPU only while serving a request, `--cpu-boost` | No idle charge; usually inside the free tier at low volume | A cold start on the first request after idle (a few seconds) |
 | Scheduled jobs | **One** Cloud Scheduler job calling `POST /internal/cron/tick` each minute | 3 scheduler jobs per billing account are free; replaces 24 in-process timers that cannot fire on a scaled-to-zero instance | Needs `CRON_MODE=external` and the tick secret (below) |
-| Model service (Ollama) | `min_instances=0`, model `qwen2.5:3b`, `max_instances` low | Billed only for busy seconds; ~3.8 emails/min per instance (measured) | A 30 s+ cold start (not measured here). Fine for background work; do not use for interactive answers |
+| Model service (Ollama) | `min_instances=0`, model `qwen2.5:7b`, `max_instances` low | Billed only for busy seconds; ~3.8 emails/min per instance was measured on 3b, and 7b is slower (roughly 1.5-2x, not re-measured) | A 30 s+ cold start (not measured here). Fine for background work; do not use for interactive answers |
 | Database | Smallest paid MongoDB Atlas tier (not the free tier) | A few tens of dollars a month; family data should not live on a free tier | Confirm it is a replica set (needed for transactions later) |
 | Redis | Pay-per-request serverless Redis, or drop it for a Mongo-backed queue | Near zero at low volume | — |
 | Images | Artifact Registry cleanup: keep 2 versions, delete untagged after 3 days | The 4 GB model image would otherwise accumulate | Rollback is limited to the last 2 versions |
@@ -23,6 +23,12 @@ and your first bill. Treat every number as an estimate.
 Rough order of magnitude at launch: tens of dollars a month in total, dominated by the database. A
 standing model instance would add roughly $230 a month (recalled price), which is why it defaults to
 scale-to-zero. The financial model (`lifekeel-financial-model.xlsx`) lets you change these inputs.
+
+> **Model choice.** The judge defaults to `qwen2.5:7b` because it is the only size that passes the safety
+> eval (`node apps/api/dist/eval/local-model-eval.js`). 3b approved a credential-leak case when judging
+> alone (re-run 10 Oct 2026, same result as 2 Oct); 1.5b approved unsafe copy. The deterministic guard
+> catches those cases first in production, but the eval gate is deliberately model-alone, so do not
+> lower the model without re-running it and getting a pass.
 
 ## One-time setup
 
