@@ -26,6 +26,11 @@ packages/*    Shared libraries (engine, platform, connector pipeline, ...)
 
 ## Quick start
 
+**Fastest path (macOS or Linux):** `scripts/dev-setup.sh` checks your tools, installs dependencies, creates the
+`.env` files, and starts MongoDB for you (via Docker or Homebrew) or tells you exactly what to install. Add
+`--verify` to also build and boot the real API on a fresh database and sign a user up. It is safe to re-run and
+never overwrites your `.env`. The manual steps it performs are below.
+
 Needs Node >= 22.12 and pnpm 8.15.5 (`corepack enable && corepack prepare pnpm@8.15.5 --activate`).
 
 ```bash
@@ -106,7 +111,7 @@ CI/CD minutes on the free tier: [docs/ci-cd-cost.md](docs/ci-cd-cost.md).
 | `Cannot find module '@lifekeel/...'` | Workspace packages are not built or links are stale (for example after the rename from `@agentoak/*`). Run `pnpm install`, then the root `pnpm build` (or start via `pnpm --filter @lifekeel/api dev`, which builds them). |
 | Web page renders unstyled | You ran `pnpm build`/`pnpm typecheck` while `next dev` was running. Stop the dev server, delete `apps/web/.next`, start again (see CLAUDE.md). |
 | Port 3001/3002 already in use | Another dev server is running. Stop it, or change `PORT` in `.env` / pass another port to Next. |
-| `next build` cannot fetch Google Fonts | Sandboxed or proxied network: Turbo hides proxy variables from child tasks. Run `pnpm exec turbo run <task> --env-mode=loose`. |
+| `next build` cannot fetch Google Fonts | The build downloads the Inter font. Behind a proxy, set `HTTPS_PROXY` (and `NODE_EXTRA_CA_CERTS` for a custom CA) in your shell; they are passed through to the build. |
 
 ## Status
 

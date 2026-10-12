@@ -1,0 +1,40 @@
+name: Mac check
+
+# Proves the local setup works on a real Mac (Apple Silicon, macOS's own bash 3.2, Homebrew MongoDB/Redis):
+# runs scripts/dev-setup.sh --verify, which installs, builds, boots the API on a fresh database and signs a user up.
+#
+# MANUAL ONLY, on purpose. On private repos macOS runner minutes count for about 10x Linux minutes against the
+# free allowance (as I recall GitHub's pricing; check Settings > Billing), so one run of ~15 minutes can cost
+# ~150 of the ~2,000 free minutes. Run it before telling a new Mac user "this works", or after changing the
+# setup scripts; do not make it automatic.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      DOCKER_BUILD_RECORD_UPLOAD: 'false'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Machine
+        run: |
+          uname -m
+          /bin/bash --version | head -1   # macOS ships bash 3.2; the setup scripts must work with it
+          node --version
+      - name: Install MongoDB and Redis with Homebrew
+        run: |
+          brew tap mongodb/brew
+          brew install mongodb-community@7.0 redis
+      - name: Setup and verify (starts the databases, builds, boots the API, signs a user up)
+        run: /bin/bash scripts/dev-setup.sh --verify

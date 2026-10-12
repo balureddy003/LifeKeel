@@ -152,8 +152,14 @@ Start with `shadow` (no effect on results) and watch
 
 ## 9. Running on macOS
 
-**Not tested on a Mac** (the checks above were run on Linux). This is what should differ, from reading the
-scripts and tools; tell us what you hit.
+**Start with `scripts/dev-setup.sh [--verify]`.** It checks Node and pnpm, installs, creates `.env`, and starts
+MongoDB via Docker or Homebrew (it recognises the versioned `mongodb-community@7.0` formula), or prints exactly
+what to install. Its logic is tested on Linux, and it avoids bash 4 features and `timeout`, which macOS lacks.
+**It has not been run on a real Mac by us**; the manual `Mac check` GitHub workflow does that on a macOS runner
+(Apple Silicon, bash 3.2, Homebrew databases). It is manual because macOS runner minutes count about 10x on the
+free allowance, so run it before relying on the Mac instructions, not on every push.
+
+What should differ on a Mac, from reading the scripts and tools; tell us what you hit.
 
 - **Prerequisites:** Node >= 22.12 (`brew install node@22` or nvm), then
   `corepack enable && corepack prepare pnpm@8.15.5 --activate`, and Xcode Command Line Tools

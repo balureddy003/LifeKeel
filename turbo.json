@@ -1,5 +1,9 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": [
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
+    "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -12,7 +16,8 @@
     "test": {
       "dependsOn": ["build", "^build"],
       "outputs": ["coverage/**"],
-      "cache": false
+      "cache": false,
+      "passThroughEnv": ["MONGODB_URL", "REDIS_URL", "MONGODB_DB", "JWT_SECRET"]
     },
     "lint": {},
     "typecheck": {
