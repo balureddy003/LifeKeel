@@ -80,7 +80,10 @@ Concretely:
 - **PRs:** `.github/pull_request_template.md` makes tier, advice check and
   eval coverage explicit. New work starts from `docs/templates/intent.md`.
 - **Skill:** `.claude/skills/add-detector` encodes the add-a-detector recipe.
-- Still prose-only: the trust-tier rule (rule 1). Next candidate for a test.
+- **Trust tiers (rule 1):** `apps/api/src/__tests__/trust-tier-gate.test.ts`
+  allow-lists the only callers of `ActionExecutor` and requires each
+  `execute()` to name `approvedBy`. Adding a caller means editing that list,
+  which forces the tier question into review. It is a tripwire, not proof.
 
 ## Conventions
 
