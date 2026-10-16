@@ -2978,6 +2978,7 @@ export interface OperatorUser {
   failed_login_attempts?: number
   locked_until?: string
   sessions_revoked_at?: string
+  mfa_enabled?: boolean
   created_at: string
 }
 
@@ -3224,6 +3225,7 @@ export const reactivateOperatorUser = (id: string, reason: string) => operatorAc
 export const sendUserPasswordReset = (id: string, reason: string) => operatorAction(`/operator/users/${id}/password-reset`, reason)
 export const revokeUserSessions = (id: string, reason: string) => operatorAction(`/operator/users/${id}/revoke-sessions`, reason)
 export const unlockUser = (id: string, reason: string) => operatorAction(`/operator/users/${id}/unlock`, reason)
+export const disableUserMfa = (id: string, reason: string) => operatorAction(`/operator/users/${id}/mfa-disable`, reason)
 
 export interface OperatorUserExport {
   exported_at: string

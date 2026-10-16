@@ -8,6 +8,11 @@ on:
         type: string
         required: true
         default: 'main'
+      same_origin_api:
+        description: 'Route API calls via the Hosting /api rewrite instead of the Cloud Run URL'
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   deploy:
@@ -39,6 +44,7 @@ jobs:
       - run: pnpm --filter @lifekeel/web run build:export
         env:
           NEXT_PUBLIC_API_URL: ${{ env.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_SAME_ORIGIN_API: ${{ github.event.inputs.same_origin_api == true && '1' || '' }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ env.NEXT_PUBLIC_SENTRY_DSN }}
 
       - name: Authenticate to Firebase project

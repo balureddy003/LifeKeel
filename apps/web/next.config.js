@@ -12,7 +12,19 @@ const nextConfig = {
   ...(isStaticExport && { trailingSlash: true }),
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001',
+    NEXT_PUBLIC_API_BASE_PATH: process.env.NEXT_PUBLIC_API_BASE_PATH ?? '',
+    NEXT_PUBLIC_SAME_ORIGIN_API: process.env.NEXT_PUBLIC_SAME_ORIGIN_API ?? '',
   },
+  // Same-origin API proxy for `next dev` when NEXT_PUBLIC_API_BASE_PATH=/api
+  // — mirrors the firebase.json "/api/** → Cloud Run" rewrite used in
+  // production. Not registered in export mode (rewrites don't apply to
+  // static hosting; firebase.json owns them there).
+  ...(isStaticExport ? {} : {
+    async rewrites() {
+      const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001').replace(/\/$/, '')
+      return [{ source: '/api/:path*', destination: `${apiBase}/:path*` }]
+    },
+  }),
   // No next/image usage anywhere in this app today — no `images` config to
   // maintain. Add one deliberately (with specific remotePatterns, not a
   // wildcard hostname) if/when a remote-image use case shows up.

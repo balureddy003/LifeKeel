@@ -4,6 +4,7 @@
     "public": "out",
     "ignore": ["firebase.json", "**/.git", "**/node_modules/**"],
     "rewrites": [
+      { "source": "/api/**", "run": { "serviceId": "lifekeel-api", "region": "us-central1" } },
       { "source": "/auth/callback", "destination": "/auth/callback/index.html" },
       { "source": "/auth/callback/", "destination": "/auth/callback/index.html" },
       { "source": "/member/**", "destination": "/member/placeholder/index.html" },

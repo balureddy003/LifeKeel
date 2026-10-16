@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Download, Search, ShieldAlert, X } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import { useToast } from '@/components/Toast'
-import { fetchOperatorUsers, fetchOperatorSecurity, suspendOperatorUser, reactivateOperatorUser, sendUserPasswordReset, revokeUserSessions, unlockUser, exportOperatorUser, eraseOperatorUser, type OperatorSecurity, type OperatorUser } from '@/lib/api'
+import { fetchOperatorUsers, fetchOperatorSecurity, suspendOperatorUser, reactivateOperatorUser, sendUserPasswordReset, revokeUserSessions, unlockUser, exportOperatorUser, eraseOperatorUser, disableUserMfa, type OperatorSecurity, type OperatorUser } from '@/lib/api'
 import { ReasonAction } from '../_components/ReasonAction'
 import { Pager } from '../_components/Pager'
 import { useHasPermission } from '../_components/OperatorSession'
@@ -222,6 +222,9 @@ export default function OperatorUsersPage() {
                   <>
                     <ReasonAction label="Password reset" onConfirm={async (r) => { await sendUserPasswordReset(user.id, r); toast({ message: 'Reset email sent' }) }} />
                     <ReasonAction label="Revoke sessions" destructive onConfirm={async (r) => { await revokeUserSessions(user.id, r); toast({ message: 'All sessions revoked — user must sign in again' }) }} />
+                    {user.mfa_enabled === true && (
+                      <ReasonAction label="Disable MFA" destructive onConfirm={async (r) => { await disableUserMfa(user.id, r); toast({ message: 'MFA cleared — user signs in with password and re-enrolls' }) }} />
+                    )}
                   </>
                 )}
                 <ReasonAction

@@ -186,10 +186,11 @@ executor was left wired into a currently-shipped route instead.
   Security) and the second step on `/login`. OAuth sign-in is covered too:
   Google/GitHub exchange+callback routes return the same pending-token
   contract instead of a session for mfa_enabled users, and the web
-  callback routes it to the login code step. **Remaining gap worth a
-  follow-up:** no admin/support recovery path for a user who loses both
-  factors (today that's a manual DB edit — acceptable for GA but needs an
-  operational runbook).
+  callback routes it to the login code step. **Recovery path:**
+  `POST /operator/users/:id/mfa-disable` (users.manage permission, reason
+  required, audit-logged, also revokes sessions) is the support runbook for
+  a user who loses both factors — run it only after out-of-band identity
+  verification, e.g. a confirmed recovery email on the account.
 - **Mixed license terms across `packages/*`.** Copied as-is from kairos-ai:
   MIT (`engine`, `platform`), Apache-2.0 (`specifications`, `runtime`,
   `legacy-compat`, `mongodb-adapter`, `conformance`, `outcome-kernel`), and
