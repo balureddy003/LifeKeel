@@ -1,0 +1,33 @@
+name: Claude PR review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Advisory only: Claude comments, a human still approves and merges
+# (CLAUDE.md steps 6-7). Never grant it write access to contents.
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    # Fork PRs get no secrets; skip rather than fail.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review this PR against CLAUDE.md. Check specifically:
+            1. Trust tiers: any new path that calls an external provider or acts
+               on the family's behalf must have an explicit human approval gate.
+            2. Advice rule: user-facing copy must describe what is on file, never
+               recommend a product, name a provider, or build a switch flow.
+            3. Correctness, missing tests, and detector-evals coverage.
+            Report only concrete findings with file and line; say "no findings"
+            if clean. Do not modify files.
