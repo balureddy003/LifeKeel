@@ -1,4 +1,5 @@
 import { getApiBase } from './env'
+import { credFetch } from './http'
 import { invalidateCache } from './fetch-cache'
 
 export interface LookBackResult {
@@ -14,7 +15,7 @@ export interface LookBackResult {
  */
 export async function searchMailboxForPolicies(days = 90): Promise<LookBackResult | null> {
   const token = typeof window === 'undefined' ? null : localStorage.getItem('lifekeel_token')
-  const res = await fetch(`${getApiBase()}/connectors/email/scan`, {
+  const res = await credFetch(`${getApiBase()}/connectors/email/scan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ days }),

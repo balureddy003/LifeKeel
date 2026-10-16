@@ -20,6 +20,7 @@ import type { Db } from 'mongodb'
 import crypto from 'node:crypto'
 import { AuthService, createLogger } from '@lifekeel/platform'
 import { getPlatformConfig } from '../operator/platform-config.js'
+import { setSessionCookie } from '../lib/session-cookie.js'
 
 const log = createLogger({ service: 'auth-social', version: '0.0.0' })
 
@@ -332,6 +333,9 @@ export async function registerSocialAuthRoutes(
         tenant_id: user.tenant_id,
         roles: user.roles,
       }, '30d')
+      // httpOnly session cookie alongside the fragment hand-off — new
+      // frontends prefer the cookie; the fragment stays during migration.
+      setSessionCookie(reply, token, 30 * 24 * 60 * 60)
 
       // Redirect to the appropriate app with token — appRedirectUrl already
       // is the full callback destination (getCallbackUrl), not a bare app
@@ -528,6 +532,7 @@ export async function registerSocialAuthRoutes(
         tenant_id: user.tenant_id,
         roles: user.roles,
       }, '30d')
+      setSessionCookie(reply, token, 30 * 24 * 60 * 60)
 
       return {
         token,
@@ -758,6 +763,7 @@ export async function registerSocialAuthRoutes(
         tenant_id: user.tenant_id,
         roles: user.roles,
       }, '1h')
+      setSessionCookie(reply, token, 60 * 60)
 
       // Redirect to Studio with token
       return reply.redirect(`${studioUrl}/auth/callback#token=${token}&tenant=${user.tenant_id}`)
@@ -963,6 +969,7 @@ export async function registerSocialAuthRoutes(
         tenant_id: user.tenant_id,
         roles: user.roles,
       }, '1h')
+      setSessionCookie(reply, token, 60 * 60)
 
       return {
         token,

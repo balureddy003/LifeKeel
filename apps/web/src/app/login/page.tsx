@@ -12,9 +12,11 @@ import { haptic } from '@/lib/haptics'
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [mfaPending, setMfaPending] = useState(false)
+  const [mfaCode, setMfaCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { signIn, signInWithProvider } = useAuth()
+  const { signIn, verifyMfaCode, signInWithProvider } = useAuth()
   const router = useRouter()
 
   // OAuth callbacks redirect back here as /login?error=<code> on failure —
@@ -38,12 +40,34 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
     try {
-      await signIn(email, password)
+      const result = await signIn(email, password)
+      if (result.mfaRequired) {
+        // Second step — swap to the authenticator-code entry instead of
+        // navigating. The pending token stays in memory in auth-context.
+        setMfaPending(true)
+        setLoading(false)
+        return
+      }
       haptic('success')
       router.push('/')
     } catch (err) {
       haptic('warning')
       setError(err instanceof Error ? err.message : 'Sign in failed. Please try again.')
+      setLoading(false)
+    }
+  }
+
+  const handleVerifyMfa = async () => {
+    if (!mfaCode.trim()) return
+    setLoading(true)
+    setError(null)
+    try {
+      await verifyMfaCode(mfaCode.trim())
+      haptic('success')
+      router.push('/')
+    } catch (err) {
+      haptic('warning')
+      setError(err instanceof Error ? err.message : 'Verification failed. Please try again.')
       setLoading(false)
     }
   }
@@ -66,8 +90,46 @@ export default function LoginPage() {
         {/* eslint-disable-next-line @next/next/no-img-element -- matches MarketingLanding.tsx's own /icon.svg usage */}
         <img src="/icon.svg" alt="" width={64} height={64} className="rounded-3xl mx-auto mb-3" />
         <h1 className="text-2xl font-semibold tracking-tight bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">Welcome back</h1>
-        <p className="text-sm text-ink-tertiary mt-1">Sign in to your family</p>
+        <p className="text-sm text-ink-tertiary mt-1">{mfaPending ? 'Two-factor authentication' : 'Sign in to your family'}</p>
       </div>
+
+      {mfaPending ? (
+        <div className="space-y-3">
+          <label htmlFor="mfa-code" className="block">
+            <div className="text-xs text-ink-tertiary mb-1.5 px-1">Enter the 6-digit code from your authenticator app, or a recovery code</div>
+            <input
+              id="mfa-code"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              placeholder="000000"
+              value={mfaCode}
+              onChange={(e) => setMfaCode(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleVerifyMfa()}
+              className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all text-center tracking-widest"
+            />
+          </label>
+          {error && (
+            <p role="status" aria-live="polite" className="text-sm text-danger text-center">{error}</p>
+          )}
+          <motion.button
+            whileTap={{ scale: 0.96 }}
+            onClick={handleVerifyMfa}
+            disabled={!mfaCode.trim() || loading}
+            className="w-full bg-family-500 text-white font-semibold rounded-2xl py-4 text-base shadow-md shadow-family-500/15 disabled:opacity-40 active:opacity-90 transition-opacity"
+          >
+            {loading ? 'Verifying...' : 'Verify'}
+          </motion.button>
+          <button
+            onClick={() => { setMfaPending(false); setMfaCode(''); setError(null) }}
+            className="w-full text-sm text-ink-tertiary font-semibold text-center"
+          >
+            Back to sign in
+          </button>
+        </div>
+      ) : (
+      <>
 
       <div className="space-y-3 mb-6">
         <motion.button
@@ -133,6 +195,8 @@ export default function LoginPage() {
       >
         {loading ? 'Signing in...' : 'Sign In'}
       </motion.button>
+      </>
+      )}
     </div>
   )
 }

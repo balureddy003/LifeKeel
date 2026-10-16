@@ -13,6 +13,10 @@ export interface JwtPayload {
   tenant_id: string    // the isolation boundary
   roles: string[]
   demo?: boolean       // true for demo tokens — triggers guard in auth middleware
+  /** MFA second-step token only — never a session credential. The auth
+   *  middleware in apps/api's server.ts rejects requests carrying this
+   *  claim, so it can only be exchanged at /auth/mfa/verify. */
+  mfa_pending?: boolean
   iat?: number
   exp?: number
 }
@@ -22,6 +26,9 @@ export interface AuthContext {
   tenant_id: string   // use this for ALL database queries
   roles: string[]
   demo?: boolean      // true for demo tokens — triggers guard in auth middleware
+  /** Present on the short-lived token issued between password check and
+   *  TOTP verification — rejected everywhere except the verify route. */
+  mfa_pending?: boolean
   iat?: number        // seconds since epoch — session revocation compares against user.sessions_revoked_at
 }
 
@@ -56,6 +63,7 @@ export class AuthService {
       tenant_id: tenantId,
       roles: (payload['roles'] as string[]) ?? [],
       demo: payload['demo'] === true,
+      ...(payload['mfa_pending'] === true ? { mfa_pending: true } : {}),
       ...(typeof payload.iat === 'number' ? { iat: payload.iat } : {}),
     }
   }

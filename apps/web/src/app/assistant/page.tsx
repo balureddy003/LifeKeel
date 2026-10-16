@@ -128,6 +128,11 @@ export default function AssistantPage() {
   // makes the wait legible without promising a specific time.
   const [thinkingText, setThinkingText] = useState('Keel is thinking...')
   const scrollRef = useRef<HTMLDivElement>(null)
+  // The contextual suggestion chips used to vanish after the first message,
+  // so follow-ups grounded in the page the user came from (?context=) were
+  // undiscoverable mid-conversation. They now stay reachable behind a
+  // compact toggle once the chat is underway.
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -278,14 +283,24 @@ export default function AssistantPage() {
         )}
       </div>
 
-      {messages.length <= 1 && (
+      {messages.length <= 1 || suggestionsOpen ? (
         <div className="px-4 py-2">
-          <div className="text-xs text-ink-tertiary mb-2">Try asking:</div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs text-ink-tertiary">Try asking:</div>
+            {messages.length > 1 && (
+              <button
+                onClick={() => { haptic('light'); setSuggestionsOpen(false) }}
+                className="text-xs font-semibold text-ink-tertiary"
+              >
+                Hide
+              </button>
+            )}
+          </div>
           <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar -mx-4 px-4">
             {getContextSuggestions(pageContext).map((s, i) => (
               <motion.button
                 key={s}
-                onClick={() => sendMessage(s)}
+                onClick={() => { setSuggestionsOpen(false); void sendMessage(s) }}
                 whileTap={{ scale: 0.95 }}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -296,6 +311,15 @@ export default function AssistantPage() {
               </motion.button>
             ))}
           </div>
+        </div>
+      ) : (
+        <div className="px-4 pt-1">
+          <button
+            onClick={() => { haptic('light'); setSuggestionsOpen(true) }}
+            className="text-xs font-semibold text-family-400"
+          >
+            Suggest questions
+          </button>
         </div>
       )}
 

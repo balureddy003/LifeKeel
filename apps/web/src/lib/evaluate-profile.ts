@@ -1,4 +1,5 @@
 import { getApiBase } from './env'
+import { credFetch } from './http'
 import { invalidateCache } from './fetch-cache'
 
 /**
@@ -9,7 +10,7 @@ import { invalidateCache } from './fetch-cache'
  */
 export async function evaluateSavedProfile(): Promise<number> {
   const token = typeof window === 'undefined' ? null : localStorage.getItem('lifekeel_token')
-  const res = await fetch(`${getApiBase()}/family/financial-profile/evaluate`, {
+  const res = await credFetch(`${getApiBase()}/family/financial-profile/evaluate`, {
     method: 'POST',
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   })

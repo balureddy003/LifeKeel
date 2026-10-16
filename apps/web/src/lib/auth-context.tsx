@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react'
 import type { User, FamilyGroup, FamilyRole } from './auth-types'
 import { ROLE_EMOJI } from './auth-types'
 import {
@@ -14,6 +14,7 @@ import {
   type ApiFamilyGroup,
 } from './api'
 import { getApiBase } from './env'
+import { credFetch } from './http'
 import { getAttribution } from './attribution'
 
 interface AuthContextValue {
@@ -22,7 +23,11 @@ interface AuthContextValue {
   isAuthenticated: boolean
   isLoading: boolean
   signUp: (name: string, email: string, password: string, ref?: string) => Promise<User>
-  signIn: (email: string, password: string) => Promise<void>
+  /** Resolves with mfaRequired:true when the account has TOTP on — the
+   *  login page then calls verifyMfaCode() with the authenticator code. */
+  signIn: (email: string, password: string) => Promise<{ mfaRequired?: boolean }>
+  /** Second login step — TOTP or recovery code against the pending token. */
+  verifyMfaCode: (code: string) => Promise<void>
   /** PRD-123: accept a per-member invite — verifies the token, lands signed in. */
   acceptFamilyInvite: (token: string, password: string) => Promise<void>
   updateEmail: (email: string) => Promise<User>
@@ -73,10 +78,17 @@ interface ApiUser {
   email_verified?: boolean
 }
 
-async function apiAuthRequest(path: string, body: Record<string, unknown>): Promise<{ token: string; user: ApiUser }> {
+interface AuthResponse {
+  token?: string
+  user?: ApiUser
+  mfa_required?: boolean
+  mfa_token?: string
+}
+
+async function apiAuthRequest(path: string, body: Record<string, unknown>): Promise<AuthResponse> {
   let res: Response
   try {
-    res = await fetch(`${getApiBase()}${path}`, {
+    res = await credFetch(`${getApiBase()}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -107,15 +119,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const restore = async () => {
       try {
         const token = localStorage.getItem(TOKEN_KEY)
-        if (!token) {
-          setIsLoading(false)
-          return
-        }
-        // Verify the stored token against the real API rather than trusting
-        // stale localStorage — an expired/revoked token should sign the
-        // user out instead of leaving the app in a half-authenticated state.
-        const res = await fetch(`${getApiBase()}/auth/me`, {
-          headers: { Authorization: `Bearer ${token}` },
+        // Verify the session against the real API rather than trusting
+        // stale local state — an expired/revoked session should sign the
+        // user out instead of leaving the app half-authenticated. Cookie-
+        // first: credFetch always attaches the httpOnly session cookie;
+        // the stored Bearer token is the fallback for browsers that block
+        // third-party cookies (the API is cross-site today — see lib/http.ts).
+        const res = await credFetch(`${getApiBase()}/auth/me`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
         if (!res.ok) {
           localStorage.removeItem(TOKEN_KEY)
@@ -177,7 +188,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ...(ref ? { ref } : {}),
       ...(attribution ? { attribution } : {}),
     })
-    localStorage.setItem(TOKEN_KEY, token)
+    // The httpOnly cookie set on the response is the session; the token is
+    // still stored as the Bearer fallback for cookie-blocked browsers —
+    // see lib/http.ts for when it can go away.
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+    if (!apiUser) throw new Error('Sign up failed. Please try again.')
     const u: User = { id: apiUser.id, name: apiUser.name, email: apiUser.email, avatar: '', emailVerified: apiUser.email_verified }
     persist(u, null)
     return u
@@ -191,7 +206,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // whose onClick did literally nothing.
   const updateProfile = async (patch: { name?: string; email?: string }): Promise<User> => {
     const token = localStorage.getItem(TOKEN_KEY)
-    const res = await fetch(`${getApiBase()}/auth/profile`, {
+    const res = await credFetch(`${getApiBase()}/auth/profile`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -214,9 +229,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // exists and isn't touched by signUp() above.
   const updateEmail = (email: string): Promise<User> => updateProfile({ email })
 
-  const signIn = async (email: string, password: string) => {
-    const { token, user: apiUser } = await apiAuthRequest('/auth/login', { email, password })
-    localStorage.setItem(TOKEN_KEY, token)
+  // Held only for the seconds between the password check and the code
+  // entry — never persisted, so a pending MFA session can't be resumed.
+  const mfaTokenRef = useRef<string | null>(null)
+
+  const finishSignIn = async (apiUser: ApiUser) => {
     const u: User = { id: apiUser.id, name: apiUser.name, email: apiUser.email, avatar: '', emailVerified: apiUser.email_verified }
     // Restore the real family roster on login, same as the mount rehydration
     // path — a returning user who already built a household shouldn't be
@@ -232,6 +249,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error("Signed in, but we couldn't load your family. Check your connection and try again.")
     }
     persist(u, f)
+  }
+
+  const signIn = async (email: string, password: string) => {
+    const { token, user: apiUser, mfa_required, mfa_token } = await apiAuthRequest('/auth/login', { email, password })
+    if (mfa_required) {
+      mfaTokenRef.current = mfa_token ?? null
+      return { mfaRequired: true }
+    }
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+    if (!apiUser) throw new Error('Sign in failed. Please try again.')
+    await finishSignIn(apiUser)
+    return {}
+  }
+
+  const verifyMfaCode = async (code: string) => {
+    const mfaToken = mfaTokenRef.current
+    if (!mfaToken) throw new Error('That sign-in expired — enter your email and password again.')
+    const { token, user: apiUser } = await apiAuthRequest('/auth/mfa/verify', { mfa_token: mfaToken, code })
+    mfaTokenRef.current = null
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+    if (!apiUser) throw new Error('Verification failed. Please try again.')
+    await finishSignIn(apiUser)
   }
 
   // Accepting a per-member invite is both account creation/linking AND the
@@ -259,6 +298,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = () => {
     persist(null, null)
+    // Clear the httpOnly session cookie server-side — fire-and-forget; the
+    // local wipe above already signed the user out on this device.
+    credFetch(`${getApiBase()}/auth/logout`, { method: 'POST' }).catch(() => {})
   }
 
   const createFamily = async (name: string, forUser?: User) => {
@@ -355,10 +397,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refresh = async () => {
     const token = localStorage.getItem(TOKEN_KEY)
-    if (!token) return
     try {
-      const res = await fetch(`${getApiBase()}/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const res = await credFetch(`${getApiBase()}/auth/me`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
       if (!res.ok) return
       const me = await res.json()
@@ -379,6 +420,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         signUp,
         signIn,
+        verifyMfaCode,
         acceptFamilyInvite,
         updateEmail,
         updateProfile,
