@@ -70,6 +70,18 @@ Concretely:
   place beats compliance overhead paid for after deciding to compete
   there.
 
+## How the rules are enforced (not just stated)
+
+- **Advice rule (second rule):** `packages/engine/src/__tests__/advice-rule.test.ts`
+  fails CI if detector/playbook copy contains recommendation verbs or named
+  providers. `.claude/settings.json` runs it as a PostToolUse hook
+  (`scripts/hooks/advice-check.sh`) so Claude sees the failure immediately
+  after editing that copy.
+- **PRs:** `.github/pull_request_template.md` makes tier, advice check and
+  eval coverage explicit. New work starts from `docs/templates/intent.md`.
+- **Skill:** `.claude/skills/add-detector` encodes the add-a-detector recipe.
+- Still prose-only: the trust-tier rule (rule 1). Next candidate for a test.
+
 ## Conventions
 
 - **TypeScript**, strict mode, `pnpm` workspace, `turbo` for build
