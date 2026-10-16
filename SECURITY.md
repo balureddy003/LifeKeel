@@ -183,11 +183,13 @@ executor was left wired into a currently-shipped route instead.
   (rejected as a session credential by the auth middleware), single-use
   recovery codes stored as SHA-256 hashes, password re-confirmation to
   disable. Web UI: `apps/web/src/components/MfaSettings.tsx` (Settings →
-  Security) and the second step on `/login`. **Remaining gaps worth a
+  Security) and the second step on `/login`. OAuth sign-in is covered too:
+  Google/GitHub exchange+callback routes return the same pending-token
+  contract instead of a session for mfa_enabled users, and the web
+  callback routes it to the login code step. **Remaining gap worth a
   follow-up:** no admin/support recovery path for a user who loses both
   factors (today that's a manual DB edit — acceptable for GA but needs an
-  operational runbook), and MFA is not yet enforced on the OAuth
-  (Google/GitHub) sign-in path for linked accounts.
+  operational runbook).
 - **Mixed license terms across `packages/*`.** Copied as-is from kairos-ai:
   MIT (`engine`, `platform`), Apache-2.0 (`specifications`, `runtime`,
   `legacy-compat`, `mongodb-adapter`, `conformance`, `outcome-kernel`), and
