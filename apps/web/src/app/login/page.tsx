@@ -35,6 +35,16 @@ export default function LoginPage() {
     setError(messages[code] ?? 'Sign-in failed. Please try again.')
   }, [])
 
+  // OAuth second factor: /auth/callback forwards the pending token here as
+  // ?mfa=1 after stashing it in sessionStorage. Straight to the code step —
+  // the password form is irrelevant (Google/GitHub has none).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('mfa') === '1' && sessionStorage.getItem('lifekeel_mfa_pending')) {
+      setMfaPending(true)
+    }
+  }, [])
+
   const handleSignIn = async () => {
     if (!email.trim() || !password) return
     setLoading(true)
@@ -62,7 +72,9 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
     try {
-      await verifyMfaCode(mfaCode.trim())
+      const pendingToken = sessionStorage.getItem('lifekeel_mfa_pending') ?? undefined
+      await verifyMfaCode(mfaCode.trim(), pendingToken)
+      sessionStorage.removeItem('lifekeel_mfa_pending')
       haptic('success')
       router.push('/')
     } catch (err) {
@@ -122,7 +134,7 @@ export default function LoginPage() {
             {loading ? 'Verifying...' : 'Verify'}
           </motion.button>
           <button
-            onClick={() => { setMfaPending(false); setMfaCode(''); setError(null) }}
+            onClick={() => { setMfaPending(false); setMfaCode(''); setError(null); sessionStorage.removeItem('lifekeel_mfa_pending') }}
             className="w-full text-sm text-ink-tertiary font-semibold text-center"
           >
             Back to sign in

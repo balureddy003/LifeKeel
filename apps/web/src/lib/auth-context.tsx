@@ -26,8 +26,10 @@ interface AuthContextValue {
   /** Resolves with mfaRequired:true when the account has TOTP on — the
    *  login page then calls verifyMfaCode() with the authenticator code. */
   signIn: (email: string, password: string) => Promise<{ mfaRequired?: boolean }>
-  /** Second login step — TOTP or recovery code against the pending token. */
-  verifyMfaCode: (code: string) => Promise<void>
+  /** Second login step — TOTP or recovery code against the pending token.
+   *  OAuth callbacks carry the pending token across a redirect, so the
+   *  login page passes it explicitly rather than relying on the ref. */
+  verifyMfaCode: (code: string, mfaTokenOverride?: string) => Promise<void>
   /** PRD-123: accept a per-member invite — verifies the token, lands signed in. */
   acceptFamilyInvite: (token: string, password: string) => Promise<void>
   updateEmail: (email: string) => Promise<User>
@@ -263,8 +265,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return {}
   }
 
-  const verifyMfaCode = async (code: string) => {
-    const mfaToken = mfaTokenRef.current
+  const verifyMfaCode = async (code: string, mfaTokenOverride?: string) => {
+    const mfaToken = mfaTokenOverride ?? mfaTokenRef.current
     if (!mfaToken) throw new Error('That sign-in expired — enter your email and password again.')
     const { token, user: apiUser } = await apiAuthRequest('/auth/mfa/verify', { mfa_token: mfaToken, code })
     mfaTokenRef.current = null

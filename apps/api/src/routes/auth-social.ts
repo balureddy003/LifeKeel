@@ -324,6 +324,16 @@ export async function registerSocialAuthRoutes(
         )
       }
 
+      // MFA gate — same contract as password login: a pending token that
+      // only /auth/mfa/verify can exchange for a session. Redirected back
+      // in the fragment; the web callback routes it to the code entry.
+      if (user.mfa_enabled && user.mfa_secret) {
+        const mfaToken = await auth.sign({
+          sub: user.id, tenant_id: user.tenant_id, roles: user.roles, mfa_pending: true,
+        }, '5m')
+        return reply.redirect(`${appRedirectUrl}#mfa_token=${mfaToken}`)
+      }
+
       // Issue JWT token. OAuth sign-in has no "remember me" checkbox, so it
       // gets the same long-lived duration password login gets when the user
       // checks that box — otherwise Google-authenticated sessions would
@@ -523,6 +533,15 @@ export async function registerSocialAuthRoutes(
             }
           }
         )
+      }
+
+      // MFA gate — mirrors password login's { mfa_required, mfa_token }
+      // shape; the pending token is only exchangeable at /auth/mfa/verify.
+      if (user.mfa_enabled && user.mfa_secret) {
+        const mfaToken = await auth.sign({
+          sub: user.id, tenant_id: user.tenant_id, roles: user.roles, mfa_pending: true,
+        }, '5m')
+        return { mfa_required: true, mfa_token: mfaToken }
       }
 
       // Issue JWT token. Same long-lived duration as the redirect-flow
@@ -763,6 +782,13 @@ export async function registerSocialAuthRoutes(
         tenant_id: user.tenant_id,
         roles: user.roles,
       }, '1h')
+
+      if (user.mfa_enabled && user.mfa_secret) {
+        const mfaToken = await auth.sign({
+          sub: user.id, tenant_id: user.tenant_id, roles: user.roles, mfa_pending: true,
+        }, '5m')
+        return reply.redirect(`${studioUrl}/auth/callback#mfa_token=${mfaToken}`)
+      }
       setSessionCookie(reply, token, 60 * 60)
 
       // Redirect to Studio with token
@@ -964,6 +990,12 @@ export async function registerSocialAuthRoutes(
       }
 
       // Issue JWT token
+      if (user.mfa_enabled && user.mfa_secret) {
+        const mfaToken = await auth.sign({
+          sub: user.id, tenant_id: user.tenant_id, roles: user.roles, mfa_pending: true,
+        }, '5m')
+        return { mfa_required: true, mfa_token: mfaToken }
+      }
       const token = await auth.sign({
         sub: user.id,
         tenant_id: user.tenant_id,
