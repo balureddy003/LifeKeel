@@ -1,24 +1,19 @@
-/**
- * Connector actions that move money or change a brokerage account and therefore must not be
- * reachable from POST /connectors/:id/actions/:action (CLAUDE.md rule 1: no autonomous execution of
- * a financial action without an explicit approval gate).
- *
- * The route authenticates the tenant but does not check live-trading opt-in, caps or a human
- * confirmation; those belong to the dedicated trade path. Until a write action is routed through an
- * approval gate it is refused here. Add connectors as their write actions are reviewed; a test
- * requires every non-GET trading-212 action in the registry to appear below.
- */
-export const GATED_CONNECTOR_ACTIONS: Readonly<Record<string, ReadonlySet<string>>> = {
-  'trading-212': new Set([
-    'place_market_order',
-    'place_limit_order',
-    'place_stop_order',
-    'cancel_order',
-    'create_pie',
-    'update_pie',
-  ]),
-}
+import { connectorRegistry } from '@lifekeel/workflows'
 
-export function isGatedConnectorAction(connectorId: string, actionId: string): boolean {
-  return GATED_CONNECTOR_ACTIONS[connectorId]?.has(actionId) ?? false
+/**
+ * POST /connectors/:id/actions/:action authenticates the tenant but has no human approval, live-trading
+ * opt-in or cap check, so it is read-only: only an action the registry defines with method GET may run.
+ * Everything else (emails, SMS, refunds, public posts, broker orders, 76 actions across 32 connectors at
+ * the time of writing) is a write with external effect and needs an approval flow (CLAUDE.md rule 1).
+ *
+ * Deny-by-default on purpose. A per-connector deny list misses new write actions, and the executor
+ * silently aliases some ids (twitter_x create_tweet -> createPosts), so matching on the id the caller
+ * sent is not enough: an id that is not exactly a registry GET action never runs.
+ */
+export type ConnectorActionClass = 'read' | 'write' | 'unknown'
+
+export function classifyConnectorAction(connectorId: string, actionId: string): ConnectorActionClass {
+  const action = connectorRegistry.get(connectorId)?.actions.find((a) => a.id === actionId)
+  if (!action) return 'unknown'
+  return action.method === 'GET' ? 'read' : 'write'
 }
