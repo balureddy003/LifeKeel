@@ -41,24 +41,33 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import yaml from 'js-yaml'
 import chokidar, { type FSWatcher } from 'chokidar'
-import { Detector } from './detector.js'
+import { Detector } from './scoring/detector.js'
 import {
   DetectorConfigSchema,
   type EvaluationContext,
   type EvaluationResult,
   type Insight,
 } from './schemas.js'
-import { validateDetector, formatValidationErrors, type ValidationResult } from './detector-validator.js'
+import {
+  validateDetector,
+  formatValidationErrors,
+  type ValidationResult,
+} from './scoring/detector-validator.js'
 import { MetricsCollector, type EngineMetrics } from './engine-metrics.js'
-import type { ScoreCalibrator } from './calibration.js'
-import type { NoveltyTracker } from './novelty-tracker.js'
-import type { ChangePointDetector } from './change-point.js'
-import type { FeatureHashScorer } from './feature-hash-scorer.js'
-import type { TenantLevelScorer, RecentInsight } from './tenant-level-scorer.js'
-import { CorrelationBuffer } from './correlation-buffer.js'
+import type { ScoreCalibrator } from './calibration/calibration.js'
+import type { NoveltyTracker } from './scoring/novelty-tracker.js'
+import type { ChangePointDetector } from './scoring/change-point.js'
+import type { FeatureHashScorer } from './scoring/feature-hash-scorer.js'
+import type { TenantLevelScorer, RecentInsight } from './scoring/tenant-level-scorer.js'
+import { CorrelationBuffer } from './scoring/correlation-buffer.js'
 import { createLogger } from '@lifekeel/platform'
-import { CascadeScorer, type CascadePolicy, type ConformalGateProvider, type CascadeTelemetry } from './cascade.js'
-import { DatabaseIndexManager, createIndexManager } from './database-indexes.js'
+import {
+  CascadeScorer,
+  type CascadePolicy,
+  type ConformalGateProvider,
+  type CascadeTelemetry,
+} from './scoring/cascade.js'
+import { DatabaseIndexManager, createIndexManager } from './scoring/database-indexes.js'
 
 const log = createLogger({ service: 'lifekeel-engine', version: '0.0.0' })
 
@@ -170,7 +179,7 @@ export interface EngineOptions {
 }
 
 function detectorSupportsSchema(detector: Detector, eventType: string, version: string): boolean {
-  const compatibility = detector.config.event_types?.find(entry => entry.name === eventType)
+  const compatibility = detector.config.event_types?.find((entry) => entry.name === eventType)
   if (!compatibility || version === '0.0.0') return true
   const asNumber = (value: string): number | null => {
     const parts = value.split('.').map(Number)
@@ -239,7 +248,7 @@ export interface LlmScoringPolicy {
 
 export interface EvaluateInput {
   event_type: string
-  tenant_id: string   // ← always from auth context, never from request body
+  tenant_id: string // ← always from auth context, never from request body
   event_id: string
   data: Record<string, unknown>
   business_context?: Record<string, unknown>
@@ -435,7 +444,8 @@ export class Engine {
     const tablePath = path.join(this.options.detectorsDir, '..', 'category-table.yaml')
     try {
       const raw = await fs.readFile(tablePath, 'utf8')
-      const parsed = yaml.load(raw) as CategoryDecisionEntry[] | { entries?: CategoryDecisionEntry[] }
+      const parsed = yaml.load(raw) as
+        CategoryDecisionEntry[] | { entries?: CategoryDecisionEntry[] }
       // The documented shape (see CategoryDecisionEntry's own doc comment) is
       // a bare top-level list — accept that as primary, and an {entries:[]}
       // wrapper too in case a file is ever written that way.
@@ -466,7 +476,10 @@ export class Engine {
       this.validationResults.set(config.id, validation)
 
       if (!validation.valid) {
-        log.warn({ detector_id: config.id, errors: validation.errors }, 'Detector has validation errors — skipping')
+        log.warn(
+          { detector_id: config.id, errors: validation.errors },
+          'Detector has validation errors — skipping',
+        )
         return validation
       }
 
@@ -524,9 +537,13 @@ export class Engine {
       signal_type: event_type,
       data,
       ...(business_context !== undefined && { business_context }),
-      ...(input.adaptive_thresholds !== undefined && { adaptive_thresholds: input.adaptive_thresholds }),
+      ...(input.adaptive_thresholds !== undefined && {
+        adaptive_thresholds: input.adaptive_thresholds,
+      }),
       ...(input.goal_kpi_targets !== undefined && { goal_kpi_targets: input.goal_kpi_targets }),
-      ...(input.derived_from_signals !== undefined && { derived_from_signals: input.derived_from_signals }),
+      ...(input.derived_from_signals !== undefined && {
+        derived_from_signals: input.derived_from_signals,
+      }),
       ...(history !== undefined && { history }),
     }
 
@@ -535,8 +552,10 @@ export class Engine {
 
     const activeDetectorIds = input.active_detector_ids ? new Set(input.active_detector_ids) : null
     const matchingDetectors = this.getMatchingDetectors(event_type)
-      .filter(detector => !activeDetectorIds || activeDetectorIds.has(detector.id))
-      .filter(detector => detectorSupportsSchema(detector, event_type, input.schema_version ?? '0.0.0'))
+      .filter((detector) => !activeDetectorIds || activeDetectorIds.has(detector.id))
+      .filter((detector) =>
+        detectorSupportsSchema(detector, event_type, input.schema_version ?? '0.0.0'),
+      )
     this.correlationBuffer.add({
       tenant_id,
       evidence_type: event_type,
@@ -604,9 +623,16 @@ export class Engine {
 
     // LLM enrichment — 70% rule + 30% LLM, graceful degradation
     if (this.options.llmScorer && insights.length > 0) {
-      const blendPolicies = new Map(matchingDetectors.map(detector => [detector.id, detector.config.blend_policy]))
+      const blendPolicies = new Map(
+        matchingDetectors.map((detector) => [detector.id, detector.config.blend_policy]),
+      )
       const reasoning = await this.applyReasoningContext(insights, context)
-      insights = await this.applyLlmScoring(reasoning.insights, context, blendPolicies, reasoning.contexts)
+      insights = await this.applyLlmScoring(
+        reasoning.insights,
+        context,
+        blendPolicies,
+        reasoning.contexts,
+      )
     }
 
     // Sort by combined_score DESC
@@ -645,14 +671,19 @@ export class Engine {
           ...insight,
           confidence_breakdown: {
             ...insight.confidence_breakdown,
-            grounded_in_history: retrieved.episodic_snippets.length + retrieved.semantic_snippets.length > 0,
+            grounded_in_history:
+              retrieved.episodic_snippets.length + retrieved.semantic_snippets.length > 0,
             rag_context_tokens: retrieved.tokens_used,
           },
         })
       } catch {
         enriched.push({
           ...insight,
-          confidence_breakdown: { ...insight.confidence_breakdown, grounded_in_history: false, rag_context_tokens: 0 },
+          confidence_breakdown: {
+            ...insight.confidence_breakdown,
+            grounded_in_history: false,
+            rag_context_tokens: 0,
+          },
         })
       }
     }
@@ -712,9 +743,7 @@ export class Engine {
           id: r.id,
           name: r.name,
           confidence: r.confidence,
-          condition: typeof r.condition === 'string'
-            ? r.condition
-            : JSON.stringify(r.condition),
+          condition: typeof r.condition === 'string' ? r.condition : JSON.stringify(r.condition),
         })),
         validation: this.validationResults.get(id) ?? { valid: true, errors: [], warnings: [] },
       })
@@ -761,9 +790,7 @@ export class Engine {
         if (/\.ya?ml$/i.test(filePath)) {
           const filename = path.basename(filePath)
           log.info({ filename }, 'Loading new detector')
-          await this.loadFile(filePath).catch((err) =>
-            log.warn({ filename, err }, 'Load failed'),
-          )
+          await this.loadFile(filePath).catch((err) => log.warn({ filename, err }, 'Load failed'))
         }
       })
 
@@ -776,7 +803,10 @@ export class Engine {
           this.detectorById.delete(detectorId)
           // Remove from signal type mappings
           for (const [signalType, detectors] of this.detectors.entries()) {
-            this.detectors.set(signalType, detectors.filter(d => d.id !== detectorId))
+            this.detectors.set(
+              signalType,
+              detectors.filter((d) => d.id !== detectorId),
+            )
           }
         }
       })
@@ -812,9 +842,7 @@ export class Engine {
       this.options.noveltyFields?.[eventType] ?? this.options.noveltyFields?.['*']
     if (this.options.noveltyTracker && noveltyFields && noveltyFields.length > 0) {
       try {
-        const noveltyCtx = this.options.noveltyTracker.buildContext(
-          tenant_id, data, noveltyFields,
-        )
+        const noveltyCtx = this.options.noveltyTracker.buildContext(tenant_id, data, noveltyFields)
         context.novelty_scores = noveltyCtx.scores
         // Flush asynchronously — don't block the hot path
         this.options.noveltyTracker.flush(tenant_id).catch(() => {})
@@ -829,7 +857,9 @@ export class Engine {
     if (this.options.changePointDetector && cpFields && cpFields.length > 0) {
       try {
         const cpResults = await this.options.changePointDetector.updateMany(
-          tenant_id, data, cpFields,
+          tenant_id,
+          data,
+          cpFields,
         )
         context.change_point = this.options.changePointDetector.buildContext(cpResults)
       } catch {
@@ -846,7 +876,11 @@ export class Engine {
         if (entityKey) {
           const recentInsights = await this.options.recentInsightsProvider(tenant_id, entityKey)
           const result = await this.options.tenantLevelScorer.score(
-            tenant_id, entityKey, eventType, undefined, recentInsights,
+            tenant_id,
+            entityKey,
+            eventType,
+            undefined,
+            recentInsights,
           )
           context.tenant_level_score = result.score
         }
@@ -867,21 +901,21 @@ export class Engine {
   }
 
   private getMatchingDetectors(eventType: string): Detector[] {
-    return [
-      ...(this.detectors.get(eventType) ?? []),
-      ...(this.detectors.get('*') ?? []),
-    ]
+    return [...(this.detectors.get(eventType) ?? []), ...(this.detectors.get('*') ?? [])]
   }
 
   private async applyLlmScoring(
     insights: Insight[],
     context: EvaluationContext,
-    blendPolicies?: ReadonlyMap<string, { rule_weight: number; llm_weight: number; llm_weight_ceiling: number } | undefined>,
+    blendPolicies?: ReadonlyMap<
+      string,
+      { rule_weight: number; llm_weight: number; llm_weight_ceiling: number } | undefined
+    >,
     reasoningContexts?: ReadonlyMap<string, ReasoningContext>,
   ): Promise<Insight[]> {
     const policy = this.options.llmScoringPolicy ?? {}
-    const maxOrScore = policy.maxOrScoreToEnrich ?? 0.90
-    const batchCap   = policy.batchCap ?? 10
+    const maxOrScore = policy.maxOrScoreToEnrich ?? 0.9
+    const batchCap = policy.batchCap ?? 10
     const defaultBlend = { rule_weight: 0.7, llm_weight: 0.3, llm_weight_ceiling: 0.9 }
 
     // ── Escalation gate ───────────────────────────────────────────────────────
@@ -914,9 +948,10 @@ export class Engine {
       // High-confidence rule matches (or_score ≥ maxOrScore) pass through unchanged.
       // At 70/30 blend, the LLM can shift combined_score by at most 3 points when
       // or_score = 0.90, making the call wasteful. Gate it out for free savings.
-      toEnrich = insights.filter(i => i.confidence_breakdown.or_score < maxOrScore)
-                         .slice(0, batchCap)
-      passThrough = insights.filter(i => i.confidence_breakdown.or_score >= maxOrScore)
+      toEnrich = insights
+        .filter((i) => i.confidence_breakdown.or_score < maxOrScore)
+        .slice(0, batchCap)
+      passThrough = insights.filter((i) => i.confidence_breakdown.or_score >= maxOrScore)
       const gatedCount = insights.length - toEnrich.length
       if (gatedCount > 0) {
         log.debug(
@@ -965,7 +1000,7 @@ export class Engine {
       // Apply per-detector temperature scaling to correct overconfidence.
       // Runs synchronously from in-memory cache — zero DB round-trips on hot path.
       const calibrated = this.options.calibrator
-        ? enriched.map(insight => {
+        ? enriched.map((insight) => {
             const adjustedScore = this.options.calibrator!.calibrateSync(
               context.tenant_id,
               insight.detector_id ?? '',

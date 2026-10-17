@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { MoveJudge, type Insight, type JudgeScores } from '../index.js'
 
-function insight(reasoning = 'This evidence-backed recommendation is sufficiently detailed to require evaluation.'): Insight {
+function insight(
+  reasoning = 'This evidence-backed recommendation is sufficiently detailed to require evaluation.',
+): Insight {
   return {
     id: 'move-1',
     tenant_id: 'tenant-1',
@@ -52,16 +54,27 @@ describe('MoveJudge', () => {
   })
 
   it('blocks delivery when the judge is unavailable', async () => {
-    const judge = new MoveJudge(async () => { throw new Error('unavailable') })
+    const judge = new MoveJudge(async () => {
+      throw new Error('unavailable')
+    })
     const verdict = await judge.evaluate({ insight: insight(), evidence: {} })
-    expect(verdict).toMatchObject({ decision: 'block', judge_skipped: true, skip_reason: 'judge_failure' })
+    expect(verdict).toMatchObject({
+      decision: 'block',
+      judge_skipped: true,
+      skip_reason: 'judge_failure',
+    })
   })
 
   it('does not turn duplicate or short content into an unevaluated pass', async () => {
     const evaluator = vi.fn(async () => ({ ...pass, safety: 1 }))
     const judge = new MoveJudge(evaluator)
-    expect((await judge.evaluate({ insight: insight('Too short'), evidence: {} })).decision).toBe('block')
-    expect((await judge.evaluate({ insight: insight(), evidence: {} }, { duplicateReasoning: true })).decision).toBe('block')
+    expect((await judge.evaluate({ insight: insight('Too short'), evidence: {} })).decision).toBe(
+      'block',
+    )
+    expect(
+      (await judge.evaluate({ insight: insight(), evidence: {} }, { duplicateReasoning: true }))
+        .decision,
+    ).toBe('block')
     expect(evaluator).toHaveBeenCalledTimes(2)
   })
 })

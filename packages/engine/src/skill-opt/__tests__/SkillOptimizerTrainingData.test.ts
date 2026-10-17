@@ -32,7 +32,10 @@ function makeDb(presets: Record<string, Record<string, unknown>[]> = {}) {
     return {
       _docs: docs,
       createIndex: async () => 'idx',
-      insertOne: async (d: Record<string, unknown>) => { docs.push({ ...d }); return {} },
+      insertOne: async (d: Record<string, unknown>) => {
+        docs.push({ ...d })
+        return {}
+      },
       replaceOne: async () => ({}),
       findOne: async () => null,
       // Basic query filter: supports { tenant_id, detector_id, id: {$in}, ... }
@@ -50,8 +53,11 @@ function makeDb(presets: Record<string, Record<string, unknown>[]> = {}) {
 }
 
 /** Minimal query filter supporting the fields used by loadTrajectories. */
-function filterDocs(docs: Record<string, unknown>[], query: Record<string, unknown>): Record<string, unknown>[] {
-  return docs.filter(doc => {
+function filterDocs(
+  docs: Record<string, unknown>[],
+  query: Record<string, unknown>,
+): Record<string, unknown>[] {
+  return docs.filter((doc) => {
     for (const [key, value] of Object.entries(query)) {
       if (key === 'started_at' || key === 'executed_at' || key === 'created_at') {
         // Date comparison: { $gte: Date } — skip for test simplicity
@@ -74,13 +80,17 @@ function filterDocs(docs: Record<string, unknown>[], query: Record<string, unkno
 
 // Simulate the docs that routes/insights.ts writes when a user
 // approves or dismisses an insight from a detector.
-function makeTrainingData(tenantId: string, detectorId: string, opts: {
-  approved: number
-  dismissed: number
-  withFeatureSnapshot?: boolean
-  withInsightScore?: boolean
-  learningSuppressed?: boolean
-}) {
+function makeTrainingData(
+  tenantId: string,
+  detectorId: string,
+  opts: {
+    approved: number
+    dismissed: number
+    withFeatureSnapshot?: boolean
+    withInsightScore?: boolean
+    learningSuppressed?: boolean
+  },
+) {
   const receipts: Record<string, unknown>[] = []
   const insights: Record<string, unknown>[] = []
 
@@ -172,8 +182,11 @@ describe('SkillOptimizer detector training data pipeline', () => {
     for (let i = 0; i < 10; i++) {
       const id = `ins-${i}`
       receipts.push({
-        tenant_id: 't1', detector_id: 'det', insight_id: id,
-        outcome: 'auto_approved', executed_at: new Date(),
+        tenant_id: 't1',
+        detector_id: 'det',
+        insight_id: id,
+        outcome: 'auto_approved',
+        executed_at: new Date(),
       })
       insights.push({ id, tenant_id: 't1', feature_snapshot: { i }, reasoning: `auto ${i}` })
     }
@@ -181,7 +194,10 @@ describe('SkillOptimizer detector training data pipeline', () => {
     const opt = new SkillOptimizer(db, silentLlm())
 
     const result = await opt.run({
-      target: 'detector', target_id: 'det', tenant_id: 't1', iterations: 1,
+      target: 'detector',
+      target_id: 'det',
+      tenant_id: 't1',
+      iterations: 1,
     })
 
     // All 10 auto_approved → baseline 1.0 → early exit
@@ -190,13 +206,18 @@ describe('SkillOptimizer detector training data pipeline', () => {
 
   it('skips receipts where learning_suppressed is true', async () => {
     const data = makeTrainingData('t1', 'det', {
-      approved: 5, dismissed: 5, learningSuppressed: true,
+      approved: 5,
+      dismissed: 5,
+      learningSuppressed: true,
     })
     const db = makeDb(data)
     const opt = new SkillOptimizer(db, silentLlm())
 
     const result = await opt.run({
-      target: 'detector', target_id: 'det', tenant_id: 't1', iterations: 1,
+      target: 'detector',
+      target_id: 'det',
+      tenant_id: 't1',
+      iterations: 1,
     })
 
     // All receipts have learning_suppressed=true → filtered out → 0 trajectories
@@ -211,7 +232,10 @@ describe('SkillOptimizer detector training data pipeline', () => {
     const opt = new SkillOptimizer(db, silentLlm())
 
     const result = await opt.run({
-      target: 'detector', target_id: 'det', tenant_id: 't1', iterations: 1,
+      target: 'detector',
+      target_id: 'det',
+      tenant_id: 't1',
+      iterations: 1,
     })
 
     expect(result.baseline_score).toBe(0)
@@ -222,16 +246,21 @@ describe('SkillOptimizer detector training data pipeline', () => {
     const receipts: Record<string, unknown>[] = []
     for (let i = 0; i < 10; i++) {
       receipts.push({
-        tenant_id: 't1', detector_id: 'det',
+        tenant_id: 't1',
+        detector_id: 'det',
         // No insight_id — should still work, just with empty feature_snapshot
-        outcome: 'approved', executed_at: new Date(),
+        outcome: 'approved',
+        executed_at: new Date(),
       })
     }
     const db = makeDb({ action_receipts: receipts, insights: [] })
     const opt = new SkillOptimizer(db, silentLlm())
 
     const result = await opt.run({
-      target: 'detector', target_id: 'det', tenant_id: 't1', iterations: 1,
+      target: 'detector',
+      target_id: 'det',
+      tenant_id: 't1',
+      iterations: 1,
     })
 
     // 10 approved receipts without insight_id → still score 1 each → baseline 1.0
@@ -248,7 +277,10 @@ describe('SkillOptimizer detector training data pipeline', () => {
     const opt = new SkillOptimizer(db, silentLlm())
 
     const result = await opt.run({
-      target: 'detector', target_id: 'det', tenant_id: 't1', iterations: 1,
+      target: 'detector',
+      target_id: 'det',
+      tenant_id: 't1',
+      iterations: 1,
     })
 
     // t1 has 8 approved + 2 dismissed = 0.8 baseline (not 1.0 from t2's data)

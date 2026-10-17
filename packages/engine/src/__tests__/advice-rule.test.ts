@@ -17,12 +17,19 @@ import path from 'node:path'
 const ROOT = path.resolve(__dirname, '..', '..', '..', '..')
 
 const BANNED: Array<{ name: string; pattern: RegExp }> = [
-  { name: 'personal recommendation', pattern: /\b(you should|we recommend|i recommend|we suggest you)\b/i },
-  { name: 'buy/switch instruction', pattern: /\b(buy|purchase|switch to|sign up (with|for)|take out)\b/i },
+  {
+    name: 'personal recommendation',
+    pattern: /\b(you should|we recommend|i recommend|we suggest you)\b/i,
+  },
+  {
+    name: 'buy/switch instruction',
+    pattern: /\b(buy|purchase|switch to|sign up (with|for)|take out)\b/i,
+  },
   { name: 'best-product claim', pattern: /\bbest (policy|provider|insurer|fund|product|plan)\b/i },
   {
     name: 'named provider',
-    pattern: /\b(aviva|legal (&|and) general|vitality|prudential|zurich|axa|hargreaves lansdown|vanguard|fidelity|nutmeg|moneybox)\b/i,
+    pattern:
+      /\b(aviva|legal (&|and) general|vitality|prudential|zurich|axa|hargreaves lansdown|vanguard|fidelity|nutmeg|moneybox)\b/i,
   },
 ]
 
@@ -93,7 +100,9 @@ describe('advice rule (CLAUDE.md second rule)', () => {
   })
 
   it('the checker itself catches advice-like copy (test would fail without it)', () => {
-    expect(findViolations('x.yaml', 'reasoning_template: You should buy Aviva term cover')).toHaveLength(3)
+    expect(
+      findViolations('x.yaml', 'reasoning_template: You should buy Aviva term cover'),
+    ).toHaveLength(3)
     expect(findViolations('x.yaml', '# you should buy this — comment only')).toEqual([])
     expect(findViolations('x.yaml', 'Compare quotes from multiple insurers')).toEqual([])
   })

@@ -37,7 +37,17 @@ async function loadDetector(id: string): Promise<{
   return yaml.load(content) as any
 }
 
-function ruleById(detector: { rules: Array<{ id: string; condition: string; impact_low: string | number; impact_high: string | number }> }, ruleId: string) {
+function ruleById(
+  detector: {
+    rules: Array<{
+      id: string
+      condition: string
+      impact_low: string | number
+      impact_high: string | number
+    }>
+  },
+  ruleId: string,
+) {
   const rule = detector.rules.find((r) => r.id === ruleId)
   if (!rule) throw new Error(`Rule not found: ${ruleId}`)
   return rule

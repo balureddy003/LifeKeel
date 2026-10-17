@@ -1,6 +1,13 @@
 export { AuthService, extractBearerToken } from './auth.js'
 export type { JwtPayload, AuthContext } from './auth.js'
-export { toMinorUnits, fromMinorUnits, formatMoney, formatMoneyDisplay, addMinorUnits, percentOf } from './money.js'
+export {
+  toMinorUnits,
+  fromMinorUnits,
+  formatMoney,
+  formatMoneyDisplay,
+  addMinorUnits,
+  percentOf,
+} from './money.js'
 export type { MinorUnits, Currency, MoneyDisplay } from './money.js'
 export {
   getCountryConfig,
@@ -13,15 +20,40 @@ export {
 export type { CountryConfig, CountryCode } from './country-config.js'
 export { withSpan, setTracer, getTracer, initTelemetry } from './telemetry.js'
 export type { Span, Tracer } from './telemetry.js'
-export { createLlmRouter, createLlmRouterFromEnv, DEFAULT_MODELS, DEFAULT_TIER_MODELS, resolveTierModel, estimateReasoningTier, isValidAzureEndpoint, isAzureFoundryEndpoint } from './llm.js'
+export {
+  createLlmRouter,
+  createLlmRouterFromEnv,
+  DEFAULT_MODELS,
+  DEFAULT_TIER_MODELS,
+  resolveTierModel,
+  estimateReasoningTier,
+  isValidAzureEndpoint,
+  isAzureFoundryEndpoint,
+} from './llm.js'
 export type { LlmFn, LlmConfig, LlmProvider, ReasoningTier } from './llm.js'
-export { encryptField, decryptField, encryptIfNeeded, decryptIfNeeded, encryptBuffer, decryptBuffer } from './crypto.js'
+export {
+  encryptField,
+  decryptField,
+  encryptIfNeeded,
+  decryptIfNeeded,
+  encryptBuffer,
+  decryptBuffer,
+} from './crypto.js'
 export { CostLedger, computeCost, formatMicroDollars } from './cost-ledger.js'
 export type { LlmUsageRecord, CostSummary, ModelPricing } from './cost-ledger.js'
 export { createLocalDecisionFn, LocalDecisionError } from './local-decision.js'
-export type { DecisionFn, LocalDecisionConfig, LocalDecisionRequest, LocalDecisionResult } from './local-decision.js'
+export type {
+  DecisionFn,
+  LocalDecisionConfig,
+  LocalDecisionRequest,
+  LocalDecisionResult,
+} from './local-decision.js'
 export { callStructured, StructuredOutputError, BudgetExhaustedError } from './structured-llm.js'
-export type { StructuredCallOptions, StructuredCallResult, LlmGovernanceOptions } from './structured-llm.js'
+export type {
+  StructuredCallOptions,
+  StructuredCallResult,
+  LlmGovernanceOptions,
+} from './structured-llm.js'
 export { createGuardEventSink } from './guard-event-sink.js'
 export type { GuardEventSink } from './guard-event-sink.js'
 export type { LlmTokenUsage, LlmUsageCallback } from './llm.js'
@@ -74,24 +106,35 @@ export { canPerform } from './abilities.js'
 export type { ProductAction, ProductResource, ProductRole } from './abilities.js'
 
 export {
-  getEdition, getEditionInfo, requireEdition, isFeatureEnabled,
+  getEdition,
+  getEditionInfo,
+  requireEdition,
+  isFeatureEnabled,
   EditionError,
 } from './edition.js'
 export type { LifeKeelEdition, EditionInfo } from './edition.js'
 
-export { LlmCircuitBreaker, getCircuitBreaker, getAllCircuitBreakers } from './llm-circuit-breaker.js'
+export {
+  LlmCircuitBreaker,
+  getCircuitBreaker,
+  getAllCircuitBreakers,
+} from './llm-circuit-breaker.js'
 export type { CircuitBreakerOptions } from './llm-circuit-breaker.js'
 export { EnvKeyRegistry, defaultKeyRegistry } from './key-registry.js'
 export type { KeyRegistry } from './key-registry.js'
-export { InMemoryCircuitBreakerRegistry, defaultCircuitBreakerRegistry } from './circuit-breaker-registry.js'
+export {
+  InMemoryCircuitBreakerRegistry,
+  defaultCircuitBreakerRegistry,
+} from './circuit-breaker-registry.js'
 export type { CircuitBreakerRegistry } from './circuit-breaker-registry.js'
 export { EmbeddingWorker } from './memory/EmbeddingWorker.js'
 export type { EmbedFn } from './memory/EmbeddingWorker.js'
-export { LocalEmbeddingProvider, DEFAULT_LOCAL_EMBEDDING_MODEL } from './memory/LocalEmbeddingProvider.js'
+export {
+  LocalEmbeddingProvider,
+  DEFAULT_LOCAL_EMBEDDING_MODEL,
+} from './memory/LocalEmbeddingProvider.js'
 export type { LocalEmbeddingOptions } from './memory/LocalEmbeddingProvider.js'
 export { repoRoot } from './repo-root.js'
-export { buildGoalKpiTargets, buildGoalContext, DEFAULT_GOAL_KPI_TARGETS } from './goal-kpi-targets.js'
-export type { GoalContext } from './goal-kpi-targets.js'
 export {
   PERSONA_VERTICALS,
   RISK_TIER_PRESETS,
@@ -99,4 +142,10 @@ export {
   isPersona,
   isRiskTier,
 } from './onboarding-profile.js'
-export type { Persona, RiskTier, RiskTierPreset, StrategyPreset, GoalKpiPreset } from './onboarding-profile.js'
+export type {
+  Persona,
+  RiskTier,
+  RiskTierPreset,
+  StrategyPreset,
+  GoalKpiPreset,
+} from './onboarding-profile.js'

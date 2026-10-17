@@ -9,13 +9,11 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { buildCalibrationPairs } from '../calibration.js'
+import { buildCalibrationPairs } from '../calibration/calibration.js'
 
 describe('buildCalibrationPairs outcome mapping', () => {
   it('maps approved → 1', () => {
-    const pairs = buildCalibrationPairs([
-      { outcome: 'approved', metadata: { insight_score: 0.8 } },
-    ])
+    const pairs = buildCalibrationPairs([{ outcome: 'approved', metadata: { insight_score: 0.8 } }])
     expect(pairs).toHaveLength(1)
     expect(pairs[0]!.outcome).toBe(1)
   })
@@ -70,7 +68,10 @@ describe('buildCalibrationPairs outcome mapping', () => {
     const pairs = buildCalibrationPairs([
       { outcome: 'approved', metadata: {} },
       { outcome: 'approved' },
-      { outcome: 'approved', metadata: { insight_score: 'not a number' } as unknown as Record<string, unknown> },
+      {
+        outcome: 'approved',
+        metadata: { insight_score: 'not a number' } as unknown as Record<string, unknown>,
+      },
     ])
     expect(pairs).toHaveLength(0)
   })
@@ -86,7 +87,7 @@ describe('buildCalibrationPairs outcome mapping', () => {
       { outcome: 'converted', metadata: { insight_score: 0.95 } },
     ])
     expect(pairs).toHaveLength(5) // 7 - 2 blocked
-    expect(pairs.map(p => p.outcome)).toEqual([1, 1, 0, 0, 1])
-    expect(pairs.map(p => p.raw_score)).toEqual([0.9, 0.7, 0.6, 0.5, 0.95])
+    expect(pairs.map((p) => p.outcome)).toEqual([1, 1, 0, 0, 1])
+    expect(pairs.map((p) => p.raw_score)).toEqual([0.9, 0.7, 0.6, 0.5, 0.95])
   })
 })

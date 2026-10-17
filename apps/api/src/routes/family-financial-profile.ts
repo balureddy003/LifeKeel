@@ -27,10 +27,13 @@ import { getTenantCollection } from '@lifekeel/platform'
 import { getFamilyFinancialProfileCollection } from '../db.js'
 import { persistSignal } from '../signals.js'
 import { resolveStaleInsights } from '../insights-persist.js'
-import { maybeFlagUnreportedLifeChange, type ProfileChangeSnapshot } from '../life-events/detect-unreported-change.js'
+import {
+  maybeFlagUnreportedLifeChange,
+  type ProfileChangeSnapshot,
+} from '../life-events/detect-unreported-change.js'
 import { rewardReferralIfPending } from './referrals.js'
-import { recordInsightAction } from '../lib/insight-attribution.js'
-import { ageFromDob } from '../lib/family-permissions.js'
+import { recordInsightAction } from '../insights/insight-attribution.js'
+import { ageFromDob } from '../family/family-permissions.js'
 import type { FamilyGroupDoc } from './family-group.js'
 import { monthlyEquivalentMinor, type CashflowEntryDoc } from './family-cashflow.js'
 import { buildEstateSignal } from '../legacy/estate-signal.js'
@@ -154,7 +157,15 @@ export const FinancialProfileSchema = z.object({
         // both the wizard's picker and this endpoint rejected them. No new
         // coverage-adequacy detector for either type yet (see PRD-105's own
         // "Out of scope") — recordable today, reasoned-about later.
-        type: z.enum(['life', 'income_protection', 'health', 'critical_illness', 'car', 'home', 'travel']),
+        type: z.enum([
+          'life',
+          'income_protection',
+          'health',
+          'critical_illness',
+          'car',
+          'home',
+          'travel',
+        ]),
         provider: z.string().min(1),
         coverage_amount_minor: z.number().int().nonnegative().default(0),
         monthly_premium_minor: z.number().int().nonnegative().default(0),
@@ -281,9 +292,8 @@ export function projectRetirement(r: FinancialProfile['retirement']) {
   const annuityFactor = rate > 0 ? (growthFactor - 1) / rate : yearsToTarget
   const futureValueOfContributions = annualContribution * annuityFactor
 
-  const requiredAnnualContribution = annuityFactor > 0
-    ? (requiredCorpusMinor - futureValueOfCurrentBalance) / annuityFactor
-    : 0
+  const requiredAnnualContribution =
+    annuityFactor > 0 ? (requiredCorpusMinor - futureValueOfCurrentBalance) / annuityFactor : 0
   const requiredMonthlyContribution = requiredAnnualContribution / 12
   const additional_monthly_contribution_needed_minor = Math.max(
     0,
@@ -302,7 +312,10 @@ export function projectRetirement(r: FinancialProfile['retirement']) {
 }
 
 export function educationFundingGapMinor(funds: FinancialProfile['education_funds']): number {
-  return funds.reduce((sum, f) => sum + Math.max(0, f.target_savings_minor - f.current_savings_minor), 0)
+  return funds.reduce(
+    (sum, f) => sum + Math.max(0, f.target_savings_minor - f.current_savings_minor),
+    0,
+  )
 }
 
 /**
@@ -328,7 +341,12 @@ function soonestPolicyRenewal(policies: FinancialProfile['policies']): {
     const days = Math.ceil((renewalMs - now) / 86_400_000)
     if (days < 0) continue
     if (!best || days < best.days) {
-      best = { days, provider: policy.provider, type: policy.type, ...(policy.member_id ? { member_id: policy.member_id } : {}) }
+      best = {
+        days,
+        provider: policy.provider,
+        type: policy.type,
+        ...(policy.member_id ? { member_id: policy.member_id } : {}),
+      }
     }
   }
   return best ?? { days: 9999, provider: '', type: '' }
@@ -358,7 +376,10 @@ export async function evaluateProfileAndGenerateInsights(
     // Gates no_income_protection off for households within a year of
     // their target retirement age — a new income protection policy isn't
     // a meaningful gap to flag that close to (or past) retiring.
-    const yearsToRetirement = Math.max(0, profile.retirement.target_retirement_age - profile.retirement.current_age)
+    const yearsToRetirement = Math.max(
+      0,
+      profile.retirement.target_retirement_age - profile.retirement.current_age,
+    )
     // These 4 fields are genuinely joint/household-level (one mortgage,
     // one life policy, one household's dependents and soonest renewal) —
     // shared by both evaluate() calls below so a second-earner event
@@ -372,7 +393,9 @@ export async function evaluateProfileAndGenerateInsights(
       // PRD-102: derived from the independent policies[] array, additive
       // to the fields above — see soonestPolicyRenewal's doc comment.
       has_dependents: Number(profile.education_funds.length > 0),
-      has_health_or_ci_cover: Number(profile.policies.some((p) => p.type === 'health' || p.type === 'critical_illness')),
+      has_health_or_ci_cover: Number(
+        profile.policies.some((p) => p.type === 'health' || p.type === 'critical_illness'),
+      ),
       soonest_renewal_days: soonestRenewal.days,
       soonest_renewal_provider: soonestRenewal.provider,
       soonest_renewal_type: soonestRenewal.type,
@@ -408,13 +431,19 @@ export async function evaluateProfileAndGenerateInsights(
     }
 
     const evaluateHouseholdEarner = async (
-      earner: { employment_status: string; monthly_salary_minor: number; income_protection_monthly_minor: number; member_id?: string },
+      earner: {
+        employment_status: string
+        monthly_salary_minor: number
+        income_protection_monthly_minor: number
+        member_id?: string
+      },
       shared: typeof sharedHouseholdData,
     ) => {
       // Both employed and self-employed earners have income to protect
       // (self-employed arguably more so, with no employer sick pay) —
       // only unemployed/retired genuinely have none via this policy type.
-      const hasIncomeToProtect = earner.employment_status === 'employed' || earner.employment_status === 'self_employed'
+      const hasIncomeToProtect =
+        earner.employment_status === 'employed' || earner.employment_status === 'self_employed'
       // PRD-128: member_no_life_cover needs this earner's own attributed
       // life cover (the household life_cover_minor is aggregate-only).
       // Explicit values on BOTH events — the primary earner's
@@ -486,11 +515,17 @@ export async function evaluateProfileAndGenerateInsights(
     // evaluation.
     let cashflowEntries: Pick<CashflowEntryDoc, 'kind' | 'amount_minor' | 'recurrence'>[] = []
     try {
-      const found: unknown = await getTenantCollection<CashflowEntryDoc>(db, 'family_cashflow_entries', tenantId)
+      const found: unknown = await getTenantCollection<CashflowEntryDoc>(
+        db,
+        'family_cashflow_entries',
+        tenantId,
+      )
         .find({})
         .toArray()
       if (Array.isArray(found)) cashflowEntries = found
-    } catch { /* fall through to declared figures */ }
+    } catch {
+      /* fall through to declared figures */
+    }
     const monthlyFromEntries = (kind: string) =>
       cashflowEntries
         .filter((e) => e.kind === kind)
@@ -503,9 +538,16 @@ export async function evaluateProfileAndGenerateInsights(
         ? monthlyFromEntries('income') - monthlyFromEntries('expense')
         : monthlyIncome - monthlyExpenses
     const sixMonthTargetMinor = monthlyExpenses * 6
-    const shortfallMinor = Math.max(0, sixMonthTargetMinor - profile.emergency_fund.emergency_savings_minor)
+    const shortfallMinor = Math.max(
+      0,
+      sixMonthTargetMinor - profile.emergency_fund.emergency_savings_minor,
+    )
     const monthsToTarget =
-      shortfallMinor === 0 ? 0 : monthlySurplusMinor > 0 ? Math.ceil(shortfallMinor / monthlySurplusMinor) : 9999
+      shortfallMinor === 0
+        ? 0
+        : monthlySurplusMinor > 0
+          ? Math.ceil(shortfallMinor / monthlySurplusMinor)
+          : 9999
 
     const eventId = crypto.randomUUID()
     const data = {
@@ -547,7 +589,8 @@ export async function evaluateProfileAndGenerateInsights(
       pension_balance_minor: profile.retirement.pension_balance_minor,
       target_retirement_income_minor: profile.retirement.target_retirement_income_minor,
       projected_retirement_age: projection.projected_retirement_age,
-      additional_monthly_contribution_needed_minor: projection.additional_monthly_contribution_needed_minor,
+      additional_monthly_contribution_needed_minor:
+        projection.additional_monthly_contribution_needed_minor,
       achievable_retirement_income_minor: projection.achievable_retirement_income_minor,
       // Only signal this detector has of income, to judge whether the
       // contribution increase above is a realistic single lever or not.
@@ -580,7 +623,11 @@ export async function evaluateProfileAndGenerateInsights(
       (m) => (m.pension_balance_minor ?? 0) > 0 || (m.monthly_pension_contribution_minor ?? 0) > 0,
     )
     if (membersWithPension.length > 0) {
-      const roster = await getTenantCollection<FamilyGroupDoc>(db, 'family_groups', tenantId).findOne({})
+      const roster = await getTenantCollection<FamilyGroupDoc>(
+        db,
+        'family_groups',
+        tenantId,
+      ).findOne({})
       const ageByMemberId = new Map(
         (roster?.members ?? []).map((m) => [m.id, ageFromDob(m.date_of_birth)]),
       )
@@ -596,7 +643,8 @@ export async function evaluateProfileAndGenerateInsights(
         // earn — can't derive one without a salary on file.
         if (totalSalaryMinor <= 0 || member.monthly_salary_minor <= 0) continue
         const memberTargetMinor = Math.round(
-          (profile.retirement.target_retirement_income_minor * member.monthly_salary_minor) / totalSalaryMinor,
+          (profile.retirement.target_retirement_income_minor * member.monthly_salary_minor) /
+            totalSalaryMinor,
         )
         const memberProjection = projectRetirement({
           current_age: age,
@@ -613,7 +661,8 @@ export async function evaluateProfileAndGenerateInsights(
           pension_balance_minor: member.pension_balance_minor ?? 0,
           target_retirement_income_minor: memberTargetMinor,
           projected_retirement_age: memberProjection.projected_retirement_age,
-          additional_monthly_contribution_needed_minor: memberProjection.additional_monthly_contribution_needed_minor,
+          additional_monthly_contribution_needed_minor:
+            memberProjection.additional_monthly_contribution_needed_minor,
           achievable_retirement_income_minor: memberProjection.achievable_retirement_income_minor,
           // Affordability gate uses *their* salary, not the household's.
           monthly_salary_minor: member.monthly_salary_minor,
@@ -666,7 +715,10 @@ export async function evaluateProfileAndGenerateInsights(
       // gate on rather than trusting a degenerate 0.
       pace_expected_minor:
         fund.child_age > 0 && fund.years_remaining > 0
-          ? Math.round((fund.target_savings_minor * fund.child_age) / (fund.child_age + fund.years_remaining))
+          ? Math.round(
+              (fund.target_savings_minor * fund.child_age) /
+                (fund.child_age + fund.years_remaining),
+            )
           : 0,
       required_monthly_minor: monthsRemaining > 0 ? Math.ceil(remainingMinor / monthsRemaining) : 0,
       household_monthly_income_minor: householdMonthlyIncomeMinor,
@@ -709,7 +761,11 @@ export async function evaluateProfileAndGenerateInsights(
       // Debt service against zero income is the worst case the detector
       // exists to flag — the ratio floors at 1 rather than dividing by 0.
       debt_to_income_ratio:
-        monthlyIncomeMinor > 0 ? debtPaymentsMinor / monthlyIncomeMinor : debtPaymentsMinor > 0 ? 1 : 0,
+        monthlyIncomeMinor > 0
+          ? debtPaymentsMinor / monthlyIncomeMinor
+          : debtPaymentsMinor > 0
+            ? 1
+            : 0,
     }
     const signalId = await persistSignal({
       tenant_id: tenantId,
@@ -733,7 +789,9 @@ export async function evaluateProfileAndGenerateInsights(
   // per-(member,type): a life-cover overlap on dad resolves without
   // clearing a health overlap on mum.
   {
-    const roster = await getTenantCollection<FamilyGroupDoc>(db, 'family_groups', tenantId).findOne({})
+    const roster = await getTenantCollection<FamilyGroupDoc>(db, 'family_groups', tenantId).findOne(
+      {},
+    )
     const rosterIds = new Set((roster?.members ?? []).map((m) => m.id))
     const rosterName = new Map((roster?.members ?? []).map((m) => [m.id, m.name]))
 
@@ -789,7 +847,6 @@ export async function evaluateProfileAndGenerateInsights(
     // lets stale-resolution retract a previously-fired orphan insight
     // once the family re-attributes or removes the policy.
     {
-
       const eventId = crypto.randomUUID()
       const data = {
         orphaned_policy_count: orphaned.length,
@@ -871,10 +928,15 @@ export async function evaluateProfileAndGenerateInsights(
 // unreported-life-change nudge diffs between saves. The top-level
 // household earner has no member_id (matched positionally — there's
 // always exactly one); household.members[] entries carry their own.
-function toChangeSnapshot(profile: Pick<FinancialProfile, 'household' | 'emergency_fund'>): ProfileChangeSnapshot {
+function toChangeSnapshot(
+  profile: Pick<FinancialProfile, 'household' | 'emergency_fund'>,
+): ProfileChangeSnapshot {
   return {
     earners: [
-      { employment_status: profile.household.employment_status, monthly_salary_minor: profile.household.monthly_salary_minor },
+      {
+        employment_status: profile.household.employment_status,
+        monthly_salary_minor: profile.household.monthly_salary_minor,
+      },
       ...profile.household.members.map((m) => ({
         member_id: m.member_id,
         employment_status: m.employment_status,
@@ -895,14 +957,16 @@ export async function registerFamilyFinancialProfileRoutes(
   rawProfiles.createIndex({ tenant_id: 1 }, { unique: true }).catch(() => {})
 
   const profileFor = (tenantId: string) =>
-    getTenantCollection<FinancialProfile & {
-      tenant_id: string
-      updated_at: Date
-      version?: number
-      reviewed_at?: Date
-      review_snoozed_until?: Date
-      review_snapshot?: Record<string, unknown>
-    }>(db, 'family_financial_profile', tenantId)
+    getTenantCollection<
+      FinancialProfile & {
+        tenant_id: string
+        updated_at: Date
+        version?: number
+        reviewed_at?: Date
+        review_snoozed_until?: Date
+        review_snapshot?: Record<string, unknown>
+      }
+    >(db, 'family_financial_profile', tenantId)
 
   app.get('/family/financial-profile', async (req) => {
     const { tenant_id } = req.authContext
@@ -911,7 +975,15 @@ export async function registerFamilyFinancialProfileRoutes(
     // reviewed_at/review_snapshot/review_snoozed_until are the annual
     // review flow's bookkeeping — never part of the profile contract the
     // client round-trips (the snapshot is a full duplicate of the doc).
-    const { tenant_id: _tenantId, updated_at, version, reviewed_at: _r, review_snapshot: _s, review_snoozed_until: _sn, ...profile } = doc
+    const {
+      tenant_id: _tenantId,
+      updated_at,
+      version,
+      reviewed_at: _r,
+      review_snapshot: _s,
+      review_snoozed_until: _sn,
+      ...profile
+    } = doc
     return { profile, updatedAt: updated_at, version: version ?? 0 }
   })
 
@@ -923,12 +995,27 @@ export async function registerFamilyFinancialProfileRoutes(
     const { tenant_id } = req.authContext
     const doc = await profileFor(tenant_id).findOne({})
     if (!doc) return reply.status(404).send({ error: 'No financial profile on file yet' })
-    const { tenant_id: _t, updated_at: _u, version: _v, _id: _i, insights_evaluated_at: _e, ...rest } = doc as Record<string, unknown>
+    const {
+      tenant_id: _t,
+      updated_at: _u,
+      version: _v,
+      _id: _i,
+      insights_evaluated_at: _e,
+      ...rest
+    } = doc as Record<string, unknown>
     const parsed = FinancialProfileSchema.safeParse(rest)
     if (!parsed.success) {
-      return reply.status(422).send({ error: 'Saved profile is incomplete', issues: parsed.error.issues })
+      return reply
+        .status(422)
+        .send({ error: 'Saved profile is incomplete', issues: parsed.error.issues })
     }
-    const insightsGenerated = await evaluateProfileAndGenerateInsights(parsed.data, tenant_id, engine, db, onInsightsGenerated)
+    const insightsGenerated = await evaluateProfileAndGenerateInsights(
+      parsed.data,
+      tenant_id,
+      engine,
+      db,
+      onInsightsGenerated,
+    )
     await profileFor(tenant_id).updateOne({}, { $set: { insights_evaluated_at: new Date() } })
     return reply.send({ ok: true, insights_generated: insightsGenerated })
   })
@@ -984,7 +1071,10 @@ export async function registerFamilyFinancialProfileRoutes(
     out[prefix] = value
   }
 
-  function diffSinceReview(snapshot: Record<string, unknown> | undefined, current: Record<string, unknown>): string[] {
+  function diffSinceReview(
+    snapshot: Record<string, unknown> | undefined,
+    current: Record<string, unknown>,
+  ): string[] {
     if (!snapshot) return []
     const before: Record<string, unknown> = {}
     const after: Record<string, unknown> = {}
@@ -1040,7 +1130,16 @@ export async function registerFamilyFinancialProfileRoutes(
     const reference = doc.reviewed_at?.getTime() ?? doc.updated_at?.getTime() ?? now
     const snoozed = doc.review_snoozed_until && doc.review_snoozed_until.getTime() > now
     const due = !snoozed && now - reference > REVIEW_INTERVAL_MS
-    const { tenant_id: _t, updated_at: _u, version: _v, _id: _i, reviewed_at: _r, review_snoozed_until: _s, review_snapshot: _snap, ...current } = doc as Record<string, unknown>
+    const {
+      tenant_id: _t,
+      updated_at: _u,
+      version: _v,
+      _id: _i,
+      reviewed_at: _r,
+      review_snoozed_until: _s,
+      review_snapshot: _snap,
+      ...current
+    } = doc as Record<string, unknown>
     return {
       due,
       last_reviewed_at: doc.reviewed_at ?? null,
@@ -1048,139 +1147,186 @@ export async function registerFamilyFinancialProfileRoutes(
     }
   })
 
-  app.post<{ Body: { action?: 'confirm' | 'later' } }>('/family/financial-profile/review', async (req, reply) => {
-    const { tenant_id } = req.authContext
-    const doc = await profileFor(tenant_id).findOne({})
-    if (!doc) return reply.status(404).send({ error: 'No financial profile on file yet' })
-    if (req.body?.action === 'later') {
-      await profileFor(tenant_id).updateOne({}, { $set: { review_snoozed_until: new Date(Date.now() + REVIEW_SNOOZE_MS) } })
-      return { ok: true, reviewed_at: doc.reviewed_at ?? null }
-    }
-    // Confirm: stamp the moment and snapshot the profile so next year's
-    // prompt can answer "what changed since you last confirmed".
-    const { tenant_id: _t, updated_at: _u, version: _v, _id: _i, reviewed_at: _r, review_snoozed_until: _s, review_snapshot: _snap, ...snapshot } = doc as Record<string, unknown>
-    const reviewedAt = new Date()
-    await profileFor(tenant_id).updateOne(
-      {},
-      { $set: { reviewed_at: reviewedAt, review_snapshot: snapshot }, $unset: { review_snoozed_until: '' } },
-    )
-    return { ok: true, reviewed_at: reviewedAt }
-  })
-
-  app.post<{ Body: FinancialProfile & { generate_insights?: boolean; version?: number } }>('/family/financial-profile', async (req, reply) => {
-    const { generate_insights, version: clientVersion, ...body } = req.body
-    const parsed = FinancialProfileSchema.safeParse(body)
-    if (!parsed.success) {
-      return reply.status(400).send({ error: 'Invalid financial profile', issues: parsed.error.issues })
-    }
-    const { tenant_id } = req.authContext
-    const profile = parsed.data
-
-    // PRD-111: read before the write so an unreported-life-change nudge
-    // can diff against what was actually there before — a plain read,
-    // entirely separate from the optimistic-concurrency filter below.
-    const previousDoc = await profileFor(tenant_id).findOne({})
-
-    // KEEL-006: optimistic concurrency. The multi-step wizard autosaves
-    // after every step, and two tabs/devices editing the same profile
-    // used to silently last-writer-wins overwrite each other's fields —
-    // the whole document is $set wholesale with no merge. A client that
-    // has read a version (every GET/POST response includes one) sends it
-    // back; if another write already moved the version on, this filter
-    // matches nothing and the caller gets a 409 instead of silently
-    // clobbering someone else's edits. A client on its first-ever save
-    // (no version yet) omits it and always succeeds.
-    const filter = clientVersion !== undefined ? { version: clientVersion } : {}
-    const result = await profileFor(tenant_id).findOneAndUpdate(
-      filter,
-      {
-        $set: {
-          ...profile,
-          updated_at: new Date(),
-          // Marks that detectors have actually run against this profile.
-          // Without it the client can't tell "evaluated, no gaps" from
-          // "saved by autosave, never evaluated" — both have zero
-          // insights, and the latter must not read as a perfect score.
-          ...(generate_insights ? { insights_evaluated_at: new Date() } : {}),
-        },
-        $inc: { version: 1 },
-      },
-      { upsert: true, returnDocument: 'after' },
-    )
-    if (clientVersion !== undefined && !result) {
-      return reply.status(409).send({ error: 'This profile was updated elsewhere — reload and try again.' })
-    }
-    const newVersion = (result as unknown as { version?: number } | null)?.version ?? (clientVersion ?? 0) + 1
-
-    // The multi-step form autosaves after every step (Continue), not just
-    // the final "Save & Generate Insights" — evaluating detectors on every
-    // autosave meant a rule like no_retirement_savings could fire against
-    // whatever the retirement step's fields still defaulted to before the
-    // user had even reached it, leaving a stale, contradictory insight
-    // sitting open once the real numbers arrived on the next step. Only the
-    // caller-declared final submit generates insights; earlier steps just
-    // persist progress so closing the tab mid-form doesn't lose it.
-    if (!generate_insights) {
-      return reply.send({ ok: true, insights_generated: 0, version: newVersion })
-    }
-
-    // Insight→action attribution: a final submit while insights are open
-    // (or recently fired) is the family *responding* — record the
-    // association before this pass runs, so insights created by this very
-    // evaluation don't get credited to the save that produced them.
-    // 'policy_added' is the sharper signal when the register grew;
-    // otherwise the generic 'profile_updated'.
-    if (previousDoc) {
-      const prevPolicyCount = Array.isArray(previousDoc.policies) ? previousDoc.policies.length : 0
-      const actionType = profile.policies.length > prevPolicyCount ? 'policy_added' : 'profile_updated'
-      await recordInsightAction(db, tenant_id, actionType).catch(() => {})
-
-      // PRD-136: narrate the save itself — after attribution, before the
-      // evaluation runs. First-ever save has no baseline, so nothing to
-      // narrate; a save with no field changes isn't a move either.
-      try {
-        const {
-          tenant_id: _t, updated_at: _u, version: _v, _id: _i,
-          reviewed_at: _r, review_snapshot: _rs, review_snoozed_until: _sn, insights_evaluated_at: _e,
-          ...previousProfile
-        } = previousDoc as Record<string, unknown>
-        const changed = diffProfileChanges(previousProfile, profile as unknown as Record<string, unknown>)
-        if (changed.length > 0) {
-          const names = changed.slice(0, 3).map((c) => c.label)
-          const list = names.length === 1 ? names[0]! : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
-          emitReadinessEvent(db, tenant_id, {
-            type: 'profile_changed',
-            severity: 'info',
-            direction: null,
-            member_id: null,
-            domain: null,
-            title: `${list[0]!.toUpperCase()}${list.slice(1)} changed`,
-            summary: `Your financial profile was updated: ${list}.`,
-            evidence: changed.slice(0, 3).map((c) => ({ label: c.label })),
-            links: [{ kind: 'profile_field', id: changed[0]!.path }],
-            next_check_at: null,
-            dedupe_key: buildDedupeKey('profile_changed', tenant_id),
-          })
-        }
-      } catch {
-        // feed bookkeeping never breaks the save path
+  app.post<{ Body: { action?: 'confirm' | 'later' } }>(
+    '/family/financial-profile/review',
+    async (req, reply) => {
+      const { tenant_id } = req.authContext
+      const doc = await profileFor(tenant_id).findOne({})
+      if (!doc) return reply.status(404).send({ error: 'No financial profile on file yet' })
+      if (req.body?.action === 'later') {
+        await profileFor(tenant_id).updateOne(
+          {},
+          { $set: { review_snoozed_until: new Date(Date.now() + REVIEW_SNOOZE_MS) } },
+        )
+        return { ok: true, reviewed_at: doc.reviewed_at ?? null }
       }
-    }
+      // Confirm: stamp the moment and snapshot the profile so next year's
+      // prompt can answer "what changed since you last confirmed".
+      const {
+        tenant_id: _t,
+        updated_at: _u,
+        version: _v,
+        _id: _i,
+        reviewed_at: _r,
+        review_snoozed_until: _s,
+        review_snapshot: _snap,
+        ...snapshot
+      } = doc as Record<string, unknown>
+      const reviewedAt = new Date()
+      await profileFor(tenant_id).updateOne(
+        {},
+        {
+          $set: { reviewed_at: reviewedAt, review_snapshot: snapshot },
+          $unset: { review_snoozed_until: '' },
+        },
+      )
+      return { ok: true, reviewed_at: reviewedAt }
+    },
+  )
 
-    const insightsGenerated = await evaluateProfileAndGenerateInsights(profile, tenant_id, engine, db, onInsightsGenerated)
-    await maybeFlagUnreportedLifeChange(
-      req,
-      previousDoc ? toChangeSnapshot(previousDoc) : null,
-      toChangeSnapshot(profile),
-      db,
-    )
-    // PRD-112: "first-ever final submit" is the referral reward's
-    // meaningful-action milestone — real use has started, not just an
-    // account existing. No-op for every submit after the first, and a
-    // silent no-op when there's no pending referral (the common case).
-    if (!previousDoc) {
-      await rewardReferralIfPending(db, tenant_id)
-    }
-    return reply.send({ ok: true, insights_generated: insightsGenerated, version: newVersion })
-  })
+  app.post<{ Body: FinancialProfile & { generate_insights?: boolean; version?: number } }>(
+    '/family/financial-profile',
+    async (req, reply) => {
+      const { generate_insights, version: clientVersion, ...body } = req.body
+      const parsed = FinancialProfileSchema.safeParse(body)
+      if (!parsed.success) {
+        return reply
+          .status(400)
+          .send({ error: 'Invalid financial profile', issues: parsed.error.issues })
+      }
+      const { tenant_id } = req.authContext
+      const profile = parsed.data
+
+      // PRD-111: read before the write so an unreported-life-change nudge
+      // can diff against what was actually there before — a plain read,
+      // entirely separate from the optimistic-concurrency filter below.
+      const previousDoc = await profileFor(tenant_id).findOne({})
+
+      // KEEL-006: optimistic concurrency. The multi-step wizard autosaves
+      // after every step, and two tabs/devices editing the same profile
+      // used to silently last-writer-wins overwrite each other's fields —
+      // the whole document is $set wholesale with no merge. A client that
+      // has read a version (every GET/POST response includes one) sends it
+      // back; if another write already moved the version on, this filter
+      // matches nothing and the caller gets a 409 instead of silently
+      // clobbering someone else's edits. A client on its first-ever save
+      // (no version yet) omits it and always succeeds.
+      const filter = clientVersion !== undefined ? { version: clientVersion } : {}
+      const result = await profileFor(tenant_id).findOneAndUpdate(
+        filter,
+        {
+          $set: {
+            ...profile,
+            updated_at: new Date(),
+            // Marks that detectors have actually run against this profile.
+            // Without it the client can't tell "evaluated, no gaps" from
+            // "saved by autosave, never evaluated" — both have zero
+            // insights, and the latter must not read as a perfect score.
+            ...(generate_insights ? { insights_evaluated_at: new Date() } : {}),
+          },
+          $inc: { version: 1 },
+        },
+        { upsert: true, returnDocument: 'after' },
+      )
+      if (clientVersion !== undefined && !result) {
+        return reply
+          .status(409)
+          .send({ error: 'This profile was updated elsewhere — reload and try again.' })
+      }
+      const newVersion =
+        (result as unknown as { version?: number } | null)?.version ?? (clientVersion ?? 0) + 1
+
+      // The multi-step form autosaves after every step (Continue), not just
+      // the final "Save & Generate Insights" — evaluating detectors on every
+      // autosave meant a rule like no_retirement_savings could fire against
+      // whatever the retirement step's fields still defaulted to before the
+      // user had even reached it, leaving a stale, contradictory insight
+      // sitting open once the real numbers arrived on the next step. Only the
+      // caller-declared final submit generates insights; earlier steps just
+      // persist progress so closing the tab mid-form doesn't lose it.
+      if (!generate_insights) {
+        return reply.send({ ok: true, insights_generated: 0, version: newVersion })
+      }
+
+      // Insight→action attribution: a final submit while insights are open
+      // (or recently fired) is the family *responding* — record the
+      // association before this pass runs, so insights created by this very
+      // evaluation don't get credited to the save that produced them.
+      // 'policy_added' is the sharper signal when the register grew;
+      // otherwise the generic 'profile_updated'.
+      if (previousDoc) {
+        const prevPolicyCount = Array.isArray(previousDoc.policies)
+          ? previousDoc.policies.length
+          : 0
+        const actionType =
+          profile.policies.length > prevPolicyCount ? 'policy_added' : 'profile_updated'
+        await recordInsightAction(db, tenant_id, actionType).catch(() => {})
+
+        // PRD-136: narrate the save itself — after attribution, before the
+        // evaluation runs. First-ever save has no baseline, so nothing to
+        // narrate; a save with no field changes isn't a move either.
+        try {
+          const {
+            tenant_id: _t,
+            updated_at: _u,
+            version: _v,
+            _id: _i,
+            reviewed_at: _r,
+            review_snapshot: _rs,
+            review_snoozed_until: _sn,
+            insights_evaluated_at: _e,
+            ...previousProfile
+          } = previousDoc as Record<string, unknown>
+          const changed = diffProfileChanges(
+            previousProfile,
+            profile as unknown as Record<string, unknown>,
+          )
+          if (changed.length > 0) {
+            const names = changed.slice(0, 3).map((c) => c.label)
+            const list =
+              names.length === 1
+                ? names[0]!
+                : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+            emitReadinessEvent(db, tenant_id, {
+              type: 'profile_changed',
+              severity: 'info',
+              direction: null,
+              member_id: null,
+              domain: null,
+              title: `${list[0]!.toUpperCase()}${list.slice(1)} changed`,
+              summary: `Your financial profile was updated: ${list}.`,
+              evidence: changed.slice(0, 3).map((c) => ({ label: c.label })),
+              links: [{ kind: 'profile_field', id: changed[0]!.path }],
+              next_check_at: null,
+              dedupe_key: buildDedupeKey('profile_changed', tenant_id),
+            })
+          }
+        } catch {
+          // feed bookkeeping never breaks the save path
+        }
+      }
+
+      const insightsGenerated = await evaluateProfileAndGenerateInsights(
+        profile,
+        tenant_id,
+        engine,
+        db,
+        onInsightsGenerated,
+      )
+      await maybeFlagUnreportedLifeChange(
+        req,
+        previousDoc ? toChangeSnapshot(previousDoc) : null,
+        toChangeSnapshot(profile),
+        db,
+      )
+      // PRD-112: "first-ever final submit" is the referral reward's
+      // meaningful-action milestone — real use has started, not just an
+      // account existing. No-op for every submit after the first, and a
+      // silent no-op when there's no pending referral (the common case).
+      if (!previousDoc) {
+        await rewardReferralIfPending(db, tenant_id)
+      }
+      return reply.send({ ok: true, insights_generated: insightsGenerated, version: newVersion })
+    },
+  )
 }

@@ -31,7 +31,10 @@ function makeDb(presets: Record<string, Record<string, unknown>[]> = {}) {
     return {
       _docs: docs,
       createIndex: async () => 'idx',
-      insertOne: async (d: Record<string, unknown>) => { docs.push({ ...d }); return {} },
+      insertOne: async (d: Record<string, unknown>) => {
+        docs.push({ ...d })
+        return {}
+      },
       replaceOne: async () => ({}),
       // skill_templates: no pre-existing optimized prompt → fall back to default
       findOne: async () => null,
@@ -59,23 +62,35 @@ function attributionEvents(tenantId: string, detectorId: string) {
   for (let i = 0; i < 8; i++) {
     const insightId = `ins-ok-${i}`
     receipts.push({
-      tenant_id: tenantId, detector_id: detectorId, insight_id: insightId,
-      outcome: 'approved', executed_at: new Date(),
+      tenant_id: tenantId,
+      detector_id: detectorId,
+      insight_id: insightId,
+      outcome: 'approved',
+      executed_at: new Date(),
     })
     insights.push({
-      id: insightId, tenant_id: tenantId,
-      feature_snapshot: { i }, reasoning: `ok ${i}`, hypothesis: `ok ${i}`,
+      id: insightId,
+      tenant_id: tenantId,
+      feature_snapshot: { i },
+      reasoning: `ok ${i}`,
+      hypothesis: `ok ${i}`,
     })
   }
   for (let i = 0; i < 2; i++) {
     const insightId = `ins-bad-${i}`
     receipts.push({
-      tenant_id: tenantId, detector_id: detectorId, insight_id: insightId,
-      outcome: 'dismissed', executed_at: new Date(),
+      tenant_id: tenantId,
+      detector_id: detectorId,
+      insight_id: insightId,
+      outcome: 'dismissed',
+      executed_at: new Date(),
     })
     insights.push({
-      id: insightId, tenant_id: tenantId,
-      feature_snapshot: { i }, reasoning: `bad ${i}`, hypothesis: `bad ${i}`,
+      id: insightId,
+      tenant_id: tenantId,
+      feature_snapshot: { i },
+      reasoning: `bad ${i}`,
+      hypothesis: `bad ${i}`,
     })
   }
   return { action_receipts: receipts, insights }
@@ -84,7 +99,8 @@ function attributionEvents(tenantId: string, detectorId: string) {
 // LLM mock that branches on the system prompt and records proposal prompts.
 function makeLlm(proposePrompts: string[]) {
   return async (system: string, prompt: string): Promise<string> => {
-    if (system.includes('expert prompt engineer analyzing')) return 'analysis: outputs were too vague'
+    if (system.includes('expert prompt engineer analyzing'))
+      return 'analysis: outputs were too vague'
     if (system.includes('prompt engineering optimizer')) {
       proposePrompts.push(prompt)
       const edit = {
@@ -109,7 +125,12 @@ describe('SkillOptimizer rejection memory (PP3)', () => {
     const db = makeDb(attributionEvents('t1', 'churn_detector'))
     const opt = new SkillOptimizer(db, makeLlm(proposePrompts))
 
-    await opt.run({ target: 'detector', target_id: 'churn_detector', tenant_id: 't1', iterations: 2 })
+    await opt.run({
+      target: 'detector',
+      target_id: 'churn_detector',
+      tenant_id: 't1',
+      iterations: 2,
+    })
 
     expect(proposePrompts).toHaveLength(2)
     // Iteration 1 starts with empty memory.
@@ -132,18 +153,25 @@ describe('SkillOptimizer rejection memory (PP3)', () => {
     const db = makeDb({
       ...attributionEvents('t1', 'churn_detector'),
       // Shape written by recordRejectedEdits — previously never read back.
-      skill_rejection_memory: [{
-        type: 'rejected_edits',
-        target_id: 'churn_detector',
-        tenant_id: 't1',
-        edits: [seeded],
-        improvement: -0.3,
-        recorded_at: new Date(),
-      }],
+      skill_rejection_memory: [
+        {
+          type: 'rejected_edits',
+          target_id: 'churn_detector',
+          tenant_id: 't1',
+          edits: [seeded],
+          improvement: -0.3,
+          recorded_at: new Date(),
+        },
+      ],
     })
     const opt = new SkillOptimizer(db, makeLlm(proposePrompts))
 
-    await opt.run({ target: 'detector', target_id: 'churn_detector', tenant_id: 't1', iterations: 1 })
+    await opt.run({
+      target: 'detector',
+      target_id: 'churn_detector',
+      tenant_id: 't1',
+      iterations: 1,
+    })
 
     expect(proposePrompts).toHaveLength(1)
     expect(proposePrompts[0]).toContain(HEADER)

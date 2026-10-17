@@ -16,10 +16,9 @@
 
 import type { Db } from 'mongodb'
 import { getTenantCollection } from '@lifekeel/platform'
-import { ageFromDob } from '../lib/family-permissions.js'
+import { ageFromDob } from '../family/family-permissions.js'
 import { ESTATE_VAULT_CATEGORY } from '../routes/documents.js'
-import type { LegacyDocument, LegacyContact } from '../routes/family-legacy.js'
-import type { PropertyLegacy } from '../routes/family-legacy.js'
+import type { LegacyDocument, LegacyContact , PropertyLegacy } from '../routes/family-legacy.js'
 import type { FamilyMemberDoc } from '../routes/family-group.js'
 
 export interface EstateSignalData extends Record<string, unknown> {
@@ -85,7 +84,9 @@ function parseDate(value: unknown): Date | null {
 }
 
 function monthsBetween(earlier: Date, later: Date): number {
-  return (later.getFullYear() - earlier.getFullYear()) * 12 + (later.getMonth() - earlier.getMonth())
+  return (
+    (later.getFullYear() - earlier.getFullYear()) * 12 + (later.getMonth() - earlier.getMonth())
+  )
 }
 
 export async function buildEstateSignal(db: Db, tenantId: string): Promise<EstateSignalData> {
@@ -121,19 +122,27 @@ export async function buildEstateSignal(db: Db, tenantId: string): Promise<Estat
   const contactIds = new Set((contacts as unknown as LegacyContact[]).map((c) => c.id))
   const adultIds = new Set(adults.map((m) => m.id))
   const countSubjects = (type: string) =>
-    new Set(docs.filter((d) => d.type === type && adultIds.has(d.subject_member_id)).map((d) => d.subject_member_id)).size
+    new Set(
+      docs
+        .filter((d) => d.type === type && adultIds.has(d.subject_member_id))
+        .map((d) => d.subject_member_id),
+    ).size
   const adultsWithWill = countSubjects('will')
   const adultsWithPoa = countSubjects('power_of_attorney')
   const adultsWithDirective = countSubjects('advance_directive')
 
   const wills = docs.filter((d) => d.type === 'will')
-  const childJoinDates = minors.map((m) => parseDate(m.joined_at)).filter((d): d is Date => d !== null)
+  const childJoinDates = minors
+    .map((m) => parseDate(m.joined_at))
+    .filter((d): d is Date => d !== null)
 
   const properties = (assets as AnyDoc[]).filter(
     (a) => a['kind'] === 'property' && a['legacy'] !== undefined && a['legacy'] !== null,
   )
   const propertyLegacies = properties.map((a) => a['legacy'] as PropertyLegacy)
-  const propertyAcquireDates = propertyLegacies.map((l) => parseDate(l.acquired_on)).filter((d): d is Date => d !== null)
+  const propertyAcquireDates = propertyLegacies
+    .map((l) => parseDate(l.acquired_on))
+    .filter((d): d is Date => d !== null)
   // A new civil record (marriage, birth, death certificate…) recorded after
   // the will was reviewed is the same "life moved on" trigger as a new
   // child or property — signed_on is the declared date, created_at the
@@ -180,7 +189,8 @@ export async function buildEstateSignal(db: Db, tenantId: string): Promise<Estat
   }).length
 
   // ── Property checks ───────────────────────────────────────────────────
-  const normalizeJurisdiction = (j: unknown) => (typeof j === 'string' ? j.trim().toLowerCase() : '')
+  const normalizeJurisdiction = (j: unknown) =>
+    typeof j === 'string' ? j.trim().toLowerCase() : ''
   const willJurisdictions = new Map<string, number>()
   for (const will of wills) {
     const j = normalizeJurisdiction(will.jurisdiction)
@@ -200,7 +210,8 @@ export async function buildEstateSignal(db: Db, tenantId: string): Promise<Estat
   let uninsuredOrUnknown = 0
   for (const legacy of propertyLegacies) {
     if (!legacy.title_document_id && !legacy.title_reference) withoutTitleEvidence++
-    if (legacy.ownership_basis === 'unknown' || (legacy.recorded_owners ?? []).length === 0) ownershipUnknown++
+    if (legacy.ownership_basis === 'unknown' || (legacy.recorded_owners ?? []).length === 0)
+      ownershipUnknown++
     if (
       majorityJurisdiction !== null &&
       normalizeJurisdiction(legacy.jurisdiction) !== majorityJurisdiction &&

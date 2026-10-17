@@ -19,14 +19,14 @@ describe('filtrex expression evaluator', () => {
   it('evaluates logical AND', () => {
     const fn = compileExpression('amount > 1000 and rating <= 2')
     expect(fn({ amount: 5000, rating: 1 })).toBeTruthy()
-    expect(fn({ amount: 500,  rating: 1 })).toBeFalsy()
+    expect(fn({ amount: 500, rating: 1 })).toBeFalsy()
   })
 
   it('evaluates logical OR', () => {
     const fn = compileExpression('status == "failed" or retries >= 3')
     expect(fn({ status: 'failed', retries: 0 })).toBeTruthy()
-    expect(fn({ status: 'ok',     retries: 3 })).toBeTruthy()
-    expect(fn({ status: 'ok',     retries: 0 })).toBeFalsy()
+    expect(fn({ status: 'ok', retries: 3 })).toBeTruthy()
+    expect(fn({ status: 'ok', retries: 0 })).toBeFalsy()
   })
 
   it('handles string equality', () => {
@@ -113,9 +113,11 @@ describe('blend policy', () => {
     const or_score = 0.8
     const llm_score = 0.9
     const blend = { rule_weight: 0.9, llm_weight: 0.1, llm_weight_ceiling: 0.9 }
-    
-    const combined_score = or_score * blend.rule_weight + llm_score * Math.min(blend.llm_weight, blend.llm_weight_ceiling)
-    
+
+    const combined_score =
+      or_score * blend.rule_weight +
+      llm_score * Math.min(blend.llm_weight, blend.llm_weight_ceiling)
+
     // 0.8 * 0.9 + 0.9 * 0.1 = 0.72 + 0.09 = 0.81
     expect(combined_score).toBeCloseTo(0.81, 2)
   })
@@ -124,9 +126,11 @@ describe('blend policy', () => {
     const or_score = 0.8
     const llm_score = 0.9
     const blend = { rule_weight: 0.7, llm_weight: 0.3, llm_weight_ceiling: 0.9 }
-    
-    const combined_score = or_score * blend.rule_weight + llm_score * Math.min(blend.llm_weight, blend.llm_weight_ceiling)
-    
+
+    const combined_score =
+      or_score * blend.rule_weight +
+      llm_score * Math.min(blend.llm_weight, blend.llm_weight_ceiling)
+
     // 0.8 * 0.7 + 0.9 * 0.3 = 0.56 + 0.27 = 0.83
     expect(combined_score).toBeCloseTo(0.83, 2)
   })
@@ -135,9 +139,11 @@ describe('blend policy', () => {
     const or_score = 0.7
     const llm_score = 0.95
     const blend = { rule_weight: 0.5, llm_weight: 0.5, llm_weight_ceiling: 0.2 }
-    
-    const combined_score = or_score * blend.rule_weight + llm_score * Math.min(blend.llm_weight, blend.llm_weight_ceiling)
-    
+
+    const combined_score =
+      or_score * blend.rule_weight +
+      llm_score * Math.min(blend.llm_weight, blend.llm_weight_ceiling)
+
     // 0.7 * 0.5 + 0.95 * 0.2 = 0.35 + 0.19 = 0.54
     expect(combined_score).toBeCloseTo(0.54, 2)
   })

@@ -64,10 +64,10 @@ class SmartExpressionCache {
   private readonly l1TTL = 3600000 // 1 hour
   private readonly l2TTL = 7200000 // 2 hours
   private readonly promotionThreshold = 10 // Promote to L1 after 10 hits
-  
+
   get(key: string): ReturnType<typeof compileExpression> | null {
     const now = Date.now()
-    
+
     // Check L1 first (hot cache)
     const l1Entry = this.l1.get(key)
     if (l1Entry && now - l1Entry.lastHit < this.l1TTL) {
@@ -75,13 +75,13 @@ class SmartExpressionCache {
       l1Entry.lastHit = now
       return l1Entry.compiled
     }
-    
+
     // Check L2 (warm cache)
     const l2Entry = this.l2.get(key)
     if (l2Entry && now - l2Entry.lastHit < this.l2TTL) {
       l2Entry.hitCount++
       l2Entry.lastHit = now
-      
+
       // Promote to L1 if hit frequently
       if (l2Entry.hitCount >= this.promotionThreshold) {
         this.l1.set(key, l2Entry)
@@ -89,19 +89,19 @@ class SmartExpressionCache {
       }
       return l2Entry.compiled
     }
-    
+
     return null
   }
-  
+
   set(key: string, compiled: ReturnType<typeof compileExpression>): void {
     const now = Date.now()
     const entry: CacheEntry = {
       compiled,
       hitCount: 0,
       lastHit: now,
-      ttl: this.l1TTL
+      ttl: this.l1TTL,
     }
-    
+
     // Add to L1 if space available
     if (this.l1.size < this.l1MaxSize) {
       this.l1.set(key, entry)
@@ -122,19 +122,19 @@ class SmartExpressionCache {
       this.l2.set(key, entry)
     }
   }
-  
+
   getStats(): { l1Size: number; l2Size: number; totalHits: number } {
     let totalHits = 0
     for (const entry of this.l1.values()) totalHits += entry.hitCount
     for (const entry of this.l2.values()) totalHits += entry.hitCount
-    
+
     return {
       l1Size: this.l1.size,
       l2Size: this.l2.size,
-      totalHits
+      totalHits,
     }
   }
-  
+
   clear(): void {
     this.l1.clear()
     this.l2.clear()
@@ -144,7 +144,10 @@ class SmartExpressionCache {
 const expressionCache = new SmartExpressionCache()
 
 // Performance metrics
-const performanceMetrics = new Map<string, { count: number; totalTime: number; p50: number; p95: number; p99: number }>()
+const performanceMetrics = new Map<
+  string,
+  { count: number; totalTime: number; p50: number; p95: number; p99: number }
+>()
 
 // Complexity limits
 const COMPLEXITY_LIMITS = {
@@ -172,11 +175,7 @@ function getCompiledExpression(expression: string): ReturnType<typeof compileExp
         round: (x: number) => Math.round(x),
         floor: (x: number) => Math.floor(x),
         ceil: (x: number) => Math.ceil(x),
-        threshold: (
-          thresholds: Record<string, unknown> | undefined,
-          key: string,
-          fallback = 0,
-        ) => {
+        threshold: (thresholds: Record<string, unknown> | undefined, key: string, fallback = 0) => {
           const value = thresholds?.[key]
           return typeof value === 'number' && Number.isFinite(value) ? value : fallback
         },
@@ -193,10 +192,7 @@ function getCompiledExpression(expression: string): ReturnType<typeof compileExp
     expressionCache.set(expression, compiled)
     return compiled
   } catch (err) {
-    throw new EvaluatorError(
-      `Invalid expression: ${String(err)}`,
-      expression,
-    )
+    throw new EvaluatorError(`Invalid expression: ${String(err)}`, expression)
   }
 }
 
@@ -215,10 +211,7 @@ export function clearExpressionCache() {
  * The context object is passed directly; filtrex accesses nested fields
  * via dot notation: data.amount_minor, context.industry, etc.
  */
-export function evaluate(
-  expression: string,
-  context: Record<string, unknown>,
-): boolean {
+export function evaluate(expression: string, context: Record<string, unknown>): boolean {
   const compiled = getCompiledExpression(expression)
   try {
     const result = compiled(context)
@@ -228,10 +221,7 @@ export function evaluate(
     if (result instanceof Error) return false
     return Boolean(result)
   } catch (err) {
-    throw new EvaluatorError(
-      `Evaluation failed: ${String(err)}`,
-      expression,
-    )
+    throw new EvaluatorError(`Evaluation failed: ${String(err)}`, expression)
   }
 }
 
@@ -285,10 +275,7 @@ function looksLikeMoney(path: string): boolean {
   return /_minor\b/.test(path) && !path.includes('/')
 }
 
-export function interpolate(
-  template: string,
-  context: Record<string, unknown>,
-): string {
+export function interpolate(template: string, context: Record<string, unknown>): string {
   return template.replace(/\{\{([^}]+)\}\}/g, (_match, path: string) => {
     const trimmedPath = path.trim()
     let value = resolvePath(trimmedPath, context)
@@ -349,9 +336,9 @@ export function calculateComplexity(expression: string): {
   nestingDepth: number
   operatorCount: number
 } {
-  const tokens = expression.split(/\s+/).filter(t => t.length > 0)
+  const tokens = expression.split(/\s+/).filter((t) => t.length > 0)
   const operators = expression.match(/[&|><=!+\-*/()]/g) || []
-  
+
   // Calculate nesting depth (parentheses)
   let depth = 0
   let maxDepth = 0
@@ -380,7 +367,7 @@ export function validateComplexity(expression: string): {
   error?: string
 } {
   const complexity = calculateComplexity(expression)
-  
+
   if (complexity.tokens > COMPLEXITY_LIMITS.maxTokens) {
     return {
       valid: false,
@@ -388,7 +375,7 @@ export function validateComplexity(expression: string): {
       error: `Expression exceeds token limit (${complexity.tokens} > ${COMPLEXITY_LIMITS.maxTokens})`,
     }
   }
-  
+
   if (complexity.nestingDepth > COMPLEXITY_LIMITS.maxNestingDepth) {
     return {
       valid: false,
@@ -396,7 +383,7 @@ export function validateComplexity(expression: string): {
       error: `Expression exceeds nesting depth limit (${complexity.nestingDepth} > ${COMPLEXITY_LIMITS.maxNestingDepth})`,
     }
   }
-  
+
   if (complexity.operatorCount > COMPLEXITY_LIMITS.maxOperators) {
     return {
       valid: false,
@@ -404,7 +391,7 @@ export function validateComplexity(expression: string): {
       error: `Expression exceeds operator limit (${complexity.operatorCount} > ${COMPLEXITY_LIMITS.maxOperators})`,
     }
   }
-  
+
   return { valid: true, complexity }
 }
 
@@ -417,14 +404,16 @@ export async function evaluateWithTimeout(
   timeout = DEFAULT_TIMEOUT,
 ): Promise<boolean> {
   const compiled = getCompiledExpression(expression)
-  
+
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(new EvaluatorTimeoutError(
-        `Expression evaluation timed out after ${timeout}ms`,
-        expression,
-        timeout,
-      ))
+      reject(
+        new EvaluatorTimeoutError(
+          `Expression evaluation timed out after ${timeout}ms`,
+          expression,
+          timeout,
+        ),
+      )
     }, timeout)
 
     try {
@@ -433,10 +422,7 @@ export async function evaluateWithTimeout(
       resolve(Boolean(result))
     } catch (err) {
       clearTimeout(timer)
-      reject(new EvaluatorError(
-        `Evaluation failed: ${String(err)}`,
-        expression,
-      ))
+      reject(new EvaluatorError(`Evaluation failed: ${String(err)}`, expression))
     }
   })
 }
@@ -450,11 +436,11 @@ export function evaluateWithMetrics(
 ): { result: boolean; duration: number } {
   const startTime = performance.now()
   const compiled = getCompiledExpression(expression)
-  
+
   try {
     const result = compiled(context)
     const duration = performance.now() - startTime
-    
+
     // Update metrics
     const metrics = performanceMetrics.get(expression) || {
       count: 0,
@@ -465,21 +451,18 @@ export function evaluateWithMetrics(
     }
     metrics.count++
     metrics.totalTime += duration
-    
+
     // Simple percentile approximation (in production, use proper percentile calculation)
     if (duration > metrics.p99) metrics.p99 = duration
     if (duration > metrics.p95) metrics.p95 = duration
     if (duration > metrics.p50) metrics.p50 = duration
-    
+
     performanceMetrics.set(expression, metrics)
-    
+
     return { result: Boolean(result), duration }
   } catch (err) {
     const duration = performance.now() - startTime
-    throw new EvaluatorError(
-      `Evaluation failed: ${String(err)}`,
-      expression,
-    )
+    throw new EvaluatorError(`Evaluation failed: ${String(err)}`, expression)
   }
 }
 
@@ -487,13 +470,15 @@ export function evaluateWithMetrics(
  * Get performance metrics for an expression
  */
 export function getExpressionMetrics(expression: string) {
-  return performanceMetrics.get(expression) || {
-    count: 0,
-    totalTime: 0,
-    p50: 0,
-    p95: 0,
-    p99: 0,
-  }
+  return (
+    performanceMetrics.get(expression) || {
+      count: 0,
+      totalTime: 0,
+      p50: 0,
+      p95: 0,
+      p99: 0,
+    }
+  )
 }
 
 /**

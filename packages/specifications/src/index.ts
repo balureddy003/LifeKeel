@@ -6,24 +6,6 @@ export type { OutcomePack } from './outcome-packs.js'
 export { VerticalSchema, PersonaSchema, VerticalThemeSchema } from './verticals.js'
 export type { Vertical, Persona } from './verticals.js'
 
-export {
-  GoalTemplateSchema,
-  GoalPlanStepSchema,
-  CompiledGoalSpecSchema,
-  CompiledKpiSchema,
-  CompiledDetectorSchema,
-} from './goal-templates.js'
-export type {
-  GoalTemplate,
-  GoalPlanStep,
-  CompiledGoalSpec,
-  CompiledKpi,
-  CompiledDetector,
-} from './goal-templates.js'
-
-export { TradingHoldingSchema, AssetClassSchema } from './trading-holding.js'
-export type { TradingHolding, AssetClass } from './trading-holding.js'
-
 // Shared domain types — canonical definitions used by both apps/api and apps/studio
 export type {
   Kpi,

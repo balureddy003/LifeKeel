@@ -5,7 +5,7 @@ import {
   computeConformalThreshold,
   empiricalWrongSkipRate,
   type ConformalCalibrationSample,
-} from '../cascade.js'
+} from '../scoring/cascade.js'
 
 function scorable(id: string, or_score: number) {
   return { id, confidence_breakdown: { or_score } }
@@ -27,10 +27,10 @@ function syntheticSamples(n: number): ConformalCalibrationSample[] {
 
 describe('computeConformalThreshold', () => {
   it('falls back to the legacy threshold when calibration data is scarce', () => {
-    const result = computeConformalThreshold(
-      [{ or_score: 0.5, rule_correct: false }],
-      { fallbackTau: 0.9, minSamples: 20 },
-    )
+    const result = computeConformalThreshold([{ or_score: 0.5, rule_correct: false }], {
+      fallbackTau: 0.9,
+      minSamples: 20,
+    })
     expect(result.fallback).toBe(true)
     expect(result.tau).toBe(0.9)
   })
@@ -47,7 +47,7 @@ describe('computeConformalThreshold', () => {
   it('changing alpha changes the version (calibration is versioned)', () => {
     const samples = syntheticSamples(500)
     const a = computeConformalThreshold(samples, { alpha: 0.02 })
-    const b = computeConformalThreshold(samples, { alpha: 0.10 })
+    const b = computeConformalThreshold(samples, { alpha: 0.1 })
     expect(a.version).not.toBe(b.version)
   })
 
@@ -65,7 +65,7 @@ describe('computeConformalThreshold', () => {
   it('a smaller alpha never lowers tau (stricter ⇒ escalate more)', () => {
     const samples = syntheticSamples(2000)
     const strict = computeConformalThreshold(samples, { alpha: 0.02 })
-    const loose = computeConformalThreshold(samples, { alpha: 0.10 })
+    const loose = computeConformalThreshold(samples, { alpha: 0.1 })
     expect(strict.tau).toBeGreaterThanOrEqual(loose.tau)
   })
 })
@@ -75,10 +75,15 @@ describe('CascadeScorer.decide', () => {
 
   it('escalates only insights below tau and computes DRR', () => {
     const scorer = new CascadeScorer({ alpha: 0.02 })
-    const insights = [scorable('a', 0.95), scorable('b', 0.5), scorable('c', 0.7), scorable('d', 0.85)]
+    const insights = [
+      scorable('a', 0.95),
+      scorable('b', 0.5),
+      scorable('c', 0.7),
+      scorable('d', 0.85),
+    ]
     const { escalate, deterministic, telemetry } = scorer.decide(insights, threshold)
-    expect(escalate.map(i => i.id)).toEqual(['b', 'c'])
-    expect(deterministic.map(i => i.id)).toEqual(['a', 'd'])
+    expect(escalate.map((i) => i.id)).toEqual(['b', 'c'])
+    expect(deterministic.map((i) => i.id)).toEqual(['a', 'd'])
     expect(telemetry.total).toBe(4)
     expect(telemetry.escalated).toBe(2)
     expect(telemetry.drr).toBe(0.5)
@@ -89,9 +94,9 @@ describe('CascadeScorer.decide', () => {
     const scorer = new CascadeScorer({ batchCap: 1 })
     const insights = [scorable('a', 0.1), scorable('b', 0.2), scorable('c', 0.3)]
     const { escalate, deterministic } = scorer.decide(insights, threshold)
-    expect(escalate.map(i => i.id)).toEqual(['a'])
+    expect(escalate.map((i) => i.id)).toEqual(['a'])
     // over-cap insights are treated as deterministic pass-through
-    expect(deterministic.map(i => i.id)).toEqual(['b', 'c'])
+    expect(deterministic.map((i) => i.id)).toEqual(['b', 'c'])
   })
 
   it('Deterministic Mode never escalates (DRR = 100%)', () => {
@@ -113,10 +118,7 @@ describe('CascadeScorer.decide', () => {
 
 describe('StaticConformalGate', () => {
   it('returns a per-tenant threshold and caches by tenant', () => {
-    const gate = new StaticConformalGate(
-      { 't1': syntheticSamples(500), 't2': [] },
-      { alpha: 0.05 },
-    )
+    const gate = new StaticConformalGate({ t1: syntheticSamples(500), t2: [] }, { alpha: 0.05 })
     const t1 = gate.getThreshold('t1')
     const t2 = gate.getThreshold('t2')
     expect(t1.fallback).toBe(false)

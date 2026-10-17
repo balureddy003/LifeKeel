@@ -49,7 +49,7 @@ import type { Db } from 'mongodb'
 import { getTenantCollection } from '@lifekeel/platform'
 import type { FamilyGroupDoc, FamilyMemberDoc } from './family-group.js'
 import type { FinancialProfile } from './family-financial-profile.js'
-import { isFamilyAdult, ageFromDob } from '../lib/family-permissions.js'
+import { isFamilyAdult, ageFromDob } from '../family/family-permissions.js'
 import { ESTATE_VAULT_CATEGORY } from './documents.js'
 import { computeMemberReadiness } from '../readiness/score.js'
 import { buildEstateSignal } from '../legacy/estate-signal.js'
@@ -150,56 +150,65 @@ export async function getMemberTwin(
   const member: FamilyMemberDoc | undefined = group?.members.find((m) => m.id === memberId)
   if (!member) return null
 
-  const profile = await getTenantCollection<FinancialProfile>(db, 'family_financial_profile', tenantId).findOne({})
+  const profile = await getTenantCollection<FinancialProfile>(
+    db,
+    'family_financial_profile',
+    tenantId,
+  ).findOne({})
 
-    // Earner slice: an explicit per-member earner wins; absent that, the
-    // household-level earner fields belong to the organizer (they're the
-    // "primary earner" the wizard has always collected).
-    const memberEarner = (profile?.household.members ?? []).find((e) => e.member_id === memberId)
-    const earner = memberEarner
+  // Earner slice: an explicit per-member earner wins; absent that, the
+  // household-level earner fields belong to the organizer (they're the
+  // "primary earner" the wizard has always collected).
+  const memberEarner = (profile?.household.members ?? []).find((e) => e.member_id === memberId)
+  const earner = memberEarner
+    ? {
+        employment_status: memberEarner.employment_status,
+        monthly_salary_minor: memberEarner.monthly_salary_minor,
+        income_protection_monthly_minor: memberEarner.income_protection_monthly_minor,
+        pension_balance_minor: memberEarner.pension_balance_minor,
+        monthly_pension_contribution_minor: memberEarner.monthly_pension_contribution_minor,
+      }
+    : member.role === 'organizer' && profile?.household
       ? {
-          employment_status: memberEarner.employment_status,
-          monthly_salary_minor: memberEarner.monthly_salary_minor,
-          income_protection_monthly_minor: memberEarner.income_protection_monthly_minor,
-          pension_balance_minor: memberEarner.pension_balance_minor,
-          monthly_pension_contribution_minor: memberEarner.monthly_pension_contribution_minor,
+          employment_status: profile.household.employment_status,
+          monthly_salary_minor: profile.household.monthly_salary_minor,
+          income_protection_monthly_minor: profile.household.income_protection_monthly_minor,
+          // The organizer's pension is the household retirement block —
+          // surfaced through the retirement component, not these fields.
         }
-      : member.role === 'organizer' && profile?.household
-        ? {
-            employment_status: profile.household.employment_status,
-            monthly_salary_minor: profile.household.monthly_salary_minor,
-            income_protection_monthly_minor: profile.household.income_protection_monthly_minor,
-            // The organizer's pension is the household retirement block —
-            // surfaced through the retirement component, not these fields.
-          }
-        : null
+      : null
 
-    const policies = (profile?.policies ?? [])
-      .filter((p) => p.member_id === memberId)
-      .map((p) => ({
-        type: p.type,
-        provider: p.provider,
-        coverage_amount_minor: p.coverage_amount_minor,
-        monthly_premium_minor: p.monthly_premium_minor,
-        renewal_date: p.renewal_date,
-      }))
+  const policies = (profile?.policies ?? [])
+    .filter((p) => p.member_id === memberId)
+    .map((p) => ({
+      type: p.type,
+      provider: p.provider,
+      coverage_amount_minor: p.coverage_amount_minor,
+      monthly_premium_minor: p.monthly_premium_minor,
+      renewal_date: p.renewal_date,
+    }))
 
-    const name = firstName(member.name)
-    const education_funds = (profile?.education_funds ?? [])
-      .filter((f) => f.member_id === memberId || (name && f.child_name && firstName(f.child_name) === name))
-      .map((f) => {
-        const monthsRemaining = Math.max(0, Math.round((f.years_remaining ?? 0) * 12))
-        const remainingMinor = Math.max(0, (f.target_savings_minor ?? 0) - (f.current_savings_minor ?? 0))
-        return {
-          child_name: f.child_name,
-          current_savings_minor: f.current_savings_minor ?? 0,
-          target_savings_minor: f.target_savings_minor ?? 0,
-          years_remaining: f.years_remaining ?? 0,
-          months_remaining: monthsRemaining,
-          // The pace needed to hit the target — informational, not advice.
-          needed_monthly_minor: monthsRemaining > 0 ? Math.ceil(remainingMinor / monthsRemaining) : 0,
-        }
-      })
+  const name = firstName(member.name)
+  const education_funds = (profile?.education_funds ?? [])
+    .filter(
+      (f) => f.member_id === memberId || (name && f.child_name && firstName(f.child_name) === name),
+    )
+    .map((f) => {
+      const monthsRemaining = Math.max(0, Math.round((f.years_remaining ?? 0) * 12))
+      const remainingMinor = Math.max(
+        0,
+        (f.target_savings_minor ?? 0) - (f.current_savings_minor ?? 0),
+      )
+      return {
+        child_name: f.child_name,
+        current_savings_minor: f.current_savings_minor ?? 0,
+        target_savings_minor: f.target_savings_minor ?? 0,
+        years_remaining: f.years_remaining ?? 0,
+        months_remaining: monthsRemaining,
+        // The pace needed to hit the target — informational, not advice.
+        needed_monthly_minor: monthsRemaining > 0 ? Math.ceil(remainingMinor / monthsRemaining) : 0,
+      }
+    })
 
   const insights = (await db
     .collection('insights')
@@ -214,7 +223,20 @@ export async function getMemberTwin(
           { entity_key: memberId },
         ],
       },
-      { projection: { _id: 0, id: 1, detector_id: 1, rule_id: 1, hypothesis: 1, reasoning: 1, confidence: 1, urgency: 1, state: 1, created_at: 1 } },
+      {
+        projection: {
+          _id: 0,
+          id: 1,
+          detector_id: 1,
+          rule_id: 1,
+          hypothesis: 1,
+          reasoning: 1,
+          confidence: 1,
+          urgency: 1,
+          state: 1,
+          created_at: 1,
+        },
+      },
     )
     .toArray()) as Record<string, unknown>[]
 
@@ -225,7 +247,10 @@ export async function getMemberTwin(
     ? (
         (await db
           .collection('documents')
-          .find({ tenant_id: tenantId, category: ESTATE_VAULT_CATEGORY }, { projection: { _id: 0, doc_type: 1 } })
+          .find(
+            { tenant_id: tenantId, category: ESTATE_VAULT_CATEGORY },
+            { projection: { _id: 0, doc_type: 1 } },
+          )
           .toArray()) as { doc_type?: string }[]
       )
         .map((d) => d.doc_type)
@@ -234,7 +259,9 @@ export async function getMemberTwin(
   // PRD-137: legacy-aware estate component, same adult gating as the
   // vault doc types. Best-effort — builder failure degrades to the
   // vault-boolean path.
-  const estateSignal = viewerIsAdult ? await buildEstateSignal(db, tenantId).catch(() => null) : null
+  const estateSignal = viewerIsAdult
+    ? await buildEstateSignal(db, tenantId).catch(() => null)
+    : null
 
   const age = ageFrom(member.date_of_birth)
   const isMinor = member.role === 'child' || (age !== null && age < 18)
@@ -247,7 +274,10 @@ export async function getMemberTwin(
     const band = age !== null && age >= 13 ? 'teen' : 'younger'
     const savings_goals = education_funds.map((f) => ({
       name: f.child_name?.trim() || `${member.name.split(' ')[0]}'s goal`,
-      progress_pct: f.target_savings_minor > 0 ? Math.min(100, Math.round((f.current_savings_minor / f.target_savings_minor) * 100)) : 0,
+      progress_pct:
+        f.target_savings_minor > 0
+          ? Math.min(100, Math.round((f.current_savings_minor / f.target_savings_minor) * 100))
+          : 0,
       years_until_goal: Math.max(0, Math.ceil(f.years_remaining)),
     }))
     return {
@@ -265,8 +295,8 @@ export async function getMemberTwin(
         age_band: band,
         headline:
           band === 'teen'
-            ? 'See how your savings for the future are growing — and what they\'re aimed at.'
-            : 'Your family is putting money aside for big things ahead — here\'s how it\'s growing.',
+            ? "See how your savings for the future are growing — and what they're aimed at."
+            : "Your family is putting money aside for big things ahead — here's how it's growing.",
         savings_goals,
         lessons: youthLessonsFor(band),
       },
@@ -335,12 +365,47 @@ const ATTENTION_THRESHOLD = 80
 // but time passed" catch-all).
 const AGE_MILESTONE_MONTHS_AHEAD = 6
 const AGE_MILESTONES: Array<{ from: number; to: number; label: string; detail: string }> = [
-  { from: 17, to: 18, label: 'Adulthood approaching', detail: 'Their education fund and any child-specific arrangements may transition. Worth reviewing what changes at 18.' },
-  { from: 15, to: 16, label: 'Approaching working age', detail: 'In the UK, 16 is the minimum school-leaving age. Any apprenticeship or part-time earnings may affect household figures.' },
-  { from: 12, to: 13, label: 'Entering teenage years', detail: 'Education fund targets and financial literacy lessons may need updating for secondary school.' },
-  { from: 24, to: 25, label: 'Age band change', detail: 'Insurance premiums and financial products often reprice at 25.' },
-  { from: 49, to: 50, label: 'Age band change', detail: 'Life insurance and income protection typically reprice at 50 — worth reviewing coverage before the birthday.' },
-  { from: 59, to: 60, label: 'Approaching common retirement window', detail: 'Review pension drawdown timing, state pension forecast, and whether the retirement plan is on track.' },
+  {
+    from: 17,
+    to: 18,
+    label: 'Adulthood approaching',
+    detail:
+      'Their education fund and any child-specific arrangements may transition. Worth reviewing what changes at 18.',
+  },
+  {
+    from: 15,
+    to: 16,
+    label: 'Approaching working age',
+    detail:
+      'In the UK, 16 is the minimum school-leaving age. Any apprenticeship or part-time earnings may affect household figures.',
+  },
+  {
+    from: 12,
+    to: 13,
+    label: 'Entering teenage years',
+    detail:
+      'Education fund targets and financial literacy lessons may need updating for secondary school.',
+  },
+  {
+    from: 24,
+    to: 25,
+    label: 'Age band change',
+    detail: 'Insurance premiums and financial products often reprice at 25.',
+  },
+  {
+    from: 49,
+    to: 50,
+    label: 'Age band change',
+    detail:
+      'Life insurance and income protection typically reprice at 50 — worth reviewing coverage before the birthday.',
+  },
+  {
+    from: 59,
+    to: 60,
+    label: 'Approaching common retirement window',
+    detail:
+      'Review pension drawdown timing, state pension forecast, and whether the retirement plan is on track.',
+  },
 ]
 
 // Pure — the agent's whole persona is a deterministic read of the twin.
@@ -389,7 +454,9 @@ export function buildMemberAgent(twin: MemberTwinResult): MemberAgentResult {
       // milestone's `to` age — the "about to cross" window, not the
       // birthday itself (too late to plan by then).
       if (ageYears === milestone.from && nextBirthdayMonths <= AGE_MILESTONE_MONTHS_AHEAD) {
-        const alreadyFlagged = nudges.some((n) => n.title.toLowerCase().includes(milestone.label.toLowerCase()))
+        const alreadyFlagged = nudges.some((n) =>
+          n.title.toLowerCase().includes(milestone.label.toLowerCase()),
+        )
         if (!alreadyFlagged) {
           nudges.push({
             kind: 'attention',
@@ -425,7 +492,12 @@ export function buildMemberAgent(twin: MemberTwinResult): MemberAgentResult {
   //    bell, so genuinely-on-track components get one quiet positive.
   for (const c of twin.readiness?.components ?? []) {
     if (c.gated || c.score === null || c.score <= ATTENTION_THRESHOLD) continue
-    nudges.push({ kind: 'progress', title: `${c.label} is on track`, detail: c.detail, source: { component: c.key } })
+    nudges.push({
+      kind: 'progress',
+      title: `${c.label} is on track`,
+      detail: c.detail,
+      source: { component: c.key },
+    })
   }
 
   // Ordering: open findings first (they're the most concrete), then scored
@@ -440,25 +512,31 @@ export function buildMemberAgent(twin: MemberTwinResult): MemberAgentResult {
       ...n,
       // Guardian persona rephrases attention nudges to speak about the
       // child, not to them — the family reads these, the child doesn't.
-      title: isMinor && n.kind === 'attention' ? `${first}'s ${n.title.charAt(0).toLowerCase()}${n.title.slice(1)}` : n.title,
+      title:
+        isMinor && n.kind === 'attention'
+          ? `${first}'s ${n.title.charAt(0).toLowerCase()}${n.title.slice(1)}`
+          : n.title,
     })),
     provisional: twin.member.status === 'pending',
   }
 }
 
 export function registerMemberTwinRoutes(app: FastifyInstance, db: Db): void {
-  app.get<{ Params: { id: string }; Querystring: { mode?: string } }>('/family/members/:id/twin', async (req, reply) => {
-    const { tenant_id, user_id } = req.authContext
-    const mode = req.query.mode === 'youth' ? 'youth' : undefined
-    const twin = await getMemberTwin(db, tenant_id, req.params.id, user_id, mode)
-    if (!twin) return reply.status(404).send({ error: 'Family member not found' })
-    // Youth mode on an adult silently falling back to the full payload
-    // would be a redaction hole pretending to work — refuse instead.
-    if (mode === 'youth' && !twin.youth) {
-      return reply.status(400).send({ error: 'Youth view only applies to members under 18' })
-    }
-    return twin
-  })
+  app.get<{ Params: { id: string }; Querystring: { mode?: string } }>(
+    '/family/members/:id/twin',
+    async (req, reply) => {
+      const { tenant_id, user_id } = req.authContext
+      const mode = req.query.mode === 'youth' ? 'youth' : undefined
+      const twin = await getMemberTwin(db, tenant_id, req.params.id, user_id, mode)
+      if (!twin) return reply.status(404).send({ error: 'Family member not found' })
+      // Youth mode on an adult silently falling back to the full payload
+      // would be a redaction hole pretending to work — refuse instead.
+      if (mode === 'youth' && !twin.youth) {
+        return reply.status(400).send({ error: 'Youth view only applies to members under 18' })
+      }
+      return twin
+    },
+  )
 
   // PRD-126/127: the member's agent persona — proactive, member-scoped
   // nudges read off the twin, reconciled against the persisted nudge

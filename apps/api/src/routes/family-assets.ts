@@ -21,12 +21,23 @@ import type { Db } from 'mongodb'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { getTenantCollection } from '@lifekeel/platform'
-import { isFamilyAdult } from '../lib/family-permissions.js'
-import { PropertyLegacy, validateLegacyRefs, type PropertyLegacy as PropertyLegacyT } from './family-legacy.js'
+import { isFamilyAdult } from '../family/family-permissions.js'
+import {
+  PropertyLegacy,
+  validateLegacyRefs,
+  type PropertyLegacy as PropertyLegacyT,
+} from './family-legacy.js'
 import type { Engine, Insight } from '@lifekeel/engine'
 import { evaluateEstate } from '../legacy/evaluate-estate.js'
 
-export const ASSET_KINDS = ['property', 'vehicle', 'savings_account', 'investment', 'valuable', 'other'] as const
+export const ASSET_KINDS = [
+  'property',
+  'vehicle',
+  'savings_account',
+  'investment',
+  'valuable',
+  'other',
+] as const
 export type AssetKind = (typeof ASSET_KINDS)[number]
 
 export interface AssetDoc extends Record<string, unknown> {
@@ -62,12 +73,18 @@ export function registerFamilyAssetRoutes(
   engine?: Engine,
   onInsightsGenerated?: (insights: Insight[], tenantId: string) => Promise<void>,
 ): void {
-  const assetsFor = (tenantId: string) => getTenantCollection<AssetDoc>(db, 'family_assets', tenantId)
+  const assetsFor = (tenantId: string) =>
+    getTenantCollection<AssetDoc>(db, 'family_assets', tenantId)
 
-  const requireAdult = async (req: { authContext: { tenant_id: string; user_id: string } }, reply: { status: (code: number) => { send: (body: unknown) => unknown } }): Promise<boolean> => {
+  const requireAdult = async (
+    req: { authContext: { tenant_id: string; user_id: string } },
+    reply: { status: (code: number) => { send: (body: unknown) => unknown } },
+  ): Promise<boolean> => {
     const { tenant_id, user_id } = req.authContext
     if (await isFamilyAdult(db, tenant_id, user_id)) return true
-    reply.status(403).send({ error: 'The assets register is visible to adult family members only.' })
+    reply
+      .status(403)
+      .send({ error: 'The assets register is visible to adult family members only.' })
     return false
   }
 
@@ -92,16 +109,27 @@ export function registerFamilyAssetRoutes(
       byKind[a.kind] = (byKind[a.kind] ?? 0) + a.value_minor
       total += a.value_minor
     }
-    return { assets: docs.sort((a, b) => b.created_at.getTime() - a.created_at.getTime()).map(toView), summary: { total_minor: total, by_kind: byKind } }
+    return {
+      assets: docs.sort((a, b) => b.created_at.getTime() - a.created_at.getTime()).map(toView),
+      summary: { total_minor: total, by_kind: byKind },
+    }
   })
 
   app.post('/family/assets', async (req, reply) => {
     if (!(await requireAdult(req, reply))) return
     const { tenant_id, user_id } = req.authContext
     const parsed = CreateBody.safeParse(req.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid asset', issues: parsed.error.issues })
+    if (!parsed.success)
+      return reply.status(400).send({ error: 'Invalid asset', issues: parsed.error.issues })
     const now = new Date()
-    const doc: AssetDoc = { id: randomUUID(), tenant_id, ...parsed.data, created_by: user_id, created_at: now, updated_at: now }
+    const doc: AssetDoc = {
+      id: randomUUID(),
+      tenant_id,
+      ...parsed.data,
+      created_by: user_id,
+      created_at: now,
+      updated_at: now,
+    }
     await assetsFor(tenant_id).insertOne(doc)
     return reply.status(201).send({ asset: toView(doc) })
   })
@@ -110,7 +138,8 @@ export function registerFamilyAssetRoutes(
     if (!(await requireAdult(req, reply))) return
     const { tenant_id } = req.authContext
     const parsed = PatchBody.safeParse(req.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid update', issues: parsed.error.issues })
+    if (!parsed.success)
+      return reply.status(400).send({ error: 'Invalid update', issues: parsed.error.issues })
     const { notes, ...rest } = parsed.data
     const update: { $set: Record<string, unknown>; $unset?: Record<string, string> } = {
       $set: { ...rest, updated_at: new Date() },
@@ -136,7 +165,10 @@ export function registerFamilyAssetRoutes(
       return reply.status(400).send({ error: 'Legacy details apply to property assets only' })
     }
     const parsed = PropertyLegacy.safeParse(req.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid property legacy', issues: parsed.error.issues })
+    if (!parsed.success)
+      return reply
+        .status(400)
+        .send({ error: 'Invalid property legacy', issues: parsed.error.issues })
     const roles = [...parsed.data.recorded_owners, ...parsed.data.claimed_owners]
     const refError = await validateLegacyRefs(db, tenant_id, {
       memberIds: roles.map((r) => r.member_id).filter((x): x is string => typeof x === 'string'),
@@ -147,7 +179,10 @@ export function registerFamilyAssetRoutes(
       vaultDocIds: parsed.data.title_document_id ? [parsed.data.title_document_id] : [],
     })
     if (refError) return reply.status(400).send({ error: refError })
-    await assetsFor(tenant_id).updateOne({ id: req.params.id }, { $set: { legacy: parsed.data, updated_at: new Date() } })
+    await assetsFor(tenant_id).updateOne(
+      { id: req.params.id },
+      { $set: { legacy: parsed.data, updated_at: new Date() } },
+    )
     const doc = await assetsFor(tenant_id).findOne({ id: req.params.id })
     void evaluateEstate(db, engine, tenant_id, onInsightsGenerated)
     return reply.send({ asset: toView(doc as AssetDoc) })

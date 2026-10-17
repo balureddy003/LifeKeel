@@ -111,8 +111,13 @@ export class FederatedLearning {
     peerTenantIds: string[],
   ): Promise<void> {
     // 1. Check privacy budget
-    if (this.accountant.isBudgetExceeded(tenantId, this.config.epsilonLimit, this.config.deltaLimit)) {
-      log.warn({ tenant_id: tenantId, round_id: roundId }, 'Privacy budget exceeded — rejecting gradient')
+    if (
+      this.accountant.isBudgetExceeded(tenantId, this.config.epsilonLimit, this.config.deltaLimit)
+    ) {
+      log.warn(
+        { tenant_id: tenantId, round_id: roundId },
+        'Privacy budget exceeded — rejecting gradient',
+      )
       throw new PrivacyBudgetExceededError(tenantId, this.accountant.getBudget(tenantId)!)
     }
 
@@ -170,7 +175,7 @@ export class FederatedLearning {
    *   - Only aggregate noisy, clipped gradients
    */
   async aggregateRound(roundId: string): Promise<FederatedRound | null> {
-    const round = this.rounds.find(r => r.round_id === roundId)
+    const round = this.rounds.find((r) => r.round_id === roundId)
     if (!round) return null
 
     const roundUpdates = this.updates.get(roundId) ?? []
@@ -213,7 +218,7 @@ export class FederatedLearning {
 
   /** Get convergence status across all rounds. */
   getConvergenceHistory(): FederatedRound[] {
-    return this.rounds.filter(r => r.completed_at)
+    return this.rounds.filter((r) => r.completed_at)
   }
 
   /** Get privacy report for a tenant. */
@@ -223,7 +228,11 @@ export class FederatedLearning {
 
   /** Check if a tenant can still participate. */
   canParticipate(tenantId: string): boolean {
-    return !this.accountant.isBudgetExceeded(tenantId, this.config.epsilonLimit, this.config.deltaLimit)
+    return !this.accountant.isBudgetExceeded(
+      tenantId,
+      this.config.epsilonLimit,
+      this.config.deltaLimit,
+    )
   }
 
   private async hashGradient(gradient: number[]): Promise<string> {
@@ -233,6 +242,6 @@ export class FederatedLearning {
     const buffer = encoder.encode(data)
     const hashBuffer = await crypto.subtle.digest('SHA-256', buffer)
     const hashArray = Array.from(new Uint8Array(hashBuffer))
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
   }
 }

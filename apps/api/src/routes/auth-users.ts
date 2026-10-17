@@ -19,8 +19,14 @@ import { sendPasswordResetEmail, sendEmailVerificationEmail } from '../auth-emai
 import { recordLedgerEntry } from '../billing/credit-ledger.js'
 import { getPlatformConfig } from '../operator/platform-config.js'
 import { attributeReferral } from './referrals.js'
-import { setSessionCookie } from '../lib/session-cookie.js'
-import { generateTotpSecret, generateRecoveryCodes, hashRecoveryCode, otpauthUrl, verifyTotp } from '../lib/totp.js'
+import { setSessionCookie } from '../auth/session-cookie.js'
+import {
+  generateTotpSecret,
+  generateRecoveryCodes,
+  hashRecoveryCode,
+  otpauthUrl,
+  verifyTotp,
+} from '../auth/totp.js'
 
 // Pragmatic (not full RFC 5322) format check for signup specifically —
 // unlike login/reset-request, which only ever do a lookup and return a
@@ -74,12 +80,35 @@ export interface User {
 // `ref` (PRD-112, friend referral) is deliberately separate from
 // `invite_code` above — that's an unrelated platform-wide B2B signup
 // gate (see checkInviteCode/consumeInviteCode), not a referral.
-interface SignupBody { email: string; password: string; name: string; workspace: string; external_id?: string; external_provider?: 'oidc' | 'saml'; tier_hint?: 'developer' | 'team' | 'business' | 'enterprise'; invite_code?: string; country?: string; ref?: string; attribution?: Record<string, unknown> }
+interface SignupBody {
+  email: string
+  password: string
+  name: string
+  workspace: string
+  external_id?: string
+  external_provider?: 'oidc' | 'saml'
+  tier_hint?: 'developer' | 'team' | 'business' | 'enterprise'
+  invite_code?: string
+  country?: string
+  ref?: string
+  attribution?: Record<string, unknown>
+}
 
 // Attribution is client-supplied and unverifiable — it's analytics, not
 // authorization. Only the known keys survive, each a bounded string.
-const ATTRIBUTION_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'referrer', 'landing_path', 'captured_at'] as const
-function sanitizeAttribution(input: Record<string, unknown> | undefined): Record<string, string> | undefined {
+const ATTRIBUTION_KEYS = [
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_content',
+  'utm_term',
+  'referrer',
+  'landing_path',
+  'captured_at',
+] as const
+function sanitizeAttribution(
+  input: Record<string, unknown> | undefined,
+): Record<string, string> | undefined {
   if (!input || typeof input !== 'object') return undefined
   const out: Record<string, string> = {}
   for (const key of ATTRIBUTION_KEYS) {
@@ -88,13 +117,38 @@ function sanitizeAttribution(input: Record<string, unknown> | undefined): Record
   }
   return Object.keys(out).length > 0 ? out : undefined
 }
-interface LoginBody  { email: string; password: string; rememberMe?: boolean }
-interface UpdateProfileBody { name?: string; email?: string; avatar_color?: string }
-interface ChangePasswordBody { current_password: string; new_password: string }
-interface RequestResetBody { email: string; app?: 'family' | 'studio' | 'lifekeel' }
-interface ResetPasswordBody { token: string; new_password: string }
+interface LoginBody {
+  email: string
+  password: string
+  rememberMe?: boolean
+}
+interface UpdateProfileBody {
+  name?: string
+  email?: string
+  avatar_color?: string
+}
+interface ChangePasswordBody {
+  current_password: string
+  new_password: string
+}
+interface RequestResetBody {
+  email: string
+  app?: 'family' | 'studio' | 'lifekeel'
+}
+interface ResetPasswordBody {
+  token: string
+  new_password: string
+}
 
-export const AVATAR_COLORS = ['#f59e0b','#10b981','#3b82f6','#8b5cf6','#ef4444','#06b6d4','#f97316']
+export const AVATAR_COLORS = [
+  '#f59e0b',
+  '#10b981',
+  '#3b82f6',
+  '#8b5cf6',
+  '#ef4444',
+  '#06b6d4',
+  '#f97316',
+]
 
 // Security configuration
 const MAX_FAILED_LOGIN_ATTEMPTS = 5
@@ -102,7 +156,12 @@ const LOCKOUT_DURATION_MS = 15 * 60 * 1000 // 15 minutes
 const EMAIL_VERIFICATION_ENABLED = process.env['EMAIL_VERIFICATION_ENABLED'] === 'true'
 
 function slugify(s: string) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'workspace'
+  return (
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'workspace'
+  )
 }
 
 export function hashPassword(password: string, salt: string): string {
@@ -126,7 +185,10 @@ export async function getUsersCollection() {
   const col = db.collection<User>('users')
   await col.createIndex({ email: 1 }, { unique: true })
   await col.createIndex({ external_id: 1, external_provider: 1 }, { sparse: true })
-  await col.createIndex({ email_verification_token: 1 }, { sparse: true, expireAfterSeconds: 86400 }) // 24h TTL
+  await col.createIndex(
+    { email_verification_token: 1 },
+    { sparse: true, expireAfterSeconds: 86400 },
+  ) // 24h TTL
   return col
 }
 
@@ -138,12 +200,14 @@ function recordLoginEvent(
   event: { email: string; success: boolean; reason?: string; user_id?: string; tenant_id?: string },
 ): void {
   void getDb()
-    .then((db) => getLoginEventsCollection(db).insertOne({
-      ...event,
-      ip: request.ip,
-      user_agent: (request.headers['user-agent'] ?? '').slice(0, 300),
-      created_at: new Date(),
-    }))
+    .then((db) =>
+      getLoginEventsCollection(db).insertOne({
+        ...event,
+        ip: request.ip,
+        user_agent: (request.headers['user-agent'] ?? '').slice(0, 300),
+        created_at: new Date(),
+      }),
+    )
     .catch(() => {})
 }
 
@@ -167,10 +231,24 @@ export async function registerAuthUserRoutes(
     // without changing the honest per-request error message.
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (request, reply) => {
-      const { email, password, name, workspace, external_id, external_provider, tier_hint, invite_code, country, ref, attribution } = request.body
+      const {
+        email,
+        password,
+        name,
+        workspace,
+        external_id,
+        external_provider,
+        tier_hint,
+        invite_code,
+        country,
+        ref,
+        attribution,
+      } = request.body
 
-      if (!email || !EMAIL_FORMAT_RE.test(email.trim())) return reply.status(400).send({ error: 'Valid email required' })
-      if (!password || password.length < 8) return reply.status(400).send({ error: 'Password must be at least 8 characters' })
+      if (!email || !EMAIL_FORMAT_RE.test(email.trim()))
+        return reply.status(400).send({ error: 'Valid email required' })
+      if (!password || password.length < 8)
+        return reply.status(400).send({ error: 'Password must be at least 8 characters' })
       if (!name?.trim()) return reply.status(400).send({ error: 'Name required' })
 
       const db = await getDb()
@@ -195,7 +273,8 @@ export async function registerAuthUserRoutes(
 
       if (external_id && external_provider) {
         const existingByExternal = await col.findOne({ external_id, external_provider })
-        if (existingByExternal) return reply.status(409).send({ error: 'External ID already registered' })
+        if (existingByExternal)
+          return reply.status(409).send({ error: 'External ID already registered' })
       }
 
       // Security: the workspace slug is a shared, guessable identifier (e.g.
@@ -209,7 +288,9 @@ export async function registerAuthUserRoutes(
       const tenant_id = workspace ? slugify(workspace) : slugify(email.split('@')[0]!)
       const existingTenant = await db.collection('tenants').findOne({ tenant_id })
       if (existingTenant) {
-        return reply.status(409).send({ error: 'That workspace name is already taken. Choose another.' })
+        return reply
+          .status(409)
+          .send({ error: 'That workspace name is already taken. Choose another.' })
       }
 
       // Now that the signup is valid, consume the invite code.
@@ -256,7 +337,11 @@ export async function registerAuthUserRoutes(
       // Send only after the account exists — a failed insert must not
       // leave a recipient holding a token that can never verify.
       if (EMAIL_VERIFICATION_ENABLED && user.email_verification_token) {
-        await sendEmailVerificationEmail(user.email, user.name, verificationUrl(user.email_verification_token))
+        await sendEmailVerificationEmail(
+          user.email,
+          user.name,
+          verificationUrl(user.email_verification_token),
+        )
       }
 
       // Create the tenant record — existingTenant was already confirmed null
@@ -343,31 +428,55 @@ export async function registerAuthUserRoutes(
     // Erased accounts are tombstones — no credentials remain, and the
     // response mustn't distinguish them from an unknown email.
     if (user.status === 'erased') {
-      recordLoginEvent(request, { email: emailKey, success: false, reason: 'erased', user_id: user.id, tenant_id: user.tenant_id })
+      recordLoginEvent(request, {
+        email: emailKey,
+        success: false,
+        reason: 'erased',
+        user_id: user.id,
+        tenant_id: user.tenant_id,
+      })
       return reply.status(401).send({ error: 'Invalid email or password' })
     }
     if (user.status === 'suspended') {
-      recordLoginEvent(request, { email: emailKey, success: false, reason: 'suspended', user_id: user.id, tenant_id: user.tenant_id })
+      recordLoginEvent(request, {
+        email: emailKey,
+        success: false,
+        reason: 'suspended',
+        user_id: user.id,
+        tenant_id: user.tenant_id,
+      })
       return reply.status(403).send({ error: 'User suspended' })
     }
 
     // Check if account is locked
     if (user.locked_until && user.locked_until > new Date()) {
       const remainingMinutes = Math.ceil((user.locked_until.getTime() - Date.now()) / 60000)
-      recordLoginEvent(request, { email: emailKey, success: false, reason: 'locked', user_id: user.id, tenant_id: user.tenant_id })
-      return reply.status(429).send({ 
+      recordLoginEvent(request, {
+        email: emailKey,
+        success: false,
+        reason: 'locked',
+        user_id: user.id,
+        tenant_id: user.tenant_id,
+      })
+      return reply.status(429).send({
         error: 'Account locked due to too many failed login attempts',
-        retry_after_minutes: remainingMinutes
+        retry_after_minutes: remainingMinutes,
       })
     }
 
     const expected = Buffer.from(hashPassword(password, user.salt), 'hex')
-    const actual   = Buffer.from(user.password_hash, 'hex')
+    const actual = Buffer.from(user.password_hash, 'hex')
 
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
       // Increment failed login attempts
       const failedAttempts = (user.failed_login_attempts || 0) + 1
-      recordLoginEvent(request, { email: emailKey, success: false, reason: 'bad_password', user_id: user.id, tenant_id: user.tenant_id })
+      recordLoginEvent(request, {
+        email: emailKey,
+        success: false,
+        reason: 'bad_password',
+        user_id: user.id,
+        tenant_id: user.tenant_id,
+      })
       const updateData: Partial<User> = { failed_login_attempts: failedAttempts }
 
       // Lock account if max attempts reached
@@ -378,9 +487,9 @@ export async function registerAuthUserRoutes(
       await col.updateOne({ email: emailKey }, { $set: updateData })
 
       if (failedAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
-        return reply.status(429).send({ 
+        return reply.status(429).send({
           error: 'Account locked due to too many failed login attempts',
-          retry_after_minutes: LOCKOUT_DURATION_MS / 60000
+          retry_after_minutes: LOCKOUT_DURATION_MS / 60000,
         })
       }
 
@@ -388,17 +497,33 @@ export async function registerAuthUserRoutes(
     }
 
     // Reset failed login attempts on successful login
-    await col.updateOne({ email: emailKey }, {
-      $set: { failed_login_attempts: 0, locked_until: undefined }
+    await col.updateOne(
+      { email: emailKey },
+      {
+        $set: { failed_login_attempts: 0, locked_until: undefined },
+      },
+    )
+    recordLoginEvent(request, {
+      email: emailKey,
+      success: true,
+      user_id: user.id,
+      tenant_id: user.tenant_id,
     })
-    recordLoginEvent(request, { email: emailKey, success: true, user_id: user.id, tenant_id: user.tenant_id })
 
     // MFA gate: the password was correct, but the session token isn't
     // issued until the TOTP/recovery code verifies at /auth/mfa/verify.
     // The pending token carries mfa_pending — the auth middleware rejects
     // it everywhere else, so it can't be replayed as a session.
     if (user.mfa_enabled) {
-      const mfaToken = await auth.sign({ sub: user.id, tenant_id: user.tenant_id, roles: user.roles ?? ['viewer'], mfa_pending: true }, '5m')
+      const mfaToken = await auth.sign(
+        {
+          sub: user.id,
+          tenant_id: user.tenant_id,
+          roles: user.roles ?? ['viewer'],
+          mfa_pending: true,
+        },
+        '5m',
+      )
       return reply.send({ mfa_required: true, mfa_token: mfaToken })
     }
 
@@ -406,7 +531,10 @@ export async function registerAuthUserRoutes(
     // keeps the token's own literal promise (30 days), unchecked falls back
     // to the shorter default so a shared/public device doesn't stay signed
     // in for a month by default.
-    const token = await auth.sign({ sub: user.id, tenant_id: user.tenant_id, roles: user.roles ?? ['viewer'] }, rememberMe ? '30d' : '7d')
+    const token = await auth.sign(
+      { sub: user.id, tenant_id: user.tenant_id, roles: user.roles ?? ['viewer'] },
+      rememberMe ? '30d' : '7d',
+    )
     setSessionCookie(reply, token, rememberMe ? 30 * 24 * 60 * 60 : 7 * 24 * 60 * 60)
 
     // Include active_vertical so the client can decide whether to redirect
@@ -446,19 +574,22 @@ export async function registerAuthUserRoutes(
     return reply.send({
       user_id,
       tenant_id,
-      ...(user ? {
-        name: user.name,
-        email: user.email,
-        avatar_color: user.avatar_color,
-        email_verified: user.email_verified,
-        external_provider: user.external_provider
-      } : {}),
+      ...(user
+        ? {
+            name: user.name,
+            email: user.email,
+            avatar_color: user.avatar_color,
+            email_verified: user.email_verified,
+            external_provider: user.external_provider,
+          }
+        : {}),
       tier_hint: tenant?.['tier_hint'] ?? 'business',
       active_vertical: (settings?.['active_vertical'] as string | undefined) ?? null,
       onboarding_skipped: (settings?.['onboarding_skipped'] as boolean | undefined) ?? false,
       country: (tenant?.['country'] as string | undefined) ?? 'GB',
       locale: (tenant?.['locale'] as string | undefined) ?? getLocaleForCountry('GB'),
-      currency: (tenant?.['billing']?.['currency'] as string | undefined) ?? getCurrencyForCountry('GB'),
+      currency:
+        (tenant?.['billing']?.['currency'] as string | undefined) ?? getCurrencyForCountry('GB'),
     })
   })
 
@@ -479,13 +610,13 @@ export async function registerAuthUserRoutes(
 
     await col.updateOne(
       { email_verification_token: token },
-      { 
-        $set: { 
+      {
+        $set: {
           email_verified: true,
           email_verification_token: undefined,
-          email_verification_expires: undefined
-        } 
-      }
+          email_verification_expires: undefined,
+        },
+      },
     )
 
     return reply.send({ verified: true })
@@ -513,9 +644,9 @@ export async function registerAuthUserRoutes(
         {
           $set: {
             email_verification_token: newToken,
-            email_verification_expires: expires
-          }
-        }
+            email_verification_expires: expires,
+          },
+        },
       )
 
       await sendEmailVerificationEmail(user.email, user.name, verificationUrl(newToken))
@@ -545,9 +676,9 @@ export async function registerAuthUserRoutes(
       {
         $set: {
           email_verification_token: newToken,
-          email_verification_expires: expires
-        }
-      }
+          email_verification_expires: expires,
+        },
+      },
     )
 
     await sendEmailVerificationEmail(user.email, user.name, verificationUrl(newToken))
@@ -568,17 +699,18 @@ export async function registerAuthUserRoutes(
     const updateData: Partial<User> = {}
     if (name) updateData.name = name.trim()
     if (avatar_color) updateData.avatar_color = avatar_color
-    
+
     if (email && email !== user.email) {
-      if (!EMAIL_FORMAT_RE.test(email.trim())) return reply.status(400).send({ error: 'Valid email required' })
+      if (!EMAIL_FORMAT_RE.test(email.trim()))
+        return reply.status(400).send({ error: 'Valid email required' })
 
       // Check if new email is already taken
       const existing = await col.findOne({ email: email.toLowerCase(), tenant_id })
       if (existing) return reply.status(409).send({ error: 'Email already in use' })
-      
+
       updateData.email = email.toLowerCase()
       updateData.email_verified = false // Require re-verification on email change
-      
+
       // Generate new verification token
       if (EMAIL_VERIFICATION_ENABLED) {
         updateData.email_verification_token = generateEmailVerificationToken()
@@ -590,21 +722,22 @@ export async function registerAuthUserRoutes(
       return reply.status(400).send({ error: 'No fields to update' })
     }
 
-    await col.updateOne(
-      { id: user_id, tenant_id },
-      { $set: updateData }
-    )
+    await col.updateOne({ id: user_id, tenant_id }, { $set: updateData })
 
     // New address must prove ownership — the link goes to the new inbox,
     // never the old one. Send only after the update lands so a failure
     // can't strand a token.
     if (updateData.email && updateData.email_verification_token) {
       const displayName = updateData.name ?? user.name
-      await sendEmailVerificationEmail(updateData.email, displayName, verificationUrl(updateData.email_verification_token))
+      await sendEmailVerificationEmail(
+        updateData.email,
+        displayName,
+        verificationUrl(updateData.email_verification_token),
+      )
     }
 
     const updatedUser = await col.findOne({ id: user_id, tenant_id })
-    
+
     return reply.send({
       user: {
         id: updatedUser!.id,
@@ -613,7 +746,7 @@ export async function registerAuthUserRoutes(
         tenant_id: updatedUser!.tenant_id,
         avatar_color: updatedUser!.avatar_color,
         email_verified: updatedUser!.email_verified,
-      }
+      },
     })
   })
 
@@ -649,13 +782,13 @@ export async function registerAuthUserRoutes(
 
     await col.updateOne(
       { id: user_id, tenant_id },
-      { 
-        $set: { 
+      {
+        $set: {
           password_hash: newPasswordHash,
           salt: newSalt,
-          updated_at: new Date()
-        } 
-      }
+          updated_at: new Date(),
+        },
+      },
     )
 
     return reply.send({ success: true })
@@ -683,9 +816,9 @@ export async function registerAuthUserRoutes(
         {
           $set: {
             password_reset_token: resetToken,
-            password_reset_expires: expires
-          }
-        }
+            password_reset_expires: expires,
+          },
+        },
       )
 
       // Only apps with a page that actually consumes this token get a real
@@ -744,9 +877,9 @@ export async function registerAuthUserRoutes(
           password_reset_token: undefined,
           password_reset_expires: undefined,
           failed_login_attempts: 0,
-          locked_until: undefined
-        }
-      }
+          locked_until: undefined,
+        },
+      },
     )
 
     return reply.send({ success: true })
@@ -764,7 +897,10 @@ export async function registerAuthUserRoutes(
   app.get('/auth/mfa/status', async (request, reply) => {
     const { user_id } = request.authContext
     const col = await getUsersCollection()
-    const user = await col.findOne({ id: user_id }, { projection: { mfa_enabled: 1, mfa_recovery_hashes: 1 } })
+    const user = await col.findOne(
+      { id: user_id },
+      { projection: { mfa_enabled: 1, mfa_recovery_hashes: 1 } },
+    )
     return reply.send({
       enabled: user?.mfa_enabled === true,
       recovery_codes_remaining: user?.mfa_recovery_hashes?.length ?? 0,
@@ -792,13 +928,22 @@ export async function registerAuthUserRoutes(
     const user = await col.findOne({ id: user_id })
     if (!user?.mfa_pending_secret) return reply.status(400).send({ error: 'Run setup first' })
     if (!verifyTotp(user.mfa_pending_secret, code)) {
-      return reply.status(400).send({ error: 'That code did not match — check your authenticator app and try again' })
+      return reply
+        .status(400)
+        .send({ error: 'That code did not match — check your authenticator app and try again' })
     }
     const { codes, hashes } = generateRecoveryCodes()
-    await col.updateOne({ id: user_id }, {
-      $set: { mfa_enabled: true, mfa_secret: user.mfa_pending_secret, mfa_recovery_hashes: hashes },
-      $unset: { mfa_pending_secret: '' },
-    })
+    await col.updateOne(
+      { id: user_id },
+      {
+        $set: {
+          mfa_enabled: true,
+          mfa_secret: user.mfa_pending_secret,
+          mfa_recovery_hashes: hashes,
+        },
+        $unset: { mfa_pending_secret: '' },
+      },
+    )
     return reply.send({ recovery_codes: codes })
   })
 
@@ -816,64 +961,88 @@ export async function registerAuthUserRoutes(
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
       return reply.status(401).send({ error: 'Incorrect password' })
     }
-    await col.updateOne({ id: user_id }, {
-      $set: { mfa_enabled: false },
-      $unset: { mfa_secret: '', mfa_pending_secret: '', mfa_recovery_hashes: '' },
-    })
+    await col.updateOne(
+      { id: user_id },
+      {
+        $set: { mfa_enabled: false },
+        $unset: { mfa_secret: '', mfa_pending_secret: '', mfa_recovery_hashes: '' },
+      },
+    )
     return reply.send({ ok: true })
   })
 
   /** POST /auth/mfa/verify — second step of login. Accepts a TOTP code or a
    *  recovery code (single-use: its hash is consumed on success). Issues the
    *  real session token + httpOnly cookie on success. */
-  app.post<{ Body: { mfa_token: string; code: string } }>('/auth/mfa/verify', async (request, reply) => {
-    const { mfa_token, code } = request.body ?? {}
-    if (!mfa_token || !code) return reply.status(400).send({ error: 'mfa_token and code required' })
+  app.post<{ Body: { mfa_token: string; code: string } }>(
+    '/auth/mfa/verify',
+    async (request, reply) => {
+      const { mfa_token, code } = request.body ?? {}
+      if (!mfa_token || !code)
+        return reply.status(400).send({ error: 'mfa_token and code required' })
 
-    let pending
-    try {
-      pending = await auth.verify(mfa_token)
-    } catch {
-      return reply.status(401).send({ error: 'MFA session expired — sign in again' })
-    }
-    if (!pending.mfa_pending) return reply.status(401).send({ error: 'Invalid MFA token' })
+      let pending
+      try {
+        pending = await auth.verify(mfa_token)
+      } catch {
+        return reply.status(401).send({ error: 'MFA session expired — sign in again' })
+      }
+      if (!pending.mfa_pending) return reply.status(401).send({ error: 'Invalid MFA token' })
 
-    const col = await getUsersCollection()
-    const user = await col.findOne({ id: pending.user_id, tenant_id: pending.tenant_id })
-    if (!user?.mfa_enabled || !user.mfa_secret) {
-      return reply.status(400).send({ error: 'MFA is not enabled for this account' })
-    }
+      const col = await getUsersCollection()
+      const user = await col.findOne({ id: pending.user_id, tenant_id: pending.tenant_id })
+      if (!user?.mfa_enabled || !user.mfa_secret) {
+        return reply.status(400).send({ error: 'MFA is not enabled for this account' })
+      }
 
-    const totpOk = verifyTotp(user.mfa_secret, code)
-    const recoveryHash = hashRecoveryCode(code)
-    const isRecovery = !totpOk && (user.mfa_recovery_hashes ?? []).includes(recoveryHash)
-    if (!totpOk && !isRecovery) {
-      recordLoginEvent(request, { email: user.email, success: false, reason: 'mfa_bad_code', user_id: user.id, tenant_id: user.tenant_id })
-      return reply.status(401).send({ error: 'Incorrect code — try again or use a recovery code' })
-    }
-    if (isRecovery) {
-      // Single-use — pull the spent hash so it can't be replayed.
-      await col.updateOne({ id: user.id }, { $pull: { mfa_recovery_hashes: recoveryHash } })
-    }
-    recordLoginEvent(request, { email: user.email, success: true, reason: 'mfa_verified', user_id: user.id, tenant_id: user.tenant_id })
-
-    const token = await auth.sign({ sub: user.id, tenant_id: user.tenant_id, roles: user.roles ?? ['viewer'] }, '7d')
-    setSessionCookie(reply, token, 7 * 24 * 60 * 60)
-
-    const db = await getDb()
-    const settings = await db.collection('tenant_settings').findOne({ tenant_id: user.tenant_id })
-    return reply.send({
-      token,
-      user: {
-        id: user.id,
+      const totpOk = verifyTotp(user.mfa_secret, code)
+      const recoveryHash = hashRecoveryCode(code)
+      const isRecovery = !totpOk && (user.mfa_recovery_hashes ?? []).includes(recoveryHash)
+      if (!totpOk && !isRecovery) {
+        recordLoginEvent(request, {
+          email: user.email,
+          success: false,
+          reason: 'mfa_bad_code',
+          user_id: user.id,
+          tenant_id: user.tenant_id,
+        })
+        return reply
+          .status(401)
+          .send({ error: 'Incorrect code — try again or use a recovery code' })
+      }
+      if (isRecovery) {
+        // Single-use — pull the spent hash so it can't be replayed.
+        await col.updateOne({ id: user.id }, { $pull: { mfa_recovery_hashes: recoveryHash } })
+      }
+      recordLoginEvent(request, {
         email: user.email,
-        name: user.name,
+        success: true,
+        reason: 'mfa_verified',
+        user_id: user.id,
         tenant_id: user.tenant_id,
-        avatar_color: user.avatar_color,
-        email_verified: user.email_verified,
-        active_vertical: (settings?.['active_vertical'] as string | undefined) ?? null,
-        onboarding_skipped: (settings?.['onboarding_skipped'] as boolean | undefined) ?? false,
-      },
-    })
-  })
+      })
+
+      const token = await auth.sign(
+        { sub: user.id, tenant_id: user.tenant_id, roles: user.roles ?? ['viewer'] },
+        '7d',
+      )
+      setSessionCookie(reply, token, 7 * 24 * 60 * 60)
+
+      const db = await getDb()
+      const settings = await db.collection('tenant_settings').findOne({ tenant_id: user.tenant_id })
+      return reply.send({
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          tenant_id: user.tenant_id,
+          avatar_color: user.avatar_color,
+          email_verified: user.email_verified,
+          active_vertical: (settings?.['active_vertical'] as string | undefined) ?? null,
+          onboarding_skipped: (settings?.['onboarding_skipped'] as boolean | undefined) ?? false,
+        },
+      })
+    },
+  )
 }

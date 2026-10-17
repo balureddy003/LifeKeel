@@ -5,6 +5,10 @@ directly (`server.url` in `capacitor.config.ts`) — there is no bundled web
 build to keep in sync, and the service worker inside the shell's webview
 still caches the app shell for flaky/offline launches.
 
+> **Note:** This package is intentionally outside the root Turbo graph.
+> `pnpm build`, `pnpm test`, and `pnpm typecheck` do not run here. Use the
+> `cd apps/mobile && pnpm …` commands below for mobile-specific work.
+
 What the shell adds over the installed PWA:
 
 - **Reliable iOS push** — `@capacitor/push-notifications` → APNs, where the

@@ -3,7 +3,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { Engine, type LlmScorer, type ReasoningContext } from '../engine.js'
-import type { ConformalGateProvider } from '../cascade.js'
+import type { ConformalGateProvider } from '../scoring/cascade.js'
 
 /**
  * End-to-end wiring test: the ADR-0068 cascade gate replaces the legacy gate in
@@ -42,7 +42,13 @@ rules:
 
 // Fixed gate: escalate insights with or_score < 0.85 (the low-confidence rule).
 const fixedGate: ConformalGateProvider = {
-  getThreshold: () => ({ tau: 0.85, alpha: 0.02, calibration_n: 100, fallback: false, version: 'test-v1' }),
+  getThreshold: () => ({
+    tau: 0.85,
+    alpha: 0.02,
+    calibration_n: 100,
+    fallback: false,
+    version: 'test-v1',
+  }),
 }
 
 // Scorer records which insights it was asked to score, returns a fixed score.
@@ -54,12 +60,12 @@ class RecordingScorer implements LlmScorer {
     _context: unknown,
     reasoningContexts?: ReadonlyMap<string, ReasoningContext>,
   ) {
-    this.scoredOrScores.push(...insights.map(i => i.confidence_breakdown.or_score))
+    this.scoredOrScores.push(...insights.map((i) => i.confidence_breakdown.or_score))
     for (const insight of insights) {
       const reasoningContext = reasoningContexts?.get(insight.id)
       if (reasoningContext) this.reasoningContexts.set(insight.id, reasoningContext)
     }
-    return new Map(insights.map(i => [i.id, 0.8]))
+    return new Map(insights.map((i) => [i.id, 0.8]))
   }
 }
 
@@ -153,7 +159,7 @@ describe('Engine cascade gate (ADR-0068)', () => {
       event_id: 'evt-rag',
       data: { x: 1 },
     })
-    const lowConfidenceInsight = result.insights.find(insight => insight.rule_id === 'low_conf')!
+    const lowConfidenceInsight = result.insights.find((insight) => insight.rule_id === 'low_conf')!
 
     expect(scorer.reasoningContexts.get(lowConfidenceInsight.id)).toEqual({
       episodic_snippets: ['Invoice was previously disputed'],
@@ -185,17 +191,24 @@ describe('Engine cascade gate (ADR-0068)', () => {
     const streamed: typeof regular.insights = []
     for await (const insight of engine.evaluateStream(input)) streamed.push(insight)
 
-    expect(regular.insights.find(insight => insight.rule_id === 'low_conf')?.confidence_breakdown.combined_score).toBeCloseTo(0.728)
-    expect(streamed.map(insight => ({
-      detector_id: insight.detector_id,
-      rule_id: insight.rule_id,
-      or_score: insight.confidence_breakdown.or_score,
-      combined_score: insight.confidence_breakdown.combined_score,
-    }))).toEqual(regular.insights.map(insight => ({
-      detector_id: insight.detector_id,
-      rule_id: insight.rule_id,
-      or_score: insight.confidence_breakdown.or_score,
-      combined_score: insight.confidence_breakdown.combined_score,
-    })))
+    expect(
+      regular.insights.find((insight) => insight.rule_id === 'low_conf')?.confidence_breakdown
+        .combined_score,
+    ).toBeCloseTo(0.728)
+    expect(
+      streamed.map((insight) => ({
+        detector_id: insight.detector_id,
+        rule_id: insight.rule_id,
+        or_score: insight.confidence_breakdown.or_score,
+        combined_score: insight.confidence_breakdown.combined_score,
+      })),
+    ).toEqual(
+      regular.insights.map((insight) => ({
+        detector_id: insight.detector_id,
+        rule_id: insight.rule_id,
+        or_score: insight.confidence_breakdown.or_score,
+        combined_score: insight.confidence_breakdown.combined_score,
+      })),
+    )
   })
 })

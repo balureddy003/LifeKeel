@@ -26,7 +26,7 @@ export class DifferentialPrivacy {
     const clipped = this.clipL2(gradient)
     const sigma = this.computeNoiseScale()
 
-    return clipped.map(g => g + this.gaussianNoise(0, sigma))
+    return clipped.map((g) => g + this.gaussianNoise(0, sigma))
   }
 
   /**
@@ -39,7 +39,7 @@ export class DifferentialPrivacy {
       return [...gradient]
     }
     const scale = this.config.maxGradientNorm / norm
-    return gradient.map(g => g * scale)
+    return gradient.map((g) => g * scale)
   }
 
   /** Compute Gaussian noise standard deviation from privacy budget. */
