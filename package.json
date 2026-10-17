@@ -8,6 +8,8 @@
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
+    "clean": "turbo run clean",
     "debug": "pnpm --parallel --filter @lifekeel/api --filter @lifekeel/web run debug",
     "prepare": "husky"
   },
