@@ -31,7 +31,6 @@
     "@fastify/swagger": "^9.8.1",
     "@fastify/swagger-ui": "^6.1.0",
     "@lifekeel/engine": "workspace:*",
-    "@lifekeel/legacy-compat": "workspace:*",
     "@lifekeel/mongodb-adapter": "workspace:*",
     "@lifekeel/pipeline": "workspace:*",
     "@lifekeel/platform": "workspace:*",

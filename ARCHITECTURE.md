@@ -305,8 +305,7 @@ apps/web (Next.js, static export → Firebase Hosting)
                                      2026-09-12, not just left unrouted —
                                      see SECURITY.md)
               @lifekeel/pipeline   → connector event normalization
-              @lifekeel/mongodb-adapter, @lifekeel/runtime, @lifekeel/specifications,
-              @lifekeel/legacy-compat, @lifekeel/conformance, @lifekeel/outcome-kernel
+              @lifekeel/mongodb-adapter, @lifekeel/runtime, @lifekeel/specifications
                                    → outcome-lifecycle data model plumbing
 ```
 

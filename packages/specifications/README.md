@@ -7,5 +7,4 @@ graph: every other `packages/*` here depends on it, directly or through
 `@lifekeel/runtime`.
 
 Not family-specific. Part of the generic outcome-lifecycle data model
-`@lifekeel/mongodb-adapter`/`@lifekeel/legacy-compat`/`@lifekeel/conformance`
-also plug into.
+`@lifekeel/mongodb-adapter` also plugs into.
