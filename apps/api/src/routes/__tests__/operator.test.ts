@@ -178,6 +178,39 @@ describe('/operator control plane', () => {
     await app.close()
   })
 
+  it('mfa-disable clears enrollment, revokes sessions, and writes an audit entry', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    await db.collection('users').updateOne(
+      { id: 'user-2' },
+      { $set: { mfa_enabled: true, mfa_secret: 'SECRETHERE', mfa_recovery_hashes: ['h1'] } },
+    )
+    const app = await buildApp()
+    const response = await app.inject({
+      method: 'POST', url: '/operator/users/user-2/mfa-disable', payload: { reason: 'Ticket #1234 — verified via recovery email' },
+    })
+    expect(response.statusCode).toBe(200)
+    const user = await db.collection('users').findOne({ id: 'user-2' })
+    expect(user?.['mfa_enabled']).toBe(false)
+    expect(user?.['mfa_secret']).toBeUndefined()
+    expect(user?.['mfa_recovery_hashes']).toBeUndefined()
+    expect(user?.['sessions_revoked_at']).toBeInstanceOf(Date)
+    const audit = await db.collection('operator_audit_log').findOne({ target_id: 'user-2' })
+    expect(audit?.['action']).toBe('operator.user.mfa_disable')
+    await app.close()
+  })
+
+  it('mfa-disable 404s when the user has no enrollment and requires a reason', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    const app = await buildApp()
+    const noReason = await app.inject({ method: 'POST', url: '/operator/users/user-2/mfa-disable', payload: {} })
+    expect(noReason.statusCode).toBe(400)
+    const notEnrolled = await app.inject({
+      method: 'POST', url: '/operator/users/user-2/mfa-disable', payload: { reason: 'Ticket #1234 — verified' },
+    })
+    expect(notEnrolled.statusCode).toBe(404)
+    await app.close()
+  })
+
   it('manages platform operators while protecting self and the last super_admin', async () => {
     await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['super_admin'] })
     const app = await buildApp()

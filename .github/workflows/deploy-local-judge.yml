@@ -42,7 +42,19 @@ env:
   API_RUNTIME_SA: ${{ secrets.API_RUNTIME_SERVICE_ACCOUNT }}
 
 jobs:
+  verify-ci:
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/require-ci.yml
+    with:
+      ref: ${{ github.event.inputs.ref || 'main' }}
+
   deploy-local-judge:
+    needs: verify-ci
+    # Required reviewers are configured on this GitHub Environment (Settings >
+    # Environments > production); the job pauses here until a person approves.
+    environment: production
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -50,7 +62,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.inputs.ref || 'main' }}
+          ref: ${{ needs.verify-ci.outputs.sha }}
 
       - name: Require the API runtime service account
         run: |

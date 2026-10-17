@@ -70,6 +70,26 @@ Concretely:
   place beats compliance overhead paid for after deciding to compete
   there.
 
+## How the rules are enforced (not just stated)
+
+- **Advice rule (second rule):** `packages/engine/src/__tests__/advice-rule.test.ts`
+  fails CI if detector/playbook copy contains recommendation verbs or named
+  providers. `.claude/settings.json` runs it as a PostToolUse hook
+  (`scripts/hooks/advice-check.sh`) so Claude sees the failure immediately
+  after editing that copy.
+- **PRs:** `.github/pull_request_template.md` makes tier, advice check and
+  eval coverage explicit. New work starts from `docs/templates/intent.md`.
+- **Ask Keel prompt:** `apps/api/src/eval/__tests__/assistant-eval.test.ts` pins
+  the `SYSTEM_PROMPT` guardrail clauses (always runs). `apps/api/src/eval/assistant-eval.ts`
+  is a live adversarial eval (`node dist/eval/assistant-eval.js`, needs an LLM
+  configured) run before changing the prompt or model; it measures how often
+  raw answers would be blocked by the production output guard.
+- **Skill:** `.claude/skills/add-detector` encodes the add-a-detector recipe.
+- **Trust tiers (rule 1):** `apps/api/src/__tests__/trust-tier-gate.test.ts`
+  allow-lists the only callers of `ActionExecutor` and requires each
+  `execute()` to name `approvedBy`. Adding a caller means editing that list,
+  which forces the tier question into review. It is a tripwire, not proof.
+
 ## Conventions
 
 - **TypeScript**, strict mode, `pnpm` workspace, `turbo` for build

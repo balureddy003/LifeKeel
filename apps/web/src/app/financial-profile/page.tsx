@@ -423,7 +423,12 @@ interface Step {
 }
 
 const STEPS: Step[] = [
-  { key: 'household', title: 'Household & Protection' },
+  { key: 'household', title: 'Income & Household' },
+  // Household used to carry income, expenses, the second-earner block,
+  // cover totals, AND every policy field — most of the wizard's inputs in
+  // a single "25% done" step. Protection is its own step now so progress
+  // is real and each screen stays one mental model.
+  { key: 'protection', title: 'Protection & Policies' },
   { key: 'emergency', title: 'Emergency Fund' },
   { key: 'retirement', title: 'Retirement' },
   { key: 'education', title: 'Education Funds' },
@@ -933,7 +938,7 @@ export default function FinancialProfilePage() {
         >
           {step.key === 'household' && (
             <GlassCard className="p-5">
-              <SectionTitle>Household & Protection</SectionTitle>
+              <SectionTitle>Income & Household</SectionTitle>
               <div className="space-y-3">
                 <EmploymentStatusPicker value={form.employmentStatus} onChange={(v) => set('employmentStatus', v)} />
                 <Field label="Monthly salary" value={form.monthlySalary} onChange={(v) => set('monthlySalary', v)} prefix="£" />
@@ -945,8 +950,6 @@ export default function FinancialProfilePage() {
                   prefix="£"
                 />
                 <Field label="Mortgage outstanding" value={form.mortgageOutstanding} onChange={(v) => set('mortgageOutstanding', v)} placeholder="0 if none" prefix="£" />
-                <Field label="Life insurance cover" value={form.lifeCover} onChange={(v) => set('lifeCover', v)} placeholder="0 if none" prefix="£" />
-                <Field label="Income protection (monthly payout)" value={form.incomeProtectionMonthly} onChange={(v) => set('incomeProtectionMonthly', v)} placeholder="0 if none" prefix="£" />
               </div>
             </GlassCard>
           )}
@@ -1016,7 +1019,17 @@ export default function FinancialProfilePage() {
             </GlassCard>
           )}
 
-          {step.key === 'household' && (
+          {step.key === 'protection' && (
+            <GlassCard className="p-5">
+              <SectionTitle>Your Cover</SectionTitle>
+              <div className="space-y-3">
+                <Field label="Life insurance cover" value={form.lifeCover} onChange={(v) => set('lifeCover', v)} placeholder="0 if none" prefix="£" />
+                <Field label="Income protection (monthly payout)" value={form.incomeProtectionMonthly} onChange={(v) => set('incomeProtectionMonthly', v)} placeholder="0 if none" prefix="£" />
+              </div>
+            </GlassCard>
+          )}
+
+          {step.key === 'protection' && (
             <GlassCard className="p-5 mt-4">
               <SectionTitle>Insurance Policies</SectionTitle>
               <div className="space-y-4">

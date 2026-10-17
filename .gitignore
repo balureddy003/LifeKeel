@@ -24,3 +24,9 @@ __pycache__/
 apps/web/e2e/.auth/
 apps/web/playwright-report/
 apps/web/test-results/
+
+# Capacitor shell — `cap add ios|android` output is generated, not source;
+# apps/mobile/www is the placeholder webDir (server.url wins at runtime)
+apps/mobile/ios/
+apps/mobile/android/
+apps/mobile/www/

@@ -87,8 +87,10 @@ const BRANCH_CATEGORY: Record<string, GraphCategory> = {
 // with no visual cue why, which read as an unexplained inconsistency.
 const BRANCH_STEP: Record<string, string> = {
   Briefcase: 'household',
-  ShieldCheck: 'household',
-  HeartPulse: 'household',
+  // Protection edits moved out of the household step when the wizard
+  // split — these deep-link to the step that actually edits them now.
+  ShieldCheck: 'protection',
+  HeartPulse: 'protection',
   Target: 'retirement',
   GraduationCap: 'education',
 }

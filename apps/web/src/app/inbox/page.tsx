@@ -105,6 +105,12 @@ export default function InboxPage() {
   // Distinct from "nothing to show you" — a genuine failure to reach the
   // server (see apiFetch's onFailure), so the empty state doesn't lie.
   const [loadError, setLoadError] = useState(false)
+  // The inbox mixes two different mental models — email-sourced items
+  // ("Found in your email") and Keel's own detector recommendations
+  // ("Keel noticed") — plus renewals, the highest-urgency subset. The
+  // filter chips name the taxonomy instead of leaving users to infer it
+  // from the per-row labels.
+  const [filter, setFilter] = useState<'all' | 'email' | 'keel' | 'renewals'>('all')
   // Server is the source of truth (the local store only knows about
   // connections made in this tab) — otherwise a connected, actively-syncing
   // mailbox still showed "Connect your email".
@@ -294,6 +300,19 @@ export default function InboxPage() {
     dismissWithUndo(item, 'light')
   }
 
+  const FILTER_LABELS: { key: typeof filter; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'email', label: 'From email' },
+    { key: 'keel', label: 'Keel noticed' },
+    { key: 'renewals', label: 'Renewals' },
+  ]
+  const visibleItems = items.filter((item) => {
+    if (filter === 'email') return item.source !== 'Keel'
+    if (filter === 'keel') return item.source === 'Keel'
+    if (filter === 'renewals') return item.actionType === 'renew'
+    return true
+  })
+
   return (
     <PageTransition>
     <PullToRefresh onRefresh={loadInbox}>
@@ -395,6 +414,27 @@ export default function InboxPage() {
         </motion.div>
       )}
 
+      {/* Source filters — only worth showing once there's more than one
+          item to sort through. */}
+      {!loading && items.length >= 2 && (
+        <div className="flex gap-2 -mx-5 px-5 overflow-x-auto no-scrollbar">
+          {FILTER_LABELS.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => { haptic('light'); setFilter(key) }}
+              aria-pressed={filter === key}
+              className={`flex-shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                filter === key
+                  ? 'bg-family-500 text-white'
+                  : 'bg-tint/[0.05] text-ink-secondary active:opacity-70'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Loading skeleton */}
       {loading && (
         <div className="space-y-2">
@@ -438,8 +478,14 @@ export default function InboxPage() {
               {...(emailConnected ? {} : { actionLabel: 'Connect email', onAction: () => { haptic('light'); router.push('/connect/email') } })}
             />
           </GlassCard>
+        ) : visibleItems.length === 0 ? (
+          <GlassCard className="p-5">
+            <p className="text-sm text-ink-tertiary text-center">
+              Nothing in this view — try a different filter.
+            </p>
+          </GlassCard>
         ) : (
-          items.map((item, i) => {
+          visibleItems.map((item, i) => {
           const isExpanded = expandedId === item.id
           const color = priorityColor(item.priority)
           return (

@@ -5,6 +5,15 @@
 // loudly. Still points at the shared kairos-ai API today; will move to a
 // dedicated LifeKeel backend URL once that ships.
 export function getApiBase(): string {
+  // Opt-in same-origin mode: '/api' proxies through the hosting layer
+  // (firebase.json → Cloud Run in prod, next.config rewrites in dev) so
+  // the session cookie is first-party everywhere — including Safari,
+  // where cross-site cookie auth is blocked outright. Set
+  // NEXT_PUBLIC_API_BASE_PATH=/api once the rewrite is verified live.
+  const basePath = process.env.NEXT_PUBLIC_API_BASE_PATH
+  if (basePath) return basePath.replace(/\/$/, '')
+  if (process.env.NEXT_PUBLIC_SAME_ORIGIN_API) return '/api'
+
   const url = process.env.NEXT_PUBLIC_API_URL
 
   if (!url) {

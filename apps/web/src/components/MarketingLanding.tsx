@@ -280,7 +280,7 @@ function FamilyTwinViz() {
         </motion.div>
       </AnimatePresence>
       <div className="mt-3 rounded-lg bg-warning/10 border border-warning/25 px-3 py-2 text-caption font-semibold text-warning leading-snug">
-        &#9888; Sample family — your real scores come from your real data
+        &#9888; Sample family — your real scores come from your real data. Per-member twin views are still maturing in the app today.
       </div>
     </div>
   )
@@ -512,7 +512,7 @@ export function MarketingLanding() {
             Is your family ready if something goes wrong <span className="text-gradient">tomorrow?</span>
           </h1>
           <p className="text-lead text-ink-secondary leading-relaxed mb-3">
-            Keel continuously monitors whether your family is protected &mdash; emergency fund, insurance
+            LifeKeel continuously monitors whether your family is protected &mdash; emergency fund, insurance
             coverage, estate documents, retirement trajectory &mdash; and tells you what&apos;s missing
             before you need to ask.
           </p>
