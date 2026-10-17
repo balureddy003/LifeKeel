@@ -28,19 +28,43 @@ const BANNED: Array<{ name: string; pattern: RegExp }> = [
 
 function copyFiles(): string[] {
   const dirs = ['detectors/family', 'playbooks/family']
-  return dirs.flatMap((d) =>
+  const yaml = dirs.flatMap((d) =>
     fs
       .readdirSync(path.join(ROOT, d))
       .filter((f) => f.endsWith('.yaml'))
       .map((f) => path.join(d, f)),
   )
+  return [...yaml, 'verticals/family/vertical.yaml']
 }
 
-export function findViolations(file: string, text: string): string[] {
+/**
+ * Public web copy is TypeScript/TSX where "buy" and "purchase" are ordinary code
+ * and UI words (a pricing page, a button), so the buy/switch pattern is skipped
+ * there. Recommendation phrasing, best-product claims and named providers still apply.
+ */
+const WEB_BANNED = BANNED.filter((b) => b.name !== 'buy/switch instruction')
+
+function walk(dir: string): string[] {
+  return fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap((e) => {
+    const rel = path.join(dir, e.name)
+    if (e.isDirectory()) return walk(rel)
+    return /\.(ts|tsx)$/.test(e.name) && !/\.test\./.test(e.name) ? [rel] : []
+  })
+}
+
+function webCopyFiles(): string[] {
+  return [
+    'apps/web/src/components/MarketingLanding.tsx',
+    'apps/web/src/app/guides/guides-data.ts',
+    ...walk('apps/web/src/app/blog'),
+  ]
+}
+
+export function findViolations(file: string, text: string, rules = BANNED): string[] {
   const out: string[] = []
   text.split('\n').forEach((line, i) => {
-    if (/^\s*#/.test(line)) return
-    for (const { name, pattern } of BANNED) {
+    if (/^\s*(#|\/\/|\*|\/\*)/.test(line)) return
+    for (const { name, pattern } of rules) {
       if (pattern.test(line)) out.push(`${file}:${i + 1} [${name}] ${line.trim()}`)
     }
   })
@@ -55,6 +79,15 @@ describe('advice rule (CLAUDE.md second rule)', () => {
   it('no detector or playbook copy reads as a personal recommendation', () => {
     const violations = copyFiles().flatMap((f) =>
       findViolations(f, fs.readFileSync(path.join(ROOT, f), 'utf8')),
+    )
+    expect(violations).toEqual([])
+  })
+
+  it('public web copy never reads as a personal recommendation or names a provider', () => {
+    const files = webCopyFiles()
+    expect(files.length).toBeGreaterThan(3)
+    const violations = files.flatMap((f) =>
+      findViolations(f, fs.readFileSync(path.join(ROOT, f), 'utf8'), WEB_BANNED),
     )
     expect(violations).toEqual([])
   })

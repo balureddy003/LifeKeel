@@ -15,12 +15,33 @@ interface CategoryTableEntry {
   category: string
 }
 
+export async function ensureUniqueIndex(db: Db, collectionName: string, key: Record<string, 1 | -1>): Promise<void> {
+  const collection = db.collection(collectionName)
+  const name = Object.entries(key).map(([field, direction]) => `${field}_${direction}`).join('_')
+  if (!await db.listCollections({ name: collectionName }, { nameOnly: true }).hasNext()) {
+    await collection.createIndex(key, { unique: true })
+    return
+  }
+  const existing = (await collection.indexes()).find(index => index.name === name)
+  if (existing && !existing.unique) {
+    const groupKey = Object.fromEntries(Object.keys(key).map(field => [field, `$${field}`]))
+    const duplicate = await collection.aggregate([
+      { $group: { _id: groupKey, count: { $sum: 1 } } },
+      { $match: { count: { $gt: 1 } } },
+      { $limit: 1 },
+    ]).hasNext()
+    if (duplicate) throw new Error(`Cannot make ${collectionName}.${name} unique because duplicate values exist`)
+    await collection.dropIndex(name)
+  }
+  await collection.createIndex(key, { unique: true })
+}
+
 export const migrations: Migration[] = [
   {
     id: '20260606000000-initial-indexes',
     up: async db => {
       await Promise.all([
-        db.collection('tenants').createIndex({ tenant_id: 1 }, { unique: true }),
+        ensureUniqueIndex(db, 'tenants', { tenant_id: 1 }),
         db.collection('tenant_usage').createIndex({ tenant_id: 1, month: 1 }, { unique: true }),
         db.collection('insights').createIndex({ tenant_id: 1, created_at: -1 }),
         db.collection('workflow_runs').createIndex({ tenant_id: 1, created_at: -1 }),
