@@ -54,4 +54,14 @@ jobs:
       - uses: github/codeql-action/init@v3
         with:
           languages: javascript-typescript
+      # Code scanning is not enabled on this repo, so uploading results fails the job.
+      # Keep the SARIF as a workflow artifact instead. To get alerts in the Security tab,
+      # enable code scanning in repo settings, then remove `upload: never` and the artifact step.
       - uses: github/codeql-action/analyze@v3
+        with:
+          upload: never
+          output: codeql-results
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codeql-sarif
+          path: codeql-results
