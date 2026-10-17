@@ -14,6 +14,11 @@ on:
         required: false
         default: false
 
+# One deploy at a time; never cancel a deploy mid-flight.
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
 jobs:
   verify-ci:
     permissions:

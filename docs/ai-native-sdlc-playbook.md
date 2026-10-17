@@ -61,7 +61,7 @@ return path from Operate to Intent is the loop that is not yet automated (G8).
 | 2 Design | Explore, propose, get sign-off | Plan mode, PRD | `CLAUDE.md` (convention) | Convention only |
 | 3 Build | Implement with tests | `CLAUDE.md`, `.claude/skills/`, `.claude/settings.json` hook | PostToolUse advice hook | Partial |
 | 4 Test | Prove it works and stays working | Vitest suites, `detector-evals/`, assistant eval | `ci.yml` | Enforced (assistant live eval is manual) |
-| 5 Review and deploy | Self-review, AI review, human merge, gated deploy | PR template, `claude-review.yml`, deploy workflows | CI, `require-ci.yml`, GitHub Environment | Enforced once the GitHub settings in section 11 exist |
+| 5 Review and deploy | Self-review, AI review, human merge, gated deploy | PR template, `claude-review.yml`, deploy workflows | CI, `require-ci.yml`, GitHub Environment | Partly convention today: this repo's plan cannot enforce branch protection or environment reviewers (see section 6.0) |
 | 6 Maintain | Watch, learn, feed back into intent | `runbooks.yaml`, Dependabot, `security.yml` | Weekly scans | Partial: no production metrics loop |
 
 ## 2. Stage 1: Plan
@@ -236,6 +236,21 @@ tripwire; a test that has never failed is unverified.
 
 ## 6. Stage 5: Review and deploy
 
+### 6.0 What GitHub can and cannot enforce here
+Verified against the live repository: it is private, and the branch-protection
+and ruleset APIs return 403 ("Upgrade to GitHub Pro or make this repository
+public"). The `Production` environment exists but has **no protection rules**,
+and required reviewers are likewise a paid feature for private repos. So today:
+
+- Anyone with write access can push to `main`; "CI must pass" and "a person
+  merges" are team conventions, not controls.
+- The deploy approval pause is **not active**. `require-ci.yml` still checks the
+  SHA, but `workflow_dispatch` runs the workflow file from the chosen branch, so
+  a branch that edits that file can skip the check.
+- Everywhere this document says "blocks" or "required", read it as "fails the
+  check and the author is expected to stop". Sections 6.3 to 6.5 and 11 describe
+  the intended end state once the plan or visibility changes.
+
 ### 6.1 Self-review before the PR
 Run `/code-review` on the diff and fix findings in the same pass. For
 security-sensitive diffs also run `/security-review`.
@@ -254,10 +269,10 @@ keep unrelated changes in separate PRs.
 | `ci.yml` | typecheck, lint, test, build, boot smoke, python services | Yes |
 | `images.yml` | Container builds (path-filtered, weekly) | Yes when triggered |
 | `security.yml` | `pnpm audit --prod --audit-level=high`, gitleaks, CodeQL | Yes (audit baseline cleaned by root `pnpm.overrides`) |
-| `claude-review.yml` | Claude reviews the PR against `CLAUDE.md` | No, advisory; needs `ANTHROPIC_API_KEY` |
+| `claude-review.yml` | Claude reviews the PR against `CLAUDE.md` | No, advisory. **Fails loudly if `ANTHROPIC_API_KEY` is unset** (before that guard it passed having reviewed nothing) |
 
-Make the checks you want enforced into required status checks in branch
-protection (section 11), otherwise "blocks" is only a convention.
+Making these required status checks needs branch protection (section 6.0), which this
+plan does not offer; until then "blocks" is only a convention.
 
 ### 6.4 Human review and merge
 A person reads the PR and merges. Squash-merge keeps `main` linear. Delete the
@@ -330,7 +345,7 @@ an operator notices, files an intent, and it re-enters at stage 1.
 |---|---|---|---|
 | Rule 1: no autonomous irreversible action without a gate | `CLAUDE.md`, ARCHITECTURE tiers | `trust-tier-gate.test.ts`; deploy gate | Caller naming `approvedBy` without a real human decision; new paths that bypass `ActionExecutor` |
 | Rule 2: no regulated advice or arranging | `CLAUDE.md` | `advice-rule.test.ts`, edit hook, prompt-contract test, runtime output guard | Subtle phrasing; copy outside the scanned directories; new prompts |
-| Deploys are human-gated | `CLAUDE.md` | `require-ci.yml`, `production` Environment | Reviewer approves without reading |
+| Deploys are human-gated | `CLAUDE.md` | `require-ci.yml` (bypassable by editing the workflow on a branch); Environment reviewers **not active** on this plan | Everything: the gate is a convention until reviewers or branch protection are available |
 | Supply chain | `SECURITY.md` | `pnpm audit`, gitleaks, CodeQL, Dependabot | Moderate and low advisories (not blocking) |
 
 ## 9. Checklists
@@ -379,16 +394,21 @@ an operator notices, files an intent, and it re-enters at stage 1.
 | G7 | No post-deploy verification or rollback | A bad deploy is found by users | Smoke-test after deploy; document rollback |
 | G8 | No production metrics loop | Maintain does not feed Plan | Define SLOs and alerts; link alerts to intents |
 | G9 | No ADRs | Decisions are lost in PR threads | Add `docs/adr/` and a template |
-| G10 | Branch protection not confirmed | "Blocks merge" may only be convention | Mark the checks required in repo settings |
+| G10 | Branch protection and environment reviewers unavailable on this plan (verified, HTTP 403) | "Blocks merge" and the deploy approval are conventions | Upgrade the plan or make the repo public, then add required checks and reviewers |
+| G11 | `POST /connectors/:id/actions/:action` (`connector-credentials.ts`) runs any connector action for an authenticated tenant with no approval gate; the live-trading checks sit in `trade-executor.ts`, a different path. For Trading 212 that includes `place_market_order`, on the demo or (with `live_mode`) live API | Potential rule 1 bypass | Decision needed: restrict write actions on this route or route them through the approval gate. `trust-tier-gate.test.ts` now allow-lists ConnectorActionExecutor users so new ones surface |
+| G12 | Single maintainer: `CODEOWNERS` is one person | The human review gate is self-review | Add a second reviewer or document the accepted risk |
+| G13 | Advice scan covers detector, family playbook, `verticals/family`, marketing landing, guides and blog copy only; 8 other LLM prompt files have no contract test or eval | Subtle drift in uncovered prompts | Add contract tests per prompt as they change |
+| G14 | PRs bundle unrelated work (PR 35 spans rebrand, MFA and SDLC) | Weak review, painful merges | One concern per PR; enable auto-delete of merged branches |
 
 ## 11. One-time GitHub setup
 
 These live in repository settings and cannot be set from the code.
 
-1. **Environment `production`:** Settings, Environments. Add required
-   reviewers. Optionally restrict deployment branches to `main`.
+1. **Environment `Production`:** it exists but has no rules. Required reviewers
+   need a plan that supports them for private repos (section 6.0). Optionally
+   restrict deployment branches to `main`.
 2. **Secret `ANTHROPIC_API_KEY`:** needed by `claude-review.yml`.
-3. **Branch protection on `main`:** require pull requests, require the
+3. **Branch protection on `main`** (unavailable on the current plan): require pull requests, require the
    `build`, `codeql`, `dependency-audit`, `secret-scan` and `python-services`
    checks, disallow force pushes.
 4. **Code scanning:** CodeQL results appear under Security once the workflow

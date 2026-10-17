@@ -88,3 +88,23 @@ describe('trust-tier gate on social publishing', () => {
     for (const s of sets) expect(s[0]).toMatch(/approved_by/)
   })
 })
+
+/**
+ * ConnectorActionExecutor is the generic runtime for connector write actions
+ * (Slack, LinkedIn, broker orders). It sits outside ActionExecutor, so it needs its
+ * own allow-list: a new caller is a new way to act on a family's or tenant's behalf.
+ */
+describe('trust-tier gate on ConnectorActionExecutor', () => {
+  const ALLOWED_CONNECTOR_CALLERS: Record<string, string> = {
+    'actions/action-executor.ts': 'comments only; the real dispatch uses SendGrid/Twilio/CRM clients',
+    'marketing/social-publisher.ts': 'X/Facebook publishing; gated by approved state, see social publishing tests',
+    'routes/marketing-posts.ts': 'publishPost after approval, plus read-only engagement lookups',
+    'routes/connector-credentials.ts':
+      'POST /connectors/:id/actions/:action runs any connector action for an authenticated tenant, with NO approval gate (known gap, see playbook G11)',
+  }
+
+  it('only allow-listed files reference ConnectorActionExecutor', () => {
+    const users = files.filter((f) => /\bConnectorActionExecutor\b/.test(f.text)).map((f) => f.rel).sort()
+    expect(users).toEqual(Object.keys(ALLOWED_CONNECTOR_CALLERS).sort())
+  })
+})
