@@ -20,7 +20,12 @@
       "Bash(git push --force*)",
       "Bash(git push -f*)",
       "Bash(git push * --force*)",
-      "Bash(gh repo delete*)"
+      "Bash(gh repo delete*)",
+      "Read(./**/node_modules/**)",
+      "Read(./**/dist/**)",
+      "Read(./**/.next/**)",
+      "Read(./**/.turbo/**)",
+      "Read(./pnpm-lock.yaml)"
     ]
   }
 }

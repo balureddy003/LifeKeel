@@ -56,6 +56,7 @@ jobs:
     # Environments > production); the job pauses here until a person approves.
     environment: production
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
       id-token: write
