@@ -35,7 +35,7 @@ export default function LifeEventsPage() {
   const [affectedMemberId, setAffectedMemberId] = useState<string>('')
   // G6: the reporter's own account of the situation ("Mum's at County
   // Hospital — kids need pickup Thursday"). Optional, stored verbatim,
-  // shown to the family on the event page and used to ground Ask Oak.
+  // shown to the family on the event page and used to ground Ask Keel.
   const [context, setContext] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -86,7 +86,7 @@ export default function LifeEventsPage() {
     <div className="px-5 pt-2 space-y-5">
       <PageHeader
         title="Report a life event"
-        subtitle="Tell Oak what's actually happening and get a plan based on your real data"
+        subtitle="Tell Keel what's actually happening and get a plan based on your real data"
       />
 
       {!selectedType ? (
@@ -173,7 +173,7 @@ export default function LifeEventsPage() {
 
             <div className="mb-4">
               <label htmlFor="life-event-context" className="text-xs text-ink-tertiary mb-2 block">
-                Anything Oak and the family should know? (optional)
+                Anything Keel and the family should know? (optional)
               </label>
               <textarea
                 id="life-event-context"
@@ -185,7 +185,7 @@ export default function LifeEventsPage() {
                 className="glass-input w-full rounded-xl px-4 py-3 text-sm text-ink-primary outline-none resize-none"
               />
               <p className="text-[11px] text-ink-tertiary mt-1">
-                Shared with your family on this event, and Oak uses it to answer questions about what happened.
+                Shared with your family on this event, and Keel uses it to answer questions about what happened.
               </p>
             </div>
 

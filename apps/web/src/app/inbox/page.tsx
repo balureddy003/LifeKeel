@@ -280,7 +280,7 @@ export default function InboxPage() {
   }, [toast, announceDismissal])
 
   const handleAction = (item: InboxItem) => {
-    // Oak's recommendations link to where the user can act on them; the
+    // Keel's recommendations link to where the user can act on them; the
     // item stays until they dismiss it or the underlying gap is resolved.
     if (item.route) {
       haptic('light')
@@ -299,8 +299,8 @@ export default function InboxPage() {
     <PullToRefresh onRefresh={loadInbox}>
     <div className="px-5 pt-2 space-y-4">
       <PageHeader
-        title="From Oak"
-        subtitle="What Oak noticed — and what to do next"
+        title="From Keel"
+        subtitle="What Keel noticed — and what to do next"
         action={
           unreadCount > 0 && (
             <motion.span
@@ -325,12 +325,12 @@ export default function InboxPage() {
         <GlassCard className="p-4 border-family-500/20">
           <div className="flex items-center gap-2 mb-2">
             <Bot size={18} className="text-family-400" />
-            <span className="text-sm font-semibold text-family-400">Oak's summary</span>
+            <span className="text-sm font-semibold text-family-400">Keel's summary</span>
           </div>
           <p className="text-sm text-ink-secondary leading-relaxed">
             {unreadCount > 0
-              ? `Oak has ${unreadCount} recommendation${unreadCount === 1 ? '' : 's'} for you to look at.`
-              : 'Nothing new — you have seen everything Oak has for you.'}
+              ? `Keel has ${unreadCount} recommendation${unreadCount === 1 ? '' : 's'} for you to look at.`
+              : 'Nothing new — you have seen everything Keel has for you.'}
           </p>
         </GlassCard>
       </motion.div>
@@ -344,7 +344,7 @@ export default function InboxPage() {
               <Bot size={20} className="text-family-400 flex-shrink-0 mt-0.5" />
               <div className="flex-1">
               <div className="text-sm font-semibold text-ink-secondary">Email connected</div>
-              <p className="text-xs text-ink-tertiary mt-0.5">New mail is checked every 15 minutes. Oak only keeps insurance and policy emails.</p>
+              <p className="text-xs text-ink-tertiary mt-0.5">New mail is checked every 15 minutes. Keel only keeps insurance and policy emails.</p>
               </div>
             </div>
             <div className="flex gap-2 mt-3">
@@ -424,7 +424,7 @@ export default function InboxPage() {
             <EmptyState
               icon={Bot}
               title="Couldn't load your recommendations"
-              description="Oak couldn't reach the server just now — this isn't the same as having nothing to show you. Check your connection and try again."
+              description="Keel couldn't reach the server just now — this isn't the same as having nothing to show you. Check your connection and try again."
               actionLabel="Try again"
               onAction={retryLoad}
             />
@@ -434,7 +434,7 @@ export default function InboxPage() {
             <EmptyState
               icon={Bot}
               title="Nothing needs your attention"
-              description="Oak will post here when it spots a gap, a renewal, or policy details in your email."
+              description="Keel will post here when it spots a gap, a renewal, or policy details in your email."
               {...(emailConnected ? {} : { actionLabel: 'Connect email', onAction: () => { haptic('light'); router.push('/connect/email') } })}
             />
           </GlassCard>
@@ -474,8 +474,8 @@ export default function InboxPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className="text-xs text-ink-tertiary">
-                        {item.source === 'Oak'
-                          ? 'Oak noticed'
+                        {item.source === 'Keel'
+                          ? 'Keel noticed'
                           : `Found in your email${item.policy?.provider ? ` · ${item.policy.provider}` : ''}${item.threadCount ? ` · ${item.threadCount} messages` : ''}`}
                       </span>
                       {!item.read && (
@@ -498,7 +498,7 @@ export default function InboxPage() {
                     </div>
                     {!isExpanded && (
                       <p className="text-xs text-ink-tertiary mt-1 line-clamp-2">
-                        {/* OAK-016: every item here is an LLM's read of an inbound
+                        {/* KEEL-016: every item here is an LLM's read of an inbound
                             email — a small always-visible marker so that's clear
                             before the user ever taps in, not just in the expanded
                             "AI explains" panel below. */}
@@ -523,7 +523,7 @@ export default function InboxPage() {
                           <div className="flex items-center gap-1.5 mb-1.5">
                             <Bot size={14} className="text-family-400" />
                             <span className="text-xs font-semibold text-family-400">
-                              {item.source === 'Oak' ? 'Why Oak flagged this' : 'What the email says'}
+                              {item.source === 'Keel' ? 'Why Keel flagged this' : 'What the email says'}
                             </span>
                           </div>
                           <p className="text-sm text-ink-secondary leading-relaxed">
@@ -554,7 +554,7 @@ export default function InboxPage() {
                           ) : policyDraft ? (
                             <>
                               <div className="text-xs text-ink-tertiary mb-3">
-                                Check these before adding — Oak filled them in from the email, especially the policy type.
+                                Check these before adding — Keel filled them in from the email, especially the policy type.
                               </div>
                               <PolicyReviewForm
                                 draft={policyDraft}
@@ -605,14 +605,14 @@ export default function InboxPage() {
         )}
       </div>
 
-      {/* Referral prompt — the inbox is where Oak proves value, so it's the
+      {/* Referral prompt — the inbox is where Keel proves value, so it's the
           honest place to ask for a share. Snoozes 14 days on dismiss. */}
       {items.length > 0 && <ReferralPrompt />}
 
       <div className="glass rounded-2xl p-4 flex items-start gap-2">
         <Info size={18} className="text-ink-tertiary flex-shrink-0 mt-0.5" />
         <p className="text-xs text-ink-tertiary leading-relaxed">
-          This isn’t your mailbox. Oak reads your connected email only for insurance and policy details, and ignores everything else. For information only — not advice.
+          This isn’t your mailbox. Keel reads your connected email only for insurance and policy details, and ignores everything else. For information only — not advice.
         </p>
       </div>
     </div>
@@ -621,10 +621,10 @@ export default function InboxPage() {
   )
 }
 
-const REFERRAL_SNOOZE_KEY = 'agentoak_referral_prompt_snoozed'
+const REFERRAL_SNOOZE_KEY = 'lifekeel_referral_prompt_snoozed'
 const REFERRAL_SNOOZE_MS = 14 * 24 * 60 * 60 * 1000
 
-/** "Share Oak with another family" — shown at the bottom of the inbox,
+/** "Share Keel with another family" — shown at the bottom of the inbox,
  *  the moment the product has just demonstrated value (there are items
  *  to read). Dismiss snoozes 14 days so it can't nag. */
 function ReferralPrompt() {
@@ -651,7 +651,7 @@ function ReferralPrompt() {
     haptic('light')
     if (navigator.share) {
       try {
-        await navigator.share({ title: 'Agent Oak', text: 'Check your family\'s readiness — free, about a minute.', url: link })
+        await navigator.share({ title: 'LifeKeel', text: 'Check your family\'s readiness — free, about a minute.', url: link })
         return
       } catch { /* user cancelled or unsupported — fall through to copy */ }
     }

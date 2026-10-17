@@ -9,7 +9,7 @@
  *   PATCH /family/notifications — organizer: channels order, quiet hours,
  *                                 digest/urgency floor, heartbeat fields.
  *
- * Tier 0 bookkeeping — these prefs shape what Oak sends; nothing here
+ * Tier 0 bookkeeping — these prefs shape what Keel sends; nothing here
  * sends anything itself.
  */
 import type { FastifyInstance } from 'fastify'
@@ -46,7 +46,7 @@ function withDefaults(prefs: Partial<DeliveryPreferences> | null) {
     web_push_enabled: prefs?.web_push_enabled ?? false,
     mobile_push_enabled: prefs?.mobile_push_enabled ?? false,
     min_urgency: prefs?.min_urgency ?? 'low',
-    business_name: prefs?.business_name ?? 'Agent Oak',
+    business_name: prefs?.business_name ?? 'LifeKeel',
     quiet_hours_start: prefs?.quiet_hours_start ?? null,
     quiet_hours_end: prefs?.quiet_hours_end ?? null,
     digest_mode: prefs?.digest_mode ?? false,

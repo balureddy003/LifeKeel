@@ -7,7 +7,7 @@
  * original three vault fields are kept — vault doc_types remain
  * load-bearing — and the legacy register fields layer on top.
  *
- * Everything here is family-declared information: a count of what Oak
+ * Everything here is family-declared information: a count of what Keel
  * has on file, never a judgement about legal validity or ownership.
  * Every collection read tolerates fake dbs and absent collections —
  * "not entered" yields zeros, it never throws and never reads as a
@@ -15,7 +15,7 @@
  */
 
 import type { Db } from 'mongodb'
-import { getTenantCollection } from '@agentoak/platform'
+import { getTenantCollection } from '@lifekeel/platform'
 import { ageFromDob } from '../lib/family-permissions.js'
 import { ESTATE_VAULT_CATEGORY } from '../routes/documents.js'
 import type { LegacyDocument, LegacyContact } from '../routes/family-legacy.js'

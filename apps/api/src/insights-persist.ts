@@ -14,8 +14,8 @@
  * tick) just piled up a near-duplicate insight every cycle, forever.
  */
 import type { Db } from 'mongodb'
-import type { Insight } from '@agentoak/engine'
-import { getTenantCollection } from '@agentoak/platform'
+import type { Insight } from '@lifekeel/engine'
+import { getTenantCollection } from '@lifekeel/platform'
 import { ensureVerifiedMoments } from './verified-moments.js'
 import type { DeliveryRouter } from './delivery/delivery-router.js'
 import { buildDedupeKey, emitReadinessEvent } from './feed/emit.js'
@@ -202,8 +202,8 @@ export async function persistAndDeliverInsights(
       const ordinal = repeatCount === 2 ? 'second' : repeatCount === 3 ? 'third' : `${repeatCount}th`
       const suffix =
         changed.length > 0
-          ? ` Oak has flagged this before — this is the ${ordinal} time. Since then: ${changed.join(', ')} changed.`
-          : ` Oak has flagged this before — this is the ${ordinal} time. The figures on file are unchanged since the last flag.`
+          ? ` Keel has flagged this before — this is the ${ordinal} time. Since then: ${changed.join(', ')} changed.`
+          : ` Keel has flagged this before — this is the ${ordinal} time. The figures on file are unchanged since the last flag.`
       insight.reasoning = `${insight.reasoning}${suffix}`
       // Stored on the doc (not in the engine schema — engine output is
       // generated per-fire; the count is a persistence-layer concern the

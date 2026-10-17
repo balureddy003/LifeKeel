@@ -13,7 +13,7 @@
  * as emit.ts itself.
  */
 import type { Db } from 'mongodb'
-import { getTenantCollection } from '@agentoak/platform'
+import { getTenantCollection } from '@lifekeel/platform'
 import type { ReadinessEventDoc } from './emit.js'
 
 export interface FeedMuteDoc extends Record<string, unknown> {

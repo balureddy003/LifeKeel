@@ -10,7 +10,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Engine, type Insight } from '@agentoak/engine'
+import { Engine, type Insight } from '@lifekeel/engine'
 import { runStaleProfileEvaluationSweep, isSubstantivelyComplete } from '../stale-profile-evaluation.js'
 import type { FinancialProfile } from '../../routes/family-financial-profile.js'
 

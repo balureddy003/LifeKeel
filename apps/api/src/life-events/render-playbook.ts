@@ -16,7 +16,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import yaml from 'js-yaml'
-import { repoRoot, formatMoney } from '@agentoak/platform'
+import { repoRoot, formatMoney } from '@lifekeel/platform'
 import type { FinancialProfile } from '../routes/family-financial-profile.js'
 
 export type LifeEventType = 'job_loss' | 'bereavement' | 'disability' | 'medical' | 'car' | 'property' | 'travel'
@@ -27,7 +27,7 @@ export interface PlaybookStep {
   body: string
   /** Eligible for the prepare/draft affordance (PRD-103's insight.prepare, reused). */
   contact: boolean
-  /** Real phone/email Oak has on file for this step, when a matching policy states one — see resolveStepContacts. */
+  /** Real phone/email Keel has on file for this step, when a matching policy states one — see resolveStepContacts. */
   contacts?: StepContact[]
   /**
    * The family's data already covers this step's concern — e.g. income
@@ -269,7 +269,7 @@ function renderCarStep(stepId: string, profile: FinancialProfile): string {
       const list = car.map((p) => p.provider + (p.policy_number ? ` (policy ${p.policy_number})` : '')).join(', ')
       return `Based on your real data, your car insurance on file: ${list}. Report the accident to the insurer within their notification window — have the policy number and the other party's details ready.`
     }
-    return "We don't have a car insurance policy on file for your family. If you're covered, find the policy number and the insurer's claim line now — and add the policy to your financial profile later so Oak can quote it back to you here."
+    return "We don't have a car insurance policy on file for your family. If you're covered, find the policy number and the insurer's claim line now — and add the policy to your financial profile later so Keel can quote it back to you here."
   }
   return ''
 }

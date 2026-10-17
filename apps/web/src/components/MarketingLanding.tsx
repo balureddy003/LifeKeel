@@ -2,14 +2,14 @@
 
 /**
  * The public marketing page shown at "/" to a logged-out visitor — not the
- * compact "Agent Oak / Get Started / I already have an account" fallback
+ * compact "LifeKeel / Get Started / I already have an account" fallback
  * AuthGate shows for any OTHER route hit while logged out (a shared link to
  * /inbox, say), which stays as-is; this is specifically the front door.
  *
  * Every claim here is something verified working in the app this session —
  * no feature list, no security claim, is aspirational. In particular: this
- * page does NOT claim Oak acts autonomously on the family's behalf (the
- * "Agent Oak" product vision's Act/Escalate layer) — that isn't built yet.
+ * page does NOT claim Keel acts autonomously on the family's behalf (the
+ * "LifeKeel" product vision's Act/Escalate layer) — that isn't built yet.
  * See ARCHITECTURE.md for the full vision and what's actually shipped.
  *
  * Content strategy is grounded in the competitive analysis (market-positioning-
@@ -20,9 +20,9 @@
  *   2. "Per-member, not per-household" → Claim 2 — no competitor does per-
  *      member reasoning within a shared family
  *   3. "Crisis-native" → Claim 4 — crisis playbooks built from real data,
- *      not generic checklists (Empathy is post-event; Oak is pre-event)
+ *      not generic checklists (Empathy is post-event; Keel is pre-event)
  *   4. Neutrality → Claim 5 — every insurance gap tool has a commission;
- *      Oak's subscription-only model is structurally conflict-free
+ *      Keel's subscription-only model is structurally conflict-free
  */
 
 import { useEffect, useState, useRef, useCallback } from 'react'
@@ -65,7 +65,7 @@ import { track } from '@/lib/growth-track'
 import { captureLead } from '@/lib/api'
 import { ScoreRing } from '@/components/Glass'
 
-// `plus` marks a card whose headline capability is Oak Plus-gated (verified
+// `plus` marks a card whose headline capability is Keel Plus-gated (verified
 // against the same free/paid split /upload and /upgrade already enforce —
 // upload/connect is free, the AI reading of what you uploaded/connected is
 // not). Leaving these unmarked previously meant the free feature grid quietly
@@ -73,10 +73,10 @@ import { ScoreRing } from '@/components/Glass'
 // here is aspirational" claim and the upgrade pitch itself.
 const FEATURES = [
   { icon: Siren, color: '#fbbf24', title: 'Emergency Mode', body: 'One tap, always reachable, drops straight into a guided checklist for the situation you’re actually in — no menu hunting under stress.' },
-  { icon: MessageCircle, color: '#4ade80', title: '"What happens if...?" — answered', body: '"What happens if I lose my job?" gets a real, specific answer built from your data — not a canned FAQ, and not advice, just what you told Oak.' },
-  { icon: HeartPulse, color: '#f87171', title: 'A readiness snapshot, not a score to chase', body: 'Protection, wealth, goals, and savings, read from what you’ve told Oak — a starting point for your own plan, not a recommendation.' },
-  { icon: Wand2, color: '#60a5fa', title: 'Upload a document, skip the retyping', body: 'Photograph an insurance policy or pension statement to store it securely, free. Oak Plus reads the provider, policy number, amount, and dates for you automatically.', plus: true },
-  { icon: Mail, color: '#9c92ff', title: 'Connect any email, not just Gmail', body: 'Gmail, Outlook, Yahoo, iCloud, or your own domain — free to connect. Oak Plus summarizes every financial email in plain language as it arrives.', plus: true },
+  { icon: MessageCircle, color: '#4ade80', title: '"What happens if...?" — answered', body: '"What happens if I lose my job?" gets a real, specific answer built from your data — not a canned FAQ, and not advice, just what you told Keel.' },
+  { icon: HeartPulse, color: '#f87171', title: 'A readiness snapshot, not a score to chase', body: 'Protection, wealth, goals, and savings, read from what you’ve told Keel — a starting point for your own plan, not a recommendation.' },
+  { icon: Wand2, color: '#60a5fa', title: 'Upload a document, skip the retyping', body: 'Photograph an insurance policy or pension statement to store it securely, free. Keel Plus reads the provider, policy number, amount, and dates for you automatically.', plus: true },
+  { icon: Mail, color: '#9c92ff', title: 'Connect any email, not just Gmail', body: 'Gmail, Outlook, Yahoo, iCloud, or your own domain — free to connect. Keel Plus summarizes every financial email in plain language as it arrives.', plus: true },
   { icon: Command, color: 'rgb(var(--family-400))', title: 'A command palette, if you want it', body: 'Cmd+K jumps anywhere in the app instantly. Built for the parent who wants an answer in three seconds, not three taps.' },
 ]
 
@@ -137,18 +137,18 @@ function HeroPreview() {
   )
 }
 
-// ── Interactive "detector timeline" — shows how Oak watches continuously ──
+// ── Interactive "detector timeline" — shows how Keel watches continuously ──
 // This is the single most differentiated feature: no competitor runs background
 // detection. LifeOS requires a conversation. PolicyPilot is one-shot. Origin's
 // daily checks are the closest, but don't cover protection/crisis. This visual
 // makes the "watches while you don't" claim *experiential*, not textual.
 const DETECTOR_EVENTS = [
-  { time: 'Monday 9:14 AM', icon: Eye, color: '#60a5fa', label: 'Profile updated', detail: 'You updated your household income. Oak re-evaluated all 9 detectors automatically.' },
+  { time: 'Monday 9:14 AM', icon: Eye, color: '#60a5fa', label: 'Profile updated', detail: 'You updated your household income. Keel re-evaluated all 9 detectors automatically.' },
   { time: 'Monday 9:14 AM', icon: AlertTriangle, color: '#fbbf24', label: 'Protection gap widened', detail: 'Higher income means your family needs more coverage. Life cover now £180K short of the 10× guideline.' },
-  { time: 'Tuesday', icon: Eye, color: '#4ade80', label: 'Daily sweep', detail: 'No profile changes. Oak checked anyway — detectors run daily even when nobody logs in.' },
-  { time: 'Thursday 2:31 PM', icon: Upload, color: '#9c92ff', label: 'Policy uploaded', detail: 'You uploaded a life insurance PDF. Oak Plus extracted £350K cover, auto-updated your profile.' },
+  { time: 'Tuesday', icon: Eye, color: '#4ade80', label: 'Daily sweep', detail: 'No profile changes. Keel checked anyway — detectors run daily even when nobody logs in.' },
+  { time: 'Thursday 2:31 PM', icon: Upload, color: '#9c92ff', label: 'Policy uploaded', detail: 'You uploaded a life insurance PDF. Keel Plus extracted £350K cover, auto-updated your profile.' },
   { time: 'Thursday 2:31 PM', icon: CheckCircle2, color: '#4ade80', label: 'Gap closed', detail: 'Protection gap resolved — your cover now exceeds the 10× income guideline. Insight auto-resolved.' },
-  { time: 'Next month', icon: Bell, color: '#f87171', label: 'Renewal approaching', detail: 'Your home insurance renews in 45 days. Oak flagged it before you forgot — no conversation needed.' },
+  { time: 'Next month', icon: Bell, color: '#f87171', label: 'Renewal approaching', detail: 'Your home insurance renews in 45 days. Keel flagged it before you forgot — no conversation needed.' },
 ]
 
 function DetectorTimeline() {
@@ -203,7 +203,7 @@ function DetectorTimeline() {
 // ── Family twin visualization — per-member reasoning (Claim 2) ────────────
 // This is genuinely novel: no competitor found does per-member financial
 // reasoning within a shared household. Origin is household-level. Monarch is
-// shared accounts. Trustworthy is document-level. Oak's member twin gives each
+// shared accounts. Trustworthy is document-level. Keel's member twin gives each
 // person their own readiness view scoped to their life stage.
 const FAMILY_TWINS = [
   {
@@ -286,9 +286,9 @@ function FamilyTwinViz() {
   )
 }
 
-// ── "How Oak is different" — competitive positioning without naming names ──
+// ── "How Keel is different" — competitive positioning without naming names ──
 // Maps directly to market-positioning-october-2026.md's quadrant:
-//   Upper-left (proactive + protection/readiness) = Oak — least contested
+//   Upper-left (proactive + protection/readiness) = Keel — least contested
 //   Lower-left (reactive + protection) = vault/insurance tools
 //   Upper-right (proactive + wealth) = Origin-style advisors
 //   Lower-right (reactive + wealth) = PFM/budgeting apps
@@ -296,33 +296,33 @@ const ALTERNATIVES = [
   {
     category: 'Budgeting apps',
     what: 'Track what you spent yesterday',
-    oak: 'Oak tells you what would happen if your income stopped tomorrow',
+    keel: 'Keel tells you what would happen if your income stopped tomorrow',
     color: '#9c92ff',
   },
   {
     category: 'AI financial advisors',
     what: 'Need you to ask a question first',
-    oak: 'Oak surfaces what\'s wrong before you think to ask — detectors run daily, even when nobody logs in',
+    keel: 'Keel surfaces what\'s wrong before you think to ask — detectors run daily, even when nobody logs in',
     color: '#60a5fa',
   },
   {
     category: 'Insurance gap tools',
     what: 'Score one policy, then recommend their own products',
-    oak: 'Oak monitors every policy continuously and has zero commission relationships — subscription only',
+    keel: 'Keel monitors every policy continuously and has zero commission relationships — subscription only',
     color: '#fbbf24',
   },
   {
     category: 'Document vaults',
     what: 'Store your files — you search, you query',
-    oak: 'Oak reads, extracts, and reasons over what you upload — then tells you what\'s missing',
+    keel: 'Keel reads, extracts, and reasons over what you upload — then tells you what\'s missing',
     color: '#4ade80',
   },
 ]
 
 // Warms up the upgrade pitch right before the pricing decision, the same
 // "show, don't tell" pattern /upgrade's own ExtractionPreview uses — a
-// visitor sees what Oak Plus actually does instead of reading a bullet point.
-function OakPlusSpotlight() {
+// visitor sees what Keel Plus actually does instead of reading a bullet point.
+function LifeKeelPlusSpotlight() {
   const fields = [
     { label: 'Provider', value: 'AllState Insurance' },
     { label: 'Policy number', value: 'HO-88213-A' },
@@ -334,13 +334,13 @@ function OakPlusSpotlight() {
     <div className="max-w-6xl mx-auto px-6 sm:px-10 py-10 sm:py-16 grid lg:grid-cols-2 gap-10 items-center">
       <div className="order-2 lg:order-1">
         <div className="inline-flex items-center gap-1.5 text-footnote font-bold uppercase tracking-wide text-family-400 mb-3">
-          <Sparkles size={12} /> Oak Plus
+          <Sparkles size={12} /> Keel Plus
         </div>
         <h2 className="text-title-sm lg:text-title-md font-bold mb-3 leading-tight">
-          Skip the retyping &mdash; Oak reads your documents for you.
+          Skip the retyping &mdash; Keel reads your documents for you.
         </h2>
         <p className="text-sm text-ink-secondary leading-relaxed max-w-md mb-5">
-          Photograph an insurance policy or pension statement and Oak Plus pulls out the provider, policy
+          Photograph an insurance policy or pension statement and Keel Plus pulls out the provider, policy
           number, amount, and renewal date automatically &mdash; no manual entry, no re-typing numbers off a PDF.
         </p>
         <Link href="/welcome" onClick={() => { haptic('light'); track('landing_get_started_click', { location: 'plus_spotlight' }) }} className="inline-block">
@@ -419,7 +419,7 @@ function MarketingNav() {
       <div className="max-w-6xl mx-auto px-6 sm:px-10 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2 min-h-0">
           <img src="/icon.svg" alt="" width={30} height={30} className="rounded-[7px] flex-shrink-0" />
-          <span className="text-callout font-bold tracking-tight">Agent Oak</span>
+          <span className="text-callout font-bold tracking-tight">LifeKeel</span>
         </Link>
         <nav className="hidden md:flex items-center gap-7 text-subhead font-medium text-ink-secondary">
           <a href="#how-it-works" className="hover:text-ink-primary transition-colors">How it works</a>
@@ -512,7 +512,7 @@ export function MarketingLanding() {
             Is your family ready if something goes wrong <span className="text-gradient">tomorrow?</span>
           </h1>
           <p className="text-lead text-ink-secondary leading-relaxed mb-3">
-            Oak continuously monitors whether your family is protected &mdash; emergency fund, insurance
+            Keel continuously monitors whether your family is protected &mdash; emergency fund, insurance
             coverage, estate documents, retirement trajectory &mdash; and tells you what&apos;s missing
             before you need to ask.
           </p>
@@ -579,9 +579,9 @@ export function MarketingLanding() {
         </p>
         <div className="grid gap-6 sm:grid-cols-3">
           {[
-            { step: '1', icon: Upload, title: 'Tell Oak about your family', body: 'Income, savings, insurance, dependents. A short form — or upload a document and Oak reads it for you.' },
+            { step: '1', icon: Upload, title: 'Tell Keel about your family', body: 'Income, savings, insurance, dependents. A short form — or upload a document and Keel reads it for you.' },
             { step: '2', icon: BarChart3, title: 'See your readiness score', body: 'Five health domains scored from your own numbers: protection, wealth, goals, savings, and estate. No guesswork — the math is visible.' },
-            { step: '3', icon: Shield, title: 'Get a plan before you need one', body: 'What happens if you lose your job next month? Oak builds a step-by-step playbook from your real data — not a generic checklist.' },
+            { step: '3', icon: Shield, title: 'Get a plan before you need one', body: 'What happens if you lose your job next month? Keel builds a step-by-step playbook from your real data — not a generic checklist.' },
           ].map((s) => (
             <motion.div key={s.step} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center">
               <div className="w-12 h-12 rounded-2xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mx-auto mb-4">
@@ -601,18 +601,18 @@ export function MarketingLanding() {
           user action — the single feature no competitor replicates. */}
       <div className="max-w-6xl mx-auto px-6 sm:px-10 py-10 sm:py-20 grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
         <div className="max-w-md">
-          <div className="text-xs font-bold uppercase tracking-wider text-family-400 mb-3">What makes Oak different</div>
+          <div className="text-xs font-bold uppercase tracking-wider text-family-400 mb-3">What makes Keel different</div>
           <h2 className="text-title-md lg:text-title-lg font-bold mb-3 leading-tight">
             A system that watches while you don&apos;t.
           </h2>
           <p className="text-sm text-ink-secondary leading-relaxed mb-4">
-            Most financial tools wait for you to ask a question. Oak runs 9 detectors across your
+            Most financial tools wait for you to ask a question. Keel runs 9 detectors across your
             family&apos;s protection, savings, retirement, education, debt, and estate &mdash;
             <strong> every day, even when nobody logs in</strong>.
           </p>
           <p className="text-sm text-ink-secondary leading-relaxed mb-4">
             Upload a new policy? Detectors re-evaluate instantly. Income changes? Gaps are recalculated
-            before you close the tab. Nothing happens for six months? Oak flags that too.
+            before you close the tab. Nothing happens for six months? Keel flags that too.
           </p>
           <div className="flex items-center gap-3 text-sm text-ink-tertiary">
             <div className="flex items-center gap-1.5">
@@ -650,20 +650,20 @@ export function MarketingLanding() {
           </p>
           <Link href="/readiness" onClick={() => { haptic('light'); track('landing_quiz_click', { location: 'twin_section' }) }}>
             <motion.div whileTap={{ scale: 0.97 }} className="inline-flex items-center gap-2 text-sm font-semibold text-family-400">
-              See what Oak would say about your family <ArrowRight size={14} />
+              See what Keel would say about your family <ArrowRight size={14} />
             </motion.div>
           </Link>
         </div>
       </div>
 
       {/* ═══ DIFFERENTIATOR 3: Crisis-native ═══
-          Maps to Claim 4. "What Empathy does after the crisis, Oak does before."
+          Maps to Claim 4. "What Empathy does after the crisis, Keel does before."
           Strongest competitive differentiator per the gap review (8/10). */}
       <div className="max-w-6xl mx-auto px-6 sm:px-10 py-10 sm:py-20">
         <div className="text-center mb-10">
           <div className="text-xs font-bold uppercase tracking-wider text-family-400 mb-3">Crisis-native, not crisis-adjacent</div>
           <h2 className="text-title-md lg:text-title-lg font-bold mb-3">
-            When something goes wrong, Oak already has your plan.
+            When something goes wrong, Keel already has your plan.
           </h2>
           <p className="text-sm text-ink-tertiary max-w-lg mx-auto leading-relaxed">
             Not a generic emergency checklist. A step-by-step playbook built from your real income,
@@ -676,7 +676,7 @@ export function MarketingLanding() {
               icon: Siren,
               color: '#fbbf24',
               scenario: 'Job loss, two kids in school',
-              answer: 'Oak shows your exact runway: 4.2 months of expenses covered, which bills to pause first, and whether your income protection would replace enough.',
+              answer: 'Keel shows your exact runway: 4.2 months of expenses covered, which bills to pause first, and whether your income protection would replace enough.',
             },
             {
               icon: HeartPulse,
@@ -688,25 +688,25 @@ export function MarketingLanding() {
               icon: Users,
               color: '#4ade80',
               scenario: 'New baby arriving in March',
-              answer: 'Oak recalculates everything at once: protection gap jumps (new dependent), emergency fund target rises, and an education savings runway starts at 18 years.',
+              answer: 'Keel recalculates everything at once: protection gap jumps (new dependent), emergency fund target rises, and an education savings runway starts at 18 years.',
             },
             {
               icon: Clock,
               color: '#60a5fa',
               scenario: 'Retirement in 12 years, unsure if on track',
-              answer: 'Oak shows your projected retirement age vs. your target, the monthly contribution that would close the gap, and whether contributions alone can do it.',
+              answer: 'Keel shows your projected retirement age vs. your target, the monthly contribution that would close the gap, and whether contributions alone can do it.',
             },
             {
               icon: FileText,
               color: '#9c92ff',
               scenario: 'Three insurance policies, no idea what they cover',
-              answer: 'Upload them. Oak extracts provider, amounts, and renewal dates, then flags overlaps and gaps against your household\'s actual need.',
+              answer: 'Upload them. Keel extracts provider, amounts, and renewal dates, then flags overlaps and gaps against your household\'s actual need.',
             },
             {
               icon: Shield,
               color: 'rgb(var(--family-400))',
               scenario: 'No will, no power of attorney, two dependents',
-              answer: 'Oak flags exactly what\'s missing from your estate — not legal advice, but the prompt to have the conversation with a solicitor before you need to.',
+              answer: 'Keel flags exactly what\'s missing from your estate — not legal advice, but the prompt to have the conversation with a solicitor before you need to.',
             },
           ].map((s) => (
             <motion.div key={s.scenario} initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="glass rounded-2xl p-4 sm:p-5">
@@ -722,13 +722,13 @@ export function MarketingLanding() {
         </div>
       </div>
 
-      {/* ═══ "How Oak is different" — competitive contrast without naming names ═══
-          The market-positioning doc's quadrant: Oak is upper-left (proactive +
+      {/* ═══ "How Keel is different" — competitive contrast without naming names ═══
+          The market-positioning doc's quadrant: Keel is upper-left (proactive +
           protection). Every other quadrant is named by *category*, never brand. */}
       <div className="max-w-4xl mx-auto px-6 sm:px-10 py-10 sm:py-16">
         <h2 className="text-title-md lg:text-title-lg font-bold text-center mb-2">You&apos;ve probably tried the alternatives.</h2>
         <p className="text-sm text-ink-tertiary text-center mb-7 sm:mb-10 max-w-md mx-auto">
-          Oak isn&apos;t another budgeting app, another AI chatbot, or another insurance quiz. Here&apos;s what it replaces.
+          Keel isn&apos;t another budgeting app, another AI chatbot, or another insurance quiz. Here&apos;s what it replaces.
         </p>
         <div className="space-y-3">
           {ALTERNATIVES.map((alt) => (
@@ -743,8 +743,8 @@ export function MarketingLanding() {
                   <p className="text-footnote text-ink-secondary leading-relaxed mt-1">{alt.what}</p>
                 </div>
                 <div>
-                  <span className="text-caption font-bold uppercase tracking-wide text-family-400">What Oak does instead</span>
-                  <p className="text-footnote text-ink-secondary leading-relaxed mt-1">{alt.oak}</p>
+                  <span className="text-caption font-bold uppercase tracking-wide text-family-400">What Keel does instead</span>
+                  <p className="text-footnote text-ink-secondary leading-relaxed mt-1">{alt.keel}</p>
                 </div>
               </div>
             </motion.div>
@@ -759,9 +759,9 @@ export function MarketingLanding() {
             Most finance apps fake confidence.<br />This one doesn&apos;t.
           </h2>
           <p className="text-sm text-ink-secondary leading-relaxed max-w-md">
-            Before you connect anything, Agent Oak shows sample numbers so you can see what it does &mdash; clearly
+            Before you connect anything, LifeKeel shows sample numbers so you can see what it does &mdash; clearly
             labeled as samples, not dressed up as yours. The moment real data replaces them, the label disappears.
-            Oak organizes what you tell it and helps you prepare &mdash; it doesn&apos;t recommend investments
+            Keel organizes what you tell it and helps you prepare &mdash; it doesn&apos;t recommend investments
             or tell you what to buy.
           </p>
         </div>
@@ -787,7 +787,7 @@ export function MarketingLanding() {
             <div key={f.title} className="glass rounded-2xl p-4 sm:p-5 relative">
               {f.plus && (
                 <span className="absolute top-4 right-4 text-caption font-bold uppercase tracking-wide text-family-400 bg-family-500/10 border border-family-500/20 rounded-full px-2 py-0.5">
-                  Oak Plus
+                  Keel Plus
                 </span>
               )}
               <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3" style={{ background: `${f.color}22` }}>
@@ -802,7 +802,7 @@ export function MarketingLanding() {
 
       {/* ═══ Neutrality statement (Claim 5) ═══
           Per the competitive analysis: "every insurance-adjacent tool has a
-          commission relationship. Agent Oak's structural neutrality is the
+          commission relationship. LifeKeel's structural neutrality is the
           single most defensible positioning claim. Put it on every protection-gap
           insight card." This section makes the claim explicit and loud. */}
       <div className="max-w-4xl mx-auto px-6 sm:px-10 py-10 sm:py-16">
@@ -813,7 +813,7 @@ export function MarketingLanding() {
           </h2>
           <p className="text-sm text-ink-secondary leading-relaxed max-w-lg mx-auto mb-4">
             Every insurance gap tool, every coverage scorer, every &ldquo;AI advisor&rdquo; makes money when you buy
-            what they suggest. Oak makes money from your subscription and nothing else. When Oak says your
+            what they suggest. Keel makes money from your subscription and nothing else. When Keel says your
             life cover is £180K short, it&apos;s not selling you a policy &mdash; it&apos;s telling you what the maths says,
             and pointing you to a licensed professional for the decision.
           </p>
@@ -855,10 +855,10 @@ export function MarketingLanding() {
         </div>
       </div>
 
-      <OakPlusSpotlight />
+      <LifeKeelPlusSpotlight />
 
       {/* Pricing — includes competitive context per market-positioning doc:
-          "for less than what you pay for a streaming service, Oak watches
+          "for less than what you pay for a streaming service, Keel watches
           whether your family is protected" */}
       <div id="pricing" className="max-w-4xl mx-auto px-6 sm:px-10 py-10 sm:py-16">
         <h2 className="text-title-md lg:text-title-lg font-bold text-center mb-2">Less than a streaming service. More than a safety net.</h2>
@@ -898,7 +898,7 @@ export function MarketingLanding() {
               Recommended
             </span>
             <div className="flex items-baseline justify-between mb-3">
-              <span className="text-callout font-bold text-family-400">Oak Plus</span>
+              <span className="text-callout font-bold text-family-400">Keel Plus</span>
               <span className="text-subhead text-ink-tertiary">£7.99<span className="text-footnote">/mo</span></span>
             </div>
             <ul className="space-y-2 flex-1">
@@ -929,7 +929,7 @@ export function MarketingLanding() {
             <p className="text-caption text-ink-tertiary text-center mt-2">No credit card &mdash; upgrade from your account once you&apos;re in</p>
           </div>
         </div>
-        <p className="text-footnote text-ink-tertiary text-center mt-4">Cancel anytime. No credit card to start free &mdash; upgrade to Oak Plus from your account whenever you&apos;re ready.</p>
+        <p className="text-footnote text-ink-tertiary text-center mt-4">Cancel anytime. No credit card to start free &mdash; upgrade to Keel Plus from your account whenever you&apos;re ready.</p>
       </div>
 
       {/* FAQ */}
@@ -938,11 +938,11 @@ export function MarketingLanding() {
         <p className="text-sm text-ink-tertiary text-center mb-7 sm:mb-10">Straight answers, no spin.</p>
         <div className="space-y-2">
           {[
-            { q: 'Is Agent Oak financial advice?', a: 'No. Agent Oak is informational and educational only — not financial, investment, tax, or legal advice, and not a substitute for a licensed professional or for calling 911 in a real emergency.' },
-            { q: 'How much does Agent Oak cost?', a: 'Agent Oak is free to start, no credit card required. Oak Plus is £7.99/month and adds AI document reading (provider, policy number, amount, and dates pulled automatically) and an AI-summarised inbox on top of everything in the free plan.' },
+            { q: 'Is LifeKeel financial advice?', a: 'No. LifeKeel is informational and educational only — not financial, investment, tax, or legal advice, and not a substitute for a licensed professional or for calling 911 in a real emergency.' },
+            { q: 'How much does LifeKeel cost?', a: 'LifeKeel is free to start, no credit card required. Keel Plus is £7.99/month and adds AI document reading (provider, policy number, amount, and dates pulled automatically) and an AI-summarised inbox on top of everything in the free plan.' },
             { q: 'Is my financial data sold or used to train AI models?', a: "No. Your financial data isn't sold, and it isn't used to train models beyond the request that needs it. Connector passwords and access tokens are encrypted before they're ever stored." },
-            { q: 'Can I cancel Oak Plus anytime?', a: 'Yes. No credit card is required to start free, and you can cancel Oak Plus anytime from your account.' },
-            { q: 'Does Agent Oak work for the whole family?', a: "Yes. Add your partner and kids to your family's roster and every score, insight, and \"what if\" scenario accounts for the whole household, not just the person who signed up." },
+            { q: 'Can I cancel Keel Plus anytime?', a: 'Yes. No credit card is required to start free, and you can cancel Keel Plus anytime from your account.' },
+            { q: 'Does LifeKeel work for the whole family?', a: "Yes. Add your partner and kids to your family's roster and every score, insight, and \"what if\" scenario accounts for the whole household, not just the person who signed up." },
             { q: 'What happens to my data if I delete my account?', a: "Your family profile, documents, insights, and sign-in are deleted immediately. Billing records are kept only as required for financial reporting." },
           ].map((faq) => (
             <details key={faq.q} className="glass rounded-2xl border border-tint/[0.08] group">
@@ -965,7 +965,7 @@ export function MarketingLanding() {
           Six questions. Sixty seconds. No signup, no credit card, no email required.
         </p>
         <p className="text-sm text-ink-tertiary mb-6 max-w-md mx-auto">
-          See where you stand &mdash; then decide if you want Oak watching continuously.
+          See where you stand &mdash; then decide if you want Keel watching continuously.
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link href="/readiness" onClick={() => { haptic('light'); track('landing_quiz_click', { location: 'final_cta' }) }} className="inline-block">
@@ -993,7 +993,7 @@ export function MarketingLanding() {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <img src="/icon.svg" alt="" width={24} height={24} className="rounded-[5px]" />
-              <span className="text-sm font-bold">Agent Oak</span>
+              <span className="text-sm font-bold">LifeKeel</span>
             </div>
             <p className="text-footnote text-ink-tertiary leading-relaxed">
               The always-on readiness system for your family. Know your numbers, have a plan, be ready.

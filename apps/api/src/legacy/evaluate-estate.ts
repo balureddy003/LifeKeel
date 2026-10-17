@@ -10,8 +10,8 @@
 
 import type { Db } from 'mongodb'
 import { randomUUID } from 'node:crypto'
-import { createLogger } from '@agentoak/platform'
-import type { Engine, Insight } from '@agentoak/engine'
+import { createLogger } from '@lifekeel/platform'
+import type { Engine, Insight } from '@lifekeel/engine'
 import { persistSignal } from '../signals.js'
 import { resolveStaleInsights } from '../insights-persist.js'
 import { buildEstateSignal } from './estate-signal.js'

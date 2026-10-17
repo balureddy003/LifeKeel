@@ -1,7 +1,7 @@
 import type { MetadataRoute } from 'next'
 
 // Same base as layout.tsx / sitemap.ts.
-const SITE_URL = 'https://agent-oak.ai'
+const SITE_URL = 'https://lifekeel.co.uk'
 
 // Required under output:'export' — the file is generated at build time.
 export const dynamic = 'force-static'

@@ -107,7 +107,7 @@ const FAMILY_DETECTORS = [
 
 function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null
-  return localStorage.getItem('agentoak_token')
+  return localStorage.getItem('lifekeel_token')
 }
 
 // `onFailure` fires only for what the fallback can't honestly explain away
@@ -1262,7 +1262,7 @@ export async function applyPolicySuggestion(
 }
 
 /**
- * Same as applyPolicySuggestion, for a policy Oak found in a connected
+ * Same as applyPolicySuggestion, for a policy Keel found in a connected
  * email rather than an uploaded document — the Inbox item's own reviewed,
  * possibly-edited fields, never applied unconfirmed.
  */
@@ -1543,7 +1543,7 @@ export interface ApiFamilyGroup {
   name: string
   inviteCode: string
   members: ApiFamilyMember[]
-  /** Gap-8: the organizer-authored context note Ask Oak reads. */
+  /** Gap-8: the organizer-authored context note Ask Keel reads. */
   contextNote?: string
 }
 
@@ -1884,7 +1884,7 @@ export async function deleteFamilyAsset(id: string): Promise<boolean> {
   return (await assetRequest(`/family/assets/${encodeURIComponent(id)}`, 'DELETE')) as boolean
 }
 
-/** Gap-8: the organizer-authored context note Ask Oak reads as household
+/** Gap-8: the organizer-authored context note Ask Keel reads as household
  *  background. Empty string clears it. */
 export async function updateFamilyContext(note: string): Promise<ApiFamilyGroup | null> {
   try {
@@ -2233,7 +2233,7 @@ export interface FinancialProfile {
     // one still working; one salaried, one self-employed) couldn't be
     // represented at all before this, so the arbitrary single status
     // picked for the household decided whether a real protection gap was
-    // ever surfaced (OAK-029). Each entry links to a real family-roster
+    // ever surfaced (KEEL-029). Each entry links to a real family-roster
     // member (member_id) rather than an anonymous second earner. See
     // family-financial-profile.ts's multi-event evaluation.
     members: Array<{
@@ -2311,7 +2311,7 @@ export async function respondToProfileReview(action: 'confirm' | 'later'): Promi
 // first paint feel stuck. Cached the same way fetchFamilyInsights already
 // is: concurrent callers share one in-flight request, and the result stays
 // fresh for 30s. fetchFinancialProfileWithVersion (the wizard's own read,
-// below) deliberately stays uncached — OAK-006's concurrency check needs a
+// below) deliberately stays uncached — KEEL-006's concurrency check needs a
 // genuinely current version, not a 30s-old one.
 export async function fetchFinancialProfile(): Promise<FinancialProfile | null> {
   return cachedFetch('financial-profile', 30_000, () => fetchFinancialProfileRaw().then((r) => r.profile))
@@ -2319,7 +2319,7 @@ export async function fetchFinancialProfile(): Promise<FinancialProfile | null> 
 
 /**
  * Same as fetchFinancialProfile, plus the document's current version —
- * OAK-006: the wizard needs this to detect (rather than silently overwrite)
+ * KEEL-006: the wizard needs this to detect (rather than silently overwrite)
  * a concurrent edit from another tab/device. Only the wizard needs the
  * version; every other caller keeps using the plain fetchFinancialProfile.
  */
@@ -2335,7 +2335,7 @@ export async function fetchFinancialProfileWithVersion(): Promise<{ profile: Fin
 // step should pass true.
 //
 // `version`, when passed, is sent so the server can detect a concurrent
-// edit from another tab/device (OAK-006) — omit it for a first-ever save.
+// edit from another tab/device (KEEL-006) — omit it for a first-ever save.
 export async function submitFinancialProfile(
   profile: FinancialProfile,
   generateInsights = false,
@@ -2422,7 +2422,7 @@ export interface LifeEvent {
   affected_member_id: string | null
   reported_at: string
   // G6: the reporter's own free-text account of the situation — shown to
-  // the family and fed to Ask Oak's grounding. null when not provided.
+  // the family and fed to Ask Keel's grounding. null when not provided.
   context: string | null
   // Server-persisted checklist completion (was localStorage-only — see the
   // complete endpoint below). Only ids the current playbook contains.
@@ -2577,7 +2577,7 @@ async function authPostRequest(path: string, body: Record<string, unknown>): Pro
       body: JSON.stringify(body),
     })
   } catch {
-    throw new Error("Couldn't reach Agent Oak — check your connection and try again.")
+    throw new Error("Couldn't reach LifeKeel — check your connection and try again.")
   }
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || "That didn't go through — try again in a moment.")
@@ -2688,7 +2688,7 @@ export async function fetchBlogPost(slug: string): Promise<BlogPost | null> {
   return res.json().catch(() => null)
 }
 
-// ── Billing (Oak Plus) ───────────────────────────────────────────────────
+// ── Billing (Keel Plus) ───────────────────────────────────────────────────
 
 export interface BillingSubscription {
   plan: string
@@ -2705,7 +2705,7 @@ export async function fetchBillingSubscription(): Promise<BillingSubscription | 
   return apiFetch<BillingSubscription | null>('/billing/subscription', null)
 }
 
-export async function startOakPlusCheckout(): Promise<string> {
+export async function startLifeKeelPlusCheckout(): Promise<string> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -3770,7 +3770,7 @@ export async function captureLead(input: { email: string; name?: string; source:
 
 export interface SupportMessage {
   id: string
-  author: 'user' | 'operator' | 'oak'
+  author: 'user' | 'operator' | 'keel'
   author_id?: string
   author_name?: string
   text: string
@@ -3803,7 +3803,7 @@ async function supportRequest<T>(path: string, method = 'GET', body?: Record<str
   return data as T
 }
 
-/** AI triage — Oak answers product/account questions before a case exists. */
+/** AI triage — Keel answers product/account questions before a case exists. */
 export function askSupport(question: string): Promise<{ answer: string; isLive: boolean }> {
   return supportRequest('/support/ask', 'POST', { question })
 }

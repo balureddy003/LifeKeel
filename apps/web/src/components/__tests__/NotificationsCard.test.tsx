@@ -15,7 +15,7 @@ const prefs: NotificationPrefs = {
   web_push_enabled: true,
   mobile_push_enabled: false,
   min_urgency: 'low',
-  business_name: 'Agent Oak',
+  business_name: 'LifeKeel',
   quiet_hours_start: null,
   quiet_hours_end: null,
   digest_mode: false,

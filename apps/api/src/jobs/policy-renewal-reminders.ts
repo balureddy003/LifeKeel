@@ -1,5 +1,5 @@
 /**
- * Policy renewal reminders — Agent Oak's first Tier 3 (low-stakes,
+ * Policy renewal reminders — LifeKeel's first Tier 3 (low-stakes,
  * reversible) automatic action.
  *
  * What it does: scans each tenant's family financial profile for policies
@@ -32,7 +32,7 @@
 
 import type { Db } from 'mongodb'
 import { createHash, randomUUID } from 'node:crypto'
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 
@@ -137,7 +137,7 @@ export async function runPolicyRenewalReminders(
   opts: { now?: Date; limit?: number; webBaseUrl?: string } = {},
 ): Promise<ReminderRunSummary> {
   const now = opts.now ?? new Date()
-  const webBaseUrl = opts.webBaseUrl ?? process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002'
+  const webBaseUrl = opts.webBaseUrl ?? process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002'
   const reminders = db.collection<PolicyReminderDoc>('reminders')
   const profilesCol = db.collection('family_financial_profile')
   const settingsCol = db.collection('tenant_settings')

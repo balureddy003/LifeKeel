@@ -22,8 +22,8 @@ import crypto from 'node:crypto'
 import { z } from 'zod'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import type { Engine, Insight } from '@agentoak/engine'
-import { getTenantCollection } from '@agentoak/platform'
+import type { Engine, Insight } from '@lifekeel/engine'
+import { getTenantCollection } from '@lifekeel/platform'
 import { getFamilyFinancialProfileCollection } from '../db.js'
 import { persistSignal } from '../signals.js'
 import { resolveStaleInsights } from '../insights-persist.js'
@@ -83,7 +83,7 @@ export const FinancialProfileSchema = z.object({
     // entered as what it actually is, so the family had to pick one
     // arbitrary label, and that choice — not the real underlying
     // finances — decided whether no_income_protection could ever fire
-    // (OAK-029). Each entry links to a real family-roster member
+    // (KEEL-029). Each entry links to a real family-roster member
     // (member_id — see FamilyMemberDoc in family-group.ts) rather than
     // an anonymous second earner, which is what lets the wizard
     // pre-populate names and the assistant resolve "does my husband have
@@ -163,7 +163,7 @@ export const FinancialProfileSchema = z.object({
         // rule, rather than being rejected.
         renewal_date: z.string().optional(),
         // Not read by any detector — purely a reference field so a family
-        // (or Oak, drafting a message on their behalf) can quote the right
+        // (or Keel, drafting a message on their behalf) can quote the right
         // number back to the insurer without digging out the original
         // document again.
         policy_number: z.string().optional(),
@@ -381,7 +381,7 @@ export async function evaluateProfileAndGenerateInsights(
       // non-dedup-affecting pattern as member_id on household earner events.
       ...(soonestRenewal.member_id ? { soonest_renewal_member_id: soonestRenewal.member_id } : {}),
     }
-    // OAK-029: neutralizes protection-gap.yaml's other 3 rules
+    // KEEL-029: neutralizes protection-gap.yaml's other 3 rules
     // (life_insurance_below_household_needs, policy_renewal_window,
     // no_health_or_critical_illness_cover) for the second-earner event
     // below, so they cannot mathematically fire a second time — they
@@ -1081,7 +1081,7 @@ export async function registerFamilyFinancialProfileRoutes(
     // entirely separate from the optimistic-concurrency filter below.
     const previousDoc = await profileFor(tenant_id).findOne({})
 
-    // OAK-006: optimistic concurrency. The multi-step wizard autosaves
+    // KEEL-006: optimistic concurrency. The multi-step wizard autosaves
     // after every step, and two tabs/devices editing the same profile
     // used to silently last-writer-wins overwrite each other's fields —
     // the whole document is $set wholesale with no merge. A client that

@@ -23,7 +23,7 @@
 
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { getTenantCollection } from '@agentoak/platform'
+import { getTenantCollection } from '@lifekeel/platform'
 import { isFamilyAdult } from '../lib/family-permissions.js'
 import { ESTATE_VAULT_CATEGORY } from './documents.js'
 import { computeReadiness, type ReadinessComponentKey } from '../readiness/score.js'

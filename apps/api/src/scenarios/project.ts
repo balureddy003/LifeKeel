@@ -5,7 +5,7 @@
  * profile + member scoping resolved server-side, never a frozen snapshot.
  */
 import type { Db } from 'mongodb'
-import { getTenantCollection } from '@agentoak/platform'
+import { getTenantCollection } from '@lifekeel/platform'
 import { calculateScenario, type ScenarioChange, type ScenarioResult } from './calculate.js'
 import { toScenarioProfileInput, type MemberScope } from './profile-input.js'
 import type { FinancialProfile } from '../routes/family-financial-profile.js'

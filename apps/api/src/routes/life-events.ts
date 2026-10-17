@@ -22,7 +22,7 @@ import crypto from 'node:crypto'
 import { z } from 'zod'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { getTenantCollection } from '@agentoak/platform'
+import { getTenantCollection } from '@lifekeel/platform'
 import { familyDataLlmFromEnv } from '../local-model.js'
 import { getSignalsCollection, getLifeChangeNudgeStateCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
@@ -46,7 +46,7 @@ const ReportLifeEventSchema = z.object({
   affected_member_id: z.string().min(1).optional(),
   // G6: free-text context in the reporter's own words — "Mum's at County
   // Hospital, kids need pickup Thursday". Stored verbatim on the signal,
-  // shown to other family members reading the event, and fed to Ask Oak's
+  // shown to other family members reading the event, and fed to Ask Keel's
   // grounding so crisis questions answer against what the family actually
   // said, not just the event type. Never parsed, never used to infer.
   context: z.string().max(2000).optional(),
@@ -68,7 +68,7 @@ interface LifeEventSignalDoc {
     context?: string
     // Checklist completion (remediation item 19) — previously localStorage-
     // only on the web client, so checking off "call your insurer" on a phone
-    // never showed on a laptop and was invisible to Oak entirely. Persisted
+    // never showed on a laptop and was invisible to Keel entirely. Persisted
     // on the signal doc itself; only ids the currently-rendered playbook
     // actually contains are ever stored or returned.
     completed_step_ids?: string[]
@@ -212,7 +212,7 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
    *
    * Every step is eligible now, not just contact:true ones — a step with
    * no one to email (e.g. job-loss's "Review your budget") previously had
-   * no prepare affordance at all, even though Oak already has the real
+   * no prepare affordance at all, even though Keel already has the real
    * numbers to help start it. `step.contact` picks which prompt applies
    * (an outreach email vs. a starting-point note); the eligibility gate
    * itself only checks the step actually exists.

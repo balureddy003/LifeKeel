@@ -1,6 +1,6 @@
 # PRDs
 
-Requirement briefs for Agent Oak, following the PRD→production process in
+Requirement briefs for LifeKeel, following the PRD→production process in
 [CLAUDE.md](../../CLAUDE.md#prd--production-using-claude-code): problem,
 who it's for, what "done" looks like, and the trust tier it touches.
 Grounded in [000](000-market-landscape-and-positioning.md)'s market
@@ -44,7 +44,7 @@ each — not just documentation, a refinement backlog.
    the "What If?" simulator. **Flagged as the strongest differentiation
    candidate in the product** — market research found no comparable
    consumer product; see its market-bar section.
-6. [006-oak-plus-billing.md](006-oak-plus-billing.md) — the Stripe-backed
+6. [006-lifekeel-plus-billing.md](006-lifekeel-plus-billing.md) — the Stripe-backed
    paid tier, currently dormant pending production cutover.
 
 ## 10x — forward: closing the vision gap
@@ -59,7 +59,7 @@ domain before going wide, prepare-only actions before anything that acts.
    extend the financial domain's bolted-on life/income-protection fields
    into a real Protection domain (multi-policy, renewal tracking,
    coverage-type gaps). Tier 0.
-3. [103-tier1-prepare-actions.md](103-tier1-prepare-actions.md) — Oak
+3. [103-tier1-prepare-actions.md](103-tier1-prepare-actions.md) — Keel
    drafts an outreach message for an insight; a human copies/sends it
    themselves. Tier 1, and deliberately stops there.
 4. [104-per-member-financial-identity.md](104-per-member-financial-identity.md) —
@@ -180,10 +180,10 @@ domain before going wide, prepare-only actions before anything that acts.
     profile submit (so a never-opened vault still surfaces the gap and
     stale-resolution can retire it) and on vault upload/delete.
     Tier 0.
-22. [122-member-scoped-ask-oak.md](122-member-scoped-ask-oak.md) —
+22. [122-member-scoped-ask-keel.md](122-member-scoped-ask-keel.md) —
     `member_id` on `POST /assistant/ask` grounds the answer on the
     member's twin (extracted `getMemberTwin` — one assembly for route
-    and assistant), with an "Ask Oak about {name}" card on the member
+    and assistant), with an "Ask Keel about {name}" card on the member
     page. The first member-scoped reasoning surface. Tier 0.
 23. [123-member-invite-flow.md](123-member-invite-flow.md) —
     organizer-invites-a-specific-member, token-accept flips the existing
@@ -250,7 +250,7 @@ domain before going wide, prepare-only actions before anything that acts.
 35. [135-assets-register-and-context.md](135-assets-register-and-context.md) —
     gap 8's non-sensitive slice: a tenant-scoped assets register
     (property/vehicles/valuables, `/assets`) plus an organizer-authored
-    household context note that Ask Oak reads as background.
+    household context note that Ask Keel reads as background.
     Medical/health records and per-member preference modeling stay
     deferred — see the PRD for why. Tier 0.
 36. [136-readiness-feed-and-family-heartbeat.md](136-readiness-feed-and-family-heartbeat.md) —
@@ -268,14 +268,14 @@ domain before going wide, prepare-only actions before anything that acts.
     location), an inherited/ancestral-property model on the assets
     register (ownership basis, recorded vs. claimed owners, title
     evidence, disputes, foreign jurisdiction), a mandatory verification
-    label on every claim, a person↔document↔property graph Ask Oak can
+    label on every claim, a person↔document↔property graph Ask Keel can
     read, a `legacy` readiness component, 10 detector rules replacing
     `estate-readiness.yaml`, and a continuity rehearsal. Register and
     detectors Tier 0; any *release* of documents stays out of scope.
 
 ## 20x — marketing: the same engine as the growth mechanic
 
-Uses Agent Oak's own detector engine and content infrastructure
+Uses LifeKeel's own detector engine and content infrastructure
 (`blog.ts`, `growth-events.ts`) as the acquisition mechanism, rather than
 building disconnected marketing tooling.
 
@@ -320,7 +320,7 @@ engineering PRD:
   action) against three well-scoped events before committing to seven at
   once.
 - **Full per-family-member reasoning in the assistant and every detector**
-  (not just protection, as PRD-104 scopes it) — the "personalized Oak for
+  (not just protection, as PRD-104 scopes it) — the "personalized Keel for
   every family member" end state the product vision names, but PRD-104
   deliberately ships the income/protection slice first and leaves
   per-member retirement, education, and emergency-fund reasoning for a

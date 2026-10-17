@@ -46,7 +46,7 @@
 
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { getTenantCollection } from '@agentoak/platform'
+import { getTenantCollection } from '@lifekeel/platform'
 import type { FamilyGroupDoc, FamilyMemberDoc } from './family-group.js'
 import type { FinancialProfile } from './family-financial-profile.js'
 import { isFamilyAdult, ageFromDob } from '../lib/family-permissions.js'
@@ -134,7 +134,7 @@ export interface MemberTwinResult {
 }
 
 // The twin assembled as a value — PRD-122 reuses it to ground member-
-// scoped Ask Oak answers on the same read model the member page renders.
+// scoped Ask Keel answers on the same read model the member page renders.
 // mode 'youth' (PRD-124) is a redacted projection for minors: savings
 // progress as percentages with no minor-unit amounts anywhere in the
 // payload, no earner/policies/insights/readiness, and age-banded copy —

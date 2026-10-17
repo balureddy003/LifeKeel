@@ -2,13 +2,13 @@
 
 ## The problem
 
-Oak already *does* a lot in the background — 9 detectors re-evaluate on
+Keel already *does* a lot in the background — 9 detectors re-evaluate on
 every data change and on a daily sweep, member-agent nudges reconcile
 daily, scenarios are recomputed on every read, score snapshots are
 persisted, insight→action attribution is recorded. But none of that is
 *narrated* to the family. A member who logs in sees the current state;
 they never see what moved, why, or who it affects. Between logins, the
-only thing Oak sends is a per-insight notification or a flat digest of
+only thing Keel sends is a per-insight notification or a flat digest of
 queued insights (`DeliveryRouter.sendDigest`).
 
 The positioning claim is "a system that watches while you don't." Today
@@ -106,7 +106,7 @@ interface ReadinessEventDoc {
   summary: string                   // what changed + why it matters (≤280 chars)
   evidence: { label: string; value?: string; value_minor?: number }[]
   links: { kind: 'insight'|'component'|'document'|'scenario'|'member'|'profile_field'; id: string }[]
-  next_check_at: Date | null        // "Oak checks again tomorrow 06:00"
+  next_check_at: Date | null        // "Keel checks again tomorrow 06:00"
   dedupe_key: string                // type + subject + day, idempotent writes
   created_at: Date
   feedback?: { user_id: string; value: 'useful'|'not_relevant'|'handled'|'remind_later'|'data_wrong'; at: Date }[]
@@ -186,7 +186,7 @@ member_scope: 'all' | 'mine'                        // default 'all'
 `/settings` → "Notifications" card: channel order, quiet hours, digest
 mode, urgency floor, the four fields above, and a read-only list of
 **exempt critical alerts** (renewal ≤7d, continuity check-in,
-emergency-mode vault awareness). Every notification Oak sends gets a
+emergency-mode vault awareness). Every notification Keel sends gets a
 footer line "Why you got this · Manage" deep-linking here.
 
 ### 6. Web

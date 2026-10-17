@@ -23,8 +23,8 @@ const URGENT_TYPES = new Set<LifeEventType>(['medical', 'car', 'property', 'trav
 // state loads, and as a last-seen snapshot if the request fails. The
 // server is authoritative; nothing here decides truth.
 function checklistStorageKey(eventId: string): string {
-  const tenant = typeof window !== 'undefined' ? localStorage.getItem('agentoak_tenant') ?? 'anon' : 'anon'
-  return `agentoak:life-event-checklist:${tenant}:${eventId}`
+  const tenant = typeof window !== 'undefined' ? localStorage.getItem('lifekeel_tenant') ?? 'anon' : 'anon'
+  return `lifekeel:life-event-checklist:${tenant}:${eventId}`
 }
 
 function loadDoneIds(eventId: string): Set<string> {
@@ -46,7 +46,7 @@ function saveDoneIds(eventId: string, doneIds: Set<string>): void {
 }
 
 // A real, policy-sourced contact for this step (render-playbook.ts's
-// resolveStepContacts) — tap-to-call / tap-to-email only. Oak surfaces the
+// resolveStepContacts) — tap-to-call / tap-to-email only. Keel surfaces the
 // number it already has on file; the family still makes the call or sends
 // the email. No auto-dial, no auto-send, ever.
 function StepContacts({ contacts }: { contacts: LifeEventStepContact[] }) {
@@ -127,7 +127,7 @@ function StepDraft({ eventId, step }: { eventId: string; step: LifeEventPlaybook
     const draft = await prepareLifeEventStepDraft(eventId, step.id)
     setDraftText(draft?.content ?? null)
     setDraftFacts(draft?.provenance?.facts)
-    if (!draft) setDraftError("Oak couldn't write that draft just now — nothing was lost, try again in a moment.")
+    if (!draft) setDraftError("Keel couldn't write that draft just now — nothing was lost, try again in a moment.")
     setDrafting(false)
   }
 
@@ -149,7 +149,7 @@ function StepDraft({ eventId, step }: { eventId: string; step: LifeEventPlaybook
         <>
           <GlassButton variant="secondary" onClick={handleDraft} disabled={drafting}>
             {drafting ? <Loader2 size={16} className="animate-spin" /> : <PenLine size={16} />}
-            <span>{drafting ? 'Preparing…' : step.contact ? 'Draft a message for me' : "Get Oak's help with this"}</span>
+            <span>{drafting ? 'Preparing…' : step.contact ? 'Draft a message for me' : "Get Keel's help with this"}</span>
           </GlassButton>
           {draftError && <p role="status" aria-live="polite" className="text-xs text-ink-tertiary mt-2">{draftError}</p>}
         </>
@@ -164,8 +164,8 @@ function StepDraft({ eventId, step }: { eventId: string; step: LifeEventPlaybook
           />
           <p className="text-xs text-ink-tertiary">
             {step.contact
-              ? 'This is a draft only — copy it or open it in your own email client. Oak never sends it for you.'
-              : "This is a starting point Oak put together from your real numbers — review it and take it from here. Oak hasn't checked, filed, or contacted anyone for you."}
+              ? 'This is a draft only — copy it or open it in your own email client. Keel never sends it for you.'
+              : "This is a starting point Keel put together from your real numbers — review it and take it from here. Keel hasn't checked, filed, or contacted anyone for you."}
           </p>
           <DraftProvenanceNote facts={draftFacts} />
           <div className="flex gap-2">

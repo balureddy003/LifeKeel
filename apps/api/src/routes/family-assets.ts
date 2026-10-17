@@ -20,10 +20,10 @@ import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { getTenantCollection } from '@agentoak/platform'
+import { getTenantCollection } from '@lifekeel/platform'
 import { isFamilyAdult } from '../lib/family-permissions.js'
 import { PropertyLegacy, validateLegacyRefs, type PropertyLegacy as PropertyLegacyT } from './family-legacy.js'
-import type { Engine, Insight } from '@agentoak/engine'
+import type { Engine, Insight } from '@lifekeel/engine'
 import { evaluateEstate } from '../legacy/evaluate-estate.js'
 
 export const ASSET_KINDS = ['property', 'vehicle', 'savings_account', 'investment', 'valuable', 'other'] as const

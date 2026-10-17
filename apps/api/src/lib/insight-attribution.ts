@@ -1,13 +1,13 @@
 /**
  * Insight → action attribution.
  *
- * The flywheel question is "did the family do anything after Oak flagged
+ * The flywheel question is "did the family do anything after Keel flagged
  * this?" — an insight that keeps re-firing because nobody acts is noise;
  * one followed by a profile update, a policy added, or a document applied
  * is the loop working. This module records that association, not
  * causality: anything a family changes within 30 days of an insight
  * firing is logged as "associated with" it — correlation the product can
- * honestly show ("acted on"), never a claim that Oak caused the change.
+ * honestly show ("acted on"), never a claim that Keel caused the change.
  *
  * Storage is a tenant-scoped `insight_attribution` collection of
  * {insight_id, detector_id, rule_id, entity_key, action_type, action_at}
@@ -18,8 +18,8 @@
  */
 
 import type { Db } from 'mongodb'
-import { getTenantCollection } from '@agentoak/platform'
-import type { Insight } from '@agentoak/engine'
+import { getTenantCollection } from '@lifekeel/platform'
+import type { Insight } from '@lifekeel/engine'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 
 export type InsightActionType =

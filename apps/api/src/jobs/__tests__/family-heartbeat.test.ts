@@ -118,7 +118,7 @@ describe('renderHeartbeat', () => {
     expect(r.text).toContain('life on 2026-02-20')
     expect(r.text).toContain('2 steps still open')
     expect(r.text).toContain('/settings#notifications')
-    expect(r.html).toContain('Open Agent Oak')
+    expect(r.html).toContain('Open LifeKeel')
   })
 
   it('quiet week renders the nothing-moved subject', () => {

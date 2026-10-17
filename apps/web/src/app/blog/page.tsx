@@ -23,7 +23,7 @@ export default function BlogPage() {
 
   return (
     <div className="px-5 pt-2 pb-12">
-      <PageHeader title="From Agent Oak" subtitle="Plain-language explainers behind what Oak checks for your family." backHref="/" action={<></>} />
+      <PageHeader title="From LifeKeel" subtitle="Plain-language explainers behind what Keel checks for your family." backHref="/" action={<></>} />
 
       {loading && (
         <div className="mt-4 space-y-3">
@@ -40,7 +40,7 @@ export default function BlogPage() {
             </div>
             <p className="text-sm font-semibold text-ink-primary mb-1">We&apos;re just getting started</p>
             <p className="text-sm text-ink-secondary leading-relaxed mb-3">
-              Plain-language explainers for what Oak checks for your family are on the way. In the meantime, our guides cover the same ground.
+              Plain-language explainers for what Keel checks for your family are on the way. In the meantime, our guides cover the same ground.
             </p>
             <Link href="/guides" className="text-sm text-family-400 font-semibold">Read the guides →</Link>
           </div>

@@ -18,8 +18,8 @@
 import type { FastifyInstance } from 'fastify'
 import { GridFSBucket, type Db, type ObjectId } from 'mongodb'
 import { randomUUID } from 'node:crypto'
-import type { Engine, Insight } from '@agentoak/engine'
-import { createLogger, getTenantCollection } from '@agentoak/platform'
+import type { Engine, Insight } from '@lifekeel/engine'
+import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { processDocument } from '../ocr/extract.js'
 import { localDecisionFromEnv } from '../local-model.js'
 import { evaluateProfileAndGenerateInsights, FinancialProfileSchema } from './family-financial-profile.js'
@@ -49,8 +49,8 @@ function emitDocumentEvent(
     applied: `Document applied to your profile: ${filename}`,
   } as const
   const summaries = {
-    uploaded: 'Oak stored the file and queued it for field extraction.',
-    extracted: 'Oak finished reading the document — extracted fields are ready to review.',
+    uploaded: 'Keel stored the file and queued it for field extraction.',
+    extracted: 'Keel finished reading the document — extracted fields are ready to review.',
     applied: 'Fields you confirmed from this document are now on your financial profile.',
   } as const
   emitReadinessEvent(db, tenantId, {
@@ -153,7 +153,7 @@ export function registerDocumentRoutes(
     log.info({ documentId, filename, mimeType, size: fileBuffer.length, tenant_id }, 'Uploading document')
 
     try {
-      // Store file in GridFS. OAK-019: previously `.end(fileBuffer)` wasn't
+      // Store file in GridFS. KEEL-019: previously `.end(fileBuffer)` wasn't
       // awaited at all — the metadata insert below could race ahead of the
       // GridFS write actually completing. Waiting on 'finish' (the
       // documented way to know a GridFS write has fully landed) closes
@@ -188,7 +188,7 @@ export function registerDocumentRoutes(
           file_id: fileId,
         })
       } catch (metaErr) {
-        // OAK-019: the GridFS write above already succeeded — without this,
+        // KEEL-019: the GridFS write above already succeeded — without this,
         // a metadata-insert failure orphaned that blob forever (no
         // `documents` row exists to ever look it up by again). Best-effort:
         // if the cleanup delete itself fails, log and still surface the
@@ -312,7 +312,7 @@ export function registerDocumentRoutes(
 
   // ── GET /documents/:id/file ──────────────────────────────────────────────
   // Streams the original uploaded bytes back from GridFS — added for the AI
-  // Memory review drawer (show the source PDF/JPEG next to what Oak
+  // Memory review drawer (show the source PDF/JPEG next to what Keel
   // extracted from it), which had no way to display the document itself
   // before this. Same tenant-scoped lookup and GridFS read `/reprocess`
   // already uses; this just returns the bytes instead of re-running OCR.

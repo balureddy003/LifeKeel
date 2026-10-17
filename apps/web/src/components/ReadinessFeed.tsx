@@ -2,7 +2,7 @@
 
 /**
  * "What changed" feed (PRD-136 §6, first placement) — the chronological
- * narration of what Oak's daily checks found: score moves, insight
+ * narration of what Keel's daily checks found: score moves, insight
  * lifecycle, milestones, quiet sweeps. Rendered on the signed-in home
  * page under the readiness sparkline.
  *
@@ -121,7 +121,7 @@ export function ReadinessFeed({ members = [], mode }: ReadinessFeedProps) {
         </GlassCard>
       ) : events === null || events.length === 0 ? (
         <GlassCard className="p-4">
-          <p className="text-sm text-ink-tertiary">Nothing has moved yet — Oak checks daily</p>
+          <p className="text-sm text-ink-tertiary">Nothing has moved yet — Keel checks daily</p>
         </GlassCard>
       ) : (
         <div className="space-y-2">
@@ -176,7 +176,7 @@ export function ReadinessFeed({ members = [], mode }: ReadinessFeedProps) {
                       </details>
                     )}
                     {evt.next_check_at && (
-                      <p className="text-footnote text-ink-tertiary/70 mt-1.5">Oak checks again tomorrow</p>
+                      <p className="text-footnote text-ink-tertiary/70 mt-1.5">Keel checks again tomorrow</p>
                     )}
                     {/* PRD-136 §3: per-user feedback — collapses to a
                         one-line ack after a response. Youth mode has no

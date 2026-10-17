@@ -2,7 +2,7 @@
 
 ## The problem
 
-Oak's estate coverage today is two booleans: does the vault contain a
+Keel's estate coverage today is two booleans: does the vault contain a
 document tagged `will`, and one tagged `power_of_attorney`
 (`detectors/family/estate-readiness.yaml`, driven by `doc_type` on vault
 uploads). The assets register (PRD-135) knows a property's name and
@@ -30,7 +30,7 @@ action in the product.
 
 ## Regulatory line (CLAUDE.md second rule)
 
-Oak records what the family *declares*, links it to evidence, and flags
+Keel records what the family *declares*, links it to evidence, and flags
 *gaps and staleness*. It never: states a document is legally valid,
 determines who legally owns a property, computes inheritance or
 succession outcomes, or drafts a legal instrument. Every legacy
@@ -56,7 +56,7 @@ can never present a family belief as a legal fact.
    `user_declared` / `family_understanding` / `unverified`, shown as a
    badge everywhere the claim appears.
 4. The twin gains a **relationship graph**: person ↔ document ↔ property
-   ↔ policy ↔ role, rendered on `/legacy` and queryable by Ask Oak
+   ↔ policy ↔ role, rendered on `/legacy` and queryable by Ask Keel
    ("who is the executor of Mum's will and where is the original?").
 5. A **Legacy readiness** component joins the readiness score, with
    drivers, explicitly captioned "completeness and freshness of what's
@@ -66,7 +66,7 @@ can never present a family belief as a legal fact.
 7. A **continuity rehearsal** lets a second adult check, without any
    document being released, whether they could *find* what they'd need.
 8. Free-text **family knowledge notes** attach to any node, labelled
-   `family_understanding`, and are fed to Ask Oak as user-authored
+   `family_understanding`, and are fed to Ask Keel as user-authored
    background (same path as PRD-135's `context_note`).
 9. Legacy records have stricter visibility than the financial profile:
    existence-visible/contents-private per item; audit on every read of
@@ -81,7 +81,7 @@ can never present a family belief as a legal fact.
 | Assets register | `kind, name, value_minor, notes` | `property` kind gains an optional `legacy` sub-document (below); other kinds untouched |
 | Roster | `id, role, dob, user_id` | New `legacy_contacts` collection for named non-members (executor who isn't in the family) |
 | Readiness score | 5 components | 6th component `legacy` (weight renormalises; "not entered" never counts as zero — same rule as today) |
-| Ask Oak `buildContext` | profile + insights + docs + context note + life-event context | + legacy graph summary (names, roles, locations; never amounts for youth mode) |
+| Ask Keel `buildContext` | profile + insights + docs + context note + life-event context | + legacy graph summary (names, roles, locations; never amounts for youth mode) |
 | Permissions | `isFamilyAdult`, `isFamilyOrganizer` | + per-record `visibility` and read audit |
 | Vision | "Digital Legacy & Emergency Vault" (ARCHITECTURE.md) | This PRD is the *register and reasoning* half; release stays gated |
 
@@ -205,10 +205,10 @@ Emitted on every legacy write and on the daily sweep, one per tenant:
 |---|---|---|
 | `estate_no_will` | `adults_with_will < adults_total` | unchanged intent, now per-adult count |
 | `estate_no_power_of_attorney` | `adults_with_poa < adults_total` | unchanged intent |
-| `legacy_will_review_due` | `wills_stale > 0` | "A will on file predates a change recorded since (child / marriage / property). Oak can't judge whether it still reflects your wishes — a solicitor can." |
+| `legacy_will_review_due` | `wills_stale > 0` | "A will on file predates a change recorded since (child / marriage / property). Keel can't judge whether it still reflects your wishes — a solicitor can." |
 | `legacy_guardianship_gap` | `minors_total > 0 and minors_with_guardian_nomination < minors_total` | guardian nomination not recorded for a dependent child |
 | `legacy_executor_missing` | `wills_with_dead_or_missing_executor > 0` | executor is not a current roster member or contact |
-| `legacy_property_title_gap` | `properties_without_title_evidence > 0 or properties_ownership_unknown > 0` | "Ownership documentation incomplete — Oak cannot determine title. Locate the deed / land-registry record." |
+| `legacy_property_title_gap` | `properties_without_title_evidence > 0 or properties_ownership_unknown > 0` | "Ownership documentation incomplete — Keel cannot determine title. Locate the deed / land-registry record." |
 | `legacy_foreign_property_review` | `properties_foreign_without_contact > 0` | property in another jurisdiction with no local professional recorded |
 | `legacy_will_asset_mismatch` | `assets_unreferenced_by_any_will > 0` | a recorded property isn't referenced by any will on file — review prompt, not a legal conclusion |
 | `legacy_beneficiary_conflict` | `beneficiary_conflicts > 0` | "Named beneficiaries differ across documents. Rules differ by asset type and jurisdiction — a professional can confirm which applies." |
@@ -238,7 +238,7 @@ Nodes: members, contacts, documents, assets(property), policies (from
 profile, by `beneficiary_member_id`/`member_id`). Edges: `subject_of`,
 `names_as(role)`, `covers`, `evidence_for`, `owns(recorded|claimed, pct)`,
 `occupies`, `advises`. Every node/edge carries `verification`. Youth
-mode: members + documents' *existence* only. Ask Oak's `buildContext`
+mode: members + documents' *existence* only. Ask Keel's `buildContext`
 gets a ≤1,200-char textual rendering of this graph (names, roles,
 locations, verification labels — no amounts), appended after the
 household context note.
@@ -309,13 +309,13 @@ record to fix.
 | Signal + schema registration | S |
 | Detector YAML (10 rules) + golden evals | S |
 | Readiness `legacy` component + web domain page | S |
-| Graph read model + Ask Oak context | M |
+| Graph read model + Ask Keel context | M |
 | Rehearsal read model + UI | S |
 | `/legacy` page (3 tabs) + vault/assets/member hooks | L |
 | Knowledge notes | S |
 
 Total: **L–XL**, splittable: (a) register + detector + score, (b) graph
-+ Ask Oak + member hooks, (c) rehearsal + notes + access polish.
++ Ask Keel + member hooks, (c) rehearsal + notes + access polish.
 
 ## Explicitly out of scope
 

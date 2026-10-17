@@ -53,7 +53,7 @@ rules:
     impact_high: 0
     reasoning_template: >
       A will on file predates a change recorded since — a new child, a civil record, or a property entered after
-      its last review date. Oak can't judge whether it still reflects your wishes; it only knows the register
+      its last review date. Keel can't judge whether it still reflects your wishes; it only knows the register
       shows a later change. A solicitor or will-writing professional can confirm whether a review is needed.
     actions:
       - Note which family or property change postdates the will's last review
@@ -83,7 +83,7 @@ rules:
     impact_high: 0
     reasoning_template: >
       A will on file names an executor who is no longer a roster member or recorded contact, or whose role was
-      marked unverified when they left the family. Oak can't tell whether that appointment still stands —
+      marked unverified when they left the family. Keel can't tell whether that appointment still stands —
       a solicitor can advise on whether the executor named in the will should be updated.
     actions:
       - Check who the will on file names as executor and whether they're still the right person
@@ -97,7 +97,7 @@ rules:
     impact_low: 0
     impact_high: 0
     reasoning_template: >
-      A recorded property has no title evidence on file, or its ownership basis is marked unknown — Oak cannot
+      A recorded property has no title evidence on file, or its ownership basis is marked unknown — Keel cannot
       determine title, only that the register lacks the record. Locating the deed or land-registry entry is
       the first step; a qualified local professional can confirm what the ownership record shows.
     actions:
@@ -113,7 +113,7 @@ rules:
     impact_high: 0
     reasoning_template: >
       A recorded property sits in a different jurisdiction from the family's wills, and no local professional
-      is recorded for it. Rules about property and estates differ by place; Oak doesn't compare them —
+      is recorded for it. Rules about property and estates differ by place; Keel doesn't compare them —
       a notary or qualified local professional where the property is can advise on what applies.
     actions:
       - Note which jurisdiction the property sits in versus the family's wills
@@ -143,7 +143,7 @@ rules:
     impact_high: 0
     reasoning_template: >
       The beneficiaries named on a recorded will differ from those on a policy for the same person. That may
-      be intentional — different instruments follow different rules by asset type and jurisdiction — so Oak
+      be intentional — different instruments follow different rules by asset type and jurisdiction — so Keel
       flags the mismatch rather than resolving it. A qualified local professional can confirm which applies.
     actions:
       - Compare the beneficiaries named on the will and on each policy
