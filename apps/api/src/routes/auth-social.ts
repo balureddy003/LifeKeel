@@ -20,6 +20,7 @@ import type { Db } from 'mongodb'
 import crypto from 'node:crypto'
 import { AuthService, createLogger } from '@lifekeel/platform'
 import { getPlatformConfig } from '../operator/platform-config.js'
+import { setSessionCookie } from '../lib/session-cookie.js'
 
 const log = createLogger({ service: 'auth-social', version: '0.0.0' })
 
@@ -323,6 +324,16 @@ export async function registerSocialAuthRoutes(
         )
       }
 
+      // MFA gate — same contract as password login: a pending token that
+      // only /auth/mfa/verify can exchange for a session. Redirected back
+      // in the fragment; the web callback routes it to the code entry.
+      if (user.mfa_enabled && user.mfa_secret) {
+        const mfaToken = await auth.sign({
+          sub: user.id, tenant_id: user.tenant_id, roles: user.roles, mfa_pending: true,
+        }, '5m')
+        return reply.redirect(`${appRedirectUrl}#mfa_token=${mfaToken}`)
+      }
+
       // Issue JWT token. OAuth sign-in has no "remember me" checkbox, so it
       // gets the same long-lived duration password login gets when the user
       // checks that box — otherwise Google-authenticated sessions would
@@ -332,6 +343,9 @@ export async function registerSocialAuthRoutes(
         tenant_id: user.tenant_id,
         roles: user.roles,
       }, '30d')
+      // httpOnly session cookie alongside the fragment hand-off — new
+      // frontends prefer the cookie; the fragment stays during migration.
+      setSessionCookie(reply, token, 30 * 24 * 60 * 60)
 
       // Redirect to the appropriate app with token — appRedirectUrl already
       // is the full callback destination (getCallbackUrl), not a bare app
@@ -521,6 +535,15 @@ export async function registerSocialAuthRoutes(
         )
       }
 
+      // MFA gate — mirrors password login's { mfa_required, mfa_token }
+      // shape; the pending token is only exchangeable at /auth/mfa/verify.
+      if (user.mfa_enabled && user.mfa_secret) {
+        const mfaToken = await auth.sign({
+          sub: user.id, tenant_id: user.tenant_id, roles: user.roles, mfa_pending: true,
+        }, '5m')
+        return { mfa_required: true, mfa_token: mfaToken }
+      }
+
       // Issue JWT token. Same long-lived duration as the redirect-flow
       // callback above — see comment there.
       const token = await auth.sign({
@@ -528,6 +551,7 @@ export async function registerSocialAuthRoutes(
         tenant_id: user.tenant_id,
         roles: user.roles,
       }, '30d')
+      setSessionCookie(reply, token, 30 * 24 * 60 * 60)
 
       return {
         token,
@@ -759,6 +783,14 @@ export async function registerSocialAuthRoutes(
         roles: user.roles,
       }, '1h')
 
+      if (user.mfa_enabled && user.mfa_secret) {
+        const mfaToken = await auth.sign({
+          sub: user.id, tenant_id: user.tenant_id, roles: user.roles, mfa_pending: true,
+        }, '5m')
+        return reply.redirect(`${studioUrl}/auth/callback#mfa_token=${mfaToken}`)
+      }
+      setSessionCookie(reply, token, 60 * 60)
+
       // Redirect to Studio with token
       return reply.redirect(`${studioUrl}/auth/callback#token=${token}&tenant=${user.tenant_id}`)
     } catch (err) {
@@ -958,11 +990,18 @@ export async function registerSocialAuthRoutes(
       }
 
       // Issue JWT token
+      if (user.mfa_enabled && user.mfa_secret) {
+        const mfaToken = await auth.sign({
+          sub: user.id, tenant_id: user.tenant_id, roles: user.roles, mfa_pending: true,
+        }, '5m')
+        return { mfa_required: true, mfa_token: mfaToken }
+      }
       const token = await auth.sign({
         sub: user.id,
         tenant_id: user.tenant_id,
         roles: user.roles,
       }, '1h')
+      setSessionCookie(reply, token, 60 * 60)
 
       return {
         token,

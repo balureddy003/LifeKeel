@@ -490,6 +490,28 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     return { ok: true }
   })
 
+  /** MFA lockout recovery — clears TOTP enrollment so the user can sign in
+   *  with email+password and re-enroll. This is the recovery path for a
+   *  lost authenticator AND lost recovery codes; it must only run after
+   *  out-of-band identity verification (see SECURITY.md's MFA section —
+   *  the reason field carries the verification reference, e.g. support
+   *  ticket id). Also revokes sessions so a stolen session can't linger
+   *  past the reset. */
+  app.post<{ Params: { id: string } }>('/operator/users/:id/mfa-disable', { preHandler: requireOperator(db, 'users.manage') }, async (request, reply) => {
+    const parsed = ReasonSchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+    const result = await users.updateOne(
+      { id: request.params.id, mfa_enabled: true },
+      {
+        $set: { mfa_enabled: false, sessions_revoked_at: new Date(), updated_at: new Date() },
+        $unset: { mfa_secret: '', mfa_pending_secret: '', mfa_recovery_hashes: '' },
+      },
+    )
+    if (result.matchedCount === 0) return reply.status(404).send({ error: 'User not found or MFA not enabled' })
+    await audit.log(request, 'operator.user.mfa_disable', 'user', request.params.id, parsed.data.reason)
+    return { ok: true }
+  })
+
   /** Data-subject export — everything we hold on a user, bundled as one
    *  JSON document for GDPR/DSAR requests. POST (not GET) so the reason is
    *  captured and audited like every other privileged read of this size.

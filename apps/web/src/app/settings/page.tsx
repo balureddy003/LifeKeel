@@ -14,11 +14,13 @@ import type { AppMode } from '@/lib/modes'
 import { ROLE_LABELS, type FamilyRole } from '@/lib/auth-types'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
 import { NotificationsCard } from '@/components/NotificationsCard'
+import { MfaSettings } from '@/components/MfaSettings'
 import { useToast } from '@/components/Toast'
 import { isValidEmailFormat } from '@/components/ConversationalOnboarding'
 import { User, LogOut, Check, X, Crown, Shield, ShieldCheck, Baby, Accessibility, Plug, UserPlus, Loader2, AlertCircle, Calculator, Sparkles, HelpCircle, ScrollText, Bot, Download, Trash2, Sun, Moon, MonitorSmartphone, RefreshCw, Bell, Copy, Gift, HeartPulse } from 'lucide-react'
 import { exportAccountData, deleteAccount, fetchAccessRequests, approveAccessRequest, denyAccessRequest, resetInviteCode, fetchMyReferralCode, fetchReferralSummary, fetchFamilyContinuity, updateFamilyContinuity, updateFamilyContext, fetchNotificationPrefs, updateNotificationPrefs, type AccessRequest, type FamilyContinuity, type NotificationPrefsResponse, type NotificationPrefsPatch } from '@/lib/api'
 import { useThemePreference, type ThemePreference } from '@/lib/theme'
+import { isIOS, isStandalone } from '@/lib/platform'
 import { isPushSupported, isPushSubscribed, subscribeToPush, unsubscribeFromPush, fetchVapidKey } from '@/lib/push'
 import { isOnDeviceSupported, isOnDeviceEnabled, setOnDeviceEnabled as persistOnDeviceEnabled, enableOnDeviceModel } from '@/lib/onDeviceLlm'
 import type { LucideIcon } from 'lucide-react'
@@ -460,6 +462,8 @@ export default function SettingsPage() {
         </ListRow>
       </ListSection>
 
+      <MfaSettings />
+
       {/* How Keel acts on your behalf — the app's own trust-tier model
           (ARCHITECTURE.md: Tier 1 "prepare, don't send" today, nothing
           beyond it) was previously only a developer-facing concept. An
@@ -585,76 +589,89 @@ export default function SettingsPage() {
         </ListSection>
       )}
 
-      {/* Friend referral (PRD-112) — a completely separate account for the
-          friend, not another member of this family; no organizer gate. */}
-      {family && (
-        <ListSection title="Refer a Friend">
-          <ListRow
-            icon={Gift}
-            label={referralCode ? `Your link: /signup?ref=${referralCode}` : 'Loading…'}
-            value={
-              referralCode ? (
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleCopyReferralLink() }}
-                  className="text-xs text-family-400 font-semibold px-2 py-1 rounded-lg bg-family-500/10 flex items-center gap-1"
-                >
-                  {referralCopied ? <Check size={12} /> : <Copy size={12} />}
-                  {referralCopied ? 'Copied' : 'Copy'}
-                </button>
-              ) : null
-            }
+      {/* Add Member form — plain conditional render, no AnimatePresence.
+          Framer Motion's exit animations (including non-height variants)
+          were observed getting stuck mid-transition in this dev environment,
+          leaving the form visually open after Cancel/successful Add even
+          though the underlying state had already reset correctly. Reliability
+          here matters more than a fade transition. */}
+      {showAddMember && (
+        <GlassCard className="p-4 space-y-3">
+          <input
+            type="text"
+            placeholder="Name"
+            value={memberName}
+            onChange={(e) => setMemberName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
+            className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
           />
-          {(referralSummary.pending > 0 || referralSummary.rewarded > 0) && (
-            <ListRow>
-              <p className="text-xs text-ink-tertiary">
-                {referralSummary.rewarded} friend{referralSummary.rewarded === 1 ? '' : 's'} joined and rewarded
-                {referralSummary.pending > 0 ? ` · ${referralSummary.pending} pending` : ''}
-              </p>
-            </ListRow>
-          )}
-        </ListSection>
-      )}
+          <input
+            type="email"
+            placeholder="Email (optional)"
+            value={memberEmail}
+            onChange={(e) => setMemberEmail(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
+            className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+          />
 
-      {/* On-device crisis drafts (PRD-113) — hidden entirely on a browser
-          without WebGPU rather than shown disabled; no dead toggle to
-          explain. */}
-      {onDeviceSupported && (
-        <ListSection title="Privacy">
-          <ListRow icon={ShieldCheck}>
-            <div className="flex items-center justify-between w-full gap-3">
-              <div className="text-left min-w-0">
-                <div className="text-base font-medium">Generate crisis drafts on this device</div>
-                <div className="text-xs text-ink-tertiary mt-0.5">
-                  {onDeviceDownloading
-                    ? `Downloading… ${onDeviceProgress}%`
-                    : 'A one-time ~700MB download, then life-event drafts never leave this device'}
-                </div>
-              </div>
-              <button
-                role="switch"
-                aria-checked={onDeviceEnabled}
-                onClick={async (e) => {
-                  e.stopPropagation()
-                  if (onDeviceDownloading) return
-                  haptic('light')
-                  const next = !onDeviceEnabled
-                  if (next) {
-                    setOnDeviceDownloading(true)
-                    const ok = await enableOnDeviceModel(setOnDeviceProgress)
-                    setOnDeviceDownloading(false)
-                    if (!ok) { haptic('warning'); return }
-                  }
-                  persistOnDeviceEnabled(next)
-                  setOnDeviceEnabled(next)
-                  haptic('success')
-                }}
-                className={`w-12 h-7 rounded-full flex-shrink-0 flex items-center px-1 transition-colors ${onDeviceEnabled ? 'bg-family-500' : 'bg-tint/10'}`}
-              >
-                <motion.div className="w-5 h-5 rounded-full bg-white" animate={{ x: onDeviceEnabled ? 20 : 0 }} />
-              </button>
+          <label className="block">
+            <div className="text-xs text-ink-tertiary mb-1.5">Date of birth (optional)</div>
+            <input
+              type="date"
+              value={memberDob}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setMemberDob(e.target.value)}
+              className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+            />
+          </label>
+
+          <div className="flex gap-2">
+            {INVITABLE_ROLES.map((role) => {
+              const RoleIcon = ROLE_ICONS[role] ?? User
+              const active = memberRole === role
+              return (
+                <button
+                  key={role}
+                  onClick={() => { haptic('light'); setMemberRole(role) }}
+                  className={`flex-1 rounded-xl py-2.5 flex flex-col items-center gap-1 border transition-colors ${
+                    active
+                      ? 'bg-family-500/15 border-family-500/40 text-family-400'
+                      : 'bg-tint/[0.03] border-tint/[0.06] text-ink-secondary'
+                  }`}
+                >
+                  <RoleIcon size={16} />
+                  <span className="text-xs font-medium">{ROLE_LABELS[role]}</span>
+                </button>
+              )
+            })}
+          </div>
+
+          {addMemberError && (
+            <div role="status" aria-live="polite" className="flex items-start gap-2 text-xs text-danger">
+              <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
+              <span>{addMemberError}</span>
             </div>
-          </ListRow>
-        </ListSection>
+          )}
+
+          <div className="flex gap-2">
+            <motion.button
+              whileTap={{ scale: 0.96 }}
+              onClick={resetAddMemberForm}
+              disabled={addingMember}
+              className="flex-1 glass text-ink-primary font-semibold rounded-xl py-3 text-sm disabled:opacity-40"
+            >
+              Cancel
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.96 }}
+              onClick={handleAddMember}
+              disabled={!memberName.trim() || addingMember}
+              className="flex-1 bg-family-500 text-white font-semibold rounded-xl py-3 text-sm disabled:opacity-40 flex items-center justify-center gap-1.5"
+            >
+              {addingMember ? <Loader2 size={14} className="animate-spin" /> : 'Add'}
+            </motion.button>
+          </div>
+        </GlassCard>
       )}
 
       {/* Access requests (PRD-110) — organizer-only. A pending request never
@@ -814,90 +831,52 @@ export default function SettingsPage() {
           </ListRow>
         </ListSection>
       )}
-      {/* Add Member form — plain conditional render, no AnimatePresence.
-          Framer Motion's exit animations (including non-height variants)
-          were observed getting stuck mid-transition in this dev environment,
-          leaving the form visually open after Cancel/successful Add even
-          though the underlying state had already reset correctly. Reliability
-          here matters more than a fade transition. */}
-      {showAddMember && (
-        <GlassCard className="p-4 space-y-3">
-          <input
-            type="text"
-            placeholder="Name"
-            value={memberName}
-            onChange={(e) => setMemberName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
-            className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-          />
-          <input
-            type="email"
-            placeholder="Email (optional)"
-            value={memberEmail}
-            onChange={(e) => setMemberEmail(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
-            className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-          />
-
-          <label className="block">
-            <div className="text-xs text-ink-tertiary mb-1.5">Date of birth (optional)</div>
-            <input
-              type="date"
-              value={memberDob}
-              max={new Date().toISOString().slice(0, 10)}
-              onChange={(e) => setMemberDob(e.target.value)}
-              className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-            />
-          </label>
-
-          <div className="flex gap-2">
-            {INVITABLE_ROLES.map((role) => {
-              const RoleIcon = ROLE_ICONS[role] ?? User
-              const active = memberRole === role
-              return (
+      {/* Friend referral (PRD-112) — a completely separate account for the
+          friend, not another member of this family; no organizer gate. */}
+      {family && (
+        <ListSection title="Refer a Friend">
+          <ListRow
+            icon={Gift}
+            label={referralCode ? `Your link: /signup?ref=${referralCode}` : 'Loading…'}
+            value={
+              referralCode ? (
                 <button
-                  key={role}
-                  onClick={() => { haptic('light'); setMemberRole(role) }}
-                  className={`flex-1 rounded-xl py-2.5 flex flex-col items-center gap-1 border transition-colors ${
-                    active
-                      ? 'bg-family-500/15 border-family-500/40 text-family-400'
-                      : 'bg-tint/[0.03] border-tint/[0.06] text-ink-secondary'
-                  }`}
+                  onClick={(e) => { e.stopPropagation(); handleCopyReferralLink() }}
+                  className="text-xs text-family-400 font-semibold px-2 py-1 rounded-lg bg-family-500/10 flex items-center gap-1"
                 >
-                  <RoleIcon size={16} />
-                  <span className="text-xs font-medium">{ROLE_LABELS[role]}</span>
+                  {referralCopied ? <Check size={12} /> : <Copy size={12} />}
+                  {referralCopied ? 'Copied' : 'Copy'}
                 </button>
-              )
-            })}
-          </div>
-
-          {addMemberError && (
-            <div role="status" aria-live="polite" className="flex items-start gap-2 text-xs text-danger">
-              <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
-              <span>{addMemberError}</span>
-            </div>
+              ) : null
+            }
+          />
+          {(referralSummary.pending > 0 || referralSummary.rewarded > 0) && (
+            <ListRow>
+              <p className="text-xs text-ink-tertiary">
+                {referralSummary.rewarded} friend{referralSummary.rewarded === 1 ? '' : 's'} joined and rewarded
+                {referralSummary.pending > 0 ? ` · ${referralSummary.pending} pending` : ''}
+              </p>
+            </ListRow>
           )}
-
-          <div className="flex gap-2">
-            <motion.button
-              whileTap={{ scale: 0.96 }}
-              onClick={resetAddMemberForm}
-              disabled={addingMember}
-              className="flex-1 glass text-ink-primary font-semibold rounded-xl py-3 text-sm disabled:opacity-40"
-            >
-              Cancel
-            </motion.button>
-            <motion.button
-              whileTap={{ scale: 0.96 }}
-              onClick={handleAddMember}
-              disabled={!memberName.trim() || addingMember}
-              className="flex-1 bg-family-500 text-white font-semibold rounded-xl py-3 text-sm disabled:opacity-40 flex items-center justify-center gap-1.5"
-            >
-              {addingMember ? <Loader2 size={14} className="animate-spin" /> : 'Add'}
-            </motion.button>
-          </div>
-        </GlassCard>
+        </ListSection>
       )}
+
+      {/* Financial profile */}
+      <ListSection title="Personalized Insights">
+        <ListRow
+          icon={Calculator}
+          onClick={() => { haptic('light'); router.push('/financial-profile') }}
+          chevron
+        >
+          <div className="text-base font-medium flex items-center gap-2">
+            Financial Profile
+            {profileCompleteness > 0 && profileCompleteness < 100 && (
+              <span className="text-xs font-semibold text-family-400">{profileCompleteness}%</span>
+            )}
+          </div>
+          <div className="text-xs text-ink-tertiary mt-0.5">Income, savings, pension — powers your real readiness scores</div>
+        </ListRow>
+      </ListSection>
 
       {/* Connected Services */}
       <ListSection title="Connected Services">
@@ -915,7 +894,22 @@ export default function SettingsPage() {
           Subscribing is the opt-in: the OS permission prompt is the
           explicit gesture, and Keel pushes what the detectors produce
           (renewals, new insights) — never marketing. */}
-      {pushSupported && (
+      {isIOS() && !isStandalone() ? (
+        // iOS only allows web push from an *installed* home-screen app —
+        // in a Safari tab PushManager exists but subscribing fails, so a
+        // live toggle here would be a dead control. Point at the install
+        // path instead, and reassure that email alerts still work.
+        <ListSection title="Notifications">
+          <ListRow icon={Bell}>
+            <div>
+              <div className="text-base font-medium">Push notifications</div>
+              <div className="text-xs text-ink-tertiary mt-0.5">
+                On iPhone and iPad, add LifeKeel to your Home Screen first — push only works from the installed app. Email alerts work either way.
+              </div>
+            </div>
+          </ListRow>
+        </ListSection>
+      ) : pushSupported && (
         <ListSection title="Notifications">
           <ListRow icon={Bell}>
             <div className="flex items-center justify-between gap-3">
@@ -963,23 +957,6 @@ export default function SettingsPage() {
         />
       )}
 
-      {/* Financial profile */}
-      <ListSection title="Personalized Insights">
-        <ListRow
-          icon={Calculator}
-          onClick={() => { haptic('light'); router.push('/financial-profile') }}
-          chevron
-        >
-          <div className="text-base font-medium flex items-center gap-2">
-            Financial Profile
-            {profileCompleteness > 0 && profileCompleteness < 100 && (
-              <span className="text-xs font-semibold text-family-400">{profileCompleteness}%</span>
-            )}
-          </div>
-          <div className="text-xs text-ink-tertiary mt-0.5">Income, savings, pension — powers your real readiness scores</div>
-        </ListRow>
-      </ListSection>
-
       {/* Keel Plus */}
       <ListSection title="Plan">
         <ListRow
@@ -991,6 +968,48 @@ export default function SettingsPage() {
           <div className="text-xs text-ink-tertiary mt-0.5">AI document extraction and inbox summaries</div>
         </ListRow>
       </ListSection>
+
+      {/* On-device crisis drafts (PRD-113) — hidden entirely on a browser
+          without WebGPU rather than shown disabled; no dead toggle to
+          explain. */}
+      {onDeviceSupported && (
+        <ListSection title="On-device AI">
+          <ListRow icon={ShieldCheck}>
+            <div className="flex items-center justify-between w-full gap-3">
+              <div className="text-left min-w-0">
+                <div className="text-base font-medium">Generate crisis drafts on this device</div>
+                <div className="text-xs text-ink-tertiary mt-0.5">
+                  {onDeviceDownloading
+                    ? `Downloading… ${onDeviceProgress}%`
+                    : 'A one-time ~700MB download, then life-event drafts never leave this device'}
+                </div>
+              </div>
+              <button
+                role="switch"
+                aria-checked={onDeviceEnabled}
+                onClick={async (e) => {
+                  e.stopPropagation()
+                  if (onDeviceDownloading) return
+                  haptic('light')
+                  const next = !onDeviceEnabled
+                  if (next) {
+                    setOnDeviceDownloading(true)
+                    const ok = await enableOnDeviceModel(setOnDeviceProgress)
+                    setOnDeviceDownloading(false)
+                    if (!ok) { haptic('warning'); return }
+                  }
+                  persistOnDeviceEnabled(next)
+                  setOnDeviceEnabled(next)
+                  haptic('success')
+                }}
+                className={`w-12 h-7 rounded-full flex-shrink-0 flex items-center px-1 transition-colors ${onDeviceEnabled ? 'bg-family-500' : 'bg-tint/10'}`}
+              >
+                <motion.div className="w-5 h-5 rounded-full bg-white" animate={{ x: onDeviceEnabled ? 20 : 0 }} />
+              </button>
+            </div>
+          </ListRow>
+        </ListSection>
+      )}
 
       {/* Privacy & activity */}
       <ListSection title="Privacy & Activity">

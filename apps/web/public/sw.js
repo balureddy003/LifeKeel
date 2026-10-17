@@ -8,15 +8,34 @@
  *   - Push notifications for urgent family alerts
  */
 
-const CACHE_NAME = 'lifekeel-v2'
-const STATIC_CACHE = 'lifekeel-static-v2'
+const CACHE_NAME = 'lifekeel-v3'
+const STATIC_CACHE = 'lifekeel-static-v3'
 
+// Every top-level authenticated route is pre-cached so a deep link or
+// relaunch while offline still opens a real page instead of the browser's
+// offline error. Dynamic routes (/member/[id], /events/[eventId], …) can't
+// be listed here — they get cached on first visit via the navigation
+// stale-while-revalidate path below.
 const APP_SHELL = [
   '/',
   '/events',
+  '/life-events',
   '/inbox',
   '/family',
   '/assistant',
+  '/settings',
+  '/financial-profile',
+  '/vault',
+  '/documents',
+  '/cashflow',
+  '/assets',
+  '/upgrade',
+  '/audit-log',
+  '/support',
+  '/readiness',
+  '/welcome',
+  '/login',
+  '/signup',
   '/map',
   '/upload',
   '/connect',

@@ -35,6 +35,7 @@ export type OperatorAuditAction =
   | 'operator.configuration.update'
   | 'operator.infrastructure.record_cost'
   | 'operator.user.unlock'
+  | 'operator.user.mfa_disable'
   | 'operator.user.export'
   | 'operator.user.erase'
   | 'operator.support.reply'

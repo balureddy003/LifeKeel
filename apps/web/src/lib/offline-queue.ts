@@ -16,6 +16,7 @@
  */
 
 import { getApiBase } from './env'
+import { credFetch } from './http'
 
 const DB_NAME = 'lifekeel-offline'
 const STORE = 'pending_mutations'
@@ -99,7 +100,7 @@ export async function fetchOrQueue(
   }
   if (token) headers['Authorization'] = `Bearer ${token}`
   try {
-    return await fetch(`${getApiBase()}${path}`, { ...init, headers })
+    return await credFetch(`${getApiBase()}${path}`, { ...init, headers })
   } catch (err) {
     // fetch() throwing = the request never left the device. A non-TypeError
     // (e.g. an AbortError from a cancelled request) shouldn't be queued.
@@ -129,7 +130,7 @@ export async function flushMutationQueue(): Promise<number> {
   let replayed = 0
   for (const m of pending) {
     try {
-      const res = await fetch(`${getApiBase()}${m.path}`, {
+      const res = await credFetch(`${getApiBase()}${m.path}`, {
         method: m.method,
         headers: {
           'Content-Type': 'application/json',
