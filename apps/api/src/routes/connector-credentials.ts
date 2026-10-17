@@ -28,6 +28,7 @@ import type { ConnectorLoader, EventGenerator } from '@lifekeel/pipeline'
 import type { Engine } from '@lifekeel/engine'
 import { fetchGmailAddress } from '../email/gmail-oauth.js'
 import { scanTenantInbox } from '../jobs/email-scan.js'
+import { isGatedConnectorAction } from '../connectors/action-gate.js'
 
 // KEEL-002: this route accepted any connector id known to the shared,
 // multi-vertical connectorRegistry/connectorLoader (30+ connectors,
@@ -396,6 +397,14 @@ export function registerConnectorCredentialRoutes(
     Body: Record<string, unknown>
   }>('/connectors/:id/actions/:action', async (req, reply) => {
     const tenantId = req.authContext.tenant_id
+    // Money-moving actions are refused here; see connectors/action-gate.ts for why.
+    if (isGatedConnectorAction(req.params.id, req.params.action)) {
+      return reply.status(403).send({
+        ok: false,
+        error: 'action_requires_approval',
+        message: 'This action changes a financial account and cannot be run directly. It needs an explicit human approval flow.',
+      })
+    }
     const result = await executor.execute(
       tenantId,
       req.params.id,
