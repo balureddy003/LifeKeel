@@ -1,6 +1,6 @@
 /**
  * SkillOptimizerQuota — Quota enforcement for skill optimization runs.
- * 
+ *
  * Prevents runaway LLM costs from unlimited optimization runs by enforcing:
  * - Per-detector daily limits
  * - Per-tenant daily limits  
@@ -13,9 +13,9 @@ import { createLogger } from '@lifekeel/platform'
 const log = createLogger({ service: 'skill-optimizer-quota', version: '0.0.0' })
 
 export interface SkillOptimizerQuotaConfig {
-  max_runs_per_detector_per_day: number   // default: 1
-  max_runs_per_tenant_per_day: number     // default: 5
-  min_approvals_since_last_run: number    // default: 10
+  max_runs_per_detector_per_day: number // default: 1
+  max_runs_per_tenant_per_day: number // default: 5
+  min_approvals_since_last_run: number // default: 10
 }
 
 export const DEFAULT_QUOTA: SkillOptimizerQuotaConfig = {
@@ -26,7 +26,11 @@ export const DEFAULT_QUOTA: SkillOptimizerQuotaConfig = {
 
 export type QuotaCheckResult =
   | { allowed: true }
-  | { allowed: false; reason: 'tenant_daily_limit' | 'detector_daily_limit' | 'insufficient_approvals'; detail: string }
+  | {
+      allowed: false
+      reason: 'tenant_daily_limit' | 'detector_daily_limit' | 'insufficient_approvals'
+      detail: string
+    }
 
 export async function checkSkillOptimizerQuota(
   db: Db,
@@ -45,7 +49,10 @@ export async function checkSkillOptimizerQuota(
     })
 
     if (tenantRunsToday >= config.max_runs_per_tenant_per_day) {
-      log.warn({ tenant_id: tenantId, count: tenantRunsToday, limit: config.max_runs_per_tenant_per_day }, 'SkillOptimizer tenant daily limit exceeded')
+      log.warn(
+        { tenant_id: tenantId, count: tenantRunsToday, limit: config.max_runs_per_tenant_per_day },
+        'SkillOptimizer tenant daily limit exceeded',
+      )
       return {
         allowed: false,
         reason: 'tenant_daily_limit',
@@ -61,7 +68,15 @@ export async function checkSkillOptimizerQuota(
     })
 
     if (detectorRunsToday >= config.max_runs_per_detector_per_day) {
-      log.warn({ tenant_id: tenantId, detector_id: detectorId, count: detectorRunsToday, limit: config.max_runs_per_detector_per_day }, 'SkillOptimizer detector daily limit exceeded')
+      log.warn(
+        {
+          tenant_id: tenantId,
+          detector_id: detectorId,
+          count: detectorRunsToday,
+          limit: config.max_runs_per_detector_per_day,
+        },
+        'SkillOptimizer detector daily limit exceeded',
+      )
       return {
         allowed: false,
         reason: 'detector_daily_limit',
@@ -70,10 +85,9 @@ export async function checkSkillOptimizerQuota(
     }
 
     // Check for minimum approvals since last run
-    const lastRun = await db.collection('skill_opt_history').findOne(
-      { tenant_id: tenantId, detector_id: detectorId },
-      { sort: { completed_at: -1 } },
-    )
+    const lastRun = await db
+      .collection('skill_opt_history')
+      .findOne({ tenant_id: tenantId, detector_id: detectorId }, { sort: { completed_at: -1 } })
 
     if (lastRun) {
       const lastRunTime = lastRun['completed_at'] as Date
@@ -85,7 +99,15 @@ export async function checkSkillOptimizerQuota(
       })
 
       if (approvalsSinceLastRun < config.min_approvals_since_last_run) {
-        log.warn({ tenant_id: tenantId, detector_id: detectorId, count: approvalsSinceLastRun, required: config.min_approvals_since_last_run }, 'SkillOptimizer insufficient approvals since last run')
+        log.warn(
+          {
+            tenant_id: tenantId,
+            detector_id: detectorId,
+            count: approvalsSinceLastRun,
+            required: config.min_approvals_since_last_run,
+          },
+          'SkillOptimizer insufficient approvals since last run',
+        )
         return {
           allowed: false,
           reason: 'insufficient_approvals',
@@ -96,7 +118,10 @@ export async function checkSkillOptimizerQuota(
 
     return { allowed: true }
   } catch (error) {
-    log.error({ error, tenant_id: tenantId, detector_id: detectorId }, 'SkillOptimizer quota check failed')
+    log.error(
+      { error, tenant_id: tenantId, detector_id: detectorId },
+      'SkillOptimizer quota check failed',
+    )
     // Fail open: allow the run if quota check fails, to avoid blocking legitimate operations
     return { allowed: true }
   }

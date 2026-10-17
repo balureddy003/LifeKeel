@@ -39,7 +39,7 @@ import type { Engine, Insight } from '@lifekeel/engine'
 import { GridFSBucket, type Db, type ObjectId } from 'mongodb'
 import { randomUUID } from 'node:crypto'
 import { createLogger, getTenantCollection, encryptBuffer, decryptBuffer } from '@lifekeel/platform'
-import { isFamilyAdult } from '../lib/family-permissions.js'
+import { isFamilyAdult } from '../family/family-permissions.js'
 import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE, ESTATE_VAULT_CATEGORY } from './documents.js'
 import { evaluateEstate } from '../legacy/evaluate-estate.js'
 
@@ -55,7 +55,13 @@ type VaultDocumentRecord = Record<string, unknown> & {
 // before this field have no doc_type and simply don't satisfy an expected
 // category. Types are user-declared, never OCR-guessed — the vault does
 // no extraction on these files at all.
-export const VAULT_DOC_TYPES = ['will', 'power_of_attorney', 'insurance_policy', 'estate_instruction', 'other'] as const
+export const VAULT_DOC_TYPES = [
+  'will',
+  'power_of_attorney',
+  'insurance_policy',
+  'estate_instruction',
+  'other',
+] as const
 export type VaultDocType = (typeof VAULT_DOC_TYPES)[number]
 
 export function registerVaultRoutes(
@@ -78,109 +84,140 @@ export function registerVaultRoutes(
     await evaluateEstate(db, engine, tenantId, onInsightsGenerated)
   }
 
-  async function requireAdult(req: { authContext: { tenant_id: string; user_id: string } }, reply: { status: (code: number) => { send: (body: unknown) => unknown } }): Promise<boolean> {
+  async function requireAdult(
+    req: { authContext: { tenant_id: string; user_id: string } },
+    reply: { status: (code: number) => { send: (body: unknown) => unknown } },
+  ): Promise<boolean> {
     const { tenant_id, user_id } = req.authContext
     if (await isFamilyAdult(db, tenant_id, user_id)) return true
-    reply.status(403).send({ error: 'The Digital Estate Vault is visible to adult family members only.' })
+    reply
+      .status(403)
+      .send({ error: 'The Digital Estate Vault is visible to adult family members only.' })
     return false
   }
 
   // ── POST /vault/documents/upload ────────────────────────────────────────
-  fastify.post<{ Querystring: { doc_type?: string; sealed?: string; mime?: string } }>('/vault/documents/upload', async (req, reply) => {
-    if (!(await requireAdult(req, reply))) return
-    const { tenant_id } = req.authContext
-    const docType = req.query.doc_type
-    if (docType !== undefined && !(VAULT_DOC_TYPES as readonly string[]).includes(docType)) {
-      return reply.status(400).send({ error: `Invalid doc_type. Allowed: ${VAULT_DOC_TYPES.join(', ')}` })
-    }
-    // PRD-134: `sealed=1` means the body is already a client-encrypted
-    // envelope (application/octet-stream) — the server's allowlist applies
-    // to the *declared* original mime (carried in `mime`) since the blob
-    // is opaque by design. The envelope is still wrapped in encryptBuffer
-    // on top, so sealed docs are double-encrypted at rest.
-    const sealed = req.query.sealed === '1'
-    const declaredMime = sealed ? (req.query.mime ?? 'application/octet-stream') : undefined
-    if (sealed && !ALLOWED_MIME_TYPES.has(declaredMime!)) {
-      return reply.status(422).send({ error: `Unsupported sealed document type: ${declaredMime}` })
-    }
-    const data = await req.file()
-    if (!data) {
-      return reply.status(400).send({ error: 'No file uploaded' })
-    }
-    if (!sealed && !ALLOWED_MIME_TYPES.has(data.mimetype)) {
-      return reply.status(422).send({
-        error: `Unsupported file type: ${data.mimetype}. Allowed: images (JPEG, PNG, WebP, HEIC) and PDF.`,
-      })
-    }
-
-    const fileBuffer = await data.toBuffer()
-    if (fileBuffer.length > MAX_FILE_SIZE) {
-      return reply.status(413).send({ error: 'File too large (max 50 MB)' })
-    }
-
-    const documentId = randomUUID()
-    const filename = data.filename || `estate-document-${documentId}`
-    const mimeType = sealed ? declaredMime! : data.mimetype
-    const encrypted = encryptBuffer(fileBuffer)
-
-    log.info({ documentId, filename, mimeType, size: fileBuffer.length, tenant_id, sealed }, 'Uploading estate vault document')
-
-    try {
-      const uploadStream = bucket.openUploadStream(filename, {
-        metadata: { tenant_id, document_id: documentId, mime_type: mimeType, uploaded_at: new Date(), category: ESTATE_VAULT_CATEGORY, ...(sealed ? { sealed: true } : {}), ...(docType ? { doc_type: docType } : {}) },
-      })
-      const fileId = uploadStream.id as ObjectId
-      await new Promise<void>((resolve, reject) => {
-        uploadStream.once('finish', () => resolve())
-        uploadStream.once('error', reject)
-        uploadStream.end(encrypted)
-      })
-
-      const documents = getTenantCollection<VaultDocumentRecord>(db, 'documents', tenant_id)
-      try {
-        await documents.insertOne({
-          id: documentId,
-          filename,
-          mime_type: mimeType,
-          size: fileBuffer.length,
-          category: ESTATE_VAULT_CATEGORY,
-          status: 'stored',
-          uploaded_at: new Date(),
-          uploaded_by: req.authContext.user_id,
-          file_id: fileId,
-          encrypted: true,
-          ...(sealed ? { sealed: true } : {}),
-          ...(docType ? { doc_type: docType } : {}),
+  fastify.post<{ Querystring: { doc_type?: string; sealed?: string; mime?: string } }>(
+    '/vault/documents/upload',
+    async (req, reply) => {
+      if (!(await requireAdult(req, reply))) return
+      const { tenant_id } = req.authContext
+      const docType = req.query.doc_type
+      if (docType !== undefined && !(VAULT_DOC_TYPES as readonly string[]).includes(docType)) {
+        return reply
+          .status(400)
+          .send({ error: `Invalid doc_type. Allowed: ${VAULT_DOC_TYPES.join(', ')}` })
+      }
+      // PRD-134: `sealed=1` means the body is already a client-encrypted
+      // envelope (application/octet-stream) — the server's allowlist applies
+      // to the *declared* original mime (carried in `mime`) since the blob
+      // is opaque by design. The envelope is still wrapped in encryptBuffer
+      // on top, so sealed docs are double-encrypted at rest.
+      const sealed = req.query.sealed === '1'
+      const declaredMime = sealed ? (req.query.mime ?? 'application/octet-stream') : undefined
+      if (sealed && !ALLOWED_MIME_TYPES.has(declaredMime!)) {
+        return reply
+          .status(422)
+          .send({ error: `Unsupported sealed document type: ${declaredMime}` })
+      }
+      const data = await req.file()
+      if (!data) {
+        return reply.status(400).send({ error: 'No file uploaded' })
+      }
+      if (!sealed && !ALLOWED_MIME_TYPES.has(data.mimetype)) {
+        return reply.status(422).send({
+          error: `Unsupported file type: ${data.mimetype}. Allowed: images (JPEG, PNG, WebP, HEIC) and PDF.`,
         })
-      } catch (metaErr) {
-        await bucket.delete(fileId).catch((cleanupErr) =>
-          log.error({ cleanupErr, fileId, documentId }, 'Failed to clean up orphaned GridFS blob after metadata insert failure'),
-        )
-        throw metaErr
       }
 
-      await reevaluateEstate(tenant_id)
+      const fileBuffer = await data.toBuffer()
+      if (fileBuffer.length > MAX_FILE_SIZE) {
+        return reply.status(413).send({ error: 'File too large (max 50 MB)' })
+      }
 
-      return reply.status(201).send({
-        id: documentId,
-        filename,
-        category: ESTATE_VAULT_CATEGORY,
-        uploadedAt: new Date().toISOString(),
-        ...(sealed ? { sealed: true } : {}),
-        ...(docType ? { docType } : {}),
-      })
-    } catch (err) {
-      log.error({ err, documentId, filename }, 'Failed to store estate vault document')
-      return reply.status(500).send({ error: 'Failed to store document' })
-    }
-  })
+      const documentId = randomUUID()
+      const filename = data.filename || `estate-document-${documentId}`
+      const mimeType = sealed ? declaredMime! : data.mimetype
+      const encrypted = encryptBuffer(fileBuffer)
+
+      log.info(
+        { documentId, filename, mimeType, size: fileBuffer.length, tenant_id, sealed },
+        'Uploading estate vault document',
+      )
+
+      try {
+        const uploadStream = bucket.openUploadStream(filename, {
+          metadata: {
+            tenant_id,
+            document_id: documentId,
+            mime_type: mimeType,
+            uploaded_at: new Date(),
+            category: ESTATE_VAULT_CATEGORY,
+            ...(sealed ? { sealed: true } : {}),
+            ...(docType ? { doc_type: docType } : {}),
+          },
+        })
+        const fileId = uploadStream.id as ObjectId
+        await new Promise<void>((resolve, reject) => {
+          uploadStream.once('finish', () => resolve())
+          uploadStream.once('error', reject)
+          uploadStream.end(encrypted)
+        })
+
+        const documents = getTenantCollection<VaultDocumentRecord>(db, 'documents', tenant_id)
+        try {
+          await documents.insertOne({
+            id: documentId,
+            filename,
+            mime_type: mimeType,
+            size: fileBuffer.length,
+            category: ESTATE_VAULT_CATEGORY,
+            status: 'stored',
+            uploaded_at: new Date(),
+            uploaded_by: req.authContext.user_id,
+            file_id: fileId,
+            encrypted: true,
+            ...(sealed ? { sealed: true } : {}),
+            ...(docType ? { doc_type: docType } : {}),
+          })
+        } catch (metaErr) {
+          await bucket
+            .delete(fileId)
+            .catch((cleanupErr) =>
+              log.error(
+                { cleanupErr, fileId, documentId },
+                'Failed to clean up orphaned GridFS blob after metadata insert failure',
+              ),
+            )
+          throw metaErr
+        }
+
+        await reevaluateEstate(tenant_id)
+
+        return reply.status(201).send({
+          id: documentId,
+          filename,
+          category: ESTATE_VAULT_CATEGORY,
+          uploadedAt: new Date().toISOString(),
+          ...(sealed ? { sealed: true } : {}),
+          ...(docType ? { docType } : {}),
+        })
+      } catch (err) {
+        log.error({ err, documentId, filename }, 'Failed to store estate vault document')
+        return reply.status(500).send({ error: 'Failed to store document' })
+      }
+    },
+  )
 
   // ── GET /vault/documents ─────────────────────────────────────────────────
   fastify.get('/vault/documents', async (req, reply) => {
     if (!(await requireAdult(req, reply))) return
     const { tenant_id } = req.authContext
     const documents = getTenantCollection<VaultDocumentRecord>(db, 'documents', tenant_id)
-    const docs = await documents.find({ category: ESTATE_VAULT_CATEGORY }).sort({ uploaded_at: -1 }).toArray()
+    const docs = await documents
+      .find({ category: ESTATE_VAULT_CATEGORY })
+      .sort({ uploaded_at: -1 })
+      .toArray()
     return {
       documents: docs.map((doc: VaultDocumentRecord) => ({
         id: doc['id'],
@@ -203,10 +240,14 @@ export function registerVaultRoutes(
     if (!doc || !doc['file_id']) return reply.status(404).send({ error: 'Document not found' })
 
     const chunks: Buffer[] = []
-    for await (const chunk of bucket.openDownloadStream(doc['file_id'] as ObjectId)) chunks.push(chunk as Buffer)
+    for await (const chunk of bucket.openDownloadStream(doc['file_id'] as ObjectId))
+      chunks.push(chunk as Buffer)
     const plaintext = decryptBuffer(Buffer.concat(chunks))
     reply.header('Content-Type', String(doc['mime_type'] ?? 'application/octet-stream'))
-    reply.header('Content-Disposition', `inline; filename="${String(doc['filename'] ?? 'document').replace(/"/g, '')}"`)
+    reply.header(
+      'Content-Disposition',
+      `inline; filename="${String(doc['filename'] ?? 'document').replace(/"/g, '')}"`,
+    )
     return reply.send(plaintext)
   })
 

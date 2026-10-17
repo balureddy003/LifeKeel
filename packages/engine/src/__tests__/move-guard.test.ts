@@ -15,9 +15,15 @@ function insight(overrides: Partial<Insight> = {}): Insight {
     urgency: 'high',
     estimated_impact_low: 100,
     estimated_impact_high: 200,
-    reasoning: 'Your listed cover appears below the estimated household need. This is an informational estimate.',
+    reasoning:
+      'Your listed cover appears below the estimated household need. This is an informational estimate.',
     actions: ['Review your current policy terms'],
-    confidence_breakdown: { or_score: 0.8, combined_score: 0.82, model_version: 'test@1', evidence_refs: [] },
+    confidence_breakdown: {
+      or_score: 0.8,
+      combined_score: 0.82,
+      model_version: 'test@1',
+      evidence_refs: [],
+    },
     detector_id: 'test',
     rule_id: 'rule',
     state: 'identified',
@@ -27,7 +33,14 @@ function insight(overrides: Partial<Insight> = {}): Insight {
   }
 }
 
-const pass: JudgeScores = { coherence: 5, groundedness: 5, actionability: 5, proportionality: 5, safety: 5, feedback: '' }
+const pass: JudgeScores = {
+  coherence: 5,
+  groundedness: 5,
+  actionability: 5,
+  proportionality: 5,
+  safety: 5,
+  feedback: '',
+}
 
 describe('scanText', () => {
   it.each([
@@ -47,7 +60,11 @@ describe('scanText', () => {
   })
 
   it('allows the informational wording the product uses', () => {
-    expect(scanText('Compare quotes from multiple insurers before making any changes. Please consult a licensed professional.')).toEqual([])
+    expect(
+      scanText(
+        'Compare quotes from multiple insurers before making any changes. Please consult a licensed professional.',
+      ),
+    ).toEqual([])
   })
 })
 
@@ -73,7 +90,7 @@ describe('shipped detector copy', () => {
   // The guard replaces the model for template-rendered copy, so every shipped
   // template and action must pass it. A failure here is a copy bug (or a guard
   // false positive) to fix before the copy can ship.
-  const files = readdirSync(DETECTORS_DIR).filter(f => f.endsWith('.yaml'))
+  const files = readdirSync(DETECTORS_DIR).filter((f) => f.endsWith('.yaml'))
 
   it('finds the family detectors', () => {
     expect(files.length).toBeGreaterThan(0)
@@ -86,7 +103,11 @@ describe('shipped detector copy', () => {
     for (const rule of doc.rules ?? []) {
       const texts = [rule.reasoning_template ?? '', ...(rule.actions ?? [])]
       for (const text of texts) {
-        expect({ rule: rule.id, text, reasons: scanText(text) }).toEqual({ rule: rule.id, text, reasons: [] })
+        expect({ rule: rule.id, text, reasons: scanText(text) }).toEqual({
+          rule: rule.id,
+          text,
+          reasons: [],
+        })
       }
     }
   })
@@ -95,7 +116,10 @@ describe('shipped detector copy', () => {
 describe('MoveJudge with guard', () => {
   it('passes clean copy without calling the model', async () => {
     const evaluator = vi.fn(async () => pass)
-    const verdict = await new MoveJudge(evaluator, { useGuard: true }).evaluate({ insight: insight(), evidence: {} })
+    const verdict = await new MoveJudge(evaluator, { useGuard: true }).evaluate({
+      insight: insight(),
+      evidence: {},
+    })
     expect(verdict).toMatchObject({ decision: 'pass', judge_skipped: true, decided_by: 'guard' })
     expect(evaluator).not.toHaveBeenCalled()
   })
@@ -111,8 +135,18 @@ describe('MoveJudge with guard', () => {
   })
 
   it('still screens below-threshold insights instead of bypassing the guard', async () => {
-    const low = insight({ confidence_breakdown: { or_score: 0.5, combined_score: 0.5, model_version: 't', evidence_refs: [] } })
-    const judge = new MoveJudge(vi.fn(async () => pass), { useGuard: true })
+    const low = insight({
+      confidence_breakdown: {
+        or_score: 0.5,
+        combined_score: 0.5,
+        model_version: 't',
+        evidence_refs: [],
+      },
+    })
+    const judge = new MoveJudge(
+      vi.fn(async () => pass),
+      { useGuard: true },
+    )
     expect((await judge.evaluate({ insight: low, evidence: {} })).decision).toBe('skipped')
     const unsafe = { ...low, actions: ['Switch to the best policy'] }
     expect((await judge.evaluate({ insight: unsafe, evidence: {} })).decision).toBe('block')

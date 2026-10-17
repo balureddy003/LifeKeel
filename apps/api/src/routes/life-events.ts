@@ -32,14 +32,22 @@ import { extractDraftProvenance } from '../insights/draft-provenance.js'
 import { renderPlaybook, type LifeEventType } from '../life-events/render-playbook.js'
 import { computeEventReadiness } from '../life-events/event-readiness.js'
 import { maybeSendVaultReminder } from '../life-events/vault-reminder.js'
-import { recordInsightAction } from '../lib/insight-attribution.js'
+import { recordInsightAction } from '../insights/insight-attribution.js'
 import type { FinancialProfile } from './family-financial-profile.js'
 
 // Full Emergency-Mode taxonomy: the 5 crisis tiles (bereavement, medical,
 // car, property, travel) plus job_loss/disability. Until this list covered
 // all of them, the tiles routed to the hypothetical /events simulator —
 // car, property, and travel had no real flow at all.
-const LIFE_EVENT_TYPES = ['job_loss', 'bereavement', 'disability', 'medical', 'car', 'property', 'travel'] as const
+const LIFE_EVENT_TYPES = [
+  'job_loss',
+  'bereavement',
+  'disability',
+  'medical',
+  'car',
+  'property',
+  'travel',
+] as const
 
 const ReportLifeEventSchema = z.object({
   event_type: z.enum(LIFE_EVENT_TYPES),
@@ -82,12 +90,19 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
   const prepareLlmFn = familyDataLlmFromEnv()
 
   const profileFor = (tenantId: string) =>
-    getTenantCollection<FinancialProfile & { tenant_id: string }>(db, 'family_financial_profile', tenantId)
+    getTenantCollection<FinancialProfile & { tenant_id: string }>(
+      db,
+      'family_financial_profile',
+      tenantId,
+    )
 
   // Only ids present in the currently-rendered playbook count — a stored
   // id whose step no longer renders (playbook edit, different profile
   // shape) is filtered out of reads rather than resurfacing stale checks.
-  const validCompletedIds = (doc: LifeEventSignalDoc, playbook: { steps: { id: string }[] } | null): string[] => {
+  const validCompletedIds = (
+    doc: LifeEventSignalDoc,
+    playbook: { steps: { id: string }[] } | null,
+  ): string[] => {
     if (!playbook) return []
     const stepIds = new Set(playbook.steps.map((s) => s.id))
     return (doc.data.completed_step_ids ?? []).filter((id) => stepIds.has(id))
@@ -96,16 +111,18 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
   app.get('/family/life-events', async (req) => {
     const { tenant_id } = req.authContext
     const col = await getSignalsCollection()
-    const docs = await col
+    const docs = (await col
       .find({ tenant_id, signal_type: 'family.life_event' })
       .sort({ created_at: -1 })
-      .toArray() as unknown as LifeEventSignalDoc[]
+      .toArray()) as unknown as LifeEventSignalDoc[]
 
     const profile = await profileFor(tenant_id).findOne({})
 
     return {
       events: docs.map((doc) => {
-        const playbook = profile ? renderPlaybook(doc.data.event_type, profile, doc.data.affected_member_id) : null
+        const playbook = profile
+          ? renderPlaybook(doc.data.event_type, profile, doc.data.affected_member_id)
+          : null
         return {
           id: doc.id,
           event_type: doc.data.event_type,
@@ -130,12 +147,15 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
    * shared. No profile at all is the only true "sample" case — everything
    * else either has real data or is honest that it doesn't (hasLiveData).
    */
-  app.get<{ Params: { eventId: string } }>('/family/events/:eventId/readiness', async (req, reply) => {
-    const { tenant_id } = req.authContext
-    const profile = await profileFor(tenant_id).findOne({})
-    if (!profile) return reply.send({ hasLiveData: false })
-    return reply.send(computeEventReadiness(req.params.eventId, profile))
-  })
+  app.get<{ Params: { eventId: string } }>(
+    '/family/events/:eventId/readiness',
+    async (req, reply) => {
+      const { tenant_id } = req.authContext
+      const profile = await profileFor(tenant_id).findOne({})
+      if (!profile) return reply.send({ hasLiveData: false })
+      return reply.send(computeEventReadiness(req.params.eventId, profile))
+    },
+  )
 
   app.post<{ Body: { event_type: string; affected_member_id?: string; context?: string } }>(
     '/family/life-events',
@@ -149,7 +169,9 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
 
       const profile = await profileFor(tenant_id).findOne({})
       if (!profile) {
-        return reply.status(400).send({ error: 'Submit a financial profile before reporting a life event' })
+        return reply
+          .status(400)
+          .send({ error: 'Submit a financial profile before reporting a life event' })
       }
 
       const id = crypto.randomUUID()
@@ -174,10 +196,21 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
       // (if one was active) rather than leave it dangling now that
       // there's a real report on file. Distinct audit action from a
       // silent dismiss: this is the "nudge actually worked" signal.
-      const nudgeState = await getLifeChangeNudgeStateCollection(db).findOne({ tenant_id, active: true })
+      const nudgeState = await getLifeChangeNudgeStateCollection(db).findOne({
+        tenant_id,
+        active: true,
+      })
       if (nudgeState) {
-        await getLifeChangeNudgeStateCollection(db).updateOne({ tenant_id }, { $set: { active: false } })
-        getAuditLogger()?.fromRequest(req, 'life_event.nudge_acted_on', 'life_event_nudge', tenant_id)
+        await getLifeChangeNudgeStateCollection(db).updateOne(
+          { tenant_id },
+          { $set: { active: false } },
+        )
+        getAuditLogger()?.fromRequest(
+          req,
+          'life_event.nudge_acted_on',
+          'life_event_nudge',
+          tenant_id,
+        )
       }
 
       const playbook = renderPlaybook(event_type, profile, affected_member_id)
@@ -186,9 +219,14 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
       // an autonomous release — every adult already has standing vault
       // access (isFamilyAdult). Fire-and-forget: a family reporting a real
       // life event shouldn't wait on (or fail because of) an email send.
-      maybeSendVaultReminder(db, tenant_id, event_type, id, req.authContext.user_id, playbook.title).catch((err) =>
-        req.log.error({ err, id }, 'Vault reminder check failed'),
-      )
+      maybeSendVaultReminder(
+        db,
+        tenant_id,
+        event_type,
+        id,
+        req.authContext.user_id,
+        playbook.title,
+      ).catch((err) => req.log.error({ err, id }, 'Vault reminder check failed'))
 
       return reply.status(201).send({
         id,
@@ -225,7 +263,11 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
       const { id, stepId } = req.params
 
       const col = await getSignalsCollection()
-      const doc = (await col.findOne({ tenant_id, signal_type: 'family.life_event', id })) as LifeEventSignalDoc | null
+      const doc = (await col.findOne({
+        tenant_id,
+        signal_type: 'family.life_event',
+        id,
+      })) as LifeEventSignalDoc | null
       if (!doc) return reply.status(404).send({ error: 'Life event not found' })
 
       const profile = await profileFor(tenant_id).findOne({})
@@ -245,11 +287,20 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
           })
         : await generatePrepNote(prepareLlmFn, { title: step.title, body: step.body })
       if (!content) {
-        return reply.send({ draft: null, error: "Couldn't generate a draft right now — please try again later." })
+        return reply.send({
+          draft: null,
+          error: "Couldn't generate a draft right now — please try again later.",
+        })
       }
       // Same provenance contract as /insights/:id/prepare — step.body is the
       // personalized source text the model was grounded on here.
-      return reply.send({ draft: { content, generated_at: new Date(), provenance: extractDraftProvenance(step.body, content) } })
+      return reply.send({
+        draft: {
+          content,
+          generated_at: new Date(),
+          provenance: extractDraftProvenance(step.body, content),
+        },
+      })
     },
   )
 
@@ -263,7 +314,12 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
   app.post<{ Params: { id: string; stepId: string } }>(
     '/family/life-events/:id/steps/:stepId/prepare-on-device',
     async (req, reply) => {
-      getAuditLogger()?.fromRequest(req, 'insight.prepare_on_device', 'life_event_step', req.params.stepId)
+      getAuditLogger()?.fromRequest(
+        req,
+        'insight.prepare_on_device',
+        'life_event_step',
+        req.params.stepId,
+      )
       return reply.send({ ok: true })
     },
   )
@@ -288,7 +344,11 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
       }
 
       const col = await getSignalsCollection()
-      const doc = (await col.findOne({ tenant_id, signal_type: 'family.life_event', id })) as LifeEventSignalDoc | null
+      const doc = (await col.findOne({
+        tenant_id,
+        signal_type: 'family.life_event',
+        id,
+      })) as LifeEventSignalDoc | null
       if (!doc) return reply.status(404).send({ error: 'Life event not found' })
 
       const profile = await profileFor(tenant_id).findOne({})
@@ -311,9 +371,14 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
         await recordInsightAction(db, tenant_id, 'step_completed').catch(() => {})
       }
 
-      const stored = ((doc.data.completed_step_ids ?? []).filter((s) => s !== stepId))
+      const stored = (doc.data.completed_step_ids ?? []).filter((s) => s !== stepId)
       if (done) stored.push(stepId)
-      return { completed_step_ids: validCompletedIds({ ...doc, data: { ...doc.data, completed_step_ids: stored } }, playbook) }
+      return {
+        completed_step_ids: validCompletedIds(
+          { ...doc, data: { ...doc.data, completed_step_ids: stored } },
+          playbook,
+        ),
+      }
     },
   )
 

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 
-export type LlmGuardEventType = 'prompt_injection' | 'pii_redaction' | 'forbidden_output' | 'format_warning'
+export type LlmGuardEventType =
+  'prompt_injection' | 'pii_redaction' | 'forbidden_output' | 'format_warning'
 
 export interface LlmGuardEvent {
   tenant_id: string
@@ -40,7 +41,11 @@ const EMAIL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi
 const PHONE = /(?<!\w)(?:\+\d{7,15}|\(?\d{3,4}\)?[\s.-]\d{3,4}[\s.-]\d{3,4})(?!\w)/g
 const CARD = /\b(?:\d[ -]*?){13,19}\b/g
 const DEFAULT_PII_FIELDS = ['customer_name', 'contact_name', 'full_name', 'email', 'phone']
-const DEFAULT_FORBIDDEN = [/\bsk-[A-Za-z0-9_-]{12,}\b/g, /\bpk_live_[A-Za-z0-9_-]+\b/g, /\bBearer\s+[A-Za-z0-9._-]+\b/g]
+const DEFAULT_FORBIDDEN = [
+  /\bsk-[A-Za-z0-9_-]{12,}\b/g,
+  /\bpk_live_[A-Za-z0-9_-]+\b/g,
+  /\bBearer\s+[A-Za-z0-9._-]+\b/g,
+]
 
 function hash(value: string): string {
   return createHash('sha256').update(value).digest('hex')
@@ -73,7 +78,12 @@ abstract class BaseGuard {
     this.callId = options.callId ?? randomUUID()
   }
 
-  protected event(type: LlmGuardEventType, fieldPath: string, original: string, action: string): void {
+  protected event(
+    type: LlmGuardEventType,
+    fieldPath: string,
+    original: string,
+    action: string,
+  ): void {
     const event: LlmGuardEvent = {
       tenant_id: this.tenantId,
       call_id: this.callId,
@@ -94,13 +104,15 @@ export class LlmInputGuard extends BaseGuard {
     const visit = (value: unknown, path: string): unknown => {
       if (Array.isArray(value)) return value.map((item, index) => visit(item, `${path}.${index}`))
       if (value && typeof value === 'object') {
-        return Object.fromEntries(Object.entries(value).map(([key, item]) => [
-          key,
-          visit(item, path ? `${path}.${key}` : key),
-        ]))
+        return Object.fromEntries(
+          Object.entries(value).map(([key, item]) => [
+            key,
+            visit(item, path ? `${path}.${key}` : key),
+          ]),
+        )
       }
       if (typeof value !== 'string') return value
-      if (INJECTION_PATTERNS.some(pattern => pattern.test(value))) {
+      if (INJECTION_PATTERNS.some((pattern) => pattern.test(value))) {
         this.event('prompt_injection', path, value, 'quarantined')
         return '[FIELD REDACTED: POLICY]'
       }
@@ -115,17 +127,21 @@ export class LlmInputGuard extends BaseGuard {
   }
 
   private redactPatterns(value: string, path: string): string {
-    let result = value.replace(EMAIL, match => {
-      this.event('pii_redaction', path, match, 'replaced_email')
-      return '[EMAIL]'
-    }).replace(PHONE, match => {
-      this.event('pii_redaction', path, match, 'replaced_phone')
-      return '[PHONE]'
-    }).replace(CARD, match => {
-      if (!luhn(match)) return match
-      this.event('pii_redaction', path, match, 'replaced_card')
-      return '[CARD]'
-    })
+    let result = value
+      .replace(EMAIL, (match) => {
+        this.event('pii_redaction', path, match, 'replaced_email')
+        return '[EMAIL]'
+      })
+      .replace(PHONE, (match) => {
+        this.event('pii_redaction', path, match, 'replaced_phone')
+        return '[PHONE]'
+      })
+      .replace(CARD, (match) => {
+        if (!luhn(match)) return match
+        this.event('pii_redaction', path, match, 'replaced_card')
+        return '[CARD]'
+      })
+    // eslint-disable-next-line no-control-regex
     result = result.replace(/[\u0000-\u001f\u200b-\u200f\ufeff]/g, '')
     return result.slice(0, 4_000)
   }
@@ -133,15 +149,17 @@ export class LlmInputGuard extends BaseGuard {
 
 export class LlmOutputGuard extends BaseGuard {
   guard(output: string): GuardResult<string> {
-    let value = output.replace(EMAIL, match => {
-      this.event('pii_redaction', 'output', match, 'replaced_email')
-      return '[EMAIL]'
-    }).replace(PHONE, match => {
-      this.event('pii_redaction', 'output', match, 'replaced_phone')
-      return '[PHONE]'
-    })
+    let value = output
+      .replace(EMAIL, (match) => {
+        this.event('pii_redaction', 'output', match, 'replaced_email')
+        return '[EMAIL]'
+      })
+      .replace(PHONE, (match) => {
+        this.event('pii_redaction', 'output', match, 'replaced_phone')
+        return '[PHONE]'
+      })
     for (const pattern of [...DEFAULT_FORBIDDEN, ...(this.options.forbiddenPatterns ?? [])]) {
-      value = value.replace(pattern, match => {
+      value = value.replace(pattern, (match) => {
         this.event('forbidden_output', 'output', match, 'redacted')
         return '[REDACTED]'
       })

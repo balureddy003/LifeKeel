@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import type { Db } from 'mongodb'
 import { getDb } from './db.js'
 import { getSchemaRegistry } from './lib/schema-registry.js'
-import { getSignalEnricher } from './lib/signal-enricher.js'
+import { getSignalEnricher } from './connectors/signal-enricher.js'
 import { createLogger } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'signals', version: '0.0.0' })
@@ -31,15 +31,20 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value)
 }
 
-export function computeSignalHash(input: Pick<SignalInput, 'tenant_id' | 'source' | 'external_id' | 'data'>): string {
+export function computeSignalHash(
+  input: Pick<SignalInput, 'tenant_id' | 'source' | 'external_id' | 'data'>,
+): string {
   return crypto
     .createHash('sha256')
-    .update(`${input.tenant_id}:${input.source}:${input.external_id}:${stableJson(input.data)}`, 'utf8')
+    .update(
+      `${input.tenant_id}:${input.source}:${input.external_id}:${stableJson(input.data)}`,
+      'utf8',
+    )
     .digest('hex')
 }
 
 export async function persistSignal(input: SignalInput, dbOverride?: Db): Promise<string> {
-  const db = dbOverride ?? await getDb()
+  const db = dbOverride ?? (await getDb())
   const col = db.collection('signals')
   const id = input.id ?? crypto.randomUUID()
   const now = input.received_at ?? new Date()
@@ -48,14 +53,20 @@ export async function persistSignal(input: SignalInput, dbOverride?: Db): Promis
   // Validate against schema registry
   const registry = getSchemaRegistry()
   const validation = registry.validate(input.data, input.signal_type, input.schema_version)
-  
+
   if (!validation.valid) {
     // Log validation errors but still ingest (graceful degradation)
-    log.error({ signal_type: input.signal_type, errors: validation.errors }, 'Signal validation failed')
+    log.error(
+      { signal_type: input.signal_type, errors: validation.errors },
+      'Signal validation failed',
+    )
   }
 
   if (validation.warnings.length > 0) {
-    log.warn({ signal_type: input.signal_type, warnings: validation.warnings }, 'Signal validation warnings')
+    log.warn(
+      { signal_type: input.signal_type, warnings: validation.warnings },
+      'Signal validation warnings',
+    )
   }
 
   // Enrich signal data

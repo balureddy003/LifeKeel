@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { SignalSchemaRegistry, setSchemaRegistry, getSchemaRegistry } from '../lib/schema-registry.js'
-import { registerFamilySignalSchemas } from '../lib/family-signal-schemas.js'
+import {
+  SignalSchemaRegistry,
+  setSchemaRegistry,
+  getSchemaRegistry,
+} from '../lib/schema-registry.js'
+import { registerFamilySignalSchemas } from '../family/family-signal-schemas.js'
 
 describe('family signal schemas', () => {
   beforeEach(() => {
@@ -42,10 +46,7 @@ describe('family signal schemas', () => {
 
   it('rejects a family.household signal missing required fields', () => {
     const reg = registry()
-    const result = reg.validate(
-      { member_id: 'member-1' },
-      'family.household',
-    )
+    const result = reg.validate({ member_id: 'member-1' }, 'family.household')
     expect(result.valid).toBe(false)
     expect(result.errors.length).toBeGreaterThan(0)
   })

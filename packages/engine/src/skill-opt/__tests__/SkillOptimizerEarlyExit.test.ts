@@ -31,7 +31,10 @@ function makeDb(presets: Record<string, Record<string, unknown>[]> = {}) {
     return {
       _docs: docs,
       createIndex: async () => 'idx',
-      insertOne: async (d: Record<string, unknown>) => { docs.push({ ...d }); return {} },
+      insertOne: async (d: Record<string, unknown>) => {
+        docs.push({ ...d })
+        return {}
+      },
       replaceOne: async () => ({}),
       findOne: async () => null,
       find: () => cursor(docs),
@@ -55,12 +58,18 @@ function allApprovedEvents(tenantId: string, detectorId: string, count: number) 
   for (let i = 0; i < count; i++) {
     const insightId = `ins-${i}`
     receipts.push({
-      tenant_id: tenantId, detector_id: detectorId, insight_id: insightId,
-      outcome: 'approved', executed_at: new Date(),
+      tenant_id: tenantId,
+      detector_id: detectorId,
+      insight_id: insightId,
+      outcome: 'approved',
+      executed_at: new Date(),
     })
     insights.push({
-      id: insightId, tenant_id: tenantId,
-      feature_snapshot: { i }, reasoning: `ok ${i}`, hypothesis: `ok ${i}`,
+      id: insightId,
+      tenant_id: tenantId,
+      feature_snapshot: { i },
+      reasoning: `ok ${i}`,
+      hypothesis: `ok ${i}`,
     })
   }
   return { action_receipts: receipts, insights }
@@ -73,23 +82,35 @@ function mixedEvents(tenantId: string, detectorId: string, approved: number, rej
   for (let i = 0; i < approved; i++) {
     const insightId = `ins-ok-${i}`
     receipts.push({
-      tenant_id: tenantId, detector_id: detectorId, insight_id: insightId,
-      outcome: 'approved', executed_at: new Date(),
+      tenant_id: tenantId,
+      detector_id: detectorId,
+      insight_id: insightId,
+      outcome: 'approved',
+      executed_at: new Date(),
     })
     insights.push({
-      id: insightId, tenant_id: tenantId,
-      feature_snapshot: { i }, reasoning: `ok ${i}`, hypothesis: `ok ${i}`,
+      id: insightId,
+      tenant_id: tenantId,
+      feature_snapshot: { i },
+      reasoning: `ok ${i}`,
+      hypothesis: `ok ${i}`,
     })
   }
   for (let i = 0; i < rejected; i++) {
     const insightId = `ins-bad-${i}`
     receipts.push({
-      tenant_id: tenantId, detector_id: detectorId, insight_id: insightId,
-      outcome: 'dismissed', executed_at: new Date(),
+      tenant_id: tenantId,
+      detector_id: detectorId,
+      insight_id: insightId,
+      outcome: 'dismissed',
+      executed_at: new Date(),
     })
     insights.push({
-      id: insightId, tenant_id: tenantId,
-      feature_snapshot: { i }, reasoning: `bad ${i}`, hypothesis: `bad ${i}`,
+      id: insightId,
+      tenant_id: tenantId,
+      feature_snapshot: { i },
+      reasoning: `bad ${i}`,
+      hypothesis: `bad ${i}`,
     })
   }
   return { action_receipts: receipts, insights }

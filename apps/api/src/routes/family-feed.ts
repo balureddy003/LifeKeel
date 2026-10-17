@@ -17,7 +17,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { z } from 'zod'
 import { getTenantCollection } from '@lifekeel/platform'
-import { isFamilyAdult, memberMatchesUser } from '../lib/family-permissions.js'
+import { isFamilyAdult, memberMatchesUser } from '../family/family-permissions.js'
 import type { ReadinessEventDoc } from '../feed/emit.js'
 import { upsertEventMute, deleteEventMutes } from '../feed/mutes.js'
 import type { FamilyGroupDoc } from './family-group.js'
@@ -122,10 +122,15 @@ export function registerFamilyFeedRoutes(app: FastifyInstance, db: Db): void {
     }
 
     if (!(await isFamilyAdult(db, tenant_id, user_id))) {
-      return reply.status(403).send({ error: 'The readiness feed is visible to adult family members only.' })
+      return reply
+        .status(403)
+        .send({ error: 'The readiness feed is visible to adult family members only.' })
     }
 
-    const limit = Math.max(1, Math.min(Number.parseInt(req.query.limit ?? '', 10) || DEFAULT_LIMIT, MAX_LIMIT))
+    const limit = Math.max(
+      1,
+      Math.min(Number.parseInt(req.query.limit ?? '', 10) || DEFAULT_LIMIT, MAX_LIMIT),
+    )
     const filter: Record<string, unknown> = {}
     if (req.query.member_id) filter['member_id'] = req.query.member_id
     if (req.query.domain) filter['domain'] = req.query.domain
@@ -155,7 +160,9 @@ export function registerFamilyFeedRoutes(app: FastifyInstance, db: Db): void {
   app.post<{ Params: { id: string } }>('/family/feed/:id/feedback', async (req, reply) => {
     const { tenant_id, user_id } = req.authContext
     if (!(await isFamilyAdult(db, tenant_id, user_id))) {
-      return reply.status(403).send({ error: 'The readiness feed is visible to adult family members only.' })
+      return reply
+        .status(403)
+        .send({ error: 'The readiness feed is visible to adult family members only.' })
     }
     const parsed = FeedbackBody.safeParse(req.body)
     if (!parsed.success) return reply.status(400).send({ error: 'Invalid feedback value' })
@@ -197,7 +204,9 @@ export function registerFamilyFeedRoutes(app: FastifyInstance, db: Db): void {
   app.get<{ Querystring: { window?: string } }>('/family/feed/summary', async (req, reply) => {
     const { tenant_id, user_id } = req.authContext
     if (!(await isFamilyAdult(db, tenant_id, user_id))) {
-      return reply.status(403).send({ error: 'The readiness feed is visible to adult family members only.' })
+      return reply
+        .status(403)
+        .send({ error: 'The readiness feed is visible to adult family members only.' })
     }
     const days = req.query.window === '30d' ? 30 : 7
     const since = new Date(Date.now() - days * 86_400_000)
@@ -221,7 +230,10 @@ export function registerFamilyFeedRoutes(app: FastifyInstance, db: Db): void {
     // Composite delta: last minus first score snapshot inside the window.
     const history = (await db
       .collection(HISTORY_COLLECTION)
-      .find({ tenant_id, date: { $gte: since.toISOString().slice(0, 10) } }, { projection: { _id: 0, date: 1, score: 1 } })
+      .find(
+        { tenant_id, date: { $gte: since.toISOString().slice(0, 10) } },
+        { projection: { _id: 0, date: 1, score: 1 } },
+      )
       .toArray()) as unknown as { date: string; score: number }[]
     const ordered = history
       .filter((h) => typeof h.score === 'number')
@@ -229,6 +241,13 @@ export function registerFamilyFeedRoutes(app: FastifyInstance, db: Db): void {
     const compositeDelta =
       ordered.length >= 2 ? ordered[ordered.length - 1]!.score - ordered[0]!.score : null
 
-    return { window: `${days}d`, total: visible.length, by_type: byType, up, down, composite_delta: compositeDelta }
+    return {
+      window: `${days}d`,
+      total: visible.length,
+      by_type: byType,
+      up,
+      down,
+      composite_delta: compositeDelta,
+    }
   })
 }

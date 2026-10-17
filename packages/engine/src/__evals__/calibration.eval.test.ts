@@ -12,7 +12,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
-import { ScoreCalibrator } from '../calibration.js'
+import { ScoreCalibrator } from '../calibration/calibration.js'
 import { FakeMongo, readCsv, ece, brier, writeOut, round, EVAL_ROOT, hasData } from './_harness.js'
 
 interface Baseline {
@@ -82,7 +82,7 @@ describe.skipIf(!HAS_DATA)('PP2 calibration accuracy on industry datasets', () =
   it('writes calibration results', () => {
     results.sort((a, b) => String(a.dataset).localeCompare(String(b.dataset)))
     writeOut('calibration_results.json', results)
-    // eslint-disable-next-line no-console
+     
     console.table(results)
     expect(results.length).toBeGreaterThan(0)
   })

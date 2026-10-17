@@ -29,7 +29,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { z } from 'zod'
 import { getTenantCollection } from '@lifekeel/platform'
-import { isFamilyAdult } from '../lib/family-permissions.js'
+import { isFamilyAdult } from '../family/family-permissions.js'
 import { type ScenarioChange, type ScenarioResult } from '../scenarios/calculate.js'
 import { projectScenario } from '../scenarios/project.js'
 import type { FamilyGroupDoc } from './family-group.js'
@@ -88,11 +88,16 @@ interface ScenarioView {
   result: ScenarioResult | null
   has_live_data: boolean
   watch: boolean
-  last_projection: { runway_months: number | null; depletion_month: number | null; at: string } | null
+  last_projection: {
+    runway_months: number | null
+    depletion_month: number | null
+    at: string
+  } | null
 }
 
 export function registerFamilyScenarioRoutes(app: FastifyInstance, db: Db): void {
-  const scenariosFor = (tenantId: string) => getTenantCollection<FamilyScenarioDoc>(db, 'family_scenarios', tenantId)
+  const scenariosFor = (tenantId: string) =>
+    getTenantCollection<FamilyScenarioDoc>(db, 'family_scenarios', tenantId)
 
   const toView = async (tenantId: string, doc: FamilyScenarioDoc): Promise<ScenarioView> => {
     const outcome = await projectScenario(db, tenantId, doc.inputs)
@@ -113,24 +118,30 @@ export function registerFamilyScenarioRoutes(app: FastifyInstance, db: Db): void
         ? {
             runway_months: doc.last_projection.runway_months,
             depletion_month: doc.last_projection.depletion_month,
-            at: doc.last_projection.at instanceof Date ? doc.last_projection.at.toISOString() : String(doc.last_projection.at),
+            at:
+              doc.last_projection.at instanceof Date
+                ? doc.last_projection.at.toISOString()
+                : String(doc.last_projection.at),
           }
         : null,
     }
   }
 
-  app.post<{ Body: z.infer<typeof ScenarioInputsSchema> }>('/family/scenarios/preview', async (req, reply) => {
-    const parsed = ScenarioInputsSchema.safeParse(req.body)
-    if (!parsed.success) {
-      return reply.status(400).send({ error: 'Invalid scenario', issues: parsed.error.issues })
-    }
-    const { tenant_id } = req.authContext
-    const outcome = await projectScenario(db, tenant_id, parsed.data)
-    if (outcome.status === 'bad_member') {
-      return reply.status(400).send({ error: 'Family member not found for member_id' })
-    }
-    return reply.send({ result: outcome.result, has_live_data: outcome.has_live_data })
-  })
+  app.post<{ Body: z.infer<typeof ScenarioInputsSchema> }>(
+    '/family/scenarios/preview',
+    async (req, reply) => {
+      const parsed = ScenarioInputsSchema.safeParse(req.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Invalid scenario', issues: parsed.error.issues })
+      }
+      const { tenant_id } = req.authContext
+      const outcome = await projectScenario(db, tenant_id, parsed.data)
+      if (outcome.status === 'bad_member') {
+        return reply.status(400).send({ error: 'Family member not found for member_id' })
+      }
+      return reply.send({ result: outcome.result, has_live_data: outcome.has_live_data })
+    },
+  )
 
   app.post<{ Body: z.infer<typeof CreateSchema> }>('/family/scenarios', async (req, reply) => {
     const parsed = CreateSchema.safeParse(req.body)
@@ -142,7 +153,11 @@ export function registerFamilyScenarioRoutes(app: FastifyInstance, db: Db): void
     if (inputs.member_id) {
       // Fail the save, not the later read — a scenario scoped to a
       // member who isn't on the roster can never project correctly.
-      const family = await getTenantCollection<FamilyGroupDoc>(db, 'family_groups', tenant_id).findOne({})
+      const family = await getTenantCollection<FamilyGroupDoc>(
+        db,
+        'family_groups',
+        tenant_id,
+      ).findOne({})
       if (!family?.members.some((m) => m.id === inputs.member_id)) {
         return reply.status(400).send({ error: 'Family member not found for member_id' })
       }
@@ -189,7 +204,10 @@ export function registerFamilyScenarioRoutes(app: FastifyInstance, db: Db): void
             ? {
                 runway_months: d.last_projection.runway_months,
                 depletion_month: d.last_projection.depletion_month,
-                at: d.last_projection.at instanceof Date ? d.last_projection.at.toISOString() : String(d.last_projection.at),
+                at:
+                  d.last_projection.at instanceof Date
+                    ? d.last_projection.at.toISOString()
+                    : String(d.last_projection.at),
               }
             : null,
         })),
@@ -199,20 +217,23 @@ export function registerFamilyScenarioRoutes(app: FastifyInstance, db: Db): void
   // Opt a scenario in/out of the nightly recompute — adult-only like the
   // other mutating scenario routes (a child shouldn't silently switch off
   // the "what if income stops" watch the adults rely on).
-  app.patch<{ Params: { id: string }; Body: { watch?: boolean } }>('/family/scenarios/:id', async (req, reply) => {
-    const { tenant_id, user_id } = req.authContext
-    if (!(await isFamilyAdult(db, tenant_id, user_id))) {
-      return reply.status(403).send({ error: 'Only a family adult can change scenario watching' })
-    }
-    if (typeof req.body?.watch !== 'boolean') {
-      return reply.status(400).send({ error: 'Body must be { watch: boolean }' })
-    }
-    const col = scenariosFor(tenant_id)
-    const doc = await col.findOne({ id: req.params.id })
-    if (!doc) return reply.status(404).send({ error: 'Scenario not found' })
-    await col.updateOne({ id: req.params.id }, { $set: { watch: req.body.watch } })
-    return { ok: true, watch: req.body.watch }
-  })
+  app.patch<{ Params: { id: string }; Body: { watch?: boolean } }>(
+    '/family/scenarios/:id',
+    async (req, reply) => {
+      const { tenant_id, user_id } = req.authContext
+      if (!(await isFamilyAdult(db, tenant_id, user_id))) {
+        return reply.status(403).send({ error: 'Only a family adult can change scenario watching' })
+      }
+      if (typeof req.body?.watch !== 'boolean') {
+        return reply.status(400).send({ error: 'Body must be { watch: boolean }' })
+      }
+      const col = scenariosFor(tenant_id)
+      const doc = await col.findOne({ id: req.params.id })
+      if (!doc) return reply.status(404).send({ error: 'Scenario not found' })
+      await col.updateOne({ id: req.params.id }, { $set: { watch: req.body.watch } })
+      return { ok: true, watch: req.body.watch }
+    },
+  )
 
   app.get<{ Params: { id: string } }>('/family/scenarios/:id', async (req, reply) => {
     const { tenant_id } = req.authContext
@@ -231,7 +252,9 @@ export function registerFamilyScenarioRoutes(app: FastifyInstance, db: Db): void
     if (!doc) return reply.status(404).send({ error: 'Scenario not found' })
     const isCreator = (doc as FamilyScenarioDoc).created_by === user_id
     if (!isCreator && !(await isFamilyAdult(db, tenant_id, user_id))) {
-      return reply.status(403).send({ error: 'Only the creator or a family adult can delete a saved scenario' })
+      return reply
+        .status(403)
+        .send({ error: 'Only the creator or a family adult can delete a saved scenario' })
     }
     await col.deleteOne({ id: req.params.id })
     return reply.status(204).send()

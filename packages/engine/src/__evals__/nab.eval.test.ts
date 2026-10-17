@@ -16,7 +16,7 @@
  */
 import { readFileSync, existsSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
-import { AdaptiveThresholdStore } from '../adaptive-thresholds.js'
+import { AdaptiveThresholdStore } from '../calibration/adaptive-thresholds.js'
 import { FakeMongo, writeOut, round, EVAL_ROOT, hasData } from './_harness.js'
 
 const NAB = `${EVAL_ROOT}/data/nab`
@@ -180,7 +180,7 @@ describe.skipIf(!hasData('data/nab/combined_windows.json'))('PP1 adaptive-thresh
       },
     }
     writeOut('nab_results.json', { summary, perSeries })
-    // eslint-disable-next-line no-console
+     
     console.log(JSON.stringify(summary, null, 2))
 
     // PP1's claim is zero-config per-tenant adaptivity, not "more accurate than

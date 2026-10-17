@@ -15,7 +15,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { z } from 'zod'
-import { isFamilyAdult, isFamilyOrganizer } from '../lib/family-permissions.js'
+import { isFamilyAdult, isFamilyOrganizer } from '../family/family-permissions.js'
 import type { Channel, DeliveryPreferences } from '../delivery/delivery-router.js'
 
 const CHANNELS = ['whatsapp', 'sms', 'email', 'web_push', 'mobile_push'] as const
@@ -23,7 +23,11 @@ const URGENCIES = ['critical', 'high', 'medium', 'low'] as const
 const DOMAINS = ['emergency_fund', 'protection', 'retirement', 'education', 'estate'] as const
 
 /** Critical alerts no preference can silence — shown read-only in the UI. */
-const EXEMPT_CRITICALS = ['renewal_within_7_days', 'continuity_check_in', 'emergency_vault_awareness'] as const
+const EXEMPT_CRITICALS = [
+  'renewal_within_7_days',
+  'continuity_check_in',
+  'emergency_vault_awareness',
+] as const
 
 const PatchBody = z.object({
   channels: z.array(z.enum(CHANNELS)).optional(),
@@ -64,7 +68,9 @@ export function registerFamilyNotificationRoutes(app: FastifyInstance, db: Db): 
   app.get('/family/notifications', async (req, reply) => {
     const { tenant_id, user_id } = req.authContext
     if (!(await isFamilyAdult(db, tenant_id, user_id))) {
-      return reply.status(403).send({ error: 'Notification settings are visible to adult family members only.' })
+      return reply
+        .status(403)
+        .send({ error: 'Notification settings are visible to adult family members only.' })
     }
     const prefs = (await prefsCol().findOne({ tenant_id })) as DeliveryPreferences | null
     return { preferences: withDefaults(prefs), exempt_criticals: [...EXEMPT_CRITICALS] }
@@ -73,19 +79,27 @@ export function registerFamilyNotificationRoutes(app: FastifyInstance, db: Db): 
   app.patch('/family/notifications', async (req, reply) => {
     const { tenant_id, user_id } = req.authContext
     if (!(await isFamilyAdult(db, tenant_id, user_id))) {
-      return reply.status(403).send({ error: 'Notification settings are visible to adult family members only.' })
+      return reply
+        .status(403)
+        .send({ error: 'Notification settings are visible to adult family members only.' })
     }
     if (!(await isFamilyOrganizer(db, tenant_id, user_id))) {
-      return reply.status(403).send({ error: 'Only the organizer can change notification settings.' })
+      return reply
+        .status(403)
+        .send({ error: 'Only the organizer can change notification settings.' })
     }
     const parsed = PatchBody.safeParse(req.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid notification preferences', issues: parsed.error.issues })
+    if (!parsed.success)
+      return reply
+        .status(400)
+        .send({ error: 'Invalid notification preferences', issues: parsed.error.issues })
 
     const $set: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(parsed.data)) {
       if (v !== undefined) $set[k] = v
     }
-    if (Object.keys($set).length === 0) return reply.status(400).send({ error: 'Nothing to update' })
+    if (Object.keys($set).length === 0)
+      return reply.status(400).send({ error: 'Nothing to update' })
     await prefsCol().updateOne(
       { tenant_id },
       { $set, $setOnInsert: { tenant_id, enabled: true } },

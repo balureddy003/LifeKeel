@@ -24,7 +24,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { getTenantCollection } from '@lifekeel/platform'
-import { isFamilyAdult } from '../lib/family-permissions.js'
+import { isFamilyAdult } from '../family/family-permissions.js'
 import { ESTATE_VAULT_CATEGORY } from './documents.js'
 import { computeReadiness, type ReadinessComponentKey } from '../readiness/score.js'
 import { buildEstateSignal } from '../legacy/estate-signal.js'
@@ -81,11 +81,9 @@ export function registerFamilyReadinessRoutes(app: FastifyInstance, db: Db): voi
   app.get('/family/readiness', async (req) => {
     const { tenant_id, user_id } = req.authContext
 
-    const profileDoc = await getTenantCollection<FinancialProfile & { insights_evaluated_at?: Date }>(
-      db,
-      'family_financial_profile',
-      tenant_id,
-    ).findOne({})
+    const profileDoc = await getTenantCollection<
+      FinancialProfile & { insights_evaluated_at?: Date }
+    >(db, 'family_financial_profile', tenant_id).findOne({})
 
     const isAdult = await isFamilyAdult(db, tenant_id, user_id)
     const estateDocTypes = isAdult
@@ -97,7 +95,9 @@ export function registerFamilyReadinessRoutes(app: FastifyInstance, db: Db): voi
               { projection: { _id: 0, doc_type: 1 } },
             )
             .toArray()) as { doc_type?: string }[]
-        ).map((d) => d.doc_type).filter((t): t is string => typeof t === 'string')
+        )
+          .map((d) => d.doc_type)
+          .filter((t): t is string => typeof t === 'string')
       : null
     // PRD-137: the enriched estate signal drives the legacy-aware estate
     // component. Adult-gated like the vault doc types — children get the
@@ -108,7 +108,11 @@ export function registerFamilyReadinessRoutes(app: FastifyInstance, db: Db): voi
     const openInsights = (await db
       .collection('insights')
       .find(
-        { tenant_id, detector_id: { $in: [...FAMILY_DETECTORS] }, state: { $in: [...OPEN_INSIGHT_STATES] } },
+        {
+          tenant_id,
+          detector_id: { $in: [...FAMILY_DETECTORS] },
+          state: { $in: [...OPEN_INSIGHT_STATES] },
+        },
         { projection: { _id: 0, id: 1, detector_id: 1, rule_id: 1, hypothesis: 1, confidence: 1 } },
       )
       .toArray()) as unknown as ExplainingInsight[]
@@ -133,7 +137,12 @@ export function registerFamilyReadinessRoutes(app: FastifyInstance, db: Db): voi
       ...c,
       insights: openInsights
         .filter((i) => DETECTOR_TO_COMPONENT[i.detector_id] === c.key)
-        .map((i) => ({ id: i.id, rule_id: i.rule_id, hypothesis: i.hypothesis, confidence: i.confidence })),
+        .map((i) => ({
+          id: i.id,
+          rule_id: i.rule_id,
+          hypothesis: i.hypothesis,
+          confidence: i.confidence,
+        })),
     }))
 
     // Snapshot the score for trend history — one per day max (upsert on
@@ -158,7 +167,7 @@ export function registerFamilyReadinessRoutes(app: FastifyInstance, db: Db): voi
           const rows = (
             typeof cursor.sort === 'function'
               ? await cursor.sort({ date: -1 }).limit(1).toArray()
-              : (await cursor.toArray()) as Record<string, unknown>[]
+              : ((await cursor.toArray()) as Record<string, unknown>[])
           ) as { date: string; score: number; components?: Record<string, number> }[]
           const prev = (Array.isArray(rows) ? rows : [])
             .sort((a, b) => String(b.date).localeCompare(String(a.date)))
@@ -188,8 +197,14 @@ export function registerFamilyReadinessRoutes(app: FastifyInstance, db: Db): voi
           if (!prev || typeof prev.score !== 'number') return
           const prevComponents = prev.components ?? {}
           const moved = result.components
-            .filter((c) => c.score !== null && !c.gated && typeof prevComponents[c.key] === 'number')
-            .map((c) => ({ key: c.key, label: c.label, delta: (c.score as number) - (prevComponents[c.key] as number) }))
+            .filter(
+              (c) => c.score !== null && !c.gated && typeof prevComponents[c.key] === 'number',
+            )
+            .map((c) => ({
+              key: c.key,
+              label: c.label,
+              delta: (c.score as number) - (prevComponents[c.key] as number),
+            }))
             .filter((m) => m.delta !== 0)
           const compositeDelta = result.score - prev.score
 
@@ -242,7 +257,10 @@ export function registerFamilyReadinessRoutes(app: FastifyInstance, db: Db): voi
                 : `Your readiness score is unchanged at ${result.score}, but ${biggest?.label ?? 'a component'} moved.`,
             evidence: [
               { label: 'Score', value: `${prev.score} → ${result.score}` },
-              ...moved.map((m) => ({ label: m.label, value: `${prevComponents[m.key]} → ${componentsNow[m.key]}` })),
+              ...moved.map((m) => ({
+                label: m.label,
+                value: `${prevComponents[m.key]} → ${componentsNow[m.key]}`,
+              })),
             ],
             links: biggest ? [{ kind: 'component', id: biggest.key }] : [],
             next_check_at: nextCheck,
@@ -269,7 +287,10 @@ export function registerFamilyReadinessRoutes(app: FastifyInstance, db: Db): voi
     const { tenant_id } = req.authContext
     const snapshots = await db
       .collection(HISTORY_COLLECTION)
-      .find({ tenant_id }, { projection: { _id: 0, date: 1, score: 1, components: 1, computed_at: 1 } })
+      .find(
+        { tenant_id },
+        { projection: { _id: 0, date: 1, score: 1, components: 1, computed_at: 1 } },
+      )
       .sort({ date: -1 })
       .limit(HISTORY_LIMIT)
       .toArray()

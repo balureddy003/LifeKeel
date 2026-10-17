@@ -34,7 +34,7 @@ import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
 import { ZodTypeProvider, jsonSchemaTransform } from 'fastify-type-provider-zod'
 import { Engine, type Insight, setSchemaRegistry } from '@lifekeel/engine'
-import { ConnectorLoader, EventGenerator } from '@lifekeel/pipeline'
+import { ConnectorLoader, EventGenerator , ConnectorSyncEngine, TokenRefreshScheduler } from '@lifekeel/pipeline'
 import { AuthService, canPerform, extractBearerToken, enforceQuota, getAllCircuitBreakers, QuotaExceededError, validateLicenseKey, createLogger, initTelemetry, type ProductAction, type ProductResource } from '@lifekeel/platform'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -43,7 +43,7 @@ import { registerInsightRoutes, cleanupStaleInsightsStartup } from './routes/ins
 import { recordApiRequest, registerMetricsRoutes, recordLlmCacheHitMiss, buildFeatureHashScorerMetrics } from './routes/metrics.js'
 import { initAuditLogger } from './audit/audit-log.js'
 import { registerAuthUserRoutes } from './routes/auth-users.js'
-import { clearSessionCookie, isOriginAllowedForCookieAuth, readSessionCookie } from './lib/session-cookie.js'
+import { clearSessionCookie, isOriginAllowedForCookieAuth, readSessionCookie } from './auth/session-cookie.js'
 import { registerSocialAuthRoutes } from './routes/auth-social.js'
 import { createLlmRouterFromEnv, LlmResponseCache, MongoLlmCacheStore, LlmBudgetGuard, LocalEmbeddingProvider } from '@lifekeel/platform'
 import {
@@ -55,12 +55,10 @@ import { registerConnectorCredentialRoutes } from './routes/connector-credential
 import { DeliveryRouter } from './delivery/delivery-router.js'
 import { createMoveJudge } from './delivery/move-judge.js'
 import { localDecisionFromEnv } from './local-model.js'
-import { ConnectorSyncEngine, TokenRefreshScheduler } from '@lifekeel/pipeline'
 import { connectorSchemaRegistry } from '@lifekeel/workflows'
 import cron from 'node-cron'
 import { queueManager } from './queue/QueueManager.js'
 import { startWebhookWorker } from './queue/WebhookQueue.js'
-import { ApiReasoningContextBuilder } from './outcomes/reasoning-context-builder.js'
 import { RetentionWorker } from './jobs/retention-worker.js'
 import { InsightSlaWorker } from './jobs/insight-sla-worker.js'
 import { EscalationWorker } from './jobs/escalation-worker.js'
@@ -122,8 +120,8 @@ import { registerFamilyLegacyRoutes } from './routes/family-legacy.js'
 import { registerLeadRoutes } from './routes/leads.js'
 import { registerShareRoutes } from './routes/share.js'
 import { registerSendgridWebhookRoutes } from './routes/webhooks-sendgrid.js'
-import { sendOpsAlert } from './lib/ops-alerts.js'
-import { registerFamilySignalSchemas } from './lib/family-signal-schemas.js'
+import { sendOpsAlert } from './operator/ops-alerts.js'
+import { registerFamilySignalSchemas } from './family/family-signal-schemas.js'
 
 // Inject the connector schema registry so the engine can validate event schema compatibility.
 setSchemaRegistry(connectorSchemaRegistry)
@@ -211,7 +209,7 @@ try {
   // insight's detector to a workflow YAML and enqueueing it) was removed
   // 2026-09-12 along with the rest of the dead WorkflowEngine/WorkflowLoader
   // machinery — see ARCHITECTURE.md.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const syncEngine = new ConnectorSyncEngine(workflowDb as any, eventGenerator, engine,
     async (insights, tenantId) => {
       if (!deliveryRouter) return
@@ -222,7 +220,7 @@ try {
   )
 
   // Token refresh every 10 minutes — refreshes tokens expiring within 30 min
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const tokenRefresher = new TokenRefreshScheduler(workflowDb as any)
   tokenRefresher.start(10 * 60 * 1000)
   log.info({}, 'Token refresh scheduler started')
@@ -859,7 +857,6 @@ try {
   await scoreCalibrator.warmCache()
   // Wire calibrator into engine now that it's ready
   engine.options.calibrator = scoreCalibrator
-  engine.options.reasoningContextBuilder = new ApiReasoningContextBuilder(workflowDb)
   log.info({}, 'Score calibrator ready')
 
   // ── LLM scorer (D1b) ───────────────────────────────────────────────────────

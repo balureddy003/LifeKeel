@@ -21,8 +21,11 @@ the original codebase and known deferred issues: [SECURITY.md](SECURITY.md).
 ```
 apps/web      Next.js frontend — @lifekeel/web
 apps/api      Fastify backend  — @lifekeel/api
+apps/mobile   Capacitor native shell — @lifekeel/mobile (not built by root scripts)
 packages/*    Shared libraries (engine, platform, connector pipeline, ...)
 ```
+
+AI agent mechanics, verification commands, and gotchas: `.devin/AGENTS.md`.
 
 ## Quick start
 

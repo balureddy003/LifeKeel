@@ -22,7 +22,10 @@ import type { Engine, Insight } from '@lifekeel/engine'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { processDocument } from '../ocr/extract.js'
 import { localDecisionFromEnv } from '../local-model.js'
-import { evaluateProfileAndGenerateInsights, FinancialProfileSchema } from './family-financial-profile.js'
+import {
+  evaluateProfileAndGenerateInsights,
+  FinancialProfileSchema,
+} from './family-financial-profile.js'
 import {
   mapExtractedFieldsToProfileSuggestions,
   isApplicableProfilePath,
@@ -30,7 +33,7 @@ import {
   type PolicyType,
 } from '../ocr/profile-mapping.js'
 import { effectivePlan, hasFeature } from '../entitlements.js'
-import { recordInsightAction } from '../lib/insight-attribution.js'
+import { recordInsightAction } from '../insights/insight-attribution.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 
 // PRD-136: one feed event per document pipeline stage (uploaded /
@@ -116,12 +119,22 @@ export function registerDocumentRoutes(
   // first-time profile creation (and its generation boundary) in the wizard.
   const regenerateInsights = async (tenantId: string): Promise<number> => {
     if (!engine) return 0
-    const profiles = getTenantCollection<Record<string, unknown>>(db, 'family_financial_profile', tenantId)
+    const profiles = getTenantCollection<Record<string, unknown>>(
+      db,
+      'family_financial_profile',
+      tenantId,
+    )
     const doc = await profiles.findOne({})
     if (!doc) return 0
     const parsed = FinancialProfileSchema.safeParse(doc)
     if (!parsed.success) return 0
-    return evaluateProfileAndGenerateInsights(parsed.data, tenantId, engine, db, onInsightsGenerated)
+    return evaluateProfileAndGenerateInsights(
+      parsed.data,
+      tenantId,
+      engine,
+      db,
+      onInsightsGenerated,
+    )
   }
 
   // ── POST /documents/upload ──────────────────────────────────────────────
@@ -150,7 +163,10 @@ export function registerDocumentRoutes(
     const filename = data.filename || `document-${documentId}`
     const mimeType = data.mimetype
 
-    log.info({ documentId, filename, mimeType, size: fileBuffer.length, tenant_id }, 'Uploading document')
+    log.info(
+      { documentId, filename, mimeType, size: fileBuffer.length, tenant_id },
+      'Uploading document',
+    )
 
     try {
       // Store file in GridFS. KEEL-019: previously `.end(fileBuffer)` wasn't
@@ -193,9 +209,14 @@ export function registerDocumentRoutes(
         // `documents` row exists to ever look it up by again). Best-effort:
         // if the cleanup delete itself fails, log and still surface the
         // original error rather than masking it.
-        await bucket.delete(fileId).catch((cleanupErr) =>
-          log.error({ cleanupErr, fileId, documentId }, 'Failed to clean up orphaned GridFS blob after metadata insert failure'),
-        )
+        await bucket
+          .delete(fileId)
+          .catch((cleanupErr) =>
+            log.error(
+              { cleanupErr, fileId, documentId },
+              'Failed to clean up orphaned GridFS blob after metadata insert failure',
+            ),
+          )
         throw metaErr
       }
       emitDocumentEvent(db, tenant_id, documentId, filename, 'uploaded')
@@ -209,22 +230,32 @@ export function registerDocumentRoutes(
       if (aiExtractionEnabled) {
         log.info({ documentId, filename, tenant_id }, 'Document stored, starting OCR processing')
         // Trigger async OCR processing (non-blocking — errors handled in processDocument)
-        processDocument(db, documentId, tenant_id, fileBuffer, mimeType, filename, localDecisionFromEnv('ocr')).catch((err) => {
+        processDocument(
+          db,
+          documentId,
+          tenant_id,
+          fileBuffer,
+          mimeType,
+          filename,
+          localDecisionFromEnv('ocr'),
+        ).catch((err) => {
           log.error({ err, documentId }, 'OCR processing threw unhandled error')
         })
       } else {
-        log.info({ documentId, filename, tenant_id, plan }, 'Document stored — AI extraction requires a paid plan')
+        log.info(
+          { documentId, filename, tenant_id, plan },
+          'Document stored — AI extraction requires a paid plan',
+        )
         // They uploaded expecting extraction — the strongest upgrade-intent
         // signal. Feeds the lifecycle upgrade sequence's targeting.
-        db.collection('growth_events').insertOne({
-          event: 'upgrade_intent',
-          meta: { tenant_id, feature: 'document_ai_extraction', plan },
-          created_at: new Date(),
-        }).catch(() => {})
-        await documents.updateOne(
-          { id: documentId },
-          { $set: { status: 'stored' } },
-        )
+        db.collection('growth_events')
+          .insertOne({
+            event: 'upgrade_intent',
+            meta: { tenant_id, feature: 'document_ai_extraction', plan },
+            created_at: new Date(),
+          })
+          .catch(() => {})
+        await documents.updateOne({ id: documentId }, { $set: { status: 'stored' } })
       }
 
       // Return immediately — client can poll /documents/:id for AI status
@@ -254,16 +285,13 @@ export function registerDocumentRoutes(
       // if someone explicitly requests that category.
       const filter: Record<string, unknown> = { category: { $ne: ESTATE_VAULT_CATEGORY } }
 
-      if (req.query.category && req.query.category !== ESTATE_VAULT_CATEGORY) filter['category'] = req.query.category
+      if (req.query.category && req.query.category !== ESTATE_VAULT_CATEGORY)
+        filter['category'] = req.query.category
       if (req.query.status) filter['status'] = req.query.status
 
       const limit = Math.min(parseInt(req.query.limit ?? '50', 10), 100)
 
-      const docs = await documents
-        .find(filter)
-        .sort({ uploaded_at: -1 })
-        .limit(limit)
-        .toArray()
+      const docs = await documents.find(filter).sort({ uploaded_at: -1 }).limit(limit).toArray()
 
       const tenant = await getTenantCollection<DocumentRecord>(db, 'tenants', tenant_id).findOne()
       const plan = effectivePlan(tenant)
@@ -320,12 +348,17 @@ export function registerDocumentRoutes(
     const { tenant_id } = req.authContext
     const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
     const doc = await documents.findOne({ id: req.params.id })
-    if (!doc || !doc['file_id'] || doc['category'] === ESTATE_VAULT_CATEGORY) return reply.status(404).send({ error: 'Document not found' })
+    if (!doc || !doc['file_id'] || doc['category'] === ESTATE_VAULT_CATEGORY)
+      return reply.status(404).send({ error: 'Document not found' })
 
     const chunks: Buffer[] = []
-    for await (const chunk of bucket.openDownloadStream(doc['file_id'] as ObjectId)) chunks.push(chunk as Buffer)
+    for await (const chunk of bucket.openDownloadStream(doc['file_id'] as ObjectId))
+      chunks.push(chunk as Buffer)
     reply.header('Content-Type', String(doc['mime_type'] ?? 'application/octet-stream'))
-    reply.header('Content-Disposition', `inline; filename="${String(doc['filename'] ?? 'document').replace(/"/g, '')}"`)
+    reply.header(
+      'Content-Disposition',
+      `inline; filename="${String(doc['filename'] ?? 'document').replace(/"/g, '')}"`,
+    )
     return reply.send(Buffer.concat(chunks))
   })
 
@@ -333,19 +366,22 @@ export function registerDocumentRoutes(
   // extractDocumentFields() pulls structured fields out of a document, but
   // nothing ever surfaced them back to the Financial Profile — the user had
   // to retype numbers already sitting on a document they just uploaded.
-  fastify.get<{ Params: { id: string } }>('/documents/:id/profile-suggestions', async (req, reply) => {
-    const { tenant_id } = req.authContext
-    const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
-    const doc = await documents.findOne({ id: req.params.id })
-    if (!doc) {
-      return reply.status(404).send({ error: 'Document not found' })
-    }
-    const category = (doc['category'] as string) ?? 'other'
-    const extractedData = (doc['extracted_data'] as Record<string, string>) ?? {}
-    const suggestions = mapExtractedFieldsToProfileSuggestions(category, extractedData)
-    const policySuggestion = mapExtractedFieldsToPolicySuggestion(category, extractedData)
-    return { suggestions, policySuggestion }
-  })
+  fastify.get<{ Params: { id: string } }>(
+    '/documents/:id/profile-suggestions',
+    async (req, reply) => {
+      const { tenant_id } = req.authContext
+      const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
+      const doc = await documents.findOne({ id: req.params.id })
+      if (!doc) {
+        return reply.status(404).send({ error: 'Document not found' })
+      }
+      const category = (doc['category'] as string) ?? 'other'
+      const extractedData = (doc['extracted_data'] as Record<string, string>) ?? {}
+      const suggestions = mapExtractedFieldsToProfileSuggestions(category, extractedData)
+      const policySuggestion = mapExtractedFieldsToPolicySuggestion(category, extractedData)
+      return { suggestions, policySuggestion }
+    },
+  )
 
   // ── POST /documents/:id/reprocess ───────────────────────────────────────
   // Re-runs extraction on a stored file — for documents whose first pass
@@ -355,13 +391,28 @@ export function registerDocumentRoutes(
     const { tenant_id } = req.authContext
     const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
     const doc = await documents.findOne({ id: req.params.id })
-    if (!doc || !doc['file_id'] || doc['category'] === ESTATE_VAULT_CATEGORY) return reply.status(404).send({ error: 'Document not found' })
+    if (!doc || !doc['file_id'] || doc['category'] === ESTATE_VAULT_CATEGORY)
+      return reply.status(404).send({ error: 'Document not found' })
 
     const chunks: Buffer[] = []
-    for await (const chunk of bucket.openDownloadStream(doc['file_id'] as ObjectId)) chunks.push(chunk as Buffer)
-    await processDocument(db, req.params.id, tenant_id, Buffer.concat(chunks), String(doc['mime_type'] ?? ''), String(doc['filename'] ?? 'document'), localDecisionFromEnv('ocr'))
+    for await (const chunk of bucket.openDownloadStream(doc['file_id'] as ObjectId))
+      chunks.push(chunk as Buffer)
+    await processDocument(
+      db,
+      req.params.id,
+      tenant_id,
+      Buffer.concat(chunks),
+      String(doc['mime_type'] ?? ''),
+      String(doc['filename'] ?? 'document'),
+      localDecisionFromEnv('ocr'),
+    )
     const after = await documents.findOne({ id: req.params.id })
-    return { id: req.params.id, category: after?.['category'], status: after?.['status'], fieldCount: Object.keys((after?.['extracted_data'] as object) ?? {}).length }
+    return {
+      id: req.params.id,
+      category: after?.['category'],
+      status: after?.['status'],
+      fieldCount: Object.keys((after?.['extracted_data'] as object) ?? {}).length,
+    }
   })
 
   // ── POST /documents/:id/apply-to-profile ────────────────────────────────
@@ -385,13 +436,21 @@ export function registerDocumentRoutes(
         (doc['category'] as string) ?? 'other',
         (doc['extracted_data'] as Record<string, string>) ?? {},
       )
-      const requestedPaths = new Set((req.body.paths ?? suggestions.map((s) => s.path)).filter(isApplicableProfilePath))
+      const requestedPaths = new Set(
+        (req.body.paths ?? suggestions.map((s) => s.path)).filter(isApplicableProfilePath),
+      )
       const toApply = suggestions.filter((s) => requestedPaths.has(s.path))
       if (toApply.length === 0) {
-        return reply.status(400).send({ error: 'No applicable profile suggestions for this document' })
+        return reply
+          .status(400)
+          .send({ error: 'No applicable profile suggestions for this document' })
       }
 
-      const profiles = getTenantCollection<Record<string, unknown>>(db, 'family_financial_profile', tenant_id)
+      const profiles = getTenantCollection<Record<string, unknown>>(
+        db,
+        'family_financial_profile',
+        tenant_id,
+      )
       const update: Record<string, unknown> = { updated_at: new Date() }
       for (const s of toApply) update[s.path] = s.valueMinor
       await profiles.updateOne({}, { $set: update }, { upsert: true })
@@ -407,12 +466,23 @@ export function registerDocumentRoutes(
       // is a response to whatever was already flagged, not to what this
       // re-run is about to create.
       await recordInsightAction(db, tenant_id, 'document_applied').catch(() => {})
-      emitDocumentEvent(db, tenant_id, req.params.id, String(doc['filename'] ?? 'document'), 'applied')
+      emitDocumentEvent(
+        db,
+        tenant_id,
+        req.params.id,
+        String(doc['filename'] ?? 'document'),
+        'applied',
+      )
 
       const insightsGenerated = await regenerateInsights(tenant_id)
 
       log.info(
-        { documentId: req.params.id, tenant_id, applied: toApply.map((s) => s.path), insights_generated: insightsGenerated },
+        {
+          documentId: req.params.id,
+          tenant_id,
+          applied: toApply.map((s) => s.path),
+          insights_generated: insightsGenerated,
+        },
         'Applied document fields to financial profile',
       )
 
@@ -433,7 +503,15 @@ export function registerDocumentRoutes(
   // the user-confirmed apply re-runs detector evaluation in-request via
   // regenerateInsights() — a new policy is exactly the kind of change
   // (renewal windows, cover gaps) the detectors reason about.
-  const POLICY_TYPES = new Set<PolicyType>(['life', 'income_protection', 'health', 'critical_illness', 'car', 'home', 'travel'])
+  const POLICY_TYPES = new Set<PolicyType>([
+    'life',
+    'income_protection',
+    'health',
+    'critical_illness',
+    'car',
+    'home',
+    'travel',
+  ])
   interface ApplyPolicyBody {
     type?: string
     provider?: string
@@ -457,7 +535,17 @@ export function registerDocumentRoutes(
         return reply.status(404).send({ error: 'Document not found' })
       }
 
-      const { type, provider, coverageAmountMinor, monthlyPremiumMinor, renewalDate, policyNumber, memberId, contactPhone, contactEmail } = req.body
+      const {
+        type,
+        provider,
+        coverageAmountMinor,
+        monthlyPremiumMinor,
+        renewalDate,
+        policyNumber,
+        memberId,
+        contactPhone,
+        contactEmail,
+      } = req.body
       if (!type || !POLICY_TYPES.has(type as PolicyType)) {
         return reply.status(400).send({ error: 'A valid policy type is required' })
       }
@@ -468,8 +556,14 @@ export function registerDocumentRoutes(
       const policy: Record<string, unknown> = {
         type,
         provider: provider.trim(),
-        coverage_amount_minor: Number.isFinite(coverageAmountMinor) && (coverageAmountMinor as number) >= 0 ? coverageAmountMinor : 0,
-        monthly_premium_minor: Number.isFinite(monthlyPremiumMinor) && (monthlyPremiumMinor as number) >= 0 ? monthlyPremiumMinor : 0,
+        coverage_amount_minor:
+          Number.isFinite(coverageAmountMinor) && (coverageAmountMinor as number) >= 0
+            ? coverageAmountMinor
+            : 0,
+        monthly_premium_minor:
+          Number.isFinite(monthlyPremiumMinor) && (monthlyPremiumMinor as number) >= 0
+            ? monthlyPremiumMinor
+            : 0,
       }
       if (renewalDate) policy['renewal_date'] = renewalDate
       if (policyNumber) policy['policy_number'] = policyNumber
@@ -477,7 +571,11 @@ export function registerDocumentRoutes(
       if (contactEmail?.trim()) policy['contact_email'] = contactEmail.trim()
       if (typeof memberId === 'string' && memberId.trim()) policy['member_id'] = memberId.trim()
 
-      const profiles = getTenantCollection<Record<string, unknown>>(db, 'family_financial_profile', tenant_id)
+      const profiles = getTenantCollection<Record<string, unknown>>(
+        db,
+        'family_financial_profile',
+        tenant_id,
+      )
       await profiles.updateOne(
         {},
         { $push: { policies: policy }, $set: { updated_at: new Date() } },
@@ -492,7 +590,13 @@ export function registerDocumentRoutes(
       const insightsGenerated = await regenerateInsights(tenant_id)
 
       log.info(
-        { documentId: req.params.id, tenant_id, policyType: type, provider, insights_generated: insightsGenerated },
+        {
+          documentId: req.params.id,
+          tenant_id,
+          policyType: type,
+          provider,
+          insights_generated: insightsGenerated,
+        },
         'Applied document as a financial-profile policy',
       )
 

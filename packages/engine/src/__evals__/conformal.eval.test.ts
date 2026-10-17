@@ -20,7 +20,7 @@ import {
   computeConformalThreshold,
   empiricalWrongSkipRate,
   type ConformalCalibrationSample,
-} from '../cascade.js'
+} from '../scoring/cascade.js'
 import { readCsv, writeOut, round, EVAL_ROOT, hasData } from './_harness.js'
 
 // Deterministic PRNG (mulberry32) for reproducible splits.
@@ -115,7 +115,7 @@ describe.skipIf(!hasData('data/calib/adult_gnb.csv'))('Conformal escalation gate
 
   it('writes conformal results', () => {
     writeOut('conformal_results.json', results)
-    // eslint-disable-next-line no-console
+     
     console.table(results)
     expect(results.length).toBe(DATASETS.length * ALPHAS.length)
   })

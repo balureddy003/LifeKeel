@@ -8,16 +8,25 @@
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
+    "clean": "turbo run clean",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "debug": "pnpm --parallel --filter @lifekeel/api --filter @lifekeel/web run debug",
     "prepare": "husky"
   },
   "devDependencies": {
+    "eslint": "^9.19.0",
     "husky": "^9.1.7",
     "lint-staged": "^15.2.10",
+    "prettier": "^3.4.2",
     "turbo": "^2.3.0"
   },
   "lint-staged": {
-    "apps/web/**/*.{ts,tsx}": "pnpm --filter @lifekeel/web exec eslint --fix"
+    "apps/web/**/*.{ts,tsx}": "pnpm --filter @lifekeel/web exec eslint --fix",
+    "apps/api/**/*.ts": "eslint --config packages/eslint-config/src/node.js --fix",
+    "packages/**/*.ts": "eslint --config packages/eslint-config/src/node.js --fix",
+    "*.{ts,tsx,js,mjs,cjs,json,yaml,yml,md}": "prettier --write"
   },
   "engines": {
     "node": ">=22.12.0",

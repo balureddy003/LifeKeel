@@ -22,7 +22,7 @@ import type { Db } from 'mongodb'
 import { randomUUID, randomBytes } from 'node:crypto'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { getFamilyGroupsCollection } from '../db.js'
-import { isFamilyOrganizer } from '../lib/family-permissions.js'
+import { isFamilyOrganizer } from '../family/family-permissions.js'
 import { cascadeLegacyMemberRemoval } from './family-legacy.js'
 
 const log = createLogger({ service: 'family-group', version: '0.0.0' })
@@ -146,7 +146,8 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
   rawGroups.createIndex({ tenant_id: 1 }, { unique: true }).catch(() => {})
   rawGroups.createIndex({ invite_code: 1 }, { unique: true }).catch(() => {})
 
-  const groupsFor = (tenantId: string) => getTenantCollection<FamilyGroupDoc>(db, 'family_groups', tenantId)
+  const groupsFor = (tenantId: string) =>
+    getTenantCollection<FamilyGroupDoc>(db, 'family_groups', tenantId)
 
   // ── GET /family ──────────────────────────────────────────────────────────
   fastify.get('/family', async (req) => {
@@ -165,7 +166,9 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
     const existing = await groups.findOne({})
     if (existing) return reply.status(409).send({ error: 'Family already exists for this account' })
 
-    const owner = await getTenantCollection<UserDoc>(db, 'users', tenant_id).findOne({ id: user_id })
+    const owner = await getTenantCollection<UserDoc>(db, 'users', tenant_id).findOne({
+      id: user_id,
+    })
 
     const doc: FamilyGroupDoc = {
       id: `family-${randomUUID()}`,
@@ -203,7 +206,8 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
     const name = req.body?.name?.trim()
     if (!name) return reply.status(400).send({ error: 'Family name required' })
 
-    if (!await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)) return reply.status(403).send({ error: 'Only the organizer can manage the family' })
+    if (!(await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)))
+      return reply.status(403).send({ error: 'Only the organizer can manage the family' })
     const result = (await groupsFor(tenant_id).findOneAndUpdate(
       {},
       { $set: { name, updated_at: new Date() } },
@@ -219,16 +223,23 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
     async (req, reply) => {
       const { tenant_id } = req.authContext
       const { name, email, role, date_of_birth } =
-        req.body ?? ({} as { name: string; email: string; role: FamilyRole; date_of_birth?: string })
-      if (!name?.trim() || !role) return reply.status(400).send({ error: 'Member name and role required' })
+        req.body ??
+        ({} as { name: string; email: string; role: FamilyRole; date_of_birth?: string })
+      if (!name?.trim() || !role)
+        return reply.status(400).send({ error: 'Member name and role required' })
       if (!VALID_ROLES.includes(role)) {
-        return reply.status(400).send({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` })
+        return reply
+          .status(400)
+          .send({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` })
       }
       if (date_of_birth && !isValidDateOfBirth(date_of_birth)) {
-        return reply.status(400).send({ error: "Invalid date of birth. Use 'YYYY-MM-DD', not in the future." })
+        return reply
+          .status(400)
+          .send({ error: "Invalid date of birth. Use 'YYYY-MM-DD', not in the future." })
       }
 
-      if (!await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)) return reply.status(403).send({ error: 'Only the organizer can manage the family' })
+      if (!(await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)))
+        return reply.status(403).send({ error: 'Only the organizer can manage the family' })
       const member: FamilyMemberDoc = {
         id: randomUUID(),
         name: name.trim(),
@@ -257,19 +268,26 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
     '/family/members/:id',
     async (req, reply) => {
       const { tenant_id } = req.authContext
-      const { role, date_of_birth } = req.body ?? ({} as { role?: FamilyRole; date_of_birth?: string })
+      const { role, date_of_birth } =
+        req.body ?? ({} as { role?: FamilyRole; date_of_birth?: string })
       if (role === undefined && date_of_birth === undefined) {
         return reply.status(400).send({ error: 'role or date_of_birth required' })
       }
       if (role !== undefined && !VALID_ROLES.includes(role)) {
-        return reply.status(400).send({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` })
+        return reply
+          .status(400)
+          .send({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` })
       }
       if (date_of_birth !== undefined && !isValidDateOfBirth(date_of_birth)) {
-        return reply.status(400).send({ error: "Invalid date of birth. Use 'YYYY-MM-DD', not in the future." })
+        return reply
+          .status(400)
+          .send({ error: "Invalid date of birth. Use 'YYYY-MM-DD', not in the future." })
       }
 
-      if (!await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)) return reply.status(403).send({ error: 'Only the organizer can manage the family' })
-      if (req.params.id === req.authContext.user_id && role !== undefined && role !== 'organizer') return reply.status(409).send({ error: 'An organizer cannot remove their own role' })
+      if (!(await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)))
+        return reply.status(403).send({ error: 'Only the organizer can manage the family' })
+      if (req.params.id === req.authContext.user_id && role !== undefined && role !== 'organizer')
+        return reply.status(409).send({ error: 'An organizer cannot remove their own role' })
       const set: Record<string, unknown> = { updated_at: new Date() }
       if (role !== undefined) set['members.$.role'] = role
       if (date_of_birth !== undefined) set['members.$.date_of_birth'] = date_of_birth
@@ -288,8 +306,10 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
   fastify.delete<{ Params: { id: string } }>('/family/members/:id', async (req, reply) => {
     const { tenant_id } = req.authContext
 
-    if (!await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)) return reply.status(403).send({ error: 'Only the organizer can manage the family' })
-    if (req.params.id === req.authContext.user_id) return reply.status(409).send({ error: 'An organizer cannot remove themselves' })
+    if (!(await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)))
+      return reply.status(403).send({ error: 'Only the organizer can manage the family' })
+    if (req.params.id === req.authContext.user_id)
+      return reply.status(409).send({ error: 'An organizer cannot remove themselves' })
     const result = (await groupsFor(tenant_id).findOneAndUpdate(
       {},
       { $pull: { members: { id: req.params.id } }, $set: { updated_at: new Date() } },
@@ -314,13 +334,15 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
   // health stays deferred by design.
   fastify.patch<{ Body: { note?: string } }>('/family/context', async (req, reply) => {
     const { tenant_id } = req.authContext
-    if (!await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)) {
+    if (!(await isFamilyOrganizer(db, tenant_id, req.authContext.user_id))) {
       return reply.status(403).send({ error: 'Only the organizer can set the family context' })
     }
     const note = (req.body?.note ?? '').trim().slice(0, 500)
     const result = (await groupsFor(tenant_id).findOneAndUpdate(
       {},
-      note ? { $set: { context_note: note, updated_at: new Date() } } : { $unset: { context_note: '' }, $set: { updated_at: new Date() } },
+      note
+        ? { $set: { context_note: note, updated_at: new Date() } }
+        : { $unset: { context_note: '' }, $set: { updated_at: new Date() } },
       { returnDocument: 'after' },
     )) as FamilyGroupDoc | null
     if (!result) return reply.status(404).send({ error: 'Family not found' })

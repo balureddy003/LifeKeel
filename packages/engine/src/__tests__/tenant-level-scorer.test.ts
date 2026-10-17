@@ -13,8 +13,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { TenantLevelScorer } from '../tenant-level-scorer.js'
-import type { RecentInsight, TenantLevelScorerMetrics } from '../tenant-level-scorer.js'
+import { TenantLevelScorer } from '../scoring/tenant-level-scorer.js'
+import type { RecentInsight, TenantLevelScorerMetrics } from '../scoring/tenant-level-scorer.js'
 
 // ── MongoDB stub ─────────────────────────────────────────────────────────────
 
@@ -27,7 +27,9 @@ function makeDb() {
       return Promise.resolve()
     },
     findOne: (filter: unknown) => Promise.resolve(store.get(JSON.stringify(filter)) ?? null),
-    find: () => ({ sort: () => ({ limit: () => ({ toArray: () => Promise.resolve([...store.values()]) }) }) }),
+    find: () => ({
+      sort: () => ({ limit: () => ({ toArray: () => Promise.resolve([...store.values()]) }) }),
+    }),
     distinct: () => Promise.resolve([]),
   }
   return { collection: () => col, store }
@@ -91,12 +93,12 @@ describe('TenantLevelScorer', () => {
     // Should have unigrams + bigrams
     expect(result.feature_count).toBeGreaterThan(5)
     // Tokens should include entity, signal_type, detector, cross-signal flags
-    expect(result.tokens.some(t => t.startsWith('entity='))).toBe(true)
-    expect(result.tokens.some(t => t.startsWith('signal_type='))).toBe(true)
-    expect(result.tokens.some(t => t.startsWith('detector='))).toBe(true)
-    expect(result.tokens.some(t => t.startsWith('recent_insight_count_7d='))).toBe(true)
-    expect(result.tokens.some(t => t.startsWith('recent_detector_diversity='))).toBe(true)
-    expect(result.tokens.some(t => t.startsWith('has_overdue_invoice='))).toBe(true)
+    expect(result.tokens.some((t) => t.startsWith('entity='))).toBe(true)
+    expect(result.tokens.some((t) => t.startsWith('signal_type='))).toBe(true)
+    expect(result.tokens.some((t) => t.startsWith('detector='))).toBe(true)
+    expect(result.tokens.some((t) => t.startsWith('recent_insight_count_7d='))).toBe(true)
+    expect(result.tokens.some((t) => t.startsWith('recent_detector_diversity='))).toBe(true)
+    expect(result.tokens.some((t) => t.startsWith('has_overdue_invoice='))).toBe(true)
   })
 
   // ── Online learning ────────────────────────────────────────────────────────
@@ -148,13 +150,21 @@ describe('TenantLevelScorer', () => {
     const scorer = new TenantLevelScorer(db)
 
     const overdueInsights = makeRecentInsights({
-      count: 3, signalTypes: ['invoice.overdue'],
+      count: 3,
+      signalTypes: ['invoice.overdue'],
     })
     const cartInsights = makeRecentInsights({
-      count: 3, signalTypes: ['cart.abandoned'],
+      count: 3,
+      signalTypes: ['cart.abandoned'],
     })
 
-    const overdueResult = await scorer.score('t1', 'cust_1', 'invoice.overdue', 'det_a', overdueInsights)
+    const overdueResult = await scorer.score(
+      't1',
+      'cust_1',
+      'invoice.overdue',
+      'det_a',
+      overdueInsights,
+    )
     const cartResult = await scorer.score('t1', 'cust_1', 'cart.abandoned', 'det_b', cartInsights)
 
     // The feature sets should be different (different signal types → different tokens)

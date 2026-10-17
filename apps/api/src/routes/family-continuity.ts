@@ -15,7 +15,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { z } from 'zod'
 import { getTenantCollection } from '@lifekeel/platform'
-import { isFamilyOrganizer } from '../lib/family-permissions.js'
+import { isFamilyOrganizer } from '../family/family-permissions.js'
 import { getFamilyContinuityStateCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { DEFAULT_CHECK_IN_DAYS, DEFAULT_GRACE_DAYS } from '../jobs/continuity-check.js'
@@ -29,7 +29,8 @@ const PatchBody = z.object({
 })
 
 export function registerFamilyContinuityRoutes(app: FastifyInstance, db: Db): void {
-  const groupsFor = (tenantId: string) => getTenantCollection<FamilyGroupDoc>(db, 'family_groups', tenantId)
+  const groupsFor = (tenantId: string) =>
+    getTenantCollection<FamilyGroupDoc>(db, 'family_groups', tenantId)
 
   app.get('/family/continuity', async (req, reply) => {
     const { tenant_id, user_id } = req.authContext
@@ -44,7 +45,12 @@ export function registerFamilyContinuityRoutes(app: FastifyInstance, db: Db): vo
         grace_days: DEFAULT_GRACE_DAYS,
       },
       state: state
-        ? { phase: state['phase'], inactive_since: state['inactive_since'], check_in_sent_at: state['check_in_sent_at'], alerted_at: state['alerted_at'] }
+        ? {
+            phase: state['phase'],
+            inactive_since: state['inactive_since'],
+            check_in_sent_at: state['check_in_sent_at'],
+            alerted_at: state['alerted_at'],
+          }
         : { phase: 'watching' },
       is_organizer: await isFamilyOrganizer(db, tenant_id, user_id),
     }
@@ -53,10 +59,15 @@ export function registerFamilyContinuityRoutes(app: FastifyInstance, db: Db): vo
   app.patch('/family/continuity', async (req, reply) => {
     const { tenant_id, user_id } = req.authContext
     if (!(await isFamilyOrganizer(db, tenant_id, user_id))) {
-      return reply.status(403).send({ error: 'Only the family organizer can change continuity settings' })
+      return reply
+        .status(403)
+        .send({ error: 'Only the family organizer can change continuity settings' })
     }
     const parsed = PatchBody.safeParse(req.body ?? {})
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid continuity settings', details: parsed.error.issues })
+    if (!parsed.success)
+      return reply
+        .status(400)
+        .send({ error: 'Invalid continuity settings', details: parsed.error.issues })
 
     const group = await groupsFor(tenant_id).findOne({})
     if (!group) return reply.status(404).send({ error: 'No family group' })
@@ -65,10 +76,19 @@ export function registerFamilyContinuityRoutes(app: FastifyInstance, db: Db): vo
     // who could plausibly receive an alert (active, adult, has email).
     // Pending members and children are rejected now rather than silently
     // skipped at send time, so the organizer sees the truth immediately.
-    const eligible = new Set(group.members.filter((m) => m.status === 'active' && m.role !== 'child' && m.email).map((m) => m.id))
+    const eligible = new Set(
+      group.members
+        .filter((m) => m.status === 'active' && m.role !== 'child' && m.email)
+        .map((m) => m.id),
+    )
     const invalid = parsed.data.designated_member_ids.filter((id) => !eligible.has(id))
     if (invalid.length > 0) {
-      return reply.status(400).send({ error: 'Designated contacts must be active adult members with an email on file', invalid_member_ids: invalid })
+      return reply
+        .status(400)
+        .send({
+          error: 'Designated contacts must be active adult members with an email on file',
+          invalid_member_ids: invalid,
+        })
     }
 
     await groupsFor(tenant_id).updateOne(
@@ -82,7 +102,12 @@ export function registerFamilyContinuityRoutes(app: FastifyInstance, db: Db): vo
       action: 'family.continuity_updated',
       resource_type: 'family',
       resource_id: group.id,
-      metadata: { enabled: parsed.data.enabled, designated_member_ids: parsed.data.designated_member_ids, check_in_after_days: parsed.data.check_in_after_days, grace_days: parsed.data.grace_days },
+      metadata: {
+        enabled: parsed.data.enabled,
+        designated_member_ids: parsed.data.designated_member_ids,
+        check_in_after_days: parsed.data.check_in_after_days,
+        grace_days: parsed.data.grace_days,
+      },
       ip: req.ip,
       user_agent: req.headers['user-agent'] ?? '',
       timestamp: new Date(),

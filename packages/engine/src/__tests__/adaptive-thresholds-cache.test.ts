@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { AdaptiveThresholdStore } from '../adaptive-thresholds.js'
+import { AdaptiveThresholdStore } from '../calibration/adaptive-thresholds.js'
 
 // ── Minimal MongoDB collection stub ──────────────────────────────────────────
 
@@ -38,14 +38,19 @@ function makeDb() {
   const signalCol = {
     distinct: () => Promise.resolve(['tenant-a']),
     aggregate: () => ({
-      toArray: async () => [{
-        _id: null,
-        mean: 100,
-        std: 20,
-        count: 50,
-        values: [100],
-        p25: 80, p50: 100, p75: 120, p90: 140,
-      }],
+      toArray: async () => [
+        {
+          _id: null,
+          mean: 100,
+          std: 20,
+          count: 50,
+          values: [100],
+          p25: 80,
+          p50: 100,
+          p75: 120,
+          p90: 140,
+        },
+      ],
     }),
   }
 
@@ -100,7 +105,7 @@ describe('AdaptiveThresholdStore cache (P1)', () => {
     expect(callsAfter - callsBefore).toBeGreaterThanOrEqual(1)
   })
 
-  it('invalidateCache(tenantId) clears only that tenant\'s entries', async () => {
+  it("invalidateCache(tenantId) clears only that tenant's entries", async () => {
     const { db, findCallCount } = makeDb()
     const store = new AdaptiveThresholdStore(db)
 
