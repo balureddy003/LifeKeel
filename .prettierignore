@@ -1,0 +1,11 @@
+node_modules
+.pnpm-store
+dist
+.next
+out
+build
+coverage
+*.lock
+pnpm-lock.yaml
+*.md
+docs/prd/*.md

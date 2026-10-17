@@ -43,14 +43,14 @@
  */
 
 // MongoDB structural type
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 type MongoDb = { collection: (name: string) => any }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
-const HASH_BITS = 18                    // 2^18 = 262,144 buckets
-const HASH_SIZE = 1 << HASH_BITS       // 262144
-const DEFAULT_LR = 0.01                // learning rate
-const BIGRAM_SEPARATOR = '×'           // feature interaction marker
+const HASH_BITS = 18 // 2^18 = 262,144 buckets
+const HASH_SIZE = 1 << HASH_BITS // 262144
+const DEFAULT_LR = 0.01 // learning rate
+const BIGRAM_SEPARATOR = '×' // feature interaction marker
 
 // ── MurmurHash3 (same as novelty-tracker — kept local to avoid coupling) ──────
 function murmurhash3(str: string, seed = 0): number {
@@ -101,26 +101,26 @@ function bucketNumeric(
 export interface ModelMeta {
   tenant_id: string
   detector_id: string
-  weights_checksum: number   // sum of non-zero weights (for drift detection)
+  weights_checksum: number // sum of non-zero weights (for drift detection)
   update_count: number
   last_updated_at: Date
 }
 
 export interface ScoreResult {
-  score: number           // sigmoid output 0–1
-  matched: boolean        // score >= min_score threshold
-  feature_count: number   // number of features used
-  tokens: string[]        // hashed token strings (for explain)
+  score: number // sigmoid output 0–1
+  matched: boolean // score >= min_score threshold
+  feature_count: number // number of features used
+  tokens: string[] // hashed token strings (for explain)
 }
 
 export interface FeatureHashConfig {
-  features: string[]          // dot-paths into data: ["data.industry", "data.amount_minor"]
-  min_score?: number          // default 0.65
-  use_bigrams?: boolean       // include pairwise interactions (default true)
-  l2_reg?: number             // L2 regularisation coefficient (default 0.0001)
-  l1_reg?: number             // L1 regularisation coefficient (default 0.01)
-  learning_rate?: number      // initial learning rate (default 0.01)
-  learning_rate_schedule?: 'constant' | 'decay' | 'warmup_decay'  // learning rate schedule
+  features: string[] // dot-paths into data: ["data.industry", "data.amount_minor"]
+  min_score?: number // default 0.65
+  use_bigrams?: boolean // include pairwise interactions (default true)
+  l2_reg?: number // L2 regularisation coefficient (default 0.0001)
+  l1_reg?: number // L1 regularisation coefficient (default 0.01)
+  learning_rate?: number // initial learning rate (default 0.01)
+  learning_rate_schedule?: 'constant' | 'decay' | 'warmup_decay' // learning rate schedule
 }
 
 export interface LearningRateSchedule {
@@ -165,7 +165,6 @@ export interface FeatureHashScorerMetrics {
 // ── FeatureHashScorer ──────────────────────────────────────────────────────────
 
 export class FeatureHashScorer {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private col: any
   /** In-memory weight vectors: tenantId → detectorId → Float32Array */
   private weights = new Map<string, Map<string, Float32Array>>()
@@ -189,12 +188,17 @@ export class FeatureHashScorer {
   /** DB reference for the versions collection (used by createModelVersion + rollback). */
   private db: MongoDb
 
-  constructor(db: MongoDb, options: FeatureHashScorerOptions = {}, metrics?: FeatureHashScorerMetrics) {
+  constructor(
+    db: MongoDb,
+    options: FeatureHashScorerOptions = {},
+    metrics?: FeatureHashScorerMetrics,
+  ) {
     this.db = db
     this.col = db.collection('feature_hash_models')
     this.col.createIndex({ tenant_id: 1, detector_id: 1 }, { unique: true }).catch(() => {})
     db.collection('feature_hash_model_versions')
-      .createIndex({ tenant_id: 1, detector_id: 1, version: 1 }, { unique: true }).catch(() => {})
+      .createIndex({ tenant_id: 1, detector_id: 1, version: 1 }, { unique: true })
+      .catch(() => {})
     this.maxLoadedModels = options.maxLoadedModels ?? 200
     this.metrics = metrics
   }
@@ -220,7 +224,7 @@ export class FeatureHashScorer {
     const key = this.modelKey(tenantId, detectorId)
     if (this.loadedKeys.has(key)) return
 
-    const doc = await this.col.findOne({ tenant_id: tenantId, detector_id: detectorId }) as {
+    const doc = (await this.col.findOne({ tenant_id: tenantId, detector_id: detectorId })) as {
       weights: { buffer: ArrayBuffer } | Uint8Array
       update_count: number
       learning_rate?: number
@@ -241,19 +245,12 @@ export class FeatureHashScorer {
         this.initializeLrSchedule(tenantId, detectorId, 0.01, 'warmup_decay')
       }
     } else {
-      const buf = doc.weights instanceof Uint8Array
-        ? doc.weights.buffer
-        : doc.weights.buffer
+      const buf = doc.weights instanceof Uint8Array ? doc.weights.buffer : doc.weights.buffer
       this.getTenantMap(this.weights, tenantId).set(detectorId, new Float32Array(buf))
       this.getTenantMap(this.updateCounts, tenantId).set(detectorId, doc.update_count ?? 0)
 
       // Initialize learning rate schedule
-      this.initializeLrSchedule(
-        tenantId,
-        detectorId,
-        doc.learning_rate ?? 0.01,
-        'warmup_decay',
-      )
+      this.initializeLrSchedule(tenantId, detectorId, doc.learning_rate ?? 0.01, 'warmup_decay')
 
       // Load model versions if available
       if (doc.versions) {
@@ -277,7 +274,7 @@ export class FeatureHashScorer {
   private async tryWarmStart(tenantId: string, detectorId: string): Promise<boolean> {
     try {
       const globalCol = this.db.collection('federated_global_models')
-      const globalDoc = await globalCol.findOne({ _id: 'latest' }) as {
+      const globalDoc = (await globalCol.findOne({ _id: 'latest' })) as {
         indices?: number[]
         deltas?: number[]
         participant_count?: number
@@ -410,14 +407,15 @@ export class FeatureHashScorer {
       case 'constant':
         return schedule.initial_lr
 
-      case 'decay':
+      case 'decay': {
         const decayFactor = Math.pow(
           schedule.decay_rate,
           Math.floor(updateCount / schedule.decay_steps),
         )
         return Math.max(schedule.initial_lr * decayFactor, schedule.min_lr)
+      }
 
-      case 'warmup_decay':
+      case 'warmup_decay': {
         if (updateCount < schedule.warmup_steps) {
           // Linear warmup
           return schedule.initial_lr * (updateCount / schedule.warmup_steps)
@@ -428,6 +426,7 @@ export class FeatureHashScorer {
           Math.floor((updateCount - schedule.warmup_steps) / schedule.decay_steps),
         )
         return Math.max(schedule.initial_lr * warmupDecayFactor, schedule.min_lr)
+      }
 
       default:
         return schedule.initial_lr
@@ -491,27 +490,33 @@ export class FeatureHashScorer {
     // snapshot. We must copy the bytes.
     const versionsCol = this.db.collection('feature_hash_model_versions')
     const weightsCopy = new Float32Array(weights)
-    await versionsCol.replaceOne(
-      { tenant_id: tenantId, detector_id: detectorId, version: newVersion.version },
-      {
-        tenant_id: tenantId,
-        detector_id: detectorId,
-        version: newVersion.version,
-        weights: Buffer.from(weightsCopy.buffer),
-        weights_checksum: newVersion.weights_checksum,
-        update_count: newVersion.update_count,
-        created_at: newVersion.created_at,
-      },
-      { upsert: true },
-    ).catch(() => {})
+    await versionsCol
+      .replaceOne(
+        { tenant_id: tenantId, detector_id: detectorId, version: newVersion.version },
+        {
+          tenant_id: tenantId,
+          detector_id: detectorId,
+          version: newVersion.version,
+          weights: Buffer.from(weightsCopy.buffer),
+          weights_checksum: newVersion.weights_checksum,
+          update_count: newVersion.update_count,
+          created_at: newVersion.created_at,
+        },
+        { upsert: true },
+      )
+      .catch(() => {})
 
     // Prune old versions beyond the 5-version window
     if (currentVersions.length >= 5) {
       const pruned = currentVersions.slice(0, currentVersions.length - 4)
       for (const p of pruned) {
-        await versionsCol.deleteOne({
-          tenant_id: tenantId, detector_id: detectorId, version: p.version,
-        }).catch(() => {})
+        await versionsCol
+          .deleteOne({
+            tenant_id: tenantId,
+            detector_id: detectorId,
+            version: p.version,
+          })
+          .catch(() => {})
       }
     }
 
@@ -532,7 +537,7 @@ export class FeatureHashScorer {
       throw new Error(`No versions found for tenant ${tenantId} detector ${detectorId}`)
     }
 
-    const targetVersion = versions.find(v => v.version === version)
+    const targetVersion = versions.find((v) => v.version === version)
     if (!targetVersion) {
       throw new Error(`Version ${version} not found for tenant ${tenantId} detector ${detectorId}`)
     }
@@ -541,14 +546,15 @@ export class FeatureHashScorer {
     // Previously this method only restored the learning rate — the weights
     // were never stored per version, making rollback a no-op for the model.
     const versionsCol = this.db.collection('feature_hash_model_versions')
-    const snapshot = await versionsCol.findOne({
-      tenant_id: tenantId, detector_id: detectorId, version,
-    }) as { weights?: { buffer: ArrayBuffer } | Uint8Array } | null
+    const snapshot = (await versionsCol.findOne({
+      tenant_id: tenantId,
+      detector_id: detectorId,
+      version,
+    })) as { weights?: { buffer: ArrayBuffer } | Uint8Array } | null
 
     if (snapshot?.weights) {
-      const buf = snapshot.weights instanceof Uint8Array
-        ? snapshot.weights.buffer
-        : snapshot.weights.buffer
+      const buf =
+        snapshot.weights instanceof Uint8Array ? snapshot.weights.buffer : snapshot.weights.buffer
       this.getTenantMap(this.weights, tenantId).set(detectorId, new Float32Array(buf))
     }
 
@@ -579,9 +585,12 @@ export class FeatureHashScorer {
     // Persist the reset state + prune old versions
     await this.persist(tenantId, detectorId)
     const versionsCol = this.db.collection('feature_hash_model_versions')
-    await versionsCol.deleteMany({
-      tenant_id: tenantId, detector_id: detectorId,
-    }).catch(() => {})
+    await versionsCol
+      .deleteMany({
+        tenant_id: tenantId,
+        detector_id: detectorId,
+      })
+      .catch(() => {})
   }
 
   // ── Score features ─────────────────────────────────────────────────────────

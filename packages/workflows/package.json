@@ -15,6 +15,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
+    "lint": "eslint .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
@@ -25,7 +26,9 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@lifekeel/eslint-config": "workspace:*",
     "@types/node": "^22.0.0",
+    "eslint": "^9.19.0",
     "mongodb-memory-server": "^11.2.0",
     "typescript": "^5.6.0",
     "vitest": "^4.1.9"

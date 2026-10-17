@@ -21,6 +21,14 @@ order:
 
 ```bash
 pnpm install
+pnpm check     # typecheck + lint + test + build
+pnpm clean     # remove all dist/ and .next/ outputs
+pnpm format    # format with Prettier (currently not enforced in CI)
+```
+
+Individual tasks:
+
+```bash
 pnpm typecheck   # includes tsc builds + Next build
 pnpm lint
 pnpm test
@@ -53,9 +61,10 @@ pnpm debug                          # both in watch + inspector mode
    `apps/api/src/__tests__/email-scan-fanout.integration.test.ts` are skipped
    unless MongoDB/Redis are running. CI provisions them via
    `.github/workflows/ci.yml`.
-5. **Only `apps/web` has an ESLint setup.** `pnpm lint` currently only runs
-   `@lifekeel/web`. Do not add `lint` scripts to other packages without also
-   adding an ESLint config.
+5. **Shared ESLint config.** `@lifekeel/eslint-config` provides `base` and
+   `node` presets. `apps/web` keeps its own Next.js config to avoid React
+   parser conflicts. Backend packages (`apps/api`, `packages/*`) use the `node`
+   preset. Warnings are expected; errors must be fixed before committing.
 6. **`apps/mobile` is intentionally outside the build/test graph.** Do not add
    it to root scripts or expect Turbo to run tasks there.
 
@@ -77,6 +86,10 @@ they were intentionally cut from LifeKeel scope.
 - Prefer deleting dead code over commenting it out.
 - Keep `package.json` `description` accurate; do not add per-package READMEs
   that duplicate it.
+- Run `pnpm format` before opening a PR if you touched many files; otherwise
+  `lint-staged` will format staged files automatically on commit.
+- When adding a new package, extend `@lifekeel/eslint-config/node` and add a
+  `lint` script so it participates in `pnpm lint`.
 - New family signals require: (1) schema change in
   `apps/api/src/routes/family-financial-profile.ts`, (2) a detector YAML in
   `detectors/family/`, (3) a web form field in `apps/web`.

@@ -33,28 +33,30 @@ function matches(doc: Doc, filter: Doc): boolean {
 
 class FakeCollection {
   docs: Doc[] = []
-  async createIndex(): Promise<string> { return 'idx' }
+  async createIndex(): Promise<string> {
+    return 'idx'
+  }
   async replaceOne(filter: Doc, doc: Doc, opts?: { upsert?: boolean }): Promise<unknown> {
-    const i = this.docs.findIndex(d => matches(d, filter))
+    const i = this.docs.findIndex((d) => matches(d, filter))
     if (i >= 0) this.docs[i] = { ...doc }
     else if (opts?.upsert) this.docs.push({ ...doc })
     return { acknowledged: true }
   }
   async findOne(filter: Doc): Promise<Doc | null> {
-    return this.docs.find(d => matches(d, filter)) ?? null
+    return this.docs.find((d) => matches(d, filter)) ?? null
   }
   find(filter: Doc = {}) {
-    let rows = this.docs.filter(d => matches(d, filter))
+    const rows = this.docs.filter((d) => matches(d, filter))
     const api = {
       sort: (_s: Doc) => api,
       limit: (_n: number) => api,
-      toArray: async () => rows.map(r => ({ ...r })),
+      toArray: async () => rows.map((r) => ({ ...r })),
     }
     void rows
     return api
   }
   async distinct(field: string): Promise<unknown[]> {
-    return [...new Set(this.docs.map(d => d[field]))]
+    return [...new Set(this.docs.map((d) => d[field]))]
   }
 
   /**
@@ -64,10 +66,16 @@ class FakeCollection {
    * numeric field. Population std matches Mongo's $stdDevPop.
    */
   aggregate(pipeline: Array<Record<string, unknown>>) {
-    const matchStage = (pipeline.find(s => '$match' in s)?.['$match'] ?? {}) as Record<string, unknown>
-    const groupStage = (pipeline.find(s => '$group' in s)?.['$group'] ?? {}) as Record<string, unknown>
+    const matchStage = (pipeline.find((s) => '$match' in s)?.['$match'] ?? {}) as Record<
+      string,
+      unknown
+    >
+    const groupStage = (pipeline.find((s) => '$group' in s)?.['$group'] ?? {}) as Record<
+      string,
+      unknown
+    >
 
-    const rows = this.docs.filter(doc => {
+    const rows = this.docs.filter((doc) => {
       for (const [k, cond] of Object.entries(matchStage)) {
         if (cond && typeof cond === 'object') {
           const c = cond as Record<string, unknown>
@@ -89,10 +97,10 @@ class FakeCollection {
 
     // Resolve the pushed/aggregated field path (e.g. "$value").
     const fieldRef = Object.values(groupStage).find(
-      v => v && typeof v === 'object' && '$avg' in (v as object),
+      (v) => v && typeof v === 'object' && '$avg' in (v as object),
     ) as { $avg: string } | undefined
     const field = (fieldRef?.$avg ?? '$value').slice(1)
-    const values = rows.map(r => Number(r[field])).filter(v => Number.isFinite(v))
+    const values = rows.map((r) => Number(r[field])).filter((v) => Number.isFinite(v))
     const count = values.length
     const mean = count ? values.reduce((a, b) => a + b, 0) / count : 0
     const variance = count ? values.reduce((a, b) => a + (b - mean) ** 2, 0) / count : 0
@@ -107,7 +115,10 @@ export class FakeMongo {
   private cols = new Map<string, FakeCollection>()
   collection(name: string): FakeCollection {
     let c = this.cols.get(name)
-    if (!c) { c = new FakeCollection(); this.cols.set(name, c) }
+    if (!c) {
+      c = new FakeCollection()
+      this.cols.set(name, c)
+    }
     return c
   }
 }
@@ -117,10 +128,12 @@ export class FakeMongo {
 export function readCsv(path: string): Record<string, string>[] {
   const lines = readFileSync(path, 'utf8').trim().split('\n')
   const header = lines[0]!.split(',')
-  return lines.slice(1).map(line => {
+  return lines.slice(1).map((line) => {
     const cells = line.split(',')
     const row: Record<string, string> = {}
-    header.forEach((h, i) => { row[h] = cells[i] ?? '' })
+    header.forEach((h, i) => {
+      row[h] = cells[i] ?? ''
+    })
     return row
   })
 }
@@ -131,7 +144,8 @@ export function readCsv(path: string): Record<string, string>[] {
 export function ece(probs: number[], outcomes: number[], nBins = 10): number {
   let e = 0
   for (let b = 0; b < nBins; b++) {
-    const lo = b / nBins, hi = (b + 1) / nBins
+    const lo = b / nBins,
+      hi = (b + 1) / nBins
     const idx = probs
       .map((p, i) => ({ p, y: outcomes[i]! }))
       .filter(({ p }) => (b === nBins - 1 ? p >= lo && p <= hi : p >= lo && p < hi))
