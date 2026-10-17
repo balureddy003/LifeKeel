@@ -60,3 +60,31 @@ describe('trust-tier gate on ActionExecutor', () => {
     expect(m[0][1]).not.toMatch(/approvedBy/)
   })
 })
+
+/**
+ * Public posting is the other outward-facing door: DbSocialPublisher.createPost
+ * publishes to X/LinkedIn/etc. directly, bypassing ActionExecutor. Today every
+ * path to it goes through publishPost() in routes/marketing-posts.ts, and every
+ * post must reach state 'approved' (with approved_by) first: a human via
+ * the approve route, or the explicit opt-in 'auto-trust' scope.
+ */
+describe('trust-tier gate on social publishing', () => {
+  const posts = files.find((f) => f.rel === 'routes/marketing-posts.ts')!.text
+
+  it('only routes/marketing-posts.ts calls createPost()', () => {
+    const callers = files.filter((f) => f.rel !== 'marketing/social-publisher.ts' && /\.createPost\(/.test(f.text)).map((f) => f.rel)
+    expect(callers).toEqual(['routes/marketing-posts.ts'])
+  })
+
+  it('publishPost has exactly the three reviewed call sites (sweep, auto-trust, human approve)', () => {
+    const sites = [...posts.matchAll(/\bpublishPost\(/g)].length - 1 // minus the definition
+    expect(sites).toBe(3)
+  })
+
+  it('every new approval (state approved + approved_at) records who approved', () => {
+    // The pause-restore `$set: { state: 'approved' }` re-queues an already-approved post; not matched.
+    const sets = [...posts.matchAll(/\$set:\s*\{\s*state:\s*'approved',\s*approved_at[^}]*\}/g)]
+    expect(sets.length).toBeGreaterThanOrEqual(2)
+    for (const s of sets) expect(s[0]).toMatch(/approved_by/)
+  })
+})
