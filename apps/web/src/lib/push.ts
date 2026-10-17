@@ -12,6 +12,7 @@
  */
 
 import { getApiBase } from './env'
+import { credFetch } from './http'
 
 function getToken(): string | null {
   try {
@@ -44,7 +45,7 @@ export function isPushSupported(): boolean {
 export async function fetchVapidKey(): Promise<string | null> {
   try {
     const token = getToken()
-    const res = await fetch(`${getApiBase()}/push/vapid-key`, {
+    const res = await credFetch(`${getApiBase()}/push/vapid-key`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
     if (!res.ok) return null
@@ -85,7 +86,7 @@ export async function subscribeToPush(): Promise<boolean> {
 
     const json = subscription.toJSON()
     const token = getToken()
-    const res = await fetch(`${getApiBase()}/push/subscribe`, {
+    const res = await credFetch(`${getApiBase()}/push/subscribe`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -110,7 +111,7 @@ export async function unsubscribeFromPush(): Promise<boolean> {
     await subscription.unsubscribe()
 
     const token = getToken()
-    const res = await fetch(`${getApiBase()}/push/unsubscribe`, {
+    const res = await credFetch(`${getApiBase()}/push/unsubscribe`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

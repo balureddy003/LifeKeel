@@ -1,0 +1,67 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1' # weekly: new advisories land without code changes
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Production deps only; fail on high/critical. Dev-tool advisories are
+      # handled by Dependabot rather than blocking merges.
+      # Baseline was cleaned via root package.json pnpm.overrides. If a new high
+      # advisory has no patched release yet, add a documented override or
+      # temporary exception here rather than silencing the job.
+      - run: pnpm audit --prod --audit-level=high
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # gitleaks-action lists PR commits via the API; without this it 403s
+      # with "Resource not accessible by integration".
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+      # Code scanning is not enabled on this repo, so uploading results fails the job.
+      # Keep the SARIF as a workflow artifact instead. To get alerts in the Security tab,
+      # enable code scanning in repo settings, then remove `upload: never` and the artifact step.
+      - uses: github/codeql-action/analyze@v3
+        with:
+          upload: never
+          output: codeql-results
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codeql-sarif
+          path: codeql-results

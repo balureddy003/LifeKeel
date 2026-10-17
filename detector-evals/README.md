@@ -11,5 +11,5 @@ The same datasets run as a test in
 `packages/engine/src/__tests__/family-detector-evals.test.ts`, so a detector
 regression fails CI before the gate is ever invoked.
 
-Coverage: all four family detectors (`detectors/family/*.yaml`) have golden
+Coverage: all nine family detectors (`detectors/family/*.yaml`) have golden
 datasets here. New detectors must add one before they're promotable.

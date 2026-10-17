@@ -23,6 +23,7 @@ import { randomUUID } from 'node:crypto'
  */
 
 import Fastify from 'fastify'
+import cookie from '@fastify/cookie'
 import cors from '@fastify/cors'
 import rateLimit from '@fastify/rate-limit'
 import multipart from '@fastify/multipart'
@@ -42,6 +43,7 @@ import { registerInsightRoutes, cleanupStaleInsightsStartup } from './routes/ins
 import { recordApiRequest, registerMetricsRoutes, recordLlmCacheHitMiss, buildFeatureHashScorerMetrics } from './routes/metrics.js'
 import { initAuditLogger } from './audit/audit-log.js'
 import { registerAuthUserRoutes } from './routes/auth-users.js'
+import { clearSessionCookie, isOriginAllowedForCookieAuth, readSessionCookie } from './lib/session-cookie.js'
 import { registerSocialAuthRoutes } from './routes/auth-social.js'
 import { createLlmRouterFromEnv, LlmResponseCache, MongoLlmCacheStore, LlmBudgetGuard, LocalEmbeddingProvider } from '@lifekeel/platform'
 import {
@@ -1063,7 +1065,15 @@ const corsOrigin = deploymentConfig.mode === 'cloud'
 await app.register(cors, {
   origin: corsOrigin,
   methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  // Required for the httpOnly session cookie to ride credentialed
+  // cross-origin fetches (web app on Firebase → API on Cloud Run).
+  credentials: true,
 })
+
+// HttpOnly session-cookie support — token lookup falls back to
+// `lifekeel_session` when no Bearer header is present (see
+// lib/session-cookie.ts and the auth hook below).
+await app.register(cookie)
 
 // Security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options, etc.)
 // In dev mode, relax CSP to allow inline styles/scripts for hot-reload.
@@ -1168,7 +1178,7 @@ app.addHook('onRequest', async (request, reply) => {
   // PRD-110: '/family/join' is deliberately NOT a prefix of the organizer-only
   // '/family/access-requests*' endpoints below — this array is matched by
   // startsWith, so '/family/join-requests' would have made those public too.
-  const open = ['/health', '/engine/health', '/status', '/metrics', '/auth/token', '/auth/demo-token', '/auth/signup', '/auth/login', '/auth/sso/', '/auth/google/', '/auth/github/', '/auth/request-password-reset', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/entitlements/plans', '/blog/posts', '/a/', '/why/', '/verify/', '/webhooks/', '/inbound/', '/insights/cleanup-stale-all', '/billing/webhook', '/documentation', '/documentation/json', '/documentation/uiOptions', '/documentation/static', '/growth/events', '/readiness-quiz', '/leads', '/users/unsubscribe', '/share/', '/family/join', '/family/invite/']
+  const open = ['/health', '/engine/health', '/status', '/metrics', '/auth/token', '/auth/demo-token', '/auth/signup', '/auth/login', '/auth/logout', '/auth/mfa/verify', '/auth/sso/', '/auth/google/', '/auth/github/', '/auth/request-password-reset', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/entitlements/plans', '/blog/posts', '/a/', '/why/', '/verify/', '/webhooks/', '/inbound/', '/insights/cleanup-stale-all', '/billing/webhook', '/documentation', '/documentation/json', '/documentation/uiOptions', '/documentation/static', '/growth/events', '/readiness-quiz', '/leads', '/users/unsubscribe', '/share/', '/family/join', '/family/invite/']
   if (/^\/connectors\/[^/]+\/oauth\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/exchange/.test(request.url)) return
@@ -1179,19 +1189,33 @@ app.addHook('onRequest', async (request, reply) => {
     // falls through to the route's public path; only a request that would
     // have been auth-gated anyway should ever see 401 here.
     const bearer = extractBearerToken(request.headers.authorization)
-    if (bearer) {
+    const opportunistic = bearer ?? readSessionCookie(request)
+    if (opportunistic) {
       try {
-        request.authContext = await auth.verify(bearer)
+        request.authContext = await auth.verify(opportunistic)
       } catch { /* stay on the public path */ }
     }
     return
   }
 
-  const token = extractBearerToken(request.headers.authorization)
+  // Bearer wins when both are present — an explicit header is always a
+  // deliberate credential; the cookie is the ambient browser session.
+  const bearer = extractBearerToken(request.headers.authorization)
+  const token = bearer ?? readSessionCookie(request)
   if (!token) return reply.status(401).send({ error: 'Missing Bearer token' })
+
+  // SameSite=None cookies ride cross-site requests, so cookie-authed
+  // mutations need the Origin allowlist as the CSRF boundary (bearer-auth
+  // requests can't be forged cross-origin and skip the check entirely).
+  if (!bearer && !isOriginAllowedForCookieAuth(request)) {
+    return reply.status(403).send({ error: 'Origin not allowed' })
+  }
 
   try {
     const ctx = await auth.verify(token)
+    // MFA pending tokens are only exchangeable at /auth/mfa/verify — they
+    // must never function as session credentials anywhere else.
+    if (ctx.mfa_pending) return reply.status(401).send({ error: 'MFA verification required' })
     let authedUser: Record<string, unknown> | null = null
     if (workflowDb) {
       const user = await workflowDb.collection('users').findOne(
@@ -1317,6 +1341,15 @@ app.post<{ Body: { tenant_id: string; user_id?: string } }>('/auth/token', async
   if (!tenant_id) return reply.status(400).send({ error: 'tenant_id required' })
   const token = await auth.sign({ sub: user_id, tenant_id, roles: ['admin'] })
   return reply.send({ token, tenant_id, expires_in: '7d' })
+})
+
+/** POST /auth/logout — clears the httpOnly session cookie. Deliberately on
+ *  the open-routes list: a logout must succeed even with an expired/invalid
+ *  session, and clearing a cookie is harmless to call without auth. Bearer
+ *  clients are unaffected (they just drop their token client-side). */
+app.post('/auth/logout', async (_request, reply) => {
+  clearSessionCookie(reply)
+  return reply.send({ ok: true })
 })
 
 /** GET /auth/demo-token — quick demo token for acme-corp (Studio settings page)

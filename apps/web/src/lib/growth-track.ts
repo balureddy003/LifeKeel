@@ -7,6 +7,7 @@
  */
 
 import { getApiBase } from './env'
+import { credFetch } from './http'
 import { captureAttribution } from './attribution'
 
 const ANON_ID_KEY = 'lifekeel_anon_id'
@@ -28,7 +29,7 @@ export function track(event: string, meta?: Record<string, unknown>): void {
   captureAttribution()
   try {
     const token = localStorage.getItem('lifekeel_token')
-    fetch(`${getApiBase()}/growth/events`, {
+    credFetch(`${getApiBase()}/growth/events`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

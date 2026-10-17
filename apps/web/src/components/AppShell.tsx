@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Home, Inbox, Users, CalendarClock, Settings, WifiOff, Siren, Network, Bot, MailWarning, X } from 'lucide-react'
+import { Home, Inbox, Users, CalendarClock, Settings, WifiOff, Siren, Network, Bot, MailWarning, Wallet, X, Fingerprint } from 'lucide-react'
 import { useNetworkStatus } from '@/lib/useNetworkStatus'
 import { useAuth } from '@/lib/auth-context'
 import { useMode } from '@/lib/mode-context'
@@ -20,11 +20,13 @@ import { useToast } from './Toast'
 import { MarketingLanding } from './MarketingLanding'
 import { NavRail } from './NavRail'
 import { haptic } from '@/lib/haptics'
+import { isNativeShell, biometricLockEnabled, verifyBiometric } from '@/lib/native'
 
 const NAV_ITEMS = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/inbox', label: 'Inbox', icon: Inbox },
   { href: '/family', label: 'Family', icon: Users },
+  { href: '/finances', label: 'Finances', icon: Wallet },
   { href: '/events', label: 'Events', icon: CalendarClock },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
@@ -34,6 +36,13 @@ const NAV_ITEMS = [
 const ROUTE_TAB_OVERRIDES: Record<string, string> = {
   '/member': '/family',
   '/asset': '/family',
+  '/financial-profile': '/finances',
+  '/vault': '/finances',
+  '/cashflow': '/finances',
+  '/assets': '/finances',
+  '/documents': '/finances',
+  '/upload': '/finances',
+  '/connect': '/finances',
 }
 
 function LiquidTabBar() {
@@ -388,7 +397,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="max-w-md md:max-w-xl lg:max-w-2xl mx-auto px-5 pt-6 pb-20 space-y-5">
+      <div className="max-w-md md:max-w-xl lg:max-w-3xl xl:max-w-4xl mx-auto px-5 pt-6 pb-20 space-y-5">
         <div className="flex items-center justify-between">
           <Skeleton className="h-6 w-32" />
           <Skeleton className="h-9 w-9 rounded-full" />
@@ -429,7 +438,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         </div>
         <h1 className="text-3xl font-bold mb-2 text-gradient">LifeKeel</h1>
         <p className="text-ink-tertiary mb-8 max-w-xs">
-          Your family&apos;s first responder for financial emergencies &mdash; ready before you need it.
+          The always-on readiness system for your family &mdash; know what&apos;s missing before you need it.
         </p>
         <div className="w-full max-w-xs space-y-3">
           <Link href="/welcome" className="block">
@@ -479,15 +488,77 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     )
   }
 
-  return <>{children}</>
+  return <BiometricGate>{children}</BiometricGate>
+}
+
+/** Native-shell app lock — when the user enabled biometric unlock in
+ *  Settings, the authenticated app is hidden behind a device-unlock
+ *  prompt on every cold start. Web platforms never see this (no
+ *  biometric API exists to gate on). */
+function BiometricGate({ children }: { children: React.ReactNode }) {
+  const [locked, setLocked] = useState(() => isNativeShell() && biometricLockEnabled())
+  const prompting = useRef(false)
+
+  const prompt = () => {
+    if (prompting.current) return
+    prompting.current = true
+    void verifyBiometric('Unlock LifeKeel to see your family\u2019s data').then((ok) => {
+      prompting.current = false
+      if (ok) setLocked(false)
+    })
+  }
+
+  // prompt() is stable enough for this one-shot effect — it guards on
+  // prompting.current, so re-runs can't double-fire the system prompt.
+  useEffect(() => {
+    if (locked) prompt()
+  }, [locked])
+
+  if (!locked) return <>{children}</>
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center">
+      <div className="w-16 h-16 rounded-2xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-6">
+        <Fingerprint size={32} className="text-family-400" />
+      </div>
+      <h1 className="text-2xl font-bold mb-2">LifeKeel is locked</h1>
+      <p className="text-ink-tertiary mb-8 max-w-xs">Verify it&apos;s you to continue.</p>
+      <motion.button
+        whileTap={{ scale: 0.96 }}
+        onClick={prompt}
+        className="bg-family-500 text-white font-semibold rounded-2xl py-4 px-10 text-base"
+      >
+        Unlock
+      </motion.button>
+    </div>
+  )
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const { isAuthenticated, family } = useAuth()
-  const { config, emergencyActive, deactivateEmergency } = useMode()
+  const { isAuthenticated, user, family } = useAuth()
+  const { config, emergencyActive, deactivateEmergency, setMode } = useMode()
   const router = useRouter()
   const setInboxUnreadCount = useAppStore((s) => s.setInboxUnreadCount)
+
+  // First-run mode suggestion: an invited member who accepted as role
+  // 'child' was previously landing in organizer mode — the mode switcher
+  // lives buried in Settings, so a child saw the full organizer UI on
+  // their own device until an adult happened to change it. Mode is a
+  // per-device setting (localStorage 'family-mode', written only by an
+  // explicit pick), so an absent value means "never chosen" — safe to
+  // apply the roster role's sensible default exactly once. There is no
+  // 'elderly' roster role, so that mode remains manual-only.
+  useEffect(() => {
+    if (!isAuthenticated || !user || !family) return
+    try {
+      if (localStorage.getItem('family-mode')) return
+      const self = family.members.find((m) => m.id === user.id || m.userId === user.id)
+      if (self?.role === 'child') setMode('child')
+    } catch {
+      // locked-down storage — leave the organizer default alone
+    }
+  }, [isAuthenticated, user, family, setMode])
 
   // Pre-seed the inbox unread badge so it shows from the first page load
   // (not only after visiting Inbox).  The Inbox page later overrides this
@@ -597,7 +668,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // reserves NavRail's own width so the content centers in what's left of
   // the viewport, not in the full viewport underneath the rail.
   const isMarketingPage = !isAuthenticated && pathname === '/'
-  const widthClass = isMarketingPage || isOperatorRoute ? '' : 'max-w-md md:max-w-xl lg:max-w-2xl mx-auto'
+  const widthClass = isMarketingPage || isOperatorRoute ? '' : 'max-w-md md:max-w-xl lg:max-w-3xl xl:max-w-4xl mx-auto'
   const railGutter = showNav ? 'md:pl-[88px]' : ''
 
   return (

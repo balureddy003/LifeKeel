@@ -150,12 +150,21 @@ executor was left wired into a currently-shipped route instead.
 
 ## Known, deliberately deferred issues
 
-- **Auth token in `localStorage`.** `apps/web/src/lib/auth-context.tsx` and
-  `apps/web/src/lib/api.ts` store the bearer token in `localStorage`
-  (`lifekeel_token`), which is readable by any script running on the page (XSS).
-  The correct fix is for `apps/api` to set an `httpOnly`, `Secure`, `SameSite`
-  cookie instead of returning a bearer token. Now that `apps/api` lives in
-  this repo, this is fixable here — just not done yet.
+- **Auth token in `localStorage` — partially migrated (2026-10).** The API
+  now issues an `httpOnly` `lifekeel_session` cookie on signup, login,
+  OAuth exchange, and MFA verify (`apps/api/src/lib/session-cookie.ts`),
+  prefers it over Bearer in the auth hook, clears it at `POST /auth/logout`,
+  and guards cookie-authed mutations behind an Origin allowlist (the CSRF
+  boundary for `SameSite=None`). The web app sends
+  `credentials: 'include'` on every call. **What remains:** the API is
+  cross-site to `lifekeel.co.uk` (Cloud Run `*.run.app`), so Safari and
+  other third-party-cookie-blocking browsers still need the Bearer
+  fallback — `lifekeel_token` is still written at login for those clients.
+  The remaining XSS exposure closes when the API is served same-origin:
+  either a Firebase Hosting rewrite `/api/**` → Cloud Run (preferred —
+  kills CORS entirely too) or an `api.lifekeel.co.uk` CNAME. After that,
+  delete the `lifekeel_token` writes in `auth-context.tsx` and the
+  `Authorization` fallbacks; `apps/web/src/lib/http.ts` documents the seam.
 - **CSP `connect-src` placeholder.** `apps/web/firebase.json`'s
   Content-Security-Policy allows `connect-src 'self' https://*.run.app` to
   match the current shared Cloud Run API. Update this to `apps/api`'s actual
@@ -166,15 +175,22 @@ executor was left wired into a currently-shipped route instead.
   `apps/web/src/lib/observability.ts` — this app displays household
   financial data on screen, and Replay would capture it. Don't add it
   without a specific masking/redaction plan.
-- **No multi-factor authentication.** `apps/api/src/routes/auth-users.ts`
-  authenticates with email + password only — no TOTP enrollment, no backup
-  codes, no recovery flow for a lost second factor. This is a real security
-  gap for accounts holding a family's full financial picture, but it's not
-  a quick patch: a correct implementation needs enrollment UX, backup-code
-  generation and safe storage, and a recovery path that doesn't itself
-  become the weak link — not just a checkbox on the login form. Per an
-  external go-live audit (2026-09), this is the recommended next security
-  investment post-GA, roadmapped rather than rushed in ahead of it.
+- **Multi-factor authentication — implemented (2026-10).** TOTP (RFC 6238)
+  enrollment and login verification now exist:
+  `apps/api/src/lib/totp.ts` (SHA-1/6-digit/30s/±1 window),
+  `/auth/mfa/{status,setup,enable,disable,verify}` in
+  `apps/api/src/routes/auth-users.ts`, the `mfa_pending` short-lived claim
+  (rejected as a session credential by the auth middleware), single-use
+  recovery codes stored as SHA-256 hashes, password re-confirmation to
+  disable. Web UI: `apps/web/src/components/MfaSettings.tsx` (Settings →
+  Security) and the second step on `/login`. OAuth sign-in is covered too:
+  Google/GitHub exchange+callback routes return the same pending-token
+  contract instead of a session for mfa_enabled users, and the web
+  callback routes it to the login code step. **Recovery path:**
+  `POST /operator/users/:id/mfa-disable` (users.manage permission, reason
+  required, audit-logged, also revokes sessions) is the support runbook for
+  a user who loses both factors — run it only after out-of-band identity
+  verification, e.g. a confirmed recovery email on the account.
 - **Mixed license terms across `packages/*`.** Copied as-is from kairos-ai:
   MIT (`engine`, `platform`), Apache-2.0 (`specifications`, `runtime`,
   `legacy-compat`, `mongodb-adapter`, `conformance`, `outcome-kernel`), and

@@ -6,7 +6,6 @@
   "scope": "/",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"],
-  "orientation": "portrait",
   "background_color": "#08080c",
   "theme_color": "#08080c",
   "categories": ["utilities", "lifestyle", "finance"],
