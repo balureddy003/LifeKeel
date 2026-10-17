@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kairos.io/schemas/trading-212/portfolio.position/v1.0.0",
+  "$id": "https://lifekeel.io/schemas/trading-212/portfolio.position/v1.0.0",
   "title": "Trading 212 Portfolio Position",
   "description": "Open position in a Trading 212 Invest or Stocks ISA account.",
   "type": "object",
-  "kairos": {
+  "lifekeel": {
     "connector_id": "trading-212",
     "event_type": "portfolio.position",
     "schema_version": "1.0.0",

@@ -33,7 +33,7 @@ const TRADING_212_CRED = {
 
 describe('ConnectorActionExecutor — gap #20 request timeout', () => {
   beforeEach(() => {
-    delete process.env['KAIROS_DEPLOYMENT_MODE']
+    delete process.env['LIFEKEEL_DEPLOYMENT_MODE']
   })
 
   it('distinguishes a timeout (AbortError) from a generic network error in the error message', async () => {
@@ -139,7 +139,7 @@ describe('ConnectorActionExecutor — gap #20 request timeout', () => {
   })
 
   it('gap #22: passes extraHeaders through to the fetch call', async () => {
-    // The broker path sends X-Kairos-Trade-Id as a custom header for audit
+    // The broker path sends X-LifeKeel-Trade-Id as a custom header for audit
     // trail. Trading 212 ignores it, but it must appear in the request.
     const capturedHeaders: Record<string, string> = {}
     const capturingFetch = vi.fn(async (_url: string, init?: RequestInit) => {
@@ -157,10 +157,10 @@ describe('ConnectorActionExecutor — gap #20 request timeout', () => {
       'trading-212',
       'place_market_order',
       { ticker: 'AAPL_US_EQ', quantity: 5 },
-      { 'X-Kairos-Trade-Id': 'trade-abc-123' },
+      { 'X-LifeKeel-Trade-Id': 'trade-abc-123' },
     )
 
-    expect(capturedHeaders['X-Kairos-Trade-Id']).toBe('trade-abc-123')
+    expect(capturedHeaders['X-LifeKeel-Trade-Id']).toBe('trade-abc-123')
   })
 
   it('uses live_base_url when extra.live_mode=true', async () => {

@@ -14,8 +14,8 @@ const TENANT = 'tenant-life-events-test'
 
 const llmMock = vi.fn(async (_system: string, prompt: string) => `Draft based on: ${prompt}`)
 
-vi.mock('@agentoak/platform', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@agentoak/platform')>()
+vi.mock('@lifekeel/platform', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@lifekeel/platform')>()
   return { ...actual, createLlmRouterFromEnv: () => llmMock }
 })
 
@@ -399,7 +399,7 @@ describe('PRD-108: POST /family/life-events/:id/steps/:stepId/prepare', () => {
     const reportRes = await app.inject({ method: 'POST', url: '/family/life-events', payload: { event_type: 'job_loss' } })
     const id = reportRes.json().id
 
-    // 'runway' is computed:true, contact:false — no one to email, but Oak
+    // 'runway' is computed:true, contact:false — no one to email, but Keel
     // already has the real numbers (render-playbook.ts) to help start it.
     const res = await app.inject({ method: 'POST', url: `/family/life-events/${id}/steps/runway/prepare` })
     expect(res.statusCode).toBe(200)

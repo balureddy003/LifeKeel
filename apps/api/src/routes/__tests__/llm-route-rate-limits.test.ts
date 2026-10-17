@@ -1,5 +1,5 @@
 /**
- * OAK-015 + OAK-026: the LLM-backed routes (POST /assistant/ask,
+ * KEEL-015 + KEEL-026: the LLM-backed routes (POST /assistant/ask,
  * POST /insights/:id/prepare) and the anonymous public readiness quiz
  * (POST /readiness-quiz) each declare their own tighter route-level
  * rate limit rather than only inheriting the shared global one. Proves
@@ -11,7 +11,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import Fastify from 'fastify'
 import rateLimit from '@fastify/rate-limit'
-import { Engine } from '@agentoak/engine'
+import { Engine } from '@lifekeel/engine'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { registerReadinessQuizRoutes } from '../readiness-quiz.js'
@@ -41,7 +41,7 @@ function makeFakeDb() {
   return { collection: () => col } as any
 }
 
-describe('OAK-015 + OAK-026: LLM/public routes have a dedicated, tighter rate limit', () => {
+describe('KEEL-015 + KEEL-026: LLM/public routes have a dedicated, tighter rate limit', () => {
   it('POST /readiness-quiz (max 5/min) returns 429 on the 6th request within a minute', async () => {
     const engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
     await engine.load()

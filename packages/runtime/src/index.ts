@@ -4,7 +4,7 @@ import type {
   CapabilityProviderManifest,
   Goal,
   OutcomeContract,
-} from '@agentoak/specifications'
+} from '@lifekeel/specifications'
 
 export type DeploymentProfile = 'personal' | 'team' | 'edge' | 'cloud' | 'federated'
 

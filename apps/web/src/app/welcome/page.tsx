@@ -33,7 +33,7 @@ const SLIDES = [
   {
     icon: Lock,
     title: 'Your Data, Your Control',
-    subtitle: 'Nothing is sold. Nothing trains models. Encrypted at rest, deletable on request — because trust isn\'t a feature, it\'s the foundation.',
+    subtitle: 'Nothing is sold. Nothing trains models. Encrypted at rest, exportable and deletable by you from Settings — because trust isn\'t a feature, it\'s the foundation.',
     bg: 'from-family-500/20 to-transparent',
   },
 ]

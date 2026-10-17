@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { EnvSocialPublisher, DbSocialPublisher, socialPublisherFromEnv, type SocialConnectionDoc } from '../social-publisher.js'
-import { encryptIfNeeded, decryptIfNeeded } from '@agentoak/platform'
+import { encryptIfNeeded, decryptIfNeeded } from '@lifekeel/platform'
 
 function jsonRes(body: unknown, init: { status?: number; headers?: Record<string, string> } = {}) {
   return new Response(JSON.stringify(body), {
@@ -57,12 +57,12 @@ describe('EnvSocialPublisher.createPost', () => {
     const fetchMock = vi.fn(async () => jsonRes({ data: { id: 'tw-1' } }))
     vi.stubGlobal('fetch', fetchMock)
     const pub = socialPublisherFromEnv()!
-    const res = (await pub.createPost({ integrationId: 'x', content: 'hello oak', channel: 'x', type: 'now', date: new Date() })) as { external_id?: string; url?: string }
+    const res = (await pub.createPost({ integrationId: 'x', content: 'hello keel', channel: 'x', type: 'now', date: new Date() })) as { external_id?: string; url?: string }
 
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('https://api.x.com/2/tweets')
     expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer xtok')
-    expect(JSON.parse(String(init.body))).toEqual({ text: 'hello oak' })
+    expect(JSON.parse(String(init.body))).toEqual({ text: 'hello keel' })
     expect(res.external_id).toBe('tw-1')
     expect(res.url).toBe('https://x.com/i/web/status/tw-1')
   })
@@ -87,7 +87,7 @@ describe('EnvSocialPublisher.createPost', () => {
   })
 
   it('bluesky opens a session then creates the feed record', async () => {
-    vi.stubEnv('BSKY_HANDLE', 'oak.bsky.social')
+    vi.stubEnv('BSKY_HANDLE', 'keel.bsky.social')
     vi.stubEnv('BSKY_APP_PASSWORD', 'app-pass')
     const fetchMock = vi.fn(async (input: unknown) => {
       const url = String(input)
@@ -102,7 +102,7 @@ describe('EnvSocialPublisher.createPost', () => {
     const [postUrl, postInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit]
     expect(postUrl).toContain('com.atproto.repo.createRecord')
     expect((postInit.headers as Record<string, string>)['Authorization']).toBe('Bearer jwt-1')
-    expect(res.url).toBe('https://bsky.app/profile/oak.bsky.social/post/3k1')
+    expect(res.url).toBe('https://bsky.app/profile/keel.bsky.social/post/3k1')
   })
 
   it('surfaces non-2xx responses as errors with status and detail', async () => {
@@ -182,14 +182,14 @@ describe('DbSocialPublisher', () => {
     refresh_token: 'x-refresh-1',
     token_expires_at: new Date(Date.now() + 3600_000),
     token_type: 'Bearer',
-    extra: { username: 'agent_oak' },
+    extra: { username: 'lifekeel' },
     ...over,
   })
 
   const conn = (over: Partial<SocialConnectionDoc> = {}): Partial<SocialConnectionDoc> => ({
     tenant_id: 't1',
     channel: 'bluesky',
-    handle: 'oak.bsky.social',
+    handle: 'keel.bsky.social',
     credentials: { app_password: encryptIfNeeded('app-pass')! },
     service: 'https://bsky.social',
     ...over,
@@ -210,7 +210,7 @@ describe('DbSocialPublisher', () => {
     const res = (await pub.createPost({
       integrationId: 'x', content: 'from db conn', channel: 'bluesky', type: 'now', date: new Date(), tenantId: 't1',
     })) as { url?: string }
-    expect(res.url).toBe('https://bsky.app/profile/oak.bsky.social/post/9z')
+    expect(res.url).toBe('https://bsky.app/profile/keel.bsky.social/post/9z')
   })
 
   it('marks the connection error on publish failure and recovers it on success', async () => {
@@ -246,7 +246,7 @@ describe('DbSocialPublisher', () => {
     const bluesky = integrations.filter((i) => i.identifier === 'bluesky')
     expect(bluesky).toHaveLength(1)
     expect(bluesky[0]!.source).toBe('connection')
-    expect(bluesky[0]!.name).toContain('@oak.bsky.social')
+    expect(bluesky[0]!.name).toContain('@keel.bsky.social')
     expect(integrations.find((i) => i.identifier === 'x')!.source).toBe('env')
   })
 
@@ -339,7 +339,7 @@ describe('DbSocialPublisher', () => {
     const x = integrations.filter((i) => i.identifier === 'x')
     expect(x).toHaveLength(1)
     expect(x[0]!.source).toBe('connection')
-    expect(x[0]!.name).toContain('@agent_oak')
+    expect(x[0]!.name).toContain('@lifekeel')
   })
 
   const oauthCred = (connectorId: string, extra: Record<string, string>) => ({
@@ -352,7 +352,7 @@ describe('DbSocialPublisher', () => {
   })
 
   it('publishes a Facebook page post via the page token + stored page_id', async () => {
-    const { db } = makeDb([], [oauthCred('facebook_pages', { page_id: 'pg-42', page_name: 'Oak HQ' })])
+    const { db } = makeDb([], [oauthCred('facebook_pages', { page_id: 'pg-42', page_name: 'Keel HQ' })])
     const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
       const url = String(input)
       expect(url).toBe('https://graph.facebook.com/v19.0/pg-42/feed')
@@ -373,19 +373,19 @@ describe('DbSocialPublisher', () => {
     const { db } = makeDb([], [oauthCred('facebook_pages', { page_id: 'pg-42' })])
     const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
       expect(String(input)).toBe('https://graph.facebook.com/v19.0/pg-42/photos')
-      expect(JSON.parse(String(init!.body))).toEqual({ caption: 'with pic', image_url: 'https://oak.example/pic.png' })
+      expect(JSON.parse(String(init!.body))).toEqual({ caption: 'with pic', image_url: 'https://keel.example/pic.png' })
       return jsonRes({ id: 'ph-9', post_id: 'pg-42_114' })
     })
     vi.stubGlobal('fetch', fetchMock)
     const pub = new DbSocialPublisher(db, null)
     const res = (await pub.createPost({
-      integrationId: 'facebook:connection', content: 'with pic', channel: 'facebook', type: 'now', date: new Date(), tenantId: 't1', mediaUrl: 'https://oak.example/pic.png',
+      integrationId: 'facebook:connection', content: 'with pic', channel: 'facebook', type: 'now', date: new Date(), tenantId: 't1', mediaUrl: 'https://keel.example/pic.png',
     })) as { external_id?: string }
     expect(res.external_id).toBe('pg-42_114')
   })
 
   it('publishes a Threads post through the two-step container flow', async () => {
-    const { db } = makeDb([], [oauthCred('threads', { user_id: 'th-1', username: '@agentoak' })])
+    const { db } = makeDb([], [oauthCred('threads', { user_id: 'th-1', username: '@lifekeel' })])
     const calls: { url: string; body: Record<string, unknown> }[] = []
     vi.stubGlobal('fetch', vi.fn(async (input: unknown, init?: RequestInit) => {
       const url = String(input)
@@ -422,7 +422,7 @@ describe('DbSocialPublisher', () => {
   })
 
   it('rejects Instagram without an image, then publishes via container→publish', async () => {
-    const { db } = makeDb([], [oauthCred('instagram_business', { ig_user_id: 'ig-9', ig_username: '@oak' })])
+    const { db } = makeDb([], [oauthCred('instagram_business', { ig_user_id: 'ig-9', ig_username: '@keel' })])
     const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
       const url = String(input)
       if (url.endsWith('/media')) return jsonRes({ id: 'container-3' })
@@ -435,28 +435,28 @@ describe('DbSocialPublisher', () => {
     ).rejects.toThrow('image is required')
 
     const res = (await pub.createPost({
-      integrationId: 'ig', content: 'with image', channel: 'instagram', type: 'now', date: new Date(), tenantId: 't1', mediaUrl: 'https://oak.example/i.png',
+      integrationId: 'ig', content: 'with image', channel: 'instagram', type: 'now', date: new Date(), tenantId: 't1', mediaUrl: 'https://keel.example/i.png',
     })) as { external_id?: string }
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('https://graph.facebook.com/v19.0/ig-9/media')
-    expect(JSON.parse(String(init.body))).toEqual({ image_url: 'https://oak.example/i.png', caption: 'with image' })
+    expect(JSON.parse(String(init.body))).toEqual({ image_url: 'https://keel.example/i.png', caption: 'with image' })
     expect(res.external_id).toBe('media-55')
   })
 
   it('lists every OAuth-connected channel with its account label', async () => {
     const { db } = makeDb([], [
-      oauthCred('facebook_pages', { page_id: 'pg-1', page_name: 'Oak HQ' }),
-      oauthCred('threads', { user_id: 'th-1', username: '@agentoak' }),
+      oauthCred('facebook_pages', { page_id: 'pg-1', page_name: 'Keel HQ' }),
+      oauthCred('threads', { user_id: 'th-1', username: '@lifekeel' }),
       oauthCred('linkedin', { author_urn: 'urn:li:person:x', name: 'Balu Reddy' }),
-      oauthCred('instagram_business', { ig_user_id: 'ig-1', ig_username: '@oak' }),
+      oauthCred('instagram_business', { ig_user_id: 'ig-1', ig_username: '@keel' }),
     ])
     const pub = new DbSocialPublisher(db, null)
     const integrations = await pub.listIntegrations('t1')
     const byId = new Map(integrations.map((i) => [i.identifier, i.name]))
-    expect(byId.get('facebook')).toBe('Facebook (Oak HQ)')
-    expect(byId.get('threads')).toBe('Threads (@agentoak)')
+    expect(byId.get('facebook')).toBe('Facebook (Keel HQ)')
+    expect(byId.get('threads')).toBe('Threads (@lifekeel)')
     expect(byId.get('linkedin')).toBe('LinkedIn (Balu Reddy)')
-    expect(byId.get('instagram')).toBe('Instagram (@oak)')
+    expect(byId.get('instagram')).toBe('Instagram (@keel)')
   })
 
   it('surfaces needs_reauth as a reconnect error instead of a dead publish', async () => {

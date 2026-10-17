@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { classifyEmail } from '../email/classify.js'
 import type { FetchedEmail } from '../email/imap-client.js'
-import type { LlmFn } from '@agentoak/platform'
+import type { LlmFn } from '@lifekeel/platform'
 
 function makeEmail(overrides: Partial<FetchedEmail> = {}): FetchedEmail {
   return {
@@ -75,7 +75,7 @@ describe('classifyEmail', () => {
     expect(result.isFinancial).toBe(false)
   })
 
-  it('OAK-016: delimits the untrusted email content and tells the model to treat it as data, not instructions', async () => {
+  it('KEEL-016: delimits the untrusted email content and tells the model to treat it as data, not instructions', async () => {
     let capturedSystemPrompt = ''
     let capturedUserPrompt = ''
     const llm: LlmFn = async (system, user) => {
@@ -101,7 +101,7 @@ describe('classifyEmail', () => {
     expect(capturedSystemPrompt.toLowerCase()).toContain('never instructions')
   })
 
-  it('OAK-016: clamps an oversized summary/action_label instead of returning them unbounded', async () => {
+  it('KEEL-016: clamps an oversized summary/action_label instead of returning them unbounded', async () => {
     const longSummary = 'x'.repeat(1000)
     const longActionLabel = 'y'.repeat(500)
     const llm: LlmFn = async () =>
@@ -187,7 +187,7 @@ describe('classifyEmail with a local decision model', () => {
     policy: { provider: 'BrightLife', type: 'life', renewal_date: '2027-03-01', monthly_premium: null, cover_amount: 250000, currency: 'GBP' },
   }
   const decideWith = (value: unknown, calls: unknown[] = []) =>
-    (async (req: unknown) => { calls.push(req); return { value, model: 'local', latency_ms: 1 } }) as unknown as import('@agentoak/platform').DecisionFn
+    (async (req: unknown) => { calls.push(req); return { value, model: 'local', latency_ms: 1 } }) as unknown as import('@lifekeel/platform').DecisionFn
   const neverCloud: LlmFn = async () => { throw new Error('cloud LLM must not be called') }
 
   it('classifies on the local model, never the cloud LLM, and sanitizes the typed output', async () => {
@@ -206,7 +206,7 @@ describe('classifyEmail with a local decision model', () => {
   })
 
   it('falls back to not-financial, not the cloud, when the local model fails', async () => {
-    const down = (async () => { throw new Error('refused') }) as unknown as import('@agentoak/platform').DecisionFn
+    const down = (async () => { throw new Error('refused') }) as unknown as import('@lifekeel/platform').DecisionFn
     expect((await classifyEmail(neverCloud, makeEmail(), { decide: down })).isFinancial).toBe(false)
   })
 
@@ -240,7 +240,7 @@ describe('classifyEmail failure vs verdict', () => {
   })
 
   it('marks a local model failure as failed (no cloud fallback)', async () => {
-    const down = (async () => { throw new Error('refused') }) as unknown as import('@agentoak/platform').DecisionFn
+    const down = (async () => { throw new Error('refused') }) as unknown as import('@lifekeel/platform').DecisionFn
     const result = await classifyEmail((async () => { throw new Error('cloud must not run') }) as LlmFn, makeEmail(), { decide: down })
     expect(result.failed).toBe(true)
   })

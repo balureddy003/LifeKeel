@@ -4,7 +4,7 @@
  * When sandbox mode is enabled, intercepts API calls and returns
  * simulated data instead of real database queries.
  * 
- * This allows users to explore Kairos's full potential before
+ * This allows users to explore LifeKeel's full potential before
  * connecting real data sources.
  */
 

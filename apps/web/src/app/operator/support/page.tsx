@@ -86,10 +86,10 @@ function CaseThread({ id, canManage, onChanged }: { id: string; canManage: boole
         </div>
       )}
       {c.messages.map((m) => (
-        <div key={m.id} className={`w-fit max-w-[92%] rounded-xl px-3 py-2 ${m.author === 'operator' ? 'ml-auto bg-family-500/15' : m.author === 'oak' ? 'bg-success/10' : 'bg-tint/[0.06]'}`}>
+        <div key={m.id} className={`w-fit max-w-[92%] rounded-xl px-3 py-2 ${m.author === 'operator' ? 'ml-auto bg-family-500/15' : m.author === 'keel' ? 'bg-success/10' : 'bg-tint/[0.06]'}`}>
           <p className="text-xs leading-relaxed text-ink-secondary">{m.text}</p>
           <p className="mt-1 text-[10px] text-ink-tertiary">
-            {m.author === 'oak' ? 'Oak · AI triage' : m.author === 'operator' ? `${m.author_name ?? 'Operator'} · support` : 'Customer'}
+            {m.author === 'keel' ? 'Keel · AI triage' : m.author === 'operator' ? `${m.author_name ?? 'Operator'} · support` : 'Customer'}
             {' · '}{new Date(m.created_at).toLocaleString()}
           </p>
         </div>
@@ -193,7 +193,7 @@ export default function OperatorSupportPage() {
     <div>
       <h1 className="text-2xl font-semibold">Support inbox</h1>
       <p className="mt-1 text-sm text-ink-tertiary">
-        Cases from the in-app support channel — Oak triages first, so everything here already tried the AI answer.
+        Cases from the in-app support channel — Keel triages first, so everything here already tried the AI answer.
       </p>
       <form onSubmit={search} className="mt-5 flex gap-2">
         <input value={query} onChange={(e) => onQueryChange(e.target.value)} placeholder="Subject, email or case ID" className="glass-input min-w-0 flex-1 rounded-xl px-4 py-3 text-sm" />
@@ -220,7 +220,7 @@ export default function OperatorSupportPage() {
                   <div className="text-sm font-medium text-ink-primary">{c.subject}</div>
                   <div className="text-xs text-ink-tertiary">
                     {c.email} · {new Date(c.updated_at).toLocaleString()} · {c.messages.length} message{c.messages.length === 1 ? '' : 's'}
-                    {c.ai_triaged ? ' · Oak triaged' : ''}
+                    {c.ai_triaged ? ' · Keel triaged' : ''}
                   </div>
                 </div>
                 <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${STATUS_STYLES[c.status]}`}>{c.status}</span>

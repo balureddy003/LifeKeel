@@ -1,13 +1,13 @@
 # Mobile apps + web distribution analysis (2026-09-19)
 
 A point-in-time analysis answering: what does it actually take to offer
-Agent Oak as native iOS/Android apps alongside the existing web app?
+LifeKeel as native iOS/Android apps alongside the existing web app?
 Grounded in the real codebase (every "already built" claim below was
 checked against code, not assumed) — not a market survey. Findings that
 warrant engineering work should graduate into a numbered PRD under
 `docs/prd/` per this folder's convention.
 
-## Headline: Agent Oak is already ~85% a mobile app
+## Headline: LifeKeel is already ~85% a mobile app
 
 `apps/web` isn't a desktop web app that would need a mobile variant —
 it's a mobile-first installable PWA whose remaining distance to "app" is
@@ -45,7 +45,7 @@ mostly *distribution*, not capability:
 Two honest counterweights before the options:
 
 1. **A native app isn't required for the core promise.** `DeliveryRouter`
-   already falls back WhatsApp → SMS → Email. "Oak reaches you when it
+   already falls back WhatsApp → SMS → Email. "Keel reaches you when it
    matters" works without any app install; native push adds one more
    (cheap, reliable) channel, it doesn't unblock a missing capability.
 2. **The Expo sender is a hint, not a directive.** It only means the
@@ -77,7 +77,7 @@ sender the API already speaks. The gaps below are all solvable; none
 are free.
 
 **Option C — React Native/Expo rewrite.** Not justified at current
-scale. Agent Oak's differentiators — the detector engine, the grounded
+scale. LifeKeel's differentiators — the detector engine, the grounded
 assistant, the playbooks — are all server-side; the client is a
 rendering surface, and rewriting it buys nothing for the moat while
 creating a second frontend to keep in parity. Revisit only if
@@ -98,8 +98,8 @@ roadmap step 4).
    guideline 4.8: offering Google sign-in requires offering Apple
    sign-in too. That's a new OAuth provider in `auth-social.ts` plus
    Apple developer account plumbing — small but not optional.
-3. **Oak Plus billing hits the IAP rules — the largest non-engineering
-   cost.** Oak Plus (£7.99/mo, real Stripe price id in
+3. **Keel Plus billing hits the IAP rules — the largest non-engineering
+   cost.** Keel Plus (£7.99/mo, real Stripe price id in
    `billing-constants.ts`) is a digital subscription. Inside a native
    iOS shell, Apple expects in-app purchase (15–30% commission) unless
    the app qualifies for and implements an external-purchase-link
@@ -118,7 +118,7 @@ roadmap step 4).
    action URLs. The invite code is the growth loop (PRD-110/112); a
    tap on an invite link that lands in a browser instead of the
    installed app loses the loop's best moment.
-6. **Token storage reconsideration.** `agentoak_token` in `localStorage`
+6. **Token storage reconsideration.** `lifekeel_token` in `localStorage`
    survives inside WKWebView (same WebKit data store), so this isn't a
    blocker — but SECURITY.md already flags localStorage bearer tokens
    as the deferred correct fix (httpOnly cookie), and a native wrapper
@@ -133,28 +133,28 @@ roadmap step 4).
 ## Product-strategy notes
 
 - **Emergency Mode is the strongest argument for a real icon.** The
-  scenario where Oak matters most — a family member in crisis, on a
+  scenario where Keel matters most — a family member in crisis, on a
   phone, under stress — is exactly where "search the app store, it's
   reviewed, it's on my home screen" beats "remember the URL." This is a
   distribution argument, not a capability one.
 - **The trust-tier model survives mobile unchanged.** Nothing about a
-  native shell raises the ceiling on what Oak may do autonomously — a
+  native shell raises the ceiling on what Keel may do autonomously — a
   Capacitor wrap doesn't move anything past Tier 1. If anything, App
   Store review of an "autonomous agent" product makes the
   prepare-not-send story *more* valuable: it's the answer to "what does
   this app do on the user's behalf?"
 - **CLAUDE.md's second rule applies to store listings too.** The
-  informational-not-advice positioning that keeps Oak out of FCA/SEC
+  informational-not-advice positioning that keeps Keel out of FCA/SEC
   territory also shapes how it clears the stores' own financial-app
   review categories — app-store copy should stay on the same side of
   that line as insight copy does.
 - ~~**Naming drift cleanup first.**~~ Done (2026-09-19): `sw.js`'s
   header comment, cache names, notification fallback title, and
-  notification tag now say "Agent Oak" throughout. The
+  notification tag now say "LifeKeel" throughout. The
   `family-offline`/`pendingActions`/`sync-family-actions` IndexedDB
   identifiers were deliberately left — renaming them would strand queued
   writes in installed PWAs and collide with `offline-queue.ts`'s
-  `agentoak-offline` DB; they're internal names, invisible to users.
+  `lifekeel-offline` DB; they're internal names, invisible to users.
 
 ## Recommendation
 

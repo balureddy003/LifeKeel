@@ -13,7 +13,7 @@
 import { createPublicKey, verify } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 import { lifecycleSendsCol } from '../marketing/lifecycle-emails.js'
 
 const log = createLogger({ service: 'sendgrid-webhook', version: '0.0.0' })

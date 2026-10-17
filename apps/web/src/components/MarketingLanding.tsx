@@ -227,7 +227,7 @@ const FAMILY_TWINS = [
   {
     initials: 'MC', name: 'Mia', role: 'Child', age: '2',
     icon: Baby, color: '#fbbf24',
-    insights: ['Education fund: not started', '16 years to target — £85/mo closes the gap', 'New dependent: household protection recalculated'],
+    insights: ['Education fund: not started', '16 years to target — roughly £85/mo would close the gap', 'New dependent: household protection recalculated'],
     score: 28,
   },
 ]
@@ -280,7 +280,7 @@ function FamilyTwinViz() {
         </motion.div>
       </AnimatePresence>
       <div className="mt-3 rounded-lg bg-warning/10 border border-warning/25 px-3 py-2 text-caption font-semibold text-warning leading-snug">
-        &#9888; Sample family — your real scores come from your real data
+        &#9888; Sample family — your real scores come from your real data. Per-member twin views are still maturing in the app today.
       </div>
     </div>
   )
@@ -314,7 +314,7 @@ const ALTERNATIVES = [
   {
     category: 'Document vaults',
     what: 'Store your files — you search, you query',
-    keel: 'Keel reads, extracts, and reasons over what you upload — then tells you what\'s missing',
+    keel: 'Keel reasons over what you upload (Keel Plus reads the details for you) — then shows you what\'s missing',
     color: '#4ade80',
   },
 ]
@@ -324,10 +324,10 @@ const ALTERNATIVES = [
 // visitor sees what Keel Plus actually does instead of reading a bullet point.
 function LifeKeelPlusSpotlight() {
   const fields = [
-    { label: 'Provider', value: 'AllState Insurance' },
+    { label: 'Provider', value: 'Example Insurance Co.' },
     { label: 'Policy number', value: 'HO-88213-A' },
     { label: 'Amount', value: '£1,240/yr' },
-    { label: 'Renews', value: 'Jun 14, 2027' },
+    { label: 'Renews', value: '14 Jun 2027' },
   ]
 
   return (
@@ -512,7 +512,7 @@ export function MarketingLanding() {
             Is your family ready if something goes wrong <span className="text-gradient">tomorrow?</span>
           </h1>
           <p className="text-lead text-ink-secondary leading-relaxed mb-3">
-            Keel continuously monitors whether your family is protected &mdash; emergency fund, insurance
+            LifeKeel continuously monitors whether your family is protected &mdash; emergency fund, insurance
             coverage, estate documents, retirement trajectory &mdash; and tells you what&apos;s missing
             before you need to ask.
           </p>
@@ -535,7 +535,7 @@ export function MarketingLanding() {
           </div>
           <p className="text-footnote text-ink-tertiary leading-snug">
             Informational and educational only &mdash; not financial, investment,
-            tax, or legal advice, and not a substitute for calling 911 in a real emergency.
+            tax, or legal advice, and not a substitute for calling emergency services (999, 112, 911) in a real emergency.
           </p>
         </div>
 
@@ -548,9 +548,9 @@ export function MarketingLanding() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
             {[
               { stat: '9 detectors', label: 'monitor your family continuously — not when you ask, but every day, even when nobody logs in', source: '' },
-              { stat: '9 in 10', label: 'families don\'t have enough life cover to replace lost income for 5 years', source: 'LIMRA 2024' },
-              { stat: '£7.99/mo', label: 'for the same protection monitoring that costs £100/mo elsewhere — or get started free', source: '' },
-              { stat: '60 sec', label: 'to your first readiness score — no signup, no credit card', source: '' },
+              { stat: '7 crisis types', label: 'job loss, illness, bereavement and more — each with a step-by-step checklist built from your own numbers', source: '' },
+              { stat: '£0 to start', label: 'Keel Plus is £7.99/mo and only adds AI document and inbox reading — no commissions, ever', source: '' },
+              { stat: '60 seconds', label: 'to a free readiness check — six questions, no signup, no email', source: '' },
             ].map((p) => (
               <div key={p.stat} className="text-center sm:text-left">
                 <div className="text-xl sm:text-2xl font-bold text-family-400 leading-none mb-1.5">{p.stat}</div>
@@ -575,12 +575,12 @@ export function MarketingLanding() {
       <div id="how-it-works" className="max-w-6xl mx-auto px-6 sm:px-10 py-10 sm:py-16">
         <h2 className="text-title-md lg:text-title-lg font-bold text-center mb-2">Ready in three steps</h2>
         <p className="text-sm text-ink-tertiary text-center mb-7 sm:mb-10 max-w-sm mx-auto">
-          Two minutes from signup to your first readiness score. No credit card, no sales call.
+          Start with the 60-second check, or sign up for the full picture. No credit card, no sales call.
         </p>
         <div className="grid gap-6 sm:grid-cols-3">
           {[
             { step: '1', icon: Upload, title: 'Tell Keel about your family', body: 'Income, savings, insurance, dependents. A short form — or upload a document and Keel reads it for you.' },
-            { step: '2', icon: BarChart3, title: 'See your readiness score', body: 'Five health domains scored from your own numbers: protection, wealth, goals, savings, and estate. No guesswork — the math is visible.' },
+            { step: '2', icon: BarChart3, title: 'See your readiness score', body: 'The quick check scores two areas from six answers; a full account scores five — protection, wealth, goals, savings, and estate — from your own numbers. The maths is visible.' },
             { step: '3', icon: Shield, title: 'Get a plan before you need one', body: 'What happens if you lose your job next month? Keel builds a step-by-step playbook from your real data — not a generic checklist.' },
           ].map((s) => (
             <motion.div key={s.step} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center">
@@ -612,7 +612,7 @@ export function MarketingLanding() {
           </p>
           <p className="text-sm text-ink-secondary leading-relaxed mb-4">
             Upload a new policy? Detectors re-evaluate instantly. Income changes? Gaps are recalculated
-            before you close the tab. Nothing happens for six months? Keel flags that too.
+            before you close the tab. Nothing updated in a year? Keel prompts you to review what&apos;s changed.
           </p>
           <div className="flex items-center gap-3 text-sm text-ink-tertiary">
             <div className="flex items-center gap-1.5">
@@ -667,7 +667,7 @@ export function MarketingLanding() {
           </h2>
           <p className="text-sm text-ink-tertiary max-w-lg mx-auto leading-relaxed">
             Not a generic emergency checklist. A step-by-step playbook built from your real income,
-            your real policies, your real savings &mdash; with your provider contact details already filled in.
+            your real policies, your real savings &mdash; with the provider contact details from any policies you&apos;ve added.
           </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -688,13 +688,13 @@ export function MarketingLanding() {
               icon: Users,
               color: '#4ade80',
               scenario: 'New baby arriving in March',
-              answer: 'Keel recalculates everything at once: protection gap jumps (new dependent), emergency fund target rises, and an education savings runway starts at 18 years.',
+              answer: 'Keel recalculates everything at once: the protection gap grows (new dependent), the emergency fund target rises, and an 18-year education savings runway begins.',
             },
             {
               icon: Clock,
               color: '#60a5fa',
               scenario: 'Retirement in 12 years, unsure if on track',
-              answer: 'Keel shows your projected retirement age vs. your target, the monthly contribution that would close the gap, and whether contributions alone can do it.',
+              answer: 'Keel shows your projected retirement age against your target and estimates the monthly gap — a starting point for a conversation with a pension professional.',
             },
             {
               icon: FileText,
@@ -849,7 +849,7 @@ export function MarketingLanding() {
             <Trash2 size={18} className="text-family-400 flex-shrink-0 mt-0.5" />
             <div>
               <div className="text-subhead font-bold mb-0.5">Yours to delete</div>
-              <p className="text-footnote text-ink-tertiary leading-relaxed">Ask, and we&apos;ll remove your account and data &mdash; not yet self-serve, so it&apos;s a real person who does it.</p>
+              <p className="text-footnote text-ink-tertiary leading-relaxed">Export your data or delete your account yourself from Settings &mdash; deletion is immediate and irreversible, no email-and-wait.</p>
             </div>
           </div>
         </div>
@@ -923,7 +923,7 @@ export function MarketingLanding() {
                 whileTap={{ scale: 0.97 }}
                 className="w-full text-center rounded-xl py-3 text-subhead font-semibold bg-family-500 text-white shadow-md shadow-family-500/15"
               >
-                Get started free
+                Start free, upgrade later
               </motion.div>
             </Link>
             <p className="text-caption text-ink-tertiary text-center mt-2">No credit card &mdash; upgrade from your account once you&apos;re in</p>
@@ -938,12 +938,13 @@ export function MarketingLanding() {
         <p className="text-sm text-ink-tertiary text-center mb-7 sm:mb-10">Straight answers, no spin.</p>
         <div className="space-y-2">
           {[
-            { q: 'Is LifeKeel financial advice?', a: 'No. LifeKeel is informational and educational only — not financial, investment, tax, or legal advice, and not a substitute for a licensed professional or for calling 911 in a real emergency.' },
+            { q: 'Is LifeKeel financial advice?', a: 'No. LifeKeel is informational and educational only — not financial, investment, tax, or legal advice, and not a substitute for a licensed professional or for calling emergency services (999, 112, 911) in a real emergency.' },
+            { q: 'Will Keel move money or act on my behalf?', a: 'No. Keel shows you what is on file and estimates possible gaps. It never moves money, buys products, or contacts anyone for you without you approving each step — and it has no commercial relationship with any insurer or provider.' },
             { q: 'How much does LifeKeel cost?', a: 'LifeKeel is free to start, no credit card required. Keel Plus is £7.99/month and adds AI document reading (provider, policy number, amount, and dates pulled automatically) and an AI-summarised inbox on top of everything in the free plan.' },
             { q: 'Is my financial data sold or used to train AI models?', a: "No. Your financial data isn't sold, and it isn't used to train models beyond the request that needs it. Connector passwords and access tokens are encrypted before they're ever stored." },
             { q: 'Can I cancel Keel Plus anytime?', a: 'Yes. No credit card is required to start free, and you can cancel Keel Plus anytime from your account.' },
             { q: 'Does LifeKeel work for the whole family?', a: "Yes. Add your partner and kids to your family's roster and every score, insight, and \"what if\" scenario accounts for the whole household, not just the person who signed up." },
-            { q: 'What happens to my data if I delete my account?', a: "Your family profile, documents, insights, and sign-in are deleted immediately. Billing records are kept only as required for financial reporting." },
+            { q: 'What happens to my data if I delete my account?', a: "You can delete your account yourself from Settings. Your family profile, documents, insights, and sign-in are deleted immediately and can't be recovered. Billing records and a minimal audit log are kept only as required." },
           ].map((faq) => (
             <details key={faq.q} className="glass rounded-2xl border border-tint/[0.08] group">
               <summary className="cursor-pointer p-4 sm:p-5 flex items-center justify-between gap-3 text-sm font-semibold text-ink-primary">
@@ -1025,7 +1026,7 @@ export function MarketingLanding() {
         <p className="text-caption text-ink-tertiary text-center leading-snug max-w-md mx-auto">
           For informational and educational purposes only. Not financial, investment, tax, insurance, or legal
           advice, and not a substitute for professional emergency services &mdash; always call your local
-          emergency number (911, 999, 112, or the equivalent where you are) in a real emergency. Consult a
+          emergency number (999, 112, 911, or the equivalent where you are) in a real emergency. Consult a
           qualified professional before making financial decisions.
         </p>
       </div>

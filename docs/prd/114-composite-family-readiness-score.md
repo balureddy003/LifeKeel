@@ -3,7 +3,7 @@
 ## Problem
 
 The headline number on the family dashboard — the Family Readiness Score
-the product vision calls Oak HQ's core readout — was computed **in the
+the product vision calls Keel HQ's core readout — was computed **in the
 browser**, as `100 − Σ(confidence × 10)` over open insights
 (`fetchFamilyReadinessScore()` in
 [api.ts](../../apps/web/src/lib/api.ts)). Three real consequences of
@@ -21,7 +21,7 @@ that:
    penalized; a detector that had never run scored identically to one
    that ran and found nothing — the `insights_evaluated_at` check in the
    old code was a patch on exactly this confusion, not a fix for it.
-3. **The score couldn't be reasoned about server-side.** Ask Oak, the
+3. **The score couldn't be reasoned about server-side.** Ask Keel, the
    inbox, and any future composite surface (member twins, digest email)
    would each need their own copy of the penalty math to agree with the
    dashboard.

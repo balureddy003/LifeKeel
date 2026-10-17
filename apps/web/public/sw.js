@@ -1,5 +1,5 @@
 /**
- * Agent Oak — Service Worker
+ * LifeKeel — Service Worker
  *
  * Offline-first strategy for non-technical family users:
  *   - App shell (pages) → Cache First with network update (stale-while-revalidate)
@@ -8,15 +8,34 @@
  *   - Push notifications for urgent family alerts
  */
 
-const CACHE_NAME = 'agentoak-v2'
-const STATIC_CACHE = 'agentoak-static-v2'
+const CACHE_NAME = 'lifekeel-v3'
+const STATIC_CACHE = 'lifekeel-static-v3'
 
+// Every top-level authenticated route is pre-cached so a deep link or
+// relaunch while offline still opens a real page instead of the browser's
+// offline error. Dynamic routes (/member/[id], /events/[eventId], …) can't
+// be listed here — they get cached on first visit via the navigation
+// stale-while-revalidate path below.
 const APP_SHELL = [
   '/',
   '/events',
+  '/life-events',
   '/inbox',
   '/family',
   '/assistant',
+  '/settings',
+  '/financial-profile',
+  '/vault',
+  '/documents',
+  '/cashflow',
+  '/assets',
+  '/upgrade',
+  '/audit-log',
+  '/support',
+  '/readiness',
+  '/welcome',
+  '/login',
+  '/signup',
   '/map',
   '/upload',
   '/connect',
@@ -119,11 +138,11 @@ self.addEventListener('push', (e) => {
   if (!e.data) return
   const data = e.data.json()
   e.waitUntil(
-    self.registration.showNotification(data.title ?? 'Agent Oak', {
+    self.registration.showNotification(data.title ?? 'LifeKeel', {
       body: data.body ?? '',
       icon: '/icon.svg',
       badge: '/icon.svg',
-      tag: data.tag ?? 'agentoak',
+      tag: data.tag ?? 'lifekeel',
       data: data.url ? { url: data.url } : undefined,
       vibrate: [200, 100, 200],
     })

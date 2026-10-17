@@ -1,5 +1,5 @@
 import type { Db } from 'mongodb'
-import { LlmBudgetGuard } from '@agentoak/platform'
+import { LlmBudgetGuard } from '@lifekeel/platform'
 
 export async function guardLlmBudget(
   db: Db | undefined,

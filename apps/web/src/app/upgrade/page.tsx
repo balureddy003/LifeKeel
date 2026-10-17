@@ -6,7 +6,7 @@ import { Sparkles, CheckCircle2, Loader2, AlertCircle, ScanLine } from 'lucide-r
 import { PageHeader, GlassCard, GlassButton, Skeleton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
-import { fetchBillingSubscription, openBillingPortal, redeemPromoCode, startOakPlusCheckout, type BillingSubscription } from '@/lib/api'
+import { fetchBillingSubscription, openBillingPortal, redeemPromoCode, startLifeKeelPlusCheckout, type BillingSubscription } from '@/lib/api'
 
 const BENEFITS = [
   'AI reads your documents and pulls out the provider, policy number, amounts, and dates automatically',
@@ -71,7 +71,7 @@ function ExtractionPreview() {
         </div>
       </div>
       <p className="text-xs text-ink-tertiary mt-3 leading-relaxed">
-        Illustrative example — upload a real document and Oak Plus extracts the details automatically.
+        Illustrative example — upload a real document and Keel Plus extracts the details automatically.
       </p>
     </GlassCard>
   )
@@ -134,7 +134,7 @@ export default function UpgradePage() {
     setCheckingOut(true)
     setError(null)
     try {
-      const url = await startOakPlusCheckout()
+      const url = await startLifeKeelPlusCheckout()
       window.location.href = url
     } catch (err) {
       haptic('warning')
@@ -182,7 +182,7 @@ export default function UpgradePage() {
   if (loading) {
     return (
       <div className="px-5 pt-2 pb-10 space-y-5">
-        <PageHeader title="Oak Plus" backHref="/settings" subtitle="AI that does the reading for you" />
+        <PageHeader title="Keel Plus" backHref="/settings" subtitle="AI that does the reading for you" />
         <GlassCard className="p-5">
           <Skeleton className="h-4 w-28 mb-3" />
           {[0, 1, 2].map((i) => (
@@ -202,12 +202,12 @@ export default function UpgradePage() {
 
   return (
     <div className="px-5 pt-2 pb-10 space-y-5">
-      <PageHeader title="Oak Plus" backHref="/settings" subtitle="AI that does the reading for you" />
+      <PageHeader title="Keel Plus" backHref="/settings" subtitle="AI that does the reading for you" />
 
       {banner === 'success' && !isPlus && (
         <GlassCard className="p-4 border-success/20 flex items-start gap-3">
           <CheckCircle2 size={20} className="text-success flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-ink-secondary">Payment received — activating Oak Plus. This usually takes a few seconds and updates here automatically.</p>
+          <p className="text-sm text-ink-secondary">Payment received — activating Keel Plus. This usually takes a few seconds and updates here automatically.</p>
         </GlassCard>
       )}
       {banner === 'canceled' && (
@@ -223,12 +223,12 @@ export default function UpgradePage() {
             <div className="w-14 h-14 rounded-2xl bg-success/10 border border-success/20 flex items-center justify-center mx-auto mb-3">
               <CheckCircle2 size={28} className="text-success" />
             </div>
-            <h2 className="text-lg font-bold mb-1">You're on Oak Plus</h2>
+            <h2 className="text-lg font-bold mb-1">You're on Keel Plus</h2>
             <p className="text-sm text-ink-tertiary">AI document extraction and inbox summaries are active on your account.</p>
             {sub?.subscription?.current_period_end && (
               <p className="text-xs text-ink-tertiary mt-2">
                 {sub.subscription.cancel_at_period_end
-                  ? `Cancels on ${new Date(sub.subscription.current_period_end * 1000).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })} — Oak Plus stays active until then.`
+                  ? `Cancels on ${new Date(sub.subscription.current_period_end * 1000).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })} — Keel Plus stays active until then.`
                   : `Renews ${new Date(sub.subscription.current_period_end * 1000).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}`}
               </p>
             )}
@@ -269,7 +269,7 @@ export default function UpgradePage() {
           {error && <p role="status" aria-live="polite" className="text-sm text-danger text-center">{error}</p>}
 
           <GlassButton onClick={handleUpgrade} disabled={checkingOut}>
-            {checkingOut ? <Loader2 size={18} className="animate-spin" /> : 'Upgrade to Oak Plus'}
+            {checkingOut ? <Loader2 size={18} className="animate-spin" /> : 'Upgrade to Keel Plus'}
           </GlassButton>
         </>
       )}

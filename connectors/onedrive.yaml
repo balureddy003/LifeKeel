@@ -2,7 +2,7 @@ id: onedrive
 name: OneDrive
 provider: microsoft
 version: 1.0.0
-description: Sync CSV, Excel, and JSON files from OneDrive / SharePoint into the Kairos engine
+description: Sync CSV, Excel, and JSON files from OneDrive / SharePoint into the LifeKeel engine
 category: cloud_storage
 base_url: https://graph.microsoft.com/v1.0
 

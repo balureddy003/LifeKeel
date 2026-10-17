@@ -12,6 +12,7 @@ import { TrustLadder, MemoryPrompts } from '@/components/Intelligence'
 import { HealthSummary } from '@/components/HealthSummary'
 import { ReadinessSparkline } from '@/components/ReadinessSparkline'
 import { ReadinessFeed } from '@/components/ReadinessFeed'
+import { InstallPrompt } from '@/components/InstallPrompt'
 import { useMode } from '@/lib/mode-context'
 import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@/lib/useFamilyData'
 import { useAppStore } from '@/lib/store'
@@ -748,6 +749,7 @@ export default function HomePage() {
       />
       <LifeChangeNudge />
       <UrgencyBanner />
+      <InstallPrompt />
 
       {!hasLiveData && !scoreLoading && <GettingStarted />}
 

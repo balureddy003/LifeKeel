@@ -102,7 +102,7 @@ export default function AssetsPage() {
         ))}
         {loaded && data?.assets.length === 0 && (
           <ListRow>
-            <p className="text-sm text-ink-tertiary">Nothing registered yet — add the big things (the house, cars, savings accounts) so Oak has the full picture.</p>
+            <p className="text-sm text-ink-tertiary">Nothing registered yet — add the big things (the house, cars, savings accounts) so Keel has the full picture.</p>
           </ListRow>
         )}
       </ListSection>
@@ -150,7 +150,7 @@ export default function AssetsPage() {
       </GlassCard>
 
       <p className="text-xs text-ink-tertiary text-center px-4">
-        Declared values only — Oak uses them for the household picture, never to recommend products or providers.
+        Declared values only — Keel uses them for the household picture, never to recommend products or providers.
       </p>
     </div>
   )

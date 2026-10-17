@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kairos.io/schemas/zerodha/order.event/v1.0.0",
+  "$id": "https://lifekeel.io/schemas/zerodha/order.event/v1.0.0",
   "title": "Zerodha Order Event",
   "description": "An order or trade event synced from Zerodha via Kite Connect v3. Kite exposes per-day order and trade lists; real-time fills arrive via postback webhooks.",
   "type": "object",
-  "kairos": {
+  "lifekeel": {
     "connector_id": "zerodha",
     "event_type": "order.event",
     "schema_version": "1.0.0",

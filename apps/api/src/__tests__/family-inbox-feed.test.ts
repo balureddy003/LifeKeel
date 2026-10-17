@@ -100,7 +100,7 @@ describe('feed titles', () => {
   })
 })
 
-describe('GET /inbox — Oak recommendations feed', () => {
+describe('GET /inbox — Keel recommendations feed', () => {
   it('returns open family insights as recommendations, merged with policy emails, newest first', async () => {
     const { db, finds } = makeDb({
       insights: { rows: [insight] },
@@ -115,7 +115,7 @@ describe('GET /inbox — Oak recommendations feed', () => {
     const app = await build(db)
     const body = (await app.inject({ method: 'GET', url: '/inbox' })).json()
     expect(body.items.map((i: { id: string }) => i.id)).toEqual(['insight:ins1', 'e1'])
-    expect(body.items[0]).toMatchObject({ source: 'Oak', subject: 'Life cover looks below household need', priority: 'high', route: '/health/protection', actionLabel: 'Review your current life insurance policy terms' })
+    expect(body.items[0]).toMatchObject({ source: 'Keel', subject: 'Life cover looks below household need', priority: 'high', route: '/health/protection', actionLabel: 'Review your current life insurance policy terms' })
     expect(body.items[1].policy).toEqual({ provider: 'Acme Travel', type: 'travel' })
     // Transaction/legacy emails (no policy_details) are filtered at the query.
     expect((finds['inbox_items']![0] as Record<string, unknown>)['policy_details']).toEqual({ $exists: true })

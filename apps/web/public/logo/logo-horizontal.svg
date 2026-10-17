@@ -5,23 +5,25 @@
     before this goes anywhere the font can't be guaranteed to load (print,
     a store listing, an environment without internet access to Google Fonts).
     The icon itself is pure geometry and has no such dependency.
+    Mark concept: the sail's reflection below the waterline is the keel —
+    the twin below the surface that holds the boat steady.
   -->
   <defs>
     <linearGradient id="mark-bg" x1="0" y1="0" x2="96" y2="96" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#8b80f8"/>
-      <stop offset="1" stop-color="#6b5ce0"/>
+      <stop offset="0" stop-color="#0b3b5c"/>
+      <stop offset="1" stop-color="#0e7490"/>
+    </linearGradient>
+    <linearGradient id="mark-twin" x1="48" y1="56" x2="48" y2="81" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7dd3fc" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#7dd3fc" stop-opacity="0.25"/>
     </linearGradient>
   </defs>
   <rect width="96" height="96" rx="21" fill="url(#mark-bg)"/>
-  <g stroke="#ffffff" stroke-width="4.5" stroke-linecap="round">
-    <path d="M48 17 L17 48 L48 79 L79 48 Z" fill="none" opacity="0.95"/>
-    <path d="M48 17 L48 79" opacity="0.65"/>
-    <path d="M17 48 L79 48" opacity="0.65"/>
-  </g>
-  <circle cx="48" cy="17" r="4" fill="#ffffff"/>
-  <circle cx="17" cy="48" r="4" fill="#ffffff"/>
-  <circle cx="79" cy="48" r="4" fill="#ffffff"/>
-  <circle cx="48" cy="79" r="4" fill="#ffffff"/>
-  <circle cx="48" cy="48" r="5.5" fill="#ffffff"/>
-  <text x="118" y="63" font-family="Fraunces, Georgia, serif" font-weight="600" font-size="42" letter-spacing="-0.4" fill="#16151a">Agent Oak</text>
+  <path d="M48 15 L48 80" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" opacity="0.9"/>
+  <path d="M48 17 C61 24 65 33 63 42 L48 42 Z" fill="#ffffff" opacity="0.95"/>
+  <path d="M48 56 L63 56 C65 65 61 74 48 81 Z" fill="url(#mark-twin)"/>
+  <rect x="40" y="78" width="16" height="6" rx="3" fill="#7dd3fc"/>
+  <path d="M13 49 Q19 46 25 49 T37 49" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
+  <path d="M59 49 Q65 46 71 49 T83 49" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
+  <text x="118" y="63" font-family="Fraunces, Georgia, serif" font-weight="600" font-size="42" letter-spacing="-0.4" fill="#16151a">LifeKeel</text>
 </svg>

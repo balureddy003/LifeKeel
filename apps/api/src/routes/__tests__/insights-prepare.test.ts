@@ -12,8 +12,8 @@ import { registerInsightRoutes } from '../insights.js'
 
 const llmMock = vi.fn(async (_system: string, prompt: string) => `Draft based on: ${prompt}`)
 
-vi.mock('@agentoak/platform', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@agentoak/platform')>()
+vi.mock('@lifekeel/platform', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@lifekeel/platform')>()
   return { ...actual, createLlmRouterFromEnv: () => llmMock }
 })
 

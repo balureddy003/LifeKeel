@@ -30,8 +30,8 @@ fi
 mapfile -t DEPLOY_VARS < <(awk '/env_vars: \|/{f=1;next} /secrets: \|/{f=0} f && /=\$\{\{/{sub(/^[ \t]+/,""); sub(/=.*/,""); print}' "$WORKFLOW")
 [ "${#DEPLOY_VARS[@]}" -gt 0 ] || { echo "found no \${{ }} variables in $WORKFLOW: parser out of date?" >&2; exit 2; }
 
-env_args=(NODE_ENV=production KAIROS_DEPLOYMENT_MODE=cloud LOG_LEVEL=info PORT="$PORT"
-  MONGODB_URL="$MONGODB_URL" MONGODB_DB="${MONGODB_DB:-agentoak_smoke}" REDIS_URL="$REDIS_URL"
+env_args=(NODE_ENV=production LIFEKEEL_DEPLOYMENT_MODE=cloud LOG_LEVEL=info PORT="$PORT"
+  MONGODB_URL="$MONGODB_URL" MONGODB_DB="${MONGODB_DB:-lifekeel_smoke}" REDIS_URL="$REDIS_URL"
   JWT_SECRET="smoke-jwt-secret-smoke-jwt-secret-0123456789"
   SETTINGS_ENCRYPTION_KEY="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 for v in "${DEPLOY_VARS[@]}"; do env_args+=("$v="); done   # empty, like an unset repo variable

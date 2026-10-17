@@ -91,7 +91,7 @@ export default function DocumentDetailClient() {
     load()
   }, [load])
 
-  // Split-view review: the source file next to what Oak extracted from it,
+  // Split-view review: the source file next to what Keel extracted from it,
   // so approving a suggestion doesn't require trusting OCR blind. Fetched
   // separately from the metadata load above since it's a binary blob, not
   // JSON — and revoked on unmount/id-change so it doesn't leak memory.
@@ -444,7 +444,7 @@ export default function DocumentDetailClient() {
                   </label>
                 </div>
                 <div className="text-[11px] text-ink-tertiary -mt-1">
-                  Shown in your emergency playbooks so the family can call or email fast — Oak never contacts anyone for you.
+                  Shown in your emergency playbooks so the family can call or email fast — Keel never contacts anyone for you.
                 </div>
               </div>
               {policyError && (

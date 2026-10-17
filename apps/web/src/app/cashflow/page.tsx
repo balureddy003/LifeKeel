@@ -181,7 +181,7 @@ export default function CashflowPage() {
         ))}
         {loaded && data?.entries.length === 0 && (
           <ListRow>
-            <p className="text-sm text-ink-tertiary">Nothing here yet — add the big recurring items (salary, rent, childcare) and Oak will keep the monthly picture current.</p>
+            <p className="text-sm text-ink-tertiary">Nothing here yet — add the big recurring items (salary, rent, childcare) and Keel will keep the monthly picture current.</p>
           </ListRow>
         )}
       </ListSection>

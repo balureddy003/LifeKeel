@@ -9,11 +9,11 @@ export default function GuidesIndex() {
   return (
     <div className="min-h-screen px-5 py-10">
       <main className="mx-auto max-w-2xl">
-        <p className="text-xs font-semibold uppercase tracking-wide text-family-400">Agent Oak · Guides</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-family-400">LifeKeel · Guides</p>
         <h1 className="mt-2 text-3xl font-bold text-ink-primary">The checks a family should know about</h1>
         <p className="mt-3 text-sm leading-relaxed text-ink-secondary">
           Plain-language explainers for the things that quietly decide whether a household is ready for a
-          bad month — the same checks Oak runs continuously once you sign up.
+          bad month — the same checks Keel runs continuously once you sign up.
         </p>
 
         <h2 className="mt-10 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">The checks</h2>

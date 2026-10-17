@@ -27,7 +27,7 @@ export class WebhookHandler {
     const webhookConfig = this.connector.webhooks
     if (!webhookConfig?.signature_header || !webhookConfig.signature_algorithm) return // no sig config = skip
 
-    const secret = process.env[`KAIROS_${this.connector.id.toUpperCase()}_WEBHOOK_SECRET`]
+    const secret = process.env[`LIFEKEEL_${this.connector.id.toUpperCase()}_WEBHOOK_SECRET`]
     if (!secret) throw new WebhookVerificationError(`Webhook secret not configured for ${this.connector.id}`)
 
     const headerValue = headers[webhookConfig.signature_header.toLowerCase()]

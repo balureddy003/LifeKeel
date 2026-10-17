@@ -16,7 +16,7 @@
  */
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { getTenantCollection } from '@agentoak/platform'
+import { getTenantCollection } from '@lifekeel/platform'
 import { getReferralCodesCollection, getReferralsCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { recordLedgerEntry } from '../billing/credit-ledger.js'

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { MemoryRepository } from '@agentoak/runtime'
+import type { MemoryRepository } from '@lifekeel/runtime'
 import { ContextAssembler } from '../context-assembler.js'
 
 describe('ContextAssembler', () => {

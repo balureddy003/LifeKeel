@@ -8,7 +8,7 @@
 
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import Fastify from 'fastify'
-import { Engine } from '@agentoak/engine'
+import { Engine } from '@lifekeel/engine'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { registerReadinessQuizRoutes } from '../readiness-quiz.js'

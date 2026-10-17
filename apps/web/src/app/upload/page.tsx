@@ -10,6 +10,7 @@ import { uploadDocument, fetchDocuments, type FamilyDocument } from '@/lib/api'
 import { useAppStore } from '@/lib/store'
 import { displayDocName } from '@/lib/doc-name'
 import { CATEGORY_ICONS, CATEGORY_LABELS } from '@/lib/document-categories'
+import { takeNativePhoto } from '@/lib/native'
 import { Camera, FileText, Upload, Check, Loader2, AlertCircle, ChevronRight, ShieldCheck, Sparkles } from 'lucide-react'
 
 function statusIcon(status: FamilyDocument['status']) {
@@ -141,6 +142,28 @@ export default function UploadPage() {
     e.target.value = ''
   }, [uploadOne, toast])
 
+  // Inside the Capacitor shell the native camera gives better capture than
+  // the webview's <input capture>; outside it, fall straight through.
+  const handleTakePhoto = useCallback(async () => {
+    const nativeFile = await takeNativePhoto()
+    if (!nativeFile) {
+      cameraInputRef.current?.click()
+      return
+    }
+    setUploading(true)
+    setError(null)
+    haptic('light')
+    if (await uploadOne(nativeFile)) {
+      haptic('success')
+      toast({ message: 'Document uploaded' })
+    } else {
+      setFailedFiles((prev) => [...prev, nativeFile])
+      setError(`Couldn't upload "${nativeFile.name}" — we'll retry when you're back online.`)
+      haptic('warning')
+    }
+    setUploading(false)
+  }, [uploadOne, toast])
+
   return (
     <div className="px-5 pt-2 space-y-4">
       <PageHeader title={categoryFilter ? `${CATEGORY_LABELS[categoryFilter] ?? 'Documents'}` : 'Upload Documents'} backHref="/" />
@@ -149,7 +172,7 @@ export default function UploadPage() {
       <div className="grid grid-cols-2 gap-3">
         <motion.button
           whileTap={{ scale: 0.96 }}
-          onClick={() => cameraInputRef.current?.click()}
+          onClick={handleTakePhoto}
           disabled={uploading}
           className="rounded-2xl p-4 flex flex-col items-center gap-2 bg-family-500/10 border border-family-500/20 disabled:opacity-50"
         >
@@ -230,7 +253,7 @@ export default function UploadPage() {
         >
           <Sparkles size={16} className="text-family-400 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-ink-secondary leading-relaxed flex-1">
-            Documents are saved and stored for free. <span className="text-family-400 font-semibold">Upgrade to Oak Plus</span> to have AI automatically pull out the provider, policy number, amounts, and dates.
+            Documents are saved and stored for free. <span className="text-family-400 font-semibold">Upgrade to Keel Plus</span> to have AI automatically pull out the provider, policy number, amounts, and dates.
           </p>
           <ChevronRight size={14} className="text-ink-tertiary flex-shrink-0 mt-0.5" />
         </GlassCard>

@@ -36,7 +36,7 @@ guardian-persona agent reports to.
   actionable — any real action stays behind the Act layer's explicit
   approval gates. No estate/vault content surfaces to non-adult viewers
   (the underlying twin already gates it).
-- Web: the member page renders a "What Oak notices about {name}" card
+- Web: the member page renders a "What Keel notices about {name}" card
   (guardian phrasing for minors) with the provisional badge; hidden in
   kid view, consistent with PRD-124.
 

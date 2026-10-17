@@ -25,22 +25,22 @@ exposure — see the research in
 [competitive-differentiation-deep-dive-2026.md](../reviews/competitive-differentiation-deep-dive-2026.md#angle-3--datadetection-moat-distress-signals-for-the-family-not-against-them).
 No consumer product found turns that same instinct around to help the
 household itself. That research assumed the signal source was a bank
-transaction feed. **Agent Oak has no such feed, and this PRD deliberately
+transaction feed. **LifeKeel has no such feed, and this PRD deliberately
 doesn't build one.** A live bank/transaction connection (Plaid, TrueLayer,
 direct Open Banking) means either becoming an FCA-authorized AISP or
 routing through one — exactly the regulatory-authorization territory
-CLAUDE.md's "second rule" (added 2026-09-19) commits Agent Oak to staying
+CLAUDE.md's "second rule" (added 2026-09-19) commits LifeKeel to staying
 out of, permanently, as a business decision. This PRD gets the same
 differentiated outcome — noticing before being told — from a source
 already fully inside the trust boundary: **the family's own self-reported
 profile data, which they already typed in.** Nothing here is surveillance
-of an external account; it's noticing a change in data Agent Oak already
+of an external account; it's noticing a change in data LifeKeel already
 holds because the family gave it directly.
 
 ## Who it's for
 
 A family whose situation has already changed but hasn't yet made the
-jump to "I should tell Oak" — most likely in the same window PRD-108's
+jump to "I should tell Keel" — most likely in the same window PRD-108's
 playbooks are built for (job loss, disability), just earlier, before
 they've framed it as a reportable "event" at all.
 
@@ -55,8 +55,8 @@ an earner's `employment_status` moves away from `employed`/
 drops by more than 40% in one save — **and** no life event of any type
 was reported for that household in the last 30 days, a single dismissible
 prompt appears: *"It looks like something changed in your profile — want
-to tell Oak what's going on?"* Tapping it opens the existing
-`/life-events` flow (undetermined type — the family picks, Oak never
+to tell Keel what's going on?"* Tapping it opens the existing
+`/life-events` flow (undetermined type — the family picks, Keel never
 guesses or names what it thinks happened). Dismissing it records that
 choice so the same detected change never re-prompts.
 
@@ -70,7 +70,7 @@ mentioned. Two hard constraints carried over from CLAUDE.md directly:
   on the family's behalf — the family always completes the report
   themselves through the existing, unmodified `/life-events` flow.
 - **Second rule (regulated advice/arranging):** the prompt is
-  information-gathering only, word-for-word close to "tell Oak what
+  information-gathering only, word-for-word close to "tell Keel what
   happened" — it must never be paired with, or followed by, a product or
   coverage suggestion in the same surface. That pairing is the one
   combination CLAUDE.md explicitly calls out as crossing from "helpful

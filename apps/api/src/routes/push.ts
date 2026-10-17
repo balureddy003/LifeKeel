@@ -21,7 +21,7 @@
 
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 import type { DeliveryRouter } from '../delivery/delivery-router.js'
 import type { WebPushSubscription } from '../delivery/web-push-sender.js'
 

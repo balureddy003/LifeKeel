@@ -89,13 +89,13 @@ rendered clean and degraded with rotation, blur and noise), 4 CPU cores:
 - Needs `tesseract-ocr` in the API image (added to `apps/api/Dockerfile`, not
   build-tested here).
 
-## Interactive text: Ask Oak, support, drafts, prep notes (explicit opt-in)
+## Interactive text: Ask Keel, support, drafts, prep notes (explicit opt-in)
 
 Unlike the paths above, these are interactive, so they stay on the cloud router
 unless you set `LOCAL_TEXT_ENABLED=true` (with `LOCAL_JUDGE_BASE_URL`).
 `LOCAL_TEXT_MODEL` overrides the model. When enabled there is no cloud fallback:
 the output is screened and a rejected answer becomes the route's existing safe
-fallback (`isLive: false` for Ask Oak, `null` for drafts).
+fallback (`isLive: false` for Ask Keel, `null` for drafts).
 
 Output guard (`apps/api/src/local-model.ts`): rejects regulated advice, affirmative
 provider steering, PII/credentials, a well-known provider name the prompt did not
@@ -153,7 +153,7 @@ concurrent calls:
   `LOCAL_MODEL_MAX_CONCURRENT` to the number of instances the autoscaler can
   provide, and note it is per API process (total in flight = value x API replicas).
   Excess requests queue at the load balancer, so their wait counts against the
-  120s per-call timeout: watch `agentoak_local_model_queue_wait_seconds`.
+  120s per-call timeout: watch `lifekeel_local_model_queue_wait_seconds`.
 - **Email scan fan-out** (`EMAIL_SCAN_FANOUT=true`) runs one queue job per mailbox
   with `EMAIL_SCAN_CONCURRENCY` workers per process (default 2). The queue itself
   scales linearly (real Redis, 8 jobs of 1s: 9.0s, 5.0s, 3.0s at concurrency 1, 2, 4),
@@ -166,12 +166,12 @@ concurrent calls:
 
 ## Metrics
 
-Exposed on the Prometheus endpoint: `agentoak_local_model_calls_total{purpose,outcome}`,
-`agentoak_local_model_latency_seconds{purpose}`,
-`agentoak_local_model_queue_wait_seconds{purpose}`,
-`agentoak_output_guard_blocks_total{reason}`,
-`agentoak_email_classify_failures_total`,
-`agentoak_document_extraction_retries_total`. Suggested alerts: error ratio of
+Exposed on the Prometheus endpoint: `lifekeel_local_model_calls_total{purpose,outcome}`,
+`lifekeel_local_model_latency_seconds{purpose}`,
+`lifekeel_local_model_queue_wait_seconds{purpose}`,
+`lifekeel_output_guard_blocks_total{reason}`,
+`lifekeel_email_classify_failures_total`,
+`lifekeel_document_extraction_retries_total`. Suggested alerts: error ratio of
 `local_model_calls_total` above a few percent, a rising p95 of queue wait (model
 undersized), and a sustained non-zero `email_classify_failures_total`.
 Labels are reason and purpose codes only, never tenant ids, email text or figures.
@@ -221,7 +221,7 @@ decision: the shadow starts after the primary answers, is not awaited, is bounde
 are swallowed. Insight text still goes to the cloud judge in this mode, as it did
 before the local judge existed; use it for a bounded validation period.
 
-Results land in `agentoak_shadow_comparisons_total{purpose,outcome}` and, with ids
+Results land in `lifekeel_shadow_comparisons_total{purpose,outcome}` and, with ids
 and decisions only (no insight text or figures), in the `judge_shadow_results`
 collection with a 30-day TTL. Outcomes:
 - `agree`
@@ -265,7 +265,7 @@ catch a bad model, they do not prove a good one.
 ## Cost
 
 Set `LOCAL_MODEL_COST_PER_HOUR_USD` to one instance's hourly price to get
-`agentoak_local_model_estimated_cost_usd_total{purpose}`: busy model-seconds times
+`lifekeel_local_model_estimated_cost_usd_total{purpose}`: busy model-seconds times
 that rate. **It excludes idle time.** With `min-instances=1` the real cost is
 instance-hours, not busy-seconds; use the busy-time figure for per-task attribution
 and the instance-hours bill for the total. I have not priced either against the old

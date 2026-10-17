@@ -1,7 +1,7 @@
 import type { Db } from 'mongodb'
-import { MongoMemoryRepository } from '@agentoak/mongodb-adapter'
-import { ContextAssembler } from '@agentoak/platform'
-import type { ReasoningContextBuilder } from '@agentoak/engine'
+import { MongoMemoryRepository } from '@lifekeel/mongodb-adapter'
+import { ContextAssembler } from '@lifekeel/platform'
+import type { ReasoningContextBuilder } from '@lifekeel/engine'
 
 export class ApiReasoningContextBuilder implements ReasoningContextBuilder {
   private readonly assembler: ContextAssembler

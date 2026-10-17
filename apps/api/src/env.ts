@@ -13,7 +13,7 @@ import dotenv from 'dotenv'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 import { dropEmptyEnv, optionalEnum, optionalFlag } from './env-helpers.js'
 
 const log = createLogger({ service: 'env', version: '0.0.0' })
@@ -36,11 +36,11 @@ if (droppedEmpty.length > 0) log.info({ vars: droppedEmpty.join(',') }, 'Treatin
 const ConfigSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(3001),
-  KAIROS_DEPLOYMENT_MODE: z.enum(['dev', 'cloud', 'on-prem']).default('dev'),
+  LIFEKEEL_DEPLOYMENT_MODE: z.enum(['dev', 'cloud', 'on-prem']).default('dev'),
 
   // Database
   MONGODB_URL: z.string().optional(),
-  MONGODB_DB: z.string().default('kairos'),
+  MONGODB_DB: z.string().default('lifekeel'),
   REDIS_URL: z.string().optional(),
 
   // Auth
@@ -66,7 +66,7 @@ const ConfigSchema = z.object({
   LOCAL_JUDGE_MODEL: z.string().optional(),
   LOCAL_CLASSIFIER_MODEL: z.string().optional(),
   LOCAL_OCR_MODEL: z.string().optional(),
-  // Opt in to the self-hosted model for interactive text (Ask Oak, drafts, support).
+  // Opt in to the self-hosted model for interactive text (Ask Keel, drafts, support).
   // Fan email scans out through the queue (parallel across workers) instead of one sequential cron loop.
   EMAIL_SCAN_FANOUT: optionalFlag(),
   EMAIL_SCAN_CONCURRENCY: z.string().optional(),
@@ -84,23 +84,23 @@ const ConfigSchema = z.object({
   // Billing
   BILLING_V2_ENABLED: z.enum(['true', 'false']).optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
-  KAIROS_STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  LIFEKEEL_STRIPE_WEBHOOK_SECRET: z.string().optional(),
 
   // Notifications
-  KAIROS_SLACK_BOT_TOKEN: z.string().optional(),
+  LIFEKEEL_SLACK_BOT_TOKEN: z.string().optional(),
   SENDGRID_API_KEY: z.string().optional(),
   SENDGRID_FROM_EMAIL: z.string().optional(),
 
   // URLs
   STUDIO_URL: z.string().default('http://localhost:3000'),
-  AGENT_OAK_URL: z.string().default('http://localhost:3002'),
+  LIFEKEEL_URL: z.string().default('http://localhost:3002'),
   API_BASE_URL: z.string().default('http://localhost:3001'),
   NEXT_PUBLIC_API_URL: z.string().optional(),
   CORS_ORIGIN: z.string().optional(),
 
   // Edition
-  KAIROS_EDITION: z.enum(['busl', 'enterprise']).default('busl'),
-  KAIROS_ENTERPRISE_KEY: z.string().optional(),
+  LIFEKEEL_EDITION: z.enum(['busl', 'enterprise']).default('busl'),
+  LIFEKEEL_ENTERPRISE_KEY: z.string().optional(),
 })
 
 export type Config = z.infer<typeof ConfigSchema>

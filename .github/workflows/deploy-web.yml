@@ -8,9 +8,31 @@ on:
         type: string
         required: true
         default: 'main'
+      same_origin_api:
+        description: 'Route API calls via the Hosting /api rewrite instead of the Cloud Run URL'
+        type: boolean
+        required: false
+        default: false
+
+# One deploy at a time; never cancel a deploy mid-flight.
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
 
 jobs:
+  verify-ci:
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/require-ci.yml
+    with:
+      ref: ${{ github.event.inputs.ref || 'main' }}
+
   deploy:
+    needs: verify-ci
+    # Required reviewers are configured on this GitHub Environment (Settings >
+    # Environments > production); the job pauses here until a person approves.
+    environment: production
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -29,16 +51,17 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.inputs.ref || 'main' }}
+          ref: ${{ needs.verify-ci.outputs.sha }}
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @agentoak/web run build:export
+      - run: pnpm --filter @lifekeel/web run build:export
         env:
           NEXT_PUBLIC_API_URL: ${{ env.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_SAME_ORIGIN_API: ${{ github.event.inputs.same_origin_api == true && '1' || '' }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ env.NEXT_PUBLIC_SENTRY_DSN }}
 
       - name: Authenticate to Firebase project

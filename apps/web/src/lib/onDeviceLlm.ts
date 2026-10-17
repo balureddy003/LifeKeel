@@ -2,7 +2,7 @@
  * PRD-113: on-device inference for crisis-flow drafts.
  *
  * Scoped narrowly to one call site — the life-event step draft
- * affordance (LifeEventPlaybookClient.tsx) — not the general Ask Oak
+ * affordance (LifeEventPlaybookClient.tsx) — not the general Ask Keel
  * assistant or regular insight drafts, which stay cloud-only. See the
  * PRD's own reasoning: a small local model is a materially harder bet
  * for open-ended chat than for this narrow, templated draft-polish task.
@@ -11,7 +11,7 @@
  * this feature pays for it in the main bundle.
  */
 
-const STORAGE_KEY = 'agentoak:on-device-drafts'
+const STORAGE_KEY = 'lifekeel:on-device-drafts'
 
 // A named constant, not hardcoded inline — swappable after an empirical
 // quality check against generate-draft.ts's cloud output (PRD-113's own
@@ -26,7 +26,7 @@ const MODEL_ID = 'Llama-3.2-1B-Instruct-q4f16_1-MLC'
 // "second rule" applies here exactly as it does to the cloud path, but
 // nothing server-side can validate a locally-generated draft, so this
 // constraint has to hold on its own.
-const SYSTEM_PROMPT = `You draft short, polite outreach messages for a family finance app called Agent Oak. Given a description of a step in a family's crisis checklist, write a brief email body (2-4 sentences) the family could send to their insurer or provider to follow up.
+const SYSTEM_PROMPT = `You draft short, polite outreach messages for a family finance app called LifeKeel. Given a description of a step in a family's crisis checklist, write a brief email body (2-4 sentences) the family could send to their insurer or provider to follow up.
 
 Rules:
 - This is a DRAFT ONLY, for a human to review and send themselves. Never claim anything has been sent, scheduled, or already acted upon.

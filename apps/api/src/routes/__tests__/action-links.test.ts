@@ -17,7 +17,7 @@ import { describe, expect, it, beforeAll, afterAll, afterEach, vi } from 'vitest
 import { MongoClient, type Db } from 'mongodb'
 import { MongoMemoryServer } from 'mongodb-memory-server'
 import Fastify, { type FastifyInstance } from 'fastify'
-import { MoveJudge, type JudgeScores } from '@agentoak/engine'
+import { MoveJudge, type JudgeScores } from '@lifekeel/engine'
 import { registerInsightRoutes } from '../insights.js'
 import { DeliveryRouter } from '../../delivery/delivery-router.js'
 import { closeDb } from '../../db.js'
@@ -177,7 +177,7 @@ describe('GET /why/:token (read-only evidence)', () => {
 
     const res = await app.inject({ method: 'GET', url: `/why/${token}` })
     expect(res.statusCode).toBe(200)
-    expect(res.body).toContain('Why Oak flagged this')
+    expect(res.body).toContain('Why Keel flagged this')
     expect(res.body).toContain('dependants but no life cover')
     expect(res.body).toContain('82%')
   })

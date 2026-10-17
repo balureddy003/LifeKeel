@@ -21,7 +21,7 @@ export interface PolicyDraft {
 }
 
 /**
- * The "review Oak's suggestion, then confirm" form for turning a policy
+ * The "review Keel's suggestion, then confirm" form for turning a policy
  * (found in a document or an email) into a real Financial Profile entry.
  * Field-for-field the same as the document-detail page's own version —
  * kept as a separate component (not shared with it) so it's additive: the
@@ -148,7 +148,7 @@ export function PolicyReviewForm({
           </label>
         </div>
         <div className="text-[11px] text-ink-tertiary -mt-1">
-          Shown in your emergency playbooks so the family can call or email fast — Oak never contacts anyone for you.
+          Shown in your emergency playbooks so the family can call or email fast — Keel never contacts anyone for you.
         </div>
       </div>
       {error && (

@@ -1,6 +1,6 @@
 /**
  * Social Analytics Poller — fetches post performance metrics 24h after publishing
- * and fires them as `social.post.performance` events into the Kairos engine.
+ * and fires them as `social.post.performance` events into the LifeKeel engine.
  *
  * Platforms supported:
  *   LinkedIn: GET /v2/organizationalEntityShareStatistics
@@ -22,14 +22,14 @@
  *     shares:           number,
  *     clicks:           number,
  *     follower_delta:   number,   // follower change since last poll
- *     insight_id:       string,   // originating Kairos insight
+ *     insight_id:       string,   // originating LifeKeel insight
  *     posted_at:        ISO string,
  *   }
  */
 
 import type { Db } from 'mongodb'
-import type { Engine, Insight } from '@agentoak/engine'
-import { decryptIfNeeded, createLogger } from '@agentoak/platform'
+import type { Engine, Insight } from '@lifekeel/engine'
+import { decryptIfNeeded, createLogger } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'social-analytics', version: '0.0.0' })
 
@@ -119,7 +119,7 @@ export class SocialAnalyticsPoller {
       ? Math.round(((likes + comments + shares) / impressions) * 10000) / 10000
       : 0
 
-    // Fire as a Kairos event — the engine will evaluate social performance detectors
+    // Fire as a LifeKeel event — the engine will evaluate social performance detectors
     const evaluation = await this.engine.evaluate({
       event_type: 'social.post.performance',
       tenant_id:  receipt.tenant_id,

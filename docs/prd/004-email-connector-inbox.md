@@ -53,9 +53,9 @@ inbox item currently triggers an action.
   `inbox_items` collection with no connection to the detectors.
   `action_type: 'update'` already exists on the inbox item schema, which
   suggests this was the intent — it's just not wired through yet.
-  Connecting it turns the Inbox from "things to read" into "things Oak
+  Connecting it turns the Inbox from "things to read" into "things Keel
   already acted on your behalf to keep the Twin current" (Tier 0,
-  passively — no send/act involved, purely updating Oak's own model of
+  passively — no send/act involved, purely updating Keel's own model of
   the family).
 - **No connector beyond Gmail is real.** `connectors/gmail.yaml` itself
   says `status: planned` — "live ingestion is not wired" per its own

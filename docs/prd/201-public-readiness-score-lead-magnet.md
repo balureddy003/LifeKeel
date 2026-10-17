@@ -2,14 +2,14 @@
 
 ## Problem
 
-Agent Oak's landing page already leads with a category-education stat
+LifeKeel's landing page already leads with a category-education stat
 ("Only 30% of U.S. households have the documents they'd actually need
 ready for an emergency, per FEMA's 2023 National Household Survey") but
 has no interactive way to let a visitor find out *their own* number before
 signing up. Every top-of-funnel asset in this category (Policygenius'
 life-insurance calculator, Ladder's coverage calculator) is exactly this
 mechanic — a free, no-signup calculator that produces a personal number
-and a reason to come back. Agent Oak has something those calculators
+and a reason to come back. LifeKeel has something those calculators
 don't: a real multi-rule detector engine already computing exactly this
 kind of score for logged-in users. This PRD reuses it, publicly, instead
 of building a second, disconnected marketing quiz.
@@ -40,7 +40,7 @@ A public, unauthenticated, no-signup quiz (`/readiness` or similar) asking
 5-6 questions that map directly to the real `family_financial_profile`
 schema's highest-signal fields (monthly salary, emergency savings, monthly
 expenses, mortgage outstanding, life cover, dependents). On submit, the
-answers run through the **exact same** `@agentoak/engine` detector
+answers run through the **exact same** `@lifekeel/engine` detector
 evaluation used by real accounts (protection-gap and
 emergency-fund-adequacy rules at minimum — retirement/education need more
 inputs than a quick quiz should ask for) via a new stateless, anonymous
@@ -48,7 +48,7 @@ endpoint — no `tenant_id`, nothing persisted server-side beyond an
 aggregate/anonymized event. The result page shows a readiness score and
 1-2 real `reasoning` strings from the actual rules that fired, styled the
 same way the real Home dashboard shows them, with a clear "this is based
-on 2 of Oak's 6 signals — see your full picture" CTA into signup.
+on 2 of Keel's 6 signals — see your full picture" CTA into signup.
 
 ## Trust tier
 

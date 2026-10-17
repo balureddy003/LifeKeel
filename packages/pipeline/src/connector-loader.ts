@@ -9,7 +9,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import yaml from 'js-yaml'
 import { ConnectorConfigSchema, type ConnectorConfig } from './schemas.js'
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'connector-loader', version: '0.0.0' })
 

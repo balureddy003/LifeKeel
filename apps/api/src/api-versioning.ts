@@ -3,7 +3,7 @@ import type { IncomingMessage } from 'node:http'
 
 const DEFAULT_DEPRECATED_AT = 'Sat, 06 Jun 2026 00:00:00 GMT'
 const DEFAULT_SUNSET_AT = 'Tue, 06 Jun 2028 00:00:00 GMT'
-const SUCCESSOR = 'https://docs.kairos.ai/api/v1'
+const SUCCESSOR = 'https://docs.lifekeel.ai/api/v1'
 
 export function rewriteVersionedUrl(request: IncomingMessage): string {
   const url = request.url ?? '/'
@@ -31,7 +31,7 @@ export function registerApiVersioning(app: FastifyInstance): void {
   app.get('/openapi.json', async () => ({
     openapi: '3.1.0',
     info: {
-      title: 'Kairos API',
+      title: 'LifeKeel API',
       version: '1.0.0',
       description: 'Version 1 compatibility contract. New fields are additive within v1.',
     },
@@ -45,7 +45,7 @@ export function registerApiVersioning(app: FastifyInstance): void {
       '/query': { post: { summary: 'Run a safe natural-language analytics query', security: [{ bearerAuth: [] }] } },
     },
   }))
-  app.get('/docs', async (_req, reply) => reply.type('text/html').send('<!doctype html><title>Kairos API</title><h1>Kairos API v1</h1><p><a href="/v1/openapi.json">OpenAPI 3.1 specification</a></p>'))
+  app.get('/docs', async (_req, reply) => reply.type('text/html').send('<!doctype html><title>LifeKeel API</title><h1>LifeKeel API v1</h1><p><a href="/v1/openapi.json">OpenAPI 3.1 specification</a></p>'))
 }
 
 function isUnversionedApiRequest(request: FastifyRequest): boolean {

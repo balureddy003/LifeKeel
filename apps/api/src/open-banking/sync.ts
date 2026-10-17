@@ -6,7 +6,7 @@
  */
 
 import type { Db } from 'mongodb'
-import { createLogger, getTenantCollection, decryptIfNeeded } from '@agentoak/platform'
+import { createLogger, getTenantCollection, decryptIfNeeded } from '@lifekeel/platform'
 import {
   ProviderAuthError,
   resolveAccountInfoProvider,

@@ -1,5 +1,5 @@
 /**
- * OAK-025: POST /auth/signup's distinguishable 409 on an existing email is
+ * KEEL-025: POST /auth/signup's distinguishable 409 on an existing email is
  * a genuine UX need (kept as-is), so the mitigation is a tighter
  * route-level rate limit that raises the cost of a bulk email-enumeration
  * sweep. Registers the real @fastify/rate-limit plugin and the real route,
@@ -14,10 +14,10 @@
 import { describe, expect, it } from 'vitest'
 import Fastify from 'fastify'
 import rateLimit from '@fastify/rate-limit'
-import { AuthService } from '@agentoak/platform'
+import { AuthService } from '@lifekeel/platform'
 import { registerAuthUserRoutes } from '../auth-users.js'
 
-describe('OAK-025: POST /auth/signup has a dedicated rate limit', () => {
+describe('KEEL-025: POST /auth/signup has a dedicated rate limit', () => {
   it('returns 429 on the 11th signup attempt within a minute (max 10/min)', async () => {
     const app = Fastify()
     await app.register(rateLimit, { global: false })

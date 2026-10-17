@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { LlmFn } from '@agentoak/platform'
+import type { LlmFn } from '@lifekeel/platform'
 import { classifyEmail, type EncoderOutcome } from '../email/classify.js'
 import { createEncoderClassifier, EncoderError, type EncoderVerdict } from '../email/encoder-classifier.js'
 import { emailEncoderFromEnv } from '../local-model.js'
@@ -160,7 +160,7 @@ describe('emailEncoderFromEnv and metrics', () => {
     recordEmailEncoderOutcome('encoder_missed')
     recordEmailEncoderOutcome('gated_skip')
     const text = await renderMetrics()
-    expect(text).toMatch(/agentoak_email_encoder_total\{outcome="encoder_missed"\} \d+/)
-    expect(text).toMatch(/agentoak_email_encoder_total\{outcome="gated_skip"\} \d+/)
+    expect(text).toMatch(/lifekeel_email_encoder_total\{outcome="encoder_missed"\} \d+/)
+    expect(text).toMatch(/lifekeel_email_encoder_total\{outcome="gated_skip"\} \d+/)
   })
 })

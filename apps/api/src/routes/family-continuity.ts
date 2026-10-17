@@ -14,7 +14,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { z } from 'zod'
-import { getTenantCollection } from '@agentoak/platform'
+import { getTenantCollection } from '@lifekeel/platform'
 import { isFamilyOrganizer } from '../lib/family-permissions.js'
 import { getFamilyContinuityStateCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'

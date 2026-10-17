@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { attemptOnboardingSignup, isValidEmailFormat, onboardingRecoveryEmailToLink } from '../ConversationalOnboarding'
 
-describe('OAK-017: attemptOnboardingSignup', () => {
+describe('KEEL-017: attemptOnboardingSignup', () => {
   it('returns ok:true with the signed-up user on success', async () => {
     const signUp = vi.fn(async (_name: string, email: string) => ({ email }))
     const outcome = await attemptOnboardingSignup('Alex', 'alex@example.com', 'pw', signUp)

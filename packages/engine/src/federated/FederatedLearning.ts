@@ -1,7 +1,7 @@
 /**
  * Federated Learning — Privacy-preserving model updates across tenants
  *
- * S17: Enables Kairos to learn from multiple tenants without sharing
+ * S17: Enables LifeKeel to learn from multiple tenants without sharing
  * raw data. Only model gradients are shared and aggregated.
  *
  * Production Privacy Hardening (4 layers):
@@ -14,7 +14,7 @@
 import { DifferentialPrivacy, type DPConfig } from './DifferentialPrivacy.js'
 import { PrivacyAccountant, PrivacyBudgetExceededError } from './PrivacyAccountant.js'
 import { SecureAggregationProtocol } from './SecureAggregation.js'
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'federated-learning', version: '1.0.0' })
 

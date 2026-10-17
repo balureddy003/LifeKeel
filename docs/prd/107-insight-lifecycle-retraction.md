@@ -22,7 +22,7 @@ re-fires the same insight again, never resolves it.
 
 See [000](000-market-landscape-and-positioning.md)'s "continuous, not
 one-shot" bar — the entire differentiation claim against Policygenius/
-Ladder-style calculators is that Agent Oak's detectors re-evaluate as the
+Ladder-style calculators is that LifeKeel's detectors re-evaluate as the
 family's real data changes. That claim is only half true today: they
 re-evaluate for *new* problems, not for problems that have gone away. A
 family that receives "no income protection," buys a policy, and updates

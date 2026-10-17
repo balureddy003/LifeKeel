@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Home, Inbox, Users, CalendarClock, Settings } from 'lucide-react'
+import { Home, Inbox, Users, CalendarClock, Settings, Wallet } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
 import { useAppStore } from '@/lib/store'
 
@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/inbox', label: 'Inbox', icon: Inbox },
   { href: '/family', label: 'Family', icon: Users },
+  { href: '/finances', label: 'Finances', icon: Wallet },
   { href: '/events', label: 'Events', icon: CalendarClock },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
@@ -24,6 +25,13 @@ const NAV_ITEMS = [
 const ROUTE_TAB_OVERRIDES: Record<string, string> = {
   '/member': '/family',
   '/asset': '/family',
+  '/financial-profile': '/finances',
+  '/vault': '/finances',
+  '/cashflow': '/finances',
+  '/assets': '/finances',
+  '/documents': '/finances',
+  '/upload': '/finances',
+  '/connect': '/finances',
 }
 
 /**
@@ -33,7 +41,7 @@ const ROUTE_TAB_OVERRIDES: Record<string, string> = {
  * AppShell hides LiquidTabBar at that same breakpoint so exactly one
  * navigation surface is ever visible.
  *
- * This is also the only place the Oak mark appears anywhere in the
+ * This is also the only place the Keel mark appears anywhere in the
  * authenticated app — on a phone the bottom bar carries the app's
  * identity implicitly (it's the one thing on screen after the OS chrome);
  * on a wider screen there's room for the mark itself, so it gets one.
@@ -68,7 +76,7 @@ export function NavRail() {
       <Link
         href="/"
         onClick={() => haptic('light')}
-        aria-label="Agent Oak — Home"
+        aria-label="LifeKeel — Home"
         className="mt-6 mb-4 flex-shrink-0 active:opacity-70 transition-opacity"
       >
         <img src="/logo/logo-mono-white.svg" alt="" width={30} height={30} />

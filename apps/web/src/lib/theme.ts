@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 // Light/dark appearance for the whole app. The visual tokens live in
 // globals.css (`[data-theme='light']` overrides); this module owns the
-// preference itself: stored in localStorage under `agentoak-theme` as
+// preference itself: stored in localStorage under `lifekeel-theme` as
 // 'dark' | 'light' | 'system', resolved against prefers-color-scheme,
 // and applied as `data-theme` on <html>.
 //
@@ -14,7 +14,7 @@ import { useCallback, useEffect, useState } from 'react'
 export type ThemePreference = 'system' | 'dark' | 'light'
 export type ResolvedTheme = 'dark' | 'light'
 
-const THEME_KEY = 'agentoak-theme'
+const THEME_KEY = 'lifekeel-theme'
 const LIGHT_MEDIA = '(prefers-color-scheme: light)'
 
 export function storedThemePreference(): ThemePreference {

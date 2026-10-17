@@ -84,7 +84,7 @@ function WhyThisInsight({ insight }: { insight: FamilyInsight }) {
         className="w-full flex items-center justify-between text-left"
       >
         <span className="text-sm font-semibold text-family-400 flex items-center gap-1.5">
-          <HelpCircle size={14} /> Why is Oak suggesting this?
+          <HelpCircle size={14} /> Why is Keel suggesting this?
         </span>
         <ChevronDown size={14} className={`text-ink-tertiary transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -100,13 +100,13 @@ function WhyThisInsight({ insight }: { insight: FamilyInsight }) {
             <div>
               <div className="text-xs font-semibold text-ink-tertiary mb-0.5">When it ran</div>
               <p className="text-sm text-ink-secondary leading-relaxed">
-                {new Date(insight.created_at).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })} — Oak re-checks automatically whenever your profile changes.
+                {new Date(insight.created_at).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })} — Keel re-checks automatically whenever your profile changes.
               </p>
             </div>
             <div>
-              <div className="text-xs font-semibold text-ink-tertiary mb-0.5">What Oak gets from this</div>
+              <div className="text-xs font-semibold text-ink-tertiary mb-0.5">What Keel gets from this</div>
               <p className="text-sm text-ink-secondary leading-relaxed">
-                Nothing — Oak earns no commission from any insurer or provider. This is information
+                Nothing — Keel earns no commission from any insurer or provider. This is information
                 from your own data, not a recommendation to buy anything. A licensed professional
                 can help you decide what to do with it.
               </p>
@@ -204,7 +204,7 @@ export default function InsightGateClient() {
     setActing(null)
     setDraftText(draft?.content ?? null)
     setDraftFacts(draft?.provenance?.facts)
-    if (!draft) setDraftError("Oak couldn't write that draft just now — nothing was lost, try again in a moment.")
+    if (!draft) setDraftError("Keel couldn't write that draft just now — nothing was lost, try again in a moment.")
   }
 
   if (loading) {
@@ -238,7 +238,7 @@ export default function InsightGateClient() {
     <PageTransition>
     <div className="px-5 pt-2 pb-8 space-y-5">
       <PageHeader
-        title="Review before Oak acts"
+        title="Review before Keel acts"
         backHref="/"
         subtitle="Nothing happens until you approve it here"
       />
@@ -369,7 +369,7 @@ export default function InsightGateClient() {
 
             {draftText && (
               <GlassCard className="p-4 mt-3 space-y-2">
-                <p className="text-xs text-ink-tertiary">Draft — copy and send it yourself; Oak never sends on its own.</p>
+                <p className="text-xs text-ink-tertiary">Draft — copy and send it yourself; Keel never sends on its own.</p>
                 <textarea
                   value={draftText}
                   onChange={(e) => setDraftText(e.target.value)}

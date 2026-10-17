@@ -28,12 +28,12 @@ import type { Collection, Db } from 'mongodb'
 import crypto from 'node:crypto'
 import { connectorRegistry } from './ConnectorRegistry.js'
 import type { ConnectorAction, ConnectorDef } from './ConnectorRegistry.js'
-import { decryptIfNeeded, encryptIfNeeded, createLogger } from '@agentoak/platform'
+import { decryptIfNeeded, encryptIfNeeded, createLogger } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'connector-action-executor', version: '0.0.0' })
 
 function assertExternalUrlAllowed(url: string, context: string): void {
-  if (process.env['KAIROS_DEPLOYMENT_MODE'] !== 'airgap') return
+  if (process.env['LIFEKEEL_DEPLOYMENT_MODE'] !== 'airgap') return
   const parsed = new URL(url, 'http://localhost')
   const host = parsed.hostname
   if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return
@@ -49,7 +49,7 @@ const META_CONNECTORS = ['facebook_pages', 'instagram_business', 'instagram']
 
 function getGoogleClientId(connectorId: string): string {
   // Try connector-specific first for backward compatibility
-  const specificId = process.env[`KAIROS_${connectorId.toUpperCase()}_CLIENT_ID`]
+  const specificId = process.env[`LIFEKEEL_${connectorId.toUpperCase()}_CLIENT_ID`]
   if (specificId) return specificId
 
   // Purpose-named pairs — what .env.example documents for the marketing
@@ -69,7 +69,7 @@ function getGoogleClientId(connectorId: string): string {
 
 function getGoogleClientSecret(connectorId: string): string {
   // Try connector-specific first for backward compatibility
-  const specificSecret = process.env[`KAIROS_${connectorId.toUpperCase()}_CLIENT_SECRET`]
+  const specificSecret = process.env[`LIFEKEEL_${connectorId.toUpperCase()}_CLIENT_SECRET`]
   if (specificSecret) return specificSecret
 
   if (connectorId === 'twitter_x') return process.env['X_CLIENT_SECRET'] ?? ''
@@ -161,7 +161,7 @@ export class ConnectorActionExecutor {
     params: Record<string, unknown>,
     /**
      * Extra HTTP headers to add to the request (e.g. an idempotency key).
-     * Used by broker-execution.ts to send X-Kairos-Trade-Id for audit trail
+     * Used by broker-execution.ts to send X-LifeKeel-Trade-Id for audit trail
      * — see TRADING_ENGINE_GAPS.md gap #22.
      */
     extraHeaders?: Record<string, string>,

@@ -1,5 +1,5 @@
 /**
- * Draft provenance chips — the "from your data vs Oak's wording" split the
+ * Draft provenance chips — the "from your data vs Keel's wording" split the
  * product-review council flagged. The API computes which concrete figures
  * in the source text survived verbatim into the generated draft
  * (apps/api/src/insights/draft-provenance.ts); this renders that list and
@@ -13,7 +13,7 @@ export function DraftProvenanceNote({ facts }: { facts: string[] | undefined }) 
     return (
       <p className="text-xs text-ink-tertiary leading-relaxed">
         No figures from your family&apos;s data appear in this draft — treat it as
-        Oak&apos;s suggested wording and check it before sending.
+        Keel&apos;s suggested wording and check it before sending.
       </p>
     )
   }
@@ -31,7 +31,7 @@ export function DraftProvenanceNote({ facts }: { facts: string[] | undefined }) 
         ))}
       </div>
       <p className="text-xs text-ink-tertiary leading-relaxed">
-        Everything else is Oak&apos;s suggested wording — check it before sending.
+        Everything else is Keel&apos;s suggested wording — check it before sending.
       </p>
     </div>
   )

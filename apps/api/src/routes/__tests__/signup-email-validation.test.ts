@@ -13,7 +13,7 @@
 
 import { describe, expect, it } from 'vitest'
 import Fastify from 'fastify'
-import { AuthService } from '@agentoak/platform'
+import { AuthService } from '@lifekeel/platform'
 import { registerAuthUserRoutes } from '../auth-users.js'
 
 async function signupAttempt(email: string) {

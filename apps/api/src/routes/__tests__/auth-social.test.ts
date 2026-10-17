@@ -1,12 +1,12 @@
 /**
- * OAK-001: OAuth (Google/GitHub) signup must reject a tenant_id collision
+ * KEEL-001: OAuth (Google/GitHub) signup must reject a tenant_id collision
  * exactly like password signup already does (auth-users.ts:124-127) — the
  * OAuth path derives the same tenant_id from the email local-part but,
  * before this fix, silently admitted a brand-new admin user into whatever
  * tenant already existed there. No test existed for this route at all
  * before this file.
  *
- * OAK-005: a login that matches an EXISTING user by email alone (not by an
+ * KEEL-005: a login that matches an EXISTING user by email alone (not by an
  * already-linked external_id+provider) must not be silently merged into
  * that account unless the provider attests the email as verified —
  * otherwise anyone who signs up with an unverified copy of someone else's
@@ -16,7 +16,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import crypto from 'node:crypto'
 import Fastify from 'fastify'
-import { AuthService } from '@agentoak/platform'
+import { AuthService } from '@lifekeel/platform'
 import { registerSocialAuthRoutes } from '../auth-social.js'
 import { invalidatePlatformConfigCache } from '../../operator/platform-config.js'
 
@@ -45,7 +45,7 @@ function makeDb(existingTenantIds: string[] = [], existingUsers: Record<string, 
       users.push(doc)
       return { insertedId: 'stub' }
     }),
-    // Mutates the stored doc — OAK-005's merge tests assert the persisted
+    // Mutates the stored doc — KEEL-005's merge tests assert the persisted
     // email_verified/external_id after a merge, not just insert counts.
     updateOne: vi.fn(async (filter: { _id: unknown }, update: { $set: Record<string, unknown> }) => {
       const doc = users.find((u) => u['_id'] === filter._id)
@@ -112,7 +112,7 @@ function stubFetch() {
   }))
 }
 
-describe('OAK-001: OAuth signup rejects a colliding tenant_id', () => {
+describe('KEEL-001: OAuth signup rejects a colliding tenant_id', () => {
   beforeEach(() => {
     googleVerifiedEmail = true
     githubEmailVerified = true
@@ -183,7 +183,7 @@ describe('OAK-001: OAuth signup rejects a colliding tenant_id', () => {
   })
 })
 
-describe('OAK-005: OAuth merge onto an existing account requires a verified email', () => {
+describe('KEEL-005: OAuth merge onto an existing account requires a verified email', () => {
   beforeEach(() => {
     googleVerifiedEmail = true
     githubEmailVerified = true

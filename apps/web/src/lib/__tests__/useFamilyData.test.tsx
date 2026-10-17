@@ -35,7 +35,7 @@ afterEach(() => {
 
 describe("useFamilyTimeline — derives milestones from a roster child's dateOfBirth", () => {
   it('produces a "starts university" event only for the child with a birthdate on file', async () => {
-    localStorage.setItem('agentoak_token', 'tok_1')
+    localStorage.setItem('lifekeel_token', 'tok_1')
     localStorage.setItem('family-auth', JSON.stringify({
       user: { id: 'u1', name: 'Alex', email: 'a@b.com', avatar: '' },
       family: FAMILY_WITH_DOB,
@@ -61,7 +61,7 @@ describe("useFamilyTimeline — derives milestones from a roster child's dateOfB
 
   it('has no timeline data when no roster child has a birthdate', async () => {
     const familyNoDobs = { ...FAMILY_WITH_DOB, members: FAMILY_WITH_DOB.members.map((m) => ({ ...m, dateOfBirth: undefined })) }
-    localStorage.setItem('agentoak_token', 'tok_1')
+    localStorage.setItem('lifekeel_token', 'tok_1')
     localStorage.setItem('family-auth', JSON.stringify({
       user: { id: 'u1', name: 'Alex', email: 'a@b.com', avatar: '' },
       family: familyNoDobs,

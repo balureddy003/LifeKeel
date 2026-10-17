@@ -208,7 +208,7 @@ export async function registerInsightRoutes(
     // Caller-driven exclusions, folded into the same filter used for both the
     // page of results and the `total` count below — so a preview list and its
     // "how many total" figure never disagree about what's excluded (Home uses
-    // this to keep its opportunities count in sync with what Kairos Pulse
+    // this to keep its opportunities count in sync with what LifeKeel Pulse
     // actually renders, instead of filtering client-side after slicing).
     if (query.exclude_category) filter['category'] = { $nin: query.exclude_category.split(',') }
     if (query.exclude_detector_id) filter['detector_id'] = { $nin: query.exclude_detector_id.split(',') }
@@ -505,7 +505,7 @@ export async function registerInsightRoutes(
           const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
           const used = await db.collection('insights').countDocuments({ tenant_id, approved_at: { $gte: monthStart } })
           // `plan` is the field billing actually maintains on the tenant —
-          // `tier` is a kairos-era field name nothing writes, so reading it
+          // `tier` is a lifekeel-era field name nothing writes, so reading it
           // silently capped paid tenants at the free-tier limit.
           const quota = new FreeTierPolicy().check('monthly_move_approvals', used, String(tenant?.['plan'] ?? 'free'))
           if (!quota.allowed) return { code: 402, body: { error: 'Monthly Move approval quota exceeded', quota } }

@@ -13,7 +13,7 @@
  */
 
 import { compileExpression, useDotAccessOperator } from 'filtrex'
-import { formatMoney } from '@agentoak/platform'
+import { formatMoney } from '@lifekeel/platform'
 
 export class EvaluatorError extends Error {
   constructor(

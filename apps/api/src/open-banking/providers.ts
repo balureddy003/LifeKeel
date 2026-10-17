@@ -17,7 +17,7 @@
  *                piece; this module consumes the token it produces.
  */
 
-import { createLogger } from '@agentoak/platform'
+import { createLogger } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'open-banking', version: '0.0.0' })
 

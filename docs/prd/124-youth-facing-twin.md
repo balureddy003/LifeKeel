@@ -34,10 +34,10 @@ savings are growing" — without exposing household finances.
   pretending to work).
 - Web: a child's member page gains a **"Kid view"** toggle
   (auto-engaged when the app is already in Child mode) that swaps the
-  whole stack — twin card, pending-invite card, DOB editor, Ask Oak,
+  whole stack — twin card, pending-invite card, DOB editor, Ask Keel,
   links — for the youth view: savings goals as progress bars with
   "% there" / "about X years to go", plus a closing "grown-ups take care
-  of the rest" line. Ask Oak is deliberately hidden: assistant prose can
+  of the rest" line. Ask Keel is deliberately hidden: assistant prose can
   reference figures even with text redaction.
 
 ## Acceptance criteria

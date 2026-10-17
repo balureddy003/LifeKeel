@@ -9,7 +9,7 @@
  * 2. HISTORICAL BACKFILL — on first connect (or on-demand) walk ALL pages for
  *    a lookback window (default 180 days) and replay them through the engine.
  *    This answers "does this work on historical data?" — YES. Connect Xero today
- *    and Kairos will surface every overdue invoice from the last 6 months within
+ *    and LifeKeel will surface every overdue invoice from the last 6 months within
  *    minutes.
  *
  * Architecture
@@ -36,9 +36,9 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { ConnectorConfig } from './schemas.js'
 import type { EventGenerator } from './event-generator.js'
-import type { Engine, Insight } from '@agentoak/engine'
+import type { Engine, Insight } from '@lifekeel/engine'
 import { safeFetch } from './safe-fetch.js'
-import { createLogger, buildGoalKpiTargets, buildGoalContext, decryptIfNeeded } from '@agentoak/platform'
+import { createLogger, buildGoalKpiTargets, buildGoalContext, decryptIfNeeded } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'connector-sync', version: '0.0.0' })
 
@@ -54,7 +54,7 @@ const GOOGLE_CONNECTORS = ['google_calendar', 'gmail', 'google_drive', 'youtube'
 
 function getGoogleClientId(connectorId: string): string {
   // Try connector-specific first for backward compatibility
-  const specificId = process.env[`KAIROS_${connectorId.toUpperCase()}_CLIENT_ID`]
+  const specificId = process.env[`LIFEKEEL_${connectorId.toUpperCase()}_CLIENT_ID`]
   if (specificId) return specificId
   
   // Fall back to shared Google credentials for Google services
@@ -67,7 +67,7 @@ function getGoogleClientId(connectorId: string): string {
 
 function getGoogleClientSecret(connectorId: string): string {
   // Try connector-specific first for backward compatibility
-  const specificSecret = process.env[`KAIROS_${connectorId.toUpperCase()}_CLIENT_SECRET`]
+  const specificSecret = process.env[`LIFEKEEL_${connectorId.toUpperCase()}_CLIENT_SECRET`]
   if (specificSecret) return specificSecret
   
   // Fall back to shared Google credentials for Google services
@@ -578,7 +578,7 @@ const TOKEN_REFRESH_URLS: Record<string, string> = {
 }
 
 function assertExternalUrlAllowed(url: string, context: string): void {
-  if (process.env['KAIROS_DEPLOYMENT_MODE'] !== 'airgap') return
+  if (process.env['LIFEKEEL_DEPLOYMENT_MODE'] !== 'airgap') return
   const parsed = new URL(url, 'http://localhost')
   const host = parsed.hostname
   if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return
@@ -1267,7 +1267,7 @@ export class ConnectorSyncEngine {
     let eventsGenerated = 0
     let insightsTriggered = 0
 
-    // Map each raw record to a Kairos event and run detectors
+    // Map each raw record to a LifeKeel event and run detectors
     for (const record of records) {
       try {
         const event = this.eventGenerator.generateFromWebhook({

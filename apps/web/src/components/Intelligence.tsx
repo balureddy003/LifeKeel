@@ -58,7 +58,7 @@ export function TrustLadder() {
   const hasPendingMembers = (family?.members ?? []).some((m) => m.status === 'pending')
   // Which detector categories currently have a real open insight for this
   // family — reused to promote the one ladder step that directly closes a
-  // gap Oak has already found, instead of a fixed order that's the same
+  // gap Keel has already found, instead of a fixed order that's the same
   // whether or not anything is actually wrong.
   const openDetectorIds = new Set(
     insights.filter((i) => !RESOLVED_INSIGHT_STATES.includes(i.state)).map((i) => i.detector_id),
@@ -203,8 +203,8 @@ export function TrustLadder() {
 // doesn't leak one user's dismissals into another's, same pattern as
 // the Events checklist.
 function memoryPromptsStorageKey(): string {
-  const tenant = typeof window !== 'undefined' ? localStorage.getItem('agentoak_tenant') ?? 'anon' : 'anon'
-  return `agentoak:memory-prompts-dismissed:${tenant}`
+  const tenant = typeof window !== 'undefined' ? localStorage.getItem('lifekeel_tenant') ?? 'anon' : 'anon'
+  return `lifekeel:memory-prompts-dismissed:${tenant}`
 }
 
 function loadDismissedPromptIds(): Set<string> {
@@ -341,7 +341,7 @@ export function MemoryPrompts() {
       </div>
       <p className="text-xs text-ink-tertiary mb-2 px-1">
         {isSample
-          ? 'Examples of what Oak surfaces once your documents and accounts are connected.'
+          ? 'Examples of what Keel surfaces once your documents and accounts are connected.'
           : 'Found in documents you uploaded — nothing changes until you review and approve it.'}
       </p>
       {prompts.map((p, i) => {

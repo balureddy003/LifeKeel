@@ -1,9 +1,9 @@
-# @agentoak/api
+# @lifekeel/api
 
-The Agent Oak backend — Fastify, trimmed down from kairos-ai's full
+The LifeKeel backend — Fastify, trimmed down from kairos-ai's full
 multi-vertical `apps/api` to just what `apps/web` calls plus the marketing
 surfaces (blog, case studies, growth events). See `ARCHITECTURE.md` for how
-this maps to the four-layer Agent Oak vision, and root `SECURITY.md` for
+this maps to the four-layer LifeKeel vision, and root `SECURITY.md` for
 exactly what was removed from the original copy and why.
 
 ## Layout
@@ -21,11 +21,11 @@ construction, cron scheduling, route registration, in one file (a known
 - `src/ocr/` — GPT-4o vision document extraction (insurance policies,
   pension statements → structured fields).
 - `src/email/` — IMAP + Gmail OAuth connector, email classification.
-- `src/billing/` — Stripe integration (Oak Plus).
+- `src/billing/` — Stripe integration (Keel Plus).
 - `src/goals/`, `src/outcomes/`, `src/trading/portfolio-data.ts` — mostly
   inert leftovers, kept alive only because `routes/settings.ts` (itself kept
   only for its `getTenantLlmConfig` export, used by the workflow queue) has
-  a transitive dependency chain reaching them. Not active Agent Oak features.
+  a transitive dependency chain reaching them. Not active LifeKeel features.
 
 ## Commands
 

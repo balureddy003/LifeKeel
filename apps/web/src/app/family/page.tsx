@@ -11,19 +11,62 @@ import { ROLE_LABELS } from '@/lib/auth-types'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 import { fetchFinancialProfile, type FinancialProfile } from '@/lib/api'
+import { PERSON_SCOPED_POLICY_TYPES } from '@/lib/policyTypes'
+
+interface MemberChip {
+  label: string
+  onFile: boolean
+}
+
+/**
+ * Per-member "what's on file" chips — replaced the old 0%/100% completion
+ * bar, which reduced "has any data at all" into a number that implied far
+ * more completeness than it could honestly claim (a member with only a
+ * salary entered still showed 100%). Chips name the actual signals:
+ * Income / Protection / Pension for earners, Education for children, each
+ * either "on file" or "not yet" — an honest empty state when it isn't.
+ */
+function chipsFor(memberId: string, role: string, name: string, profile: FinancialProfile | null): MemberChip[] {
+  if (!profile) return []
+  const policies = profile.policies ?? []
+  const covered = policies.some(
+    (p) => !PERSON_SCOPED_POLICY_TYPES.has(p.type) || !p.member_id || p.member_id === memberId,
+  )
+
+  if (role === 'child') {
+    const fund = profile.education_funds.some(
+      (f) => f.member_id === memberId || f.child_name.toLowerCase() === name.toLowerCase(),
+    )
+    return [
+      { label: 'Education fund', onFile: fund },
+      { label: 'Covered by policies', onFile: covered },
+    ]
+  }
+
+  const earner = role === 'organizer'
+    ? {
+        income: profile.household.monthly_salary_minor > 0 || profile.household.employment_status !== 'unemployed',
+        protection: profile.household.life_cover_minor > 0 || profile.household.income_protection_monthly_minor > 0 || covered,
+        pension: (profile.retirement.pension_balance_minor ?? 0) > 0 || (profile.retirement.monthly_contribution_minor ?? 0) > 0,
+      }
+    : (() => {
+        const entry = profile.household.members.find((m) => m.member_id === memberId)
+        return {
+          income: !!entry && (entry.monthly_salary_minor > 0 || entry.employment_status !== 'unemployed'),
+          protection: (!!entry && entry.income_protection_monthly_minor > 0) || covered,
+          pension: !!entry && ((entry.pension_balance_minor ?? 0) > 0 || (entry.monthly_pension_contribution_minor ?? 0) > 0),
+        }
+      })()
+
+  return [
+    { label: 'Income', onFile: earner.income },
+    { label: 'Protection', onFile: earner.protection },
+    { label: 'Pension', onFile: earner.pension },
+  ]
+}
 
 export default function FamilyPage() {
   const { family } = useAuth()
-  // Was `m.status === 'active' ? 100 : 40` — a number that read as "how
-  // complete is this person's financial picture" but was actually just
-  // whether they'd accepted their invite yet, completely disconnected from
-  // whether any real data existed for them. Confirmed live: a member with a
-  // fully-populated PRD-104 members[] entry (real salary, real protection
-  // figures) still showed 40% for no reason other than a pending invite.
-  // Real completeness instead: the organizer's data lives in the flat
-  // household fields; everyone else's lives in household.members[] — 100
-  // if either is genuinely populated, 0 if not. Binary, not a finer-grained
-  // score, so it never implies partial progress that isn't real.
   const [profile, setProfile] = useState<FinancialProfile | null>(null)
   const loadProfile = useCallback(async () => {
     const p = await fetchFinancialProfile()
@@ -35,20 +78,12 @@ export default function FamilyPage() {
     return () => { cancelled = true }
   }, [])
 
-  function completionFor(memberId: string, role: string): number {
-    if (!profile) return 0
-    if (role === 'organizer') {
-      return profile.household.monthly_salary_minor > 0 || profile.household.employment_status !== 'unemployed' ? 100 : 0
-    }
-    return profile.household.members.some((m) => m.member_id === memberId) ? 100 : 0
-  }
-
   const familyMembers = (family?.members ?? []).map((m) => ({
     id: m.id,
     name: m.name,
     emoji: m.emoji,
     role: ROLE_LABELS[m.role],
-    completion: completionFor(m.id, m.role),
+    chips: chipsFor(m.id, m.role, m.name, profile),
   }))
 
   return (
@@ -59,12 +94,12 @@ export default function FamilyPage() {
 
       <FamilyRoster />
 
-      {/* Gamified completion */}
+      {/* What's on file — per-member signal chips, not a fake percentage */}
       {familyMembers.length > 0 && (
       <div>
         <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-3 px-1">
           <BarChart3 size={16} className="text-family-400" />
-          Family Completion
+          What&apos;s on file
         </div>
         <div className="space-y-2">
           {familyMembers.map((m, i) => (
@@ -79,22 +114,25 @@ export default function FamilyPage() {
                   <User size={16} className="text-family-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center justify-between mb-1.5">
                     <span className="text-sm font-semibold">{m.name}</span>
-                    <span className={`text-xs font-bold ${m.completion >= 90 ? 'text-success' : m.completion >= 70 ? 'text-warning' : 'text-danger'}`}>
-                      {m.completion}%
-                    </span>
                   </div>
-                  <div className="h-2 rounded-full bg-tint/5 overflow-hidden">
-                    <motion.div
-                      className="h-full rounded-full"
-                      style={{
-                        backgroundColor: m.completion >= 90 ? '#4ade80' : m.completion >= 70 ? '#fbbf24' : '#f87171',
-                      }}
-                      initial={{ width: 0 }}
-                      animate={{ width: `${m.completion}%` }}
-                      transition={{ delay: i * 0.08 + 0.3, duration: 0.8 }}
-                    />
+                  <div className="flex flex-wrap gap-1.5">
+                    {m.chips.map((chip) => (
+                      <span
+                        key={chip.label}
+                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                          chip.onFile
+                            ? 'text-success bg-success/10 border-success/20'
+                            : 'text-ink-tertiary bg-tint/[0.04] border-tint/[0.06]'
+                        }`}
+                      >
+                        {chip.label}
+                      </span>
+                    ))}
+                    {m.chips.length === 0 && (
+                      <span className="text-xs text-ink-tertiary">No data yet — fill in the financial profile</span>
+                    )}
                   </div>
                 </div>
               </GlassCard>

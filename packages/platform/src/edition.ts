@@ -1,19 +1,19 @@
 /**
- * Edition gate — runtime check for Kairos edition.
+ * Edition gate — runtime check for LifeKeel edition.
  *
  * Tier hierarchy:
- *   community  MIT open-source packages (@agentoak/engine, @agentoak/platform core)
- *   busl       Source-available BUSL-1.1 packages (@agentoak/workflows, @agentoak/pipeline)
- *   enterprise Enterprise-only packages (@agentoak/ee-*)
+ *   community  MIT open-source packages (@lifekeel/engine, @lifekeel/platform core)
+ *   busl       Source-available BUSL-1.1 packages (@lifekeel/workflows, @lifekeel/pipeline)
+ *   enterprise Enterprise-only packages (@lifekeel/ee-*)
  *
- * Set KAIROS_EDITION=enterprise in env to unlock enterprise features.
+ * Set LIFEKEEL_EDITION=enterprise in env to unlock enterprise features.
  * Do NOT set this unless you have a valid enterprise licence agreement.
  */
 
-export type KairosEdition = 'community' | 'busl' | 'enterprise'
+export type LifeKeelEdition = 'community' | 'busl' | 'enterprise'
 
 export interface EditionInfo {
-  edition: KairosEdition
+  edition: LifeKeelEdition
   enterpriseLicenceKey: string | null
   features: {
     rbac: boolean
@@ -29,16 +29,16 @@ export interface EditionInfo {
  * Returns the current edition based on environment variables.
  *
  * Priority:
- * 1. KAIROS_EDITION env var (explicit override)
- * 2. KAIROS_ENTERPRISE_KEY env var (key implies enterprise edition)
+ * 1. LIFEKEEL_EDITION env var (explicit override)
+ * 2. LIFEKEEL_ENTERPRISE_KEY env var (key implies enterprise edition)
  * 3. Default: 'busl' (workflows + pipeline available, no EE)
  */
-export function getEdition(): KairosEdition {
-  const explicit = process.env.KAIROS_EDITION as KairosEdition | undefined
+export function getEdition(): LifeKeelEdition {
+  const explicit = process.env.LIFEKEEL_EDITION as LifeKeelEdition | undefined
   if (explicit && ['community', 'busl', 'enterprise'].includes(explicit)) {
     return explicit
   }
-  if (process.env.KAIROS_ENTERPRISE_KEY) {
+  if (process.env.LIFEKEEL_ENTERPRISE_KEY) {
     return 'enterprise'
   }
   return 'busl'
@@ -53,7 +53,7 @@ export function getEditionInfo(): EditionInfo {
 
   return {
     edition,
-    enterpriseLicenceKey: process.env.KAIROS_ENTERPRISE_KEY ?? null,
+    enterpriseLicenceKey: process.env.LIFEKEEL_ENTERPRISE_KEY ?? null,
     features: {
       rbac:              isEnterprise,
       ssoSaml:           isEnterprise,
@@ -70,11 +70,11 @@ export function getEditionInfo(): EditionInfo {
  * Use this in package constructors/initialisers to fail fast.
  *
  * @example
- * // In @agentoak/ee-rbac bootstrap:
+ * // In @lifekeel/ee-rbac bootstrap:
  * requireEdition('enterprise', 'RBAC')
  */
-export function requireEdition(required: KairosEdition, featureName: string): void {
-  const tiers: KairosEdition[] = ['community', 'busl', 'enterprise']
+export function requireEdition(required: LifeKeelEdition, featureName: string): void {
+  const tiers: LifeKeelEdition[] = ['community', 'busl', 'enterprise']
   const current = getEdition()
   if (tiers.indexOf(current) < tiers.indexOf(required)) {
     throw new EditionError(featureName, required, current)
@@ -97,13 +97,13 @@ export function isFeatureEnabled(feature: keyof EditionInfo['features']): boolea
 export class EditionError extends Error {
   constructor(
     public readonly feature: string,
-    public readonly required: KairosEdition,
-    public readonly current: KairosEdition,
+    public readonly required: LifeKeelEdition,
+    public readonly current: LifeKeelEdition,
   ) {
     super(
-      `"${feature}" requires Kairos ${required} edition. ` +
+      `"${feature}" requires LifeKeel ${required} edition. ` +
       `Current edition: ${current}. ` +
-      `Contact hello@kairos.dev to upgrade.`
+      `Contact hello@lifekeel.dev to upgrade.`
     )
     this.name = 'EditionError'
   }

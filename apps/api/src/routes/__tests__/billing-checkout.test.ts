@@ -1,6 +1,6 @@
 /**
  * POST /billing/checkout — dormant-tier guard (remediation item 23).
- * Only `starter` ("Oak Plus") is actually for sale; growth/enterprise
+ * Only `starter` ("Keel Plus") is actually for sale; growth/enterprise
  * entries in PLAN_PRICES are placeholder strings that used to resolve as
  * truthy price ids and die inside Stripe with a 500. The route now
  * rejects them with a clear 400 before any Stripe call is made.

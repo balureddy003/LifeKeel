@@ -1,7 +1,7 @@
 import type { Db } from 'mongodb'
-import type { Trigger } from '@agentoak/engine'
-import { CausalExperimentTracker } from '@agentoak/workflows'
-import { MongoMemoryRepository } from '@agentoak/mongodb-adapter'
+import type { Trigger } from '@lifekeel/engine'
+import { CausalExperimentTracker } from '@lifekeel/workflows'
+import { MongoMemoryRepository } from '@lifekeel/mongodb-adapter'
 import { createHash, randomUUID } from 'node:crypto'
 
 interface GoalWithKpis {

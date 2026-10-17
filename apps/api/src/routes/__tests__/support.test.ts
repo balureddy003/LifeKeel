@@ -71,7 +71,7 @@ describe('support channel', () => {
     expect(created.ai_triaged).toBe(true)
     // triage turn + the escalation message
     expect(created.messages).toHaveLength(3)
-    expect(created.messages[1].author).toBe('oak')
+    expect(created.messages[1].author).toBe('keel')
     expect(created.email).toBe('one@example.com')
 
     // Another user sees none of it.

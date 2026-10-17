@@ -11,7 +11,7 @@
 
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
-import { AuthService, getCurrencyForCountry, getLocaleForCountry } from '@agentoak/platform'
+import { AuthService, getCurrencyForCountry, getLocaleForCountry } from '@lifekeel/platform'
 import { getDb, getLoginEventsCollection } from '../db.js'
 import { checkInviteCode, consumeInviteCode } from '../invite-codes.js'
 import { PLAN_QUOTAS, createInitialBilling } from '../billing/billing-constants.js'
@@ -19,6 +19,8 @@ import { sendPasswordResetEmail, sendEmailVerificationEmail } from '../auth-emai
 import { recordLedgerEntry } from '../billing/credit-ledger.js'
 import { getPlatformConfig } from '../operator/platform-config.js'
 import { attributeReferral } from './referrals.js'
+import { setSessionCookie } from '../lib/session-cookie.js'
+import { generateTotpSecret, generateRecoveryCodes, hashRecoveryCode, otpauthUrl, verifyTotp } from '../lib/totp.js'
 
 // Pragmatic (not full RFC 5322) format check for signup specifically —
 // unlike login/reset-request, which only ever do a lookup and return a
@@ -60,6 +62,13 @@ export interface User {
   // First-touch marketing attribution captured by apps/web's attribution.ts
   // — utm_*/referrer/landing_path, all short sanitized strings.
   attribution?: Record<string, string> | undefined
+  // TOTP MFA (RFC 6238): pending secret lives on the doc between setup and
+  // enable so a half-finished enrollment can't lock the account; recovery
+  // codes are stored as SHA-256 hashes only, consumed on use.
+  mfa_enabled?: boolean | undefined
+  mfa_secret?: string | undefined
+  mfa_pending_secret?: string | undefined
+  mfa_recovery_hashes?: string[] | undefined
 }
 
 // `ref` (PRD-112, friend referral) is deliberately separate from
@@ -82,7 +91,7 @@ function sanitizeAttribution(input: Record<string, unknown> | undefined): Record
 interface LoginBody  { email: string; password: string; rememberMe?: boolean }
 interface UpdateProfileBody { name?: string; email?: string; avatar_color?: string }
 interface ChangePasswordBody { current_password: string; new_password: string }
-interface RequestResetBody { email: string; app?: 'family' | 'studio' | 'kairos' }
+interface RequestResetBody { email: string; app?: 'family' | 'studio' | 'lifekeel' }
 interface ResetPasswordBody { token: string; new_password: string }
 
 export const AVATAR_COLORS = ['#f59e0b','#10b981','#3b82f6','#8b5cf6','#ef4444','#06b6d4','#f97316']
@@ -108,7 +117,7 @@ function generateEmailVerificationToken(): string {
  *  page, which POSTs the token back to /auth/verify-email. Never logged:
  *  possession of this URL proves mailbox ownership. */
 function verificationUrl(token: string): string {
-  const appUrl = (process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
+  const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
   return `${appUrl}/verify-email?token=${token}`
 }
 
@@ -151,7 +160,7 @@ export async function registerAuthUserRoutes(
   /** POST /auth/signup */
   app.post<{ Body: SignupBody }>(
     '/auth/signup',
-    // OAK-025: the 409 on an existing email is a genuine UX need (a user
+    // KEEL-025: the 409 on an existing email is a genuine UX need (a user
     // needs to know why signup failed) — making it generic would break
     // that without meaningfully stopping a determined attacker. This
     // route-level limit raises the cost of a bulk enumeration sweep
@@ -291,6 +300,7 @@ export async function registerAuthUserRoutes(
       }
 
       const token = await auth.sign({ sub: user.id, tenant_id: user.tenant_id, roles: user.roles })
+      setSessionCookie(reply, token, 7 * 24 * 60 * 60)
 
       // New users have no active_vertical yet — null is correct here (they
       // should see onboarding). Include it explicitly so the client's user
@@ -378,22 +388,32 @@ export async function registerAuthUserRoutes(
     }
 
     // Reset failed login attempts on successful login
-    await col.updateOne({ email: emailKey }, { 
-      $set: { failed_login_attempts: 0, locked_until: undefined } 
+    await col.updateOne({ email: emailKey }, {
+      $set: { failed_login_attempts: 0, locked_until: undefined }
     })
     recordLoginEvent(request, { email: emailKey, success: true, user_id: user.id, tenant_id: user.tenant_id })
+
+    // MFA gate: the password was correct, but the session token isn't
+    // issued until the TOTP/recovery code verifies at /auth/mfa/verify.
+    // The pending token carries mfa_pending — the auth middleware rejects
+    // it everywhere else, so it can't be replayed as a session.
+    if (user.mfa_enabled) {
+      const mfaToken = await auth.sign({ sub: user.id, tenant_id: user.tenant_id, roles: user.roles ?? ['viewer'], mfa_pending: true }, '5m')
+      return reply.send({ mfa_required: true, mfa_token: mfaToken })
+    }
 
     // "Remember me" controls actual session length, not just UI copy: checked
     // keeps the token's own literal promise (30 days), unchecked falls back
     // to the shorter default so a shared/public device doesn't stay signed
     // in for a month by default.
     const token = await auth.sign({ sub: user.id, tenant_id: user.tenant_id, roles: user.roles ?? ['viewer'] }, rememberMe ? '30d' : '7d')
+    setSessionCookie(reply, token, rememberMe ? 30 * 24 * 60 * 60 : 7 * 24 * 60 * 60)
 
     // Include active_vertical so the client can decide whether to redirect
     // to onboarding without waiting for /auth/me. Without this, the login
     // response has active_vertical: undefined, the AuthContext redirect
     // effect fires before /auth/me resolves, and the user sees the
-    // "Welcome to Kairos" onboarding screen on every login.
+    // "Welcome to LifeKeel" onboarding screen on every login.
     const db = await getDb()
     const settings = await db.collection('tenant_settings').findOne({ tenant_id: user.tenant_id })
 
@@ -670,16 +690,16 @@ export async function registerAuthUserRoutes(
 
       // Only apps with a page that actually consumes this token get a real
       // email — family (apps/family/src/app/reset-password/confirm) and now
-      // kairos (apps/kairos/src/app/reset-password/confirm). Studio's
+      // lifekeel (apps/lifekeel/src/app/reset-password/confirm). Studio's
       // /reset-password is request-only with no completion step, so sending
       // a Studio link here would just be a dead end. Skip sending (keeping
       // prior behavior) until Studio has a matching confirm page.
       if (originApp === 'family') {
-        const appUrl = (process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
+        const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
         const resetUrl = `${appUrl}/reset-password/confirm?token=${resetToken}`
         await sendPasswordResetEmail(user.email, user.name, resetUrl)
-      } else if (originApp === 'kairos') {
-        const appUrl = (process.env['KAIROS_URL'] ?? 'http://localhost:3003').replace(/\/$/, '')
+      } else if (originApp === 'lifekeel') {
+        const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3003').replace(/\/$/, '')
         const resetUrl = `${appUrl}/reset-password/confirm?token=${resetToken}`
         await sendPasswordResetEmail(user.email, user.name, resetUrl)
       }
@@ -717,18 +737,143 @@ export async function registerAuthUserRoutes(
 
     await col.updateOne(
       { password_reset_token: token },
-      { 
-        $set: { 
+      {
+        $set: {
           password_hash: newPasswordHash,
           salt: newSalt,
           password_reset_token: undefined,
           password_reset_expires: undefined,
           failed_login_attempts: 0,
           locked_until: undefined
-        } 
+        }
       }
     )
 
     return reply.send({ success: true })
+  })
+
+  // ─── TOTP MFA (RFC 6238) ────────────────────────────────────────────────
+  // Enroll: setup (issues pending secret) → enable (first code proves the
+  //   device scanned it → recovery codes shown once, stored as hashes).
+  // Login: /auth/login returns { mfa_required, mfa_token } when enabled;
+  //   /auth/mfa/verify exchanges it for the real session. The pending
+  //   token's mfa_pending claim is rejected by the auth middleware for
+  //   every other route, so it can't be replayed as a session.
+
+  /** GET /auth/mfa/status — settings UI reads whether MFA is on. */
+  app.get('/auth/mfa/status', async (request, reply) => {
+    const { user_id } = request.authContext
+    const col = await getUsersCollection()
+    const user = await col.findOne({ id: user_id }, { projection: { mfa_enabled: 1, mfa_recovery_hashes: 1 } })
+    return reply.send({
+      enabled: user?.mfa_enabled === true,
+      recovery_codes_remaining: user?.mfa_recovery_hashes?.length ?? 0,
+    })
+  })
+
+  /** POST /auth/mfa/setup — issue a pending secret + otpauth:// URI for QR/manual entry. */
+  app.post('/auth/mfa/setup', async (request, reply) => {
+    const { user_id } = request.authContext
+    const col = await getUsersCollection()
+    const user = await col.findOne({ id: user_id })
+    if (!user) return reply.status(404).send({ error: 'User not found' })
+    const secret = generateTotpSecret()
+    await col.updateOne({ id: user_id }, { $set: { mfa_pending_secret: secret } })
+    return reply.send({ secret, otpauth_url: otpauthUrl(secret, user.email) })
+  })
+
+  /** POST /auth/mfa/enable — first valid code confirms enrollment; returns
+   *  the one-time recovery codes (hashes only are stored). */
+  app.post<{ Body: { code: string } }>('/auth/mfa/enable', async (request, reply) => {
+    const { user_id } = request.authContext
+    const { code } = request.body ?? {}
+    if (!code) return reply.status(400).send({ error: 'Code required' })
+    const col = await getUsersCollection()
+    const user = await col.findOne({ id: user_id })
+    if (!user?.mfa_pending_secret) return reply.status(400).send({ error: 'Run setup first' })
+    if (!verifyTotp(user.mfa_pending_secret, code)) {
+      return reply.status(400).send({ error: 'That code did not match — check your authenticator app and try again' })
+    }
+    const { codes, hashes } = generateRecoveryCodes()
+    await col.updateOne({ id: user_id }, {
+      $set: { mfa_enabled: true, mfa_secret: user.mfa_pending_secret, mfa_recovery_hashes: hashes },
+      $unset: { mfa_pending_secret: '' },
+    })
+    return reply.send({ recovery_codes: codes })
+  })
+
+  /** POST /auth/mfa/disable — requires the account password, so a stolen
+   *  session alone can't quietly strip the second factor. */
+  app.post<{ Body: { password: string } }>('/auth/mfa/disable', async (request, reply) => {
+    const { user_id } = request.authContext
+    const { password } = request.body ?? {}
+    if (!password) return reply.status(400).send({ error: 'Password required' })
+    const col = await getUsersCollection()
+    const user = await col.findOne({ id: user_id })
+    if (!user) return reply.status(404).send({ error: 'User not found' })
+    const expected = Buffer.from(hashPassword(password, user.salt), 'hex')
+    const actual = Buffer.from(user.password_hash, 'hex')
+    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+      return reply.status(401).send({ error: 'Incorrect password' })
+    }
+    await col.updateOne({ id: user_id }, {
+      $set: { mfa_enabled: false },
+      $unset: { mfa_secret: '', mfa_pending_secret: '', mfa_recovery_hashes: '' },
+    })
+    return reply.send({ ok: true })
+  })
+
+  /** POST /auth/mfa/verify — second step of login. Accepts a TOTP code or a
+   *  recovery code (single-use: its hash is consumed on success). Issues the
+   *  real session token + httpOnly cookie on success. */
+  app.post<{ Body: { mfa_token: string; code: string } }>('/auth/mfa/verify', async (request, reply) => {
+    const { mfa_token, code } = request.body ?? {}
+    if (!mfa_token || !code) return reply.status(400).send({ error: 'mfa_token and code required' })
+
+    let pending
+    try {
+      pending = await auth.verify(mfa_token)
+    } catch {
+      return reply.status(401).send({ error: 'MFA session expired — sign in again' })
+    }
+    if (!pending.mfa_pending) return reply.status(401).send({ error: 'Invalid MFA token' })
+
+    const col = await getUsersCollection()
+    const user = await col.findOne({ id: pending.user_id, tenant_id: pending.tenant_id })
+    if (!user?.mfa_enabled || !user.mfa_secret) {
+      return reply.status(400).send({ error: 'MFA is not enabled for this account' })
+    }
+
+    const totpOk = verifyTotp(user.mfa_secret, code)
+    const recoveryHash = hashRecoveryCode(code)
+    const isRecovery = !totpOk && (user.mfa_recovery_hashes ?? []).includes(recoveryHash)
+    if (!totpOk && !isRecovery) {
+      recordLoginEvent(request, { email: user.email, success: false, reason: 'mfa_bad_code', user_id: user.id, tenant_id: user.tenant_id })
+      return reply.status(401).send({ error: 'Incorrect code — try again or use a recovery code' })
+    }
+    if (isRecovery) {
+      // Single-use — pull the spent hash so it can't be replayed.
+      await col.updateOne({ id: user.id }, { $pull: { mfa_recovery_hashes: recoveryHash } })
+    }
+    recordLoginEvent(request, { email: user.email, success: true, reason: 'mfa_verified', user_id: user.id, tenant_id: user.tenant_id })
+
+    const token = await auth.sign({ sub: user.id, tenant_id: user.tenant_id, roles: user.roles ?? ['viewer'] }, '7d')
+    setSessionCookie(reply, token, 7 * 24 * 60 * 60)
+
+    const db = await getDb()
+    const settings = await db.collection('tenant_settings').findOne({ tenant_id: user.tenant_id })
+    return reply.send({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        tenant_id: user.tenant_id,
+        avatar_color: user.avatar_color,
+        email_verified: user.email_verified,
+        active_vertical: (settings?.['active_vertical'] as string | undefined) ?? null,
+        onboarding_skipped: (settings?.['onboarding_skipped'] as boolean | undefined) ?? false,
+      },
+    })
   })
 }

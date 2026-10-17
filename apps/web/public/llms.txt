@@ -66,8 +66,8 @@ action on a family's behalf without a human approving each step.
   request that needs it.
 - No commissions, no affiliate links, no partner arrangements with insurers
   or financial product providers.
-- Users can ask to have their account and data deleted; this is currently
-  handled by a person, not a self-serve flow.
+- Users can export their data and delete their account themselves from
+  Settings; deletion is immediate and irreversible.
 
 ## Pages
 

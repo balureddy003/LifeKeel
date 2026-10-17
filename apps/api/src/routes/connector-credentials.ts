@@ -18,18 +18,19 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import crypto from 'node:crypto'
-import { ConnectorActionExecutor } from '@agentoak/workflows'
-import { connectorRegistry } from '@agentoak/workflows'
-import { encryptIfNeeded, decryptIfNeeded, createLogger, getTenantCollection } from '@agentoak/platform'
+import { ConnectorActionExecutor } from '@lifekeel/workflows'
+import { connectorRegistry } from '@lifekeel/workflows'
+import { encryptIfNeeded, decryptIfNeeded, createLogger, getTenantCollection } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'connector-credentials', version: '0.0.0' })
-import { ConnectorSyncEngine } from '@agentoak/pipeline'
-import type { ConnectorLoader, EventGenerator } from '@agentoak/pipeline'
-import type { Engine } from '@agentoak/engine'
+import { ConnectorSyncEngine } from '@lifekeel/pipeline'
+import type { ConnectorLoader, EventGenerator } from '@lifekeel/pipeline'
+import type { Engine } from '@lifekeel/engine'
 import { fetchGmailAddress } from '../email/gmail-oauth.js'
 import { scanTenantInbox } from '../jobs/email-scan.js'
+import { classifyConnectorAction } from '../connectors/action-gate.js'
 
-// OAK-002: this route accepted any connector id known to the shared,
+// KEEL-002: this route accepted any connector id known to the shared,
 // multi-vertical connectorRegistry/connectorLoader (30+ connectors,
 // including stripe, sendgrid, twilio, linkedin, twitter_x) with no
 // allowlist — only a quota count. The family app's UI only ever offers
@@ -52,10 +53,10 @@ const FAMILY_CONNECTOR_ALLOWLIST = new Set([
 ])
 
 /** Which frontend initiated the OAuth flow — determines where the callback sends the user back. */
-type ReturnTarget = 'studio' | 'kairos-web' | 'kairos-mobile' | 'family' | 'marketing'
+type ReturnTarget = 'studio' | 'lifekeel-web' | 'lifekeel-mobile' | 'family' | 'marketing'
 
 function isReturnTarget(value: unknown): value is ReturnTarget {
-  return value === 'studio' || value === 'kairos-web' || value === 'kairos-mobile' || value === 'family' || value === 'marketing'
+  return value === 'studio' || value === 'lifekeel-web' || value === 'lifekeel-mobile' || value === 'family' || value === 'marketing'
 }
 
 function signOAuthState(payload: Record<string, unknown>): string {
@@ -106,31 +107,31 @@ function createPkcePair(): { verifier: string; challenge: string } {
  * existing Studio-initiated flows are unaffected by this generalization.
  */
 function frontendRedirect(returnTo: ReturnTarget, params: Record<string, string>): string {
-  if (returnTo === 'kairos-mobile') {
+  if (returnTo === 'lifekeel-mobile') {
     // expo-web-browser's openAuthSessionAsync watches for a redirect to the
-    // app's registered custom scheme (see apps/kairos-mobile/app.config.js's
-    // `scheme: 'kairos'`) and hands control back to the app with this URL.
-    const url = new URL('kairos://oauth-callback')
+    // app's registered custom scheme (see apps/lifekeel-mobile/app.config.js's
+    // `scheme: 'lifekeel'`) and hands control back to the app with this URL.
+    const url = new URL('lifekeel://oauth-callback')
     for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
     return url.toString()
   }
   if (returnTo === 'family') {
     // The family app's own Connect Email page, not the generic /connectors
-    // dashboard Studio and kairos-web use — it's the one screen a family
+    // dashboard Studio and lifekeel-web use — it's the one screen a family
     // member would recognize the result on.
-    const url = new URL('/connect/email', process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002')
+    const url = new URL('/connect/email', process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002')
     for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
     return url.toString()
   }
   if (returnTo === 'marketing') {
     // Operator marketing composer — X connect returns here so the
     // Channels card can show the connected/error state inline.
-    const url = new URL('/operator/marketing', process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002')
+    const url = new URL('/operator/marketing', process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002')
     for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
     return url.toString()
   }
-  const base = returnTo === 'kairos-web'
-    ? (process.env['KAIROS_URL'] ?? 'http://localhost:3003')
+  const base = returnTo === 'lifekeel-web'
+    ? (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3003')
     : (process.env['STUDIO_URL'] ?? 'http://localhost:3000')
   const url = new URL('/connectors', base)
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
@@ -167,7 +168,7 @@ const META_CONNECTORS = ['facebook_pages', 'instagram_business', 'instagram']
 
 function getGoogleClientId(connectorId: string): string | undefined {
   // Try connector-specific first for backward compatibility
-  const specificId = process.env[`KAIROS_${connectorId.toUpperCase()}_CLIENT_ID`]
+  const specificId = process.env[`LIFEKEEL_${connectorId.toUpperCase()}_CLIENT_ID`]
   if (specificId) return specificId
 
   // Purpose-named pairs (what .env.example documents for the marketing
@@ -187,7 +188,7 @@ function getGoogleClientId(connectorId: string): string | undefined {
 
 function getGoogleClientSecret(connectorId: string): string {
   // Try connector-specific first for backward compatibility
-  const specificSecret = process.env[`KAIROS_${connectorId.toUpperCase()}_CLIENT_SECRET`]
+  const specificSecret = process.env[`LIFEKEEL_${connectorId.toUpperCase()}_CLIENT_SECRET`]
   if (specificSecret) return specificSecret
 
   if (connectorId === 'twitter_x') return process.env['X_CLIENT_SECRET'] ?? ''
@@ -396,6 +397,18 @@ export function registerConnectorCredentialRoutes(
     Body: Record<string, unknown>
   }>('/connectors/:id/actions/:action', async (req, reply) => {
     const tenantId = req.authContext.tenant_id
+    // Read-only route: anything that is not exactly a registry GET action is refused (see connectors/action-gate.ts).
+    const actionClass = classifyConnectorAction(req.params.id, req.params.action)
+    if (actionClass === 'write') {
+      return reply.status(403).send({
+        ok: false,
+        error: 'action_requires_approval',
+        message: 'This action has external effects and cannot be run directly. It needs an explicit human approval flow.',
+      })
+    }
+    if (actionClass === 'unknown') {
+      return reply.status(404).send({ ok: false, error: 'unknown_action' })
+    }
     const result = await executor.execute(
       tenantId,
       req.params.id,
@@ -423,7 +436,7 @@ export function registerConnectorCredentialRoutes(
     // possibly minutes later) still knows. Defaults to Studio.
     const returnTo: ReturnTarget = isReturnTarget(req.query.app) ? req.query.app : 'studio'
 
-    // Defense-in-depth follow-up to OAK-002: the allowlist above only ever
+    // Defense-in-depth follow-up to KEEL-002: the allowlist above only ever
     // gated POST /connectors/:id/credentials — this route could still walk
     // the full OAuth handshake for any of the 30+ registered connectors
     // (twitter_x included) with zero gating. Scoped to `family` only —
@@ -466,7 +479,7 @@ export function registerConnectorCredentialRoutes(
     if (!clientId) {
       const envVar = GOOGLE_CONNECTORS.includes(req.params.id)
         ? 'GOOGLE_CLIENT_ID'
-        : `KAIROS_${req.params.id.toUpperCase()}_CLIENT_ID`
+        : `LIFEKEEL_${req.params.id.toUpperCase()}_CLIENT_ID`
       return reply.status(400).send({ error: `OAuth client not configured for ${req.params.id}. Set ${envVar} env var.` })
     }
 

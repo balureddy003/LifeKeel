@@ -1,5 +1,5 @@
 import type { Db } from 'mongodb'
-import { MongoOutcomeRepository } from '@agentoak/mongodb-adapter'
+import { MongoOutcomeRepository } from '@lifekeel/mongodb-adapter'
 import { LegacyGoalOutcomeBridge } from './legacy-goal-outcome-bridge.js'
 
 export interface OutcomeCompatibilityLayer {

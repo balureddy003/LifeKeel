@@ -178,6 +178,39 @@ describe('/operator control plane', () => {
     await app.close()
   })
 
+  it('mfa-disable clears enrollment, revokes sessions, and writes an audit entry', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    await db.collection('users').updateOne(
+      { id: 'user-2' },
+      { $set: { mfa_enabled: true, mfa_secret: 'SECRETHERE', mfa_recovery_hashes: ['h1'] } },
+    )
+    const app = await buildApp()
+    const response = await app.inject({
+      method: 'POST', url: '/operator/users/user-2/mfa-disable', payload: { reason: 'Ticket #1234 — verified via recovery email' },
+    })
+    expect(response.statusCode).toBe(200)
+    const user = await db.collection('users').findOne({ id: 'user-2' })
+    expect(user?.['mfa_enabled']).toBe(false)
+    expect(user?.['mfa_secret']).toBeUndefined()
+    expect(user?.['mfa_recovery_hashes']).toBeUndefined()
+    expect(user?.['sessions_revoked_at']).toBeInstanceOf(Date)
+    const audit = await db.collection('operator_audit_log').findOne({ target_id: 'user-2' })
+    expect(audit?.['action']).toBe('operator.user.mfa_disable')
+    await app.close()
+  })
+
+  it('mfa-disable 404s when the user has no enrollment and requires a reason', async () => {
+    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    const app = await buildApp()
+    const noReason = await app.inject({ method: 'POST', url: '/operator/users/user-2/mfa-disable', payload: {} })
+    expect(noReason.statusCode).toBe(400)
+    const notEnrolled = await app.inject({
+      method: 'POST', url: '/operator/users/user-2/mfa-disable', payload: { reason: 'Ticket #1234 — verified' },
+    })
+    expect(notEnrolled.statusCode).toBe(404)
+    await app.close()
+  })
+
   it('manages platform operators while protecting self and the last super_admin', async () => {
     await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['super_admin'] })
     const app = await buildApp()
@@ -338,7 +371,7 @@ describe('/operator control plane', () => {
       method: 'POST', url: '/operator/blog/posts',
       payload: {
         title: 'Emergency funds', slug: 'emergency-funds', content: '# Body', excerpt: 'An excerpt',
-        category: 'tutorial', author: 'Oak', meta_description: 'SEO description', reason: 'Content calendar week 12',
+        category: 'tutorial', author: 'Keel', meta_description: 'SEO description', reason: 'Content calendar week 12',
       },
     })
     expect(create.statusCode).toBe(200)
@@ -1131,13 +1164,13 @@ describe('security monitoring', () => {
   it('serves the referral leaderboard with totals and tenant names', async () => {
     await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     await db.collection('referral_codes').insertMany([
-      { tenant_id: 'family-1', code: 'OAK-AAAA', created_at: new Date() },
-      { tenant_id: 'family-2', code: 'OAK-BBBB', created_at: new Date() },
+      { tenant_id: 'family-1', code: 'KEEL-AAAA', created_at: new Date() },
+      { tenant_id: 'family-2', code: 'KEEL-BBBB', created_at: new Date() },
     ])
     await db.collection('tenants').insertOne({ tenant_id: 'family-2', name: 'Family Two', status: 'active', created_at: new Date() })
     await db.collection('referrals').insertMany([
-      { referrer_tenant_id: 'family-1', referred_tenant_id: 'family-9', code: 'OAK-AAAA', status: 'rewarded', created_at: new Date(), rewarded_at: new Date() },
-      { referrer_tenant_id: 'family-1', referred_tenant_id: 'family-8', code: 'OAK-AAAA', status: 'pending', created_at: new Date() },
+      { referrer_tenant_id: 'family-1', referred_tenant_id: 'family-9', code: 'KEEL-AAAA', status: 'rewarded', created_at: new Date(), rewarded_at: new Date() },
+      { referrer_tenant_id: 'family-1', referred_tenant_id: 'family-8', code: 'KEEL-AAAA', status: 'pending', created_at: new Date() },
     ])
     const app = await buildApp()
     const response = await app.inject({ method: 'GET', url: '/operator/referrals' })
@@ -1146,8 +1179,8 @@ describe('security monitoring', () => {
     expect(body.totals).toEqual({ codes_issued: 2, referrals: 2, pending: 1, rewarded: 1, credits_granted: 50 })
     // Family One tops the board; the zero-referral code still appears as a signal.
     expect(body.leaderboard[0].tenant_name).toBe('Family One')
-    expect(body.leaderboard[0]).toMatchObject({ code: 'OAK-AAAA', rewarded: 1, pending: 1, referrals: 2 })
-    expect(body.leaderboard[1]).toMatchObject({ tenant_name: 'Family Two', code: 'OAK-BBBB', referrals: 0 })
+    expect(body.leaderboard[0]).toMatchObject({ code: 'KEEL-AAAA', rewarded: 1, pending: 1, referrals: 2 })
+    expect(body.leaderboard[1]).toMatchObject({ tenant_name: 'Family Two', code: 'KEEL-BBBB', referrals: 0 })
     expect(body.recent[0].referrer_name).toBe('Family One')
     await app.close()
   })

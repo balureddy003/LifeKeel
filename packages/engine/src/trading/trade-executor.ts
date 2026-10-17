@@ -4,7 +4,7 @@
  * This module is the policy layer that decides whether an approved trade may
  * be sent to a broker. It is deliberately conservative:
  *
- *   1. A global kill-switch (`KAIROS_ALLOW_LIVE_TRADING`) must be enabled.
+ *   1. A global kill-switch (`LIFEKEEL_ALLOW_LIVE_TRADING`) must be enabled.
  *   2. The tenant must have explicitly opted in via the opt-in record.
  *   3. The tenant's Trading 212 credentials must be in live mode.
  *   4. The order must pass basic guardrails (max order value, etc.).

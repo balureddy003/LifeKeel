@@ -1,14 +1,14 @@
 {
-  "name": "agent-oak",
+  "name": "lifekeel",
   "version": "0.1.0",
   "private": true,
-  "description": "Agent Oak — the autonomous digital twin for your family. Monorepo: apps/web (Next.js frontend), apps/api (Fastify backend), packages/* (shared engine/platform packages).",
+  "description": "LifeKeel — the autonomous digital twin for your family. Monorepo: apps/web (Next.js frontend), apps/api (Fastify backend), packages/* (shared engine/platform packages).",
   "scripts": {
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "debug": "pnpm --parallel --filter @agentoak/api --filter @agentoak/web run debug",
+    "debug": "pnpm --parallel --filter @lifekeel/api --filter @lifekeel/web run debug",
     "prepare": "husky"
   },
   "devDependencies": {
@@ -17,11 +17,22 @@
     "turbo": "^2.3.0"
   },
   "lint-staged": {
-    "apps/web/**/*.{ts,tsx}": "pnpm --filter @agentoak/web exec eslint --fix"
+    "apps/web/**/*.{ts,tsx}": "pnpm --filter @lifekeel/web exec eslint --fix"
   },
   "engines": {
     "node": ">=22.12.0",
     "pnpm": ">=8.0.0"
   },
-  "packageManager": "pnpm@8.15.5"
+  "packageManager": "pnpm@8.15.5",
+  "pnpm": {
+    "overrides": {
+      "lodash-es@<4.18.0": "4.18.1",
+      "postcss@<8.5.18": "8.5.30",
+      "brace-expansion@<1.1.20": "1.1.21",
+      "brace-expansion@>=2.0.0 <2.1.6": "2.1.7",
+      "brace-expansion@>=4.0.0 <5.0.11": "5.0.12",
+      "source-map-js@<1.2.2": "1.2.2",
+      "sharp@<0.35.5": "0.35.5"
+    }
+  }
 }

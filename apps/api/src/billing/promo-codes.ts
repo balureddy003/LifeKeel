@@ -1,5 +1,5 @@
 import type { Db } from 'mongodb'
-import { getTenantCollection } from '@agentoak/platform'
+import { getTenantCollection } from '@lifekeel/platform'
 import { getPromoCodesCollection, getPromoRedemptionsCollection, getTenantsCollection } from '../db.js'
 import { recordLedgerEntry } from './credit-ledger.js'
 

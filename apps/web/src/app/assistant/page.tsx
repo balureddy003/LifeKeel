@@ -13,7 +13,7 @@ import { useMode } from '@/lib/mode-context'
 import { haptic } from '@/lib/haptics'
 import { fetchAIResponse, type AssistantAnswerStatus } from '@/lib/api'
 
-// Oak's live answers were rendering as a single whitespace-pre-wrap plain
+// Keel's live answers were rendering as a single whitespace-pre-wrap plain
 // text blob — a multi-part answer (narrating a scenario, listing several
 // policies) came back from the LLM with real markdown structure
 // (paragraphs, **emphasis**, "- " lists) that just showed up as literal
@@ -21,7 +21,7 @@ import { fetchAIResponse, type AssistantAnswerStatus } from '@/lib/api'
 // bubble, not full page prose — see BlogPostClient.tsx's MARKDOWN_COMPONENTS
 // for the same pattern at article scale.
 //
-// remarkGfm is required for pipe-table syntax specifically — Oak's
+// remarkGfm is required for pipe-table syntax specifically — Keel's
 // "Summary Table" answers came back as GFM tables, and without this plugin
 // react-markdown's default (CommonMark-only) parser doesn't recognize table
 // syntax at all, so it fell through to a literal paragraph of "| Area | On
@@ -84,7 +84,7 @@ const CONTEXT_SUGGESTIONS: Record<string, string[]> = {
   '/upload': ['What documents have I uploaded?', 'What documents should I upload next?'],
   '/events': ['What would happen if I lost my job today?', 'Am I covered for a medical emergency?'],
   '/life-events': ['What would happen if I lost my job today?', 'Am I covered for a medical emergency?'],
-  '/settings': ['What data does Oak have about my family?'],
+  '/settings': ['What data does Keel have about my family?'],
 }
 
 function getContextSuggestions(context: string | null): string[] {
@@ -108,7 +108,7 @@ export default function AssistantPage() {
   // the right one; a hard page load (URL already correct at script start)
   // works either way, which is why this only showed up on in-app nav.
   const [pageContext, setPageContext] = useState<string | null>(null)
-  // Workstream A bonus: a caller can hand Oak a ready-made question about
+  // Workstream A bonus: a caller can hand Keel a ready-made question about
   // the specific thing the user was just looking at, instead of landing
   // on a blank chat. Guards the effect below against Strict Mode's
   // double-invoke in dev sending the same prompt twice.
@@ -117,7 +117,7 @@ export default function AssistantPage() {
     {
       id: 'welcome',
       role: 'assistant',
-      content: "Hi! I'm Oak. I can summarize your family's financial profile — insurance, savings, goals, and scenarios. This is for informational purposes only. Just ask me anything.",
+      content: "Hi! I'm Keel. I can summarize your family's financial profile — insurance, savings, goals, and scenarios. This is for informational purposes only. Just ask me anything.",
     },
   ])
   const [input, setInput] = useState('')
@@ -126,8 +126,13 @@ export default function AssistantPage() {
   // only feedback was three static dots — long enough that a real user
   // (and this agent, at first) reads it as a dead button. Rotating text
   // makes the wait legible without promising a specific time.
-  const [thinkingText, setThinkingText] = useState('Oak is thinking...')
+  const [thinkingText, setThinkingText] = useState('Keel is thinking...')
   const scrollRef = useRef<HTMLDivElement>(null)
+  // The contextual suggestion chips used to vanish after the first message,
+  // so follow-ups grounded in the page the user came from (?context=) were
+  // undiscoverable mid-conversation. They now stay reachable behind a
+  // compact toggle once the chat is underway.
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -135,7 +140,7 @@ export default function AssistantPage() {
 
   useEffect(() => {
     if (!thinking) return
-    setThinkingText('Oak is thinking...')
+    setThinkingText('Keel is thinking...')
     const t1 = setTimeout(() => setThinkingText('Checking your family’s financial profile...'), 5000)
     const t2 = setTimeout(() => setThinkingText('Still working — this can take a little longer for detailed questions...'), 15000)
     return () => { clearTimeout(t1); clearTimeout(t2) }
@@ -195,15 +200,15 @@ export default function AssistantPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-80px)]">
-      <PageHeader title="Oak" subtitle="Ask me anything about your family" />
+      <PageHeader title="Keel" subtitle="Ask me anything about your family" />
 
       {/* Live-verification finding: new messages appeared with no signal
           to screen readers — a blind/low-vision user had no way to know
-          Oak had answered unless they manually re-navigated to this list.
+          Keel had answered unless they manually re-navigated to this list.
           role="log" is the ARIA role built for exactly this (a chronological
           message transcript), implying a polite live-region announcement
           of each addition without needing separate aria-live plumbing. */}
-      <div ref={scrollRef} role="log" aria-label="Conversation with Oak" className="flex-1 overflow-y-auto px-5 py-2 space-y-3 no-scrollbar">
+      <div ref={scrollRef} role="log" aria-label="Conversation with Keel" className="flex-1 overflow-y-auto px-5 py-2 space-y-3 no-scrollbar">
         {messages.map((msg) => (
           <motion.div
             key={msg.id}
@@ -220,14 +225,14 @@ export default function AssistantPage() {
             >
               {msg.role === 'assistant' && (
                 <div className="text-xs text-family-400 mb-1 flex items-center gap-1">
-                  <Bot size={12} /> Oak
+                  <Bot size={12} /> Keel
                 </div>
               )}
               {msg.status === 'unavailable' && msg.userQuery ? (
                 <GlassCard className="p-4">
                   <div className="flex items-center gap-2 mb-1.5">
                     <CloudOff size={15} className="text-warning flex-shrink-0" />
-                    <span className="text-sm font-semibold text-ink-primary">Oak&apos;s assistant is temporarily unavailable</span>
+                    <span className="text-sm font-semibold text-ink-primary">Keel&apos;s assistant is temporarily unavailable</span>
                   </div>
                   <p className="text-xs text-ink-tertiary leading-relaxed mb-2.5">
                     That&apos;s a real outage, not a missing answer — nothing below is a sample. Try again in a moment.
@@ -278,14 +283,24 @@ export default function AssistantPage() {
         )}
       </div>
 
-      {messages.length <= 1 && (
+      {messages.length <= 1 || suggestionsOpen ? (
         <div className="px-4 py-2">
-          <div className="text-xs text-ink-tertiary mb-2">Try asking:</div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs text-ink-tertiary">Try asking:</div>
+            {messages.length > 1 && (
+              <button
+                onClick={() => { haptic('light'); setSuggestionsOpen(false) }}
+                className="text-xs font-semibold text-ink-tertiary"
+              >
+                Hide
+              </button>
+            )}
+          </div>
           <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar -mx-4 px-4">
             {getContextSuggestions(pageContext).map((s, i) => (
               <motion.button
                 key={s}
-                onClick={() => sendMessage(s)}
+                onClick={() => { setSuggestionsOpen(false); void sendMessage(s) }}
                 whileTap={{ scale: 0.95 }}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -296,6 +311,15 @@ export default function AssistantPage() {
               </motion.button>
             ))}
           </div>
+        </div>
+      ) : (
+        <div className="px-4 pt-1">
+          <button
+            onClick={() => { haptic('light'); setSuggestionsOpen(true) }}
+            className="text-xs font-semibold text-family-400"
+          >
+            Suggest questions
+          </button>
         </div>
       )}
 

@@ -1,4 +1,4 @@
-import { decideScores, JudgeScoresSchema, type JudgeEvaluator, type JudgeInput } from '@agentoak/engine'
+import { decideScores, JudgeScoresSchema, type JudgeEvaluator, type JudgeInput } from '@lifekeel/engine'
 
 /**
  * Shadow mode for judge evaluators: the primary evaluator stays authoritative

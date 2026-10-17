@@ -25,9 +25,20 @@ export default function AuthCallbackPage() {
       return
     }
 
+    const mfaToken = params.get('mfa_token')
+    if (mfaToken) {
+      // OAuth sign-in on an MFA-enabled account — no session yet; the
+      // login page picks the pending token up and shows the code step.
+      sessionStorage.setItem('lifekeel_mfa_pending', mfaToken)
+      router.push('/login?mfa=1')
+      return
+    }
+
     if (token) {
-      localStorage.setItem('agentoak_token', token)
-      if (tenant) localStorage.setItem('agentoak_tenant', tenant)
+      // The API also set the httpOnly session cookie; the token is kept as
+      // the Bearer fallback for cookie-blocked browsers (see lib/http.ts).
+      localStorage.setItem('lifekeel_token', token)
+      if (tenant) localStorage.setItem('lifekeel_tenant', tenant)
       refresh().then(() => router.push('/'))
     } else {
       router.push('/login')

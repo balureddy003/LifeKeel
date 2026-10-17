@@ -33,14 +33,15 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
-import { createLogger, getTenantCollection } from '@agentoak/platform'
+import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { getFamilyGroupsCollection, getFamilyJoinRequestsCollection, getFamilyMemberInvitesCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { hashPassword, getUsersCollection, AVATAR_COLORS, EMAIL_FORMAT_RE, type User } from './auth-users.js'
 import { sendFamilyInviteEmail } from '../auth-email.js'
 import { memberMatchesUser } from '../lib/family-permissions.js'
 import { generateInviteCode, type FamilyGroupDoc, type FamilyMemberDoc } from './family-group.js'
-import type { AuthService } from '@agentoak/platform'
+import type { AuthService } from '@lifekeel/platform'
+import { setSessionCookie } from '../lib/session-cookie.js'
 
 const log = createLogger({ service: 'family-join', version: '0.0.0' })
 
@@ -364,7 +365,7 @@ export function registerFamilyJoinRoutes(fastify: FastifyInstance, db: Db, auth?
         )
       }
 
-      const appUrl = (process.env['AGENT_OAK_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
+      const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
       const inviteUrl = `${appUrl}/invite/${token}`
       await sendFamilyInviteEmail(email, member.name, family.name, inviteUrl)
 
@@ -506,6 +507,7 @@ export function registerFamilyJoinRoutes(fastify: FastifyInstance, db: Db, auth?
       const sessionToken = auth
         ? await auth.sign({ sub: userId, tenant_id: invite.tenant_id, roles: ['viewer'] })
         : undefined
+      if (sessionToken) setSessionCookie(reply, sessionToken, 7 * 24 * 60 * 60)
       return {
         accepted: true,
         token: sessionToken,

@@ -1,6 +1,6 @@
 /**
  * /family/assets + /family/context (gap 8's non-sensitive slice) — the
- * declared-asset register and the organizer's context note for Ask Oak.
+ * declared-asset register and the organizer's context note for Ask Keel.
  */
 
 import { describe, expect, it, beforeEach } from 'vitest'

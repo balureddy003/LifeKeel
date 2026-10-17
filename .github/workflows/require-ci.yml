@@ -1,0 +1,50 @@
+name: Require green CI (reusable)
+
+# Called by every deploy workflow. Resolves the requested ref to one immutable
+# SHA, then refuses unless (1) that SHA is in main's history and (2) the CI
+# workflow succeeded on it. Deploys then check out the SHA, not the moving ref,
+# so what was verified is exactly what ships.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: true
+    outputs:
+      sha:
+        description: Verified commit SHA
+        value: ${{ jobs.verify.outputs.sha }}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      REF: ${{ inputs.ref }}
+    steps:
+      - id: resolve
+        run: |
+          sha=$(gh api "repos/$REPO/commits/$REF" --jq .sha)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Resolved $REF -> $sha"
+      - name: SHA must be on main
+        run: |
+          status=$(gh api "repos/$REPO/compare/main...${{ steps.resolve.outputs.sha }}" --jq .status)
+          if [ "$status" != "identical" ] && [ "$status" != "behind" ]; then
+            echo "::error::${{ steps.resolve.outputs.sha }} is not in main's history (compare status: $status). Merge via PR first."
+            exit 1
+          fi
+      - name: CI must have passed on this SHA
+        run: |
+          n=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=${{ steps.resolve.outputs.sha }}&status=success" --jq .total_count)
+          if [ "$n" -lt 1 ]; then
+            echo "::error::No successful CI run for ${{ steps.resolve.outputs.sha }}. Wait for CI or fix it before deploying."
+            exit 1
+          fi

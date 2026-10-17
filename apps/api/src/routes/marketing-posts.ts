@@ -47,8 +47,8 @@ import {
   type SocialPublisher,
   type SocialConnectionDoc,
 } from '../marketing/social-publisher.js'
-import { encryptIfNeeded, createLlmRouterFromEnv, type LlmFn } from '@agentoak/platform'
-import { ConnectorActionExecutor } from '@agentoak/workflows'
+import { encryptIfNeeded, createLlmRouterFromEnv, type LlmFn } from '@lifekeel/platform'
+import { ConnectorActionExecutor } from '@lifekeel/workflows'
 
 export type MarketingPostState = 'draft' | 'approved' | 'publishing' | 'published' | 'publish_failed' | 'rejected'
 
@@ -69,7 +69,7 @@ export interface MarketingPostDoc {
   published_at?: Date
   publish_error?: string
   generated?: 'llm' | 'template'
-  /** UTM campaign tag — 'oak_social' for ungrouped posts; named campaigns
+  /** UTM campaign tag — 'lifekeel_social' for ungrouped posts; named campaigns
    *  let the operator split performance by push. */
   campaign?: string
   source_blog_slug?: string
@@ -355,7 +355,7 @@ export async function draftBlogPromoPost(
     channel,
     integration_id: `${channel}:connection`,
     content,
-    campaign: 'oak_social',
+    campaign: 'lifekeel_social',
     state: 'draft',
     generated,
     source_blog_slug: blogSlug,
@@ -429,7 +429,7 @@ export async function marketingPerformance(db: Db): Promise<{
   // utm_medium=social marks our generated/published links — any campaign
   // name under it counts; other mediums (ads, email) stay excluded.
   const isSocial = (a: Record<string, string> | undefined) => a?.['utm_medium'] === 'social'
-  const campOf = (a: Record<string, string> | undefined) => a?.['utm_campaign'] || 'oak_social'
+  const campOf = (a: Record<string, string> | undefined) => a?.['utm_campaign'] || 'lifekeel_social'
 
   for (const e of events) {
     const slug = slugOf(e['path'])
@@ -735,7 +735,7 @@ function clampPost(text: string, limit: number, reserve = 0): string {
   return `${window.slice(0, cut > cap * 0.6 ? cut : cap - 1).trimEnd()}…`
 }
 
-const GENERATE_SYSTEM = `You write social posts for Agent Oak — a free tool that shows a family
+const GENERATE_SYSTEM = `You write social posts for LifeKeel — a free tool that shows a family
 in two minutes how ready their finances are for the unexpected (illness,
 job loss, a death in the family), plus plain-English education on the
 gaps it finds.
@@ -763,14 +763,14 @@ Rules — these are non-negotiable:
 
 /** UTM'd site link — clicks land in users.attribution.utm_source so the
  *  operator funnel can attribute signups back to the channel/post. */
-function siteLink(channel: string, path: string, contentTag: string, campaign = 'oak_social'): string {
-  const base = (process.env['AGENT_OAK_URL'] ?? '').replace(/\/$/, '')
+function siteLink(channel: string, path: string, contentTag: string, campaign = 'lifekeel_social'): string {
+  const base = (process.env['LIFEKEEL_URL'] ?? '').replace(/\/$/, '')
   return base
     ? `${base}${path}?utm_source=${encodeURIComponent(channel)}&utm_medium=social&utm_campaign=${encodeURIComponent(campaign)}&utm_content=${encodeURIComponent(contentTag)}`
     : ''
 }
 
-async function blogSourceBlock(db: Db, blogSlug: string, channel: string, campaign = 'oak_social'): Promise<{ sourceBlock: string; link: string } | null> {
+async function blogSourceBlock(db: Db, blogSlug: string, channel: string, campaign = 'lifekeel_social'): Promise<{ sourceBlock: string; link: string } | null> {
   const post = await db.collection('blog_posts').findOne({ slug: blogSlug, published: true })
   if (!post) return null
   // utm_content carries the slug for per-post reads.
@@ -1090,7 +1090,7 @@ export function registerMarketingPostRoutes(
       channel,
       integration_id,
       content,
-      campaign: campaign ?? 'oak_social',
+      campaign: campaign ?? 'lifekeel_social',
       ...(scheduled_at ? { scheduled_at: new Date(scheduled_at) } : {}),
       ...(media_url ? { media_url } : {}),
       state: 'draft',
@@ -1133,7 +1133,7 @@ export function registerMarketingPostRoutes(
       return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
     }
     const { integration_id, channel, topic, blog_slug, campaign, preview, count } = parsed.data
-    const camp = campaign ?? 'oak_social'
+    const camp = campaign ?? 'lifekeel_social'
 
     let sourceBlock: string
     let link = ''

@@ -1,6 +1,6 @@
-# Agent Oak — instructions for Claude Code (and any AI agent working here)
+# LifeKeel — instructions for Claude Code (and any AI agent working here)
 
-Agent Oak is the autonomous digital twin for your family. Full product vision,
+LifeKeel is the autonomous digital twin for your family. Full product vision,
 current architecture, and phased roadmap: [ARCHITECTURE.md](ARCHITECTURE.md).
 Read that before making any change that touches product direction, not just
 this file.
@@ -9,8 +9,8 @@ this file.
 
 ```
 apps/web      Next.js frontend (static-exported to Firebase Hosting).
-              User-facing product. package name: @agentoak/web
-apps/api      Fastify backend. package name: @agentoak/api
+              User-facing product. package name: @lifekeel/web
+apps/api      Fastify backend. package name: @lifekeel/api
 packages/*    Shared libraries apps/api depends on (see each package's
               own README.md and package.json "description" for its role).
 detectors/, connectors/, definitions/, verticals/, detector-evals/,
@@ -20,13 +20,13 @@ category-table.yaml, scripts/fetch-yfinance.py
 ```
 
 Everything here was extracted from a larger monorepo (kairos-ai) on
-2026-09-12, then trimmed to what Agent Oak actually needs. `SECURITY.md`
+2026-09-12, then trimmed to what LifeKeel actually needs. `SECURITY.md`
 documents exactly what was removed and why, and the known gaps left behind
 on purpose. Read it before assuming something absent was never built.
 
 ## The one rule that matters most: trust tiers for autonomous action
 
-Agent Oak's vision explicitly includes an "Act" layer — Oak doing things on
+LifeKeel's vision explicitly includes an "Act" layer — Keel doing things on
 the family's behalf, not just telling them things. **Never implement
 autonomous execution of a financial, legal, medical, or otherwise
 irreversible action without an explicit human approval gate**, regardless of
@@ -38,7 +38,7 @@ belongs one tier lower than you think it does.
 ## The second rule: never cross into regulated advice or arranging
 
 A deliberate, durable business decision, separate from the trust-tier rule
-above: **Agent Oak stays outside any activity that would require FCA/SEC-
+above: **LifeKeel stays outside any activity that would require FCA/SEC-
 style regulatory authorization** — giving personal recommendations on
 retail investment/insurance products, arranging or advising on insurance
 contracts, payment initiation — permanently, not as a stage the product
@@ -62,13 +62,33 @@ Concretely:
   outreach mechanism stays scoped to "notify your existing provider,"
   never a product comparison or switch recommendation.
 - When competitive or market research (see `docs/reviews/`) surfaces an
-  idea that implies Agent Oak becoming more advice-like, or investing in
+  idea that implies LifeKeel becoming more advice-like, or investing in
   compliance/audit infrastructure to support giving advice, the right
   response is narrowing scope back to informational — not building out
   the compliance machinery to support crossing the line. Compliance
   overhead avoided by staying out of regulated activity in the first
   place beats compliance overhead paid for after deciding to compete
   there.
+
+## How the rules are enforced (not just stated)
+
+- **Advice rule (second rule):** `packages/engine/src/__tests__/advice-rule.test.ts`
+  fails CI if detector/playbook copy contains recommendation verbs or named
+  providers. `.claude/settings.json` runs it as a PostToolUse hook
+  (`scripts/hooks/advice-check.sh`) so Claude sees the failure immediately
+  after editing that copy.
+- **PRs:** `.github/pull_request_template.md` makes tier, advice check and
+  eval coverage explicit. New work starts from `docs/templates/intent.md`.
+- **Ask Keel prompt:** `apps/api/src/eval/__tests__/assistant-eval.test.ts` pins
+  the `SYSTEM_PROMPT` guardrail clauses (always runs). `apps/api/src/eval/assistant-eval.ts`
+  is a live adversarial eval (`node dist/eval/assistant-eval.js`, needs an LLM
+  configured) run before changing the prompt or model; it measures how often
+  raw answers would be blocked by the production output guard.
+- **Skill:** `.claude/skills/add-detector` encodes the add-a-detector recipe.
+- **Trust tiers (rule 1):** `apps/api/src/__tests__/trust-tier-gate.test.ts`
+  allow-lists the only callers of `ActionExecutor` and requires each
+  `execute()` to name `approvedBy`. Adding a caller means editing that list,
+  which forces the tier question into review. It is a tripwire, not proof.
 
 ## Conventions
 
@@ -85,8 +105,8 @@ Concretely:
   not just leave it silently sitting there (see `src/routes/settings.ts` in
   apps/api for a real example — noted, not hidden).
 - Detector YAML files (`detectors/family/*.yaml`) are the source of truth
-  for what Agent Oak currently understands about a family's finances — pure
-  declarative rules, no code, interpreted by `@agentoak/engine`. Adding a
+  for what LifeKeel currently understands about a family's finances — pure
+  declarative rules, no code, interpreted by `@lifekeel/engine`. Adding a
   new family signal means: (1) extend the financial-profile schema in
   `apps/api/src/routes/family-financial-profile.ts`, (2) add/extend a
   detector YAML, (3) surface it in `apps/web`'s financial-profile form.
@@ -98,13 +118,13 @@ Concretely:
   works around it with an in-memory `Storage` polyfill — don't remove it.
 - **`turbo.json`'s `test`/`typecheck` tasks depend on `["build", "^build"]`**,
   not just `["^build"]`. A package that self-imports its own name (e.g.
-  `packages/platform`'s own test files importing `@agentoak/platform`) needs
+  `packages/platform`'s own test files importing `@lifekeel/platform`) needs
   its *own* `dist/` built first, not just its dependencies' — `^build` alone
   only builds dependencies. If you add a package with this pattern and it
   fails to resolve itself under `vitest`, this is why.
 - **`pnpm test`/`pnpm typecheck` run standalone inside a single package**
   (e.g. `cd apps/api && pnpm test`) will show false "cannot find module
-  '@agentoak/x'" errors if that sibling package's `dist/` doesn't exist yet.
+  '@lifekeel/x'" errors if that sibling package's `dist/` doesn't exist yet.
   Always verify via the root `pnpm typecheck`/`pnpm test` (turbo-orchestrated)
   before concluding something is actually broken.
 - **Don't run `pnpm typecheck`/`pnpm build` while `next dev` is running.**
@@ -112,7 +132,7 @@ Concretely:
   `apps/web/.next` underneath the dev server — the served HTML then
   references chunks that don't exist (page renders unstyled, e.g. only the
   "Skip to content" link shows). Recovery: stop the dev server, delete
-  `apps/web/.next`, restart `pnpm --filter @agentoak/web dev`.
+  `apps/web/.next`, restart `pnpm --filter @lifekeel/web dev`.
 - `apps/api`'s integration tests that hit a real MongoDB/Redis (currently
   just `ml-tenant-isolation.test.ts`) will fail locally without one running —
   that's expected, not a regression. CI provisions both via service

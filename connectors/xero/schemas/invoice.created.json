@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kairos.io/schemas/xero/invoice.created/v1.0.0",
+  "$id": "https://lifekeel.io/schemas/xero/invoice.created/v1.0.0",
   "title": "Xero Invoice Created Event",
   "description": "Schema for Xero invoice created webhook events",
   "type": "object",
-  "kairos": {
+  "lifekeel": {
     "connector_id": "xero",
     "event_type": "invoice.created",
     "schema_version": "1.0.0",

@@ -9,7 +9,7 @@
  */
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { getTenantCollection } from '@agentoak/platform'
+import { getTenantCollection } from '@lifekeel/platform'
 import type { AuditEntry } from '../audit/audit-log.js'
 
 const MAX_LIMIT = 100

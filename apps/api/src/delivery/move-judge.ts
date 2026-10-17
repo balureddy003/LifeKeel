@@ -3,9 +3,9 @@ import {
   MoveJudge,
   type JudgeEvaluator,
   type JudgeInput,
-} from '@agentoak/engine'
+} from '@lifekeel/engine'
 import type { Db } from 'mongodb'
-import { callStructured, LlmBudgetGuard, createGuardEventSink, type DecisionFn, type LlmFn, type LlmGovernanceOptions } from '@agentoak/platform'
+import { callStructured, LlmBudgetGuard, createGuardEventSink, type DecisionFn, type LlmFn, type LlmGovernanceOptions } from '@lifekeel/platform'
 import { createLocalJudgeEvaluator } from './local-judge.js'
 import { withShadow, type ShadowRecord } from './shadow-judge.js'
 import { recordShadowComparison } from '../routes/metrics.js'

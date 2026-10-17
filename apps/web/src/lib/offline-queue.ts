@@ -16,8 +16,9 @@
  */
 
 import { getApiBase } from './env'
+import { credFetch } from './http'
 
-const DB_NAME = 'agentoak-offline'
+const DB_NAME = 'lifekeel-offline'
 const STORE = 'pending_mutations'
 
 export interface QueuedMutation {
@@ -92,14 +93,14 @@ export async function fetchOrQueue(
   init: RequestInit,
   label: string,
 ): Promise<Response | 'queued'> {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('agentoak_token') : null
+  const token = typeof window !== 'undefined' ? localStorage.getItem('lifekeel_token') : null
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...((init.headers as Record<string, string>) ?? {}),
   }
   if (token) headers['Authorization'] = `Bearer ${token}`
   try {
-    return await fetch(`${getApiBase()}${path}`, { ...init, headers })
+    return await credFetch(`${getApiBase()}${path}`, { ...init, headers })
   } catch (err) {
     // fetch() throwing = the request never left the device. A non-TypeError
     // (e.g. an AbortError from a cancelled request) shouldn't be queued.
@@ -125,11 +126,11 @@ export async function fetchOrQueue(
 export async function flushMutationQueue(): Promise<number> {
   const pending = await listMutations()
   if (pending.length === 0) return 0
-  const token = localStorage.getItem('agentoak_token')
+  const token = localStorage.getItem('lifekeel_token')
   let replayed = 0
   for (const m of pending) {
     try {
-      const res = await fetch(`${getApiBase()}${m.path}`, {
+      const res = await credFetch(`${getApiBase()}${m.path}`, {
         method: m.method,
         headers: {
           'Content-Type': 'application/json',

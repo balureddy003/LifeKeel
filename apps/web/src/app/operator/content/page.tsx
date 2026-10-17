@@ -19,7 +19,7 @@ type FormState = Omit<BlogPostInput, 'meta_description' | 'cover_image' | 'tags'
 }
 
 const EMPTY: FormState = {
-  title: '', slug: '', content: '', excerpt: '', category: 'tutorial', author: 'Agent Oak',
+  title: '', slug: '', content: '', excerpt: '', category: 'tutorial', author: 'LifeKeel',
   meta_description: '', cover_image: '', tagsText: '',
 }
 

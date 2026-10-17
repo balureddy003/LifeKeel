@@ -3,7 +3,7 @@ const url = process.env.MONGODB_URL
 async function main() {
   const client = new MongoClient(url)
   await client.connect()
-  const db = client.db('kairos')
+  const db = client.db('lifekeel')
   const tenantId = 'reddy003'
 
   // 1. Strategy config

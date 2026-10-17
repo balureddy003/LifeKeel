@@ -3,7 +3,7 @@
  *
  * Detects when a final financial-profile save crosses a real threshold —
  * an earner losing employment, a salary dropping to zero, emergency
- * savings draining fast — that the family hasn't already told Oak about
+ * savings draining fast — that the family hasn't already told Keel about
  * via /life-events. Deliberately sourced only from data the family
  * already typed into their own profile, never an external transaction
  * feed (see the PRD's "Market bar" section and CLAUDE.md's "second rule"

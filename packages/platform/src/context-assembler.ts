@@ -1,4 +1,4 @@
-import type { MemoryRepository, MemoryScopeType, MemoryType } from '@agentoak/runtime'
+import type { MemoryRepository, MemoryScopeType, MemoryType } from '@lifekeel/runtime'
 
 export interface ContextRequest {
   tenant_id: string

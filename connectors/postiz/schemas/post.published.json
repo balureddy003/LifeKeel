@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kairos.io/schemas/postiz/post.published/v1.0.0",
+  "$id": "https://lifekeel.io/schemas/postiz/post.published/v1.0.0",
   "title": "Postiz Post Published Event",
   "description": "Schema for Postiz post.published webhook events",
   "type": "object",
-  "kairos": {
+  "lifekeel": {
     "connector_id": "postiz",
     "event_type": "post.published",
     "schema_version": "1.0.0",

@@ -5,7 +5,7 @@ import path from 'node:path'
 /**
  * Life-events prepare extension: every playbook step gets a draft
  * affordance now, not just contact:true ones — a non-contact step gets a
- * prep note ("Get Oak's help with this", copy-only, no send path); a
+ * prep note ("Get Keel's help with this", copy-only, no send path); a
  * contact step keeps the original outreach-email draft ("Draft a message
  * for me", copy + mailto). global-setup.ts seeds one job_loss event, which
  * has both kinds of step.
@@ -28,11 +28,11 @@ test('a non-contact step generates a prep note, not an outreach email', async ({
   await gotoWithWarmup(page, `/life-events/${seededLifeEventId()}`)
   await expect(page.getByText('Calculate your runway')).toBeVisible()
 
-  const prepButtons = page.getByText("Get Oak's help with this")
+  const prepButtons = page.getByText("Get Keel's help with this")
   await expect(prepButtons.first()).toBeVisible()
   await prepButtons.first().click()
 
-  await expect(page.getByText(/Oak hasn't checked, filed, or contacted anyone for you/)).toBeVisible({ timeout: 25_000 })
+  await expect(page.getByText(/Keel hasn't checked, filed, or contacted anyone for you/)).toBeVisible({ timeout: 25_000 })
   // Copy-only — never a mailto/send affordance for a non-contact step.
   await expect(page.getByText('Open in email')).toHaveCount(0)
 })
@@ -43,6 +43,6 @@ test('a contact step still generates the original outreach-email draft', async (
 
   await page.getByText('Draft a message for me').click()
 
-  await expect(page.getByText(/Oak never sends it for you/)).toBeVisible({ timeout: 25_000 })
+  await expect(page.getByText(/Keel never sends it for you/)).toBeVisible({ timeout: 25_000 })
   await expect(page.getByText('Open in email')).toBeVisible()
 })

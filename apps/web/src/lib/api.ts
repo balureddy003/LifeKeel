@@ -1,5 +1,5 @@
 /**
- * Family app API client — bridges the family frontend to the shared Kairos API.
+ * Family app API client — bridges the family frontend to the shared LifeKeel API.
  *
  * Uses the same /insights and /goals endpoints as Studio, filtered by the
  * family vertical's detector ids. Falls back to an empty/null result when
@@ -10,6 +10,7 @@
 import { AI_RESPONSES } from './life-data'
 import type { InboxItem } from './onboarding-data'
 import { getApiBase } from './env'
+import { credFetch } from './http'
 import { captureAttribution, getAttribution } from './attribution'
 import { fetchOrQueue } from './offline-queue'
 import { cachedFetch, invalidateCache } from './fetch-cache'
@@ -129,7 +130,7 @@ async function apiFetch<T>(path: string, fallback: T, onFailure?: () => void): P
     }
     if (token) headers['Authorization'] = `Bearer ${token}`
 
-    const res = await fetch(`${base}${path}`, { headers })
+    const res = await credFetch(`${base}${path}`, { headers })
     if (!res.ok) {
       if (res.status >= 500) {
         reportError(new Error(`API ${res.status}`), { path })
@@ -477,7 +478,7 @@ async function scenarioRequest<T>(path: string, init: RequestInit, fallback: T):
     const token = getAuthToken()
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = `Bearer ${token}`
-    const res = await fetch(`${base}${path}`, { ...init, headers })
+    const res = await credFetch(`${base}${path}`, { ...init, headers })
     if (!res.ok) return fallback
     return (await res.json()) as T
   } catch (err) {
@@ -538,7 +539,7 @@ export async function deleteFamilyScenario(id: string): Promise<boolean> {
     const token = getAuthToken()
     const headers: Record<string, string> = {}
     if (token) headers['Authorization'] = `Bearer ${token}`
-    const res = await fetch(`${base}/family/scenarios/${id}`, { method: 'DELETE', headers })
+    const res = await credFetch(`${base}/family/scenarios/${id}`, { method: 'DELETE', headers })
     return res.ok
   } catch (err) {
     reportError(err, { action: 'deleteFamilyScenario', id })
@@ -749,7 +750,7 @@ export async function deleteLegacyDocument(id: string): Promise<boolean> {
     const token = getAuthToken()
     const headers: Record<string, string> = {}
     if (token) headers['Authorization'] = `Bearer ${token}`
-    const res = await fetch(`${base}/family/legacy/documents/${encodeURIComponent(id)}`, { method: 'DELETE', headers })
+    const res = await credFetch(`${base}/family/legacy/documents/${encodeURIComponent(id)}`, { method: 'DELETE', headers })
     return res.ok
   } catch (err) {
     reportError(err, { action: 'deleteLegacyDocument', id })
@@ -931,7 +932,7 @@ export async function fetchAIResponse(query: string, memberId?: string): Promise
     // nothing to show but static dots — reads as a dead button. This caps
     // the wait so a slow provider degrades to the labeled local fallback
     // instead of hanging indefinitely.
-    const res = await fetch(`${base}/assistant/ask`, {
+    const res = await credFetch(`${base}/assistant/ask`, {
       method: 'POST',
       headers,
       // PRD-122: memberId scopes the answer to one roster member's twin.
@@ -986,7 +987,7 @@ export async function uploadDocument(file: File): Promise<FamilyDocument> {
   const headers: Record<string, string> = {}
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`${base}/documents/upload`, {
+  const res = await credFetch(`${base}/documents/upload`, {
     method: 'POST',
     headers,
     body: formData,
@@ -1022,7 +1023,7 @@ export async function fetchDocumentFileUrl(id: string): Promise<{ url: string; m
     const token = getAuthToken()
     const headers: Record<string, string> = {}
     if (token) headers['Authorization'] = `Bearer ${token}`
-    const res = await fetch(`${base}/documents/${id}/file`, { headers })
+    const res = await credFetch(`${base}/documents/${id}/file`, { headers })
     if (!res.ok) return null
     const blob = await res.blob()
     return { url: URL.createObjectURL(blob), mimeType: blob.type }
@@ -1070,7 +1071,7 @@ export async function fetchVaultDocuments(): Promise<{ documents: VaultDocument[
   const headers: Record<string, string> = {}
   if (token) headers['Authorization'] = `Bearer ${token}`
   try {
-    const res = await fetch(`${base}/vault/documents`, { headers })
+    const res = await credFetch(`${base}/vault/documents`, { headers })
     if (res.status === 403) return { documents: [], forbidden: true }
     if (!res.ok) return { documents: [], forbidden: false }
     const data = (await res.json().catch(() => ({}))) as { documents?: VaultDocument[] }
@@ -1107,7 +1108,7 @@ export async function uploadVaultDocument(
     params.set('mime', file.type || 'application/octet-stream')
   }
   const qs = params.toString()
-  const res = await fetch(`${base}/vault/documents/upload${qs ? `?${qs}` : ''}`, { method: 'POST', headers, body: formData })
+  const res = await credFetch(`${base}/vault/documents/upload${qs ? `?${qs}` : ''}`, { method: 'POST', headers, body: formData })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || `Upload failed: ${res.status}`)
   return data as VaultDocument
@@ -1124,7 +1125,7 @@ export async function fetchVaultDocumentFileUrl(
     const token = getAuthToken()
     const headers: Record<string, string> = {}
     if (token) headers['Authorization'] = `Bearer ${token}`
-    const res = await fetch(`${base}/vault/documents/${id}/file`, { headers })
+    const res = await credFetch(`${base}/vault/documents/${id}/file`, { headers })
     if (!res.ok) return null
     if (seal) {
       const { unsealFile, VaultSealError } = await import('./vault-seal')
@@ -1151,7 +1152,7 @@ export async function deleteVaultDocument(id: string): Promise<boolean> {
     const token = getAuthToken()
     const headers: Record<string, string> = {}
     if (token) headers['Authorization'] = `Bearer ${token}`
-    const res = await fetch(`${base}/vault/documents/${id}`, { method: 'DELETE', headers })
+    const res = await credFetch(`${base}/vault/documents/${id}`, { method: 'DELETE', headers })
     return res.ok
   } catch (err) {
     reportError(err, { documentId: id })
@@ -1203,7 +1204,7 @@ export async function applyDocumentToProfile(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`${base}/documents/${documentId}/apply-to-profile`, {
+  const res = await credFetch(`${base}/documents/${documentId}/apply-to-profile`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ paths }),
@@ -1244,7 +1245,7 @@ export async function applyPolicySuggestion(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`${base}/documents/${documentId}/apply-policy`, {
+  const res = await credFetch(`${base}/documents/${documentId}/apply-policy`, {
     method: 'POST',
     headers,
     body: JSON.stringify(policy),
@@ -1275,7 +1276,7 @@ export async function applyInboxPolicy(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`${base}/inbox/${inboxItemId}/apply-policy`, {
+  const res = await credFetch(`${base}/inbox/${inboxItemId}/apply-policy`, {
     method: 'POST',
     headers,
     body: JSON.stringify(policy),
@@ -1371,7 +1372,7 @@ export async function connectEmail(payload: ConnectEmailPayload): Promise<{ ok: 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`${base}/connectors/email/credentials`, {
+  const res = await credFetch(`${base}/connectors/email/credentials`, {
     method: 'POST',
     headers,
     body: JSON.stringify(payload),
@@ -1410,7 +1411,7 @@ export async function connectOpenBanking(
 ): Promise<{ ok: true; accounts: number } | { ok: false; error: string }> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await fetch(`${base}/connectors/open-banking/credentials`, {
+  const res = await credFetch(`${base}/connectors/open-banking/credentials`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ provider, ...(accessToken ? { accessToken } : {}) }),
@@ -1423,7 +1424,7 @@ export async function connectOpenBanking(
 export async function syncOpenBanking(): Promise<boolean> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await fetch(`${base}/connectors/open-banking/sync`, {
+  const res = await credFetch(`${base}/connectors/open-banking/sync`, {
     method: 'POST',
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
@@ -1447,7 +1448,7 @@ export async function startGmailOAuth(): Promise<string> {
   const headers: Record<string, string> = {}
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`${base}/connectors/gmail/oauth/start?app=family&mode=json`, { headers })
+  const res = await credFetch(`${base}/connectors/gmail/oauth/start?app=family&mode=json`, { headers })
   if (!res.ok) throw new Error('Could not start Google sign-in — please try again.')
   const data = (await res.json()) as { auth_url?: string }
   if (!data.auth_url) throw new Error('Could not start Google sign-in — please try again.')
@@ -1466,7 +1467,7 @@ export async function scanEmailInbox(): Promise<EmailScanResult | null> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`${base}/connectors/email/scan`, { method: 'POST', headers })
+  const res = await credFetch(`${base}/connectors/email/scan`, { method: 'POST', headers })
   if (!res.ok) return null
   return (await res.json()) as EmailScanResult
 }
@@ -1497,7 +1498,7 @@ export async function triggerConnectorBackfill(connectorId: string): Promise<boo
     const token = getAuthToken()
     const headers: Record<string, string> = {}
     if (token) headers['Authorization'] = `Bearer ${token}`
-    const res = await fetch(`${base}/connectors/${connectorId}/backfill`, { method: 'POST', headers })
+    const res = await credFetch(`${base}/connectors/${connectorId}/backfill`, { method: 'POST', headers })
     return res.ok || res.status === 202
   } catch (err) {
     reportError(err, { connectorId })
@@ -1512,7 +1513,7 @@ export async function disconnectConnector(connectorId: string): Promise<boolean>
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = `Bearer ${token}`
 
-    const res = await fetch(`${base}/connectors/${connectorId}/disconnect`, {
+    const res = await credFetch(`${base}/connectors/${connectorId}/disconnect`, {
       method: 'POST',
       headers,
     })
@@ -1557,7 +1558,7 @@ async function familyGroupRequest(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`${base}${path}`, {
+  const res = await credFetch(`${base}${path}`, {
     method,
     headers,
     ...(body ? { body: JSON.stringify(body) } : {}),
@@ -1580,7 +1581,7 @@ export async function fetchFamilyGroup(): Promise<ApiFamilyGroup | null> {
 
   let res: Response
   try {
-    res = await fetch(`${base}/family`, { headers })
+    res = await credFetch(`${base}/family`, { headers })
   } catch (err) {
     reportError(err, { path: '/family' })
     throw err
@@ -1644,7 +1645,7 @@ export async function joinFamily(
   password: string,
 ): Promise<{ familyName: string }> {
   const base = getApiBase()
-  const res = await fetch(`${base}/family/join`, {
+  const res = await credFetch(`${base}/family/join`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ invite_code: inviteCode, name, email, password }),
@@ -1673,7 +1674,7 @@ export interface MemberInviteResult {
 export async function inviteFamilyMember(memberId: string, email?: string): Promise<MemberInviteResult> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await fetch(`${base}/family/members/${memberId}/invite`, {
+  const res = await credFetch(`${base}/family/members/${memberId}/invite`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(email ? { email } : {}),
@@ -1692,7 +1693,7 @@ export interface FamilyInviteInfo {
 // Public — the invitee has no auth token yet.
 export async function fetchFamilyInvite(token: string): Promise<FamilyInviteInfo> {
   const base = getApiBase()
-  const res = await fetch(`${base}/family/invite/${encodeURIComponent(token)}`)
+  const res = await credFetch(`${base}/family/invite/${encodeURIComponent(token)}`)
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'This invite link is invalid or has expired')
   return { memberName: data.member_name, familyName: data.family_name, expiresAt: data.expires_at }
@@ -1703,7 +1704,7 @@ export async function fetchFamilyInvite(token: string): Promise<FamilyInviteInfo
 // acceptor lands signed in.
 export async function acceptFamilyInvite(token: string, password: string): Promise<{ token: string; user: { id: string; email: string; name: string; email_verified?: boolean } }> {
   const base = getApiBase()
-  const res = await fetch(`${base}/family/invite/accept`, {
+  const res = await credFetch(`${base}/family/invite/accept`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token, password }),
@@ -1718,7 +1719,7 @@ async function accessRequestAction(id: string, action: 'approve' | 'deny'): Prom
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
-  const res = await fetch(`${base}/family/access-requests/${id}/${action}`, { method: 'POST', headers })
+  const res = await credFetch(`${base}/family/access-requests/${id}/${action}`, { method: 'POST', headers })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Request failed')
   return data
@@ -1738,7 +1739,7 @@ export async function resetInviteCode(): Promise<string> {
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
-  const res = await fetch(`${base}/family/invite-code/reset`, { method: 'POST', headers })
+  const res = await credFetch(`${base}/family/invite-code/reset`, { method: 'POST', headers })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || "Couldn't reset the invite code")
   return data.inviteCode as string
@@ -1766,7 +1767,7 @@ export async function updateFamilyContinuity(input: FamilyContinuity['continuity
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
-  const res = await fetch(`${base}/family/continuity`, { method: 'PATCH', headers, body: JSON.stringify(input) })
+  const res = await credFetch(`${base}/family/continuity`, { method: 'PATCH', headers, body: JSON.stringify(input) })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || "Couldn't save continuity settings")
   return data.continuity
@@ -1797,7 +1798,7 @@ export async function fetchFamilyCashflow(): Promise<CashflowSummary | null> {
 export async function addCashflowEntry(input: { kind: 'income' | 'expense'; label: string; amount_minor: number; recurrence: string }): Promise<boolean> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await fetch(`${base}/family/cashflow/entries`, {
+  const res = await credFetch(`${base}/family/cashflow/entries`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(input),
@@ -1808,7 +1809,7 @@ export async function addCashflowEntry(input: { kind: 'income' | 'expense'; labe
 export async function deleteCashflowEntry(id: string): Promise<boolean> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await fetch(`${base}/family/cashflow/entries/${encodeURIComponent(id)}`, {
+  const res = await credFetch(`${base}/family/cashflow/entries/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
@@ -1857,7 +1858,7 @@ async function assetRequest(path: string, method: 'POST' | 'PATCH' | 'DELETE', b
   try {
     const base = getApiBase()
     const token = getAuthToken()
-    const res = await fetch(`${base}${path}`, {
+    const res = await credFetch(`${base}${path}`, {
       method,
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
@@ -1925,7 +1926,7 @@ export async function prepareInsightDraft(insightId: string): Promise<InsightDra
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = `Bearer ${token}`
 
-    const res = await fetch(`${base}/insights/${insightId}/prepare`, {
+    const res = await credFetch(`${base}/insights/${insightId}/prepare`, {
       method: 'POST',
       headers,
     })
@@ -1969,7 +1970,7 @@ export async function fetchInsightActionPreview(insightId: string): Promise<Insi
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = `Bearer ${token}`
 
-    const res = await fetch(`${base}/insights/${insightId}/action-preview`, { headers })
+    const res = await credFetch(`${base}/insights/${insightId}/action-preview`, { headers })
     if (!res.ok) return null
     const data = (await res.json()) as { insight: RawInsight; actions: InsightActionPreviewItem[]; dry_run: boolean }
     return {
@@ -1998,7 +1999,7 @@ async function insightActionPost(insightId: string, action: string, body?: Recor
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = `Bearer ${token}`
 
-    const res = await fetch(`${base}/insights/${insightId}/${action}`, {
+    const res = await credFetch(`${base}/insights/${insightId}/${action}`, {
       method: 'POST',
       headers,
       ...(body ? { body: JSON.stringify(body) } : {}),
@@ -2081,7 +2082,7 @@ export async function cancelReminder(id: string): Promise<boolean> {
   try {
     const base = getApiBase()
     const token = getAuthToken()
-    const res = await fetch(`${base}/reminders/${id}/cancel`, {
+    const res = await credFetch(`${base}/reminders/${id}/cancel`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2106,7 +2107,7 @@ export async function exportAccountData(): Promise<Record<string, unknown> | nul
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = `Bearer ${token}`
 
-    const res = await fetch(`${base}/account/export`, { headers })
+    const res = await credFetch(`${base}/account/export`, { headers })
     if (!res.ok) return null
     return (await res.json()) as Record<string, unknown>
   } catch (err) {
@@ -2124,7 +2125,7 @@ export async function deleteAccount(confirmation: string): Promise<{ ok: boolean
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = `Bearer ${token}`
 
-    const res = await fetch(`${base}/account/delete`, {
+    const res = await credFetch(`${base}/account/delete`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ confirmation }),
@@ -2291,7 +2292,7 @@ export async function respondToProfileReview(action: 'confirm' | 'later'): Promi
   try {
     const base = getApiBase()
     const token = getAuthToken()
-    const res = await fetch(`${base}/family/financial-profile/review`, {
+    const res = await credFetch(`${base}/family/financial-profile/review`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify({ action }),
@@ -2346,7 +2347,7 @@ export async function submitFinancialProfile(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`${base}/family/financial-profile`, {
+  const res = await credFetch(`${base}/family/financial-profile`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ ...profile, generate_insights: generateInsights, ...(version !== undefined ? { version } : {}) }),
@@ -2445,7 +2446,7 @@ export async function reportLifeEvent(
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = `Bearer ${token}`
 
-    const res = await fetch(`${base}/family/life-events`, {
+    const res = await credFetch(`${base}/family/life-events`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -2476,7 +2477,7 @@ export async function dismissLifeChangeNudge(): Promise<void> {
     const token = getAuthToken()
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = `Bearer ${token}`
-    await fetch(`${base}/family/life-events/nudge/dismiss`, { method: 'POST', headers })
+    await credFetch(`${base}/family/life-events/nudge/dismiss`, { method: 'POST', headers })
   } catch (err) {
     reportError(err, { action: 'dismissLifeChangeNudge' })
   }
@@ -2491,7 +2492,7 @@ export async function prepareLifeEventStepDraft(eventId: string, stepId: string)
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = `Bearer ${token}`
 
-    const res = await fetch(`${base}/family/life-events/${eventId}/steps/${stepId}/prepare`, {
+    const res = await credFetch(`${base}/family/life-events/${eventId}/steps/${stepId}/prepare`, {
       method: 'POST',
       headers,
     })
@@ -2513,7 +2514,7 @@ export function pingOnDeviceDraftUsed(eventId: string, stepId: string): void {
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
-  fetch(`${base}/family/life-events/${eventId}/steps/${stepId}/prepare-on-device`, { method: 'POST', headers }).catch(() => {
+  credFetch(`${base}/family/life-events/${eventId}/steps/${stepId}/prepare-on-device`, { method: 'POST', headers }).catch(() => {
     // Best-effort observability only — never surfaced to the user.
   })
 }
@@ -2571,7 +2572,7 @@ async function authPostRequest(path: string, body: Record<string, unknown>): Pro
   if (token) headers['Authorization'] = `Bearer ${token}`
   let res: Response
   try {
-    res = await fetch(`${getApiBase()}${path}`, {
+    res = await credFetch(`${getApiBase()}${path}`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
@@ -2632,7 +2633,7 @@ export interface ReadinessQuizResult {
 
 /** Public, unauthenticated — no token, nothing tied to an identity. */
 export async function submitReadinessQuiz(answers: ReadinessQuizAnswers): Promise<ReadinessQuizResult> {
-  const res = await fetch(`${getApiBase()}/readiness-quiz`, {
+  const res = await credFetch(`${getApiBase()}/readiness-quiz`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(answers),
@@ -2675,7 +2676,7 @@ export interface BlogPost extends BlogPostSummary {
 
 /** Public, unauthenticated. */
 export async function fetchBlogPosts(): Promise<BlogPostSummary[]> {
-  const res = await fetch(`${getApiBase()}/blog/posts`)
+  const res = await credFetch(`${getApiBase()}/blog/posts`)
   if (!res.ok) return []
   const data = await res.json().catch(() => ({ posts: [] }))
   return data.posts ?? []
@@ -2683,7 +2684,7 @@ export async function fetchBlogPosts(): Promise<BlogPostSummary[]> {
 
 /** Public, unauthenticated. Returns null on 404 or any failure. */
 export async function fetchBlogPost(slug: string): Promise<BlogPost | null> {
-  const res = await fetch(`${getApiBase()}/blog/posts/${encodeURIComponent(slug)}`)
+  const res = await credFetch(`${getApiBase()}/blog/posts/${encodeURIComponent(slug)}`)
   if (!res.ok) return null
   return res.json().catch(() => null)
 }
@@ -2711,7 +2712,7 @@ export async function startLifeKeelPlusCheckout(): Promise<string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`${base}/billing/checkout`, {
+  const res = await credFetch(`${base}/billing/checkout`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ plan: 'starter', app: 'family' }),
@@ -2728,7 +2729,7 @@ export async function redeemPromoCode(code: string): Promise<{ grant_credits: nu
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`${base}/billing/redeem-promo-code`, {
+  const res = await credFetch(`${base}/billing/redeem-promo-code`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ code }),
@@ -2745,7 +2746,7 @@ export async function openBillingPortal(returnUrl?: string): Promise<string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`${base}/billing/portal`, {
+  const res = await credFetch(`${base}/billing/portal`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ return_url: returnUrl }),
@@ -2806,7 +2807,7 @@ export async function fetchMarketingIntegrations(): Promise<MarketingIntegration
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
   try {
-    const res = await fetch(`${base}/marketing/integrations`, { headers })
+    const res = await credFetch(`${base}/marketing/integrations`, { headers })
     if (!res.ok) return null
     const data = await res.json().catch(() => ({}))
     return (data.integrations ?? []) as MarketingIntegration[]
@@ -2826,7 +2827,7 @@ async function marketingRequest<T>(path: string, method: 'POST' | 'PATCH' | 'DEL
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`${base}${path}`, {
+  const res = await credFetch(`${base}${path}`, {
     method,
     headers,
     ...(body ? { body: JSON.stringify(body) } : {}),
@@ -2977,6 +2978,7 @@ export interface OperatorUser {
   failed_login_attempts?: number
   locked_until?: string
   sessions_revoked_at?: string
+  mfa_enabled?: boolean
   created_at: string
 }
 
@@ -2999,7 +3001,7 @@ export interface OperatorTenant {
 async function operatorRequest<T>(path: string): Promise<T> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await fetch(`${base}${path}`, {
+  const res = await credFetch(`${base}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
   const data = await res.json().catch(() => ({}))
@@ -3197,7 +3199,7 @@ export async function setOperatorAlertState(
 ): Promise<void> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await fetch(`${base}/operator/alerts/state`, {
+  const res = await credFetch(`${base}/operator/alerts/state`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ dedup_key: dedupKey, action, ...context }),
@@ -3209,7 +3211,7 @@ export async function setOperatorAlertState(
 async function operatorAction(path: string, reason: string): Promise<void> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await fetch(`${base}${path}`, {
+  const res = await credFetch(`${base}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ reason }),
@@ -3223,6 +3225,7 @@ export const reactivateOperatorUser = (id: string, reason: string) => operatorAc
 export const sendUserPasswordReset = (id: string, reason: string) => operatorAction(`/operator/users/${id}/password-reset`, reason)
 export const revokeUserSessions = (id: string, reason: string) => operatorAction(`/operator/users/${id}/revoke-sessions`, reason)
 export const unlockUser = (id: string, reason: string) => operatorAction(`/operator/users/${id}/unlock`, reason)
+export const disableUserMfa = (id: string, reason: string) => operatorAction(`/operator/users/${id}/mfa-disable`, reason)
 
 export interface OperatorUserExport {
   exported_at: string
@@ -3240,7 +3243,7 @@ export interface OperatorUserExport {
 export async function exportOperatorUser(id: string, reason: string): Promise<OperatorUserExport> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await fetch(`${base}/operator/users/${id}/export`, {
+  const res = await credFetch(`${base}/operator/users/${id}/export`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ reason }),
@@ -3345,7 +3348,7 @@ export function fetchOperatorConfiguration(): Promise<{ config: PlatformConfig; 
 export async function updateOperatorConfiguration(changes: Partial<PlatformConfig>, reason: string): Promise<PlatformConfig> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await fetch(`${base}/operator/configuration`, {
+  const res = await credFetch(`${base}/operator/configuration`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ ...changes, reason }),
@@ -3373,7 +3376,7 @@ export function fetchInfrastructure(): Promise<{ services: CostSnapshot[]; total
 export async function recordCostSnapshot(service: string, monthlyUsd: number, reason: string, note?: string): Promise<void> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await fetch(`${base}/operator/infrastructure/snapshots`, {
+  const res = await credFetch(`${base}/operator/infrastructure/snapshots`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ service, monthly_usd: monthlyUsd, reason, ...(note !== undefined ? { note } : {}) }),
@@ -3389,7 +3392,7 @@ export function fetchOperatorLead(id: string): Promise<{ lead: OperatorLead & { 
 export async function createOperator(userId: string, roles: string[], reason: string): Promise<void> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await fetch(`${base}/operator/operators`, {
+  const res = await credFetch(`${base}/operator/operators`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ user_id: userId, roles, reason }),
@@ -3450,7 +3453,7 @@ export function fetchOperatorAutopilot(): Promise<{ rules: AutopilotRule[]; rece
 export function updateOperatorAutopilot(rule: string, update: { enabled?: boolean; max_blast_radius?: number; cooldown_minutes?: number }, reason: string): Promise<{ rule: AutopilotRule }> {
   const base = getApiBase()
   const token = getAuthToken()
-  return fetch(`${base}/operator/autopilot/${encodeURIComponent(rule)}`, {
+  return credFetch(`${base}/operator/autopilot/${encodeURIComponent(rule)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ ...update, reason }),
@@ -3464,7 +3467,7 @@ export function updateOperatorAutopilot(rule: string, update: { enabled?: boolea
 export function resolveAutopilotProposal(id: string, decision: 'approve' | 'reject', reason: string): Promise<{ ok: boolean; result?: string }> {
   const base = getApiBase()
   const token = getAuthToken()
-  return fetch(`${base}/operator/autopilot/proposals/${encodeURIComponent(id)}/${decision}`, {
+  return credFetch(`${base}/operator/autopilot/proposals/${encodeURIComponent(id)}/${decision}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ reason }),
@@ -3499,7 +3502,7 @@ export function fetchOperatorDigest(): Promise<{ digest: OperatorDigest | null }
 export function sendOperatorDigest(): Promise<{ digest: OperatorDigest }> {
   const base = getApiBase()
   const token = getAuthToken()
-  return fetch(`${base}/operator/digest/send`, {
+  return credFetch(`${base}/operator/digest/send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
   }).then(async (res) => {
@@ -3538,7 +3541,7 @@ export function fetchOperatorLeads(query: { q?: string; stage?: string; source?:
 export async function updateOperatorLead(id: string, update: { stage?: LeadStage; note?: string }, reason: string): Promise<OperatorLead> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await fetch(`${base}/operator/leads/${id}`, {
+  const res = await credFetch(`${base}/operator/leads/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ ...update, reason }),
@@ -3574,7 +3577,7 @@ export function fetchPromotionRedemptions(code: string): Promise<{ promotion: Op
 export async function createOperatorPromotion(input: { code: string; grant_credits: number; max_uses: number; expires_at?: string }, reason: string): Promise<void> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await fetch(`${base}/operator/promotions`, {
+  const res = await credFetch(`${base}/operator/promotions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ ...input, reason }),
@@ -3618,7 +3621,7 @@ export function fetchOperatorBlogPost(id: string): Promise<{ post: OperatorBlogP
 async function blogPostWrite(path: string, method: 'POST' | 'PATCH', body: Record<string, unknown>): Promise<OperatorBlogPost> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await fetch(`${base}${path}`, {
+  const res = await credFetch(`${base}${path}`, {
     method,
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(body),
@@ -3671,7 +3674,7 @@ export function fetchOperatorCampaigns(): Promise<{ campaigns: OperatorCampaign[
 async function campaignWrite(path: string, body: Record<string, unknown>): Promise<unknown> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await fetch(`${base}${path}`, {
+  const res = await credFetch(`${base}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(body),
@@ -3738,7 +3741,7 @@ export function fetchBillingTenant(id: string): Promise<{ tenant: BillingTenant;
 export async function adjustTenantCredits(tenantId: string, amount: number, reason: string): Promise<number> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await fetch(`${base}/operator/billing/tenants/${encodeURIComponent(tenantId)}/adjust-credits`, {
+  const res = await credFetch(`${base}/operator/billing/tenants/${encodeURIComponent(tenantId)}/adjust-credits`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ amount, reason }),
@@ -3754,7 +3757,7 @@ export async function captureLead(input: { email: string; name?: string; source:
   try {
     captureAttribution()
     const attribution = getAttribution()
-    const res = await fetch(`${getApiBase()}/leads`, {
+    const res = await credFetch(`${getApiBase()}/leads`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...input, consent_marketing: true, ...(attribution ? { attribution } : {}) }),
@@ -3793,7 +3796,7 @@ export interface SupportCase {
 async function supportRequest<T>(path: string, method = 'GET', body?: Record<string, unknown>): Promise<T> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await fetch(`${base}${path}`, {
+  const res = await credFetch(`${base}${path}`, {
     method,
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     ...(body ? { body: JSON.stringify(body) } : {}),
@@ -3849,7 +3852,7 @@ export function fetchOperatorSupportCase(id: string): Promise<OperatorCaseDetail
 export async function replyOperatorCase(id: string, text: string): Promise<void> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await fetch(`${base}/operator/support/${encodeURIComponent(id)}/reply`, {
+  const res = await credFetch(`${base}/operator/support/${encodeURIComponent(id)}/reply`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ text }),
@@ -3866,7 +3869,7 @@ export const reopenOperatorCase = (id: string, reason: string) => operatorAction
 export function draftOperatorReply(id: string): Promise<{ draft: string }> {
   const base = getApiBase()
   const token = getAuthToken()
-  return fetch(`${base}/operator/support/${encodeURIComponent(id)}/draft`, {
+  return credFetch(`${base}/operator/support/${encodeURIComponent(id)}/draft`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: '{}',

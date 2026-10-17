@@ -1,4 +1,4 @@
-# @agentoak/platform
+# @lifekeel/platform
 
 Shared platform primitives used throughout `apps/api`: JWT auth
 (`AuthService`, `canPerform`, quota enforcement), MongoDB connection/tenant

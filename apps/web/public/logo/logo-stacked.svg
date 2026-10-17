@@ -2,22 +2,22 @@
   <!-- Stacked lockup — square contexts: social avatars, splash screens, deck title slides. Same font-portability note as logo-horizontal.svg. -->
   <defs>
     <linearGradient id="mark-bg-v" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#8b80f8"/>
-      <stop offset="1" stop-color="#6b5ce0"/>
+      <stop offset="0" stop-color="#0b3b5c"/>
+      <stop offset="1" stop-color="#0e7490"/>
+    </linearGradient>
+    <linearGradient id="mark-twin-v" x1="60" y1="70" x2="60" y2="101" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7dd3fc" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#7dd3fc" stop-opacity="0.25"/>
     </linearGradient>
   </defs>
   <g transform="translate(40, 0)">
     <rect width="120" height="120" rx="26" fill="url(#mark-bg-v)"/>
-    <g stroke="#ffffff" stroke-width="5.5" stroke-linecap="round">
-      <path d="M60 21 L21 60 L60 99 L99 60 Z" fill="none" opacity="0.95"/>
-      <path d="M60 21 L60 99" opacity="0.65"/>
-      <path d="M21 60 L99 60" opacity="0.65"/>
-    </g>
-    <circle cx="60" cy="21" r="5" fill="#ffffff"/>
-    <circle cx="21" cy="60" r="5" fill="#ffffff"/>
-    <circle cx="99" cy="60" r="5" fill="#ffffff"/>
-    <circle cx="60" cy="99" r="5" fill="#ffffff"/>
-    <circle cx="60" cy="60" r="7" fill="#ffffff"/>
+    <path d="M60 19 L60 100" stroke="#ffffff" stroke-width="4.4" stroke-linecap="round" opacity="0.9"/>
+    <path d="M60 21 C76 30 81 41 79 52 L60 52 Z" fill="#ffffff" opacity="0.95"/>
+    <path d="M60 70 L79 70 C81 81 76 92 60 101 Z" fill="url(#mark-twin-v)"/>
+    <rect x="50" y="97" width="20" height="8" rx="4" fill="#7dd3fc"/>
+    <path d="M16 61 Q24 57 32 61 T46 61" fill="none" stroke="#ffffff" stroke-width="3.1" stroke-linecap="round" opacity="0.5"/>
+    <path d="M74 61 Q82 57 90 61 T104 61" fill="none" stroke="#ffffff" stroke-width="3.1" stroke-linecap="round" opacity="0.5"/>
   </g>
-  <text x="100" y="158" text-anchor="middle" font-family="Fraunces, Georgia, serif" font-weight="600" font-size="30" letter-spacing="-0.3" fill="#16151a">Agent Oak</text>
+  <text x="100" y="158" text-anchor="middle" font-family="Fraunces, Georgia, serif" font-weight="600" font-size="30" letter-spacing="-0.3" fill="#16151a">LifeKeel</text>
 </svg>

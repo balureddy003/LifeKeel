@@ -13,7 +13,7 @@ import path from 'node:path'
 import { MongoClient, type Db } from 'mongodb'
 import { MongoMemoryServer } from 'mongodb-memory-server'
 import Fastify, { type FastifyInstance } from 'fastify'
-import { Engine } from '@agentoak/engine'
+import { Engine } from '@lifekeel/engine'
 import { registerDetectorEvalRoutes } from '../detector-evals.js'
 
 const TENANT = 'tenant-eval'

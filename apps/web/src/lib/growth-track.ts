@@ -7,9 +7,10 @@
  */
 
 import { getApiBase } from './env'
+import { credFetch } from './http'
 import { captureAttribution } from './attribution'
 
-const ANON_ID_KEY = 'agentoak_anon_id'
+const ANON_ID_KEY = 'lifekeel_anon_id'
 
 function getAnonId(): string {
   let id = localStorage.getItem(ANON_ID_KEY)
@@ -27,8 +28,8 @@ export function track(event: string, meta?: Record<string, unknown>): void {
   // later signup or lead-capture reads them.
   captureAttribution()
   try {
-    const token = localStorage.getItem('agentoak_token')
-    fetch(`${getApiBase()}/growth/events`, {
+    const token = localStorage.getItem('lifekeel_token')
+    credFetch(`${getApiBase()}/growth/events`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

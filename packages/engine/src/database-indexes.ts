@@ -35,7 +35,7 @@ export class DatabaseIndexManager {
   }
 
   /**
-   * Create all required indexes for the Kairos engine
+   * Create all required indexes for the LifeKeel engine
    */
   async createAllIndexes(): Promise<void> {
     await this.createSignalIndexes()

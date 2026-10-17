@@ -14,7 +14,7 @@ const ACTION_LABELS: Record<string, string> = {
   'insight.retry_execution': 'Retried an action',
   'insight.dismiss': 'Dismissed an insight',
   'insight.prepare': 'Drafted a message',
-  'assistant.ask': 'Asked Oak a question',
+  'assistant.ask': 'Asked Keel a question',
   'connector.add': 'Connected a service',
   'connector.remove': 'Disconnected a service',
   'settings.update': 'Updated settings',

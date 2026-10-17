@@ -31,14 +31,14 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'pnpm --filter @agentoak/api dev',
+      command: 'pnpm --filter @lifekeel/api dev',
       url: 'http://localhost:3001/status',
       reuseExistingServer: true,
       timeout: 60_000,
       cwd: path.resolve(__dirname, '../..'),
     },
     {
-      command: 'pnpm --filter @agentoak/web dev',
+      command: 'pnpm --filter @lifekeel/web dev',
       url: 'http://localhost:3002',
       reuseExistingServer: true,
       timeout: 60_000,

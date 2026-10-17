@@ -29,7 +29,7 @@
 
 import type { Db } from 'mongodb'
 import { randomUUID } from 'node:crypto'
-import { getTenantCollection } from '@agentoak/platform'
+import { getTenantCollection } from '@lifekeel/platform'
 import { isBillingV2Enabled } from './billing-constants.js'
 
 type LedgerEntryType =

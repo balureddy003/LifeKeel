@@ -1,5 +1,5 @@
 /**
- * FileIngestor — parse uploaded files (CSV, XLSX, JSON) into Kairos events.
+ * FileIngestor — parse uploaded files (CSV, XLSX, JSON) into LifeKeel events.
  *
  * Supports three ingest modes:
  *
@@ -7,7 +7,7 @@
  *     (invoice, payment, transaction, customer, order, …)
  *
  *  2. SCHEMA MAP   — caller provides { source_col: target_field } mapping
- *     so any spreadsheet shape can be mapped to Kairos fields
+ *     so any spreadsheet shape can be mapped to LifeKeel fields
  *
  *  3. RAW          — emit one event per row with all columns as data fields,
  *     letting the detector YAML do the field extraction
@@ -27,7 +27,7 @@ export type SupportedFormat = 'csv' | 'tsv' | 'xlsx' | 'xls' | 'json' | 'ndjson'
 export interface ColumnMapping {
   /** Source column name in the file */
   source: string
-  /** Target Kairos field (e.g. "amount_minor", "customer_id", "due_date") */
+  /** Target LifeKeel field (e.g. "amount_minor", "customer_id", "due_date") */
   target: string
   /** Optional transform */
   transform?: 'to_minor_units' | 'to_string' | 'to_number' | 'iso_date' | 'none'
@@ -68,7 +68,7 @@ export interface IngestSchema {
 
 // ── Column name normalisation ──────────────────────────────────────────────────
 
-/** Known column aliases → Kairos target field */
+/** Known column aliases → LifeKeel target field */
 const COLUMN_ALIASES: Record<string, string> = {
   // Amount / value
   amount: 'amount_minor',

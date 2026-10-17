@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kairos.io/schemas/shopify/orders.create/v1.0.0",
+  "$id": "https://lifekeel.io/schemas/shopify/orders.create/v1.0.0",
   "title": "Shopify Order Created Event",
   "description": "Schema for Shopify orders/create webhook events",
   "type": "object",
-  "kairos": {
+  "lifekeel": {
     "connector_id": "shopify",
     "event_type": "orders/create",
     "schema_version": "1.0.0",

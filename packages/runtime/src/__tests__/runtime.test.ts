@@ -3,7 +3,7 @@ import type {
   ActionReceipt,
   CapabilityProviderManifest,
   OutcomeContract,
-} from '@agentoak/specifications'
+} from '@lifekeel/specifications'
 import {
   CapabilityRegistry,
   InMemoryActionReceiptRepository,
@@ -13,7 +13,7 @@ import {
 
 function outcome(tenantId: string, id: string): OutcomeContract {
   return {
-    api_version: 'kairos.io/v1',
+    api_version: 'lifekeel.io/v1',
     kind: 'OutcomeContract',
     id,
     tenant_id: tenantId,
@@ -34,7 +34,7 @@ function outcome(tenantId: string, id: string): OutcomeContract {
 
 function manifest(id: string): CapabilityProviderManifest {
   return {
-    api_version: 'kairos.io/v1',
+    api_version: 'lifekeel.io/v1',
     kind: 'CapabilityProvider',
     id,
     version: '1.0.0',
@@ -83,7 +83,7 @@ describe('in-memory reference repositories', () => {
   it('enforces idempotency keys per tenant', async () => {
     const repository = new InMemoryActionReceiptRepository()
     const receipt: ActionReceipt = {
-      api_version: 'kairos.io/v1',
+      api_version: 'lifekeel.io/v1',
       kind: 'ActionReceipt',
       id: 'receipt-1',
       tenant_id: 'tenant-a',

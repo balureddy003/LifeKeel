@@ -2,7 +2,7 @@ import { AlertTriangle } from 'lucide-react'
 import { PageHeader } from '@/components/Glass'
 
 const EFFECTIVE_DATE = '[EFFECTIVE DATE — NOT YET SET]'
-const LEGAL_ENTITY = '[LEGAL ENTITY NAME, e.g. "Agent Oak, Inc."]'
+const LEGAL_ENTITY = '[LEGAL ENTITY NAME, e.g. "LifeKeel, Inc."]'
 const CONTACT_EMAIL = '[privacy@yourdomain.example]'
 
 function H2({ children }: { children: React.ReactNode }) {
@@ -30,7 +30,7 @@ export default function PrivacyPage() {
 
       <p className="text-xs text-ink-tertiary mb-1">Effective date: {EFFECTIVE_DATE}</p>
       <p className="text-xs text-ink-tertiary mb-6">
-        This Privacy Policy explains what {LEGAL_ENTITY} ("we," "us") collects when you use Agent Oak, why, and the
+        This Privacy Policy explains what {LEGAL_ENTITY} ("we," "us") collects when you use LifeKeel, why, and the
         choices you have.
       </p>
 
@@ -97,13 +97,13 @@ export default function PrivacyPage() {
 
       <H2>7. Children's privacy</H2>
       <P>
-        Agent Oak accounts are for adults (18+). A parent or guardian may list children as family members for
-        household visibility, but children do not create their own accounts or provide data directly to Agent Oak.
+        LifeKeel accounts are for adults (18+). A parent or guardian may list children as family members for
+        household visibility, but children do not create their own accounts or provide data directly to LifeKeel.
       </P>
 
       <H2>8. Local storage</H2>
       <P>
-        Agent Oak uses your browser or device's local storage (not third-party tracking cookies) to keep you signed
+        LifeKeel uses your browser or device's local storage (not third-party tracking cookies) to keep you signed
         in between visits.
       </P>
 

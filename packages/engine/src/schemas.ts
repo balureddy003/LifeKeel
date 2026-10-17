@@ -400,7 +400,7 @@ export interface EvaluationContext {
    * can thread `goal_id` into `feature_snapshot` — creating the durable link
    * from insight → goal that was previously missing. Only populated for
    * targets that came from a tenant's active goal (not built-in defaults).
-   * See buildGoalContext() in @agentoak/platform.
+   * See buildGoalContext() in @lifekeel/platform.
    */
   goal_id_by_metric?: Record<string, string>
   history?: RuleHistoryEntry[]         // sliding window state

@@ -45,20 +45,20 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build the API image
         uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/api/Dockerfile
           load: true
-          tags: agentoak-api:ci
+          tags: lifekeel-api:ci
           cache-from: type=gha,scope=api-image
           cache-to: type=gha,mode=max,scope=api-image
       - name: Tesseract is installed (local document OCR depends on it)
-        run: docker run --rm --entrypoint tesseract agentoak-api:ci --version
+        run: docker run --rm --entrypoint tesseract lifekeel-api:ci --version
       - name: Boot the image with deploy-like (empty) variables
-        run: SMOKE_IMAGE=agentoak-api:ci MONGODB_URL=mongodb://127.0.0.1:27017 REDIS_URL=redis://127.0.0.1:6379 scripts/boot-smoke.sh
+        run: SMOKE_IMAGE=lifekeel-api:ci MONGODB_URL=mongodb://127.0.0.1:27017 REDIS_URL=redis://127.0.0.1:6379 scripts/boot-smoke.sh
 
   local-judge-image:
     runs-on: ubuntu-latest
@@ -71,7 +71,7 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       # A tiny model keeps CI fast: this checks the Dockerfile and the bake mechanics, not model quality.
       - name: Build the Ollama image with a small model baked in
         uses: docker/build-push-action@v7
@@ -80,10 +80,10 @@ jobs:
           file: infra/local-judge/Dockerfile
           load: true
           build-args: MODEL=qwen2.5:0.5b
-          tags: agentoak-local-judge:ci
+          tags: lifekeel-local-judge:ci
       - name: The baked-in model is present and the server answers offline
         run: |
-          docker run -d --name judge -p 11434:11434 agentoak-local-judge:ci
+          docker run -d --name judge -p 11434:11434 lifekeel-local-judge:ci
           for i in $(seq 1 60); do curl -sf localhost:11434/api/version && break; sleep 2; done
           curl -sf localhost:11434/api/tags | tee /dev/stderr | grep -q 'qwen2.5:0.5b' || { docker logs judge; exit 1; }
 
@@ -98,7 +98,7 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       # BAKE_MODEL=false skips the ~1.7 GB model; the build still installs and IMPORTS gliner2, which is
       # what catches an undeclared dependency.
       - name: Build the encoder image (dependencies only)
@@ -108,8 +108,8 @@ jobs:
           file: infra/encoder-service/Dockerfile
           load: true
           build-args: BAKE_MODEL=false
-          tags: agentoak-encoder:ci
+          tags: lifekeel-encoder:ci
           cache-from: type=gha,scope=encoder-image
           cache-to: type=gha,mode=max,scope=encoder-image
       - name: Request-handling tests inside the real image
-        run: docker run --rm -v "$PWD/infra/encoder-service:/t" -w /t agentoak-encoder:ci python -m unittest test_server -v
+        run: docker run --rm -v "$PWD/infra/encoder-service:/t" -w /t lifekeel-encoder:ci python -m unittest test_server -v

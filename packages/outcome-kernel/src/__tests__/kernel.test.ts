@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { OutcomeContract } from '@agentoak/specifications'
+import type { OutcomeContract } from '@lifekeel/specifications'
 import {
   InvalidOutcomeTransitionError,
   assessOutcome,
@@ -10,7 +10,7 @@ import {
 
 function contract(): OutcomeContract {
   return {
-    api_version: 'kairos.io/v1',
+    api_version: 'lifekeel.io/v1',
     kind: 'OutcomeContract',
     id: 'goal-1',
     tenant_id: 'tenant-1',

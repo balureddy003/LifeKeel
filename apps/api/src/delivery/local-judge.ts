@@ -1,10 +1,10 @@
 import { z } from 'zod'
-import type { JudgeEvaluator, JudgeInput, JudgeScores } from '@agentoak/engine'
-import type { DecisionFn } from '@agentoak/platform'
+import type { JudgeEvaluator, JudgeInput, JudgeScores } from '@lifekeel/engine'
+import type { DecisionFn } from '@lifekeel/platform'
 
 /**
  * Judge evaluator backed by a small local model (see
- * @agentoak/platform createLocalDecisionFn). Asks yes/no checklist questions,
+ * @lifekeel/platform createLocalDecisionFn). Asks yes/no checklist questions,
  * which small models answer far more reliably than 1-5 scores, and maps them
  * deterministically onto the existing JudgeScores so MoveJudge.decide() is
  * unchanged. Runs entirely inside our infrastructure.

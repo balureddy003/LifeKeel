@@ -37,7 +37,7 @@ export async function sendEmailVerificationEmail(to: string, name: string, verif
   try {
     await sgMail.send({
       to,
-      from: { email: getFromEmail(), name: 'Kairos' },
+      from: { email: getFromEmail(), name: 'LifeKeel' },
       subject: 'Verify your email',
       text: `Hi ${firstName},\n\nPlease verify this email address for your LifeKeel account (link expires in 24 hours):\n${verifyUrl}\n\nIf you didn't request this, you can safely ignore this email.`,
       html: `
@@ -66,7 +66,7 @@ export async function sendPasswordResetEmail(to: string, name: string, resetUrl:
   try {
     await sgMail.send({
       to,
-      from: { email: getFromEmail(), name: 'Kairos' },
+      from: { email: getFromEmail(), name: 'LifeKeel' },
       subject: 'Reset your password',
       text: `Hi ${firstName},\n\nWe received a request to reset your password. Reset it here (link expires in 1 hour):\n${resetUrl}\n\nIf you didn't request this, you can safely ignore this email — your password won't change.`,
       html: `
@@ -98,7 +98,7 @@ export async function sendFamilyInviteEmail(to: string, name: string, familyName
   try {
     await sgMail.send({
       to,
-      from: { email: getFromEmail(), name: 'Kairos' },
+      from: { email: getFromEmail(), name: 'LifeKeel' },
       subject: `${familyName} invited you to LifeKeel`,
       text: `Hi ${firstName},\n\n${familyName} has set you up as a member of their family on LifeKeel. Accept the invitation to create your sign-in (link expires in 7 days):\n${inviteUrl}\n\nIf you weren't expecting this, you can safely ignore it — no account is created unless you accept.`,
       html: `
@@ -129,7 +129,7 @@ export async function sendContinuityCheckInEmail(to: string, name: string, daysI
   try {
     await sgMail.send({
       to,
-      from: { email: getFromEmail(), name: 'Kairos' },
+      from: { email: getFromEmail(), name: 'LifeKeel' },
       subject: 'Still there? A quick check-in for your family plan',
       text: `Hi ${firstName},\n\nYou set up a continuity check-in for your family on LifeKeel, and we haven't seen you in ${daysInactive} days. If everything's fine, just open the app — that resets the clock automatically:\n${appUrl}\n\nIf we don't hear from you, your designated family members will get a gentle nudge with your family's continuity plan.`,
       html: `
@@ -157,7 +157,7 @@ export async function sendContinuityAlertEmail(to: string, memberName: string, o
   try {
     await sgMail.send({
       to,
-      from: { email: getFromEmail(), name: 'Kairos' },
+      from: { email: getFromEmail(), name: 'LifeKeel' },
       subject: `${organizerName} asked us to check in — LifeKeel family continuity`,
       text: `Hi ${firstName},\n\n${organizerName} named you as a continuity contact for your family's LifeKeel plan. They haven't checked in for ${daysInactive} days, despite a reminder.\n\nThis is probably nothing — people get busy. But if something has happened, your family's emergency documents and plans are already in the vault you have access to:\n${appUrl}\n\nNo action is needed if ${organizerName} is fine — the moment they open the app, this alert clears itself.`,
       html: `
@@ -192,7 +192,7 @@ export async function sendHeartbeatEmail(
   try {
     await sgMail.send({
       to,
-      from: { email: getFromEmail(), name: 'Kairos' },
+      from: { email: getFromEmail(), name: 'LifeKeel' },
       subject: rendered.subject,
       // rendered.text/html are addressed generically ("Hi,") — prepend the
       // name in text so the email reads personally.

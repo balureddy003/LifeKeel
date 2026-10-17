@@ -1,5 +1,5 @@
 {
-  "name": "@agentoak/legacy-compat",
+  "name": "@lifekeel/legacy-compat",
   "version": "0.1.0",
   "description": "Compatibility adapters from legacy outcome models to the open outcome-kernel specifications",
   "type": "module",
@@ -19,7 +19,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@agentoak/specifications": "workspace:*"
+    "@lifekeel/specifications": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
