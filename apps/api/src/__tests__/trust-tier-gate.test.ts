@@ -100,7 +100,7 @@ describe('trust-tier gate on ConnectorActionExecutor', () => {
     'marketing/social-publisher.ts': 'X/Facebook publishing; gated by approved state, see social publishing tests',
     'routes/marketing-posts.ts': 'publishPost after approval, plus read-only engagement lookups',
     'routes/connector-credentials.ts':
-      'POST /connectors/:id/actions/:action runs any connector action for an authenticated tenant, with NO approval gate (known gap, see playbook G11)',
+      'POST /connectors/:id/actions/:action; read-only, any non-GET registry action is refused via connectors/action-gate.ts (playbook G11)',
   }
 
   it('only allow-listed files reference ConnectorActionExecutor', () => {
