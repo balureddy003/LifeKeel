@@ -30,7 +30,6 @@ import { recordInsightRouteError } from './metrics.js'
 import { sendOpsAlert } from '../lib/ops-alerts.js'
 import { ActionExecutor, previewActions } from '../actions/action-executor.js'
 import { recordMomentDecision } from '../verified-moments.js'
-import { startGoalExperimentsForApproval } from '../outcomes/causal-experiments.js'
 import { generateDraft } from '../insights/generate-draft.js'
 import { extractDraftProvenance } from '../insights/draft-provenance.js'
 import { isFamilyOrganizer } from '../lib/family-permissions.js'
@@ -712,7 +711,6 @@ export async function registerInsightRoutes(
             decision: 'approve',
             ...(actionReceiptIds.length > 0 ? { actionReceiptIds } : {}),
           })
-          await startGoalExperimentsForApproval(db, result, actionReceiptIds)
         }
 
         return {

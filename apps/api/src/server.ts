@@ -60,7 +60,6 @@ import { connectorSchemaRegistry } from '@lifekeel/workflows'
 import cron from 'node-cron'
 import { queueManager } from './queue/QueueManager.js'
 import { startWebhookWorker } from './queue/WebhookQueue.js'
-import { ApiReasoningContextBuilder } from './outcomes/reasoning-context-builder.js'
 import { RetentionWorker } from './jobs/retention-worker.js'
 import { InsightSlaWorker } from './jobs/insight-sla-worker.js'
 import { EscalationWorker } from './jobs/escalation-worker.js'
@@ -859,7 +858,6 @@ try {
   await scoreCalibrator.warmCache()
   // Wire calibrator into engine now that it's ready
   engine.options.calibrator = scoreCalibrator
-  engine.options.reasoningContextBuilder = new ApiReasoningContextBuilder(workflowDb)
   log.info({}, 'Score calibrator ready')
 
   // ── LLM scorer (D1b) ───────────────────────────────────────────────────────
