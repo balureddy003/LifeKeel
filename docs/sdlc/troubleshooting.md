@@ -77,7 +77,7 @@ then `git worktree remove ../wt-name`. A fresh worktree has no `node_modules`; r
 | `verify-ci` fails: "not in main's history" | You asked for a ref that is not on `main`. | Merge through a PR first. Hotfixes go through `main` too. |
 | `verify-ci` fails: "No successful CI run" | CI has not finished (or failed) on that exact commit. | Wait for `ci.yml` on `main`, or fix it. A squash creates a new commit that needs its own run. |
 | The deploy did not pause for approval | The `Production` environment has no required reviewers. Reviewers and branch protection need a repository plan that offers them (see playbook 6.0). | Treat approval as a convention until the plan or visibility changes. |
-| Local-judge deploy fails at the model eval step | The eval harness it runs (`apps/api/dist/eval/local-model-eval.js`) was removed by the dead-code cleanup. See playbook gap G15. | Restore it, or set `run_eval` to false and remove the step. |
+| Local-judge deploy fails at the model eval step with module-not-found | The eval harness it runs was removed by the PR 42 cleanup; PR 45 restores it. See playbook gap G15. | Deploy from a commit that includes PR 45, or set `run_eval` to false. |
 
 ## Hooks and Claude Code
 

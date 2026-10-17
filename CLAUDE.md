@@ -73,8 +73,9 @@ Concretely:
 
 ## How the rules are enforced
 
-Both rules have automated tripwires (advice scan + edit hook, trust-tier gate);
-they catch the obvious failure, a person owns the judgement. What each check is, where it lives and what it cannot catch:
+Both rules have automated tripwires (advice scan + edit hook, trust-tier gate,
+Ask Keel prompt contract); they catch the obvious failure, a person owns the
+judgement. What each check is, where it lives and what it cannot catch:
 [docs/ai-native-sdlc-playbook.md](docs/ai-native-sdlc-playbook.md#8-rules-to-enforcement).
 New work starts from `docs/templates/intent.md`; the PR template carries the
 tier and advice checkboxes; `.claude/skills/add-detector` is the detector recipe.

@@ -137,7 +137,7 @@ For any system prompt that touches family data:
    measuring how often the guard would have had to step in. Run it before changing the
    prompt or the model.
 
-> **State today:** the dead-code cleanup (PR 42) removed `apps/api/src/eval/`, which held the assistant contract test and adversarial eval. They can be restored with `git show 1ae5ddb^:apps/api/src/eval/assistant-eval.ts`. See playbook gap G15.
+> **History:** the dead-code cleanup (PR 42) removed `apps/api/src/eval/` because nothing imports those entry points statically; PR 45 restored it from `1ae5ddb^` and added `eval:assistant` / `eval:local-model` scripts so they read as used. If you add an eval entry point, give it a `package.json` script for the same reason. See playbook gap G15.
 
 ## 6. Add or change a GitHub workflow
 

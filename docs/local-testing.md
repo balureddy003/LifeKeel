@@ -14,7 +14,7 @@ run here.
 | `scripts/boot-smoke.sh` | **a bad deploy-time environment**: boots the built API with every optional deploy variable set to empty, as an unset repo variable is, and requires `/health/ready` | built API + MongoDB + Redis |
 | Python service tests | the encoder service's request handling | Python 3.11 (stdlib only) |
 | Image builds (`images.yml`) | a broken Dockerfile, a missing system package (Tesseract), an undeclared Python dependency, a model that was never baked in | Docker |
-| `local-model-eval.js` | whether a given Ollama model is safe to use as the judge / email classifier | a running Ollama | (harness removed in PR 42; see playbook gap G15)
+| `local-model-eval.js` | whether a given Ollama model is safe to use as the judge / email classifier | a running Ollama | (removed by the PR 42 cleanup, restored by PR 45; playbook gap G15)
 
 Unit tests never start the server. The boot smoke test exists because two real bugs got through
 them: a strict `true|false` setting rejected an empty deploy variable and crashed the API at boot, and

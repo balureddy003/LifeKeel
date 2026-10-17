@@ -177,8 +177,8 @@ prompt (eval).
 | Detector golden datasets | Each detector fires on the right cases, F1 = 1.0 | `detector-evals/*.yaml`, `family-detector-evals.test.ts` | CI |
 | Advice-rule test | Detector and playbook copy never recommends or names providers | `packages/engine/src/__tests__/advice-rule.test.ts` | CI and edit-time hook |
 | Trust-tier gate | Only known callers reach `ActionExecutor`; each names `approvedBy`; social posting needs a recorded approver | `apps/api/src/__tests__/trust-tier-gate.test.ts` | CI |
-| Prompt contract (removed with the dead-code cleanup, PR 42; see G15) | Ask Keel `SYSTEM_PROMPT` kept each guardrail clause | was `apps/api/src/eval/__tests__/assistant-eval.test.ts` | none today |
-| Adversarial LLM eval (removed with the same cleanup; see G15) | How often a real model's raw answers would be blocked | was `apps/api/src/eval/assistant-eval.ts` | none today |
+| Prompt contract (removed by the PR 42 cleanup, restored by PR 45; G15) | Ask Keel `SYSTEM_PROMPT` keeps each guardrail clause | `apps/api/src/eval/__tests__/assistant-eval.test.ts` | CI once PR 45 merges |
+| Adversarial LLM eval (removed by the PR 42 cleanup, restored by PR 45; G15) | How often a real model's raw answers would be blocked | `apps/api/src/eval/assistant-eval.ts` | Manual, before changing prompt or model |
 | Boot smoke | The built API starts with deploy-like env | `scripts/boot-smoke.sh` | CI |
 | Integration | Real Mongo/Redis behaviour | `ml-tenant-isolation.test.ts` | CI (fails locally without services; expected) |
 
@@ -197,7 +197,7 @@ flowchart TB
   subgraph Tests["Inside the test suite"]
     AR["advice-rule.test"]
     TT["trust-tier-gate.test"]
-    PC["prompt contract (removed, G15)"]
+    PC["assistant prompt contract"]
     GD["detector golden datasets"]
   end
   H --> AR
@@ -367,7 +367,7 @@ an operator notices, files an intent, and it re-enters at stage 1.
 | Rule | Prose | Automated | Residual risk (human) |
 |---|---|---|---|
 | Rule 1: no autonomous irreversible action without a gate | `CLAUDE.md`, ARCHITECTURE tiers | `trust-tier-gate.test.ts`; deploy gate | Caller naming `approvedBy` without a real human decision; new paths that bypass `ActionExecutor` |
-| Rule 2: no regulated advice or arranging | `CLAUDE.md` | `advice-rule.test.ts`, edit hook, runtime output guard (the prompt-contract test was removed in PR 42, G15) | Subtle phrasing; copy outside the scanned directories; new prompts |
+| Rule 2: no regulated advice or arranging | `CLAUDE.md` | `advice-rule.test.ts`, edit hook, runtime output guard (the prompt-contract test was removed by PR 42 and is restored by PR 45, G15) | Subtle phrasing; copy outside the scanned directories; new prompts |
 | Deploys are human-gated | `CLAUDE.md` | `require-ci.yml` (bypassable by editing the workflow on a branch); Environment reviewers **not active** on this plan | Everything: the gate is a convention until reviewers or branch protection are available |
 | Supply chain | `SECURITY.md` | `pnpm audit`, gitleaks, CodeQL, Dependabot | Moderate and low advisories (not blocking) |
 
@@ -422,7 +422,7 @@ an operator notices, files an intent, and it re-enters at stage 1.
 | G12 | Single maintainer: `CODEOWNERS` is one person | The human review gate is self-review | Add a second reviewer or document the accepted risk |
 | G13 | Advice scan covers detector, family playbook, `verticals/family`, marketing landing, guides and blog copy only; 8 other LLM prompt files have no contract test or eval | Subtle drift in uncovered prompts | Add contract tests per prompt as they change |
 | G14 | PRs bundle unrelated work (PR 35 spans rebrand, MFA and SDLC) | Weak review, painful merges | One concern per PR; enable auto-delete of merged branches |
-| G15 | The dead-code cleanup (PR 42) deleted all of `apps/api/src/eval/`: the Ask Keel prompt-contract test and adversarial eval, and `local-model-eval`, which `deploy-local-judge.yml` still runs when `run_eval` is true | The advice guardrail on the assistant prompt is no longer pinned; the local-judge deploy's eval step now fails | Decide: restore from `git show 1ae5ddb^:apps/api/src/eval/` (and its fixture `delivery/__fixtures__/labelled-judge-cases.ts`), or retire both and edit the workflow |
+| G15 | **Resolved by PR 45 once merged.** The dead-code cleanup (PR 42) deleted `apps/api/src/eval/` (the Ask Keel prompt-contract test and adversarial eval, and `local-model-eval`, which `deploy-local-judge.yml` runs when `run_eval` is true) because nothing imports those entry points statically | Without it the assistant guardrails were unpinned and the local-judge eval step failed | Restored from `1ae5ddb^`; `eval:assistant` and `eval:local-model` scripts in `apps/api/package.json` now reference the entry points. Remaining: run the adversarial eval once against a live model and record the baseline (see G4) |
 
 ## 11. One-time GitHub setup
 
