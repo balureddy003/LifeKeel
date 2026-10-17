@@ -18,6 +18,16 @@ jobs:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
+      # Without the key the action exits 'success' having reviewed nothing, which reads as
+      # a clean review. Fail loudly instead so a missing secret is never mistaken for a pass.
+      - name: Require ANTHROPIC_API_KEY
+        env:
+          KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error::ANTHROPIC_API_KEY is not set, so no review ran. Add the repo secret (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0

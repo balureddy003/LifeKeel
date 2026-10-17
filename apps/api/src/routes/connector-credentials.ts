@@ -28,6 +28,7 @@ import type { ConnectorLoader, EventGenerator } from '@lifekeel/pipeline'
 import type { Engine } from '@lifekeel/engine'
 import { fetchGmailAddress } from '../email/gmail-oauth.js'
 import { scanTenantInbox } from '../jobs/email-scan.js'
+import { classifyConnectorAction } from '../connectors/action-gate.js'
 
 // KEEL-002: this route accepted any connector id known to the shared,
 // multi-vertical connectorRegistry/connectorLoader (30+ connectors,
@@ -396,6 +397,18 @@ export function registerConnectorCredentialRoutes(
     Body: Record<string, unknown>
   }>('/connectors/:id/actions/:action', async (req, reply) => {
     const tenantId = req.authContext.tenant_id
+    // Read-only route: anything that is not exactly a registry GET action is refused (see connectors/action-gate.ts).
+    const actionClass = classifyConnectorAction(req.params.id, req.params.action)
+    if (actionClass === 'write') {
+      return reply.status(403).send({
+        ok: false,
+        error: 'action_requires_approval',
+        message: 'This action has external effects and cannot be run directly. It needs an explicit human approval flow.',
+      })
+    }
+    if (actionClass === 'unknown') {
+      return reply.status(404).send({ ok: false, error: 'unknown_action' })
+    }
     const result = await executor.execute(
       tenantId,
       req.params.id,
