@@ -48,7 +48,6 @@ export async function getDb(): Promise<Db> {
   await db.collection('events').createIndex({ tenant_id: 1, created_at: -1 }).catch(safeIndex)
   await db.collection('workflow_runs').createIndex({ tenant_id: 1, created_at: -1 }).catch(safeIndex)
   await db.collection('detectors').createIndex({ tenant_id: 1 }).catch(safeIndex)
-  await db.collection('tenants').createIndex({ tenant_id: 1 }).catch(safeIndex)
   await db.collection('tenants').createIndex({ id: 1 }).catch(safeIndex)
   // Event dedup
   await db.collection('events').createIndex({ tenant_id: 1, event_id: 1 }, { unique: true }).catch(safeIndex)
