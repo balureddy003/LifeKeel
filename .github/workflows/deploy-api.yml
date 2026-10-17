@@ -19,7 +19,19 @@ env:
   API_SERVICE: ${{ secrets.CLOUD_RUN_SERVICE_NAME || 'lifekeel-api' }}
 
 jobs:
+  verify-ci:
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/require-ci.yml
+    with:
+      ref: ${{ github.event.inputs.ref || 'main' }}
+
   deploy-api:
+    needs: verify-ci
+    # Required reviewers are configured on this GitHub Environment (Settings >
+    # Environments > production); the job pauses here until a person approves.
+    environment: production
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -27,7 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.inputs.ref || 'main' }}
+          ref: ${{ needs.verify-ci.outputs.sha }}
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
