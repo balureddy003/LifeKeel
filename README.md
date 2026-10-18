@@ -21,12 +21,20 @@ the original codebase and known deferred issues: [SECURITY.md](SECURITY.md).
 ```
 apps/web      Next.js frontend — @lifekeel/web
 apps/api      Fastify backend  — @lifekeel/api
+apps/mobile   Capacitor native shell — @lifekeel/mobile (not built by root scripts)
 packages/*    Shared libraries (engine, platform, connector pipeline, ...)
 ```
 
+New here? Start with [CONTRIBUTING.md](CONTRIBUTING.md) (the whole loop on one page) and the
+[docs index](docs/README.md). AI agent mechanics, verification commands, and gotchas: `.devin/AGENTS.md`.
+
 ## Quick start
 
+Needs Node 22.12 or newer and pnpm (`corepack enable` picks the pinned 8.15.5). Start MongoDB
+and Redis first; the API will not boot without them:
+
 ```bash
+docker compose -f apps/api/docker-compose.yml up -d
 pnpm install
 cp .env.example .env               # apps/api — needs JWT_SECRET, MONGODB_URL
 cp apps/web/.env.example apps/web/.env   # apps/web — NEXT_PUBLIC_API_URL
@@ -35,14 +43,13 @@ pnpm --filter @lifekeel/api dev    # http://localhost:3001
 pnpm --filter @lifekeel/web dev    # http://localhost:3002
 ```
 
-Or from repo root, across the whole workspace:
+Before you open a PR, from the repo root (this runs everything CI runs):
 
 ```bash
-pnpm typecheck && pnpm lint && pnpm test && pnpm build
+pnpm check        # typecheck + lint + test + build
 ```
 
-`apps/api/docker-compose.yml` starts a local MongoDB + Redis if you don't
-have them running already.
+Making a change? [CONTRIBUTING.md](CONTRIBUTING.md) has the fast path for small changes.
 
 ## Local debugging
 
@@ -73,3 +80,9 @@ points at a shared external backend (`NEXT_PUBLIC_API_URL`) rather than this
 repo's own `apps/api`, which isn't deployed yet. See `ARCHITECTURE.md`'s
 "where the vision meets reality today" table for exactly what's built versus
 planned.
+
+## Licence
+
+Proprietary, source visible: you may read the code on GitHub; you may not copy, run, modify, host or
+build on it without written permission. See [LICENSE](LICENSE); third-party components are listed in
+[NOTICE](NOTICE). To ask for a licence: hello@lifekeel.co.uk.

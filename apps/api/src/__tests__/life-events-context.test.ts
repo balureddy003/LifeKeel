@@ -8,7 +8,10 @@ const signalsCol = {
   find: (filter: Record<string, unknown>) => ({
     sort: () => ({
       toArray: async () =>
-        signalRows.filter((r) => r['tenant_id'] === filter['tenant_id'] && r['signal_type'] === filter['signal_type']),
+        signalRows.filter(
+          (r) =>
+            r['tenant_id'] === filter['tenant_id'] && r['signal_type'] === filter['signal_type'],
+        ),
     }),
   }),
   findOne: async (filter: Record<string, unknown>) =>
@@ -20,13 +23,18 @@ const signalsCol = {
     ) ?? null,
   createIndex: vi.fn(async () => ({})),
   updateOne: vi.fn(
-    async (filter: Record<string, unknown>, update: Record<string, unknown>, opts?: { upsert?: boolean }) => {
+    async (
+      filter: Record<string, unknown>,
+      update: Record<string, unknown>,
+      opts?: { upsert?: boolean },
+    ) => {
       const row = signalRows.find((r) => matches(r, filter))
       if (row) {
         Object.assign(row, update.$set)
         return { matchedCount: 1 }
       }
-      if (opts?.upsert) signalRows.push({ ...(update.$setOnInsert as object), ...(update.$set as object) })
+      if (opts?.upsert)
+        signalRows.push({ ...(update.$setOnInsert as object), ...(update.$set as object) })
       return { matchedCount: 0, upsertedCount: opts?.upsert ? 1 : 0 }
     },
   ),
@@ -49,12 +57,19 @@ const fakeDb = {
       }
     }
     if (name === 'insight_attribution') {
-      return { updateOne: vi.fn(async () => ({})), find: () => ({ sort: () => ({ limit: () => ({ toArray: async () => [] }) }) }) }
+      return {
+        updateOne: vi.fn(async () => ({})),
+        find: () => ({ sort: () => ({ limit: () => ({ toArray: async () => [] }) }) }),
+      }
     }
     // family_groups / insights / anything else the route's helpers touch.
     return {
       findOne: async () => null,
-      find: () => ({ project: () => ({ limit: () => ({ toArray: async () => [] }) }), limit: () => ({ toArray: async () => [] }), toArray: async () => [] }),
+      find: () => ({
+        project: () => ({ limit: () => ({ toArray: async () => [] }) }),
+        limit: () => ({ toArray: async () => [] }),
+        toArray: async () => [],
+      }),
       updateOne: vi.fn(async () => ({})),
       createIndex: vi.fn(async () => ({})),
     }
@@ -64,17 +79,27 @@ const fakeDb = {
 vi.mock('../db.js', () => ({
   getDb: async () => fakeDb,
   getSignalsCollection: async () => signalsCol,
-  getLifeChangeNudgeStateCollection: () => ({ findOne: async () => null, updateOne: vi.fn(async () => ({})) }),
-  getFamilyFinancialProfileCollection: () => ({ createIndex: vi.fn(() => Promise.resolve('')), findOne: async () => null }),
+  getLifeChangeNudgeStateCollection: () => ({
+    findOne: async () => null,
+    updateOne: vi.fn(async () => ({})),
+  }),
+  getFamilyFinancialProfileCollection: () => ({
+    createIndex: vi.fn(() => Promise.resolve('')),
+    findOne: async () => null,
+  }),
 }))
 vi.mock('../local-model.js', () => ({ familyDataLlmFromEnv: () => null }))
-vi.mock('../life-events/vault-reminder.js', () => ({ maybeSendVaultReminder: vi.fn(async () => {}) }))
+vi.mock('../life-events/vault-reminder.js', () => ({
+  maybeSendVaultReminder: vi.fn(async () => {}),
+}))
 vi.mock('../audit/audit-log.js', () => ({ getAuditLogger: () => null }))
 vi.mock('../lib/schema-registry.js', () => ({
   getSchemaRegistry: () => ({ validate: () => ({ valid: true, errors: [], warnings: [] }) }),
 }))
-vi.mock('../lib/signal-enricher.js', () => ({
-  getSignalEnricher: () => ({ enrich: async (data: Record<string, unknown>) => ({ enriched: data, enrichment_metadata: {} }) }),
+vi.mock('../connectors/signal-enricher.js', () => ({
+  getSignalEnricher: () => ({
+    enrich: async (data: Record<string, unknown>) => ({ enriched: data, enrichment_metadata: {} }),
+  }),
 }))
 
 const { registerLifeEventRoutes } = await import('../routes/life-events.js')
@@ -89,12 +114,15 @@ async function build() {
 }
 
 describe('life-event free-text context (G6)', () => {
-  it('stores and returns the reporter\'s context verbatim', async () => {
+  it("stores and returns the reporter's context verbatim", async () => {
     const app = await build()
     const res = await app.inject({
       method: 'POST',
       url: '/family/life-events',
-      payload: { event_type: 'medical', context: "  Mum's at County Hospital — kids need pickup Thursday.  " },
+      payload: {
+        event_type: 'medical',
+        context: "  Mum's at County Hospital — kids need pickup Thursday.  ",
+      },
     })
     expect(res.statusCode).toBe(201)
     const body = res.json()
@@ -112,7 +140,11 @@ describe('life-event free-text context (G6)', () => {
 
   it('omits context when not provided — response carries null, doc carries nothing', async () => {
     const app = await build()
-    const res = await app.inject({ method: 'POST', url: '/family/life-events', payload: { event_type: 'job_loss' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/life-events',
+      payload: { event_type: 'job_loss' },
+    })
     expect(res.statusCode).toBe(201)
     expect(res.json().context).toBeNull()
     const stored = signalRows.find((r) => r['id'] === res.json().id)!

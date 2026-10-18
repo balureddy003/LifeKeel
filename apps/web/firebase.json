@@ -1,43 +1,137 @@
 {
-  "hosting": {
-    "target": "family",
-    "public": "out",
-    "ignore": ["firebase.json", "**/.git", "**/node_modules/**"],
-    "rewrites": [
-      { "source": "/api/**", "run": { "serviceId": "lifekeel-api", "region": "us-central1" } },
-      { "source": "/auth/callback", "destination": "/auth/callback/index.html" },
-      { "source": "/auth/callback/", "destination": "/auth/callback/index.html" },
-      { "source": "/member/**", "destination": "/member/placeholder/index.html" },
-      { "source": "/asset/**", "destination": "/asset/placeholder/index.html" },
-      { "source": "/documents/**", "destination": "/documents/placeholder/index.html" },
-      { "source": "/insights/**", "destination": "/insights/placeholder/index.html" },
-      { "source": "/events/**", "destination": "/events/placeholder/index.html" },
-      { "source": "/life-events/**", "destination": "/life-events/placeholder/index.html" },
-      { "source": "/health/**", "destination": "/health/placeholder/index.html" },
-      { "source": "/blog/**", "destination": "/blog/placeholder/index.html" },
-      { "source": "/operator/users/**", "destination": "/operator/users/placeholder/index.html" },
-      { "source": "**", "destination": "/index.html" }
-    ],
-    "headers": [
-      {
-        "source": "**",
-        "headers": [
-          { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
-          {
-            "key": "Content-Security-Policy",
-            "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://*.run.app; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests"
-          },
-          { "key": "X-Frame-Options", "value": "DENY" },
-          { "key": "X-Content-Type-Options", "value": "nosniff" },
-          { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-          { "key": "Permissions-Policy", "value": "geolocation=(), camera=(), microphone=(), payment=(), usb=(), interest-cohort=()" },
-          { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" }
-        ]
-      },
-      {
-        "source": "/_next/static/**",
-        "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
-      }
-    ]
-  }
+  "hosting": [
+    {
+      "target": "family",
+      "public": "out",
+      "ignore": ["firebase.json", "**/.git", "**/node_modules/**"],
+      "rewrites": [
+        { "source": "/api/**", "run": { "serviceId": "lifekeel-api", "region": "us-central1" } },
+        { "source": "/auth/callback", "destination": "/auth/callback/index.html" },
+        { "source": "/auth/callback/", "destination": "/auth/callback/index.html" },
+        { "source": "/member/**", "destination": "/member/placeholder/index.html" },
+        { "source": "/asset/**", "destination": "/asset/placeholder/index.html" },
+        { "source": "/documents/**", "destination": "/documents/placeholder/index.html" },
+        { "source": "/insights/**", "destination": "/insights/placeholder/index.html" },
+        { "source": "/events/**", "destination": "/events/placeholder/index.html" },
+        { "source": "/life-events/**", "destination": "/life-events/placeholder/index.html" },
+        { "source": "/health/**", "destination": "/health/placeholder/index.html" },
+        { "source": "/blog/**", "destination": "/blog/placeholder/index.html" },
+        { "source": "/operator/users/**", "destination": "/operator/users/placeholder/index.html" },
+        { "source": "**", "destination": "/index.html" }
+      ],
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://api.lifekeel.co.uk https://api.lifekeel.si https://app.lifekeel.co.uk https://app.lifekeel.si https://*.run.app; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests"
+            },
+            { "key": "X-Frame-Options", "value": "DENY" },
+            { "key": "X-Content-Type-Options", "value": "nosniff" },
+            { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+            {
+              "key": "Permissions-Policy",
+              "value": "geolocation=(), camera=(), microphone=(), payment=(), usb=(), interest-cohort=()"
+            },
+            {
+              "key": "Strict-Transport-Security",
+              "value": "max-age=63072000; includeSubDomains; preload"
+            }
+          ]
+        },
+        {
+          "source": "/_next/static/**",
+          "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+        }
+      ]
+    },
+    {
+      "target": "landing-uk",
+      "public": "out",
+      "ignore": ["firebase.json", "**/.git", "**/node_modules/**"],
+      "redirects": [
+        {
+          "regex": "^(/(?:assistant|assets?|audit-log|auth|cashflow|connect|documents|events|family|family-setup|finances|financial-profile|health|inbox|insights|invite|legacy|life-events|login|map|marketing|member|operator|reset-password|settings|signup|upgrade|upload|vault|verify-email|welcome)(?:/.*)?)$",
+          "destination": "https://app.lifekeel.co.uk:1",
+          "type": 302
+        }
+      ],
+      "rewrites": [
+        { "source": "/api/**", "run": { "serviceId": "lifekeel-api", "region": "us-central1" } },
+        { "source": "**", "destination": "/index.html" }
+      ],
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://api.lifekeel.co.uk https://api.lifekeel.si https://app.lifekeel.co.uk https://app.lifekeel.si https://*.run.app; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests"
+            },
+            { "key": "X-Frame-Options", "value": "DENY" },
+            { "key": "X-Content-Type-Options", "value": "nosniff" },
+            { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+            {
+              "key": "Permissions-Policy",
+              "value": "geolocation=(), camera=(), microphone=(), payment=(), usb=(), interest-cohort=()"
+            },
+            {
+              "key": "Strict-Transport-Security",
+              "value": "max-age=63072000; includeSubDomains; preload"
+            }
+          ]
+        },
+        {
+          "source": "/_next/static/**",
+          "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+        }
+      ]
+    },
+    {
+      "target": "landing-si",
+      "public": "out",
+      "ignore": ["firebase.json", "**/.git", "**/node_modules/**"],
+      "redirects": [
+        {
+          "regex": "^(/(?:assistant|assets?|audit-log|auth|cashflow|connect|documents|events|family|family-setup|finances|financial-profile|health|inbox|insights|invite|legacy|life-events|login|map|marketing|member|operator|reset-password|settings|signup|upgrade|upload|vault|verify-email|welcome)(?:/.*)?)$",
+          "destination": "https://app.lifekeel.si:1",
+          "type": 302
+        }
+      ],
+      "rewrites": [
+        { "source": "/api/**", "run": { "serviceId": "lifekeel-api", "region": "us-central1" } },
+        { "source": "**", "destination": "/index.html" }
+      ],
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://api.lifekeel.co.uk https://api.lifekeel.si https://app.lifekeel.co.uk https://app.lifekeel.si https://*.run.app; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests"
+            },
+            { "key": "X-Frame-Options", "value": "DENY" },
+            { "key": "X-Content-Type-Options", "value": "nosniff" },
+            { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+            {
+              "key": "Permissions-Policy",
+              "value": "geolocation=(), camera=(), microphone=(), payment=(), usb=(), interest-cohort=()"
+            },
+            {
+              "key": "Strict-Transport-Security",
+              "value": "max-age=63072000; includeSubDomains; preload"
+            }
+          ]
+        },
+        {
+          "source": "/_next/static/**",
+          "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+        }
+      ]
+    }
+  ]
 }

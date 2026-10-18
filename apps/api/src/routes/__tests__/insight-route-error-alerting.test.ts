@@ -19,7 +19,7 @@ vi.mock('../metrics.js', () => ({
   recordInsightRouteError: (route: string) => recordInsightRouteErrorMock(route),
 }))
 
-vi.mock('../../lib/ops-alerts.js', () => ({
+vi.mock('../../operator/ops-alerts.js', () => ({
   sendOpsAlert: (opts: Record<string, unknown>) => sendOpsAlertMock(opts),
 }))
 

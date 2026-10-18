@@ -58,7 +58,7 @@ const REJECTION_MEMORY_DOC_LIMIT = 20
 type LlmFn = (system: string, prompt: string, model: string) => Promise<string>
 
 // ── MongoDB structural type (no hard dep on mongodb package) ──────────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type MongoDb = { collection: (name: string) => any }
 
 // ── Public types ───────────────────────────────────────────────────────────────

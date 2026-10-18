@@ -26,6 +26,7 @@ permissions:
 jobs:
   api-image:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       mongodb:
         image: mongo:7
@@ -62,6 +63,7 @@ jobs:
 
   local-judge-image:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       # The Ollama base image alone is ~4 GB unpacked and `load: true` stores it twice (buildx cache
       # plus the Docker image store); the default runner runs out of disk. Drop preinstalled toolchains
@@ -89,6 +91,7 @@ jobs:
 
   encoder-image:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       # The Ollama base image alone is ~4 GB unpacked and `load: true` stores it twice (buildx cache
       # plus the Docker image store); the default runner runs out of disk. Drop preinstalled toolchains

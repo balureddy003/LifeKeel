@@ -7,7 +7,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import type { Db } from 'mongodb'
-import { sendOpsAlert } from '../lib/ops-alerts.js'
+import { sendOpsAlert } from '../operator/ops-alerts.js'
 
 export interface WeeklyDigestDoc {
   id: string
@@ -51,13 +51,22 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
     db.collection('leads').countDocuments({ stage: 'new' }),
     db.collection('leads').countDocuments({ created_at: { $gte: weekAgo } }),
     db.collection('operator_alerts').countDocuments({ status: 'open' }),
-    db.collection('autopilot_actions').countDocuments({ status: 'executed', created_at: { $gte: weekAgo } }),
+    db
+      .collection('autopilot_actions')
+      .countDocuments({ status: 'executed', created_at: { $gte: weekAgo } }),
     db.collection('autopilot_actions').countDocuments({ status: 'proposed' }),
-    db.collection('marketing_posts').countDocuments({ state: 'published', published_at: { $gte: weekAgo } }),
-    db.collection('lifecycle_sends').countDocuments({ status: 'sent', created_at: { $gte: weekAgo } }),
-    db.collection('growth_events').countDocuments({ event: 'upgrade_intent', created_at: { $gte: weekAgo } }),
+    db
+      .collection('marketing_posts')
+      .countDocuments({ state: 'published', published_at: { $gte: weekAgo } }),
+    db
+      .collection('lifecycle_sends')
+      .countDocuments({ status: 'sent', created_at: { $gte: weekAgo } }),
+    db
+      .collection('growth_events')
+      .countDocuments({ event: 'upgrade_intent', created_at: { $gte: weekAgo } }),
     // utm_medium=social signups this week → top promoted slug.
-    db.collection('users')
+    db
+      .collection('users')
       .find(
         { created_at: { $gte: weekAgo }, 'attribution.utm_medium': 'social' },
         { projection: { _id: 0, 'attribution.utm_content': 1 } },
@@ -92,9 +101,12 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
   // returned digest free of Mongo internals.
   await db.collection('operator_digests').insertOne({ ...digest })
 
-  const signupDelta = signupsPrev7d === 0
-    ? (signups7d > 0 ? 'new' : 'flat')
-    : `${signups7d >= signupsPrev7d ? '+' : ''}${Math.round(((signups7d - signupsPrev7d) / signupsPrev7d) * 100)}% WoW`
+  const signupDelta =
+    signupsPrev7d === 0
+      ? signups7d > 0
+        ? 'new'
+        : 'flat'
+      : `${signups7d >= signupsPrev7d ? '+' : ''}${Math.round(((signups7d - signupsPrev7d) / signupsPrev7d) * 100)}% WoW`
   const lines = [
     `Signups: ${signups7d} (${signupDelta})`,
     `Leads: ${leads7d} new this week · ${leadsNew} waiting in "new"`,

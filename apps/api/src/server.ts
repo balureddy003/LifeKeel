@@ -34,46 +34,94 @@ import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
 import { ZodTypeProvider, jsonSchemaTransform } from 'fastify-type-provider-zod'
 import { Engine, type Insight, setSchemaRegistry } from '@lifekeel/engine'
-import { ConnectorLoader, EventGenerator } from '@lifekeel/pipeline'
-import { AuthService, canPerform, extractBearerToken, enforceQuota, getAllCircuitBreakers, QuotaExceededError, validateLicenseKey, createLogger, initTelemetry, type ProductAction, type ProductResource } from '@lifekeel/platform'
+import {
+  ConnectorLoader,
+  EventGenerator,
+  ConnectorSyncEngine,
+  TokenRefreshScheduler,
+} from '@lifekeel/pipeline'
+import {
+  AuthService,
+  canPerform,
+  extractBearerToken,
+  enforceQuota,
+  getAllCircuitBreakers,
+  QuotaExceededError,
+  validateLicenseKey,
+  createLogger,
+  initTelemetry,
+  type ProductAction,
+  type ProductResource,
+} from '@lifekeel/platform'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { registerInsightRoutes, cleanupStaleInsightsStartup } from './routes/insights.js'
-import { recordApiRequest, registerMetricsRoutes, recordLlmCacheHitMiss, buildFeatureHashScorerMetrics } from './routes/metrics.js'
+import {
+  recordApiRequest,
+  registerMetricsRoutes,
+  recordLlmCacheHitMiss,
+  buildFeatureHashScorerMetrics,
+} from './routes/metrics.js'
 import { initAuditLogger } from './audit/audit-log.js'
 import { registerAuthUserRoutes } from './routes/auth-users.js'
-import { clearSessionCookie, isOriginAllowedForCookieAuth, readSessionCookie } from './lib/session-cookie.js'
-import { registerSocialAuthRoutes } from './routes/auth-social.js'
-import { createLlmRouterFromEnv, LlmResponseCache, MongoLlmCacheStore, LlmBudgetGuard, LocalEmbeddingProvider } from '@lifekeel/platform'
 import {
-  ScoreCalibrator, IntentClassifier,
-  NoveltyTracker, ChangePointDetector, FeatureHashScorer, TenantLevelScorer,
+  clearSessionCookie,
+  isOriginAllowedForCookieAuth,
+  readSessionCookie,
+} from './auth/session-cookie.js'
+import { registerSocialAuthRoutes } from './routes/auth-social.js'
+import {
+  createLlmRouterFromEnv,
+  LlmResponseCache,
+  MongoLlmCacheStore,
+  LlmBudgetGuard,
+  LocalEmbeddingProvider,
+} from '@lifekeel/platform'
+import {
+  ScoreCalibrator,
+  IntentClassifier,
+  NoveltyTracker,
+  ChangePointDetector,
+  FeatureHashScorer,
+  TenantLevelScorer,
 } from '@lifekeel/engine'
 import { ApiLlmScorer } from './llm-scorer.js'
 import { registerConnectorCredentialRoutes } from './routes/connector-credentials.js'
 import { DeliveryRouter } from './delivery/delivery-router.js'
 import { createMoveJudge } from './delivery/move-judge.js'
 import { localDecisionFromEnv } from './local-model.js'
-import { ConnectorSyncEngine, TokenRefreshScheduler } from '@lifekeel/pipeline'
 import { connectorSchemaRegistry } from '@lifekeel/workflows'
 import cron from 'node-cron'
 import { queueManager } from './queue/QueueManager.js'
 import { startWebhookWorker } from './queue/WebhookQueue.js'
-import { ApiReasoningContextBuilder } from './outcomes/reasoning-context-builder.js'
 import { RetentionWorker } from './jobs/retention-worker.js'
 import { InsightSlaWorker } from './jobs/insight-sla-worker.js'
 import { EscalationWorker } from './jobs/escalation-worker.js'
 import { createCredentialExpiryInsights } from './jobs/connector-health-alert.js'
-import { scanAllConnectedInboxes, enqueueConnectedInboxScans, runQueuedInboxScan, EMAIL_SCAN_QUEUE } from './jobs/email-scan.js'
+import {
+  scanAllConnectedInboxes,
+  enqueueConnectedInboxScans,
+  runQueuedInboxScan,
+  EMAIL_SCAN_QUEUE,
+} from './jobs/email-scan.js'
 import { retryFailedDocuments } from './ocr/retry-failed.js'
-import { withCronLock, acquireCronLock, releaseCronLock, ensureCronLockIndex } from './jobs/cron-lock.js'
+import {
+  withCronLock,
+  acquireCronLock,
+  releaseCronLock,
+  ensureCronLockIndex,
+} from './jobs/cron-lock.js'
 import { registerApiVersioning, rewriteVersionedUrl } from './api-versioning.js'
 import { registerBillingRoutes } from './routes/billing.js'
 import { registerBlogRoutes } from './routes/blog.js'
 import { persistAndDeliverInsights as persistAndDeliverInsightsCore } from './insights-persist.js'
 import { deploymentConfig, logDeploymentMode } from './config/deployment.js'
-import { addSandboxContext, sandboxMiddleware, sandboxWriteMiddleware } from './middleware/sandbox.js'
+import {
+  addSandboxContext,
+  sandboxMiddleware,
+  sandboxWriteMiddleware,
+} from './middleware/sandbox.js'
 import { registerCaseStudyRoutes } from './routes/case-studies.js'
 import { registerDocumentRoutes } from './routes/documents.js'
 import { registerVaultRoutes } from './routes/vault.js'
@@ -91,7 +139,12 @@ import { runChecklistReminderSweep } from './life-events/checklist-reminder.js'
 import { registerFamilyInboxRoutes } from './routes/family-inbox.js'
 import { registerPushRoutes } from './routes/push.js'
 import { registerReminderRoutes } from './routes/reminders.js'
-import { registerMarketingPostRoutes, publishDueMarketingPosts, generateDailyMarketingDrafts, pollMarketingEngagement } from './routes/marketing-posts.js'
+import {
+  registerMarketingPostRoutes,
+  publishDueMarketingPosts,
+  generateDailyMarketingDrafts,
+  pollMarketingEngagement,
+} from './routes/marketing-posts.js'
 import { runMetricsRollup } from './jobs/metrics-rollup.js'
 import { runWeeklyDigest } from './operator/weekly-digest.js'
 import { runLifecycleSweep } from './marketing/lifecycle-emails.js'
@@ -100,7 +153,10 @@ import { socialPublisherFromEnv, DbSocialPublisher } from './marketing/social-pu
 import { registerOperatorRoutes } from './routes/operator.js'
 import { getPlatformConfig, registerPublicStatusRoute } from './operator/platform-config.js'
 import { registerDetectorEvalRoutes, detectorEvalDir } from './routes/detector-evals.js'
-import { ensureReminderIndexes, runPolicyRenewalReminders } from './jobs/policy-renewal-reminders.js'
+import {
+  ensureReminderIndexes,
+  runPolicyRenewalReminders,
+} from './jobs/policy-renewal-reminders.js'
 import { runMemberAgentLoop } from './jobs/member-agent-loop.js'
 import { runStaleProfileEvaluationSweep } from './jobs/stale-profile-evaluation.js'
 import { ensureMemberNudgeIndexes } from './member-nudges.js'
@@ -122,8 +178,8 @@ import { registerFamilyLegacyRoutes } from './routes/family-legacy.js'
 import { registerLeadRoutes } from './routes/leads.js'
 import { registerShareRoutes } from './routes/share.js'
 import { registerSendgridWebhookRoutes } from './routes/webhooks-sendgrid.js'
-import { sendOpsAlert } from './lib/ops-alerts.js'
-import { registerFamilySignalSchemas } from './lib/family-signal-schemas.js'
+import { sendOpsAlert } from './operator/ops-alerts.js'
+import { registerFamilySignalSchemas } from './family/family-signal-schemas.js'
 
 // Inject the connector schema registry so the engine can validate event schema compatibility.
 setSchemaRegistry(connectorSchemaRegistry)
@@ -169,7 +225,10 @@ if (process.env['NODE_ENV'] === 'production' && jwtSecret.length < 32) {
 }
 const auth = new AuthService(jwtSecret || 'change-me-in-production')
 if (process.env['LIFEKEEL_LICENSE_KEY'] && process.env['LIFEKEEL_LICENSE_PUBLIC_KEY']) {
-  const license = await validateLicenseKey(process.env['LIFEKEEL_LICENSE_KEY'], process.env['LIFEKEEL_LICENSE_PUBLIC_KEY'])
+  const license = await validateLicenseKey(
+    process.env['LIFEKEEL_LICENSE_KEY'],
+    process.env['LIFEKEEL_LICENSE_PUBLIC_KEY'],
+  )
   if (license.expired && !license.grace_period) process.env['LIFEKEEL_EDITION'] = 'busl'
 }
 // LLM function available module-wide for the goal compiler and other routes
@@ -188,8 +247,22 @@ try {
   // Self-hosted judge model (infra/local-judge): when configured, no insight text
   // is sent to a cloud LLM and the judge spends no tokens.
   const localJudge = localDecisionFromEnv('judge')
-  log.info({ judge: localJudge ? (process.env['JUDGE_SHADOW'] === 'true' ? 'cloud-with-local-shadow' : 'local') : 'llm' }, 'Move judge backend')
-  deliveryRouter = new DeliveryRouter(workflowDb, createMoveJudge(globalLlmFn, workflowDb, localJudge, { shadow: process.env['JUDGE_SHADOW'] === 'true' }))
+  log.info(
+    {
+      judge: localJudge
+        ? process.env['JUDGE_SHADOW'] === 'true'
+          ? 'cloud-with-local-shadow'
+          : 'local'
+        : 'llm',
+    },
+    'Move judge backend',
+  )
+  deliveryRouter = new DeliveryRouter(
+    workflowDb,
+    createMoveJudge(globalLlmFn, workflowDb, localJudge, {
+      shadow: process.env['JUDGE_SHADOW'] === 'true',
+    }),
+  )
   // KEEL-003: every cron.schedule job below runs under this lock, keyed by
   // its own name — deploy-api.yml allows up to 4 Cloud Run replicas, and
   // without this, two replicas racing the same job could both act on the
@@ -199,7 +272,7 @@ try {
   // One-time cleanup: archive stale pre-fix insight records (A1/A2/A3
   // patterns) that are still live on Home. Runs in the background —
   // doesn't block startup. Safe to run multiple times (idempotent).
-  cleanupStaleInsightsStartup(workflowDb).catch(err =>
+  cleanupStaleInsightsStartup(workflowDb).catch((err) =>
     log.error({ err }, 'Startup stale-insight cleanup failed'),
   )
 
@@ -211,44 +284,59 @@ try {
   // insight's detector to a workflow YAML and enqueueing it) was removed
   // 2026-09-12 along with the rest of the dead WorkflowEngine/WorkflowLoader
   // machinery — see ARCHITECTURE.md.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const syncEngine = new ConnectorSyncEngine(workflowDb as any, eventGenerator, engine,
+
+  const syncEngine = new ConnectorSyncEngine(
+    workflowDb as any,
+    eventGenerator,
+    engine,
     async (insights, tenantId) => {
       if (!deliveryRouter) return
       await Promise.allSettled(
-        insights.map(insight => deliveryRouter!.deliver(insight as unknown as Record<string, unknown>, tenantId)),
+        insights.map((insight) =>
+          deliveryRouter!.deliver(insight as unknown as Record<string, unknown>, tenantId),
+        ),
       )
     },
   )
 
   // Token refresh every 10 minutes — refreshes tokens expiring within 30 min
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const tokenRefresher = new TokenRefreshScheduler(workflowDb as any)
   tokenRefresher.start(10 * 60 * 1000)
   log.info({}, 'Token refresh scheduler started')
 
   // Connector poll every 15 minutes — incremental sync of all connected tenants
-  cron.schedule('*/15 * * * *', async () => {
-    try {
-      await withCronLock(workflowDb, 'connector-sync', () => syncEngine.pollAll(connectorLoader.list()))
-    } catch (err) {
-      log.error({ err }, 'Connector poll failed')
-    }
-  }, { missedExecutionTolerance: 30_000, noOverlap: true })
+  cron.schedule(
+    '*/15 * * * *',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'connector-sync', () =>
+          syncEngine.pollAll(connectorLoader.list()),
+        )
+      } catch (err) {
+        log.error({ err }, 'Connector poll failed')
+      }
+    },
+    { missedExecutionTolerance: 30_000, noOverlap: true },
+  )
   log.info({}, 'Connector sync cron started')
 
   // Connector credential-health alert — runs shortly after each poll so tenants
   // are notified immediately when an API key expires or is revoked in the
   // background. Creates a deduplicated high-urgency insight per tenant+connector.
-  cron.schedule('*/15 * * * *', async () => {
-    try {
-      await withCronLock(workflowDb, 'connector-health', async () => {
-        await createCredentialExpiryInsights({ db: workflowDb, lookbackMs: 20 * 60 * 1000 })
-      })
-    } catch (err) {
-      log.error({ err }, 'Connector health alert failed')
-    }
-  }, { missedExecutionTolerance: 30_000 })
+  cron.schedule(
+    '*/15 * * * *',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'connector-health', async () => {
+          await createCredentialExpiryInsights({ db: workflowDb, lookbackMs: 20 * 60 * 1000 })
+        })
+      } catch (err) {
+        log.error({ err }, 'Connector health alert failed')
+      }
+    },
+    { missedExecutionTolerance: 30_000 },
+  )
   log.info({}, 'Connector health alert cron started')
 
   // Email connector scan every 15 minutes — classifies new mail on every
@@ -259,16 +347,24 @@ try {
   // Opt-in (EMAIL_SCAN_FANOUT=true): one queue job per mailbox so scans run in parallel
   // across workers instead of one after another (see jobs/email-scan.ts).
   const emailScanFanout = process.env['EMAIL_SCAN_FANOUT'] === 'true'
-  cron.schedule('*/15 * * * *', async () => {
-    try {
-      await withCronLock(workflowDb, 'email-scan', () => emailScanFanout
-        // Fan-out: this tick only enqueues (fast); workers below do the scans in parallel.
-        ? enqueueConnectedInboxScans(workflowDb, (q, p) => queueManager.publish(q, p)).then(() => undefined)
-        : scanAllConnectedInboxes(workflowDb))
-    } catch (err) {
-      log.error({ err }, 'Email scan cron failed')
-    }
-  }, { missedExecutionTolerance: 30_000, noOverlap: true })
+  cron.schedule(
+    '*/15 * * * *',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'email-scan', () =>
+          emailScanFanout
+            ? // Fan-out: this tick only enqueues (fast); workers below do the scans in parallel.
+              enqueueConnectedInboxScans(workflowDb, (q, p) => queueManager.publish(q, p)).then(
+                () => undefined,
+              )
+            : scanAllConnectedInboxes(workflowDb),
+        )
+      } catch (err) {
+        log.error({ err }, 'Email scan cron failed')
+      }
+    },
+    { missedExecutionTolerance: 30_000, noOverlap: true },
+  )
   log.info({}, 'Email scan cron started')
 
   // Retry documents whose local OCR/extraction failed (status 'error'). Only
@@ -276,68 +372,93 @@ try {
   // MAX_DOCUMENT_ATTEMPTS and per sweep by SWEEP_LIMIT (see ocr/retry-failed.ts).
   const ocrRetryDecide = localDecisionFromEnv('ocr')
   if (ocrRetryDecide) {
-    cron.schedule('*/10 * * * *', async () => {
-      try {
-        await withCronLock(workflowDb, 'document-ocr-retry', () => retryFailedDocuments(workflowDb, ocrRetryDecide))
-      } catch (err) {
-        log.error({ err }, 'Document OCR retry cron failed')
-      }
-    }, { missedExecutionTolerance: 30_000, noOverlap: true })
+    cron.schedule(
+      '*/10 * * * *',
+      async () => {
+        try {
+          await withCronLock(workflowDb, 'document-ocr-retry', () =>
+            retryFailedDocuments(workflowDb, ocrRetryDecide),
+          )
+        } catch (err) {
+          log.error({ err }, 'Document OCR retry cron failed')
+        }
+      },
+      { missedExecutionTolerance: 30_000, noOverlap: true },
+    )
     log.info({}, 'Document OCR retry cron started')
   }
 
   // Marketing publish sweep — every minute. Channels can't hold schedules,
   // so approved posts with a due scheduled_at are dispatched here; the lock
   // plus the 'publishing' claim guard against double-posting.
-  cron.schedule('* * * * *', async () => {
-    try {
-      await withCronLock(workflowDb, 'marketing-publish', async () => {
-        await publishDueMarketingPosts(workflowDb, new DbSocialPublisher(workflowDb, socialPublisherFromEnv()))
-      })
-    } catch (err) {
-      log.error({ err }, 'Marketing publish sweep failed')
-    }
-  }, { missedExecutionTolerance: 30_000, noOverlap: true })
+  cron.schedule(
+    '* * * * *',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'marketing-publish', async () => {
+          await publishDueMarketingPosts(
+            workflowDb,
+            new DbSocialPublisher(workflowDb, socialPublisherFromEnv()),
+          )
+        })
+      } catch (err) {
+        log.error({ err }, 'Marketing publish sweep failed')
+      }
+    },
+    { missedExecutionTolerance: 30_000, noOverlap: true },
+  )
   log.info({}, 'Marketing publish cron started')
 
   // Daily draft generation — queues one AI draft per opted-in tenant for
   // review. Never publishes; it only fills the morning review queue.
-  cron.schedule('23 8 * * *', async () => {
-    try {
-      await withCronLock(workflowDb, 'marketing-generate', async () => {
-        await generateDailyMarketingDrafts(workflowDb, globalLlmFn)
-      })
-    } catch (err) {
-      log.error({ err }, 'Marketing draft generation failed')
-    }
-  }, { missedExecutionTolerance: 3_600_000 })
+  cron.schedule(
+    '23 8 * * *',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'marketing-generate', async () => {
+          await generateDailyMarketingDrafts(workflowDb, globalLlmFn)
+        })
+      } catch (err) {
+        log.error({ err }, 'Marketing draft generation failed')
+      }
+    },
+    { missedExecutionTolerance: 3_600_000 },
+  )
   log.info({}, 'Marketing draft generation cron started')
 
   // Engagement polling — hourly; refreshes like/repost/reply counts on
   // published posts where the channel exposes public metrics (Bluesky).
-  cron.schedule('17 * * * *', async () => {
-    try {
-      await withCronLock(workflowDb, 'marketing-engagement', async () => {
-        await pollMarketingEngagement(workflowDb)
-      })
-    } catch (err) {
-      log.error({ err }, 'Marketing engagement sweep failed')
-    }
-  }, { missedExecutionTolerance: 600_000 })
+  cron.schedule(
+    '17 * * * *',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'marketing-engagement', async () => {
+          await pollMarketingEngagement(workflowDb)
+        })
+      } catch (err) {
+        log.error({ err }, 'Marketing engagement sweep failed')
+      }
+    },
+    { missedExecutionTolerance: 600_000 },
+  )
 
   // Daily metrics rollup — hourly at :40. Recomputes today + yesterday
   // (late-arriving events) into metrics_daily; first run backfills 90 days.
   // Operator dashboards read the rollup instead of scanning raw events.
-  cron.schedule('40 * * * *', async () => {
-    try {
-      await withCronLock(workflowDb, 'metrics-rollup', async () => {
-        const summary = await runMetricsRollup(workflowDb)
-        log.info({ ...summary }, 'Metrics rollup run')
-      })
-    } catch (err) {
-      log.error({ err }, 'Metrics rollup failed')
-    }
-  }, { missedExecutionTolerance: 1_800_000 })
+  cron.schedule(
+    '40 * * * *',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'metrics-rollup', async () => {
+          const summary = await runMetricsRollup(workflowDb)
+          log.info({ ...summary }, 'Metrics rollup run')
+        })
+      } catch (err) {
+        log.error({ err }, 'Metrics rollup failed')
+      }
+    },
+    { missedExecutionTolerance: 1_800_000 },
+  )
   log.info({}, 'Metrics rollup cron started')
 
   // Autopilot sweep — hourly. Evaluates only enabled, off-cooldown Tier 0/1
@@ -345,46 +466,61 @@ try {
   // target is never touched twice) plus an operator_audit_log entry under
   // actor 'autopilot'. All rules default off — this cron is inert until an
   // operator enables one.
-  cron.schedule('50 * * * *', async () => {
-    try {
-      await withCronLock(workflowDb, 'autopilot-sweep', async () => {
-        const actions = await runAutopilotSweep(workflowDb)
-        if (actions.length > 0) {
-          log.info({ count: actions.length, rules: [...new Set(actions.map((a) => a.rule))] }, 'Autopilot sweep')
-        }
-      })
-    } catch (err) {
-      log.error({ err }, 'Autopilot sweep failed')
-    }
-  }, { missedExecutionTolerance: 1_800_000 })
+  cron.schedule(
+    '50 * * * *',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'autopilot-sweep', async () => {
+          const actions = await runAutopilotSweep(workflowDb)
+          if (actions.length > 0) {
+            log.info(
+              { count: actions.length, rules: [...new Set(actions.map((a) => a.rule))] },
+              'Autopilot sweep',
+            )
+          }
+        })
+      } catch (err) {
+        log.error({ err }, 'Autopilot sweep failed')
+      }
+    },
+    { missedExecutionTolerance: 1_800_000 },
+  )
   log.info({}, 'Autopilot sweep cron started')
 
   // Weekly operator digest — Mondays 08:30. Persisted to operator_digests
   // and posted to the ops Slack channel (best-effort, never throws).
-  cron.schedule('30 8 * * 1', async () => {
-    try {
-      await withCronLock(workflowDb, 'weekly-digest', async () => {
-        const digest = await runWeeklyDigest(workflowDb)
-        log.info({ id: digest.id }, 'Weekly operator digest')
-      })
-    } catch (err) {
-      log.error({ err }, 'Weekly digest failed')
-    }
-  }, { missedExecutionTolerance: 3_600_000 })
+  cron.schedule(
+    '30 8 * * 1',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'weekly-digest', async () => {
+          const digest = await runWeeklyDigest(workflowDb)
+          log.info({ id: digest.id }, 'Weekly operator digest')
+        })
+      } catch (err) {
+        log.error({ err }, 'Weekly digest failed')
+      }
+    },
+    { missedExecutionTolerance: 3_600_000 },
+  )
   log.info({}, 'Weekly digest cron started')
 
   // Lifecycle email sweep — hourly at :25. Lead nurture, activation and
   // upgrade nudges; consent/suppression/marketing_paused gated, ledger-deduped.
-  cron.schedule('25 * * * *', async () => {
-    try {
-      await withCronLock(workflowDb, 'lifecycle-sweep', async () => {
-        const sent = await runLifecycleSweep(workflowDb)
-        if (sent.length > 0) log.info({ count: sent.length }, 'Lifecycle emails sent')
-      })
-    } catch (err) {
-      log.error({ err }, 'Lifecycle sweep failed')
-    }
-  }, { missedExecutionTolerance: 1_800_000 })
+  cron.schedule(
+    '25 * * * *',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'lifecycle-sweep', async () => {
+          const sent = await runLifecycleSweep(workflowDb)
+          if (sent.length > 0) log.info({ count: sent.length }, 'Lifecycle emails sent')
+        })
+      } catch (err) {
+        log.error({ err }, 'Lifecycle sweep failed')
+      }
+    },
+    { missedExecutionTolerance: 1_800_000 },
+  )
   log.info({}, 'Lifecycle email cron started')
 
   // Policy renewal reminders — hourly. Tier 3 autonomy: deterministic,
@@ -394,18 +530,24 @@ try {
   if (deliveryRouter) {
     const dr = deliveryRouter
     await ensureReminderIndexes(workflowDb)
-    cron.schedule('17 * * * *', async () => {
-      try {
-        await withCronLock(workflowDb, 'policy-renewal-reminders', async () => {
-          const summary = await runPolicyRenewalReminders(workflowDb, (tenantId, reminder) => dr.deliverReminder(tenantId, reminder))
-          if (summary.sent > 0 || summary.failed > 0) {
-            log.info({ ...summary }, 'Policy renewal reminder run')
-          }
-        })
-      } catch (err) {
-        log.error({ err }, 'Policy renewal reminder run failed')
-      }
-    }, { missedExecutionTolerance: 60_000 })
+    cron.schedule(
+      '17 * * * *',
+      async () => {
+        try {
+          await withCronLock(workflowDb, 'policy-renewal-reminders', async () => {
+            const summary = await runPolicyRenewalReminders(workflowDb, (tenantId, reminder) =>
+              dr.deliverReminder(tenantId, reminder),
+            )
+            if (summary.sent > 0 || summary.failed > 0) {
+              log.info({ ...summary }, 'Policy renewal reminder run')
+            }
+          })
+        } catch (err) {
+          log.error({ err }, 'Policy renewal reminder run failed')
+        }
+      },
+      { missedExecutionTolerance: 60_000 },
+    )
     log.info({}, 'Policy renewal reminder cron started')
   }
 
@@ -414,16 +556,21 @@ try {
   // guidance exists even when nobody opens the page. Write-only state —
   // no notifications are delivered (Tier 0, deterministic).
   await ensureMemberNudgeIndexes(workflowDb)
-  cron.schedule('15 7 * * *', async () => {
-    try {
-      await withCronLock(workflowDb, 'member-agent-loop', async () => {
-        const summary = await runMemberAgentLoop(workflowDb)
-        if (summary.failed > 0) log.warn({ ...summary }, 'Member agent loop completed with failures')
-      })
-    } catch (err) {
-      log.error({ err }, 'Member agent loop failed')
-    }
-  }, { missedExecutionTolerance: 3_600_000, noOverlap: true })
+  cron.schedule(
+    '15 7 * * *',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'member-agent-loop', async () => {
+          const summary = await runMemberAgentLoop(workflowDb)
+          if (summary.failed > 0)
+            log.warn({ ...summary }, 'Member agent loop completed with failures')
+        })
+      } catch (err) {
+        log.error({ err }, 'Member agent loop failed')
+      }
+    },
+    { missedExecutionTolerance: 3_600_000, noOverlap: true },
+  )
   log.info({}, 'Member agent loop cron started')
 
   // Continuity check — daily at 07:45 (after the agent loop). Advances the
@@ -431,15 +578,19 @@ try {
   // organizer enabled the switch. Email-only; the state machine itself is
   // the guarantee against double-sends.
   await ensureContinuityIndexes(workflowDb)
-  cron.schedule('45 7 * * *', async () => {
-    try {
-      await withCronLock(workflowDb, 'continuity-check', async () => {
-        await runContinuityCheck(workflowDb)
-      })
-    } catch (err) {
-      log.error({ err }, 'Continuity check failed')
-    }
-  }, { missedExecutionTolerance: 3_600_000 })
+  cron.schedule(
+    '45 7 * * *',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'continuity-check', async () => {
+          await runContinuityCheck(workflowDb)
+        })
+      } catch (err) {
+        log.error({ err }, 'Continuity check failed')
+      }
+    },
+    { missedExecutionTolerance: 3_600_000 },
+  )
   log.info({}, 'Continuity check cron started')
 
   // Checklist reminder — Tier 3, daily at 08:10. Nudges the reporting user
@@ -447,16 +598,20 @@ try {
   // medical life event they reported 3+ days ago still has unchecked
   // response-plan steps. One email ever per event, same dedupe shape as
   // vault-reminder.ts.
-  cron.schedule('10 8 * * *', async () => {
-    try {
-      await withCronLock(workflowDb, 'checklist-reminder', async () => {
-        const sent = await runChecklistReminderSweep(workflowDb)
-        if (sent > 0) log.info({ sent }, 'Checklist reminder sweep')
-      })
-    } catch (err) {
-      log.error({ err }, 'Checklist reminder sweep failed')
-    }
-  }, { missedExecutionTolerance: 3_600_000 })
+  cron.schedule(
+    '10 8 * * *',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'checklist-reminder', async () => {
+          const sent = await runChecklistReminderSweep(workflowDb)
+          if (sent > 0) log.info({ sent }, 'Checklist reminder sweep')
+        })
+      } catch (err) {
+        log.error({ err }, 'Checklist reminder sweep failed')
+      }
+    },
+    { missedExecutionTolerance: 3_600_000 },
+  )
   log.info({}, 'Checklist reminder cron started')
 
   // Family heartbeat — PRD-136 §4. Weekly Monday 08:00 and monthly on the
@@ -468,16 +623,20 @@ try {
     ['family-heartbeat-weekly', '0 8 * * 1', 'weekly'],
     ['family-heartbeat-monthly', '0 8 1 * *', 'monthly'],
   ] as const) {
-    cron.schedule(schedule, async () => {
-      try {
-        await withCronLock(workflowDb, name, async () => {
-          const r = await runFamilyHeartbeat(workflowDb, { cadence })
-          if (r.sent > 0) log.info({ cadence, ...r }, 'Family heartbeat sent')
-        })
-      } catch (err) {
-        log.error({ err, cadence }, 'Family heartbeat sweep failed')
-      }
-    }, { missedExecutionTolerance: 3_600_000 })
+    cron.schedule(
+      schedule,
+      async () => {
+        try {
+          await withCronLock(workflowDb, name, async () => {
+            const r = await runFamilyHeartbeat(workflowDb, { cadence })
+            if (r.sent > 0) log.info({ cadence, ...r }, 'Family heartbeat sent')
+          })
+        } catch (err) {
+          log.error({ err, cadence }, 'Family heartbeat sweep failed')
+        }
+      },
+      { missedExecutionTolerance: 3_600_000 },
+    )
     log.info({ schedule, cadence }, 'Family heartbeat cron started')
   }
 
@@ -490,69 +649,82 @@ try {
   // Runs at 08:00 daily; sends each tenant their queued insights as one email.
   if (deliveryRouter) {
     const dr = deliveryRouter
-    cron.schedule('0 8 * * *', async () => {
-      try {
-        await withCronLock(workflowDb, 'daily-digest', async () => {
-          const tenants = await workflowDb.collection('digest_queue').distinct('tenant_id', { sent: false })
-          for (const tenantId of tenants) {
-            await dr.sendDigest(tenantId as string)
-          }
-        })
-      } catch (err) {
-        log.error({ err }, 'Daily digest failed')
-      }
-    }, { missedExecutionTolerance: 60_000 })
+    cron.schedule(
+      '0 8 * * *',
+      async () => {
+        try {
+          await withCronLock(workflowDb, 'daily-digest', async () => {
+            const tenants = await workflowDb
+              .collection('digest_queue')
+              .distinct('tenant_id', { sent: false })
+            for (const tenantId of tenants) {
+              await dr.sendDigest(tenantId as string)
+            }
+          })
+        } catch (err) {
+          log.error({ err }, 'Daily digest failed')
+        }
+      },
+      { missedExecutionTolerance: 60_000 },
+    )
     log.info({}, 'Daily digest cron started')
   }
 
   // ── Calibration drift alerting — 2 AM nightly ────────────────────────────
   // Compares per-detector ECE against previous run; alerts when ECE > 0.10 or
   // increases by > 0.05 since last check.
-  cron.schedule('0 2 * * *', async () => {
-    if (!scoreCalibrator) return
-    const lockOwner = await acquireCronLock(workflowDb, 'calibration-drift')
-    if (!lockOwner) return
-    try {
-      const histCol   = workflowDb.collection('calibration_ece_history')
-      const alertCol  = workflowDb.collection('calibration_alerts')
-      const now       = new Date()
+  cron.schedule(
+    '0 2 * * *',
+    async () => {
+      if (!scoreCalibrator) return
+      const lockOwner = await acquireCronLock(workflowDb, 'calibration-drift')
+      if (!lockOwner) return
+      try {
+        const histCol = workflowDb.collection('calibration_ece_history')
+        const alertCol = workflowDb.collection('calibration_alerts')
+        const now = new Date()
 
-      const tenantIds = await workflowDb.collection('calibration_params').distinct('tenant_id')
-      for (const tenantIdValue of tenantIds) {
-        const tenantId = String(tenantIdValue)
-        const allParams = await scoreCalibrator.getAllParams(tenantId)
-        for (const p of allParams) {
-        const prev = await histCol.findOne({ tenant_id: tenantId, detector_id: p.detector_id }) as { ece: number } | null
-        const previousEce = prev?.ece ?? 0
-        const eceDelta    = p.ece - previousEce
+        const tenantIds = await workflowDb.collection('calibration_params').distinct('tenant_id')
+        for (const tenantIdValue of tenantIds) {
+          const tenantId = String(tenantIdValue)
+          const allParams = await scoreCalibrator.getAllParams(tenantId)
+          for (const p of allParams) {
+            const prev = (await histCol.findOne({
+              tenant_id: tenantId,
+              detector_id: p.detector_id,
+            })) as { ece: number } | null
+            const previousEce = prev?.ece ?? 0
+            const eceDelta = p.ece - previousEce
 
-        if (p.ece > 0.10 || eceDelta > 0.05) {
-          log.warn({ detector_id: p.detector_id, ece: p.ece }, 'ECE drift alert')
-          await alertCol.insertOne({
-            tenant_id:         tenantId,
-            detector_id:       p.detector_id,
-            ece:               p.ece,
-            previous_ece:      previousEce,
-            brier_score:       p.brier_score,
-            active_calibrator: p.active_calibrator,
-            alerted_at:        now,
-          })
+            if (p.ece > 0.1 || eceDelta > 0.05) {
+              log.warn({ detector_id: p.detector_id, ece: p.ece }, 'ECE drift alert')
+              await alertCol.insertOne({
+                tenant_id: tenantId,
+                detector_id: p.detector_id,
+                ece: p.ece,
+                previous_ece: previousEce,
+                brier_score: p.brier_score,
+                active_calibrator: p.active_calibrator,
+                alerted_at: now,
+              })
+            }
+
+            // Upsert current ECE into history for next comparison
+            await histCol.updateOne(
+              { tenant_id: tenantId, detector_id: p.detector_id },
+              { $set: { tenant_id: tenantId, ece: p.ece, checked_at: now } },
+              { upsert: true },
+            )
+          }
         }
-
-        // Upsert current ECE into history for next comparison
-        await histCol.updateOne(
-          { tenant_id: tenantId, detector_id: p.detector_id },
-          { $set: { tenant_id: tenantId, ece: p.ece, checked_at: now } },
-          { upsert: true },
-        )
-        }
+      } catch (err) {
+        log.error({ err }, 'Calibration drift check failed')
+      } finally {
+        await releaseCronLock(workflowDb, 'calibration-drift', lockOwner)
       }
-    } catch (err) {
-      log.error({ err }, 'Calibration drift check failed')
-    } finally {
-      await releaseCronLock(workflowDb, 'calibration-drift', lockOwner)
-    }
-  }, { missedExecutionTolerance: 60_000 })
+    },
+    { missedExecutionTolerance: 60_000 },
+  )
   log.info({}, 'Calibration drift cron started')
 
   // ── Calibration fitting — 3 AM nightly (D1b) ──────────────────────────────
@@ -570,115 +742,143 @@ try {
   //   approved, auto_approved → 1 (positive signal — user or policy endorsed)
   //   dismissed, auto_dismissed → 0 (negative signal — user or policy rejected)
   //   policy_blocked, budget_blocked → excluded (not user decisions, no signal)
-  cron.schedule('0 3 * * *', async () => {
-    if (!scoreCalibrator) return
-    const lockOwner = await acquireCronLock(workflowDb, 'calibration-fit')
-    if (!lockOwner) return
-    try {
-      const receiptsCol = workflowDb.collection('action_receipts')
-      const now = Date.now()
-      const SHORT_WINDOW_DAYS = 30
-      const LONG_WINDOW_DAYS = 180
-      const MIN_PAIRS_FOR_EXPANSION = 30
+  cron.schedule(
+    '0 3 * * *',
+    async () => {
+      if (!scoreCalibrator) return
+      const lockOwner = await acquireCronLock(workflowDb, 'calibration-fit')
+      if (!lockOwner) return
+      try {
+        const receiptsCol = workflowDb.collection('action_receipts')
+        const now = Date.now()
+        const SHORT_WINDOW_DAYS = 30
+        const LONG_WINDOW_DAYS = 180
+        const MIN_PAIRS_FOR_EXPANSION = 30
 
-      // Start with the short window. Don't require metadata.insight_score to
-      // exist — older receipts (before the fix that always populates it) would
-      // be silently skipped, preventing calibration from ever running for
-      // tenants with historical decisions but no LLM scoring enabled.
-      const cutoff = new Date(now - SHORT_WINDOW_DAYS * 24 * 60 * 60 * 1000)
-      const tenantIds = await receiptsCol.distinct('tenant_id', {
-        executed_at: { $gte: cutoff },
-      })
-      for (const tenantIdValue of tenantIds) {
-        const tenantId = String(tenantIdValue)
-        const receipts = await receiptsCol.find({
-          tenant_id: tenantId,
+        // Start with the short window. Don't require metadata.insight_score to
+        // exist — older receipts (before the fix that always populates it) would
+        // be silently skipped, preventing calibration from ever running for
+        // tenants with historical decisions but no LLM scoring enabled.
+        const cutoff = new Date(now - SHORT_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+        const tenantIds = await receiptsCol.distinct('tenant_id', {
           executed_at: { $gte: cutoff },
-        }).toArray() as unknown as Array<{
-          detector_id?: string
-          outcome: string
-          executed_at?: Date
-          metadata?: { insight_score?: number }
-          insight_id?: string
-        }>
-        // Group pairs by detector_id, then fit each detector separately.
-        // For receipts without metadata.insight_score (legacy), look up the
-        // score from the insight document as a fallback.
-        const byDetector = new Map<string, Array<{ raw_score: number; outcome: 0 | 1 }>>()
-        for (const r of receipts) {
-          if (!r.detector_id) continue
-          // Skip non-decision outcomes — they carry no user signal
-          if (r.outcome === 'policy_blocked' || r.outcome === 'budget_blocked') continue
-          let rawScore: number | undefined = r.metadata?.insight_score
-          // Fallback: look up the score from the insight document for legacy
-          // receipts that don't have metadata.insight_score populated.
-          if (typeof rawScore !== 'number' && r.insight_id && workflowDb) {
-            const insight = await workflowDb.collection('insights').findOne(
-              { id: r.insight_id, tenant_id: tenantId },
-              { projection: { 'confidence_breakdown.combined_score': 1, confidence: 1 } },
-            ) as Record<string, unknown> | null
-            const breakdown = insight?.['confidence_breakdown'] as Record<string, number> | undefined
-            rawScore = breakdown?.['combined_score'] ?? (insight?.['confidence'] as number | undefined)
-          }
-          if (typeof rawScore !== 'number') continue
-          const pair = {
-            raw_score: rawScore,
-            outcome: ((r.outcome === 'approved' || r.outcome === 'auto_approved') ? 1 : 0) as 0 | 1,
-          }
-          const existing = byDetector.get(r.detector_id) ?? []
-          existing.push(pair)
-          byDetector.set(r.detector_id, existing)
-        }
-        for (const [detectorId, pairs] of byDetector) {
-          if (pairs.length < 5) continue // need at least 5 pairs to attempt fitting
-
-          // Adaptive window: if low volume in 30 days, expand to 180 days
-          let finalPairs = pairs
-          if (pairs.length < MIN_PAIRS_FOR_EXPANSION) {
-            const longCutoff = new Date(now - LONG_WINDOW_DAYS * 24 * 60 * 60 * 1000)
-            const longReceipts = await receiptsCol.find({
+        })
+        for (const tenantIdValue of tenantIds) {
+          const tenantId = String(tenantIdValue)
+          const receipts = (await receiptsCol
+            .find({
               tenant_id: tenantId,
-              detector_id: detectorId,
-              executed_at: { $gte: longCutoff, $lt: cutoff },
-            }).toArray() as unknown as Array<{
-              outcome: string
-              metadata?: { insight_score?: number }
-              insight_id?: string
-            }>
-            const extraPairs: Array<{ raw_score: number; outcome: 0 | 1 }> = []
-            for (const r of longReceipts) {
-              if (r.outcome === 'policy_blocked' || r.outcome === 'budget_blocked') continue
-              let longScore: number | undefined = r.metadata?.insight_score
-              if (typeof longScore !== 'number' && r.insight_id && workflowDb) {
-                const insight = await workflowDb.collection('insights').findOne(
+              executed_at: { $gte: cutoff },
+            })
+            .toArray()) as unknown as Array<{
+            detector_id?: string
+            outcome: string
+            executed_at?: Date
+            metadata?: { insight_score?: number }
+            insight_id?: string
+          }>
+          // Group pairs by detector_id, then fit each detector separately.
+          // For receipts without metadata.insight_score (legacy), look up the
+          // score from the insight document as a fallback.
+          const byDetector = new Map<string, Array<{ raw_score: number; outcome: 0 | 1 }>>()
+          for (const r of receipts) {
+            if (!r.detector_id) continue
+            // Skip non-decision outcomes — they carry no user signal
+            if (r.outcome === 'policy_blocked' || r.outcome === 'budget_blocked') continue
+            let rawScore: number | undefined = r.metadata?.insight_score
+            // Fallback: look up the score from the insight document for legacy
+            // receipts that don't have metadata.insight_score populated.
+            if (typeof rawScore !== 'number' && r.insight_id && workflowDb) {
+              const insight = (await workflowDb
+                .collection('insights')
+                .findOne(
                   { id: r.insight_id, tenant_id: tenantId },
                   { projection: { 'confidence_breakdown.combined_score': 1, confidence: 1 } },
-                ) as Record<string, unknown> | null
-                const breakdown = insight?.['confidence_breakdown'] as Record<string, number> | undefined
-                longScore = breakdown?.['combined_score'] ?? (insight?.['confidence'] as number | undefined)
-              }
-              if (typeof longScore !== 'number') continue
-              extraPairs.push({
-                raw_score: longScore,
-                outcome: ((r.outcome === 'approved' || r.outcome === 'auto_approved') ? 1 : 0) as 0 | 1,
-              })
+                )) as Record<string, unknown> | null
+              const breakdown = insight?.['confidence_breakdown'] as
+                Record<string, number> | undefined
+              rawScore =
+                breakdown?.['combined_score'] ?? (insight?.['confidence'] as number | undefined)
             }
-            if (extraPairs.length > 0) {
-              finalPairs = [...extraPairs, ...pairs]
-              log.info({ tenant_id: tenantId, detector_id: detectorId, short_pairs: pairs.length, long_pairs: extraPairs.length }, 'Calibration window expanded for low-volume detector')
+            if (typeof rawScore !== 'number') continue
+            const pair = {
+              raw_score: rawScore,
+              outcome: (r.outcome === 'approved' || r.outcome === 'auto_approved' ? 1 : 0) as 0 | 1,
             }
+            const existing = byDetector.get(r.detector_id) ?? []
+            existing.push(pair)
+            byDetector.set(r.detector_id, existing)
           }
+          for (const [detectorId, pairs] of byDetector) {
+            if (pairs.length < 5) continue // need at least 5 pairs to attempt fitting
 
-          await scoreCalibrator.fit(tenantId, detectorId, finalPairs)
-          log.info({ tenant_id: tenantId, detector_id: detectorId, pairs: finalPairs.length }, 'Calibration fitting completed')
+            // Adaptive window: if low volume in 30 days, expand to 180 days
+            let finalPairs = pairs
+            if (pairs.length < MIN_PAIRS_FOR_EXPANSION) {
+              const longCutoff = new Date(now - LONG_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+              const longReceipts = (await receiptsCol
+                .find({
+                  tenant_id: tenantId,
+                  detector_id: detectorId,
+                  executed_at: { $gte: longCutoff, $lt: cutoff },
+                })
+                .toArray()) as unknown as Array<{
+                outcome: string
+                metadata?: { insight_score?: number }
+                insight_id?: string
+              }>
+              const extraPairs: Array<{ raw_score: number; outcome: 0 | 1 }> = []
+              for (const r of longReceipts) {
+                if (r.outcome === 'policy_blocked' || r.outcome === 'budget_blocked') continue
+                let longScore: number | undefined = r.metadata?.insight_score
+                if (typeof longScore !== 'number' && r.insight_id && workflowDb) {
+                  const insight = (await workflowDb
+                    .collection('insights')
+                    .findOne(
+                      { id: r.insight_id, tenant_id: tenantId },
+                      { projection: { 'confidence_breakdown.combined_score': 1, confidence: 1 } },
+                    )) as Record<string, unknown> | null
+                  const breakdown = insight?.['confidence_breakdown'] as
+                    Record<string, number> | undefined
+                  longScore =
+                    breakdown?.['combined_score'] ?? (insight?.['confidence'] as number | undefined)
+                }
+                if (typeof longScore !== 'number') continue
+                extraPairs.push({
+                  raw_score: longScore,
+                  outcome: (r.outcome === 'approved' || r.outcome === 'auto_approved' ? 1 : 0) as
+                    0 | 1,
+                })
+              }
+              if (extraPairs.length > 0) {
+                finalPairs = [...extraPairs, ...pairs]
+                log.info(
+                  {
+                    tenant_id: tenantId,
+                    detector_id: detectorId,
+                    short_pairs: pairs.length,
+                    long_pairs: extraPairs.length,
+                  },
+                  'Calibration window expanded for low-volume detector',
+                )
+              }
+            }
+
+            await scoreCalibrator.fit(tenantId, detectorId, finalPairs)
+            log.info(
+              { tenant_id: tenantId, detector_id: detectorId, pairs: finalPairs.length },
+              'Calibration fitting completed',
+            )
+          }
         }
+      } catch (err) {
+        log.error({ err }, 'Calibration fitting cron failed')
+      } finally {
+        await releaseCronLock(workflowDb, 'calibration-fit', lockOwner)
       }
-    } catch (err) {
-      log.error({ err }, 'Calibration fitting cron failed')
-    } finally {
-      await releaseCronLock(workflowDb, 'calibration-fit', lockOwner)
-    }
-  }, { missedExecutionTolerance: 60_000 })
+    },
+    { missedExecutionTolerance: 60_000 },
+  )
   log.info({}, 'Calibration fitting cron started (nightly 3 AM)')
 
   // Federated learning round removed — cross-tenant model aggregation isn't
@@ -689,14 +889,18 @@ try {
   // Handles outcome charge settlement (H3), trial expiration (H5),
   // payment failure recovery (H6), and billing cycle resets (H4).
   // All jobs are idempotent — safe to run multiple times.
-  cron.schedule('0 4 * * *', async () => {
-    try {
-      const { runBillingCron } = await import('./jobs/billing-cron.js')
-      await runBillingCron(workflowDb)
-    } catch (err) {
-      log.error({ err }, 'Billing cron failed')
-    }
-  }, { missedExecutionTolerance: 60_000 })
+  cron.schedule(
+    '0 4 * * *',
+    async () => {
+      try {
+        const { runBillingCron } = await import('./jobs/billing-cron.js')
+        await runBillingCron(workflowDb)
+      } catch (err) {
+        log.error({ err }, 'Billing cron failed')
+      }
+    },
+    { missedExecutionTolerance: 60_000 },
+  )
   log.info({}, 'Billing cron started (daily 4 AM)')
 
   // Goal integrity job removed — goals are dead code in LifeKeel's frontend
@@ -721,101 +925,122 @@ try {
   // POST /family/financial-profile/evaluate already runs on demand; this
   // only adds the "someone has to remember to click it" → "guaranteed to
   // eventually happen" part.
-  cron.schedule('30 6 * * *', async () => {
-    try {
-      await withCronLock(workflowDb, 'stale-profile-evaluation', async () => {
-        const summary = await runStaleProfileEvaluationSweep(workflowDb, engine, persistAndDeliverInsights)
-        if (summary.failed > 0) log.warn({ ...summary }, 'Stale profile evaluation sweep completed with failures')
-      })
-    } catch (err) {
-      log.error({ err }, 'Stale profile evaluation sweep failed')
-    }
-  }, { missedExecutionTolerance: 3_600_000, noOverlap: true })
+  cron.schedule(
+    '30 6 * * *',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'stale-profile-evaluation', async () => {
+          const summary = await runStaleProfileEvaluationSweep(
+            workflowDb,
+            engine,
+            persistAndDeliverInsights,
+          )
+          if (summary.failed > 0)
+            log.warn({ ...summary }, 'Stale profile evaluation sweep completed with failures')
+        })
+      } catch (err) {
+        log.error({ err }, 'Stale profile evaluation sweep failed')
+      }
+    },
+    { missedExecutionTolerance: 3_600_000, noOverlap: true },
+  )
   log.info({}, 'Stale profile evaluation cron started')
 
   // PRD-136: nightly scenario watchlist recompute — emits scenario_moved
   // feed events when a watched scenario's runway/depletion month moves by
   // ≥0.5 months. Runs after the 06:30 stale-profile sweep so projections
   // see yesterday's freshest data.
-  cron.schedule('30 5 * * *', async () => {
-    try {
-      await withCronLock(workflowDb, 'scenario-watchlist', async () => {
-        const summary = await runScenarioWatchlist(workflowDb)
-        if (summary.moved > 0) log.info({ ...summary }, 'Scenario watchlist recomputed')
-      })
-    } catch (err) {
-      log.error({ err }, 'Scenario watchlist failed')
-    }
-  }, { missedExecutionTolerance: 3_600_000, noOverlap: true })
+  cron.schedule(
+    '30 5 * * *',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'scenario-watchlist', async () => {
+          const summary = await runScenarioWatchlist(workflowDb)
+          if (summary.moved > 0) log.info({ ...summary }, 'Scenario watchlist recomputed')
+        })
+      } catch (err) {
+        log.error({ err }, 'Scenario watchlist failed')
+      }
+    },
+    { missedExecutionTolerance: 3_600_000, noOverlap: true },
+  )
   log.info({}, 'Scenario watchlist cron started')
 
   const retentionWorker = new RetentionWorker(workflowDb)
   const insightSlaWorker = new InsightSlaWorker(workflowDb)
   const escalationWorker = new EscalationWorker(workflowDb)
   await retentionWorker.ensureIndexes()
-  cron.schedule('0 2 * * *', async () => {
-    try {
-      await withCronLock(workflowDb, 'retention', () => retentionWorker.run())
-    } catch (err) {
-      log.error({ err }, 'Retention worker failed')
-    }
-  }, { missedExecutionTolerance: 60_000 })
-  cron.schedule('*/15 * * * *', async () => {
-    try {
-      await withCronLock(workflowDb, 'insight-sla-escalation', async () => {
-        // KEEL-003: this previously had zero error logging at all — a bare
-        // Promise.allSettled with no per-job check, unlike every other
-        // cron job in this file. A rejection here (e.g. escalationWorker
-        // throwing) was silently swallowed with no way to ever notice.
-        const results = await Promise.allSettled([insightSlaWorker.run(), escalationWorker.run()])
-        const names = ['insightSlaWorker', 'escalationWorker']
-        results.forEach((result, i) => {
-          if (result.status === 'rejected') {
-            log.error({ job: names[i], err: result.reason }, 'Insight SLA/escalation job failed')
+  cron.schedule(
+    '0 2 * * *',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'retention', () => retentionWorker.run())
+      } catch (err) {
+        log.error({ err }, 'Retention worker failed')
+      }
+    },
+    { missedExecutionTolerance: 60_000 },
+  )
+  cron.schedule(
+    '*/15 * * * *',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'insight-sla-escalation', async () => {
+          // KEEL-003: this previously had zero error logging at all — a bare
+          // Promise.allSettled with no per-job check, unlike every other
+          // cron job in this file. A rejection here (e.g. escalationWorker
+          // throwing) was silently swallowed with no way to ever notice.
+          const results = await Promise.allSettled([insightSlaWorker.run(), escalationWorker.run()])
+          const names = ['insightSlaWorker', 'escalationWorker']
+          results.forEach((result, i) => {
+            if (result.status === 'rejected') {
+              log.error({ job: names[i], err: result.reason }, 'Insight SLA/escalation job failed')
+            }
+          })
+          // The escalation worker only claims insights and queues
+          // delivery_queue rows — drainDeliveryQueue is the missing consumer
+          // that actually sends them. Runs in the same lock cycle so an
+          // escalation queued this tick goes out this tick.
+          if (deliveryRouter) {
+            try {
+              const drained = await deliveryRouter.drainDeliveryQueue()
+              if (drained.sent > 0 || drained.failed > 0) {
+                log.info({ ...drained }, 'Delivery queue drained')
+              }
+            } catch (err) {
+              log.error({ err }, 'Delivery queue drain failed')
+            }
+            // Judge review queues — passesMoveJudge writes, drainReviewQueues
+            // consumes: retries due rewrites, re-evaluates blocks, resolves
+            // rows whose insights went terminal another way.
+            try {
+              const reviewed = await deliveryRouter.drainReviewQueues()
+              if (reviewed.retried > 0 || reviewed.released > 0 || reviewed.resolved > 0) {
+                log.info({ ...reviewed }, 'Judge review queues drained')
+              }
+            } catch (err) {
+              log.error({ err }, 'Judge review queue drain failed')
+            }
+          }
+          // Trusted-scope auto-execution — spends the trust approvals earned.
+          // Opt-in + trust threshold + log_only-only + grace period all gate
+          // inside the worker; nothing external can ever dispatch from here.
+          try {
+            const { runAutoExecuteTrusted } = await import('./jobs/auto-execute-trusted.js')
+            const auto = await runAutoExecuteTrusted(workflowDb)
+            if (auto.executed > 0 || auto.failed > 0) {
+              log.info({ ...auto }, 'Trusted-scope auto-execution completed')
+            }
+          } catch (err) {
+            log.error({ err }, 'Trusted-scope auto-execution failed')
           }
         })
-        // The escalation worker only claims insights and queues
-        // delivery_queue rows — drainDeliveryQueue is the missing consumer
-        // that actually sends them. Runs in the same lock cycle so an
-        // escalation queued this tick goes out this tick.
-        if (deliveryRouter) {
-          try {
-            const drained = await deliveryRouter.drainDeliveryQueue()
-            if (drained.sent > 0 || drained.failed > 0) {
-              log.info({ ...drained }, 'Delivery queue drained')
-            }
-          } catch (err) {
-            log.error({ err }, 'Delivery queue drain failed')
-          }
-          // Judge review queues — passesMoveJudge writes, drainReviewQueues
-          // consumes: retries due rewrites, re-evaluates blocks, resolves
-          // rows whose insights went terminal another way.
-          try {
-            const reviewed = await deliveryRouter.drainReviewQueues()
-            if (reviewed.retried > 0 || reviewed.released > 0 || reviewed.resolved > 0) {
-              log.info({ ...reviewed }, 'Judge review queues drained')
-            }
-          } catch (err) {
-            log.error({ err }, 'Judge review queue drain failed')
-          }
-        }
-        // Trusted-scope auto-execution — spends the trust approvals earned.
-        // Opt-in + trust threshold + log_only-only + grace period all gate
-        // inside the worker; nothing external can ever dispatch from here.
-        try {
-          const { runAutoExecuteTrusted } = await import('./jobs/auto-execute-trusted.js')
-          const auto = await runAutoExecuteTrusted(workflowDb)
-          if (auto.executed > 0 || auto.failed > 0) {
-            log.info({ ...auto }, 'Trusted-scope auto-execution completed')
-          }
-        } catch (err) {
-          log.error({ err }, 'Trusted-scope auto-execution failed')
-        }
-      })
-    } catch (err) {
-      log.error({ err }, 'Insight SLA/escalation cron failed')
-    }
-  }, { missedExecutionTolerance: 60_000 })
+      } catch (err) {
+        log.error({ err }, 'Insight SLA/escalation cron failed')
+      }
+    },
+    { missedExecutionTolerance: 60_000 },
+  )
 
   // Shadow backtest cron removed — trading-vertical only (DTFE engine paper
   // trading against market price history).
@@ -824,19 +1049,23 @@ try {
   //    calibration for the online-learning layer against held-out
   //    approve/dismiss history. Runs at 7 AM every Monday.
   //    Persists per-detector reports to `feature_hash_eval_reports`.
-  cron.schedule('0 7 * * 1', async () => {
-    try {
-      await withCronLock(workflowDb, 'feature-hash-eval', async () => {
-        const { runFeatureHashEval } = await import('./jobs/feature-hash-eval.js')
-        const reports = await runFeatureHashEval(workflowDb)
-        if (reports.length > 0) {
-          log.info({ detectors: reports.length }, 'FeatureHashScorer eval complete')
-        }
-      })
-    } catch (err) {
-      log.error({ err }, 'FeatureHashScorer eval failed')
-    }
-  }, { missedExecutionTolerance: 60_000 })
+  cron.schedule(
+    '0 7 * * 1',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'feature-hash-eval', async () => {
+          const { runFeatureHashEval } = await import('./jobs/feature-hash-eval.js')
+          const reports = await runFeatureHashEval(workflowDb)
+          if (reports.length > 0) {
+            log.info({ detectors: reports.length }, 'FeatureHashScorer eval complete')
+          }
+        })
+      } catch (err) {
+        log.error({ err }, 'FeatureHashScorer eval failed')
+      }
+    },
+    { missedExecutionTolerance: 60_000 },
+  )
   log.info({}, 'FeatureHashScorer eval cron started (weekly Mon 7 AM)')
 
   // ── Queue setup ───────────────────────────────────────────────────────────
@@ -847,7 +1076,9 @@ try {
     // model service: each in-flight scan can hold one local-model call (see
     // LOCAL_MODEL_MAX_CONCURRENT and the lifekeel_local_model_queue_wait_seconds metric).
     const scanConcurrency = Number(process.env['EMAIL_SCAN_CONCURRENCY']) || 2
-    queueManager.subscribe(EMAIL_SCAN_QUEUE, (payload) => runQueuedInboxScan(workflowDb, payload), { concurrency: scanConcurrency })
+    queueManager.subscribe(EMAIL_SCAN_QUEUE, (payload) => runQueuedInboxScan(workflowDb, payload), {
+      concurrency: scanConcurrency,
+    })
     log.info({ concurrency: scanConcurrency }, 'Email scan fan-out workers started')
   }
   log.info({}, 'Queue manager connected')
@@ -859,7 +1090,6 @@ try {
   await scoreCalibrator.warmCache()
   // Wire calibrator into engine now that it's ready
   engine.options.calibrator = scoreCalibrator
-  engine.options.reasoningContextBuilder = new ApiReasoningContextBuilder(workflowDb)
   log.info({}, 'Score calibrator ready')
 
   // ── LLM scorer (D1b) ───────────────────────────────────────────────────────
@@ -886,7 +1116,10 @@ try {
     concurrency: 5,
   })
   engine.options.llmScorer = llmScorer
-  log.info({}, 'LLM scorer ready (per-tenant opt-in via tenant_settings:llm_scoring_config, with cache + budget guard)')
+  log.info(
+    {},
+    'LLM scorer ready (per-tenant opt-in via tenant_settings:llm_scoring_config, with cache + budget guard)',
+  )
 
   // Adaptive threshold store removed — never wired into engine.options, and
   // its only consumer (the invoice/payment/portfolio signal recompute cron)
@@ -914,7 +1147,10 @@ try {
     }
     log.info({}, 'Intent classifier using local ONNX embeddings (bge-small-en-v1.5)')
   } catch (err) {
-    log.warn({ err: (err as Error).message }, 'Local embeddings unavailable — Tier 2 disabled, falling back to trie + LLM only')
+    log.warn(
+      { err: (err as Error).message },
+      'Local embeddings unavailable — Tier 2 disabled, falling back to trie + LLM only',
+    )
   }
   intentClassifier = new IntentClassifier({
     db: workflowDb,
@@ -941,10 +1177,7 @@ try {
   // One model per tenant — learns patterns across ALL detectors and signal
   // types for the same entity (e.g. "customer with overdue invoice + cart
   // abandonment = high approval likelihood"). Injects context.tenant_level_score.
-  tenantLevelScorer = new TenantLevelScorer(
-    workflowDb,
-    { maxLoadedTenants: 200 },
-  )
+  tenantLevelScorer = new TenantLevelScorer(workflowDb, { maxLoadedTenants: 200 })
 
   // Federated learning service removed — cross-tenant gradient aggregation
   // isn't relevant to a single-vertical family app.
@@ -957,17 +1190,22 @@ try {
   // Provide recent insights for cross-signal feature building at inference time
   engine.options.recentInsightsProvider = async (tenantId: string, entityKey: string) => {
     const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-    const docs = await workflowDb.collection('insights').find({
-      tenant_id: tenantId,
-      entity_key: entityKey,
-      created_at: { $gte: cutoff },
-    }).sort({ created_at: -1 }).limit(50).toArray() as unknown as Array<{
+    const docs = (await workflowDb
+      .collection('insights')
+      .find({
+        tenant_id: tenantId,
+        entity_key: entityKey,
+        created_at: { $gte: cutoff },
+      })
+      .sort({ created_at: -1 })
+      .limit(50)
+      .toArray()) as unknown as Array<{
       detector_id?: string
       signal_type?: string
       state?: string
       created_at: Date
     }>
-    return docs.map(d => ({
+    return docs.map((d) => ({
       detector_id: d.detector_id ?? '',
       signal_type: d.signal_type,
       state: d.state,
@@ -976,16 +1214,16 @@ try {
   }
   // Default: track amount_minor + customer_id novelty for all invoice/payment events
   engine.options.noveltyFields = {
-    'invoice.overdue':   ['data.amount_minor', 'data.customer_id'],
-    'payment.failed':    ['data.amount_minor', 'data.customer_id'],
-    'payment.received':  ['data.amount_minor'],
-    'cart.abandoned':    ['data.cart_value_minor', 'data.customer_id'],
-    '*':                 ['data.amount_minor'],
+    'invoice.overdue': ['data.amount_minor', 'data.customer_id'],
+    'payment.failed': ['data.amount_minor', 'data.customer_id'],
+    'payment.received': ['data.amount_minor'],
+    'cart.abandoned': ['data.cart_value_minor', 'data.customer_id'],
+    '*': ['data.amount_minor'],
   }
   engine.options.changePointFields = {
-    'revenue.daily':  ['data.revenue_minor', 'data.order_count'],
+    'revenue.daily': ['data.revenue_minor', 'data.order_count'],
     'invoice.overdue': ['data.amount_minor', 'data.days_overdue'],
-    '*':              ['data.amount_minor'],
+    '*': ['data.amount_minor'],
   }
   log.info({}, 'Lightweight ML layer ready')
 
@@ -1029,11 +1267,17 @@ await connectorLoader.load(path.join(ROOT, 'connectors'))
 // ever fire for any tenant. Better to crash at startup than run a broken
 // service that looks healthy.
 if (process.env['NODE_ENV'] === 'production' && engine.detectorCount === 0) {
-  log.error({ detectorsDir: path.join(ROOT, 'detectors') }, 'FATAL: engine loaded zero detectors — detectors/ directory is missing or empty. Refusing to start.')
+  log.error(
+    { detectorsDir: path.join(ROOT, 'detectors') },
+    'FATAL: engine loaded zero detectors — detectors/ directory is missing or empty. Refusing to start.',
+  )
   process.exit(1)
 }
 if (process.env['NODE_ENV'] === 'production' && connectorLoader.count === 0) {
-  log.error({ connectorsDir: path.join(ROOT, 'connectors') }, 'FATAL: connector loader loaded zero connectors — connectors/ directory is missing or empty. Refusing to start.')
+  log.error(
+    { connectorsDir: path.join(ROOT, 'connectors') },
+    'FATAL: connector loader loaded zero connectors — connectors/ directory is missing or empty. Refusing to start.',
+  )
   process.exit(1)
 }
 
@@ -1057,11 +1301,17 @@ app.addHook('onResponse', async (request, reply) => {
     (performance.now() - startedAt) / 1000,
   )
 })
-// In production set CORS_ORIGIN to the Studio's exact origin (e.g. https://studio.lifekeel.dev).
+// In production set CORS_ORIGIN to the app's exact origin(s) — comma-separated
+// list allowed (e.g. "https://app.lifekeel.co.uk,https://app.lifekeel.si"),
+// matching the split session-cookie.ts applies for its Origin allowlist.
 // Wildcard is only used in dev/test; cloud mode enforces the env var.
-const corsOrigin = deploymentConfig.mode === 'cloud'
-  ? (process.env['CORS_ORIGIN'] ?? false)
-  : true
+const corsOrigin =
+  deploymentConfig.mode === 'cloud'
+    ? (process.env['CORS_ORIGIN']
+        ?.split(',')
+        .map((o) => o.trim())
+        .filter(Boolean) ?? false)
+    : true
 await app.register(cors, {
   origin: corsOrigin,
   methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
@@ -1148,7 +1398,8 @@ await app.register(rateLimit, {
     retry_after_ms: context.ttl,
   }),
   // Health and auth endpoints are exempt
-  allowList: (req) => req.url === '/health' || req.url === '/engine/health' || req.url.startsWith('/documentation'),
+  allowList: (req) =>
+    req.url === '/health' || req.url === '/engine/health' || req.url.startsWith('/documentation'),
 })
 
 // Multipart support for file uploads (50 MB limit)
@@ -1178,7 +1429,45 @@ app.addHook('onRequest', async (request, reply) => {
   // PRD-110: '/family/join' is deliberately NOT a prefix of the organizer-only
   // '/family/access-requests*' endpoints below — this array is matched by
   // startsWith, so '/family/join-requests' would have made those public too.
-  const open = ['/health', '/engine/health', '/status', '/metrics', '/auth/token', '/auth/demo-token', '/auth/signup', '/auth/login', '/auth/logout', '/auth/mfa/verify', '/auth/sso/', '/auth/google/', '/auth/github/', '/auth/request-password-reset', '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification', '/entitlements/plans', '/blog/posts', '/a/', '/why/', '/verify/', '/webhooks/', '/inbound/', '/insights/cleanup-stale-all', '/billing/webhook', '/documentation', '/documentation/json', '/documentation/uiOptions', '/documentation/static', '/growth/events', '/readiness-quiz', '/leads', '/users/unsubscribe', '/share/', '/family/join', '/family/invite/']
+  const open = [
+    '/health',
+    '/engine/health',
+    '/status',
+    '/metrics',
+    '/auth/token',
+    '/auth/demo-token',
+    '/auth/signup',
+    '/auth/login',
+    '/auth/logout',
+    '/auth/mfa/verify',
+    '/auth/sso/',
+    '/auth/google/',
+    '/auth/github/',
+    '/auth/request-password-reset',
+    '/auth/reset-password',
+    '/auth/verify-email',
+    '/auth/resend-verification',
+    '/entitlements/plans',
+    '/blog/posts',
+    '/a/',
+    '/why/',
+    '/verify/',
+    '/webhooks/',
+    '/inbound/',
+    '/insights/cleanup-stale-all',
+    '/billing/webhook',
+    '/documentation',
+    '/documentation/json',
+    '/documentation/uiOptions',
+    '/documentation/static',
+    '/growth/events',
+    '/readiness-quiz',
+    '/leads',
+    '/users/unsubscribe',
+    '/share/',
+    '/family/join',
+    '/family/invite/',
+  ]
   if (/^\/connectors\/[^/]+\/oauth\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/exchange/.test(request.url)) return
@@ -1193,7 +1482,9 @@ app.addHook('onRequest', async (request, reply) => {
     if (opportunistic) {
       try {
         request.authContext = await auth.verify(opportunistic)
-      } catch { /* stay on the public path */ }
+      } catch {
+        /* stay on the public path */
+      }
     }
     return
   }
@@ -1218,12 +1509,15 @@ app.addHook('onRequest', async (request, reply) => {
     if (ctx.mfa_pending) return reply.status(401).send({ error: 'MFA verification required' })
     let authedUser: Record<string, unknown> | null = null
     if (workflowDb) {
-      const user = await workflowDb.collection('users').findOne(
-        { tenant_id: ctx.tenant_id, id: ctx.user_id },
-        { projection: { status: 1, sessions_revoked_at: 1, last_seen_at: 1 } },
-      )
+      const user = await workflowDb
+        .collection('users')
+        .findOne(
+          { tenant_id: ctx.tenant_id, id: ctx.user_id },
+          { projection: { status: 1, sessions_revoked_at: 1, last_seen_at: 1 } },
+        )
       authedUser = user
-      if (user?.['status'] === 'suspended') return reply.status(401).send({ error: 'User suspended' })
+      if (user?.['status'] === 'suspended')
+        return reply.status(401).send({ error: 'User suspended' })
       // Operator session revocation: reject tokens issued before
       // sessions_revoked_at. JWT iat is seconds; <= guards a token minted
       // in the same second the revocation landed.
@@ -1237,7 +1531,8 @@ app.addHook('onRequest', async (request, reply) => {
       // reach the API or the flag couldn't be turned back off.
       if (!request.url.startsWith('/operator/')) {
         const config = await getPlatformConfig(workflowDb)
-        if (config.maintenance_mode) return reply.status(503).send({ error: 'Maintenance mode — try again shortly' })
+        if (config.maintenance_mode)
+          return reply.status(503).send({ error: 'Maintenance mode — try again shortly' })
       }
     }
     request.authContext = ctx
@@ -1250,10 +1545,13 @@ app.addHook('onRequest', async (request, reply) => {
     if (workflowDb && ctx.user_id) {
       const lastSeen = authedUser?.['last_seen_at'] as Date | undefined
       if (!lastSeen || Date.now() - lastSeen.getTime() > 60 * 60 * 1000) {
-        workflowDb.collection('users').updateOne(
-          { tenant_id: ctx.tenant_id, id: ctx.user_id },
-          { $set: { last_seen_at: new Date() } },
-        ).catch(() => {})
+        workflowDb
+          .collection('users')
+          .updateOne(
+            { tenant_id: ctx.tenant_id, id: ctx.user_id },
+            { $set: { last_seen_at: new Date() } },
+          )
+          .catch(() => {})
       }
     }
 
@@ -1282,19 +1580,36 @@ app.addHook('onRequest', async (request, reply) => {
       const sandboxResult = await sandboxMiddleware(request, reply, workflowDb)
       if (sandboxResult !== undefined) return sandboxResult
     }
-    
+
     const resource = authorizationResource(request.url)
     const action = authorizationAction(request.method, request.url)
-    if (resource && !canPerform(ctx.roles, resource, action)) return reply.status(403).send({ error: `Forbidden: cannot ${action} ${resource}` })
+    if (resource && !canPerform(ctx.roles, resource, action))
+      return reply.status(403).send({ error: `Forbidden: cannot ${action} ${resource}` })
     if (deploymentConfig.mode !== 'dev') {
-      const tenant = await workflowDb.collection('tenants').findOne({ $or: [{ tenant_id: ctx.tenant_id }, { id: ctx.tenant_id }], status: { $in: ['active', 'trial'] } })
+      const tenant = await workflowDb
+        .collection('tenants')
+        .findOne({
+          $or: [{ tenant_id: ctx.tenant_id }, { id: ctx.tenant_id }],
+          status: { $in: ['active', 'trial'] },
+        })
       if (!tenant) return reply.status(403).send({ error: 'Tenant is not provisioned or active' })
-      const quotaResource = request.method === 'POST' && request.url.startsWith('/events') ? 'events'
-        : null
+      const quotaResource =
+        request.method === 'POST' && request.url.startsWith('/events') ? 'events' : null
       if (quotaResource) {
-        try { await enforceQuota(workflowDb, ctx.tenant_id, quotaResource) }
-        catch (error) {
-          if (error instanceof QuotaExceededError) return reply.header('Retry-After', '86400').status(429).send({ error: error.message, resource: error.resource, used: error.used, limit: error.limit, upgrade_required: true })
+        try {
+          await enforceQuota(workflowDb, ctx.tenant_id, quotaResource)
+        } catch (error) {
+          if (error instanceof QuotaExceededError)
+            return reply
+              .header('Retry-After', '86400')
+              .status(429)
+              .send({
+                error: error.message,
+                resource: error.resource,
+                used: error.used,
+                limit: error.limit,
+                upgrade_required: true,
+              })
           throw error
         }
       }
@@ -1316,8 +1631,21 @@ app.addHook('preHandler', async (request, reply) => {
 
 function authorizationResource(url: string): ProductResource | null {
   const segment = url.split('?')[0]?.split('/')[1]
-  const map: Record<string, ProductResource> = { insights: 'insights', goals: 'goals', outcomes: 'goals', detectors: 'detectors', connectors: 'connectors', analytics: 'analytics', team: 'users', settings: 'settings', account: 'settings', reminders: 'insights', export: 'audit', 'audit-log': 'audit' }
-  return segment ? map[segment] ?? null : null
+  const map: Record<string, ProductResource> = {
+    insights: 'insights',
+    goals: 'goals',
+    outcomes: 'goals',
+    detectors: 'detectors',
+    connectors: 'connectors',
+    analytics: 'analytics',
+    team: 'users',
+    settings: 'settings',
+    account: 'settings',
+    reminders: 'insights',
+    export: 'audit',
+    'audit-log': 'audit',
+  }
+  return segment ? (map[segment] ?? null) : null
 }
 
 function authorizationAction(method: string, url: string): ProductAction {
@@ -1333,15 +1661,18 @@ function authorizationAction(method: string, url: string): ProductAction {
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 /** POST /auth/token — issue a JWT (dev/demo only; secured in prod by env flag) */
-app.post<{ Body: { tenant_id: string; user_id?: string } }>('/auth/token', async (request, reply) => {
-  if (process.env['NODE_ENV'] === 'production' && !process.env['ALLOW_DEMO_TOKENS']) {
-    return reply.status(403).send({ error: 'Demo tokens disabled in production' })
-  }
-  const { tenant_id, user_id = 'studio_user' } = request.body
-  if (!tenant_id) return reply.status(400).send({ error: 'tenant_id required' })
-  const token = await auth.sign({ sub: user_id, tenant_id, roles: ['admin'] })
-  return reply.send({ token, tenant_id, expires_in: '7d' })
-})
+app.post<{ Body: { tenant_id: string; user_id?: string } }>(
+  '/auth/token',
+  async (request, reply) => {
+    if (process.env['NODE_ENV'] === 'production' && !process.env['ALLOW_DEMO_TOKENS']) {
+      return reply.status(403).send({ error: 'Demo tokens disabled in production' })
+    }
+    const { tenant_id, user_id = 'studio_user' } = request.body
+    if (!tenant_id) return reply.status(400).send({ error: 'tenant_id required' })
+    const token = await auth.sign({ sub: user_id, tenant_id, roles: ['admin'] })
+    return reply.send({ token, tenant_id, expires_in: '7d' })
+  },
+)
 
 /** POST /auth/logout — clears the httpOnly session cookie. Deliberately on
  *  the open-routes list: a logout must succeed even with an expired/invalid
@@ -1362,8 +1693,17 @@ app.get('/auth/demo-token', async (_request, reply) => {
   if (process.env['NODE_ENV'] === 'production' && !process.env['ALLOW_DEMO_TOKENS']) {
     return reply.status(403).send({ error: 'Demo tokens disabled in production' })
   }
-  const token = await auth.sign({ sub: 'demo_user', tenant_id: 'acme-corp', roles: ['admin'], demo: true })
-  return reply.send({ token, tenant_id: 'acme-corp', note: 'Demo token — do not use in production' })
+  const token = await auth.sign({
+    sub: 'demo_user',
+    tenant_id: 'acme-corp',
+    roles: ['admin'],
+    demo: true,
+  })
+  return reply.send({
+    token,
+    tenant_id: 'acme-corp',
+    note: 'Demo token — do not use in production',
+  })
 })
 
 /** GET / — Studio home page fallback when the Studio app is not deployed */
@@ -1504,7 +1844,9 @@ app.get('/health/ready', async (_request, reply) => {
       redis: queueManager.isAvailable() ? 'connected' : 'disconnected',
       migration_version: process.env['MIGRATION_VERSION'] ?? 'unmanaged',
     },
-    circuits: Object.fromEntries([...getAllCircuitBreakers()].map(([key, breaker]) => [key, breaker.getState()])),
+    circuits: Object.fromEntries(
+      [...getAllCircuitBreakers()].map(([key, breaker]) => [key, breaker.getState()]),
+    ),
     adapter: process.env['LIFEKEEL_STORAGE_ADAPTER'] === 'sqlite' ? 'sqlite' : 'mongodb',
     mode: process.env['LIFEKEEL_STORAGE_ADAPTER'] === 'sqlite' ? 'offline' : 'cloud',
   })
@@ -1528,7 +1870,14 @@ app.get('/pipeline-connectors', async () => ({
 // marketplace, teams — isn't reachable from LifeKeel and was removed rather
 // than left dead in the route table. See SECURITY.md for the full list of
 // what was dropped and why.
-await registerInsightRoutes(app, engine, featureHashScorer, workflowDb, tenantLevelScorer, deliveryRouter)
+await registerInsightRoutes(
+  app,
+  engine,
+  featureHashScorer,
+  workflowDb,
+  tenantLevelScorer,
+  deliveryRouter,
+)
 await registerAuthUserRoutes(app, auth)
 if (workflowDb) {
   await registerSocialAuthRoutes(app, auth, workflowDb)

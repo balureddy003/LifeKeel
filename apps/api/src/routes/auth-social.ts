@@ -20,7 +20,7 @@ import type { Db } from 'mongodb'
 import crypto from 'node:crypto'
 import { AuthService, createLogger } from '@lifekeel/platform'
 import { getPlatformConfig } from '../operator/platform-config.js'
-import { setSessionCookie } from '../lib/session-cookie.js'
+import { setSessionCookie } from '../auth/session-cookie.js'
 
 const log = createLogger({ service: 'auth-social', version: '0.0.0' })
 
@@ -31,7 +31,12 @@ function signOAuthState(payload: Record<string, unknown>): string {
   return `${body}.${sig}`
 }
 
-function verifyOAuthState(state: string): { provider: string; exp?: number; app?: string } {
+function verifyOAuthState(state: string): {
+  provider: string
+  exp?: number
+  app?: string
+  appHost?: string
+} {
   const [body, sig] = state.split('.')
   if (!body || !sig) throw new Error('Malformed OAuth state')
   const secret = process.env['JWT_SECRET'] ?? 'change-me-in-production'
@@ -44,10 +49,11 @@ function verifyOAuthState(state: string): { provider: string; exp?: number; app?
     provider?: string
     exp?: number
     app?: string
+    app_host?: string
   }
   if (!parsed.provider) throw new Error('OAuth state missing provider')
   if (parsed.exp && Date.now() > parsed.exp) throw new Error('OAuth state expired')
-  return { provider: parsed.provider, exp: parsed.exp, app: parsed.app }
+  return { provider: parsed.provider, exp: parsed.exp, app: parsed.app, appHost: parsed.app_host }
 }
 
 /**
@@ -57,15 +63,18 @@ function verifyOAuthState(state: string): { provider: string; exp?: number; app?
  * so a forged/garbled state can at worst mis-route to the wrong (still
  * trusted) app, never to an attacker-controlled URL.
  */
-function peekApp(state: string | undefined): string | undefined {
-  if (!state) return undefined
+function peekState(state: string | undefined): { app?: string; appHost?: string } {
+  if (!state) return {}
   try {
     const [body] = state.split('.')
-    if (!body) return undefined
-    const parsed = JSON.parse(Buffer.from(body, 'base64url').toString()) as { app?: string }
-    return parsed.app
+    if (!body) return {}
+    const parsed = JSON.parse(Buffer.from(body, 'base64url').toString()) as {
+      app?: string
+      app_host?: string
+    }
+    return { app: parsed.app, appHost: parsed.app_host }
   } catch {
-    return undefined
+    return {}
   }
 }
 
@@ -89,8 +98,34 @@ export async function registerSocialAuthRoutes(
   // redirects back to the API, which then redirects to the appropriate app.
   const apiBaseUrl = process.env['API_BASE_URL'] ?? 'http://localhost:3001'
   const cleanApiBaseUrl = apiBaseUrl.replace(/\/$/, '')
-  const googleRedirectUri = process.env['GOOGLE_SOCIAL_REDIRECT_URI'] ?? `${cleanApiBaseUrl}/auth/google/callback`
-  const githubRedirectUri = process.env['GITHUB_REDIRECT_URI'] ?? `${cleanApiBaseUrl}/auth/github/callback`
+  const googleRedirectUri =
+    process.env['GOOGLE_SOCIAL_REDIRECT_URI'] ?? `${cleanApiBaseUrl}/auth/google/callback`
+  const githubRedirectUri =
+    process.env['GITHUB_REDIRECT_URI'] ?? `${cleanApiBaseUrl}/auth/github/callback`
+
+  /**
+   * Hosts the 'family' app may legitimately live on — one per TLD. The web
+   * app passes its own `window.location.host` as ?app_host= at /login; the
+   * value rides the signed OAuth state so the callback can send each user
+   * back to the TLD they started on (sessions are per-registrable-domain —
+   * a .si user bounced to .co.uk would arrive logged-out). Anything not in
+   * this set falls back to LIFEKEEL_URL, so a forged app_host can at worst
+   * land on the default app, never an arbitrary origin.
+   */
+  const allowedAppHosts = new Set(
+    (process.env['LIFEKEEL_APP_HOSTS'] ?? 'app.lifekeel.co.uk,app.lifekeel.si')
+      .split(',')
+      .map((h) => h.trim())
+      .filter(Boolean),
+  )
+
+  function appBaseUrl(app: string | undefined, appHost?: string): string {
+    if (app === 'family') {
+      if (appHost && allowedAppHosts.has(appHost)) return `https://${appHost}`
+      return cleanLifeKeelUrl
+    }
+    return cleanStudioUrl
+  }
 
   /**
    * Where the token/tenant fragment (success) or ?error= (failure) lands,
@@ -98,15 +133,13 @@ export async function registerSocialAuthRoutes(
    * state). 'family' is the LifeKeel web app; anything else falls back to
    * STUDIO_URL (legacy default kept for older clients).
    */
-  function getCallbackUrl(app?: string): string {
-    if (app === 'family') return `${cleanLifeKeelUrl}/auth/callback`
-    return `${cleanStudioUrl}/auth/callback`
+  function getCallbackUrl(app?: string, appHost?: string): string {
+    return `${appBaseUrl(app, appHost)}/auth/callback`
   }
 
   /** Same app-keyed resolution as getCallbackUrl, but for the pre-token error path (?error=... instead of #token=...). */
-  function getLoginErrorUrl(app: string | undefined, error: string): string {
-    const base = app === 'family' ? cleanLifeKeelUrl : cleanStudioUrl
-    return `${base}/login?error=${error}`
+  function getLoginErrorUrl(app: string | undefined, error: string, appHost?: string): string {
+    return `${appBaseUrl(app, appHost)}/login?error=${error}`
   }
 
   log.info({ studio_url: studioUrl }, 'STUDIO_URL')
@@ -116,29 +149,38 @@ export async function registerSocialAuthRoutes(
 
   // ── Google OAuth ─────────────────────────────────────────────────────────────
 
-  fastify.get<{ Querystring: { app?: string } }>('/auth/google/login', async (req, reply) => {
-    const clientId = process.env['GOOGLE_CLIENT_ID']
-    if (!clientId) {
-      return reply.status(500).send({ error: 'Google OAuth not configured. Set GOOGLE_CLIENT_ID env var.' })
-    }
+  fastify.get<{ Querystring: { app?: string; app_host?: string } }>(
+    '/auth/google/login',
+    async (req, reply) => {
+      const clientId = process.env['GOOGLE_CLIENT_ID']
+      if (!clientId) {
+        return reply
+          .status(500)
+          .send({ error: 'Google OAuth not configured. Set GOOGLE_CLIENT_ID env var.' })
+      }
 
-    const state = signOAuthState({
-      provider: 'google',
-      exp: Date.now() + 10 * 60 * 1000, // 10 minutes
-      app: req.query.app ?? 'studio',
-    })
+      const state = signOAuthState({
+        provider: 'google',
+        exp: Date.now() + 10 * 60 * 1000, // 10 minutes
+        app: req.query.app ?? 'studio',
+        // Carry the initiating app host through the flow — validated against
+        // allowedAppHosts when the callback resolves the redirect target.
+        app_host: req.query.app_host,
+      })
 
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
-      `client_id=${clientId}&` +
-      `redirect_uri=${encodeURIComponent(googleRedirectUri)}&` +
-      `response_type=code&` +
-      `scope=openid email profile&` +
-      `state=${state}`
+      const authUrl =
+        `https://accounts.google.com/o/oauth2/v2/auth?` +
+        `client_id=${clientId}&` +
+        `redirect_uri=${encodeURIComponent(googleRedirectUri)}&` +
+        `response_type=code&` +
+        `scope=openid email profile&` +
+        `state=${state}`
 
-    log.info({ google_redirect_uri: googleRedirectUri }, 'Google OAuth redirect URI')
-    log.info({ auth_url: authUrl }, 'Google OAuth auth URL')
-    return reply.redirect(authUrl)
-  })
+      log.info({ google_redirect_uri: googleRedirectUri }, 'Google OAuth redirect URI')
+      log.info({ auth_url: authUrl }, 'Google OAuth auth URL')
+      return reply.redirect(authUrl)
+    },
+  )
 
   fastify.get<{
     Querystring: { code?: string; state?: string; error?: string }
@@ -146,31 +188,38 @@ export async function registerSocialAuthRoutes(
     const { code, state, error } = req.query
 
     if (error) {
-      return reply.redirect(getLoginErrorUrl(peekApp(state), error))
+      const peeked = peekState(state)
+      return reply.redirect(getLoginErrorUrl(peeked.app, error, peeked.appHost))
     }
 
     if (!code || !state) {
-      return reply.redirect(getLoginErrorUrl(peekApp(state), 'missing_oauth_params'))
+      const peeked = peekState(state)
+      return reply.redirect(getLoginErrorUrl(peeked.app, 'missing_oauth_params', peeked.appHost))
     }
 
     let appRedirectUrl: string
     let app: string | undefined
+    let appHost: string | undefined
     try {
       const stateData = verifyOAuthState(state)
       if (stateData.provider !== 'google') {
-        return reply.redirect(getLoginErrorUrl(stateData.app, 'invalid_oauth_provider'))
+        return reply.redirect(
+          getLoginErrorUrl(stateData.app, 'invalid_oauth_provider', stateData.appHost),
+        )
       }
       app = stateData.app
-      appRedirectUrl = getCallbackUrl(app)
+      appHost = stateData.appHost
+      appRedirectUrl = getCallbackUrl(app, appHost)
     } catch (err) {
-      return reply.redirect(getLoginErrorUrl(peekApp(state), 'invalid_oauth_state'))
+      const peeked = peekState(state)
+      return reply.redirect(getLoginErrorUrl(peeked.app, 'invalid_oauth_state', peeked.appHost))
     }
 
     const clientId = process.env['GOOGLE_CLIENT_ID']
     const clientSecret = process.env['GOOGLE_CLIENT_SECRET']
 
     if (!clientId || !clientSecret) {
-      return reply.redirect(getLoginErrorUrl(app, 'google_oauth_not_configured'))
+      return reply.redirect(getLoginErrorUrl(app, 'google_oauth_not_configured', appHost))
     }
 
     try {
@@ -191,7 +240,7 @@ export async function registerSocialAuthRoutes(
         throw new Error('Google token exchange failed')
       }
 
-      const tokenData = await tokenRes.json() as {
+      const tokenData = (await tokenRes.json()) as {
         access_token: string
         id_token?: string
       }
@@ -205,7 +254,7 @@ export async function registerSocialAuthRoutes(
         throw new Error('Failed to fetch Google user info')
       }
 
-      const googleUser = await userRes.json() as {
+      const googleUser = (await userRes.json()) as {
         id: string
         email: string
         name: string
@@ -218,18 +267,22 @@ export async function registerSocialAuthRoutes(
       let user: any = await usersCol.findOne({
         $or: [
           { email: googleUser.email.toLowerCase() },
-          { external_id: googleUser.id, external_provider: 'google' }
-        ]
+          { external_id: googleUser.id, external_provider: 'google' },
+        ],
       })
       // KEEL-005: computed from the pre-update `user` doc, before any write —
       // if the external_id+provider $or clause matched, this is definitionally
       // true (same OAuth identity re-authenticating, safe regardless of
       // verified_email); if false, only the email clause could have matched,
       // meaning this is a merge onto an account by email alone.
-      const matchedByExternalId = user?.external_id === googleUser.id && user?.external_provider === 'google'
+      const matchedByExternalId =
+        user?.external_id === googleUser.id && user?.external_provider === 'google'
 
       if (!user) {
-        const tenantId = googleUser.email.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
+        const tenantId = googleUser.email
+          .split('@')[0]!
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '-')
 
         // KEEL-001: without this check, anyone whose OAuth email's local-part
         // happens to collide with an already-claimed tenant slug (e.g. any
@@ -245,14 +298,14 @@ export async function registerSocialAuthRoutes(
         // relies on, not stronger.
         const existingTenant = await db.collection('tenants').findOne({ tenant_id: tenantId })
         if (existingTenant) {
-          return reply.redirect(getLoginErrorUrl(app, 'workspace_taken'))
+          return reply.redirect(getLoginErrorUrl(app, 'workspace_taken', appHost))
         }
 
         // Operator kill-switch — same flag /auth/signup enforces, placed
         // after the existing-user lookup so OAuth *login* still works while
         // new account creation is closed.
         if (!(await getPlatformConfig(db)).signups_enabled) {
-          return reply.redirect(getLoginErrorUrl(app, 'signups_disabled'))
+          return reply.redirect(getLoginErrorUrl(app, 'signups_disabled', appHost))
         }
 
         // Create new user
@@ -307,7 +360,7 @@ export async function registerSocialAuthRoutes(
         // else's email address could get silently linked into that
         // person's existing account.
         if (!matchedByExternalId && !googleUser.verified_email) {
-          return reply.redirect(getLoginErrorUrl(app, 'email_not_verified'))
+          return reply.redirect(getLoginErrorUrl(app, 'email_not_verified', appHost))
         }
 
         // Update existing user with Google info if needed
@@ -319,8 +372,8 @@ export async function registerSocialAuthRoutes(
               external_provider: 'google',
               email_verified: true,
               updated_at: new Date(),
-            }
-          }
+            },
+          },
         )
       }
 
@@ -328,9 +381,15 @@ export async function registerSocialAuthRoutes(
       // only /auth/mfa/verify can exchange for a session. Redirected back
       // in the fragment; the web callback routes it to the code entry.
       if (user.mfa_enabled && user.mfa_secret) {
-        const mfaToken = await auth.sign({
-          sub: user.id, tenant_id: user.tenant_id, roles: user.roles, mfa_pending: true,
-        }, '5m')
+        const mfaToken = await auth.sign(
+          {
+            sub: user.id,
+            tenant_id: user.tenant_id,
+            roles: user.roles,
+            mfa_pending: true,
+          },
+          '5m',
+        )
         return reply.redirect(`${appRedirectUrl}#mfa_token=${mfaToken}`)
       }
 
@@ -338,11 +397,14 @@ export async function registerSocialAuthRoutes(
       // gets the same long-lived duration password login gets when the user
       // checks that box — otherwise Google-authenticated sessions would
       // silently expire in 1h while password sessions last 7-30d.
-      const token = await auth.sign({
-        sub: user.id,
-        tenant_id: user.tenant_id,
-        roles: user.roles,
-      }, '30d')
+      const token = await auth.sign(
+        {
+          sub: user.id,
+          tenant_id: user.tenant_id,
+          roles: user.roles,
+        },
+        '30d',
+      )
       // httpOnly session cookie alongside the fragment hand-off — new
       // frontends prefer the cookie; the fragment stays during migration.
       setSessionCookie(reply, token, 30 * 24 * 60 * 60)
@@ -355,228 +417,263 @@ export async function registerSocialAuthRoutes(
       // or localhost), redirect to the API's own Studio home page with the
       // token in the URL fragment. The home page reads the fragment and
       // presents a dashboard instead of a raw token copy page.
-      const isStudioDeployed = cleanStudioUrl !== cleanApiBaseUrl
-        && !cleanStudioUrl.startsWith('http://localhost')
+      const isStudioDeployed =
+        cleanStudioUrl !== cleanApiBaseUrl && !cleanStudioUrl.startsWith('http://localhost')
       if (app === 'studio' && !isStudioDeployed) {
         return reply.redirect(`${cleanApiBaseUrl}/#token=${token}&tenant=${user.tenant_id}`)
       }
       return reply.redirect(`${appRedirectUrl}#token=${token}&tenant=${user.tenant_id}`)
     } catch (err) {
       log.error({ err }, 'Google OAuth error')
-      return reply.redirect(getLoginErrorUrl(app, 'oauth_failed'))
+      return reply.redirect(getLoginErrorUrl(app, 'oauth_failed', appHost))
     }
   })
 
   // POST /auth/google/exchange — exchange code for token (called from frontend)
-  fastify.post<{ Body: { code: string; state: string } }>('/auth/google/exchange', async (req, reply) => {
-    const { code, state } = req.body
+  fastify.post<{ Body: { code: string; state: string } }>(
+    '/auth/google/exchange',
+    async (req, reply) => {
+      const { code, state } = req.body
 
-    if (!code || !state) {
-      return reply.status(400).send({ error: 'Missing code or state' })
-    }
-
-    try {
-      const stateData = verifyOAuthState(state)
-      if (stateData.provider !== 'google') {
-        return reply.status(400).send({ error: 'Invalid OAuth provider' })
-      }
-    } catch (err) {
-      return reply.status(400).send({ error: 'Invalid OAuth state' })
-    }
-
-    const clientId = process.env['GOOGLE_CLIENT_ID']
-    const clientSecret = process.env['GOOGLE_CLIENT_SECRET']
-
-    if (!clientId || !clientSecret) {
-      return reply.status(500).send({ error: 'Google OAuth not configured' })
-    }
-
-    try {
-      // Exchange code for tokens
-      log.info({ redirect_uri: googleRedirectUri }, 'Google token exchange - redirectUri')
-      log.info({ client_id: clientId }, 'Google token exchange - clientId')
-      log.info({ has_client_secret: !!clientSecret }, 'Google token exchange - has clientSecret')
-
-      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'authorization_code',
-          code,
-          redirect_uri: googleRedirectUri,
-          client_id: clientId,
-          client_secret: clientSecret,
-        }),
-      })
-
-      log.info({ status: tokenRes.status }, 'Google token exchange - response status')
-
-      if (!tokenRes.ok) {
-        const errorText = await tokenRes.text()
-        log.error({ status: tokenRes.status, error: errorText }, 'Google token exchange - error response')
-        return reply.status(400).send({ error: 'Google token exchange failed', detail: `${tokenRes.status}: ${errorText}` })
+      if (!code || !state) {
+        return reply.status(400).send({ error: 'Missing code or state' })
       }
 
-      const tokenData = await tokenRes.json() as {
-        access_token: string
-        id_token?: string
-      }
-
-      // Get user info from Google
-      const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-        headers: { Authorization: `Bearer ${tokenData.access_token}` },
-      })
-
-      if (!userRes.ok) {
-        const errorText = await userRes.text()
-        log.error({ status: userRes.status, error: errorText }, 'Google user info fetch - error response')
-        return reply.status(400).send({ error: 'Failed to fetch Google user info', detail: `${userRes.status}: ${errorText}` })
-      }
-
-      const googleUser = await userRes.json() as {
-        id: string
-        email: string
-        name: string
-        picture?: string
-        verified_email?: boolean
-      }
-
-      // Find or create user
-      const usersCol = db.collection('users')
-      let user: any = await usersCol.findOne({
-        $or: [
-          { email: googleUser.email.toLowerCase() },
-          { external_id: googleUser.id, external_provider: 'google' }
-        ]
-      })
-      const matchedByExternalId = user?.external_id === googleUser.id && user?.external_provider === 'google'
-
-      if (!user) {
-        const tenantId = googleUser.email.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
-
-        // KEEL-001 — see the same guard in GET /auth/google/callback above
-        // for the full explanation. This route is JSON-only (called
-        // directly by the frontend, no browser redirect), so it rejects
-        // with the same 409 shape auth-users.ts's password signup uses.
-        const existingTenant = await db.collection('tenants').findOne({ tenant_id: tenantId })
-        if (existingTenant) {
-          return reply.status(409).send({ error: 'That workspace name is already taken. Choose another.' })
+      try {
+        const stateData = verifyOAuthState(state)
+        if (stateData.provider !== 'google') {
+          return reply.status(400).send({ error: 'Invalid OAuth provider' })
         }
+      } catch (err) {
+        return reply.status(400).send({ error: 'Invalid OAuth state' })
+      }
 
-        // Operator kill-switch — same flag /auth/signup enforces; existing
-        // users already resolved above and continue to sign in.
-        if (!(await getPlatformConfig(db)).signups_enabled) {
-          return reply.status(503).send({ error: 'Signups are temporarily disabled' })
-        }
+      const clientId = process.env['GOOGLE_CLIENT_ID']
+      const clientSecret = process.env['GOOGLE_CLIENT_SECRET']
 
-        // Create new user
-        const userId = crypto.randomBytes(8).toString('hex')
+      if (!clientId || !clientSecret) {
+        return reply.status(500).send({ error: 'Google OAuth not configured' })
+      }
 
-        user = {
-          id: userId,
-          email: googleUser.email.toLowerCase(),
-          name: googleUser.name,
-          tenant_id: tenantId,
-          password_hash: '',
-          salt: '',
-          created_at: new Date(),
-          avatar_color: '#4285F4', // Google blue
-          roles: ['admin'],
-          status: 'active',
-          failed_login_attempts: 0,
-          locked_until: null,
-          external_id: googleUser.id,
-          external_provider: 'google' as const,
-          email_verified: true,
-          email_verification_token: null,
-          email_verification_expires: null,
-          password_reset_token: null,
-          password_reset_expires: null,
-          updated_at: new Date(),
-        }
+      try {
+        // Exchange code for tokens
+        log.info({ redirect_uri: googleRedirectUri }, 'Google token exchange - redirectUri')
+        log.info({ client_id: clientId }, 'Google token exchange - clientId')
+        log.info({ has_client_secret: !!clientSecret }, 'Google token exchange - has clientSecret')
 
-        await usersCol.insertOne(user)
-
-        await db.collection('tenants').insertOne({
-          tenant_id: tenantId,
-          name: googleUser.name,
-          plan: 'free',
-          quotas: {
-            events_per_month: 10_000,
-            workflows_per_month: 3,
-            detectors_max: 10,
-            connectors_max: 1,
-            users_max: 1,
-            llm_tokens_per_month: 100_000,
-          },
-          status: 'active',
-          created_at: new Date(),
-          updated_at: new Date(),
+        const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            grant_type: 'authorization_code',
+            code,
+            redirect_uri: googleRedirectUri,
+            client_id: clientId,
+            client_secret: clientSecret,
+          }),
         })
-      } else {
-        // KEEL-005 — see the matching Google callback guard for the full
-        // explanation. This route is JSON-only, so it rejects with 403
-        // rather than a redirect.
-        if (!matchedByExternalId && !googleUser.verified_email) {
-          return reply.status(403).send({ error: 'This email is not verified with the OAuth provider — sign in with your existing account instead.' })
+
+        log.info({ status: tokenRes.status }, 'Google token exchange - response status')
+
+        if (!tokenRes.ok) {
+          const errorText = await tokenRes.text()
+          log.error(
+            { status: tokenRes.status, error: errorText },
+            'Google token exchange - error response',
+          )
+          return reply.status(400).send({
+            error: 'Google token exchange failed',
+            detail: `${tokenRes.status}: ${errorText}`,
+          })
         }
 
-        // Update existing user with Google info if needed
-        await usersCol.updateOne(
-          { _id: user._id },
-          {
-            $set: {
-              external_id: googleUser.id,
-              external_provider: 'google',
-              email_verified: true,
-              updated_at: new Date(),
-            }
+        const tokenData = (await tokenRes.json()) as {
+          access_token: string
+          id_token?: string
+        }
+
+        // Get user info from Google
+        const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+          headers: { Authorization: `Bearer ${tokenData.access_token}` },
+        })
+
+        if (!userRes.ok) {
+          const errorText = await userRes.text()
+          log.error(
+            { status: userRes.status, error: errorText },
+            'Google user info fetch - error response',
+          )
+          return reply.status(400).send({
+            error: 'Failed to fetch Google user info',
+            detail: `${userRes.status}: ${errorText}`,
+          })
+        }
+
+        const googleUser = (await userRes.json()) as {
+          id: string
+          email: string
+          name: string
+          picture?: string
+          verified_email?: boolean
+        }
+
+        // Find or create user
+        const usersCol = db.collection('users')
+        let user: any = await usersCol.findOne({
+          $or: [
+            { email: googleUser.email.toLowerCase() },
+            { external_id: googleUser.id, external_provider: 'google' },
+          ],
+        })
+        const matchedByExternalId =
+          user?.external_id === googleUser.id && user?.external_provider === 'google'
+
+        if (!user) {
+          const tenantId = googleUser.email
+            .split('@')[0]!
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, '-')
+
+          // KEEL-001 — see the same guard in GET /auth/google/callback above
+          // for the full explanation. This route is JSON-only (called
+          // directly by the frontend, no browser redirect), so it rejects
+          // with the same 409 shape auth-users.ts's password signup uses.
+          const existingTenant = await db.collection('tenants').findOne({ tenant_id: tenantId })
+          if (existingTenant) {
+            return reply
+              .status(409)
+              .send({ error: 'That workspace name is already taken. Choose another.' })
           }
+
+          // Operator kill-switch — same flag /auth/signup enforces; existing
+          // users already resolved above and continue to sign in.
+          if (!(await getPlatformConfig(db)).signups_enabled) {
+            return reply.status(503).send({ error: 'Signups are temporarily disabled' })
+          }
+
+          // Create new user
+          const userId = crypto.randomBytes(8).toString('hex')
+
+          user = {
+            id: userId,
+            email: googleUser.email.toLowerCase(),
+            name: googleUser.name,
+            tenant_id: tenantId,
+            password_hash: '',
+            salt: '',
+            created_at: new Date(),
+            avatar_color: '#4285F4', // Google blue
+            roles: ['admin'],
+            status: 'active',
+            failed_login_attempts: 0,
+            locked_until: null,
+            external_id: googleUser.id,
+            external_provider: 'google' as const,
+            email_verified: true,
+            email_verification_token: null,
+            email_verification_expires: null,
+            password_reset_token: null,
+            password_reset_expires: null,
+            updated_at: new Date(),
+          }
+
+          await usersCol.insertOne(user)
+
+          await db.collection('tenants').insertOne({
+            tenant_id: tenantId,
+            name: googleUser.name,
+            plan: 'free',
+            quotas: {
+              events_per_month: 10_000,
+              workflows_per_month: 3,
+              detectors_max: 10,
+              connectors_max: 1,
+              users_max: 1,
+              llm_tokens_per_month: 100_000,
+            },
+            status: 'active',
+            created_at: new Date(),
+            updated_at: new Date(),
+          })
+        } else {
+          // KEEL-005 — see the matching Google callback guard for the full
+          // explanation. This route is JSON-only, so it rejects with 403
+          // rather than a redirect.
+          if (!matchedByExternalId && !googleUser.verified_email) {
+            return reply.status(403).send({
+              error:
+                'This email is not verified with the OAuth provider — sign in with your existing account instead.',
+            })
+          }
+
+          // Update existing user with Google info if needed
+          await usersCol.updateOne(
+            { _id: user._id },
+            {
+              $set: {
+                external_id: googleUser.id,
+                external_provider: 'google',
+                email_verified: true,
+                updated_at: new Date(),
+              },
+            },
+          )
+        }
+
+        // MFA gate — mirrors password login's { mfa_required, mfa_token }
+        // shape; the pending token is only exchangeable at /auth/mfa/verify.
+        if (user.mfa_enabled && user.mfa_secret) {
+          const mfaToken = await auth.sign(
+            {
+              sub: user.id,
+              tenant_id: user.tenant_id,
+              roles: user.roles,
+              mfa_pending: true,
+            },
+            '5m',
+          )
+          return { mfa_required: true, mfa_token: mfaToken }
+        }
+
+        // Issue JWT token. Same long-lived duration as the redirect-flow
+        // callback above — see comment there.
+        const token = await auth.sign(
+          {
+            sub: user.id,
+            tenant_id: user.tenant_id,
+            roles: user.roles,
+          },
+          '30d',
         )
-      }
+        setSessionCookie(reply, token, 30 * 24 * 60 * 60)
 
-      // MFA gate — mirrors password login's { mfa_required, mfa_token }
-      // shape; the pending token is only exchangeable at /auth/mfa/verify.
-      if (user.mfa_enabled && user.mfa_secret) {
-        const mfaToken = await auth.sign({
-          sub: user.id, tenant_id: user.tenant_id, roles: user.roles, mfa_pending: true,
-        }, '5m')
-        return { mfa_required: true, mfa_token: mfaToken }
+        return {
+          token,
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            tenant_id: user.tenant_id,
+            avatar_color: user.avatar_color || '#4285F4',
+            active_vertical: user.active_vertical ?? null,
+          },
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        log.error({ err }, 'Google OAuth exchange error')
+        return reply.status(500).send({ error: 'OAuth exchange failed', detail: message })
       }
-
-      // Issue JWT token. Same long-lived duration as the redirect-flow
-      // callback above — see comment there.
-      const token = await auth.sign({
-        sub: user.id,
-        tenant_id: user.tenant_id,
-        roles: user.roles,
-      }, '30d')
-      setSessionCookie(reply, token, 30 * 24 * 60 * 60)
-
-      return {
-        token,
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          tenant_id: user.tenant_id,
-          avatar_color: user.avatar_color || '#4285F4',
-          active_vertical: user.active_vertical ?? null,
-        },
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      log.error({ err }, 'Google OAuth exchange error')
-      return reply.status(500).send({ error: 'OAuth exchange failed', detail: message })
-    }
-  })
+    },
+  )
 
   // ── GitHub OAuth ────────────────────────────────────────────────────────────
 
   fastify.get('/auth/github/login', async (_req, reply) => {
     const clientId = process.env['GITHUB_CLIENT_ID']
     if (!clientId) {
-      return reply.status(500).send({ error: 'GitHub OAuth not configured. Set GITHUB_CLIENT_ID env var.' })
+      return reply
+        .status(500)
+        .send({ error: 'GitHub OAuth not configured. Set GITHUB_CLIENT_ID env var.' })
     }
 
     const state = signOAuthState({
@@ -584,7 +681,8 @@ export async function registerSocialAuthRoutes(
       exp: Date.now() + 10 * 60 * 1000, // 10 minutes
     })
 
-    const authUrl = `https://github.com/login/oauth/authorize?` +
+    const authUrl =
+      `https://github.com/login/oauth/authorize?` +
       `client_id=${clientId}&` +
       `redirect_uri=${encodeURIComponent(githubRedirectUri)}&` +
       `scope=user:email&` +
@@ -628,7 +726,7 @@ export async function registerSocialAuthRoutes(
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json',
+          Accept: 'application/json',
         },
         body: new URLSearchParams({
           client_id: clientId,
@@ -642,7 +740,7 @@ export async function registerSocialAuthRoutes(
         throw new Error('GitHub token exchange failed')
       }
 
-      const tokenData = await tokenRes.json() as {
+      const tokenData = (await tokenRes.json()) as {
         access_token: string
       }
 
@@ -655,7 +753,7 @@ export async function registerSocialAuthRoutes(
         throw new Error('Failed to fetch GitHub user info')
       }
 
-      const githubUser = await userRes.json() as {
+      const githubUser = (await userRes.json()) as {
         id: number
         email: string | null
         login: string
@@ -674,12 +772,18 @@ export async function registerSocialAuthRoutes(
         headers: { Authorization: `Bearer ${tokenData.access_token}` },
       })
       if (emailsRes.ok) {
-        const emails = await emailsRes.json() as Array<{ email: string; primary: boolean; verified: boolean }>
+        const emails = (await emailsRes.json()) as Array<{
+          email: string
+          primary: boolean
+          verified: boolean
+        }>
         if (!email) {
-          const primaryEmail = emails.find(e => e.primary && e.verified)
+          const primaryEmail = emails.find((e) => e.primary && e.verified)
           email = primaryEmail?.email || `${githubUser.login}@users.noreply.github.com`
         }
-        emailVerified = emails.some(e => e.email.toLowerCase() === email!.toLowerCase() && e.verified)
+        emailVerified = emails.some(
+          (e) => e.email.toLowerCase() === email!.toLowerCase() && e.verified,
+        )
       }
 
       // Find or create user
@@ -687,13 +791,17 @@ export async function registerSocialAuthRoutes(
       let user: any = await usersCol.findOne({
         $or: [
           { email: email!.toLowerCase() },
-          { external_id: String(githubUser.id), external_provider: 'github' }
-        ]
+          { external_id: String(githubUser.id), external_provider: 'github' },
+        ],
       })
-      const matchedByExternalId = user?.external_id === String(githubUser.id) && user?.external_provider === 'github'
+      const matchedByExternalId =
+        user?.external_id === String(githubUser.id) && user?.external_provider === 'github'
 
       if (!user) {
-        const tenantId = email!.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
+        const tenantId = email!
+          .split('@')[0]!
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '-')
 
         // KEEL-001 — see the matching Google guard earlier in this file for
         // the full explanation. This callback redirects the browser, so it
@@ -771,22 +879,31 @@ export async function registerSocialAuthRoutes(
               external_provider: 'github',
               email_verified: true,
               updated_at: new Date(),
-            }
-          }
+            },
+          },
         )
       }
 
       // Issue JWT token
-      const token = await auth.sign({
-        sub: user.id,
-        tenant_id: user.tenant_id,
-        roles: user.roles,
-      }, '1h')
+      const token = await auth.sign(
+        {
+          sub: user.id,
+          tenant_id: user.tenant_id,
+          roles: user.roles,
+        },
+        '1h',
+      )
 
       if (user.mfa_enabled && user.mfa_secret) {
-        const mfaToken = await auth.sign({
-          sub: user.id, tenant_id: user.tenant_id, roles: user.roles, mfa_pending: true,
-        }, '5m')
+        const mfaToken = await auth.sign(
+          {
+            sub: user.id,
+            tenant_id: user.tenant_id,
+            roles: user.roles,
+            mfa_pending: true,
+          },
+          '5m',
+        )
         return reply.redirect(`${studioUrl}/auth/callback#mfa_token=${mfaToken}`)
       }
       setSessionCookie(reply, token, 60 * 60)
@@ -800,224 +917,266 @@ export async function registerSocialAuthRoutes(
   })
 
   // POST /auth/github/exchange — exchange code for token (called from frontend)
-  fastify.post<{ Body: { code: string; state: string } }>('/auth/github/exchange', async (req, reply) => {
-    const { code, state } = req.body
+  fastify.post<{ Body: { code: string; state: string } }>(
+    '/auth/github/exchange',
+    async (req, reply) => {
+      const { code, state } = req.body
 
-    if (!code || !state) {
-      return reply.status(400).send({ error: 'Missing code or state' })
-    }
-
-    try {
-      const stateData = verifyOAuthState(state)
-      if (stateData.provider !== 'github') {
-        return reply.status(400).send({ error: 'Invalid OAuth provider' })
-      }
-    } catch (err) {
-      return reply.status(400).send({ error: 'Invalid OAuth state' })
-    }
-
-    const clientId = process.env['GITHUB_CLIENT_ID']
-    const clientSecret = process.env['GITHUB_CLIENT_SECRET']
-
-    if (!clientId || !clientSecret) {
-      return reply.status(500).send({ error: 'GitHub OAuth not configured' })
-    }
-
-    try {
-      // Exchange code for access token
-      log.info({ redirect_uri: githubRedirectUri }, 'GitHub token exchange - redirectUri')
-      log.info({ client_id: clientId }, 'GitHub token exchange - clientId')
-      log.info({ has_client_secret: !!clientSecret }, 'GitHub token exchange - has clientSecret')
-
-      const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json',
-        },
-        body: new URLSearchParams({
-          client_id: clientId,
-          client_secret: clientSecret,
-          code,
-          redirect_uri: githubRedirectUri,
-        }),
-      })
-
-      log.info({ status: tokenRes.status }, 'GitHub token exchange - response status')
-
-      if (!tokenRes.ok) {
-        const errorText = await tokenRes.text()
-        log.error({ status: tokenRes.status, error: errorText }, 'GitHub token exchange - error response')
-        return reply.status(400).send({ error: 'GitHub token exchange failed', detail: `${tokenRes.status}: ${errorText}` })
+      if (!code || !state) {
+        return reply.status(400).send({ error: 'Missing code or state' })
       }
 
-      const tokenData = await tokenRes.json() as {
-        access_token: string
-      }
-
-      // Get user info from GitHub
-      log.info({ access_token_length: tokenData.access_token.length }, 'GitHub user info fetch - access_token length')
-      const userRes = await fetch('https://api.github.com/user', {
-        headers: { Authorization: `Bearer ${tokenData.access_token}` },
-      })
-
-      log.info({ status: userRes.status }, 'GitHub user info fetch - response status')
-
-      if (!userRes.ok) {
-        const errorText = await userRes.text()
-        log.error({ status: userRes.status, error: errorText }, 'GitHub user info fetch - error response')
-        return reply.status(400).send({ error: 'Failed to fetch GitHub user info', detail: `${userRes.status}: ${errorText}` })
-      }
-
-      const githubUser = await userRes.json() as {
-        id: number
-        email: string | null
-        login: string
-        name: string | null
-        avatar_url?: string
-      }
-
-      // KEEL-005: previously only fetched when `/user` didn't already
-      // return an email — meaning for the common case (public email set),
-      // no verification signal was ever available at the merge-decision
-      // point below. Now always fetched so `emailVerified` is meaningful
-      // regardless of which path produced `email`.
-      let email = githubUser.email
-      let emailVerified = false
-      const emailsRes = await fetch('https://api.github.com/user/emails', {
-        headers: { Authorization: `Bearer ${tokenData.access_token}` },
-      })
-      if (emailsRes.ok) {
-        const emails = await emailsRes.json() as Array<{ email: string; primary: boolean; verified: boolean }>
-        if (!email) {
-          const primaryEmail = emails.find(e => e.primary && e.verified)
-          email = primaryEmail?.email || `${githubUser.login}@users.noreply.github.com`
+      try {
+        const stateData = verifyOAuthState(state)
+        if (stateData.provider !== 'github') {
+          return reply.status(400).send({ error: 'Invalid OAuth provider' })
         }
-        emailVerified = emails.some(e => e.email.toLowerCase() === email!.toLowerCase() && e.verified)
+      } catch (err) {
+        return reply.status(400).send({ error: 'Invalid OAuth state' })
       }
 
-      // Find or create user
-      const usersCol = db.collection('users')
-      let user: any = await usersCol.findOne({
-        $or: [
-          { email: email!.toLowerCase() },
-          { external_id: String(githubUser.id), external_provider: 'github' }
-        ]
-      })
-      const matchedByExternalId = user?.external_id === String(githubUser.id) && user?.external_provider === 'github'
+      const clientId = process.env['GITHUB_CLIENT_ID']
+      const clientSecret = process.env['GITHUB_CLIENT_SECRET']
 
-      if (!user) {
-        const tenantId = email!.split('@')[0]!.toLowerCase().replace(/[^a-z0-9]/g, '-')
+      if (!clientId || !clientSecret) {
+        return reply.status(500).send({ error: 'GitHub OAuth not configured' })
+      }
 
-        // KEEL-001 — see the matching Google guard earlier in this file for
-        // the full explanation. This route is JSON-only (called directly by
-        // the frontend, no browser redirect), so it rejects with the same
-        // 409 shape auth-users.ts's password signup uses.
-        const existingTenant = await db.collection('tenants').findOne({ tenant_id: tenantId })
-        if (existingTenant) {
-          return reply.status(409).send({ error: 'That workspace name is already taken. Choose another.' })
-        }
+      try {
+        // Exchange code for access token
+        log.info({ redirect_uri: githubRedirectUri }, 'GitHub token exchange - redirectUri')
+        log.info({ client_id: clientId }, 'GitHub token exchange - clientId')
+        log.info({ has_client_secret: !!clientSecret }, 'GitHub token exchange - has clientSecret')
 
-        // Operator kill-switch — same flag /auth/signup enforces; existing
-        // users already resolved above and continue to sign in.
-        if (!(await getPlatformConfig(db)).signups_enabled) {
-          return reply.status(503).send({ error: 'Signups are temporarily disabled' })
-        }
-
-        // Create new user
-        const userId = crypto.randomBytes(8).toString('hex')
-
-        user = {
-          id: userId,
-          email: email!.toLowerCase(),
-          name: githubUser.name || githubUser.login,
-          tenant_id: tenantId,
-          password_hash: '',
-          salt: '',
-          created_at: new Date(),
-          avatar_color: '#24292e', // GitHub dark
-          roles: ['admin'],
-          status: 'active',
-          failed_login_attempts: 0,
-          locked_until: null,
-          external_id: String(githubUser.id),
-          external_provider: 'github' as const,
-          email_verified: true,
-          email_verification_token: null,
-          email_verification_expires: null,
-          password_reset_token: null,
-          password_reset_expires: null,
-          updated_at: new Date(),
-        }
-
-        await usersCol.insertOne(user)
-
-        await db.collection('tenants').insertOne({
-          tenant_id: tenantId,
-          name: githubUser.name || githubUser.login,
-          plan: 'free',
-          quotas: {
-            events_per_month: 10_000,
-            workflows_per_month: 3,
-            detectors_max: 10,
-            connectors_max: 1,
-            users_max: 1,
-            llm_tokens_per_month: 100_000,
+        const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            Accept: 'application/json',
           },
-          status: 'active',
-          created_at: new Date(),
-          updated_at: new Date(),
+          body: new URLSearchParams({
+            client_id: clientId,
+            client_secret: clientSecret,
+            code,
+            redirect_uri: githubRedirectUri,
+          }),
         })
-      } else {
-        // KEEL-005 — see the matching Google guard for the full
-        // explanation. This route is JSON-only, so it rejects with 403.
-        if (!matchedByExternalId && !emailVerified) {
-          return reply.status(403).send({ error: 'This email is not verified with the OAuth provider — sign in with your existing account instead.' })
+
+        log.info({ status: tokenRes.status }, 'GitHub token exchange - response status')
+
+        if (!tokenRes.ok) {
+          const errorText = await tokenRes.text()
+          log.error(
+            { status: tokenRes.status, error: errorText },
+            'GitHub token exchange - error response',
+          )
+          return reply.status(400).send({
+            error: 'GitHub token exchange failed',
+            detail: `${tokenRes.status}: ${errorText}`,
+          })
         }
 
-        // Update existing user with GitHub info if needed
-        await usersCol.updateOne(
-          { _id: user._id },
-          {
-            $set: {
-              external_id: String(githubUser.id),
-              external_provider: 'github',
-              email_verified: true,
-              updated_at: new Date(),
-            }
-          }
+        const tokenData = (await tokenRes.json()) as {
+          access_token: string
+        }
+
+        // Get user info from GitHub
+        log.info(
+          { access_token_length: tokenData.access_token.length },
+          'GitHub user info fetch - access_token length',
         )
-      }
+        const userRes = await fetch('https://api.github.com/user', {
+          headers: { Authorization: `Bearer ${tokenData.access_token}` },
+        })
 
-      // Issue JWT token
-      if (user.mfa_enabled && user.mfa_secret) {
-        const mfaToken = await auth.sign({
-          sub: user.id, tenant_id: user.tenant_id, roles: user.roles, mfa_pending: true,
-        }, '5m')
-        return { mfa_required: true, mfa_token: mfaToken }
-      }
-      const token = await auth.sign({
-        sub: user.id,
-        tenant_id: user.tenant_id,
-        roles: user.roles,
-      }, '1h')
-      setSessionCookie(reply, token, 60 * 60)
+        log.info({ status: userRes.status }, 'GitHub user info fetch - response status')
 
-      return {
-        token,
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          tenant_id: user.tenant_id,
-          avatar_color: user.avatar_color || '#24292e',
-          active_vertical: user.active_vertical ?? null,
-        },
+        if (!userRes.ok) {
+          const errorText = await userRes.text()
+          log.error(
+            { status: userRes.status, error: errorText },
+            'GitHub user info fetch - error response',
+          )
+          return reply.status(400).send({
+            error: 'Failed to fetch GitHub user info',
+            detail: `${userRes.status}: ${errorText}`,
+          })
+        }
+
+        const githubUser = (await userRes.json()) as {
+          id: number
+          email: string | null
+          login: string
+          name: string | null
+          avatar_url?: string
+        }
+
+        // KEEL-005: previously only fetched when `/user` didn't already
+        // return an email — meaning for the common case (public email set),
+        // no verification signal was ever available at the merge-decision
+        // point below. Now always fetched so `emailVerified` is meaningful
+        // regardless of which path produced `email`.
+        let email = githubUser.email
+        let emailVerified = false
+        const emailsRes = await fetch('https://api.github.com/user/emails', {
+          headers: { Authorization: `Bearer ${tokenData.access_token}` },
+        })
+        if (emailsRes.ok) {
+          const emails = (await emailsRes.json()) as Array<{
+            email: string
+            primary: boolean
+            verified: boolean
+          }>
+          if (!email) {
+            const primaryEmail = emails.find((e) => e.primary && e.verified)
+            email = primaryEmail?.email || `${githubUser.login}@users.noreply.github.com`
+          }
+          emailVerified = emails.some(
+            (e) => e.email.toLowerCase() === email!.toLowerCase() && e.verified,
+          )
+        }
+
+        // Find or create user
+        const usersCol = db.collection('users')
+        let user: any = await usersCol.findOne({
+          $or: [
+            { email: email!.toLowerCase() },
+            { external_id: String(githubUser.id), external_provider: 'github' },
+          ],
+        })
+        const matchedByExternalId =
+          user?.external_id === String(githubUser.id) && user?.external_provider === 'github'
+
+        if (!user) {
+          const tenantId = email!
+            .split('@')[0]!
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, '-')
+
+          // KEEL-001 — see the matching Google guard earlier in this file for
+          // the full explanation. This route is JSON-only (called directly by
+          // the frontend, no browser redirect), so it rejects with the same
+          // 409 shape auth-users.ts's password signup uses.
+          const existingTenant = await db.collection('tenants').findOne({ tenant_id: tenantId })
+          if (existingTenant) {
+            return reply
+              .status(409)
+              .send({ error: 'That workspace name is already taken. Choose another.' })
+          }
+
+          // Operator kill-switch — same flag /auth/signup enforces; existing
+          // users already resolved above and continue to sign in.
+          if (!(await getPlatformConfig(db)).signups_enabled) {
+            return reply.status(503).send({ error: 'Signups are temporarily disabled' })
+          }
+
+          // Create new user
+          const userId = crypto.randomBytes(8).toString('hex')
+
+          user = {
+            id: userId,
+            email: email!.toLowerCase(),
+            name: githubUser.name || githubUser.login,
+            tenant_id: tenantId,
+            password_hash: '',
+            salt: '',
+            created_at: new Date(),
+            avatar_color: '#24292e', // GitHub dark
+            roles: ['admin'],
+            status: 'active',
+            failed_login_attempts: 0,
+            locked_until: null,
+            external_id: String(githubUser.id),
+            external_provider: 'github' as const,
+            email_verified: true,
+            email_verification_token: null,
+            email_verification_expires: null,
+            password_reset_token: null,
+            password_reset_expires: null,
+            updated_at: new Date(),
+          }
+
+          await usersCol.insertOne(user)
+
+          await db.collection('tenants').insertOne({
+            tenant_id: tenantId,
+            name: githubUser.name || githubUser.login,
+            plan: 'free',
+            quotas: {
+              events_per_month: 10_000,
+              workflows_per_month: 3,
+              detectors_max: 10,
+              connectors_max: 1,
+              users_max: 1,
+              llm_tokens_per_month: 100_000,
+            },
+            status: 'active',
+            created_at: new Date(),
+            updated_at: new Date(),
+          })
+        } else {
+          // KEEL-005 — see the matching Google guard for the full
+          // explanation. This route is JSON-only, so it rejects with 403.
+          if (!matchedByExternalId && !emailVerified) {
+            return reply.status(403).send({
+              error:
+                'This email is not verified with the OAuth provider — sign in with your existing account instead.',
+            })
+          }
+
+          // Update existing user with GitHub info if needed
+          await usersCol.updateOne(
+            { _id: user._id },
+            {
+              $set: {
+                external_id: String(githubUser.id),
+                external_provider: 'github',
+                email_verified: true,
+                updated_at: new Date(),
+              },
+            },
+          )
+        }
+
+        // Issue JWT token
+        if (user.mfa_enabled && user.mfa_secret) {
+          const mfaToken = await auth.sign(
+            {
+              sub: user.id,
+              tenant_id: user.tenant_id,
+              roles: user.roles,
+              mfa_pending: true,
+            },
+            '5m',
+          )
+          return { mfa_required: true, mfa_token: mfaToken }
+        }
+        const token = await auth.sign(
+          {
+            sub: user.id,
+            tenant_id: user.tenant_id,
+            roles: user.roles,
+          },
+          '1h',
+        )
+        setSessionCookie(reply, token, 60 * 60)
+
+        return {
+          token,
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            tenant_id: user.tenant_id,
+            avatar_color: user.avatar_color || '#24292e',
+            active_vertical: user.active_vertical ?? null,
+          },
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        log.error({ err }, 'GitHub OAuth exchange error')
+        return reply.status(500).send({ error: 'OAuth exchange failed', detail: message })
       }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      log.error({ err }, 'GitHub OAuth exchange error')
-      return reply.status(500).send({ error: 'OAuth exchange failed', detail: message })
-    }
-  })
+    },
+  )
 }

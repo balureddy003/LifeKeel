@@ -13,8 +13,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { FeatureHashScorer } from '../feature-hash-scorer.js'
-import type { FeatureHashScorerMetrics } from '../feature-hash-scorer.js'
+import { FeatureHashScorer } from '../scoring/feature-hash-scorer.js'
+import type { FeatureHashScorerMetrics } from '../scoring/feature-hash-scorer.js'
 
 // ── Minimal MongoDB stub ─────────────────────────────────────────────────────
 

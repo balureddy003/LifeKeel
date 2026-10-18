@@ -8,11 +8,11 @@
 export interface DetectorMetrics {
   detector_id: string
   evaluations: number
-  hits: number           // evaluations that produced ≥1 insight
+  hits: number // evaluations that produced ≥1 insight
   rules_triggered: number
   total_latency_ms: number
   avg_latency_ms: number
-  hit_rate: number       // hits / evaluations
+  hit_rate: number // hits / evaluations
   last_evaluated_at: Date | null
 }
 
@@ -23,7 +23,7 @@ export interface EngineMetrics {
   total_rules_triggered: number
   total_latency_ms: number
   avg_latency_ms: number
-  evaluations_per_second: number  // rolling 60s window
+  evaluations_per_second: number // rolling 60s window
   uptime_seconds: number
   detectors: Record<string, DetectorMetrics>
 }
@@ -105,9 +105,7 @@ export class MetricsCollector {
       total_insights_produced: this.totalInsights,
       total_rules_triggered: this.totalRulesTriggered,
       total_latency_ms: this.totalLatencyMs,
-      avg_latency_ms: this.totalEvaluations > 0
-        ? this.totalLatencyMs / this.totalEvaluations
-        : 0,
+      avg_latency_ms: this.totalEvaluations > 0 ? this.totalLatencyMs / this.totalEvaluations : 0,
       evaluations_per_second: this.recentTimestamps.length / 60,
       uptime_seconds: uptimeSec,
       detectors,

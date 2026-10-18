@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import { FeatureHashScorer } from '../feature-hash-scorer.js'
+import { FeatureHashScorer } from '../scoring/feature-hash-scorer.js'
 
 // ── MongoDB stub with versions collection support ───────────────────────────
 
@@ -31,7 +31,10 @@ function makeDb() {
       toArray: () => Promise.resolve([...store.values()]),
     }),
     distinct: () => Promise.resolve([]),
-    deleteOne: (filter: unknown) => { store.delete(JSON.stringify(filter)); return Promise.resolve({}) },
+    deleteOne: (filter: unknown) => {
+      store.delete(JSON.stringify(filter))
+      return Promise.resolve({})
+    },
     deleteMany: (filter: unknown) => {
       // Simple filter: { tenant_id, detector_id } — delete matching
       const f = filter as Record<string, unknown>
@@ -114,7 +117,9 @@ describe('FeatureHashScorer rollback and reset', () => {
       await scorer.update('t1', 'det', { x: 1 }, 1, CONFIG)
     }
 
-    await expect(scorer.rollbackToVersion('t1', 'det', 999)).rejects.toThrow(/Version 999 not found/)
+    await expect(scorer.rollbackToVersion('t1', 'det', 999)).rejects.toThrow(
+      /Version 999 not found/,
+    )
   })
 
   // ── resetModel ─────────────────────────────────────────────────────────────

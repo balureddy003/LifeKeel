@@ -11,4 +11,3 @@ export type { SyncCredentials, SyncState, SyncResult } from './connector-sync-en
 export { TokenRefreshScheduler } from './token-refresh-scheduler.js'
 export { FileIngestor } from './file-ingestor.js'
 export type { ColumnMapping, IngestOptions, ParsedEvent, IngestSchema, SupportedFormat } from './file-ingestor.js'
-export { CloudStorageSyncEngine } from './cloud-storage-sync.js'

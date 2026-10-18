@@ -1,7 +1,9 @@
 {
   "name": "@lifekeel/workflows",
   "version": "0.1.0",
-  "description": "Connector OAuth/credential plumbing, connector action execution, the event schema registry, and a rebuilt general-purpose durable workflow engine (src/engine/) — the original LangGraph-based WorkflowEngine/WorkflowLoader was removed on 2026-09-12 as an unmanaged autonomy risk (see SECURITY.md); src/engine/ is its structurally-safer replacement, not yet wired to any apps/api route.",
+  "private": true,
+  "license": "UNLICENSED",
+  "description": "Connector OAuth/credential plumbing, connector action execution, and the event schema registry — used by apps/api connector routes and marketing publishing.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -15,6 +17,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
+    "lint": "eslint .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
@@ -25,10 +28,11 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@lifekeel/eslint-config": "workspace:*",
     "@types/node": "^22.0.0",
+    "eslint": "^9.19.0",
     "mongodb-memory-server": "^11.2.0",
     "typescript": "^5.6.0",
     "vitest": "^4.1.9"
-  },
-  "license": "BUSL-1.1"
+  }
 }

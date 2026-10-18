@@ -2,6 +2,8 @@ name: CI
 
 on:
   pull_request:
+    # ready_for_review so a draft PR (skipped below) is checked when it is marked ready
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 
@@ -11,7 +13,10 @@ concurrency:
 
 jobs:
   build:
+    # Draft PRs skip CI to save minutes; main pushes and ready PRs run it.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
+    timeout-minutes: 25
 
     # apps/api's ml-tenant-isolation test connects to a real Mongo/Redis
     # rather than mongodb-memory-server — matches the services kairos-ai's
@@ -49,10 +54,17 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
-      - run: pnpm lint
-      - run: pnpm test
-      - run: pnpm build
+      # Next's build cache only speeds up compilation; it never replays a task result, so unlike
+      # caching turbo outputs it cannot turn a failing test into a stale pass.
+      - uses: actions/cache@v6
+        with:
+          path: apps/web/.next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+      # One turbo invocation runs typecheck, lint, test and build as a single graph, so independent
+      # tasks overlap and build runs once; four separate commands ran them one after another.
+      - run: pnpm turbo run typecheck lint test build
       # Boots the built API like a deploy would (every optional deploy variable set to EMPTY, as an unset
       # repo variable is) and requires /health/ready. Unit tests never start the server, so this is what
       # catches a bad deploy-time environment. See scripts/boot-smoke.sh.
@@ -61,10 +73,12 @@ jobs:
 
   # The encoder service's request handling is plain stdlib Python and needs no model or torch.
   python-services:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
       - name: Encoder service tests

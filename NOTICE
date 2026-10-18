@@ -1,0 +1,31 @@
+LifeKeel
+Copyright (c) 2026 Balu Reddy. All rights reserved. See LICENSE.
+
+THIRD-PARTY SOFTWARE
+
+LifeKeel depends on open-source components that are NOT covered by the
+LifeKeel licence and remain under their own terms. The full list for the
+production dependency tree is produced by:
+
+    pnpm licenses list --prod
+
+At the time of writing it is overwhelmingly permissive (MIT, ISC, Apache-2.0,
+BSD-2-Clause, BSD-3-Clause, BlueOak-1.0.0, 0BSD, Unlicense). Components with
+terms that need a note:
+
+  @img/sharp-libvips-*   LGPL-3.0-or-later   Image processing libraries bundled
+                                              with "sharp". Used as unmodified,
+                                              dynamically linked binaries.
+  web-push               MPL-2.0             File-level copyleft. Used unmodified.
+  elkjs                  EPL-2.0             Used unmodified.
+  caniuse-lite           CC-BY-4.0           Browser support data; attribution:
+                                              Alexis Deveria and contributors.
+  jszip                  MIT OR GPL-3.0      Used under the MIT option.
+  dompurify              MPL-2.0 OR Apache-2.0   Used under the Apache-2.0 option.
+
+To be confirmed: "buffers" and "khroma" report no licence field in their
+package metadata. Check their repositories before shipping a release.
+
+Each component's own licence text is included in its package under node_modules
+and in any distributed build. If you add a dependency, check its licence first
+(docs/ai-native-sdlc-playbook.md, checklist "New dependency").

@@ -7,8 +7,13 @@ const SUCCESSOR = 'https://docs.lifekeel.ai/api/v1'
 
 export function rewriteVersionedUrl(request: IncomingMessage): string {
   const url = request.url ?? '/'
-  if (url === '/v1') return '/'
-  return url.startsWith('/v1/') ? url.slice(3) : url
+  // Firebase Hosting rewrites /api/** to this service keeping the prefix —
+  // strip it so same-origin web calls land on the real routes. /v1 is the
+  // versioned alias; both forms collapse onto the unversioned handlers.
+  if (url === '/api' || url === '/v1') return '/'
+  if (url.startsWith('/api/')) return url.slice(4)
+  if (url.startsWith('/v1/')) return url.slice(3)
+  return url
 }
 
 export function registerApiVersioning(app: FastifyInstance): void {
@@ -36,20 +41,35 @@ export function registerApiVersioning(app: FastifyInstance): void {
       description: 'Version 1 compatibility contract. New fields are additive within v1.',
     },
     servers: [{ url: '/v1' }],
-    components: { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } } },
+    components: {
+      securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
+    },
     paths: {
-      '/events': { post: { summary: 'Ingest event and evaluate detectors', security: [{ bearerAuth: [] }] } },
+      '/events': {
+        post: { summary: 'Ingest event and evaluate detectors', security: [{ bearerAuth: [] }] },
+      },
       '/insights': { get: { summary: 'List tenant insights', security: [{ bearerAuth: [] }] } },
       '/goals': { get: { summary: 'List tenant goals', security: [{ bearerAuth: [] }] } },
       '/search': { get: { summary: 'Search tenant resources', security: [{ bearerAuth: [] }] } },
-      '/query': { post: { summary: 'Run a safe natural-language analytics query', security: [{ bearerAuth: [] }] } },
+      '/query': {
+        post: {
+          summary: 'Run a safe natural-language analytics query',
+          security: [{ bearerAuth: [] }],
+        },
+      },
     },
   }))
-  app.get('/docs', async (_req, reply) => reply.type('text/html').send('<!doctype html><title>LifeKeel API</title><h1>LifeKeel API v1</h1><p><a href="/v1/openapi.json">OpenAPI 3.1 specification</a></p>'))
+  app.get('/docs', async (_req, reply) =>
+    reply
+      .type('text/html')
+      .send(
+        '<!doctype html><title>LifeKeel API</title><h1>LifeKeel API v1</h1><p><a href="/v1/openapi.json">OpenAPI 3.1 specification</a></p>',
+      ),
+  )
 }
 
 function isUnversionedApiRequest(request: FastifyRequest): boolean {
   const original = request.raw.url ?? request.url
   if (original.startsWith('/v1/') || original === '/v1') return false
-  return !['/health', '/metrics'].some(path => original.startsWith(path))
+  return !['/health', '/metrics'].some((path) => original.startsWith(path))
 }

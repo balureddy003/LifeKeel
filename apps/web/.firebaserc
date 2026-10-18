@@ -7,6 +7,12 @@
       "hosting": {
         "family": [
           "lifekeel"
+        ],
+        "landing-uk": [
+          "lifekeel-landing-uk"
+        ],
+        "landing-si": [
+          "lifekeel-landing-si"
         ]
       }
     }

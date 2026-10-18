@@ -18,8 +18,30 @@ env:
   API_IMAGE: ${{ secrets.GCP_ARTIFACT_REGISTRY || format('{0}-docker.pkg.dev/{1}/lifekeel-docker', secrets.GCP_REGION || 'us-central1', secrets.GCP_PROJECT_ID) }}/api
   API_SERVICE: ${{ secrets.CLOUD_RUN_SERVICE_NAME || 'lifekeel-api' }}
 
+# One deploy at a time: two runs must not race each other's traffic shift. Never cancel one mid-flight.
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
 jobs:
+  # Fails loudly (rather than silently skipping) when dispatched from a branch other than main.
+  # This stops an accidental deploy from the wrong branch. It does not stop a writer who edits this
+  # file on their own branch, because workflow_dispatch runs the file from the branch it is run on (G10).
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Deploys run from main only
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "::error::Run this workflow from main (got $REF). Choose 'Use workflow from: main'; put the commit to deploy in the ref input."
+            exit 1
+          fi
+
   verify-ci:
+    needs: guard
     permissions:
       contents: read
       actions: read
@@ -33,9 +55,14 @@ jobs:
     # Environments > production); the job pauses here until a person approves.
     environment: production
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       id-token: write
+    env:
+      # The commit that require-ci.yml verified. Everything below uses this, never github.sha,
+      # which is the SHA of the branch the workflow was dispatched from.
+      RELEASE_SHA: ${{ needs.verify-ci.outputs.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -63,23 +90,65 @@ jobs:
           file: apps/api/Dockerfile
           push: true
           tags: |
-            ${{ env.API_IMAGE }}:${{ github.sha }}
-            ${{ env.API_IMAGE }}:latest
+            ${{ env.API_IMAGE }}:${{ env.RELEASE_SHA }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Safe rollout, step 1 of 4. Record what is serving now so a bad release can be reverted, and pick the
+      # tag for the new revision. On the very first deploy there is no service yet, so there is nothing to
+      # protect and the deploy goes live directly.
+      - name: Inspect the service before deploying
+        id: pre
+        env:
+          SERVICE: ${{ env.API_SERVICE }}
+          REGION: ${{ env.GCP_REGION }}
+          PROJECT: ${{ env.GCP_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          echo "tag=canary-${RELEASE_SHA:0:12}" >> "$GITHUB_OUTPUT"
+          EXISTS=true
+          if ! gcloud run services describe "$SERVICE" --region "$REGION" --project "$PROJECT" --format=json > "$RUNNER_TEMP/svc.json" 2> "$RUNNER_TEMP/describe.err"; then
+            # Only a genuine "no such service" may fall through to a direct first deploy. Any other failure
+            # (auth, network, quota) must stop here, or a transient error would silently switch the protection off.
+            if grep -qiE "not found|could not be found|cannot find service" "$RUNNER_TEMP/describe.err"; then
+              EXISTS=false
+            else
+              echo "::error::Could not inspect service $SERVICE: $(head -c 300 "$RUNNER_TEMP/describe.err")"
+              exit 1
+            fi
+          fi
+          if [ "$EXISTS" = true ]; then
+            PREV=$(jq -r '[.status.traffic[] | select(.revisionName != null)] | sort_by(.percent) | last | .revisionName // empty' "$RUNNER_TEMP/svc.json")
+            if [ -z "$PREV" ]; then
+              echo "::error::The service exists but no serving revision could be determined, so a failed release could not be reverted. Not deploying."
+              exit 1
+            fi
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "prev=$PREV" >> "$GITHUB_OUTPUT"
+            echo "Serving revision before this deploy: $PREV"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "No existing service: the first deploy goes live directly."
+          fi
+
+      # Step 2 of 4. The new revision is created with NO traffic and a tag, so it can be tested at its own URL
+      # while users stay on the previous revision.
       - name: Deploy to Cloud Run
         id: deploy
         uses: google-github-actions/deploy-cloudrun@v3
         with:
           service: ${{ env.API_SERVICE }}
           region: ${{ env.GCP_REGION }}
-          image: ${{ env.API_IMAGE }}:${{ github.sha }}
-          flags: --port=3001 --allow-unauthenticated --cpu=1 --memory=512Mi --max-instances=4 --concurrency=80 --min-instances=0
+          image: ${{ env.API_IMAGE }}:${{ env.RELEASE_SHA }}
+          # Comma-valued vars can't go in env_vars (the action joins pairs
+          # with commas, so "a,b" would split into two entries). They ride
+          # --update-env-vars in flags instead, using ^@^ as the pair
+          # delimiter so commas inside values survive. --update-env-vars
+          # merges — it does not wipe the env_vars above.
+          flags: --port=3001 --allow-unauthenticated --cpu=1 --memory=512Mi --max-instances=4 --concurrency=80 --min-instances=0 --update-env-vars=^@^CORS_ORIGIN=${{ vars.CORS_ORIGIN || vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}@LIFEKEEL_APP_HOSTS=${{ vars.LIFEKEEL_APP_HOSTS || 'app.lifekeel.co.uk,app.lifekeel.si' }} ${{ steps.pre.outputs.exists == 'true' && format('--no-traffic --tag={0}', steps.pre.outputs.tag) || '' }}
           env_vars: |
             NODE_ENV=production
             LIFEKEEL_DEPLOYMENT_MODE=cloud
-            CORS_ORIGIN=${{ vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}
             LOG_LEVEL=info
             LIFEKEEL_URL=${{ vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}
             API_BASE_URL=${{ vars.API_BASE_URL }}
@@ -97,6 +166,10 @@ jobs:
             LOCAL_MODEL_MAX_CONCURRENT=${{ vars.LOCAL_MODEL_MAX_CONCURRENT }}
             EMAIL_SCAN_FANOUT=${{ vars.EMAIL_SCAN_FANOUT }}
             EMAIL_SCAN_CONCURRENCY=${{ vars.EMAIL_SCAN_CONCURRENCY }}
+          # NOTE: no comments inside this block — deploy-cloudrun feeds every
+          # line to gcloud verbatim. Web push: without the VAPID secrets,
+          # /push/vapid-key 503s and no browser can subscribe. Values come from
+          # one `npx web-push generate-vapid-keys` run.
           secrets: |
             MONGODB_URL=lifekeel-mongodb-url:latest
             REDIS_URL=lifekeel-redis-url:latest
@@ -107,31 +180,96 @@ jobs:
             STRIPE_SECRET_KEY=lifekeel-stripe-secret-key:latest
             LIFEKEEL_STRIPE_WEBHOOK_SECRET=lifekeel-stripe-webhook-secret:latest
             OPENAI_API_KEY=lifekeel-openai-api-key:latest
-            # Web push — without these, /push/vapid-key 503s and no browser
-            # can subscribe. Create in Secret Manager from one `npx web-push
-            # generate-vapid-keys` run before the next deploy.
             VAPID_PUBLIC_KEY=lifekeel-vapid-public-key:latest
             VAPID_PRIVATE_KEY=lifekeel-vapid-private-key:latest
             VAPID_SUBJECT=lifekeel-vapid-subject:latest
           secrets_update_strategy: overwrite
 
-      - name: Smoke test new revision
+      # Step 3 of 4. Test the new revision at its tagged URL before any user reaches it. If this fails, production
+      # was never touched: the job goes red and the tag is cleaned up.
+      - name: Smoke test the new revision (it has no traffic yet)
+        if: steps.pre.outputs.exists == 'true'
+        id: canary
+        env:
+          SERVICE: ${{ env.API_SERVICE }}
+          REGION: ${{ env.GCP_REGION }}
+          PROJECT: ${{ env.GCP_PROJECT_ID }}
+          TAG: ${{ steps.pre.outputs.tag }}
         run: |
-          SERVICE_URL="${{ steps.deploy.outputs.url }}"
-          echo "Smoke testing $SERVICE_URL/health/ready"
+          set -euo pipefail
+          gcloud run services describe "$SERVICE" --region "$REGION" --project "$PROJECT" --format=json > "$RUNNER_TEMP/svc.json"
+          TAG_URL=$(jq -r --arg t "$TAG" '[.status.traffic[] | select(.tag == $t)] | first | .url // empty' "$RUNNER_TEMP/svc.json")
+          NEW=$(jq -r --arg t "$TAG" '[.status.traffic[] | select(.tag == $t)] | first | .revisionName // empty' "$RUNNER_TEMP/svc.json")
+          if [ -z "$TAG_URL" ] || [ -z "$NEW" ]; then
+            echo "::error::Could not find the tagged revision $TAG on $SERVICE. Production was not changed."
+            exit 1
+          fi
+          echo "new=$NEW" >> "$GITHUB_OUTPUT"
+          echo "Smoke testing $NEW at $TAG_URL/health/ready (no user traffic)"
           STATUS="000"
           for i in $(seq 1 18); do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL/health/ready" || echo "000")
-            if [ "$STATUS" = "200" ]; then
-              echo "Smoke test passed (HTTP 200)"
-              break
-            fi
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$TAG_URL/health/ready" || echo "000")
+            [ "$STATUS" = "200" ] && break
             echo "Attempt $i: HTTP $STATUS, waiting..."
             sleep 5
           done
           if [ "$STATUS" != "200" ]; then
-            echo "::error::Smoke test failed (last status: $STATUS)."
-            echo "::error::To roll back: gcloud run services update-traffic ${{ env.API_SERVICE }} --to-revisions PREV_REVISION=100 --region ${{ env.GCP_REGION }} --project ${{ env.GCP_PROJECT_ID }}"
+            echo "::error::The new revision $NEW failed its smoke test (last status $STATUS). It never received traffic; production is unchanged."
             exit 1
           fi
-          echo "Smoke test passed — new revision is healthy and serving traffic"
+          echo "New revision $NEW is healthy"
+
+      # Step 4 of 4. Move all traffic to the verified revision, check production again, and put the previous
+      # revision back automatically if it is not healthy. Revisions are pinned by name, so a later plain
+      # `gcloud run deploy` will not take traffic by itself; deploy through this workflow.
+      - name: Shift traffic and verify production, reverting on failure
+        if: steps.pre.outputs.exists == 'true'
+        env:
+          SERVICE: ${{ env.API_SERVICE }}
+          REGION: ${{ env.GCP_REGION }}
+          PROJECT: ${{ env.GCP_PROJECT_ID }}
+          NEW: ${{ steps.canary.outputs.new }}
+          PREV: ${{ steps.pre.outputs.prev }}
+        run: |
+          set -euo pipefail
+          gcloud run services update-traffic "$SERVICE" --region "$REGION" --project "$PROJECT" --to-revisions "$NEW=100"
+          SERVICE_URL=$(gcloud run services describe "$SERVICE" --region "$REGION" --project "$PROJECT" --format='value(status.url)')
+          echo "Verifying production at $SERVICE_URL/health/ready"
+          STATUS="000"
+          for i in $(seq 1 12); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL/health/ready" || echo "000")
+            [ "$STATUS" = "200" ] && break
+            echo "Attempt $i: HTTP $STATUS, waiting..."
+            sleep 5
+          done
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Production failed its health check after the shift (last status $STATUS). Reverting to $PREV."
+            gcloud run services update-traffic "$SERVICE" --region "$REGION" --project "$PROJECT" --to-revisions "$PREV=100"
+            echo "::error::Reverted to $PREV. Release $RELEASE_SHA is NOT live."
+            exit 1
+          fi
+          echo "Production is healthy on $NEW (previous revision $PREV is kept for rollback)"
+
+      # First deploy only (no previous revision to protect): the original post-deploy check.
+      - name: Smoke test (first deploy, goes live directly)
+        if: steps.pre.outputs.exists != 'true'
+        run: |
+          SERVICE_URL="${{ steps.deploy.outputs.url }}"
+          STATUS="000"
+          for i in $(seq 1 18); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL/health/ready" || echo "000")
+            [ "$STATUS" = "200" ] && break
+            echo "Attempt $i: HTTP $STATUS, waiting..."
+            sleep 5
+          done
+          [ "$STATUS" = "200" ] || { echo "::error::First-deploy smoke test failed (last status $STATUS)."; exit 1; }
+
+      # Housekeeping: drop the canary tag whether the release succeeded or not (the revision itself is kept).
+      - name: Remove the canary tag
+        if: always() && steps.pre.outputs.exists == 'true'
+        env:
+          SERVICE: ${{ env.API_SERVICE }}
+          REGION: ${{ env.GCP_REGION }}
+          PROJECT: ${{ env.GCP_PROJECT_ID }}
+          TAG: ${{ steps.pre.outputs.tag }}
+        run: gcloud run services update-traffic "$SERVICE" --region "$REGION" --project "$PROJECT" --remove-tags "$TAG" || echo "tag already gone"

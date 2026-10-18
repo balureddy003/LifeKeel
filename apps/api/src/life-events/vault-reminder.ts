@@ -23,7 +23,7 @@ import type { Db } from 'mongodb'
 import type { Insight } from '@lifekeel/engine'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import type { FamilyGroupDoc } from '../routes/family-group.js'
-import { memberMatchesUser } from '../lib/family-permissions.js'
+import { memberMatchesUser } from '../family/family-permissions.js'
 import type { LifeEventType } from './render-playbook.js'
 
 const log = createLogger({ service: 'vault-reminder', version: '0.0.0' })
@@ -106,18 +106,26 @@ export async function maybeSendVaultReminder(
   })
   if (alreadyOpen) return
 
-  const family = await db.collection<FamilyGroupDoc>('family_groups').findOne({ tenant_id: tenantId })
+  const family = await db
+    .collection<FamilyGroupDoc>('family_groups')
+    .findOne({ tenant_id: tenantId })
   if (!family) return
   const reporter = family.members.find((m) => memberMatchesUser(m, reporterUserId))
   const reporterName = reporter?.name ?? 'A family member'
-  const otherAdults = family.members.filter((m) => !memberMatchesUser(m, reporterUserId) && m.role !== 'child' && m.status === 'active')
+  const otherAdults = family.members.filter(
+    (m) => !memberMatchesUser(m, reporterUserId) && m.role !== 'child' && m.status === 'active',
+  )
   if (otherAdults.length === 0) return
 
   await Promise.all(
     otherAdults.map((adult) =>
-      sendVaultReminderEmail(adult.email, adult.name, reporterName, playbookTitle, vaultDocCount).catch((err) =>
-        log.error({ err, to: adult.email }, 'Vault reminder send threw'),
-      ),
+      sendVaultReminderEmail(
+        adult.email,
+        adult.name,
+        reporterName,
+        playbookTitle,
+        vaultDocCount,
+      ).catch((err) => log.error({ err, to: adult.email }, 'Vault reminder send threw')),
     ),
   )
 

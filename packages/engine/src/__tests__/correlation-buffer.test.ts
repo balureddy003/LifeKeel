@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CorrelationBuffer } from '../correlation-buffer.js'
+import { CorrelationBuffer } from '../scoring/correlation-buffer.js'
 
 describe('CorrelationBuffer', () => {
   it('isolates tenants and completes only when required evidence is present', () => {
@@ -19,7 +19,9 @@ describe('CorrelationBuffer', () => {
       observed_at: new Date(),
     })
 
-    expect(buffer.aggregate('tenant-a', ['stripe.mrr', 'shopify.abandonment'], 72, 2, true).complete).toBe(false)
+    expect(
+      buffer.aggregate('tenant-a', ['stripe.mrr', 'shopify.abandonment'], 72, 2, true).complete,
+    ).toBe(false)
 
     buffer.add({
       tenant_id: 'tenant-a',

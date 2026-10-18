@@ -5,11 +5,11 @@ import { z } from 'zod'
 // LLMs may never produce an Insight without these two fields populated.
 
 export const ConfidenceBreakdownSchema = z.object({
-  or_score: z.number().min(0.7).max(1.0),         // rule-based — deterministic floor
+  or_score: z.number().min(0.7).max(1.0), // rule-based — deterministic floor
   llm_score: z.number().min(0).max(1).optional(), // LLM scoring — additive only
   combined_score: z.number().min(0).max(1),
   model_version: z.string(),
-  evidence_refs: z.array(z.string()).min(1),       // MUST be non-empty
+  evidence_refs: z.array(z.string()).min(1), // MUST be non-empty
   grounded_in_history: z.boolean().optional(),
   rag_context_tokens: z.number().int().nonnegative().optional(),
 })
@@ -28,34 +28,40 @@ export const EvidenceTrailSchema = z.object({
     threshold_used: z.number(),
     threshold_basis: z.string(),
   }),
-  llm_evidence: z.object({
-    model: z.string(),
-    prompt_summary: z.string(),
-    llm_score: z.number(),
-    combined_score: z.number(),
-    blend_weights: z.object({ rule: z.number(), llm: z.number() }),
-  }).optional(),
-  source_events: z.array(z.object({
-    event_id: z.string(),
-    event_type: z.string(),
-    connector: z.string(),
-    occurred_at: z.date(),
-    excerpt: z.string(),
-  })),
+  llm_evidence: z
+    .object({
+      model: z.string(),
+      prompt_summary: z.string(),
+      llm_score: z.number(),
+      combined_score: z.number(),
+      blend_weights: z.object({ rule: z.number(), llm: z.number() }),
+    })
+    .optional(),
+  source_events: z.array(
+    z.object({
+      event_id: z.string(),
+      event_type: z.string(),
+      connector: z.string(),
+      occurred_at: z.date(),
+      excerpt: z.string(),
+    }),
+  ),
   plain_english: z.string(),
 })
 export type EvidenceTrail = z.infer<typeof EvidenceTrailSchema>
 
 // ─── Blend Policy ───────────────────────────────────────────────────────────────
 
-export const BlendPolicySchema = z.object({
-  rule_weight: z.number().min(0.5).max(1.0).default(0.7),
-  llm_weight: z.number().min(0).max(0.5).default(0.3),
-  llm_weight_ceiling: z.number().min(0).max(0.9).default(0.9),
-  rationale: z.string().max(500).optional(),
-}).refine(p => Math.abs(p.rule_weight + p.llm_weight - 1.0) < 0.01, {
-  message: 'rule_weight + llm_weight must sum to 1.0',
-})
+export const BlendPolicySchema = z
+  .object({
+    rule_weight: z.number().min(0.5).max(1.0).default(0.7),
+    llm_weight: z.number().min(0).max(0.5).default(0.3),
+    llm_weight_ceiling: z.number().min(0).max(0.9).default(0.9),
+    rationale: z.string().max(500).optional(),
+  })
+  .refine((p) => Math.abs(p.rule_weight + p.llm_weight - 1.0) < 0.01, {
+    message: 'rule_weight + llm_weight must sum to 1.0',
+  })
 export type BlendPolicy = z.infer<typeof BlendPolicySchema>
 
 // ─── Insight (the output of every detector run) ───────────────────────────────
@@ -95,9 +101,16 @@ export const TriggerSchema = z.object({
   id: z.string(),
   tenant_id: z.string(),
   hypothesis: z.string(),
-  category: z.enum(['revenue', 'cost-savings', 'risk', 'compliance', 'experience', 'goal_progress']),
+  category: z.enum([
+    'revenue',
+    'cost-savings',
+    'risk',
+    'compliance',
+    'experience',
+    'goal_progress',
+  ]),
   urgency: z.enum(['low', 'medium', 'high', 'critical']),
-  estimated_impact_low: z.number().int(),  // minor units (pence/cents) — never float
+  estimated_impact_low: z.number().int(), // minor units (pence/cents) — never float
   estimated_impact_high: z.number().int(),
   reasoning: z.string(),
   actions: z.array(z.string()),
@@ -129,7 +142,19 @@ export const TriggerSchema = z.object({
    * sees it and can retry via POST /insights/:id/retry-execution, unlike
    * 'completed' which only applies once execution actually finishes.
    */
-  state: z.enum(['identified', 'sent', 'approved', 'completed', 'execution_failed', 'dismissed', 'archived', 'resolved', 'snoozed']).default('identified'),
+  state: z
+    .enum([
+      'identified',
+      'sent',
+      'approved',
+      'completed',
+      'execution_failed',
+      'dismissed',
+      'archived',
+      'resolved',
+      'snoozed',
+    ])
+    .default('identified'),
   created_at: z.date().default(() => new Date()),
   /**
    * PRD-107: set when a later detector evaluation no longer reproduces
@@ -182,20 +207,24 @@ export const TriggerSchema = z.object({
    */
   entity_key: z.string().optional(),
   evidence_trail: EvidenceTrailSchema.optional(),
-  judge_verdict: z.object({
-    decision: z.enum(['pass', 'rewrite', 'block', 'skipped']),
-    scores: z.object({
-      coherence: z.number().int().min(1).max(5),
-      groundedness: z.number().int().min(1).max(5),
-      actionability: z.number().int().min(1).max(5),
-      proportionality: z.number().int().min(1).max(5),
-      safety: z.number().int().min(1).max(5),
-      feedback: z.string(),
-    }).optional(),
-    judge_skipped: z.boolean(),
-    skip_reason: z.string().optional(),
-    evaluated_at: z.date(),
-  }).optional(),
+  judge_verdict: z
+    .object({
+      decision: z.enum(['pass', 'rewrite', 'block', 'skipped']),
+      scores: z
+        .object({
+          coherence: z.number().int().min(1).max(5),
+          groundedness: z.number().int().min(1).max(5),
+          actionability: z.number().int().min(1).max(5),
+          proportionality: z.number().int().min(1).max(5),
+          safety: z.number().int().min(1).max(5),
+          feedback: z.string(),
+        })
+        .optional(),
+      judge_skipped: z.boolean(),
+      skip_reason: z.string().optional(),
+      evaluated_at: z.date(),
+    })
+    .optional(),
 })
 export type Trigger = z.infer<typeof TriggerSchema>
 
@@ -271,9 +300,9 @@ export const DetectorRuleSchema = z.object({
    */
   condition: z.union([z.string().trim(), RuleConditionSchema]).optional(),
   confidence: z.number().min(0.7).max(1.0), // must meet the or_score floor
-  impact_low: z.union([z.string(), z.number()]),  // expression or literal (minor units)
+  impact_low: z.union([z.string(), z.number()]), // expression or literal (minor units)
   impact_high: z.union([z.string(), z.number()]),
-  reasoning_template: z.string(),  // supports {{data.field}} interpolation
+  reasoning_template: z.string(), // supports {{data.field}} interpolation
   actions: z.array(z.string()).default([]),
   /**
    * PRD-116: declared executable intents — see ActionIntentSchema. Only
@@ -288,17 +317,21 @@ export const DetectorRuleSchema = z.object({
    * alternatives_template is a list of {label, why_not, forecast_low, forecast_high}
    * where numeric fields can be expressions evaluated against the event data.
    */
-  alternatives_template: z.array(z.object({
-    label: z.string(),
-    why_not: z.string().optional(),
-    forecast_low: z.union([z.string(), z.number()]).optional(),
-    forecast_high: z.union([z.string(), z.number()]).optional(),
-  })).optional(),
+  alternatives_template: z
+    .array(
+      z.object({
+        label: z.string(),
+        why_not: z.string().optional(),
+        forecast_low: z.union([z.string(), z.number()]).optional(),
+        forecast_high: z.union([z.string(), z.number()]).optional(),
+      }),
+    )
+    .optional(),
   risk_template: z.string().optional(),
   exit_criteria_template: z.string().optional(),
   // Stateful sliding window
   state_enabled: z.boolean().default(false),
-  window_size: z.number().int().optional(),      // keep last N evaluations
+  window_size: z.number().int().optional(), // keep last N evaluations
   window_duration_ms: z.number().int().optional(), // or last N milliseconds
   reset_on_trigger: z.boolean().default(false),
   // Suppression
@@ -321,19 +354,25 @@ export const DetectorConfigSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
   version: z.string().default('1.0.0'),
-  signal_types: z.array(z.string()),               // which event types trigger this
-  event_types: z.array(z.object({
-    name: z.string(),
-    min_schema_version: z.string().default('0.0.0'),
-    max_schema_version: z.string().default('*'),
-  })).optional(),
+  signal_types: z.array(z.string()), // which event types trigger this
+  event_types: z
+    .array(
+      z.object({
+        name: z.string(),
+        min_schema_version: z.string().default('0.0.0'),
+        max_schema_version: z.string().default('*'),
+      }),
+    )
+    .optional(),
   evidence_types: z.array(z.string()).optional(),
-  correlation: z.object({
-    window_hours: z.number().positive(),
-    require_all: z.boolean().default(true),
-    min_evidence_count: z.number().int().min(1).default(2),
-  }).optional(),
-  industries: z.array(z.string()).default(['*']),  // ['*'] = all industries
+  correlation: z
+    .object({
+      window_hours: z.number().positive(),
+      require_all: z.boolean().default(true),
+      min_evidence_count: z.number().int().min(1).default(2),
+    })
+    .optional(),
+  industries: z.array(z.string()).default(['*']), // ['*'] = all industries
   rules: z.array(DetectorRuleSchema),
   blend_policy: BlendPolicySchema.optional(),
 })
@@ -343,7 +382,7 @@ export type DetectorConfig = z.infer<typeof DetectorConfigSchema>
 
 export const CddFilterSchema = z.object({
   name: z.string(),
-  condition: z.string(),  // safe expression against context
+  condition: z.string(), // safe expression against context
   action: z.enum(['skip', 'increase_priority', 'decrease_priority']),
   weight: z.number().default(1.0),
 })
@@ -380,7 +419,7 @@ export type EvaluationResult = z.infer<typeof EvaluationResultSchema>
 
 export interface EvaluationContext {
   tenant_id: string
-  data: Record<string, unknown>        // raw event/signal data
+  data: Record<string, unknown> // raw event/signal data
   /** The signal/event type — used by the category decision table for pattern matching. */
   signal_type?: string
   business_context?: Record<string, unknown> // industry, employees, country, etc.
@@ -403,7 +442,7 @@ export interface EvaluationContext {
    * See buildGoalContext() in @lifekeel/platform.
    */
   goal_id_by_metric?: Record<string, string>
-  history?: RuleHistoryEntry[]         // sliding window state
+  history?: RuleHistoryEntry[] // sliding window state
   /** Signals that this insight is derived from — used for dependency-based expiry. */
   derived_from_signals?: string[]
   // ── Lightweight ML context (injected by Engine before rule evaluation) ────
@@ -432,22 +471,24 @@ export interface RuleHistoryEntry {
 // ─── Detector Version Governance ───────────────────────────────────────────────
 
 export interface DetectorVersion {
-  id: string                    // randomUUID
+  id: string // randomUUID
   tenant_id: string
   detector_id: string
-  version_number: number        // monotonically increasing per detector
-  version: string               // semver e.g. "1.0.0"
-  previous_version?: string     // semver of previous version
-  changed_by: string            // user_id
+  version_number: number // monotonically increasing per detector
+  version: string // semver e.g. "1.0.0"
+  previous_version?: string // semver of previous version
+  changed_by: string // user_id
   change_type: 'manual_edit' | 'skill_optimizer' | 'blend_policy_change' | 'rollback'
-  before_yaml: string           // full YAML before change
-  after_yaml: string            // full YAML after change
-  diff?: {                     // structured before/after diff
+  before_yaml: string // full YAML before change
+  after_yaml: string // full YAML after change
+  diff?: {
+    // structured before/after diff
     before: Record<string, unknown>
     after: Record<string, unknown>
   }
-  change_summary: string        // human-readable: "Changed confidence threshold 0.7→0.8 in rule invoice_alert"
-  metrics_at_change?: {         // approval_rate, avg_confidence at time of change
+  change_summary: string // human-readable: "Changed confidence threshold 0.7→0.8 in rule invoice_alert"
+  metrics_at_change?: {
+    // approval_rate, avg_confidence at time of change
     approval_rate: number
     avg_confidence: number
   }

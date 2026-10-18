@@ -42,7 +42,23 @@ env:
   API_RUNTIME_SA: ${{ secrets.API_RUNTIME_SERVICE_ACCOUNT }}
 
 jobs:
+  # Fails loudly when dispatched from a branch other than main (stops accidents; a writer can still edit this
+  # file on their own branch, see docs/sdlc/status.md G10).
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Deploys run from main only
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "::error::Run this workflow from main (got $REF). Choose 'Use workflow from: main'; put the commit to deploy in the ref input."
+            exit 1
+          fi
+
   verify-ci:
+    needs: guard
     permissions:
       contents: read
       actions: read
@@ -56,6 +72,7 @@ jobs:
     # Environments > production); the job pauses here until a person approves.
     environment: production
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
       id-token: write
@@ -133,9 +150,9 @@ jobs:
             --member "serviceAccount:$API_RUNTIME_SA" \
             --role roles/run.invoker
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         if: ${{ github.event.inputs.run_eval == 'true' }}
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: ${{ github.event.inputs.run_eval == 'true' }}
         with:
           node-version: 22

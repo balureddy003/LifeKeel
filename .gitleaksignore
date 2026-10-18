@@ -1,0 +1,4 @@
+# Deliberately fake credential in a test fixture (the judge must reject copy that leaks one).
+# The line is allowed inline going forward; this fingerprint covers its first appearance in
+# this PR's history, which gitleaks scans commit by commit.
+6b9319492bad1a83831dbb51f7157d9190a6debf:apps/api/src/delivery/__fixtures__/labelled-judge-cases.ts:generic-api-key:90

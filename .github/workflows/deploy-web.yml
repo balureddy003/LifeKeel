@@ -12,7 +12,7 @@ on:
         description: 'Route API calls via the Hosting /api rewrite instead of the Cloud Run URL'
         type: boolean
         required: false
-        default: false
+        default: true
 
 # One deploy at a time; never cancel a deploy mid-flight.
 concurrency:
@@ -20,7 +20,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Fails loudly when dispatched from a branch other than main (stops accidents; a writer can still edit this
+  # file on their own branch, see docs/sdlc/status.md G10).
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Deploys run from main only
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "::error::Run this workflow from main (got $REF). Choose 'Use workflow from: main'; put the commit to deploy in the ref input."
+            exit 1
+          fi
+
   verify-ci:
+    needs: guard
     permissions:
       contents: read
       actions: read
@@ -34,6 +50,7 @@ jobs:
     # Environments > production); the job pauses here until a person approves.
     environment: production
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       id-token: write
@@ -61,8 +78,13 @@ jobs:
       - run: pnpm --filter @lifekeel/web run build:export
         env:
           NEXT_PUBLIC_API_URL: ${{ env.NEXT_PUBLIC_API_URL }}
-          NEXT_PUBLIC_SAME_ORIGIN_API: ${{ github.event.inputs.same_origin_api == true && '1' || '' }}
+          NEXT_PUBLIC_SAME_ORIGIN_API: ${{ github.event.inputs.same_origin_api == 'true' && '1' || '' }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ env.NEXT_PUBLIC_SENTRY_DSN }}
+
+      # The CSP (script-src 'self') blocks the inline <script> bodies Next.js
+      # emits for hydration. Move them to content-addressed files so the
+      # strict policy still holds without a giant hash list in the header.
+      - run: node scripts/externalize-inline-scripts.mjs apps/web/out
 
       - name: Authenticate to Firebase project
         uses: google-github-actions/auth@v3
@@ -74,4 +96,4 @@ jobs:
 
       - name: Deploy to Firebase Hosting
         working-directory: apps/web
-        run: firebase deploy --only hosting:family --project "$FIREBASE_PROJECT_ID" --non-interactive
+        run: firebase deploy --only hosting --project "$FIREBASE_PROJECT_ID" --non-interactive

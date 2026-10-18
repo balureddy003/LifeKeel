@@ -38,7 +38,7 @@ import type { ConnectorConfig } from './schemas.js'
 import type { EventGenerator } from './event-generator.js'
 import type { Engine, Insight } from '@lifekeel/engine'
 import { safeFetch } from './safe-fetch.js'
-import { createLogger, buildGoalKpiTargets, buildGoalContext, decryptIfNeeded } from '@lifekeel/platform'
+import { createLogger, decryptIfNeeded } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'connector-sync', version: '0.0.0' })
 
@@ -46,7 +46,7 @@ const log = createLogger({ service: 'connector-sync', version: '0.0.0' })
 const execAsync = promisify(execFile)
 
 // Injected MongoDB types (pipeline pkg has no direct mongodb dep)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type Db = { collection: (name: string) => any }
 
 // Google connectors that can use shared credentials
@@ -1244,16 +1244,6 @@ export class ConnectorSyncEngine {
       records = (records as Array<Record<string, unknown>>).filter(r => heldTickers.has(r['ticker'] as string))
     }
 
-    // Computed once per resource sync (not per-record) — see events.ts's
-    // buildContext for the real-time-ingestion equivalent of this same injection.
-    // Gap #32: also fetches goal_id_by_metric so the detector can thread
-    // goal_id into feature_snapshot.
-    const goalCtx = await buildGoalContext(this.db, tenantId)
-    const goalKpiTargets = goalCtx.targets
-    const goalIdByMetric = Object.keys(goalCtx.goal_id_by_metric).length > 0
-      ? goalCtx.goal_id_by_metric
-      : undefined
-
     // Fetched once per resource sync, not per-record, so every position in
     // this batch (e.g. all of a "Portfolio" resource's holdings) is weighted
     // against the exact same total_value snapshot. Previously each record
@@ -1286,7 +1276,6 @@ export class ConnectorSyncEngine {
             tenantId,
             connector.id,
             sharedTotalValue,
-            goalKpiTargets['portfolio_concentration_max_pct'],
           )
         }
 
@@ -1322,8 +1311,6 @@ export class ConnectorSyncEngine {
           event_id: event.id,
           data: event.raw_data,
           derived_from_signals: [event.id],
-          goal_kpi_targets: goalKpiTargets,
-          ...(goalIdByMetric && { goal_id_by_metric: goalIdByMetric }),
         }
         const result = await this.engine.evaluate(evalInput)
         insightsTriggered += result.insights.length

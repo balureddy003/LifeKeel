@@ -30,3 +30,6 @@ apps/web/test-results/
 apps/mobile/ios/
 apps/mobile/android/
 apps/mobile/www/
+
+# provision-infra.sh output — contains service-account keys, never commit
+deploy-out/

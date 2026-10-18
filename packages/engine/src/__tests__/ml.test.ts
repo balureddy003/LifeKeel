@@ -8,12 +8,12 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import { fitIsotonic, applyIsotonic } from '../calibration.js'
-import type { CalibrationPair } from '../calibration.js'
-import { NoveltyTracker } from '../novelty-tracker.js'
-import { ChangePointDetector } from '../change-point.js'
-import { FeatureHashScorer } from '../feature-hash-scorer.js'
-import { ExponentialSmoother } from '../adaptive-thresholds.js'
+import { fitIsotonic, applyIsotonic } from '../calibration/calibration.js'
+import type { CalibrationPair } from '../calibration/calibration.js'
+import { NoveltyTracker } from '../scoring/novelty-tracker.js'
+import { ChangePointDetector } from '../scoring/change-point.js'
+import { FeatureHashScorer } from '../scoring/feature-hash-scorer.js'
+import { ExponentialSmoother } from '../calibration/adaptive-thresholds.js'
 
 // ── Minimal MongoDB collection stub ──────────────────────────────────────────
 
@@ -222,8 +222,15 @@ describe('ChangePointDetector', () => {
     // Now feed consistently low values to drive cusum_down past threshold
     let alarmFired = false
     for (let i = 0; i < 30; i++) {
-      const r = await detector.update('t1', 'metric', 1, { threshold: 2.0, direction: 'down', min_observations: 15 })
-      if (r.alarm) { alarmFired = true; break }
+      const r = await detector.update('t1', 'metric', 1, {
+        threshold: 2.0,
+        direction: 'down',
+        min_observations: 15,
+      })
+      if (r.alarm) {
+        alarmFired = true
+        break
+      }
     }
     expect(alarmFired).toBe(true)
   })
@@ -232,8 +239,15 @@ describe('ChangePointDetector', () => {
     for (let i = 0; i < 15; i++) await detector.update('t1', 'm', 1000)
     let alarmed = false
     for (let i = 0; i < 50; i++) {
-      const r = await detector.update('t1', 'm', 1, { threshold: 2.0, direction: 'down', min_observations: 15 })
-      if (r.alarm) { alarmed = true; break }
+      const r = await detector.update('t1', 'm', 1, {
+        threshold: 2.0,
+        direction: 'down',
+        min_observations: 15,
+      })
+      if (r.alarm) {
+        alarmed = true
+        break
+      }
     }
     expect(alarmed).toBe(true)
     // After alarm, cusum should be reset
@@ -245,7 +259,11 @@ describe('ChangePointDetector', () => {
     for (let i = 0; i < 15; i++) await detector.update('t1', 'm', 1000)
     let alarmFired = false
     for (let i = 0; i < 30; i++) {
-      const r = await detector.update('t1', 'm', 1, { threshold: 2.0, direction: 'up', min_observations: 15 })
+      const r = await detector.update('t1', 'm', 1, {
+        threshold: 2.0,
+        direction: 'up',
+        min_observations: 15,
+      })
       if (r.alarm) alarmFired = true
     }
     expect(alarmFired).toBe(false)
@@ -271,19 +289,29 @@ describe('FeatureHashScorer', () => {
   })
 
   it('returns score in [0,1] range', async () => {
-    const result = await scorer.score('tenant-1', 'det1', { industry: 'retail', amount_minor: 5000 }, {
-      features: ['data.industry', 'data.amount_minor'],
-    })
+    const result = await scorer.score(
+      'tenant-1',
+      'det1',
+      { industry: 'retail', amount_minor: 5000 },
+      {
+        features: ['data.industry', 'data.amount_minor'],
+      },
+    )
     expect(result.score).toBeGreaterThanOrEqual(0)
     expect(result.score).toBeLessThanOrEqual(1)
   })
 
   it('matched=false when score below min_score', async () => {
     // Fresh model — all weights zero — sigmoid(0)=0.5, below default min_score
-    const result = await scorer.score('tenant-1', 'det1', { x: 1 }, {
-      features: ['data.x'],
-      min_score: 0.9,
-    })
+    const result = await scorer.score(
+      'tenant-1',
+      'det1',
+      { x: 1 },
+      {
+        features: ['data.x'],
+        min_score: 0.9,
+      },
+    )
     expect(result.matched).toBe(false)
   })
 
@@ -306,30 +334,42 @@ describe('FeatureHashScorer', () => {
     const data = { kind: 'noise' }
 
     // First push score up
-    for (let i = 0; i < 30; i++) await scorer.update('tenant-1', 'det1', data, 1, config, undefined, 0.1)
+    for (let i = 0; i < 30; i++)
+      await scorer.update('tenant-1', 'det1', data, 1, config, undefined, 0.1)
     const high = (await scorer.score('tenant-1', 'det1', data, config)).score
 
     // Then push score down
-    for (let i = 0; i < 60; i++) await scorer.update('tenant-1', 'det1', data, 0, config, undefined, 0.1)
+    for (let i = 0; i < 60; i++)
+      await scorer.update('tenant-1', 'det1', data, 0, config, undefined, 0.1)
     const low = (await scorer.score('tenant-1', 'det1', data, config)).score
 
     expect(low).toBeLessThan(high)
   })
 
   it('includes bigrams — feature count > unigram count', async () => {
-    const result = await scorer.score('tenant-1', 'd', { a: 1, b: 2, c: 3 }, {
-      features: ['data.a', 'data.b', 'data.c'],
-      use_bigrams: true,
-    })
+    const result = await scorer.score(
+      'tenant-1',
+      'd',
+      { a: 1, b: 2, c: 3 },
+      {
+        features: ['data.a', 'data.b', 'data.c'],
+        use_bigrams: true,
+      },
+    )
     // 3 unigrams + 3 bigrams = 6
     expect(result.feature_count).toBeGreaterThan(3)
   })
 
   it('no bigrams when use_bigrams=false', async () => {
-    const result = await scorer.score('tenant-1', 'd', { a: 1, b: 2 }, {
-      features: ['data.a', 'data.b'],
-      use_bigrams: false,
-    })
+    const result = await scorer.score(
+      'tenant-1',
+      'd',
+      { a: 1, b: 2 },
+      {
+        features: ['data.a', 'data.b'],
+        use_bigrams: false,
+      },
+    )
     expect(result.feature_count).toBe(2)
   })
 

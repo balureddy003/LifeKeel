@@ -15,7 +15,7 @@ export class PrivacyBudgetExceededError extends Error {
   constructor(tenantId: string, budget: PrivacyBudget) {
     super(
       `Privacy budget exceeded for tenant ${tenantId}: ` +
-        `ε=${budget.epsilonSpent.toFixed(2)} (limit exceeded)`
+        `ε=${budget.epsilonSpent.toFixed(2)} (limit exceeded)`,
     )
     this.name = 'PrivacyBudgetExceededError'
   }
@@ -57,11 +57,7 @@ export class PrivacyAccountant {
    * Check whether a tenant has exceeded its privacy budget.
    * Default limits: ε ≤ 4.0, δ ≤ 0.001.
    */
-  isBudgetExceeded(
-    tenantId: string,
-    epsilonLimit = 4.0,
-    deltaLimit = 0.001,
-  ): boolean {
+  isBudgetExceeded(tenantId: string, epsilonLimit = 4.0, deltaLimit = 0.001): boolean {
     const budget = this.budgets.get(tenantId)
     if (!budget) return false
     return budget.epsilonSpent > epsilonLimit || budget.deltaSpent > deltaLimit

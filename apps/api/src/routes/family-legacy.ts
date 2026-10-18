@@ -30,7 +30,11 @@ import type { Db } from 'mongodb'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
-import { isFamilyAdult, isFamilyOrganizer, memberMatchesUser } from '../lib/family-permissions.js'
+import {
+  isFamilyAdult,
+  isFamilyOrganizer,
+  memberMatchesUser,
+} from '../family/family-permissions.js'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { ESTATE_VAULT_CATEGORY } from './documents.js'
 import type { FamilyGroupDoc } from './family-group.js'
@@ -42,11 +46,25 @@ const log = createLogger({ service: 'family-legacy', version: '0.0.0' })
 
 // ── Schemas (PRD-137 §1, verbatim) ─────────────────────────────────────────
 
-export const Verification = z.enum(['document_linked', 'user_declared', 'family_understanding', 'unverified'])
+export const Verification = z.enum([
+  'document_linked',
+  'user_declared',
+  'family_understanding',
+  'unverified',
+])
 export type Verification = z.infer<typeof Verification>
 
 export const LegacyRole = z.object({
-  role: z.enum(['executor', 'trustee', 'attorney', 'guardian', 'beneficiary', 'witness', 'caretaker', 'successor_intended']),
+  role: z.enum([
+    'executor',
+    'trustee',
+    'attorney',
+    'guardian',
+    'beneficiary',
+    'witness',
+    'caretaker',
+    'successor_intended',
+  ]),
   member_id: z.string().optional(),
   contact_id: z.string().optional(),
   share_pct: z.number().min(0).max(100).optional(),
@@ -57,9 +75,16 @@ export type LegacyRole = z.infer<typeof LegacyRole>
 export const LegacyDocument = z.object({
   id: z.string(),
   type: z.enum([
-    'will', 'codicil', 'power_of_attorney', 'advance_directive', 'trust_deed',
-    'letter_of_wishes', 'guardianship_nomination', 'funeral_wishes',
-    'probate_record', 'civil_certificate',
+    'will',
+    'codicil',
+    'power_of_attorney',
+    'advance_directive',
+    'trust_deed',
+    'letter_of_wishes',
+    'guardianship_nomination',
+    'funeral_wishes',
+    'probate_record',
+    'civil_certificate',
   ]),
   subject_member_id: z.string(),
   jurisdiction: z.string().max(80),
@@ -77,7 +102,14 @@ export const LegacyDocument = z.object({
 export type LegacyDocument = z.infer<typeof LegacyDocument>
 
 export const PropertyLegacy = z.object({
-  ownership_basis: z.enum(['purchase', 'inherited', 'gift', 'trust', 'customary_succession', 'unknown']),
+  ownership_basis: z.enum([
+    'purchase',
+    'inherited',
+    'gift',
+    'trust',
+    'customary_succession',
+    'unknown',
+  ]),
   jurisdiction: z.string().max(80),
   recorded_owners: z.array(LegacyRole),
   claimed_owners: z.array(LegacyRole),
@@ -143,7 +175,12 @@ const DocumentBody = LegacyDocument.omit({ id: true })
 const DocumentPatch = DocumentBody.partial()
 const ContactBody = LegacyContact.omit({ id: true })
 const ContactPatch = ContactBody.partial()
-const NoteBody = KnowledgeNote.omit({ id: true, author_user_id: true, created_at: true, verification: true })
+const NoteBody = KnowledgeNote.omit({
+  id: true,
+  author_user_id: true,
+  created_at: true,
+  verification: true,
+})
 
 // ── Reference validation ───────────────────────────────────────────────────
 // A role names either a roster member or a legacy_contacts entry; a vault
@@ -155,7 +192,10 @@ export async function validateLegacyRefs(
   tenantId: string,
   refs: { memberIds?: string[]; contactIds?: string[]; vaultDocIds?: string[] },
 ): Promise<string | null> {
-  const family = await db.collection<FamilyGroupDoc>('family_groups').findOne({ tenant_id: tenantId }).catch(() => null)
+  const family = await db
+    .collection<FamilyGroupDoc>('family_groups')
+    .findOne({ tenant_id: tenantId })
+    .catch(() => null)
   const rosterIds = new Set((family?.members ?? []).map((m) => m.id))
   for (const id of refs.memberIds ?? []) {
     if (!rosterIds.has(id)) return `Unknown family member: ${id}`
@@ -181,9 +221,12 @@ export function registerFamilyLegacyRoutes(
   engine?: Engine,
   onInsightsGenerated?: (insights: Insight[], tenantId: string) => Promise<void>,
 ): void {
-  const docsFor = (tenantId: string) => getTenantCollection<LegacyDocumentDoc>(db, 'legacy_documents', tenantId)
-  const contactsFor = (tenantId: string) => getTenantCollection<LegacyContactDoc>(db, 'legacy_contacts', tenantId)
-  const notesFor = (tenantId: string) => getTenantCollection<KnowledgeNoteDoc>(db, 'legacy_notes', tenantId)
+  const docsFor = (tenantId: string) =>
+    getTenantCollection<LegacyDocumentDoc>(db, 'legacy_documents', tenantId)
+  const contactsFor = (tenantId: string) =>
+    getTenantCollection<LegacyContactDoc>(db, 'legacy_contacts', tenantId)
+  const notesFor = (tenantId: string) =>
+    getTenantCollection<KnowledgeNoteDoc>(db, 'legacy_notes', tenantId)
 
   const requireAdult = async (
     req: { authContext: { tenant_id: string; user_id: string } },
@@ -191,23 +234,30 @@ export function registerFamilyLegacyRoutes(
   ): Promise<boolean> => {
     const { tenant_id, user_id } = req.authContext
     if (await isFamilyAdult(db, tenant_id, user_id)) return true
-    reply.status(403).send({ error: 'The legacy register is visible to adult family members only.' })
+    reply
+      .status(403)
+      .send({ error: 'The legacy register is visible to adult family members only.' })
     return false
   }
 
   const toDocView = (d: LegacyDocumentDoc) => {
     const { tenant_id: _t, _id, created_by: _c, ...rest } = d as Record<string, unknown>
-    void _t; void _id; void _c
+    void _t
+    void _id
+    void _c
     return rest
   }
   const toContactView = (c: LegacyContactDoc) => {
     const { tenant_id: _t, _id, created_by: _cb, ...rest } = c as Record<string, unknown>
-    void _t; void _id; void _cb
+    void _t
+    void _id
+    void _cb
     return rest
   }
   const toNoteView = (n: KnowledgeNoteDoc) => {
     const { tenant_id: _t, _id, ...rest } = n as Record<string, unknown>
-    void _t; void _id
+    void _t
+    void _id
     return rest
   }
 
@@ -220,8 +270,12 @@ export function registerFamilyLegacyRoutes(
 
   /** Collect every referenced member/contact/vault id a document body carries. */
   const docRefs = (b: z.infer<typeof DocumentPatch>) => ({
-    memberIds: [b.subject_member_id, ...(b.roles ?? []).map((r) => r.member_id)].filter((x): x is string => typeof x === 'string'),
-    contactIds: (b.roles ?? []).map((r) => r.contact_id).filter((x): x is string => typeof x === 'string'),
+    memberIds: [b.subject_member_id, ...(b.roles ?? []).map((r) => r.member_id)].filter(
+      (x): x is string => typeof x === 'string',
+    ),
+    contactIds: (b.roles ?? [])
+      .map((r) => r.contact_id)
+      .filter((x): x is string => typeof x === 'string'),
     vaultDocIds: b.vault_document_id ? [b.vault_document_id] : [],
   })
 
@@ -242,7 +296,8 @@ export function registerFamilyLegacyRoutes(
     const isSubject = (d: LegacyDocumentDoc) => matchesUser(d.subject_member_id)
     const isNamed = (d: LegacyDocumentDoc) => d.roles.some((r) => matchesUser(r.member_id))
     const canView = (d: LegacyDocumentDoc) =>
-      d.visibility === 'adults' || isOrganizer ||
+      d.visibility === 'adults' ||
+      isOrganizer ||
       (d.visibility === 'named_roles' && (isSubject(d) || isNamed(d)))
 
     const docs = (await docsFor(tenant_id).find({}).toArray()) as LegacyDocumentDoc[]
@@ -270,9 +325,14 @@ export function registerFamilyLegacyRoutes(
     if (!(await requireAdult(req, reply))) return
     const { tenant_id, user_id } = req.authContext
     const parsed = DocumentBody.safeParse(req.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid legacy document', issues: parsed.error.issues })
+    if (!parsed.success)
+      return reply
+        .status(400)
+        .send({ error: 'Invalid legacy document', issues: parsed.error.issues })
     if (parsed.data.roles.some((r) => !r.member_id && !r.contact_id)) {
-      return reply.status(400).send({ error: 'Each role must name a family member or a legacy contact' })
+      return reply
+        .status(400)
+        .send({ error: 'Each role must name a family member or a legacy contact' })
     }
     const refError = await validateLegacyRefs(db, tenant_id, docRefs(parsed.data))
     if (refError) return reply.status(400).send({ error: refError })
@@ -297,11 +357,16 @@ export function registerFamilyLegacyRoutes(
     if (!(await requireAdult(req, reply))) return
     const { tenant_id } = req.authContext
     const parsed = DocumentPatch.safeParse(req.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid legacy document update', issues: parsed.error.issues })
+    if (!parsed.success)
+      return reply
+        .status(400)
+        .send({ error: 'Invalid legacy document update', issues: parsed.error.issues })
     const existing = await docsFor(tenant_id).findOne({ id: req.params.id })
     if (!existing) return reply.status(404).send({ error: 'Legacy document not found' })
     if ((parsed.data.roles ?? []).some((r) => !r.member_id && !r.contact_id)) {
-      return reply.status(400).send({ error: 'Each role must name a family member or a legacy contact' })
+      return reply
+        .status(400)
+        .send({ error: 'Each role must name a family member or a legacy contact' })
     }
     const merged = { ...existing, ...parsed.data }
     const refError = await validateLegacyRefs(db, tenant_id, docRefs(merged))
@@ -341,8 +406,17 @@ export function registerFamilyLegacyRoutes(
     if (!(await requireAdult(req, reply))) return
     const { tenant_id, user_id } = req.authContext
     const parsed = ContactBody.safeParse(req.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid legacy contact', issues: parsed.error.issues })
-    const doc: LegacyContactDoc = { id: randomUUID(), tenant_id, ...parsed.data, created_by: user_id, created_at: new Date() }
+    if (!parsed.success)
+      return reply
+        .status(400)
+        .send({ error: 'Invalid legacy contact', issues: parsed.error.issues })
+    const doc: LegacyContactDoc = {
+      id: randomUUID(),
+      tenant_id,
+      ...parsed.data,
+      created_by: user_id,
+      created_at: new Date(),
+    }
     await contactsFor(tenant_id).insertOne(doc)
     reevaluate(tenant_id)
     return reply.status(201).send({ contact: toContactView(doc) })
@@ -352,7 +426,10 @@ export function registerFamilyLegacyRoutes(
     if (!(await requireAdult(req, reply))) return
     const { tenant_id } = req.authContext
     const parsed = ContactPatch.safeParse(req.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid legacy contact update', issues: parsed.error.issues })
+    if (!parsed.success)
+      return reply
+        .status(400)
+        .send({ error: 'Invalid legacy contact update', issues: parsed.error.issues })
     const existing = await contactsFor(tenant_id).findOne({ id: req.params.id })
     if (!existing) return reply.status(404).send({ error: 'Legacy contact not found' })
     await contactsFor(tenant_id).updateOne({ id: req.params.id }, { $set: parsed.data })
@@ -387,7 +464,8 @@ export function registerFamilyLegacyRoutes(
     if (!(await requireAdult(req, reply))) return
     const { tenant_id, user_id } = req.authContext
     const parsed = NoteBody.safeParse(req.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid legacy note', issues: parsed.error.issues })
+    if (!parsed.success)
+      return reply.status(400).send({ error: 'Invalid legacy note', issues: parsed.error.issues })
     const doc: KnowledgeNoteDoc = {
       id: randomUUID(),
       tenant_id,
@@ -430,7 +508,9 @@ export function registerFamilyLegacyRoutes(
       })
     }
     if (!(await isFamilyAdult(db, tenant_id, user_id))) {
-      return reply.status(403).send({ error: 'The legacy register is visible to adult family members only.' })
+      return reply
+        .status(403)
+        .send({ error: 'The legacy register is visible to adult family members only.' })
     }
     return buildLegacyGraph(db, tenant_id, {
       user_id,
@@ -455,15 +535,25 @@ export function registerFamilyLegacyRoutes(
     const family = await db.collection<FamilyGroupDoc>('family_groups').findOne({ tenant_id })
     const members = family?.members ?? []
     const subject = members.find((m) => m.id === asId)
-    if (!subject || subject.status !== 'active' || !['organizer', 'parent', 'adult'].includes(subject.role)) {
+    if (
+      !subject ||
+      subject.status !== 'active' ||
+      !['organizer', 'parent', 'adult'].includes(subject.role)
+    ) {
       return reply.status(400).send({ error: 'as must be an active adult member of the family' })
     }
     const asOrganizer = subject.role === 'organizer'
 
     const [docs, contacts, notes, assets] = await Promise.all([
       docsFor(tenant_id).find({}).toArray() as Promise<LegacyDocumentDoc[]>,
-      contactsFor(tenant_id).find({}).toArray().catch(() => []) as Promise<LegacyContactDoc[]>,
-      notesFor(tenant_id).find({}).toArray().catch(() => []) as Promise<KnowledgeNoteDoc[]>,
+      contactsFor(tenant_id)
+        .find({})
+        .toArray()
+        .catch(() => []) as Promise<LegacyContactDoc[]>,
+      notesFor(tenant_id)
+        .find({})
+        .toArray()
+        .catch(() => []) as Promise<KnowledgeNoteDoc[]>,
       getTenantCollection<Record<string, unknown>>(db, 'family_assets', tenant_id)
         .find({})
         .toArray()
@@ -484,17 +574,27 @@ export function registerFamilyLegacyRoutes(
     const withLocation = visible.filter((d) => Boolean(d.original_location))
 
     const noteTargets = new Set(notes.map((n) => `${n.node.kind}:${n.node.id}`))
-    const propertyAssets = assets.filter((a: Record<string, unknown>) => a['kind'] === 'property' && a['legacy'])
+    const propertyAssets = assets.filter(
+      (a: Record<string, unknown>) => a['kind'] === 'property' && a['legacy'],
+    )
     const onlyOnePersonKnows = [
       ...docs
         .filter((d) => d.visibility === 'organizer' && !noteTargets.has(`document:${d.id}`))
-        .map((d) => ({ kind: 'document' as const, id: d.id, label: `${d.type.replace(/_/g, ' ')} — ${memberName(d.subject_member_id)}` })),
+        .map((d) => ({
+          kind: 'document' as const,
+          id: d.id,
+          label: `${d.type.replace(/_/g, ' ')} — ${memberName(d.subject_member_id)}`,
+        })),
       ...propertyAssets
         .filter((a: Record<string, unknown>) => {
           const legacy = a['legacy'] as { recorded_owners?: unknown[] }
           return (legacy.recorded_owners ?? []).length === 0 && !noteTargets.has(`asset:${a['id']}`)
         })
-        .map((a: Record<string, unknown>) => ({ kind: 'asset' as const, id: String(a['id']), label: String(a['name'] ?? 'Property') })),
+        .map((a: Record<string, unknown>) => ({
+          kind: 'asset' as const,
+          id: String(a['id']),
+          label: String(a['name'] ?? 'Property'),
+        })),
     ]
 
     // Roles the `as` member is named in across every visible document, and
@@ -504,15 +604,25 @@ export function registerFamilyLegacyRoutes(
         .filter((r) => r.member_id === subject.id)
         .map((r) => ({ document_id: d.id, type: d.type, role: r.role })),
     )
-    const contactIds = new Set(visible.flatMap((d) => d.roles.map((r) => r.contact_id).filter((x): x is string => typeof x === 'string')))
+    const contactIds = new Set(
+      visible.flatMap((d) =>
+        d.roles.map((r) => r.contact_id).filter((x): x is string => typeof x === 'string'),
+      ),
+    )
     const reachable = contacts
       .filter((c) => contactIds.has(c.id) && (c.email || c.phone || c.firm))
       .map((c) => ({ id: c.id, name: c.name, kind: c.kind }))
 
     return {
       as: { id: subject.id, name: subject.name },
-      findability_pct: docs.length === 0 ? 100 : Math.round((withLocation.length / docs.length) * 100),
-      visible_documents: visible.map((d) => ({ id: d.id, type: d.type, subject_name: memberName(d.subject_member_id), original_location: d.original_location ?? null })),
+      findability_pct:
+        docs.length === 0 ? 100 : Math.round((withLocation.length / docs.length) * 100),
+      visible_documents: visible.map((d) => ({
+        id: d.id,
+        type: d.type,
+        subject_name: memberName(d.subject_member_id),
+        original_location: d.original_location ?? null,
+      })),
       hidden_documents: hidden.map((d) => ({
         id: d.id,
         type: d.type,
@@ -520,14 +630,20 @@ export function registerFamilyLegacyRoutes(
         reason: d.visibility === 'organizer' ? 'organizer only' : 'named roles only',
       })),
       documents_without_location: visible
-        .filter((d) => ['will', 'power_of_attorney', 'trust_deed'].includes(d.type) && !d.original_location)
+        .filter(
+          (d) =>
+            ['will', 'power_of_attorney', 'trust_deed'].includes(d.type) && !d.original_location,
+        )
         .map((d) => ({ id: d.id, type: d.type, subject_name: memberName(d.subject_member_id) })),
       properties_without_title: propertyAssets
         .filter((a: Record<string, unknown>) => {
           const legacy = a['legacy'] as { title_document_id?: string; title_reference?: string }
           return !legacy.title_document_id && !legacy.title_reference
         })
-        .map((a: Record<string, unknown>) => ({ id: String(a['id']), name: String(a['name'] ?? 'Property') })),
+        .map((a: Record<string, unknown>) => ({
+          id: String(a['id']),
+          name: String(a['name'] ?? 'Property'),
+        })),
       named_roles: namedRoles,
       reachable_contacts: reachable,
       only_one_person_knows: onlyOnePersonKnows,
@@ -541,16 +657,27 @@ export function registerFamilyLegacyRoutes(
  * stays visible. Best-effort: a broken/absent collection must never break
  * member deletion.
  */
-export async function cascadeLegacyMemberRemoval(db: Db, tenantId: string, memberId: string): Promise<void> {
+export async function cascadeLegacyMemberRemoval(
+  db: Db,
+  tenantId: string,
+  memberId: string,
+): Promise<void> {
   try {
     const docs = getTenantCollection<LegacyDocumentDoc>(db, 'legacy_documents', tenantId)
     if (typeof docs.find !== 'function') return
-    const affected = (await docs.find({ 'roles.member_id': memberId }).toArray()) as LegacyDocumentDoc[]
+    const affected = (await docs
+      .find({ 'roles.member_id': memberId })
+      .toArray()) as LegacyDocumentDoc[]
     for (const d of affected) {
-      const roles = (d.roles ?? []).map((r) => (r.member_id === memberId ? { ...r, verification: 'unverified' as const } : r))
+      const roles = (d.roles ?? []).map((r) =>
+        r.member_id === memberId ? { ...r, verification: 'unverified' as const } : r,
+      )
       await docs.updateOne({ id: d.id }, { $set: { roles } })
     }
   } catch (err) {
-    log.warn({ err, tenant_id: tenantId, member_id: memberId }, 'Legacy cascade after member removal failed — member already removed')
+    log.warn(
+      { err, tenant_id: tenantId, member_id: memberId },
+      'Legacy cascade after member removal failed — member already removed',
+    )
   }
 }

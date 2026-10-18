@@ -13,21 +13,27 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import { TenantLevelScorer } from '../tenant-level-scorer.js'
+import { TenantLevelScorer } from '../scoring/tenant-level-scorer.js'
 import { FederatedLearningService } from '../federated-learning-service.js'
 import { FederatedLearning } from '../federated/FederatedLearning.js'
 
 // ── MongoDB stub ─────────────────────────────────────────────────────────────
 
 function makeDb() {
-  const collections: Record<string, {
-    store: Map<string, unknown>
-    createIndex: () => Promise<void>
-    replaceOne: (f: unknown, doc: unknown, opts?: unknown) => Promise<void>
-    findOne: (f: unknown) => Promise<unknown>
-    find: () => { sort: () => { limit: () => { toArray: () => Promise<unknown[]> } }; toArray: () => Promise<unknown[]> }
-    distinct: () => Promise<unknown[]>
-  }> = {}
+  const collections: Record<
+    string,
+    {
+      store: Map<string, unknown>
+      createIndex: () => Promise<void>
+      replaceOne: (f: unknown, doc: unknown, opts?: unknown) => Promise<void>
+      findOne: (f: unknown) => Promise<unknown>
+      find: () => {
+        sort: () => { limit: () => { toArray: () => Promise<unknown[]> } }
+        toArray: () => Promise<unknown[]>
+      }
+      distinct: () => Promise<unknown[]>
+    }
+  > = {}
 
   const getCol = (name: string) => {
     if (!collections[name]) {
@@ -35,7 +41,10 @@ function makeDb() {
       collections[name] = {
         store,
         createIndex: () => Promise.resolve(),
-        replaceOne: (f: unknown, doc: unknown, _opts?: unknown) => { store.set(JSON.stringify(f), doc); return Promise.resolve() },
+        replaceOne: (f: unknown, doc: unknown, _opts?: unknown) => {
+          store.set(JSON.stringify(f), doc)
+          return Promise.resolve()
+        },
         findOne: (f: unknown) => Promise.resolve(store.get(JSON.stringify(f)) ?? null),
         find: () => ({
           sort: () => ({ limit: () => ({ toArray: () => Promise.resolve([...store.values()]) }) }),
@@ -188,7 +197,7 @@ describe('FederatedLearningService', () => {
     await service.runWeeklyRound()
 
     const globalCol = db.collection('federated_global_models')
-    const globalDoc = await globalCol.findOne({ _id: 'latest' }) as {
+    const globalDoc = (await globalCol.findOne({ _id: 'latest' })) as {
       indices?: number[]
       deltas?: number[]
       participant_count?: number

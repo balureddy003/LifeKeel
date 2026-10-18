@@ -3,7 +3,8 @@
 LifeKeel is the autonomous digital twin for your family. Full product vision,
 current architecture, and phased roadmap: [ARCHITECTURE.md](ARCHITECTURE.md).
 Read that before making any change that touches product direction, not just
-this file.
+this file. For the mechanical commands/gotchas an AI agent needs day-to-day,
+see `.devin/AGENTS.md`.
 
 ## Repo map
 
@@ -70,6 +71,22 @@ Concretely:
   place beats compliance overhead paid for after deciding to compete
   there.
 
+## The third rule: family content is not model training data
+
+LifeKeel must not use personal or family content to train or fine-tune a shared
+or third-party foundation model. Hosted AI calls are processing, not training,
+and must use task-minimized context, tenant authorization, approved processor
+terms, explicit retention/deletion rules, and metadata-first telemetry.
+
+Do not route family content through consumer/free AI endpoints, personal API
+keys, provider-side memory/file/vector stores, or unapproved batch/fine-tuning
+APIs. Local and on-device paths are preferred for high-sensitivity tasks. Any
+future cross-tenant learning (including the dormant federated-learning code)
+requires explicit opt-in, privacy review, minimum-cohort/privacy-accounting
+controls, deletion/retraining evidence, and user-facing disclosure. Any stale
+`federated_global_models` artifact must be deleted/quarantined or gated before
+scorer warm-start can use it.
+
 ## How the rules are enforced (not just stated)
 
 - **Advice rule (second rule):** `packages/engine/src/__tests__/advice-rule.test.ts`
@@ -77,18 +94,21 @@ Concretely:
   providers. `.claude/settings.json` runs it as a PostToolUse hook
   (`scripts/hooks/advice-check.sh`) so Claude sees the failure immediately
   after editing that copy.
-- **PRs:** `.github/pull_request_template.md` makes tier, advice check and
-  eval coverage explicit. New work starts from `docs/templates/intent.md`.
-- **Ask Keel prompt:** `apps/api/src/eval/__tests__/assistant-eval.test.ts` pins
-  the `SYSTEM_PROMPT` guardrail clauses (always runs). `apps/api/src/eval/assistant-eval.ts`
-  is a live adversarial eval (`node dist/eval/assistant-eval.js`, needs an LLM
-  configured) run before changing the prompt or model; it measures how often
-  raw answers would be blocked by the production output guard.
+- **PRs:** `.github/pull_request_template.md` makes tier and advice check
+  explicit. New work starts from `docs/templates/intent.md`.
 - **Skill:** `.claude/skills/add-detector` encodes the add-a-detector recipe.
 - **Trust tiers (rule 1):** `apps/api/src/__tests__/trust-tier-gate.test.ts`
   allow-lists the only callers of `ActionExecutor` and requires each
   `execute()` to name `approvedBy`. Adding a caller means editing that list,
   which forces the tier question into review. It is a tripwire, not proof.
+- **AI data use (rule 3):** the intended tripwire is the task/provider registry
+  described in `ARCHITECTURE.md`: no hosted model call should run without an
+  approved endpoint/model, no-training basis, retention/deletion mode, and
+  task-level data boundary. Until that registry is wired, do not claim the rule
+  is technically enforced by code alone.
+
+Detail on what each check catches (and cannot):
+[docs/ai-native-sdlc-playbook.md](docs/ai-native-sdlc-playbook.md#8-rules-to-enforcement).
 
 ## Conventions
 
@@ -139,48 +159,29 @@ Concretely:
   containers (`.github/workflows/ci.yml`). To run MongoDB/Redis locally and every other CI check (boot smoke test, integration
   tests, image builds), see [docs/local-testing.md](docs/local-testing.md).
 
-## PRD → production, using Claude Code
+## PRD → production (full detail: the playbook above)
 
-This is the process for taking a product requirement from idea to shipped,
-using Claude Code end-to-end. It's designed to let Claude do the bulk of the
-PRD→plan→implement→test→review work with minimal hand-holding, while keeping
-a human in the loop at the two points that actually matter: merging, and
-deploying. That's a deliberate choice, not a limitation of what's possible —
-see the note at the end if you want to go further.
+1. **Intent/PRD** — problem, who, "done", and the trust tier if agentic.
+2. **Plan mode** for anything non-trivial (new route/detector, schema change,
+   more than 2-3 files); get sign-off before code.
+3. **Implement + test together**; new backend logic needs a test that fails
+   without it; detector changes run against `detector-evals/`.
+4. **Self-review** with `/code-review` before opening the PR.
+5. **CI gate** (`ci.yml`: typecheck, lint, test, build) must pass.
+6. **Human review + merge**, then 7. **manual deploy** (`workflow_dispatch`,
+   `require-ci.yml` checks the SHA). These two stay human-gated on purpose:
+   auto-merge or auto-deploy on green CI is a deliberate, higher-risk choice
+   for a product that acts on a family's behalf. Ask for it by name and we
+   design the approval/rollback story first; it is not a side effect of
+   "best patterns".
 
-1. **PRD intake.** Write (or paste) the requirement as a short brief: the
-   problem, who it's for, what "done" looks like, and which trust tier it
-   touches if it's agentic (see above). Doesn't need a template — a few
-   sentences Claude can reason from is enough.
-2. **Plan.** For anything non-trivial (new route, new detector, schema
-   change, anything touching more than 2-3 files), use plan mode before
-   writing code. Claude explores the codebase, proposes an approach, and
-   gets your sign-off before implementing — this is what prevented several
-   wrong turns during this repo's own build-out.
-3. **Implement + test.** Claude writes the code and the tests together, not
-   tests-as-an-afterthought. New backend logic needs a test that would fail
-   without it. New detector logic needs to run correctly against
-   `detector-evals/` if it's eligible for promotion.
-4. **Self-review.** Run the `/code-review` skill (or equivalent) on the diff
-   before opening a PR — catches correctness bugs and simplification
-   opportunities Claude can fix in the same pass, before a human ever has to
-   ask for the obvious changes.
-5. **CI gate.** `pnpm typecheck && pnpm lint && pnpm test && pnpm build`,
-   via `.github/workflows/ci.yml` — Mongo/Redis service containers included.
-   This must pass before merge; it's the automated half of the safety net.
-6. **Human review + merge.** A person reads the PR and merges it. This is
-   the gate that exists on purpose — see below.
-7. **Deploy.** `deploy-web.yml` / `deploy-api.yml` are `workflow_dispatch`
-   (manual trigger), not auto-fire-on-merge. Promote to production is a
-   deliberate, named action, not a side effect of a merge.
+## Working economically (tokens and CI minutes)
 
-**Why steps 6–7 stay human-gated:** "ship the product autonomously" could
-mean Claude doing the PRD→PR work end-to-end (what's described above), or it
-could mean removing the human entirely — auto-merge, auto-deploy-to-prod on
-green CI. This document implements the former. The latter is a real thing
-you can build (GitHub Actions that invoke Claude Code non-interactively,
-auto-merge on passing checks), but it's a deliberate, higher-risk choice for
-a product whose whole premise is acting responsibly on a family's behalf —
-it should be an explicit decision you make, not something that ships as a
-side effect of asking for "best patterns." If you want it, ask for it by
-name and we'll design the approval/rollback story around it specifically.
+- Read only what you need: use line ranges for big files, `Explore` for broad
+  searches, and never read `pnpm-lock.yaml`, `dist/`, `.next/` or `node_modules`.
+- Run `pnpm turbo run typecheck lint test build` once at the end, not after
+  each edit; target one package's tests while iterating.
+- Keep PRs to one concern and push when ready: every push to a ready PR runs
+  CI. Use draft PRs while iterating (CI skips drafts).
+- PR review is a person using their own coding agent (`/review-pr <N>`); there
+  is no AI review in CI. CodeQL runs weekly, not per PR.

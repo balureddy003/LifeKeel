@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { InsightExplainer, insightExplainer } from '../insight-explainer.js'
+import { InsightExplainer, insightExplainer } from '../explain/insight-explainer.js'
 import type { Insight, ConfidenceBreakdown, EvidenceTrail } from '../schemas.js'
 
 describe('InsightExplainer', () => {
@@ -23,7 +23,7 @@ describe('InsightExplainer', () => {
       llm_score: 0.75,
       combined_score: 0.82,
       model_version: 'gpt-4',
-      evidence_refs: ['event-456']
+      evidence_refs: ['event-456'],
     },
     estimated_impact_low: 50000,
     estimated_impact_high: 75000,
@@ -42,7 +42,7 @@ describe('InsightExplainer', () => {
         matched_variables: { days_overdue: 7, amount_minor: 50000 },
         or_score: 0.85,
         threshold_used: 50000,
-        threshold_basis: 'adaptive'
+        threshold_basis: 'adaptive',
       },
       source_events: [
         {
@@ -50,11 +50,11 @@ describe('InsightExplainer', () => {
           event_type: 'invoice.overdue',
           connector: 'quickbooks',
           occurred_at: new Date('2024-01-15T09:00:00Z'),
-          excerpt: 'Invoice #12345 overdue'
-        }
+          excerpt: 'Invoice #12345 overdue',
+        },
       ],
-      plain_english: 'Invoice overdue for 7 days with high value'
-    }
+      plain_english: 'Invoice overdue for 7 days with high value',
+    },
   }
 
   it('should generate user-friendly explanation', () => {
@@ -71,9 +71,33 @@ describe('InsightExplainer', () => {
   })
 
   it('should generate appropriate headline based on confidence', () => {
-    const highConfidence = { ...mockInsight, confidence_breakdown: { ...mockInsight.confidence_breakdown, or_score: 0.95, llm_score: 0.9, combined_score: 0.93 } }
-    const mediumConfidence = { ...mockInsight, confidence_breakdown: { ...mockInsight.confidence_breakdown, or_score: 0.85, llm_score: 0.75, combined_score: 0.82 } }
-    const lowConfidence = { ...mockInsight, confidence_breakdown: { ...mockInsight.confidence_breakdown, or_score: 0.75, llm_score: 0.7, combined_score: 0.73 } }
+    const highConfidence = {
+      ...mockInsight,
+      confidence_breakdown: {
+        ...mockInsight.confidence_breakdown,
+        or_score: 0.95,
+        llm_score: 0.9,
+        combined_score: 0.93,
+      },
+    }
+    const mediumConfidence = {
+      ...mockInsight,
+      confidence_breakdown: {
+        ...mockInsight.confidence_breakdown,
+        or_score: 0.85,
+        llm_score: 0.75,
+        combined_score: 0.82,
+      },
+    }
+    const lowConfidence = {
+      ...mockInsight,
+      confidence_breakdown: {
+        ...mockInsight.confidence_breakdown,
+        or_score: 0.75,
+        llm_score: 0.7,
+        combined_score: 0.73,
+      },
+    }
 
     const highExpl = explainer.explain(highConfidence)
     const mediumExpl = explainer.explain(mediumConfidence)
@@ -87,7 +111,7 @@ describe('InsightExplainer', () => {
   it('should simplify technical jargon in reasoning', () => {
     const technicalInsight = {
       ...mockInsight,
-      reasoning: 'CUSUM detected trend change above 2σ adaptive threshold'
+      reasoning: 'CUSUM detected trend change above 2σ adaptive threshold',
     }
 
     const explanation = explainer.explain(technicalInsight)

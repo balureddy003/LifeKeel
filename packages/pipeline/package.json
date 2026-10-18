@@ -1,6 +1,8 @@
 {
   "name": "@lifekeel/pipeline",
   "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
   "description": "Connector data pipeline — normalizes any connector's data into events, deduplicates via SHA-256",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,6 +17,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
+    "lint": "eslint .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
@@ -28,11 +31,12 @@
     "exceljs": "^4.4.0"
   },
   "devDependencies": {
+    "@lifekeel/eslint-config": "workspace:*",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.0.0",
     "@types/papaparse": "^5.5.2",
+    "eslint": "^9.19.0",
     "typescript": "^5.6.0",
     "vitest": "^4.1.9"
-  },
-  "license": "BUSL-1.1"
+  }
 }

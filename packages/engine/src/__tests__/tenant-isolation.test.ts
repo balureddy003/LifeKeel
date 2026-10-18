@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ScoreCalibrator } from '../calibration.js'
-import { IntentClassifier } from '../intent-classifier.js'
+import { ScoreCalibrator } from '../calibration/calibration.js'
+import { IntentClassifier } from '../scoring/intent-classifier.js'
 import { SkillOptimizer } from '../skill-opt/SkillOptimizer.js'
 
 describe('tenant ML isolation', () => {
@@ -33,15 +33,14 @@ describe('tenant ML isolation', () => {
   })
 
   it('rejects cross-tenant SkillOptimizer runs', async () => {
-    const optimizer = new SkillOptimizer(
-      { collection: () => ({}) },
-      async () => '',
-    )
+    const optimizer = new SkillOptimizer({ collection: () => ({}) }, async () => '')
 
-    await expect(optimizer.run({
-      target: 'skill',
-      target_id: 'summarize',
-      tenant_id: 'all',
-    })).rejects.toThrow(/cross-tenant optimization is forbidden/)
+    await expect(
+      optimizer.run({
+        target: 'skill',
+        target_id: 'summarize',
+        tenant_id: 'all',
+      }),
+    ).rejects.toThrow(/cross-tenant optimization is forbidden/)
   })
 })

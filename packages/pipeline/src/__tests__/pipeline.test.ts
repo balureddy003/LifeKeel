@@ -14,30 +14,19 @@ import path from 'node:path'
 // ── Connector loader ──────────────────────────────────────────────────────────
 
 describe('connector definitions', () => {
-  it('loads and validates the trading-212 connector definition', () => {
+  it('loads and validates the open-banking connector definition', () => {
     const repoRoot = path.resolve(__dirname, '..', '..', '..', '..')
-    const file = path.join(repoRoot, 'connectors', 'trading-212.yaml')
+    const file = path.join(repoRoot, 'connectors', 'open-banking.yaml')
     const raw = fs.readFileSync(file, 'utf8')
     const parsed = yaml.load(raw)
     const connector = ConnectorConfigSchema.parse(parsed)
 
-    expect(connector.id).toBe('trading-212')
-    expect(connector.status).toBe('ga')
-    expect(connector.category).toBe('investment')
-    expect(connector.auth.type).toBe('basic')
-    expect(connector.signal_types).toContain('portfolio_position')
-    expect(connector.signal_types).toContain('portfolio_summary')
-    expect(connector.signal_types).toContain('order_event')
-    expect(connector.signal_types).toContain('instrument_metadata')
-    expect(connector.base_url).toContain('demo.trading212.com')
-    expect(connector.live_base_url).toContain('trading212.com')
-
-    const account = connector.resources?.find(r => r.name === 'Account')
-    const cash = connector.resources?.find(r => r.name === 'Cash')
-    const portfolio = connector.resources?.find(r => r.name === 'Portfolio')
-    expect(account?.response_shape).toBe('object')
-    expect(cash?.response_shape).toBe('object')
-    expect(portfolio?.response_shape).toBe('list')
+    expect(connector.id).toBe('open-banking')
+    expect(connector.status).toBe('planned')
+    expect(connector.category).toBe('finance')
+    expect(connector.auth.type).toBe('oauth2_aisp')
+    expect(connector.signal_types).toContain('mortgage.account')
+    expect(connector.signal_types).toContain('mortgage.rate')
   })
 
   it('loads every connector definition in the connectors directory', async () => {
@@ -47,12 +36,11 @@ describe('connector definitions', () => {
     const yamlFiles = fs.readdirSync(connectorsDir).filter(f => /\.ya?ml$/i.test(f))
     await loader.load(connectorsDir)
     expect(loader.count).toBe(yamlFiles.length)
-    expect(loader.get('land-registry')).toBeDefined()
+    expect(loader.get('gmail')).toBeDefined()
     expect(loader.get('open-banking')).toBeDefined()
-    expect(loader.get('rightmove')).toBeDefined()
-    expect(loader.get('zoopla')).toBeDefined()
-    expect(loader.get('postiz')).toBeDefined()
-    expect(loader.get('postiz-library')).toBeDefined()
+    expect(loader.get('google_drive')).toBeDefined()
+    expect(loader.get('dropbox')).toBeDefined()
+    expect(loader.get('onedrive')).toBeDefined()
   })
 
   it('a valid connector definition has required fields', () => {

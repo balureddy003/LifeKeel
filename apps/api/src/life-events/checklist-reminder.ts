@@ -22,7 +22,7 @@ import { randomUUID } from 'node:crypto'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { getSignalsCollection } from '../db.js'
 import type { FamilyGroupDoc } from '../routes/family-group.js'
-import { memberMatchesUser } from '../lib/family-permissions.js'
+import { memberMatchesUser } from '../family/family-permissions.js'
 import { renderPlaybook, type LifeEventType } from './render-playbook.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 import type { FinancialProfile } from '../routes/family-financial-profile.js'
@@ -33,7 +33,11 @@ const log = createLogger({ service: 'checklist-reminder', version: '0.0.0' })
 // the organizer can't act alone — job loss, a car accident, or property
 // damage don't leave someone with a multi-step response plan they might
 // forget about for days.
-const CHECKLIST_REMINDER_EVENT_TYPES = new Set<LifeEventType>(['bereavement', 'disability', 'medical'])
+const CHECKLIST_REMINDER_EVENT_TYPES = new Set<LifeEventType>([
+  'bereavement',
+  'disability',
+  'medical',
+])
 
 const REMINDER_DELAY_DAYS = 3
 const DETECTOR_ID = 'family_checklist_reminder'
@@ -108,7 +112,11 @@ async function maybeSendChecklistReminder(db: Db, doc: LifeEventSignalDoc): Prom
       { $set: { 'data.checklist_reminder_sent': true } },
     )
 
-  const profileCol = getTenantCollection<FinancialProfile & { tenant_id: string }>(db, 'family_financial_profile', tenant_id)
+  const profileCol = getTenantCollection<FinancialProfile & { tenant_id: string }>(
+    db,
+    'family_financial_profile',
+    tenant_id,
+  )
   const profile = await profileCol.findOne({})
   if (!profile) {
     await markDone()
@@ -138,9 +146,12 @@ async function maybeSendChecklistReminder(db: Db, doc: LifeEventSignalDoc): Prom
     return false
   }
 
-  await sendChecklistReminderEmail(reporter.email, reporter.name, playbook.title, remaining.length).catch((err) =>
-    log.error({ err, to: reporter.email }, 'Checklist reminder send threw'),
-  )
+  await sendChecklistReminderEmail(
+    reporter.email,
+    reporter.name,
+    playbook.title,
+    remaining.length,
+  ).catch((err) => log.error({ err, to: reporter.email }, 'Checklist reminder send threw'))
 
   const insight: Insight = {
     id: randomUUID(),

@@ -38,11 +38,11 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import yaml from 'js-yaml'
-import { DEFAULT_GOAL_KPI_TARGETS } from '@lifekeel/platform'
+// goal_kpi_targets default removed along with the goals/KPI subsystem
 import type { Engine } from './engine.js'
 import type { Insight } from './schemas.js'
 // MongoDB Db is injected at runtime (engine package does not depend on mongodb directly)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type Db = { collection: (name: string) => any }
 
 // ── Eval case types ────────────────────────────────────────────────────────────
@@ -268,10 +268,9 @@ export class DetectorEvalRunner {
         tenant_id: `eval_${detectorId}`,   // synthetic tenant for eval
         event_id: `eval_${evalCase.id}`,
         data: evalCase.data,
-        goal_kpi_targets: {
-          ...DEFAULT_GOAL_KPI_TARGETS,
-          ...evalCase.goal_kpi_targets,
-        },
+        ...(evalCase.goal_kpi_targets !== undefined && {
+          goal_kpi_targets: evalCase.goal_kpi_targets,
+        }),
         ...(evalCase.business_context !== undefined && { business_context: evalCase.business_context }),
       })
       // Only keep insights from the target detector

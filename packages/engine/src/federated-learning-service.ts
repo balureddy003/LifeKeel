@@ -26,12 +26,12 @@
  */
 
 import { FederatedLearning } from './federated/FederatedLearning.js'
-import type { TenantLevelScorer } from './tenant-level-scorer.js'
+import type { TenantLevelScorer } from './scoring/tenant-level-scorer.js'
 import { createLogger } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'federated-learning-service', version: '1.0.0' })
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type MongoDb = { collection: (name: string) => any }
 
 export interface FederatedLearningServiceOptions {

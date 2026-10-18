@@ -3,7 +3,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { BatchProcessor, BatchNoveltyTracker, BatchChangePointDetector, BatchFeatureHashScorer, createBatchProcessor } from '../batch-processor.js'
+import {
+  BatchProcessor,
+  BatchNoveltyTracker,
+  BatchChangePointDetector,
+  BatchFeatureHashScorer,
+  createBatchProcessor,
+} from '../calibration/batch-processor.js'
 
 describe('BatchProcessor', () => {
   let processor: BatchProcessor
@@ -12,7 +18,7 @@ describe('BatchProcessor', () => {
     processor = new BatchProcessor({
       maxBatchSize: 5,
       flushInterval: 1000,
-      autoFlush: false
+      autoFlush: false,
     })
   })
 
@@ -24,7 +30,7 @@ describe('BatchProcessor', () => {
     processor.add('test-batch', {
       tenantId: 'tenant-1',
       data: { value: 'test' },
-      timestamp: Date.now()
+      timestamp: Date.now(),
     })
 
     const stats = processor.getStats()
@@ -40,7 +46,7 @@ describe('BatchProcessor', () => {
       processor.add('test-batch', {
         tenantId: 'tenant-1',
         data: { value: i },
-        timestamp: Date.now()
+        timestamp: Date.now(),
       })
     }
 
@@ -54,7 +60,7 @@ describe('BatchProcessor', () => {
     processor.add('test-batch', {
       tenantId: 'tenant-1',
       data: { value: 'test' },
-      timestamp: Date.now()
+      timestamp: Date.now(),
     })
 
     await processor.flush('test-batch')
@@ -90,13 +96,13 @@ describe('BatchProcessor', () => {
     const autoFlushProcessor = new BatchProcessor({
       maxBatchSize: 100,
       flushInterval: 100,
-      autoFlush: true
+      autoFlush: true,
     })
 
     autoFlushProcessor.add('test-batch', { tenantId: 'tenant-1', data: {}, timestamp: Date.now() })
 
     // Wait for auto-flush
-    await new Promise(resolve => setTimeout(resolve, 200))
+    await new Promise((resolve) => setTimeout(resolve, 200))
 
     const stats = autoFlushProcessor.getStats()
     expect(stats.batchCount).toBe(0) // Should have auto-flushed
@@ -113,7 +119,7 @@ describe('BatchNoveltyTracker', () => {
 
     const tracker = new BatchNoveltyTracker(mockDb, mockObserveFn, {
       maxBatchSize: 10,
-      autoFlush: false
+      autoFlush: false,
     })
 
     tracker.addObservation('tenant-1', 'data.amount_minor', '50000')
@@ -128,7 +134,7 @@ describe('BatchNoveltyTracker', () => {
 
     const tracker = new BatchNoveltyTracker(mockDb, mockObserveFn, {
       maxBatchSize: 10, // Increase to prevent auto-flush
-      autoFlush: false
+      autoFlush: false,
     })
 
     tracker.addObservation('tenant-1', 'data.amount_minor', '50000')
@@ -148,7 +154,7 @@ describe('BatchChangePointDetector', () => {
 
     const detector = new BatchChangePointDetector(mockDb, mockUpdateFn, {
       maxBatchSize: 10,
-      autoFlush: false
+      autoFlush: false,
     })
 
     detector.addObservation('tenant-1', 'data.revenue_minor', 50000)
@@ -163,7 +169,7 @@ describe('BatchChangePointDetector', () => {
 
     const detector = new BatchChangePointDetector(mockDb, mockUpdateFn, {
       maxBatchSize: 10, // Increase to prevent auto-flush
-      autoFlush: false
+      autoFlush: false,
     })
 
     detector.addObservation('tenant-1', 'data.revenue_minor', 50000)
@@ -183,7 +189,7 @@ describe('BatchFeatureHashScorer', () => {
 
     const scorer = new BatchFeatureHashScorer(mockDb, mockUpdateFn, {
       maxBatchSize: 10,
-      autoFlush: false
+      autoFlush: false,
     })
 
     scorer.addUpdate('tenant-1', 'detector-1', { industry: 'retail', amount: 'high' }, 1, 0.01)
@@ -198,7 +204,7 @@ describe('BatchFeatureHashScorer', () => {
 
     const scorer = new BatchFeatureHashScorer(mockDb, mockUpdateFn, {
       maxBatchSize: 10, // Increase to prevent auto-flush
-      autoFlush: false
+      autoFlush: false,
     })
 
     scorer.addUpdate('tenant-1', 'detector-1', { industry: 'retail' }, 1, 0.01)
@@ -208,7 +214,13 @@ describe('BatchFeatureHashScorer', () => {
     await scorer.flushAll()
 
     expect(mockUpdateFn).toHaveBeenCalledTimes(3)
-    expect(mockUpdateFn).toHaveBeenCalledWith('tenant-1', 'detector-1', { industry: 'retail' }, 1, 0.01)
+    expect(mockUpdateFn).toHaveBeenCalledWith(
+      'tenant-1',
+      'detector-1',
+      { industry: 'retail' },
+      1,
+      0.01,
+    )
   })
 })
 

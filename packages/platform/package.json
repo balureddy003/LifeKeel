@@ -1,6 +1,8 @@
 {
   "name": "@lifekeel/platform",
   "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
   "description": "Shared platform primitives — JWT auth, MongoDB, OTel, Decimal money, multi-tenant middleware",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,6 +17,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
+    "lint": "eslint .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
@@ -30,9 +33,10 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@lifekeel/eslint-config": "workspace:*",
     "@types/node": "^22.0.0",
+    "eslint": "^9.19.0",
     "typescript": "^5.6.0",
     "vitest": "^4.1.9"
-  },
-  "license": "MIT"
+  }
 }

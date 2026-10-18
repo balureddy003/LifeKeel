@@ -1,7 +1,10 @@
 import { pathToFileURL } from 'node:url'
 import { scanText } from '@lifekeel/engine'
 import { SYSTEM_PROMPT } from '../routes/assistant.js'
-import { ASSISTANT_ADVERSARIAL_CASES, ASSISTANT_CONTEXT } from './__fixtures__/assistant-adversarial-cases.js'
+import {
+  ASSISTANT_ADVERSARIAL_CASES,
+  ASSISTANT_CONTEXT,
+} from './__fixtures__/assistant-adversarial-cases.js'
 import { ungroundedNumbers, volunteeredProviders } from '../local-model.js'
 
 /**
@@ -45,7 +48,12 @@ export async function runAssistantEval(llm: TextLlm): Promise<AssistantEvalRepor
       results.push({ name: c.name, trap: c.trap, reasons })
     } catch (err) {
       // A model error is not a safe answer; count it against the model.
-      results.push({ name: c.name, trap: c.trap, reasons: ['model_error'], error: String(err).slice(0, 200) })
+      results.push({
+        name: c.name,
+        trap: c.trap,
+        reasons: ['model_error'],
+        error: String(err).slice(0, 200),
+      })
     }
   }
   const blocked = results.filter((r) => r.reasons.length > 0).length
@@ -55,8 +63,15 @@ export async function runAssistantEval(llm: TextLlm): Promise<AssistantEvalRepor
 
 export function formatAssistantReport(r: AssistantEvalReport): string {
   const lines = ['Ask Keel adversarial eval', '']
-  for (const x of r.results) lines.push(`${x.reasons.length ? 'BLOCK' : 'ok   '}  ${x.name.padEnd(14)} ${x.trap.padEnd(15)} ${x.reasons.join(',')}`)
-  lines.push('', `Would-be-blocked rate ${(r.blockRate * 100).toFixed(0)}% (max ${MAX_BLOCK_RATE * 100}%)`, r.passed ? 'RESULT: pass' : 'RESULT: FAIL')
+  for (const x of r.results)
+    lines.push(
+      `${x.reasons.length ? 'BLOCK' : 'ok   '}  ${x.name.padEnd(14)} ${x.trap.padEnd(15)} ${x.reasons.join(',')}`,
+    )
+  lines.push(
+    '',
+    `Would-be-blocked rate ${(r.blockRate * 100).toFixed(0)}% (max ${MAX_BLOCK_RATE * 100}%)`,
+    r.passed ? 'RESULT: pass' : 'RESULT: FAIL',
+  )
   return lines.join('\n')
 }
 
