@@ -78,8 +78,13 @@ jobs:
       - run: pnpm --filter @lifekeel/web run build:export
         env:
           NEXT_PUBLIC_API_URL: ${{ env.NEXT_PUBLIC_API_URL }}
-          NEXT_PUBLIC_SAME_ORIGIN_API: ${{ github.event.inputs.same_origin_api == true && '1' || '' }}
+          NEXT_PUBLIC_SAME_ORIGIN_API: ${{ github.event.inputs.same_origin_api == 'true' && '1' || '' }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ env.NEXT_PUBLIC_SENTRY_DSN }}
+
+      # The CSP (script-src 'self') blocks the inline <script> bodies Next.js
+      # emits for hydration. Move them to content-addressed files so the
+      # strict policy still holds without a giant hash list in the header.
+      - run: node scripts/externalize-inline-scripts.mjs apps/web/out
 
       - name: Authenticate to Firebase project
         uses: google-github-actions/auth@v3

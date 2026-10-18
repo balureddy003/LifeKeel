@@ -43,7 +43,7 @@ echo "  count: $(git log origin/main --since="${DAYS} days ago" --grep='^Revert'
 echo
 
 echo "== CI and security minutes by workflow (run wall-clock, summed; jobs bill separately so this is a floor)"
-for wf in ci.yml security.yml images.yml claude-review.yml; do
+for wf in ci.yml security.yml images.yml; do
   gh run list --workflow "$wf" -L 100 --json createdAt,updatedAt,status,conclusion,event 2>/dev/null \
   | jq -r --arg c "$CUTOFF" --arg wf "$wf" '
       [.[] | select(.createdAt >= $c and .status=="completed")] as $r

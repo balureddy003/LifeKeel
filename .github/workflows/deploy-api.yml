@@ -140,11 +140,15 @@ jobs:
           service: ${{ env.API_SERVICE }}
           region: ${{ env.GCP_REGION }}
           image: ${{ env.API_IMAGE }}:${{ env.RELEASE_SHA }}
-          flags: --port=3001 --allow-unauthenticated --cpu=1 --memory=512Mi --max-instances=4 --concurrency=80 --min-instances=0 ${{ steps.pre.outputs.exists == 'true' && format('--no-traffic --tag={0}', steps.pre.outputs.tag) || '' }}
+          # Comma-valued vars can't go in env_vars (the action joins pairs
+          # with commas, so "a,b" would split into two entries). They ride
+          # --update-env-vars in flags instead, using ^@^ as the pair
+          # delimiter so commas inside values survive. --update-env-vars
+          # merges — it does not wipe the env_vars above.
+          flags: --port=3001 --allow-unauthenticated --cpu=1 --memory=512Mi --max-instances=4 --concurrency=80 --min-instances=0 --update-env-vars=^@^CORS_ORIGIN=${{ vars.CORS_ORIGIN || vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}@LIFEKEEL_APP_HOSTS=${{ vars.LIFEKEEL_APP_HOSTS || 'app.lifekeel.co.uk,app.lifekeel.si' }} ${{ steps.pre.outputs.exists == 'true' && format('--no-traffic --tag={0}', steps.pre.outputs.tag) || '' }}
           env_vars: |
             NODE_ENV=production
             LIFEKEEL_DEPLOYMENT_MODE=cloud
-            CORS_ORIGIN=${{ vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}
             LOG_LEVEL=info
             LIFEKEEL_URL=${{ vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}
             API_BASE_URL=${{ vars.API_BASE_URL }}
@@ -162,6 +166,10 @@ jobs:
             LOCAL_MODEL_MAX_CONCURRENT=${{ vars.LOCAL_MODEL_MAX_CONCURRENT }}
             EMAIL_SCAN_FANOUT=${{ vars.EMAIL_SCAN_FANOUT }}
             EMAIL_SCAN_CONCURRENCY=${{ vars.EMAIL_SCAN_CONCURRENCY }}
+          # NOTE: no comments inside this block — deploy-cloudrun feeds every
+          # line to gcloud verbatim. Web push: without the VAPID secrets,
+          # /push/vapid-key 503s and no browser can subscribe. Values come from
+          # one `npx web-push generate-vapid-keys` run.
           secrets: |
             MONGODB_URL=lifekeel-mongodb-url:latest
             REDIS_URL=lifekeel-redis-url:latest
@@ -172,9 +180,6 @@ jobs:
             STRIPE_SECRET_KEY=lifekeel-stripe-secret-key:latest
             LIFEKEEL_STRIPE_WEBHOOK_SECRET=lifekeel-stripe-webhook-secret:latest
             OPENAI_API_KEY=lifekeel-openai-api-key:latest
-            # Web push — without these, /push/vapid-key 503s and no browser
-            # can subscribe. Create in Secret Manager from one `npx web-push
-            # generate-vapid-keys` run before the next deploy.
             VAPID_PUBLIC_KEY=lifekeel-vapid-public-key:latest
             VAPID_PRIVATE_KEY=lifekeel-vapid-private-key:latest
             VAPID_SUBJECT=lifekeel-vapid-subject:latest

@@ -86,9 +86,9 @@ flowchart LR
    drafts, which saves minutes. Mark it ready when you want checks. Fill in the
    [PR template](.github/pull_request_template.md) honestly; an unticked box with a
    reason beats a ticked box without evidence.
-8. **Review and merge.** A person reads the PR and merges it. Claude reviews once when
-   the PR opens or is marked ready; add the `claude-review` label to re-review after
-   changes.
+8. **Review and merge.** A person reads the PR and merges it. The reviewer may run their own
+   coding agent first (`/review-pr <number>` in Claude Code); there is no AI review in CI. See
+   [reviewing a PR](docs/sdlc/reviewing.md).
 9. **Deploy** is a manual workflow run, never a side effect of merging. It checks that
    CI passed on the exact commit. **There is no approval pause on our current GitHub plan**
    (see [what GitHub can enforce](docs/sdlc/status.md#what-github-can-and-cannot-enforce-here)),
@@ -103,7 +103,7 @@ flowchart LR
 | Editing detector or family playbook copy with Claude Code | Advice-rule test | Hook in [.claude/settings.json](.claude/settings.json) |
 | Every ready PR | Typecheck, lint, test, build, boot smoke; dependency audit; gitleaks | `ci.yml`, `security.yml` |
 | Weekly and on demand | CodeQL; container image builds | `security.yml`, `images.yml` |
-| PR opened, ready, or labelled `claude-review` | Advisory Claude review | `claude-review.yml` |
+| Reviewing a PR | A person, optionally with their own coding agent (`/review-pr`) | [reviewing.md](docs/sdlc/reviewing.md) |
 | Deploy | CI-on-SHA check, then approval | `require-ci.yml`, the `deploy-*.yml` files |
 
 ## Working with Claude Code

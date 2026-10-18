@@ -10,6 +10,7 @@ import { GoogleAnalytics } from '@/components/GoogleAnalytics'
 import { AdPixels } from '@/components/AdPixels'
 import { ConfirmSheetProvider } from '@/components/ConfirmSheetProvider'
 import { ToastProvider } from '@/components/Toast'
+import { NativeRegionGate } from '@/components/NativeRegionGate'
 
 // globals.css's --font-sans was always 'Inter' by declaration, but no font
 // was ever loaded — every visitor actually got system-ui. next/font self-
@@ -23,8 +24,9 @@ const inter = Inter({
   display: 'swap',
 })
 
-const TITLE = 'LifeKeel — When life doesn\'t go to plan, LifeKeel knows what to do next'
-const DESCRIPTION = 'A guided response plan for job loss, medical crises, and the unexpected — built for families of all ages. Informational only, not financial advice.'
+const TITLE = "LifeKeel — When life doesn't go to plan, LifeKeel knows what to do next"
+const DESCRIPTION =
+  'A guided response plan for job loss, medical crises, and the unexpected — built for families of all ages. Informational only, not financial advice.'
 // Canonical public domain — served via the Firebase Hosting site
 // "lifekeel-trellis" (apps/web/.firebaserc). lifekeel.si redirects here.
 const SITE_URL = 'https://lifekeel.co.uk'
@@ -72,11 +74,7 @@ export const viewport: Viewport = {
 // storage key and resolution logic identical to lib/theme.ts.
 const THEME_INIT = `(function(){try{var p=localStorage.getItem('lifekeel-theme');document.documentElement.dataset.theme=p==='light'?'light':p==='dark'?'dark':(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark')}catch(e){document.documentElement.dataset.theme='dark'}})()`
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={inter.variable} suppressHydrationWarning>
       <head>
@@ -165,7 +163,7 @@ export default function RootLayout({
                       name: 'Does LifeKeel work for the whole family, not just one person?',
                       acceptedAnswer: {
                         '@type': 'Answer',
-                        text: "Yes. Add your partner and kids to your family's roster and every score, insight, and \"what if\" scenario accounts for the whole household, not just the person who signed up.",
+                        text: 'Yes. Add your partner and kids to your family\'s roster and every score, insight, and "what if" scenario accounts for the whole household, not just the person who signed up.',
                       },
                     },
                   ],
@@ -194,6 +192,7 @@ export default function RootLayout({
             <ModeProvider>
               <ConfirmSheetProvider>
                 <ToastProvider>
+                  <NativeRegionGate />
                   <AppShell>{children}</AppShell>
                 </ToastProvider>
               </ConfirmSheetProvider>

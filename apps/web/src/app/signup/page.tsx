@@ -9,6 +9,7 @@ import { GoogleIcon } from '@/components/GoogleIcon'
 import { PasswordInput } from '@/components/PasswordInput'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
+import { RegionSwitch } from '@/components/RegionSwitch'
 import { track } from '@/lib/growth-track'
 import { trackConversion } from '@/lib/ad-track'
 import { fetchPublicStatus } from '@/lib/api'
@@ -79,7 +80,10 @@ export default function SignUpPage() {
           We&apos;re not accepting new accounts right now — please check back soon.
         </p>
         <Link href="/login" className="w-full max-w-xs">
-          <motion.button whileTap={{ scale: 0.96 }} className="w-full glass text-ink-primary font-semibold rounded-2xl py-4 text-base">
+          <motion.button
+            whileTap={{ scale: 0.96 }}
+            className="w-full glass text-ink-primary font-semibold rounded-2xl py-4 text-base"
+          >
             I already have an account
           </motion.button>
         </Link>
@@ -92,8 +96,11 @@ export default function SignUpPage() {
       <div className="text-center mb-8">
         {/* eslint-disable-next-line @next/next/no-img-element -- matches MarketingLanding.tsx's own /icon.svg usage */}
         <img src="/icon.svg" alt="" width={64} height={64} className="rounded-3xl mx-auto mb-3" />
-        <h1 className="text-2xl font-semibold tracking-tight bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">Create your account</h1>
+        <h1 className="text-2xl font-semibold tracking-tight bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">
+          Create your account
+        </h1>
         <p className="text-sm text-ink-tertiary mt-1">Takes 30 seconds. No credit card needed.</p>
+        <RegionSwitch className="mt-3" />
       </div>
 
       <div className="space-y-3 mb-6">
@@ -141,7 +148,9 @@ export default function SignUpPage() {
           />
         </label>
         <div>
-          <label htmlFor="signup-password" className="block text-xs text-ink-tertiary mb-1.5 px-1">Password (min. 8 characters)</label>
+          <label htmlFor="signup-password" className="block text-xs text-ink-tertiary mb-1.5 px-1">
+            Password (min. 8 characters)
+          </label>
           <PasswordInput
             id="signup-password"
             placeholder="Password (min. 8 characters)"
@@ -163,14 +172,18 @@ export default function SignUpPage() {
               className={`flex items-center gap-1.5 mt-1.5 px-1 text-xs ${password.length >= 8 ? 'text-success' : 'text-ink-tertiary'}`}
             >
               {password.length >= 8 ? <Check size={12} /> : <X size={12} />}
-              {password.length >= 8 ? 'Password length looks good' : `${8 - password.length} more character${8 - password.length === 1 ? '' : 's'} needed`}
+              {password.length >= 8
+                ? 'Password length looks good'
+                : `${8 - password.length} more character${8 - password.length === 1 ? '' : 's'} needed`}
             </div>
           )}
         </div>
       </div>
 
       {error && (
-        <p role="status" aria-live="polite" className="text-sm text-danger text-center mb-4">{error}</p>
+        <p role="status" aria-live="polite" className="text-sm text-danger text-center mb-4">
+          {error}
+        </p>
       )}
 
       <motion.button
@@ -184,8 +197,14 @@ export default function SignUpPage() {
 
       <p className="text-xs text-ink-tertiary text-center mt-4">
         By continuing, you agree to our{' '}
-        <Link href="/terms" className="text-family-400 font-medium">Terms</Link> and{' '}
-        <Link href="/privacy" className="text-family-400 font-medium">Privacy Policy</Link>.
+        <Link href="/terms" className="text-family-400 font-medium">
+          Terms
+        </Link>{' '}
+        and{' '}
+        <Link href="/privacy" className="text-family-400 font-medium">
+          Privacy Policy
+        </Link>
+        .
       </p>
     </div>
   )

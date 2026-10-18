@@ -30,14 +30,14 @@ are in [One-time GitHub setup](#one-time-github-setup). Until someone runs them:
 
 What a public repository changes for risk (see G26): the source, this gap table, `SECURITY.md`, the PRDs
 and the reviews are readable by anyone. Pull requests from forks run with no secrets. No workflow uses
-`pull_request_target` or `workflow_run` (checked), which is what keeps that true. `claude-review.yml`
-already skips forks.
+`pull_request_target` or `workflow_run` (checked), which is what keeps that true. No AI review runs in CI,
+so no API key is exposed to pull-request content.
 
 ## Cost controls (Actions minutes and tokens)
 
 **Measured baseline (`scripts/sdlc-metrics.sh 14`, 14 days to 2026-10-18, before the levers below
 had taken effect):** `ci.yml` 51 runs and about 303 minutes of wall-clock, `security.yml` 44 runs and
-about 142, `images.yml` 20 runs and about 95, and `claude-review.yml` 35 runs of which 22 failed for the
+about 142, `images.yml` 20 runs and about 95, and the since-removed Claude review workflow 35 runs of which 22 failed for the
 missing secret. That is roughly 540 minutes in two weeks, so about 1,150 a month against a 2,000
 minute free allowance for private repositories (jobs bill separately, so the real figure is higher).
 On 2026-10-18 GitHub began refusing to start jobs ("recent account payments have failed or your
@@ -57,7 +57,7 @@ again (about 12 more). Levers now in place, and what each trades away:
 | CodeQL weekly and on demand, not per PR or push | About 4 min per PR push, plus about 4 on merge | Findings surface up to a week late; results are only an artifact (code scanning is off) |
 | No `security.yml` run on push to `main` | About 1 to 5 min per merge | Squashed commits are re-scanned at the next weekly run |
 | Draft PRs skip CI and security | Everything while iterating | Mark ready (or push to a ready PR) to get checks |
-| Claude review on open, ready or label; Sonnet, 8 turns | Tokens per push (most pushes now cost none) | Add the `claude-review` label to re-review |
+| No AI review in CI (a person reviews, optionally with their own agent) | All CI token spend, and the API key's exposure to PR content | Review depth depends on the reviewer; see [reviewing.md](reviewing.md) |
 | Dependabot grouped, majors ignored, actions monthly | One CI run per PR avoided, and fewer failing PRs | Majors are manual migrations |
 | `timeout-minutes` on every job | Caps a hung job | A legitimately slow job needs its limit raised |
 | Read-deny for `node_modules`, `dist`, `.next`, `.turbo`, lockfile | Tokens wasted on generated files | None |
@@ -65,7 +65,7 @@ again (about 12 more). Levers now in place, and what each trades away:
 Token habits for sessions are in `CLAUDE.md` ("Working economically"). Rough
 estimates, not measurements: a ready-PR push drops from about 11 to about 7 Actions
 minutes, a merge to `main` from about 12 to about 6, and a PR with several pushes
-costs one Claude review instead of one per push. Re-measure with `gh run list`
+costs no review tokens in CI. Re-measure with `gh run list`
 after a week.
 
 ## Known gaps and owners
@@ -77,7 +77,7 @@ after a week.
 | G3 | No eval for document extraction or email summarisation | Advice or invented figures could enter via ingestion | Extend the eval harness to those prompts |
 | G4 | Assistant eval threshold is a guess | May be too loose or too tight | Run against the live model once; set from the baseline |
 | G5 | Advice scan covers detector and playbook YAML only | Hard-coded copy in web components and other prompts is unscanned | Extend to marketing copy and remaining system prompts |
-| G6 | `claude-review.yml` ran on GitHub but cannot review until `ANTHROPIC_API_KEY` exists (it fails loudly) | Output quality is unknown | Add the secret, read the first reviews, then see G19 | 
+| G6 | **Resolved by removal.** The CI Claude review needed a repository `ANTHROPIC_API_KEY` and failed without it, so it was removed; there is no AI review in CI | Nothing to maintain or secure | Review is a person, optionally with their own agent: [reviewing.md](reviewing.md) | 
 | G7 | No post-deploy verification or rollback | A bad deploy is found by users | Smoke-test after deploy; document rollback |
 | G8 | No production metrics loop | Maintain does not feed Plan | Define SLOs and alerts; link alerts to intents |
 | G9 | No ADRs | Decisions are lost in PR threads | Add an ADR folder and a template |
@@ -98,7 +98,7 @@ Agreement between reviewers is noted because it is the best predictor of importa
 | G16 | **Mitigated in `deploy-api.yml`** (PR for G16). The new revision is deployed with `--no-traffic`, smoke-tested at its own URL, then given traffic; production is re-checked and the previous revision is restored automatically on failure. The image is tagged with the verified SHA and `:latest` is gone; a `guard` job stops dispatch from any branch but `main`; a concurrency group stops two deploys racing. Remaining: the first-ever deploy has no previous revision to protect; tags are not immutable (use a digest if that matters); the guard does not stop a writer editing the workflow on their branch (G10); `deploy-web.yml` and `deploy-local-judge.yml` have the guard but no canary | A bad release can no longer reach users unnoticed | Dry-run it on a real unchanged commit and watch each step once; consider digests and Workload Identity Federation (G17) | architect, security, skeptic |
 | G17 | **Production credentials are long-lived keys any branch workflow can read** (`GCP_SA_KEY`, Firebase key). The `Production` environment has no rules, so they are not scoped to it | A stolen token or a poisoned dependency reaches the cloud account with no audit trail | Workload Identity Federation limited to `refs/heads/main`; scope secrets to the environment where the plan allows; otherwise restrict at the GCP side | security |
 | G18 | **Actions are pinned by tag** (`@v7`, `@v3`), including the ones next to deploy secrets. Verified | A retargeted tag runs attacker code with our secrets | Pin to full commit SHAs with a version comment; Dependabot keeps them current | security |
-| G19 | **The Claude review is weaker than it looks.** It reads PR-controlled text (`CLAUDE.md`, diff, comments) with the API key in scope, and it skips `**/*.md` and `docs/**`, which includes `CLAUDE.md` and this playbook. Claude reviewing Claude-written code is correlated review. Verified in `claude-review.yml` | "No findings" is not evidence; the control surface itself is unreviewed | Always review `CLAUDE.md`, `.claude/**`, `scripts/hooks/**`, `.github/**` and the tripwire tests; restrict the action's tools; treat "no findings" as no signal. (`id-token: write` was added on purpose for the action; do not drop it without testing) | security, architect |
+| G19 | **Review is only as good as the reviewer.** With the CI review gone, an AI check happens only if the reviewer runs one. Their agent reads PR text, which can try to steer it, and an agent reviewing agent-written code is correlated review. Changes to the control surface (`CLAUDE.md`, `.claude/**`, `.github/**`, the tripwire tests, `LICENSE`) get no independent look | A single maintainer can merge a weakened control without a second view | The `/review-pr` skill treats PR text as data and flags control-surface changes; add a second human reviewer for those paths once there is one (G12) | security, architect
 | G20 | **PR evidence is self-attested.** The template accepts ticked boxes with nothing pasted; nothing checks an intent or PRD link or a named tier (extends G2) | A solo maintainer routes around it within weeks | A small `github-script` PR check that fails without a tier line or a PRD/intent reference (skip docs-only PRs); add "paste the red mutation run" and "paste the eval number" fields | architect, skeptic |
 | G21 | **The eval has no memory.** Results are printed, not stored; no model or prompt version is recorded; `model_error` counts as a blocked answer; the 25% threshold is a guess (extends G4) | Rule 2 drift is invisible, and an outage looks like drift | Append `{date, sha, model, prompt hash, block rate}` to a committed history file or artifact; fail on a regression of more than 5 points; report errors separately | skeptic, architect |
 | G22 | **No change management for prompts and models.** No prompt version constant; the model is a deploy-time env var, so a model swap needs no PR or eval | A silent behaviour change on family data | A `PROMPT_VERSION` plus model id logged on every LLM call; a test that fails when a `SYSTEM_PROMPT` hash changes without a recorded eval | skeptic |
@@ -144,6 +144,5 @@ applied.** The owner runs them (they are security settings); each is one command
    should be case-insensitive).
 5. **Outside contributors:** Settings, Actions, General, "Fork pull request workflows": require approval
    for all outside collaborators.
-6. **Secret `ANTHROPIC_API_KEY`:** needed by `claude-review.yml` (it fails loudly without it).
-7. **Code scanning:** now free on a public repo. The CodeQL job still uses `upload: never` from when the
+6. **Code scanning:** now free on a public repo. The CodeQL job still uses `upload: never` from when the
    repo was private; removing that (and the artifact step) lets findings appear in the Security tab.

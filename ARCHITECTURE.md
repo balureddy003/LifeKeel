@@ -1961,6 +1961,9 @@ flowchart TB
   it does not import backend domain packages.
 - **Progressive enhancement:** the Capacitor shell upgrades push, camera, and
   biometrics while loading the same PWA.
+- **Region-aware shell:** the shell starts on the canonical app host and
+  `NativeRegionGate` redirects to the user's region host (`.co.uk` / `.si`);
+  region is held in native Preferences (see `apps/mobile/README.md`).
 - **Server-side redaction:** youth payloads remove sensitive amounts before they
   reach browser code.
 - **Honest degradation:** model failures render explicit fallback/unavailable
