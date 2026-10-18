@@ -16,7 +16,10 @@ const DAY = 86_400_000
 function matches(doc: Record<string, unknown>, filter: Record<string, unknown>): boolean {
   return Object.entries(filter).every(([k, v]) => {
     if (v && typeof v === 'object' && '$gte' in (v as Record<string, unknown>)) {
-      return new Date(doc[k] as string | Date).getTime() >= new Date((v as Record<string, unknown>)['$gte'] as string).getTime()
+      return (
+        new Date(doc[k] as string | Date).getTime() >=
+        new Date((v as Record<string, unknown>)['$gte'] as string).getTime()
+      )
     }
     return doc[k] === v
   })
@@ -27,8 +30,12 @@ function col(store: Record<string, unknown>[]) {
     find: (filter: Record<string, unknown> = {}) => ({
       toArray: async () => store.filter((d) => matches(d, filter)),
     }),
-    findOne: async (filter: Record<string, unknown> = {}) => store.find((d) => matches(d, filter)) ?? null,
-    insertOne: async (doc: Record<string, unknown>) => { store.push(doc); return { insertedId: doc['id'] } },
+    findOne: async (filter: Record<string, unknown> = {}) =>
+      store.find((d) => matches(d, filter)) ?? null,
+    insertOne: async (doc: Record<string, unknown>) => {
+      store.push(doc)
+      return { insertedId: doc['id'] }
+    },
   }
 }
 
@@ -36,9 +43,30 @@ function makeFamily() {
   return {
     tenant_id: TENANT,
     members: [
-      { id: 'm-org', user_id: 'u-org', name: 'Organizer', email: 'org@x.test', role: 'organizer', status: 'active' },
-      { id: 'm-adult', user_id: 'u-adult', name: 'Adult', email: 'adult@x.test', role: 'adult', status: 'active' },
-      { id: 'm-kid', user_id: 'u-kid', name: 'Kid', email: 'kid@x.test', role: 'child', status: 'active' },
+      {
+        id: 'm-org',
+        user_id: 'u-org',
+        name: 'Organizer',
+        email: 'org@x.test',
+        role: 'organizer',
+        status: 'active',
+      },
+      {
+        id: 'm-adult',
+        user_id: 'u-adult',
+        name: 'Adult',
+        email: 'adult@x.test',
+        role: 'adult',
+        status: 'active',
+      },
+      {
+        id: 'm-kid',
+        user_id: 'u-kid',
+        name: 'Kid',
+        email: 'kid@x.test',
+        role: 'child',
+        status: 'active',
+      },
     ],
   }
 }
@@ -150,7 +178,14 @@ describe('runFamilyHeartbeat', () => {
         { date: isoDaysAgo(6), score: 70 },
         { date: isoDaysAgo(1), score: 74 },
       ],
-      insights: [{ id: 'i1', tenant_id: TENANT, state: 'identified', created_at: new Date(NOW.getTime() - 2 * DAY) }],
+      insights: [
+        {
+          id: 'i1',
+          tenant_id: TENANT,
+          state: 'identified',
+          created_at: new Date(NOW.getTime() - 2 * DAY),
+        },
+      ],
       profile: {
         updated_at: new Date(NOW.getTime() - 10 * DAY),
         policies: [{ type: 'life', renewal_date: isoDaysAgo(-20) }],

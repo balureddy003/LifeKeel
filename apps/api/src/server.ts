@@ -1586,12 +1586,10 @@ app.addHook('onRequest', async (request, reply) => {
     if (resource && !canPerform(ctx.roles, resource, action))
       return reply.status(403).send({ error: `Forbidden: cannot ${action} ${resource}` })
     if (deploymentConfig.mode !== 'dev') {
-      const tenant = await workflowDb
-        .collection('tenants')
-        .findOne({
-          $or: [{ tenant_id: ctx.tenant_id }, { id: ctx.tenant_id }],
-          status: { $in: ['active', 'trial'] },
-        })
+      const tenant = await workflowDb.collection('tenants').findOne({
+        $or: [{ tenant_id: ctx.tenant_id }, { id: ctx.tenant_id }],
+        status: { $in: ['active', 'trial'] },
+      })
       if (!tenant) return reply.status(403).send({ error: 'Tenant is not provisioned or active' })
       const quotaResource =
         request.method === 'POST' && request.url.startsWith('/events') ? 'events' : null
@@ -1600,16 +1598,13 @@ app.addHook('onRequest', async (request, reply) => {
           await enforceQuota(workflowDb, ctx.tenant_id, quotaResource)
         } catch (error) {
           if (error instanceof QuotaExceededError)
-            return reply
-              .header('Retry-After', '86400')
-              .status(429)
-              .send({
-                error: error.message,
-                resource: error.resource,
-                used: error.used,
-                limit: error.limit,
-                upgrade_required: true,
-              })
+            return reply.header('Retry-After', '86400').status(429).send({
+              error: error.message,
+              resource: error.resource,
+              used: error.used,
+              limit: error.limit,
+              upgrade_required: true,
+            })
           throw error
         }
       }
