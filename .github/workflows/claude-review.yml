@@ -1,8 +1,18 @@
 name: Claude PR review
 
+# Token cost control: reviews run when a PR is opened or marked ready, or when someone adds the
+# `claude-review` label (to re-review after changes). Not on every push. Docs-only PRs, drafts and
+# Dependabot are skipped.
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, ready_for_review, labeled]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 # Advisory only: Claude comments, a human still approves and merges
 # (CLAUDE.md steps 6-7). Never grant it write access to contents.
@@ -14,9 +24,14 @@ permissions:
 
 jobs:
   review:
-    # Fork PRs get no secrets; skip rather than fail.
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # Fork PRs get no secrets; skip rather than fail. A `labeled` event only counts for our label.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository
+      && !github.event.pull_request.draft
+      && github.actor != 'dependabot[bot]'
+      && (github.event.action != 'labeled' || github.event.label.name == 'claude-review')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       # Without the key the action exits 'success' having reviewed nothing, which reads as
       # a clean review. Fail loudly instead so a missing secret is never mistaken for a pass.
@@ -34,6 +49,8 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # A mid-tier model and a turn cap bound the spend per review.
+          claude_args: --model claude-sonnet-5-5 --max-turns 8
           prompt: |
             Review this PR against CLAUDE.md. Check specifically:
             1. Trust tiers: any new path that calls an external provider or acts
