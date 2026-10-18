@@ -158,6 +158,12 @@ step_secrets() {
     # env name = secret name minus 'lifekeel-' prefix, dashes->underscores, upper.
     local env_name; env_name=$(echo "${name#lifekeel-}" | tr 'a-z-' 'A-Z_')
     local val="${!env_name:-}"
+    # Fallback: read .env directly — sourcing it breaks on values containing
+    # unquoted shell metacharacters (& in mongodb+srv query strings, etc.).
+    if [ -z "$val" ] && [ -f .env ]; then
+      val=$(grep -E "^${env_name}=" .env | tail -1 | cut -d= -f2- \
+        | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'\$//")
+    fi
     if [ -n "$val" ]; then
       printf '%s' "$val" | gcloud secrets versions add "$name" --data-file=- --project "$GCP_PROJECT" >/dev/null
       echo "  $name <- \$$env_name"
