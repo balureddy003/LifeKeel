@@ -19,15 +19,20 @@ Topology it produces (see `apps/web/firebase.json`):
 2. A GitHub repo with an environment named `Production`. Add a **required
    reviewer** at Settings → Environments → Production — that's the human
    approval gate the deploy workflows assume; the API can't set it.
-3. A Hostinger API token: hPanel → API → create token.
-4. Local auth:
+3. Local auth — all plain terminal commands, no API keys to mint in consoles:
 
    ```bash
-   gcloud auth login
+   gcloud auth login            # GCP project owner — covers gcloud + Firebase API calls
+   gh auth login                # repo admin — for the github step
+   brew install hostinger/tap/hostinger   # first `hostinger` command opens browser sign-in
    gcloud auth application-default login \
      --scopes=https://www.googleapis.com/auth/siteverification,https://www.googleapis.com/auth/cloud-platform
-   gh auth login
+   #   ^ only needed for the `verify` step (Cloud Run domain mappings).
+   #     Skip it and verify domains in Search Console manually if preferred.
    ```
+
+   Prefer not to install the Hostinger CLI? Export `HOSTINGER_API_TOKEN`
+   (hPanel → API → create token) and the script uses the REST API instead.
 
 ## Step by step — what the script does
 

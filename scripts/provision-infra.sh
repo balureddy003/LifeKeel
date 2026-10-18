@@ -19,12 +19,15 @@
 # Run everything:   ./scripts/provision-infra.sh all
 # Re-run a piece:   ./scripts/provision-infra.sh dns
 #
-# Auth expected BEFORE running:
+# Auth — everything is a plain terminal command, no API keys to mint:
 #   gcloud auth login                       (account owning the GCP project)
 #   gcloud auth application-default login \
 #     --scopes=https://www.googleapis.com/auth/siteverification,https://www.googleapis.com/auth/cloud-platform
+#     (only needed for the 'verify' step — skip it and verify domains in
+#      Search Console manually if you'd rather not grant the scope)
 #   gh auth login                           (repo admin, for the github step)
-#   HOSTINGER_API_TOKEN=...                 (hPanel → API → create token)
+#   brew install hostinger/tap/hostinger    (first command opens browser sign-in)
+#     — or set HOSTINGER_API_TOKEN from hPanel -> API as the fallback.
 #
 # Config (all overridable via env — defaults are this repo's prod values):
 #   GCP_PROJECT=dyocense-502208   GCP_REGION=us-central1
@@ -244,11 +247,26 @@ step_run_map() {
 }
 
 # ---------------------------------------------------------------------------
-push_dns() { # domain — reads $OUT_DIR/dns-<domain>.json, PUTs to Hostinger.
+push_dns() { # domain — reads $OUT_DIR/dns-<domain>.json, applies to Hostinger.
   local d="$1" f="$OUT_DIR/dns-$1.json"
-  [ -n "${HOSTINGER_API_TOKEN:-}" ] || { warn "HOSTINGER_API_TOKEN unset — skipping $d"; return 1; }
   [ -f "$f" ] || { warn "no plan file $f"; return 1; }
   local zone; zone=$(jq '[.[] | {name, type, ttl, records: [{content}]}]' "$f")
+
+  # Preferred auth: the hostinger CLI (browser sign-in, no API token needed).
+  if command -v hostinger >/dev/null; then
+    hostinger dns records validate "$d" --zone "$zone" >/dev/null 2>&1 \
+      || warn "Hostinger validation failed for $d — check the plan file"
+    hostinger dns records update "$d" --overwrite true --zone "$zone" >/dev/null \
+      && echo "  dns: $d updated" || warn "Hostinger update failed for $d"
+    return
+  fi
+
+  # Fallback: REST API with a token from hPanel -> API.
+  [ -n "${HOSTINGER_API_TOKEN:-}" ] || {
+    warn "no Hostinger auth — brew install hostinger/tap/hostinger (browser sign-in),"
+    warn "or export HOSTINGER_API_TOKEN from hPanel -> API. Skipping $d"
+    return 1
+  }
   curl -sf -X POST "$HOSTINGER_API/api/dns/v1/zones/$d/validate" \
     -H "Authorization: Bearer $HOSTINGER_API_TOKEN" -H 'Content-Type: application/json' \
     -d "{\"overwrite\":true,\"zone\":$zone}" >/dev/null \
