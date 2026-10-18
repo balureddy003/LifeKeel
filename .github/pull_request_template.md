@@ -1,3 +1,5 @@
+<!-- Reviewer: run /review-pr <number> with your coding agent, then read the diff yourself (docs/sdlc/reviewing.md). -->
+
 ## What and why
 <!-- Link the PRD (docs/prd/NNN-*.md) or intent this implements. -->
 

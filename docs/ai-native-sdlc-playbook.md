@@ -69,7 +69,7 @@ flowchart LR
 ```
 
 Green steps are machine-checked. Dashed amber steps need a person and are **not enforced by
-GitHub today**: review is partly self-review and an AI reviewer, merge and deploy are
+GitHub today**: review is a person (optionally using their own coding agent), merge and deploy are
 conventions (6.0). The dotted return path from Operate to Intent is the loop that is not yet
 automated (G8).
 
@@ -81,7 +81,7 @@ automated (G8).
 | 2 Design | Explore, propose, get sign-off | Plan mode, PRD | `CLAUDE.md` (convention) | Convention only |
 | 3 Build | Implement with tests | `CLAUDE.md`, `.claude/skills/`, `.claude/settings.json` hook | PostToolUse advice hook | Partial |
 | 4 Test | Prove it works and stays working | Vitest suites, `detector-evals/` | `ci.yml` | Enforced (assistant live eval is manual) |
-| 5 Review and deploy | Self-review, AI review, human merge, gated deploy | PR template, `claude-review.yml`, deploy workflows | CI, `require-ci.yml`, GitHub Environment | Partly convention today: this repo's plan cannot enforce branch protection or environment reviewers (see section 6.0) |
+| 5 Review and deploy | Self-review, human review (the reviewer may use their own agent), human merge, gated deploy | PR template, `/review-pr` skill, deploy workflows | CI, `require-ci.yml`, GitHub Environment | Partly convention today: this repo's plan cannot enforce branch protection or environment reviewers (see section 6.0) |
 | 6 Maintain | Watch, learn, feed back into intent | `runbooks.yaml`, Dependabot, `security.yml` | Weekly scans | Partial: no production metrics loop |
 
 ## 2. Stage 1: Plan
@@ -208,8 +208,8 @@ Claude Code and other agents do real work here, so the rules are explicit:
    was re-checked in the repo before it was used.
 6. **Say what you did not verify.** Reports state what ran, what did not, and what is only
    believed. A green check is not a statement that the thing works (G19).
-7. **Spend is bounded.** Headless or CI agent runs set a model and a turn cap (see
-   `claude-review.yml`), skip drafts, and run once, not on every push.
+7. **Spend is bounded.** There is no agent in CI. Any future headless run must set a model and a turn
+   cap, skip drafts, and run once, not on every push.
 
 ## 5. Stage 4: Test
 
@@ -236,7 +236,6 @@ flowchart TB
   subgraph PR["On every pull request"]
     CI["ci.yml<br/>typecheck, lint, test, build, smoke"]
     SEC["security.yml<br/>audit, gitleaks, CodeQL"]
-    AI["claude-review.yml<br/>advisory"]
   end
   subgraph Tests["Inside the test suite"]
     AR["advice-rule.test"]
@@ -246,7 +245,7 @@ flowchart TB
   end
   H --> AR
   CI --> Tests
-  PR --> HM["Human review and merge"]
+  PR --> HM["Human review and merge<br/>(reviewer may use their own agent)"]
   HM --> DG["Deploy gate<br/>verified SHA + production approval"]
 ```
 
@@ -306,16 +305,15 @@ keep unrelated changes in separate PRs.
 | `ci.yml` | one `turbo run typecheck lint test build` graph, boot smoke, python services; skipped on draft PRs | Yes |
 | `images.yml` | Container builds (path-filtered, weekly) | Yes when triggered |
 | `security.yml` | `pnpm audit --prod --audit-level=high` and gitleaks on every PR; CodeQL weekly and on demand | Yes (audit baseline cleaned by root `pnpm.overrides`) |
-| `claude-review.yml` | Claude reviews the PR against `CLAUDE.md` once on open or ready, and again when the `claude-review` label is added; not on every push, not for drafts, docs-only PRs or Dependabot | No, advisory. **Fails loudly if `ANTHROPIC_API_KEY` is unset** (before that guard it passed having reviewed nothing) |
 
 **These are advisory until G10 is fixed.** Making them required status checks needs branch
 protection (6.0), which is available but not yet switched on; until then "Blocks merge: Yes" means "the check
-goes red and the author is expected to stop". Also: `claude-review.yml` skips markdown and `docs/**`,
-so a change to `CLAUDE.md` or this playbook gets no AI review (G19), and a green review comment is
-not evidence that anything was reviewed.
+goes red and the author is expected to stop". There is **no AI review in CI**: review is a person,
+optionally with their own coding agent ([reviewing.md](sdlc/reviewing.md), G19).
 
 ### 6.4 Human review and merge
-A person reads the PR and merges. Squash-merge keeps `main` linear. Delete the
+A person reads the PR and merges, optionally running their own coding agent first
+(`/review-pr <number>`; see [reviewing a PR](sdlc/reviewing.md)). Squash-merge keeps `main` linear. Delete the
 branch after merge. When `main` was squash-merged and your local `main` still
 has the old commits, do not `git pull` into it; run `git fetch` and
 `git reset --hard origin/main` only after confirming none of the local commits
@@ -377,7 +375,7 @@ merge fails until CI finishes. These are deliberate.
 ### 6.6 Cost controls (Actions minutes and tokens)
 
 A ready-PR push costs roughly 6 minutes of CI plus about 1 of security; CodeQL runs weekly,
-the Claude review runs once per PR (or on the `claude-review` label), drafts skip checks, and
+there is no AI review in CI (a person reviews, optionally with their own agent), drafts skip checks, and
 Dependabot is grouped. The levers, their trade-offs and the numbers are in
 [status.md](sdlc/status.md#cost-controls-actions-minutes-and-tokens). Re-measure with
 `scripts/sdlc-metrics.sh`.

@@ -11,6 +11,7 @@ Start with the row that matches what you are doing.
 | [AI-native SDLC playbook](ai-native-sdlc-playbook.md) | You want the why, every check, the cost levers, and the known gaps. The reference. |
 | [Extending the SDLC](sdlc/extending.md) | You want to add a tripwire test, hook, skill, eval, workflow, or gate. Recipes with templates. |
 | [SDLC status](sdlc/status.md) | You want what is enforced today, what CI costs, what GitHub can and cannot enforce, and the open gaps (G1 to G25). Changes often. |
+| [Reviewing a PR](sdlc/reviewing.md) | You are reviewing someone's PR (a person, with your own coding agent). There is no AI review in CI. |
 | [Troubleshooting](sdlc/troubleshooting.md) | A check is red, a hook blocked you, a merge went wrong. Symptom to fix. |
 | [Running checks locally](local-testing.md) | You need Mongo/Redis, the boot smoke test, image builds, or local models. |
 | [.devin/AGENTS.md](../.devin/AGENTS.md) | You run a non-Claude agent. Mechanical facts and commands. |

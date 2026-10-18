@@ -183,5 +183,5 @@ Detail on what each check catches (and cannot):
   each edit; target one package's tests while iterating.
 - Keep PRs to one concern and push when ready: every push to a ready PR runs
   CI. Use draft PRs while iterating (CI skips drafts).
-- Claude PR review runs on open/ready or when the `claude-review` label is
-  added, not on every push. CodeQL runs weekly, not per PR.
+- PR review is a person using their own coding agent (`/review-pr <N>`); there
+  is no AI review in CI. CodeQL runs weekly, not per PR.

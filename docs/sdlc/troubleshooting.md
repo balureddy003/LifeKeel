@@ -7,9 +7,8 @@ repo. If you hit something new, add a row.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `review` (Claude PR review) is red with "ANTHROPIC_API_KEY is not set" | The repo secret does not exist. The job fails on purpose; before that guard it passed having reviewed nothing. | Add the secret under Settings, Secrets and variables, Actions. Then add the `claude-review` label to the PR to re-run. |
+| I want an AI review of a PR | There is none in CI; review is a person, optionally using their own coding agent. | In Claude Code run `/review-pr <number>`; see [reviewing a PR](reviewing.md). |
 | No checks ran on my PR | It is a **draft**. CI and security skip drafts. | Mark it ready for review. |
-| No Claude review appeared | It runs once when the PR opens or is marked ready, not on every push; docs-only PRs and Dependabot are skipped. | Add the `claude-review` label. |
 | CodeQL did not run on my PR | By design it runs weekly and on demand (`Actions`, `Security`, `Run workflow`), and only produces an artifact. | Trigger it manually if you need it now. |
 | `dependency-audit` fails with a high advisory | A transitive dependency has a known vulnerability. | Add a patched version to `pnpm.overrides` in the root `package.json`, run `pnpm install`, re-run `pnpm audit --prod --audit-level=high`. If no patched release exists, write down the exception in the PR. |
 | `build` fails only in CI | Cached or stale local state hid it, or a sibling package's `dist/` was missing locally. | Run `pnpm turbo run typecheck lint test build --force` from the repo root. |
