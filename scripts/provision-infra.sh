@@ -259,7 +259,7 @@ step_run_map() {
            --region "$GCP_REGION" --project "$GCP_PROJECT" >/dev/null 2>&1; then
         echo "  mapping exists: $sub.$d"
       else
-        gcloud beta run domain-mappings create \
+        gcloud beta run domain-mappings create --quiet \
           --service "$RUN_SERVICE" --domain "$sub.$d" \
           --region "$GCP_REGION" --project "$GCP_PROJECT" 2>&1 | tail -3 \
           || warn "$sub.$d mapping failed — service deployed? domain verified?"
