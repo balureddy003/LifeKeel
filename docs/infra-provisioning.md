@@ -127,6 +127,58 @@ APP_SITE=my-app RUN_SERVICE=my-api AR_REPO=my-docker GH_REPO=me/repo \
 ./scripts/provision-infra.sh all
 ```
 
-Caveats the script can't cross: GCP billing, Firebase Blaze plan (multi-site
-requires it), the `Production` environment reviewer toggle, Hostinger CDN
-disable, and OAuth consent/redirect config in provider consoles.
+## Day-2: upgrades and changes after the first deploy
+
+Every step is idempotent — re-running only fills gaps. The upgrade workflows:
+
+**Add a domain/TLD later** — append it and rerun the domain-facing steps:
+
+```bash
+APEX_DOMAINS="lifekeel.co.uk lifekeel.si lifekeel.de" \
+  ./scripts/provision-infra.sh firebase verify run-map dns github
+```
+
+The landing site name derives from the domain, CORS_ORIGIN and the firebase.json
+redirect list are regenerated from the same list — but note `firebase.json`'s
+per-TLD `landing-*` blocks and the app-route redirect destination are per-domain
+config, so a new TLD also needs a `landing-<tld>` block in `firebase.json` +
+target in `.firebaserc` before the web deploy picks it up.
+
+**Map a new subdomain to Cloud Run** (e.g. `hooks.lifekeel.co.uk`):
+
+```bash
+RUN_SUBDOMAINS="api hooks" ./scripts/provision-infra.sh run-map dns
+```
+
+**Rotate a Secret Manager secret** — export the new value and rerun; the step
+adds a new version, and the next `deploy-api` run picks up `:latest`:
+
+```bash
+JWT_SECRET=new-value ./scripts/provision-infra.sh secrets
+```
+
+To force-pick-up without a full deploy:
+`gcloud run services update lifekeel-api --update-secrets lifekeel-jwt-secret=lifekeel-jwt-secret:latest --region us-central1`.
+
+**Rotate the deploy SA keys** — delete `deploy-out/gcp-sa-key.json` (and/or the
+firebase one) and rerun `gcp github`. The step skips key creation while a key
+file exists, so untouched keys aren't churned.
+
+**Add a Secret Manager entry** — append the name to `SECRET_NAMES` in the script
+*and* to the `secrets:` block in `deploy-api.yml`, then rerun `secrets`.
+
+**Check for drift** — `provision-infra.sh status` compares every record in
+`deploy-out/dns-*.json` against live DNS (`DRIFT` lines) and prints cert
+provisioning state per host. Re-run `dns` to converge.
+
+**Remove a domain** — deliberately manual (destructive): delete the custom
+domain in Firebase console → Hosting, `gcloud run domain-mappings delete`, then
+remove the records in Hostinger. The script never deletes DNS records — its
+`overwrite: true` only replaces (name, type) pairs it owns, so removing a
+domain from `APEX_DOMAINS` stops managing it without tearing anything down.
+
+## Caveats the script can't cross
+
+GCP billing, Firebase Blaze plan (multi-site requires it), the `Production`
+environment reviewer toggle, Hostinger CDN disable, and OAuth consent/redirect
+config in provider consoles.

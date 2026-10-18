@@ -43,6 +43,9 @@ APP_SITE="${APP_SITE:-lifekeel}"
 GH_REPO="${GH_REPO:-balureddy003/LifeKeel}"
 APEX_DOMAINS="${APEX_DOMAINS:-lifekeel.co.uk lifekeel.si}"
 PRIMARY_DOMAIN="${PRIMARY_DOMAIN:-lifekeel.co.uk}"
+# Space-separated subdomains that map to the Cloud Run service (api by
+# default; extend e.g. RUN_SUBDOMAINS="api hooks" for a webhooks host).
+RUN_SUBDOMAINS="${RUN_SUBDOMAINS:-api}"
 OUT_DIR="${OUT_DIR:-deploy-out}"
 FB_API="https://firebasehosting.googleapis.com/v1beta1"
 HOSTINGER_API="https://developers.hostinger.com"
@@ -101,8 +104,12 @@ step_gcp() {
     gcloud projects add-iam-policy-binding "$GCP_PROJECT" \
       --member "serviceAccount:$deploy_sa" --role "$role" >/dev/null
   done
-  gcloud iam service-accounts keys create "$OUT_DIR/gcp-sa-key.json" \
-    --iam-account "$deploy_sa" || warn "key creation blocked by org policy — create one in console"
+  if [ -f "$OUT_DIR/gcp-sa-key.json" ]; then
+    warn "gcp-sa-key.json already exists — skipping (delete it first to rotate the key)"
+  else
+    gcloud iam service-accounts keys create "$OUT_DIR/gcp-sa-key.json" \
+      --iam-account "$deploy_sa" || warn "key creation blocked by org policy — create one in console"
+  fi
 
   # Firebase deploy SA — what deploy-web.yml authenticates as.
   local fb_sa="github-firebase@${GCP_PROJECT}.iam.gserviceaccount.com"
@@ -110,8 +117,12 @@ step_gcp() {
     || gcloud iam service-accounts create github-firebase --display-name "GitHub Actions Firebase deploy"
   gcloud projects add-iam-policy-binding "$GCP_PROJECT" \
     --member "serviceAccount:$fb_sa" --role roles/firebasehosting.admin >/dev/null
-  gcloud iam service-accounts keys create "$OUT_DIR/firebase-sa-key.json" \
-    --iam-account "$fb_sa" || warn "key creation blocked by org policy — create one in console"
+  if [ -f "$OUT_DIR/firebase-sa-key.json" ]; then
+    warn "firebase-sa-key.json already exists — skipping (delete it first to rotate the key)"
+  else
+    gcloud iam service-accounts keys create "$OUT_DIR/firebase-sa-key.json" \
+      --iam-account "$fb_sa" || warn "key creation blocked by org policy — create one in console"
+  fi
 
   # Cloud Run runs as the default compute SA (deploy-api.yml sets no
   # --service-account). It needs read access to the secrets bound as env vars.
@@ -215,13 +226,20 @@ step_verify() {
 
 # ---------------------------------------------------------------------------
 step_run_map() {
-  say "Cloud Run domain mappings (api.<domain>)"
+  say "Cloud Run domain mappings (${RUN_SUBDOMAINS// /,}.<domain>)"
   for d in $APEX_DOMAINS; do
-    gcloud beta run domain-mappings create \
-      --service "$RUN_SERVICE" --domain "api.$d" \
-      --region "$GCP_REGION" --project "$GCP_PROJECT" 2>&1 | tail -3 \
-      || warn "api.$d mapping failed — service deployed? domain verified?"
-    plan_add "$d" "api" "CNAME" "ghs.googlehosted.com"
+    for sub in $RUN_SUBDOMAINS; do
+      if gcloud beta run domain-mappings describe --domain "$sub.$d" \
+           --region "$GCP_REGION" --project "$GCP_PROJECT" >/dev/null 2>&1; then
+        echo "  mapping exists: $sub.$d"
+      else
+        gcloud beta run domain-mappings create \
+          --service "$RUN_SERVICE" --domain "$sub.$d" \
+          --region "$GCP_REGION" --project "$GCP_PROJECT" 2>&1 | tail -3 \
+          || warn "$sub.$d mapping failed — service deployed? domain verified?"
+      fi
+      plan_add "$d" "$sub" "CNAME" "ghs.googlehosted.com"
+    done
   done
 }
 
@@ -272,10 +290,30 @@ step_github() {
 
 # ---------------------------------------------------------------------------
 step_status() {
-  say "Status"
+  say "Status — live DNS vs plan"
   for d in $APEX_DOMAINS; do
-    for host in "$d" "www.$d" "app.$d" "api.$d"; do
+    local f="$OUT_DIR/dns-$d.json"
+    for host in "$d" "www.$d" "app.$d" $(for s in $RUN_SUBDOMAINS; do echo "$s.$d"; done); do
       printf '  %-24s -> %s\n' "$host" "$(dig +short "$host" | tr '\n' ' ')"
+    done
+    # Drift report: every record the plan wants, compared with what's live.
+    [ -f "$f" ] || continue
+    jq -r '.[] | "\(.name)\t\(.type)\t\(.content)"' "$f" | \
+      while IFS=$'\t' read -r name type want; do
+        fqdn=$([ "$name" = "@" ] && echo "$d" || echo "$name.$d")
+        live=$(dig +short "$fqdn" "$type" | tr -d '"' | tr '\n' ' ' | sed 's/ $//')
+        case " $live " in
+          *" $want "*) : ;;
+          *) printf '  DRIFT %-22s %-6s want=%s live=%s\n' "$fqdn" "$type" "$want" "${live:-<none>}" ;;
+        esac
+      done
+    # Cert provisioning state for each hosting custom domain.
+    local site; site=$(landing_site "$d")
+    for pair in "$site:$d" "$site:www.$d" "$APP_SITE:app.$d"; do
+      IFS=: read -r s h <<< "$pair"
+      st=$(fb_api GET "projects/$GCP_PROJECT/sites/$s/customDomains/$h" 2>/dev/null \
+        | jq -r '[.status, .updateState, .certState] | map(select(. != null)) | .[0] // "unknown"')
+      printf '  cert %-24s %s\n' "$h" "${st:-unknown}"
     done
   done
 }
