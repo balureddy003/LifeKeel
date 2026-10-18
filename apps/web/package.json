@@ -2,6 +2,7 @@
   "name": "@lifekeel/web",
   "version": "0.1.0",
   "private": true,
+  "license": "UNLICENSED",
   "description": "LifeKeel web app — the autonomous digital twin for your family",
   "scripts": {
     "dev": "next dev --port 3002",

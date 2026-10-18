@@ -2,6 +2,7 @@
   "name": "@lifekeel/api",
   "version": "0.1.0",
   "private": true,
+  "license": "UNLICENSED",
   "description": "LifeKeel backend — Fastify API for the family digital-twin data model, detector engine, and connectors",
   "type": "module",
   "main": "./dist/server.js",

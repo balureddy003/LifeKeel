@@ -5,6 +5,13 @@ behind it, and every check in detail, are in the
 [AI-native SDLC playbook](docs/ai-native-sdlc-playbook.md). To change the process
 itself, see [Extending the SDLC](docs/sdlc/extending.md).
 
+## Licence and contributions
+
+The source is public so it can be read, but it is **proprietary**: [LICENSE](LICENSE) grants no right to
+copy, run, modify or host it. Contributing means changing code, so it needs the owner's written permission
+first (hello@lifekeel.co.uk). New workspace packages must declare `UNLICENSED` and `private` (a test
+checks), and new dependencies need their licence checked against [NOTICE](NOTICE).
+
 ## First 15 minutes
 
 ```bash

@@ -2,6 +2,7 @@
   "name": "@lifekeel/eslint-config",
   "version": "0.1.0",
   "private": true,
+  "license": "UNLICENSED",
   "description": "Shared ESLint flat configs for LifeKeel apps and packages",
   "type": "module",
   "main": "./src/index.js",

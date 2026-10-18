@@ -282,11 +282,15 @@ executor was left wired into a currently-shipped route instead.
   required, audit-logged, also revokes sessions) is the support runbook for
   a user who loses both factors — run it only after out-of-band identity
   verification, e.g. a confirmed recovery email on the account.
-- **Mixed license terms across `packages/*`.** Copied as-is from kairos-ai:
-  MIT (`engine`, `platform`), Apache-2.0 (`specifications`, `runtime`,
-  `legacy-compat`, `mongodb-adapter`, `conformance`, `outcome-kernel`), and
-  BUSL-1.1 (`pipeline`, `workflows`). Fine for a private repo; worth
-  resolving before ever making this repo public.
+- **Licensing (resolved when the repo became public).** The packages copied from
+  kairos-ai had mixed terms: MIT, Apache-2.0 and BUSL-1.1. Every package is now
+  `UNLICENSED` and `private`, under the proprietary root `LICENSE`; the per-package
+  MIT and BUSL files are gone; `NOTICE` lists third-party terms. Copies of the
+  earlier revisions that someone obtained while those declarations were visible stay
+  under the terms they were obtained under (that cannot be undone). Not legal
+  advice: have counsel review `LICENSE` before relying on it. Two dependencies with
+  no declared licence (`buffers`, `khroma`) still need checking. A test
+  (`license-consistency.test.ts`) keeps new packages from reintroducing a grant.
 - **Pre-existing `apps/api` test failures, verified against kairos-ai itself
   on 2026-09-12** — not introduced by this copy. Marked `it.skip` with a
   dated comment at each site rather than left silently red (the test files
