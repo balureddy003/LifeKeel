@@ -3,20 +3,42 @@ import { ObjectId, type Db } from 'mongodb'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { OperatorAuditLogger } from '../operator/operator-audit.js'
-import { requireOperator, resolvePermissions, hasOperatorPermission, type PlatformRole, type OperatorPermission } from '../operator/operator-auth.js'
+import {
+  requireOperator,
+  resolvePermissions,
+  hasOperatorPermission,
+  type PlatformRole,
+  type OperatorPermission,
+} from '../operator/operator-auth.js'
 import { sendPasswordResetEmail } from '../auth-email.js'
 import { recordLedgerEntry, getLedgerHistory } from '../billing/credit-ledger.js'
 import { queueManager } from '../queue/QueueManager.js'
 import { WEBHOOK_INGEST_QUEUE } from '../queue/WebhookQueue.js'
-import { getPlatformConfig, invalidatePlatformConfigCache, CONFIG_DOC_KEY, type PlatformConfig } from '../operator/platform-config.js'
+import {
+  getPlatformConfig,
+  invalidatePlatformConfigCache,
+  CONFIG_DOC_KEY,
+  type PlatformConfig,
+} from '../operator/platform-config.js'
 import { getLoginEventsCollection } from '../db.js'
 import { createLlmRouterFromEnv } from '@lifekeel/platform'
 import { computeTenantHealth } from '../operator/tenant-health.js'
 import { isRollupReady, readDailyRollup } from '../jobs/metrics-rollup.js'
 import { getRunbooks } from '../operator/runbooks.js'
-import { listAutopilotRules, getAutopilotRule, NEVER_AUTONOMOUS, PROPOSAL_HANDLERS, type AutopilotActionDoc } from '../operator/autopilot.js'
+import {
+  listAutopilotRules,
+  getAutopilotRule,
+  NEVER_AUTONOMOUS,
+  PROPOSAL_HANDLERS,
+  type AutopilotActionDoc,
+} from '../operator/autopilot.js'
 import { runWeeklyDigest } from '../operator/weekly-digest.js'
-import { campaignsCol, resolveAudience, sendCampaign, type CampaignDoc } from '../marketing/campaigns.js'
+import {
+  campaignsCol,
+  resolveAudience,
+  sendCampaign,
+  type CampaignDoc,
+} from '../marketing/campaigns.js'
 import { lifecycleSendsCol } from '../marketing/lifecycle-emails.js'
 import type { SupportCaseDoc, SupportMessage } from './support.js'
 
@@ -35,10 +57,24 @@ const QuerySchema = z.object({
 
 const ReasonSchema = z.object({ reason: z.string().trim().min(5).max(500) })
 
-const PLATFORM_ROLES = ['support', 'marketing_operator', 'finance_operator', 'operations', 'platform_admin', 'super_admin'] as const
+const PLATFORM_ROLES = [
+  'support',
+  'marketing_operator',
+  'finance_operator',
+  'operations',
+  'platform_admin',
+  'super_admin',
+] as const
 const RolesSchema = z.array(z.enum(PLATFORM_ROLES)).min(1).max(PLATFORM_ROLES.length)
-const OperatorCreateSchema = z.object({ user_id: z.string().trim().min(1).max(100), roles: RolesSchema, reason: z.string().trim().min(5).max(500) })
-const OperatorUpdateSchema = z.object({ roles: RolesSchema, reason: z.string().trim().min(5).max(500) })
+const OperatorCreateSchema = z.object({
+  user_id: z.string().trim().min(1).max(100),
+  roles: RolesSchema,
+  reason: z.string().trim().min(5).max(500),
+})
+const OperatorUpdateSchema = z.object({
+  roles: RolesSchema,
+  reason: z.string().trim().min(5).max(500),
+})
 const LEAD_STAGES = ['new', 'qualified', 'contacted', 'trial', 'converted', 'lost'] as const
 const LeadUpdateSchema = z.object({
   stage: z.enum(LEAD_STAGES).optional(),
@@ -55,7 +91,12 @@ const LeadQuerySchema = z.object({
   cursor: z.string().max(300).optional(),
 })
 const PromotionCreateSchema = z.object({
-  code: z.string().trim().min(3).max(40).regex(/^[A-Z0-9_-]+$/i, 'Letters, numbers, dashes and underscores only'),
+  code: z
+    .string()
+    .trim()
+    .min(3)
+    .max(40)
+    .regex(/^[A-Z0-9_-]+$/i, 'Letters, numbers, dashes and underscores only'),
   grant_credits: z.number().int().min(1).max(10000),
   max_uses: z.number().int().min(0).max(1000000).default(0),
   expires_at: z.string().datetime().optional(),
@@ -65,7 +106,12 @@ const PromotionCreateSchema = z.object({
 const BLOG_CATEGORIES = ['product', 'tutorial', 'case-study', 'news'] as const
 const BlogPostWriteSchema = z.object({
   title: z.string().trim().min(1).max(200),
-  slug: z.string().trim().min(1).max(120).regex(/^[a-z0-9-]+$/, 'Lowercase letters, numbers and dashes only'),
+  slug: z
+    .string()
+    .trim()
+    .min(1)
+    .max(120)
+    .regex(/^[a-z0-9-]+$/, 'Lowercase letters, numbers and dashes only'),
   content: z.string().min(1).max(200000),
   excerpt: z.string().trim().min(1).max(500),
   category: z.enum(BLOG_CATEGORIES),
@@ -74,8 +120,12 @@ const BlogPostWriteSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(50)).max(20).default([]),
   meta_description: z.string().trim().max(300).optional(),
 })
-const BlogPostCreateSchema = BlogPostWriteSchema.extend({ reason: z.string().trim().min(5).max(500) })
-const BlogPostUpdateSchema = BlogPostWriteSchema.partial().extend({ reason: z.string().trim().min(5).max(500) })
+const BlogPostCreateSchema = BlogPostWriteSchema.extend({
+  reason: z.string().trim().min(5).max(500),
+})
+const BlogPostUpdateSchema = BlogPostWriteSchema.partial().extend({
+  reason: z.string().trim().min(5).max(500),
+})
 // Segment campaigns — operator-authored email to a filtered cohort. The
 // filter is intentionally coarse (plan/trial/profile/lead-stage/source/
 // age): precise enough to target, too coarse to single out a person.
@@ -99,7 +149,12 @@ const CampaignCreateSchema = z.object({
   reason: z.string().trim().min(5).max(500),
 })
 const CreditAdjustSchema = z.object({
-  amount: z.number().int().min(-10000).max(10000).refine((v) => v !== 0, 'Amount cannot be zero'),
+  amount: z
+    .number()
+    .int()
+    .min(-10000)
+    .max(10000)
+    .refine((v) => v !== 0, 'Amount cannot be zero'),
   reason: z.string().trim().min(5).max(500),
 })
 const AuditQuerySchema = z.object({
@@ -127,7 +182,9 @@ function safeRegex(value: string): RegExp {
 /** Keyset pagination for `created_at:-1` sorts — the cursor encodes the last
  *  row's (created_at, id) pair; the next page seeks past it via the index.
  *  The id tiebreak keeps ordering stable when rows share a timestamp. */
-function decodeCursor(cursor: string | undefined): { created_at: Date; id: string } | null | undefined {
+function decodeCursor(
+  cursor: string | undefined,
+): { created_at: Date; id: string } | null | undefined {
   if (!cursor) return undefined
   const raw = Buffer.from(cursor, 'base64url').toString('utf8')
   const sep = raw.lastIndexOf('|')
@@ -138,14 +195,22 @@ function decodeCursor(cursor: string | undefined): { created_at: Date; id: strin
   return { created_at: created, id }
 }
 
-function encodeCursor(item: Record<string, unknown>, idField: string, dateField = 'created_at'): string | undefined {
+function encodeCursor(
+  item: Record<string, unknown>,
+  idField: string,
+  dateField = 'created_at',
+): string | undefined {
   const created = item[dateField]
   const id = item[idField]
   if (!(created instanceof Date) || typeof id !== 'string' || !id) return undefined
   return Buffer.from(`${created.toISOString()}|${id}`).toString('base64url')
 }
 
-function cursorFilter(cursor: { created_at: Date; id: string }, idField: string, dateField = 'created_at'): Record<string, unknown> {
+function cursorFilter(
+  cursor: { created_at: Date; id: string },
+  idField: string,
+  dateField = 'created_at',
+): Record<string, unknown> {
   return {
     $or: [
       { [dateField]: { $lt: cursor.created_at } },
@@ -163,17 +228,30 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   users.createIndex({ tenant_id: 1, created_at: -1 }).catch(() => {})
   // Operator search hits these — at scale a regex scan over unindexed
   // fields is a full collection scan.
-  users.createIndex({ email: 1 }).catch(() => {})
+  // Must match getUsersCollection() in auth-users.ts exactly (unique): both
+  // get the auto name email_1, and differing options make a fresh database
+  // fail with an index-name conflict.
+  users.createIndex({ email: 1 }, { unique: true }).catch(() => {})
   users.createIndex({ name: 1 }).catch(() => {})
   tenants.createIndex({ name: 1 }).catch(() => {})
-  db.collection('leads').createIndex({ created_at: -1 }).catch(() => {})
-  db.collection('operator_audit_log').createIndex({ created_at: -1 }).catch(() => {})
+  db.collection('leads')
+    .createIndex({ created_at: -1 })
+    .catch(() => {})
+  db.collection('operator_audit_log')
+    .createIndex({ created_at: -1 })
+    .catch(() => {})
   // Support inbox: status-filtered, updated_at-ordered.
-  db.collection('support_cases').createIndex({ status: 1, updated_at: -1 }).catch(() => {})
+  db.collection('support_cases')
+    .createIndex({ status: 1, updated_at: -1 })
+    .catch(() => {})
   // Operator alert triage state — one doc per signal's dedup_key.
-  db.collection('operator_alerts').createIndex({ dedup_key: 1 }, { unique: true }).catch(() => {})
+  db.collection('operator_alerts')
+    .createIndex({ dedup_key: 1 }, { unique: true })
+    .catch(() => {})
   // Daily metric rollups: metric+day-range reads; _id is already unique.
-  db.collection('metrics_daily').createIndex({ metric: 1, day: -1 }).catch(() => {})
+  db.collection('metrics_daily')
+    .createIndex({ metric: 1, day: -1 })
+    .catch(() => {})
   // Awaited: the promo create path relies on the unique index for duplicate
   // detection, so it can't race registration.
   await Promise.all([
@@ -221,22 +299,38 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       tenants.countDocuments({ status: { $in: ['active', 'trial'] } }),
       db.collection('marketing_posts').countDocuments({ state: 'publish_failed' }),
       db.collection('marketing_posts').countDocuments({ state: { $in: ['draft', 'approved'] } }),
-      db.collection('growth_events').aggregate([
-        { $match: { created_at: { $gte: weekAgo } } },
-        { $group: { _id: '$event', count: { $sum: 1 } } },
-        { $project: { _id: 0, event: '$_id', count: 1 } },
-      ]).toArray(),
-      db.collection('leads').aggregate([{ $group: { _id: '$stage', count: { $sum: 1 } } }]).toArray(),
-      users.aggregate([
-        { $match: { created_at: { $gte: weekAgo } } },
-        { $group: { _id: { $ifNull: ['$attribution.utm_source', 'direct'] }, count: { $sum: 1 } } },
-        { $project: { _id: 0, source: '$_id', count: 1 } },
-        { $sort: { count: -1 } },
-      ]).toArray(),
+      db
+        .collection('growth_events')
+        .aggregate([
+          { $match: { created_at: { $gte: weekAgo } } },
+          { $group: { _id: '$event', count: { $sum: 1 } } },
+          { $project: { _id: 0, event: '$_id', count: 1 } },
+        ])
+        .toArray(),
+      db
+        .collection('leads')
+        .aggregate([{ $group: { _id: '$stage', count: { $sum: 1 } } }])
+        .toArray(),
+      users
+        .aggregate([
+          { $match: { created_at: { $gte: weekAgo } } },
+          {
+            $group: { _id: { $ifNull: ['$attribution.utm_source', 'direct'] }, count: { $sum: 1 } },
+          },
+          { $project: { _id: 0, source: '$_id', count: 1 } },
+          { $sort: { count: -1 } },
+        ])
+        .toArray(),
       // Week-over-week deltas — the command center's "is it working?" chips.
-      users.countDocuments({ created_at: { $gte: new Date(weekAgo.getTime() - 7 * 24 * 60 * 60 * 1000), $lt: weekAgo } }),
+      users.countDocuments({
+        created_at: { $gte: new Date(weekAgo.getTime() - 7 * 24 * 60 * 60 * 1000), $lt: weekAgo },
+      }),
       db.collection('leads').countDocuments({ created_at: { $gte: weekAgo } }),
-      db.collection('leads').countDocuments({ created_at: { $gte: new Date(weekAgo.getTime() - 7 * 24 * 60 * 60 * 1000), $lt: weekAgo } }),
+      db
+        .collection('leads')
+        .countDocuments({
+          created_at: { $gte: new Date(weekAgo.getTime() - 7 * 24 * 60 * 60 * 1000), $lt: weekAgo },
+        }),
       // 30-day daily series per funnel event — powers the KPI sparklines.
       // Reads metrics_daily rollups once the hourly job has backfilled;
       // falls back to the raw scan until then (fresh envs, pre-backfill).
@@ -245,250 +339,475 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
           const rows = await readDailyRollup(db, 'growth_event', 30)
           return rows.map((r) => ({ day: r.day, event: r.dim, count: r.count }))
         }
-        return db.collection('growth_events').aggregate([
-          { $match: { created_at: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } } },
-          { $group: { _id: { day: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } }, event: '$event' }, count: { $sum: 1 } } },
-          { $project: { _id: 0, day: '$_id.day', event: '$_id.event', count: 1 } },
-        ]).toArray()
+        return db
+          .collection('growth_events')
+          .aggregate([
+            { $match: { created_at: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } } },
+            {
+              $group: {
+                _id: {
+                  day: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } },
+                  event: '$event',
+                },
+                count: { $sum: 1 },
+              },
+            },
+            { $project: { _id: 0, day: '$_id.day', event: '$_id.event', count: 1 } },
+          ])
+          .toArray()
       }),
       db.collection('support_cases').countDocuments({ status: 'open' }),
     ])
 
     return {
       generated_at: new Date().toISOString(),
-      users: { total: totalUsers, active: activeUsers, suspended: suspendedUsers, signups_today: signupsToday, signups_week: signupsWeek, signups_prev_week: signupsPrevWeek },
+      users: {
+        total: totalUsers,
+        active: activeUsers,
+        suspended: suspendedUsers,
+        signups_today: signupsToday,
+        signups_week: signupsWeek,
+        signups_prev_week: signupsPrevWeek,
+      },
       tenants: { total: totalTenants, active: activeTenants },
       marketing: { publish_failed: failedPosts, queued: queuedPosts },
       leads: Object.fromEntries(leadsByStage.map((s) => [s['_id'], s['count']])),
       leads_7d: leadsWeek,
       leads_prev_7d: leadsPrevWeek,
-      signups_by_source_7d: Object.fromEntries(signupsBySource.map((s) => [s['source'], s['count']])),
+      signups_by_source_7d: Object.fromEntries(
+        signupsBySource.map((s) => [s['source'], s['count']]),
+      ),
       growth_events_7d: recentEvents,
       activity_30d: activityRows,
       support: { open: openCases },
     }
   })
 
-  app.get('/operator/users', { preHandler: requireOperator(db, 'users.read') }, async (request, reply) => {
-    const parsed = QuerySchema.safeParse(request.query)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
-    const { q, status, tenant, limit, offset, cursor } = parsed.data
-    const filter: Record<string, unknown> = {}
-    if (q) {
-      const pattern = safeRegex(q)
-      filter['$or'] = [{ email: pattern }, { name: pattern }, { tenant_id: pattern }, { id: pattern }]
-    }
-    if (status) filter['status'] = status
-    if (tenant) filter['tenant_id'] = tenant
-    const decoded = decodeCursor(cursor)
-    if (decoded === null) return reply.status(400).send({ error: 'Invalid cursor' })
-    // $and, not assign: the search regex above already owns filter.$or —
-    // overwriting it would silently drop the search on page 2+.
-    if (decoded) filter['$and'] = [cursorFilter(decoded, 'id')]
-    const [items, total] = await Promise.all([
-      users.find(filter, {
-        projection: {
-          _id: 0, id: 1, email: 1, name: 1, tenant_id: 1, roles: 1, status: 1,
-          email_verified: 1, external_provider: 1, created_at: 1, updated_at: 1,
-          failed_login_attempts: 1, locked_until: 1, sessions_revoked_at: 1,
-          'attribution.utm_source': 1, 'attribution.utm_campaign': 1,
-        },
-      }).sort({ created_at: -1, id: -1 }).skip(decoded ? 0 : offset).limit(limit).toArray(),
-      // Cursor pages skip the count — counting a filtered 1M-row collection
-      // per page turn is exactly the cost keyset pagination exists to avoid.
-      decoded ? Promise.resolve(undefined) : users.countDocuments(filter),
-    ])
-    const nextCursor = items.length === limit ? encodeCursor(items[items.length - 1] as Record<string, unknown>, 'id') : undefined
-    return { users: items, total, limit, offset, ...(nextCursor ? { next_cursor: nextCursor } : {}) }
-  })
+  app.get(
+    '/operator/users',
+    { preHandler: requireOperator(db, 'users.read') },
+    async (request, reply) => {
+      const parsed = QuerySchema.safeParse(request.query)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
+      const { q, status, tenant, limit, offset, cursor } = parsed.data
+      const filter: Record<string, unknown> = {}
+      if (q) {
+        const pattern = safeRegex(q)
+        filter['$or'] = [
+          { email: pattern },
+          { name: pattern },
+          { tenant_id: pattern },
+          { id: pattern },
+        ]
+      }
+      if (status) filter['status'] = status
+      if (tenant) filter['tenant_id'] = tenant
+      const decoded = decodeCursor(cursor)
+      if (decoded === null) return reply.status(400).send({ error: 'Invalid cursor' })
+      // $and, not assign: the search regex above already owns filter.$or —
+      // overwriting it would silently drop the search on page 2+.
+      if (decoded) filter['$and'] = [cursorFilter(decoded, 'id')]
+      const [items, total] = await Promise.all([
+        users
+          .find(filter, {
+            projection: {
+              _id: 0,
+              id: 1,
+              email: 1,
+              name: 1,
+              tenant_id: 1,
+              roles: 1,
+              status: 1,
+              email_verified: 1,
+              external_provider: 1,
+              created_at: 1,
+              updated_at: 1,
+              failed_login_attempts: 1,
+              locked_until: 1,
+              sessions_revoked_at: 1,
+              'attribution.utm_source': 1,
+              'attribution.utm_campaign': 1,
+            },
+          })
+          .sort({ created_at: -1, id: -1 })
+          .skip(decoded ? 0 : offset)
+          .limit(limit)
+          .toArray(),
+        // Cursor pages skip the count — counting a filtered 1M-row collection
+        // per page turn is exactly the cost keyset pagination exists to avoid.
+        decoded ? Promise.resolve(undefined) : users.countDocuments(filter),
+      ])
+      const nextCursor =
+        items.length === limit
+          ? encodeCursor(items[items.length - 1] as Record<string, unknown>, 'id')
+          : undefined
+      return {
+        users: items,
+        total,
+        limit,
+        offset,
+        ...(nextCursor ? { next_cursor: nextCursor } : {}),
+      }
+    },
+  )
 
   /** One-screen support dossier — identity, workspace, security posture,
    *  insight activity, billing ledger tail, open support cases, and the
    *  operator actions already taken on this account. The goal: a support
    *  ticket resolves without opening four other pages or the database. */
-  app.get<{ Params: { id: string } }>('/operator/users/:id', { preHandler: requireOperator(db, 'users.read') }, async (request, reply) => {
-    const user = await users.findOne(
-      { id: request.params.id },
-      { projection: { password_hash: 0, salt: 0, password_reset_token: 0, email_verification_token: 0 } },
-    )
-    if (!user) return reply.status(404).send({ error: 'User not found' })
-    const tenantId = user['tenant_id'] as string
-    const [tenant, recentLogins, insightCounts, ledger, userCases, userAudit] = await Promise.all([
-      tenants.findOne({ tenant_id: tenantId }, { projection: { _id: 0 } }),
-      getLoginEventsCollection(db)
-        .find({ user_id: user['id'] }, { projection: { _id: 0 } })
-        .sort({ created_at: -1 }).limit(10).toArray(),
-      db.collection('insights').aggregate([
-        { $match: { tenant_id: tenantId } },
-        { $group: { _id: '$state', count: { $sum: 1 } } },
-      ]).toArray(),
-      getLedgerHistory(db, { tenantId, limit: 10 }),
-      db.collection('support_cases')
-        .find({ user_id: user['id'] }, { projection: { _id: 0, 'messages.text': 0 } })
-        .sort({ updated_at: -1 }).limit(10).toArray(),
-      db.collection('operator_audit_log')
-        .find({ target_type: 'user', target_id: user['id'] }, { projection: { _id: 0 } })
-        .sort({ created_at: -1 }).limit(10).toArray(),
-    ])
-    return {
-      user,
-      tenant,
-      dossier: {
-        recent_logins: recentLogins,
-        insights: Object.fromEntries(insightCounts.map((i) => [i['_id'], i['count']])),
-        ledger_tail: ledger.entries,
-        support_cases: userCases,
-        audit_trail: userAudit,
-      },
-    }
-  })
+  app.get<{ Params: { id: string } }>(
+    '/operator/users/:id',
+    { preHandler: requireOperator(db, 'users.read') },
+    async (request, reply) => {
+      const user = await users.findOne(
+        { id: request.params.id },
+        {
+          projection: {
+            password_hash: 0,
+            salt: 0,
+            password_reset_token: 0,
+            email_verification_token: 0,
+          },
+        },
+      )
+      if (!user) return reply.status(404).send({ error: 'User not found' })
+      const tenantId = user['tenant_id'] as string
+      const [tenant, recentLogins, insightCounts, ledger, userCases, userAudit] = await Promise.all(
+        [
+          tenants.findOne({ tenant_id: tenantId }, { projection: { _id: 0 } }),
+          getLoginEventsCollection(db)
+            .find({ user_id: user['id'] }, { projection: { _id: 0 } })
+            .sort({ created_at: -1 })
+            .limit(10)
+            .toArray(),
+          db
+            .collection('insights')
+            .aggregate([
+              { $match: { tenant_id: tenantId } },
+              { $group: { _id: '$state', count: { $sum: 1 } } },
+            ])
+            .toArray(),
+          getLedgerHistory(db, { tenantId, limit: 10 }),
+          db
+            .collection('support_cases')
+            .find({ user_id: user['id'] }, { projection: { _id: 0, 'messages.text': 0 } })
+            .sort({ updated_at: -1 })
+            .limit(10)
+            .toArray(),
+          db
+            .collection('operator_audit_log')
+            .find({ target_type: 'user', target_id: user['id'] }, { projection: { _id: 0 } })
+            .sort({ created_at: -1 })
+            .limit(10)
+            .toArray(),
+        ],
+      )
+      return {
+        user,
+        tenant,
+        dossier: {
+          recent_logins: recentLogins,
+          insights: Object.fromEntries(insightCounts.map((i) => [i['_id'], i['count']])),
+          ledger_tail: ledger.entries,
+          support_cases: userCases,
+          audit_trail: userAudit,
+        },
+      }
+    },
+  )
 
-  app.post<{ Params: { id: string } }>('/operator/users/:id/suspend', { preHandler: requireOperator(db, 'users.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    if (request.params.id === request.operatorContext?.user_id) return reply.status(409).send({ error: 'Operators cannot suspend themselves' })
-    const result = await users.updateOne(
-      { id: request.params.id, status: { $ne: 'suspended' } },
-      { $set: { status: 'suspended', suspended_at: new Date(), updated_at: new Date() } },
-    )
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'User not found or already suspended' })
-    await audit.log(request, 'operator.user.suspend', 'user', request.params.id, parsed.data.reason)
-    return { ok: true }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/operator/users/:id/suspend',
+    { preHandler: requireOperator(db, 'users.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      if (request.params.id === request.operatorContext?.user_id)
+        return reply.status(409).send({ error: 'Operators cannot suspend themselves' })
+      const result = await users.updateOne(
+        { id: request.params.id, status: { $ne: 'suspended' } },
+        { $set: { status: 'suspended', suspended_at: new Date(), updated_at: new Date() } },
+      )
+      if (result.matchedCount === 0)
+        return reply.status(404).send({ error: 'User not found or already suspended' })
+      await audit.log(
+        request,
+        'operator.user.suspend',
+        'user',
+        request.params.id,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
 
-  app.post<{ Params: { id: string } }>('/operator/users/:id/reactivate', { preHandler: requireOperator(db, 'users.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const result = await users.updateOne(
-      { id: request.params.id, status: 'suspended' },
-      { $set: { status: 'active', reactivated_at: new Date(), updated_at: new Date() }, $unset: { suspended_at: '' } },
-    )
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'User not found or not suspended' })
-    await audit.log(request, 'operator.user.reactivate', 'user', request.params.id, parsed.data.reason)
-    return { ok: true }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/operator/users/:id/reactivate',
+    { preHandler: requireOperator(db, 'users.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const result = await users.updateOne(
+        { id: request.params.id, status: 'suspended' },
+        {
+          $set: { status: 'active', reactivated_at: new Date(), updated_at: new Date() },
+          $unset: { suspended_at: '' },
+        },
+      )
+      if (result.matchedCount === 0)
+        return reply.status(404).send({ error: 'User not found or not suspended' })
+      await audit.log(
+        request,
+        'operator.user.reactivate',
+        'user',
+        request.params.id,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
 
-  app.get('/operator/tenants', { preHandler: requireOperator(db, 'tenants.read') }, async (request, reply) => {
-    const parsed = QuerySchema.safeParse(request.query)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
-    const { q, status, limit, offset, cursor } = parsed.data
-    const filter: Record<string, unknown> = {}
-    if (q) {
-      const pattern = safeRegex(q)
-      filter['$or'] = [{ tenant_id: pattern }, { id: pattern }, { name: pattern }]
-    }
-    if (status) filter['status'] = status
-    const decoded = decodeCursor(cursor)
-    if (decoded === null) return reply.status(400).send({ error: 'Invalid cursor' })
-    if (decoded) filter['$and'] = [cursorFilter(decoded, 'tenant_id')]
-    const [items, total] = await Promise.all([
-      tenants.find(filter, { projection: { _id: 0 } }).sort({ created_at: -1, tenant_id: -1 }).skip(decoded ? 0 : offset).limit(limit).toArray(),
-      decoded ? Promise.resolve(undefined) : tenants.countDocuments(filter),
-    ])
-    const tenantIds = items.map((item) => item['tenant_id'] as string).filter(Boolean)
-    const memberCounts = tenantIds.length === 0 ? [] : await users.aggregate([
-      { $match: { tenant_id: { $in: tenantIds } } },
-      { $group: { _id: '$tenant_id', count: { $sum: 1 } } },
-    ]).toArray()
-    const counts = new Map(memberCounts.map((item) => [item['_id'] as string, item['count'] as number]))
-    const health = await computeTenantHealth(db, tenantIds)
-    const nextCursor = items.length === limit ? encodeCursor(items[items.length - 1], 'tenant_id') : undefined
-    return {
-      tenants: items.map((item) => ({
-        ...item,
-        user_count: counts.get(item['tenant_id'] as string) ?? 0,
-        health: health.get(item['tenant_id'] as string) ?? { score: 100, factors: [] },
-      })),
-      total, limit, offset, ...(nextCursor ? { next_cursor: nextCursor } : {}),
-    }
-  })
+  app.get(
+    '/operator/tenants',
+    { preHandler: requireOperator(db, 'tenants.read') },
+    async (request, reply) => {
+      const parsed = QuerySchema.safeParse(request.query)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
+      const { q, status, limit, offset, cursor } = parsed.data
+      const filter: Record<string, unknown> = {}
+      if (q) {
+        const pattern = safeRegex(q)
+        filter['$or'] = [{ tenant_id: pattern }, { id: pattern }, { name: pattern }]
+      }
+      if (status) filter['status'] = status
+      const decoded = decodeCursor(cursor)
+      if (decoded === null) return reply.status(400).send({ error: 'Invalid cursor' })
+      if (decoded) filter['$and'] = [cursorFilter(decoded, 'tenant_id')]
+      const [items, total] = await Promise.all([
+        tenants
+          .find(filter, { projection: { _id: 0 } })
+          .sort({ created_at: -1, tenant_id: -1 })
+          .skip(decoded ? 0 : offset)
+          .limit(limit)
+          .toArray(),
+        decoded ? Promise.resolve(undefined) : tenants.countDocuments(filter),
+      ])
+      const tenantIds = items.map((item) => item['tenant_id'] as string).filter(Boolean)
+      const memberCounts =
+        tenantIds.length === 0
+          ? []
+          : await users
+              .aggregate([
+                { $match: { tenant_id: { $in: tenantIds } } },
+                { $group: { _id: '$tenant_id', count: { $sum: 1 } } },
+              ])
+              .toArray()
+      const counts = new Map(
+        memberCounts.map((item) => [item['_id'] as string, item['count'] as number]),
+      )
+      const health = await computeTenantHealth(db, tenantIds)
+      const nextCursor =
+        items.length === limit ? encodeCursor(items[items.length - 1], 'tenant_id') : undefined
+      return {
+        tenants: items.map((item) => ({
+          ...item,
+          user_count: counts.get(item['tenant_id'] as string) ?? 0,
+          health: health.get(item['tenant_id'] as string) ?? { score: 100, factors: [] },
+        })),
+        total,
+        limit,
+        offset,
+        ...(nextCursor ? { next_cursor: nextCursor } : {}),
+      }
+    },
+  )
 
-  app.get<{ Params: { id: string } }>('/operator/tenants/:id', { preHandler: requireOperator(db, 'tenants.read') }, async (request, reply) => {
-    const tenant = await tenants.findOne({ $or: [{ tenant_id: request.params.id }, { id: request.params.id }] }, { projection: { _id: 0 } })
-    if (!tenant) return reply.status(404).send({ error: 'Tenant not found' })
-    const [members, health] = await Promise.all([
-      users.find(
-        { tenant_id: tenant['tenant_id'] },
-        { projection: { _id: 0, id: 1, email: 1, name: 1, roles: 1, status: 1, created_at: 1 } },
-      ).sort({ created_at: 1 }).toArray(),
-      computeTenantHealth(db, [tenant['tenant_id'] as string]),
-    ])
-    return { tenant, members, health: health.get(tenant['tenant_id'] as string) ?? { score: 100, factors: [] } }
-  })
+  app.get<{ Params: { id: string } }>(
+    '/operator/tenants/:id',
+    { preHandler: requireOperator(db, 'tenants.read') },
+    async (request, reply) => {
+      const tenant = await tenants.findOne(
+        { $or: [{ tenant_id: request.params.id }, { id: request.params.id }] },
+        { projection: { _id: 0 } },
+      )
+      if (!tenant) return reply.status(404).send({ error: 'Tenant not found' })
+      const [members, health] = await Promise.all([
+        users
+          .find(
+            { tenant_id: tenant['tenant_id'] },
+            {
+              projection: { _id: 0, id: 1, email: 1, name: 1, roles: 1, status: 1, created_at: 1 },
+            },
+          )
+          .sort({ created_at: 1 })
+          .toArray(),
+        computeTenantHealth(db, [tenant['tenant_id'] as string]),
+      ])
+      return {
+        tenant,
+        members,
+        health: health.get(tenant['tenant_id'] as string) ?? { score: 100, factors: [] },
+      }
+    },
+  )
 
   /** Suspending a tenant blocks every request for all of its users — the
    *  auth middleware requires status active|trial. */
-  app.post<{ Params: { id: string } }>('/operator/tenants/:id/suspend', { preHandler: requireOperator(db, 'tenants.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const result = await tenants.updateOne(
-      { $or: [{ tenant_id: request.params.id }, { id: request.params.id }], status: { $ne: 'suspended' } },
-      { $set: { status: 'suspended', suspended_at: new Date(), updated_at: new Date() } },
-    )
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'Tenant not found or already suspended' })
-    await audit.log(request, 'operator.tenant.suspend', 'tenant', request.params.id, parsed.data.reason)
-    return { ok: true }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/operator/tenants/:id/suspend',
+    { preHandler: requireOperator(db, 'tenants.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const result = await tenants.updateOne(
+        {
+          $or: [{ tenant_id: request.params.id }, { id: request.params.id }],
+          status: { $ne: 'suspended' },
+        },
+        { $set: { status: 'suspended', suspended_at: new Date(), updated_at: new Date() } },
+      )
+      if (result.matchedCount === 0)
+        return reply.status(404).send({ error: 'Tenant not found or already suspended' })
+      await audit.log(
+        request,
+        'operator.tenant.suspend',
+        'tenant',
+        request.params.id,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
 
-  app.post<{ Params: { id: string } }>('/operator/tenants/:id/reactivate', { preHandler: requireOperator(db, 'tenants.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const result = await tenants.updateOne(
-      { $or: [{ tenant_id: request.params.id }, { id: request.params.id }], status: 'suspended' },
-      { $set: { status: 'active', reactivated_at: new Date(), updated_at: new Date() }, $unset: { suspended_at: '' } },
-    )
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'Tenant not found or not suspended' })
-    await audit.log(request, 'operator.tenant.reactivate', 'tenant', request.params.id, parsed.data.reason)
-    return { ok: true }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/operator/tenants/:id/reactivate',
+    { preHandler: requireOperator(db, 'tenants.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const result = await tenants.updateOne(
+        { $or: [{ tenant_id: request.params.id }, { id: request.params.id }], status: 'suspended' },
+        {
+          $set: { status: 'active', reactivated_at: new Date(), updated_at: new Date() },
+          $unset: { suspended_at: '' },
+        },
+      )
+      if (result.matchedCount === 0)
+        return reply.status(404).send({ error: 'Tenant not found or not suspended' })
+      await audit.log(
+        request,
+        'operator.tenant.reactivate',
+        'tenant',
+        request.params.id,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
 
   /** Trigger the standard password-reset email for a user — same token shape
    *  and 1h expiry as the self-service flow. */
-  app.post<{ Params: { id: string } }>('/operator/users/:id/password-reset', { preHandler: requireOperator(db, 'users.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const user = await users.findOne({ id: request.params.id })
-    if (!user) return reply.status(404).send({ error: 'User not found' })
-    const token = randomBytes(32).toString('hex')
-    await users.updateOne(
-      { id: request.params.id },
-      { $set: { password_reset_token: token, password_reset_expires: new Date(Date.now() + 60 * 60 * 1000), updated_at: new Date() } },
-    )
-    const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
-    await sendPasswordResetEmail(user['email'] as string, user['name'] as string, `${appUrl}/reset-password/confirm?token=${token}`)
-    await audit.log(request, 'operator.user.password_reset', 'user', request.params.id, parsed.data.reason)
-    return { sent: true }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/operator/users/:id/password-reset',
+    { preHandler: requireOperator(db, 'users.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const user = await users.findOne({ id: request.params.id })
+      if (!user) return reply.status(404).send({ error: 'User not found' })
+      const token = randomBytes(32).toString('hex')
+      await users.updateOne(
+        { id: request.params.id },
+        {
+          $set: {
+            password_reset_token: token,
+            password_reset_expires: new Date(Date.now() + 60 * 60 * 1000),
+            updated_at: new Date(),
+          },
+        },
+      )
+      const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
+      await sendPasswordResetEmail(
+        user['email'] as string,
+        user['name'] as string,
+        `${appUrl}/reset-password/confirm?token=${token}`,
+      )
+      await audit.log(
+        request,
+        'operator.user.password_reset',
+        'user',
+        request.params.id,
+        parsed.data.reason,
+      )
+      return { sent: true }
+    },
+  )
 
   /** Kill every outstanding JWT for a user without suspending the account —
    *  stamps sessions_revoked_at, and the auth middleware rejects any token
    *  issued at or before that instant. New logins still work. */
-  app.post<{ Params: { id: string } }>('/operator/users/:id/revoke-sessions', { preHandler: requireOperator(db, 'users.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const result = await users.updateOne(
-      { id: request.params.id },
-      { $set: { sessions_revoked_at: new Date(), updated_at: new Date() } },
-    )
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'User not found' })
-    await audit.log(request, 'operator.user.revoke_sessions', 'user', request.params.id, parsed.data.reason)
-    return { ok: true }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/operator/users/:id/revoke-sessions',
+    { preHandler: requireOperator(db, 'users.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const result = await users.updateOne(
+        { id: request.params.id },
+        { $set: { sessions_revoked_at: new Date(), updated_at: new Date() } },
+      )
+      if (result.matchedCount === 0) return reply.status(404).send({ error: 'User not found' })
+      await audit.log(
+        request,
+        'operator.user.revoke_sessions',
+        'user',
+        request.params.id,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
 
   /** Clear a login lockout early — the lock is a brute-force control, so an
    *  operator lift needs a reason and an audit entry like any other
    *  security-relevant action. */
-  app.post<{ Params: { id: string } }>('/operator/users/:id/unlock', { preHandler: requireOperator(db, 'users.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const result = await users.updateOne(
-      { id: request.params.id, $or: [{ locked_until: { $gt: new Date() } }, { failed_login_attempts: { $gt: 0 } }] },
-      { $set: { failed_login_attempts: 0, updated_at: new Date() }, $unset: { locked_until: '' } },
-    )
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'User not found or not locked' })
-    await audit.log(request, 'operator.user.unlock', 'user', request.params.id, parsed.data.reason)
-    return { ok: true }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/operator/users/:id/unlock',
+    { preHandler: requireOperator(db, 'users.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const result = await users.updateOne(
+        {
+          id: request.params.id,
+          $or: [{ locked_until: { $gt: new Date() } }, { failed_login_attempts: { $gt: 0 } }],
+        },
+        {
+          $set: { failed_login_attempts: 0, updated_at: new Date() },
+          $unset: { locked_until: '' },
+        },
+      )
+      if (result.matchedCount === 0)
+        return reply.status(404).send({ error: 'User not found or not locked' })
+      await audit.log(
+        request,
+        'operator.user.unlock',
+        'user',
+        request.params.id,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
 
   /** MFA lockout recovery — clears TOTP enrollment so the user can sign in
    *  with email+password and re-enroll. This is the recovery path for a
@@ -497,107 +816,188 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
    *  the reason field carries the verification reference, e.g. support
    *  ticket id). Also revokes sessions so a stolen session can't linger
    *  past the reset. */
-  app.post<{ Params: { id: string } }>('/operator/users/:id/mfa-disable', { preHandler: requireOperator(db, 'users.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const result = await users.updateOne(
-      { id: request.params.id, mfa_enabled: true },
-      {
-        $set: { mfa_enabled: false, sessions_revoked_at: new Date(), updated_at: new Date() },
-        $unset: { mfa_secret: '', mfa_pending_secret: '', mfa_recovery_hashes: '' },
-      },
-    )
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'User not found or MFA not enabled' })
-    await audit.log(request, 'operator.user.mfa_disable', 'user', request.params.id, parsed.data.reason)
-    return { ok: true }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/operator/users/:id/mfa-disable',
+    { preHandler: requireOperator(db, 'users.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const result = await users.updateOne(
+        { id: request.params.id, mfa_enabled: true },
+        {
+          $set: { mfa_enabled: false, sessions_revoked_at: new Date(), updated_at: new Date() },
+          $unset: { mfa_secret: '', mfa_pending_secret: '', mfa_recovery_hashes: '' },
+        },
+      )
+      if (result.matchedCount === 0)
+        return reply.status(404).send({ error: 'User not found or MFA not enabled' })
+      await audit.log(
+        request,
+        'operator.user.mfa_disable',
+        'user',
+        request.params.id,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
 
   /** Data-subject export — everything we hold on a user, bundled as one
    *  JSON document for GDPR/DSAR requests. POST (not GET) so the reason is
    *  captured and audited like every other privileged read of this size.
    *  users.read suffices: the bundle contains nothing the read endpoints
    *  don't already expose, just assembled — and the audit entry records it. */
-  app.post<{ Params: { id: string } }>('/operator/users/:id/export', { preHandler: requireOperator(db, 'users.read') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const user = await users.findOne(
-      { id: request.params.id },
-      { projection: { password_hash: 0, salt: 0, password_reset_token: 0, email_verification_token: 0 } },
-    )
-    if (!user) return reply.status(404).send({ error: 'User not found' })
-    const tenantId = user['tenant_id'] as string | undefined
-    const email = user['email'] as string | undefined
-    const [tenant, members, leadDocs, userAudit] = await Promise.all([
-      tenantId ? tenants.findOne({ tenant_id: tenantId }, { projection: { _id: 0 } }) : Promise.resolve(null),
-      tenantId
-        ? users.find({ tenant_id: tenantId }, { projection: { _id: 0, id: 1, email: 1, name: 1, roles: 1, status: 1, created_at: 1 } }).toArray()
-        : Promise.resolve([]),
-      email ? db.collection('leads').find({ email: String(email).toLowerCase() }, { projection: { _id: 0 } }).toArray() : Promise.resolve([]),
-      db.collection('operator_audit_log')
-        .find({ target_type: 'user', target_id: request.params.id }, { projection: { _id: 0 } })
-        .sort({ created_at: -1 }).limit(200).toArray(),
-    ])
-    await audit.log(request, 'operator.user.export', 'user', request.params.id, parsed.data.reason)
-    return {
-      exported_at: new Date().toISOString(),
-      requested_by: request.operatorContext?.user_id,
-      reason: parsed.data.reason,
-      user,
-      tenant,
-      members,
-      leads: leadDocs,
-      operator_actions_on_record: userAudit,
-    }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/operator/users/:id/export',
+    { preHandler: requireOperator(db, 'users.read') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const user = await users.findOne(
+        { id: request.params.id },
+        {
+          projection: {
+            password_hash: 0,
+            salt: 0,
+            password_reset_token: 0,
+            email_verification_token: 0,
+          },
+        },
+      )
+      if (!user) return reply.status(404).send({ error: 'User not found' })
+      const tenantId = user['tenant_id'] as string | undefined
+      const email = user['email'] as string | undefined
+      const [tenant, members, leadDocs, userAudit] = await Promise.all([
+        tenantId
+          ? tenants.findOne({ tenant_id: tenantId }, { projection: { _id: 0 } })
+          : Promise.resolve(null),
+        tenantId
+          ? users
+              .find(
+                { tenant_id: tenantId },
+                {
+                  projection: {
+                    _id: 0,
+                    id: 1,
+                    email: 1,
+                    name: 1,
+                    roles: 1,
+                    status: 1,
+                    created_at: 1,
+                  },
+                },
+              )
+              .toArray()
+          : Promise.resolve([]),
+        email
+          ? db
+              .collection('leads')
+              .find({ email: String(email).toLowerCase() }, { projection: { _id: 0 } })
+              .toArray()
+          : Promise.resolve([]),
+        db
+          .collection('operator_audit_log')
+          .find({ target_type: 'user', target_id: request.params.id }, { projection: { _id: 0 } })
+          .sort({ created_at: -1 })
+          .limit(200)
+          .toArray(),
+      ])
+      await audit.log(
+        request,
+        'operator.user.export',
+        'user',
+        request.params.id,
+        parsed.data.reason,
+      )
+      return {
+        exported_at: new Date().toISOString(),
+        requested_by: request.operatorContext?.user_id,
+        reason: parsed.data.reason,
+        user,
+        tenant,
+        members,
+        leads: leadDocs,
+        operator_actions_on_record: userAudit,
+      }
+    },
+  )
 
   /** Erasure — anonymizes the account in place (keeps the id for referential
    *  integrity across audit/ledger rows), clears every credential so login
    *  is impossible, revokes sessions, and tombstones the matching lead
    *  record. Irreversible by design — hence users.manage + reason + audit,
    *  and it's deliberately not exposed to any autopilot path. */
-  app.post<{ Params: { id: string } }>('/operator/users/:id/erase', { preHandler: requireOperator(db, 'users.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    if (request.params.id === request.operatorContext?.user_id) {
-      return reply.status(409).send({ error: 'Operators cannot erase themselves' })
-    }
-    const user = await users.findOne({ id: request.params.id }, { projection: { email: 1, status: 1 } })
-    if (!user) return reply.status(404).send({ error: 'User not found' })
-    if (user['status'] === 'erased') return reply.status(409).send({ error: 'User already erased' })
-    const now = new Date()
-    const oldEmail = user['email'] as string | undefined
-    await users.updateOne(
-      { id: request.params.id },
-      {
-        $set: {
-          status: 'erased',
-          email: `erased-${request.params.id}@erased.invalid`,
-          name: 'Erased user',
-          sessions_revoked_at: now,
-          erased_at: now,
-          updated_at: now,
-        },
-        $unset: {
-          password_hash: '', salt: '', avatar_color: '', attribution: '',
-          external_id: '', external_provider: '', email_verified: '',
-          email_verification_token: '', email_verification_expires: '',
-          password_reset_token: '', password_reset_expires: '',
-          locked_until: '', failed_login_attempts: '',
-        },
-      },
-    )
-    if (oldEmail) {
-      await db.collection('leads').updateOne(
-        { email: oldEmail.toLowerCase() },
-        { $set: { email: `erased-${request.params.id}@erased.invalid`, suppressed: true, updated_at: now }, $unset: { name: '', attribution: '' } },
+  app.post<{ Params: { id: string } }>(
+    '/operator/users/:id/erase',
+    { preHandler: requireOperator(db, 'users.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      if (request.params.id === request.operatorContext?.user_id) {
+        return reply.status(409).send({ error: 'Operators cannot erase themselves' })
+      }
+      const user = await users.findOne(
+        { id: request.params.id },
+        { projection: { email: 1, status: 1 } },
       )
-    }
-    // If the erased user held operator privileges, drop the record too —
-    // a tombstone account must retain no privileged surface.
-    await db.collection('platform_operators').deleteOne({ user_id: request.params.id })
-    await audit.log(request, 'operator.user.erase', 'user', request.params.id, parsed.data.reason)
-    return { ok: true }
-  })
+      if (!user) return reply.status(404).send({ error: 'User not found' })
+      if (user['status'] === 'erased')
+        return reply.status(409).send({ error: 'User already erased' })
+      const now = new Date()
+      const oldEmail = user['email'] as string | undefined
+      await users.updateOne(
+        { id: request.params.id },
+        {
+          $set: {
+            status: 'erased',
+            email: `erased-${request.params.id}@erased.invalid`,
+            name: 'Erased user',
+            sessions_revoked_at: now,
+            erased_at: now,
+            updated_at: now,
+          },
+          $unset: {
+            password_hash: '',
+            salt: '',
+            avatar_color: '',
+            attribution: '',
+            external_id: '',
+            external_provider: '',
+            email_verified: '',
+            email_verification_token: '',
+            email_verification_expires: '',
+            password_reset_token: '',
+            password_reset_expires: '',
+            locked_until: '',
+            failed_login_attempts: '',
+          },
+        },
+      )
+      if (oldEmail) {
+        await db
+          .collection('leads')
+          .updateOne(
+            { email: oldEmail.toLowerCase() },
+            {
+              $set: {
+                email: `erased-${request.params.id}@erased.invalid`,
+                suppressed: true,
+                updated_at: now,
+              },
+              $unset: { name: '', attribution: '' },
+            },
+          )
+      }
+      // If the erased user held operator privileges, drop the record too —
+      // a tombstone account must retain no privileged surface.
+      await db.collection('platform_operators').deleteOne({ user_id: request.params.id })
+      await audit.log(request, 'operator.user.erase', 'user', request.params.id, parsed.data.reason)
+      return { ok: true }
+    },
+  )
 
   /** Account security posture: active lockouts, users accumulating failed
    *  attempts, suspensions, session revocations, and 24h login telemetry
@@ -607,39 +1007,80 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
     const loginEvents = getLoginEventsCollection(db)
-    const [locked, withFailures, suspended, revoked7d, failed24h, success24h, failedByIp, newIpLogins, recentEvents] = await Promise.all([
-      users.find(
-        { locked_until: { $gt: now } },
-        { projection: { _id: 0, id: 1, email: 1, tenant_id: 1, failed_login_attempts: 1, locked_until: 1 } },
-      ).sort({ locked_until: -1 }).limit(50).toArray(),
+    const [
+      locked,
+      withFailures,
+      suspended,
+      revoked7d,
+      failed24h,
+      success24h,
+      failedByIp,
+      newIpLogins,
+      recentEvents,
+    ] = await Promise.all([
+      users
+        .find(
+          { locked_until: { $gt: now } },
+          {
+            projection: {
+              _id: 0,
+              id: 1,
+              email: 1,
+              tenant_id: 1,
+              failed_login_attempts: 1,
+              locked_until: 1,
+            },
+          },
+        )
+        .sort({ locked_until: -1 })
+        .limit(50)
+        .toArray(),
       users.countDocuments({ failed_login_attempts: { $gt: 0 } }),
       users.countDocuments({ status: 'suspended' }),
       users.countDocuments({ sessions_revoked_at: { $gte: weekAgo } }),
       loginEvents.countDocuments({ success: false, created_at: { $gte: dayAgo } }),
       loginEvents.countDocuments({ success: true, created_at: { $gte: dayAgo } }),
       // Credential-stuffing signal: which IPs are generating failures.
-      loginEvents.aggregate([
-        { $match: { success: false, created_at: { $gte: dayAgo } } },
-        { $group: { _id: '$ip', count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-        { $limit: 5 },
-        { $project: { _id: 0, ip: '$_id', count: 1 } },
-      ]).toArray(),
+      loginEvents
+        .aggregate([
+          { $match: { success: false, created_at: { $gte: dayAgo } } },
+          { $group: { _id: '$ip', count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+          { $limit: 5 },
+          { $project: { _id: 0, ip: '$_id', count: 1 } },
+        ])
+        .toArray(),
       // Account-takeover signal: successful logins from an (email, ip) pair
       // first seen inside the last 24h. Bounded — a brand-new deploy reports
       // every login as "new IP" until the collection accumulates history.
-      loginEvents.aggregate([
-        { $match: { success: true, email: { $exists: true } } },
-        { $group: { _id: { email: '$email', ip: '$ip' }, first_seen: { $min: '$created_at' } } },
-        { $match: { first_seen: { $gte: dayAgo } } },
-        { $sort: { first_seen: -1 } },
-        { $limit: 20 },
-        { $project: { _id: 0, email: '$_id.email', ip: '$_id.ip', first_seen: 1 } },
-      ]).toArray(),
-      loginEvents.find(
-        {},
-        { projection: { _id: 0, email: 1, success: 1, reason: 1, ip: 1, user_agent: 1, created_at: 1 } },
-      ).sort({ created_at: -1 }).limit(15).toArray(),
+      loginEvents
+        .aggregate([
+          { $match: { success: true, email: { $exists: true } } },
+          { $group: { _id: { email: '$email', ip: '$ip' }, first_seen: { $min: '$created_at' } } },
+          { $match: { first_seen: { $gte: dayAgo } } },
+          { $sort: { first_seen: -1 } },
+          { $limit: 20 },
+          { $project: { _id: 0, email: '$_id.email', ip: '$_id.ip', first_seen: 1 } },
+        ])
+        .toArray(),
+      loginEvents
+        .find(
+          {},
+          {
+            projection: {
+              _id: 0,
+              email: 1,
+              success: 1,
+              reason: 1,
+              ip: 1,
+              user_agent: 1,
+              created_at: 1,
+            },
+          },
+        )
+        .sort({ created_at: -1 })
+        .limit(15)
+        .toArray(),
     ])
     return {
       generated_at: now.toISOString(),
@@ -658,189 +1099,324 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   const operators = db.collection('platform_operators')
 
-  app.get('/operator/operators', { preHandler: requireOperator(db, 'operators.manage') }, async () => {
-    const docs = await operators.find({}, { projection: { _id: 0 } }).toArray()
-    const dbIds = new Set(docs.map((d) => d['user_id'] as string))
-    // Env ids with a DB record are governed by that record — listing them
-    // under both sections would suggest the env entry still means something.
-    const bootstrapIds = (process.env['PLATFORM_OPERATOR_USER_IDS'] ?? '').split(',').map((s) => s.trim()).filter((id) => id && !dbIds.has(id))
-    // Break-glass semantics: env ids resolve only while no active DB
-    // super_admin exists (see resolveOperator), so mark them dormant here.
-    const dbSuperAdminExists = docs.some((d) => d['status'] === 'active' && (d['roles'] as string[] | undefined)?.includes('super_admin'))
-    const ids = new Set([...dbIds, ...bootstrapIds])
-    const profiles = ids.size === 0 ? [] : await users.find(
-      { id: { $in: [...ids] } },
-      { projection: { _id: 0, id: 1, email: 1, name: 1, status: 1 } },
-    ).toArray()
-    const byId = new Map(profiles.map((u) => [u['id'] as string, u]))
-    return {
-      operators: docs.map((d) => ({ ...d, source: 'database', user: byId.get(d['user_id'] as string) ?? null })),
-      bootstrap: bootstrapIds.map((id) => ({ user_id: id, roles: ['super_admin'], status: 'active', source: 'bootstrap', effective: !dbSuperAdminExists, user: byId.get(id) ?? null })),
-    }
-  })
+  app.get(
+    '/operator/operators',
+    { preHandler: requireOperator(db, 'operators.manage') },
+    async () => {
+      const docs = await operators.find({}, { projection: { _id: 0 } }).toArray()
+      const dbIds = new Set(docs.map((d) => d['user_id'] as string))
+      // Env ids with a DB record are governed by that record — listing them
+      // under both sections would suggest the env entry still means something.
+      const bootstrapIds = (process.env['PLATFORM_OPERATOR_USER_IDS'] ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter((id) => id && !dbIds.has(id))
+      // Break-glass semantics: env ids resolve only while no active DB
+      // super_admin exists (see resolveOperator), so mark them dormant here.
+      const dbSuperAdminExists = docs.some(
+        (d) =>
+          d['status'] === 'active' && (d['roles'] as string[] | undefined)?.includes('super_admin'),
+      )
+      const ids = new Set([...dbIds, ...bootstrapIds])
+      const profiles =
+        ids.size === 0
+          ? []
+          : await users
+              .find(
+                { id: { $in: [...ids] } },
+                { projection: { _id: 0, id: 1, email: 1, name: 1, status: 1 } },
+              )
+              .toArray()
+      const byId = new Map(profiles.map((u) => [u['id'] as string, u]))
+      return {
+        operators: docs.map((d) => ({
+          ...d,
+          source: 'database',
+          user: byId.get(d['user_id'] as string) ?? null,
+        })),
+        bootstrap: bootstrapIds.map((id) => ({
+          user_id: id,
+          roles: ['super_admin'],
+          status: 'active',
+          source: 'bootstrap',
+          effective: !dbSuperAdminExists,
+          user: byId.get(id) ?? null,
+        })),
+      }
+    },
+  )
 
-  app.post('/operator/operators', { preHandler: requireOperator(db, 'operators.manage') }, async (request, reply) => {
-    const parsed = OperatorCreateSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid operator', issues: parsed.error.issues })
-    const { user_id, roles, reason } = parsed.data
-    const user = await users.findOne({ id: user_id }, { projection: { _id: 0, id: 1, email: 1, name: 1 } })
-    if (!user) return reply.status(404).send({ error: 'User not found' })
-    await operators.updateOne(
-      { user_id },
-      { $set: { roles, status: 'active', updated_at: new Date() }, $setOnInsert: { user_id, created_at: new Date() } },
-      { upsert: true },
-    )
-    await audit.log(request, 'operator.operator.create', 'operator', user_id, reason, { roles })
-    return { ok: true, user }
-  })
+  app.post(
+    '/operator/operators',
+    { preHandler: requireOperator(db, 'operators.manage') },
+    async (request, reply) => {
+      const parsed = OperatorCreateSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid operator', issues: parsed.error.issues })
+      const { user_id, roles, reason } = parsed.data
+      const user = await users.findOne(
+        { id: user_id },
+        { projection: { _id: 0, id: 1, email: 1, name: 1 } },
+      )
+      if (!user) return reply.status(404).send({ error: 'User not found' })
+      await operators.updateOne(
+        { user_id },
+        {
+          $set: { roles, status: 'active', updated_at: new Date() },
+          $setOnInsert: { user_id, created_at: new Date() },
+        },
+        { upsert: true },
+      )
+      await audit.log(request, 'operator.operator.create', 'operator', user_id, reason, { roles })
+      return { ok: true, user }
+    },
+  )
 
-  app.patch<{ Params: { id: string } }>('/operator/operators/:id', { preHandler: requireOperator(db, 'operators.manage') }, async (request, reply) => {
-    const parsed = OperatorUpdateSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid roles', issues: parsed.error.issues })
-    const targetId = request.params.id
-    if (targetId === request.operatorContext?.user_id) return reply.status(409).send({ error: 'Operators cannot change their own roles' })
-    const target = await operators.findOne({ user_id: targetId })
-    if (!target) return reply.status(404).send({ error: 'Operator not found' })
-    if (!await anotherSuperAdminExists(targetId, (target['roles'] as PlatformRole[] | undefined) ?? [])) {
-      return reply.status(409).send({ error: 'Cannot remove the last super_admin' })
-    }
-    await operators.updateOne({ user_id: targetId }, { $set: { roles: parsed.data.roles, updated_at: new Date() } })
-    await audit.log(request, 'operator.operator.update_roles', 'operator', targetId, parsed.data.reason, { roles: parsed.data.roles })
-    return { ok: true }
-  })
+  app.patch<{ Params: { id: string } }>(
+    '/operator/operators/:id',
+    { preHandler: requireOperator(db, 'operators.manage') },
+    async (request, reply) => {
+      const parsed = OperatorUpdateSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid roles', issues: parsed.error.issues })
+      const targetId = request.params.id
+      if (targetId === request.operatorContext?.user_id)
+        return reply.status(409).send({ error: 'Operators cannot change their own roles' })
+      const target = await operators.findOne({ user_id: targetId })
+      if (!target) return reply.status(404).send({ error: 'Operator not found' })
+      if (
+        !(await anotherSuperAdminExists(
+          targetId,
+          (target['roles'] as PlatformRole[] | undefined) ?? [],
+        ))
+      ) {
+        return reply.status(409).send({ error: 'Cannot remove the last super_admin' })
+      }
+      await operators.updateOne(
+        { user_id: targetId },
+        { $set: { roles: parsed.data.roles, updated_at: new Date() } },
+      )
+      await audit.log(
+        request,
+        'operator.operator.update_roles',
+        'operator',
+        targetId,
+        parsed.data.reason,
+        { roles: parsed.data.roles },
+      )
+      return { ok: true }
+    },
+  )
 
-  app.post<{ Params: { id: string } }>('/operator/operators/:id/suspend', { preHandler: requireOperator(db, 'operators.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const targetId = request.params.id
-    if (targetId === request.operatorContext?.user_id) return reply.status(409).send({ error: 'Operators cannot suspend themselves' })
-    const target = await operators.findOne({ user_id: targetId })
-    if (!target) return reply.status(404).send({ error: 'Operator not found' })
-    if (!await anotherSuperAdminExists(targetId, (target['roles'] as PlatformRole[] | undefined) ?? [])) {
-      return reply.status(409).send({ error: 'Cannot suspend the last super_admin' })
-    }
-    await operators.updateOne({ user_id: targetId }, { $set: { status: 'suspended', updated_at: new Date() } })
-    await audit.log(request, 'operator.operator.suspend', 'operator', targetId, parsed.data.reason)
-    return { ok: true }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/operator/operators/:id/suspend',
+    { preHandler: requireOperator(db, 'operators.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const targetId = request.params.id
+      if (targetId === request.operatorContext?.user_id)
+        return reply.status(409).send({ error: 'Operators cannot suspend themselves' })
+      const target = await operators.findOne({ user_id: targetId })
+      if (!target) return reply.status(404).send({ error: 'Operator not found' })
+      if (
+        !(await anotherSuperAdminExists(
+          targetId,
+          (target['roles'] as PlatformRole[] | undefined) ?? [],
+        ))
+      ) {
+        return reply.status(409).send({ error: 'Cannot suspend the last super_admin' })
+      }
+      await operators.updateOne(
+        { user_id: targetId },
+        { $set: { status: 'suspended', updated_at: new Date() } },
+      )
+      await audit.log(
+        request,
+        'operator.operator.suspend',
+        'operator',
+        targetId,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
 
-  app.post<{ Params: { id: string } }>('/operator/operators/:id/reactivate', { preHandler: requireOperator(db, 'operators.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const result = await operators.updateOne(
-      { user_id: request.params.id, status: 'suspended' },
-      { $set: { status: 'active', updated_at: new Date() } },
-    )
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'Operator not found or not suspended' })
-    await audit.log(request, 'operator.operator.reactivate', 'operator', request.params.id, parsed.data.reason)
-    return { ok: true }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/operator/operators/:id/reactivate',
+    { preHandler: requireOperator(db, 'operators.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const result = await operators.updateOne(
+        { user_id: request.params.id, status: 'suspended' },
+        { $set: { status: 'active', updated_at: new Date() } },
+      )
+      if (result.matchedCount === 0)
+        return reply.status(404).send({ error: 'Operator not found or not suspended' })
+      await audit.log(
+        request,
+        'operator.operator.reactivate',
+        'operator',
+        request.params.id,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
 
   /** True when demoting/suspending `targetId` still leaves an active
    *  super_admin — counting DB operators plus the env bootstrap. */
-  async function anotherSuperAdminExists(targetId: string, targetRoles: PlatformRole[]): Promise<boolean> {
+  async function anotherSuperAdminExists(
+    targetId: string,
+    targetRoles: PlatformRole[],
+  ): Promise<boolean> {
     if (!targetRoles.includes('super_admin')) return true
-    const others = await operators.countDocuments({ user_id: { $ne: targetId }, status: 'active', roles: 'super_admin' })
+    const others = await operators.countDocuments({
+      user_id: { $ne: targetId },
+      status: 'active',
+      roles: 'super_admin',
+    })
     if (others > 0) return true
-    return (process.env['PLATFORM_OPERATOR_USER_IDS'] ?? '').split(',').map((s) => s.trim()).filter((id) => id && id !== targetId).length > 0
+    return (
+      (process.env['PLATFORM_OPERATOR_USER_IDS'] ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter((id) => id && id !== targetId).length > 0
+    )
   }
 
   // ── Leads ───────────────────────────────────────────────────────────────
 
   const leads = db.collection('leads')
 
-  app.get('/operator/leads', { preHandler: requireOperator(db, 'leads.read') }, async (request, reply) => {
-    const parsed = LeadQuerySchema.safeParse(request.query)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
-    const { q, stage, source, suppressed, limit, offset, cursor } = parsed.data
-    const filter: Record<string, unknown> = {}
-    if (q) {
-      const pattern = safeRegex(q)
-      filter['$or'] = [{ email: pattern }, { name: pattern }, { id: pattern }]
-    }
-    if (stage) filter['stage'] = stage
-    if (source) filter['source'] = source
-    if (suppressed) filter['suppressed'] = suppressed === 'true'
-    const decoded = decodeCursor(cursor)
-    if (decoded === null) return reply.status(400).send({ error: 'Invalid cursor' })
-    // $and, not assign: the search regex above already owns filter.$or —
-    // overwriting it would silently drop the search on page 2+.
-    if (decoded) filter['$and'] = [cursorFilter(decoded, 'id')]
-    const [items, total, stageCounts, sourceCounts] = await Promise.all([
-      leads.find(filter, { projection: { _id: 0 } }).sort({ created_at: -1, id: -1 }).skip(decoded ? 0 : offset).limit(limit).toArray(),
-      decoded ? Promise.resolve(undefined) : leads.countDocuments(filter),
-      leads.aggregate([{ $group: { _id: '$stage', count: { $sum: 1 } } }]).toArray(),
-      leads.aggregate([{ $group: { _id: '$source', count: { $sum: 1 } } }]).toArray(),
-    ])
-    const nextCursor = items.length === limit ? encodeCursor(items[items.length - 1], 'id') : undefined
-    return {
-      leads: items,
-      total,
-      limit,
-      offset,
-      ...(nextCursor ? { next_cursor: nextCursor } : {}),
-      stages: Object.fromEntries(stageCounts.map((s) => [s['_id'], s['count']])),
-      sources: Object.fromEntries(sourceCounts.map((s) => [s['_id'], s['count']])),
-    }
-  })
+  app.get(
+    '/operator/leads',
+    { preHandler: requireOperator(db, 'leads.read') },
+    async (request, reply) => {
+      const parsed = LeadQuerySchema.safeParse(request.query)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
+      const { q, stage, source, suppressed, limit, offset, cursor } = parsed.data
+      const filter: Record<string, unknown> = {}
+      if (q) {
+        const pattern = safeRegex(q)
+        filter['$or'] = [{ email: pattern }, { name: pattern }, { id: pattern }]
+      }
+      if (stage) filter['stage'] = stage
+      if (source) filter['source'] = source
+      if (suppressed) filter['suppressed'] = suppressed === 'true'
+      const decoded = decodeCursor(cursor)
+      if (decoded === null) return reply.status(400).send({ error: 'Invalid cursor' })
+      // $and, not assign: the search regex above already owns filter.$or —
+      // overwriting it would silently drop the search on page 2+.
+      if (decoded) filter['$and'] = [cursorFilter(decoded, 'id')]
+      const [items, total, stageCounts, sourceCounts] = await Promise.all([
+        leads
+          .find(filter, { projection: { _id: 0 } })
+          .sort({ created_at: -1, id: -1 })
+          .skip(decoded ? 0 : offset)
+          .limit(limit)
+          .toArray(),
+        decoded ? Promise.resolve(undefined) : leads.countDocuments(filter),
+        leads.aggregate([{ $group: { _id: '$stage', count: { $sum: 1 } } }]).toArray(),
+        leads.aggregate([{ $group: { _id: '$source', count: { $sum: 1 } } }]).toArray(),
+      ])
+      const nextCursor =
+        items.length === limit ? encodeCursor(items[items.length - 1], 'id') : undefined
+      return {
+        leads: items,
+        total,
+        limit,
+        offset,
+        ...(nextCursor ? { next_cursor: nextCursor } : {}),
+        stages: Object.fromEntries(stageCounts.map((s) => [s['_id'], s['count']])),
+        sources: Object.fromEntries(sourceCounts.map((s) => [s['_id'], s['count']])),
+      }
+    },
+  )
 
   /** Stage moves and notes share one endpoint; reason is required either way
    *  and the change is audited. */
-  app.patch<{ Params: { id: string } }>('/operator/leads/:id', { preHandler: requireOperator(db, 'leads.manage') }, async (request, reply) => {
-    const parsed = LeadUpdateSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid update', issues: parsed.error.issues })
-    const { stage, note, reason } = parsed.data
-    if (stage === undefined && note === undefined) {
-      return reply.status(400).send({ error: 'Provide a stage, a note, or both' })
-    }
-    const lead = await leads.findOne({ id: request.params.id })
-    if (!lead) return reply.status(404).send({ error: 'Lead not found' })
-
-    const update: Record<string, unknown> = { $set: { updated_at: new Date() } }
-    if (stage !== undefined) (update['$set'] as Record<string, unknown>)['stage'] = stage
-    if (note !== undefined) {
-      update['$push'] = {
-        notes: {
-          text: note,
-          author_id: request.operatorContext?.user_id,
-          created_at: new Date(),
-        },
+  app.patch<{ Params: { id: string } }>(
+    '/operator/leads/:id',
+    { preHandler: requireOperator(db, 'leads.manage') },
+    async (request, reply) => {
+      const parsed = LeadUpdateSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid update', issues: parsed.error.issues })
+      const { stage, note, reason } = parsed.data
+      if (stage === undefined && note === undefined) {
+        return reply.status(400).send({ error: 'Provide a stage, a note, or both' })
       }
-    }
-    await leads.updateOne({ id: request.params.id }, update)
-    if (stage !== undefined) {
-      await audit.log(request, 'operator.lead.update_stage', 'lead', request.params.id, reason, {
-        from: lead['stage'], to: stage,
-      })
-    }
-    if (note !== undefined) {
-      await audit.log(request, 'operator.lead.add_note', 'lead', request.params.id, reason)
-    }
-    const updated = await leads.findOne({ id: request.params.id }, { projection: { _id: 0 } })
-    return { lead: updated }
-  })
+      const lead = await leads.findOne({ id: request.params.id })
+      if (!lead) return reply.status(404).send({ error: 'Lead not found' })
+
+      const update: Record<string, unknown> = { $set: { updated_at: new Date() } }
+      if (stage !== undefined) (update['$set'] as Record<string, unknown>)['stage'] = stage
+      if (note !== undefined) {
+        update['$push'] = {
+          notes: {
+            text: note,
+            author_id: request.operatorContext?.user_id,
+            created_at: new Date(),
+          },
+        }
+      }
+      await leads.updateOne({ id: request.params.id }, update)
+      if (stage !== undefined) {
+        await audit.log(request, 'operator.lead.update_stage', 'lead', request.params.id, reason, {
+          from: lead['stage'],
+          to: stage,
+        })
+      }
+      if (note !== undefined) {
+        await audit.log(request, 'operator.lead.add_note', 'lead', request.params.id, reason)
+      }
+      const updated = await leads.findOne({ id: request.params.id }, { projection: { _id: 0 } })
+      return { lead: updated }
+    },
+  )
 
   /** Suppression is the operator-side unsubscribe/do-not-contact flag. It is
    *  never cleared by re-capture — the public /leads upsert doesn't touch it. */
-  app.post<{ Params: { id: string } }>('/operator/leads/:id/suppress', { preHandler: requireOperator(db, 'leads.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const result = await leads.updateOne(
-      { id: request.params.id, suppressed: { $ne: true } },
-      { $set: { suppressed: true, suppressed_at: new Date(), updated_at: new Date() } },
-    )
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'Lead not found or already suppressed' })
-    await audit.log(request, 'operator.lead.suppress', 'lead', request.params.id, parsed.data.reason)
-    return { ok: true }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/operator/leads/:id/suppress',
+    { preHandler: requireOperator(db, 'leads.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const result = await leads.updateOne(
+        { id: request.params.id, suppressed: { $ne: true } },
+        { $set: { suppressed: true, suppressed_at: new Date(), updated_at: new Date() } },
+      )
+      if (result.matchedCount === 0)
+        return reply.status(404).send({ error: 'Lead not found or already suppressed' })
+      await audit.log(
+        request,
+        'operator.lead.suppress',
+        'lead',
+        request.params.id,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
 
   /** Full lead record for the detail drawer — includes consent,
    *  attribution, and the notes timeline. */
-  app.get<{ Params: { id: string } }>('/operator/leads/:id', { preHandler: requireOperator(db, 'leads.read') }, async (request, reply) => {
-    const lead = await leads.findOne({ id: request.params.id }, { projection: { _id: 0 } })
-    if (!lead) return reply.status(404).send({ error: 'Lead not found' })
-    return { lead }
-  })
+  app.get<{ Params: { id: string } }>(
+    '/operator/leads/:id',
+    { preHandler: requireOperator(db, 'leads.read') },
+    async (request, reply) => {
+      const lead = await leads.findOne({ id: request.params.id }, { projection: { _id: 0 } })
+      if (!lead) return reply.status(404).send({ error: 'Lead not found' })
+      return { lead }
+    },
+  )
 
   // ── Growth funnel ───────────────────────────────────────────────────────
 
@@ -850,27 +1426,56 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
    *  join users' attribution to leads' source where both exist. */
   app.get('/operator/funnel', { preHandler: requireOperator(db, 'overview.read') }, async () => {
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-    const [leadStages, leadSources, signupSources, signups30d, leads30d, activated, paying, cohortUsers] = await Promise.all([
+    const [
+      leadStages,
+      leadSources,
+      signupSources,
+      signups30d,
+      leads30d,
+      activated,
+      paying,
+      cohortUsers,
+    ] = await Promise.all([
       leads.aggregate([{ $group: { _id: '$stage', count: { $sum: 1 } } }]).toArray(),
-      leads.aggregate([
-        { $match: { created_at: { $gte: since } } },
-        { $group: { _id: '$source', count: { $sum: 1 } } },
-      ]).toArray(),
-      users.aggregate([
-        { $match: { created_at: { $gte: since } } },
-        { $group: { _id: { $ifNull: ['$attribution.utm_source', 'direct'] }, count: { $sum: 1 } } },
-      ]).toArray(),
+      leads
+        .aggregate([
+          { $match: { created_at: { $gte: since } } },
+          { $group: { _id: '$source', count: { $sum: 1 } } },
+        ])
+        .toArray(),
+      users
+        .aggregate([
+          { $match: { created_at: { $gte: since } } },
+          {
+            $group: { _id: { $ifNull: ['$attribution.utm_source', 'direct'] }, count: { $sum: 1 } },
+          },
+        ])
+        .toArray(),
       users.countDocuments({ created_at: { $gte: since } }),
       leads.countDocuments({ created_at: { $gte: since } }),
       db.collection('insights').distinct('tenant_id'),
       tenants.countDocuments({ plan: { $exists: true, $nin: ['free', 'trial'] } }),
       // Activation cohort — tenants of users who signed up inside the window.
-      users.find({ created_at: { $gte: since } }, { projection: { _id: 0, tenant_id: 1, created_at: 1 } }).toArray(),
+      users
+        .find(
+          { created_at: { $gte: since } },
+          { projection: { _id: 0, tenant_id: 1, created_at: 1 } },
+        )
+        .toArray(),
     ])
-    const sources = new Map<string, { source: string; leads: number; signups: number; paying: number; trialing: number }>()
+    const sources = new Map<
+      string,
+      { source: string; leads: number; signups: number; paying: number; trialing: number }
+    >()
     for (const s of leadSources) {
       const key = (s['_id'] as string) ?? 'unknown'
-      sources.set(key, { source: key, leads: s['count'] as number, signups: 0, paying: 0, trialing: 0 })
+      sources.set(key, {
+        source: key,
+        leads: s['count'] as number,
+        signups: 0,
+        paying: 0,
+        trialing: 0,
+      })
     }
     for (const s of signupSources) {
       const key = (s['_id'] as string) ?? 'direct'
@@ -891,12 +1496,19 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     }
     if (cohortTenantIds.length > 0) {
       const [profileTenants, firstInsights, connectorTenants] = await Promise.all([
-        db.collection('family_financial_profile').distinct('tenant_id', { tenant_id: { $in: cohortTenantIds } }),
-        db.collection('insights').aggregate([
-          { $match: { tenant_id: { $in: cohortTenantIds } } },
-          { $group: { _id: '$tenant_id', first_at: { $min: '$created_at' } } },
-        ]).toArray(),
-        db.collection('connector_credentials').distinct('tenant_id', { tenant_id: { $in: cohortTenantIds } }),
+        db
+          .collection('family_financial_profile')
+          .distinct('tenant_id', { tenant_id: { $in: cohortTenantIds } }),
+        db
+          .collection('insights')
+          .aggregate([
+            { $match: { tenant_id: { $in: cohortTenantIds } } },
+            { $group: { _id: '$tenant_id', first_at: { $min: '$created_at' } } },
+          ])
+          .toArray(),
+        db
+          .collection('connector_credentials')
+          .distinct('tenant_id', { tenant_id: { $in: cohortTenantIds } }),
       ])
       const profileSet = new Set(profileTenants.map(String))
       const connectorSet = new Set(connectorTenants.map(String))
@@ -912,20 +1524,34 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       }
       const ttis = firstInsights
         .filter((i) => i['first_at'] instanceof Date)
-        .map((i) => ((i['first_at'] as Date).getTime() - (tenantSignupAt.get(String(i['_id'])) ?? 0)) / 3_600_000)
+        .map(
+          (i) =>
+            ((i['first_at'] as Date).getTime() - (tenantSignupAt.get(String(i['_id'])) ?? 0)) /
+            3_600_000,
+        )
         .filter((h) => h >= 0)
         .sort((a, b) => a - b)
-      const median = ttis.length === 0 ? null : ttis.length % 2 === 1
-        ? ttis[Math.floor(ttis.length / 2)]
-        : (ttis[ttis.length / 2 - 1]! + ttis[ttis.length / 2]!) / 2
+      const median =
+        ttis.length === 0
+          ? null
+          : ttis.length % 2 === 1
+            ? ttis[Math.floor(ttis.length / 2)]
+            : (ttis[ttis.length / 2 - 1]! + ttis[ttis.length / 2]!) / 2
 
       const steps = [
         { key: 'signed_up', label: 'Signed up', count: cohortUsers.length },
         { key: 'profile_completed', label: 'Family profile filled', count: profileSet.size },
         { key: 'first_insight', label: 'First insight received', count: insightSet.size },
         { key: 'connector_connected', label: 'Connector linked', count: connectorSet.size },
-      ].map((s) => ({ ...s, pct: cohortUsers.length === 0 ? 0 : Math.round((s.count / cohortUsers.length) * 100) }))
-      activation = { cohort_signups_30d: cohortUsers.length, steps, median_time_to_first_insight_hours: median === null ? null : Math.round(median * 10) / 10 }
+      ].map((s) => ({
+        ...s,
+        pct: cohortUsers.length === 0 ? 0 : Math.round((s.count / cohortUsers.length) * 100),
+      }))
+      activation = {
+        cohort_signups_30d: cohortUsers.length,
+        steps,
+        median_time_to_first_insight_hours: median === null ? null : Math.round(median * 10) / 10,
+      }
     }
 
     // Revenue leg — the funnel's paying end. "Became paying" is the first
@@ -935,21 +1561,38 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     // Trialing = free-plan tenant whose signup trial is still running —
     // the conversion pipeline sitting between signup and paying.
     const [firstGrants, payingTenantDocs, trialTenantDocs, sourceTenantPairs] = await Promise.all([
-      db.collection('credit_ledger').aggregate([
-        { $match: { type: 'plan_grant' } },
-        { $group: { _id: '$tenant_id', first_at: { $min: '$timestamp' } } },
-      ]).toArray(),
-      tenants.find(
-        { plan: { $exists: true, $nin: ['free', 'trial'] } },
-        { projection: { _id: 0, tenant_id: 1, plan: 1, 'billing.billing_period_start': 1 } },
-      ).toArray(),
-      tenants.find(
-        { plan: { $nin: ['starter', 'growth', 'enterprise'] }, 'billing.trial_ends_at': { $gt: new Date() }, 'billing.trial_expired': { $ne: true } },
-        { projection: { _id: 0, tenant_id: 1 } },
-      ).toArray(),
-      users.aggregate([
-        { $group: { _id: { s: { $ifNull: ['$attribution.utm_source', 'direct'] }, t: '$tenant_id' } } },
-      ]).toArray(),
+      db
+        .collection('credit_ledger')
+        .aggregate([
+          { $match: { type: 'plan_grant' } },
+          { $group: { _id: '$tenant_id', first_at: { $min: '$timestamp' } } },
+        ])
+        .toArray(),
+      tenants
+        .find(
+          { plan: { $exists: true, $nin: ['free', 'trial'] } },
+          { projection: { _id: 0, tenant_id: 1, plan: 1, 'billing.billing_period_start': 1 } },
+        )
+        .toArray(),
+      tenants
+        .find(
+          {
+            plan: { $nin: ['starter', 'growth', 'enterprise'] },
+            'billing.trial_ends_at': { $gt: new Date() },
+            'billing.trial_expired': { $ne: true },
+          },
+          { projection: { _id: 0, tenant_id: 1 } },
+        )
+        .toArray(),
+      users
+        .aggregate([
+          {
+            $group: {
+              _id: { s: { $ifNull: ['$attribution.utm_source', 'direct'] }, t: '$tenant_id' },
+            },
+          },
+        ])
+        .toArray(),
     ])
 
     const grantAt = new Map(firstGrants.map((g) => [String(g['_id']), g['first_at'] as Date]))
@@ -957,10 +1600,15 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     // A tenant that upgraded mid-trial keeps a future trial_ends_at —
     // paying wins over trialing so it doesn't get counted twice.
     const payingIds = new Set(payingTenantDocs.map((t) => String(t['tenant_id'])))
-    const trialing = new Set(trialTenantDocs.map((t) => String(t['tenant_id'])).filter((id) => !payingIds.has(id)))
+    const trialing = new Set(
+      trialTenantDocs.map((t) => String(t['tenant_id'])).filter((id) => !payingIds.has(id)),
+    )
     for (const t of payingTenantDocs) {
       const id = String(t['tenant_id'])
-      const at = grantAt.get(id) ?? (t['billing'] as Record<string, unknown> | undefined)?.['billing_period_start'] as Date | undefined
+      const at =
+        grantAt.get(id) ??
+        ((t['billing'] as Record<string, unknown> | undefined)?.['billing_period_start'] as
+          Date | undefined)
       if (at instanceof Date) paidAt.set(id, at)
     }
     const newPayers = [...paidAt.entries()].filter(([, at]) => at >= since)
@@ -970,10 +1618,12 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     let medianDaysToPaid: number | null = null
     if (newPayers.length > 0) {
       const payerIds = newPayers.map(([id]) => id)
-      const firstSignups = await users.aggregate([
-        { $match: { tenant_id: { $in: payerIds } } },
-        { $group: { _id: '$tenant_id', first_at: { $min: '$created_at' } } },
-      ]).toArray()
+      const firstSignups = await users
+        .aggregate([
+          { $match: { tenant_id: { $in: payerIds } } },
+          { $group: { _id: '$tenant_id', first_at: { $min: '$created_at' } } },
+        ])
+        .toArray()
       const signupAt = new Map(firstSignups.map((s) => [String(s['_id']), s['first_at'] as Date]))
       const days = newPayers
         .map(([id, at]) => {
@@ -982,9 +1632,12 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         })
         .filter((d): d is number => d !== null && d >= 0)
         .sort((a, b) => a - b)
-      medianDaysToPaid = days.length === 0 ? null : days.length % 2 === 1
-        ? Math.round(days[Math.floor(days.length / 2)]! * 10) / 10
-        : Math.round((days[days.length / 2 - 1]! + days[days.length / 2]!) / 2 * 10) / 10
+      medianDaysToPaid =
+        days.length === 0
+          ? null
+          : days.length % 2 === 1
+            ? Math.round(days[Math.floor(days.length / 2)]! * 10) / 10
+            : Math.round(((days[days.length / 2 - 1]! + days[days.length / 2]!) / 2) * 10) / 10
     }
 
     // Per-source paying/trialing — joins every user's utm_source to their
@@ -994,7 +1647,8 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     const sourceByTenant = new Map<string, string>()
     for (const p of sourceTenantPairs) {
       const key = p['_id'] as { s: string; t: string }
-      if (!sourceByTenant.has(String(key.t))) sourceByTenant.set(String(key.t), String(key.s ?? 'direct'))
+      if (!sourceByTenant.has(String(key.t)))
+        sourceByTenant.set(String(key.t), String(key.s ?? 'direct'))
     }
     for (const tenantId of paidAt.keys()) {
       const source = sourceByTenant.get(tenantId) ?? 'direct'
@@ -1043,25 +1697,47 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
    *  read-only visibility — 25 credits both ways per conversion. */
   app.get('/operator/referrals', { preHandler: requireOperator(db, 'leads.read') }, async () => {
     const [codes, docs] = await Promise.all([
-      db.collection('referral_codes').find({}, { projection: { _id: 0, tenant_id: 1, code: 1 } }).toArray(),
-      db.collection('referrals').find({}, { projection: { _id: 0 } }).sort({ created_at: -1 }).toArray(),
+      db
+        .collection('referral_codes')
+        .find({}, { projection: { _id: 0, tenant_id: 1, code: 1 } })
+        .toArray(),
+      db
+        .collection('referrals')
+        .find({}, { projection: { _id: 0 } })
+        .sort({ created_at: -1 })
+        .toArray(),
     ])
     const codeBy = new Map(codes.map((c) => [c['tenant_id'] as string, c['code'] as string]))
-    const tenantIds = [...new Set([
-      ...codes.map((c) => c['tenant_id'] as string),
-      ...docs.flatMap((d) => [d['referrer_tenant_id'] as string, d['referred_tenant_id'] as string]),
-    ])]
+    const tenantIds = [
+      ...new Set([
+        ...codes.map((c) => c['tenant_id'] as string),
+        ...docs.flatMap((d) => [
+          d['referrer_tenant_id'] as string,
+          d['referred_tenant_id'] as string,
+        ]),
+      ]),
+    ]
     const tenantNames = new Map<string, string>()
     if (tenantIds.length > 0) {
-      for (const t of await tenants.find({ tenant_id: { $in: tenantIds } }, { projection: { _id: 0, tenant_id: 1, name: 1 } }).toArray()) {
+      for (const t of await tenants
+        .find({ tenant_id: { $in: tenantIds } }, { projection: { _id: 0, tenant_id: 1, name: 1 } })
+        .toArray()) {
         tenantNames.set(t['tenant_id'] as string, (t['name'] as string) ?? '')
       }
     }
 
-    const byReferrer = new Map<string, { tenant_id: string; code: string; pending: number; rewarded: number }>()
+    const byReferrer = new Map<
+      string,
+      { tenant_id: string; code: string; pending: number; rewarded: number }
+    >()
     for (const d of docs) {
       const ref = d['referrer_tenant_id'] as string
-      const row = byReferrer.get(ref) ?? { tenant_id: ref, code: codeBy.get(ref) ?? '', pending: 0, rewarded: 0 }
+      const row = byReferrer.get(ref) ?? {
+        tenant_id: ref,
+        code: codeBy.get(ref) ?? '',
+        pending: 0,
+        rewarded: 0,
+      }
       if (d['status'] === 'rewarded') row.rewarded += 1
       else if (d['status'] === 'pending') row.pending += 1
       byReferrer.set(ref, row)
@@ -1070,11 +1746,16 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     // conversions is itself a signal (shared vs never-shared).
     for (const c of codes) {
       const t = c['tenant_id'] as string
-      if (!byReferrer.has(t)) byReferrer.set(t, { tenant_id: t, code: c['code'] as string, pending: 0, rewarded: 0 })
+      if (!byReferrer.has(t))
+        byReferrer.set(t, { tenant_id: t, code: c['code'] as string, pending: 0, rewarded: 0 })
     }
 
     const leaderboard = [...byReferrer.values()]
-      .map((r) => ({ ...r, tenant_name: tenantNames.get(r.tenant_id) ?? 'Unknown', referrals: r.pending + r.rewarded }))
+      .map((r) => ({
+        ...r,
+        tenant_name: tenantNames.get(r.tenant_id) ?? 'Unknown',
+        referrals: r.pending + r.rewarded,
+      }))
       .sort((a, b) => b.rewarded - a.rewarded || b.referrals - a.referrals)
       .slice(0, 100)
     const pending = docs.filter((d) => d['status'] === 'pending').length
@@ -1107,71 +1788,127 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   const promotions = db.collection('promo_codes')
   const redemptions = db.collection('promo_redemptions')
 
-  app.get('/operator/promotions', { preHandler: requireOperator(db, 'promotions.read') }, async (request, reply) => {
-    const parsed = QuerySchema.safeParse(request.query)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
-    const { q, limit, offset } = parsed.data
-    const filter: Record<string, unknown> = q ? { code: safeRegex(q) } : {}
-    const [items, total] = await Promise.all([
-      promotions.find(filter, { projection: { _id: 0 } }).sort({ created_at: -1 }).skip(offset).limit(limit).toArray(),
-      promotions.countDocuments(filter),
-    ])
-    return { promotions: items, total, limit, offset }
-  })
+  app.get(
+    '/operator/promotions',
+    { preHandler: requireOperator(db, 'promotions.read') },
+    async (request, reply) => {
+      const parsed = QuerySchema.safeParse(request.query)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
+      const { q, limit, offset } = parsed.data
+      const filter: Record<string, unknown> = q ? { code: safeRegex(q) } : {}
+      const [items, total] = await Promise.all([
+        promotions
+          .find(filter, { projection: { _id: 0 } })
+          .sort({ created_at: -1 })
+          .skip(offset)
+          .limit(limit)
+          .toArray(),
+        promotions.countDocuments(filter),
+      ])
+      return { promotions: items, total, limit, offset }
+    },
+  )
 
-  app.get<{ Params: { code: string } }>('/operator/promotions/:code/redemptions', { preHandler: requireOperator(db, 'promotions.read') }, async (request, reply) => {
-    const code = request.params.code.trim().toUpperCase()
-    const promo = await promotions.findOne({ code }, { projection: { _id: 0 } })
-    if (!promo) return reply.status(404).send({ error: 'Promotion not found' })
-    const items = await redemptions.find({ code }, { projection: { _id: 0 } }).sort({ redeemed_at: -1 }).limit(200).toArray()
-    return { promotion: promo, redemptions: items }
-  })
+  app.get<{ Params: { code: string } }>(
+    '/operator/promotions/:code/redemptions',
+    { preHandler: requireOperator(db, 'promotions.read') },
+    async (request, reply) => {
+      const code = request.params.code.trim().toUpperCase()
+      const promo = await promotions.findOne({ code }, { projection: { _id: 0 } })
+      if (!promo) return reply.status(404).send({ error: 'Promotion not found' })
+      const items = await redemptions
+        .find({ code }, { projection: { _id: 0 } })
+        .sort({ redeemed_at: -1 })
+        .limit(200)
+        .toArray()
+      return { promotion: promo, redemptions: items }
+    },
+  )
 
-  app.post('/operator/promotions', { preHandler: requireOperator(db, 'promotions.manage') }, async (request, reply) => {
-    const parsed = PromotionCreateSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid promotion', issues: parsed.error.issues })
-    const { code, grant_credits, max_uses, expires_at, reason } = parsed.data
-    const normalized = code.toUpperCase()
-    try {
-      await promotions.insertOne({
-        code: normalized,
+  app.post(
+    '/operator/promotions',
+    { preHandler: requireOperator(db, 'promotions.manage') },
+    async (request, reply) => {
+      const parsed = PromotionCreateSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid promotion', issues: parsed.error.issues })
+      const { code, grant_credits, max_uses, expires_at, reason } = parsed.data
+      const normalized = code.toUpperCase()
+      try {
+        await promotions.insertOne({
+          code: normalized,
+          grant_credits,
+          max_uses,
+          used_count: 0,
+          active: true,
+          ...(expires_at ? { expires_at: new Date(expires_at) } : {}),
+          created_by: request.operatorContext?.user_id,
+          created_at: new Date(),
+        })
+      } catch (err) {
+        if ((err as { code?: number }).code === 11000) {
+          return reply.status(409).send({ error: 'A promotion with that code already exists' })
+        }
+        throw err
+      }
+      await audit.log(request, 'operator.promotion.create', 'promotion', normalized, reason, {
         grant_credits,
         max_uses,
-        used_count: 0,
-        active: true,
-        ...(expires_at ? { expires_at: new Date(expires_at) } : {}),
-        created_by: request.operatorContext?.user_id,
-        created_at: new Date(),
       })
-    } catch (err) {
-      if ((err as { code?: number }).code === 11000) {
-        return reply.status(409).send({ error: 'A promotion with that code already exists' })
-      }
-      throw err
-    }
-    await audit.log(request, 'operator.promotion.create', 'promotion', normalized, reason, { grant_credits, max_uses })
-    return { ok: true, code: normalized }
-  })
+      return { ok: true, code: normalized }
+    },
+  )
 
-  app.post<{ Params: { code: string } }>('/operator/promotions/:code/deactivate', { preHandler: requireOperator(db, 'promotions.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const code = request.params.code.trim().toUpperCase()
-    const result = await promotions.updateOne({ code, active: true }, { $set: { active: false, deactivated_at: new Date() } })
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'Promotion not found or already inactive' })
-    await audit.log(request, 'operator.promotion.deactivate', 'promotion', code, parsed.data.reason)
-    return { ok: true }
-  })
+  app.post<{ Params: { code: string } }>(
+    '/operator/promotions/:code/deactivate',
+    { preHandler: requireOperator(db, 'promotions.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const code = request.params.code.trim().toUpperCase()
+      const result = await promotions.updateOne(
+        { code, active: true },
+        { $set: { active: false, deactivated_at: new Date() } },
+      )
+      if (result.matchedCount === 0)
+        return reply.status(404).send({ error: 'Promotion not found or already inactive' })
+      await audit.log(
+        request,
+        'operator.promotion.deactivate',
+        'promotion',
+        code,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
 
-  app.post<{ Params: { code: string } }>('/operator/promotions/:code/reactivate', { preHandler: requireOperator(db, 'promotions.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const code = request.params.code.trim().toUpperCase()
-    const result = await promotions.updateOne({ code, active: false }, { $set: { active: true }, $unset: { deactivated_at: '' } })
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'Promotion not found or already active' })
-    await audit.log(request, 'operator.promotion.reactivate', 'promotion', code, parsed.data.reason)
-    return { ok: true }
-  })
+  app.post<{ Params: { code: string } }>(
+    '/operator/promotions/:code/reactivate',
+    { preHandler: requireOperator(db, 'promotions.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const code = request.params.code.trim().toUpperCase()
+      const result = await promotions.updateOne(
+        { code, active: false },
+        { $set: { active: true }, $unset: { deactivated_at: '' } },
+      )
+      if (result.matchedCount === 0)
+        return reply.status(404).send({ error: 'Promotion not found or already active' })
+      await audit.log(
+        request,
+        'operator.promotion.reactivate',
+        'promotion',
+        code,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
 
   // ── Blog / SEO content ──────────────────────────────────────────────────
   // Operator-managed replacement for the parked admin-key write surface in
@@ -1181,81 +1918,132 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   const blogPosts = db.collection('blog_posts')
   await blogPosts.createIndex({ slug: 1 }, { unique: true }).catch(() => {})
 
-  app.get('/operator/blog/posts', { preHandler: requireOperator(db, 'marketing.read') }, async () => {
-    const posts = await blogPosts
-      .find({}, { projection: { _id: 0, content: 0 } })
-      .sort({ created_at: -1 })
-      .limit(200)
-      .toArray()
-    return { posts }
-  })
+  app.get(
+    '/operator/blog/posts',
+    { preHandler: requireOperator(db, 'marketing.read') },
+    async () => {
+      const posts = await blogPosts
+        .find({}, { projection: { _id: 0, content: 0 } })
+        .sort({ created_at: -1 })
+        .limit(200)
+        .toArray()
+      return { posts }
+    },
+  )
 
-  app.get<{ Params: { id: string } }>('/operator/blog/posts/:id', { preHandler: requireOperator(db, 'marketing.read') }, async (request, reply) => {
-    const post = await blogPosts.findOne({ id: request.params.id }, { projection: { _id: 0 } })
-    if (!post) return reply.status(404).send({ error: 'Post not found' })
-    return { post }
-  })
+  app.get<{ Params: { id: string } }>(
+    '/operator/blog/posts/:id',
+    { preHandler: requireOperator(db, 'marketing.read') },
+    async (request, reply) => {
+      const post = await blogPosts.findOne({ id: request.params.id }, { projection: { _id: 0 } })
+      if (!post) return reply.status(404).send({ error: 'Post not found' })
+      return { post }
+    },
+  )
 
-  app.post('/operator/blog/posts', { preHandler: requireOperator(db, 'marketing.manage') }, async (request, reply) => {
-    const parsed = BlogPostCreateSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid post', issues: parsed.error.issues })
-    const { reason, ...data } = parsed.data
-    const now = new Date()
-    const post = {
-      id: randomBytes(8).toString('hex'),
-      ...data,
-      published: false,
-      created_by: request.operatorContext?.user_id,
-      created_at: now,
-      updated_at: now,
-    }
-    try {
-      await blogPosts.insertOne(post)
-    } catch (err) {
-      if ((err as { code?: number }).code === 11000) {
-        return reply.status(409).send({ error: 'A post with that slug already exists' })
+  app.post(
+    '/operator/blog/posts',
+    { preHandler: requireOperator(db, 'marketing.manage') },
+    async (request, reply) => {
+      const parsed = BlogPostCreateSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid post', issues: parsed.error.issues })
+      const { reason, ...data } = parsed.data
+      const now = new Date()
+      const post = {
+        id: randomBytes(8).toString('hex'),
+        ...data,
+        published: false,
+        created_by: request.operatorContext?.user_id,
+        created_at: now,
+        updated_at: now,
       }
-      throw err
-    }
-    await audit.log(request, 'operator.blog.create', 'blog_post', post.id, reason, { slug: post.slug, title: post.title })
-    return { post }
-  })
+      try {
+        await blogPosts.insertOne(post)
+      } catch (err) {
+        if ((err as { code?: number }).code === 11000) {
+          return reply.status(409).send({ error: 'A post with that slug already exists' })
+        }
+        throw err
+      }
+      await audit.log(request, 'operator.blog.create', 'blog_post', post.id, reason, {
+        slug: post.slug,
+        title: post.title,
+      })
+      return { post }
+    },
+  )
 
-  app.patch<{ Params: { id: string } }>('/operator/blog/posts/:id', { preHandler: requireOperator(db, 'marketing.manage') }, async (request, reply) => {
-    const parsed = BlogPostUpdateSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid update', issues: parsed.error.issues })
-    const { reason, ...data } = parsed.data
-    if (Object.keys(data).length === 0) return reply.status(400).send({ error: 'Nothing to update' })
-    const result = await blogPosts.updateOne({ id: request.params.id }, { $set: { ...data, updated_at: new Date() } })
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'Post not found' })
-    await audit.log(request, 'operator.blog.update', 'blog_post', request.params.id, reason, { fields: Object.keys(data) })
-    const post = await blogPosts.findOne({ id: request.params.id }, { projection: { _id: 0 } })
-    return { post }
-  })
+  app.patch<{ Params: { id: string } }>(
+    '/operator/blog/posts/:id',
+    { preHandler: requireOperator(db, 'marketing.manage') },
+    async (request, reply) => {
+      const parsed = BlogPostUpdateSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid update', issues: parsed.error.issues })
+      const { reason, ...data } = parsed.data
+      if (Object.keys(data).length === 0)
+        return reply.status(400).send({ error: 'Nothing to update' })
+      const result = await blogPosts.updateOne(
+        { id: request.params.id },
+        { $set: { ...data, updated_at: new Date() } },
+      )
+      if (result.matchedCount === 0) return reply.status(404).send({ error: 'Post not found' })
+      await audit.log(request, 'operator.blog.update', 'blog_post', request.params.id, reason, {
+        fields: Object.keys(data),
+      })
+      const post = await blogPosts.findOne({ id: request.params.id }, { projection: { _id: 0 } })
+      return { post }
+    },
+  )
 
-  app.post<{ Params: { id: string } }>('/operator/blog/posts/:id/publish', { preHandler: requireOperator(db, 'marketing.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const result = await blogPosts.updateOne(
-      { id: request.params.id, published: { $ne: true } },
-      { $set: { published: true, published_at: new Date(), updated_at: new Date() } },
-    )
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'Post not found or already published' })
-    await audit.log(request, 'operator.blog.publish', 'blog_post', request.params.id, parsed.data.reason)
-    return { ok: true }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/operator/blog/posts/:id/publish',
+    { preHandler: requireOperator(db, 'marketing.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const result = await blogPosts.updateOne(
+        { id: request.params.id, published: { $ne: true } },
+        { $set: { published: true, published_at: new Date(), updated_at: new Date() } },
+      )
+      if (result.matchedCount === 0)
+        return reply.status(404).send({ error: 'Post not found or already published' })
+      await audit.log(
+        request,
+        'operator.blog.publish',
+        'blog_post',
+        request.params.id,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
 
-  app.post<{ Params: { id: string } }>('/operator/blog/posts/:id/unpublish', { preHandler: requireOperator(db, 'marketing.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const result = await blogPosts.updateOne(
-      { id: request.params.id, published: true },
-      { $set: { published: false, updated_at: new Date() }, $unset: { published_at: '' } },
-    )
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'Post not found or not published' })
-    await audit.log(request, 'operator.blog.unpublish', 'blog_post', request.params.id, parsed.data.reason)
-    return { ok: true }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/operator/blog/posts/:id/unpublish',
+    { preHandler: requireOperator(db, 'marketing.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const result = await blogPosts.updateOne(
+        { id: request.params.id, published: true },
+        { $set: { published: false, updated_at: new Date() }, $unset: { published_at: '' } },
+      )
+      if (result.matchedCount === 0)
+        return reply.status(404).send({ error: 'Post not found or not published' })
+      await audit.log(
+        request,
+        'operator.blog.unpublish',
+        'blog_post',
+        request.params.id,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
 
   // ── Segment campaigns ───────────────────────────────────────────────────
   // One-shot targeted email: operator drafts copy, previews the audience,
@@ -1265,82 +2053,123 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   const campaigns = campaignsCol(db)
 
-  app.get('/operator/campaigns', { preHandler: requireOperator(db, 'marketing.read') }, async () => {
-    const list = await campaigns
-      .find({}, { projection: { _id: 0 } })
-      .sort({ created_at: -1 })
-      .limit(100)
-      .toArray()
-    // Roll the SendGrid event-webhook engagement up per campaign — the ledger
-    // rows carry campaign_id, so opens/clicks/bounces join back exactly.
-    const engagement = await lifecycleSendsCol(db).aggregate<{
-      _id: string; opened: number; clicked: number; bounced: number
-    }>([
-      { $match: { campaign_id: { $in: list.map((c) => c.id) } } },
-      { $group: {
-        _id: '$campaign_id',
-        opened: { $sum: { $cond: [{ $ifNull: ['$opened_at', false] }, 1, 0] } },
-        clicked: { $sum: { $cond: [{ $ifNull: ['$clicked_at', false] }, 1, 0] } },
-        bounced: { $sum: { $cond: [{ $ifNull: ['$bounced', false] }, 1, 0] } },
-      } },
-    ]).toArray()
-    const byId = new Map(engagement.map((e) => [e._id, e]))
-    return { campaigns: list.map((c) => ({ ...c, engagement: byId.get(c.id) ?? null })) }
-  })
+  app.get(
+    '/operator/campaigns',
+    { preHandler: requireOperator(db, 'marketing.read') },
+    async () => {
+      const list = await campaigns
+        .find({}, { projection: { _id: 0 } })
+        .sort({ created_at: -1 })
+        .limit(100)
+        .toArray()
+      // Roll the SendGrid event-webhook engagement up per campaign — the ledger
+      // rows carry campaign_id, so opens/clicks/bounces join back exactly.
+      const engagement = await lifecycleSendsCol(db)
+        .aggregate<{
+          _id: string
+          opened: number
+          clicked: number
+          bounced: number
+        }>([
+          { $match: { campaign_id: { $in: list.map((c) => c.id) } } },
+          {
+            $group: {
+              _id: '$campaign_id',
+              opened: { $sum: { $cond: [{ $ifNull: ['$opened_at', false] }, 1, 0] } },
+              clicked: { $sum: { $cond: [{ $ifNull: ['$clicked_at', false] }, 1, 0] } },
+              bounced: { $sum: { $cond: [{ $ifNull: ['$bounced', false] }, 1, 0] } },
+            },
+          },
+        ])
+        .toArray()
+      const byId = new Map(engagement.map((e) => [e._id, e]))
+      return { campaigns: list.map((c) => ({ ...c, engagement: byId.get(c.id) ?? null })) }
+    },
+  )
 
-  app.post('/operator/campaigns', { preHandler: requireOperator(db, 'marketing.manage') }, async (request, reply) => {
-    const parsed = CampaignCreateSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid campaign', issues: parsed.error.issues })
-    const { reason, ...data } = parsed.data
-    const campaign: CampaignDoc = {
-      id: randomBytes(8).toString('hex'),
-      ...data,
-      status: 'draft',
-      created_by: request.operatorContext?.user_id ?? 'unknown',
-      created_at: new Date(),
-    }
-    await campaigns.insertOne(campaign)
-    await audit.log(request, 'operator.campaign.create', 'campaign', campaign.id, reason, { name: campaign.name, audience: campaign.filter.audience })
-    const { _id: _omit, ...out } = campaign as CampaignDoc & { _id?: unknown }
-    return { campaign: out }
-  })
+  app.post(
+    '/operator/campaigns',
+    { preHandler: requireOperator(db, 'marketing.manage') },
+    async (request, reply) => {
+      const parsed = CampaignCreateSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid campaign', issues: parsed.error.issues })
+      const { reason, ...data } = parsed.data
+      const campaign: CampaignDoc = {
+        id: randomBytes(8).toString('hex'),
+        ...data,
+        status: 'draft',
+        created_by: request.operatorContext?.user_id ?? 'unknown',
+        created_at: new Date(),
+      }
+      await campaigns.insertOne(campaign)
+      await audit.log(request, 'operator.campaign.create', 'campaign', campaign.id, reason, {
+        name: campaign.name,
+        audience: campaign.filter.audience,
+      })
+      const { _id: _omit, ...out } = campaign as CampaignDoc & { _id?: unknown }
+      return { campaign: out }
+    },
+  )
 
   // Audience count for a filter without creating anything — the "how many
   // people is this?" check before firing.
-  app.post('/operator/campaigns/preview', { preHandler: requireOperator(db, 'marketing.read') }, async (request, reply) => {
-    const parsed = CampaignFilterSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid filter', issues: parsed.error.issues })
-    const recipients = await resolveAudience(db, parsed.data)
-    const users = recipients.filter((r) => r.kind === 'user').length
-    return { count: recipients.length, users, leads: recipients.length - users }
-  })
+  app.post(
+    '/operator/campaigns/preview',
+    { preHandler: requireOperator(db, 'marketing.read') },
+    async (request, reply) => {
+      const parsed = CampaignFilterSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid filter', issues: parsed.error.issues })
+      const recipients = await resolveAudience(db, parsed.data)
+      const users = recipients.filter((r) => r.kind === 'user').length
+      return { count: recipients.length, users, leads: recipients.length - users }
+    },
+  )
 
-  app.post<{ Params: { id: string } }>('/operator/campaigns/:id/send', { preHandler: requireOperator(db, 'marketing.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const campaign = await campaigns.findOne({ id: request.params.id })
-    if (!campaign) return reply.status(404).send({ error: 'Campaign not found' })
-    if (campaign.status !== 'draft') return reply.status(409).send({ error: `Campaign already ${campaign.status}` })
-    // Claim the send BEFORE mailing — racing double-clicks get 409 off the
-    // status flip, and lifecycle_sends dedup is the second lock anyway.
-    const claimed = await campaigns.updateOne(
-      { id: campaign.id, status: 'draft' },
-      { $set: { status: 'sent', sent_at: new Date() } },
-    )
-    if (claimed.modifiedCount === 0) return reply.status(409).send({ error: 'Campaign already sent' })
-    try {
-      const stats = await sendCampaign(db, campaign)
-      await campaigns.updateOne({ id: campaign.id }, { $set: { stats } })
-      await audit.log(request, 'operator.campaign.send', 'campaign', campaign.id, parsed.data.reason, stats)
-      return { ok: true, stats }
-    } catch (err) {
-      // Roll the draft back so a transient failure (marketing_paused, DB
-      // blip) doesn't wedge the campaign in a half-sent state it can't
-      // leave — the ledger already claimed any sends that went out.
-      await campaigns.updateOne({ id: campaign.id }, { $set: { status: 'draft' }, $unset: { sent_at: '' } })
-      throw err
-    }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/operator/campaigns/:id/send',
+    { preHandler: requireOperator(db, 'marketing.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const campaign = await campaigns.findOne({ id: request.params.id })
+      if (!campaign) return reply.status(404).send({ error: 'Campaign not found' })
+      if (campaign.status !== 'draft')
+        return reply.status(409).send({ error: `Campaign already ${campaign.status}` })
+      // Claim the send BEFORE mailing — racing double-clicks get 409 off the
+      // status flip, and lifecycle_sends dedup is the second lock anyway.
+      const claimed = await campaigns.updateOne(
+        { id: campaign.id, status: 'draft' },
+        { $set: { status: 'sent', sent_at: new Date() } },
+      )
+      if (claimed.modifiedCount === 0)
+        return reply.status(409).send({ error: 'Campaign already sent' })
+      try {
+        const stats = await sendCampaign(db, campaign)
+        await campaigns.updateOne({ id: campaign.id }, { $set: { stats } })
+        await audit.log(
+          request,
+          'operator.campaign.send',
+          'campaign',
+          campaign.id,
+          parsed.data.reason,
+          stats,
+        )
+        return { ok: true, stats }
+      } catch (err) {
+        // Roll the draft back so a transient failure (marketing_paused, DB
+        // blip) doesn't wedge the campaign in a half-sent state it can't
+        // leave — the ledger already claimed any sends that went out.
+        await campaigns.updateOne(
+          { id: campaign.id },
+          { $set: { status: 'draft' }, $unset: { sent_at: '' } },
+        )
+        throw err
+      }
+    },
+  )
 
   // ── Billing ─────────────────────────────────────────────────────────────
   // Read-mostly: plan/status distribution, credit exposure, Stripe webhook
@@ -1348,29 +2177,85 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   // adjustment — Stripe remains authoritative for subscriptions.
 
   app.get('/operator/billing', { preHandler: requireOperator(db, 'billing.read') }, async () => {
-    const [byPlan, byStatus, stripeLinked, lowCredit, creditsOutstanding, recentWebhooks, recentAdjustments, churnReasons, churned] = await Promise.all([
-      tenants.aggregate([{ $group: { _id: { $ifNull: ['$plan', 'unknown'] }, count: { $sum: 1 } } }]).toArray(),
-      tenants.aggregate([{ $group: { _id: { $ifNull: ['$status', 'unknown'] }, count: { $sum: 1 } } }]).toArray(),
+    const [
+      byPlan,
+      byStatus,
+      stripeLinked,
+      lowCredit,
+      creditsOutstanding,
+      recentWebhooks,
+      recentAdjustments,
+      churnReasons,
+      churned,
+    ] = await Promise.all([
+      tenants
+        .aggregate([{ $group: { _id: { $ifNull: ['$plan', 'unknown'] }, count: { $sum: 1 } } }])
+        .toArray(),
+      tenants
+        .aggregate([{ $group: { _id: { $ifNull: ['$status', 'unknown'] }, count: { $sum: 1 } } }])
+        .toArray(),
       tenants.countDocuments({ stripe_customer_id: { $exists: true, $ne: null } }),
       // LOW_CREDIT_THRESHOLD in billing-constants is 3 — unlimited plans
       // (MAX_SAFE_INTEGER) can't match $lte so they're naturally excluded.
       tenants.countDocuments({ 'billing.credits_balance': { $lte: 3 } }),
-      tenants.aggregate([
-        { $group: { _id: null, total: { $sum: { $cond: [{ $eq: ['$billing.credits_balance', Number.MAX_SAFE_INTEGER] }, 0, { $ifNull: ['$billing.credits_balance', 0] }] } } } },
-      ]).toArray(),
-      db.collection('stripe_webhook_events').find({}, { projection: { _id: 0 } }).sort({ processed_at: -1 }).limit(20).toArray(),
-      db.collection('credit_ledger').find({ type: 'admin_adjustment' }, { projection: { _id: 0 } }).sort({ timestamp: -1 }).limit(10).toArray(),
+      tenants
+        .aggregate([
+          {
+            $group: {
+              _id: null,
+              total: {
+                $sum: {
+                  $cond: [
+                    { $eq: ['$billing.credits_balance', Number.MAX_SAFE_INTEGER] },
+                    0,
+                    { $ifNull: ['$billing.credits_balance', 0] },
+                  ],
+                },
+              },
+            },
+          },
+        ])
+        .toArray(),
+      db
+        .collection('stripe_webhook_events')
+        .find({}, { projection: { _id: 0 } })
+        .sort({ processed_at: -1 })
+        .limit(20)
+        .toArray(),
+      db
+        .collection('credit_ledger')
+        .find({ type: 'admin_adjustment' }, { projection: { _id: 0 } })
+        .sort({ timestamp: -1 })
+        .limit(10)
+        .toArray(),
       // Churn telemetry — churn_reason comes from Stripe's portal
       // cancellation survey (cancellation_details), churned_at from the
       // subscription.deleted webhook.
-      tenants.aggregate([
-        { $match: { 'billing.churned_at': { $exists: true } } },
-        { $group: { _id: { $ifNull: ['$billing.churn_reason', 'unstated'] }, count: { $sum: 1 } } },
-      ]).toArray(),
-      tenants.find(
-        { 'billing.churned_at': { $exists: true } },
-        { projection: { _id: 0, tenant_id: 1, name: 1, 'billing.churn_reason': 1, 'billing.churn_feedback': 1, 'billing.churned_at': 1 } },
-      ).sort({ 'billing.churned_at': -1 }).limit(20).toArray(),
+      tenants
+        .aggregate([
+          { $match: { 'billing.churned_at': { $exists: true } } },
+          {
+            $group: { _id: { $ifNull: ['$billing.churn_reason', 'unstated'] }, count: { $sum: 1 } },
+          },
+        ])
+        .toArray(),
+      tenants
+        .find(
+          { 'billing.churned_at': { $exists: true } },
+          {
+            projection: {
+              _id: 0,
+              tenant_id: 1,
+              name: 1,
+              'billing.churn_reason': 1,
+              'billing.churn_feedback': 1,
+              'billing.churned_at': 1,
+            },
+          },
+        )
+        .sort({ 'billing.churned_at': -1 })
+        .limit(20)
+        .toArray(),
     ])
     return {
       generated_at: new Date().toISOString(),
@@ -1392,56 +2277,88 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     }
   })
 
-  app.get<{ Params: { id: string } }>('/operator/billing/tenants/:id', { preHandler: requireOperator(db, 'billing.read') }, async (request, reply) => {
-    const tenant = await tenants.findOne(
-      { $or: [{ tenant_id: request.params.id }, { id: request.params.id }] },
-      { projection: { _id: 0, tenant_id: 1, name: 1, plan: 1, status: 1, billing: 1, stripe_customer_id: 1, stripe_subscription_id: 1, created_at: 1 } },
-    )
-    if (!tenant) return reply.status(404).send({ error: 'Tenant not found' })
-    const ledger = await getLedgerHistory(db, { tenantId: tenant['tenant_id'] as string, limit: 50 })
-    return { tenant, ledger: ledger.entries, ledger_has_more: ledger.has_more }
-  })
+  app.get<{ Params: { id: string } }>(
+    '/operator/billing/tenants/:id',
+    { preHandler: requireOperator(db, 'billing.read') },
+    async (request, reply) => {
+      const tenant = await tenants.findOne(
+        { $or: [{ tenant_id: request.params.id }, { id: request.params.id }] },
+        {
+          projection: {
+            _id: 0,
+            tenant_id: 1,
+            name: 1,
+            plan: 1,
+            status: 1,
+            billing: 1,
+            stripe_customer_id: 1,
+            stripe_subscription_id: 1,
+            created_at: 1,
+          },
+        },
+      )
+      if (!tenant) return reply.status(404).send({ error: 'Tenant not found' })
+      const ledger = await getLedgerHistory(db, {
+        tenantId: tenant['tenant_id'] as string,
+        limit: 50,
+      })
+      return { tenant, ledger: ledger.entries, ledger_has_more: ledger.has_more }
+    },
+  )
 
   /** Manual credit adjustment. Bounded (±10k), never takes the balance
    *  negative, always ledgered (when billing v2 is on) and audited. */
-  app.post<{ Params: { id: string } }>('/operator/billing/tenants/:id/adjust-credits', { preHandler: requireOperator(db, 'billing.manage') }, async (request, reply) => {
-    const parsed = CreditAdjustSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid adjustment', issues: parsed.error.issues })
-    const { amount, reason } = parsed.data
+  app.post<{ Params: { id: string } }>(
+    '/operator/billing/tenants/:id/adjust-credits',
+    { preHandler: requireOperator(db, 'billing.manage') },
+    async (request, reply) => {
+      const parsed = CreditAdjustSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid adjustment', issues: parsed.error.issues })
+      const { amount, reason } = parsed.data
 
-    const tenant = await tenants.findOne({ $or: [{ tenant_id: request.params.id }, { id: request.params.id }] })
-    if (!tenant) return reply.status(404).send({ error: 'Tenant not found' })
-    const tenantId = tenant['tenant_id'] as string
-    if (tenant['billing']?.['credits_balance'] === Number.MAX_SAFE_INTEGER) {
-      return reply.status(409).send({ error: 'Unlimited plan — balance adjustments do not apply' })
-    }
+      const tenant = await tenants.findOne({
+        $or: [{ tenant_id: request.params.id }, { id: request.params.id }],
+      })
+      if (!tenant) return reply.status(404).send({ error: 'Tenant not found' })
+      const tenantId = tenant['tenant_id'] as string
+      if (tenant['billing']?.['credits_balance'] === Number.MAX_SAFE_INTEGER) {
+        return reply
+          .status(409)
+          .send({ error: 'Unlimited plan — balance adjustments do not apply' })
+      }
 
-    // Negative adjustments claim atomically against the balance so the
-    // result can never go below zero (same shape as the C2 charge guard).
-    const filter: Record<string, unknown> = amount < 0
-      ? { tenant_id: tenantId, 'billing.credits_balance': { $gte: -amount } }
-      : { tenant_id: tenantId }
-    const updated = await tenants.findOneAndUpdate(
-      filter,
-      { $inc: { 'billing.credits_balance': amount }, $set: { updated_at: new Date() } },
-      { returnDocument: 'after' },
-    )
-    if (!updated) return reply.status(409).send({ error: 'Insufficient credit balance for this adjustment' })
+      // Negative adjustments claim atomically against the balance so the
+      // result can never go below zero (same shape as the C2 charge guard).
+      const filter: Record<string, unknown> =
+        amount < 0
+          ? { tenant_id: tenantId, 'billing.credits_balance': { $gte: -amount } }
+          : { tenant_id: tenantId }
+      const updated = await tenants.findOneAndUpdate(
+        filter,
+        { $inc: { 'billing.credits_balance': amount }, $set: { updated_at: new Date() } },
+        { returnDocument: 'after' },
+      )
+      if (!updated)
+        return reply.status(409).send({ error: 'Insufficient credit balance for this adjustment' })
 
-    // Ledger entry must follow the balance mutation so balance_after is
-    // correct. No-ops when BILLING_V2_ENABLED is off (documented fallback).
-    await recordLedgerEntry(db, {
-      tenantId,
-      type: 'admin_adjustment',
-      amount,
-      reference: `operator:${request.operatorContext?.user_id ?? 'unknown'}`,
-      reason,
-      actor: request.operatorContext?.user_id ?? 'unknown',
-    }).catch(() => {})
-    await audit.log(request, 'operator.billing.adjust_credits', 'tenant', tenantId, reason, { amount })
+      // Ledger entry must follow the balance mutation so balance_after is
+      // correct. No-ops when BILLING_V2_ENABLED is off (documented fallback).
+      await recordLedgerEntry(db, {
+        tenantId,
+        type: 'admin_adjustment',
+        amount,
+        reference: `operator:${request.operatorContext?.user_id ?? 'unknown'}`,
+        reason,
+        actor: request.operatorContext?.user_id ?? 'unknown',
+      }).catch(() => {})
+      await audit.log(request, 'operator.billing.adjust_credits', 'tenant', tenantId, reason, {
+        amount,
+      })
 
-    return { ok: true, credits_balance: updated['billing']?.['credits_balance'] }
-  })
+      return { ok: true, credits_balance: updated['billing']?.['credits_balance'] }
+    },
+  )
 
   // ── Support inbox ────────────────────────────────────────────────────────
   // Human half of the AI-first support channel. Users hit Keel triage first
@@ -1450,129 +2367,217 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   const supportCases = db.collection<SupportCaseDoc>('support_cases')
   const llmFn = createLlmRouterFromEnv()
 
-  app.get('/operator/support', { preHandler: requireOperator(db, 'support.read') }, async (request, reply) => {
-    const parsed = SupportQuerySchema.safeParse(request.query)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
-    const { q, status, limit, offset, cursor } = parsed.data
-    const filter: Record<string, unknown> = {}
-    if (q) {
-      const pattern = safeRegex(q)
-      filter['$or'] = [{ subject: pattern }, { email: pattern }, { id: pattern }]
-    }
-    if (status) filter['status'] = status
-    const decoded = decodeCursor(cursor)
-    if (decoded === null) return reply.status(400).send({ error: 'Invalid cursor' })
-    if (decoded) filter['$and'] = [cursorFilter(decoded, 'id', 'updated_at')]
-    const [items, total, counts] = await Promise.all([
-      supportCases.find(filter, { projection: { _id: 0 } }).sort({ updated_at: -1, id: -1 }).skip(decoded ? 0 : offset).limit(limit).toArray(),
-      decoded ? Promise.resolve(undefined) : supportCases.countDocuments(filter),
-      supportCases.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]).toArray(),
-    ])
-    const last = items[items.length - 1]
-    const nextCursor = items.length === limit && last ? encodeCursor(last, 'id', 'updated_at') : undefined
-    return {
-      cases: items,
-      total,
-      limit,
-      offset,
-      ...(nextCursor ? { next_cursor: nextCursor } : {}),
-      statuses: Object.fromEntries(counts.map((s) => [s['_id'], s['count']])),
-    }
-  })
+  app.get(
+    '/operator/support',
+    { preHandler: requireOperator(db, 'support.read') },
+    async (request, reply) => {
+      const parsed = SupportQuerySchema.safeParse(request.query)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
+      const { q, status, limit, offset, cursor } = parsed.data
+      const filter: Record<string, unknown> = {}
+      if (q) {
+        const pattern = safeRegex(q)
+        filter['$or'] = [{ subject: pattern }, { email: pattern }, { id: pattern }]
+      }
+      if (status) filter['status'] = status
+      const decoded = decodeCursor(cursor)
+      if (decoded === null) return reply.status(400).send({ error: 'Invalid cursor' })
+      if (decoded) filter['$and'] = [cursorFilter(decoded, 'id', 'updated_at')]
+      const [items, total, counts] = await Promise.all([
+        supportCases
+          .find(filter, { projection: { _id: 0 } })
+          .sort({ updated_at: -1, id: -1 })
+          .skip(decoded ? 0 : offset)
+          .limit(limit)
+          .toArray(),
+        decoded ? Promise.resolve(undefined) : supportCases.countDocuments(filter),
+        supportCases.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]).toArray(),
+      ])
+      const last = items[items.length - 1]
+      const nextCursor =
+        items.length === limit && last ? encodeCursor(last, 'id', 'updated_at') : undefined
+      return {
+        cases: items,
+        total,
+        limit,
+        offset,
+        ...(nextCursor ? { next_cursor: nextCursor } : {}),
+        statuses: Object.fromEntries(counts.map((s) => [s['_id'], s['count']])),
+      }
+    },
+  )
 
   /** Case detail + the account context an operator needs beside the thread
    *  — plan, tenant, member count — so the reply doesn't need a second
    *  page open to know who's asking. */
-  app.get<{ Params: { id: string } }>('/operator/support/:id', { preHandler: requireOperator(db, 'support.read') }, async (request, reply) => {
-    const doc = await supportCases.findOne({ id: request.params.id }, { projection: { _id: 0 } })
-    if (!doc) return reply.status(404).send({ error: 'Case not found' })
-    const [user, tenant, memberCount] = await Promise.all([
-      users.findOne({ id: doc['user_id'] }, { projection: { _id: 0, id: 1, email: 1, name: 1, status: 1, created_at: 1 } }),
-      tenants.findOne({ tenant_id: doc['tenant_id'] }, { projection: { _id: 0, tenant_id: 1, name: 1, plan: 1, status: 1 } }),
-      users.countDocuments({ tenant_id: doc['tenant_id'] }),
-    ])
-    return { case: doc, user, tenant, member_count: memberCount }
-  })
+  app.get<{ Params: { id: string } }>(
+    '/operator/support/:id',
+    { preHandler: requireOperator(db, 'support.read') },
+    async (request, reply) => {
+      const doc = await supportCases.findOne({ id: request.params.id }, { projection: { _id: 0 } })
+      if (!doc) return reply.status(404).send({ error: 'Case not found' })
+      const [user, tenant, memberCount] = await Promise.all([
+        users.findOne(
+          { id: doc['user_id'] },
+          { projection: { _id: 0, id: 1, email: 1, name: 1, status: 1, created_at: 1 } },
+        ),
+        tenants.findOne(
+          { tenant_id: doc['tenant_id'] },
+          { projection: { _id: 0, tenant_id: 1, name: 1, plan: 1, status: 1 } },
+        ),
+        users.countDocuments({ tenant_id: doc['tenant_id'] }),
+      ])
+      return { case: doc, user, tenant, member_count: memberCount }
+    },
+  )
 
   /** Operator reply — the action itself is the reason, so the audit entry
    *  records the case reference rather than demanding a typed reason for
    *  every chat message. */
-  app.post<{ Params: { id: string } }>('/operator/support/:id/reply', { preHandler: requireOperator(db, 'support.manage') }, async (request, reply) => {
-    const parsed = SupportMessageWriteSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
-    const doc = await supportCases.findOne({ id: request.params.id }, { projection: { subject: 1, user_id: 1 } })
-    if (!doc) return reply.status(404).send({ error: 'Case not found' })
-    const operator = request.operatorContext
-    const now = new Date()
-    const operatorUser = await users.findOne({ id: operator?.user_id }, { projection: { name: 1 } })
-    const result = await supportCases.updateOne(
-      { id: request.params.id },
-      {
-        $push: {
-          messages: {
-            id: randomUUID(), author: 'operator', author_id: operator?.user_id,
-            author_name: (operatorUser?.['name'] as string) ?? 'Operator',
-            text: parsed.data.text, created_at: now,
-          } as SupportMessage,
+  app.post<{ Params: { id: string } }>(
+    '/operator/support/:id/reply',
+    { preHandler: requireOperator(db, 'support.manage') },
+    async (request, reply) => {
+      const parsed = SupportMessageWriteSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
+      const doc = await supportCases.findOne(
+        { id: request.params.id },
+        { projection: { subject: 1, user_id: 1 } },
+      )
+      if (!doc) return reply.status(404).send({ error: 'Case not found' })
+      const operator = request.operatorContext
+      const now = new Date()
+      const operatorUser = await users.findOne(
+        { id: operator?.user_id },
+        { projection: { name: 1 } },
+      )
+      const result = await supportCases.updateOne(
+        { id: request.params.id },
+        {
+          $push: {
+            messages: {
+              id: randomUUID(),
+              author: 'operator',
+              author_id: operator?.user_id,
+              author_name: (operatorUser?.['name'] as string) ?? 'Operator',
+              text: parsed.data.text,
+              created_at: now,
+            } as SupportMessage,
+          },
+          $set: { status: 'answered', updated_at: now },
         },
-        $set: { status: 'answered', updated_at: now },
-      },
-    )
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'Case not found' })
-    await audit.log(request, 'operator.support.reply', 'support_case', request.params.id, `Replied to "${doc['subject']}"`)
-    return { ok: true }
-  })
+      )
+      if (result.matchedCount === 0) return reply.status(404).send({ error: 'Case not found' })
+      await audit.log(
+        request,
+        'operator.support.reply',
+        'support_case',
+        request.params.id,
+        `Replied to "${doc['subject']}"`,
+      )
+      return { ok: true }
+    },
+  )
 
   /** AI draft — LLM proposes a reply grounded in the thread + account
    *  context; the operator edits and sends. Never auto-sent: external-facing
    *  text a human hasn't read is a publishing action, not a draft. */
-  app.post<{ Params: { id: string } }>('/operator/support/:id/draft', { preHandler: requireOperator(db, 'support.manage') }, async (request, reply) => {
-    const doc = await supportCases.findOne({ id: request.params.id }, { projection: { _id: 0 } })
-    if (!doc) return reply.status(404).send({ error: 'Case not found' })
-    const user = await users.findOne({ id: doc['user_id'] }, { projection: { name: 1, email: 1, status: 1 } })
-    const tenant = await tenants.findOne({ tenant_id: doc['tenant_id'] }, { projection: { plan: 1 } })
-    const thread = (doc['messages'] as Array<{ author: string; text: string }> ?? [])
-      .map((m) => `${m.author === 'user' ? 'Customer' : m.author === 'keel' ? 'Keel (AI)' : 'Operator'}: ${m.text}`)
-      .join('\n')
-    const prompt =
-      `Customer: ${(user?.['name'] as string) ?? 'unknown'} (${(user?.['email'] as string) ?? 'no email'}), account status ${(user?.['status'] as string) ?? 'active'}, plan ${(tenant?.['plan'] as string) ?? 'free'}.\n` +
-      `Case subject: ${doc['subject']}\n\nThread so far:\n${thread}\n\nDraft a reply for the operator.`
-    try {
-      const draft = await llmFn(
-        `You draft support replies for LifeKeel operators. Write a helpful, honest reply to the customer's latest message. Never give financial/investment/insurance/legal advice or recommend specific providers. If the request needs an account change (billing, deletion, reset), say the team will handle it — never promise specifics you can't verify. Plain text, 2–5 sentences, no greeting sign-off boilerplate beyond a name placeholder if needed.`,
-        prompt,
-        'tier:fast',
+  app.post<{ Params: { id: string } }>(
+    '/operator/support/:id/draft',
+    { preHandler: requireOperator(db, 'support.manage') },
+    async (request, reply) => {
+      const doc = await supportCases.findOne({ id: request.params.id }, { projection: { _id: 0 } })
+      if (!doc) return reply.status(404).send({ error: 'Case not found' })
+      const user = await users.findOne(
+        { id: doc['user_id'] },
+        { projection: { name: 1, email: 1, status: 1 } },
       )
-      return { draft }
-    } catch (err) {
-      request.log.warn({ err }, 'Support draft LLM call failed')
-      return reply.status(503).send({ error: 'AI drafting unavailable right now' })
-    }
-  })
+      const tenant = await tenants.findOne(
+        { tenant_id: doc['tenant_id'] },
+        { projection: { plan: 1 } },
+      )
+      const thread = ((doc['messages'] as Array<{ author: string; text: string }>) ?? [])
+        .map(
+          (m) =>
+            `${m.author === 'user' ? 'Customer' : m.author === 'keel' ? 'Keel (AI)' : 'Operator'}: ${m.text}`,
+        )
+        .join('\n')
+      const prompt =
+        `Customer: ${(user?.['name'] as string) ?? 'unknown'} (${(user?.['email'] as string) ?? 'no email'}), account status ${(user?.['status'] as string) ?? 'active'}, plan ${(tenant?.['plan'] as string) ?? 'free'}.\n` +
+        `Case subject: ${doc['subject']}\n\nThread so far:\n${thread}\n\nDraft a reply for the operator.`
+      try {
+        const draft = await llmFn(
+          `You draft support replies for LifeKeel operators. Write a helpful, honest reply to the customer's latest message. Never give financial/investment/insurance/legal advice or recommend specific providers. If the request needs an account change (billing, deletion, reset), say the team will handle it — never promise specifics you can't verify. Plain text, 2–5 sentences, no greeting sign-off boilerplate beyond a name placeholder if needed.`,
+          prompt,
+          'tier:fast',
+        )
+        return { draft }
+      } catch (err) {
+        request.log.warn({ err }, 'Support draft LLM call failed')
+        return reply.status(503).send({ error: 'AI drafting unavailable right now' })
+      }
+    },
+  )
 
-  app.post<{ Params: { id: string } }>('/operator/support/:id/resolve', { preHandler: requireOperator(db, 'support.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const result = await supportCases.updateOne(
-      { id: request.params.id, status: { $ne: 'resolved' } },
-      { $set: { status: 'resolved', resolved_by: request.operatorContext?.user_id, resolved_at: new Date(), updated_at: new Date() } },
-    )
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'Case not found or already resolved' })
-    await audit.log(request, 'operator.support.resolve', 'support_case', request.params.id, parsed.data.reason)
-    return { ok: true }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/operator/support/:id/resolve',
+    { preHandler: requireOperator(db, 'support.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const result = await supportCases.updateOne(
+        { id: request.params.id, status: { $ne: 'resolved' } },
+        {
+          $set: {
+            status: 'resolved',
+            resolved_by: request.operatorContext?.user_id,
+            resolved_at: new Date(),
+            updated_at: new Date(),
+          },
+        },
+      )
+      if (result.matchedCount === 0)
+        return reply.status(404).send({ error: 'Case not found or already resolved' })
+      await audit.log(
+        request,
+        'operator.support.resolve',
+        'support_case',
+        request.params.id,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
 
-  app.post<{ Params: { id: string } }>('/operator/support/:id/reopen', { preHandler: requireOperator(db, 'support.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const result = await supportCases.updateOne(
-      { id: request.params.id, status: 'resolved' },
-      { $set: { status: 'open', updated_at: new Date() }, $unset: { resolved_by: '', resolved_at: '' } },
-    )
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'Case not found or not resolved' })
-    await audit.log(request, 'operator.support.reopen', 'support_case', request.params.id, parsed.data.reason)
-    return { ok: true }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/operator/support/:id/reopen',
+    { preHandler: requireOperator(db, 'support.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const result = await supportCases.updateOne(
+        { id: request.params.id, status: 'resolved' },
+        {
+          $set: { status: 'open', updated_at: new Date() },
+          $unset: { resolved_by: '', resolved_at: '' },
+        },
+      )
+      if (result.matchedCount === 0)
+        return reply.status(404).send({ error: 'Case not found or not resolved' })
+      await audit.log(
+        request,
+        'operator.support.reopen',
+        'support_case',
+        request.params.id,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
 
   // ── Alert triage state ──────────────────────────────────────────────────
   // Attention-feed items are computed live each load — this collection only
@@ -1597,31 +2602,49 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     return { alerts: docs }
   })
 
-  app.post('/operator/alerts/state', { preHandler: requireOperator(db, 'overview.read') }, async (request, reply) => {
-    const parsed = AlertStateSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid body', issues: parsed.error.issues })
-    const { dedup_key, action, title, severity, href, signal_value } = parsed.data
-    const now = new Date()
-    const set: Record<string, unknown> = {
-      status: action === 'ack' ? 'ack' : action === 'snooze' ? 'snoozed' : action === 'resolve' ? 'resolved' : 'open',
-      updated_by: request.operatorContext?.user_id,
-      updated_at: now,
-      ...(title ? { title } : {}),
-      ...(severity ? { severity } : {}),
-      ...(href ? { href } : {}),
-      ...(signal_value !== undefined ? { signal_value } : {}),
-    }
-    if (action === 'snooze') set['snoozed_until'] = new Date(now.getTime() + 24 * 60 * 60 * 1000)
-    else set['snoozed_until'] = null
-    if (action === 'resolve') set['resolved_signal_value'] = signal_value ?? null
-    await alerts.updateOne(
-      { dedup_key },
-      { $set: set, $setOnInsert: { dedup_key, created_at: now } },
-      { upsert: true },
-    )
-    await audit.log(request, `operator.alert.${action}` as const, 'alert', dedup_key, title ?? dedup_key)
-    return { ok: true }
-  })
+  app.post(
+    '/operator/alerts/state',
+    { preHandler: requireOperator(db, 'overview.read') },
+    async (request, reply) => {
+      const parsed = AlertStateSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid body', issues: parsed.error.issues })
+      const { dedup_key, action, title, severity, href, signal_value } = parsed.data
+      const now = new Date()
+      const set: Record<string, unknown> = {
+        status:
+          action === 'ack'
+            ? 'ack'
+            : action === 'snooze'
+              ? 'snoozed'
+              : action === 'resolve'
+                ? 'resolved'
+                : 'open',
+        updated_by: request.operatorContext?.user_id,
+        updated_at: now,
+        ...(title ? { title } : {}),
+        ...(severity ? { severity } : {}),
+        ...(href ? { href } : {}),
+        ...(signal_value !== undefined ? { signal_value } : {}),
+      }
+      if (action === 'snooze') set['snoozed_until'] = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+      else set['snoozed_until'] = null
+      if (action === 'resolve') set['resolved_signal_value'] = signal_value ?? null
+      await alerts.updateOne(
+        { dedup_key },
+        { $set: set, $setOnInsert: { dedup_key, created_at: now } },
+        { upsert: true },
+      )
+      await audit.log(
+        request,
+        `operator.alert.${action}` as const,
+        'alert',
+        dedup_key,
+        title ?? dedup_key,
+      )
+      return { ok: true }
+    },
+  )
 
   // ── Autopilot ───────────────────────────────────────────────────────────
   // Per-rule toggles over the Tier 0/1 registry in operator/autopilot.ts.
@@ -1639,50 +2662,87 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     reason: z.string().trim().min(5).max(500),
   })
 
-  app.get('/operator/autopilot', { preHandler: requireOperator(db, 'operations.read') }, async () => {
-    const [ruleRows, recent] = await Promise.all([
-      listAutopilotRules(db),
-      autopilotActions.find({}, { projection: { _id: 0 } }).sort({ created_at: -1 }).limit(50).toArray(),
-    ])
-    return { rules: ruleRows, recent_actions: recent, never_autonomous: NEVER_AUTONOMOUS }
-  })
+  app.get(
+    '/operator/autopilot',
+    { preHandler: requireOperator(db, 'operations.read') },
+    async () => {
+      const [ruleRows, recent] = await Promise.all([
+        listAutopilotRules(db),
+        autopilotActions
+          .find({}, { projection: { _id: 0 } })
+          .sort({ created_at: -1 })
+          .limit(50)
+          .toArray(),
+      ])
+      return { rules: ruleRows, recent_actions: recent, never_autonomous: NEVER_AUTONOMOUS }
+    },
+  )
 
-  app.put<{ Params: { rule: string } }>('/operator/autopilot/:rule', { preHandler: requireOperator(db, 'operations.manage') }, async (request, reply) => {
-    const parsed = AutopilotUpdateSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid update', issues: parsed.error.issues })
-    const rule = getAutopilotRule(request.params.rule)
-    if (!rule) return reply.status(404).send({ error: 'Unknown autopilot rule — not in the automatable registry' })
-    const { enabled, max_blast_radius, cooldown_minutes, reason } = parsed.data
-    if (enabled === undefined && max_blast_radius === undefined && cooldown_minutes === undefined) {
-      return reply.status(400).send({ error: 'Nothing to update' })
-    }
-    const set: Record<string, unknown> = { updated_by: request.operatorContext?.user_id, updated_at: new Date() }
-    if (enabled !== undefined) set['enabled'] = enabled
-    if (max_blast_radius !== undefined) set['max_blast_radius'] = max_blast_radius
-    if (cooldown_minutes !== undefined) set['cooldown_minutes'] = cooldown_minutes
-    await autopilotRules.updateOne({ rule: rule.id }, { $set: set, $setOnInsert: { rule: rule.id } }, { upsert: true })
-    await audit.log(request, 'operator.autopilot.update', 'autopilot_rule', rule.id, reason, { changes: { enabled, max_blast_radius, cooldown_minutes } })
-    const updated = await autopilotRules.findOne({ rule: rule.id }, { projection: { _id: 0 } })
-    return { rule: { ...rule.defaults, ...updated, label: rule.label, description: rule.description } }
-  })
+  app.put<{ Params: { rule: string } }>(
+    '/operator/autopilot/:rule',
+    { preHandler: requireOperator(db, 'operations.manage') },
+    async (request, reply) => {
+      const parsed = AutopilotUpdateSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid update', issues: parsed.error.issues })
+      const rule = getAutopilotRule(request.params.rule)
+      if (!rule)
+        return reply
+          .status(404)
+          .send({ error: 'Unknown autopilot rule — not in the automatable registry' })
+      const { enabled, max_blast_radius, cooldown_minutes, reason } = parsed.data
+      if (
+        enabled === undefined &&
+        max_blast_radius === undefined &&
+        cooldown_minutes === undefined
+      ) {
+        return reply.status(400).send({ error: 'Nothing to update' })
+      }
+      const set: Record<string, unknown> = {
+        updated_by: request.operatorContext?.user_id,
+        updated_at: new Date(),
+      }
+      if (enabled !== undefined) set['enabled'] = enabled
+      if (max_blast_radius !== undefined) set['max_blast_radius'] = max_blast_radius
+      if (cooldown_minutes !== undefined) set['cooldown_minutes'] = cooldown_minutes
+      await autopilotRules.updateOne(
+        { rule: rule.id },
+        { $set: set, $setOnInsert: { rule: rule.id } },
+        { upsert: true },
+      )
+      await audit.log(request, 'operator.autopilot.update', 'autopilot_rule', rule.id, reason, {
+        changes: { enabled, max_blast_radius, cooldown_minutes },
+      })
+      const updated = await autopilotRules.findOne({ rule: rule.id }, { projection: { _id: 0 } })
+      return {
+        rule: { ...rule.defaults, ...updated, label: rule.label, description: rule.description },
+      }
+    },
+  )
 
-  app.get('/operator/autopilot/actions', { preHandler: requireOperator(db, 'operations.read') }, async (request, reply) => {
-    const parsed = QuerySchema.safeParse(request.query)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
-    const { limit, offset, cursor } = parsed.data
-    const decoded = decodeCursor(cursor)
-    if (decoded === null) return reply.status(400).send({ error: 'Invalid cursor' })
-    const filter: Record<string, unknown> = {}
-    if (decoded) filter['$and'] = [cursorFilter(decoded, 'id')]
-    const items = await autopilotActions
-      .find(filter, { projection: { _id: 0 } })
-      .sort({ created_at: -1, id: -1 })
-      .limit(limit + 1)
-      .toArray()
-    const page = items.slice(0, limit)
-    const nextCursor = items.length > limit ? encodeCursor(page[page.length - 1]!, 'id') : undefined
-    return { actions: page, ...(nextCursor ? { next_cursor: nextCursor } : {}) }
-  })
+  app.get(
+    '/operator/autopilot/actions',
+    { preHandler: requireOperator(db, 'operations.read') },
+    async (request, reply) => {
+      const parsed = QuerySchema.safeParse(request.query)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
+      const { limit, offset, cursor } = parsed.data
+      const decoded = decodeCursor(cursor)
+      if (decoded === null) return reply.status(400).send({ error: 'Invalid cursor' })
+      const filter: Record<string, unknown> = {}
+      if (decoded) filter['$and'] = [cursorFilter(decoded, 'id')]
+      const items = await autopilotActions
+        .find(filter, { projection: { _id: 0 } })
+        .sort({ created_at: -1, id: -1 })
+        .limit(limit + 1)
+        .toArray()
+      const page = items.slice(0, limit)
+      const nextCursor =
+        items.length > limit ? encodeCursor(page[page.length - 1]!, 'id') : undefined
+      return { actions: page, ...(nextCursor ? { next_cursor: nextCursor } : {}) }
+    },
+  )
 
   /** Approve a Tier-2 proposal — executes the stored payload server-side
    *  through the same mutation the corresponding manual endpoint performs.
@@ -1690,59 +2750,107 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
    *  suspend, marketing.manage for a draft) — the approving operator's
    *  roles must satisfy it, which is a stricter gate than the route's own
    *  operations.read. */
-  app.post<{ Params: { id: string } }>('/operator/autopilot/proposals/:id/approve', { preHandler: requireOperator(db, 'operations.read') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const action = await autopilotActions.findOne({ id: request.params.id })
-    if (!action || action['status'] !== 'proposed' || !action['proposal']) {
-      return reply.status(404).send({ error: 'Proposal not found or already resolved' })
-    }
-    const proposal = action['proposal'] as NonNullable<AutopilotActionDoc['proposal']>
-    const roles = (request.operatorContext?.roles ?? []) as PlatformRole[]
-    if (!hasOperatorPermission(roles, proposal.required_permission as OperatorPermission)) {
-      return reply.status(403).send({ error: `This proposal requires ${proposal.required_permission}` })
-    }
-    const handler = PROPOSAL_HANDLERS[proposal.kind]
-    if (!handler) return reply.status(400).send({ error: `Unknown proposal kind: ${proposal.kind}` })
+  app.post<{ Params: { id: string } }>(
+    '/operator/autopilot/proposals/:id/approve',
+    { preHandler: requireOperator(db, 'operations.read') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const action = await autopilotActions.findOne({ id: request.params.id })
+      if (!action || action['status'] !== 'proposed' || !action['proposal']) {
+        return reply.status(404).send({ error: 'Proposal not found or already resolved' })
+      }
+      const proposal = action['proposal'] as NonNullable<AutopilotActionDoc['proposal']>
+      const roles = (request.operatorContext?.roles ?? []) as PlatformRole[]
+      if (!hasOperatorPermission(roles, proposal.required_permission as OperatorPermission)) {
+        return reply
+          .status(403)
+          .send({ error: `This proposal requires ${proposal.required_permission}` })
+      }
+      const handler = PROPOSAL_HANDLERS[proposal.kind]
+      if (!handler)
+        return reply.status(400).send({ error: `Unknown proposal kind: ${proposal.kind}` })
 
-    // Claim first: proposed → approved is atomic, so two racing approvers
-    // can't both execute the underlying mutation. A crash mid-handler
-    // leaves 'approved' — visible as stuck, never silently re-run.
-    const claim = await autopilotActions.updateOne(
-      { id: action['id'], status: 'proposed' },
-      { $set: { status: 'approved', resolved_by: request.operatorContext?.user_id, resolved_at: new Date() } },
-    )
-    if (claim.modifiedCount === 0) return reply.status(409).send({ error: 'Proposal already resolved' })
+      // Claim first: proposed → approved is atomic, so two racing approvers
+      // can't both execute the underlying mutation. A crash mid-handler
+      // leaves 'approved' — visible as stuck, never silently re-run.
+      const claim = await autopilotActions.updateOne(
+        { id: action['id'], status: 'proposed' },
+        {
+          $set: {
+            status: 'approved',
+            resolved_by: request.operatorContext?.user_id,
+            resolved_at: new Date(),
+          },
+        },
+      )
+      if (claim.modifiedCount === 0)
+        return reply.status(409).send({ error: 'Proposal already resolved' })
 
-    let result: string
-    let finalStatus: 'executed' | 'failed' = 'executed'
-    try {
-      result = await handler(db, proposal.payload, { llm: llmFn })
-    } catch (err) {
-      finalStatus = 'failed'
-      result = String(err).slice(0, 300)
-    }
-    await autopilotActions.updateOne({ id: action['id'] }, { $set: { status: finalStatus, result } })
-    await audit.log(request, 'operator.autopilot.approve', 'autopilot_action', action['id'] as string, parsed.data.reason, {
-      kind: proposal.kind, target: action['target_id'], status: finalStatus, result,
-    })
-    if (finalStatus === 'failed') return reply.status(502).send({ error: `Proposal execution failed: ${result}` })
-    return { ok: true, result }
-  })
+      let result: string
+      let finalStatus: 'executed' | 'failed' = 'executed'
+      try {
+        result = await handler(db, proposal.payload, { llm: llmFn })
+      } catch (err) {
+        finalStatus = 'failed'
+        result = String(err).slice(0, 300)
+      }
+      await autopilotActions.updateOne(
+        { id: action['id'] },
+        { $set: { status: finalStatus, result } },
+      )
+      await audit.log(
+        request,
+        'operator.autopilot.approve',
+        'autopilot_action',
+        action['id'] as string,
+        parsed.data.reason,
+        {
+          kind: proposal.kind,
+          target: action['target_id'],
+          status: finalStatus,
+          result,
+        },
+      )
+      if (finalStatus === 'failed')
+        return reply.status(502).send({ error: `Proposal execution failed: ${result}` })
+      return { ok: true, result }
+    },
+  )
 
   /** Reject a proposal — the dedup key keeps it from re-appearing; the
    *  rejection reason lands on the ledger row. */
-  app.post<{ Params: { id: string } }>('/operator/autopilot/proposals/:id/reject', { preHandler: requireOperator(db, 'operations.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const result = await autopilotActions.updateOne(
-      { id: request.params.id, status: 'proposed' },
-      { $set: { status: 'rejected', result: parsed.data.reason, resolved_by: request.operatorContext?.user_id, resolved_at: new Date() } },
-    )
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'Proposal not found or already resolved' })
-    await audit.log(request, 'operator.autopilot.reject', 'autopilot_action', request.params.id, parsed.data.reason)
-    return { ok: true }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/operator/autopilot/proposals/:id/reject',
+    { preHandler: requireOperator(db, 'operations.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const result = await autopilotActions.updateOne(
+        { id: request.params.id, status: 'proposed' },
+        {
+          $set: {
+            status: 'rejected',
+            result: parsed.data.reason,
+            resolved_by: request.operatorContext?.user_id,
+            resolved_at: new Date(),
+          },
+        },
+      )
+      if (result.matchedCount === 0)
+        return reply.status(404).send({ error: 'Proposal not found or already resolved' })
+      await audit.log(
+        request,
+        'operator.autopilot.reject',
+        'autopilot_action',
+        request.params.id,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
 
   // ── Weekly digest — the Monday-morning summary the cron persists to
   // operator_digests and posts to ops Slack. POST lets an operator run it
@@ -1755,169 +2863,326 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     return { digest: latest ?? null }
   })
 
-  app.post('/operator/digest/send', { preHandler: requireOperator(db, 'operations.manage') }, async (request) => {
-    const digest = await runWeeklyDigest(db)
-    await audit.log(request, 'operator.digest.send', 'digest', digest.id, 'Manual weekly digest generation')
-    return { digest }
-  })
+  app.post(
+    '/operator/digest/send',
+    { preHandler: requireOperator(db, 'operations.manage') },
+    async (request) => {
+      const digest = await runWeeklyDigest(db)
+      await audit.log(
+        request,
+        'operator.digest.send',
+        'digest',
+        digest.id,
+        'Manual weekly digest generation',
+      )
+      return { digest }
+    },
+  )
 
   // ── Operator audit + operations health ──────────────────────────────────
 
-  app.get('/operator/audit', { preHandler: requireOperator(db, 'audit.read') }, async (request, reply) => {
-    const parsed = AuditQuerySchema.safeParse(request.query)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
-    const { action, target_type, target_id, operator_user_id, limit, offset, cursor } = parsed.data
-    const filter: Record<string, unknown> = {}
-    if (action) filter['action'] = action
-    if (target_type) filter['target_type'] = target_type
-    if (target_id) filter['target_id'] = target_id
-    if (operator_user_id) filter['operator_user_id'] = operator_user_id
-    const decoded = decodeCursor(cursor)
-    if (decoded === null) return reply.status(400).send({ error: 'Invalid cursor' })
-    // Audit rows have no app-level id — the cursor tiebreaks on _id, which
-    // is unique and monotone enough for a stable created_at sort.
-    if (decoded) {
-      if (!ObjectId.isValid(decoded.id)) return reply.status(400).send({ error: 'Invalid cursor' })
-      const oid = new ObjectId(decoded.id)
-      filter['$or'] = [{ created_at: { $lt: decoded.created_at } }, { created_at: decoded.created_at, _id: { $lt: oid } }]
-    }
-    const col = db.collection('operator_audit_log')
-    const [rawItems, total] = await Promise.all([
-      col.find(filter).sort({ created_at: -1, _id: -1 }).skip(decoded ? 0 : offset).limit(limit).toArray(),
-      decoded ? Promise.resolve(undefined) : col.countDocuments(filter),
-    ])
-    const last = rawItems[rawItems.length - 1]
-    const nextCursor = rawItems.length === limit && last
-      ? encodeCursor({ created_at: last['created_at'], _id: last['_id'].toHexString() }, '_id')
-      : undefined
-    const items = rawItems.map(({ _id, ...rest }) => rest)
-    return { entries: items, total, limit, offset, ...(nextCursor ? { next_cursor: nextCursor } : {}) }
-  })
+  app.get(
+    '/operator/audit',
+    { preHandler: requireOperator(db, 'audit.read') },
+    async (request, reply) => {
+      const parsed = AuditQuerySchema.safeParse(request.query)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
+      const { action, target_type, target_id, operator_user_id, limit, offset, cursor } =
+        parsed.data
+      const filter: Record<string, unknown> = {}
+      if (action) filter['action'] = action
+      if (target_type) filter['target_type'] = target_type
+      if (target_id) filter['target_id'] = target_id
+      if (operator_user_id) filter['operator_user_id'] = operator_user_id
+      const decoded = decodeCursor(cursor)
+      if (decoded === null) return reply.status(400).send({ error: 'Invalid cursor' })
+      // Audit rows have no app-level id — the cursor tiebreaks on _id, which
+      // is unique and monotone enough for a stable created_at sort.
+      if (decoded) {
+        if (!ObjectId.isValid(decoded.id))
+          return reply.status(400).send({ error: 'Invalid cursor' })
+        const oid = new ObjectId(decoded.id)
+        filter['$or'] = [
+          { created_at: { $lt: decoded.created_at } },
+          { created_at: decoded.created_at, _id: { $lt: oid } },
+        ]
+      }
+      const col = db.collection('operator_audit_log')
+      const [rawItems, total] = await Promise.all([
+        col
+          .find(filter)
+          .sort({ created_at: -1, _id: -1 })
+          .skip(decoded ? 0 : offset)
+          .limit(limit)
+          .toArray(),
+        decoded ? Promise.resolve(undefined) : col.countDocuments(filter),
+      ])
+      const last = rawItems[rawItems.length - 1]
+      const nextCursor =
+        rawItems.length === limit && last
+          ? encodeCursor({ created_at: last['created_at'], _id: last['_id'].toHexString() }, '_id')
+          : undefined
+      const items = rawItems.map(({ _id, ...rest }) => rest)
+      return {
+        entries: items,
+        total,
+        limit,
+        offset,
+        ...(nextCursor ? { next_cursor: nextCursor } : {}),
+      }
+    },
+  )
 
   /** Read-only operational health: process, datastore, job leases,
    *  per-state pipeline counts, reminder delivery, connector credentials,
    *  and Redis queue depth. External provider metrics are out of scope. */
-  app.get('/operator/operations', { preHandler: requireOperator(db, 'operations.read') }, async () => {
-    const pingStart = Date.now()
-    let mongoOk = true
-    try { await db.command({ ping: 1 }) } catch { mongoOk = false }
-    const mongoPingMs = Date.now() - pingStart
+  app.get(
+    '/operator/operations',
+    { preHandler: requireOperator(db, 'operations.read') },
+    async () => {
+      const pingStart = Date.now()
+      let mongoOk = true
+      try {
+        await db.command({ ping: 1 })
+      } catch {
+        mongoOk = false
+      }
+      const mongoPingMs = Date.now() - pingStart
 
-    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
-    // A 'sending' reminder claim older than STALE_CLAIM_MS (10min, same
-    // value as policy-renewal-reminders.ts) means the worker crashed
-    // mid-dispatch — the next run recovers it, but it should be visible.
-    const staleClaimCutoff = new Date(Date.now() - 10 * 60 * 1000)
-    const tokenExpiryHorizon = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+      const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      // A 'sending' reminder claim older than STALE_CLAIM_MS (10min, same
+      // value as policy-renewal-reminders.ts) means the worker crashed
+      // mid-dispatch — the next run recovers it, but it should be visible.
+      const staleClaimCutoff = new Date(Date.now() - 10 * 60 * 1000)
+      const tokenExpiryHorizon = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
 
-    const [
-      insightsByState, postsByState, cronLocks, events24h, pendingDocs,
-      remindersByState, failedReminders, staleClaims,
-      connectorsById, expiringTokens, connectorList, failedPosts, queueStats,
-      deliveryByState, failedDeliveries,
-    ] = await Promise.all([
-      db.collection('insights').aggregate([{ $group: { _id: '$state', count: { $sum: 1 } } }]).toArray(),
-      db.collection('marketing_posts').aggregate([{ $group: { _id: '$state', count: { $sum: 1 } } }]).toArray(),
-      db.collection('cron_locks').find({}, { projection: { _id: 0 } }).limit(50).toArray(),
-      db.collection('growth_events').countDocuments({ created_at: { $gte: dayAgo } }),
-      db.collection('documents').countDocuments({ status: { $in: ['pending', 'processing'] } }),
-      db.collection('reminders').aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]).toArray(),
-      db.collection('reminders').find(
-        { status: 'failed' },
-        { projection: { _id: 0, id: 1, tenant_id: 1, due_at: 1, attempts: 1, last_error: 1, 'policy.type': 1, 'policy.provider': 1 } },
-      ).sort({ updated_at: -1 }).limit(20).toArray(),
-      db.collection('reminders').countDocuments({ status: 'sending', updated_at: { $lt: staleClaimCutoff } }),
-      db.collection('connector_credentials').aggregate([
-        { $group: { _id: '$connector_id', count: { $sum: 1 } } },
-        { $project: { _id: 0, connector_id: '$_id', count: 1 } },
-      ]).toArray(),
-      db.collection('connector_credentials').countDocuments({ token_expires_at: { $lt: tokenExpiryHorizon } }),
-      // Operator-visible connector inventory — metadata only, never the
-      // encrypted credential fields.
-      db.collection('connector_credentials').find(
-        {},
-        { projection: { _id: 0, tenant_id: 1, connector_id: 1, auth_type: 1, token_expires_at: 1, created_at: 1 } },
-      ).sort({ created_at: -1 }).limit(50).toArray(),
-      db.collection('marketing_posts').find(
-        { state: 'publish_failed' },
-        { projection: { _id: 0, id: 1, channel: 1, publish_error: 1, updated_at: 1 } },
-      ).sort({ updated_at: -1 }).limit(10).toArray(),
-      queueManager.inspect(WEBHOOK_INGEST_QUEUE),
-      // Outbound delivery pipeline (WhatsApp/SMS/email/push escalations) —
-      // status counts plus recent failures. insight bodies stay out of the
-      // projection; operators get the channel and error only.
-      db.collection('delivery_queue').aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]).toArray(),
-      db.collection('delivery_queue').find(
-        { status: 'failed' },
-        { projection: { _id: 0, insight_id: 0, target: 0 } },
-      ).sort({ updated_at: -1 }).limit(10).toArray(),
-    ])
+      const [
+        insightsByState,
+        postsByState,
+        cronLocks,
+        events24h,
+        pendingDocs,
+        remindersByState,
+        failedReminders,
+        staleClaims,
+        connectorsById,
+        expiringTokens,
+        connectorList,
+        failedPosts,
+        queueStats,
+        deliveryByState,
+        failedDeliveries,
+      ] = await Promise.all([
+        db
+          .collection('insights')
+          .aggregate([{ $group: { _id: '$state', count: { $sum: 1 } } }])
+          .toArray(),
+        db
+          .collection('marketing_posts')
+          .aggregate([{ $group: { _id: '$state', count: { $sum: 1 } } }])
+          .toArray(),
+        db
+          .collection('cron_locks')
+          .find({}, { projection: { _id: 0 } })
+          .limit(50)
+          .toArray(),
+        db.collection('growth_events').countDocuments({ created_at: { $gte: dayAgo } }),
+        db.collection('documents').countDocuments({ status: { $in: ['pending', 'processing'] } }),
+        db
+          .collection('reminders')
+          .aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }])
+          .toArray(),
+        db
+          .collection('reminders')
+          .find(
+            { status: 'failed' },
+            {
+              projection: {
+                _id: 0,
+                id: 1,
+                tenant_id: 1,
+                due_at: 1,
+                attempts: 1,
+                last_error: 1,
+                'policy.type': 1,
+                'policy.provider': 1,
+              },
+            },
+          )
+          .sort({ updated_at: -1 })
+          .limit(20)
+          .toArray(),
+        db
+          .collection('reminders')
+          .countDocuments({ status: 'sending', updated_at: { $lt: staleClaimCutoff } }),
+        db
+          .collection('connector_credentials')
+          .aggregate([
+            { $group: { _id: '$connector_id', count: { $sum: 1 } } },
+            { $project: { _id: 0, connector_id: '$_id', count: 1 } },
+          ])
+          .toArray(),
+        db
+          .collection('connector_credentials')
+          .countDocuments({ token_expires_at: { $lt: tokenExpiryHorizon } }),
+        // Operator-visible connector inventory — metadata only, never the
+        // encrypted credential fields.
+        db
+          .collection('connector_credentials')
+          .find(
+            {},
+            {
+              projection: {
+                _id: 0,
+                tenant_id: 1,
+                connector_id: 1,
+                auth_type: 1,
+                token_expires_at: 1,
+                created_at: 1,
+              },
+            },
+          )
+          .sort({ created_at: -1 })
+          .limit(50)
+          .toArray(),
+        db
+          .collection('marketing_posts')
+          .find(
+            { state: 'publish_failed' },
+            { projection: { _id: 0, id: 1, channel: 1, publish_error: 1, updated_at: 1 } },
+          )
+          .sort({ updated_at: -1 })
+          .limit(10)
+          .toArray(),
+        queueManager.inspect(WEBHOOK_INGEST_QUEUE),
+        // Outbound delivery pipeline (WhatsApp/SMS/email/push escalations) —
+        // status counts plus recent failures. insight bodies stay out of the
+        // projection; operators get the channel and error only.
+        db
+          .collection('delivery_queue')
+          .aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }])
+          .toArray(),
+        db
+          .collection('delivery_queue')
+          .find({ status: 'failed' }, { projection: { _id: 0, insight_id: 0, target: 0 } })
+          .sort({ updated_at: -1 })
+          .limit(10)
+          .toArray(),
+      ])
 
-    const now = new Date()
-    return {
-      generated_at: now.toISOString(),
-      process: { uptime_seconds: Math.round(process.uptime()), rss_bytes: process.memoryUsage().rss },
-      mongo: { ok: mongoOk, ping_ms: mongoPingMs },
-      // Triage notes keyed by alert/queue name — what the signal means and
-      // whether retrying it is safe. Loaded from runbooks.yaml at the repo
-      // root; empty object if the file is missing or malformed.
-      runbooks: getRunbooks(),
-      insights_by_state: Object.fromEntries(insightsByState.map((i) => [i['_id'], i['count']])),
-      marketing_posts_by_state: Object.fromEntries(postsByState.map((i) => [i['_id'], i['count']])),
-      cron_locks: cronLocks.map((lock) => ({
-        ...lock,
-        // An expired-but-present lock doc means the holder crashed without
-        // releasing — the lock self-heals on next acquire, but it's a
-        // signal that a job died mid-run.
-        stale: lock['expires_at'] instanceof Date && lock['expires_at'] < now,
-      })),
-      reminders_by_state: Object.fromEntries(remindersByState.map((i) => [i['_id'], i['count']])),
-      failed_reminders: failedReminders,
-      stale_reminder_claims: staleClaims,
-      connectors: {
-        by_connector: Object.fromEntries(connectorsById.map((c) => [c['connector_id'], c['count']])),
-        // Credential values never leave the API — only the count of tokens
-        // expiring within 7 days, so an operator knows to expect reconnects.
-        expiring_tokens_7d: expiringTokens,
-        list: connectorList,
-      },
-      delivery_by_state: Object.fromEntries(deliveryByState.map((i) => [i['_id'], i['count']])),
-      failed_deliveries: failedDeliveries,
-      failed_posts: failedPosts,
-      queue: queueStats ? { available: true as const, ...queueStats } : { available: false as const },
-      growth_events_24h: events24h,
-      documents_pending: pendingDocs,
-    }
-  })
+      const now = new Date()
+      return {
+        generated_at: now.toISOString(),
+        process: {
+          uptime_seconds: Math.round(process.uptime()),
+          rss_bytes: process.memoryUsage().rss,
+        },
+        mongo: { ok: mongoOk, ping_ms: mongoPingMs },
+        // Triage notes keyed by alert/queue name — what the signal means and
+        // whether retrying it is safe. Loaded from runbooks.yaml at the repo
+        // root; empty object if the file is missing or malformed.
+        runbooks: getRunbooks(),
+        insights_by_state: Object.fromEntries(insightsByState.map((i) => [i['_id'], i['count']])),
+        marketing_posts_by_state: Object.fromEntries(
+          postsByState.map((i) => [i['_id'], i['count']]),
+        ),
+        cron_locks: cronLocks.map((lock) => ({
+          ...lock,
+          // An expired-but-present lock doc means the holder crashed without
+          // releasing — the lock self-heals on next acquire, but it's a
+          // signal that a job died mid-run.
+          stale: lock['expires_at'] instanceof Date && lock['expires_at'] < now,
+        })),
+        reminders_by_state: Object.fromEntries(remindersByState.map((i) => [i['_id'], i['count']])),
+        failed_reminders: failedReminders,
+        stale_reminder_claims: staleClaims,
+        connectors: {
+          by_connector: Object.fromEntries(
+            connectorsById.map((c) => [c['connector_id'], c['count']]),
+          ),
+          // Credential values never leave the API — only the count of tokens
+          // expiring within 7 days, so an operator knows to expect reconnects.
+          expiring_tokens_7d: expiringTokens,
+          list: connectorList,
+        },
+        delivery_by_state: Object.fromEntries(deliveryByState.map((i) => [i['_id'], i['count']])),
+        failed_deliveries: failedDeliveries,
+        failed_posts: failedPosts,
+        queue: queueStats
+          ? { available: true as const, ...queueStats }
+          : { available: false as const },
+        growth_events_24h: events24h,
+        documents_pending: pendingDocs,
+      }
+    },
+  )
 
   /** Manual retry of a failed reminder delivery — resets it to 'scheduled'
    *  with zeroed attempts so the next dispatcher run takes a fresh shot.
    *  Audited like every other operator mutation. */
-  app.post<{ Params: { id: string } }>('/operator/reminders/:id/retry', { preHandler: requireOperator(db, 'operations.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    const result = await db.collection('reminders').updateOne(
-      { id: request.params.id, status: 'failed' },
-      { $set: { status: 'scheduled', attempts: 0, next_attempt_at: new Date(), updated_at: new Date() }, $unset: { last_error: '' } },
-    )
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'Reminder not found or not failed' })
-    await audit.log(request, 'operator.reminder.retry', 'reminder', request.params.id, parsed.data.reason)
-    return { ok: true }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/operator/reminders/:id/retry',
+    { preHandler: requireOperator(db, 'operations.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const result = await db
+        .collection('reminders')
+        .updateOne(
+          { id: request.params.id, status: 'failed' },
+          {
+            $set: {
+              status: 'scheduled',
+              attempts: 0,
+              next_attempt_at: new Date(),
+              updated_at: new Date(),
+            },
+            $unset: { last_error: '' },
+          },
+        )
+      if (result.matchedCount === 0)
+        return reply.status(404).send({ error: 'Reminder not found or not failed' })
+      await audit.log(
+        request,
+        'operator.reminder.retry',
+        'reminder',
+        request.params.id,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
 
   /** Requeue a dead-lettered job. The queue name is whitelisted so this
    *  endpoint can't reach arbitrary Redis keys; attempts reset to 0. */
   const REQUEUEABLE_QUEUES = new Set([WEBHOOK_INGEST_QUEUE])
-  app.post<{ Params: { queue: string; jobId: string } }>('/operator/queues/:queue/dead/:jobId/requeue', { preHandler: requireOperator(db, 'operations.manage') }, async (request, reply) => {
-    const parsed = ReasonSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-    if (!REQUEUEABLE_QUEUES.has(request.params.queue)) return reply.status(404).send({ error: 'Unknown queue' })
-    if (!queueManager.isAvailable()) return reply.status(503).send({ error: 'Queue backend unavailable — jobs run inline with no durable backlog' })
-    const moved = await queueManager.requeueDead(request.params.queue, request.params.jobId)
-    if (!moved) return reply.status(404).send({ error: 'Job not found in dead letter' })
-    await audit.log(request, 'operator.queue.requeue_dead', 'queue_job', `${request.params.queue}/${request.params.jobId}`, parsed.data.reason)
-    return { ok: true }
-  })
+  app.post<{ Params: { queue: string; jobId: string } }>(
+    '/operator/queues/:queue/dead/:jobId/requeue',
+    { preHandler: requireOperator(db, 'operations.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      if (!REQUEUEABLE_QUEUES.has(request.params.queue))
+        return reply.status(404).send({ error: 'Unknown queue' })
+      if (!queueManager.isAvailable())
+        return reply
+          .status(503)
+          .send({ error: 'Queue backend unavailable — jobs run inline with no durable backlog' })
+      const moved = await queueManager.requeueDead(request.params.queue, request.params.jobId)
+      if (!moved) return reply.status(404).send({ error: 'Job not found in dead letter' })
+      await audit.log(
+        request,
+        'operator.queue.requeue_dead',
+        'queue_job',
+        `${request.params.queue}/${request.params.jobId}`,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
 
   /** Revoke a tenant's connector credential — deletes the stored (encrypted)
    *  credential so syncs stop and the family must re-authorize. Destructive
@@ -1927,13 +3192,21 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     { preHandler: requireOperator(db, 'operations.manage') },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
-      if (!parsed.success) return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
       const result = await db.collection('connector_credentials').deleteOne({
         connector_id: request.params.connectorId,
         tenant_id: request.params.tenantId,
       })
-      if (result.deletedCount === 0) return reply.status(404).send({ error: 'Connector credential not found' })
-      await audit.log(request, 'operator.connector.revoke', 'connector', `${request.params.tenantId}/${request.params.connectorId}`, parsed.data.reason)
+      if (result.deletedCount === 0)
+        return reply.status(404).send({ error: 'Connector credential not found' })
+      await audit.log(
+        request,
+        'operator.connector.revoke',
+        'connector',
+        `${request.params.tenantId}/${request.params.connectorId}`,
+        parsed.data.reason,
+      )
       return { ok: true }
     },
   )
@@ -1946,19 +3219,31 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   const configCol = db.collection('platform_config')
   const configHistory = db.collection('platform_config_history')
 
-  app.get('/operator/configuration', { preHandler: requireOperator(db, 'configuration.read') }, async () => {
-    const [config, history] = await Promise.all([
-      getPlatformConfig(db),
-      configHistory.find({}, { projection: { _id: 0 } }).sort({ created_at: -1 }).limit(20).toArray(),
-    ])
-    return { config, history }
-  })
+  app.get(
+    '/operator/configuration',
+    { preHandler: requireOperator(db, 'configuration.read') },
+    async () => {
+      const [config, history] = await Promise.all([
+        getPlatformConfig(db),
+        configHistory
+          .find({}, { projection: { _id: 0 } })
+          .sort({ created_at: -1 })
+          .limit(20)
+          .toArray(),
+      ])
+      return { config, history }
+    },
+  )
 
-  const MaintenanceWindowSchema = z.object({
-    starts_at: z.string().datetime(),
-    ends_at: z.string().datetime(),
-    message: z.string().min(1).max(300),
-  }).refine((w) => new Date(w.ends_at) > new Date(w.starts_at), { message: 'ends_at must be after starts_at' })
+  const MaintenanceWindowSchema = z
+    .object({
+      starts_at: z.string().datetime(),
+      ends_at: z.string().datetime(),
+      message: z.string().min(1).max(300),
+    })
+    .refine((w) => new Date(w.ends_at) > new Date(w.starts_at), {
+      message: 'ends_at must be after starts_at',
+    })
 
   const ConfigUpdateSchema = z.object({
     maintenance_mode: z.boolean().optional(),
@@ -1969,39 +3254,65 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     reason: z.string().min(5).max(500),
   })
 
-  app.put('/operator/configuration', { preHandler: requireOperator(db, 'configuration.manage') }, async (request, reply) => {
-    const parsed = ConfigUpdateSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid configuration', issues: parsed.error.issues })
-    const { reason, ...changes } = parsed.data
-    if (Object.keys(changes).length === 0) return reply.status(400).send({ error: 'No changes provided' })
+  app.put(
+    '/operator/configuration',
+    { preHandler: requireOperator(db, 'configuration.manage') },
+    async (request, reply) => {
+      const parsed = ConfigUpdateSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply
+          .status(400)
+          .send({ error: 'Invalid configuration', issues: parsed.error.issues })
+      const { reason, ...changes } = parsed.data
+      if (Object.keys(changes).length === 0)
+        return reply.status(400).send({ error: 'No changes provided' })
 
-    const before = await getPlatformConfig(db)
-    const next: PlatformConfig = {
-      maintenance_mode: changes.maintenance_mode ?? before.maintenance_mode,
-      signups_enabled: changes.signups_enabled ?? before.signups_enabled,
-      marketing_paused: changes.marketing_paused ?? before.marketing_paused,
-      maintenance_window: changes.maintenance_window === undefined ? before.maintenance_window : changes.maintenance_window,
-    }
-    const changedKeys = (Object.keys(changes) as (keyof PlatformConfig)[]).filter((k) => changes[k] !== before[k])
-    if (changedKeys.length === 0) return reply.status(400).send({ error: 'No effective changes' })
+      const before = await getPlatformConfig(db)
+      const next: PlatformConfig = {
+        maintenance_mode: changes.maintenance_mode ?? before.maintenance_mode,
+        signups_enabled: changes.signups_enabled ?? before.signups_enabled,
+        marketing_paused: changes.marketing_paused ?? before.marketing_paused,
+        maintenance_window:
+          changes.maintenance_window === undefined
+            ? before.maintenance_window
+            : changes.maintenance_window,
+      }
+      const changedKeys = (Object.keys(changes) as (keyof PlatformConfig)[]).filter(
+        (k) => changes[k] !== before[k],
+      )
+      if (changedKeys.length === 0) return reply.status(400).send({ error: 'No effective changes' })
 
-    await configCol.updateOne(
-      { key: CONFIG_DOC_KEY },
-      { $set: { ...changes, updated_by: request.operatorContext?.user_id, updated_at: new Date() } },
-      { upsert: true },
-    )
-    await configHistory.insertOne({
-      changes,
-      before,
-      after: next,
-      changed_by: request.operatorContext?.user_id,
-      reason,
-      created_at: new Date(),
-    })
-    invalidatePlatformConfigCache()
-    await audit.log(request, 'operator.configuration.update', 'platform_config', CONFIG_DOC_KEY, reason, { changes, before, after: next })
-    return { config: next }
-  })
+      await configCol.updateOne(
+        { key: CONFIG_DOC_KEY },
+        {
+          $set: {
+            ...changes,
+            updated_by: request.operatorContext?.user_id,
+            updated_at: new Date(),
+          },
+        },
+        { upsert: true },
+      )
+      await configHistory.insertOne({
+        changes,
+        before,
+        after: next,
+        changed_by: request.operatorContext?.user_id,
+        reason,
+        created_at: new Date(),
+      })
+      invalidatePlatformConfigCache()
+      await audit.log(
+        request,
+        'operator.configuration.update',
+        'platform_config',
+        CONFIG_DOC_KEY,
+        reason,
+        { changes, before, after: next },
+      )
+      return { config: next }
+    },
+  )
 
   // ── Infrastructure cost snapshots ───────────────────────────────────────
   // Operator-recorded monthly estimates per service. Honest scope: these
@@ -2010,20 +3321,28 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   const costCol = db.collection('infra_cost_snapshots')
 
-  app.get('/operator/infrastructure', { preHandler: requireOperator(db, 'operations.read') }, async () => {
-    const snapshots = await costCol.find({}, { projection: { _id: 0 } }).sort({ recorded_at: -1 }).limit(100).toArray()
-    const latest = new Map<string, Record<string, unknown>>()
-    for (const snap of snapshots) {
-      const service = snap['service'] as string
-      if (!latest.has(service)) latest.set(service, snap)
-    }
-    const entries = [...latest.values()]
-    return {
-      services: entries,
-      total_monthly_usd: entries.reduce((sum, s) => sum + ((s['monthly_usd'] as number) ?? 0), 0),
-      history: snapshots.slice(0, 30),
-    }
-  })
+  app.get(
+    '/operator/infrastructure',
+    { preHandler: requireOperator(db, 'operations.read') },
+    async () => {
+      const snapshots = await costCol
+        .find({}, { projection: { _id: 0 } })
+        .sort({ recorded_at: -1 })
+        .limit(100)
+        .toArray()
+      const latest = new Map<string, Record<string, unknown>>()
+      for (const snap of snapshots) {
+        const service = snap['service'] as string
+        if (!latest.has(service)) latest.set(service, snap)
+      }
+      const entries = [...latest.values()]
+      return {
+        services: entries,
+        total_monthly_usd: entries.reduce((sum, s) => sum + ((s['monthly_usd'] as number) ?? 0), 0),
+        history: snapshots.slice(0, 30),
+      }
+    },
+  )
 
   const CostSnapshotSchema = z.object({
     service: z.string().min(1).max(100),
@@ -2032,20 +3351,32 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     reason: z.string().min(5).max(500),
   })
 
-  app.post('/operator/infrastructure/snapshots', { preHandler: requireOperator(db, 'operations.manage') }, async (request, reply) => {
-    const parsed = CostSnapshotSchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid snapshot', issues: parsed.error.issues })
-    const { service, monthly_usd, note, reason } = parsed.data
-    const doc = {
-      id: randomUUID(),
-      service: service.toLowerCase().trim(),
-      monthly_usd,
-      ...(note !== undefined ? { note } : {}),
-      recorded_by: request.operatorContext?.user_id,
-      recorded_at: new Date(),
-    }
-    await costCol.insertOne(doc)
-    await audit.log(request, 'operator.infrastructure.record_cost', 'infra_cost', service, reason, { monthly_usd })
-    return { snapshot: { ...doc, _id: undefined } }
-  })
+  app.post(
+    '/operator/infrastructure/snapshots',
+    { preHandler: requireOperator(db, 'operations.manage') },
+    async (request, reply) => {
+      const parsed = CostSnapshotSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid snapshot', issues: parsed.error.issues })
+      const { service, monthly_usd, note, reason } = parsed.data
+      const doc = {
+        id: randomUUID(),
+        service: service.toLowerCase().trim(),
+        monthly_usd,
+        ...(note !== undefined ? { note } : {}),
+        recorded_by: request.operatorContext?.user_id,
+        recorded_at: new Date(),
+      }
+      await costCol.insertOne(doc)
+      await audit.log(
+        request,
+        'operator.infrastructure.record_cost',
+        'infra_cost',
+        service,
+        reason,
+        { monthly_usd },
+      )
+      return { snapshot: { ...doc, _id: undefined } }
+    },
+  )
 }
