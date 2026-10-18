@@ -12,7 +12,8 @@ import path from 'node:path'
 // stack — e.g. https://app.lifekeel.si — to run the same suite against it;
 // the local dev servers are only started when it is unset.
 const WEB_BASE = process.env['E2E_WEB_BASE'] ?? 'http://localhost:3002'
-const DEVICE_SPECS = /(anonymous-check|save-result|logout-purge|responsive)\.spec\.ts$/
+const DEVICE_SPECS =
+  /(anonymous-check|save-result|logout-purge|responsive|native-region)\.spec\.ts$/
 const useLocalStack = !process.env['E2E_WEB_BASE']
 
 export default defineConfig({
