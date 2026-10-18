@@ -63,6 +63,7 @@ import {
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
 import { captureLead } from '@/lib/api'
+import { appUrl } from '@/lib/region'
 import { ScoreRing } from '@/components/Glass'
 
 // `plus` marks a card whose headline capability is Keel Plus-gated (verified
@@ -72,12 +73,44 @@ import { ScoreRing } from '@/components/Glass'
 // promised a paid capability, which undercuts both the page's own "no feature
 // here is aspirational" claim and the upgrade pitch itself.
 const FEATURES = [
-  { icon: Siren, color: '#fbbf24', title: 'Emergency Mode', body: 'One tap, always reachable, drops straight into a guided checklist for the situation you’re actually in — no menu hunting under stress.' },
-  { icon: MessageCircle, color: '#4ade80', title: '"What happens if...?" — answered', body: '"What happens if I lose my job?" gets a real, specific answer built from your data — not a canned FAQ, and not advice, just what you told Keel.' },
-  { icon: HeartPulse, color: '#f87171', title: 'A readiness snapshot, not a score to chase', body: 'Protection, wealth, goals, and savings, read from what you’ve told Keel — a starting point for your own plan, not a recommendation.' },
-  { icon: Wand2, color: '#60a5fa', title: 'Upload a document, skip the retyping', body: 'Photograph an insurance policy or pension statement to store it securely, free. Keel Plus reads the provider, policy number, amount, and dates for you automatically.', plus: true },
-  { icon: Mail, color: '#9c92ff', title: 'Connect any email, not just Gmail', body: 'Gmail, Outlook, Yahoo, iCloud, or your own domain — free to connect. Keel Plus summarizes every financial email in plain language as it arrives.', plus: true },
-  { icon: Command, color: 'rgb(var(--family-400))', title: 'A command palette, if you want it', body: 'Cmd+K jumps anywhere in the app instantly. Built for the parent who wants an answer in three seconds, not three taps.' },
+  {
+    icon: Siren,
+    color: '#fbbf24',
+    title: 'Emergency Mode',
+    body: 'One tap, always reachable, drops straight into a guided checklist for the situation you’re actually in — no menu hunting under stress.',
+  },
+  {
+    icon: MessageCircle,
+    color: '#4ade80',
+    title: '"What happens if...?" — answered',
+    body: '"What happens if I lose my job?" gets a real, specific answer built from your data — not a canned FAQ, and not advice, just what you told Keel.',
+  },
+  {
+    icon: HeartPulse,
+    color: '#f87171',
+    title: 'A readiness snapshot, not a score to chase',
+    body: 'Protection, wealth, goals, and savings, read from what you’ve told Keel — a starting point for your own plan, not a recommendation.',
+  },
+  {
+    icon: Wand2,
+    color: '#60a5fa',
+    title: 'Upload a document, skip the retyping',
+    body: 'Photograph an insurance policy or pension statement to store it securely, free. Keel Plus reads the provider, policy number, amount, and dates for you automatically.',
+    plus: true,
+  },
+  {
+    icon: Mail,
+    color: '#9c92ff',
+    title: 'Connect any email, not just Gmail',
+    body: 'Gmail, Outlook, Yahoo, iCloud, or your own domain — free to connect. Keel Plus summarizes every financial email in plain language as it arrives.',
+    plus: true,
+  },
+  {
+    icon: Command,
+    color: 'rgb(var(--family-400))',
+    title: 'A command palette, if you want it',
+    body: 'Cmd+K jumps anywhere in the app instantly. Built for the parent who wants an answer in three seconds, not three taps.',
+  },
 ]
 
 // A real product mockup, not another icon tile — reuses the same ScoreRing
@@ -119,7 +152,9 @@ function HeroPreview() {
       <div className="rounded-2xl bg-tint/[0.02] border border-tint/[0.05] p-3.5">
         <div className="flex items-center gap-2 mb-2.5">
           <Siren size={13} className="text-danger flex-shrink-0" />
-          <span className="text-footnote font-semibold text-ink-secondary">Medical emergency &mdash; response plan</span>
+          <span className="text-footnote font-semibold text-ink-secondary">
+            Medical emergency &mdash; response plan
+          </span>
         </div>
         <div className="space-y-2">
           {checklist.map((t) => (
@@ -143,12 +178,53 @@ function HeroPreview() {
 // daily checks are the closest, but don't cover protection/crisis. This visual
 // makes the "watches while you don't" claim *experiential*, not textual.
 const DETECTOR_EVENTS = [
-  { time: 'Monday 9:14 AM', icon: Eye, color: '#60a5fa', label: 'Profile updated', detail: 'You updated your household income. Keel re-evaluated all 9 detectors automatically.' },
-  { time: 'Monday 9:14 AM', icon: AlertTriangle, color: '#fbbf24', label: 'Protection gap widened', detail: 'Higher income means your family needs more coverage. Life cover now £180K short of the 10× guideline.' },
-  { time: 'Tuesday', icon: Eye, color: '#4ade80', label: 'Daily sweep', detail: 'No profile changes. Keel checked anyway — detectors run daily even when nobody logs in.' },
-  { time: 'Thursday 2:31 PM', icon: Upload, color: '#9c92ff', label: 'Policy uploaded', detail: 'You uploaded a life insurance PDF. Keel Plus extracted £350K cover, auto-updated your profile.' },
-  { time: 'Thursday 2:31 PM', icon: CheckCircle2, color: '#4ade80', label: 'Gap closed', detail: 'Protection gap resolved — your cover now exceeds the 10× income guideline. Insight auto-resolved.' },
-  { time: 'Next month', icon: Bell, color: '#f87171', label: 'Renewal approaching', detail: 'Your home insurance renews in 45 days. Keel flagged it before you forgot — no conversation needed.' },
+  {
+    time: 'Monday 9:14 AM',
+    icon: Eye,
+    color: '#60a5fa',
+    label: 'Profile updated',
+    detail: 'You updated your household income. Keel re-evaluated all 9 detectors automatically.',
+  },
+  {
+    time: 'Monday 9:14 AM',
+    icon: AlertTriangle,
+    color: '#fbbf24',
+    label: 'Protection gap widened',
+    detail:
+      'Higher income means your family needs more coverage. Life cover now £180K short of the 10× guideline.',
+  },
+  {
+    time: 'Tuesday',
+    icon: Eye,
+    color: '#4ade80',
+    label: 'Daily sweep',
+    detail:
+      'No profile changes. Keel checked anyway — detectors run daily even when nobody logs in.',
+  },
+  {
+    time: 'Thursday 2:31 PM',
+    icon: Upload,
+    color: '#9c92ff',
+    label: 'Policy uploaded',
+    detail:
+      'You uploaded a life insurance PDF. Keel Plus extracted £350K cover, auto-updated your profile.',
+  },
+  {
+    time: 'Thursday 2:31 PM',
+    icon: CheckCircle2,
+    color: '#4ade80',
+    label: 'Gap closed',
+    detail:
+      'Protection gap resolved — your cover now exceeds the 10× income guideline. Insight auto-resolved.',
+  },
+  {
+    time: 'Next month',
+    icon: Bell,
+    color: '#f87171',
+    label: 'Renewal approaching',
+    detail:
+      'Your home insurance renews in 45 days. Keel flagged it before you forgot — no conversation needed.',
+  },
 ]
 
 function DetectorTimeline() {
@@ -159,7 +235,13 @@ function DetectorTimeline() {
   useEffect(() => {
     if (!isInView) return
     const interval = setInterval(() => {
-      setVisibleCount((c) => { if (c >= DETECTOR_EVENTS.length) { clearInterval(interval); return c } return c + 1 })
+      setVisibleCount((c) => {
+        if (c >= DETECTOR_EVENTS.length) {
+          clearInterval(interval)
+          return c
+        }
+        return c + 1
+      })
     }, 600)
     return () => clearInterval(interval)
   }, [isInView])
@@ -182,12 +264,17 @@ function DetectorTimeline() {
               transition={{ duration: 0.3, ease: 'easeOut' }}
               className="flex gap-3 py-2 border-b border-tint/[0.04] last:border-0"
             >
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: `${evt.color}18` }}>
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+                style={{ background: `${evt.color}18` }}
+              >
                 <Icon size={13} color={evt.color} strokeWidth={2.5} />
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-caption font-semibold text-ink-primary truncate">{evt.label}</span>
+                  <span className="text-caption font-semibold text-ink-primary truncate">
+                    {evt.label}
+                  </span>
                   <span className="text-caption text-ink-tertiary flex-shrink-0">{evt.time}</span>
                 </div>
                 <p className="text-caption text-ink-tertiary leading-snug">{evt.detail}</p>
@@ -207,27 +294,59 @@ function DetectorTimeline() {
 // person their own readiness view scoped to their life stage.
 const FAMILY_TWINS = [
   {
-    initials: 'AC', name: 'Alex', role: 'Primary earner', age: '42',
-    icon: Briefcase, color: '#60a5fa',
-    insights: ['Income protection covers 65% of salary', 'Pension on track for target age 62', 'Life cover £180K short of guideline'],
+    initials: 'AC',
+    name: 'Alex',
+    role: 'Primary earner',
+    age: '42',
+    icon: Briefcase,
+    color: '#60a5fa',
+    insights: [
+      'Income protection covers 65% of salary',
+      'Pension on track for target age 62',
+      'Life cover £180K short of guideline',
+    ],
     score: 74,
   },
   {
-    initials: 'JC', name: 'Jordan', role: 'Partner', age: '39',
-    icon: HeartPulse, color: '#f87171',
-    insights: ['No income protection on file', 'Critical illness cover: none', 'Pension contribution below auto-enrolment minimum'],
+    initials: 'JC',
+    name: 'Jordan',
+    role: 'Partner',
+    age: '39',
+    icon: HeartPulse,
+    color: '#f87171',
+    insights: [
+      'No income protection on file',
+      'Critical illness cover: none',
+      'Pension contribution below auto-enrolment minimum',
+    ],
     score: 41,
   },
   {
-    initials: 'SC', name: 'Sam', role: 'Child', age: '7',
-    icon: GraduationCap, color: '#4ade80',
-    insights: ['Education fund: £12K saved, £35K target', 'On current rate: funded by age 16', 'No guardian designated in will'],
+    initials: 'SC',
+    name: 'Sam',
+    role: 'Child',
+    age: '7',
+    icon: GraduationCap,
+    color: '#4ade80',
+    insights: [
+      'Education fund: £12K saved, £35K target',
+      'On current rate: funded by age 16',
+      'No guardian designated in will',
+    ],
     score: 62,
   },
   {
-    initials: 'MC', name: 'Mia', role: 'Child', age: '2',
-    icon: Baby, color: '#fbbf24',
-    insights: ['Education fund: not started', '16 years to target — roughly £85/mo would close the gap', 'New dependent: household protection recalculated'],
+    initials: 'MC',
+    name: 'Mia',
+    role: 'Child',
+    age: '2',
+    icon: Baby,
+    color: '#fbbf24',
+    insights: [
+      'Education fund: not started',
+      '16 years to target — roughly £85/mo would close the gap',
+      'New dependent: household protection recalculated',
+    ],
     score: 28,
   },
 ]
@@ -238,7 +357,9 @@ function FamilyTwinViz() {
 
   return (
     <div className="glass rounded-2xl p-5 sm:p-6 max-w-md w-full mx-auto lg:mx-0">
-      <div className="text-footnote font-bold text-ink-secondary mb-4">Each member gets their own view</div>
+      <div className="text-footnote font-bold text-ink-secondary mb-4">
+        Each member gets their own view
+      </div>
       <div className="flex gap-2 mb-5">
         {FAMILY_TWINS.map((m, i) => (
           <button
@@ -246,7 +367,9 @@ function FamilyTwinViz() {
             onClick={() => setSelected(i)}
             className={`flex-1 rounded-xl p-2.5 text-center border transition-all ${i === selected ? 'border-family-500 bg-family-500/10' : 'border-tint/[0.06] bg-tint/[0.02] hover:border-tint/[0.12]'}`}
           >
-            <div className={`w-7 h-7 rounded-full mx-auto mb-1.5 flex items-center justify-center text-caption font-bold ${i === selected ? 'bg-family-500/20 text-family-400' : 'bg-tint/[0.06] text-ink-tertiary'}`}>
+            <div
+              className={`w-7 h-7 rounded-full mx-auto mb-1.5 flex items-center justify-center text-caption font-bold ${i === selected ? 'bg-family-500/20 text-family-400' : 'bg-tint/[0.06] text-ink-tertiary'}`}
+            >
               {m.initials}
             </div>
             <div className="text-caption font-semibold truncate">{m.name}</div>
@@ -266,12 +389,17 @@ function FamilyTwinViz() {
             <ScoreRing score={member.score} size={44} />
             <div>
               <div className="text-sm font-bold">{member.name}&apos;s readiness</div>
-              <div className="text-caption text-ink-tertiary">{member.role}, age {member.age}</div>
+              <div className="text-caption text-ink-tertiary">
+                {member.role}, age {member.age}
+              </div>
             </div>
           </div>
           <div className="space-y-1.5">
             {member.insights.map((ins) => (
-              <div key={ins} className="flex items-start gap-2 text-caption text-ink-secondary leading-snug">
+              <div
+                key={ins}
+                className="flex items-start gap-2 text-caption text-ink-secondary leading-snug"
+              >
                 <span className="w-1 h-1 rounded-full bg-ink-tertiary flex-shrink-0 mt-1.5" />
                 {ins}
               </div>
@@ -280,7 +408,8 @@ function FamilyTwinViz() {
         </motion.div>
       </AnimatePresence>
       <div className="mt-3 rounded-lg bg-warning/10 border border-warning/25 px-3 py-2 text-caption font-semibold text-warning leading-snug">
-        &#9888; Sample family — your real scores come from your real data. Per-member twin views are still maturing in the app today.
+        &#9888; Sample family — your real scores come from your real data. Per-member twin views are
+        still maturing in the app today.
       </div>
     </div>
   )
@@ -302,7 +431,7 @@ const ALTERNATIVES = [
   {
     category: 'AI financial advisors',
     what: 'Need you to ask a question first',
-    keel: 'Keel surfaces what\'s wrong before you think to ask — detectors run daily, even when nobody logs in',
+    keel: "Keel surfaces what's wrong before you think to ask — detectors run daily, even when nobody logs in",
     color: '#60a5fa',
   },
   {
@@ -314,7 +443,7 @@ const ALTERNATIVES = [
   {
     category: 'Document vaults',
     what: 'Store your files — you search, you query',
-    keel: 'Keel reasons over what you upload (Keel Plus reads the details for you) — then shows you what\'s missing',
+    keel: "Keel reasons over what you upload (Keel Plus reads the details for you) — then shows you what's missing",
     color: '#4ade80',
   },
 ]
@@ -340,17 +469,26 @@ function LifeKeelPlusSpotlight() {
           Skip the retyping &mdash; Keel reads your documents for you.
         </h2>
         <p className="text-sm text-ink-secondary leading-relaxed max-w-md mb-5">
-          Photograph an insurance policy or pension statement and Keel Plus pulls out the provider, policy
-          number, amount, and renewal date automatically &mdash; no manual entry, no re-typing numbers off a PDF.
+          Photograph an insurance policy or pension statement and Keel Plus pulls out the provider,
+          policy number, amount, and renewal date automatically &mdash; no manual entry, no
+          re-typing numbers off a PDF.
         </p>
-        <Link href="/welcome" onClick={() => { haptic('light'); track('landing_get_started_click', { location: 'plus_spotlight' }) }} className="inline-block">
+        {/* plain <a>: /welcome lives on the app host — a <Link>'s RSC fetch dies on the cross-origin redirect (see appUrl) */}
+        <a
+          href={appUrl('/welcome')}
+          onClick={() => {
+            haptic('light')
+            track('landing_get_started_click', { location: 'plus_spotlight' })
+          }}
+          className="inline-block"
+        >
           <motion.div
             whileTap={{ scale: 0.97 }}
             className="bg-family-500 text-white font-semibold rounded-2xl py-3 px-6 text-sm text-center shadow-md shadow-family-500/15"
           >
             Try it free, upgrade anytime
           </motion.div>
-        </Link>
+        </a>
       </div>
       <div className="order-1 lg:order-2 glass rounded-2xl p-5 max-w-sm w-full mx-auto lg:mx-0">
         <div className="flex items-center gap-2 mb-4">
@@ -359,9 +497,14 @@ function LifeKeelPlusSpotlight() {
         </div>
         <div className="space-y-2">
           {fields.map((f) => (
-            <div key={f.label} className="flex items-center justify-between gap-3 rounded-lg bg-family-500/[0.06] px-3 py-2">
+            <div
+              key={f.label}
+              className="flex items-center justify-between gap-3 rounded-lg bg-family-500/[0.06] px-3 py-2"
+            >
               <span className="text-footnote text-ink-tertiary flex-shrink-0">{f.label}</span>
-              <span className="text-footnote font-semibold text-ink-primary truncate">{f.value}</span>
+              <span className="text-footnote font-semibold text-ink-primary truncate">
+                {f.value}
+              </span>
             </div>
           ))}
         </div>
@@ -386,7 +529,11 @@ function FooterNewsletter() {
   }
 
   if (state === 'done') {
-    return <p className="text-footnote text-success">Subscribed &mdash; we&apos;ll only send what matters.</p>
+    return (
+      <p className="text-footnote text-success">
+        Subscribed &mdash; we&apos;ll only send what matters.
+      </p>
+    )
   }
 
   return (
@@ -402,11 +549,16 @@ function FooterNewsletter() {
           placeholder="you@example.com"
           className="glass-input min-w-0 flex-1 rounded-lg px-3 py-2 text-xs text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40"
         />
-        <button disabled={state === 'busy' || !email.trim()} className="rounded-lg bg-family-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40 flex-shrink-0">
+        <button
+          disabled={state === 'busy' || !email.trim()}
+          className="rounded-lg bg-family-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40 flex-shrink-0"
+        >
           {state === 'busy' ? '...' : 'Join'}
         </button>
       </div>
-      {state === 'error' && <p className="text-caption text-danger">Couldn&apos;t subscribe &mdash; try again.</p>}
+      {state === 'error' && (
+        <p className="text-caption text-danger">Couldn&apos;t subscribe &mdash; try again.</p>
+      )}
     </form>
   )
 }
@@ -418,33 +570,60 @@ function MarketingNav() {
     <header className="sticky top-0 z-nav border-b border-tint/[0.06] bg-navbg/80 backdrop-blur-xl">
       <div className="max-w-6xl mx-auto px-6 sm:px-10 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2 min-h-0">
-          <img src="/icon.svg" alt="" width={30} height={30} className="rounded-[7px] flex-shrink-0" />
+          <img
+            src="/icon.svg"
+            alt=""
+            width={30}
+            height={30}
+            className="rounded-[7px] flex-shrink-0"
+          />
           <span className="text-callout font-bold tracking-tight">LifeKeel</span>
         </Link>
         <nav className="hidden md:flex items-center gap-7 text-subhead font-medium text-ink-secondary">
-          <a href="#how-it-works" className="hover:text-ink-primary transition-colors">How it works</a>
-          <a href="#features" className="hover:text-ink-primary transition-colors">Features</a>
-          <a href="#pricing" className="hover:text-ink-primary transition-colors">Pricing</a>
-          <a href="#security" className="hover:text-ink-primary transition-colors">Security</a>
-          <a href="#faq" className="hover:text-ink-primary transition-colors">FAQ</a>
-          <Link href="/guides" className="hover:text-ink-primary transition-colors">Guides</Link>
+          <a href="#how-it-works" className="hover:text-ink-primary transition-colors">
+            How it works
+          </a>
+          <a href="#features" className="hover:text-ink-primary transition-colors">
+            Features
+          </a>
+          <a href="#pricing" className="hover:text-ink-primary transition-colors">
+            Pricing
+          </a>
+          <a href="#security" className="hover:text-ink-primary transition-colors">
+            Security
+          </a>
+          <a href="#faq" className="hover:text-ink-primary transition-colors">
+            FAQ
+          </a>
+          <Link href="/guides" className="hover:text-ink-primary transition-colors">
+            Guides
+          </Link>
         </nav>
         <div className="flex items-center gap-4">
-          <Link
-            href="/login"
-            onClick={() => { haptic('light'); track('landing_signin_click') }}
+          <a
+            href={appUrl('/login')}
+            onClick={() => {
+              haptic('light')
+              track('landing_signin_click')
+            }}
             className="hidden sm:block text-subhead font-semibold text-ink-secondary min-h-0"
           >
             Sign in
-          </Link>
-          <Link href="/welcome" onClick={() => { haptic('light'); track('landing_get_started_click', { location: 'nav' }) }}>
+          </a>
+          <a
+            href={appUrl('/welcome')}
+            onClick={() => {
+              haptic('light')
+              track('landing_get_started_click', { location: 'nav' })
+            }}
+          >
             <motion.div
               whileTap={{ scale: 0.96 }}
               className="bg-family-500 text-white text-subhead font-semibold rounded-xl px-4 py-2.5 whitespace-nowrap"
             >
               Get started
             </motion.div>
-          </Link>
+          </a>
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
             className="md:hidden w-10 h-10 flex items-center justify-center text-ink-secondary"
@@ -471,7 +650,7 @@ function MarketingNav() {
                 { href: '#faq', label: 'FAQ' },
                 { href: '/blog', label: 'Blog' },
                 { href: '/guides', label: 'Guides' },
-                { href: '/login', label: 'Sign in' },
+                { href: appUrl('/login'), label: 'Sign in' },
               ].map((item) => (
                 <a
                   key={item.href}
@@ -509,19 +688,28 @@ export function MarketingLanding() {
             Free to start &middot; no credit card
           </div>
           <h1 className="text-title-lg sm:text-display-sm lg:text-display leading-[1.15] font-bold tracking-tight mb-4">
-            Is your family ready if something goes wrong <span className="text-gradient">tomorrow?</span>
+            Is your family ready if something goes wrong{' '}
+            <span className="text-gradient">tomorrow?</span>
           </h1>
           <p className="text-lead text-ink-secondary leading-relaxed mb-3">
-            LifeKeel continuously monitors whether your family is protected &mdash; emergency fund, insurance
-            coverage, estate documents, retirement trajectory &mdash; and tells you what&apos;s missing
-            before you need to ask.
+            LifeKeel continuously monitors whether your family is protected &mdash; emergency fund,
+            insurance coverage, estate documents, retirement trajectory &mdash; and tells you
+            what&apos;s missing before you need to ask.
           </p>
           <p className="text-sm text-ink-tertiary leading-relaxed mb-6">
-            Not a budgeting app. Not an AI financial advisor. Not a vault.<br />
+            Not a budgeting app. Not an AI financial advisor. Not a vault.
+            <br />
             The always-on readiness system for your family.
           </p>
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
-            <Link href="/readiness" onClick={() => { haptic('light'); track('landing_quiz_click', { location: 'hero' }) }} className="block sm:inline-block">
+            <Link
+              href="/readiness"
+              onClick={() => {
+                haptic('light')
+                track('landing_quiz_click', { location: 'hero' })
+              }}
+              className="block sm:inline-block"
+            >
               <motion.div
                 whileTap={{ scale: 0.97 }}
                 className="sm:w-auto bg-family-500 text-white font-semibold rounded-2xl py-4 px-8 text-base text-center shadow-md shadow-family-500/15"
@@ -529,13 +717,23 @@ export function MarketingLanding() {
                 Check your readiness free
               </motion.div>
             </Link>
-            <Link href="/welcome" onClick={() => { haptic('light'); track('landing_get_started_click', { location: 'hero' }) }} className="block sm:inline-block text-center py-2.5">
-              <span className="text-sm font-semibold text-ink-secondary">or get started &rarr;</span>
-            </Link>
+            <a
+              href={appUrl('/welcome')}
+              onClick={() => {
+                haptic('light')
+                track('landing_get_started_click', { location: 'hero' })
+              }}
+              className="block sm:inline-block text-center py-2.5"
+            >
+              <span className="text-sm font-semibold text-ink-secondary">
+                or get started &rarr;
+              </span>
+            </a>
           </div>
           <p className="text-footnote text-ink-tertiary leading-snug">
-            Informational and educational only &mdash; not financial, investment,
-            tax, or legal advice, and not a substitute for calling emergency services (999, 112, 911) in a real emergency.
+            Informational and educational only &mdash; not financial, investment, tax, or legal
+            advice, and not a substitute for calling emergency services (999, 112, 911) in a real
+            emergency.
           </p>
         </div>
 
@@ -547,13 +745,34 @@ export function MarketingLanding() {
         <div className="glass rounded-2xl p-5 sm:p-6">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
             {[
-              { stat: '9 detectors', label: 'monitor your family continuously — not when you ask, but every day, even when nobody logs in', source: '' },
-              { stat: '7 crisis types', label: 'job loss, illness, bereavement and more — each with a step-by-step checklist built from your own numbers', source: '' },
-              { stat: '£0 to start', label: 'Keel Plus is £7.99/mo and only adds AI document and inbox reading — no commissions, ever', source: '' },
-              { stat: '60 seconds', label: 'to a free readiness check — six questions, no signup, no email', source: '' },
+              {
+                stat: '9 detectors',
+                label:
+                  'monitor your family continuously — not when you ask, but every day, even when nobody logs in',
+                source: '',
+              },
+              {
+                stat: '7 crisis types',
+                label:
+                  'job loss, illness, bereavement and more — each with a step-by-step checklist built from your own numbers',
+                source: '',
+              },
+              {
+                stat: '£0 to start',
+                label:
+                  'Keel Plus is £7.99/mo and only adds AI document and inbox reading — no commissions, ever',
+                source: '',
+              },
+              {
+                stat: '60 seconds',
+                label: 'to a free readiness check — six questions, no signup, no email',
+                source: '',
+              },
             ].map((p) => (
               <div key={p.stat} className="text-center sm:text-left">
-                <div className="text-xl sm:text-2xl font-bold text-family-400 leading-none mb-1.5">{p.stat}</div>
+                <div className="text-xl sm:text-2xl font-bold text-family-400 leading-none mb-1.5">
+                  {p.stat}
+                </div>
                 <p className="text-footnote text-ink-secondary leading-snug">{p.label}</p>
                 {p.source && <p className="text-caption text-ink-tertiary mt-1">{p.source}</p>}
               </div>
@@ -562,7 +781,10 @@ export function MarketingLanding() {
           <div className="text-center mt-5 pt-4 border-t border-tint/[0.06]">
             <Link
               href="/readiness"
-              onClick={() => { haptic('light'); track('landing_quiz_click', { location: 'proof_points' }) }}
+              onClick={() => {
+                haptic('light')
+                track('landing_quiz_click', { location: 'proof_points' })
+              }}
               className="inline-flex items-center gap-2 text-sm font-semibold text-family-400"
             >
               Find your own number in 60 seconds <ArrowRight size={14} />
@@ -573,21 +795,47 @@ export function MarketingLanding() {
 
       {/* How it works — 3-step strip */}
       <div id="how-it-works" className="max-w-6xl mx-auto px-6 sm:px-10 py-10 sm:py-16">
-        <h2 className="text-title-md lg:text-title-lg font-bold text-center mb-2">Ready in three steps</h2>
+        <h2 className="text-title-md lg:text-title-lg font-bold text-center mb-2">
+          Ready in three steps
+        </h2>
         <p className="text-sm text-ink-tertiary text-center mb-7 sm:mb-10 max-w-sm mx-auto">
-          Start with the 60-second check, or sign up for the full picture. No credit card, no sales call.
+          Start with the 60-second check, or sign up for the full picture. No credit card, no sales
+          call.
         </p>
         <div className="grid gap-6 sm:grid-cols-3">
           {[
-            { step: '1', icon: Upload, title: 'Tell Keel about your family', body: 'Income, savings, insurance, dependents. A short form — or upload a document and Keel reads it for you.' },
-            { step: '2', icon: BarChart3, title: 'See your readiness score', body: 'The quick check scores two areas from six answers; a full account scores five — protection, wealth, goals, savings, and estate — from your own numbers. The maths is visible.' },
-            { step: '3', icon: Shield, title: 'Get a plan before you need one', body: 'What happens if you lose your job next month? Keel builds a step-by-step playbook from your real data — not a generic checklist.' },
+            {
+              step: '1',
+              icon: Upload,
+              title: 'Tell Keel about your family',
+              body: 'Income, savings, insurance, dependents. A short form — or upload a document and Keel reads it for you.',
+            },
+            {
+              step: '2',
+              icon: BarChart3,
+              title: 'See your readiness score',
+              body: 'The quick check scores two areas from six answers; a full account scores five — protection, wealth, goals, savings, and estate — from your own numbers. The maths is visible.',
+            },
+            {
+              step: '3',
+              icon: Shield,
+              title: 'Get a plan before you need one',
+              body: 'What happens if you lose your job next month? Keel builds a step-by-step playbook from your real data — not a generic checklist.',
+            },
           ].map((s) => (
-            <motion.div key={s.step} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center">
+            <motion.div
+              key={s.step}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="text-center"
+            >
               <div className="w-12 h-12 rounded-2xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mx-auto mb-4">
                 <s.icon size={20} className="text-family-400" />
               </div>
-              <div className="text-xs font-bold uppercase tracking-wide text-family-400 mb-1.5">Step {s.step}</div>
+              <div className="text-xs font-bold uppercase tracking-wide text-family-400 mb-1.5">
+                Step {s.step}
+              </div>
               <h3 className="text-callout font-bold mb-1.5">{s.title}</h3>
               <p className="text-footnote text-ink-secondary leading-relaxed">{s.body}</p>
             </motion.div>
@@ -601,7 +849,9 @@ export function MarketingLanding() {
           user action — the single feature no competitor replicates. */}
       <div className="max-w-6xl mx-auto px-6 sm:px-10 py-10 sm:py-20 grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
         <div className="max-w-md">
-          <div className="text-xs font-bold uppercase tracking-wider text-family-400 mb-3">What makes Keel different</div>
+          <div className="text-xs font-bold uppercase tracking-wider text-family-400 mb-3">
+            What makes Keel different
+          </div>
           <h2 className="text-title-md lg:text-title-lg font-bold mb-3 leading-tight">
             A system that watches while you don&apos;t.
           </h2>
@@ -611,8 +861,9 @@ export function MarketingLanding() {
             <strong> every day, even when nobody logs in</strong>.
           </p>
           <p className="text-sm text-ink-secondary leading-relaxed mb-4">
-            Upload a new policy? Detectors re-evaluate instantly. Income changes? Gaps are recalculated
-            before you close the tab. Nothing updated in a year? Keel prompts you to review what&apos;s changed.
+            Upload a new policy? Detectors re-evaluate instantly. Income changes? Gaps are
+            recalculated before you close the tab. Nothing updated in a year? Keel prompts you to
+            review what&apos;s changed.
           </p>
           <div className="flex items-center gap-3 text-sm text-ink-tertiary">
             <div className="flex items-center gap-1.5">
@@ -636,20 +887,33 @@ export function MarketingLanding() {
           <FamilyTwinViz />
         </div>
         <div className="order-1 lg:order-2 max-w-md">
-          <div className="text-xs font-bold uppercase tracking-wider text-family-400 mb-3">Per-member reasoning</div>
+          <div className="text-xs font-bold uppercase tracking-wider text-family-400 mb-3">
+            Per-member reasoning
+          </div>
           <h2 className="text-title-md lg:text-title-lg font-bold mb-3 leading-tight">
             Every family member gets their own digital twin.
           </h2>
           <p className="text-sm text-ink-secondary leading-relaxed mb-4">
-            Not just shared access to the same dashboard. Each person &mdash; earner, partner, child &mdash;
-            gets a readiness score, insights, and scenarios scoped to their own life stage, income, and linked policies.
+            Not just shared access to the same dashboard. Each person &mdash; earner, partner, child
+            &mdash; gets a readiness score, insights, and scenarios scoped to their own life stage,
+            income, and linked policies.
           </p>
           <p className="text-sm text-ink-secondary leading-relaxed mb-4">
-            &ldquo;What happens to <em>my</em> retirement if <em>my</em> income changes?&rdquo; works for the second
-            earner, not just the person who signed up. Children get age-appropriate views with guardian oversight.
+            &ldquo;What happens to <em>my</em> retirement if <em>my</em> income changes?&rdquo;
+            works for the second earner, not just the person who signed up. Children get
+            age-appropriate views with guardian oversight.
           </p>
-          <Link href="/readiness" onClick={() => { haptic('light'); track('landing_quiz_click', { location: 'twin_section' }) }}>
-            <motion.div whileTap={{ scale: 0.97 }} className="inline-flex items-center gap-2 text-sm font-semibold text-family-400">
+          <Link
+            href="/readiness"
+            onClick={() => {
+              haptic('light')
+              track('landing_quiz_click', { location: 'twin_section' })
+            }}
+          >
+            <motion.div
+              whileTap={{ scale: 0.97 }}
+              className="inline-flex items-center gap-2 text-sm font-semibold text-family-400"
+            >
               See what Keel would say about your family <ArrowRight size={14} />
             </motion.div>
           </Link>
@@ -661,13 +925,16 @@ export function MarketingLanding() {
           Strongest competitive differentiator per the gap review (8/10). */}
       <div className="max-w-6xl mx-auto px-6 sm:px-10 py-10 sm:py-20">
         <div className="text-center mb-10">
-          <div className="text-xs font-bold uppercase tracking-wider text-family-400 mb-3">Crisis-native, not crisis-adjacent</div>
+          <div className="text-xs font-bold uppercase tracking-wider text-family-400 mb-3">
+            Crisis-native, not crisis-adjacent
+          </div>
           <h2 className="text-title-md lg:text-title-lg font-bold mb-3">
             When something goes wrong, Keel already has your plan.
           </h2>
           <p className="text-sm text-ink-tertiary max-w-lg mx-auto leading-relaxed">
             Not a generic emergency checklist. A step-by-step playbook built from your real income,
-            your real policies, your real savings &mdash; with the provider contact details from any policies you&apos;ve added.
+            your real policies, your real savings &mdash; with the provider contact details from any
+            policies you&apos;ve added.
           </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -676,45 +943,62 @@ export function MarketingLanding() {
               icon: Siren,
               color: '#fbbf24',
               scenario: 'Job loss, two kids in school',
-              answer: 'Keel shows your exact runway: 4.2 months of expenses covered, which bills to pause first, and whether your income protection would replace enough.',
+              answer:
+                'Keel shows your exact runway: 4.2 months of expenses covered, which bills to pause first, and whether your income protection would replace enough.',
             },
             {
               icon: HeartPulse,
               color: '#f87171',
-              scenario: 'Partner diagnosed, can\'t work',
-              answer: 'Emergency mode pulls up your critical-illness cover amount, your savings runway, and a step-by-step checklist — specific to your policy, not a generic guide.',
+              scenario: "Partner diagnosed, can't work",
+              answer:
+                'Emergency mode pulls up your critical-illness cover amount, your savings runway, and a step-by-step checklist — specific to your policy, not a generic guide.',
             },
             {
               icon: Users,
               color: '#4ade80',
               scenario: 'New baby arriving in March',
-              answer: 'Keel recalculates everything at once: the protection gap grows (new dependent), the emergency fund target rises, and an 18-year education savings runway begins.',
+              answer:
+                'Keel recalculates everything at once: the protection gap grows (new dependent), the emergency fund target rises, and an 18-year education savings runway begins.',
             },
             {
               icon: Clock,
               color: '#60a5fa',
               scenario: 'Retirement in 12 years, unsure if on track',
-              answer: 'Keel shows your projected retirement age against your target and estimates the monthly gap — a starting point for a conversation with a pension professional.',
+              answer:
+                'Keel shows your projected retirement age against your target and estimates the monthly gap — a starting point for a conversation with a pension professional.',
             },
             {
               icon: FileText,
               color: '#9c92ff',
               scenario: 'Three insurance policies, no idea what they cover',
-              answer: 'Upload them. Keel extracts provider, amounts, and renewal dates, then flags overlaps and gaps against your household\'s actual need.',
+              answer:
+                "Upload them. Keel extracts provider, amounts, and renewal dates, then flags overlaps and gaps against your household's actual need.",
             },
             {
               icon: Shield,
               color: 'rgb(var(--family-400))',
               scenario: 'No will, no power of attorney, two dependents',
-              answer: 'Keel flags exactly what\'s missing from your estate — not legal advice, but the prompt to have the conversation with a solicitor before you need to.',
+              answer:
+                "Keel flags exactly what's missing from your estate — not legal advice, but the prompt to have the conversation with a solicitor before you need to.",
             },
           ].map((s) => (
-            <motion.div key={s.scenario} initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="glass rounded-2xl p-4 sm:p-5">
+            <motion.div
+              key={s.scenario}
+              initial={{ opacity: 0, y: 16 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="glass rounded-2xl p-4 sm:p-5"
+            >
               <div className="flex items-center gap-2.5 mb-3">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${s.color}22` }}>
+                <div
+                  className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: `${s.color}22` }}
+                >
                   <s.icon size={15} color={s.color} strokeWidth={2} />
                 </div>
-                <span className="text-sm font-semibold text-ink-primary leading-snug">{s.scenario}</span>
+                <span className="text-sm font-semibold text-ink-primary leading-snug">
+                  {s.scenario}
+                </span>
               </div>
               <p className="text-footnote text-ink-secondary leading-relaxed">{s.answer}</p>
             </motion.div>
@@ -726,25 +1010,45 @@ export function MarketingLanding() {
           The market-positioning doc's quadrant: Keel is upper-left (proactive +
           protection). Every other quadrant is named by *category*, never brand. */}
       <div className="max-w-4xl mx-auto px-6 sm:px-10 py-10 sm:py-16">
-        <h2 className="text-title-md lg:text-title-lg font-bold text-center mb-2">You&apos;ve probably tried the alternatives.</h2>
+        <h2 className="text-title-md lg:text-title-lg font-bold text-center mb-2">
+          You&apos;ve probably tried the alternatives.
+        </h2>
         <p className="text-sm text-ink-tertiary text-center mb-7 sm:mb-10 max-w-md mx-auto">
-          Keel isn&apos;t another budgeting app, another AI chatbot, or another insurance quiz. Here&apos;s what it replaces.
+          Keel isn&apos;t another budgeting app, another AI chatbot, or another insurance quiz.
+          Here&apos;s what it replaces.
         </p>
         <div className="space-y-3">
           {ALTERNATIVES.map((alt) => (
-            <motion.div key={alt.category} initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="glass rounded-2xl p-4 sm:p-5">
+            <motion.div
+              key={alt.category}
+              initial={{ opacity: 0, y: 12 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="glass rounded-2xl p-4 sm:p-5"
+            >
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: alt.color }} />
+                <div
+                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                  style={{ background: alt.color }}
+                />
                 <span className="text-sm font-bold text-ink-primary">{alt.category}</span>
               </div>
               <div className="grid sm:grid-cols-2 gap-3 sm:gap-6">
                 <div>
-                  <span className="text-caption font-bold uppercase tracking-wide text-ink-tertiary">What they do</span>
-                  <p className="text-footnote text-ink-secondary leading-relaxed mt-1">{alt.what}</p>
+                  <span className="text-caption font-bold uppercase tracking-wide text-ink-tertiary">
+                    What they do
+                  </span>
+                  <p className="text-footnote text-ink-secondary leading-relaxed mt-1">
+                    {alt.what}
+                  </p>
                 </div>
                 <div>
-                  <span className="text-caption font-bold uppercase tracking-wide text-family-400">What Keel does instead</span>
-                  <p className="text-footnote text-ink-secondary leading-relaxed mt-1">{alt.keel}</p>
+                  <span className="text-caption font-bold uppercase tracking-wide text-family-400">
+                    What Keel does instead
+                  </span>
+                  <p className="text-footnote text-ink-secondary leading-relaxed mt-1">
+                    {alt.keel}
+                  </p>
                 </div>
               </div>
             </motion.div>
@@ -756,18 +1060,22 @@ export function MarketingLanding() {
       <div className="max-w-6xl mx-auto px-6 sm:px-10 py-10 sm:py-16 grid lg:grid-cols-2 gap-10 items-center">
         <div>
           <h2 className="text-title-md lg:text-title-lg font-bold mb-3 leading-tight">
-            Most finance apps fake confidence.<br />This one doesn&apos;t.
+            Most finance apps fake confidence.
+            <br />
+            This one doesn&apos;t.
           </h2>
           <p className="text-sm text-ink-secondary leading-relaxed max-w-md">
-            Before you connect anything, LifeKeel shows sample numbers so you can see what it does &mdash; clearly
-            labeled as samples, not dressed up as yours. The moment real data replaces them, the label disappears.
-            Keel organizes what you tell it and helps you prepare &mdash; it doesn&apos;t recommend investments
-            or tell you what to buy.
+            Before you connect anything, LifeKeel shows sample numbers so you can see what it does
+            &mdash; clearly labeled as samples, not dressed up as yours. The moment real data
+            replaces them, the label disappears. Keel organizes what you tell it and helps you
+            prepare &mdash; it doesn&apos;t recommend investments or tell you what to buy.
           </p>
         </div>
         <div className="glass rounded-2xl p-4 max-w-xs mx-auto lg:mx-0">
           <div className="flex items-center gap-2 mb-2.5">
-            <span className="font-bold text-success text-callout">90<span className="text-caption text-ink-tertiary font-normal"> / 100</span></span>
+            <span className="font-bold text-success text-callout">
+              90<span className="text-caption text-ink-tertiary font-normal"> / 100</span>
+            </span>
             <span className="text-footnote text-ink-secondary">Protection</span>
           </div>
           <div className="rounded-lg bg-warning/10 border border-warning/25 px-3 py-2 text-footnote font-semibold text-warning leading-snug">
@@ -778,9 +1086,12 @@ export function MarketingLanding() {
 
       {/* Feature grid */}
       <div id="features" className="max-w-6xl mx-auto px-6 sm:px-10 py-10 sm:py-16">
-        <h2 className="text-title-md lg:text-title-lg font-bold text-center mb-2">What&apos;s actually in it</h2>
+        <h2 className="text-title-md lg:text-title-lg font-bold text-center mb-2">
+          What&apos;s actually in it
+        </h2>
         <p className="text-sm text-ink-tertiary text-center mb-7 sm:mb-10 max-w-xs mx-auto">
-          No feature here is aspirational &mdash; everything below is something you can do in the app today.
+          No feature here is aspirational &mdash; everything below is something you can do in the
+          app today.
         </p>
         <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map((f) => (
@@ -790,7 +1101,10 @@ export function MarketingLanding() {
                   Keel Plus
                 </span>
               )}
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3" style={{ background: `${f.color}22` }}>
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center mb-3"
+                style={{ background: `${f.color}22` }}
+              >
                 <f.icon size={17} color={f.color} strokeWidth={2} />
               </div>
               <h3 className="text-callout font-bold mb-1 pr-16">{f.title}</h3>
@@ -812,44 +1126,66 @@ export function MarketingLanding() {
             Zero commissions. Zero product recommendations. Ever.
           </h2>
           <p className="text-sm text-ink-secondary leading-relaxed max-w-lg mx-auto mb-4">
-            Every insurance gap tool, every coverage scorer, every &ldquo;AI advisor&rdquo; makes money when you buy
-            what they suggest. Keel makes money from your subscription and nothing else. When Keel says your
-            life cover is £180K short, it&apos;s not selling you a policy &mdash; it&apos;s telling you what the maths says,
-            and pointing you to a licensed professional for the decision.
+            Every insurance gap tool, every coverage scorer, every &ldquo;AI advisor&rdquo; makes
+            money when you buy what they suggest. Keel makes money from your subscription and
+            nothing else. When Keel says your life cover is £180K short, it&apos;s not selling you a
+            policy &mdash; it&apos;s telling you what the maths says, and pointing you to a licensed
+            professional for the decision.
           </p>
           <div className="flex flex-wrap justify-center gap-4 text-footnote text-ink-tertiary">
-            <span className="flex items-center gap-1.5"><CheckCircle2 size={13} className="text-success" /> Subscription-only revenue</span>
-            <span className="flex items-center gap-1.5"><CheckCircle2 size={13} className="text-success" /> No affiliate links</span>
-            <span className="flex items-center gap-1.5"><CheckCircle2 size={13} className="text-success" /> No partner commissions</span>
-            <span className="flex items-center gap-1.5"><CheckCircle2 size={13} className="text-success" /> Data never sold</span>
+            <span className="flex items-center gap-1.5">
+              <CheckCircle2 size={13} className="text-success" /> Subscription-only revenue
+            </span>
+            <span className="flex items-center gap-1.5">
+              <CheckCircle2 size={13} className="text-success" /> No affiliate links
+            </span>
+            <span className="flex items-center gap-1.5">
+              <CheckCircle2 size={13} className="text-success" /> No partner commissions
+            </span>
+            <span className="flex items-center gap-1.5">
+              <CheckCircle2 size={13} className="text-success" /> Data never sold
+            </span>
           </div>
         </div>
       </div>
 
       {/* Trust strip */}
       <div id="security" className="max-w-6xl mx-auto px-6 sm:px-10 py-10 sm:py-16">
-        <h2 className="text-title-sm lg:text-title-md font-bold text-center mb-2">What we actually do to protect your data</h2>
-        <p className="text-sm text-ink-tertiary text-center mb-7 sm:mb-10">Not a compliance-badge wall &mdash; just what&apos;s true.</p>
+        <h2 className="text-title-sm lg:text-title-md font-bold text-center mb-2">
+          What we actually do to protect your data
+        </h2>
+        <p className="text-sm text-ink-tertiary text-center mb-7 sm:mb-10">
+          Not a compliance-badge wall &mdash; just what&apos;s true.
+        </p>
         <div className="grid gap-6 sm:gap-8 lg:grid-cols-3 max-w-4xl mx-auto">
           <div className="flex gap-3">
             <Lock size={18} className="text-family-400 flex-shrink-0 mt-0.5" />
             <div>
               <div className="text-subhead font-bold mb-0.5">Encrypted at rest</div>
-              <p className="text-footnote text-ink-tertiary leading-relaxed">Connector passwords and access tokens are encrypted before they&apos;re ever stored &mdash; not just in transit.</p>
+              <p className="text-footnote text-ink-tertiary leading-relaxed">
+                Connector passwords and access tokens are encrypted before they&apos;re ever stored
+                &mdash; not just in transit.
+              </p>
             </div>
           </div>
           <div className="flex gap-3">
             <ShieldCheck size={18} className="text-family-400 flex-shrink-0 mt-0.5" />
             <div>
               <div className="text-subhead font-bold mb-0.5">Never sold</div>
-              <p className="text-footnote text-ink-tertiary leading-relaxed">Your financial data isn&apos;t sold, and it isn&apos;t used to train models beyond the request that needs it.</p>
+              <p className="text-footnote text-ink-tertiary leading-relaxed">
+                Your financial data isn&apos;t sold, and it isn&apos;t used to train models beyond
+                the request that needs it.
+              </p>
             </div>
           </div>
           <div className="flex gap-3">
             <Trash2 size={18} className="text-family-400 flex-shrink-0 mt-0.5" />
             <div>
               <div className="text-subhead font-bold mb-0.5">Yours to delete</div>
-              <p className="text-footnote text-ink-tertiary leading-relaxed">Export your data or delete your account yourself from Settings &mdash; deletion is immediate and irreversible, no email-and-wait.</p>
+              <p className="text-footnote text-ink-tertiary leading-relaxed">
+                Export your data or delete your account yourself from Settings &mdash; deletion is
+                immediate and irreversible, no email-and-wait.
+              </p>
             </div>
           </div>
         </div>
@@ -861,10 +1197,12 @@ export function MarketingLanding() {
           "for less than what you pay for a streaming service, Keel watches
           whether your family is protected" */}
       <div id="pricing" className="max-w-4xl mx-auto px-6 sm:px-10 py-10 sm:py-16">
-        <h2 className="text-title-md lg:text-title-lg font-bold text-center mb-2">Less than a streaming service. More than a safety net.</h2>
+        <h2 className="text-title-md lg:text-title-lg font-bold text-center mb-2">
+          Less than a streaming service. More than a safety net.
+        </h2>
         <p className="text-sm text-ink-tertiary text-center mb-7 sm:mb-10 max-w-sm mx-auto">
-          Continuous family protection monitoring starts free. The only paid tier adds AI document reading.
-          No hidden fees, no commission revenue, no surprise charges.
+          Continuous family protection monitoring starts free. The only paid tier adds AI document
+          reading. No hidden fees, no commission revenue, no surprise charges.
         </p>
         <div className="grid gap-4 sm:grid-cols-2 items-start">
           <div className="glass rounded-2xl p-5 sm:p-6 flex flex-col">
@@ -873,16 +1211,29 @@ export function MarketingLanding() {
               <span className="text-subhead text-ink-tertiary">£0</span>
             </div>
             <ul className="space-y-2 flex-1">
-              {['Emergency Mode', '"What happens if...?" scenarios', 'Readiness snapshot', 'Document upload & storage', 'Connect any email', 'Family roster & command palette'].map((f) => (
-                <li key={f} className="flex items-start gap-2 text-footnote text-ink-secondary leading-relaxed">
+              {[
+                'Emergency Mode',
+                '"What happens if...?" scenarios',
+                'Readiness snapshot',
+                'Document upload & storage',
+                'Connect any email',
+                'Family roster & command palette',
+              ].map((f) => (
+                <li
+                  key={f}
+                  className="flex items-start gap-2 text-footnote text-ink-secondary leading-relaxed"
+                >
                   <CheckCircle2 size={14} className="text-ink-tertiary flex-shrink-0 mt-0.5" />
                   <span>{f}</span>
                 </li>
               ))}
             </ul>
-            <Link
-              href="/welcome"
-              onClick={() => { haptic('light'); track('landing_get_started_click', { location: 'pricing_free' }) }}
+            <a
+              href={appUrl('/welcome')}
+              onClick={() => {
+                haptic('light')
+                track('landing_get_started_click', { location: 'pricing_free' })
+              }}
               className="block mt-5"
             >
               <motion.div
@@ -891,7 +1242,7 @@ export function MarketingLanding() {
               >
                 Get started free
               </motion.div>
-            </Link>
+            </a>
           </div>
           <div className="glass rounded-2xl p-5 sm:p-6 border-family-500/30 relative flex flex-col">
             <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-caption font-bold uppercase tracking-wide text-white bg-family-500 rounded-full px-3 py-1 shadow-md shadow-family-500/25 whitespace-nowrap">
@@ -899,7 +1250,9 @@ export function MarketingLanding() {
             </span>
             <div className="flex items-baseline justify-between mb-3">
               <span className="text-callout font-bold text-family-400">Keel Plus</span>
-              <span className="text-subhead text-ink-tertiary">£7.99<span className="text-footnote">/mo</span></span>
+              <span className="text-subhead text-ink-tertiary">
+                £7.99<span className="text-footnote">/mo</span>
+              </span>
             </div>
             <ul className="space-y-2 flex-1">
               {[
@@ -908,15 +1261,21 @@ export function MarketingLanding() {
                 'AI-summarized inbox — financial emails read and explained in plain language',
                 'Priority support',
               ].map((f) => (
-                <li key={f} className="flex items-start gap-2 text-footnote text-ink-secondary leading-relaxed">
+                <li
+                  key={f}
+                  className="flex items-start gap-2 text-footnote text-ink-secondary leading-relaxed"
+                >
                   <CheckCircle2 size={14} className="text-family-400 flex-shrink-0 mt-0.5" />
                   {f}
                 </li>
               ))}
             </ul>
-            <Link
-              href="/welcome"
-              onClick={() => { haptic('light'); track('landing_get_started_click', { location: 'pricing_plus' }) }}
+            <a
+              href={appUrl('/welcome')}
+              onClick={() => {
+                haptic('light')
+                track('landing_get_started_click', { location: 'pricing_plus' })
+              }}
               className="block mt-5"
             >
               <motion.div
@@ -925,33 +1284,68 @@ export function MarketingLanding() {
               >
                 Start free, upgrade later
               </motion.div>
-            </Link>
-            <p className="text-caption text-ink-tertiary text-center mt-2">No credit card &mdash; upgrade from your account once you&apos;re in</p>
+            </a>
+            <p className="text-caption text-ink-tertiary text-center mt-2">
+              No credit card &mdash; upgrade from your account once you&apos;re in
+            </p>
           </div>
         </div>
-        <p className="text-footnote text-ink-tertiary text-center mt-4">Cancel anytime. No credit card to start free &mdash; upgrade to Keel Plus from your account whenever you&apos;re ready.</p>
+        <p className="text-footnote text-ink-tertiary text-center mt-4">
+          Cancel anytime. No credit card to start free &mdash; upgrade to Keel Plus from your
+          account whenever you&apos;re ready.
+        </p>
       </div>
 
       {/* FAQ */}
       <div id="faq" className="max-w-3xl mx-auto px-6 sm:px-10 py-10 sm:py-16">
-        <h2 className="text-title-md lg:text-title-lg font-bold text-center mb-2">Common questions</h2>
-        <p className="text-sm text-ink-tertiary text-center mb-7 sm:mb-10">Straight answers, no spin.</p>
+        <h2 className="text-title-md lg:text-title-lg font-bold text-center mb-2">
+          Common questions
+        </h2>
+        <p className="text-sm text-ink-tertiary text-center mb-7 sm:mb-10">
+          Straight answers, no spin.
+        </p>
         <div className="space-y-2">
           {[
-            { q: 'Is LifeKeel financial advice?', a: 'No. LifeKeel is informational and educational only — not financial, investment, tax, or legal advice, and not a substitute for a licensed professional or for calling emergency services (999, 112, 911) in a real emergency.' },
-            { q: 'Will Keel move money or act on my behalf?', a: 'No. Keel shows you what is on file and estimates possible gaps. It never moves money, buys products, or contacts anyone for you without you approving each step — and it has no commercial relationship with any insurer or provider.' },
-            { q: 'How much does LifeKeel cost?', a: 'LifeKeel is free to start, no credit card required. Keel Plus is £7.99/month and adds AI document reading (provider, policy number, amount, and dates pulled automatically) and an AI-summarised inbox on top of everything in the free plan.' },
-            { q: 'Is my financial data sold or used to train AI models?', a: "No. Your financial data isn't sold, and it isn't used to train models beyond the request that needs it. Connector passwords and access tokens are encrypted before they're ever stored." },
-            { q: 'Can I cancel Keel Plus anytime?', a: 'Yes. No credit card is required to start free, and you can cancel Keel Plus anytime from your account.' },
-            { q: 'Does LifeKeel work for the whole family?', a: "Yes. Add your partner and kids to your family's roster and every score, insight, and \"what if\" scenario accounts for the whole household, not just the person who signed up." },
-            { q: 'What happens to my data if I delete my account?', a: "You can delete your account yourself from Settings. Your family profile, documents, insights, and sign-in are deleted immediately and can't be recovered. Billing records and a minimal audit log are kept only as required." },
+            {
+              q: 'Is LifeKeel financial advice?',
+              a: 'No. LifeKeel is informational and educational only — not financial, investment, tax, or legal advice, and not a substitute for a licensed professional or for calling emergency services (999, 112, 911) in a real emergency.',
+            },
+            {
+              q: 'Will Keel move money or act on my behalf?',
+              a: 'No. Keel shows you what is on file and estimates possible gaps. It never moves money, buys products, or contacts anyone for you without you approving each step — and it has no commercial relationship with any insurer or provider.',
+            },
+            {
+              q: 'How much does LifeKeel cost?',
+              a: 'LifeKeel is free to start, no credit card required. Keel Plus is £7.99/month and adds AI document reading (provider, policy number, amount, and dates pulled automatically) and an AI-summarised inbox on top of everything in the free plan.',
+            },
+            {
+              q: 'Is my financial data sold or used to train AI models?',
+              a: "No. Your financial data isn't sold, and it isn't used to train models beyond the request that needs it. Connector passwords and access tokens are encrypted before they're ever stored.",
+            },
+            {
+              q: 'Can I cancel Keel Plus anytime?',
+              a: 'Yes. No credit card is required to start free, and you can cancel Keel Plus anytime from your account.',
+            },
+            {
+              q: 'Does LifeKeel work for the whole family?',
+              a: 'Yes. Add your partner and kids to your family\'s roster and every score, insight, and "what if" scenario accounts for the whole household, not just the person who signed up.',
+            },
+            {
+              q: 'What happens to my data if I delete my account?',
+              a: "You can delete your account yourself from Settings. Your family profile, documents, insights, and sign-in are deleted immediately and can't be recovered. Billing records and a minimal audit log are kept only as required.",
+            },
           ].map((faq) => (
             <details key={faq.q} className="glass rounded-2xl border border-tint/[0.08] group">
               <summary className="cursor-pointer p-4 sm:p-5 flex items-center justify-between gap-3 text-sm font-semibold text-ink-primary">
                 {faq.q}
-                <ChevronDown size={16} className="text-ink-tertiary flex-shrink-0 transition-transform group-open:rotate-180" />
+                <ChevronDown
+                  size={16}
+                  className="text-ink-tertiary flex-shrink-0 transition-transform group-open:rotate-180"
+                />
               </summary>
-              <p className="px-4 sm:px-5 pb-4 sm:pb-5 -mt-1 text-sm text-ink-secondary leading-relaxed">{faq.a}</p>
+              <p className="px-4 sm:px-5 pb-4 sm:pb-5 -mt-1 text-sm text-ink-secondary leading-relaxed">
+                {faq.a}
+              </p>
             </details>
           ))}
         </div>
@@ -969,7 +1363,14 @@ export function MarketingLanding() {
           See where you stand &mdash; then decide if you want Keel watching continuously.
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <Link href="/readiness" onClick={() => { haptic('light'); track('landing_quiz_click', { location: 'final_cta' }) }} className="inline-block">
+          <Link
+            href="/readiness"
+            onClick={() => {
+              haptic('light')
+              track('landing_quiz_click', { location: 'final_cta' })
+            }}
+            className="inline-block"
+          >
             <motion.div
               whileTap={{ scale: 0.97 }}
               className="bg-family-500 text-white font-semibold rounded-2xl py-4 px-10 text-base text-center shadow-md shadow-family-500/15"
@@ -977,14 +1378,21 @@ export function MarketingLanding() {
               Check your readiness free
             </motion.div>
           </Link>
-          <Link href="/welcome" onClick={() => { haptic('light'); track('landing_get_started_click', { location: 'final_cta' }) }} className="inline-block">
+          <a
+            href={appUrl('/welcome')}
+            onClick={() => {
+              haptic('light')
+              track('landing_get_started_click', { location: 'final_cta' })
+            }}
+            className="inline-block"
+          >
             <motion.div
               whileTap={{ scale: 0.97 }}
               className="text-sm font-semibold text-ink-secondary py-4 px-6"
             >
               or create your account &rarr;
             </motion.div>
-          </Link>
+          </a>
         </div>
       </div>
 
@@ -997,37 +1405,61 @@ export function MarketingLanding() {
               <span className="text-sm font-bold">LifeKeel</span>
             </div>
             <p className="text-footnote text-ink-tertiary leading-relaxed">
-              The always-on readiness system for your family. Know your numbers, have a plan, be ready.
+              The always-on readiness system for your family. Know your numbers, have a plan, be
+              ready.
             </p>
           </div>
           <div>
-            <div className="text-xs font-bold uppercase tracking-wide text-ink-tertiary mb-3">Product</div>
+            <div className="text-xs font-bold uppercase tracking-wide text-ink-tertiary mb-3">
+              Product
+            </div>
             <div className="space-y-2 text-footnote">
-              <a href="#features" className="block text-ink-secondary hover:text-ink-primary">Features</a>
-              <a href="#pricing" className="block text-ink-secondary hover:text-ink-primary">Pricing</a>
-              <Link href="/readiness" className="block text-ink-secondary hover:text-ink-primary">Free readiness check</Link>
-              <Link href="/guides" className="block text-ink-secondary hover:text-ink-primary">Guides</Link>
+              <a href="#features" className="block text-ink-secondary hover:text-ink-primary">
+                Features
+              </a>
+              <a href="#pricing" className="block text-ink-secondary hover:text-ink-primary">
+                Pricing
+              </a>
+              <Link href="/readiness" className="block text-ink-secondary hover:text-ink-primary">
+                Free readiness check
+              </Link>
+              <Link href="/guides" className="block text-ink-secondary hover:text-ink-primary">
+                Guides
+              </Link>
             </div>
           </div>
           <div>
-            <div className="text-xs font-bold uppercase tracking-wide text-ink-tertiary mb-3">Company</div>
+            <div className="text-xs font-bold uppercase tracking-wide text-ink-tertiary mb-3">
+              Company
+            </div>
             <div className="space-y-2 text-footnote">
-              <Link href="/blog" className="block text-ink-secondary hover:text-ink-primary">Blog</Link>
-              <Link href="/support" className="block text-ink-secondary hover:text-ink-primary">Support</Link>
-              <Link href="/terms" className="block text-ink-secondary hover:text-ink-primary">Terms</Link>
-              <Link href="/privacy" className="block text-ink-secondary hover:text-ink-primary">Privacy</Link>
+              <Link href="/blog" className="block text-ink-secondary hover:text-ink-primary">
+                Blog
+              </Link>
+              <Link href="/support" className="block text-ink-secondary hover:text-ink-primary">
+                Support
+              </Link>
+              <Link href="/terms" className="block text-ink-secondary hover:text-ink-primary">
+                Terms
+              </Link>
+              <Link href="/privacy" className="block text-ink-secondary hover:text-ink-primary">
+                Privacy
+              </Link>
             </div>
           </div>
           <div>
-            <div className="text-xs font-bold uppercase tracking-wide text-ink-tertiary mb-3">Stay in touch</div>
+            <div className="text-xs font-bold uppercase tracking-wide text-ink-tertiary mb-3">
+              Stay in touch
+            </div>
             <FooterNewsletter />
           </div>
         </div>
         <p className="text-caption text-ink-tertiary text-center leading-snug max-w-md mx-auto">
-          For informational and educational purposes only. Not financial, investment, tax, insurance, or legal
-          advice, and not a substitute for professional emergency services &mdash; always call your local
-          emergency number (999, 112, 911, or the equivalent where you are) in a real emergency. Consult a
-          qualified professional before making financial decisions.
+          For informational and educational purposes only. Not financial, investment, tax,
+          insurance, or legal advice, and not a substitute for professional emergency services
+          &mdash; always call your local emergency number (999, 112, 911, or the equivalent where
+          you are) in a real emergency. Consult a qualified professional before making financial
+          decisions.
         </p>
       </div>
     </div>

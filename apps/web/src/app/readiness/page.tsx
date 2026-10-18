@@ -20,8 +20,14 @@ import { GlassCard, GlassButton, PageHeader, ScoreRing } from '@/components/Glas
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
 import { trackConversion } from '@/lib/ad-track'
-import { submitReadinessQuiz, captureLead, readinessShareUrl, type ReadinessQuizResult } from '@/lib/api'
+import {
+  submitReadinessQuiz,
+  captureLead,
+  readinessShareUrl,
+  type ReadinessQuizResult,
+} from '@/lib/api'
 import { learnMoreHref } from '@/lib/detector-content'
+import { appUrl } from '@/lib/region'
 
 // (Share links route through readinessShareUrl → the API's per-score OG
 // card, not a hardcoded site URL — see lib/api.ts.)
@@ -71,7 +77,10 @@ function ShareScore({ score }: { score: number }) {
           href={`https://wa.me/?text=${encodeURIComponent(`${shareText} ${shareUrl}`)}`}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={() => { haptic('light'); track('readiness_share_click', { method: 'whatsapp' }) }}
+          onClick={() => {
+            haptic('light')
+            track('readiness_share_click', { method: 'whatsapp' })
+          }}
           className="w-12 flex items-center justify-center rounded-xl bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary flex-shrink-0"
           aria-label="Share on WhatsApp"
         >
@@ -81,7 +90,10 @@ function ShareScore({ score }: { score: number }) {
           href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={() => { haptic('light'); track('readiness_share_click', { method: 'x' }) }}
+          onClick={() => {
+            haptic('light')
+            track('readiness_share_click', { method: 'x' })
+          }}
           className="w-12 flex items-center justify-center rounded-xl bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary flex-shrink-0"
           aria-label="Share on X"
         >
@@ -119,7 +131,9 @@ function Field({
       <div className="text-xs text-ink-tertiary mb-1.5">{label}</div>
       <div className="relative">
         {prefix && (
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-base text-ink-tertiary">{prefix}</span>
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-base text-ink-tertiary">
+            {prefix}
+          </span>
         )}
         <input
           type="number"
@@ -150,7 +164,11 @@ function EmailCapture({ score }: { score: number }) {
     haptic('light')
     setState('busy')
     const band = `${Math.floor(score / 10) * 10}-${Math.floor(score / 10) * 10 + 10}`
-    const ok = await captureLead({ email: email.trim(), source: 'readiness_quiz', score_band: band })
+    const ok = await captureLead({
+      email: email.trim(),
+      source: 'readiness_quiz',
+      score_band: band,
+    })
     setState(ok ? 'done' : 'error')
     if (ok) trackConversion('lead')
     // No client-side funnel event needed — POST /leads already records
@@ -161,7 +179,8 @@ function EmailCapture({ score }: { score: number }) {
     return (
       <GlassCard className="p-4 mt-4 w-full">
         <p className="text-sm text-ink-secondary leading-relaxed">
-          Thanks — we&apos;ll only use your email for what you opted into. You can ask us to stop any time.
+          Thanks — we&apos;ll only use your email for what you opted into. You can ask us to stop
+          any time.
         </p>
       </GlassCard>
     )
@@ -181,11 +200,22 @@ function EmailCapture({ score }: { score: number }) {
         className="glass-input w-full rounded-xl px-4 py-3 mt-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40"
       />
       <label className="mt-3 flex items-start gap-2.5 text-xs text-ink-secondary leading-relaxed cursor-pointer">
-        <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 accent-family-500" />
+        <input
+          type="checkbox"
+          checked={consent}
+          onChange={(e) => setConsent(e.target.checked)}
+          className="mt-0.5 accent-family-500"
+        />
         I agree to LifeKeel contacting me at this address.
       </label>
-      {state === 'error' && <p className="text-xs text-danger mt-2">Couldn&apos;t save that — please try again.</p>}
-      <GlassButton onClick={submit} disabled={state === 'busy' || !email.trim() || !consent} className="mt-3">
+      {state === 'error' && (
+        <p className="text-xs text-danger mt-2">Couldn&apos;t save that — please try again.</p>
+      )}
+      <GlassButton
+        onClick={submit}
+        disabled={state === 'busy' || !email.trim() || !consent}
+        className="mt-3"
+      >
         {state === 'busy' ? 'Saving…' : 'Keep me posted'}
       </GlassButton>
     </GlassCard>
@@ -201,20 +231,75 @@ const EMPTY_FORM = {
   dependents: '',
 }
 
-const STEPS: { key: keyof typeof EMPTY_FORM; label: string; hint: string; prefix?: string; placeholder?: string }[] = [
-  { key: 'monthlySalary', label: 'Monthly household income', hint: 'All earners combined, before tax.', prefix: '£' },
-  { key: 'monthlyExpenses', label: 'Monthly living expenses', hint: 'Rent/mortgage, food, transport, bills — the costs that don\'t stop.', prefix: '£' },
-  { key: 'emergencySavings', label: 'Emergency savings on hand', hint: 'Cash you could access within a week if you needed to.', prefix: '£' },
-  { key: 'mortgageOutstanding', label: 'Mortgage still outstanding', hint: 'The remaining balance, not the monthly payment. Enter 0 if you rent.', prefix: '£' },
-  { key: 'lifeCover', label: 'Life insurance coverage', hint: 'The total payout amount across all policies. Enter 0 if none.', prefix: '£' },
-  { key: 'dependents', label: 'Number of dependents', hint: 'Children, elderly relatives — anyone who relies on this household\'s income.', placeholder: '0' },
+const STEPS: {
+  key: keyof typeof EMPTY_FORM
+  label: string
+  hint: string
+  prefix?: string
+  placeholder?: string
+}[] = [
+  {
+    key: 'monthlySalary',
+    label: 'Monthly household income',
+    hint: 'All earners combined, before tax.',
+    prefix: '£',
+  },
+  {
+    key: 'monthlyExpenses',
+    label: 'Monthly living expenses',
+    hint: "Rent/mortgage, food, transport, bills — the costs that don't stop.",
+    prefix: '£',
+  },
+  {
+    key: 'emergencySavings',
+    label: 'Emergency savings on hand',
+    hint: 'Cash you could access within a week if you needed to.',
+    prefix: '£',
+  },
+  {
+    key: 'mortgageOutstanding',
+    label: 'Mortgage still outstanding',
+    hint: 'The remaining balance, not the monthly payment. Enter 0 if you rent.',
+    prefix: '£',
+  },
+  {
+    key: 'lifeCover',
+    label: 'Life insurance coverage',
+    hint: 'The total payout amount across all policies. Enter 0 if none.',
+    prefix: '£',
+  },
+  {
+    key: 'dependents',
+    label: 'Number of dependents',
+    hint: "Children, elderly relatives — anyone who relies on this household's income.",
+    placeholder: '0',
+  },
 ]
 
 function scoreBand(score: number): { label: string; color: string; description: string } {
-  if (score >= 80) return { label: 'Strong', color: 'text-success', description: 'Your household has solid buffers in the areas this quiz covers.' }
-  if (score >= 60) return { label: 'Fair', color: 'text-warning', description: 'Some areas are covered, but there are gaps worth knowing about.' }
-  if (score >= 40) return { label: 'Needs attention', color: 'text-orange-400', description: 'Meaningful gaps exist — knowing them is the first step to addressing them.' }
-  return { label: 'At risk', color: 'text-danger', description: 'Significant gaps in coverage or savings — worth reviewing with a professional.' }
+  if (score >= 80)
+    return {
+      label: 'Strong',
+      color: 'text-success',
+      description: 'Your household has solid buffers in the areas this quiz covers.',
+    }
+  if (score >= 60)
+    return {
+      label: 'Fair',
+      color: 'text-warning',
+      description: 'Some areas are covered, but there are gaps worth knowing about.',
+    }
+  if (score >= 40)
+    return {
+      label: 'Needs attention',
+      color: 'text-orange-400',
+      description: 'Meaningful gaps exist — knowing them is the first step to addressing them.',
+    }
+  return {
+    label: 'At risk',
+    color: 'text-danger',
+    description: 'Significant gaps in coverage or savings — worth reviewing with a professional.',
+  }
 }
 
 export default function ReadinessQuizPage() {
@@ -292,7 +377,13 @@ export default function ReadinessQuizPage() {
           <div className="hidden sm:block">
             {STEPS.map((s) => (
               <div key={s.key}>
-                <Field label={s.label} value={form[s.key]} onChange={set(s.key)} {...(s.prefix ? { prefix: s.prefix } : {})} {...(s.placeholder ? { placeholder: s.placeholder } : {})} />
+                <Field
+                  label={s.label}
+                  value={form[s.key]}
+                  onChange={set(s.key)}
+                  {...(s.prefix ? { prefix: s.prefix } : {})}
+                  {...(s.placeholder ? { placeholder: s.placeholder } : {})}
+                />
                 <p className="text-[11px] text-ink-tertiary -mt-2 mb-4 px-1">{s.hint}</p>
               </div>
             ))}
@@ -305,12 +396,26 @@ export default function ReadinessQuizPage() {
           <div className="sm:hidden">
             {currentStep && (
               <>
-                <p className="text-xs font-semibold text-family-400 mb-1">Question {step + 1} of {STEPS.length}</p>
-                <Field label={currentStep.label} value={form[currentStep.key]} onChange={set(currentStep.key)} {...(currentStep.prefix ? { prefix: currentStep.prefix } : {})} {...(currentStep.placeholder ? { placeholder: currentStep.placeholder } : {})} />
+                <p className="text-xs font-semibold text-family-400 mb-1">
+                  Question {step + 1} of {STEPS.length}
+                </p>
+                <Field
+                  label={currentStep.label}
+                  value={form[currentStep.key]}
+                  onChange={set(currentStep.key)}
+                  {...(currentStep.prefix ? { prefix: currentStep.prefix } : {})}
+                  {...(currentStep.placeholder ? { placeholder: currentStep.placeholder } : {})}
+                />
                 <p className="text-[11px] text-ink-tertiary -mt-2 mb-4 px-1">{currentStep.hint}</p>
                 <div className="flex gap-2">
                   {step > 0 && (
-                    <button onClick={() => { haptic('light'); setStep(step - 1) }} className="flex-1 rounded-xl py-3 text-sm font-semibold bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary">
+                    <button
+                      onClick={() => {
+                        haptic('light')
+                        setStep(step - 1)
+                      }}
+                      className="flex-1 rounded-xl py-3 text-sm font-semibold bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary"
+                    >
                       Back
                     </button>
                   )}
@@ -319,7 +424,13 @@ export default function ReadinessQuizPage() {
                       {submitting ? 'Calculating…' : 'See my score'}
                     </GlassButton>
                   ) : (
-                    <GlassButton onClick={() => { haptic('light'); setStep(step + 1) }} className="flex-1">
+                    <GlassButton
+                      onClick={() => {
+                        haptic('light')
+                        setStep(step + 1)
+                      }}
+                      className="flex-1"
+                    >
                       Next
                     </GlassButton>
                   )}
@@ -330,97 +441,138 @@ export default function ReadinessQuizPage() {
         </div>
       )}
 
-      {result && result.score !== null && (() => {
-        const band = scoreBand(result.score)
-        return (
-        <div ref={resultRef} tabIndex={-1} aria-label={`Your Family Readiness Check result: ${result.score} out of 100`} className="mt-6 flex flex-col items-center outline-none">
-          <ScoreRing score={result.score} size={160} />
-          <div className="mt-3 text-center">
-            <span className={`text-lg font-bold ${band.color}`}>{band.label}</span>
-            <p className="text-sm text-ink-secondary mt-1 max-w-xs">{band.description}</p>
-          </div>
+      {result &&
+        result.score !== null &&
+        (() => {
+          const band = scoreBand(result.score)
+          return (
+            <div
+              ref={resultRef}
+              tabIndex={-1}
+              aria-label={`Your Family Readiness Check result: ${result.score} out of 100`}
+              className="mt-6 flex flex-col items-center outline-none"
+            >
+              <ScoreRing score={result.score} size={160} />
+              <div className="mt-3 text-center">
+                <span className={`text-lg font-bold ${band.color}`}>{band.label}</span>
+                <p className="text-sm text-ink-secondary mt-1 max-w-xs">{band.description}</p>
+              </div>
 
-          {/* PRD-125: the breakdown uses the same component labels + weights
+              {/* PRD-125: the breakdown uses the same component labels + weights
               the in-app readiness score does — scored only for what the
               quiz collected. */}
-          {result.components && result.components.length > 0 && (
-            <GlassCard className="p-4 mt-4 w-full space-y-2">
-              {result.components.filter((c) => c.score !== null).map((c) => (
-                <div key={c.key}>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-sm font-medium text-ink-primary">{c.label}</span>
-                    <span className="text-xs text-ink-tertiary">{c.score}/100</span>
-                  </div>
-                  <p className="text-xs text-ink-tertiary">{c.detail}</p>
-                </div>
-              ))}
-            </GlassCard>
-          )}
-
-          <ShareScore score={result.score} />
-          <EmailCapture score={result.score} />
-
-          {result.insights.length === 0 ? (
-            <GlassCard className="p-4 mt-6 w-full">
-              <p className="text-sm text-ink-secondary leading-relaxed">
-                Keel didn&apos;t find an obvious gap in the two areas this quick quiz checks. A full profile covers
-                four more areas, including retirement and education funding.
-              </p>
-            </GlassCard>
-          ) : (
-            <div className="w-full mt-6 space-y-3">
-              {result.insights.map((insight, i) => (
-                <GlassCard key={i} className="p-4">
-                  <div className="text-sm font-semibold text-ink-primary mb-1">
-                    {readableHypothesis(insight.hypothesis)}
-                  </div>
-                  <p className="text-sm text-ink-secondary leading-relaxed">{insight.reasoning}</p>
-                  {learnMoreHref(insight.rule_id) && (
-                    <Link href={learnMoreHref(insight.rule_id)!} className="text-xs text-family-400 font-semibold mt-2 inline-block">
-                      Learn more →
-                    </Link>
-                  )}
+              {result.components && result.components.length > 0 && (
+                <GlassCard className="p-4 mt-4 w-full space-y-2">
+                  {result.components
+                    .filter((c) => c.score !== null)
+                    .map((c) => (
+                      <div key={c.key}>
+                        <div className="flex items-baseline justify-between">
+                          <span className="text-sm font-medium text-ink-primary">{c.label}</span>
+                          <span className="text-xs text-ink-tertiary">{c.score}/100</span>
+                        </div>
+                        <p className="text-xs text-ink-tertiary">{c.detail}</p>
+                      </div>
+                    ))}
                 </GlassCard>
-              ))}
-            </div>
-          )}
+              )}
 
-          <GlassCard className="p-4 mt-4 w-full">
-            <p className="text-sm font-semibold text-ink-primary mb-2">
-              This was a snapshot. Keel is a system that keeps watching.
-            </p>
-            <p className="text-sm text-ink-secondary leading-relaxed mb-3">
-              The quiz scored two domains from six questions. A full account scores five domains, monitors
-              them continuously with 9 detectors, and alerts you when something changes &mdash; even when
-              nobody logs in.
-            </p>
-            <ul className="text-xs text-ink-tertiary leading-relaxed space-y-1.5 mb-3">
-              <li>• Protection, wealth, goals, savings, and estate &mdash; scored and monitored daily</li>
-              <li>• Every family member gets their own readiness view, scoped to their life stage</li>
-              <li>• Crisis playbooks built from your real data, not generic checklists</li>
-              <li>• Zero commissions &mdash; Keel has no financial relationship with any insurer</li>
-            </ul>
-            <Link href="/welcome" onClick={() => { haptic('light'); track('landing_get_started_click', { location: 'readiness_quiz' }) }}>
-              <GlassButton>Start monitoring for free</GlassButton>
-            </Link>
-            <p className="text-[11px] text-ink-tertiary mt-2">No card required. Free forever for core features. Keel Plus (£7.99/mo) adds AI document reading.</p>
-          </GlassCard>
-        </div>
-        )
-      })()}
+              <ShareScore score={result.score} />
+              <EmailCapture score={result.score} />
+
+              {result.insights.length === 0 ? (
+                <GlassCard className="p-4 mt-6 w-full">
+                  <p className="text-sm text-ink-secondary leading-relaxed">
+                    Keel didn&apos;t find an obvious gap in the two areas this quick quiz checks. A
+                    full profile covers four more areas, including retirement and education funding.
+                  </p>
+                </GlassCard>
+              ) : (
+                <div className="w-full mt-6 space-y-3">
+                  {result.insights.map((insight, i) => (
+                    <GlassCard key={i} className="p-4">
+                      <div className="text-sm font-semibold text-ink-primary mb-1">
+                        {readableHypothesis(insight.hypothesis)}
+                      </div>
+                      <p className="text-sm text-ink-secondary leading-relaxed">
+                        {insight.reasoning}
+                      </p>
+                      {learnMoreHref(insight.rule_id) && (
+                        <Link
+                          href={learnMoreHref(insight.rule_id)!}
+                          className="text-xs text-family-400 font-semibold mt-2 inline-block"
+                        >
+                          Learn more →
+                        </Link>
+                      )}
+                    </GlassCard>
+                  ))}
+                </div>
+              )}
+
+              <GlassCard className="p-4 mt-4 w-full">
+                <p className="text-sm font-semibold text-ink-primary mb-2">
+                  This was a snapshot. Keel is a system that keeps watching.
+                </p>
+                <p className="text-sm text-ink-secondary leading-relaxed mb-3">
+                  The quiz scored two domains from six questions. A full account scores five
+                  domains, monitors them continuously with 9 detectors, and alerts you when
+                  something changes &mdash; even when nobody logs in.
+                </p>
+                <ul className="text-xs text-ink-tertiary leading-relaxed space-y-1.5 mb-3">
+                  <li>
+                    • Protection, wealth, goals, savings, and estate &mdash; scored and monitored
+                    daily
+                  </li>
+                  <li>
+                    • Every family member gets their own readiness view, scoped to their life stage
+                  </li>
+                  <li>• Crisis playbooks built from your real data, not generic checklists</li>
+                  <li>
+                    • Zero commissions &mdash; Keel has no financial relationship with any insurer
+                  </li>
+                </ul>
+                {/* plain <a>: /welcome lives on the app host — a <Link>'s RSC fetch dies on the cross-origin redirect (see appUrl) */}
+                <a
+                  href={appUrl('/welcome')}
+                  onClick={() => {
+                    haptic('light')
+                    track('landing_get_started_click', { location: 'readiness_quiz' })
+                  }}
+                >
+                  <GlassButton>Start monitoring for free</GlassButton>
+                </a>
+                <p className="text-[11px] text-ink-tertiary mt-2">
+                  No card required. Free forever for core features. Keel Plus (£7.99/mo) adds AI
+                  document reading.
+                </p>
+              </GlassCard>
+            </div>
+          )
+        })()}
 
       {result && result.score === null && (
-        <div ref={resultRef} tabIndex={-1} role="status" aria-live="polite" className="outline-none">
+        <div
+          ref={resultRef}
+          tabIndex={-1}
+          role="status"
+          aria-live="polite"
+          className="outline-none"
+        >
           <GlassCard className="p-4 mt-6">
             <p className="text-sm text-ink-secondary leading-relaxed mb-3">
-              {result.error ?? "Your score couldn't be calculated just now — your answers are saved. Try again in a moment."}
+              {result.error ??
+                "Your score couldn't be calculated just now — your answers are saved. Try again in a moment."}
             </p>
             <div className="flex gap-2">
               <GlassButton onClick={handleSubmit} disabled={submitting} className="flex-1">
                 {submitting ? 'Calculating…' : 'Try again'}
               </GlassButton>
               <button
-                onClick={() => { haptic('light'); setResult(null) }}
+                onClick={() => {
+                  haptic('light')
+                  setResult(null)
+                }}
                 className="flex-1 rounded-xl py-3 text-sm font-semibold bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary"
               >
                 Edit answers

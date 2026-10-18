@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { decideRegion, redirectTarget, regionForHost, regionFromLocale } from '../region'
+import { appUrl, decideRegion, redirectTarget, regionForHost, regionFromLocale } from '../region'
 
 const loc = (host: string, pathname = '/', search = '', hash = '') => ({
   host,
@@ -36,6 +36,24 @@ describe('regionForHost / redirectTarget', () => {
     expect(redirectTarget('uk', loc('app.lifekeel.co.uk'))).toBeNull()
     expect(redirectTarget('si', loc('localhost:3002'))).toBeNull()
     expect(redirectTarget('si', loc('preview-123.web.app'))).toBeNull()
+  })
+})
+
+describe('appUrl', () => {
+  it('points app routes at the app host of the region the landing host belongs to', () => {
+    expect(appUrl('/welcome', 'lifekeel.si')).toBe('https://app.lifekeel.si/welcome')
+    expect(appUrl('/welcome', 'lifekeel.co.uk')).toBe('https://app.lifekeel.co.uk/welcome')
+    expect(appUrl('/login', 'www.lifekeel.si')).toBe('https://app.lifekeel.si/login')
+  })
+
+  it('is same-origin on an app host', () => {
+    expect(appUrl('/welcome', 'app.lifekeel.si')).toBe('https://app.lifekeel.si/welcome')
+  })
+
+  it('stays relative anywhere else — previews and localhost must never bounce to prod', () => {
+    expect(appUrl('/welcome', 'localhost:3002')).toBe('/welcome')
+    expect(appUrl('/welcome', 'lifekeel-landing-si.web.app')).toBe('/welcome')
+    expect(appUrl('/welcome', 'evil-lifekeel.si.example.com')).toBe('/welcome')
   })
 })
 
