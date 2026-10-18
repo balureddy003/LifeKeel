@@ -140,14 +140,17 @@ jobs:
           service: ${{ env.API_SERVICE }}
           region: ${{ env.GCP_REGION }}
           image: ${{ env.API_IMAGE }}:${{ env.RELEASE_SHA }}
-          flags: --port=3001 --allow-unauthenticated --cpu=1 --memory=512Mi --max-instances=4 --concurrency=80 --min-instances=0 ${{ steps.pre.outputs.exists == 'true' && format('--no-traffic --tag={0}', steps.pre.outputs.tag) || '' }}
+          # Comma-valued vars can't go in env_vars (the action joins pairs
+          # with commas, so "a,b" would split into two entries). They ride
+          # --update-env-vars in flags instead, using ^@^ as the pair
+          # delimiter so commas inside values survive. --update-env-vars
+          # merges — it does not wipe the env_vars above.
+          flags: --port=3001 --allow-unauthenticated --cpu=1 --memory=512Mi --max-instances=4 --concurrency=80 --min-instances=0 --update-env-vars=^@^CORS_ORIGIN=${{ vars.CORS_ORIGIN || vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}@LIFEKEEL_APP_HOSTS=${{ vars.LIFEKEEL_APP_HOSTS || 'app.lifekeel.co.uk,app.lifekeel.si' }} ${{ steps.pre.outputs.exists == 'true' && format('--no-traffic --tag={0}', steps.pre.outputs.tag) || '' }}
           env_vars: |
             NODE_ENV=production
             LIFEKEEL_DEPLOYMENT_MODE=cloud
-            CORS_ORIGIN=${{ vars.CORS_ORIGIN || vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}
             LOG_LEVEL=info
             LIFEKEEL_URL=${{ vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}
-            LIFEKEEL_APP_HOSTS=${{ vars.LIFEKEEL_APP_HOSTS }}
             API_BASE_URL=${{ vars.API_BASE_URL }}
             LOCAL_JUDGE_BASE_URL=${{ vars.LOCAL_JUDGE_BASE_URL }}
             LOCAL_JUDGE_MODEL=${{ vars.LOCAL_JUDGE_MODEL }}
