@@ -30,13 +30,23 @@ Keel Plus users who choose to connect a mailbox. Never default-on.
 5. Incremental sync with provider change notifications where available, plus a
    scheduled fallback. Failures surface through the existing connector-health alert.
 6. Settings copy lists only providers that actually work.
+7. A user can also **forward a single message or attachment** they approve; it enters
+   the same pipeline as a matched message. No mailbox connection is needed for this.
+8. An **audit log** records each sync and match as metadata only: counts by category,
+   durations, and matched-message IDs. No message content, and no sender addresses
+   beyond the "what we've read" log the user can see, appear in logs or telemetry.
+9. **Tenant isolation is tested**, in the style of
+   `apps/api/src/__tests__/ml-tenant-isolation.test.ts`: one tenant's connection,
+   tokens, matched messages and extracted fields are unreachable from another tenant,
+   and disconnect-and-delete cannot touch another tenant's data.
 
 ## Constraints
 
 - **Trust tier:** 0. Read and extract only. No message is sent, replied to, labelled or
   deleted. Outbound drafts remain PRD-103 (Tier 1, human sends).
 - **Regulated-advice check:** extracted facts populate the profile; no output compares
-  or recommends products.
+  or recommends products. The "what we've read" log and disconnect copy are added to
+  `advice-rule.test.ts`'s copy set.
 - **Data/privacy:** only through PRD-142's registry. Message bodies are processed
   transiently and not kept beyond what the extracted fields and the "what we've
   read" log require. Email content is treated as untrusted input with no tool access.

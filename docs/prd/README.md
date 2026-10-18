@@ -340,6 +340,30 @@ building disconnected marketing tooling.
    **proposed.** Upgrade prompts only where parsing closes a data gap,
    never from a risk alarm, with an honest trial summary.
 
+## Suggested build order for 138–147 and 203–206
+
+Dependencies are in each PRD's "Builds on"; this is the order that follows from
+them. It is a recommendation, not a commitment.
+
+1. **First, cheapest, and aimed at the two structural problems** (a score with
+   nothing to own; silence that can't be told from failure): PRD-203 passwordless
+   result save and PRD-138 Quiet Care digest. PRD-204 is small and ships with 203.
+2. **Measure before building ingestion:** PRD-141 retention metrics and PRD-145
+   freshness signals, so there is a baseline and it is clear whether ingestion
+   moves conversion.
+3. **Channels and calm:** PRD-139 tiers and caps, then PRD-140 channel fallback.
+   PRD-147 PWA polish can run alongside, since installed PWAs are a push channel.
+4. **Gate before agents:** PRD-142 task and provider registry. No hosted-model call
+   from PRD-143 or PRD-144 runs before it exists.
+5. **Upload path before the mailbox:** PRD-143 reviewed extraction, with PRD-146
+   deletion alongside it so derived data is deletable from day one. These carry most
+   of the value with none of the Gmail assessment overhead, and they build the
+   confirm-before-commit gate PRD-144 reuses.
+6. **Mailbox last:** PRD-144 email signal agent, once the provider's security
+   assessment cost and timeline are known.
+7. **Growth extras any time after 203:** PRD-205 household share, then PRD-206
+   upgrade moments once PRD-143 and PRD-145 exist to sell and to key on.
+
 ## Deliberately not written as PRDs yet
 
 Per ARCHITECTURE.md's own sequencing, these aren't ready for an

@@ -32,6 +32,9 @@ operator answering a deletion request.
 6. Backups: the receipt states the backup retention window honestly instead of
    claiming instant erasure.
 7. Deletion is idempotent and resumable after a partial failure.
+8. **Tenant isolation is tested:** deleting one tenant's document, mailbox or account
+   leaves every other tenant's data untouched, in the style of
+   `apps/api/src/__tests__/ml-tenant-isolation.test.ts`.
 
 ## Constraints
 
@@ -39,7 +42,8 @@ operator answering a deletion request.
   confirmation (the existing `deleteAccount` confirm step). The retention sweep is a
   background job over the user's own past data and runs on documented rules; it never
   deletes data the user has marked to keep.
-- **Regulated-advice check:** not applicable (no advice content).
+- **Regulated-advice check:** receipts and confirmation copy contain no advice; the
+  copy is added to `advice-rule.test.ts`'s copy set.
 - **Data/privacy:** deletion evidence is metadata only.
 
 ## Builds on
