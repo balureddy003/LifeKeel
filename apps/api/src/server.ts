@@ -176,6 +176,7 @@ import { registerFamilyCashflowRoutes } from './routes/family-cashflow.js'
 import { registerFamilyAssetRoutes } from './routes/family-assets.js'
 import { registerFamilyLegacyRoutes } from './routes/family-legacy.js'
 import { registerLeadRoutes } from './routes/leads.js'
+import { registerHeartbeatUnsubscribeRoutes } from './routes/heartbeat-unsubscribe.js'
 import { registerShareRoutes } from './routes/share.js'
 import { registerSendgridWebhookRoutes } from './routes/webhooks-sendgrid.js'
 import { sendOpsAlert } from './operator/ops-alerts.js'
@@ -1464,6 +1465,7 @@ app.addHook('onRequest', async (request, reply) => {
     '/readiness-quiz',
     '/leads',
     '/users/unsubscribe',
+    '/heartbeat/unsubscribe',
     '/share/',
     '/family/join',
     '/family/invite/',
@@ -1906,6 +1908,7 @@ if (workflowDb) {
   registerFamilyAssetRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerFamilyLegacyRoutes(app, workflowDb, engine, insightsDeliveryHook)
   await registerLeadRoutes(app, workflowDb)
+  await registerHeartbeatUnsubscribeRoutes(app, workflowDb)
   await registerShareRoutes(app)
   registerSendgridWebhookRoutes(app, workflowDb)
   await registerFamilyFinancialProfileRoutes(app, workflowDb, engine, insightsDeliveryHook)

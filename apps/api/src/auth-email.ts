@@ -201,10 +201,42 @@ export async function sendContinuityAlertEmail(
 // PRD-136 §4: the family heartbeat — same shell conventions as the
 // continuity emails above. Content comes pre-rendered from
 // feed/render-heartbeat.ts so this stays a thin transport.
+export function buildHeartbeatMessage(
+  to: string,
+  firstName: string,
+  rendered: { subject: string; text: string; html: string },
+  unsubscribeUrl?: string,
+) {
+  const unsubText = unsubscribeUrl ? `\n\nStop these emails: ${unsubscribeUrl}` : ''
+  const unsubHtml = unsubscribeUrl
+    ? `<p style="color:#888;font-size:13px;"><a href="${unsubscribeUrl}" style="color:#888;">Unsubscribe from the family heartbeat</a></p>`
+    : ''
+  return {
+    to,
+    from: { email: getFromEmail(), name: 'LifeKeel' },
+    subject: rendered.subject,
+    // rendered.text/html are addressed generically ("Hi,") — prepend the
+    // name in text so the email reads personally.
+    text: `Hi ${firstName},\n\n${rendered.text}${unsubText}`,
+    html: rendered.html.replace('<p>Hi,</p>', `<p>Hi ${firstName},</p>`) + unsubHtml,
+    ...(unsubscribeUrl
+      ? {
+          headers: {
+            'List-Unsubscribe': `<${unsubscribeUrl}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          },
+        }
+      : {}),
+  }
+}
+
 export async function sendHeartbeatEmail(
   to: string,
   name: string,
   rendered: { subject: string; text: string; html: string },
+  /** Signed one-click opt-out URL (routes/heartbeat-unsubscribe.ts). Sent as
+   *  List-Unsubscribe + List-Unsubscribe-Post (RFC 8058) and in the footer. */
+  unsubscribeUrl?: string,
 ): Promise<void> {
   const apiKey = process.env['SENDGRID_API_KEY']
   if (!apiKey) {
@@ -214,15 +246,7 @@ export async function sendHeartbeatEmail(
   sgMail.setApiKey(apiKey)
   const firstName = name.split(' ')[0] || 'there'
   try {
-    await sgMail.send({
-      to,
-      from: { email: getFromEmail(), name: 'LifeKeel' },
-      subject: rendered.subject,
-      // rendered.text/html are addressed generically ("Hi,") — prepend the
-      // name in text so the email reads personally.
-      text: `Hi ${firstName},\n\n${rendered.text}`,
-      html: rendered.html.replace('<p>Hi,</p>', `<p>Hi ${firstName},</p>`),
-    })
+    await sgMail.send(buildHeartbeatMessage(to, firstName, rendered, unsubscribeUrl))
     log.info({ to }, 'Heartbeat email sent')
   } catch (err) {
     log.error({ to, err }, 'Failed to send heartbeat email')
