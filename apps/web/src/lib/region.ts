@@ -34,6 +34,30 @@ export function regionForHost(host: string): Region | null {
   return REGIONS.find((r) => APP_HOSTS[r] === host) ?? null
 }
 
+/** Marketing-site hosts, per region — the apex (and www.) landing domains. */
+const LANDING_HOSTS: Record<Region, string> = {
+  uk: 'lifekeel.co.uk',
+  si: 'lifekeel.si',
+}
+
+/**
+ * Absolute URL to an app route (`/welcome`, `/login`) for use from the
+ * marketing pages. Those routes are Firebase-redirected to the app host on
+ * landing domains — a Next <Link> there dies on the cross-origin RSC fetch
+ * (/welcome/index.txt comes back as a 302 the fetch can't follow), so they
+ * must be plain <a> tags pointing at the app host directly. On localhost and
+ * *.web.app previews the relative path is returned instead — never bounce a
+ * preview to prod.
+ */
+export function appUrl(path: string, host?: string): string {
+  const h = (host ?? (typeof window === 'undefined' ? '' : window.location.hostname)).replace(
+    /^www\./,
+    '',
+  )
+  const region = regionForHost(h) ?? REGIONS.find((r) => LANDING_HOSTS[r] === h)
+  return region ? `https://${APP_HOSTS[region]}${path}` : path
+}
+
 /**
  * Where to send the shell so it is on `region`'s app host, keeping the path,
  * query and hash. Null when it is already there or on a host that isn't one of
