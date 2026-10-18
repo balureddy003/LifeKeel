@@ -53,3 +53,24 @@ the usual Xcode/Android settings noted below.
 and dynamically imports the plugins — the packages are *not* web
 dependencies, so the PWA bundle is unaffected; inside the shell the same
 code paths upgrade to native behavior automatically.
+
+## Regions (`.co.uk` / `.si`)
+
+Accounts and sessions are per registrable domain, but `server.url` is fixed at
+build time, so the shell always starts on `app.lifekeel.co.uk`. Inside the shell,
+`apps/web`'s `NativeRegionGate` (mounted in `app/layout.tsx`) then redirects to the
+user's region host (`apps/web/src/lib/region.ts`):
+
+- No prompt on first launch: the region is guessed from the device language
+  (`sl-SI` → Slovenia, anything else → United Kingdom) and saved. An install that
+  already has a session on `.co.uk` is saved as UK and never moved.
+- The choice is stored in the native **Preferences** plugin (key `lifekeel_region`),
+  not localStorage, so WebView storage eviction can't lose it. Signing out does not
+  clear it.
+- `Region: … · Change` (`RegionSwitch`) on login, signup and Settings corrects a
+  wrong guess with one tap.
+- `allowNavigation` must keep both app hosts, or the redirect opens in Safari.
+
+**Not covered by automated tests:** that the Capacitor bridge and Preferences plugin
+are present on the `.si` page after the cross-origin redirect. Check it by hand in
+the iOS Simulator with the device region set to Slovenia before shipping a build.

@@ -13,7 +13,12 @@
  * In a plain browser `window.Capacitor` is absent and everything no-ops.
  */
 
-interface CameraPhoto { webPath?: string; format?: string }
+import { isRegion, type Region } from './region'
+
+interface CameraPhoto {
+  webPath?: string
+  format?: string
+}
 
 interface CapacitorPlugins {
   Camera?: {
@@ -27,6 +32,10 @@ interface CapacitorPlugins {
   BiometricAuth?: {
     authenticate: (opts: { reason: string }) => Promise<void>
     checkBiometry: () => Promise<{ isAvailable: boolean }>
+  }
+  Preferences?: {
+    get: (opts: { key: string }) => Promise<{ value: string | null }>
+    set: (opts: { key: string; value: string }) => Promise<void>
   }
 }
 
@@ -70,7 +79,9 @@ export async function takeNativePhoto(): Promise<File | null> {
     const url = photo.webPath
     if (!url) return null
     const blob = await (await fetch(url)).blob()
-    return new File([blob], `scan-${Date.now()}.${photo.format || 'jpeg'}`, { type: blob.type || 'image/jpeg' })
+    return new File([blob], `scan-${Date.now()}.${photo.format || 'jpeg'}`, {
+      type: blob.type || 'image/jpeg',
+    })
   } catch {
     return null
   }
@@ -110,4 +121,31 @@ export function biometricLockEnabled(): boolean {
 
 export function setBiometricLockEnabled(enabled: boolean): void {
   localStorage.setItem(BIOMETRIC_PREF_KEY, String(enabled))
+}
+
+// The shell's region (which app host it starts on). Held in the native
+// Preferences plugin rather than localStorage: the WebView can evict web
+// storage, and this is a device setting, not user data — purgeClientData()
+// deliberately leaves it alone.
+const REGION_PREF_KEY = 'lifekeel_region'
+
+export async function getSavedRegion(): Promise<Region | null> {
+  const prefs = isNativeShell() ? window.Capacitor?.Plugins?.Preferences : undefined
+  if (!prefs) return null
+  try {
+    const { value } = await prefs.get({ key: REGION_PREF_KEY })
+    return isRegion(value) ? value : null
+  } catch {
+    return null
+  }
+}
+
+export async function saveRegion(region: Region): Promise<void> {
+  const prefs = isNativeShell() ? window.Capacitor?.Plugins?.Preferences : undefined
+  if (!prefs) return
+  try {
+    await prefs.set({ key: REGION_PREF_KEY, value: region })
+  } catch {
+    // Not persisted: the locale guess runs again next launch.
+  }
 }

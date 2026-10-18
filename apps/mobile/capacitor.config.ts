@@ -16,6 +16,9 @@ const config: CapacitorConfig = {
   // `cap sync` copies it but it is never served. Keep it minimal.
   webDir: 'www',
   server: {
+    // Canonical entry point. server.url is build-time config, so every launch
+    // starts here; apps/web's NativeRegionGate then redirects a Slovenian
+    // user to app.lifekeel.si (accounts and sessions are per TLD).
     url: 'https://app.lifekeel.co.uk',
     // Keep OAuth and deep links inside the shell instead of kicking out
     // to Safari — auth flows bounce through the API domain.
