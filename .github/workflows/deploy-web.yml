@@ -20,7 +20,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Fails loudly when dispatched from a branch other than main (stops accidents; a writer can still edit this
+  # file on their own branch, see docs/sdlc/status.md G10).
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Deploys run from main only
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "::error::Run this workflow from main (got $REF). Choose 'Use workflow from: main'; put the commit to deploy in the ref input."
+            exit 1
+          fi
+
   verify-ci:
+    needs: guard
     permissions:
       contents: read
       actions: read
