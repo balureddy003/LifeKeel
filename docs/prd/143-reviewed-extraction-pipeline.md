@@ -81,6 +81,23 @@ learning from corrections.
 Which field set per document type is the v1 minimum? Proposed: insurance and
 pension first, since they feed the existing protection and retirement detectors.
 
+## Amendments from the October 2026 market review
+
+See [prd-set-market-review-2026-10.md](../reviews/prd-set-market-review-2026-10.md)
+for evidence quality. Numeric defaults below are hypotheses to test, not benchmarks.
+
+1. **Launch gate: a DPIA, a ROPA entry and an Art. 6 / Art. 9 decision.** Policy
+   schedules and wills can contain health data and third parties' details, and the
+   ICO's DPIA triggers include AI plus another risk factor (UK and EU versions;
+   counsel).
+2. **Never extract medical text.** The field schema excludes it, with a test.
+3. **Reword "cannot trigger an action".** Having no tools stops injected instructions
+   from acting, but a poisoned field value can still mislead; confirm-before-commit is
+   the real control, and the PRD should say so.
+4. **Published trust statement** must say that opt-in vault sealing (PRD-134) excludes
+   OCR, so paid extraction and the strongest privacy feature cannot be combined.
+5. **Pen test** of the upload path before launch.
+
 ## Becomes
 
 docs/prd/143-reviewed-extraction-pipeline.md

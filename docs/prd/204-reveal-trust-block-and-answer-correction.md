@@ -48,6 +48,23 @@ rate versus the pre-change baseline; no increase in score-page bounce.
 
 Third-party trust badges or reviews; any claim not backed by code or contract.
 
+## Amendments from the October 2026 market review
+
+See [prd-set-market-review-2026-10.md](../reviews/prd-set-market-review-2026-10.md)
+for evidence quality. Numeric defaults below are hypotheses to test, not benchmarks.
+
+1. **One line above the button:** "what happens to my email", stating exactly what is
+   stored and when. Add an "answers used, tap to correct" summary above the ask.
+2. **Do not claim "we never train AI on your content" yet.** CLAUDE.md says the
+   registry that enforces rule 3 (PRD-142) is not wired, so the claim is not
+   technically enforced. Publish it only when PRD-142's tripwire test exists.
+3. **Copy under the advice-rule test.** The trust block and the summary copy are added
+   to `advice-rule.test.ts`'s copy set.
+4. **Guardrails** for this and PRD-203: page bounce rate, email bounce rate, spam
+   complaints, unsubscribes, account deletions, and skew in the score-band
+   distribution. Stop an experiment if complaints exceed 0.1% (a suggested threshold,
+   not a benchmark).
+
 ## Becomes
 
 docs/prd/204-reveal-trust-block-and-answer-correction.md

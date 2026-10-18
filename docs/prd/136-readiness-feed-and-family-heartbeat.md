@@ -1,5 +1,11 @@
 # PRD-136: Readiness feed + family heartbeat ("What changed?")
 
+> **Amended by PRD-138 (October 2026 market review):** the default cadence is
+> monthly rather than weekly, the "30-day return rate" metric is replaced by PRD-141's
+> measures, and the delivery, window and unsubscribe defects found in review are
+> listed in PRD-138's amendments.
+
+
 ## The problem
 
 Keel already *does* a lot in the background — 9 detectors re-evaluate on

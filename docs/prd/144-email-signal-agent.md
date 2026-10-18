@@ -72,6 +72,30 @@ categories, sending or modifying mail, reading other people's mailboxes.
 Provider security-assessment cost and timeline for restricted Gmail scopes. Confirm
 before promising a launch date; this PRD does not assume it.
 
+## Amendments from the October 2026 market review
+
+See [prd-set-market-review-2026-10.md](../reviews/prd-set-market-review-2026-10.md)
+for evidence quality. Numeric defaults below are hypotheses to test, not benchmarks.
+
+1. **Scope wording is wrong.** `gmail.readonly` and `gmail.metadata` are both
+   restricted scopes, and metadata has no message bodies. The only sensitive-tier
+   message scope works only inside an open message. So "narrowest scope" is not true
+   for this purpose and the consent screen will say all mail. Reword the copy to "we
+   only open matching messages", and do not describe the scope as narrow.
+2. **Launch gates:** Google restricted-scope verification and the annual security
+   assessment (cost and date are the user's decision; vendor pages suggest roughly USD
+   540 to 6,000 for Tier 2, unverified, so get a quote), a Limited Use statement, and a
+   pen test of the mailbox flow.
+3. **Soften "rest of the inbox neither read nor retained".** Header matching inspects
+   the inbox. State instead that only matched messages are opened or kept, and test it.
+4. **Limited Use:** `source=gmail` data is excluded from evaluation, human review and
+   cross-tenant scorers (PRD-142).
+5. **Revoke-and-delete cannot reach backups or processor logs;** the receipt says so
+   (PRD-146).
+6. **Recommendation, not decision:** the competitive review suggests deferring this PRD
+   (a funded competitor already ships mailbox sync; the assessment recurs yearly). The
+   upload path (PRD-143) carries most of the value without it.
+
 ## Becomes
 
 docs/prd/144-email-signal-agent.md

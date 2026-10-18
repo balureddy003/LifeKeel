@@ -44,6 +44,22 @@ signal that the feature feels unsafe.
 
 Child accounts, full-family access, editing from the shared view.
 
+## Amendments from the October 2026 market review
+
+See [prd-set-market-review-2026-10.md](../reviews/prd-set-market-review-2026-10.md)
+for evidence quality. Numeric defaults below are hypotheses to test, not benchmarks.
+
+1. **Defaults:** 7-day expiry, a visible "not for me / report this" control, and
+   immediate revocation.
+2. **No LifeKeel-sent email to the third party.** Use the device share sheet or copy
+   link only; sending mail to someone who did not sign up is a consent problem.
+3. **Link hygiene:** `Referrer-Policy: no-referrer`, no third-party scripts on the
+   shared page, `noindex`, rate limits.
+4. **Partner onboarding starts a new snapshot** rather than inheriting the sharer's
+   answers.
+5. This PRD is a candidate to **defer** (see the review's decisions list); it is the
+   least evidenced of the conversion set.
+
 ## Becomes
 
 docs/prd/205-household-share-of-snapshot.md

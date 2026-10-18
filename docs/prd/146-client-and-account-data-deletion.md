@@ -61,6 +61,25 @@ tenant-scoped records in a post-deletion verification test.
 Legal-hold workflows, cross-border transfer paperwork, deletion from third-party
 processors beyond verifying none were used.
 
+## Amendments from the October 2026 market review
+
+See [prd-set-market-review-2026-10.md](../reviews/prd-set-market-review-2026-10.md)
+for evidence quality. Numeric defaults below are hypotheses to test, not benchmarks.
+
+1. **The receipt has three lines:** live data erased; backup retention window in days
+   (erasure covers backups, which may persist "beyond use" until overwritten, and the
+   receipt must say so); per-processor retention. Never write "permanent" or "none
+   exist".
+2. **Remove "the job verifies none exist" at processors.** LifeKeel cannot verify a
+   negative at a provider. Record the processor's stated retention and inform
+   processors of the erasure where required.
+3. **Retention sweep and CLAUDE.md rule 1.** A sweep that irreversibly expires user
+   documents conflicts with the human-approval rule. Limit the sweep to derived data,
+   or give a notice and a grace period before any document expires.
+4. **Apple 5.1.1(v)** requires in-app account deletion; this PRD supplies it.
+5. **Launch evidence:** a breach plan covering the ICO and the Slovenian regulator, and
+   a position on children's data.
+
 ## Becomes
 
 docs/prd/146-client-and-account-data-deletion.md
