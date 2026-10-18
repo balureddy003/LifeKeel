@@ -16,10 +16,16 @@ const config: CapacitorConfig = {
   // `cap sync` copies it but it is never served. Keep it minimal.
   webDir: 'www',
   server: {
-    url: 'https://lifekeel.co.uk',
+    url: 'https://app.lifekeel.co.uk',
     // Keep OAuth and deep links inside the shell instead of kicking out
     // to Safari — auth flows bounce through the API domain.
-    allowNavigation: ['lifekeel.co.uk', '*.lifekeel.co.uk', '*.run.app'],
+    allowNavigation: [
+      'app.lifekeel.co.uk',
+      'api.lifekeel.co.uk',
+      'app.lifekeel.si',
+      'api.lifekeel.si',
+      '*.run.app',
+    ],
   },
   ios: {
     contentInset: 'never',
