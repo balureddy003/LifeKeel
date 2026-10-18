@@ -17,6 +17,8 @@
     "start": "set -a; [ ! -f ../../.env ] || . ../../.env; set +a; node dist/server.js",
     "lint": "eslint .",
     "test": "vitest run",
+    "eval:assistant": "node dist/eval/assistant-eval.js",
+    "eval:local-model": "node dist/eval/local-model-eval.js",
     "typecheck": "tsc --noEmit",
     "migrate": "node dist/migrate.js",
     "clean": "rm -rf dist"
