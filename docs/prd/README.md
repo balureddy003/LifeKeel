@@ -273,6 +273,47 @@ domain before going wide, prepare-only actions before anything that acts.
     `estate-readiness.yaml`, and a continuity rehearsal. Register and
     detectors Tier 0; any *release* of documents stays out of scope.
 
+38. [138-quiet-care-digest.md](138-quiet-care-digest.md) — **proposed.**
+    The heartbeat job exists but silence is still ambiguous. A monthly
+    digest that is always sent, built as proof of work (what was checked,
+    what changed, next check date), amending PRD-136's cadence and
+    zero-change behaviour. Tier 0.
+39. [139-notification-tiers-caps-suppression.md](139-notification-tiers-caps-suppression.md) —
+    **proposed.** `DeliveryRouter` limits messages per insight, not per
+    family. Four message tiers, a family-level budget and suppression
+    after unopened alerts, so the product stays calm. Tier 0.
+40. [140-notification-channel-fallback.md](140-notification-channel-fallback.md) —
+    **proposed.** Native push, installed-PWA web push, then email, chosen
+    per member, with no financial content in push payloads. Tier 0.
+41. [141-retention-and-perceived-protection-metrics.md](141-retention-and-perceived-protection-metrics.md) —
+    **proposed.** Defines retention for a product people do not open:
+    quiet-care retention, digest engagement, data freshness and a
+    quarterly perceived-protection question. Tier 0.
+42. [142-ai-task-provider-registry.md](142-ai-task-provider-registry.md) —
+    **proposed.** The technical gate for CLAUDE.md rule 3: no hosted model
+    call without an approved task, processor, retention mode and field
+    allow-list, with a tripwire test. Prerequisite for PRD-143 and
+    PRD-144. Tier 0.
+43. [143-reviewed-extraction-pipeline.md](143-reviewed-extraction-pipeline.md) —
+    **proposed.** Classify, extract only the fields detectors consume, and
+    show the source for confirmation before anything reaches the profile.
+    Extends PRD-003 and PRD-109. Tier 0; the user confirms every write.
+44. [144-email-signal-agent.md](144-email-signal-agent.md) — **proposed.**
+    Read-only, opt-in mailbox matching on fixed categories; matched
+    attachments go through PRD-143's confirm gate. Closes PRD-004's
+    enrichment gap safely. Tier 0.
+45. [145-freshness-and-completeness-signals.md](145-freshness-and-completeness-signals.md) —
+    **proposed.** One deterministic signal for "this check is paused
+    because an input is missing or old", feeding the digest, Tier C
+    notifications and upgrade prompts. Tier 0.
+46. [146-client-and-account-data-deletion.md](146-client-and-account-data-deletion.md) —
+    **proposed.** Deletion with receipts across documents, derived data,
+    device tokens and accounts, plus per-class retention. Tier 2 for the
+    user-confirmed destructive action.
+47. [147-pwa-install-and-polish.md](147-pwa-install-and-polish.md) —
+    **proposed.** Manifest and install fixes, an iOS-aware install hint
+    under the strict CSP, and a trimmed service-worker precache. Tier 0.
+
 ## 20x — marketing: the same engine as the growth mechanic
 
 Uses LifeKeel's own detector engine and content infrastructure
@@ -285,6 +326,19 @@ building disconnected marketing tooling.
 2. [202-detector-driven-content-engine.md](202-detector-driven-content-engine.md) —
    one explainer post per detector rule, cross-linked from both the
    marketing site and real in-product insight cards.
+
+3. [203-passwordless-result-save.md](203-passwordless-result-save.md) —
+   **proposed.** Turns the anonymous score into something owned: one email
+   field, a magic link, no password, and a no-enumeration response.
+4. [204-reveal-trust-block-and-answer-correction.md](204-reveal-trust-block-and-answer-correction.md) —
+   **proposed.** A literally-true "what we do / don't do" block and a
+   "correct my answers" action at the moment of doubt.
+5. [205-household-share-of-snapshot.md](205-household-share-of-snapshot.md) —
+   **proposed.** A revocable read-only link so a partner can see the
+   snapshot before any account exists.
+6. [206-free-to-plus-upgrade-moments.md](206-free-to-plus-upgrade-moments.md) —
+   **proposed.** Upgrade prompts only where parsing closes a data gap,
+   never from a risk alarm, with an honest trial summary.
 
 ## Deliberately not written as PRDs yet
 
