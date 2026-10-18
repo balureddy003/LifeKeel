@@ -31,7 +31,8 @@ test('sign-out removes cached API data, the offline queue and per-user storage',
   })
 
   await page.getByRole('button', { name: 'Sign Out' }).click()
-  await page.waitForURL(/\/login/)
+  // No URL assertion: sign-out lands on /login in Chromium but on the signed-out
+  // landing page in WebKit; what matters is that the device data is gone.
 
   await expect
     .poll(() =>

@@ -15,7 +15,7 @@ test('a signed-out visitor can get a readiness score without signing up', async 
   const seeScore = page.getByRole('button', { name: 'See my score' })
   for (let i = 0; i < 8 && !(await seeScore.isVisible()); i++) {
     await fillVisibleFields(page)
-    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByRole('button', { name: 'Next', exact: true }).click()
   }
   await fillVisibleFields(page)
   await seeScore.click()
