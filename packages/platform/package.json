@@ -21,18 +21,18 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.0",
+    "@anthropic-ai/sdk": "^0.134.0",
     "@lifekeel/runtime": "workspace:*",
     "@opentelemetry/api": "^1.9.0",
     "jose": "^5.9.0",
-    "lru-cache": "^11.5.2",
-    "mongodb": "^7.3.0",
+    "lru-cache": "^11.5.3",
+    "mongodb": "^7.7.0",
     "openai": "^6.41.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
     "@lifekeel/eslint-config": "workspace:*",
-    "@types/node": "^22.0.0",
+    "@types/node": "^22.20.5",
     "eslint": "^9.19.0",
     "typescript": "^5.6.0",
     "vitest": "^4.1.9"
