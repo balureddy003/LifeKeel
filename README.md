@@ -30,7 +30,11 @@ New here? Start with [CONTRIBUTING.md](CONTRIBUTING.md) (the whole loop on one p
 
 ## Quick start
 
+Needs Node 22.12 or newer and pnpm (`corepack enable` picks the pinned 8.15.5). Start MongoDB
+and Redis first; the API will not boot without them:
+
 ```bash
+docker compose -f apps/api/docker-compose.yml up -d
 pnpm install
 cp .env.example .env               # apps/api — needs JWT_SECRET, MONGODB_URL
 cp apps/web/.env.example apps/web/.env   # apps/web — NEXT_PUBLIC_API_URL
@@ -39,14 +43,13 @@ pnpm --filter @lifekeel/api dev    # http://localhost:3001
 pnpm --filter @lifekeel/web dev    # http://localhost:3002
 ```
 
-Or from repo root, across the whole workspace:
+Before you open a PR, from the repo root (this runs everything CI runs):
 
 ```bash
-pnpm typecheck && pnpm lint && pnpm test && pnpm build
+pnpm check        # typecheck + lint + test + build
 ```
 
-`apps/api/docker-compose.yml` starts a local MongoDB + Redis if you don't
-have them running already.
+Making a change? [CONTRIBUTING.md](CONTRIBUTING.md) has the fast path for small changes.
 
 ## Local debugging
 

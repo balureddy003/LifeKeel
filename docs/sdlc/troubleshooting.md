@@ -13,7 +13,7 @@ repo. If you hit something new, add a row.
 | CodeQL did not run on my PR | By design it runs weekly and on demand (`Actions`, `Security`, `Run workflow`), and only produces an artifact. | Trigger it manually if you need it now. |
 | `dependency-audit` fails with a high advisory | A transitive dependency has a known vulnerability. | Add a patched version to `pnpm.overrides` in the root `package.json`, run `pnpm install`, re-run `pnpm audit --prod --audit-level=high`. If no patched release exists, write down the exception in the PR. |
 | `build` fails only in CI | Cached or stale local state hid it, or a sibling package's `dist/` was missing locally. | Run `pnpm turbo run typecheck lint test build --force` from the repo root. |
-| Integration tests fail locally (`ml-tenant-isolation`, `email-scan-fanout`) | They need a real MongoDB and Redis. Expected, not a regression. | See [local-testing.md](../local-testing.md); CI provides both. |
+| `ml-tenant-isolation` fails locally; `email-scan-fanout.integration` is skipped | They need a real MongoDB and Redis. The first has no skip guard so it fails; the second skips when the services are absent. Expected, not a regression. | See [local-testing.md](../local-testing.md); CI provides both. |
 | "cannot find module `@lifekeel/x`" running a test inside one package | That sibling package has no `dist/` yet. | Run from the repo root: `pnpm test` or `pnpm turbo run test`. |
 | Page renders unstyled during local dev | `pnpm typecheck` or `build` ran while `next dev` was up and overwrote `.next`. | Stop dev, delete `apps/web/.next`, restart `pnpm --filter @lifekeel/web dev`. |
 
@@ -76,8 +76,8 @@ then `git worktree remove ../wt-name`. A fresh worktree has no `node_modules`; r
 |---|---|---|
 | `verify-ci` fails: "not in main's history" | You asked for a ref that is not on `main`. | Merge through a PR first. Hotfixes go through `main` too. |
 | `verify-ci` fails: "No successful CI run" | CI has not finished (or failed) on that exact commit. | Wait for `ci.yml` on `main`, or fix it. A squash creates a new commit that needs its own run. |
-| The deploy did not pause for approval | The `Production` environment has no required reviewers. Reviewers and branch protection need a repository plan that offers them (see playbook 6.0). | Treat approval as a convention until the plan or visibility changes. |
-| Local-judge deploy fails at the model eval step with module-not-found | The eval harness it runs was removed by the PR 42 cleanup; PR 45 restores it. See playbook gap G15. | Deploy from a commit that includes PR 45, or set `run_eval` to false. |
+| The deploy did not pause for approval | By design today: the `Production` environment has no required reviewers, and this plan cannot add them (see [status](status.md#what-github-can-and-cannot-enforce-here)). | You are the gate. Read the smoke test result; know the rollback command (gap G16) before you dispatch. |
+| Local-judge deploy fails at the model eval step with module-not-found | You deployed a commit from before the eval harness was restored. | Deploy a commit on current `main`, or set `run_eval` to false. |
 
 ## Hooks and Claude Code
 
