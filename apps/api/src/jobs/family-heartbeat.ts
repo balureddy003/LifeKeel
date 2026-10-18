@@ -130,7 +130,15 @@ export async function runFamilyHeartbeat(
     const windowStart =
       opts.cadence === 'weekly'
         ? new Date(now.getTime() - 7 * 86_400_000)
-        : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+        : // The monthly cron fires on the 1st at 08:00 UTC, so "this month" would be
+          // an ~8h window. Report on the previous full calendar month instead.
+          new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1))
+    // Exclusive upper bound so a monthly report never leaks the new month's
+    // events in; weekly stays open-ended (rolling 7 days up to now).
+    const windowEnd =
+      opts.cadence === 'monthly'
+        ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+        : null
     const windowStartIso = windowStart.toISOString().slice(0, 10)
 
     const adults = (family.members ?? []).filter(
@@ -146,7 +154,9 @@ export async function runFamilyHeartbeat(
     ])
 
     const inWindow = (d: Date | string | undefined) =>
-      d !== undefined && new Date(d).getTime() >= windowStart.getTime()
+      d !== undefined &&
+      new Date(d).getTime() >= windowStart.getTime() &&
+      (windowEnd === null || new Date(d).getTime() < windowEnd.getTime())
     const visibleEvents = events.filter(
       (e) => inWindow(e['created_at'] as Date) && e['muted'] !== true,
     )
