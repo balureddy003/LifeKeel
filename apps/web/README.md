@@ -31,3 +31,17 @@ pnpm build:export   # production build (Firebase static export)
 pnpm test           # vitest
 pnpm typecheck / lint
 ```
+
+### End-to-end tests (device matrix)
+
+```bash
+pnpm exec playwright install chromium webkit   # once
+pnpm test:e2e                                  # starts the local API + web, runs every project
+pnpm test:e2e --project=iphone                 # one device
+E2E_WEB_BASE=https://app.lifekeel.si E2E_API_BASE=https://api.lifekeel.si pnpm test:e2e
+```
+
+Projects: `chromium-desktop` (all specs), plus `webkit-desktop`, `iphone`,
+`android` and `ipad` (the device-agnostic specs listed as `DEVICE_SPECS` in
+`playwright.config.ts`: anonymous check, logout purge, responsive layout).
+Needs MongoDB/Redis for the API — see `docs/local-testing.md`. Not run in CI.
