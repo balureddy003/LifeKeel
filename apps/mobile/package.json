@@ -2,6 +2,7 @@
   "name": "@lifekeel/mobile",
   "version": "0.1.0",
   "private": true,
+  "license": "UNLICENSED",
   "description": "Capacitor native shell for the LifeKeel PWA — camera document capture, push, and biometric unlock. Loads the deployed web app, so the PWA stays the single source of truth.",
   "scripts": {
     "add:ios": "cap add ios",

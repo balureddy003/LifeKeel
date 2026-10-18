@@ -1,5 +1,62 @@
+LifeKeel Proprietary Licence (source visible, no rights granted)
+
 Copyright (c) 2026 Balu Reddy. All rights reserved.
 
-This source code is proprietary and confidential. No part of this repository
-may be copied, distributed, modified, or used to create derivative works
-without prior written permission from the copyright holder.
+This repository is public so that it can be read. Publishing it does not
+grant any licence to use it.
+
+1. What you may do
+
+   View and read the source code on GitHub. You may also fork the repository
+   on GitHub and view your fork, to the extent GitHub's Terms of Service
+   allow it; that right comes from GitHub, not from this licence.
+
+   Nothing else is permitted.
+
+2. What you may not do without prior written permission from the copyright holder
+
+   a. Copy, download for use, modify, translate, or create derivative works
+      of any part of this repository.
+   b. Run all or any part of it, in production or in any commercial,
+      internal-business or personal-service use.
+   c. Host it, or offer it or anything derived from it, as a product or a
+      service, whether free or paid.
+   d. Distribute, sublicense, sell, lease, or otherwise make it available to
+      anyone else.
+   e. Use it, in whole or in part, to build, improve, or benchmark a product
+      or service that competes with LifeKeel.
+   f. Use it as training or fine-tuning data for any machine-learning model.
+   g. Remove or alter this notice, any copyright statement, or any
+      attribution.
+
+3. Earlier licence declarations are withdrawn
+
+   Earlier revisions of some packages in this repository declared
+   open-source licences (MIT, Apache-2.0, or the Business Source License 1.1)
+   in their package.json files and LICENSE files. Those declarations are
+   withdrawn for this revision and all later revisions. A copy of an earlier
+   revision that someone lawfully obtained remains governed by the terms it
+   was obtained under; this notice neither changes those terms nor extends
+   them to later revisions.
+
+4. Third-party software
+
+   This repository depends on third-party open-source components. They remain
+   under their own licences, listed in NOTICE. Nothing in this licence
+   restricts the rights you have under those licences.
+
+5. Trademarks
+
+   "LifeKeel", "Keel", and the LifeKeel logo are not licensed by this
+   document.
+
+6. No warranty
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+   WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
+   OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN IT.
+
+To ask for permission or a commercial licence: hello@lifekeel.co.uk

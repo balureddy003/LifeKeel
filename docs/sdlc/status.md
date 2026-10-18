@@ -12,19 +12,26 @@ staff engineer). Their findings were checked against the repo before use; the ne
 raised are G16 to G25 below.
 
 ## What GitHub can and cannot enforce here
-Verified against the live repository: it is private, and the branch-protection
-and ruleset APIs return 403 ("Upgrade to GitHub Pro or make this repository
-public"). The `Production` environment exists but has **no protection rules**,
-and required reviewers are likewise a paid feature for private repos. So today:
 
-- Anyone with write access can push to `main`; "CI must pass" and "a person
-  merges" are team conventions, not controls.
-- The deploy approval pause is **not active**. `require-ci.yml` still checks the
-  SHA, but `workflow_dispatch` runs the workflow file from the chosen branch, so
-  a branch that edits that file can skip the check.
-- Everywhere this document says "blocks" or "required", read it as "fails the
-  check and the author is expected to stop". Sections 6.3 to 6.5 of the playbook describe
-  the intended end state once the plan or visibility changes.
+**The repository became public on 2026-10-18.** That makes branch protection, required environment
+reviewers, secret scanning with push protection, Dependabot security updates and free Actions
+minutes available. Checked read-only straight afterwards, **none of the protections had been switched on
+yet**: `main` returned "Branch not protected", the `Production` environment had no rules, and secret
+scanning, push protection and Dependabot security updates were disabled. The commands to switch them on
+are in [One-time GitHub setup](#one-time-github-setup). Until someone runs them:
+
+- Anyone with write access can push to `main`; "CI must pass" and "a person merges" are team
+  conventions, not controls.
+- The deploy approval pause is **not active**. `require-ci.yml` still checks the SHA, but
+  `workflow_dispatch` runs the workflow file from the chosen branch, so a branch that edits that file can
+  skip the check. Branch protection plus a deployment-branch restriction closes most of that gap.
+- Everywhere the docs say "blocks" or "required", read "fails the check and the author is expected to
+  stop". Sections 6.3 to 6.5 of the playbook describe the intended end state once the protections are on.
+
+What a public repository changes for risk (see G26): the source, this gap table, `SECURITY.md`, the PRDs
+and the reviews are readable by anyone. Pull requests from forks run with no secrets. No workflow uses
+`pull_request_target` or `workflow_run` (checked), which is what keeps that true. `claude-review.yml`
+already skips forks.
 
 ## Cost controls (Actions minutes and tokens)
 
@@ -33,6 +40,11 @@ had taken effect):** `ci.yml` 51 runs and about 303 minutes of wall-clock, `secu
 about 142, `images.yml` 20 runs and about 95, and `claude-review.yml` 35 runs of which 22 failed for the
 missing secret. That is roughly 540 minutes in two weeks, so about 1,150 a month against a 2,000
 minute free allowance for private repositories (jobs bill separately, so the real figure is higher).
+On 2026-10-18 GitHub began refusing to start jobs ("recent account payments have failed or your
+spending limit needs to be increased"), so every check failed in two seconds without running a step. The
+repository was then made public, where Actions minutes are free. The levers below still matter for
+speed and, above all, for **Claude API token spend**, which is not covered by that change; the
+minutes-driven ones (weekly CodeQL, draft skipping) could be relaxed now, but are cheap to keep.
 Re-run the script after a few weeks to see what the levers saved.
 
 Measured from recent runs, a push to a ready PR cost roughly 6 minutes of CI plus
@@ -69,7 +81,7 @@ after a week.
 | G7 | No post-deploy verification or rollback | A bad deploy is found by users | Smoke-test after deploy; document rollback |
 | G8 | No production metrics loop | Maintain does not feed Plan | Define SLOs and alerts; link alerts to intents |
 | G9 | No ADRs | Decisions are lost in PR threads | Add an ADR folder and a template |
-| G10 | Branch protection and environment reviewers unavailable on this plan (verified, HTTP 403) | "Blocks merge" and the deploy approval are conventions | Upgrade the plan or make the repo public, then add required checks and reviewers |
+| G10 | Branch protection and environment reviewers: **available since the repo went public, not applied** (verified 2026-10-18) | "Blocks merge" and the deploy approval are still conventions | Run the setup commands below, then re-read this table | 
 | G11 | `POST /connectors/:id/actions/:action` ran any connector action (76 write actions across 32 connectors: broker orders, email, SMS, refunds, public posts) for an authenticated tenant with no approval gate | Rule 1 bypass | **Mitigated:** the route is read-only; only an exact registry GET action runs, everything else is 403 or 404 (`apps/api/src/connectors/action-gate.ts`), tested across every registry write action. Open: the workflow engine's `connector_action` nodes call the executor directly; an approved write flow, if wanted, must go through its own gate |
 | G12 | Single maintainer: `CODEOWNERS` is one person | The human review gate is self-review | Add a second reviewer or document the accepted risk |
 | G13 | Advice scan covers detector, family playbook, `verticals/family`, marketing landing, guides and blog copy only; 8 other LLM prompt files have no contract test or eval | Subtle drift in uncovered prompts | Add contract tests per prompt as they change |
@@ -93,17 +105,45 @@ Agreement between reviewers is noted because it is the best predictor of importa
 | G23 | **Docs drift.** Hand-measured numbers and lists go stale | Docs are the product of this practice | **Mitigated here:** `docs-links.test.ts` now also fails if a workflow is not named in the playbook or a gap id is cited but missing | architect, DX |
 | G24 | **No measurements.** Nothing shows the practice works | Every control is unfalsifiable | **Started here:** `scripts/sdlc-metrics.sh` prints deploy frequency, change failure, lead time, gate bypasses and CI minutes from data the repo already has. Remaining: run it weekly and keep the trend | skeptic |
 | G25 | **Agent permissions do not back the merge and deploy convention.** `.claude/settings.json` denies force-push only; `gh pr merge`, `git push origin main` and `gh workflow run` are allowed | The one control the owner owns locally is unused | An owner decision: deny them (it also stops delegated merges, which this repo currently uses). Not changed by an agent on a reviewer's suggestion | architect |
+| G26 | **The repo is public, so its weaknesses are public.** This table, `SECURITY.md`, the PRDs (`docs/prd`) and the reviews (`docs/reviews`: competitor and go-to-market analysis) are readable by anyone. History scans found no secrets (184 commits, patterns and file names) | A reader learns exactly what is not yet fixed (for example G17) | Decide what stays public; move sensitive gap detail and strategy docs to a private place; fix G17 and G16 quickly | owner |
+| G27 | **Licensing.** The packages carried MIT, Apache-2.0 and BUSL-1.1 grants while the root said proprietary, and the repo went public. **Resolved in this change:** every package is `UNLICENSED` and `private`, the per-package licences are removed, the root `LICENSE` is expanded, `NOTICE` lists third-party terms, and `license-consistency.test.ts` prevents a new grant. Remaining: copies of earlier revisions already obtained stay under their old terms; counsel should review `LICENSE`; `buffers` and `khroma` have no declared licence | A public repo with contradictory licences grants rights by accident | Legal review; verify the two dependencies | owner |
 
 ## One-time GitHub setup
 
-These live in repository settings and cannot be set from the code.
+These live in repository settings and cannot be set from the code. **Status as of 2026-10-18: none
+applied.** The owner runs them (they are security settings); each is one command.
 
-1. **Environment `Production`:** it exists but has no rules. Required reviewers
-   need a plan that supports them for private repos (above). Optionally
-   restrict deployment branches to `main`.
-2. **Secret `ANTHROPIC_API_KEY`:** needed by `claude-review.yml`.
-3. **Branch protection on `main`** (unavailable on the current plan): require pull requests, require the
-   `build`, `codeql`, `dependency-audit`, `secret-scan` and `python-services`
-   checks, disallow force pushes.
-4. **Code scanning:** CodeQL results appear under Security once the workflow
-   has run; the job needs `actions: read` (already set).
+1. **Secret scanning with push protection**
+   ```bash
+   gh api -X PATCH repos/balureddy003/LifeKeel --input - <<'EOF'
+   {"security_and_analysis":{"secret_scanning":{"status":"enabled"},"secret_scanning_push_protection":{"status":"enabled"}}}
+   EOF
+   ```
+2. **Dependency alerts, then Dependabot security updates**
+   ```bash
+   gh api -X PUT repos/balureddy003/LifeKeel/vulnerability-alerts
+   gh api -X PUT repos/balureddy003/LifeKeel/automated-security-fixes
+   ```
+3. **Protect `main`:** require the four checks, no force pushes or deletion, no required reviews so the
+   single maintainer can self-merge. `enforce_admins` is false, so the owner can still bypass in an
+   emergency; set it to `true` for hard enforcement.
+   ```bash
+   gh api -X PUT repos/balureddy003/LifeKeel/branches/main/protection --input - <<'EOF'
+   {"required_status_checks":{"strict":false,"contexts":["build","secret-scan","dependency-audit","python-services"]},"enforce_admins":false,"required_pull_request_reviews":null,"restrictions":null,"allow_force_pushes":false,"allow_deletions":false}
+   EOF
+   ```
+4. **Environment `Production`:** the owner as required reviewer (a GitHub user, not an assistant),
+   self-review allowed because there is one maintainer, deployments limited to `main`.
+   ```bash
+   gh api -X PUT repos/balureddy003/LifeKeel/environments/Production --input - <<'EOF'
+   {"reviewers":[{"type":"User","id":7783528}],"prevent_self_review":false,"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}
+   EOF
+   gh api -X POST repos/balureddy003/LifeKeel/environments/Production/deployment-branch-policies -f name=main
+   ```
+   The workflows say `environment: production`; confirm on the first real deploy that it pauses (names
+   should be case-insensitive).
+5. **Outside contributors:** Settings, Actions, General, "Fork pull request workflows": require approval
+   for all outside collaborators.
+6. **Secret `ANTHROPIC_API_KEY`:** needed by `claude-review.yml` (it fails loudly without it).
+7. **Code scanning:** now free on a public repo. The CodeQL job still uses `upload: never` from when the
+   repo was private; removing that (and the artifact step) lets findings appear in the Security tab.

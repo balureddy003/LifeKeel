@@ -2,6 +2,7 @@
   "name": "lifekeel",
   "version": "0.1.0",
   "private": true,
+  "license": "UNLICENSED",
   "description": "LifeKeel — the autonomous digital twin for your family. Monorepo: apps/web (Next.js frontend), apps/api (Fastify backend), packages/* (shared engine/platform packages).",
   "scripts": {
     "build": "turbo run build",

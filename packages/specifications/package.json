@@ -1,6 +1,8 @@
 {
   "name": "@lifekeel/specifications",
   "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
   "description": "Portable outcome specifications and provider contracts",
   "type": "module",
   "main": "./dist/index.js",
@@ -29,6 +31,5 @@
     "eslint": "^9.19.0",
     "typescript": "^5.6.0",
     "vitest": "^4.1.9"
-  },
-  "license": "Apache-2.0"
+  }
 }

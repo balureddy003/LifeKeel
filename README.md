@@ -80,3 +80,9 @@ points at a shared external backend (`NEXT_PUBLIC_API_URL`) rather than this
 repo's own `apps/api`, which isn't deployed yet. See `ARCHITECTURE.md`'s
 "where the vision meets reality today" table for exactly what's built versus
 planned.
+
+## Licence
+
+Proprietary, source visible: you may read the code on GitHub; you may not copy, run, modify, host or
+build on it without written permission. See [LICENSE](LICENSE); third-party components are listed in
+[NOTICE](NOTICE). To ask for a licence: hello@lifekeel.co.uk.

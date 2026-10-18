@@ -69,7 +69,7 @@ flowchart LR
 ```
 
 Green steps are machine-checked. Dashed amber steps need a person and are **not enforced by
-GitHub on this plan**: review is partly self-review and an AI reviewer, merge and deploy are
+GitHub today**: review is partly self-review and an AI reviewer, merge and deploy are
 conventions (6.0). The dotted return path from Operate to Intent is the loop that is not yet
 automated (G8).
 
@@ -282,11 +282,11 @@ tripwire; a test that has never failed is unverified.
 
 ### 6.0 What GitHub can and cannot enforce here
 
-Verified against the live repository: it is private, branch protection and rulesets return 403,
-and the `Production` environment has no reviewers. So **merge review, "CI must pass" and the
-deploy approval pause are conventions on this plan, not controls.** Wherever this document says
-"blocks" or "required", read "fails the check and the author is expected to stop". The facts,
-and what to do when the plan changes, are in [status.md](sdlc/status.md#what-github-can-and-cannot-enforce-here).
+The repository is public (since 2026-10-18), so branch protection, environment reviewers and secret
+scanning are **available**, but when last checked none was switched on. Until they are, **merge review,
+"CI must pass" and the deploy approval pause are conventions, not controls.** Wherever this document says
+"blocks" or "required", read "fails the check and the author is expected to stop". The facts and the
+commands to switch the protections on are in [status.md](sdlc/status.md#what-github-can-and-cannot-enforce-here).
 
 ### 6.1 Self-review before the PR
 Run `/code-review` on the diff and fix findings in the same pass. For
@@ -309,7 +309,7 @@ keep unrelated changes in separate PRs.
 | `claude-review.yml` | Claude reviews the PR against `CLAUDE.md` once on open or ready, and again when the `claude-review` label is added; not on every push, not for drafts, docs-only PRs or Dependabot | No, advisory. **Fails loudly if `ANTHROPIC_API_KEY` is unset** (before that guard it passed having reviewed nothing) |
 
 **These are advisory until G10 is fixed.** Making them required status checks needs branch
-protection (6.0), which this plan does not offer; until then "Blocks merge: Yes" means "the check
+protection (6.0), which is available but not yet switched on; until then "Blocks merge: Yes" means "the check
 goes red and the author is expected to stop". Also: `claude-review.yml` skips markdown and `docs/**`,
 so a change to `CLAUDE.md` or this playbook gets no AI review (G19), and a green review comment is
 not evidence that anything was reviewed.
@@ -363,7 +363,7 @@ sequenceDiagram
   RC->>RC: ci.yml green on this SHA?
   RC-->>GH: verified SHA, or fail
   GH->>Env: Request approval
-  Note over Env: no reviewers on this plan (6.0), so no pause
+  Note over Env: no reviewers configured yet (6.0), so no pause
   Env-->>GH: continues
   GH->>Cloud: Build the verified SHA, deploy with no traffic
   GH->>Cloud: Smoke-test the new revision at its own URL
@@ -462,7 +462,8 @@ availability).
 - [ ] Adversarial eval run and baseline recorded in the PR
 
 **New dependency**
-- [ ] Needed, maintained, license acceptable
+- [ ] Needed, maintained, license acceptable (see `NOTICE`; the product is proprietary, so check copyleft terms)
+- [ ] A new workspace package declares `"license": "UNLICENSED"` and `"private": true` (a test enforces it)
 - [ ] `pnpm audit --prod --audit-level=high` clean
 - [ ] Added to the correct workspace package
 
@@ -475,7 +476,7 @@ availability).
 ## 10. Known gaps and owners
 
 The gap table changes often, so it lives in [status.md](sdlc/status.md#known-gaps-and-owners)
-(G1 to G25). The ones that matter most today: G10 (the gates are conventions on this plan),
+(G1 to G25). The ones that matter most today: G10 (the gates are conventions until the protections are switched on),
 G16 (a deploy shifts traffic before it is verified; rollback is manual), G17 (long-lived
 production keys), and G21 (the assistant eval has no memory).
 

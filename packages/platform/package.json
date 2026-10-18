@@ -1,6 +1,8 @@
 {
   "name": "@lifekeel/platform",
   "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
   "description": "Shared platform primitives — JWT auth, MongoDB, OTel, Decimal money, multi-tenant middleware",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -36,6 +38,5 @@
     "eslint": "^9.19.0",
     "typescript": "^5.6.0",
     "vitest": "^4.1.9"
-  },
-  "license": "MIT"
+  }
 }

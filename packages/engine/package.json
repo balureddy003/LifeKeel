@@ -1,6 +1,8 @@
 {
   "name": "@lifekeel/engine",
   "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
   "description": "Deterministic rules engine — YAML detectors + LLM scoring + evidence chains — powers LifeKeel's Family Intelligence layer",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -44,6 +46,5 @@
     "deterministic-ai",
     "llm",
     "yaml"
-  ],
-  "license": "MIT"
+  ]
 }
