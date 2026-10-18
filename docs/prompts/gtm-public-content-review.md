@@ -15,8 +15,9 @@ reviewing what a stranger sees before signing up, and you fix what you find.
 
 ## Context to read first (do not skip)
 
-1. `CLAUDE.md` — especially the two rules: no autonomous irreversible action,
-   and never cross into regulated advice or arranging.
+1. `CLAUDE.md` — especially the standing rules: no autonomous irreversible
+   action, never cross into regulated advice or arranging, and do not treat
+   family content as model-training data.
 2. `docs/reviews/market-positioning-october-2026.md` — the agreed positioning
    ("always-on readiness system for your family" — now LifeKeel), competitor map, one-liners.
 3. `ARCHITECTURE.md` — what is actually shipped vs. roadmap.
