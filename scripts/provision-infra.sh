@@ -354,7 +354,8 @@ step_status() {
     jq -r '.[] | "\(.name)\t\(.type)\t\(.content)"' "$f" | \
       while IFS=$'\t' read -r name type want; do
         fqdn=$([ "$name" = "@" ] && echo "$d" || echo "$name.$d")
-        live=$(dig +short "$fqdn" "$type" | tr -d '"' | tr '\n' ' ' | sed 's/ $//')
+        live=$(dig +short "$fqdn" "$type" | tr -d '"' | sed 's/\.$//' | tr '\n' ' ' | sed 's/ $//')
+        want="${want%.}"
         case " $live " in
           *" $want "*) : ;;
           *) printf '  DRIFT %-22s %-6s want=%s live=%s\n' "$fqdn" "$type" "$want" "${live:-<none>}" ;;
@@ -365,7 +366,7 @@ step_status() {
     for pair in "$site:$d" "$site:www.$d" "$APP_SITE:app.$d"; do
       IFS=: read -r s h <<< "$pair"
       st=$(fb_api GET "projects/$GCP_PROJECT/sites/$s/customDomains/$h" 2>/dev/null \
-        | jq -r '[.status, .updateState, .certState] | map(select(. != null)) | .[0] // "unknown"')
+        | jq -r '"\(.cert.state // "?")/\(.hostState // "?")/\(.ownershipState // "?")"')
       printf '  cert %-24s %s\n' "$h" "${st:-unknown}"
     done
   done
