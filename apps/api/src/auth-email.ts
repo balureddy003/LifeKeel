@@ -24,7 +24,11 @@ function getFromEmail(): string {
 // Sent on signup, email change, and resend-verification. The token-bearing
 // URL is how the recipient proves mailbox ownership, so it never lands in
 // logs — only `to` is logged, matching every helper in this file.
-export async function sendEmailVerificationEmail(to: string, name: string, verifyUrl: string): Promise<void> {
+export async function sendEmailVerificationEmail(
+  to: string,
+  name: string,
+  verifyUrl: string,
+): Promise<void> {
   const apiKey = process.env['SENDGRID_API_KEY']
   if (!apiKey) {
     log.warn({ to }, 'No SENDGRID_API_KEY — skipping email verification email')
@@ -53,7 +57,11 @@ export async function sendEmailVerificationEmail(to: string, name: string, verif
   }
 }
 
-export async function sendPasswordResetEmail(to: string, name: string, resetUrl: string): Promise<void> {
+export async function sendPasswordResetEmail(
+  to: string,
+  name: string,
+  resetUrl: string,
+): Promise<void> {
   const apiKey = process.env['SENDGRID_API_KEY']
   if (!apiKey) {
     log.warn({ to }, 'No SENDGRID_API_KEY — skipping password reset email')
@@ -85,7 +93,12 @@ export async function sendPasswordResetEmail(to: string, name: string, resetUrl:
 // PRD-123: per-member invitation. The token-bearing URL is how the recipient
 // claims the pending roster entry the organizer created for them, so it
 // never lands in logs — only `to` is logged, matching the reset email above.
-export async function sendFamilyInviteEmail(to: string, name: string, familyName: string, inviteUrl: string): Promise<void> {
+export async function sendFamilyInviteEmail(
+  to: string,
+  name: string,
+  familyName: string,
+  inviteUrl: string,
+): Promise<void> {
   const apiKey = process.env['SENDGRID_API_KEY']
   if (!apiKey) {
     log.warn({ to }, 'No SENDGRID_API_KEY — skipping family invite email')
@@ -118,7 +131,12 @@ export async function sendFamilyInviteEmail(to: string, name: string, familyName
 // alert goes to their designated family members. Both are informational —
 // nothing unlocks, no access is granted; the family vault's standing
 // adult access means there is nothing for this to release.
-export async function sendContinuityCheckInEmail(to: string, name: string, daysInactive: number, appUrl: string): Promise<void> {
+export async function sendContinuityCheckInEmail(
+  to: string,
+  name: string,
+  daysInactive: number,
+  appUrl: string,
+): Promise<void> {
   const apiKey = process.env['SENDGRID_API_KEY']
   if (!apiKey) {
     log.warn({ to }, 'No SENDGRID_API_KEY — skipping continuity check-in email')
@@ -146,7 +164,13 @@ export async function sendContinuityCheckInEmail(to: string, name: string, daysI
   }
 }
 
-export async function sendContinuityAlertEmail(to: string, memberName: string, organizerName: string, daysInactive: number, appUrl: string): Promise<void> {
+export async function sendContinuityAlertEmail(
+  to: string,
+  memberName: string,
+  organizerName: string,
+  daysInactive: number,
+  appUrl: string,
+): Promise<void> {
   const apiKey = process.env['SENDGRID_API_KEY']
   if (!apiKey) {
     log.warn({ to }, 'No SENDGRID_API_KEY — skipping continuity alert email')
