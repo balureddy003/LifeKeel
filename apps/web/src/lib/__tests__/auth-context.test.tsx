@@ -17,14 +17,12 @@ afterEach(() => {
 
 describe('AuthProvider.signUp', () => {
   it('sends a unique workspace slug derived from the given name, and persists the token', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockImplementation((url: string) =>
-        jsonResponse({
-          token: 'tok_123',
-          user: { id: 'u1', email: 'jane@example.com', name: 'Jane Doe', tenant_id: 't1' },
-        }),
-      )
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      jsonResponse({
+        token: 'tok_123',
+        user: { id: 'u1', email: 'jane@example.com', name: 'Jane Doe', tenant_id: 't1' },
+      }),
+    )
     vi.stubGlobal('fetch', fetchMock)
 
     const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })

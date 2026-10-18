@@ -125,6 +125,10 @@ step_gcp() {
     || gcloud iam service-accounts create github-firebase --display-name "GitHub Actions Firebase deploy"
   gcloud projects add-iam-policy-binding "$GCP_PROJECT" \
     --member "serviceAccount:$fb_sa" --role roles/firebasehosting.admin >/dev/null
+  # Hosting rewrites to Cloud Run are validated at deploy time — the SA must
+  # be able to read the service or `firebase deploy` fails with 403.
+  gcloud projects add-iam-policy-binding "$GCP_PROJECT" \
+    --member "serviceAccount:$fb_sa" --role roles/run.viewer >/dev/null
   if [ -f "$OUT_DIR/firebase-sa-key.json" ]; then
     warn "firebase-sa-key.json already exists — skipping (delete it first to rotate the key)"
   else
@@ -223,10 +227,15 @@ attach_domain() { # site host
 # ---------------------------------------------------------------------------
 step_verify() {
   say "Google site-verification (DNS_TXT) — required before Cloud Run mappings"
+  # Needs the ADC token (siteverification scope), not the gcloud login token,
+  # plus the quota-project header ADC credentials require.
+  local tok_adc; tok_adc=$(gcloud auth application-default print-access-token 2>/dev/null) \
+    || { warn "run: gcloud auth application-default login --scopes=siteverification,cloud-platform"; return 1; }
   for d in $APEX_DOMAINS; do
     local tok; tok=$(curl -sf -X POST \
-      -H "Authorization: Bearer $(gtoken)" -H 'Content-Type: application/json' \
-      "https://www.googleapis.com/siteverification/v1/token" \
+      -H "Authorization: Bearer $tok_adc" -H "X-Goog-User-Project: $GCP_PROJECT" \
+      -H 'Content-Type: application/json' \
+      "https://www.googleapis.com/siteVerification/v1/token" \
       -d "{\"site\":{\"type\":\"INET_DOMAIN\",\"identifier\":\"$d\"},\"verificationMethod\":\"DNS_TXT\"}" \
       | jq -r '.token // empty')
     if [ -z "$tok" ]; then
@@ -237,8 +246,9 @@ step_verify() {
     plan_add "$d" "@" "TXT" "$tok"
     HOSTINGER_API_TOKEN="${HOSTINGER_API_TOKEN:-}" push_dns "$d" || warn "push TXT for $d manually: @ TXT $tok"
     curl -sf -X POST \
-      -H "Authorization: Bearer $(gtoken)" -H 'Content-Type: application/json' \
-      "https://www.googleapis.com/siteverification/v1/webResource?verificationMethod=DNS_TXT" \
+      -H "Authorization: Bearer $tok_adc" -H "X-Goog-User-Project: $GCP_PROJECT" \
+      -H 'Content-Type: application/json' \
+      "https://www.googleapis.com/siteVerification/v1/webResource?verificationMethod=DNS_TXT" \
       -d "{\"site\":{\"type\":\"INET_DOMAIN\",\"identifier\":\"$d\"}}" >/dev/null \
       && echo "  verified: $d" || warn "$d verification pending (DNS propagation)"
   done
@@ -253,7 +263,7 @@ step_run_map() {
            --region "$GCP_REGION" --project "$GCP_PROJECT" >/dev/null 2>&1; then
         echo "  mapping exists: $sub.$d"
       else
-        gcloud beta run domain-mappings create \
+        gcloud beta run domain-mappings create --quiet \
           --service "$RUN_SERVICE" --domain "$sub.$d" \
           --region "$GCP_REGION" --project "$GCP_PROJECT" 2>&1 | tail -3 \
           || warn "$sub.$d mapping failed — service deployed? domain verified?"
