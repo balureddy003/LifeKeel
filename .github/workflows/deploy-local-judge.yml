@@ -134,7 +134,7 @@ jobs:
             --member "serviceAccount:$API_RUNTIME_SA" \
             --role roles/run.invoker
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         if: ${{ github.event.inputs.run_eval == 'true' }}
       - uses: actions/setup-node@v6
         if: ${{ github.event.inputs.run_eval == 'true' }}
