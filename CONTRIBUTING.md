@@ -5,12 +5,37 @@ behind it, and every check in detail, are in the
 [AI-native SDLC playbook](docs/ai-native-sdlc-playbook.md). To change the process
 itself, see [Extending the SDLC](docs/sdlc/extending.md).
 
+## First 15 minutes
+
+```bash
+corepack enable                     # pins pnpm 8.15.5; needs Node 22.12 or newer
+docker compose -f apps/api/docker-compose.yml up -d   # local MongoDB + Redis
+pnpm install
+cp .env.example .env && cp apps/web/.env.example apps/web/.env
+pnpm check                          # typecheck + lint + test + build, from the repo root
+```
+
+`pnpm check` takes several minutes (it runs a full Next build); run it when you are done, not after
+each edit. Two integration tests need the Mongo and Redis you just started. Dev servers:
+`pnpm --filter @lifekeel/api dev` (port 3001) and `pnpm --filter @lifekeel/web dev` (port 3002).
+
+## Which path is mine?
+
+| Change | Path |
+|---|---|
+| Typo, copy tweak, docs-only | **Fast path:** branch, `pnpm check`, PR. No intent, no plan mode, no PRD. |
+| Normal feature or fix | The full loop below. |
+| Touches an LLM prompt, a model, or user-facing copy; or acts on a family's behalf; or touches more than about 3 files | Full loop **plus** a tripwire or eval (see [extending](docs/sdlc/extending.md)) and the PR evidence fields. |
+
+You do not need Claude Code to follow this; the steps that mention it (plan mode, `/code-review`) have
+a manual equivalent: write the plan in the PR description, and review your own diff before opening it.
+
 ## Two rules before anything else
 
 1. **No autonomous irreversible action without a human approval gate.** Anything that
    calls an external provider, posts publicly, or moves money has a trust tier
-   (0 to 3, defined in [ARCHITECTURE.md](ARCHITECTURE.md)). If you cannot name the
-   tier, it is not ready.
+   (0 to 3, defined in [ARCHITECTURE.md](ARCHITECTURE.md#9-act-and-escalate-trust-tiers) with a one-line
+   summary in the [glossary](docs/README.md#glossary)). If you cannot name the tier, it is not ready.
 2. **No regulated advice.** Copy and assistant output describe what is on file and
    point to "a licensed professional". Never "buy X", never a named provider, never a
    "switch to this" flow.
@@ -58,8 +83,10 @@ flowchart LR
    the PR opens or is marked ready; add the `claude-review` label to re-review after
    changes.
 9. **Deploy** is a manual workflow run, never a side effect of merging. It checks that
-   CI passed on the exact commit, then pauses for approval where the repository plan
-   supports it. See [playbook 6.5](docs/ai-native-sdlc-playbook.md#65-deploy).
+   CI passed on the exact commit. **There is no approval pause on our current GitHub plan**
+   (see [what GitHub can enforce](docs/sdlc/status.md#what-github-can-and-cannot-enforce-here)),
+   so the person dispatching the deploy is the gate: watch the smoke test and know the rollback
+   command first. See [playbook 6.5](docs/ai-native-sdlc-playbook.md#65-deploy).
 
 ## What runs where
 

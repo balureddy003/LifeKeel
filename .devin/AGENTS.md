@@ -56,9 +56,9 @@ pnpm debug                          # both in watch + inspector mode
 3. **`turbo.json` `test` and `typecheck` depend on `build` + `^build`.** Packages
    that self-import (e.g. `@lifekeel/platform` tests import `@lifekeel/platform`)
    need their own `dist/` built first.
-4. **Mongo/Redis integration tests skip locally without services.**
-   `apps/api/src/__tests__/ml-tenant-isolation.test.ts` and
-   `apps/api/src/__tests__/email-scan-fanout.integration.test.ts` are skipped
+4. **Mongo/Redis integration tests need the services locally.**
+   `apps/api/src/__tests__/ml-tenant-isolation.test.ts` has no skip guard and
+   fails without MongoDB; `email-scan-fanout.integration.test.ts` skips itself
    unless MongoDB/Redis are running. CI provisions them via
    `.github/workflows/ci.yml`.
 5. **Shared ESLint config.** `@lifekeel/eslint-config` provides `base` and

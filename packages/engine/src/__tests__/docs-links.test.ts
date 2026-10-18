@@ -104,6 +104,29 @@ describe('process docs stay true', () => {
     expect(problems).toEqual([])
   })
 
+  it('every workflow file is described in the process docs', () => {
+    const corpus = ['docs/ai-native-sdlc-playbook.md', 'docs/sdlc/status.md', 'CONTRIBUTING.md']
+      .map(read)
+      .join('\n')
+    const workflows = fs
+      .readdirSync(path.join(ROOT, '.github/workflows'))
+      .filter((f) => f.endsWith('.yml'))
+    expect(workflows.length).toBeGreaterThan(5)
+    const undocumented = workflows.filter((w) => !corpus.includes(w))
+    expect(undocumented).toEqual([])
+  })
+
+  it('every gap id cited in the docs is defined in status.md', () => {
+    const defined = new Set(
+      [...read('docs/sdlc/status.md').matchAll(/^\| (G\d+) \|/gm)].map((m) => m[1]),
+    )
+    expect(defined.size).toBeGreaterThan(10)
+    const cited = new Set<string>()
+    for (const doc of DOCS) for (const m of read(doc).matchAll(/\bG\d{1,2}\b/g)) cited.add(m[0])
+    const missing = [...cited].filter((g) => !defined.has(g))
+    expect(missing).toEqual([])
+  })
+
   it('the checker itself notices a broken path and a bad anchor (test would fail without it)', () => {
     expect(
       isCheckable('apps/api/src/does-not-exist.ts') && !exists('apps/api/src/does-not-exist.ts'),
