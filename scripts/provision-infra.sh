@@ -125,6 +125,10 @@ step_gcp() {
     || gcloud iam service-accounts create github-firebase --display-name "GitHub Actions Firebase deploy"
   gcloud projects add-iam-policy-binding "$GCP_PROJECT" \
     --member "serviceAccount:$fb_sa" --role roles/firebasehosting.admin >/dev/null
+  # Hosting rewrites to Cloud Run are validated at deploy time — the SA must
+  # be able to read the service or `firebase deploy` fails with 403.
+  gcloud projects add-iam-policy-binding "$GCP_PROJECT" \
+    --member "serviceAccount:$fb_sa" --role roles/run.viewer >/dev/null
   if [ -f "$OUT_DIR/firebase-sa-key.json" ]; then
     warn "firebase-sa-key.json already exists — skipping (delete it first to rotate the key)"
   else
