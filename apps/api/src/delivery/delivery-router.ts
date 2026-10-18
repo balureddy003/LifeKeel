@@ -29,7 +29,6 @@ import {
 import { RealWebPushSender, type WebPushSubscription } from './web-push-sender.js'
 import { recordDeliveryLatency } from '../routes/metrics.js'
 
- 
 type Db = { collection: (name: string) => any }
 
 export type Channel = 'whatsapp' | 'sms' | 'email' | 'web_push' | 'mobile_push'
@@ -50,7 +49,8 @@ export interface DeliveryPreferences {
   min_urgency: 'critical' | 'high' | 'medium' | 'low'
   /** From-name shown in email + WhatsApp. */
   business_name?: string
-  /** Quiet hours — no push between these (24h, tenant local). null = always on. */
+  /** Quiet hours — no push between these (24h hours; evaluated in UTC until a tenant
+   *  timezone preference exists — see isInQuietHours). null = always on. */
   quiet_hours_start?: number | null // e.g. 21
   quiet_hours_end?: number | null // e.g. 8
   /** Digest mode — batch low-urgency into a daily summary instead of per-insight. */
@@ -72,6 +72,28 @@ const URGENCY_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, 
 const MAX_JUDGE_REVIEW_ATTEMPTS = 6
 const JUDGE_REVIEW_QUEUES = ['move_rewrite_queue', 'manual_review_queue'] as const
 type JudgeReviewQueue = (typeof JUDGE_REVIEW_QUEUES)[number]
+
+/**
+ * Quiet-hours check, evaluated in UTC.
+ *
+ * Known limitation: quiet_hours_start/end are documented as tenant-local, but
+ * no tenant timezone preference exists anywhere in the model (not on
+ * DeliveryPreferences, the family group, or the tenant doc), and we do not
+ * invent one here. Until a timezone preference is added, the window is read
+ * in UTC — deterministic, unlike the server clock's getHours() which shifted
+ * with whatever TZ the host/container happened to run in. For a tenant not in
+ * UTC the window is offset by their UTC difference. When a timezone field
+ * lands, convert `now` to it here (Intl.DateTimeFormat with timeZone) and keep
+ * UTC as the fallback when it is absent or invalid.
+ */
+export function isInQuietHours(prefs: DeliveryPreferences, now: Date): boolean {
+  if (prefs.quiet_hours_start == null || prefs.quiet_hours_end == null) return false
+  const hour = now.getUTCHours()
+  const { quiet_hours_start: start, quiet_hours_end: end } = prefs
+  // Handle overnight window (e.g. 21 → 8)
+  if (start > end) return hour >= start || hour < end
+  return hour >= start && hour < end
+}
 
 export class DeliveryRouter {
   private readonly db: Db
@@ -325,12 +347,7 @@ export class DeliveryRouter {
   // ─── Quiet hours check ─────────────────────────────────────────────────────
 
   private inQuietHours(prefs: DeliveryPreferences): boolean {
-    if (prefs.quiet_hours_start == null || prefs.quiet_hours_end == null) return false
-    const hour = new Date().getHours()
-    const { quiet_hours_start: start, quiet_hours_end: end } = prefs
-    // Handle overnight window (e.g. 21 → 8)
-    if (start > end) return hour >= start || hour < end
-    return hour >= start && hour < end
+    return isInQuietHours(prefs, new Date())
   }
 
   // ─── Dedup ─────────────────────────────────────────────────────────────────
