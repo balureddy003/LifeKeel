@@ -201,15 +201,22 @@ export async function sendContinuityAlertEmail(
 // PRD-136 §4: the family heartbeat — same shell conventions as the
 // continuity emails above. Content comes pre-rendered from
 // feed/render-heartbeat.ts so this stays a thin transport.
+//
+// Returns a delivery result instead of void so the caller can tell a real
+// send from a skipped/failed one — the heartbeat job records its idempotency
+// row only on `ok`, so a failed cycle is retried rather than silently lost.
+export type HeartbeatDeliveryResult =
+  { ok: true } | { ok: false; reason: 'no_api_key' | 'send_failed' }
+
 export async function sendHeartbeatEmail(
   to: string,
   name: string,
   rendered: { subject: string; text: string; html: string },
-): Promise<void> {
+): Promise<HeartbeatDeliveryResult> {
   const apiKey = process.env['SENDGRID_API_KEY']
   if (!apiKey) {
     log.warn({ to }, 'No SENDGRID_API_KEY — skipping heartbeat email')
-    return
+    return { ok: false, reason: 'no_api_key' }
   }
   sgMail.setApiKey(apiKey)
   const firstName = name.split(' ')[0] || 'there'
@@ -224,7 +231,9 @@ export async function sendHeartbeatEmail(
       html: rendered.html.replace('<p>Hi,</p>', `<p>Hi ${firstName},</p>`),
     })
     log.info({ to }, 'Heartbeat email sent')
+    return { ok: true }
   } catch (err) {
     log.error({ to, err }, 'Failed to send heartbeat email')
+    return { ok: false, reason: 'send_failed' }
   }
 }

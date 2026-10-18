@@ -630,6 +630,7 @@ try {
           await withCronLock(workflowDb, name, async () => {
             const r = await runFamilyHeartbeat(workflowDb, { cadence })
             if (r.sent > 0) log.info({ cadence, ...r }, 'Family heartbeat sent')
+            if (r.failed > 0) log.error({ cadence, ...r }, 'Family heartbeat missed deliveries')
           })
         } catch (err) {
           log.error({ err, cadence }, 'Family heartbeat sweep failed')
