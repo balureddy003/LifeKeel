@@ -12,7 +12,7 @@ on:
         description: 'Route API calls via the Hosting /api rewrite instead of the Cloud Run URL'
         type: boolean
         required: false
-        default: false
+        default: true
 
 # One deploy at a time; never cancel a deploy mid-flight.
 concurrency:
@@ -91,4 +91,4 @@ jobs:
 
       - name: Deploy to Firebase Hosting
         working-directory: apps/web
-        run: firebase deploy --only hosting:family --project "$FIREBASE_PROJECT_ID" --non-interactive
+        run: firebase deploy --only hosting --project "$FIREBASE_PROJECT_ID" --non-interactive
