@@ -71,14 +71,44 @@ Concretely:
   place beats compliance overhead paid for after deciding to compete
   there.
 
-## How the rules are enforced
+## The third rule: family content is not model training data
 
-Both rules have automated tripwires (advice scan + edit hook, trust-tier gate,
-Ask Keel prompt contract); they catch the obvious failure, a person owns the
-judgement. What each check is, where it lives and what it cannot catch:
+LifeKeel must not use personal or family content to train or fine-tune a shared
+or third-party foundation model. Hosted AI calls are processing, not training,
+and must use task-minimized context, tenant authorization, approved processor
+terms, explicit retention/deletion rules, and metadata-first telemetry.
+
+Do not route family content through consumer/free AI endpoints, personal API
+keys, provider-side memory/file/vector stores, or unapproved batch/fine-tuning
+APIs. Local and on-device paths are preferred for high-sensitivity tasks. Any
+future cross-tenant learning (including the dormant federated-learning code)
+requires explicit opt-in, privacy review, minimum-cohort/privacy-accounting
+controls, deletion/retraining evidence, and user-facing disclosure. Any stale
+`federated_global_models` artifact must be deleted/quarantined or gated before
+scorer warm-start can use it.
+
+## How the rules are enforced (not just stated)
+
+- **Advice rule (second rule):** `packages/engine/src/__tests__/advice-rule.test.ts`
+  fails CI if detector/playbook copy contains recommendation verbs or named
+  providers. `.claude/settings.json` runs it as a PostToolUse hook
+  (`scripts/hooks/advice-check.sh`) so Claude sees the failure immediately
+  after editing that copy.
+- **PRs:** `.github/pull_request_template.md` makes tier and advice check
+  explicit. New work starts from `docs/templates/intent.md`.
+- **Skill:** `.claude/skills/add-detector` encodes the add-a-detector recipe.
+- **Trust tiers (rule 1):** `apps/api/src/__tests__/trust-tier-gate.test.ts`
+  allow-lists the only callers of `ActionExecutor` and requires each
+  `execute()` to name `approvedBy`. Adding a caller means editing that list,
+  which forces the tier question into review. It is a tripwire, not proof.
+- **AI data use (rule 3):** the intended tripwire is the task/provider registry
+  described in `ARCHITECTURE.md`: no hosted model call should run without an
+  approved endpoint/model, no-training basis, retention/deletion mode, and
+  task-level data boundary. Until that registry is wired, do not claim the rule
+  is technically enforced by code alone.
+
+Detail on what each check catches (and cannot):
 [docs/ai-native-sdlc-playbook.md](docs/ai-native-sdlc-playbook.md#8-rules-to-enforcement).
-New work starts from `docs/templates/intent.md`; the PR template carries the
-tier and advice checkboxes; `.claude/skills/add-detector` is the detector recipe.
 
 ## Conventions
 

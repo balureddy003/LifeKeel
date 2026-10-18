@@ -137,7 +137,7 @@ Choose deliberately; each location has a different cost and reach.
 
 | Put it in | When | Example here |
 |---|---|---|
-| `CLAUDE.md` | Always-true rules every session needs | The two rules, conventions, gotchas |
+| `CLAUDE.md` | Always-true rules every session needs | The standing product/privacy rules, conventions, gotchas |
 | A skill (`.claude/skills/<name>/SKILL.md`) | A multi-step recipe loaded only when relevant | [add-detector](../.claude/skills/add-detector/SKILL.md) |
 | A hook (`.claude/settings.json`) | Something that must happen every time, without relying on Claude remembering | [advice-check.sh](../scripts/hooks/advice-check.sh) after copy edits |
 | A test | A rule that should also hold for humans and CI | `advice-rule.test.ts`, `trust-tier-gate.test.ts` |
