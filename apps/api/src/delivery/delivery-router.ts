@@ -17,13 +17,19 @@
 import crypto from 'node:crypto'
 import type { Insight, JudgeVerdict, MoveJudge } from '@lifekeel/engine'
 import {
-  WhatsAppChannel, SmsChannel, EmailChannel, WebPushChannel, MobilePushChannel, RealMobilePushSender,
-  type InsightNotification, type DeliveryResult,
+  WhatsAppChannel,
+  SmsChannel,
+  EmailChannel,
+  WebPushChannel,
+  MobilePushChannel,
+  RealMobilePushSender,
+  type InsightNotification,
+  type DeliveryResult,
 } from './channels.js'
 import { RealWebPushSender, type WebPushSubscription } from './web-push-sender.js'
 import { recordDeliveryLatency } from '../routes/metrics.js'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type Db = { collection: (name: string) => any }
 
 export type Channel = 'whatsapp' | 'sms' | 'email' | 'web_push' | 'mobile_push'
@@ -33,7 +39,7 @@ export interface DeliveryPreferences {
   /** Ordered channel priority. First available wins; falls through on failure. */
   channels: Channel[]
   /** Contact endpoints per channel. */
-  whatsapp_to?: string        // E.164 phone, e.g. +447700900123
+  whatsapp_to?: string // E.164 phone, e.g. +447700900123
   sms_to?: string
   email_to?: string
   /** Web push subscription endpoint (stored separately in web_push_subscriptions). */
@@ -45,8 +51,8 @@ export interface DeliveryPreferences {
   /** From-name shown in email + WhatsApp. */
   business_name?: string
   /** Quiet hours — no push between these (24h, tenant local). null = always on. */
-  quiet_hours_start?: number | null   // e.g. 21
-  quiet_hours_end?: number | null     // e.g. 8
+  quiet_hours_start?: number | null // e.g. 21
+  quiet_hours_end?: number | null // e.g. 8
   /** Digest mode — batch low-urgency into a daily summary instead of per-insight. */
   digest_mode?: boolean
   /** PRD-136 §5: family heartbeat + feed-shaping preferences. Tenant-level
@@ -85,7 +91,8 @@ export class DeliveryRouter {
   constructor(db: Db, moveJudge?: MoveJudge) {
     this.db = db
     this.moveJudge = moveJudge
-    this.signingSecret = process.env['DELIVERY_SIGNING_SECRET'] ?? process.env['JWT_SECRET'] ?? 'change-me'
+    this.signingSecret =
+      process.env['DELIVERY_SIGNING_SECRET'] ?? process.env['JWT_SECRET'] ?? 'change-me'
     // Deep links in notifications point at the family app (apps/web), not
     // kairos-ai's Studio — LIFEKEEL_URL is the same env var auth-social.ts,
     // billing.ts, and connector-credentials.ts already use for it.
@@ -102,11 +109,13 @@ export class DeliveryRouter {
   // ─── Web push subscription management ──────────────────────────────────────
 
   async savePushSubscription(tenantId: string, subscription: WebPushSubscription): Promise<void> {
-    await this.db.collection('web_push_subscriptions').updateOne(
-      { tenant_id: tenantId, endpoint: subscription.endpoint },
-      { $set: { tenant_id: tenantId, ...subscription, subscribed_at: new Date() } },
-      { upsert: true },
-    )
+    await this.db
+      .collection('web_push_subscriptions')
+      .updateOne(
+        { tenant_id: tenantId, endpoint: subscription.endpoint },
+        { $set: { tenant_id: tenantId, ...subscription, subscribed_at: new Date() } },
+        { upsert: true },
+      )
   }
 
   async removePushSubscription(tenantId: string, endpoint: string): Promise<void> {
@@ -114,20 +123,23 @@ export class DeliveryRouter {
   }
 
   async getPushSubscriptions(tenantId: string): Promise<WebPushSubscription[]> {
-    const subs = await this.db.collection('web_push_subscriptions')
+    const subs = (await this.db
+      .collection('web_push_subscriptions')
       .find({ tenant_id: tenantId })
-      .toArray() as unknown as WebPushSubscription[]
+      .toArray()) as unknown as WebPushSubscription[]
     return subs
   }
 
   // ─── Mobile (Expo) push token management ───────────────────────────────────
 
   async saveMobilePushToken(tenantId: string, token: string): Promise<void> {
-    await this.db.collection('mobile_push_tokens').updateOne(
-      { tenant_id: tenantId, token },
-      { $set: { tenant_id: tenantId, token, subscribed_at: new Date() } },
-      { upsert: true },
-    )
+    await this.db
+      .collection('mobile_push_tokens')
+      .updateOne(
+        { tenant_id: tenantId, token },
+        { $set: { tenant_id: tenantId, token, subscribed_at: new Date() } },
+        { upsert: true },
+      )
   }
 
   async removeMobilePushToken(tenantId: string, token: string): Promise<void> {
@@ -135,9 +147,10 @@ export class DeliveryRouter {
   }
 
   async getMobilePushTokens(tenantId: string): Promise<string[]> {
-    const docs = await this.db.collection('mobile_push_tokens')
+    const docs = (await this.db
+      .collection('mobile_push_tokens')
       .find({ tenant_id: tenantId })
-      .toArray() as unknown as { token: string }[]
+      .toArray()) as unknown as { token: string }[]
     return docs.map((d) => d.token)
   }
 
@@ -219,7 +232,7 @@ export class DeliveryRouter {
    * HMAC-SHA256 prevents forgery; expiry limits replay window.
    */
   signActionToken(insightId: string, tenantId: string, action: 'approve' | 'dismiss'): string {
-    const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000  // 7 days
+    const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000 // 7 days
     const payload = `${insightId}:${tenantId}:${action}:${expiresAt}`
     const sig = crypto.createHmac('sha256', this.signingSecret).update(payload).digest('base64url')
     const token = Buffer.from(`${payload}:${sig}`).toString('base64url')
@@ -227,7 +240,9 @@ export class DeliveryRouter {
   }
 
   /** Verify a signed action token. Returns the decoded action or null if invalid/expired. */
-  verifyActionToken(token: string): { insight_id: string; tenant_id: string; action: 'approve' | 'dismiss' } | null {
+  verifyActionToken(
+    token: string,
+  ): { insight_id: string; tenant_id: string; action: 'approve' | 'dismiss' } | null {
     try {
       const decoded = Buffer.from(token, 'base64url').toString()
       const parts = decoded.split(':')
@@ -238,7 +253,10 @@ export class DeliveryRouter {
       const expiresAtStr = parts[3] ?? ''
       const sig = parts[4] ?? ''
       const payload = `${insightId}:${tenantId}:${action}:${expiresAtStr}`
-      const expected = crypto.createHmac('sha256', this.signingSecret).update(payload).digest('base64url')
+      const expected = crypto
+        .createHmac('sha256', this.signingSecret)
+        .update(payload)
+        .digest('base64url')
       // Constant-time comparison
       if (sig.length !== expected.length) return null
       if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null
@@ -266,12 +284,18 @@ export class DeliveryRouter {
     return Buffer.from(`${payload}:${sig}`).toString('base64url')
   }
 
-  private verifyScopedToken(token: string, scope: string): { insight_id: string; tenant_id: string } | null {
+  private verifyScopedToken(
+    token: string,
+    scope: string,
+  ): { insight_id: string; tenant_id: string } | null {
     try {
       const parts = Buffer.from(token, 'base64url').toString().split(':')
       if (parts.length !== 5 || parts[2] !== scope) return null
       const payload = `${parts[0]}:${parts[1]}:${parts[2]}:${parts[3]}`
-      const expected = crypto.createHmac('sha256', this.signingSecret).update(payload).digest('base64url')
+      const expected = crypto
+        .createHmac('sha256', this.signingSecret)
+        .update(payload)
+        .digest('base64url')
       if (!parts[4] || parts[4].length !== expected.length) return null
       if (!crypto.timingSafeEqual(Buffer.from(parts[4]), Buffer.from(expected))) return null
       if (Date.now() > Number(parts[3])) return null
@@ -289,11 +313,13 @@ export class DeliveryRouter {
   }
 
   async savePreferences(prefs: DeliveryPreferences): Promise<void> {
-    await this.db.collection('delivery_preferences').updateOne(
-      { tenant_id: prefs.tenant_id },
-      { $set: { ...prefs, updated_at: new Date() } },
-      { upsert: true },
-    )
+    await this.db
+      .collection('delivery_preferences')
+      .updateOne(
+        { tenant_id: prefs.tenant_id },
+        { $set: { ...prefs, updated_at: new Date() } },
+        { upsert: true },
+      )
   }
 
   // ─── Quiet hours check ─────────────────────────────────────────────────────
@@ -331,7 +357,7 @@ export class DeliveryRouter {
     return {
       insight_id: insightId,
       tenant_id: tenantId,
-      hypothesis: this.humanize(insight['hypothesis'] as string ?? 'Opportunity'),
+      hypothesis: this.humanize((insight['hypothesis'] as string) ?? 'Opportunity'),
       urgency: (insight['urgency'] as InsightNotification['urgency']) ?? 'medium',
       or_score: cb['or_score'] ?? 0,
       ...(impact['low'] !== undefined ? { estimated_impact_low: impact['low'] } : {}),
@@ -352,7 +378,7 @@ export class DeliveryRouter {
   }
 
   private humanize(s: string): string {
-    return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
   }
 
   // ─── Main dispatch ─────────────────────────────────────────────────────────
@@ -389,14 +415,14 @@ export class DeliveryRouter {
       return null
     }
 
-    if (!opts?.skipJudge && !await this.passesMoveJudge(insight, tenantId)) return null
+    if (!opts?.skipJudge && !(await this.passesMoveJudge(insight, tenantId))) return null
 
     const notification = this.buildNotification(insight, tenantId)
     let lastResult: DeliveryResult | null = null
 
     for (const channel of prefs.channels) {
       const result = await this.sendOnChannel(channel, prefs, tenantId, notification)
-      if (!result) continue  // already delivered or channel not configured
+      if (!result) continue // already delivered or channel not configured
 
       await this.recordReceipt(notification.insight_id, tenantId, result)
       const createdAt = insight['created_at']
@@ -411,11 +437,13 @@ export class DeliveryRouter {
         // a notification went out and nobody acted. Only transitions from
         // 'identified': a human approve/dismiss wins over delivery state,
         // and an earlier delivered_at is never overwritten.
-        await this.db.collection('insights').updateOne(
-          { id: notification.insight_id, tenant_id: tenantId, state: 'identified' },
-          { $set: { state: 'sent', delivered_at: new Date() } },
-        )
-        return result  // stop at first success
+        await this.db
+          .collection('insights')
+          .updateOne(
+            { id: notification.insight_id, tenant_id: tenantId, state: 'identified' },
+            { $set: { state: 'sent', delivered_at: new Date() } },
+          )
+        return result // stop at first success
       }
       // else fall through to next channel
     }
@@ -436,7 +464,8 @@ export class DeliveryRouter {
     notification: InsightNotification,
     opts?: { skipDedup?: boolean; target?: string },
   ): Promise<DeliveryResult | null> {
-    if (!opts?.skipDedup && await this.alreadyDelivered(notification.insight_id, channel)) return null
+    if (!opts?.skipDedup && (await this.alreadyDelivered(notification.insight_id, channel)))
+      return null
 
     const to = opts?.target
     if (channel === 'whatsapp' && (to ?? prefs.whatsapp_to)) {
@@ -446,7 +475,11 @@ export class DeliveryRouter {
       return this.sms.send((to ?? prefs.sms_to) as string, notification)
     }
     if (channel === 'email' && (to ?? prefs.email_to)) {
-      return this.email.send((to ?? prefs.email_to) as string, prefs.business_name ?? 'LifeKeel', notification)
+      return this.email.send(
+        (to ?? prefs.email_to) as string,
+        prefs.business_name ?? 'LifeKeel',
+        notification,
+      )
     }
     if (channel === 'web_push' && this.webPush && prefs.web_push_enabled) {
       const subs = await this.getPushSubscriptions(tenantId)
@@ -456,7 +489,14 @@ export class DeliveryRouter {
         pushResult = await this.webPush.send(sub, notification)
         if (pushResult.success) break // stop at first successful device
       }
-      return pushResult ?? { channel: 'web_push', success: false, error: 'No subscriptions', delivered_at: new Date() }
+      return (
+        pushResult ?? {
+          channel: 'web_push',
+          success: false,
+          error: 'No subscriptions',
+          delivered_at: new Date(),
+        }
+      )
     }
     if (channel === 'mobile_push' && prefs.mobile_push_enabled) {
       const tokens = await this.getMobilePushTokens(tenantId)
@@ -466,7 +506,14 @@ export class DeliveryRouter {
         pushResult = await this.mobilePush.send(token, notification)
         if (pushResult.success) break // stop at first successful device
       }
-      return pushResult ?? { channel: 'mobile_push', success: false, error: 'No tokens', delivered_at: new Date() }
+      return (
+        pushResult ?? {
+          channel: 'mobile_push',
+          success: false,
+          error: 'No tokens',
+          delivered_at: new Date(),
+        }
+      )
     }
     return null
   }
@@ -537,10 +584,7 @@ export class DeliveryRouter {
     const staleBefore = new Date(Date.now() - 10 * 60 * 1000)
     const jobs = await col
       .find({
-        $or: [
-          { status: 'queued' },
-          { status: 'sending', claimed_at: { $lte: staleBefore } },
-        ],
+        $or: [{ status: 'queued' }, { status: 'sending', claimed_at: { $lte: staleBefore } }],
       })
       .sort({ created_at: 1 })
       .limit(limit)
@@ -550,7 +594,10 @@ export class DeliveryRouter {
     let failed = 0
     for (const job of jobs) {
       const claimed = await col.findOneAndUpdate(
-        { _id: job['_id'], $or: [{ status: 'queued' }, { status: 'sending', claimed_at: { $lte: staleBefore } }] },
+        {
+          _id: job['_id'],
+          $or: [{ status: 'queued' }, { status: 'sending', claimed_at: { $lte: staleBefore } }],
+        },
         { $set: { status: 'sending', claimed_at: new Date() } },
       )
       if (!claimed) continue
@@ -559,7 +606,9 @@ export class DeliveryRouter {
       const finish = async (patch: Record<string, unknown>) =>
         col.updateOne({ _id: job['_id'] }, { $set: { ...patch, updated_at: new Date() } })
 
-      const insight = await this.db.collection('insights').findOne({ id: job['insight_id'], tenant_id: tenantId })
+      const insight = await this.db
+        .collection('insights')
+        .findOne({ id: job['insight_id'], tenant_id: tenantId })
       if (!insight) {
         await finish({ status: 'failed', error: 'insight_not_found' })
         failed++
@@ -567,15 +616,15 @@ export class DeliveryRouter {
       }
 
       const prefs = await this.getPreferences(tenantId)
-      const notification = this.buildNotification(insight as unknown as Record<string, unknown>, tenantId)
+      const notification = this.buildNotification(
+        insight as unknown as Record<string, unknown>,
+        tenantId,
+      )
       const result = prefs
-        ? await this.sendOnChannel(
-            job['channel'] as Channel,
-            prefs,
-            tenantId,
-            notification,
-            { skipDedup: true, target: job['target'] as string | undefined },
-          )
+        ? await this.sendOnChannel(job['channel'] as Channel, prefs, tenantId, notification, {
+            skipDedup: true,
+            target: job['target'] as string | undefined,
+          })
         : null
 
       if (result?.success) {
@@ -607,23 +656,37 @@ export class DeliveryRouter {
    * rather than retried forever. 'evaluating' claims older than 10 min
    * crashed mid-dispatch and are reclaimed.
    */
-  async drainReviewQueues(limit = 50): Promise<{ retried: number; released: number; resolved: number }> {
+  async drainReviewQueues(
+    limit = 50,
+  ): Promise<{ retried: number; released: number; resolved: number }> {
     const staleBefore = new Date(Date.now() - 10 * 60_000)
-    let retried = 0, released = 0, resolved = 0
+    let retried = 0,
+      released = 0,
+      resolved = 0
 
     for (const queueName of JUDGE_REVIEW_QUEUES) {
       const col = this.db.collection(queueName)
       const dueField = queueName === 'move_rewrite_queue' ? 'retry_at' : 're_evaluate_at'
-      const jobs = await col.find({
-        $or: [
-          { status: 'pending', [dueField]: { $lte: new Date() } },
-          { status: 'evaluating', claimed_at: { $lte: staleBefore } },
-        ],
-      }).sort({ updated_at: 1 }).limit(limit).toArray()
+      const jobs = await col
+        .find({
+          $or: [
+            { status: 'pending', [dueField]: { $lte: new Date() } },
+            { status: 'evaluating', claimed_at: { $lte: staleBefore } },
+          ],
+        })
+        .sort({ updated_at: 1 })
+        .limit(limit)
+        .toArray()
 
       for (const job of jobs) {
         const claimed = await col.findOneAndUpdate(
-          { _id: job['_id'], $or: [{ status: 'pending' }, { status: 'evaluating', claimed_at: { $lte: staleBefore } }] },
+          {
+            _id: job['_id'],
+            $or: [
+              { status: 'pending' },
+              { status: 'evaluating', claimed_at: { $lte: staleBefore } },
+            ],
+          },
           { $set: { status: 'evaluating', claimed_at: new Date() } },
         )
         if (!claimed) continue
@@ -632,7 +695,8 @@ export class DeliveryRouter {
         const finish = async (patch: Record<string, unknown>) =>
           col.updateOne({ _id: job['_id'] }, { $set: { ...patch, updated_at: new Date() } })
 
-        const insight = await this.db.collection('insights')
+        const insight = await this.db
+          .collection('insights')
           .findOne({ id: job['insight_id'], tenant_id: tenantId })
         if (!insight) {
           await finish({ status: 'resolved', resolved_reason: 'insight_not_found' })
@@ -660,7 +724,8 @@ export class DeliveryRouter {
         // prefs off, quiet hours, digest mode. Reschedule modestly.
         const after = await col.findOne({ _id: job['_id'] }, { projection: { status: 1 } })
         if (after?.['status'] === 'evaluating') {
-          const fresh = await this.db.collection('insights')
+          const fresh = await this.db
+            .collection('insights')
             .findOne({ id: job['insight_id'], tenant_id: tenantId }, { projection: { state: 1 } })
           if (fresh?.['state'] !== 'identified') {
             await finish({ status: 'resolved', resolved_reason: 'already_terminal' })
@@ -678,9 +743,12 @@ export class DeliveryRouter {
   async listReviewQueue(tenantId: string, limit = 50): Promise<Array<Record<string, unknown>>> {
     const rows: Array<Record<string, unknown>> = []
     for (const queueName of JUDGE_REVIEW_QUEUES) {
-      const docs = await this.db.collection(queueName)
+      const docs = await this.db
+        .collection(queueName)
         .find({ tenant_id: tenantId, status: { $in: ['pending', 'exhausted', 'evaluating'] } })
-        .sort({ updated_at: -1 }).limit(limit).toArray()
+        .sort({ updated_at: -1 })
+        .limit(limit)
+        .toArray()
       for (const doc of docs) {
         rows.push({ ...doc, queue: queueName })
       }
@@ -700,7 +768,11 @@ export class DeliveryRouter {
     for (const queueName of JUDGE_REVIEW_QUEUES) {
       const col = this.db.collection(queueName)
       const updated = await col.findOneAndUpdate(
-        { tenant_id: tenantId, insight_id: insightId, status: { $in: ['pending', 'exhausted', 'evaluating'] } },
+        {
+          tenant_id: tenantId,
+          insight_id: insightId,
+          status: { $in: ['pending', 'exhausted', 'evaluating'] },
+        },
         { $set: { status: 'resolved', resolved_reason: resolution, updated_at: new Date() } },
       )
       if (updated) return { queue: queueName, row: updated }
@@ -708,7 +780,10 @@ export class DeliveryRouter {
     return null
   }
 
-  private async passesMoveJudge(insight: Record<string, unknown>, tenantId: string): Promise<boolean> {
+  private async passesMoveJudge(
+    insight: Record<string, unknown>,
+    tenantId: string,
+  ): Promise<boolean> {
     if (!this.moveJudge || typeof insight['id'] !== 'string') return true
 
     const reasoning = typeof insight['reasoning'] === 'string' ? insight['reasoning'] : ''
@@ -718,15 +793,20 @@ export class DeliveryRouter {
     // MoveJudge guard (not the model) screens the copy itself.
     const maskDigits = (text: string): string => text.replace(/\d[\d,.]*/g, '#')
     const actions = Array.isArray(insight['actions'])
-      ? (insight['actions'] as unknown[]).map(a => typeof a === 'string' ? maskDigits(a) : a)
+      ? (insight['actions'] as unknown[]).map((a) => (typeof a === 'string' ? maskDigits(a) : a))
       : insight['actions']
-    const reasoningHash = crypto.createHash('sha256').update(JSON.stringify({
-      version: 3,
-      detector: insight['detector_id'],
-      rule: insight['rule_id'],
-      reasoning: maskDigits(reasoning.trim()),
-      actions,
-    })).digest('hex')
+    const reasoningHash = crypto
+      .createHash('sha256')
+      .update(
+        JSON.stringify({
+          version: 3,
+          detector: insight['detector_id'],
+          rule: insight['rule_id'],
+          reasoning: maskDigits(reasoning.trim()),
+          actions,
+        }),
+      )
+      .digest('hex')
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
     const duplicate = await this.db.collection('move_judge_verdicts').findOne({
       tenant_id: tenantId,
@@ -734,17 +814,28 @@ export class DeliveryRouter {
       evaluated_at: { $gte: since },
     })
 
-    const cached = duplicate && duplicate.judge_skipped === false && ['pass', 'block', 'rewrite'].includes(duplicate.decision)
-      ? duplicate as JudgeVerdict
-      : null
-    const verdict = cached ?? await this.moveJudge.evaluate({
-      insight: insight as unknown as Insight,
-      evidence: {
-        evidence_refs: (insight['confidence_breakdown'] as Record<string, unknown> | undefined)?.['evidence_refs'] ?? [],
-        feature_snapshot: insight['feature_snapshot'] ?? {},
-        derived_from_signals: insight['derived_from_signals'] ?? [],
-      },
-    }, { duplicateReasoning: duplicate !== null })
+    const cached =
+      duplicate &&
+      duplicate.judge_skipped === false &&
+      ['pass', 'block', 'rewrite'].includes(duplicate.decision)
+        ? (duplicate as JudgeVerdict)
+        : null
+    const verdict =
+      cached ??
+      (await this.moveJudge.evaluate(
+        {
+          insight: insight as unknown as Insight,
+          evidence: {
+            evidence_refs:
+              (insight['confidence_breakdown'] as Record<string, unknown> | undefined)?.[
+                'evidence_refs'
+              ] ?? [],
+            feature_snapshot: insight['feature_snapshot'] ?? {},
+            derived_from_signals: insight['derived_from_signals'] ?? [],
+          },
+        },
+        { duplicateReasoning: duplicate !== null },
+      ))
 
     await this.persistJudgeVerdict(insight, tenantId, reasoningHash, verdict)
     // 'skipped' (below the delivery threshold) is only a pass because MoveJudge's
@@ -758,13 +849,17 @@ export class DeliveryRouter {
     // re-blocks on the cached verdict each pass, so unbounded retries would
     // spin forever. After MAX_JUDGE_REVIEW_ATTEMPTS the row goes 'exhausted'
     // — still listed for human review, never retried automatically.
-    const existing = await this.db.collection(queue)
+    const existing = await this.db
+      .collection(queue)
       .findOne({ tenant_id: tenantId, insight_id: insight['id'] }, { projection: { attempts: 1 } })
     const attempts = ((existing?.['attempts'] as number | undefined) ?? 0) + 1
     const exhausted = attempts >= MAX_JUDGE_REVIEW_ATTEMPTS
-    const dueAt = new Date(Date.now() + (verdict.decision === 'rewrite'
-      ? Math.min(5 * 60_000 * Math.pow(2, attempts - 1), 6 * 3_600_000)
-      : Math.min(4 * 3_600_000 * attempts, 24 * 3_600_000)))
+    const dueAt = new Date(
+      Date.now() +
+        (verdict.decision === 'rewrite'
+          ? Math.min(5 * 60_000 * Math.pow(2, attempts - 1), 6 * 3_600_000)
+          : Math.min(4 * 3_600_000 * attempts, 24 * 3_600_000)),
+    )
 
     await this.db.collection(queue).updateOne(
       { tenant_id: tenantId, insight_id: insight['id'] },
@@ -776,9 +871,7 @@ export class DeliveryRouter {
           verdict,
           status: exhausted ? 'exhausted' : 'pending',
           attempts,
-          ...(verdict.decision === 'rewrite'
-            ? { retry_at: dueAt }
-            : { re_evaluate_at: dueAt }),
+          ...(verdict.decision === 'rewrite' ? { retry_at: dueAt } : { re_evaluate_at: dueAt }),
           updated_at: new Date(),
         },
       },
@@ -787,7 +880,11 @@ export class DeliveryRouter {
     // A verdict that flipped queues (rewrite→block or vice versa) would
     // leave a stale pending row behind in the old one — close it out.
     await this.db.collection(otherQueue).updateOne(
-      { tenant_id: tenantId, insight_id: insight['id'], status: { $in: ['pending', 'evaluating'] } },
+      {
+        tenant_id: tenantId,
+        insight_id: insight['id'],
+        status: { $in: ['pending', 'evaluating'] },
+      },
       { $set: { status: 'resolved', resolved_reason: 'superseded', updated_at: new Date() } },
     )
     return false
@@ -806,10 +903,9 @@ export class DeliveryRouter {
       reasoning_hash: reasoningHash,
       ...verdict,
     })
-    await this.db.collection('insights').updateOne(
-      { tenant_id: tenantId, id: insight['id'] },
-      { $set: { judge_verdict: verdict } },
-    )
+    await this.db
+      .collection('insights')
+      .updateOne({ tenant_id: tenantId, id: insight['id'] }, { $set: { judge_verdict: verdict } })
     insight['judge_verdict'] = verdict
   }
 
@@ -830,9 +926,10 @@ export class DeliveryRouter {
     const prefs = await this.getPreferences(tenantId)
     if (!prefs || !prefs.enabled || !prefs.email_to) return null
 
-    const queued = await this.db.collection('digest_queue')
+    const queued = (await this.db
+      .collection('digest_queue')
       .find({ tenant_id: tenantId, sent: false })
-      .toArray() as Array<{ insight: Record<string, unknown>; _id: unknown }>
+      .toArray()) as Array<{ insight: Record<string, unknown>; _id: unknown }>
 
     if (queued.length === 0) return null
 
@@ -856,21 +953,28 @@ export class DeliveryRouter {
       dismiss_url: `${this.webBaseUrl}/`,
     }
 
-    const result = await this.email.send(prefs.email_to, prefs.business_name ?? 'LifeKeel', digestNotification)
+    const result = await this.email.send(
+      prefs.email_to,
+      prefs.business_name ?? 'LifeKeel',
+      digestNotification,
+    )
 
     if (result.success) {
-      const ids = queued.map(q => q._id)
-      await this.db.collection('digest_queue').updateMany(
-        { _id: { $in: ids } },
-        { $set: { sent: true, sent_at: new Date() } },
-      )
+      const ids = queued.map((q) => q._id)
+      await this.db
+        .collection('digest_queue')
+        .updateMany({ _id: { $in: ids } }, { $set: { sent: true, sent_at: new Date() } })
     }
     return result
   }
 
   // ─── Receipt recording (audit + attribution) ───────────────────────────────
 
-  private async recordReceipt(insightId: string, tenantId: string, result: DeliveryResult): Promise<void> {
+  private async recordReceipt(
+    insightId: string,
+    tenantId: string,
+    result: DeliveryResult,
+  ): Promise<void> {
     await this.db.collection('delivery_receipts').insertOne({
       insight_id: insightId,
       tenant_id: tenantId,
