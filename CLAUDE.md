@@ -71,6 +71,22 @@ Concretely:
   place beats compliance overhead paid for after deciding to compete
   there.
 
+## The third rule: family content is not model training data
+
+LifeKeel must not use personal or family content to train or fine-tune a shared
+or third-party foundation model. Hosted AI calls are processing, not training,
+and must use task-minimized context, tenant authorization, approved processor
+terms, explicit retention/deletion rules, and metadata-first telemetry.
+
+Do not route family content through consumer/free AI endpoints, personal API
+keys, provider-side memory/file/vector stores, or unapproved batch/fine-tuning
+APIs. Local and on-device paths are preferred for high-sensitivity tasks. Any
+future cross-tenant learning (including the dormant federated-learning code)
+requires explicit opt-in, privacy review, minimum-cohort/privacy-accounting
+controls, deletion/retraining evidence, and user-facing disclosure. Any stale
+`federated_global_models` artifact must be deleted/quarantined or gated before
+scorer warm-start can use it.
+
 ## How the rules are enforced (not just stated)
 
 - **Advice rule (second rule):** `packages/engine/src/__tests__/advice-rule.test.ts`
@@ -85,6 +101,11 @@ Concretely:
   allow-lists the only callers of `ActionExecutor` and requires each
   `execute()` to name `approvedBy`. Adding a caller means editing that list,
   which forces the tier question into review. It is a tripwire, not proof.
+- **AI data use (rule 3):** the intended tripwire is the task/provider registry
+  described in `ARCHITECTURE.md`: no hosted model call should run without an
+  approved endpoint/model, no-training basis, retention/deletion mode, and
+  task-level data boundary. Until that registry is wired, do not claim the rule
+  is technically enforced by code alone.
 
 ## Conventions
 

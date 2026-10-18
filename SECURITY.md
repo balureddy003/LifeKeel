@@ -27,6 +27,97 @@ or contact the repo owner directly rather than filing publicly.
   a later pass the same day, once it turned out to be more than static
   files — see below.
 
+## AI data-use and model-training boundary
+
+This is the security boundary to use when answering “is my personal information
+used to train AI?”
+
+### Product rule
+
+LifeKeel must not use family personal content to train or fine-tune a shared or
+third-party foundation model. Hosted inference is **processing**, not training:
+the provider receives the minimum task context needed to produce an answer,
+extraction, or classification, under approved commercial terms. That must not be
+worded as “we never send data to an AI provider” when a hosted path is enabled.
+
+Internal per-tenant scorers may learn from bounded feature/outcome signals
+(such as an approval or dismissal) to rank future insights for that household.
+Those are derived models, not foundation-model training; hashed fields are still
+pseudonymous personal data. The cross-tenant `FederatedLearningService` remains
+in `packages/engine`, but the current API does not instantiate or schedule it.
+No service currently writes a new shared model, but two dormant/evaluation paths
+still need governance before stronger wording is used:
+
+- `FeatureHashScorer` and `TenantLevelScorer` can warm-start from
+  `federated_global_models.latest` if such an artifact exists. Stale artifacts
+  should be deleted/quarantined or the read gated before claiming no
+  cross-tenant model influence.
+- The weekly `feature_hash_eval` job loads approved/dismissed insights across
+  tenants and trains a temporary in-memory detector-level scorer to calculate
+  aggregate quality metrics. It does not persist or deploy that scorer, but it
+  should become per-tenant, synthetic/redacted, or explicitly governed
+  aggregate evaluation.
+
+### Implemented protections
+
+- Tenant-scoped authorization happens before assistant context assembly.
+- Ask Keel sends a task-specific family context, not arbitrary database access.
+- Email and document inputs are bounded and treated as untrusted external data.
+- Vault documents are encrypted before storage, excluded from OCR, and can be
+  sealed in the browser so LifeKeel cannot read their plaintext.
+- The LLM cache is exact-match, tenant/task/input keyed, and TTL-bound; semantic
+  response caching is prohibited for sensitive family content.
+- Prompt/completion telemetry is off by default; preferred observability is
+  metadata-only task/model/cost/result data.
+- Local Ollama/self-hosted and on-device paths exist for selected workloads, so
+  sensitive processing can be kept inside LifeKeel-controlled infrastructure or
+  on the user's device where configured.
+- Account export/delete and retention workers exist for the primary family-data
+  estate.
+
+### Required controls before stronger public claims
+
+A provider call must not be considered compliant merely because the code sends
+less data. The task registry must carry and enforce:
+
+- approved processor and endpoint/model;
+- contract/DPA reference and review date;
+- explicit no-training/no-model-improvement basis;
+- region/residency and subprocessor inventory;
+- retention mode, including abuse-monitoring or safety-log treatment;
+- zero-retention/modified-monitoring status where available;
+- deletion SLA and deletion-propagation behavior;
+- whether the task uses a stateless response, provider-side file/vector store,
+  batch, memory, or fine-tuning API;
+- whether SDK/debug logging can emit prompts, completions, endpoint metadata,
+  or tenant identifiers into logs and traces;
+- whether evaluation uses synthetic/redacted/consented fixtures, per-tenant
+  evaluation, or a documented and approved aggregate-evaluation basis.
+
+Production must reject consumer/free AI endpoints, personal API keys, unapproved
+regions/models, provider-side memory or file stores for family data, and any
+route whose policy is missing. It must also propagate tenant deletion to LLM
+cache, spans, guard events, eval captures, scorer/model versions, queues, and
+provider-side retained records. The current account-deletion list does not yet
+cover every one of those AI-derived artifacts.
+
+### Safe user-facing wording
+
+Use wording that distinguishes processing from training:
+
+> We do not use your personal or family content to train general-purpose or
+> third-party foundation models. Where a hosted AI processor is enabled, it
+> processes only the information needed for the requested feature under
+> commercial terms that prohibit training on the content. Limited provider
+> service or safety logs may still apply under the published processor terms;
+> local/on-device processing is used where available and configured.
+
+Do not claim “zero data leaves LifeKeel,” “all documents are encrypted,” “the
+provider retains nothing,” or “hashed data is anonymous” unless the specific
+route, provider mode, and evidence prove it. Current provider/data-protection
+references are maintained in `ARCHITECTURE.md` §8.16 and must be revalidated
+when a processor, model, region, or product tier changes.
+
 ## Trimmed from the full copy (2026-09-12)
 
 The full copy included kairos-ai's entire multi-vertical SaaS surface —
