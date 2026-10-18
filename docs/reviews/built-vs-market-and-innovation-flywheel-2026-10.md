@@ -430,6 +430,89 @@ what exists, who it belongs to, and what to do when responsibility
 passes to someone else." The second half is a claim no funded
 competitor is positioned to make.
 
+### Implementation status (October 2026 batch)
+
+All P0 and P1 items above are shipped. Detector count went from 5 to 9
+(`family_debt_health`, `family_policy_review` — covering beneficiary
+staleness *and* policy overlap via `beneficiary_member_id` +
+holder-composite entity keys — `family_education_pacing`,
+`family_emergency_trajectory`), each with a `detector-evals/` golden
+dataset at F1 = 1.0. Adaptive insight copy (G10), readiness drivers
+(G13), free-text crisis context (G6), member-scoped scenarios (G7),
+insight→action attribution, annual profile review, quiz CTA,
+beneficiary field, and the Kairos branding cleanup are all live.
+Quiz CTA uses factual benefits, not the invented "improved by 23
+points" social-proof stat — we don't have that data yet. Remaining:
+P2 items, Open Banking (blocked on TrueLayer partnership), detector
+SEO content, and the shareable score card.
+
+### Roadmap — the next three turns (October 2026 → Q1 2027)
+
+Two gaps surfaced after the P0/P1 batch that the Part 2 map didn't
+name because they're about *legibility* and *coverage*, not detection
+math:
+
+- **G15 — the watching is silent.** Everything Claim 1 and Claim 3
+  rest on (daily sweeps, re-evaluation, nudge reconciliation, scenario
+  recompute, attribution) produces state, not narrative. A family
+  never sees what moved, why, or who it affects. Weakens Trust &
+  Engagement directly: there is no reason to return between crises.
+- **G16 — estate is two booleans.** "Will on file? POA on file?" is
+  the whole of Oak's continuity reasoning. Who a document covers, who
+  it names, when it was reviewed, where the original is, and how an
+  inherited or ancestral property is actually owned — the knowledge
+  families lose between generations — isn't modelled at all. No
+  competitor models it either (Trustworthy stores, Everplans/Cake do
+  end-of-life forms, Empathy starts after the death).
+
+Both graduate into PRDs: **[PRD-136](../prd/136-readiness-feed-and-family-heartbeat.md)**
+and **[PRD-137](../prd/137-family-legacy-map.md)**. Sequenced by which
+flywheel turn they power, with the still-open P2 items slotted around
+them:
+
+| Phase | Initiative | PRD / gap | Flywheel turn | Size | Depends on |
+|---|---|---|---|---|---|
+| **A** (now) | `readiness_events` model + emitter hooks + "What changed" feed on `/` | 136 (G15) | Trust & Engagement | M | — |
+| A | Scenario watchlist nightly recompute + `scenario_moved` events | 136 | Insight Value | S | events model |
+| A | Legacy register (documents, roles, contacts) + property legacy sub-doc + verification labels | 137 (G16) | Data Depth | M | — |
+| A | `family.legacy` signal + `legacy-readiness.yaml` (10 rules) + golden evals; `legacy` readiness component | 137 | Detection Breadth | S | register |
+| **B** | Weekly/monthly heartbeat per adult via `DeliveryRouter` + preference center (channels, quiet hours, domain/member scope, cadence, exempt criticals) | 136 | Trust & Engagement | M | events model |
+| B | Feed feedback (useful / not relevant / handled / remind / data wrong) + 90-day mutes shown with reason | 136 | Insight Value → Data Depth | S | feed |
+| B | Legacy graph read model + Ask Oak grounding + `/legacy` page + vault/assets/member hooks | 137 | Data Depth | L | register |
+| B | Continuity rehearsal ("could Jordan find it?") + family knowledge notes | 137 | Trust & Engagement | S | graph |
+| **C** | Youth literacy progression (G9) — lesson completion as `milestone` feed events | flywheel P2 | Trust & Engagement | M | feed |
+| C | `steps[]` in `/assistant/simulate` (G14) | flywheel P2 | Crisis-native | S | — |
+| C | Shareable privacy-safe readiness card (score band + domains, no amounts) | flywheel P1 | Growth Loop | S | — |
+| C | Detector-driven SEO posts (PRD-202) — now 19 rules incl. legacy | flywheel P1 | Growth Loop | M (content) | 137 |
+| **Blocked** | Open Banking consent + sync (G8) → becomes additional feed emitters (income stopped, savings drained, new recurring premium) — detect-before-declared | 133 | Detection Breadth | L | TrueLayer partnership |
+| Blocked | Executor / trustee time-boxed access (Tier 2) and any document release | follow-up PRD | — | M | 137 + legal review |
+
+**Status (3 Oct 2026, commits 24c90ae → 344bd1c):** Phase A and
+Phase B are shipped in full — events model, all ten emitters, feed +
+feedback/mutes, scenario watchlist, weekly/monthly heartbeat (email;
+push deferred until `channels.ts` accepts a non-insight payload),
+preference center, legacy register with visibility + audit, enriched
+`family.estate` signal, estate detector 2→10 rules at F1 = 1.0, estate
+score from the register, legacy graph into Ask Oak, `/legacy` page,
+rehearsal, knowledge notes. Phase C: `steps[]` in `/assistant/simulate`
+shipped; the shareable score card already existed (`routes/share.ts`).
+Open: youth literacy progression (G9), detector-driven SEO posts, and
+the two blocked rows. Gate at 344bd1c: typecheck 24/24 · lint 0 errors
+· API 1,291 tests / web suite green · build 72 pages.
+
+**Definition of done per phase:** every PRD acceptance test passing,
+golden evals at F1 = 1.0 for any new detector, root `pnpm typecheck &&
+pnpm lint && pnpm test && pnpm build` green, and the Part 4 leading
+metric for the phase's flywheel turn instrumented (30-day return rate
+for A/B; % families with ≥1 legacy document for 137).
+
+**Positioning effect:** Phase A+B move the landing claim from "Oak
+monitors whether your family is protected" to "Oak monitors whether
+your family is protected, shows you what changed each week, and knows
+what exists, who it belongs to, and what to do when responsibility
+passes to someone else." The second half is a claim no funded
+competitor is positioned to make.
+
 ---
 
 ## Part 4 — The Flywheel Metrics
