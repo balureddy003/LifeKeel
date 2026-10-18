@@ -61,15 +61,20 @@ warn() { echo "  ! $*"; }
 
 gtoken() { gcloud auth print-access-token 2>/dev/null || gcloud auth application-default print-access-token; }
 
-# Firebase site-id must be [a-z0-9-]: derive a per-domain landing site name.
-landing_site() { echo "${APP_SITE}-landing-$(echo "$1" | tr '.-' '--' | tr '.' '-')"; }
+# Landing site name = APP_SITE-landing-<tld> (matches .firebaserc targets).
+landing_site() { echo "${APP_SITE}-landing-$(echo "$1" | awk -F. '{print $NF}')"; }
 
 fb_api() { # method path [body]
+  # X-Goog-User-Project: user creds need a quota project header for the
+  # Firebase Hosting API — without it calls 403 with SERVICE_DISABLED.
   local method="$1" path="$2" body="${3:-}"
   if [ -n "$body" ]; then
-    curl -sf -X "$method" -H "Authorization: Bearer $(gtoken)" -H 'Content-Type: application/json' -d "$body" "$FB_API/$path"
+    curl -sf -X "$method" -H "Authorization: Bearer $(gtoken)" \
+      -H "X-Goog-User-Project: $GCP_PROJECT" -H 'Content-Type: application/json' \
+      -d "$body" "$FB_API/$path"
   else
-    curl -sf -X "$method" -H "Authorization: Bearer $(gtoken)" "$FB_API/$path"
+    curl -sf -X "$method" -H "Authorization: Bearer $(gtoken)" \
+      -H "X-Goog-User-Project: $GCP_PROJECT" "$FB_API/$path"
   fi
 }
 
@@ -165,6 +170,11 @@ step_secrets() {
 # ---------------------------------------------------------------------------
 step_firebase() {
   say "Firebase: hosting sites + custom domains"
+  # The app site itself may not exist yet (.firebaserc only records the
+  # target mapping; it doesn't create the site).
+  fb_api GET "projects/$GCP_PROJECT/sites/$APP_SITE" >/dev/null 2>&1 \
+    || fb_api POST "projects/$GCP_PROJECT/sites?siteId=$APP_SITE" '{}' >/dev/null
+  echo "  site: $APP_SITE"
   for d in $APEX_DOMAINS; do
     local site; site=$(landing_site "$d")
     fb_api GET "projects/$GCP_PROJECT/sites/$site" >/dev/null 2>&1 \
@@ -190,8 +200,9 @@ attach_domain() { # site host
   # ownership-verification TXT Firebase wants before it provisions the cert.
   echo "$resp" | jq -r '
     .requiredDnsUpdates.desired[]? |
-    .domainName as $d | .records[]? |
-    [$d, .type, .rrdata] | @tsv' | while IFS=$'\t' read -r name type data; do
+    .domainName as $d |
+    (.records[]? | select(.requiredAction == "ADD") | [$d, .type, .rdata] | @tsv)' \
+    | while IFS=$'\t' read -r name type data; do
       # Strip the domain suffix -> record name relative to zone apex.
       for apex_d in $APEX_DOMAINS; do
         if [ "$name" = "$apex_d" ]; then plan_add "$apex_d" "@" "$type" "$data"; break; fi
@@ -250,13 +261,37 @@ step_run_map() {
 push_dns() { # domain — reads $OUT_DIR/dns-<domain>.json, applies to Hostinger.
   local d="$1" f="$OUT_DIR/dns-$1.json"
   [ -f "$f" ] || { warn "no plan file $f"; return 1; }
-  local zone; zone=$(jq '[.[] | {name, type, ttl, records: [{content}]}]' "$f")
+
+  # Merge plan records with whatever already lives at each (name, type) —
+  # overwrite=true replaces the whole set for a name+type, so we must carry
+  # existing contents forward (e.g. the SPF TXT for Hostinger mail).
+  local existing zone
+  if command -v hostinger >/dev/null; then
+    existing=$(hostinger dns records list "$d" --format json 2>/dev/null || echo '[]')
+  elif [ -n "${HOSTINGER_API_TOKEN:-}" ]; then
+    existing=$(curl -sf "$HOSTINGER_API/api/dns/v1/zones/$d" \
+      -H "Authorization: Bearer $HOSTINGER_API_TOKEN" 2>/dev/null || echo '[]')
+  else
+    existing='[]'
+  fi
+  zone=$(jq -n --argjson plan "$(cat "$f")" --argjson live "$existing" '
+    def strip: gsub("^\"|\"$"; "");   # live TXT contents come back quoted
+    ($plan | group_by(.name + "|" + .type)) as $groups |
+    [ $groups[] as $g |
+      ($g[0] | {name, type, ttl}) +
+      {records: (if ($g[0].type | IN("TXT", "MX", "SRV", "NS"))
+                 # multi-value types: union live + plan so nothing is lost
+                 then ([ $live[]? | select(.name == $g[0].name and .type == $g[0].type)
+                         | .records[]?.content | strip ] + [$g[] | .content] | unique)
+                 # single-value types: plan wins — stale IPs/CNAMEs must go
+                 else [$g[] | .content]
+                 end | map({content: .}))} ]' )
 
   # Preferred auth: the hostinger CLI (browser sign-in, no API token needed).
   if command -v hostinger >/dev/null; then
     hostinger dns records validate "$d" --zone "$zone" >/dev/null 2>&1 \
       || warn "Hostinger validation failed for $d — check the plan file"
-    hostinger dns records update "$d" --overwrite true --zone "$zone" >/dev/null \
+    hostinger dns records update "$d" --overwrite=true --zone "$zone" >/dev/null \
       && echo "  dns: $d updated" || warn "Hostinger update failed for $d"
     return
   fi
