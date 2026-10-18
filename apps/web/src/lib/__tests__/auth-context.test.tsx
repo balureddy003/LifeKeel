@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { AuthProvider, useAuth } from '../auth-context'
+import * as sessionPurge from '../session-purge'
 
 function jsonResponse(body: unknown, ok = true) {
   return Promise.resolve({ ok, status: ok ? 200 : 500, json: () => Promise.resolve(body) })
@@ -16,9 +17,14 @@ afterEach(() => {
 
 describe('AuthProvider.signUp', () => {
   it('sends a unique workspace slug derived from the given name, and persists the token', async () => {
-    const fetchMock = vi.fn().mockImplementation((url: string) =>
-      jsonResponse({ token: 'tok_123', user: { id: 'u1', email: 'jane@example.com', name: 'Jane Doe', tenant_id: 't1' } }),
-    )
+    const fetchMock = vi
+      .fn()
+      .mockImplementation((url: string) =>
+        jsonResponse({
+          token: 'tok_123',
+          user: { id: 'u1', email: 'jane@example.com', name: 'Jane Doe', tenant_id: 't1' },
+        }),
+      )
     vi.stubGlobal('fetch', fetchMock)
 
     const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
@@ -33,7 +39,9 @@ describe('AuthProvider.signUp', () => {
 
     // The mount-time rehydrate also fetches (/auth/me, cookie-session probe),
     // so locate the signup call by URL rather than assuming calls[0].
-    const signupCall = fetchMock.mock.calls.find((call: unknown[]) => (call[0] as string).endsWith('/auth/signup'))!
+    const signupCall = fetchMock.mock.calls.find((call: unknown[]) =>
+      (call[0] as string).endsWith('/auth/signup'),
+    )!
     const [, requestInit] = signupCall
     const body = JSON.parse(requestInit.body)
     // uniqueWorkspaceSlug() slugifies the name then appends a random suffix —
@@ -46,10 +54,15 @@ describe('AuthProvider.signIn', () => {
   it('restores the real family roster on login instead of only trusting local cache', async () => {
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.endsWith('/auth/login')) {
-        return jsonResponse({ token: 'tok_456', user: { id: 'u2', email: 'a@b.com', name: 'A', tenant_id: 't2' } })
+        return jsonResponse({
+          token: 'tok_456',
+          user: { id: 'u2', email: 'a@b.com', name: 'A', tenant_id: 't2' },
+        })
       }
       if (url.endsWith('/family')) {
-        return jsonResponse({ family: { id: 'f1', name: 'The Bs', inviteCode: 'ABC123', members: [] } })
+        return jsonResponse({
+          family: { id: 'f1', name: 'The Bs', inviteCode: 'ABC123', members: [] },
+        })
       }
       return jsonResponse({}, false)
     })
@@ -76,7 +89,10 @@ describe('AuthProvider.signIn', () => {
         if (body.mfa_token !== 'pending_tok' || body.code !== '123456') {
           return jsonResponse({ error: 'Incorrect code' }, false)
         }
-        return jsonResponse({ token: 'tok_mfa', user: { id: 'u9', email: 'm@b.com', name: 'M', tenant_id: 't9' } })
+        return jsonResponse({
+          token: 'tok_mfa',
+          user: { id: 'u9', email: 'm@b.com', name: 'M', tenant_id: 't9' },
+        })
       }
       if (url.endsWith('/family')) {
         return jsonResponse({ family: null })
@@ -113,10 +129,13 @@ describe('AuthProvider.updateEmail', () => {
       // /auth/me must succeed here — the mount-time rehydrate effect wipes
       // the stored token on a failed /auth/me, which would defeat this
       // test's whole point (asserting the Authorization header is sent).
-      if (url.endsWith('/auth/me')) return jsonResponse({ user_id: 'u1', email: 'original@example.com', name: 'Jane' })
+      if (url.endsWith('/auth/me'))
+        return jsonResponse({ user_id: 'u1', email: 'original@example.com', name: 'Jane' })
       if (url.endsWith('/family')) return jsonResponse({}, false)
       if (url.endsWith('/auth/profile')) {
-        return jsonResponse({ user: { id: 'u1', email: 'new@example.com', name: 'Jane', tenant_id: 't1' } })
+        return jsonResponse({
+          user: { id: 'u1', email: 'new@example.com', name: 'Jane', tenant_id: 't1' },
+        })
       }
       return jsonResponse({}, false)
     })
@@ -130,7 +149,9 @@ describe('AuthProvider.updateEmail', () => {
     })
 
     expect(result.current.user?.email).toBe('new@example.com')
-    const profileCall = fetchMock.mock.calls.find((call: unknown[]) => (call[0] as string).endsWith('/auth/profile'))!
+    const profileCall = fetchMock.mock.calls.find((call: unknown[]) =>
+      (call[0] as string).endsWith('/auth/profile'),
+    )!
     const [, requestInit] = profileCall
     expect(requestInit.method).toBe('PUT')
     expect(requestInit.headers.Authorization).toBe('Bearer existing-token')
@@ -139,7 +160,8 @@ describe('AuthProvider.updateEmail', () => {
 
   it('throws with the server error message on failure (e.g. a collision with another account) without changing local state', async () => {
     const fetchMock = vi.fn().mockImplementation((url: string) => {
-      if (url.endsWith('/auth/profile')) return jsonResponse({ error: 'Email already in use' }, false)
+      if (url.endsWith('/auth/profile'))
+        return jsonResponse({ error: 'Email already in use' }, false)
       return jsonResponse({}, false)
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -147,7 +169,9 @@ describe('AuthProvider.updateEmail', () => {
     const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    await expect(result.current.updateEmail('taken@example.com')).rejects.toThrow('Email already in use')
+    await expect(result.current.updateEmail('taken@example.com')).rejects.toThrow(
+      'Email already in use',
+    )
     expect(result.current.user).toBeNull()
   })
 })
@@ -159,7 +183,9 @@ describe('AuthProvider.signOut', () => {
         return jsonResponse({ user_id: 'u3', email: 'x@y.com', name: 'X' })
       }
       if (url.endsWith('/family')) {
-        return jsonResponse({ family: { id: 'f2', name: 'The Xs', inviteCode: 'ZZZ999', members: [] } })
+        return jsonResponse({
+          family: { id: 'f2', name: 'The Xs', inviteCode: 'ZZZ999', members: [] },
+        })
       }
       return jsonResponse({}, false)
     })
@@ -177,5 +203,52 @@ describe('AuthProvider.signOut', () => {
     expect(localStorage.getItem('lifekeel_token')).toBeNull()
     expect(localStorage.getItem('family-auth')).toBeNull()
     expect(result.current.isAuthenticated).toBe(false)
+  })
+
+  it('purges device data (caches, offline queue, tenant) so a shared device keeps nothing', async () => {
+    const purge = vi.spyOn(sessionPurge, 'purgeClientData').mockResolvedValue()
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith('/auth/me'))
+        return jsonResponse({ user_id: 'u3', email: 'x@y.com', name: 'X' })
+      if (url.endsWith('/family')) return jsonResponse({ family: null })
+      return jsonResponse({}, false)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    localStorage.setItem('lifekeel_token', 'existing-token')
+
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => {
+      result.current.signOut()
+    })
+
+    expect(purge).toHaveBeenCalledTimes(1)
+  })
+
+  it('purges device data when the server rejects a previously signed-in session', async () => {
+    const purge = vi.spyOn(sessionPurge, 'purgeClientData').mockResolvedValue()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status: 401, json: () => Promise.resolve({}) }),
+    )
+    localStorage.setItem('lifekeel_token', 'expired-token')
+
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(purge).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not purge for an anonymous visitor with no prior session', async () => {
+    const purge = vi.spyOn(sessionPurge, 'purgeClientData').mockResolvedValue()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status: 401, json: () => Promise.resolve({}) }),
+    )
+
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(purge).not.toHaveBeenCalled()
   })
 })

@@ -4,12 +4,12 @@
  * Offline-first strategy for non-technical family users:
  *   - App shell (pages) → Cache First with network update (stale-while-revalidate)
  *   - Static assets → Cache First
- *   - API calls → Network First, fallback to cache
+ *   - API calls → Network only (authenticated data is never cached)
  *   - Push notifications for urgent family alerts
  */
 
-const CACHE_NAME = 'lifekeel-v3'
-const STATIC_CACHE = 'lifekeel-static-v3'
+const CACHE_NAME = 'lifekeel-v4'
+const STATIC_CACHE = 'lifekeel-static-v4'
 
 // Every top-level authenticated route is pre-cached so a deep link or
 // relaunch while offline still opens a real page instead of the browser's
@@ -45,19 +45,23 @@ const APP_SHELL = [
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE_NAME)
+    caches
+      .open(CACHE_NAME)
       .then((c) => c.addAll(APP_SHELL))
-      .then(() => self.skipWaiting())
+      .then(() => self.skipWaiting()),
   )
 })
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(
-        keys.filter((k) => k !== CACHE_NAME && k !== STATIC_CACHE).map((k) => caches.delete(k))
-      ))
-      .then(() => self.clients.claim())
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys.filter((k) => k !== CACHE_NAME && k !== STATIC_CACHE).map((k) => caches.delete(k)),
+        ),
+      )
+      .then(() => self.clients.claim()),
   )
 })
 
@@ -78,19 +82,18 @@ self.addEventListener('fetch', (e) => {
     return
   }
 
-  // API calls → Network First, fallback to cache
+  // API calls → Network only. Responses are authenticated family data, so
+  // they are never written to Cache Storage: a shared phone or iPad must not
+  // be able to replay the previous user's data offline after sign-out.
   if (isApiCall) {
     e.respondWith(
-      fetch(request)
-        .then((res) => {
-          const clone = res.clone()
-          caches.open(CACHE_NAME).then((c) => c.put(request, clone))
-          return res
-        })
-        .catch(() => caches.match(request).then((c) => c ?? new Response(
-          JSON.stringify({ error: 'offline', message: 'You are offline. Showing cached data.' }),
-          { status: 503, headers: { 'Content-Type': 'application/json' } }
-        )))
+      fetch(request).catch(
+        () =>
+          new Response(JSON.stringify({ error: 'offline', message: 'You are offline.' }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+      ),
     )
     return
   }
@@ -107,7 +110,7 @@ self.addEventListener('fetch', (e) => {
           })
           .catch(() => cached ?? caches.match('/'))
         return cached ?? fetchPromise
-      })
+      }),
     )
     return
   }
@@ -115,22 +118,22 @@ self.addEventListener('fetch', (e) => {
   // Static assets → Cache First
   if (url.pathname.match(/\.(js|css|woff2?|png|svg|ico|webp)$/)) {
     e.respondWith(
-      caches.match(request).then((cached) =>
-        cached ?? fetch(request).then((res) => {
-          if (!res.ok) return res
-          const clone = res.clone()
-          caches.open(STATIC_CACHE).then((c) => c.put(request, clone))
-          return res
-        })
-      )
+      caches.match(request).then(
+        (cached) =>
+          cached ??
+          fetch(request).then((res) => {
+            if (!res.ok) return res
+            const clone = res.clone()
+            caches.open(STATIC_CACHE).then((c) => c.put(request, clone))
+            return res
+          }),
+      ),
     )
     return
   }
 
   // Everything else → Network with cache fallback
-  e.respondWith(
-    fetch(request).catch(() => caches.match(request))
-  )
+  e.respondWith(fetch(request).catch(() => caches.match(request)))
 })
 
 // Push notifications
@@ -145,7 +148,7 @@ self.addEventListener('push', (e) => {
       tag: data.tag ?? 'lifekeel',
       data: data.url ? { url: data.url } : undefined,
       vibrate: [200, 100, 200],
-    })
+    }),
   )
 })
 

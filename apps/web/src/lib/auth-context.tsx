@@ -15,6 +15,7 @@ import {
 } from './api'
 import { getApiBase } from './env'
 import { credFetch } from './http'
+import { purgeClientData } from './session-purge'
 import { getAttribution } from './attribution'
 
 interface AuthContextValue {
@@ -143,8 +144,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
         if (!res.ok) {
-          localStorage.removeItem(TOKEN_KEY)
-          localStorage.removeItem(STORAGE_KEY)
+          // A rejected session that this device had signed in to must not
+          // leave that user's data behind. Anonymous visitors (no prior
+          // session) skip the purge — nothing personal to remove.
+          const hadSession = Boolean(token || localStorage.getItem(STORAGE_KEY))
+          if (hadSession && (res.status === 401 || res.status === 403)) {
+            void purgeClientData()
+          } else {
+            localStorage.removeItem(TOKEN_KEY)
+            localStorage.removeItem(STORAGE_KEY)
+          }
           setIsLoading(false)
           return
         }
@@ -359,6 +368,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = () => {
     persist(null, null)
+    // Also wipe caches, the offline queue and other per-user device data so
+    // the next person on a shared device can't read it.
+    void purgeClientData()
     // Clear the httpOnly session cookie server-side — fire-and-forget; the
     // local wipe above already signed the user out on this device.
     credFetch(`${getApiBase()}/auth/logout`, { method: 'POST' }).catch(() => {})

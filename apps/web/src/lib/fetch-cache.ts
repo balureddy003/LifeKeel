@@ -24,7 +24,11 @@ const inflight = new Map<string, Promise<unknown>>()
  * share one network request; AppShell keeps the hot keys warm so misses
  * on real navigations are rare.
  */
-export async function cachedFetch<T>(key: string, ttlMs: number, fetcher: () => Promise<T>): Promise<T> {
+export async function cachedFetch<T>(
+  key: string,
+  ttlMs: number,
+  fetcher: () => Promise<T>,
+): Promise<T> {
   const hit = cache.get(key) as CacheEntry<T> | undefined
   if (hit && Date.now() - hit.at < ttlMs) {
     return hit.data
@@ -59,7 +63,8 @@ export function invalidateCache(key: string): void {
   cache.delete(key)
 }
 
-// Test-only: cachedFetch's module-level Map otherwise persists across
+// Also called on sign-out (session-purge.ts) so one user's cached reads
+// never answer for the next. In tests, cachedFetch's module-level Map persists across
 // every test in a file, so a mocked response from test 1 silently answers
 // test 5's differently-mocked fetch — confirmed live: fetchFamilyInsights
 // (cached 30s) made fetchFamilyReadinessScore's own tests all return the
