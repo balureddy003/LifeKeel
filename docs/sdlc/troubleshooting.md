@@ -76,6 +76,11 @@ then `git worktree remove ../wt-name`. A fresh worktree has no `node_modules`; r
 |---|---|---|
 | `verify-ci` fails: "not in main's history" | You asked for a ref that is not on `main`. | Merge through a PR first. Hotfixes go through `main` too. |
 | `verify-ci` fails: "No successful CI run" | CI has not finished (or failed) on that exact commit. | Wait for `ci.yml` on `main`, or fix it. A squash creates a new commit that needs its own run. |
+| The `guard` job fails: "Run this workflow from main" | You chose a branch other than `main` under "Use workflow from". | Choose `main`; put the commit to deploy in the `ref` input. |
+| The deploy fails at "Smoke test the new revision" | The new revision is unhealthy. It never received traffic, so production is unchanged. | Read the revision's logs (`gcloud run revisions logs read` or the Cloud Run console), fix, and redeploy. |
+| The deploy fails at "Shift traffic and verify production" and says it reverted | The new revision passed its own check but production failed after the shift; the previous revision was restored automatically. | Confirm with `gcloud run services describe` that traffic is back on the previous revision, then investigate before retrying. |
+| The deploy stops at "Inspect the service" with an error | The service could not be inspected (auth, network, permission), so protection could not be set up. It deliberately does not fall back to an unprotected deploy. | Fix the credential or access error and re-run. |
+| A manual `gcloud run deploy` created a revision that gets no traffic | Traffic is pinned to a revision by name after each workflow deploy. | Deploy through the workflow, or `gcloud run services update-traffic SERVICE --to-latest`. |
 | The deploy did not pause for approval | By design today: the `Production` environment has no required reviewers, and this plan cannot add them (see [status](status.md#what-github-can-and-cannot-enforce-here)). | You are the gate. Read the smoke test result; know the rollback command (gap G16) before you dispatch. |
 | Local-judge deploy fails at the model eval step with module-not-found | You deployed a commit from before the eval harness was restored. | Deploy a commit on current `main`, or set `run_eval` to false. |
 

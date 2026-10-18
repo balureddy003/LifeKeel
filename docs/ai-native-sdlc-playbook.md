@@ -331,10 +331,24 @@ Deploys are manual `workflow_dispatch` runs: `deploy-api.yml` (Cloud Run), `depl
    plan:** the environment has no reviewers, so the job does not pause (6.0).
 3. Checks out the verified SHA, so the source that was checked is the source that is built.
 
-What actually happens in `deploy-api.yml`: the image is built and pushed, the new Cloud Run revision
-takes **all traffic immediately**, then `/health/ready` is checked. If that fails the job goes red and
-prints a rollback command with a placeholder revision; rolling back is a manual step. The image is
-also tagged with the dispatched ref's SHA and a mutable `:latest`, not the verified SHA (G16).
+What `deploy-api.yml` does (a safe rollout, G16):
+
+1. A `guard` job fails the run unless it was dispatched from `main`.
+2. The image is built from the verified SHA and tagged with **that SHA only** (no `:latest`).
+3. The serving revision is recorded. If the service cannot be inspected the run stops; only a genuine
+   "not found" is treated as a first deploy.
+4. The new revision is deployed with `--no-traffic` and a tag, so it exists but serves nobody.
+5. `/health/ready` is checked **at the new revision's own URL**. If it fails, production was never
+   touched and the run goes red.
+6. Traffic moves to the new revision by name, production is checked again, and if that check fails the
+   previous revision is put back **automatically** and the run goes red.
+7. The canary tag is removed; the previous revision is kept, so a later manual rollback is
+   `gcloud run services update-traffic SERVICE --to-revisions PREVIOUS=100`.
+
+Traffic is pinned to a revision by name, so a plain manual `gcloud run deploy` will not take traffic by
+itself; deploy through this workflow. The `guard` stops an accidental dispatch from the wrong branch; it
+does not stop a writer who edits the workflow on their own branch (G10). `deploy-web.yml` and
+`deploy-local-judge.yml` have the guard but not the canary rollout (static hosting and a separate service).
 
 ```mermaid
 sequenceDiagram
@@ -351,8 +365,10 @@ sequenceDiagram
   GH->>Env: Request approval
   Note over Env: no reviewers on this plan (6.0), so no pause
   Env-->>GH: continues
-  GH->>Cloud: Build the verified SHA, take all traffic
-  GH->>Cloud: Then smoke-test /health/ready
+  GH->>Cloud: Build the verified SHA, deploy with no traffic
+  GH->>Cloud: Smoke-test the new revision at its own URL
+  GH->>Cloud: Move traffic, check production
+  Note over GH,Cloud: if production is unhealthy, revert to the previous revision
 ```
 
 Consequences of the SHA check: hotfixes go through `main` first, and a deploy right after a
@@ -454,7 +470,7 @@ availability).
 - [ ] PR merged to `main` with green CI
 - [ ] Dispatch deploy with the SHA or `main`
 - [ ] If reviewers are configured, the reviewer approves the `production` Environment (inactive today)
-- [ ] Watch the smoke test; know the rollback command before you dispatch (G16)
+- [ ] Watch the run: a failed canary means production is unchanged; a failed production check means it reverted by itself. Either way read why before retrying
 
 ## 10. Known gaps and owners
 

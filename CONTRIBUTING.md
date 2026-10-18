@@ -85,8 +85,9 @@ flowchart LR
 9. **Deploy** is a manual workflow run, never a side effect of merging. It checks that
    CI passed on the exact commit. **There is no approval pause on our current GitHub plan**
    (see [what GitHub can enforce](docs/sdlc/status.md#what-github-can-and-cannot-enforce-here)),
-   so the person dispatching the deploy is the gate: watch the smoke test and know the rollback
-   command first. See [playbook 6.5](docs/ai-native-sdlc-playbook.md#65-deploy).
+   so the person dispatching the deploy is the gate. The API deploy is a canary rollout: the new
+   revision is tested before it gets traffic, and the previous one is restored automatically if
+   production is unhealthy afterwards. See [playbook 6.5](docs/ai-native-sdlc-playbook.md#65-deploy).
 
 ## What runs where
 
