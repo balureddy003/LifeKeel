@@ -31,7 +31,12 @@ function signOAuthState(payload: Record<string, unknown>): string {
   return `${body}.${sig}`
 }
 
-function verifyOAuthState(state: string): { provider: string; exp?: number; app?: string } {
+function verifyOAuthState(state: string): {
+  provider: string
+  exp?: number
+  app?: string
+  appHost?: string
+} {
   const [body, sig] = state.split('.')
   if (!body || !sig) throw new Error('Malformed OAuth state')
   const secret = process.env['JWT_SECRET'] ?? 'change-me-in-production'
@@ -44,10 +49,11 @@ function verifyOAuthState(state: string): { provider: string; exp?: number; app?
     provider?: string
     exp?: number
     app?: string
+    app_host?: string
   }
   if (!parsed.provider) throw new Error('OAuth state missing provider')
   if (parsed.exp && Date.now() > parsed.exp) throw new Error('OAuth state expired')
-  return { provider: parsed.provider, exp: parsed.exp, app: parsed.app }
+  return { provider: parsed.provider, exp: parsed.exp, app: parsed.app, appHost: parsed.app_host }
 }
 
 /**
@@ -57,15 +63,18 @@ function verifyOAuthState(state: string): { provider: string; exp?: number; app?
  * so a forged/garbled state can at worst mis-route to the wrong (still
  * trusted) app, never to an attacker-controlled URL.
  */
-function peekApp(state: string | undefined): string | undefined {
-  if (!state) return undefined
+function peekState(state: string | undefined): { app?: string; appHost?: string } {
+  if (!state) return {}
   try {
     const [body] = state.split('.')
-    if (!body) return undefined
-    const parsed = JSON.parse(Buffer.from(body, 'base64url').toString()) as { app?: string }
-    return parsed.app
+    if (!body) return {}
+    const parsed = JSON.parse(Buffer.from(body, 'base64url').toString()) as {
+      app?: string
+      app_host?: string
+    }
+    return { app: parsed.app, appHost: parsed.app_host }
   } catch {
-    return undefined
+    return {}
   }
 }
 
@@ -95,20 +104,42 @@ export async function registerSocialAuthRoutes(
     process.env['GITHUB_REDIRECT_URI'] ?? `${cleanApiBaseUrl}/auth/github/callback`
 
   /**
+   * Hosts the 'family' app may legitimately live on — one per TLD. The web
+   * app passes its own `window.location.host` as ?app_host= at /login; the
+   * value rides the signed OAuth state so the callback can send each user
+   * back to the TLD they started on (sessions are per-registrable-domain —
+   * a .si user bounced to .co.uk would arrive logged-out). Anything not in
+   * this set falls back to LIFEKEEL_URL, so a forged app_host can at worst
+   * land on the default app, never an arbitrary origin.
+   */
+  const allowedAppHosts = new Set(
+    (process.env['LIFEKEEL_APP_HOSTS'] ?? 'app.lifekeel.co.uk,app.lifekeel.si')
+      .split(',')
+      .map((h) => h.trim())
+      .filter(Boolean),
+  )
+
+  function appBaseUrl(app: string | undefined, appHost?: string): string {
+    if (app === 'family') {
+      if (appHost && allowedAppHosts.has(appHost)) return `https://${appHost}`
+      return cleanLifeKeelUrl
+    }
+    return cleanStudioUrl
+  }
+
+  /**
    * Where the token/tenant fragment (success) or ?error= (failure) lands,
    * keyed by which app initiated the flow (see `app` in the signed OAuth
    * state). 'family' is the LifeKeel web app; anything else falls back to
    * STUDIO_URL (legacy default kept for older clients).
    */
-  function getCallbackUrl(app?: string): string {
-    if (app === 'family') return `${cleanLifeKeelUrl}/auth/callback`
-    return `${cleanStudioUrl}/auth/callback`
+  function getCallbackUrl(app?: string, appHost?: string): string {
+    return `${appBaseUrl(app, appHost)}/auth/callback`
   }
 
   /** Same app-keyed resolution as getCallbackUrl, but for the pre-token error path (?error=... instead of #token=...). */
-  function getLoginErrorUrl(app: string | undefined, error: string): string {
-    const base = app === 'family' ? cleanLifeKeelUrl : cleanStudioUrl
-    return `${base}/login?error=${error}`
+  function getLoginErrorUrl(app: string | undefined, error: string, appHost?: string): string {
+    return `${appBaseUrl(app, appHost)}/login?error=${error}`
   }
 
   log.info({ studio_url: studioUrl }, 'STUDIO_URL')
@@ -118,32 +149,38 @@ export async function registerSocialAuthRoutes(
 
   // ── Google OAuth ─────────────────────────────────────────────────────────────
 
-  fastify.get<{ Querystring: { app?: string } }>('/auth/google/login', async (req, reply) => {
-    const clientId = process.env['GOOGLE_CLIENT_ID']
-    if (!clientId) {
-      return reply
-        .status(500)
-        .send({ error: 'Google OAuth not configured. Set GOOGLE_CLIENT_ID env var.' })
-    }
+  fastify.get<{ Querystring: { app?: string; app_host?: string } }>(
+    '/auth/google/login',
+    async (req, reply) => {
+      const clientId = process.env['GOOGLE_CLIENT_ID']
+      if (!clientId) {
+        return reply
+          .status(500)
+          .send({ error: 'Google OAuth not configured. Set GOOGLE_CLIENT_ID env var.' })
+      }
 
-    const state = signOAuthState({
-      provider: 'google',
-      exp: Date.now() + 10 * 60 * 1000, // 10 minutes
-      app: req.query.app ?? 'studio',
-    })
+      const state = signOAuthState({
+        provider: 'google',
+        exp: Date.now() + 10 * 60 * 1000, // 10 minutes
+        app: req.query.app ?? 'studio',
+        // Carry the initiating app host through the flow — validated against
+        // allowedAppHosts when the callback resolves the redirect target.
+        app_host: req.query.app_host,
+      })
 
-    const authUrl =
-      `https://accounts.google.com/o/oauth2/v2/auth?` +
-      `client_id=${clientId}&` +
-      `redirect_uri=${encodeURIComponent(googleRedirectUri)}&` +
-      `response_type=code&` +
-      `scope=openid email profile&` +
-      `state=${state}`
+      const authUrl =
+        `https://accounts.google.com/o/oauth2/v2/auth?` +
+        `client_id=${clientId}&` +
+        `redirect_uri=${encodeURIComponent(googleRedirectUri)}&` +
+        `response_type=code&` +
+        `scope=openid email profile&` +
+        `state=${state}`
 
-    log.info({ google_redirect_uri: googleRedirectUri }, 'Google OAuth redirect URI')
-    log.info({ auth_url: authUrl }, 'Google OAuth auth URL')
-    return reply.redirect(authUrl)
-  })
+      log.info({ google_redirect_uri: googleRedirectUri }, 'Google OAuth redirect URI')
+      log.info({ auth_url: authUrl }, 'Google OAuth auth URL')
+      return reply.redirect(authUrl)
+    },
+  )
 
   fastify.get<{
     Querystring: { code?: string; state?: string; error?: string }
@@ -151,31 +188,38 @@ export async function registerSocialAuthRoutes(
     const { code, state, error } = req.query
 
     if (error) {
-      return reply.redirect(getLoginErrorUrl(peekApp(state), error))
+      const peeked = peekState(state)
+      return reply.redirect(getLoginErrorUrl(peeked.app, error, peeked.appHost))
     }
 
     if (!code || !state) {
-      return reply.redirect(getLoginErrorUrl(peekApp(state), 'missing_oauth_params'))
+      const peeked = peekState(state)
+      return reply.redirect(getLoginErrorUrl(peeked.app, 'missing_oauth_params', peeked.appHost))
     }
 
     let appRedirectUrl: string
     let app: string | undefined
+    let appHost: string | undefined
     try {
       const stateData = verifyOAuthState(state)
       if (stateData.provider !== 'google') {
-        return reply.redirect(getLoginErrorUrl(stateData.app, 'invalid_oauth_provider'))
+        return reply.redirect(
+          getLoginErrorUrl(stateData.app, 'invalid_oauth_provider', stateData.appHost),
+        )
       }
       app = stateData.app
-      appRedirectUrl = getCallbackUrl(app)
+      appHost = stateData.appHost
+      appRedirectUrl = getCallbackUrl(app, appHost)
     } catch (err) {
-      return reply.redirect(getLoginErrorUrl(peekApp(state), 'invalid_oauth_state'))
+      const peeked = peekState(state)
+      return reply.redirect(getLoginErrorUrl(peeked.app, 'invalid_oauth_state', peeked.appHost))
     }
 
     const clientId = process.env['GOOGLE_CLIENT_ID']
     const clientSecret = process.env['GOOGLE_CLIENT_SECRET']
 
     if (!clientId || !clientSecret) {
-      return reply.redirect(getLoginErrorUrl(app, 'google_oauth_not_configured'))
+      return reply.redirect(getLoginErrorUrl(app, 'google_oauth_not_configured', appHost))
     }
 
     try {
@@ -254,14 +298,14 @@ export async function registerSocialAuthRoutes(
         // relies on, not stronger.
         const existingTenant = await db.collection('tenants').findOne({ tenant_id: tenantId })
         if (existingTenant) {
-          return reply.redirect(getLoginErrorUrl(app, 'workspace_taken'))
+          return reply.redirect(getLoginErrorUrl(app, 'workspace_taken', appHost))
         }
 
         // Operator kill-switch — same flag /auth/signup enforces, placed
         // after the existing-user lookup so OAuth *login* still works while
         // new account creation is closed.
         if (!(await getPlatformConfig(db)).signups_enabled) {
-          return reply.redirect(getLoginErrorUrl(app, 'signups_disabled'))
+          return reply.redirect(getLoginErrorUrl(app, 'signups_disabled', appHost))
         }
 
         // Create new user
@@ -316,7 +360,7 @@ export async function registerSocialAuthRoutes(
         // else's email address could get silently linked into that
         // person's existing account.
         if (!matchedByExternalId && !googleUser.verified_email) {
-          return reply.redirect(getLoginErrorUrl(app, 'email_not_verified'))
+          return reply.redirect(getLoginErrorUrl(app, 'email_not_verified', appHost))
         }
 
         // Update existing user with Google info if needed
@@ -381,7 +425,7 @@ export async function registerSocialAuthRoutes(
       return reply.redirect(`${appRedirectUrl}#token=${token}&tenant=${user.tenant_id}`)
     } catch (err) {
       log.error({ err }, 'Google OAuth error')
-      return reply.redirect(getLoginErrorUrl(app, 'oauth_failed'))
+      return reply.redirect(getLoginErrorUrl(app, 'oauth_failed', appHost))
     }
   })
 
@@ -437,12 +481,10 @@ export async function registerSocialAuthRoutes(
             { status: tokenRes.status, error: errorText },
             'Google token exchange - error response',
           )
-          return reply
-            .status(400)
-            .send({
-              error: 'Google token exchange failed',
-              detail: `${tokenRes.status}: ${errorText}`,
-            })
+          return reply.status(400).send({
+            error: 'Google token exchange failed',
+            detail: `${tokenRes.status}: ${errorText}`,
+          })
         }
 
         const tokenData = (await tokenRes.json()) as {
@@ -461,12 +503,10 @@ export async function registerSocialAuthRoutes(
             { status: userRes.status, error: errorText },
             'Google user info fetch - error response',
           )
-          return reply
-            .status(400)
-            .send({
-              error: 'Failed to fetch Google user info',
-              detail: `${userRes.status}: ${errorText}`,
-            })
+          return reply.status(400).send({
+            error: 'Failed to fetch Google user info',
+            detail: `${userRes.status}: ${errorText}`,
+          })
         }
 
         const googleUser = (await userRes.json()) as {
@@ -560,12 +600,10 @@ export async function registerSocialAuthRoutes(
           // explanation. This route is JSON-only, so it rejects with 403
           // rather than a redirect.
           if (!matchedByExternalId && !googleUser.verified_email) {
-            return reply
-              .status(403)
-              .send({
-                error:
-                  'This email is not verified with the OAuth provider — sign in with your existing account instead.',
-              })
+            return reply.status(403).send({
+              error:
+                'This email is not verified with the OAuth provider — sign in with your existing account instead.',
+            })
           }
 
           // Update existing user with Google info if needed
@@ -932,12 +970,10 @@ export async function registerSocialAuthRoutes(
             { status: tokenRes.status, error: errorText },
             'GitHub token exchange - error response',
           )
-          return reply
-            .status(400)
-            .send({
-              error: 'GitHub token exchange failed',
-              detail: `${tokenRes.status}: ${errorText}`,
-            })
+          return reply.status(400).send({
+            error: 'GitHub token exchange failed',
+            detail: `${tokenRes.status}: ${errorText}`,
+          })
         }
 
         const tokenData = (await tokenRes.json()) as {
@@ -961,12 +997,10 @@ export async function registerSocialAuthRoutes(
             { status: userRes.status, error: errorText },
             'GitHub user info fetch - error response',
           )
-          return reply
-            .status(400)
-            .send({
-              error: 'Failed to fetch GitHub user info',
-              detail: `${userRes.status}: ${errorText}`,
-            })
+          return reply.status(400).send({
+            error: 'Failed to fetch GitHub user info',
+            detail: `${userRes.status}: ${errorText}`,
+          })
         }
 
         const githubUser = (await userRes.json()) as {
@@ -1084,12 +1118,10 @@ export async function registerSocialAuthRoutes(
           // KEEL-005 — see the matching Google guard for the full
           // explanation. This route is JSON-only, so it rejects with 403.
           if (!matchedByExternalId && !emailVerified) {
-            return reply
-              .status(403)
-              .send({
-                error:
-                  'This email is not verified with the OAuth provider — sign in with your existing account instead.',
-              })
+            return reply.status(403).send({
+              error:
+                'This email is not verified with the OAuth provider — sign in with your existing account instead.',
+            })
           }
 
           // Update existing user with GitHub info if needed
