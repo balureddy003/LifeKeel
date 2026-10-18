@@ -56,7 +56,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Next's build cache only speeds up compilation; it never replays a task result, so unlike
       # caching turbo outputs it cannot turn a failing test into a stale pass.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: apps/web/.next/cache
           key: next-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
@@ -78,7 +78,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
       - name: Encoder service tests
