@@ -89,3 +89,9 @@ extraction → profile bridge) had already shipped before the pass — see
    policy renewals), adaptive playbook covered-steps, family signal
    schema registration, scenario timeline chart, readiness history
    sparkline, and cashflow visualization. Produced 2026-10-03.
+10. [prd-set-market-review-2026-10.md](prd-set-market-review-2026-10.md) —
+   four independent research reviews (conversion, retention, competitive,
+   trust and regulatory) of PRDs 138-147 and 203-206, synthesised, with
+   the code claims re-checked by hand, an evidence-quality statement, the
+   decisions left for the product owner, and stale claims in the market
+   documents. Produced 2026-10-18.

@@ -58,6 +58,25 @@ SMS and WhatsApp changes; marketing push.
 APNs and FCM credentials and entitlements are deploy and store-account work that
 needs the user's accounts; list them in the implementation plan rather than assuming.
 
+## Amendments from the October 2026 market review
+
+See [prd-set-market-review-2026-10.md](../reviews/prd-set-market-review-2026-10.md)
+for evidence quality. Numeric defaults below are hypotheses to test, not benchmarks.
+
+1. **Permission journey.** Define when to ask: a soft in-app prompt before the system
+   prompt, never on first launch; denied-state recovery steps; Android 13 runtime
+   permission timing. `subscribeToPush` currently prompts directly.
+2. **Lock-screen exposure includes email.** Subject lines and previews carry no
+   financial words, as push payloads must not.
+3. **Per-channel table** of legal basis, opt-out mechanism and consent record (push,
+   email, in-app) before launch. Counsel to confirm PECR treatment of service
+   messages.
+4. **Scope option:** the competitive review suggests trimming v1 to web push plus
+   email. Native push can follow; see the review's decisions list.
+5. **Evidence note:** the claim that iOS web push needs an installed PWA comes from
+   secondary guides, with no Apple primary source found; re-verify before relying on
+   it.
+
 ## Becomes
 
 docs/prd/140-notification-channel-fallback.md

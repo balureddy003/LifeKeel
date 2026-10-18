@@ -51,6 +51,33 @@ Pricing changes, annual plans, promotional discounts, any commission-bearing off
 Whether the native shell may offer web checkout under current store rules, or must
 use store billing. Resolve before building step 3 for the shell.
 
+## Amendments from the October 2026 market review
+
+See [prd-set-market-review-2026-10.md](../reviews/prd-set-market-review-2026-10.md)
+for evidence quality. Numeric defaults below are hypotheses to test, not benchmarks.
+
+1. **Law.** The UK subscription regime in the DMCC Act is reported as not yet in force
+   (expected spring 2027; secondary source, counsel to confirm), while the CMA's
+   direct consumer enforcement has applied since April 2025. Build to the expected
+   2027 standard now and describe it as "designed to meet", never "compliant".
+2. **Trial design for v1:** no-card trial, a reminder around day 11 showing the date
+   and amount, one-click cancel from settings.
+3. **Trigger copy must be literally true.** "3 items could be filled in from your
+   email" cannot hold for a user with no mailbox connected, and completeness metadata
+   cannot predict what a mailbox contains. Use "N empty fields Plus can read from
+   documents you add".
+4. **Frequency:** at most one prompt per 14 days, a 60-day snooze after dismissal, and
+   never alongside a risk alert.
+5. **Shell checkout.** Apple's rules allow link-outs to non-in-app purchase without an
+   entitlement only on the US storefront, and no UK entitlement was found. v1 is web
+   checkout only, with no purchase button or price in the native shell. "Cancel works
+   the same in the shell" is only true while subscriptions are bought on the web.
+6. **Measurement.** Trial-to-paid cannot be tested at this scale. Use before and after,
+   with a 10% never-prompted holdout.
+7. **Open:** the competitive review argues for a pricing and packaging test and for
+   dropping "annual plans out of scope". That is a product decision; see the review.
+8. **Gate:** do not ship before PRD-006 cutover. Billing is dormant today.
+
 ## Becomes
 
 docs/prd/206-free-to-plus-upgrade-moments.md
