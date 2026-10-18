@@ -163,7 +163,10 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   users.createIndex({ tenant_id: 1, created_at: -1 }).catch(() => {})
   // Operator search hits these — at scale a regex scan over unindexed
   // fields is a full collection scan.
-  users.createIndex({ email: 1 }).catch(() => {})
+  // Must match getUsersCollection() in auth-users.ts exactly (unique): both
+  // get the auto name email_1, and differing options make a fresh database
+  // fail with an index-name conflict.
+  users.createIndex({ email: 1 }, { unique: true }).catch(() => {})
   users.createIndex({ name: 1 }).catch(() => {})
   tenants.createIndex({ name: 1 }).catch(() => {})
   db.collection('leads').createIndex({ created_at: -1 }).catch(() => {})
