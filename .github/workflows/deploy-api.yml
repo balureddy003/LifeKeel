@@ -144,9 +144,10 @@ jobs:
           env_vars: |
             NODE_ENV=production
             LIFEKEEL_DEPLOYMENT_MODE=cloud
-            CORS_ORIGIN=${{ vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}
+            CORS_ORIGIN=${{ vars.CORS_ORIGIN || vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}
             LOG_LEVEL=info
             LIFEKEEL_URL=${{ vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}
+            LIFEKEEL_APP_HOSTS=${{ vars.LIFEKEEL_APP_HOSTS }}
             API_BASE_URL=${{ vars.API_BASE_URL }}
             LOCAL_JUDGE_BASE_URL=${{ vars.LOCAL_JUDGE_BASE_URL }}
             LOCAL_JUDGE_MODEL=${{ vars.LOCAL_JUDGE_MODEL }}

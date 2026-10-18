@@ -37,7 +37,12 @@ interface AuthContextValue {
   signInWithProvider: (provider: 'google') => Promise<void>
   signOut: () => void
   createFamily: (name: string, forUser?: User) => Promise<void>
-  inviteMember: (name: string, email: string, role: FamilyRole, dateOfBirth?: string) => Promise<void>
+  inviteMember: (
+    name: string,
+    email: string,
+    role: FamilyRole,
+    dateOfBirth?: string,
+  ) => Promise<void>
   removeMember: (id: string) => Promise<void>
   updateMemberRole: (id: string, role: FamilyRole) => Promise<void>
   updateMemberDateOfBirth: (id: string, dateOfBirth: string) => Promise<void>
@@ -50,7 +55,12 @@ const STORAGE_KEY = 'family-auth'
 const TOKEN_KEY = 'lifekeel_token'
 
 function slugify(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'family'
+  return (
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'family'
+  )
 }
 
 // Every signup needs a unique workspace slug — the backend rejects a
@@ -100,7 +110,9 @@ async function apiAuthRequest(path: string, body: Record<string, unknown>): Prom
     // like "Failed to fetch" — exactly the wrong moment to surface raw
     // technical text to someone trying to get back into the app. Nothing
     // was sent, so there's nothing at risk either way.
-    throw new Error("Couldn't reach LifeKeel — check your connection and try again. Nothing was saved.")
+    throw new Error(
+      "Couldn't reach LifeKeel — check your connection and try again. Nothing was saved.",
+    )
   }
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
@@ -139,13 +151,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const me = await res.json()
         const raw = localStorage.getItem(STORAGE_KEY)
         const cached = raw ? JSON.parse(raw) : null
-        setUser({ id: me.user_id, name: me.name ?? cached?.user?.name ?? '', email: me.email ?? cached?.user?.email ?? '', avatar: '', country: me.country, emailVerified: me.email_verified })
+        setUser({
+          id: me.user_id,
+          name: me.name ?? cached?.user?.name ?? '',
+          email: me.email ?? cached?.user?.email ?? '',
+          avatar: '',
+          country: me.country,
+          emailVerified: me.email_verified,
+        })
 
         // The family roster is persisted server-side now — fetch the real
         // one instead of only trusting the local cache, so a login on a
         // fresh session restores the household instead of re-onboarding.
         const apiFamily = await fetchFamilyGroup()
-        setFamily(apiFamily ? toFamilyGroup(apiFamily) : cached?.family ?? null)
+        setFamily(apiFamily ? toFamilyGroup(apiFamily) : (cached?.family ?? null))
       } catch {
         // Network failure on rehydrate — fall back to cached local state
         // rather than force a logout, since the app is offline-first.
@@ -195,7 +214,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // see lib/http.ts for when it can go away.
     if (token) localStorage.setItem(TOKEN_KEY, token)
     if (!apiUser) throw new Error('Sign up failed. Please try again.')
-    const u: User = { id: apiUser.id, name: apiUser.name, email: apiUser.email, avatar: '', emailVerified: apiUser.email_verified }
+    const u: User = {
+      id: apiUser.id,
+      name: apiUser.name,
+      email: apiUser.email,
+      avatar: '',
+      emailVerified: apiUser.email_verified,
+    }
     persist(u, null)
     return u
   }
@@ -220,7 +245,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!res.ok) {
       throw new Error(data.error || 'Could not update profile.')
     }
-    const u: User = { id: data.user.id, name: data.user.name, email: data.user.email, avatar: '', emailVerified: data.user.email_verified }
+    const u: User = {
+      id: data.user.id,
+      name: data.user.name,
+      email: data.user.email,
+      avatar: '',
+      emailVerified: data.user.email_verified,
+    }
     persist(u, family)
     return u
   }
@@ -236,7 +267,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const mfaTokenRef = useRef<string | null>(null)
 
   const finishSignIn = async (apiUser: ApiUser) => {
-    const u: User = { id: apiUser.id, name: apiUser.name, email: apiUser.email, avatar: '', emailVerified: apiUser.email_verified }
+    const u: User = {
+      id: apiUser.id,
+      name: apiUser.name,
+      email: apiUser.email,
+      avatar: '',
+      emailVerified: apiUser.email_verified,
+    }
     // Restore the real family roster on login, same as the mount rehydration
     // path — a returning user who already built a household shouldn't be
     // routed back through family-setup. A failed fetch used to be
@@ -248,13 +285,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const apiFamily = await fetchFamilyGroup()
       f = apiFamily ? toFamilyGroup(apiFamily) : null
     } catch {
-      throw new Error("Signed in, but we couldn't load your family. Check your connection and try again.")
+      throw new Error(
+        "Signed in, but we couldn't load your family. Check your connection and try again.",
+      )
     }
     persist(u, f)
   }
 
   const signIn = async (email: string, password: string) => {
-    const { token, user: apiUser, mfa_required, mfa_token } = await apiAuthRequest('/auth/login', { email, password })
+    const {
+      token,
+      user: apiUser,
+      mfa_required,
+      mfa_token,
+    } = await apiAuthRequest('/auth/login', { email, password })
     if (mfa_required) {
       mfaTokenRef.current = mfa_token ?? null
       return { mfaRequired: true }
@@ -268,7 +312,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const verifyMfaCode = async (code: string, mfaTokenOverride?: string) => {
     const mfaToken = mfaTokenOverride ?? mfaTokenRef.current
     if (!mfaToken) throw new Error('That sign-in expired — enter your email and password again.')
-    const { token, user: apiUser } = await apiAuthRequest('/auth/mfa/verify', { mfa_token: mfaToken, code })
+    const { token, user: apiUser } = await apiAuthRequest('/auth/mfa/verify', {
+      mfa_token: mfaToken,
+      code,
+    })
     mfaTokenRef.current = null
     if (token) localStorage.setItem(TOKEN_KEY, token)
     if (!apiUser) throw new Error('Verification failed. Please try again.')
@@ -281,21 +328,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const acceptFamilyInvite = async (token: string, password: string) => {
     const { token: sessionToken, user: apiUser } = await apiAcceptFamilyInvite(token, password)
     if (sessionToken) localStorage.setItem(TOKEN_KEY, sessionToken)
-    const u: User = { id: apiUser.id, name: apiUser.name, email: apiUser.email, avatar: '', emailVerified: apiUser.email_verified }
+    const u: User = {
+      id: apiUser.id,
+      name: apiUser.name,
+      email: apiUser.email,
+      avatar: '',
+      emailVerified: apiUser.email_verified,
+    }
     let f: FamilyGroup | null = null
     try {
       const apiFamily = await fetchFamilyGroup()
       f = apiFamily ? toFamilyGroup(apiFamily) : null
     } catch {
-      throw new Error("Invite accepted, but we couldn't load your family. Check your connection and sign in.")
+      throw new Error(
+        "Invite accepted, but we couldn't load your family. Check your connection and sign in.",
+      )
     }
     persist(u, f)
   }
 
   // Google sign-in: redirect to the API's OAuth flow with app=family so the
   // callback redirects back to the LifeKeel app after authentication.
+  // app_host carries this app's host through the signed OAuth state so .si
+  // users land back on app.lifekeel.si — sessions are per-TLD, so bouncing
+  // a .si user to .co.uk would drop them logged-out.
   const signInWithProvider = async (provider: 'google') => {
-    window.location.href = `${getApiBase()}/auth/${provider}/login?app=family`
+    const host = encodeURIComponent(window.location.host)
+    window.location.href = `${getApiBase()}/auth/${provider}/login?app=family&app_host=${host}`
   }
 
   const signOut = () => {
@@ -317,7 +376,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // createFamily(): setFamily() hasn't re-rendered yet, so a caller that
   // chains inviteMember() immediately after awaiting createFamily() would
   // see a stale null `family` and bail even though the family now exists.
-  const inviteMember = async (name: string, email: string, role: FamilyRole, dateOfBirth?: string) => {
+  const inviteMember = async (
+    name: string,
+    email: string,
+    role: FamilyRole,
+    dateOfBirth?: string,
+  ) => {
     // Optimistic: show the pending member immediately; the roster shouldn't
     // wait on the network for an action the user just confirmed.
     const previous = family
@@ -368,7 +432,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (family) {
       persist(user, {
         ...family,
-        members: family.members.map((m) => (m.id === id ? { ...m, role, emoji: ROLE_EMOJI[role] } : m)),
+        members: family.members.map((m) =>
+          m.id === id ? { ...m, role, emoji: ROLE_EMOJI[role] } : m,
+        ),
       })
     }
     try {
@@ -405,7 +471,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       if (!res.ok) return
       const me = await res.json()
-      setUser({ id: me.user_id, name: me.name ?? '', email: me.email ?? '', avatar: '', country: me.country })
+      setUser({
+        id: me.user_id,
+        name: me.name ?? '',
+        email: me.email ?? '',
+        avatar: '',
+        country: me.country,
+      })
       const apiFamily = await fetchFamilyGroup()
       setFamily(apiFamily ? toFamilyGroup(apiFamily) : null)
     } catch {
