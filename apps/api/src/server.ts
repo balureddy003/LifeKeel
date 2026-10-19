@@ -118,6 +118,7 @@ import {
   ensureCronLockIndex,
 } from './jobs/cron-lock.js'
 import { ensureSpendIndexes } from './spend-ledger.js'
+import { ensureTenantKeyIndexes } from './crypto/envelope.js'
 import { registerApiVersioning, rewriteVersionedUrl } from './api-versioning.js'
 import { registerBillingRoutes } from './routes/billing.js'
 import { registerBlogRoutes } from './routes/blog.js'
@@ -284,6 +285,7 @@ try {
   // same overdue insight/expiring credential and double-fire it.
   await ensureCronLockIndex(workflowDb)
   await ensureSpendIndexes(workflowDb)
+  ensureTenantKeyIndexes(workflowDb) // per-tenant DEK store (B4)
 
   // One-time cleanup: archive stale pre-fix insight records (A1/A2/A3
   // patterns) that are still live on Home. Runs in the background —
