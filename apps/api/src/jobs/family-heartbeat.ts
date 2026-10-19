@@ -9,7 +9,9 @@
  * InsightNotification, so this batch is email-only (noted in the handoff).
  *
  * Idempotent: a `heartbeat_sends` row per (tenant, member, window_start)
- * means a retried run sends nothing twice. Every read tolerates absent
+ * means a retried run sends nothing twice. The row is written only after a
+ * confirmed delivery, so a skipped/failed email is retried and counted in
+ * `failed` (and logged at error level) rather than recorded as sent. Every read tolerates absent
  * collections/methods — a fake db in tests means a quiet zero-send, not
  * a crash.
  */
@@ -37,6 +39,9 @@ export interface HeartbeatResult {
   sent: number
   skipped_quiet: number
   skipped_off: number
+  /** Members whose email was skipped or failed — no heartbeat_sends row is
+   *  written for them, so the next run retries the same window. */
+  failed: number
 }
 
 type AnyDoc = Record<string, unknown>
@@ -114,7 +119,13 @@ export async function runFamilyHeartbeat(
     [] as FamilyGroupDoc[],
   )
 
-  const result: HeartbeatResult = { tenants: 0, sent: 0, skipped_quiet: 0, skipped_off: 0 }
+  const result: HeartbeatResult = {
+    tenants: 0,
+    sent: 0,
+    skipped_quiet: 0,
+    skipped_off: 0,
+    failed: 0,
+  }
 
   for (const family of families) {
     const tenantId = family.tenant_id
@@ -236,12 +247,26 @@ export async function runFamilyHeartbeat(
                 .catch(() => null)
             : null
         if (already) continue
-        await sendHeartbeatEmail(
+        const delivery = await sendHeartbeatEmail(
           member.email,
           member.name,
           rendered,
           heartbeatUnsubUrl(apiUrl, tenantId, member.id),
         )
+        if (!delivery.ok) {
+          // Not recorded as sent: the idempotency row is what stops a retry.
+          result.failed++
+          log.error(
+            {
+              tenant_id: tenantId,
+              member_id: member.id,
+              window_start: windowStartIso,
+              reason: delivery.reason,
+            },
+            'Heartbeat missed cycle — email not delivered, will retry on next run',
+          )
+          continue
+        }
         if (typeof sends.insertOne === 'function') {
           await sends
             .insertOne({ member_id: member.id, window_start: windowStartIso, sent_at: now })
@@ -249,6 +274,7 @@ export async function runFamilyHeartbeat(
         }
         result.sent++
       } catch (err) {
+        result.failed++
         log.warn(
           { err, tenant_id: tenantId, member_id: member.id },
           'Heartbeat send failed for member — continuing',

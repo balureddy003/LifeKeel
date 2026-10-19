@@ -62,6 +62,29 @@ changes.
 Whether the budget is per family or per member. Default: per member, because
 members open different messages; revisit after the first month of data.
 
+## Amendments from the October 2026 market review
+
+See [prd-set-market-review-2026-10.md](../reviews/prd-set-market-review-2026-10.md)
+for evidence quality. Numeric defaults below are hypotheses to test, not benchmarks.
+
+1. **Numbers are hypotheses.** "1 per 14 days", "2 per month", "2 per quarter" and "two
+   unopened" have no supporting evidence found. Treat them as starting values and log
+   what each one drops.
+2. **Never demote dated obligations.** Renewal reminders at 30, 14 and 7 days already
+   exceed the Tier A cap on their own. Critical and dated-obligation messages are
+   exempt from the cap and from silent demotion.
+3. **Ask before demoting.** Offer "switch to digest only?" rather than doing it
+   silently, and record every dropped message with its reason.
+4. **Use clicks, not opens.** Apple Mail Privacy Protection makes opens unreliable
+   (inference), so suppression keys off clicks and explicit responses.
+5. **Resolve the per-family versus per-member contradiction:** the budget is per
+   member, because members act on different messages.
+6. **Two facts in the code to fix:** quiet hours use the server clock rather than the
+   family's timezone, and the heartbeat bypasses `DeliveryRouter`, so a "single place"
+   budget needs the heartbeat routed through it or counted by it.
+7. **Consent and legal basis per channel** (see PRD-140) and the cap logic apply to
+   service messages only; marketing is out of scope.
+
 ## Becomes
 
 docs/prd/139-notification-tiers-caps-suppression.md

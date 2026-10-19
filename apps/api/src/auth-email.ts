@@ -230,6 +230,12 @@ export function buildHeartbeatMessage(
   }
 }
 
+// Returns a delivery result instead of void so the caller can tell a real
+// send from a skipped/failed one — the heartbeat job records its idempotency
+// row only on `ok`, so a failed cycle is retried rather than silently lost.
+export type HeartbeatDeliveryResult =
+  { ok: true } | { ok: false; reason: 'no_api_key' | 'send_failed' }
+
 export async function sendHeartbeatEmail(
   to: string,
   name: string,
@@ -237,18 +243,20 @@ export async function sendHeartbeatEmail(
   /** Signed one-click opt-out URL (routes/heartbeat-unsubscribe.ts). Sent as
    *  List-Unsubscribe + List-Unsubscribe-Post (RFC 8058) and in the footer. */
   unsubscribeUrl?: string,
-): Promise<void> {
+): Promise<HeartbeatDeliveryResult> {
   const apiKey = process.env['SENDGRID_API_KEY']
   if (!apiKey) {
     log.warn({ to }, 'No SENDGRID_API_KEY — skipping heartbeat email')
-    return
+    return { ok: false, reason: 'no_api_key' }
   }
   sgMail.setApiKey(apiKey)
   const firstName = name.split(' ')[0] || 'there'
   try {
     await sgMail.send(buildHeartbeatMessage(to, firstName, rendered, unsubscribeUrl))
     log.info({ to }, 'Heartbeat email sent')
+    return { ok: true }
   } catch (err) {
     log.error({ to, err }, 'Failed to send heartbeat email')
+    return { ok: false, reason: 'send_failed' }
   }
 }

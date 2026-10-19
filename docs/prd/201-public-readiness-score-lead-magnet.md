@@ -1,5 +1,13 @@
 # PRD-201: Public Family Readiness Score — the detector engine as a growth loop
 
+> **Partly superseded (October 2026 market review):** the result specification
+> is superseded by PRD-125 (component breakdown) and the account step by PRD-203. The
+> US FEMA statistic in the Problem section should be replaced with a UK source once
+> its primary report has been read (a 2026 FCA protection study is reported but not
+> yet verified here). The claim that Policygenius and Ladder use "exactly this
+> mechanic" is unverified.
+
+
 ## Problem
 
 LifeKeel's landing page already leads with a category-education stat
