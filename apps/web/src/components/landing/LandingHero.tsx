@@ -3,7 +3,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { SAMPLE_FAMILY, SCENARIOS, RUNWAY_CAP, runwayMonths, seaState } from './scenarios'
 import { useCountUp, useLandingMotion } from './motion'
-import { LandingSymbols } from './LandingSymbols'
 import { SeaBackdrop, SeaFront } from './SeaBackdrop'
 import { HarbourChart } from './HarbourChart'
 import { SignupCard } from './SignupCard'
@@ -73,7 +72,6 @@ export function LandingHero() {
 
   return (
     <div className="landing">
-      <LandingSymbols />
       <section
         ref={scene}
         className={`lk-scene ${level}`}
