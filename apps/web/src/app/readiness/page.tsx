@@ -279,24 +279,24 @@ const STEPS: {
 function scoreBand(score: number): { label: string; color: string; description: string } {
   if (score >= 80)
     return {
-      label: 'Strong',
+      label: 'Well covered',
       color: 'text-success',
       description: 'Your household has solid buffers in the areas this quiz covers.',
     }
   if (score >= 60)
     return {
-      label: 'Fair',
+      label: 'Some gaps',
       color: 'text-warning',
       description: 'Some areas are covered, but there are gaps worth knowing about.',
     }
   if (score >= 40)
     return {
-      label: 'Needs attention',
+      label: 'Several gaps',
       color: 'text-orange-400',
       description: 'Meaningful gaps exist — knowing them is the first step to addressing them.',
     }
   return {
-    label: 'At risk',
+    label: 'Many gaps',
     color: 'text-danger',
     description: 'Significant gaps in coverage or savings — worth reviewing with a professional.',
   }
@@ -384,7 +384,7 @@ export default function ReadinessQuizPage() {
                   {...(s.prefix ? { prefix: s.prefix } : {})}
                   {...(s.placeholder ? { placeholder: s.placeholder } : {})}
                 />
-                <p className="text-[11px] text-ink-tertiary -mt-2 mb-4 px-1">{s.hint}</p>
+                <p className="text-[11px] text-ink-tertiary -mt-3 mb-6 px-1">{s.hint}</p>
               </div>
             ))}
             <GlassButton onClick={handleSubmit} disabled={submitting}>
@@ -406,7 +406,7 @@ export default function ReadinessQuizPage() {
                   {...(currentStep.prefix ? { prefix: currentStep.prefix } : {})}
                   {...(currentStep.placeholder ? { placeholder: currentStep.placeholder } : {})}
                 />
-                <p className="text-[11px] text-ink-tertiary -mt-2 mb-4 px-1">{currentStep.hint}</p>
+                <p className="text-[11px] text-ink-tertiary -mt-3 mb-6 px-1">{currentStep.hint}</p>
                 <div className="flex gap-2">
                   {step > 0 && (
                     <button
@@ -521,7 +521,7 @@ export default function ReadinessQuizPage() {
                 </p>
                 <ul className="text-xs text-ink-tertiary leading-relaxed space-y-1.5 mb-3">
                   <li>
-                    • Protection, wealth, goals, savings, and estate &mdash; scored and monitored
+                    • Protection, wealth, goals, savings, and estate &mdash; checked
                     daily
                   </li>
                   <li>

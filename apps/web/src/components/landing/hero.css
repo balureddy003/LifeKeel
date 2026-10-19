@@ -4,7 +4,8 @@
  * Pause control) and prefers-reduced-motion; the first screen is complete at rest.
  */
 .landing * { box-sizing: border-box; }
-.landing h1, .landing p, .landing ul { margin: 0; padding: 0; }
+/* the margin reset is for the landing scenes; public pages keep their own spacing utilities */
+.landing:not(.lk-public) h1, .landing:not(.lk-public) p, .landing:not(.lk-public) ul { margin: 0; padding: 0; }
 .landing .lk-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .landing .lk-fine { font-size: 13px; color: var(--muted); }
 
