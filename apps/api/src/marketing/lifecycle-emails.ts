@@ -62,6 +62,11 @@ interface LifecycleSendDoc {
   updated_at?: Date
   /** Set on campaign claims so engagement can roll up per campaign. */
   campaign_id?: string
+  /** Recipient snapshot for campaign claims — the durable send job carries
+   *  only {campaign_id, key}, so the worker rebuilds the recipient from
+   *  these fields (payload-by-reference). */
+  recipient_kind?: 'user' | 'lead'
+  recipient_name?: string
   // Engagement, filled in by the SendGrid event webhook (POST /webhooks/sendgrid).
   delivered_at?: Date
   opened_at?: Date
@@ -205,8 +210,15 @@ export async function claimSend(
   }
 }
 
-/** Settle a claimed row to the outcome the provider actually returned. */
-async function settleSend(db: Db, key: string, outcome: SendOutcome | 'failed', error?: string) {
+/** Settle a claimed row to the outcome the provider actually returned.
+ *  Exported for the campaign worker, which settles rows claimed by
+ *  queueCampaignSend on a different call stack. */
+export async function settleSend(
+  db: Db,
+  key: string,
+  outcome: SendOutcome | 'failed',
+  error?: string,
+) {
   await lifecycleSendsCol(db).updateOne(
     { key },
     { $set: { status: outcome, updated_at: new Date(), ...(error ? { error } : {}) } },

@@ -36,7 +36,9 @@ import { runWeeklyDigest } from '../operator/weekly-digest.js'
 import {
   campaignsCol,
   resolveAudience,
-  sendCampaign,
+  queueCampaignSend,
+  pauseCampaign,
+  resumeCampaign,
   type CampaignDoc,
 } from '../marketing/campaigns.js'
 import { lifecycleSendsCol } from '../marketing/lifecycle-emails.js'
@@ -2136,17 +2138,18 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       if (!campaign) return reply.status(404).send({ error: 'Campaign not found' })
       if (campaign.status !== 'draft')
         return reply.status(409).send({ error: `Campaign already ${campaign.status}` })
-      // Claim the send BEFORE mailing — racing double-clicks get 409 off the
-      // status flip, and lifecycle_sends dedup is the second lock anyway.
+      // Claim the send BEFORE queueing — racing double-clicks get 409 off
+      // the status flip, and lifecycle_sends dedup is the second lock anyway.
+      // Status moves draft → sending; the send worker flips it to 'sent'
+      // when every claimed recipient has settled (B11 durable bulk send).
       const claimed = await campaigns.updateOne(
         { id: campaign.id, status: 'draft' },
-        { $set: { status: 'sent', sent_at: new Date() } },
+        { $set: { status: 'sending' } },
       )
       if (claimed.modifiedCount === 0)
-        return reply.status(409).send({ error: 'Campaign already sent' })
+        return reply.status(409).send({ error: `Campaign already ${campaign.status}` })
       try {
-        const stats = await sendCampaign(db, campaign)
-        await campaigns.updateOne({ id: campaign.id }, { $set: { stats } })
+        const stats = await queueCampaignSend(db, campaign)
         await audit.log(
           request,
           'operator.campaign.send',
@@ -2158,14 +2161,58 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         return { ok: true, stats }
       } catch (err) {
         // Roll the draft back so a transient failure (marketing_paused, DB
-        // blip) doesn't wedge the campaign in a half-sent state it can't
-        // leave — the ledger already claimed any sends that went out.
-        await campaigns.updateOne(
-          { id: campaign.id },
-          { $set: { status: 'draft' }, $unset: { sent_at: '' } },
-        )
+        // blip, queue down) doesn't wedge the campaign in a half-queued
+        // state it can't leave — pending claims are skipped by a retry's
+        // claimSend only if the recipient was already settled.
+        await campaigns.updateOne({ id: campaign.id }, { $set: { status: 'draft' } })
         throw err
       }
+    },
+  )
+
+  app.post<{ Params: { id: string } }>(
+    '/operator/campaigns/:id/pause',
+    { preHandler: requireOperator(db, 'marketing.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const ok = await pauseCampaign(db, request.params.id)
+      if (!ok) return reply.status(409).send({ error: 'Campaign is not in a sending state' })
+      await audit.log(
+        request,
+        'operator.campaign.pause',
+        'campaign',
+        request.params.id,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
+
+  app.post<{ Params: { id: string } }>(
+    '/operator/campaigns/:id/resume',
+    { preHandler: requireOperator(db, 'marketing.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const exists = await campaigns.findOne(
+        { id: request.params.id },
+        { projection: { _id: 0, status: 1 } },
+      )
+      if (!exists) return reply.status(404).send({ error: 'Campaign not found' })
+      const requeued = await resumeCampaign(db, request.params.id)
+      if (requeued === -1) return reply.status(409).send({ error: `Campaign is ${exists.status}` })
+      await audit.log(
+        request,
+        'operator.campaign.resume',
+        'campaign',
+        request.params.id,
+        parsed.data.reason,
+        { requeued },
+      )
+      return { ok: true, requeued }
     },
   )
 
