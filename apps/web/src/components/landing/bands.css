@@ -253,3 +253,23 @@
 .lk-news input::placeholder { color: var(--muted); opacity: 1; }
 @media (max-width: 860px) { html:has(.lk-sticky.on) { scroll-padding-bottom: 88px; } }
 .lk-menu[hidden] { display: none; }
+
+/* clarity and polish (UX review) */
+.lk-verdict { margin: 14px 0 0; font-weight: 600; }
+.lk-how { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+.lk-how summary { cursor: pointer; font-size: 14px; color: var(--muted); min-height: 36px; display: flex; align-items: center; }
+.lk-how .lk-maths { margin-top: 8px; padding-top: 0; border-top: 0; }
+.lk-inline-cta { margin-top: 28px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.lk-inline-cta p { margin: 0; color: var(--muted); }
+.lk-inline-cta .lk-btn { min-width: 240px; }
+.lk-plans { align-items: stretch; }
+.lk-plan-card ul { flex: 1; }
+.lk-plan-card .lk-fine { margin: 0; }
+.lk-news button { background: var(--cta); color: var(--on-cta); }
+.lk-legalline { max-width: none; }
+.lk-band:has(.lk-dawn) { padding-bottom: 24px; }
+.lk-menu-btn svg { display: block; }
+
+.landing .lk-band .lk-plan ol { margin-top: 16px; }
+.lk-verdict { margin-bottom: 2px; }
+.landing .lk-footer { padding-block: 8px 48px; }

@@ -6,6 +6,9 @@ import { useCountUp, useLandingMotion } from './motion'
 import { SeaBackdrop, SeaFront } from './SeaBackdrop'
 import { HarbourChart } from './HarbourChart'
 import { SignupCard } from './SignupCard'
+import { appUrl } from '@/lib/region'
+import { track } from '@/lib/growth-track'
+import { haptic } from '@/lib/haptics'
 import './landing.css'
 import './hero.css'
 
@@ -91,6 +94,16 @@ export function LandingHero() {
             on file and it shows what is there, what is missing, and the steps if something happens.
             No commissions.
           </p>
+          <a
+            className="lk-btn lk-hero-cta"
+            href={appUrl('/signup')}
+            onClick={() => {
+              haptic('light')
+              track('landing_cta_click', { location: 'hero_top', method: 'signup' })
+            }}
+          >
+            Create your free account
+          </a>
         </div>
 
         <div className="lk-stage">
@@ -108,7 +121,7 @@ export function LandingHero() {
             </div>
             <span className={`lk-pill ${level}`}>{BAND_LABEL[level]}</span>
             <div className="lk-ctl">
-              <span className="lk-fine">The sample Ellis family: two adults, two children</span>
+              <span className="lk-fine">A made-up family: how long their savings would last</span>
               <button className="lk-pause" type="button" onClick={toggle}>
                 {paused ? 'Play animation' : 'Pause animation'}
               </button>

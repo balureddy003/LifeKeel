@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { SAMPLE_FAMILY, SCENARIOS, RUNWAY_CAP, gbp, runwayMonths, seaState } from './scenarios'
+import { InlineCta } from './InlineCta'
 import './landing.css'
 import './hero.css'
 import './bands.css'
@@ -80,6 +81,11 @@ export function SampleDay() {
         <div className="lk-plan">
           <h3>{s.title}</h3>
           <p className="lk-note">{c.note}</p>
+          <p className="lk-verdict">
+            {months === Infinity
+              ? 'Income still covers spending, so savings are not drawn on.'
+              : `Savings alone would last about ${months >= RUNWAY_CAP ? `more than ${RUNWAY_CAP}` : months.toFixed(1)} months at this level of spending.`}
+          </p>
           <ol>
             {s.steps(SAMPLE_FAMILY).map((t, i) => (
               <li key={i}>
@@ -88,17 +94,21 @@ export function SampleDay() {
               </li>
             ))}
           </ol>
-          <p className="lk-maths">
+          <details className="lk-how">
+            <summary>How this was worked out</summary>
+            <p className="lk-maths">
             {gap === 0
               ? `Monthly gap = ${gbp(c.spend)} spending - ${gbp(c.income)} income = £0, so savings are not drawn on.`
               : `Runway = ${gbp(c.fund)} / (${gbp(c.spend)} spending - ${gbp(c.income)} income) = ${months.toFixed(1)} months${months >= RUNWAY_CAP ? ` (drawn as ${RUNWAY_CAP}+)` : ''}. Common rules of thumb run from 3 to 6 months. Yours may differ.`}
           </p>
+          </details>
           <p className="lk-own">
             Sample figures for a made-up household. After you sign up, Keel uses only what you tell
             it.
           </p>
         </div>
       </div>
+      <InlineCta location="sample" text="Try this with your own numbers." />
     </section>
   )
 }

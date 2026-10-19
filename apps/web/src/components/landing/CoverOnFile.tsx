@@ -1,4 +1,5 @@
 import { Lantern } from './Lantern'
+import { InlineCta } from './InlineCta'
 import './hero.css'
 import './bands.css'
 
@@ -52,6 +53,7 @@ export function CoverOnFile() {
             Keel Plus can read provider, policy number and renewal date from an uploaded policy for
             you to confirm. Typing them in is free.
           </p>
+          <InlineCta location="cover" text="See your own cover on file." />
         </div>
         <article className="lk-cardx" aria-label="Sample cover on file">
           <header>

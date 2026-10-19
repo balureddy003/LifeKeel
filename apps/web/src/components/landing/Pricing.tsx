@@ -56,6 +56,7 @@ function Plan({
           <li key={r.text}>{r.text}</li>
         ))}
       </ul>
+      {plus && <p className="lk-fine">Cancel any time. No card needed to start.</p>}
       <a
         className={plus ? 'lk-btn' : 'lk-btn lk-btn-quiet'}
         href={appUrl('/signup')}
@@ -91,7 +92,7 @@ export function Pricing() {
           name="Keel Plus"
           price="£7.99 a month"
           rows={PLUS_ROWS}
-          cta="Start free, upgrade later"
+          cta="Start free, add Plus later"
           location="pricing_plus"
           plus
         />
