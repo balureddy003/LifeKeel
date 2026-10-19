@@ -86,6 +86,9 @@ jobs:
       # strict policy still holds without a giant hash list in the header.
       - run: node scripts/externalize-inline-scripts.mjs apps/web/out
 
+      # Same first-load JS budget the PR gate enforces, measured on the exact files being deployed.
+      - run: node scripts/check-landing-size.mjs apps/web/out
+
       - name: Authenticate to Firebase project
         uses: google-github-actions/auth@v3
         with:
