@@ -12,6 +12,20 @@ describe('readiness quiz in the landing look', () => {
     expect(page).not.toContain('scored and monitored')
   })
 
+  it('the result card makes no always-on or monitoring claims and points at signup', () => {
+    for (const bad of ['keeps watching', 'monitors them continuously', 'even when nobody logs in', 'Start monitoring', 'checked\n']) {
+      expect(page).not.toContain(bad)
+    }
+    expect(page).not.toMatch(/checked\s+daily/)
+    expect(page).toContain("appUrl('/signup')")
+    expect(page).toContain('Create your free account')
+  })
+
+  it('the progress track override is scoped to the track, not every tinted panel', () => {
+    expect(css).toMatch(/\.lk-public \.h-1\\\.5\.bg-tint\\\/5/)
+    expect(css).not.toMatch(/\.lk-public \.bg-tint\\\/5 \{/)
+  })
+
   it('hints sit below their field with space before the next label', () => {
     expect(page).not.toContain('-mt-2 mb-4 px-1')
     expect(page).toContain('-mt-3 mb-6 px-1')

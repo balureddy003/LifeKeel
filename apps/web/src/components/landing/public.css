@@ -56,7 +56,7 @@
 .lk-public .glass-input { background: var(--surface); border: 1px solid var(--field-line); border-radius: 12px; backdrop-filter: none; -webkit-backdrop-filter: none; color: var(--ink); }
 .lk-public .glass-input:focus-within, .lk-public .glass-input:focus { outline: 3px solid var(--brass-text); outline-offset: 2px; }
 .lk-public .bg-gradient-to-r { background-image: none; background-color: var(--brass); }
-.lk-public .bg-tint\/5 { background-color: var(--line); }
+.lk-public .h-1\.5.bg-tint\/5 { background-color: var(--line); }
 
 /* the landing header and footer inside a public page still want the landing reset (specificity 0,0,1 so their own rules win) */
 :where(.lk-public .lk-footer, .lk-public .lk-header) :is(p, ul) { margin: 0; padding: 0; }
