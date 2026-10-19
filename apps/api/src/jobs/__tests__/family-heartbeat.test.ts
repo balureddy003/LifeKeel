@@ -270,4 +270,29 @@ describe('runFamilyHeartbeat', () => {
     expect(r.sent).toBe(0)
     expect(r.skipped_quiet).toBe(1)
   })
+
+  it('monthly run on the 1st reports the previous calendar month, not the current 8 hours', async () => {
+    const firstRun = new Date('2026-03-01T08:00:00Z')
+    const inFeb = { ...scoreMoved(), created_at: new Date('2026-02-14T10:00:00Z') }
+    const inMarch = { ...scoreMoved(), created_at: new Date('2026-03-01T02:00:00Z') }
+    const { db, stores } = makeDb({ prefs: { heartbeat_cadence: 'monthly' }, events: [inFeb] })
+    const r = await runFamilyHeartbeat(db, { cadence: 'monthly', now: firstRun })
+    expect(r.sent).toBe(2)
+    expect(stores['heartbeat_sends']!.every((s) => s['window_start'] === '2026-02-01')).toBe(true)
+
+    // An event created only in the new month is outside the window → quiet.
+    const { db: db2 } = makeDb({ prefs: { heartbeat_cadence: 'monthly' }, events: [inMarch] })
+    const r2 = await runFamilyHeartbeat(db2, { cadence: 'monthly', now: firstRun })
+    expect(r2.sent).toBe(0)
+    expect(r2.skipped_quiet).toBe(1)
+  })
+
+  it('monthly in January reaches back to December of the previous year', async () => {
+    const jan = new Date('2027-01-01T08:00:00Z')
+    const dec = { ...scoreMoved(), created_at: new Date('2026-12-20T10:00:00Z') }
+    const { db, stores } = makeDb({ prefs: { heartbeat_cadence: 'monthly' }, events: [dec] })
+    const r = await runFamilyHeartbeat(db, { cadence: 'monthly', now: jan })
+    expect(r.sent).toBe(2)
+    expect(stores['heartbeat_sends']![0]!['window_start']).toBe('2026-12-01')
+  })
 })
