@@ -35,6 +35,7 @@ import {
   userUnsubUrl,
 } from './lifecycle-emails.js'
 import { excludeMinorUsers } from '../family/family-permissions.js'
+import { recordSpend, spendCost } from '../spend-ledger.js'
 
 const log = createLogger({ service: 'campaigns', version: '0.0.0' })
 const DAY = 24 * 60 * 60 * 1000
@@ -287,6 +288,19 @@ export async function sendCampaign(
       )
       if (outcome === 'sent') stats.sent++
       else stats.skipped++
+      if (outcome === 'sent') {
+        // Campaign mail is platform-paid spend; user recipients could carry
+        // their tenant but leads can't — 'platform' is the honest bucket.
+        void recordSpend(db, {
+          tenant_id: 'platform',
+          service: 'marketing',
+          provider: 'sendgrid',
+          unit: 'email',
+          units: 1,
+          cost_microdollars: spendCost('sendgrid', 'email'),
+          meta: { campaign_id: campaign.id },
+        }).catch(() => {})
+      }
     } catch (err) {
       stats.failed++
       await lifecycleSendsCol(db).updateOne(

@@ -112,6 +112,7 @@ import {
   releaseCronLock,
   ensureCronLockIndex,
 } from './jobs/cron-lock.js'
+import { ensureSpendIndexes } from './spend-ledger.js'
 import { registerApiVersioning, rewriteVersionedUrl } from './api-versioning.js'
 import { registerBillingRoutes } from './routes/billing.js'
 import { registerBlogRoutes } from './routes/blog.js'
@@ -277,6 +278,7 @@ try {
   // without this, two replicas racing the same job could both act on the
   // same overdue insight/expiring credential and double-fire it.
   await ensureCronLockIndex(workflowDb)
+  await ensureSpendIndexes(workflowDb)
 
   // One-time cleanup: archive stale pre-fix insight records (A1/A2/A3
   // patterns) that are still live on Home. Runs in the background —

@@ -37,6 +37,7 @@ import { createLogger } from '@lifekeel/platform'
 import { getPlatformConfig } from '../operator/platform-config.js'
 import { getGrowthEventsCollection } from '../db.js'
 import { excludeMinorUsers } from '../family/family-permissions.js'
+import { recordSpend, spendCost } from '../spend-ledger.js'
 
 const log = createLogger({ service: 'lifecycle', version: '0.0.0' })
 
@@ -778,6 +779,18 @@ export async function runLifecycleSweep(
           meta: { sequence: job.sequence, step: job.step },
           created_at: new Date(),
         })
+        // Lifecycle mail is platform-paid SendGrid spend; leads carry no
+        // tenant, so 'platform' keeps the ledger honest about whose bill
+        // it lands on.
+        void recordSpend(db, {
+          tenant_id: 'platform',
+          service: 'marketing',
+          provider: 'sendgrid',
+          unit: 'email',
+          units: 1,
+          cost_microdollars: spendCost('sendgrid', 'email'),
+          meta: { sequence: job.sequence, step: job.step },
+        }).catch(() => {})
       }
     } catch (err) {
       row.status = 'failed'

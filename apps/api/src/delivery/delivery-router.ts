@@ -28,6 +28,7 @@ import {
 } from './channels.js'
 import { RealWebPushSender, type WebPushSubscription } from './web-push-sender.js'
 import { recordDeliveryLatency } from '../routes/metrics.js'
+import { recordSpend, spendCost } from '../spend-ledger.js'
 
 type Db = { collection: (name: string) => any }
 
@@ -490,6 +491,27 @@ export class DeliveryRouter {
    * configured for this tenant — the caller treats both as "try the next
    * channel," matching the previous inline behavior.
    */
+  /** Unified spend ledger (B8) — one row per successful paid-channel send.
+   *  Telemetry must never fail a delivery, so the write is detached. */
+  private recordChannelSpend(
+    result: DeliveryResult,
+    tenantId: string,
+    provider: 'twilio' | 'sendgrid',
+    unit: 'sms' | 'whatsapp' | 'email',
+    channel: Channel,
+  ): void {
+    if (!result.success) return
+    void recordSpend(this.db as unknown as import('mongodb').Db, {
+      tenant_id: tenantId,
+      service: 'messaging',
+      provider,
+      unit,
+      units: 1,
+      cost_microdollars: spendCost(provider, unit),
+      meta: { channel, insight_id: result.external_id },
+    }).catch(() => {})
+  }
+
   private async sendOnChannel(
     channel: Channel,
     prefs: DeliveryPreferences,
@@ -502,17 +524,23 @@ export class DeliveryRouter {
 
     const to = opts?.target
     if (channel === 'whatsapp' && (to ?? prefs.whatsapp_to)) {
-      return this.whatsapp.send((to ?? prefs.whatsapp_to) as string, notification)
+      const result = await this.whatsapp.send((to ?? prefs.whatsapp_to) as string, notification)
+      this.recordChannelSpend(result, tenantId, 'twilio', 'whatsapp', channel)
+      return result
     }
     if (channel === 'sms' && (to ?? prefs.sms_to)) {
-      return this.sms.send((to ?? prefs.sms_to) as string, notification)
+      const result = await this.sms.send((to ?? prefs.sms_to) as string, notification)
+      this.recordChannelSpend(result, tenantId, 'twilio', 'sms', channel)
+      return result
     }
     if (channel === 'email' && (to ?? prefs.email_to)) {
-      return this.email.send(
+      const result = await this.email.send(
         (to ?? prefs.email_to) as string,
         prefs.business_name ?? 'LifeKeel',
         notification,
       )
+      this.recordChannelSpend(result, tenantId, 'sendgrid', 'email', channel)
+      return result
     }
     if (channel === 'web_push' && this.webPush && prefs.web_push_enabled) {
       const subs = await this.getPushSubscriptions(tenantId)
@@ -991,6 +1019,7 @@ export class DeliveryRouter {
       prefs.business_name ?? 'LifeKeel',
       digestNotification,
     )
+    this.recordChannelSpend(result, tenantId, 'sendgrid', 'email', 'email')
 
     if (result.success) {
       const ids = queued.map((q) => q._id)

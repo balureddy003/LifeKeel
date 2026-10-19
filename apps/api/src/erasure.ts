@@ -80,6 +80,8 @@ export const DELETABLE_COLLECTIONS = [
   // and out of erasure reach by definition.
   'llm_guard_events',
   'llm_usage',
+  // Unified spend ledger (B8) — tenant-attributed spend telemetry.
+  'spend_events',
   'feature_hash_models',
   'feature_hash_model_versions',
   'tenant_level_models',

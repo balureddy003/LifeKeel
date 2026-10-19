@@ -40,6 +40,8 @@ import {
   type CampaignDoc,
 } from '../marketing/campaigns.js'
 import { lifecycleSendsCol } from '../marketing/lifecycle-emails.js'
+import { platformUnitEconomics } from '../spend-ledger.js'
+import { formatMicroDollars } from '@lifekeel/platform'
 import type { SupportCaseDoc, SupportMessage } from './support.js'
 
 const QuerySchema = z.object({
@@ -326,11 +328,9 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         created_at: { $gte: new Date(weekAgo.getTime() - 7 * 24 * 60 * 60 * 1000), $lt: weekAgo },
       }),
       db.collection('leads').countDocuments({ created_at: { $gte: weekAgo } }),
-      db
-        .collection('leads')
-        .countDocuments({
-          created_at: { $gte: new Date(weekAgo.getTime() - 7 * 24 * 60 * 60 * 1000), $lt: weekAgo },
-        }),
+      db.collection('leads').countDocuments({
+        created_at: { $gte: new Date(weekAgo.getTime() - 7 * 24 * 60 * 60 * 1000), $lt: weekAgo },
+      }),
       // 30-day daily series per funnel event — powers the KPI sparklines.
       // Reads metrics_daily rollups once the hourly job has backfilled;
       // falls back to the raw scan until then (fresh envs, pre-backfill).
@@ -977,19 +977,17 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         },
       )
       if (oldEmail) {
-        await db
-          .collection('leads')
-          .updateOne(
-            { email: oldEmail.toLowerCase() },
-            {
-              $set: {
-                email: `erased-${request.params.id}@erased.invalid`,
-                suppressed: true,
-                updated_at: now,
-              },
-              $unset: { name: '', attribution: '' },
+        await db.collection('leads').updateOne(
+          { email: oldEmail.toLowerCase() },
+          {
+            $set: {
+              email: `erased-${request.params.id}@erased.invalid`,
+              suppressed: true,
+              updated_at: now,
             },
-          )
+            $unset: { name: '', attribution: '' },
+          },
+        )
       }
       // If the erased user held operator privileges, drop the record too —
       // a tombstone account must retain no privileged surface.
@@ -2277,6 +2275,26 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     }
   })
 
+  // Unit economics (B8): all-service external spend unioned across
+  // spend_events + llm_usage, cost per active family, top spenders.
+  // Messaging rows are list-price estimates (spend_events.estimated=true)
+  // until billed reconciliation lands — flagged P2 in the register.
+  app.get<{ Querystring: { days?: string } }>(
+    '/operator/unit-economics',
+    { preHandler: requireOperator(db, 'billing.read') },
+    async (request) => {
+      const days = Math.min(Math.max(Number(request.query.days) || 30, 1), 365)
+      const econ = await platformUnitEconomics(db, days)
+      return {
+        ...econ,
+        total_spend_display: formatMicroDollars(econ.total_spend_microdollars),
+        cost_per_active_family_display: formatMicroDollars(
+          econ.cost_per_active_family_microdollars,
+        ),
+      }
+    },
+  )
+
   app.get<{ Params: { id: string } }>(
     '/operator/billing/tenants/:id',
     { preHandler: requireOperator(db, 'billing.read') },
@@ -3128,20 +3146,18 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
         return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-      const result = await db
-        .collection('reminders')
-        .updateOne(
-          { id: request.params.id, status: 'failed' },
-          {
-            $set: {
-              status: 'scheduled',
-              attempts: 0,
-              next_attempt_at: new Date(),
-              updated_at: new Date(),
-            },
-            $unset: { last_error: '' },
+      const result = await db.collection('reminders').updateOne(
+        { id: request.params.id, status: 'failed' },
+        {
+          $set: {
+            status: 'scheduled',
+            attempts: 0,
+            next_attempt_at: new Date(),
+            updated_at: new Date(),
           },
-        )
+          $unset: { last_error: '' },
+        },
+      )
       if (result.matchedCount === 0)
         return reply.status(404).send({ error: 'Reminder not found or not failed' })
       await audit.log(
