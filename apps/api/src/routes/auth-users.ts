@@ -409,156 +409,163 @@ export async function registerAuthUserRoutes(
     },
   )
 
-  /** POST /auth/login */
-  app.post<{ Body: LoginBody }>('/auth/login', async (request, reply) => {
-    const { email, password, rememberMe } = request.body
+  /** POST /auth/login — per-route limit on top of the global bucket and the
+   *  per-account lockout; credential stuffing is an IP-level problem the
+   *  account lock can't see across many accounts. */
+  app.post<{ Body: LoginBody }>(
+    '/auth/login',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const { email, password, rememberMe } = request.body
 
-    if (!email || !password) return reply.status(400).send({ error: 'Email and password required' })
+      if (!email || !password)
+        return reply.status(400).send({ error: 'Email and password required' })
 
-    const col = await getUsersCollection()
-    const emailKey = email.toLowerCase()
-    const user = await col.findOne({ email: emailKey })
+      const col = await getUsersCollection()
+      const emailKey = email.toLowerCase()
+      const user = await col.findOne({ email: emailKey })
 
-    if (!user) {
-      // Timing-safe: still hash even on miss to prevent user enumeration
-      scryptSync(password, randomBytes(16).toString('hex'), 32)
-      recordLoginEvent(request, { email: emailKey, success: false, reason: 'unknown_email' })
-      return reply.status(401).send({ error: 'Invalid email or password' })
-    }
-    // Erased accounts are tombstones — no credentials remain, and the
-    // response mustn't distinguish them from an unknown email.
-    if (user.status === 'erased') {
-      recordLoginEvent(request, {
-        email: emailKey,
-        success: false,
-        reason: 'erased',
-        user_id: user.id,
-        tenant_id: user.tenant_id,
-      })
-      return reply.status(401).send({ error: 'Invalid email or password' })
-    }
-    if (user.status === 'suspended') {
-      recordLoginEvent(request, {
-        email: emailKey,
-        success: false,
-        reason: 'suspended',
-        user_id: user.id,
-        tenant_id: user.tenant_id,
-      })
-      return reply.status(403).send({ error: 'User suspended' })
-    }
-
-    // Check if account is locked
-    if (user.locked_until && user.locked_until > new Date()) {
-      const remainingMinutes = Math.ceil((user.locked_until.getTime() - Date.now()) / 60000)
-      recordLoginEvent(request, {
-        email: emailKey,
-        success: false,
-        reason: 'locked',
-        user_id: user.id,
-        tenant_id: user.tenant_id,
-      })
-      return reply.status(429).send({
-        error: 'Account locked due to too many failed login attempts',
-        retry_after_minutes: remainingMinutes,
-      })
-    }
-
-    const expected = Buffer.from(hashPassword(password, user.salt), 'hex')
-    const actual = Buffer.from(user.password_hash, 'hex')
-
-    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
-      // Increment failed login attempts
-      const failedAttempts = (user.failed_login_attempts || 0) + 1
-      recordLoginEvent(request, {
-        email: emailKey,
-        success: false,
-        reason: 'bad_password',
-        user_id: user.id,
-        tenant_id: user.tenant_id,
-      })
-      const updateData: Partial<User> = { failed_login_attempts: failedAttempts }
-
-      // Lock account if max attempts reached
-      if (failedAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
-        updateData.locked_until = new Date(Date.now() + LOCKOUT_DURATION_MS)
+      if (!user) {
+        // Timing-safe: still hash even on miss to prevent user enumeration
+        scryptSync(password, randomBytes(16).toString('hex'), 32)
+        recordLoginEvent(request, { email: emailKey, success: false, reason: 'unknown_email' })
+        return reply.status(401).send({ error: 'Invalid email or password' })
+      }
+      // Erased accounts are tombstones — no credentials remain, and the
+      // response mustn't distinguish them from an unknown email.
+      if (user.status === 'erased') {
+        recordLoginEvent(request, {
+          email: emailKey,
+          success: false,
+          reason: 'erased',
+          user_id: user.id,
+          tenant_id: user.tenant_id,
+        })
+        return reply.status(401).send({ error: 'Invalid email or password' })
+      }
+      if (user.status === 'suspended') {
+        recordLoginEvent(request, {
+          email: emailKey,
+          success: false,
+          reason: 'suspended',
+          user_id: user.id,
+          tenant_id: user.tenant_id,
+        })
+        return reply.status(403).send({ error: 'User suspended' })
       }
 
-      await col.updateOne({ email: emailKey }, { $set: updateData })
-
-      if (failedAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
+      // Check if account is locked
+      if (user.locked_until && user.locked_until > new Date()) {
+        const remainingMinutes = Math.ceil((user.locked_until.getTime() - Date.now()) / 60000)
+        recordLoginEvent(request, {
+          email: emailKey,
+          success: false,
+          reason: 'locked',
+          user_id: user.id,
+          tenant_id: user.tenant_id,
+        })
         return reply.status(429).send({
           error: 'Account locked due to too many failed login attempts',
-          retry_after_minutes: LOCKOUT_DURATION_MS / 60000,
+          retry_after_minutes: remainingMinutes,
         })
       }
 
-      return reply.status(401).send({ error: 'Invalid email or password' })
-    }
+      const expected = Buffer.from(hashPassword(password, user.salt), 'hex')
+      const actual = Buffer.from(user.password_hash, 'hex')
 
-    // Reset failed login attempts on successful login
-    await col.updateOne(
-      { email: emailKey },
-      {
-        $set: { failed_login_attempts: 0, locked_until: undefined },
-      },
-    )
-    recordLoginEvent(request, {
-      email: emailKey,
-      success: true,
-      user_id: user.id,
-      tenant_id: user.tenant_id,
-    })
-
-    // MFA gate: the password was correct, but the session token isn't
-    // issued until the TOTP/recovery code verifies at /auth/mfa/verify.
-    // The pending token carries mfa_pending — the auth middleware rejects
-    // it everywhere else, so it can't be replayed as a session.
-    if (user.mfa_enabled) {
-      const mfaToken = await auth.sign(
-        {
-          sub: user.id,
+      if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+        // Increment failed login attempts
+        const failedAttempts = (user.failed_login_attempts || 0) + 1
+        recordLoginEvent(request, {
+          email: emailKey,
+          success: false,
+          reason: 'bad_password',
+          user_id: user.id,
           tenant_id: user.tenant_id,
-          roles: user.roles ?? ['viewer'],
-          mfa_pending: true,
+        })
+        const updateData: Partial<User> = { failed_login_attempts: failedAttempts }
+
+        // Lock account if max attempts reached
+        if (failedAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
+          updateData.locked_until = new Date(Date.now() + LOCKOUT_DURATION_MS)
+        }
+
+        await col.updateOne({ email: emailKey }, { $set: updateData })
+
+        if (failedAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
+          return reply.status(429).send({
+            error: 'Account locked due to too many failed login attempts',
+            retry_after_minutes: LOCKOUT_DURATION_MS / 60000,
+          })
+        }
+
+        return reply.status(401).send({ error: 'Invalid email or password' })
+      }
+
+      // Reset failed login attempts on successful login
+      await col.updateOne(
+        { email: emailKey },
+        {
+          $set: { failed_login_attempts: 0, locked_until: undefined },
         },
-        '5m',
       )
-      return reply.send({ mfa_required: true, mfa_token: mfaToken })
-    }
-
-    // "Remember me" controls actual session length, not just UI copy: checked
-    // keeps the token's own literal promise (30 days), unchecked falls back
-    // to the shorter default so a shared/public device doesn't stay signed
-    // in for a month by default.
-    const token = await auth.sign(
-      { sub: user.id, tenant_id: user.tenant_id, roles: user.roles ?? ['viewer'] },
-      rememberMe ? '30d' : '7d',
-    )
-    setSessionCookie(reply, token, rememberMe ? 30 * 24 * 60 * 60 : 7 * 24 * 60 * 60)
-
-    // Include active_vertical so the client can decide whether to redirect
-    // to onboarding without waiting for /auth/me. Without this, the login
-    // response has active_vertical: undefined, the AuthContext redirect
-    // effect fires before /auth/me resolves, and the user sees the
-    // "Welcome to LifeKeel" onboarding screen on every login.
-    const db = await getDb()
-    const settings = await db.collection('tenant_settings').findOne({ tenant_id: user.tenant_id })
-
-    return reply.send({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
+      recordLoginEvent(request, {
+        email: emailKey,
+        success: true,
+        user_id: user.id,
         tenant_id: user.tenant_id,
-        avatar_color: user.avatar_color,
-        email_verified: user.email_verified,
-        active_vertical: (settings?.['active_vertical'] as string | undefined) ?? null,
-        onboarding_skipped: (settings?.['onboarding_skipped'] as boolean | undefined) ?? false,
-      },
-    })
-  })
+      })
+
+      // MFA gate: the password was correct, but the session token isn't
+      // issued until the TOTP/recovery code verifies at /auth/mfa/verify.
+      // The pending token carries mfa_pending — the auth middleware rejects
+      // it everywhere else, so it can't be replayed as a session.
+      if (user.mfa_enabled) {
+        const mfaToken = await auth.sign(
+          {
+            sub: user.id,
+            tenant_id: user.tenant_id,
+            roles: user.roles ?? ['viewer'],
+            mfa_pending: true,
+          },
+          '5m',
+        )
+        return reply.send({ mfa_required: true, mfa_token: mfaToken })
+      }
+
+      // "Remember me" controls actual session length, not just UI copy: checked
+      // keeps the token's own literal promise (30 days), unchecked falls back
+      // to the shorter default so a shared/public device doesn't stay signed
+      // in for a month by default.
+      const token = await auth.sign(
+        { sub: user.id, tenant_id: user.tenant_id, roles: user.roles ?? ['viewer'] },
+        rememberMe ? '30d' : '7d',
+      )
+      setSessionCookie(reply, token, rememberMe ? 30 * 24 * 60 * 60 : 7 * 24 * 60 * 60)
+
+      // Include active_vertical so the client can decide whether to redirect
+      // to onboarding without waiting for /auth/me. Without this, the login
+      // response has active_vertical: undefined, the AuthContext redirect
+      // effect fires before /auth/me resolves, and the user sees the
+      // "Welcome to LifeKeel" onboarding screen on every login.
+      const db = await getDb()
+      const settings = await db.collection('tenant_settings').findOne({ tenant_id: user.tenant_id })
+
+      return reply.send({
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          tenant_id: user.tenant_id,
+          avatar_color: user.avatar_color,
+          email_verified: user.email_verified,
+          active_vertical: (settings?.['active_vertical'] as string | undefined) ?? null,
+          onboarding_skipped: (settings?.['onboarding_skipped'] as boolean | undefined) ?? false,
+        },
+      })
+    },
+  )
 
   /** GET /auth/me — return current user from JWT */
   app.get('/auth/me', async (request, reply) => {

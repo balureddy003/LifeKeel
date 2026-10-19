@@ -40,7 +40,9 @@ import { getAuditLogger } from '../audit/audit-log.js'
 // Collections holding tenant-tagged family data, wiped on delete. Anything
 // tenant-scoped the family product writes must be in this list — internal
 // ML/billing/platform collections are intentionally not (see header).
-const DELETABLE_COLLECTIONS = [
+// Exported so the architecture-claims fitness test can keep this list in
+// sync with the tenant-scoped collection catalogue.
+export const DELETABLE_COLLECTIONS = [
   'users',
   'family_groups',
   'family_financial_profile',
@@ -71,9 +73,14 @@ const DELETABLE_COLLECTIONS = [
 // Fields stripped from the exported user record — auth material, not data
 // about the family.
 const USER_EXPORT_OMIT = new Set([
-  'password_hash', 'salt', 'password_reset_token', 'password_reset_expires',
-  'email_verification_token', 'email_verification_expires',
-  'failed_login_attempts', 'locked_until',
+  'password_hash',
+  'salt',
+  'password_reset_token',
+  'password_reset_expires',
+  'email_verification_token',
+  'email_verification_expires',
+  'failed_login_attempts',
+  'locked_until',
 ])
 
 export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
@@ -153,13 +160,18 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
     // before the metadata rows below so a partial failure leaves orphaned
     // metadata (harmless: unreferenced) rather than orphaned blobs with no
     // way to identify whose they were.
-    const files = await db.collection('documents.files')
+    const files = await db
+      .collection('documents.files')
       .find({ 'metadata.tenant_id': tenant_id })
       .project({ _id: 1 })
       .toArray()
     const bucket = new GridFSBucket(db, { bucketName: 'documents' })
     for (const f of files) {
-      try { await bucket.delete(f._id) } catch { /* blob may already be gone */ }
+      try {
+        await bucket.delete(f._id)
+      } catch {
+        /* blob may already be gone */
+      }
     }
 
     for (const name of DELETABLE_COLLECTIONS) {
@@ -168,10 +180,12 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
 
     // Keep the tenants row but make it dead: the auth middleware admits only
     // 'active'/'trial' tenants, so every outstanding JWT 403s from here on.
-    await db.collection('tenants').updateOne(
-      { tenant_id },
-      { $set: { status: 'deleted', deleted_at: new Date(), updated_at: new Date() } },
-    )
+    await db
+      .collection('tenants')
+      .updateOne(
+        { tenant_id },
+        { $set: { status: 'deleted', deleted_at: new Date(), updated_at: new Date() } },
+      )
 
     return { deleted: true }
   })

@@ -46,15 +46,11 @@ import type { Insight } from '@lifekeel/engine'
 import type { ActionReceipt, ActionReceiptOutcome } from '@lifekeel/workflows'
 import { randomUUID, createHash } from 'node:crypto'
 
-export type ActionType =
-  | 'send_email'
-  | 'send_whatsapp'
-  | 'crm_tag'
-  | 'log_only'
+export type ActionType = 'send_email' | 'send_whatsapp' | 'crm_tag' | 'log_only'
 
 export interface ActionIntent {
   type: ActionType
-  label: string          // original action string
+  label: string // original action string
   params: Record<string, unknown>
 }
 
@@ -84,7 +80,9 @@ const ACTION_CLAIM_STALE_MS = 2 * 60 * 1000
  * retrying won't help until the underlying cause is fixed — while a 5xx,
  * timeout, or network error is ambiguous and may be worth retrying as-is.
  */
-function classifyDispatchError(err: unknown): Extract<ActionReceiptOutcome, 'execution_failed' | 'execution_ambiguous'> {
+function classifyDispatchError(
+  err: unknown,
+): Extract<ActionReceiptOutcome, 'execution_failed' | 'execution_ambiguous'> {
   const message = err instanceof Error ? err.message : String(err)
   const statusMatch = message.match(/\b([1-5]\d{2})\b/)
   if (statusMatch) return Number(statusMatch[1]) >= 500 ? 'execution_ambiguous' : 'execution_failed'
@@ -96,10 +94,10 @@ function classifyDispatchError(err: unknown): Extract<ActionReceiptOutcome, 'exe
 // Simple keyword rules — no LLM needed for this classification.
 
 const ACTION_PATTERNS: Array<{ pattern: RegExp; type: ActionType }> = [
-  { pattern: /send.*whatsapp|whatsapp.*message/i,               type: 'send_whatsapp' },
+  { pattern: /send.*whatsapp|whatsapp.*message/i, type: 'send_whatsapp' },
   { pattern: /send.*email|email.*remind|personalised.*remind/i, type: 'send_email' },
-  { pattern: /escalate|cc.*manager|notify.*team/i,              type: 'send_email' },
-  { pattern: /tag.*customer|crm.*tag|label.*contact/i,          type: 'crm_tag' },
+  { pattern: /escalate|cc.*manager|notify.*team/i, type: 'send_email' },
+  { pattern: /tag.*customer|crm.*tag|label.*contact/i, type: 'crm_tag' },
 ]
 
 function classifyAction(label: string): ActionType {
@@ -152,16 +150,27 @@ export interface ActionPreview {
 }
 
 const ACTION_TYPE_EFFECTS: Record<ActionType, { external: boolean; summary: string }> = {
-  send_email:    { external: true,  summary: 'Sends a real email to your account address via SendGrid' },
-  send_whatsapp: { external: true,  summary: 'Sends a real WhatsApp message via Twilio' },
-  crm_tag:       { external: true,  summary: 'Adds a tag to a contact in your connected CRM' },
-  log_only:      { external: false, summary: 'Recorded as done — nothing is sent or changed automatically' },
+  send_email: {
+    external: true,
+    summary: 'Sends a real email to your account address via SendGrid',
+  },
+  send_whatsapp: { external: true, summary: 'Sends a real WhatsApp message via Twilio' },
+  crm_tag: { external: true, summary: 'Adds a tag to a contact in your connected CRM' },
+  log_only: {
+    external: false,
+    summary: 'Recorded as done — nothing is sent or changed automatically',
+  },
 }
 
 export function previewActions(labels: string[], declared?: DeclaredIntent[]): ActionPreview[] {
   return intentsFor(labels, declared).map((intent) => {
     const effect = ACTION_TYPE_EFFECTS[intent.type]
-    return { label: intent.label, type: intent.type, external: effect.external, summary: effect.summary }
+    return {
+      label: intent.label,
+      type: intent.type,
+      external: effect.external,
+      summary: effect.summary,
+    }
   })
 }
 
@@ -177,23 +186,30 @@ export class ActionExecutor {
     // Idempotency key — see db.ts's getReceiptsCollection for the canonical
     // creation; duplicated here defensively since ActionExecutor can be
     // constructed with its own injected Db before that path ever runs.
-    this.col.createIndex({ tenant_id: 1, insight_id: 1, payload_hash: 1 }, { unique: true }).catch(() => {})
+    this.col
+      .createIndex({ tenant_id: 1, insight_id: 1, payload_hash: 1 }, { unique: true })
+      .catch(() => {})
   }
 
   async execute(
     insight: Insight,
     tenantId: string,
-    opts: { dryRun?: boolean; approvedBy?: string } = {},
+    opts: { dryRun?: boolean; approvedBy?: string; approvedVia?: string } = {},
   ): Promise<ExecutionSummary> {
     const { dryRun = false } = opts
     const receipts: ActionReceipt[] = []
 
-    for (const intent of intentsFor(insight.actions, insight.action_intents as DeclaredIntent[] | undefined)) {
+    for (const intent of intentsFor(
+      insight.actions,
+      insight.action_intents as DeclaredIntent[] | undefined,
+    )) {
       const receipt = await this.runAction({
         insight,
         tenantId,
         intent: { ...intent, params: { ...intent.params, approved_by: opts.approvedBy } },
         dryRun,
+        approvedBy: opts.approvedBy,
+        approvedVia: opts.approvedVia,
       })
       receipts.push(receipt)
     }
@@ -201,10 +217,14 @@ export class ActionExecutor {
     return {
       insight_id: insight.id,
       receipts,
-      succeeded: receipts.filter(r => r.outcome === 'executed' || r.outcome === 'execution_skipped').length,
-      failed:    receipts.filter(r => r.outcome === 'execution_failed' || r.outcome === 'execution_ambiguous').length,
-      skipped:   receipts.filter(r => r.outcome === 'execution_skipped').length,
-      pending:   receipts.filter(r => r.outcome === 'pending').length,
+      succeeded: receipts.filter(
+        (r) => r.outcome === 'executed' || r.outcome === 'execution_skipped',
+      ).length,
+      failed: receipts.filter(
+        (r) => r.outcome === 'execution_failed' || r.outcome === 'execution_ambiguous',
+      ).length,
+      skipped: receipts.filter((r) => r.outcome === 'execution_skipped').length,
+      pending: receipts.filter((r) => r.outcome === 'pending').length,
     }
   }
 
@@ -220,10 +240,18 @@ export class ActionExecutor {
     tenantId: string
     intent: ActionIntent
     dryRun: boolean
+    approvedBy?: string
+    approvedVia?: string
   }): Promise<ActionReceipt> {
     const { insight, tenantId, intent, dryRun } = opts
     const payloadHash = createHash('sha256')
-      .update(JSON.stringify({ insight_id: insight.id, action_label: intent.label, action_type: intent.type }))
+      .update(
+        JSON.stringify({
+          insight_id: insight.id,
+          action_label: intent.label,
+          action_type: intent.type,
+        }),
+      )
       .digest('hex')
 
     // Claim-before-dispatch: the 'pending' receipt is written BEFORE the
@@ -236,17 +264,19 @@ export class ActionExecutor {
     // next caller marks it 'execution_ambiguous' — outcome unknown, needs
     // reconciliation — rather than blindly re-dispatching.
     const claim: ActionReceipt = {
-      id:           randomUUID(),
-      insight_id:   insight.id,
-      tenant_id:    tenantId,
+      id: randomUUID(),
+      insight_id: insight.id,
+      tenant_id: tenantId,
       action_label: intent.label,
-      action_type:  intent.type,
-      outcome:      'pending',
-      executed_at:  new Date(),
-      claimed_at:   new Date(),
-      attempts:     1,
-      dry_run:      dryRun,
+      action_type: intent.type,
+      outcome: 'pending',
+      executed_at: new Date(),
+      claimed_at: new Date(),
+      attempts: 1,
+      dry_run: dryRun,
       payload_hash: payloadHash,
+      approved_by: opts.approvedBy,
+      approved_via: opts.approvedVia,
     }
 
     try {
@@ -256,7 +286,11 @@ export class ActionExecutor {
       if ((err as { code?: number }).code !== 11000) throw err
     }
 
-    const existing = await this.col.findOne({ tenant_id: tenantId, insight_id: insight.id, payload_hash: payloadHash })
+    const existing = await this.col.findOne({
+      tenant_id: tenantId,
+      insight_id: insight.id,
+      payload_hash: payloadHash,
+    })
     if (!existing) return claim // index raced; another writer owns it — return our claim view
 
     switch (existing.outcome) {
@@ -268,7 +302,10 @@ export class ActionExecutor {
         // (previously a dry_run receipt permanently turned approve+send
         // into a no-op for that insight). A live run supersedes it.
         if (existing.dry_run && !dryRun) {
-          const removed = await this.col.deleteOne({ id: existing.id, outcome: 'execution_skipped' })
+          const removed = await this.col.deleteOne({
+            id: existing.id,
+            outcome: 'execution_skipped',
+          })
           if (removed.deletedCount === 1) return this.runAction(opts)
         }
         return existing
@@ -283,7 +320,12 @@ export class ActionExecutor {
         // auto-redispatch a side effect whose outcome is unknown.
         const marked = (await this.col.findOneAndUpdate(
           { id: existing.id, outcome: 'pending' },
-          { $set: { outcome: 'execution_ambiguous', outcome_reason: 'dispatch claim expired — provider outcome unknown' } },
+          {
+            $set: {
+              outcome: 'execution_ambiguous',
+              outcome_reason: 'dispatch claim expired — provider outcome unknown',
+            },
+          },
           { returnDocument: 'after' },
         )) as ActionReceipt | null
         return marked ?? existing
@@ -295,7 +337,14 @@ export class ActionExecutor {
         const reclaimed = (await this.col.findOneAndUpdate(
           { id: existing.id, outcome: { $in: ['execution_failed', 'execution_ambiguous'] } },
           {
-            $set: { outcome: 'pending', claimed_at: new Date(), executed_at: new Date(), dry_run: dryRun },
+            $set: {
+              outcome: 'pending',
+              claimed_at: new Date(),
+              executed_at: new Date(),
+              dry_run: dryRun,
+              approved_by: opts.approvedBy,
+              approved_via: opts.approvedVia,
+            },
             $inc: { attempts: 1 },
             $unset: { outcome_reason: '' },
           },
@@ -319,9 +368,11 @@ export class ActionExecutor {
     let outcome: ActionReceipt['outcome']
     let reason: string | undefined
     if (dryRun) {
-      outcome = 'execution_skipped'; reason = 'dry_run'
+      outcome = 'execution_skipped'
+      reason = 'dry_run'
     } else if (intent.type === 'log_only') {
-      outcome = 'execution_skipped'; reason = 'log_only'
+      outcome = 'execution_skipped'
+      reason = 'log_only'
     } else {
       try {
         await this.dispatch(intent, insight, claim.tenant_id)
@@ -341,11 +392,7 @@ export class ActionExecutor {
 
   // ── Dispatch to connector ─────────────────────────────────────────────────────
 
-  private async dispatch(
-    intent: ActionIntent,
-    insight: Insight,
-    tenantId: string,
-  ): Promise<void> {
+  private async dispatch(intent: ActionIntent, insight: Insight, tenantId: string): Promise<void> {
     switch (intent.type) {
       case 'send_email':
         await this.sendEmail(intent, insight, tenantId)
@@ -357,7 +404,7 @@ export class ActionExecutor {
         await this.crmTag(intent, insight, tenantId)
         break
       default:
-        // log_only — already handled
+      // log_only — already handled
     }
   }
 
@@ -382,16 +429,22 @@ export class ActionExecutor {
         personalizations: [{ to: [{ email: recipientEmail }] }],
         from: { email: 'insights@lifekeel.co.uk', name: 'LifeKeel' },
         subject: `Action recommended: ${intent.label}`,
-        content: [{
-          type: 'text/plain',
-          value: `${insight.reasoning}\n\nAction: ${intent.label}\n\nEstimated impact: £${Math.round(insight.estimated_impact_low / 100)}–£${Math.round(insight.estimated_impact_high / 100)}`,
-        }],
+        content: [
+          {
+            type: 'text/plain',
+            value: `${insight.reasoning}\n\nAction: ${intent.label}\n\nEstimated impact: £${Math.round(insight.estimated_impact_low / 100)}–£${Math.round(insight.estimated_impact_high / 100)}`,
+          },
+        ],
       }),
     })
     if (!res.ok) throw new Error(`SendGrid ${res.status}: ${await res.text()}`)
   }
 
-  private async sendWhatsApp(intent: ActionIntent, insight: Insight, tenantId: string): Promise<void> {
+  private async sendWhatsApp(
+    intent: ActionIntent,
+    insight: Insight,
+    tenantId: string,
+  ): Promise<void> {
     const creds = await this.getCredential(tenantId, 'twilio')
     if (!creds?.account_sid || !creds?.auth_token) throw new Error('Twilio not connected')
 
@@ -424,21 +477,34 @@ export class ActionExecutor {
     const res = await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ properties: { lifekeel_insight: insight.hypothesis, lifekeel_insight_at: new Date().toISOString() } }),
+      body: JSON.stringify({
+        properties: {
+          lifekeel_insight: insight.hypothesis,
+          lifekeel_insight_at: new Date().toISOString(),
+        },
+      }),
     })
     if (!res.ok) throw new Error(`HubSpot ${res.status}: ${await res.text()}`)
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
 
-  private async getCredential(tenantId: string, connectorId: string): Promise<Record<string, unknown> | null> {
-    return this.db.collection('connector_credentials').findOne(
-      { tenant_id: tenantId, connector_id: connectorId },
-    ) as Promise<Record<string, unknown> | null>
+  private async getCredential(
+    tenantId: string,
+    connectorId: string,
+  ): Promise<Record<string, unknown> | null> {
+    return this.db
+      .collection('connector_credentials')
+      .findOne({ tenant_id: tenantId, connector_id: connectorId }) as Promise<Record<
+      string,
+      unknown
+    > | null>
   }
 
   private async getTenantContactEmail(tenantId: string): Promise<string> {
-    const settings = await this.db.collection('tenant_settings').findOne({ tenant_id: tenantId }) as { contact_email?: string } | null
+    const settings = (await this.db
+      .collection('tenant_settings')
+      .findOne({ tenant_id: tenantId })) as { contact_email?: string } | null
     return settings?.contact_email ?? `ops+${tenantId}@lifekeel.co.uk`
   }
 }

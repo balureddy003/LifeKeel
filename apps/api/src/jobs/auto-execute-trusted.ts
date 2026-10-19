@@ -59,7 +59,8 @@ export async function runAutoExecuteTrusted(
   const graceBefore = new Date(now.getTime() - AUTO_EXECUTE_GRACE_MS)
   const summary: AutoExecuteSummary = { tenants_scanned: 0, executed: 0, failed: 0, skipped: 0 }
 
-  const tenants = await db.collection('tenant_settings')
+  const tenants = await db
+    .collection('tenant_settings')
     .find({ 'automation.auto_execute_enabled': true })
     .project({ tenant_id: 1, automation: 1 })
     .toArray()
@@ -82,29 +83,46 @@ export async function runAutoExecuteTrusted(
 
     // Quota gate — auto-approvals draw from the same monthly envelope as
     // human ones. Over quota → leave everything for the human.
-    const tenant = await db.collection('tenants').findOne({ $or: [{ tenant_id: tenantId }, { id: tenantId }] })
+    const tenant = await db
+      .collection('tenants')
+      .findOne({ $or: [{ tenant_id: tenantId }, { id: tenantId }] })
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
-    const used = await insightsCol.countDocuments({ tenant_id: tenantId, approved_at: { $gte: monthStart } })
+    const used = await insightsCol.countDocuments({
+      tenant_id: tenantId,
+      approved_at: { $gte: monthStart },
+    })
     // `plan` is the field billing maintains on the tenant — `tier` is a
     // lifekeel-era field name nothing writes, so reading it capped paid
     // tenants at the free-tier limit.
-    const quota = new FreeTierPolicy().check('monthly_move_approvals', used, String(tenant?.['plan'] ?? 'free'))
+    const quota = new FreeTierPolicy().check(
+      'monthly_move_approvals',
+      used,
+      String(tenant?.['plan'] ?? 'free'),
+    )
     if (!quota.allowed) {
       summary.skipped++
       continue
     }
 
-    const candidates = await insightsCol.find({
-      tenant_id: tenantId,
-      state: { $in: ['identified', 'sent'] },
-      created_at: { $lte: graceBefore },
-      $or: [{ workflow_id: { $in: trustedScopes } }, { detector_id: { $in: trustedScopes } }],
-    }).sort({ created_at: 1 }).limit(limit).toArray()
+    const candidates = await insightsCol
+      .find({
+        tenant_id: tenantId,
+        state: { $in: ['identified', 'sent'] },
+        created_at: { $lte: graceBefore },
+        $or: [{ workflow_id: { $in: trustedScopes } }, { detector_id: { $in: trustedScopes } }],
+      })
+      .sort({ created_at: 1 })
+      .limit(limit)
+      .toArray()
 
     for (const insight of candidates) {
-      const actions = Array.isArray(insight['actions']) ? insight['actions'] as string[] : []
+      const actions = Array.isArray(insight['actions']) ? (insight['actions'] as string[]) : []
       const intents = Array.isArray(insight['action_intents'])
-        ? insight['action_intents'] as { type: 'send_email' | 'send_whatsapp' | 'crm_tag' | 'log_only'; label: string; params?: Record<string, unknown> }[]
+        ? (insight['action_intents'] as {
+            type: 'send_email' | 'send_whatsapp' | 'crm_tag' | 'log_only'
+            label: string
+            params?: Record<string, unknown>
+          }[])
         : undefined
       // Non-external only — one send_email/whatsapp/crm_tag anywhere on
       // the insight keeps it human-gated regardless of trust level.
@@ -119,7 +137,14 @@ export async function runAutoExecuteTrusted(
       // replica loses the race and owns the decision instead.
       const claimed = await insightsCol.findOneAndUpdate(
         { id: insight['id'], tenant_id: tenantId, state: { $in: ['identified', 'sent'] } },
-        { $set: { state: 'approved', approved_at: new Date(), approved_by: 'auto-trust', auto_executed: true } },
+        {
+          $set: {
+            state: 'approved',
+            approved_at: new Date(),
+            approved_by: 'auto-trust',
+            auto_executed: true,
+          },
+        },
         { returnDocument: 'after' },
       )
       if (!claimed) {
@@ -127,21 +152,38 @@ export async function runAutoExecuteTrusted(
         continue
       }
 
-      const execution = await executor.execute(claimed as never, tenantId, {
-        dryRun: tenantDryRun,
-        approvedBy: 'auto-trust',
-      }).catch((err) => {
-        log.warn({ err, insight_id: insight['id'], tenant_id: tenantId }, 'Auto-execute dispatch failed')
-        return null
-      })
+      const execution = await executor
+        .execute(claimed as never, tenantId, {
+          dryRun: tenantDryRun,
+          approvedBy: 'auto-trust',
+          approvedVia: 'auto_execute_trusted',
+        })
+        .catch((err) => {
+          log.warn(
+            { err, insight_id: insight['id'], tenant_id: tenantId },
+            'Auto-execute dispatch failed',
+          )
+          return null
+        })
 
-      const executionFailed = execution === null
-        || execution.receipts.some((r) => r.outcome === 'execution_failed' || r.outcome === 'execution_ambiguous')
-      const executionPending = execution !== null
-        && execution.receipts.some((r) => r.outcome === 'pending')
+      const executionFailed =
+        execution === null ||
+        execution.receipts.some(
+          (r) => r.outcome === 'execution_failed' || r.outcome === 'execution_ambiguous',
+        )
+      const executionPending =
+        execution !== null && execution.receipts.some((r) => r.outcome === 'pending')
       await insightsCol.updateOne(
         { id: insight['id'], tenant_id: tenantId, state: 'approved' },
-        { $set: { state: executionFailed ? 'execution_failed' : executionPending ? 'approved' : 'completed' } },
+        {
+          $set: {
+            state: executionFailed
+              ? 'execution_failed'
+              : executionPending
+                ? 'approved'
+                : 'completed',
+          },
+        },
       )
 
       // Same decision-receipt shape the human approve path writes —
@@ -149,24 +191,31 @@ export async function runAutoExecuteTrusted(
       // learning_suppressed: an auto-execution is NOT a human approval
       // signal — feeding it back would let trust compound on its own
       // decisions. Distinct action_type keeps it queryable.
-      await receiptsCol.insertOne({
-        id: randomUUID(),
-        tenant_id: tenantId,
-        insight_id: insight['id'] as string,
-        detector_id: insight['detector_id'] as string | undefined,
-        action_type: 'insight.auto_execute',
-        outcome: tenantDryRun ? 'policy_blocked' : 'approved',
-        outcome_reason: tenantDryRun ? 'dry_run_mode' : undefined,
-        executed_at: new Date(),
-        approved_by: 'auto-trust',
-        payload_hash: createHash('sha256').update(JSON.stringify({ id: insight['id'], auto: true })).digest('hex'),
-        dry_run: tenantDryRun,
-        learning_suppressed: true,
-      } satisfies Partial<ActionReceipt> as ActionReceipt).catch((err) => {
-        // Unique (tenant_id, insight_id, payload_hash) — a second receipt
-        // for the same insight must not kill the worker loop.
-        log.warn({ err, insight_id: insight['id'] }, 'Auto-execute decision receipt insert failed')
-      })
+      await receiptsCol
+        .insertOne({
+          id: randomUUID(),
+          tenant_id: tenantId,
+          insight_id: insight['id'] as string,
+          detector_id: insight['detector_id'] as string | undefined,
+          action_type: 'insight.auto_execute',
+          outcome: tenantDryRun ? 'policy_blocked' : 'approved',
+          outcome_reason: tenantDryRun ? 'dry_run_mode' : undefined,
+          executed_at: new Date(),
+          approved_by: 'auto-trust',
+          payload_hash: createHash('sha256')
+            .update(JSON.stringify({ id: insight['id'], auto: true }))
+            .digest('hex'),
+          dry_run: tenantDryRun,
+          learning_suppressed: true,
+        } satisfies Partial<ActionReceipt> as ActionReceipt)
+        .catch((err) => {
+          // Unique (tenant_id, insight_id, payload_hash) — a second receipt
+          // for the same insight must not kill the worker loop.
+          log.warn(
+            { err, insight_id: insight['id'] },
+            'Auto-execute decision receipt insert failed',
+          )
+        })
 
       getAuditLogger()?.log({
         tenant_id: tenantId,
@@ -174,7 +223,10 @@ export async function runAutoExecuteTrusted(
         action: 'insight.auto_execute',
         resource_type: 'insight',
         resource_id: insight['id'] as string,
-        metadata: { detector_id: insight['detector_id'], trust_scope: insight['workflow_id'] ?? insight['detector_id'] },
+        metadata: {
+          detector_id: insight['detector_id'],
+          trust_scope: insight['workflow_id'] ?? insight['detector_id'],
+        },
         ip: '',
         user_agent: '',
         timestamp: new Date(),
@@ -189,7 +241,10 @@ export async function runAutoExecuteTrusted(
 
       if (executionFailed) summary.failed++
       else summary.executed++
-      log.info({ insight_id: insight['id'], tenant_id: tenantId, dry_run: tenantDryRun }, 'Auto-executed trusted insight')
+      log.info(
+        { insight_id: insight['id'], tenant_id: tenantId, dry_run: tenantDryRun },
+        'Auto-executed trusted insight',
+      )
     }
   }
 
