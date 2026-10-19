@@ -79,4 +79,19 @@ describe('app theme', () => {
     expect(rail).toContain('rgb(var(--nav-bg)')
     expect(rail).not.toContain('rgba(8, 8, 12')
   })
+
+  it('dark labels cover gradient and translucent brass fills, and h1 sizing leaves responsive sizes alone', () => {
+    expect(css).toContain(".from-family-500.text-white")
+    expect(css).toContain("[class*='bg-family-500/'].text-white")
+    expect(css).toMatch(/h1\.text-2xl:not\(\[class\*=':text-'\]\)/)
+  })
+
+  it('the JS accent twin keeps 3:1 on the light surface', () => {
+    const hex = /FAMILY_ACCENT = '(#[0-9a-f]{6})'/i.exec(
+      fs.readFileSync(path.join(SRC, 'lib', 'familySections.ts'), 'utf8'),
+    )![1]!
+    const t = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(' ')
+    expect(ratio(t, token(light, 'surface-0'))).toBeGreaterThanOrEqual(3)
+    expect(ratio(t, token(dark, 'surface-0'))).toBeGreaterThanOrEqual(3)
+  })
 })

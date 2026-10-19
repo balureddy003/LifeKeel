@@ -98,7 +98,7 @@ const DOMAIN_META: Record<HealthDomain, { color: string; textColor: string; labe
   wealth: { color: '#fbbf24', textColor: 'rgb(var(--warning))', label: 'Wealth', icon: Wallet, setupHref: '/financial-profile' },
   goals: { color: '#4ade80', textColor: 'rgb(var(--success))', label: 'Goals', icon: Target, setupHref: '/financial-profile' },
   savings: { color: '#60a5fa', textColor: 'rgb(var(--info))', label: 'Savings', icon: PiggyBank, setupHref: '/financial-profile' },
-  estate: { color: '#c08a24', textColor: 'rgb(var(--family-400))', label: 'Estate', icon: FileLock2, setupHref: '/vault' },
+  estate: { color: '#b07a14', textColor: 'rgb(var(--family-400))', label: 'Estate', icon: FileLock2, setupHref: '/vault' },
 }
 
 export function HealthSummary() {

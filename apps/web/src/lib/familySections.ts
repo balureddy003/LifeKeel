@@ -54,7 +54,7 @@ export interface MemberSection {
 // hex-alpha suffix math (`${color}14`) that var() strings can't survive,
 // so the literal has to live somewhere — it lives here, once, and the CSS
 // var's comment points at this line so the two stay in sync.
-export const FAMILY_ACCENT = '#c08a24'
+export const FAMILY_ACCENT = '#b07a14'
 
 export const CATEGORY_COLOR: Record<GraphCategory, string> = {
   family: FAMILY_ACCENT,

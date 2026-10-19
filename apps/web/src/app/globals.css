@@ -34,6 +34,7 @@
   --nav-bg: 10 24 34;
 
   /* Brass: the accent and the call to action. 400 is text and icons, 500 is the fill. */
+  /* JS-land twin: FAMILY_ACCENT in lib/familySections.ts (hex-alpha colour maths); keep in sync. */
   --family-accent: 226 180 92;
   --family-400: 226 180 92;
   --family-500: 226 180 92;
@@ -41,7 +42,6 @@
   --family-700: 176 130 50;
   /* Text on a brass fill. */
   --on-cta: 26 18 3;
-  /* JS-land twin: FAMILY_ACCENT in lib/familySections.ts, for hex-alpha colour maths. */
 
   --success: 111 194 160;
   --warning: 226 180 92;
@@ -381,8 +381,12 @@ h1, h2 {
   font-weight: 400;
   letter-spacing: -0.01em;
 }
-.bg-family-500.text-white, .bg-family-500 .text-white { color: rgb(var(--on-cta)); }
-.bg-family-500 { box-shadow: none; }
+.bg-family-500.text-white, .bg-family-500 .text-white,
+.from-family-500.text-white, [class*='bg-family-500/'].text-white,
+[class*='bg-family-500/'] .text-white { color: rgb(var(--on-cta)); }
+.bg-family-500:not([class*='shadow']):not([class*='ring']) { box-shadow: none; }
 
-/* Instrument Serif is condensed, so a page title at the sans size reads small. */
-h1.text-title-md, h1.text-title-lg, h1.text-2xl, h1.text-xl { font-size: 1.9rem; line-height: 1.1; }
+/* Instrument Serif is condensed, so a page title at the sans size reads small. Skipped when the
+   heading sets its own responsive size, so breakpoint utilities still win. */
+h1.text-title-md:not([class*=':text-']), h1.text-title-lg:not([class*=':text-']),
+h1.text-2xl:not([class*=':text-']), h1.text-xl:not([class*=':text-']) { font-size: 1.9rem; line-height: 1.1; }
