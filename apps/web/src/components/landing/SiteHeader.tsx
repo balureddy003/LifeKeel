@@ -23,7 +23,9 @@ const LINKS: { href: string; label: string; page?: boolean }[] = [
  * The public header. Its inner box is the same width and side padding as every band
  * below it, so the logo and the page content share one left edge.
  */
-export function SiteHeader() {
+/** `home` is false off the landing page, so the section links go to / first. */
+export function SiteHeader({ home = true, signedIn = false }: { home?: boolean; signedIn?: boolean }) {
+  const href = (h: string) => (home || !h.startsWith('#') ? h : `/${h}`)
   const [open, setOpen] = useState(false)
 
   // Escape closes the phone menu, as people expect from a disclosure.
@@ -54,19 +56,21 @@ export function SiteHeader() {
                 {l.label}
               </Link>
             ) : (
-              <a key={l.href} href={l.href}>
+              <a key={l.href} href={href(l.href)}>
                 {l.label}
               </a>
             ),
           )}
         </nav>
         <div className="lk-header-actions">
-          <a className="lk-signin" href={appUrl('/login')} onClick={signIn}>
-            Sign in
-          </a>
-          <a className="lk-btn lk-btn-sm" href={appUrl('/signup')} onClick={start}>
-            Get started
-          </a>
+          {signedIn ? (
+            <Link className="lk-btn lk-btn-sm" href="/">Open LifeKeel</Link>
+          ) : (
+            <>
+              <a className="lk-signin" href={appUrl('/login')} onClick={signIn}>Sign in</a>
+              <a className="lk-btn lk-btn-sm" href={appUrl('/signup')} onClick={start}>Get started</a>
+            </>
+          )}
           <button
             type="button"
             className="lk-menu-btn"
@@ -87,7 +91,7 @@ export function SiteHeader() {
                 {l.label}
               </Link>
             ) : (
-              <a key={l.href} href={l.href} onClick={() => setOpen(false)}>
+              <a key={l.href} href={href(l.href)} onClick={() => setOpen(false)}>
                 {l.label}
               </a>
             ),
