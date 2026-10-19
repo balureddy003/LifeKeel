@@ -1,10 +1,16 @@
-const KEY: { name: string; sr?: string; on: boolean }[] = [
+const ITEMS: { name: string; sr?: string; on: boolean }[] = [
   { name: 'Will', on: true },
   { name: 'Life', on: true },
   { name: 'Income', sr: ' protection', on: false },
   { name: 'Home', on: true },
   { name: 'Savings', on: true },
 ]
+
+/** Each lit lantern gets its order among the lit ones, for the staggered light-up. */
+const KEY = ITEMS.map((k, i) => ({
+  ...k,
+  lit: ITEMS.slice(0, i).filter((x) => x.on).length,
+}))
 
 const FAMILY = [
   { name: 'Priya', cls: 'lk-bm', main: true },
@@ -15,7 +21,6 @@ const FAMILY = [
 
 /** Graticule, berth slips, the family's boats and the lanterns for what is on file. All sample data. */
 export function HarbourChart() {
-  let lit = 0
   return (
     <>
       <svg className="lk-chart" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
@@ -31,7 +36,7 @@ export function HarbourChart() {
           <li
             key={k.name}
             className={k.on ? 'on' : 'off'}
-            style={k.on ? ({ '--i': lit++ } as React.CSSProperties) : undefined}
+            style={k.on ? ({ '--i': k.lit } as React.CSSProperties) : undefined}
           >
             <svg className="lk-ln" viewBox="0 0 20 30" aria-hidden="true">
               <use href={k.on ? '#lk-lantern' : '#lk-lantern-off'} />

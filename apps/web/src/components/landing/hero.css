@@ -130,6 +130,9 @@
   .lk-lede { display: none; }
 }
 
+/* off-screen: park every loop until the hero is visible again */
+.lk-scene[data-visible='false'] *, .lk-scene[data-visible='false'] *::before, .lk-scene[data-visible='false'] *::after { animation-play-state: paused !important; }
+
 /* motion off: Pause control or the system setting. Final states, no loops. */
 :root[data-motion='off'] .landing *, :root[data-motion='off'] .landing *::before, :root[data-motion='off'] .landing *::after { animation: none !important; transition: none !important; }
 @media (prefers-reduced-motion: reduce) {

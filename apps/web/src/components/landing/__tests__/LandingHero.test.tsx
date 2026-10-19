@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import { LandingHero } from '../LandingHero'
+import { track } from '@/lib/growth-track'
 
 vi.mock('@/lib/growth-track', () => ({ track: vi.fn() }))
 vi.mock('@/lib/haptics', () => ({ haptic: vi.fn() }))
@@ -52,5 +53,32 @@ describe('LandingHero', () => {
     stubMatchMedia(true)
     render(<LandingHero />)
     expect(document.documentElement.dataset.motion).toBe('off')
+  })
+
+  it('reports signup and sign-in clicks with a location and no personal data', () => {
+    render(<LandingHero />)
+    const stop = (e: Event) => e.preventDefault() // jsdom cannot navigate
+    document.addEventListener('click', stop)
+    fireEvent.click(screen.getByRole('link', { name: 'Create your free account' }))
+    expect(track).toHaveBeenCalledWith('landing_cta_click', { location: 'hero', method: 'signup' })
+    fireEvent.click(screen.getByRole('link', { name: 'Sign in' }))
+    expect(track).toHaveBeenCalledWith('landing_signin_click', { location: 'hero' })
+    document.removeEventListener('click', stop)
+  })
+
+  it('marks the scene hidden to the stylesheet when it scrolls out of view', () => {
+    let cb: (es: { isIntersecting: boolean }[]) => void = () => {}
+    window.IntersectionObserver = class {
+      constructor(c: typeof cb) {
+        cb = c
+      }
+      observe() {}
+      disconnect() {}
+    } as unknown as typeof IntersectionObserver
+    const { container } = render(<LandingHero />)
+    const scene = container.querySelector('.lk-scene')!
+    expect(scene.getAttribute('data-visible')).toBe('true')
+    act(() => cb([{ isIntersecting: false }]))
+    expect(scene.getAttribute('data-visible')).toBe('false')
   })
 })

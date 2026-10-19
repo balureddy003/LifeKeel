@@ -20,6 +20,12 @@ function fmt(m: number): string {
   return m >= RUNWAY_CAP ? `${RUNWAY_CAP}+` : m.toFixed(1)
 }
 
+/** Owns the per-frame count-up so only this span re-renders, not the sea and chart. */
+function Runway({ months, on }: { months: number; on: boolean }) {
+  const counted = useCountUp(Math.min(months, RUNWAY_CAP), on)
+  return <>{months === Infinity ? 'Not drawn on' : fmt(counted)}</>
+}
+
 export function LandingHero() {
   const { on, paused, toggle } = useLandingMotion()
   const [step, setStep] = useState(0)
@@ -32,7 +38,6 @@ export function LandingHero() {
   const calc = scn.calc(SAMPLE_FAMILY)
   const months = runwayMonths(calc)
   const level = seaState(months)
-  const counted = useCountUp(Math.min(months, RUNWAY_CAP), on)
 
   // Cycle the sample days only while the hero is on screen, the tab is awake and motion is on.
   useEffect(() => {
@@ -61,7 +66,6 @@ export function LandingHero() {
     return () => ro.disconnect()
   }, [])
 
-  const shown = months === Infinity ? 'Not drawn on' : fmt(counted)
   const spoken =
     months === Infinity
       ? 'income still covers spending'
@@ -73,6 +77,7 @@ export function LandingHero() {
       <section
         ref={scene}
         className={`lk-scene ${level}`}
+        data-visible={visible}
         aria-labelledby="lk-h1"
         style={{ '--heel': HEEL[level], '--cardh': `${cardH}px` } as React.CSSProperties}
       >
@@ -94,7 +99,9 @@ export function LandingHero() {
           <div className="lk-readout">
             <div className="lk-read">
               <small>Sample family: {scn.chip.toLowerCase()}</small>
-              <span aria-hidden="true">{shown}</span>
+              <span aria-hidden="true">
+                <Runway months={months} on={on} />
+              </span>
               {months !== Infinity && (
                 <span className="u" aria-hidden="true">
                   months
