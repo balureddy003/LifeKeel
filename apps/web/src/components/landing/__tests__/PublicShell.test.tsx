@@ -6,9 +6,14 @@ import { PublicShell } from '../PublicShell'
 
 vi.mock('@/lib/growth-track', () => ({ track: vi.fn() }))
 vi.mock('@/lib/haptics', () => ({ haptic: vi.fn() }))
+const auth = { isAuthenticated: false }
+vi.mock('@/lib/auth-context', () => ({ useAuth: () => auth }))
 vi.mock('@/lib/api', () => ({ captureLead: vi.fn(async () => true) }))
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  auth.isAuthenticated = false
+})
 
 const APP = path.resolve(__dirname, '..', '..', '..', 'app')
 
@@ -25,6 +30,18 @@ describe('PublicShell', () => {
     expect(pricing.every((a) => a.getAttribute('href') === '/#pricing')).toBe(true)
     expect(screen.getAllByRole('link', { name: 'Guides' })[0]!.getAttribute('href')).toBe('/guides')
     expect(document.querySelector('footer.lk-footer')).not.toBeNull()
+  })
+
+  it('offers a signed-in reader "Open LifeKeel" instead of Sign in and Get started', () => {
+    auth.isAuthenticated = true
+    render(
+      <PublicShell>
+        <h1>Terms</h1>
+      </PublicShell>,
+    )
+    expect(screen.getByRole('link', { name: 'Open LifeKeel' }).getAttribute('href')).toBe('/')
+    expect(screen.queryByRole('link', { name: 'Sign in' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Get started' })).toBeNull()
   })
 
   it('is applied to terms, privacy, support, blog, guides and readiness through their layouts', () => {

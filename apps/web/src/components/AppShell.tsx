@@ -670,7 +670,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isMarketingPage = !isAuthenticated && pathname === '/'
   // The sign-in screens (AuthShell) and the public pages (PublicShell) frame themselves on the
   // same container as the landing page, so they must not inherit the phone-width wrapper.
-  const isAccountScreen = [
+  const ownsLayout = [
     '/welcome',
     '/signup',
     '/login',
@@ -683,7 +683,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     '/guides',
     '/readiness',
   ].some((p) => pathname.startsWith(p))
-  const widthClass = isMarketingPage || isOperatorRoute || isAccountScreen ? '' : 'max-w-md md:max-w-xl lg:max-w-3xl xl:max-w-4xl mx-auto'
+  const widthClass = isMarketingPage || isOperatorRoute || ownsLayout ? '' : 'max-w-md md:max-w-xl lg:max-w-3xl xl:max-w-4xl mx-auto'
   const railGutter = showNav ? 'md:pl-[88px]' : ''
 
   return (
@@ -708,7 +708,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <ModeEffects />
       {showNav && <NavRail />}
       <div className={[railGutter, 'min-h-screen'].filter(Boolean).join(' ')}>
-        <div id="main-content" tabIndex={-1} className={[widthClass, bottomPadding, emergencyGutter, isMarketingPage || isAccountScreen ? '' : 'pt-2', 'relative z-raised outline-none'].filter(Boolean).join(' ')}>
+        <div id="main-content" tabIndex={-1} className={[widthClass, bottomPadding, emergencyGutter, isMarketingPage || ownsLayout ? '' : 'pt-2', 'relative z-raised outline-none'].filter(Boolean).join(' ')}>
           <AuthGate>{children}</AuthGate>
           {showNav && <DisclaimerFooter />}
         </div>

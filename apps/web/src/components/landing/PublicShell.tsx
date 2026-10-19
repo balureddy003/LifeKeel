@@ -1,4 +1,7 @@
+'use client'
+
 import type { ReactNode } from 'react'
+import { useAuth } from '@/lib/auth-context'
 import { SiteHeader } from './SiteHeader'
 import { SiteFooter } from './SiteFooter'
 import './landing.css'
@@ -13,9 +16,11 @@ import './public.css'
  * so those pages' existing Tailwind classes follow the landing look in light and dark.
  */
 export function PublicShell({ children }: { children: ReactNode }) {
+  // A signed-in person reading Terms from Settings should not be offered "Sign in".
+  const { isAuthenticated } = useAuth()
   return (
     <div className="landing lk-public">
-      <SiteHeader home={false} />
+      <SiteHeader home={false} signedIn={isAuthenticated} />
       <div className="lk-public-body">{children}</div>
       <SiteFooter home={false} />
     </div>

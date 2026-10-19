@@ -24,7 +24,7 @@ const LINKS: { href: string; label: string; page?: boolean }[] = [
  * below it, so the logo and the page content share one left edge.
  */
 /** `home` is false off the landing page, so the section links go to / first. */
-export function SiteHeader({ home = true }: { home?: boolean }) {
+export function SiteHeader({ home = true, signedIn = false }: { home?: boolean; signedIn?: boolean }) {
   const href = (h: string) => (home || !h.startsWith('#') ? h : `/${h}`)
   const [open, setOpen] = useState(false)
 
@@ -63,12 +63,14 @@ export function SiteHeader({ home = true }: { home?: boolean }) {
           )}
         </nav>
         <div className="lk-header-actions">
-          <a className="lk-signin" href={appUrl('/login')} onClick={signIn}>
-            Sign in
-          </a>
-          <a className="lk-btn lk-btn-sm" href={appUrl('/signup')} onClick={start}>
-            Get started
-          </a>
+          {signedIn ? (
+            <Link className="lk-btn lk-btn-sm" href="/">Open LifeKeel</Link>
+          ) : (
+            <>
+              <a className="lk-signin" href={appUrl('/login')} onClick={signIn}>Sign in</a>
+              <a className="lk-btn lk-btn-sm" href={appUrl('/signup')} onClick={start}>Get started</a>
+            </>
+          )}
           <button
             type="button"
             className="lk-menu-btn"
