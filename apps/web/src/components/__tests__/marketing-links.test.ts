@@ -16,6 +16,13 @@ const SRC = path.resolve(__dirname, '..', '..')
 
 const PUBLIC_FILES = [
   'components/MarketingLanding.tsx',
+  'components/landing/SiteHeader.tsx',
+  'components/landing/SiteFooter.tsx',
+  'components/landing/SignupCard.tsx',
+  'components/landing/DawnClose.tsx',
+  'components/landing/Pricing.tsx',
+  'components/landing/PlusSpotlight.tsx',
+  'components/landing/StickyCta.tsx',
   'app/readiness/page.tsx',
   'app/blog/page.tsx',
   'app/blog/[slug]/BlogPostClient.tsx',
@@ -41,10 +48,12 @@ describe('public pages link to the app host with appUrl()', () => {
     expect(offenders).toEqual([])
   })
 
-  it('the landing page builds its sign-in and get-started links with appUrl()', () => {
-    const text = fs.readFileSync(path.join(SRC, 'components/MarketingLanding.tsx'), 'utf8')
-    expect(text).toContain("appUrl('/welcome')")
-    expect(text).toContain("appUrl('/login')")
+  it('the landing header and signup card build their links with appUrl()', () => {
+    const header = fs.readFileSync(path.join(SRC, 'components/landing/SiteHeader.tsx'), 'utf8')
+    expect(header).toContain("appUrl('/signup')")
+    expect(header).toContain("appUrl('/login')")
+    const card = fs.readFileSync(path.join(SRC, 'components/landing/SignupCard.tsx'), 'utf8')
+    expect(card).toContain("appUrl('/signup')")
   })
 
   it('the checker itself catches a router link to an app route (test would fail without it)', () => {

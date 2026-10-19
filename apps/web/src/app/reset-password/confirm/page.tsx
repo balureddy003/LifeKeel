@@ -1,13 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Lock, CheckCircle2, AlertCircle } from 'lucide-react'
 import { PasswordInput } from '@/components/PasswordInput'
 import { confirmPasswordReset } from '@/lib/api'
 import { haptic } from '@/lib/haptics'
+import { AuthShell } from '@/components/landing/AuthShell'
 
 export default function ConfirmPasswordResetPage() {
   const router = useRouter()
@@ -46,7 +45,11 @@ export default function ConfirmPasswordResetPage() {
       setTimeout(() => router.push('/login'), 2000)
     } catch (err) {
       haptic('warning')
-      setError(err instanceof Error ? err.message : "That didn't work — your password is unchanged. Try again in a moment.")
+      setError(
+        err instanceof Error
+          ? err.message
+          : "That didn't work — your password is unchanged. Try again in a moment.",
+      )
     } finally {
       setLoading(false)
     }
@@ -58,88 +61,71 @@ export default function ConfirmPasswordResetPage() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
-        <div className="w-16 h-16 rounded-3xl bg-danger/10 border border-danger/20 flex items-center justify-center mb-4">
-          <AlertCircle size={32} className="text-danger" />
-        </div>
-        {/* Deliberately not the brand-gradient treatment applied to the
-            other headings on this flow — an error state paired with the
-            danger-red icon above shouldn't also carry the cheerful purple
-            brand gradient; plain text reads as more appropriately serious
-            here. */}
-        <h1 className="text-2xl font-bold mb-2">Invalid reset link</h1>
-        <p className="text-sm text-ink-tertiary max-w-xs mb-8">
-          This link is missing its reset token. Request a new one to continue.
-        </p>
-        <Link href="/reset-password" className="text-sm text-family-400 font-semibold">
+      <AuthShell
+        title="Invalid reset link"
+        sub="This link is missing its reset token. Request a new one to continue."
+      >
+        <Link href="/reset-password" className="lk-btn">
           Request a new link
         </Link>
-      </div>
+      </AuthShell>
     )
   }
 
   if (done) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-16 h-16 rounded-3xl bg-success/10 border border-success/20 flex items-center justify-center mb-4"
-        >
-          <CheckCircle2 size={32} className="text-success" />
-        </motion.div>
-        <h1 className="text-2xl font-semibold tracking-tight mb-2 bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">Password updated</h1>
-        <p className="text-sm text-ink-tertiary">Taking you to sign in...</p>
-      </div>
+      <AuthShell title="Password updated" sub="Taking you to sign in...">
+        <Link href="/login" className="lk-btn lk-btn-quiet">
+          Sign in now
+        </Link>
+      </AuthShell>
     )
   }
 
   return (
-    <div className="min-h-screen flex flex-col px-6 pt-12 pb-8">
-      <div className="text-center mb-8">
-        <div className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-3 mx-auto">
-          <Lock size={32} className="text-family-400" />
-        </div>
-        <h1 className="text-2xl font-semibold tracking-tight bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">Set a new password</h1>
-        <p className="text-sm text-ink-tertiary mt-1">Must be at least 8 characters</p>
+    <AuthShell title="Set a new password" sub="Must be at least 8 characters">
+      <div className="lk-field">
+        <label htmlFor="confirm-new-password">New password</label>
+        <PasswordInput
+          id="confirm-new-password"
+          placeholder="New password"
+          value={password}
+          onChange={setPassword}
+          autoComplete="new-password"
+          inputClassName="lk-input"
+          wrapperClassName="lk-pw"
+          toggleClassName="lk-pw-toggle"
+        />
       </div>
-
-      <div className="space-y-3 mb-6">
-        <div>
-          <label htmlFor="confirm-new-password" className="block text-xs text-ink-tertiary mb-1.5 px-1">New password</label>
-          <PasswordInput
-            id="confirm-new-password"
-            placeholder="New password"
-            value={password}
-            onChange={setPassword}
-            autoComplete="new-password"
-          />
-        </div>
-        <div>
-          <label htmlFor="confirm-new-password-repeat" className="block text-xs text-ink-tertiary mb-1.5 px-1">Confirm new password</label>
-          <PasswordInput
-            id="confirm-new-password-repeat"
-            placeholder="Confirm new password"
-            value={confirmPassword}
-            onChange={setConfirmPassword}
-            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-            autoComplete="new-password"
-          />
-        </div>
+      <div className="lk-field">
+        <label htmlFor="confirm-new-password-repeat">Confirm new password</label>
+        <PasswordInput
+          id="confirm-new-password-repeat"
+          placeholder="Confirm new password"
+          value={confirmPassword}
+          onChange={setConfirmPassword}
+          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+          autoComplete="new-password"
+          inputClassName="lk-input"
+          wrapperClassName="lk-pw"
+          toggleClassName="lk-pw-toggle"
+        />
       </div>
 
       {error && (
-        <p role="status" aria-live="polite" className="text-sm text-danger text-center mb-4">{error}</p>
+        <p role="status" aria-live="polite" className="lk-err">
+          {error}
+        </p>
       )}
 
-      <motion.button
-        whileTap={{ scale: 0.96 }}
+      <button
+        type="button"
+        className="lk-btn"
         onClick={handleSubmit}
         disabled={password.length < 8 || !confirmPassword || loading}
-        className="w-full bg-family-500 text-white font-semibold rounded-2xl py-4 text-base shadow-md shadow-family-500/15 disabled:opacity-40 active:opacity-90 transition-opacity"
       >
         {loading ? 'Updating...' : 'Update password'}
-      </motion.button>
-    </div>
+      </button>
+    </AuthShell>
   )
 }

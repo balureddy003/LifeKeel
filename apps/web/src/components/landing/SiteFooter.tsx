@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { captureLead } from '@/lib/api'
+import { Brand } from './Brand'
 import './landing.css'
 import './hero.css'
 import './bands.css'
@@ -73,47 +74,49 @@ const COMPANY = [
 export function SiteFooter() {
   return (
     <footer className="lk-band lk-footer">
-      <div className="lk-foot-grid">
-        <div>
-          <p className="lk-foot-brand">LifeKeel</p>
-          <p className="lk-fine">
-            Your family&rsquo;s chart, kept current. Know what is on file, and where to start if
-            something happens.
-          </p>
-        </div>
-        <nav aria-label="Product">
-          <h3>Product</h3>
-          {PRODUCT.map((l) =>
-            l.local ? (
-              <a key={l.href} href={l.href}>
-                {l.label}
-              </a>
-            ) : (
+      <div className="lk-foot-inner">
+        <div className="lk-foot-grid">
+          <div>
+            <Brand />
+            <p className="lk-fine">
+              Your family&rsquo;s chart, kept current. Know what is on file, and where to start if
+              something happens.
+            </p>
+          </div>
+          <nav aria-label="Product">
+            <h3>Product</h3>
+            {PRODUCT.map((l) =>
+              l.local ? (
+                <a key={l.href} href={l.href}>
+                  {l.label}
+                </a>
+              ) : (
+                <Link key={l.href} href={l.href}>
+                  {l.label}
+                </Link>
+              ),
+            )}
+          </nav>
+          <nav aria-label="Company">
+            <h3>Company</h3>
+            {COMPANY.map((l) => (
               <Link key={l.href} href={l.href}>
                 {l.label}
               </Link>
-            ),
-          )}
-        </nav>
-        <nav aria-label="Company">
-          <h3>Company</h3>
-          {COMPANY.map((l) => (
-            <Link key={l.href} href={l.href}>
-              {l.label}
-            </Link>
-          ))}
-        </nav>
-        <div>
-          <h3>Stay in touch</h3>
-          <Newsletter />
+            ))}
+          </nav>
+          <div>
+            <h3>Stay in touch</h3>
+            <Newsletter />
+          </div>
         </div>
+        <p className="lk-fine lk-legalline">
+          For informational and educational purposes only. Not financial, investment, tax,
+          insurance, or legal advice, and not a substitute for professional emergency services:
+          always call your local emergency number (999, 112, 911, or the equivalent where you are)
+          in a real emergency. Consult a qualified professional before making financial decisions.
+        </p>
       </div>
-      <p className="lk-fine lk-legalline">
-        For informational and educational purposes only. Not financial, investment, tax, insurance,
-        or legal advice, and not a substitute for professional emergency services: always call your
-        local emergency number (999, 112, 911, or the equivalent where you are) in a real emergency.
-        Consult a qualified professional before making financial decisions.
-      </p>
     </footer>
   )
 }

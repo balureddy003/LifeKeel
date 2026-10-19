@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { GoogleIcon } from '@/components/GoogleIcon'
@@ -9,6 +8,7 @@ import { PasswordInput } from '@/components/PasswordInput'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 import { RegionSwitch } from '@/components/RegionSwitch'
+import { AuthShell } from '@/components/landing/AuthShell'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -99,25 +99,17 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col px-6 pt-12 pb-8">
-      <div className="text-center mb-8">
-        {/* eslint-disable-next-line @next/next/no-img-element -- matches MarketingLanding.tsx's own /icon.svg usage */}
-        <img src="/icon.svg" alt="" width={64} height={64} className="rounded-3xl mx-auto mb-3" />
-        <h1 className="text-2xl font-semibold tracking-tight bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">
-          Welcome back
-        </h1>
-        <p className="text-sm text-ink-tertiary mt-1">
-          {mfaPending ? 'Two-factor authentication' : 'Sign in to your family'}
-        </p>
-        <RegionSwitch className="mt-3" />
-      </div>
-
+    <AuthShell
+      title="Welcome back"
+      sub={mfaPending ? 'Two-factor authentication' : 'Sign in to your family'}
+      aside={<RegionSwitch />}
+    >
       {mfaPending ? (
-        <div className="space-y-3">
-          <label htmlFor="mfa-code" className="block">
-            <div className="text-xs text-ink-tertiary mb-1.5 px-1">
+        <>
+          <div className="lk-field">
+            <label htmlFor="mfa-code">
               Enter the 6-digit code from your authenticator app, or a recovery code
-            </div>
+            </label>
             <input
               id="mfa-code"
               type="text"
@@ -128,109 +120,102 @@ export default function LoginPage() {
               value={mfaCode}
               onChange={(e) => setMfaCode(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleVerifyMfa()}
-              className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all text-center tracking-widest"
+              className="lk-input center"
             />
-          </label>
+          </div>
           {error && (
-            <p role="status" aria-live="polite" className="text-sm text-danger text-center">
+            <p role="status" aria-live="polite" className="lk-err">
               {error}
             </p>
           )}
-          <motion.button
-            whileTap={{ scale: 0.96 }}
+          <button
+            type="button"
+            className="lk-btn"
             onClick={handleVerifyMfa}
             disabled={!mfaCode.trim() || loading}
-            className="w-full bg-family-500 text-white font-semibold rounded-2xl py-4 text-base shadow-md shadow-family-500/15 disabled:opacity-40 active:opacity-90 transition-opacity"
           >
             {loading ? 'Verifying...' : 'Verify'}
-          </motion.button>
+          </button>
           <button
+            type="button"
+            className="lk-textlink lk-textlink-muted"
             onClick={() => {
               setMfaPending(false)
               setMfaCode('')
               setError(null)
               sessionStorage.removeItem('lifekeel_mfa_pending')
             }}
-            className="w-full text-sm text-ink-tertiary font-semibold text-center"
           >
             Back to sign in
           </button>
-        </div>
+        </>
       ) : (
         <>
-          <div className="space-y-3 mb-6">
-            <motion.button
-              whileTap={{ scale: 0.96 }}
-              onClick={handleGoogle}
-              disabled={loading}
-              className="w-full glass rounded-2xl py-4 font-semibold flex items-center justify-center gap-2"
-            >
-              <GoogleIcon size={20} /> Continue with Google
-            </motion.button>
-          </div>
-
-          <div className="flex items-center gap-3 mb-6">
-            <div className="flex-1 h-px bg-tint/10" />
-            <span className="text-xs text-ink-tertiary">or use email</span>
-            <div className="flex-1 h-px bg-tint/10" />
-          </div>
-
-          <div className="space-y-3 mb-6">
-            <label htmlFor="login-email" className="block">
-              <div className="text-xs text-ink-tertiary mb-1.5 px-1">Email address</div>
-              <input
-                id="login-email"
-                type="email"
-                placeholder="Email address"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSignIn()}
-                autoComplete="email"
-                className="glass-input w-full rounded-2xl px-4 py-4 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-              />
-            </label>
-            <div>
-              <label
-                htmlFor="login-password"
-                className="block text-xs text-ink-tertiary mb-1.5 px-1"
-              >
-                Password
-              </label>
-              <PasswordInput
-                id="login-password"
-                placeholder="Password"
-                value={password}
-                onChange={setPassword}
-                onKeyDown={(e) => e.key === 'Enter' && handleSignIn()}
-                autoComplete="current-password"
-              />
-            </div>
-          </div>
-
-          <Link
-            href="/reset-password"
-            className="text-sm text-family-400 font-semibold text-center mb-6 -mt-2"
-            onClick={() => haptic('light')}
+          <button
+            type="button"
+            className="lk-btn lk-btn-google"
+            onClick={handleGoogle}
+            disabled={loading}
           >
+            <GoogleIcon size={20} /> Continue with Google
+          </button>
+
+          <div className="lk-or">or use email</div>
+
+          <div className="lk-field">
+            <label htmlFor="login-email">Email address</label>
+            <input
+              id="login-email"
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSignIn()}
+              autoComplete="email"
+              className="lk-input"
+            />
+          </div>
+          <div className="lk-field">
+            <label htmlFor="login-password">Password</label>
+            <PasswordInput
+              id="login-password"
+              placeholder="Password"
+              value={password}
+              onChange={setPassword}
+              onKeyDown={(e) => e.key === 'Enter' && handleSignIn()}
+              autoComplete="current-password"
+              inputClassName="lk-input"
+              wrapperClassName="lk-pw"
+              toggleClassName="lk-pw-toggle"
+            />
+          </div>
+
+          <Link href="/reset-password" className="lk-textlink" onClick={() => haptic('light')}>
             Forgot password?
           </Link>
 
           {error && (
-            <p role="status" aria-live="polite" className="text-sm text-danger text-center mb-4">
+            <p role="status" aria-live="polite" className="lk-err">
               {error}
             </p>
           )}
 
-          <motion.button
-            whileTap={{ scale: 0.96 }}
+          <button
+            type="button"
+            className="lk-btn"
             onClick={handleSignIn}
             disabled={!email.trim() || !password || loading}
-            className="w-full bg-family-500 text-white font-semibold rounded-2xl py-4 text-base shadow-md shadow-family-500/15 disabled:opacity-40 active:opacity-90 transition-opacity"
           >
             {loading ? 'Signing in...' : 'Sign In'}
-          </motion.button>
+          </button>
+          <p className="lk-hint lk-center">
+            New to LifeKeel?{' '}
+            <Link href="/signup" className="lk-textlink">
+              Create an account
+            </Link>
+          </p>
         </>
       )}
-    </div>
+    </AuthShell>
   )
 }

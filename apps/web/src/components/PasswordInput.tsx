@@ -11,6 +11,8 @@ interface PasswordInputProps {
   autoComplete?: string
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void
   inputClassName?: string
+  wrapperClassName?: string
+  toggleClassName?: string
 }
 
 const DEFAULT_INPUT_CLASSES =
@@ -19,11 +21,21 @@ const DEFAULT_INPUT_CLASSES =
 // KEEL-024: password fields had no way to check what you'd typed before
 // submitting. Wraps a standard password input with a show/hide toggle,
 // matching the app's existing glass-input styling.
-export function PasswordInput({ id, value, onChange, placeholder, autoComplete, onKeyDown, inputClassName }: PasswordInputProps) {
+export function PasswordInput({
+  id,
+  value,
+  onChange,
+  placeholder,
+  autoComplete,
+  onKeyDown,
+  inputClassName,
+  wrapperClassName,
+  toggleClassName,
+}: PasswordInputProps) {
   const [visible, setVisible] = useState(false)
 
   return (
-    <div className="relative">
+    <div className={wrapperClassName ?? 'relative'}>
       <input
         id={id}
         type={visible ? 'text' : 'password'}
@@ -38,7 +50,10 @@ export function PasswordInput({ id, value, onChange, placeholder, autoComplete, 
         type="button"
         onClick={() => setVisible((v) => !v)}
         aria-label={visible ? 'Hide password' : 'Show password'}
-        className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-tertiary active:opacity-60"
+        className={
+          toggleClassName ??
+          'absolute right-3 top-1/2 -translate-y-1/2 text-ink-tertiary active:opacity-60'
+        }
       >
         {visible ? <EyeOff size={18} /> : <Eye size={18} />}
       </button>
