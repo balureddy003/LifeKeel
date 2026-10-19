@@ -419,3 +419,27 @@ describe('architecture claims: queue durability and migration gate', () => {
     expect(existsSync(join(REPO_ROOT, 'red-team', 'guard-fixtures.yaml'))).toBe(true)
   })
 })
+
+describe('architecture claims: service-role split (B7)', () => {
+  it('every cron schedule and queue consumer lives inside the SERVICE_ROLE gate', () => {
+    const src = readSrc('apps/api/src/server.ts')
+    const open = src.indexOf('if (runBackgroundWork) {')
+    const close = src.indexOf('} // end runBackgroundWork')
+    expect(open).toBeGreaterThan(-1)
+    expect(close).toBeGreaterThan(open)
+    const gated = src.slice(open, close)
+    // No timer or consumer may be registered outside the gated region —
+    // an api-role process must run zero background work.
+    expect(src.slice(0, open)).not.toContain('cron.schedule(')
+    expect(src.slice(close)).not.toContain('cron.schedule(')
+    expect(src.slice(close)).not.toContain('.subscribe(')
+    expect(gated).toContain('cron.schedule(')
+    expect(gated).toContain('.subscribe(')
+  })
+
+  it('the queue connection stays role-agnostic — api publishes, jobs consumes', () => {
+    const src = readSrc('apps/api/src/server.ts')
+    const open = src.indexOf('if (runBackgroundWork) {')
+    expect(src.slice(0, open)).toContain('queueManager.connect()')
+  })
+})

@@ -1,9 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
-import { MarkedRoute } from '../MarkedRoute'
 import { YearsTimelapse } from '../YearsTimelapse'
 import { StickyCta } from '../StickyCta'
-import { ROUTE } from '../route'
 import { YEAR_ITEMS } from '../years'
 import { CLAIMS } from '../claims'
 import { track } from '@/lib/growth-track'
@@ -25,31 +23,18 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('route and years data', () => {
+describe('years data', () => {
   const status = (id: string) => CLAIMS.find((c) => c.id === id)?.status
-  it('each Live or Planned tag matches its claim in the registry', () => {
-    for (const c of ROUTE) expect(status(c.claim) === 'live', c.title).toBe(c.live)
-    for (const i of YEAR_ITEMS) expect(status(i.claim) === 'live', i.text).toBe(i.live)
-  })
-})
-
-describe('MarkedRoute', () => {
-  it('shows every card with a text tag, and planned cards say "will", not "does"', () => {
-    stubMatchMedia(true)
-    const { container } = render(<MarkedRoute />)
-    const cards = container.querySelectorAll('.lk-rcard')
-    expect(cards.length).toBe(ROUTE.length)
-    for (const [i, c] of ROUTE.entries()) {
-      expect(cards[i]!.querySelector('.lk-st')!.textContent).toBe(c.live ? 'Live' : 'Planned')
-      expect(cards[i]!.textContent).toContain(c.live ? 'Keel does' : 'Keel will')
-    }
+  it('every year item is backed by a live claim', () => {
+    for (const i of YEAR_ITEMS) expect(status(i.claim), i.text).toBe('live')
   })
 
-  it('with motion off the course is drawn complete and every lantern is lit', () => {
-    stubMatchMedia(true)
-    const { container } = render(<MarkedRoute />)
-    expect(container.querySelector('clipPath rect')!.getAttribute('width')).toBe('1000')
-    expect(container.querySelectorAll('.lk-wl.lit').length).toBe(ROUTE.length)
+  it('every stage has something new on the chart', () => {
+    for (const stage of [1, 2, 3, 4])
+      expect(
+        YEAR_ITEMS.some((i) => i.stage === stage),
+        `stage ${stage}`,
+      ).toBe(true)
   })
 })
 
@@ -61,9 +46,10 @@ describe('YearsTimelapse', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Later years' }))
     expect(container.querySelector('figure')!.className).toContain('lk-yr-4')
     expect(container.querySelectorAll('.lk-yl.in').length).toBe(YEAR_ITEMS.length)
+    expect(container.textContent).not.toMatch(/planned|\blive\b/i)
     const status = screen.getByRole('status').textContent!
     expect(status).toContain('Later years')
-    expect(status).toContain('Access for a named person outside the family (Planned)')
+    expect(status).toContain('Retirement gap check')
     expect(container.querySelector('[aria-live]')).toBeNull()
   })
 

@@ -40,16 +40,20 @@ describe('SampleDay', () => {
 })
 
 describe('StoryBoard', () => {
-  it('renders every capability with a text Live or Planned tag, and a qualifier on each Live item', () => {
+  it('shows only what is available today, each with its note, and no Live or Planned tags', () => {
     const { container } = render(<StoryBoard />)
+    const available = CAPABILITIES.filter((c) => c.live)
     const items = container.querySelectorAll('li')
-    expect(items.length).toBe(CAPABILITIES.length)
-    for (const c of CAPABILITIES) {
+    expect(items.length).toBe(available.length)
+    for (const c of available) {
       const li = [...items].find((el) => el.textContent?.includes(c.text))!
       expect(li, c.text).toBeTruthy()
-      expect(li.querySelector('.lk-st')!.textContent).toBe(c.live ? 'Live' : 'Planned')
-      expect(!!li.querySelector('.lk-q'), c.text).toBe(c.live)
+      expect(li.querySelector('.lk-q'), c.text).not.toBeNull()
     }
+    for (const c of CAPABILITIES.filter((x) => !x.live)) {
+      expect(container.textContent, c.text).not.toContain(c.text)
+    }
+    expect(container.querySelector('.lk-st')).toBeNull()
   })
 
   it('uses the word platform once on the whole page copy, and never in a heading', () => {

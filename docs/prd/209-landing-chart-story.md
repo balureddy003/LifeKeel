@@ -174,3 +174,14 @@ paid acquisition.
 ## Becomes
 
 docs/prd/209-landing-chart-story.md
+
+## Amendment: no roadmap on the public site
+
+Decision (founder, after the first build): the marketing and landing pages do not show a roadmap. They
+show only what is available today, each item with the note saying what it depends on. The **Live** and
+**Planned** tags, the planned-steps preview, the dashed "planned" years items, the "Planned check" row in
+the cover sample and the live and planned counts are removed from the public pages, `llms.txt` and the
+FAQ. The status vocabulary (Live, Planned) and the roadmap belong in the app. The capability data and the
+claims registry keep their `planned` entries for that use, and `NoRoadmap.test.tsx` fails if roadmap wording
+or tags return to the public site. This supersedes the "Live or Planned as text" and "Planned means
+intended, never promised" requirements above for public pages only.

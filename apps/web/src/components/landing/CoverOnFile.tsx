@@ -24,16 +24,6 @@ const ROWS: { cover: string; onFile: string; note: React.ReactNode }[] = [
     onFile: 'Same person, same type',
     note: 'Two policies of one type are on file. Keel cannot say if that is intended.',
   },
-  {
-    cover: 'Home contents',
-    onFile: "Two policies, one in each partner's name",
-    note: (
-      <>
-        Some policies cover the whole household, so this may be intended. Keel cannot say.{' '}
-        <span className="lk-tag">Planned check</span>
-      </>
-    ),
-  },
 ]
 
 /** Before: a made-up cover-on-file table. Information from what is entered; no insurer named, nothing recommended. */
@@ -66,19 +56,32 @@ export function CoverOnFile() {
             ))}
           </div>
           <p className="lk-fine">6 of 9 items on file. Keel only checks what is on file.</p>
-          <div className="lk-scroll" role="region" aria-label="Sample cover table, scrolls sideways on small screens" tabIndex={0}>
+          <div
+            className="lk-scroll"
+            role="region"
+            aria-label="Sample cover table, scrolls sideways on small screens"
+            tabIndex={0}
+          >
             <table className="lk-cov" role="table">
               <thead>
                 <tr role="row">
-                  <th scope="col" role="columnheader">Cover</th>
-                  <th scope="col" role="columnheader">On file</th>
-                  <th scope="col" role="columnheader">Note</th>
+                  <th scope="col" role="columnheader">
+                    Cover
+                  </th>
+                  <th scope="col" role="columnheader">
+                    On file
+                  </th>
+                  <th scope="col" role="columnheader">
+                    Note
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {ROWS.map((r) => (
                   <tr key={r.cover} role="row">
-                    <th scope="row" role="rowheader">{r.cover}</th>
+                    <th scope="row" role="rowheader">
+                      {r.cover}
+                    </th>
                     <td role="cell">{r.onFile}</td>
                     <td role="cell">{r.note}</td>
                   </tr>
