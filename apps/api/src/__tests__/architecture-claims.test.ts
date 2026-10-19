@@ -271,6 +271,15 @@ describe('architecture claims: session, login, and signed-link hardening', () =>
     expect(executor).toContain('approved_via')
     expect(readSrc('packages/workflows/src/types.ts')).toMatch(/approved_via\?:/)
   })
+
+  it('signed-link approve requires a same-tenant session — the bearer link cannot dispatch alone', () => {
+    const src = readSrc('apps/api/src/routes/insights.ts')
+    // Intent 02: POST /a/:token approve must check authContext against the
+    // token's tenant; removing this silently restores unauthenticated
+    // external dispatch.
+    expect(src).toContain('ctx.tenant_id !== decoded.tenant_id')
+    expect(src).toContain('isOriginAllowedForCookieAuth')
+  })
 })
 
 /* ------------------------------------------------------------------ */
