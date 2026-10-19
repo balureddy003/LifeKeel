@@ -1,0 +1,141 @@
+/*
+ * Hero scene (PRD-209): sea, harbour chart, signup card. Everything is scoped to
+ * .landing and uses its tokens. Ambient loops stop under data-motion="off" (the
+ * Pause control) and prefers-reduced-motion; the first screen is complete at rest.
+ */
+.landing * { box-sizing: border-box; }
+.landing h1, .landing p, .landing ul { margin: 0; padding: 0; }
+.landing .lk-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.landing .lk-fine { font-size: 13px; color: var(--muted); }
+
+.lk-scene { position: relative; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); grid-template-areas: 'copy stage' 'card stage'; column-gap: clamp(20px, 4vw, 56px); border-radius: 26px; overflow: hidden; padding: clamp(28px, 4vw, 56px); padding-bottom: 0; min-height: 700px; isolation: isolate; --wl: 200px; border: 1px solid var(--line); background: var(--sky-a); max-width: 1180px; margin: 16px auto 0; }
+.lk-scene::before { content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none; background: radial-gradient(130% 100% at 50% 35%, transparent 62%, color-mix(in srgb, var(--ink) 7%, transparent)); }
+
+/* backdrop */
+.lk-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; animation: lk-expose 1.8s ease-out backwards; }
+.lk-sky { position: absolute; inset: 0; }
+.lk-day { background: linear-gradient(var(--sky-a), var(--sky-b) 78%); }
+.lk-dusk { background: linear-gradient(var(--dusk-a), var(--dusk-b)); opacity: 0; transition: opacity 1.8s ease; }
+.lk-scene.rough .lk-dusk { opacity: 1; } .lk-scene.holding .lk-dusk { opacity: .45; }
+.lk-glow { position: absolute; left: 62%; bottom: calc(var(--wl) + 70px); width: 520px; height: 520px; margin-left: -260px; margin-bottom: -260px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--cta) 34%, transparent), transparent 65%); transition: opacity 1.8s; }
+.lk-scene.rough .lk-glow { opacity: .25; }
+.lk-lh { position: absolute; right: 5%; bottom: calc(var(--wl) + 62px); width: 22px; height: 64px; color: var(--ink); opacity: .85; }
+.lk-beam { position: absolute; right: calc(5% + 11px); bottom: calc(var(--wl) + 108px); width: 560px; height: 140px; margin-bottom: -70px; transform-origin: 100% 50%; clip-path: polygon(100% 50%, 0 4%, 0 96%); background: linear-gradient(270deg, color-mix(in srgb, var(--cta) 70%, transparent), transparent 90%); opacity: 0; transition: opacity 1.8s; animation: lk-swing 9s ease-in-out infinite alternate; }
+.lk-scene.rough .lk-beam { opacity: .85; } .lk-scene.holding .lk-beam { opacity: .35; }
+@keyframes lk-swing { from { transform: rotate(-16deg); } to { transform: rotate(16deg); } }
+@keyframes lk-expose { from { filter: brightness(.62) saturate(.8); } }
+.lk-layer { position: absolute; left: 0; bottom: 0; width: 2400px; animation: lk-drift var(--d) linear infinite; color: var(--c); }
+.lk-layer svg { width: 100%; height: 100%; display: block; }
+.lk-l0 { height: calc(var(--wl) + 92px); --d: 70s; --c: var(--wave); opacity: .45; }
+.lk-l1 { height: calc(var(--wl) + 58px); --d: 46s; --c: var(--wave); opacity: .7; animation-direction: reverse; }
+.lk-l2 { height: calc(var(--wl) + 26px); --d: 30s; --c: var(--wave-2); }
+.lk-front { position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--wl) + 8px); z-index: 3; overflow: hidden; pointer-events: none; }
+.lk-front .lk-layer { height: 100%; --d: 18s; --c: var(--wave-3); animation-direction: reverse; }
+@keyframes lk-drift { to { transform: translateX(-1200px); } }
+.lk-scene.rough .lk-l2 { --d: 20s; } .lk-scene.rough .lk-front .lk-layer { --d: 12s; }
+
+/* copy */
+.lk-copy { grid-area: copy; position: relative; z-index: 4; align-self: start; }
+.lk-eyebrow { display: block; margin-bottom: 14px; font: 500 12px/1.3 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.lk-copy h1 { font-family: var(--display); font-weight: 400; letter-spacing: -0.01em; text-wrap: balance; font-size: clamp(36px, 4.5vw, 58px); line-height: 1.02; }
+.lk-copy h1 em { color: var(--brass-text); font-style: italic; }
+.lk-lede { color: var(--muted); margin-top: 18px; max-width: 44ch; font-size: 17px; line-height: 1.55; }
+.lk-copy > * { animation: lk-rise .5s ease backwards; } .lk-copy > h1 { animation: none; }
+.lk-copy > .lk-lede { animation-delay: .1s; }
+@keyframes lk-rise { from { opacity: 0; transform: translateY(8px); } }
+
+/* signup card */
+.lk-cardwrap { grid-area: card; position: relative; z-index: 4; align-self: start; margin-top: 26px; margin-bottom: 28px; }
+.lk-card { display: grid; gap: 10px; background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent); border-radius: 20px; padding: 22px; box-shadow: 0 30px 60px -34px rgba(14, 36, 51, .5); }
+.lk-btn { position: relative; display: flex; align-items: center; justify-content: center; text-align: center; font: 600 16px var(--body); background: var(--cta); color: var(--on-cta); border: 1px solid transparent; padding: 14px 22px; min-height: 52px; border-radius: 12px; cursor: pointer; text-decoration: none; transition: transform .2s, filter .2s; }
+.lk-btn:hover { filter: brightness(1.05); } .lk-btn:active { transform: scale(.97); }
+.lk-once::after { content: ''; position: absolute; inset: -2px; border-radius: 14px; border: 2px solid var(--cta); opacity: 0; pointer-events: none; animation: lk-halo 1.4s 3s 1 backwards; }
+@keyframes lk-halo { 0% { transform: scale(1); opacity: .6; } 100% { transform: scale(1.12, 1.35); opacity: 0; } }
+.lk-card .lk-fine a, .lk-legal a { color: var(--ink); text-underline-offset: 3px; }
+.lk-legal { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+/* stage */
+.lk-stage { grid-area: stage; grid-row: 1 / 3; position: relative; --tl: 12%; --tw: 74%; }
+.lk-readout { position: absolute; right: 0; top: 0; left: 0; z-index: 2; display: flex; justify-content: flex-end; align-items: flex-start; gap: 16px; flex-wrap: wrap; text-align: right; }
+.lk-read { font-family: var(--display); font-size: clamp(60px, 8vw, 104px); line-height: .9; font-variant-numeric: tabular-nums; contain: layout paint; }
+.lk-read small { font: 500 12px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 8px; }
+.lk-read .u { font-size: .3em; font-family: var(--body); color: var(--muted); margin-left: 8px; }
+.lk-pill { font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 9px 12px; border-radius: 999px; border: 1px solid currentColor; background: color-mix(in srgb, var(--surface) 90%, transparent); white-space: nowrap; }
+.lk-pill.rough, .lk-pill.holding { color: var(--brass-text); } .lk-pill.steady { color: var(--ok-text); }
+.lk-ctl { flex-basis: 100%; display: flex; justify-content: flex-end; gap: 12px; align-items: center; flex-wrap: wrap; }
+.lk-pause { font: 500 13px var(--body); color: var(--ink); background: color-mix(in srgb, var(--surface) 90%, transparent); border: 1px solid var(--field-line); border-radius: 999px; padding: 8px 14px; min-height: 36px; cursor: pointer; }
+
+/* chart, slips, boats */
+.lk-bm { --bx: 74%; --bw: 170px; --ad: .9s; } .lk-bf1 { --bx: 55%; --bw: 120px; --ad: 1.2s; } .lk-bf2 { --bx: 42%; --bw: 90px; --ad: 1.5s; } .lk-bf3 { --bx: 32%; --bw: 80px; --ad: 1.8s; }
+.lk-chart { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.lk-chart line { stroke: var(--ink); stroke-width: 1; vector-effect: non-scaling-stroke; opacity: .13; transform-box: fill-box; }
+.lk-chart .h { transform-origin: left center; animation: lk-wipex 1.4s ease-out backwards; }
+.lk-chart .v { transform-origin: center top; animation: lk-wipey 1.4s ease-out backwards; }
+.lk-chart line:nth-child(2) { animation-delay: .15s; } .lk-chart line:nth-child(3) { animation-delay: .3s; } .lk-chart line:nth-child(4) { animation-delay: .1s; } .lk-chart line:nth-child(5) { animation-delay: .25s; } .lk-chart line:nth-child(6) { animation-delay: .4s; }
+@keyframes lk-wipex { from { transform: scaleX(0); } } @keyframes lk-wipey { from { transform: scaleY(0); } }
+.lk-slip { position: absolute; z-index: 4; bottom: calc(var(--wl) - 24px); height: 26px; left: var(--bx); width: var(--bw); margin-left: calc(var(--bw) / -2); border: 1.5px solid color-mix(in srgb, var(--brass-text) 80%, transparent); border-top: 0; border-radius: 0 0 8px 8px; pointer-events: none; animation: lk-slipdraw .9s ease-out backwards; }
+.lk-slip.lk-bm { animation-delay: .2s; } .lk-slip.lk-bf1 { animation-delay: .4s; } .lk-slip.lk-bf2 { animation-delay: .6s; } .lk-slip.lk-bf3 { animation-delay: .8s; }
+@keyframes lk-slipdraw { from { clip-path: inset(0 50% 0 50%); } to { clip-path: inset(0); } }
+.lk-boat { position: absolute; bottom: var(--wl); width: 150px; left: var(--bx, 70%); margin-left: -75px; z-index: 1; animation: lk-arrive 1.7s cubic-bezier(.2, .7, .2, 1) backwards; animation-delay: var(--ad, .9s); }
+.lk-boat svg { display: block; width: 150px; height: 170px; transform-origin: 50% 88%; transform: rotate(var(--heel, 0deg)); transition: transform 1.8s cubic-bezier(.3, 1.5, .4, 1); animation: lk-bob 4s ease-in-out infinite; overflow: visible; }
+.lk-boat .lk-refl { position: absolute; left: 0; top: calc(100% - 22px); opacity: .16; transform: scaleY(-1); filter: blur(1.5px); -webkit-mask-image: linear-gradient(#000, transparent 60%); mask-image: linear-gradient(#000, transparent 60%); height: 170px; animation: none; }
+.lk-lamp { position: absolute; left: 22px; bottom: 36px; width: 8px; height: 8px; border-radius: 50%; background: var(--cta); opacity: 0; box-shadow: 0 0 16px 6px color-mix(in srgb, var(--cta) 60%, transparent); }
+.lk-follower { width: 100px; margin-left: -50px; }
+.lk-follower svg { width: 100px; height: 114px; animation-delay: -1.3s; }
+.lk-f2 { width: 70px; margin-left: -35px; } .lk-f2 svg { width: 70px; height: 80px; animation-delay: -2.4s; }
+.lk-f3 { width: 60px; margin-left: -30px; } .lk-f3 svg { width: 60px; height: 69px; animation-delay: -3.1s; }
+@keyframes lk-arrive { from { transform: translateX(260px); } }
+@keyframes lk-bob { 50% { translate: 0 5px; } }
+.lk-scene.rough .lk-boat svg { animation-duration: 2s; }
+.lk-nm { position: absolute; left: 50%; top: -6px; transform: translateX(-50%); font: 500 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink); background: color-mix(in srgb, var(--surface) 78%, transparent); padding: 2px 7px; border-radius: 8px; white-space: nowrap; animation: lk-fadein .7s ease backwards; animation-delay: calc(var(--ad, .9s) + 1.5s); }
+.lk-follower .lk-nm { top: 6px; }
+@keyframes lk-fadein { from { opacity: 0; } }
+
+/* lanterns for what is on file */
+.lk-chartkey { position: absolute; right: 0; top: 190px; display: flex; gap: 8px; list-style: none; z-index: 1; }
+.lk-chartkey li { display: grid; justify-items: center; align-content: start; gap: 2px; width: 80px; padding: 8px 4px; border-radius: 12px; background: color-mix(in srgb, var(--surface) 82%, transparent); border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); }
+.lk-ln { width: 18px; height: 27px; }
+.lk-chartkey b { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink); }
+.lk-chartkey .st2 { font-size: 11px; line-height: 1.2; text-align: center; color: var(--muted); }
+.lk-chartkey li.off .lk-ln { color: var(--muted); opacity: .85; }
+.lk-chartkey li.on .lk-ln { color: var(--ok-text); filter: drop-shadow(0 0 5px color-mix(in srgb, currentColor 45%, transparent)); animation: lk-lit .8s cubic-bezier(.3, 1.6, .5, 1) backwards; animation-delay: calc(2.8s + var(--i) * .16s); }
+@keyframes lk-lit { from { opacity: .12; transform: scale(.5); filter: none; } }
+
+/* dark */
+:root[data-theme='dark'] .lk-copy h1 em, :root[data-theme='dark'] .lk-pill.rough, :root[data-theme='dark'] .lk-pill.holding { color: var(--brass); }
+:root[data-theme='dark'] .lk-slip { border-color: color-mix(in srgb, var(--brass) 75%, transparent); }
+
+/* phone */
+@media (max-width: 860px) {
+  .lk-scene { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'copy' 'stage' 'card'; padding: 20px 16px 0; min-height: 0; --wl: 70px; row-gap: 0; border-radius: 20px; }
+  .lk-scene::before { background: none; }
+  .lk-bg { bottom: auto; height: calc(100% - var(--cardh, 330px)); }
+  .lk-scene > .lk-front { bottom: var(--cardh, 330px); }
+  .lk-stage { grid-row: auto; height: 414px; --tl: 16%; --tw: 68%; }
+  .lk-readout { display: contents; }
+  .lk-read { position: absolute; left: 0; top: 0; text-align: left; font-size: 60px; z-index: 2; }
+  .lk-stage .lk-pill { position: absolute; left: 0; top: 100px; font-size: 11px; padding: 7px 10px; z-index: 2; }
+  .lk-ctl { position: absolute; right: 0; top: 98px; flex-basis: auto; z-index: 2; }
+  .lk-ctl .lk-fine { display: none; }
+  .lk-pause { font-size: 12px; padding: 6px 12px; }
+  .lk-f2, .lk-f3 { display: none; }
+  .lk-bm { --bx: 70%; --bw: 116px; } .lk-bf1 { --bx: 44%; --bw: 100px; }
+  .lk-boat { width: 96px; margin-left: -48px; } .lk-boat svg { width: 96px; height: 110px; } .lk-boat .lk-refl { height: 110px; }
+  .lk-follower { width: 80px; margin-left: -40px; } .lk-follower svg { width: 80px; height: 92px; }
+  .lk-chartkey { top: 140px; left: 0; right: 0; gap: 5px; } .lk-chartkey li { flex: 1 1 0; width: auto; min-width: 0; padding: 6px 2px; }
+  .lk-chartkey b { font-size: 10px; letter-spacing: .04em; } .lk-chartkey .st2 { font-size: 10px; }
+  .lk-lh, .lk-beam { display: none; } .lk-glow { left: 50%; }
+  .lk-cardwrap { margin-top: 18px; }
+  .lk-card { background: var(--surface); }
+  .lk-lede { display: none; }
+}
+
+/* motion off: Pause control or the system setting. Final states, no loops. */
+:root[data-motion='off'] .landing *, :root[data-motion='off'] .landing *::before, :root[data-motion='off'] .landing *::after { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .landing *, .landing *::before, .landing *::after { animation: none !important; transition: none !important; }
+}
+@media (forced-colors: active) {
+  .lk-bg, .lk-beam, .lk-refl { display: none; }
+  .lk-btn { border: 1px solid ButtonText; }
+}

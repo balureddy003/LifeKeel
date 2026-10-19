@@ -82,10 +82,10 @@ describe('sample day maths', () => {
   const months = SCENARIOS.map((s) => runwayMonths(s.calc(SAMPLE_FAMILY)))
 
   it('gives the figures the concept showed', () => {
-    expect(months[0]).toBeCloseTo(8.2, 1)
-    expect(months[1]).toBeCloseTo(21320 / 1000, 1)
-    expect(months[2]).toBeCloseTo(21320 / (2600 + 650 - 2240), 1)
-    expect(months[3]).toBeCloseTo((21320 + 150000) / 2600, 1)
+    expect(months[0]).toBeCloseTo(8200 / 2900, 2)
+    expect(months[1]).toBeCloseTo(8.2, 2)
+    expect(months[2]).toBeCloseTo(8200 / (2900 + 650 - 3800 * 0.7), 2)
+    expect(months[3]).toBeCloseTo((8200 + 180000) / 2900, 2)
   })
 
   it('bands months into sea states and never divides by a zero gap', () => {

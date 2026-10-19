@@ -10,11 +10,14 @@ export interface SampleFamily {
 }
 
 export const SAMPLE_FAMILY: SampleFamily = {
-  income: 3200,
-  spend: 2600,
-  savings: 21320,
-  cover: 150000,
+  income: 3800,
+  spend: 2900,
+  savings: 8200,
+  cover: 180000,
 }
+
+/** Months shown as a number; anything past this is drawn as "24+". */
+export const RUNWAY_CAP = 24
 
 export type SeaState = 'rough' | 'holding' | 'steady'
 

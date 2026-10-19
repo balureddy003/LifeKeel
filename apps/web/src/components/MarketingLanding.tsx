@@ -28,6 +28,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { motion, AnimatePresence, useInView } from 'framer-motion'
 import Link from 'next/link'
+import { LandingHero } from './landing/LandingHero'
 import {
   HeartPulse,
   Wand2,
@@ -112,65 +113,6 @@ const FEATURES = [
     body: 'Cmd+K jumps anywhere in the app instantly. Built for the parent who wants an answer in three seconds, not three taps.',
   },
 ]
-
-// A real product mockup, not another icon tile — reuses the same ScoreRing
-// component the actual signed-in dashboard renders (apps/web/src/app/page.tsx),
-// with clearly-labeled sample scores, so the desktop hero shows the honest
-// equivalent of a screenshot instead of an abstract illustration.
-function HeroPreview() {
-  const rings = [
-    { label: 'Protection', score: 82 },
-    { label: 'Wealth', score: 68 },
-    { label: 'Goals', score: 91 },
-    { label: 'Savings', score: 74 },
-  ]
-  const checklist = [
-    'Review health insurance coverage details',
-    'Check pre-authorization requirements',
-    'Confirm annual out-of-pocket maximum',
-  ]
-
-  return (
-    <div className="glass rounded-3xl p-5 sm:p-6 w-full">
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <div className="text-callout font-bold">Your Family</div>
-          <div className="text-footnote text-ink-tertiary">Sample dashboard</div>
-        </div>
-        <div className="w-9 h-9 rounded-full bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0">
-          <Search size={15} className="text-family-400" />
-        </div>
-      </div>
-      <div className="grid grid-cols-4 gap-2 mb-5">
-        {rings.map((r) => (
-          <div key={r.label} className="flex flex-col items-center gap-1.5">
-            <ScoreRing score={r.score} size={56} />
-            <span className="text-caption text-ink-tertiary text-center">{r.label}</span>
-          </div>
-        ))}
-      </div>
-      <div className="rounded-2xl bg-tint/[0.02] border border-tint/[0.05] p-3.5">
-        <div className="flex items-center gap-2 mb-2.5">
-          <Siren size={13} className="text-danger flex-shrink-0" />
-          <span className="text-footnote font-semibold text-ink-secondary">
-            Medical emergency &mdash; response plan
-          </span>
-        </div>
-        <div className="space-y-2">
-          {checklist.map((t) => (
-            <div key={t} className="flex items-center gap-2">
-              <span className="w-4 h-4 rounded-full border-2 border-tint/15 flex-shrink-0" />
-              <span className="text-footnote text-ink-secondary leading-snug">{t}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="mt-3 rounded-lg bg-warning/10 border border-warning/25 px-3 py-2 text-caption font-semibold text-warning leading-snug">
-        &#9888; Sample data &mdash; connect your accounts for your family&apos;s real picture
-      </div>
-    </div>
-  )
-}
 
 // ── Interactive "detector timeline" — shows how Keel watches continuously ──
 // This is the single most differentiated feature: no competitor runs background
@@ -678,67 +620,8 @@ export function MarketingLanding() {
     <div className="min-h-screen">
       <MarketingNav />
 
-      {/* Hero — leads with the readiness outcome, not the product category.
-          Market positioning doc: "Lead with readiness, not AI. Every competitor
-          is shouting 'AI-powered.' Lead with the outcome." */}
-      <div className="max-w-6xl mx-auto px-6 sm:px-10 pt-10 sm:pt-16 pb-10 sm:pb-20 grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
-        <div className="max-w-lg">
-          <div className="flex items-center gap-2 text-footnote font-bold tracking-wide uppercase text-family-400 mb-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-success shadow-[0_0_0_3px_rgba(74,222,128,0.18)]" />
-            Free to start &middot; no credit card
-          </div>
-          <h1 className="text-title-lg sm:text-display-sm lg:text-display leading-[1.15] font-bold tracking-tight mb-4">
-            Is your family ready if something goes wrong{' '}
-            <span className="text-gradient">tomorrow?</span>
-          </h1>
-          <p className="text-lead text-ink-secondary leading-relaxed mb-3">
-            LifeKeel continuously monitors whether your family is protected &mdash; emergency fund,
-            insurance coverage, estate documents, retirement trajectory &mdash; and tells you
-            what&apos;s missing before you need to ask.
-          </p>
-          <p className="text-sm text-ink-tertiary leading-relaxed mb-6">
-            Not a budgeting app. Not an AI financial advisor. Not a vault.
-            <br />
-            The always-on readiness system for your family.
-          </p>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
-            <Link
-              href="/readiness"
-              onClick={() => {
-                haptic('light')
-                track('landing_quiz_click', { location: 'hero' })
-              }}
-              className="block sm:inline-block"
-            >
-              <motion.div
-                whileTap={{ scale: 0.97 }}
-                className="sm:w-auto bg-family-500 text-white font-semibold rounded-2xl py-4 px-8 text-base text-center shadow-md shadow-family-500/15"
-              >
-                Check your readiness free
-              </motion.div>
-            </Link>
-            <a
-              href={appUrl('/welcome')}
-              onClick={() => {
-                haptic('light')
-                track('landing_get_started_click', { location: 'hero' })
-              }}
-              className="block sm:inline-block text-center py-2.5"
-            >
-              <span className="text-sm font-semibold text-ink-secondary">
-                or get started &rarr;
-              </span>
-            </a>
-          </div>
-          <p className="text-footnote text-ink-tertiary leading-snug">
-            Informational and educational only &mdash; not financial, investment, tax, or legal
-            advice, and not a substitute for calling emergency services (999, 112, 911) in a real
-            emergency.
-          </p>
-        </div>
-
-        <HeroPreview />
-      </div>
+      {/* Hero: the chart story (PRD-209). Signup goes straight to the existing sign-up page. */}
+      <LandingHero />
 
       {/* Proof points — reframed with competitive context */}
       <div className="max-w-6xl mx-auto px-6 sm:px-10 mb-12">
