@@ -100,6 +100,9 @@ describe('signed-out fallback', () => {
     const shell = fs.readFileSync(path.resolve(__dirname, '..', '..', 'components', 'AppShell.tsx'), 'utf8')
     expect(shell).toContain('title="Sign in to continue"')
     expect(shell.toLowerCase()).not.toContain('always-on')
+    // and it is framed by AuthShell, not squeezed into the phone-width wrapper
+    expect(shell).toContain('const signedOutFallback = !isAuthenticated && !isAuthRoute')
+    expect(shell).toMatch(/signedOutFallback \? '' : 'pt-2'/)
   })
 })
 

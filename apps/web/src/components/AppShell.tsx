@@ -669,7 +669,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     '/guides',
     '/readiness',
   ].some((p) => pathname.startsWith(p))
-  const widthClass = isMarketingPage || isOperatorRoute || ownsLayout ? '' : 'max-w-md md:max-w-xl lg:max-w-3xl xl:max-w-4xl mx-auto'
+  // Signed out on an app route (or an unknown page): AuthGate shows the sign-in prompt, which frames itself.
+  const signedOutFallback = !isAuthenticated && !isAuthRoute && !isOperatorRoute
+  const widthClass = isMarketingPage || isOperatorRoute || ownsLayout || signedOutFallback ? '' : 'max-w-md md:max-w-xl lg:max-w-3xl xl:max-w-4xl mx-auto'
   const railGutter = showNav ? 'md:pl-[88px]' : ''
 
   return (
@@ -694,7 +696,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <ModeEffects />
       {showNav && <NavRail />}
       <div className={[railGutter, 'min-h-screen'].filter(Boolean).join(' ')}>
-        <div id="main-content" tabIndex={-1} className={[widthClass, bottomPadding, emergencyGutter, isMarketingPage || ownsLayout ? '' : 'pt-2', 'relative z-raised outline-none'].filter(Boolean).join(' ')}>
+        <div id="main-content" tabIndex={-1} className={[widthClass, bottomPadding, emergencyGutter, isMarketingPage || ownsLayout || signedOutFallback ? '' : 'pt-2', 'relative z-raised outline-none'].filter(Boolean).join(' ')}>
           <AuthGate>{children}</AuthGate>
           {showNav && <DisclaimerFooter />}
         </div>

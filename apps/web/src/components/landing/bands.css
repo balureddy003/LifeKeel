@@ -272,4 +272,4 @@
 
 .landing .lk-band .lk-plan ol { margin-top: 16px; }
 .lk-verdict { margin-bottom: 2px; }
-.lk-footer { padding-top: 8px; }
+.landing .lk-footer { padding-block: 8px 48px; }
