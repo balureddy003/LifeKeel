@@ -37,6 +37,7 @@ import { createLogger } from '@lifekeel/platform'
 import { getPlatformConfig } from '../operator/platform-config.js'
 import { getGrowthEventsCollection } from '../db.js'
 import { excludeMinorUsers } from '../family/family-permissions.js'
+import { recordSpend, spendCost } from '../spend-ledger.js'
 
 const log = createLogger({ service: 'lifecycle', version: '0.0.0' })
 
@@ -61,6 +62,11 @@ interface LifecycleSendDoc {
   updated_at?: Date
   /** Set on campaign claims so engagement can roll up per campaign. */
   campaign_id?: string
+  /** Recipient snapshot for campaign claims — the durable send job carries
+   *  only {campaign_id, key}, so the worker rebuilds the recipient from
+   *  these fields (payload-by-reference). */
+  recipient_kind?: 'user' | 'lead'
+  recipient_name?: string
   // Engagement, filled in by the SendGrid event webhook (POST /webhooks/sendgrid).
   delivered_at?: Date
   opened_at?: Date
@@ -204,8 +210,15 @@ export async function claimSend(
   }
 }
 
-/** Settle a claimed row to the outcome the provider actually returned. */
-async function settleSend(db: Db, key: string, outcome: SendOutcome | 'failed', error?: string) {
+/** Settle a claimed row to the outcome the provider actually returned.
+ *  Exported for the campaign worker, which settles rows claimed by
+ *  queueCampaignSend on a different call stack. */
+export async function settleSend(
+  db: Db,
+  key: string,
+  outcome: SendOutcome | 'failed',
+  error?: string,
+) {
   await lifecycleSendsCol(db).updateOne(
     { key },
     { $set: { status: outcome, updated_at: new Date(), ...(error ? { error } : {}) } },
@@ -778,6 +791,18 @@ export async function runLifecycleSweep(
           meta: { sequence: job.sequence, step: job.step },
           created_at: new Date(),
         })
+        // Lifecycle mail is platform-paid SendGrid spend; leads carry no
+        // tenant, so 'platform' keeps the ledger honest about whose bill
+        // it lands on.
+        void recordSpend(db, {
+          tenant_id: 'platform',
+          service: 'marketing',
+          provider: 'sendgrid',
+          unit: 'email',
+          units: 1,
+          cost_microdollars: spendCost('sendgrid', 'email'),
+          meta: { sequence: job.sequence, step: job.step },
+        }).catch(() => {})
       }
     } catch (err) {
       row.status = 'failed'

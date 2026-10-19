@@ -33,7 +33,8 @@ beforeAll(() => {
 afterEach(cleanup)
 
 const DIR = path.resolve(__dirname, '..')
-const ROADMAP = /\bplanned\b|\bon the way\b|\bcoming soon\b|\bintend to build\b|\bnot (built|available) yet\b/i
+const ROADMAP =
+  /\bplanned\b|\bon the way\b|\bcoming soon\b|\bintend to build\b|\bnot (built|available) yet\b/i
 
 describe('no roadmap on the public site', () => {
   it.each([
@@ -64,7 +65,8 @@ describe('no roadmap on the public site', () => {
       .readdirSync(DIR)
       .filter((f) => /\.tsx$/.test(f) && f !== 'StoryBoard.tsx')
       .map((f) => [f, fs.readFileSync(path.join(DIR, f), 'utf8')] as const)
-    for (const [f, text] of sources) expect(text.replace(/\/\*[\s\S]*?\*\//g, ''), f).not.toMatch(/'Planned'|"Planned"|>Planned</)
+    for (const [f, text] of sources)
+      expect(text.replace(/\/\*[\s\S]*?\*\//g, ''), f).not.toMatch(/'Planned'|"Planned"|>Planned</)
   })
 
   it('the landing page no longer includes the planned-route section', () => {

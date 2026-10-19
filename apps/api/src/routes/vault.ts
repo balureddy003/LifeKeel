@@ -38,7 +38,8 @@ import type { FastifyInstance } from 'fastify'
 import type { Engine, Insight } from '@lifekeel/engine'
 import { GridFSBucket, type Db, type ObjectId } from 'mongodb'
 import { randomUUID } from 'node:crypto'
-import { createLogger, getTenantCollection, encryptBuffer, decryptBuffer } from '@lifekeel/platform'
+import { createLogger, getTenantCollection } from '@lifekeel/platform'
+import { encryptBufferForTenant, decryptBufferEnveloped } from '../crypto/envelope.js'
 import { isFamilyAdult } from '../family/family-permissions.js'
 import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE, ESTATE_VAULT_CATEGORY } from './documents.js'
 import { evaluateEstate } from '../legacy/evaluate-estate.js'
@@ -138,7 +139,7 @@ export function registerVaultRoutes(
       const documentId = randomUUID()
       const filename = data.filename || `estate-document-${documentId}`
       const mimeType = sealed ? declaredMime! : data.mimetype
-      const encrypted = encryptBuffer(fileBuffer)
+      const encrypted = await encryptBufferForTenant(db, tenant_id, fileBuffer)
 
       log.info(
         { documentId, filename, mimeType, size: fileBuffer.length, tenant_id, sealed },
@@ -242,7 +243,7 @@ export function registerVaultRoutes(
     const chunks: Buffer[] = []
     for await (const chunk of bucket.openDownloadStream(doc['file_id'] as ObjectId))
       chunks.push(chunk as Buffer)
-    const plaintext = decryptBuffer(Buffer.concat(chunks))
+    const plaintext = await decryptBufferEnveloped(db, Buffer.concat(chunks))
     reply.header('Content-Type', String(doc['mime_type'] ?? 'application/octet-stream'))
     reply.header(
       'Content-Disposition',

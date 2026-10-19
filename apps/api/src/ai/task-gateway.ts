@@ -45,6 +45,7 @@ import {
 } from '@lifekeel/platform'
 import { createLogger } from '@lifekeel/platform'
 import { deploymentConfig } from '../config/deployment.js'
+import { checkPlanSpendBudget } from '../spend-ledger.js'
 import { familyDataLlmFromEnv, localDecisionFromEnv } from '../local-model.js'
 import { recordLocalModelCall } from '../routes/metrics.js'
 
@@ -53,18 +54,30 @@ const log = createLogger({ service: 'task-gateway', version: '0.0.0' })
 let deps: TaskGatewayDeps | null = null
 let registry: TaskRegistry = new Map()
 let usageLedger: CostLedger | null = null
+let llmBudgetGuard: LlmBudgetGuard
 
 /** Load + validate the registry and build the shared dependency set. */
 export function initTaskGateway(db: Db): void {
   const path = join(repoRoot(), 'definitions', 'ai-tasks.yaml')
   registry = parseTaskRegistry(loadYaml(readFileSync(path, 'utf8')))
   usageLedger = new CostLedger(db)
+  llmBudgetGuard = new LlmBudgetGuard(db)
   deps = {
     registry,
     // Dev keeps the permissive unknown-task default; every real deployment
     // mode fails closed.
     failClosed: deploymentConfig.mode !== 'dev',
-    budgetGuard: new LlmBudgetGuard(db),
+    // Two-layer spend control (B8): the per-tenant LLM budget check runs
+    // first; the plan-level all-service spend cap runs second and denies
+    // only batch-class tasks — a family's live session is never hard-stopped
+    // on platform cost.
+    budgetGuard: {
+      check: async (tenantId, detectorId, policy) => {
+        const llm = await llmBudgetGuard.check(tenantId, detectorId)
+        if (!llm.allowed) return llm
+        return checkPlanSpendBudget(db, tenantId, policy)
+      },
+    },
     guardEventSink: createGuardEventSink(db, 'task-gateway'),
     onCall: (e) => {
       if (!e.ok) recordLocalModelCall('task', false, e.latency_ms / 1000, 0, 0)

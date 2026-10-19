@@ -42,6 +42,7 @@
  */
 
 import type { Db, Collection } from 'mongodb'
+import { decryptEnveloped } from '../crypto/envelope.js'
 import type { Insight } from '@lifekeel/engine'
 import type { ActionReceipt, ActionReceiptOutcome } from '@lifekeel/workflows'
 import { randomUUID, createHash } from 'node:crypto'
@@ -416,8 +417,7 @@ export class ActionExecutor {
     const creds = await this.getCredential(tenantId, 'sendgrid')
     if (!creds?.api_key) throw new Error('SendGrid not connected')
 
-    const { decryptIfNeeded } = await import('@lifekeel/platform')
-    const apiKey = decryptIfNeeded(creds.api_key as string)
+    const apiKey = await decryptEnveloped(this.db, creds.api_key as string)
     if (!apiKey) throw new Error('SendGrid API key missing')
 
     const recipientEmail = await this.getTenantContactEmail(tenantId)
@@ -448,9 +448,8 @@ export class ActionExecutor {
     const creds = await this.getCredential(tenantId, 'twilio')
     if (!creds?.account_sid || !creds?.auth_token) throw new Error('Twilio not connected')
 
-    const { decryptIfNeeded } = await import('@lifekeel/platform')
-    const sid = decryptIfNeeded(creds.account_sid as string)
-    const token = decryptIfNeeded(creds.auth_token as string)
+    const sid = await decryptEnveloped(this.db, creds.account_sid as string)
+    const token = await decryptEnveloped(this.db, creds.auth_token as string)
     const toPhone = creds.whatsapp_to as string | undefined
     if (!sid || !token || !toPhone) throw new Error('Twilio WhatsApp config incomplete')
 
@@ -470,8 +469,7 @@ export class ActionExecutor {
   private async crmTag(_intent: ActionIntent, insight: Insight, tenantId: string): Promise<void> {
     const creds = await this.getCredential(tenantId, 'hubspot')
     if (!creds?.api_key) throw new Error('HubSpot not connected')
-    const { decryptIfNeeded } = await import('@lifekeel/platform')
-    const apiKey = decryptIfNeeded(creds.api_key as string)
+    const apiKey = await decryptEnveloped(this.db, creds.api_key as string)
     const contactId = insight.confidence_breakdown.evidence_refs[0]
     if (!apiKey || !contactId) throw new Error('No HubSpot contact ID in evidence_refs')
     const res = await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`, {

@@ -30,7 +30,11 @@ describe('years data', () => {
   })
 
   it('every stage has something new on the chart', () => {
-    for (const stage of [1, 2, 3, 4]) expect(YEAR_ITEMS.some((i) => i.stage === stage), `stage ${stage}`).toBe(true)
+    for (const stage of [1, 2, 3, 4])
+      expect(
+        YEAR_ITEMS.some((i) => i.stage === stage),
+        `stage ${stage}`,
+      ).toBe(true)
   })
 })
 

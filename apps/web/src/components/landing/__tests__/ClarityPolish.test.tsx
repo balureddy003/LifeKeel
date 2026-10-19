@@ -28,14 +28,19 @@ describe('sample day in plain words', () => {
     const link = screen.getByRole('link', { name: 'Create your free account' })
     document.addEventListener('click', (e) => e.preventDefault(), { once: true })
     fireEvent.click(link)
-    expect(track).toHaveBeenCalledWith('landing_cta_click', { location: 'sample', method: 'signup' })
+    expect(track).toHaveBeenCalledWith('landing_cta_click', {
+      location: 'sample',
+      method: 'signup',
+    })
   })
 })
 
 describe('mid-page signup and counts', () => {
   it('the cover section has its own signup link', () => {
     render(<CoverOnFile />)
-    expect(screen.getByRole('link', { name: 'Create your free account' }).getAttribute('href')).toMatch(/\/signup$/)
+    expect(
+      screen.getByRole('link', { name: 'Create your free account' }).getAttribute('href'),
+    ).toMatch(/\/signup$/)
   })
 })
 

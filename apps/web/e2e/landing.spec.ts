@@ -79,7 +79,9 @@ test.describe('story sections', () => {
     await expect(page.getByRole('status').filter({ hasText: 'income stops' })).toBeVisible()
   })
 
-  test('the board shows only what is available, with no Live or Planned tags or roadmap', async ({ page }) => {
+  test('the board shows only what is available, with no Live or Planned tags or roadmap', async ({
+    page,
+  }) => {
     await openLanding(page)
     const items = page.locator('#story li')
     expect(await items.count()).toBeGreaterThan(8)

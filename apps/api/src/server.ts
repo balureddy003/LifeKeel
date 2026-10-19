@@ -105,6 +105,11 @@ import {
   runQueuedInboxScan,
   EMAIL_SCAN_QUEUE,
 } from './jobs/email-scan.js'
+import {
+  CAMPAIGN_SEND_QUEUE,
+  runCampaignSendJob,
+  type CampaignSendJob,
+} from './marketing/campaigns.js'
 import { retryFailedDocuments } from './ocr/retry-failed.js'
 import {
   withCronLock,
@@ -112,6 +117,8 @@ import {
   releaseCronLock,
   ensureCronLockIndex,
 } from './jobs/cron-lock.js'
+import { ensureSpendIndexes } from './spend-ledger.js'
+import { ensureTenantKeyIndexes } from './crypto/envelope.js'
 import { registerApiVersioning, rewriteVersionedUrl } from './api-versioning.js'
 import { registerBillingRoutes } from './routes/billing.js'
 import { registerBlogRoutes } from './routes/blog.js'
@@ -286,6 +293,12 @@ try {
   if (serviceRole === 'api') {
     log.info({}, 'SERVICE_ROLE=api — background work disabled in this process')
   }
+
+  // Indexes run in every role: routes also read/write spend_events and
+  // tenant_keys. (The cron-lock index lives inside the gate below — only
+  // the jobs role fires crons.)
+  await ensureSpendIndexes(workflowDb)
+  ensureTenantKeyIndexes(workflowDb) // per-tenant DEK store (B4)
 
   // Queue connection is role-agnostic: API routes publish jobs and inspect
   // queue health; consumers below are the gated part.
@@ -1148,6 +1161,18 @@ try {
       )
       log.info({ concurrency: scanConcurrency }, 'Email scan fan-out workers started')
     }
+
+    // Campaign bulk send — one durable job per recipient claim (B11). Bounded
+    // concurrency keeps bulk mail under SendGrid's rate ceiling; the claim
+    // rows are the durable per-recipient state, so a worker crash loses
+    // nothing already claimed.
+    const campaignConcurrency = Number(process.env['CAMPAIGN_SEND_CONCURRENCY']) || 4
+    queueManager.subscribe(
+      CAMPAIGN_SEND_QUEUE,
+      (payload) => runCampaignSendJob(workflowDb, payload as CampaignSendJob),
+      { concurrency: campaignConcurrency },
+    )
+    log.info({ concurrency: campaignConcurrency }, 'Campaign send workers started')
     log.info({}, 'Queue consumers started')
   } // end runBackgroundWork — every cron.schedule and consumer above is gated
 

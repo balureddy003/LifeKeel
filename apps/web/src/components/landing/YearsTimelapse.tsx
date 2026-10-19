@@ -55,20 +55,14 @@ export function YearsTimelapse() {
     setStage(n)
     const yr = YEARS[n - 1]!
     const items = YEAR_ITEMS.filter((i) => i.stage === n)
-    setAnnounce(
-      `${yr.name}. ${yr.line} New on the chart: ${items
-        .map((i) => i.text)
-        .join('; ')}.`,
-    )
+    setAnnounce(`${yr.name}. ${yr.line} New on the chart: ${items.map((i) => i.text).join('; ')}.`)
   }
 
   return (
     <section className="lk-band" id="years" aria-labelledby="lk-years-h">
       <p className="lk-eyebrow">As the years go by</p>
       <h2 id="lk-years-h">The same chart, as life changes.</h2>
-      <p className="lk-intro">
-        You do not start again when life changes. You add to the chart.
-      </p>
+      <p className="lk-intro">You do not start again when life changes. You add to the chart.</p>
       <fieldset className="lk-yrs-set">
         <legend>Pick a stage</legend>
         <div className="lk-yrs">

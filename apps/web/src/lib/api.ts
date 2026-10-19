@@ -60,7 +60,13 @@ interface RawInsight {
   repeat_count?: number
 }
 
-export const RESOLVED_INSIGHT_STATES = ['approved', 'completed', 'dismissed', 'archived', 'resolved']
+export const RESOLVED_INSIGHT_STATES = [
+  'approved',
+  'completed',
+  'dismissed',
+  'archived',
+  'resolved',
+]
 
 function adaptInsight(raw: RawInsight): FamilyInsight {
   return {
@@ -175,10 +181,9 @@ export async function fetchFamilyInsights(): Promise<FamilyInsight[]> {
   // Cached 30s — the score card, gate list, and AppShell warmer all read
   // this; an insight list that old is fine and the page paints instantly.
   return cachedFetch('family-insights', 30_000, () =>
-    apiFetch<{ insights: RawInsight[] }>(
-      `/insights?detectors=${FAMILY_DETECTORS.join(',')}`,
-      { insights: [] },
-    ).then((r) =>
+    apiFetch<{ insights: RawInsight[] }>(`/insights?detectors=${FAMILY_DETECTORS.join(',')}`, {
+      insights: [],
+    }).then((r) =>
       (r.insights ?? [])
         .filter((i) => (FAMILY_DETECTORS as readonly string[]).includes(i.detector_id))
         .map(adaptInsight),
@@ -209,7 +214,9 @@ export interface EventReadiness {
   hasLiveData: boolean
 }
 
-export async function fetchEventReadiness(eventId: string): Promise<EventReadiness | { hasLiveData: false }> {
+export async function fetchEventReadiness(
+  eventId: string,
+): Promise<EventReadiness | { hasLiveData: false }> {
   return apiFetch<EventReadiness | { hasLiveData: false }>(
     `/family/events/${encodeURIComponent(eventId)}/readiness`,
     { hasLiveData: false },
@@ -235,7 +242,12 @@ export interface MemberTwin {
       pension_balance_minor?: number
       monthly_pension_contribution_minor?: number
     } | null
-    policies: Array<Pick<FinancialProfilePolicy, 'type' | 'provider' | 'coverage_amount_minor' | 'monthly_premium_minor' | 'renewal_date'>>
+    policies: Array<
+      Pick<
+        FinancialProfilePolicy,
+        'type' | 'provider' | 'coverage_amount_minor' | 'monthly_premium_minor' | 'renewal_date'
+      >
+    >
     education_funds: Array<{
       child_name?: string
       current_savings_minor: number
@@ -267,8 +279,14 @@ export interface MemberTwin {
   has_live_data: boolean
 }
 
-export async function fetchMemberTwin(memberId: string, mode?: 'youth'): Promise<MemberTwin | null> {
-  return apiFetch<MemberTwin | null>(`/family/members/${encodeURIComponent(memberId)}/twin${mode === 'youth' ? '?mode=youth' : ''}`, null)
+export async function fetchMemberTwin(
+  memberId: string,
+  mode?: 'youth',
+): Promise<MemberTwin | null> {
+  return apiFetch<MemberTwin | null>(
+    `/family/members/${encodeURIComponent(memberId)}/twin${mode === 'youth' ? '?mode=youth' : ''}`,
+    null,
+  )
 }
 
 /** PRD-126/127: the member's agent persona — proactive member-scoped
@@ -302,10 +320,7 @@ export async function dismissMemberNudge(memberId: string, nudgeId: string): Pro
 }
 
 export async function fetchFamilyGoals(): Promise<FamilyGoal[]> {
-  return apiFetch<{ goals: FamilyGoal[] }>(
-    '/goals',
-    { goals: [] },
-  ).then((r) => r.goals ?? [])
+  return apiFetch<{ goals: FamilyGoal[] }>('/goals', { goals: [] }).then((r) => r.goals ?? [])
 }
 
 // Starts from 100 (no known gaps) and subtracts a confidence-weighted
@@ -335,7 +350,8 @@ export interface ReadinessComponentInsight {
   confidence: number
 }
 
-export type ReadinessComponentKey = 'emergency_fund' | 'protection' | 'retirement' | 'education' | 'estate'
+export type ReadinessComponentKey =
+  'emergency_fund' | 'protection' | 'retirement' | 'education' | 'estate'
 
 export interface ReadinessComponent {
   key: ReadinessComponentKey
@@ -370,7 +386,9 @@ export interface ReadinessHistoryPoint {
 }
 
 export async function fetchReadinessHistory(): Promise<ReadinessHistoryPoint[]> {
-  const res = await apiFetch<{ history: ReadinessHistoryPoint[] }>('/family/readiness/history', { history: [] })
+  const res = await apiFetch<{ history: ReadinessHistoryPoint[] }>('/family/readiness/history', {
+    history: [],
+  })
   return res.history
 }
 
@@ -379,13 +397,17 @@ export async function fetchReadinessHistory(): Promise<ReadinessHistoryPoint[]> 
 // when /family/readiness can't be reached, since it still beats showing
 // nothing. The comment below documents why even that fallback must check
 // insights_evaluated_at before scoring an insight-free profile 100.
-export async function fetchFamilyReadinessScore(): Promise<{ score: number; hasLiveData: boolean }> {
+export async function fetchFamilyReadinessScore(): Promise<{
+  score: number
+  hasLiveData: boolean
+}> {
   const server = await fetchFamilyReadiness()
   if (server && server.has_live_data && server.score !== null) {
     return { score: server.score, hasLiveData: true }
   }
   if (server && !server.has_live_data) return { score: 0, hasLiveData: false }
-  if (server && server.has_live_data && server.score === null) return { score: 0, hasLiveData: true }
+  if (server && server.has_live_data && server.score === null)
+    return { score: 0, hasLiveData: true }
 
   const insights = await fetchFamilyInsights()
   if (insights.length === 0) {
@@ -401,7 +423,10 @@ export async function fetchFamilyReadinessScore(): Promise<{ score: number; hasL
   const openPenalty = insights
     .filter((i) => !RESOLVED_INSIGHT_STATES.includes(i.state))
     .reduce((sum, i) => sum + i.confidence, 0)
-  return { score: Math.round(Math.max(0, Math.min(100, 100 - openPenalty * 10))), hasLiveData: true }
+  return {
+    score: Math.round(Math.max(0, Math.min(100, 100 - openPenalty * 10))),
+    hasLiveData: true,
+  }
 }
 
 // ── Saved scenarios (PRD-115) ───────────────────────────────────────────
@@ -491,10 +516,17 @@ async function scenarioRequest<T>(path: string, init: RequestInit, fallback: T):
 export async function previewScenario(
   inputs: ScenarioInputs,
 ): Promise<{ result: ScenarioResult | null; has_live_data: boolean } | null> {
-  return scenarioRequest('/family/scenarios/preview', { method: 'POST', body: JSON.stringify(inputs) }, null)
+  return scenarioRequest(
+    '/family/scenarios/preview',
+    { method: 'POST', body: JSON.stringify(inputs) },
+    null,
+  )
 }
 
-export async function saveFamilyScenario(name: string, inputs: ScenarioInputs): Promise<FamilyScenario | null> {
+export async function saveFamilyScenario(
+  name: string,
+  inputs: ScenarioInputs,
+): Promise<FamilyScenario | null> {
   const data = await scenarioRequest<{ scenario: FamilyScenario } | null>(
     '/family/scenarios',
     { method: 'POST', body: JSON.stringify({ name, ...inputs }) },
@@ -524,13 +556,17 @@ export interface FamilyScenarioWatchEntry {
   name: string
   inputs: ScenarioInputs
   watch: boolean
-  last_projection: { runway_months: number | null; depletion_month: number | null; at: string } | null
+  last_projection: {
+    runway_months: number | null
+    depletion_month: number | null
+    at: string
+  } | null
 }
 
 export async function fetchScenarioWatchlist(): Promise<FamilyScenarioWatchEntry[]> {
-  return apiFetch<{ scenarios: FamilyScenarioWatchEntry[] }>('/family/scenarios/watchlist', { scenarios: [] }).then(
-    (r) => r.scenarios ?? [],
-  )
+  return apiFetch<{ scenarios: FamilyScenarioWatchEntry[] }>('/family/scenarios/watchlist', {
+    scenarios: [],
+  }).then((r) => r.scenarios ?? [])
 }
 
 export async function deleteFamilyScenario(id: string): Promise<boolean> {
@@ -573,7 +609,10 @@ export interface FeedEvent {
   title: string
   summary: string
   evidence: { label: string; value?: string; value_minor?: number }[]
-  links: { kind: 'insight' | 'component' | 'document' | 'scenario' | 'member' | 'profile_field'; id: string }[]
+  links: {
+    kind: 'insight' | 'component' | 'document' | 'scenario' | 'member' | 'profile_field'
+    id: string
+  }[]
   next_check_at: string | null
   dedupe_key: string
   created_at: string
@@ -611,9 +650,9 @@ export async function fetchFeed(params: FetchFeedParams = {}): Promise<FeedEvent
   if (params.limit !== undefined) qs.set('limit', String(params.limit))
   if (params.mode) qs.set('mode', params.mode)
   const query = qs.toString()
-  return apiFetch<{ events: FeedEvent[] }>(`/family/feed${query ? `?${query}` : ''}`, { events: [] }).then(
-    (r) => r.events ?? [],
-  )
+  return apiFetch<{ events: FeedEvent[] }>(`/family/feed${query ? `?${query}` : ''}`, {
+    events: [],
+  }).then((r) => r.events ?? [])
 }
 
 export async function fetchFeedSummary(window: '7d' | '30d' = '7d'): Promise<FeedSummary> {
@@ -627,7 +666,8 @@ export async function fetchFeedSummary(window: '7d' | '30d' = '7d'): Promise<Fee
   })
 }
 
-export type FeedFeedbackValue = 'useful' | 'not_relevant' | 'handled' | 'remind_later' | 'data_wrong'
+export type FeedFeedbackValue =
+  'useful' | 'not_relevant' | 'handled' | 'remind_later' | 'data_wrong'
 
 /** PRD-136 §3: one feedback entry per user per event — 'useful' also
  *  undoes a 'not_relevant' mute server-side. */
@@ -646,10 +686,19 @@ export async function submitFeedback(
 // Every record is a family declaration — the verification label rides every
 // payload so the UI can never present it as a legal fact.
 
-export type LegacyVerification = 'document_linked' | 'user_declared' | 'family_understanding' | 'unverified'
+export type LegacyVerification =
+  'document_linked' | 'user_declared' | 'family_understanding' | 'unverified'
 
 export interface LegacyRole {
-  role: 'executor' | 'trustee' | 'attorney' | 'guardian' | 'beneficiary' | 'witness' | 'caretaker' | 'successor_intended'
+  role:
+    | 'executor'
+    | 'trustee'
+    | 'attorney'
+    | 'guardian'
+    | 'beneficiary'
+    | 'witness'
+    | 'caretaker'
+    | 'successor_intended'
   member_id?: string
   contact_id?: string
   share_pct?: number
@@ -659,9 +708,16 @@ export interface LegacyRole {
 export interface LegacyDocument {
   id: string
   type:
-    | 'will' | 'codicil' | 'power_of_attorney' | 'advance_directive' | 'trust_deed'
-    | 'letter_of_wishes' | 'guardianship_nomination' | 'funeral_wishes'
-    | 'probate_record' | 'civil_certificate'
+    | 'will'
+    | 'codicil'
+    | 'power_of_attorney'
+    | 'advance_directive'
+    | 'trust_deed'
+    | 'letter_of_wishes'
+    | 'guardianship_nomination'
+    | 'funeral_wishes'
+    | 'probate_record'
+    | 'civil_certificate'
   subject_member_id: string
   jurisdiction: string
   signed_on?: string
@@ -721,12 +777,14 @@ export interface PropertyLegacy {
 }
 
 export async function fetchLegacyDocuments(): Promise<LegacyDocument[]> {
-  return apiFetch<{ documents: LegacyDocument[] }>('/family/legacy/documents', { documents: [] }).then(
-    (r) => r.documents ?? [],
-  )
+  return apiFetch<{ documents: LegacyDocument[] }>('/family/legacy/documents', {
+    documents: [],
+  }).then((r) => r.documents ?? [])
 }
 
-export async function createLegacyDocument(input: LegacyDocumentInput): Promise<LegacyDocument | null> {
+export async function createLegacyDocument(
+  input: LegacyDocumentInput,
+): Promise<LegacyDocument | null> {
   const res = await scenarioRequest<{ document: LegacyDocument } | null>(
     '/family/legacy/documents',
     { method: 'POST', body: JSON.stringify(input) },
@@ -735,7 +793,10 @@ export async function createLegacyDocument(input: LegacyDocumentInput): Promise<
   return res?.document ?? null
 }
 
-export async function updateLegacyDocument(id: string, patch: Partial<LegacyDocumentInput>): Promise<LegacyDocument | null> {
+export async function updateLegacyDocument(
+  id: string,
+  patch: Partial<LegacyDocumentInput>,
+): Promise<LegacyDocument | null> {
   const res = await scenarioRequest<{ document: LegacyDocument } | null>(
     `/family/legacy/documents/${encodeURIComponent(id)}`,
     { method: 'PATCH', body: JSON.stringify(patch) },
@@ -750,7 +811,10 @@ export async function deleteLegacyDocument(id: string): Promise<boolean> {
     const token = getAuthToken()
     const headers: Record<string, string> = {}
     if (token) headers['Authorization'] = `Bearer ${token}`
-    const res = await credFetch(`${base}/family/legacy/documents/${encodeURIComponent(id)}`, { method: 'DELETE', headers })
+    const res = await credFetch(`${base}/family/legacy/documents/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers,
+    })
     return res.ok
   } catch (err) {
     reportError(err, { action: 'deleteLegacyDocument', id })
@@ -764,7 +828,9 @@ export async function fetchLegacyContacts(): Promise<LegacyContact[]> {
   )
 }
 
-export async function createLegacyContact(input: LegacyContactInput): Promise<LegacyContact | null> {
+export async function createLegacyContact(
+  input: LegacyContactInput,
+): Promise<LegacyContact | null> {
   const res = await scenarioRequest<{ contact: LegacyContact } | null>(
     '/family/legacy/contacts',
     { method: 'POST', body: JSON.stringify(input) },
@@ -774,7 +840,9 @@ export async function createLegacyContact(input: LegacyContactInput): Promise<Le
 }
 
 export async function fetchLegacyNotes(): Promise<LegacyNote[]> {
-  return apiFetch<{ notes: LegacyNote[] }>('/family/legacy/notes', { notes: [] }).then((r) => r.notes ?? [])
+  return apiFetch<{ notes: LegacyNote[] }>('/family/legacy/notes', { notes: [] }).then(
+    (r) => r.notes ?? [],
+  )
 }
 
 export async function createLegacyNote(input: LegacyNoteInput): Promise<LegacyNote | null> {
@@ -916,7 +984,10 @@ export async function updateNotificationPrefs(
  */
 export type AssistantAnswerStatus = 'live' | 'canned' | 'unavailable'
 
-export async function fetchAIResponse(query: string, memberId?: string): Promise<{ content: string; status: AssistantAnswerStatus }> {
+export async function fetchAIResponse(
+  query: string,
+  memberId?: string,
+): Promise<{ content: string; status: AssistantAnswerStatus }> {
   // Read once up front: a dead-connection failure is honest "canned"
   // fallback territory (the offline banner is already telling the user),
   // while an online failure means the assistant itself is broken.
@@ -959,7 +1030,8 @@ export async function fetchAIResponse(query: string, memberId?: string): Promise
     if (lower.includes(key)) return { content: response, status: 'canned' }
   }
   return {
-    content: "Based on the information you've entered, here is a summary from your family's data. This is for informational purposes only — please consult a qualified professional before making financial decisions. Would you like to see the specific numbers from your family's profile?",
+    content:
+      "Based on the information you've entered, here is a summary from your family's data. This is for informational purposes only — please consult a qualified professional before making financial decisions. Would you like to see the specific numbers from your family's profile?",
     status: 'canned',
   }
 }
@@ -996,11 +1068,14 @@ export async function uploadDocument(file: File): Promise<FamilyDocument> {
   return (await res.json()) as FamilyDocument
 }
 
-export async function fetchDocuments(): Promise<{ documents: FamilyDocument[]; aiExtractionEnabled: boolean }> {
-  return apiFetch<{ documents: FamilyDocument[]; aiExtractionEnabled: boolean }>(
-    '/documents',
-    { documents: [], aiExtractionEnabled: false },
-  )
+export async function fetchDocuments(): Promise<{
+  documents: FamilyDocument[]
+  aiExtractionEnabled: boolean
+}> {
+  return apiFetch<{ documents: FamilyDocument[]; aiExtractionEnabled: boolean }>('/documents', {
+    documents: [],
+    aiExtractionEnabled: false,
+  })
 }
 
 export interface FamilyDocumentDetail extends FamilyDocument {
@@ -1017,7 +1092,9 @@ export async function fetchDocument(id: string): Promise<FamilyDocumentDetail | 
  * header, so this can't just be an <img src> pointed at the API directly.
  * Caller is responsible for URL.revokeObjectURL when done with it.
  */
-export async function fetchDocumentFileUrl(id: string): Promise<{ url: string; mimeType: string } | null> {
+export async function fetchDocumentFileUrl(
+  id: string,
+): Promise<{ url: string; mimeType: string } | null> {
   try {
     const base = getApiBase()
     const token = getAuthToken()
@@ -1054,7 +1131,13 @@ export interface VaultDocument {
   sealed?: boolean
 }
 
-export const VAULT_DOC_TYPES = ['will', 'power_of_attorney', 'insurance_policy', 'estate_instruction', 'other'] as const
+export const VAULT_DOC_TYPES = [
+  'will',
+  'power_of_attorney',
+  'insurance_policy',
+  'estate_instruction',
+  'other',
+] as const
 export type VaultDocType = (typeof VAULT_DOC_TYPES)[number]
 
 export const VAULT_DOC_TYPE_LABELS: Record<VaultDocType, string> = {
@@ -1065,7 +1148,10 @@ export const VAULT_DOC_TYPE_LABELS: Record<VaultDocType, string> = {
   other: 'Other',
 }
 
-export async function fetchVaultDocuments(): Promise<{ documents: VaultDocument[]; forbidden: boolean }> {
+export async function fetchVaultDocuments(): Promise<{
+  documents: VaultDocument[]
+  forbidden: boolean
+}> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = {}
@@ -1095,7 +1181,9 @@ export async function uploadVaultDocument(
   let upload: Blob = file
   if (sealPassphrase) {
     const { sealFile } = await import('./vault-seal')
-    upload = new Blob([await sealFile(await file.arrayBuffer(), sealPassphrase) as BlobPart], { type: 'application/octet-stream' })
+    upload = new Blob([(await sealFile(await file.arrayBuffer(), sealPassphrase)) as BlobPart], {
+      type: 'application/octet-stream',
+    })
   }
   formData.append('file', upload, file.name)
   const headers: Record<string, string> = {}
@@ -1108,7 +1196,11 @@ export async function uploadVaultDocument(
     params.set('mime', file.type || 'application/octet-stream')
   }
   const qs = params.toString()
-  const res = await credFetch(`${base}/vault/documents/upload${qs ? `?${qs}` : ''}`, { method: 'POST', headers, body: formData })
+  const res = await credFetch(`${base}/vault/documents/upload${qs ? `?${qs}` : ''}`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || `Upload failed: ${res.status}`)
   return data as VaultDocument
@@ -1189,16 +1281,19 @@ export interface DocumentSuggestions {
 }
 
 export async function fetchProfileSuggestions(documentId: string): Promise<DocumentSuggestions> {
-  return apiFetch<DocumentSuggestions>(
-    `/documents/${documentId}/profile-suggestions`,
-    { suggestions: [], policySuggestion: null },
-  )
+  return apiFetch<DocumentSuggestions>(`/documents/${documentId}/profile-suggestions`, {
+    suggestions: [],
+    policySuggestion: null,
+  })
 }
 
 export async function applyDocumentToProfile(
   documentId: string,
   paths?: string[],
-): Promise<{ applied: { path: string; label: string; valueMinor: number }[]; insightsGenerated: number }> {
+): Promise<{
+  applied: { path: string; label: string; valueMinor: number }[]
+  insightsGenerated: number
+}> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -1210,7 +1305,8 @@ export async function applyDocumentToProfile(
     body: JSON.stringify({ paths }),
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || 'Could not apply this document to your Financial Profile')
+  if (!res.ok)
+    throw new Error(data.error || 'Could not apply this document to your Financial Profile')
   // The profile mutated and may have generated new insights — Home's
   // score/rings, the Family/Intelligence pages, and the Inbox feed all
   // read their own 30s-cached copy of one of these (see the identical fix
@@ -1314,10 +1410,9 @@ const FAMILY_CONNECTORS: { id: string; name: string; category: string; comingSoo
 ]
 
 export async function fetchConnectorStatuses(): Promise<ConnectorStatus[]> {
-  return apiFetch<{ connectors: ConnectorStatus[] }>(
-    '/connectors/status',
-    { connectors: FAMILY_CONNECTORS.map((c) => ({ ...c, connected: false })) },
-  ).then((r) => r.connectors ?? [])
+  return apiFetch<{ connectors: ConnectorStatus[] }>('/connectors/status', {
+    connectors: FAMILY_CONNECTORS.map((c) => ({ ...c, connected: false })),
+  }).then((r) => r.connectors ?? [])
 }
 
 /**
@@ -1328,12 +1423,18 @@ export async function fetchConnectorStatuses(): Promise<ConnectorStatus[]> {
  * dropped request (confirmed live). Inbox uses this instead so it can
  * leave the banner alone rather than assert the wrong state.
  */
-export async function fetchEmailConnectorStatus(): Promise<{ connected: boolean; needsReauth: boolean; failed: boolean }> {
+export async function fetchEmailConnectorStatus(): Promise<{
+  connected: boolean
+  needsReauth: boolean
+  failed: boolean
+}> {
   let failed = false
   const { connectors } = await apiFetch<{ connectors: ConnectorStatus[] }>(
     '/connectors/status',
     { connectors: [] },
-    () => { failed = true },
+    () => {
+      failed = true
+    },
   )
   const email = connectors.find((c) => c.id === 'email')
   return { connected: !!email?.connected, needsReauth: !!email?.needsReauth, failed }
@@ -1350,11 +1451,32 @@ export interface EmailProviderOption {
 }
 
 export const EMAIL_PROVIDER_OPTIONS: EmailProviderOption[] = [
-  { id: 'gmail', name: 'Gmail', passwordHint: 'Use a Google App Password, not your regular password (Google Account → Security → App passwords).' },
-  { id: 'outlook', name: 'Outlook / Microsoft 365', passwordHint: 'Use an app password if your account has multi-factor authentication enabled.' },
-  { id: 'yahoo', name: 'Yahoo Mail', passwordHint: 'Generate an app password from Yahoo Account Security settings.' },
-  { id: 'icloud', name: 'iCloud Mail', passwordHint: 'Use an app-specific password from appleid.apple.com.' },
-  { id: 'custom', name: 'Other / custom', passwordHint: "Check your email provider's IMAP settings page for the server host and port." },
+  {
+    id: 'gmail',
+    name: 'Gmail',
+    passwordHint:
+      'Use a Google App Password, not your regular password (Google Account → Security → App passwords).',
+  },
+  {
+    id: 'outlook',
+    name: 'Outlook / Microsoft 365',
+    passwordHint: 'Use an app password if your account has multi-factor authentication enabled.',
+  },
+  {
+    id: 'yahoo',
+    name: 'Yahoo Mail',
+    passwordHint: 'Generate an app password from Yahoo Account Security settings.',
+  },
+  {
+    id: 'icloud',
+    name: 'iCloud Mail',
+    passwordHint: 'Use an app-specific password from appleid.apple.com.',
+  },
+  {
+    id: 'custom',
+    name: 'Other / custom',
+    passwordHint: "Check your email provider's IMAP settings page for the server host and port.",
+  },
 ]
 
 export interface ConnectEmailPayload {
@@ -1366,7 +1488,9 @@ export interface ConnectEmailPayload {
   password: string
 }
 
-export async function connectEmail(payload: ConnectEmailPayload): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function connectEmail(
+  payload: ConnectEmailPayload,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -1413,11 +1537,18 @@ export async function connectOpenBanking(
   const token = getAuthToken()
   const res = await credFetch(`${base}/connectors/open-banking/credentials`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ provider, ...(accessToken ? { accessToken } : {}) }),
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) return { ok: false, error: data.error || 'Could not connect — check the details and try again.' }
+  if (!res.ok)
+    return {
+      ok: false,
+      error: data.error || 'Could not connect — check the details and try again.',
+    }
   return { ok: true, accounts: data.accounts ?? 0 }
 }
 
@@ -1432,9 +1563,9 @@ export async function syncOpenBanking(): Promise<boolean> {
 }
 
 export async function fetchOpenBankingAccounts(): Promise<ExternalAccount[]> {
-  return apiFetch<{ accounts: ExternalAccount[] }>('/connectors/open-banking/accounts', { accounts: [] }).then(
-    (r) => r.accounts ?? [],
-  )
+  return apiFetch<{ accounts: ExternalAccount[] }>('/connectors/open-banking/accounts', {
+    accounts: [],
+  }).then((r) => r.accounts ?? [])
 }
 
 /** Kicks off the Gmail OAuth flow — resolves to the Google consent-screen
@@ -1448,7 +1579,9 @@ export async function startGmailOAuth(): Promise<string> {
   const headers: Record<string, string> = {}
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await credFetch(`${base}/connectors/gmail/oauth/start?app=family&mode=json`, { headers })
+  const res = await credFetch(`${base}/connectors/gmail/oauth/start?app=family&mode=json`, {
+    headers,
+  })
   if (!res.ok) throw new Error('Could not start Google sign-in — please try again.')
   const data = (await res.json()) as { auth_url?: string }
   if (!data.auth_url) throw new Error('Could not start Google sign-in — please try again.')
@@ -1483,7 +1616,9 @@ export interface ConnectorSyncResource {
 // Server-side sync state per resource (POST /connectors/:id/backfill and
 // GET /connectors/:id/sync/status existed with no frontend caller — see
 // remediation item 21). Empty resources just means "nothing synced yet".
-export async function fetchConnectorSyncStatus(connectorId: string): Promise<ConnectorSyncResource[]> {
+export async function fetchConnectorSyncStatus(
+  connectorId: string,
+): Promise<ConnectorSyncResource[]> {
   return apiFetch<{ resources: ConnectorSyncResource[] }>(
     `/connectors/${connectorId}/sync/status`,
     { resources: [] },
@@ -1498,7 +1633,10 @@ export async function triggerConnectorBackfill(connectorId: string): Promise<boo
     const token = getAuthToken()
     const headers: Record<string, string> = {}
     if (token) headers['Authorization'] = `Bearer ${token}`
-    const res = await credFetch(`${base}/connectors/${connectorId}/backfill`, { method: 'POST', headers })
+    const res = await credFetch(`${base}/connectors/${connectorId}/backfill`, {
+      method: 'POST',
+      headers,
+    })
     return res.ok || res.status === 202
   } catch (err) {
     reportError(err, { connectorId })
@@ -1608,15 +1746,26 @@ export async function addFamilyGroupMember(
   role: ApiFamilyMember['role'],
   dateOfBirth?: string,
 ): Promise<ApiFamilyGroup> {
-  return familyGroupRequest('/family/members', 'POST', { name, email, role, ...(dateOfBirth ? { date_of_birth: dateOfBirth } : {}) })
+  return familyGroupRequest('/family/members', 'POST', {
+    name,
+    email,
+    role,
+    ...(dateOfBirth ? { date_of_birth: dateOfBirth } : {}),
+  })
 }
 
-export async function updateFamilyGroupMemberRole(id: string, role: ApiFamilyMember['role']): Promise<ApiFamilyGroup> {
+export async function updateFamilyGroupMemberRole(
+  id: string,
+  role: ApiFamilyMember['role'],
+): Promise<ApiFamilyGroup> {
   return familyGroupRequest(`/family/members/${id}`, 'PATCH', { role })
 }
 
 /** ISO 'YYYY-MM-DD'. Powers age/years-until-university derivation — see apps/web/src/lib/age.ts. */
-export async function updateFamilyGroupMemberDateOfBirth(id: string, dateOfBirth: string): Promise<ApiFamilyGroup> {
+export async function updateFamilyGroupMemberDateOfBirth(
+  id: string,
+  dateOfBirth: string,
+): Promise<ApiFamilyGroup> {
   return familyGroupRequest(`/family/members/${id}`, 'PATCH', { date_of_birth: dateOfBirth })
 }
 
@@ -1656,7 +1805,9 @@ export async function joinFamily(
 }
 
 export async function fetchAccessRequests(): Promise<AccessRequest[]> {
-  return apiFetch<{ requests: AccessRequest[] }>('/family/access-requests', { requests: [] }).then((r) => r.requests)
+  return apiFetch<{ requests: AccessRequest[] }>('/family/access-requests', { requests: [] }).then(
+    (r) => r.requests,
+  )
 }
 
 // ── Per-member invites (PRD-123) ──────────────────────────────────────────
@@ -1671,12 +1822,18 @@ export interface MemberInviteResult {
   inviteUrl: string
 }
 
-export async function inviteFamilyMember(memberId: string, email?: string): Promise<MemberInviteResult> {
+export async function inviteFamilyMember(
+  memberId: string,
+  email?: string,
+): Promise<MemberInviteResult> {
   const base = getApiBase()
   const token = getAuthToken()
   const res = await credFetch(`${base}/family/members/${memberId}/invite`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(email ? { email } : {}),
   })
   const data = await res.json().catch(() => ({}))
@@ -1702,7 +1859,13 @@ export async function fetchFamilyInvite(token: string): Promise<FamilyInviteInfo
 // Public — accepting both verifies the token AND proves ownership of the
 // email (via a new or existing password). Returns a session token so the
 // acceptor lands signed in.
-export async function acceptFamilyInvite(token: string, password: string): Promise<{ token: string; user: { id: string; email: string; name: string; email_verified?: boolean } }> {
+export async function acceptFamilyInvite(
+  token: string,
+  password: string,
+): Promise<{
+  token: string
+  user: { id: string; email: string; name: string; email_verified?: boolean }
+}> {
   const base = getApiBase()
   const res = await credFetch(`${base}/family/invite/accept`, {
     method: 'POST',
@@ -1714,12 +1877,18 @@ export async function acceptFamilyInvite(token: string, password: string): Promi
   return { token: data.token, user: data.user }
 }
 
-async function accessRequestAction(id: string, action: 'approve' | 'deny'): Promise<Record<string, unknown>> {
+async function accessRequestAction(
+  id: string,
+  action: 'approve' | 'deny',
+): Promise<Record<string, unknown>> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
-  const res = await credFetch(`${base}/family/access-requests/${id}/${action}`, { method: 'POST', headers })
+  const res = await credFetch(`${base}/family/access-requests/${id}/${action}`, {
+    method: 'POST',
+    headers,
+  })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Request failed')
   return data
@@ -1754,7 +1923,12 @@ export interface FamilyContinuity {
     check_in_after_days: number
     grace_days: number
   }
-  state: { phase: 'watching' | 'check_in_sent' | 'alerted'; inactive_since?: string; check_in_sent_at?: string; alerted_at?: string }
+  state: {
+    phase: 'watching' | 'check_in_sent' | 'alerted'
+    inactive_since?: string
+    check_in_sent_at?: string
+    alerted_at?: string
+  }
   is_organizer: boolean
 }
 
@@ -1762,12 +1936,18 @@ export async function fetchFamilyContinuity(): Promise<FamilyContinuity | null> 
   return apiFetch<FamilyContinuity | null>('/family/continuity', null)
 }
 
-export async function updateFamilyContinuity(input: FamilyContinuity['continuity']): Promise<FamilyContinuity['continuity']> {
+export async function updateFamilyContinuity(
+  input: FamilyContinuity['continuity'],
+): Promise<FamilyContinuity['continuity']> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
-  const res = await credFetch(`${base}/family/continuity`, { method: 'PATCH', headers, body: JSON.stringify(input) })
+  const res = await credFetch(`${base}/family/continuity`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(input),
+  })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || "Couldn't save continuity settings")
   return data.continuity
@@ -1788,19 +1968,32 @@ export interface CashflowEntry {
 
 export interface CashflowSummary {
   entries: CashflowEntry[]
-  summary: { monthly_inflow_minor: number; monthly_outflow_minor: number; net_minor: number; runway_months: number | null }
+  summary: {
+    monthly_inflow_minor: number
+    monthly_outflow_minor: number
+    net_minor: number
+    runway_months: number | null
+  }
 }
 
 export async function fetchFamilyCashflow(): Promise<CashflowSummary | null> {
   return apiFetch<CashflowSummary | null>('/family/cashflow', null)
 }
 
-export async function addCashflowEntry(input: { kind: 'income' | 'expense'; label: string; amount_minor: number; recurrence: string }): Promise<boolean> {
+export async function addCashflowEntry(input: {
+  kind: 'income' | 'expense'
+  label: string
+  amount_minor: number
+  recurrence: string
+}): Promise<boolean> {
   const base = getApiBase()
   const token = getAuthToken()
   const res = await credFetch(`${base}/family/cashflow/entries`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(input),
   })
   return res.ok
@@ -1820,7 +2013,14 @@ export async function deleteCashflowEntry(id: string): Promise<boolean> {
 // Declared assets — property, vehicles, valuables — any active adult can
 // maintain. Same sensitivity class as the financial profile; medical/health
 // stays deferred by design.
-export const ASSET_KINDS = ['property', 'vehicle', 'savings_account', 'investment', 'valuable', 'other'] as const
+export const ASSET_KINDS = [
+  'property',
+  'vehicle',
+  'savings_account',
+  'investment',
+  'valuable',
+  'other',
+] as const
 export type AssetKind = (typeof ASSET_KINDS)[number]
 
 export const ASSET_KIND_LABELS: Record<AssetKind, string> = {
@@ -1851,16 +2051,26 @@ export interface AssetList {
 }
 
 export async function fetchFamilyAssets(): Promise<AssetList> {
-  return apiFetch<AssetList>('/family/assets', { assets: [], summary: { total_minor: 0, by_kind: {} } })
+  return apiFetch<AssetList>('/family/assets', {
+    assets: [],
+    summary: { total_minor: 0, by_kind: {} },
+  })
 }
 
-async function assetRequest(path: string, method: 'POST' | 'PATCH' | 'DELETE', body?: Record<string, unknown>): Promise<FamilyAsset | null | boolean> {
+async function assetRequest(
+  path: string,
+  method: 'POST' | 'PATCH' | 'DELETE',
+  body?: Record<string, unknown>,
+): Promise<FamilyAsset | null | boolean> {
   try {
     const base = getApiBase()
     const token = getAuthToken()
     const res = await credFetch(`${base}${path}`, {
       method,
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       ...(body ? { body: JSON.stringify(body) } : {}),
     })
     if (!res.ok) return method === 'DELETE' ? false : null
@@ -1873,12 +2083,24 @@ async function assetRequest(path: string, method: 'POST' | 'PATCH' | 'DELETE', b
   }
 }
 
-export async function addFamilyAsset(input: { kind: AssetKind; name: string; value_minor: number; notes?: string }): Promise<FamilyAsset | null> {
+export async function addFamilyAsset(input: {
+  kind: AssetKind
+  name: string
+  value_minor: number
+  notes?: string
+}): Promise<FamilyAsset | null> {
   return (await assetRequest('/family/assets', 'POST', input)) as FamilyAsset | null
 }
 
-export async function updateFamilyAsset(id: string, patch: { name?: string; value_minor?: number; notes?: string | null }): Promise<FamilyAsset | null> {
-  return (await assetRequest(`/family/assets/${encodeURIComponent(id)}`, 'PATCH', patch)) as FamilyAsset | null
+export async function updateFamilyAsset(
+  id: string,
+  patch: { name?: string; value_minor?: number; notes?: string | null },
+): Promise<FamilyAsset | null> {
+  return (await assetRequest(
+    `/family/assets/${encodeURIComponent(id)}`,
+    'PATCH',
+    patch,
+  )) as FamilyAsset | null
 }
 
 export async function deleteFamilyAsset(id: string): Promise<boolean> {
@@ -1931,7 +2153,7 @@ export async function prepareInsightDraft(insightId: string): Promise<InsightDra
       headers,
     })
     if (!res.ok) return null
-    const data = await res.json().catch(() => null) as { draft?: InsightDraft | null } | null
+    const data = (await res.json().catch(() => null)) as { draft?: InsightDraft | null } | null
     return data?.draft ?? null
   } catch (err) {
     reportError(err, { insightId })
@@ -1963,7 +2185,9 @@ export interface InsightActionPreview {
   dry_run: boolean
 }
 
-export async function fetchInsightActionPreview(insightId: string): Promise<InsightActionPreview | null> {
+export async function fetchInsightActionPreview(
+  insightId: string,
+): Promise<InsightActionPreview | null> {
   try {
     const base = getApiBase()
     const token = getAuthToken()
@@ -1972,7 +2196,11 @@ export async function fetchInsightActionPreview(insightId: string): Promise<Insi
 
     const res = await credFetch(`${base}/insights/${insightId}/action-preview`, { headers })
     if (!res.ok) return null
-    const data = (await res.json()) as { insight: RawInsight; actions: InsightActionPreviewItem[]; dry_run: boolean }
+    const data = (await res.json()) as {
+      insight: RawInsight
+      actions: InsightActionPreviewItem[]
+      dry_run: boolean
+    }
     return {
       insight: adaptInsight(data.insight),
       actions: data.actions ?? [],
@@ -1992,7 +2220,11 @@ export interface ApproveInsightResult {
   error?: string | undefined
 }
 
-async function insightActionPost(insightId: string, action: string, body?: Record<string, unknown>): Promise<ApproveInsightResult> {
+async function insightActionPost(
+  insightId: string,
+  action: string,
+  body?: Record<string, unknown>,
+): Promise<ApproveInsightResult> {
   try {
     const base = getApiBase()
     const token = getAuthToken()
@@ -2004,7 +2236,11 @@ async function insightActionPost(insightId: string, action: string, body?: Recor
       headers,
       ...(body ? { body: JSON.stringify(body) } : {}),
     })
-    const data = await res.json().catch(() => ({})) as { insight?: { state?: string }; message?: string; error?: string }
+    const data = (await res.json().catch(() => ({}))) as {
+      insight?: { state?: string }
+      message?: string
+      error?: string
+    }
     if (!res.ok) return { ok: false, error: data.error ?? `Request failed (${res.status})` }
     return { ok: true, state: data.insight?.state, message: data.message }
   } catch (err) {
@@ -2014,7 +2250,11 @@ async function insightActionPost(insightId: string, action: string, body?: Recor
 }
 
 export function approveInsight(insightId: string, notes?: string): Promise<ApproveInsightResult> {
-  return insightActionPost(insightId, 'approve', notes?.trim() ? { notes: notes.trim() } : undefined)
+  return insightActionPost(
+    insightId,
+    'approve',
+    notes?.trim() ? { notes: notes.trim() } : undefined,
+  )
 }
 
 // Recovery path for an approved insight whose actions failed to execute —
@@ -2024,7 +2264,11 @@ export function retryInsightExecution(insightId: string): Promise<ApproveInsight
 }
 
 export async function dismissInsight(insightId: string, reason?: string): Promise<boolean> {
-  const result = await insightActionPost(insightId, 'dismiss', reason?.trim() ? { reason: reason.trim() } : undefined)
+  const result = await insightActionPost(
+    insightId,
+    'dismiss',
+    reason?.trim() ? { reason: reason.trim() } : undefined,
+  )
   return result.ok
 }
 
@@ -2041,9 +2285,13 @@ export async function fetchAutomationSettings(): Promise<AutomationSettings | nu
   return apiFetch<AutomationSettings | null>('/settings/automation', null)
 }
 
-export async function updateAutomationSettings(
-  patch: { dry_run_mode?: boolean; renewal_reminders_enabled?: boolean; renewal_reminder_lead_days?: number[]; auto_execute_enabled?: boolean; daily_marketing_drafts_enabled?: boolean },
-): Promise<AutomationSettings | null | 'queued'> {
+export async function updateAutomationSettings(patch: {
+  dry_run_mode?: boolean
+  renewal_reminders_enabled?: boolean
+  renewal_reminder_lead_days?: number[]
+  auto_execute_enabled?: boolean
+  daily_marketing_drafts_enabled?: boolean
+}): Promise<AutomationSettings | null | 'queued'> {
   try {
     const res = await fetchOrQueue(
       '/settings/automation',
@@ -2118,7 +2366,9 @@ export async function exportAccountData(): Promise<Record<string, unknown> | nul
 
 // confirmation must be the account's own email, typed — the server's check,
 // not just a client formality.
-export async function deleteAccount(confirmation: string): Promise<{ ok: boolean; error?: string | undefined }> {
+export async function deleteAccount(
+  confirmation: string,
+): Promise<{ ok: boolean; error?: string | undefined }> {
   try {
     const base = getApiBase()
     const token = getAuthToken()
@@ -2131,7 +2381,7 @@ export async function deleteAccount(confirmation: string): Promise<{ ok: boolean
       body: JSON.stringify({ confirmation }),
     })
     if (!res.ok) {
-      const data = await res.json().catch(() => ({})) as { error?: string }
+      const data = (await res.json().catch(() => ({}))) as { error?: string }
       return { ok: false, error: data.error ?? `Request failed (${res.status})` }
     }
     return { ok: true }
@@ -2155,17 +2405,19 @@ export async function dismissInboxItem(itemId: string): Promise<boolean> {
   }
 }
 
-export async function fetchInboxItems(): Promise<{ items: InboxItem[]; isLive: boolean; failed: boolean }> {
+export async function fetchInboxItems(): Promise<{
+  items: InboxItem[]
+  isLive: boolean
+  failed: boolean
+}> {
   // Cached 30s — AppShell already warms this on auth for the tab badge, so
   // opening Inbox right after app load paints from cache instead of a
   // skeleton. Invalidated on dismiss so a removed item stays removed.
   let failed = false
   return cachedFetch('inbox-items', 30_000, () =>
-    apiFetch<{ items: InboxItem[] }>(
-      '/inbox',
-      { items: [] },
-      () => { failed = true },
-    ).then((r) => ({
+    apiFetch<{ items: InboxItem[] }>('/inbox', { items: [] }, () => {
+      failed = true
+    }).then((r) => ({
       items: r.items ?? [],
       isLive: (r.items?.length ?? 0) > 0,
       failed,
@@ -2192,7 +2444,8 @@ export type EmploymentStatus = 'employed' | 'self_employed' | 'unemployed' | 're
 
 // PRD-105: car/home added — recordable now, coverage-adequacy reasoning
 // for either is a separate, later PRD (see PRD-105's "Out of scope").
-export type PolicyType = 'life' | 'income_protection' | 'health' | 'critical_illness' | 'car' | 'home' | 'travel'
+export type PolicyType =
+  'life' | 'income_protection' | 'health' | 'critical_illness' | 'car' | 'home' | 'travel'
 
 // Additive to household.life_cover_minor / income_protection_monthly_minor
 // below, not a replacement — those two fields still feed the original
@@ -2264,7 +2517,10 @@ export interface FinancialProfile {
   policies: FinancialProfilePolicy[]
 }
 
-async function fetchFinancialProfileRaw(): Promise<{ profile: FinancialProfile | null; version: number }> {
+async function fetchFinancialProfileRaw(): Promise<{
+  profile: FinancialProfile | null
+  version: number
+}> {
   return apiFetch<{ profile: FinancialProfile | null; version?: number }>(
     '/family/financial-profile',
     { profile: null },
@@ -2294,7 +2550,10 @@ export async function respondToProfileReview(action: 'confirm' | 'later'): Promi
     const token = getAuthToken()
     const res = await credFetch(`${base}/family/financial-profile/review`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({ action }),
     })
     return res.ok
@@ -2315,7 +2574,9 @@ export async function respondToProfileReview(action: 'confirm' | 'later'): Promi
 // below) deliberately stays uncached — KEEL-006's concurrency check needs a
 // genuinely current version, not a 30s-old one.
 export async function fetchFinancialProfile(): Promise<FinancialProfile | null> {
-  return cachedFetch('financial-profile', 30_000, () => fetchFinancialProfileRaw().then((r) => r.profile))
+  return cachedFetch('financial-profile', 30_000, () =>
+    fetchFinancialProfileRaw().then((r) => r.profile),
+  )
 }
 
 /**
@@ -2324,7 +2585,10 @@ export async function fetchFinancialProfile(): Promise<FinancialProfile | null> 
  * a concurrent edit from another tab/device. Only the wizard needs the
  * version; every other caller keeps using the plain fetchFinancialProfile.
  */
-export async function fetchFinancialProfileWithVersion(): Promise<{ profile: FinancialProfile | null; version: number }> {
+export async function fetchFinancialProfileWithVersion(): Promise<{
+  profile: FinancialProfile | null
+  version: number
+}> {
   return fetchFinancialProfileRaw()
 }
 
@@ -2350,11 +2614,16 @@ export async function submitFinancialProfile(
   const res = await credFetch(`${base}/family/financial-profile`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ ...profile, generate_insights: generateInsights, ...(version !== undefined ? { version } : {}) }),
+    body: JSON.stringify({
+      ...profile,
+      generate_insights: generateInsights,
+      ...(version !== undefined ? { version } : {}),
+    }),
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
-    if (res.status === 409) throw new Error(data.error || 'This profile was updated elsewhere — reload and try again.')
+    if (res.status === 409)
+      throw new Error(data.error || 'This profile was updated elsewhere — reload and try again.')
     throw new Error(data.error || 'Request failed')
   }
   // Every other reader (Family, Intelligence, event/asset detail pages,
@@ -2391,7 +2660,8 @@ export interface LifeEventStepContact {
   email?: string
 }
 
-export type LifeEventType = 'job_loss' | 'bereavement' | 'disability' | 'medical' | 'car' | 'property' | 'travel'
+export type LifeEventType =
+  'job_loss' | 'bereavement' | 'disability' | 'medical' | 'car' | 'property' | 'travel'
 
 export interface LifeEventPlaybookStep {
   id: string
@@ -2432,7 +2702,9 @@ export interface LifeEvent {
 }
 
 export async function fetchLifeEvents(): Promise<LifeEvent[]> {
-  return apiFetch<{ events: LifeEvent[] }>('/family/life-events', { events: [] }).then((r) => r.events ?? [])
+  return apiFetch<{ events: LifeEvent[] }>('/family/life-events', { events: [] }).then(
+    (r) => r.events ?? [],
+  )
 }
 
 export async function reportLifeEvent(
@@ -2485,7 +2757,10 @@ export async function dismissLifeChangeNudge(): Promise<void> {
 
 // Same copy-to-clipboard / open-in-email-client-only posture as
 // prepareInsightDraft above — there is no "send" endpoint here either.
-export async function prepareLifeEventStepDraft(eventId: string, stepId: string): Promise<InsightDraft | null> {
+export async function prepareLifeEventStepDraft(
+  eventId: string,
+  stepId: string,
+): Promise<InsightDraft | null> {
   try {
     const base = getApiBase()
     const token = getAuthToken()
@@ -2497,7 +2772,7 @@ export async function prepareLifeEventStepDraft(eventId: string, stepId: string)
       headers,
     })
     if (!res.ok) return null
-    const data = await res.json().catch(() => null) as { draft?: InsightDraft | null } | null
+    const data = (await res.json().catch(() => null)) as { draft?: InsightDraft | null } | null
     return data?.draft ?? null
   } catch (err) {
     reportError(err, { eventId, stepId })
@@ -2514,7 +2789,10 @@ export function pingOnDeviceDraftUsed(eventId: string, stepId: string): void {
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
-  credFetch(`${base}/family/life-events/${eventId}/steps/${stepId}/prepare-on-device`, { method: 'POST', headers }).catch(() => {
+  credFetch(`${base}/family/life-events/${eventId}/steps/${stepId}/prepare-on-device`, {
+    method: 'POST',
+    headers,
+  }).catch(() => {
     // Best-effort observability only — never surfaced to the user.
   })
 }
@@ -2523,7 +2801,11 @@ export function pingOnDeviceDraftUsed(eventId: string, stepId: string): void {
 // toggle — see the route's comment on cross-device convergence). Returns
 // the server's authoritative id list, or null on failure so the caller can
 // revert its optimistic update.
-export async function setLifeEventStepDone(eventId: string, stepId: string, done: boolean): Promise<string[] | null | 'queued'> {
+export async function setLifeEventStepDone(
+  eventId: string,
+  stepId: string,
+  done: boolean,
+): Promise<string[] | null | 'queued'> {
   try {
     const res = await fetchOrQueue(
       `/family/life-events/${eventId}/steps/${stepId}/complete`,
@@ -2532,7 +2814,7 @@ export async function setLifeEventStepDone(eventId: string, stepId: string, done
     )
     if (res === 'queued') return 'queued' // keep the optimistic toggle; lands on reconnect
     if (!res.ok) return null
-    const data = await res.json().catch(() => null) as { completed_step_ids?: string[] } | null
+    const data = (await res.json().catch(() => null)) as { completed_step_ids?: string[] } | null
     return data?.completed_step_ids ?? []
   } catch (err) {
     reportError(err, { eventId, stepId, done })
@@ -2555,7 +2837,9 @@ export interface AuditLogEntry {
 // timestamp from the previous page.
 export async function fetchAuditLog(before?: string): Promise<AuditLogEntry[]> {
   const qs = before ? `?before=${encodeURIComponent(before)}` : ''
-  return apiFetch<{ entries: AuditLogEntry[] }>(`/audit-log${qs}`, { entries: [] }).then((r) => r.entries ?? [])
+  return apiFetch<{ entries: AuditLogEntry[] }>(`/audit-log${qs}`, { entries: [] }).then(
+    (r) => r.entries ?? [],
+  )
 }
 
 // ── Password reset & email verification ─────────────────────────────────
@@ -2626,13 +2910,21 @@ export interface ReadinessQuizResult {
   score: number | null
   /** PRD-125: the same composite components /family/readiness computes —
    *  only the ones the quiz collects are scored; the rest read null. */
-  components?: Array<{ key: string; label: string; score: number | null; weight: number; detail: string }>
+  components?: Array<{
+    key: string
+    label: string
+    score: number | null
+    weight: number
+    detail: string
+  }>
   insights: ReadinessQuizInsight[]
   error?: string
 }
 
 /** Public, unauthenticated — no token, nothing tied to an identity. */
-export async function submitReadinessQuiz(answers: ReadinessQuizAnswers): Promise<ReadinessQuizResult> {
+export async function submitReadinessQuiz(
+  answers: ReadinessQuizAnswers,
+): Promise<ReadinessQuizResult> {
   const res = await credFetch(`${getApiBase()}/readiness-quiz`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2640,7 +2932,12 @@ export async function submitReadinessQuiz(answers: ReadinessQuizAnswers): Promis
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) return { score: null, insights: [], error: data.error || 'Request failed' }
-  return { score: data.score ?? null, components: data.components ?? [], insights: data.insights ?? [], error: data.error }
+  return {
+    score: data.score ?? null,
+    components: data.components ?? [],
+    insights: data.insights ?? [],
+    error: data.error,
+  }
 }
 
 /** Per-score share card — points at the API route that serves per-score
@@ -2723,7 +3020,9 @@ export async function startLifeKeelPlusCheckout(): Promise<string> {
 }
 
 /** Redeems a promo code — throws with the server's reason on failure. */
-export async function redeemPromoCode(code: string): Promise<{ grant_credits: number; credits_balance: number }> {
+export async function redeemPromoCode(
+  code: string,
+): Promise<{ grant_credits: number; credits_balance: number }> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -2821,7 +3120,11 @@ export async function fetchMarketingPosts(): Promise<MarketingPost[]> {
   return data.posts
 }
 
-async function marketingRequest<T>(path: string, method: 'POST' | 'PATCH' | 'DELETE', body?: Record<string, unknown>): Promise<T> {
+async function marketingRequest<T>(
+  path: string,
+  method: 'POST' | 'PATCH' | 'DELETE',
+  body?: Record<string, unknown>,
+): Promise<T> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -2845,17 +3148,25 @@ export async function createMarketingPost(input: {
   campaign?: string
   media_url?: string
 }): Promise<MarketingPost> {
-  const data = await marketingRequest<{ post: MarketingPost }>('/marketing/posts', 'POST', { ...input })
+  const data = await marketingRequest<{ post: MarketingPost }>('/marketing/posts', 'POST', {
+    ...input,
+  })
   return data.post
 }
 
 export async function approveMarketingPost(id: string): Promise<MarketingPost> {
-  const data = await marketingRequest<{ post: MarketingPost }>(`/marketing/posts/${id}/approve`, 'POST')
+  const data = await marketingRequest<{ post: MarketingPost }>(
+    `/marketing/posts/${id}/approve`,
+    'POST',
+  )
   return data.post
 }
 
 export async function rejectMarketingPost(id: string): Promise<MarketingPost> {
-  const data = await marketingRequest<{ post: MarketingPost }>(`/marketing/posts/${id}/reject`, 'POST')
+  const data = await marketingRequest<{ post: MarketingPost }>(
+    `/marketing/posts/${id}/reject`,
+    'POST',
+  )
   return data.post
 }
 
@@ -2864,7 +3175,9 @@ export async function updateMarketingPost(
   id: string,
   patch: { content?: string; scheduled_at?: string | null; media_url?: string | null },
 ): Promise<MarketingPost> {
-  const data = await marketingRequest<{ post: MarketingPost }>(`/marketing/posts/${id}`, 'PATCH', { ...patch })
+  const data = await marketingRequest<{ post: MarketingPost }>(`/marketing/posts/${id}`, 'PATCH', {
+    ...patch,
+  })
   return data.post
 }
 
@@ -2875,7 +3188,11 @@ export async function generateMarketingPost(input: {
   blog_slug?: string
   campaign?: string
 }): Promise<MarketingPost> {
-  const data = await marketingRequest<{ post: MarketingPost }>('/marketing/posts/generate', 'POST', { ...input })
+  const data = await marketingRequest<{ post: MarketingPost }>(
+    '/marketing/posts/generate',
+    'POST',
+    { ...input },
+  )
   return data.post
 }
 
@@ -2897,7 +3214,14 @@ export async function previewMarketingDrafts(input: {
 }
 
 export interface MarketingPerformance {
-  posts: { slug: string; title?: string; views: number; cta_clicks: number; signups: number; leads: number }[]
+  posts: {
+    slug: string
+    title?: string
+    views: number
+    cta_clicks: number
+    signups: number
+    leads: number
+  }[]
   channels: { channel: string; views: number; cta_clicks: number; leads: number; signups: number }[]
   campaigns: { campaign: string; views: number; signups: number; leads: number }[]
   totals: { views: number; cta_clicks: number; signups: number; leads: number }
@@ -2917,12 +3241,21 @@ export async function fetchMarketingPerformance(): Promise<MarketingPerformance 
 }
 
 export async function fetchSocialConnections(): Promise<SocialConnection[]> {
-  const data = await apiFetch<{ connections: SocialConnection[] }>('/marketing/connections', { connections: [] })
+  const data = await apiFetch<{ connections: SocialConnection[] }>('/marketing/connections', {
+    connections: [],
+  })
   return data.connections
 }
 
-export async function connectBluesky(input: { handle: string; app_password: string }): Promise<SocialConnection> {
-  const data = await marketingRequest<{ connection: SocialConnection }>('/marketing/connections/bluesky', 'POST', { ...input })
+export async function connectBluesky(input: {
+  handle: string
+  app_password: string
+}): Promise<SocialConnection> {
+  const data = await marketingRequest<{ connection: SocialConnection }>(
+    '/marketing/connections/bluesky',
+    'POST',
+    { ...input },
+  )
   return data.connection
 }
 
@@ -2938,7 +3271,9 @@ export async function disconnectSocialChannel(channel: string): Promise<void> {
  * Tokens land encrypted in connector_credentials — no secret ever crosses
  * this request.
  */
-export async function startConnectorConnect(connectorId: string): Promise<{ auth_url: string } | null> {
+export async function startConnectorConnect(
+  connectorId: string,
+): Promise<{ auth_url: string } | null> {
   const data = await apiFetch<{ auth_url?: string } | null>(
     `/connectors/${connectorId}/oauth/start?app=marketing&mode=json`,
     null,
@@ -2952,7 +3287,14 @@ export async function startXConnect(): Promise<{ auth_url: string } | null> {
 
 export interface OperatorOverview {
   generated_at: string
-  users: { total: number; active: number; suspended: number; signups_today: number; signups_week: number; signups_prev_week?: number }
+  users: {
+    total: number
+    active: number
+    suspended: number
+    signups_today: number
+    signups_week: number
+    signups_prev_week?: number
+  }
   tenants: { total: number; active: number }
   marketing: { publish_failed: number; queued: number }
   leads: Record<string, number>
@@ -3092,7 +3434,13 @@ export interface OperatorTenantMember {
 
 /** Tenant detail + member list — powers the inline member expansion on the
  *  operator tenants page. */
-export function fetchOperatorTenant(id: string): Promise<{ tenant: OperatorTenant; members: OperatorTenantMember[]; health: OperatorTenantHealth }> {
+export function fetchOperatorTenant(
+  id: string,
+): Promise<{
+  tenant: OperatorTenant
+  members: OperatorTenantMember[]
+  health: OperatorTenantHealth
+}> {
   return operatorRequest(`/operator/tenants/${encodeURIComponent(id)}`)
 }
 
@@ -3116,7 +3464,13 @@ export interface OperatorUserDossier {
   dossier: {
     recent_logins: OperatorLoginEvent[]
     insights: Record<string, number>
-    ledger_tail: { timestamp: string; type: string; amount: number; balance_after?: number; reason?: string }[]
+    ledger_tail: {
+      timestamp: string
+      type: string
+      amount: number
+      balance_after?: number
+      reason?: string
+    }[]
     support_cases: OperatorCaseSummary[]
     audit_trail: OperatorAuditEntry[]
   }
@@ -3155,19 +3509,54 @@ export interface OperatorOperations {
   mongo: { ok: boolean; ping_ms: number }
   insights_by_state: Record<string, number>
   marketing_posts_by_state: Record<string, number>
-  cron_locks: Array<Record<string, unknown> & { name?: string; owner?: string; expires_at?: string; stale?: boolean }>
+  cron_locks: Array<
+    Record<string, unknown> & {
+      name?: string
+      owner?: string
+      expires_at?: string
+      stale?: boolean
+    }
+  >
   reminders_by_state: Record<string, number>
-  failed_reminders: Array<{ id: string; tenant_id?: string; due_at?: string; attempts?: number; last_error?: string; policy?: { type?: string; provider?: string } }>
+  failed_reminders: Array<{
+    id: string
+    tenant_id?: string
+    due_at?: string
+    attempts?: number
+    last_error?: string
+    policy?: { type?: string; provider?: string }
+  }>
   stale_reminder_claims: number
   connectors: {
     by_connector: Record<string, number>
     expiring_tokens_7d: number
-    list: Array<{ tenant_id: string; connector_id: string; auth_type?: string; token_expires_at?: string; created_at?: string }>
+    list: Array<{
+      tenant_id: string
+      connector_id: string
+      auth_type?: string
+      token_expires_at?: string
+      created_at?: string
+    }>
   }
   delivery_by_state: Record<string, number>
-  failed_deliveries: Array<{ tenant_id?: string; channel?: string; status?: string; error?: string; updated_at?: string }>
+  failed_deliveries: Array<{
+    tenant_id?: string
+    channel?: string
+    status?: string
+    error?: string
+    updated_at?: string
+  }>
   failed_posts: Array<{ id: string; channel?: string; publish_error?: string; updated_at?: string }>
-  queue: { available: true; pending: number; processing: number; delayed: number; dead: number; dead_jobs: Array<{ id: string; attempts?: number; enqueuedAt: number }> } | { available: false }
+  queue:
+    | {
+        available: true
+        pending: number
+        processing: number
+        delayed: number
+        dead: number
+        dead_jobs: Array<{ id: string; attempts?: number; enqueuedAt: number }>
+      }
+    | { available: false }
   growth_events_24h: number
   documents_pending: number
   /** Triage notes from runbooks.yaml, keyed by alert/queue name. */
@@ -3201,7 +3590,10 @@ export async function setOperatorAlertState(
   const token = getAuthToken()
   const res = await credFetch(`${base}/operator/alerts/state`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ dedup_key: dedupKey, action, ...context }),
   })
   const data = await res.json().catch(() => ({}))
@@ -3213,19 +3605,28 @@ async function operatorAction(path: string, reason: string): Promise<void> {
   const token = getAuthToken()
   const res = await credFetch(`${base}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ reason }),
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error((data.error as string) || 'Operator action failed')
 }
 
-export const suspendOperatorUser = (id: string, reason: string) => operatorAction(`/operator/users/${id}/suspend`, reason)
-export const reactivateOperatorUser = (id: string, reason: string) => operatorAction(`/operator/users/${id}/reactivate`, reason)
-export const sendUserPasswordReset = (id: string, reason: string) => operatorAction(`/operator/users/${id}/password-reset`, reason)
-export const revokeUserSessions = (id: string, reason: string) => operatorAction(`/operator/users/${id}/revoke-sessions`, reason)
-export const unlockUser = (id: string, reason: string) => operatorAction(`/operator/users/${id}/unlock`, reason)
-export const disableUserMfa = (id: string, reason: string) => operatorAction(`/operator/users/${id}/mfa-disable`, reason)
+export const suspendOperatorUser = (id: string, reason: string) =>
+  operatorAction(`/operator/users/${id}/suspend`, reason)
+export const reactivateOperatorUser = (id: string, reason: string) =>
+  operatorAction(`/operator/users/${id}/reactivate`, reason)
+export const sendUserPasswordReset = (id: string, reason: string) =>
+  operatorAction(`/operator/users/${id}/password-reset`, reason)
+export const revokeUserSessions = (id: string, reason: string) =>
+  operatorAction(`/operator/users/${id}/revoke-sessions`, reason)
+export const unlockUser = (id: string, reason: string) =>
+  operatorAction(`/operator/users/${id}/unlock`, reason)
+export const disableUserMfa = (id: string, reason: string) =>
+  operatorAction(`/operator/users/${id}/mfa-disable`, reason)
 
 export interface OperatorUserExport {
   exported_at: string
@@ -3245,7 +3646,10 @@ export async function exportOperatorUser(id: string, reason: string): Promise<Op
   const token = getAuthToken()
   const res = await credFetch(`${base}/operator/users/${id}/export`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ reason }),
   })
   const data = await res.json().catch(() => ({}))
@@ -3253,29 +3657,49 @@ export async function exportOperatorUser(id: string, reason: string): Promise<Op
   return data as OperatorUserExport
 }
 
-export const eraseOperatorUser = (id: string, reason: string) => operatorAction(`/operator/users/${id}/erase`, reason)
+export const eraseOperatorUser = (id: string, reason: string) =>
+  operatorAction(`/operator/users/${id}/erase`, reason)
 
 export interface OperatorSecurity {
   generated_at: string
-  locked_users: Array<{ id: string; email: string; tenant_id: string; failed_login_attempts?: number; locked_until?: string }>
+  locked_users: Array<{
+    id: string
+    email: string
+    tenant_id: string
+    failed_login_attempts?: number
+    locked_until?: string
+  }>
   users_with_failed_logins: number
   suspended_users: number
   sessions_revoked_7d: number
   logins_24h: { successful: number; failed: number }
   failed_by_ip_24h: Array<{ ip: string; count: number }>
   new_ip_logins_24h: Array<{ email: string; ip: string; first_seen: string }>
-  recent_login_events: Array<{ email?: string; success: boolean; reason?: string; ip?: string; user_agent?: string; created_at: string }>
+  recent_login_events: Array<{
+    email?: string
+    success: boolean
+    reason?: string
+    ip?: string
+    user_agent?: string
+    created_at: string
+  }>
 }
 
 export function fetchOperatorSecurity(): Promise<OperatorSecurity> {
   return operatorRequest('/operator/security')
 }
-export const suspendOperatorTenant = (id: string, reason: string) => operatorAction(`/operator/tenants/${id}/suspend`, reason)
-export const reactivateOperatorTenant = (id: string, reason: string) => operatorAction(`/operator/tenants/${id}/reactivate`, reason)
-export const suspendOperator = (id: string, reason: string) => operatorAction(`/operator/operators/${id}/suspend`, reason)
-export const reactivateOperator = (id: string, reason: string) => operatorAction(`/operator/operators/${id}/reactivate`, reason)
-export const retryReminder = (id: string, reason: string) => operatorAction(`/operator/reminders/${id}/retry`, reason)
-export const requeueDeadJob = (queue: string, jobId: string, reason: string) => operatorAction(`/operator/queues/${queue}/dead/${jobId}/requeue`, reason)
+export const suspendOperatorTenant = (id: string, reason: string) =>
+  operatorAction(`/operator/tenants/${id}/suspend`, reason)
+export const reactivateOperatorTenant = (id: string, reason: string) =>
+  operatorAction(`/operator/tenants/${id}/reactivate`, reason)
+export const suspendOperator = (id: string, reason: string) =>
+  operatorAction(`/operator/operators/${id}/suspend`, reason)
+export const reactivateOperator = (id: string, reason: string) =>
+  operatorAction(`/operator/operators/${id}/reactivate`, reason)
+export const retryReminder = (id: string, reason: string) =>
+  operatorAction(`/operator/reminders/${id}/retry`, reason)
+export const requeueDeadJob = (queue: string, jobId: string, reason: string) =>
+  operatorAction(`/operator/queues/${queue}/dead/${jobId}/requeue`, reason)
 export const revokeConnector = (connectorId: string, tenantId: string, reason: string) =>
   operatorAction(`/operator/connectors/${connectorId}/tenants/${tenantId}/revoke`, reason)
 
@@ -3283,9 +3707,20 @@ export const revokeConnector = (connectorId: string, tenantId: string, reason: s
 
 export interface OperatorFunnel {
   window_days: number
-  totals: { leads_30d: number; signups_30d: number; activated_tenants: number; paying_tenants: number }
+  totals: {
+    leads_30d: number
+    signups_30d: number
+    activated_tenants: number
+    paying_tenants: number
+  }
   leads_by_stage: Record<string, number>
-  by_source: Array<{ source: string; leads: number; signups: number; paying: number; trialing: number }>
+  by_source: Array<{
+    source: string
+    leads: number
+    signups: number
+    paying: number
+    trialing: number
+  }>
   /** Activation steps for the 30d signup cohort — measured from persisted
    *  tenant state (profile exists / first insight / connector linked),
    *  not anonymous client events. */
@@ -3314,9 +3749,30 @@ export function fetchOperatorFunnel(): Promise<OperatorFunnel> {
 // ── Operator: referrals ───────────────────────────────────────────────────
 
 export interface OperatorReferrals {
-  totals: { codes_issued: number; referrals: number; pending: number; rewarded: number; credits_granted: number }
-  leaderboard: { tenant_id: string; tenant_name: string; code: string; pending: number; rewarded: number; referrals: number }[]
-  recent: { referrer_tenant_id: string; referrer_name: string; referred_name: string; code: string; status: string; created_at: string; rewarded_at: string | null }[]
+  totals: {
+    codes_issued: number
+    referrals: number
+    pending: number
+    rewarded: number
+    credits_granted: number
+  }
+  leaderboard: {
+    tenant_id: string
+    tenant_name: string
+    code: string
+    pending: number
+    rewarded: number
+    referrals: number
+  }[]
+  recent: {
+    referrer_tenant_id: string
+    referrer_name: string
+    referred_name: string
+    code: string
+    status: string
+    created_at: string
+    rewarded_at: string | null
+  }[]
 }
 
 export function fetchOperatorReferrals(): Promise<OperatorReferrals> {
@@ -3341,16 +3797,25 @@ export interface ConfigHistoryEntry {
   created_at: string
 }
 
-export function fetchOperatorConfiguration(): Promise<{ config: PlatformConfig; history: ConfigHistoryEntry[] }> {
+export function fetchOperatorConfiguration(): Promise<{
+  config: PlatformConfig
+  history: ConfigHistoryEntry[]
+}> {
   return operatorRequest('/operator/configuration')
 }
 
-export async function updateOperatorConfiguration(changes: Partial<PlatformConfig>, reason: string): Promise<PlatformConfig> {
+export async function updateOperatorConfiguration(
+  changes: Partial<PlatformConfig>,
+  reason: string,
+): Promise<PlatformConfig> {
   const base = getApiBase()
   const token = getAuthToken()
   const res = await credFetch(`${base}/operator/configuration`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ ...changes, reason }),
   })
   const data = await res.json().catch(() => ({}))
@@ -3369,44 +3834,81 @@ export interface CostSnapshot {
   recorded_at: string
 }
 
-export function fetchInfrastructure(): Promise<{ services: CostSnapshot[]; total_monthly_usd: number; history: CostSnapshot[] }> {
+export function fetchInfrastructure(): Promise<{
+  services: CostSnapshot[]
+  total_monthly_usd: number
+  history: CostSnapshot[]
+}> {
   return operatorRequest('/operator/infrastructure')
 }
 
-export async function recordCostSnapshot(service: string, monthlyUsd: number, reason: string, note?: string): Promise<void> {
+export async function recordCostSnapshot(
+  service: string,
+  monthlyUsd: number,
+  reason: string,
+  note?: string,
+): Promise<void> {
   const base = getApiBase()
   const token = getAuthToken()
   const res = await credFetch(`${base}/operator/infrastructure/snapshots`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    body: JSON.stringify({ service, monthly_usd: monthlyUsd, reason, ...(note !== undefined ? { note } : {}) }),
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      service,
+      monthly_usd: monthlyUsd,
+      reason,
+      ...(note !== undefined ? { note } : {}),
+    }),
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error((data.error as string) || 'Snapshot failed')
 }
 
-export function fetchOperatorLead(id: string): Promise<{ lead: OperatorLead & { attribution?: Record<string, string> } }> {
+export function fetchOperatorLead(
+  id: string,
+): Promise<{ lead: OperatorLead & { attribution?: Record<string, string> } }> {
   return operatorRequest(`/operator/leads/${id}`)
 }
 
-export async function createOperator(userId: string, roles: string[], reason: string): Promise<void> {
+export async function createOperator(
+  userId: string,
+  roles: string[],
+  reason: string,
+): Promise<void> {
   const base = getApiBase()
   const token = getAuthToken()
   const res = await credFetch(`${base}/operator/operators`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ user_id: userId, roles, reason }),
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error((data.error as string) || 'Could not add operator')
 }
 
-export function fetchOperators(): Promise<{ operators: OperatorRecord[]; bootstrap: OperatorRecord[] }> {
+export function fetchOperators(): Promise<{
+  operators: OperatorRecord[]
+  bootstrap: OperatorRecord[]
+}> {
   return operatorRequest('/operator/operators')
 }
 
-export function fetchOperatorAudit(query: { action?: string | undefined; target_type?: string | undefined; target_id?: string | undefined } = {}): Promise<{ entries: OperatorAuditEntry[]; total: number }> {
-  const params = new URLSearchParams(Object.entries(query).filter(([, v]) => v) as [string, string][])
+export function fetchOperatorAudit(
+  query: {
+    action?: string | undefined
+    target_type?: string | undefined
+    target_id?: string | undefined
+  } = {},
+): Promise<{ entries: OperatorAuditEntry[]; total: number }> {
+  const params = new URLSearchParams(
+    Object.entries(query).filter(([, v]) => v) as [string, string][],
+  )
   return operatorRequest(`/operator/audit${params.size ? `?${params}` : ''}`)
 }
 
@@ -3446,16 +3948,27 @@ export interface AutopilotAction {
   created_at: string
 }
 
-export function fetchOperatorAutopilot(): Promise<{ rules: AutopilotRule[]; recent_actions: AutopilotAction[]; never_autonomous: string[] }> {
+export function fetchOperatorAutopilot(): Promise<{
+  rules: AutopilotRule[]
+  recent_actions: AutopilotAction[]
+  never_autonomous: string[]
+}> {
   return operatorRequest('/operator/autopilot')
 }
 
-export function updateOperatorAutopilot(rule: string, update: { enabled?: boolean; max_blast_radius?: number; cooldown_minutes?: number }, reason: string): Promise<{ rule: AutopilotRule }> {
+export function updateOperatorAutopilot(
+  rule: string,
+  update: { enabled?: boolean; max_blast_radius?: number; cooldown_minutes?: number },
+  reason: string,
+): Promise<{ rule: AutopilotRule }> {
   const base = getApiBase()
   const token = getAuthToken()
   return credFetch(`${base}/operator/autopilot/${encodeURIComponent(rule)}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ ...update, reason }),
   }).then(async (res) => {
     const data = await res.json().catch(() => ({}))
@@ -3464,12 +3977,19 @@ export function updateOperatorAutopilot(rule: string, update: { enabled?: boolea
   })
 }
 
-export function resolveAutopilotProposal(id: string, decision: 'approve' | 'reject', reason: string): Promise<{ ok: boolean; result?: string }> {
+export function resolveAutopilotProposal(
+  id: string,
+  decision: 'approve' | 'reject',
+  reason: string,
+): Promise<{ ok: boolean; result?: string }> {
   const base = getApiBase()
   const token = getAuthToken()
   return credFetch(`${base}/operator/autopilot/proposals/${encodeURIComponent(id)}/${decision}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ reason }),
   }).then(async (res) => {
     const data = await res.json().catch(() => ({}))
@@ -3504,7 +4024,10 @@ export function sendOperatorDigest(): Promise<{ digest: OperatorDigest }> {
   const token = getAuthToken()
   return credFetch(`${base}/operator/digest/send`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
   }).then(async (res) => {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error((data.error as string) || 'Digest generation failed')
@@ -3530,7 +4053,25 @@ export interface OperatorLead {
   updated_at?: string
 }
 
-export function fetchOperatorLeads(query: { q?: string; stage?: string; source?: string; suppressed?: 'true' | 'false'; limit?: number; offset?: number; cursor?: string } = {}): Promise<{ leads: OperatorLead[]; total?: number; next_cursor?: string; stages: Record<string, number>; sources: Record<string, number>; limit: number; offset: number }> {
+export function fetchOperatorLeads(
+  query: {
+    q?: string
+    stage?: string
+    source?: string
+    suppressed?: 'true' | 'false'
+    limit?: number
+    offset?: number
+    cursor?: string
+  } = {},
+): Promise<{
+  leads: OperatorLead[]
+  total?: number
+  next_cursor?: string
+  stages: Record<string, number>
+  sources: Record<string, number>
+  limit: number
+  offset: number
+}> {
   const params = new URLSearchParams()
   for (const [k, v] of Object.entries(query)) {
     if (v !== undefined && v !== '') params.set(k, String(v))
@@ -3538,12 +4079,19 @@ export function fetchOperatorLeads(query: { q?: string; stage?: string; source?:
   return operatorRequest(`/operator/leads${params.size ? `?${params}` : ''}`)
 }
 
-export async function updateOperatorLead(id: string, update: { stage?: LeadStage; note?: string }, reason: string): Promise<OperatorLead> {
+export async function updateOperatorLead(
+  id: string,
+  update: { stage?: LeadStage; note?: string },
+  reason: string,
+): Promise<OperatorLead> {
   const base = getApiBase()
   const token = getAuthToken()
   const res = await credFetch(`${base}/operator/leads/${id}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ ...update, reason }),
   })
   const data = await res.json().catch(() => ({}))
@@ -3551,7 +4099,8 @@ export async function updateOperatorLead(id: string, update: { stage?: LeadStage
   return (data as { lead: OperatorLead }).lead
 }
 
-export const suppressOperatorLead = (id: string, reason: string) => operatorAction(`/operator/leads/${id}/suppress`, reason)
+export const suppressOperatorLead = (id: string, reason: string) =>
+  operatorAction(`/operator/leads/${id}/suppress`, reason)
 
 // ── Operator: promotions ──────────────────────────────────────────────────
 
@@ -3566,28 +4115,43 @@ export interface OperatorPromotion {
   created_at: string
 }
 
-export function fetchOperatorPromotions(query = ''): Promise<{ promotions: OperatorPromotion[]; total: number }> {
+export function fetchOperatorPromotions(
+  query = '',
+): Promise<{ promotions: OperatorPromotion[]; total: number }> {
   return operatorRequest(`/operator/promotions${query ? `?q=${encodeURIComponent(query)}` : ''}`)
 }
 
-export function fetchPromotionRedemptions(code: string): Promise<{ promotion: OperatorPromotion; redemptions: Array<{ tenant_id: string; grant_credits: number; redeemed_at: string }> }> {
+export function fetchPromotionRedemptions(
+  code: string,
+): Promise<{
+  promotion: OperatorPromotion
+  redemptions: Array<{ tenant_id: string; grant_credits: number; redeemed_at: string }>
+}> {
   return operatorRequest(`/operator/promotions/${encodeURIComponent(code)}/redemptions`)
 }
 
-export async function createOperatorPromotion(input: { code: string; grant_credits: number; max_uses: number; expires_at?: string }, reason: string): Promise<void> {
+export async function createOperatorPromotion(
+  input: { code: string; grant_credits: number; max_uses: number; expires_at?: string },
+  reason: string,
+): Promise<void> {
   const base = getApiBase()
   const token = getAuthToken()
   const res = await credFetch(`${base}/operator/promotions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ ...input, reason }),
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error((data.error as string) || 'Could not create promotion')
 }
 
-export const deactivatePromotion = (code: string, reason: string) => operatorAction(`/operator/promotions/${encodeURIComponent(code)}/deactivate`, reason)
-export const reactivatePromotion = (code: string, reason: string) => operatorAction(`/operator/promotions/${encodeURIComponent(code)}/reactivate`, reason)
+export const deactivatePromotion = (code: string, reason: string) =>
+  operatorAction(`/operator/promotions/${encodeURIComponent(code)}/deactivate`, reason)
+export const reactivatePromotion = (code: string, reason: string) =>
+  operatorAction(`/operator/promotions/${encodeURIComponent(code)}/reactivate`, reason)
 
 // ── Operator: blog / SEO content ──────────────────────────────────────────
 
@@ -3608,7 +4172,10 @@ export interface OperatorBlogPost {
   updated_at?: string
 }
 
-export type BlogPostInput = Omit<OperatorBlogPost, 'id' | 'published' | 'published_at' | 'created_at' | 'updated_at'>
+export type BlogPostInput = Omit<
+  OperatorBlogPost,
+  'id' | 'published' | 'published_at' | 'created_at' | 'updated_at'
+>
 
 export function fetchOperatorBlogPosts(): Promise<{ posts: OperatorBlogPost[] }> {
   return operatorRequest('/operator/blog/posts')
@@ -3618,12 +4185,19 @@ export function fetchOperatorBlogPost(id: string): Promise<{ post: OperatorBlogP
   return operatorRequest(`/operator/blog/posts/${id}`)
 }
 
-async function blogPostWrite(path: string, method: 'POST' | 'PATCH', body: Record<string, unknown>): Promise<OperatorBlogPost> {
+async function blogPostWrite(
+  path: string,
+  method: 'POST' | 'PATCH',
+  body: Record<string, unknown>,
+): Promise<OperatorBlogPost> {
   const base = getApiBase()
   const token = getAuthToken()
   const res = await credFetch(`${base}${path}`, {
     method,
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(body),
   })
   const data = await res.json().catch(() => ({}))
@@ -3631,10 +4205,14 @@ async function blogPostWrite(path: string, method: 'POST' | 'PATCH', body: Recor
   return (data as { post: OperatorBlogPost }).post
 }
 
-export const createOperatorBlogPost = (input: BlogPostInput, reason: string) => blogPostWrite('/operator/blog/posts', 'POST', { ...input, reason })
-export const updateOperatorBlogPost = (id: string, input: Partial<BlogPostInput>, reason: string) => blogPostWrite(`/operator/blog/posts/${id}`, 'PATCH', { ...input, reason })
-export const publishBlogPost = (id: string, reason: string) => operatorAction(`/operator/blog/posts/${id}/publish`, reason)
-export const unpublishBlogPost = (id: string, reason: string) => operatorAction(`/operator/blog/posts/${id}/unpublish`, reason)
+export const createOperatorBlogPost = (input: BlogPostInput, reason: string) =>
+  blogPostWrite('/operator/blog/posts', 'POST', { ...input, reason })
+export const updateOperatorBlogPost = (id: string, input: Partial<BlogPostInput>, reason: string) =>
+  blogPostWrite(`/operator/blog/posts/${id}`, 'PATCH', { ...input, reason })
+export const publishBlogPost = (id: string, reason: string) =>
+  operatorAction(`/operator/blog/posts/${id}/publish`, reason)
+export const unpublishBlogPost = (id: string, reason: string) =>
+  operatorAction(`/operator/blog/posts/${id}/unpublish`, reason)
 
 // ── Operator: segment campaigns ───────────────────────────────────────────
 
@@ -3657,11 +4235,11 @@ export interface OperatorCampaign {
   cta_url?: string
   cta_label?: string
   filter: CampaignFilter
-  status: 'draft' | 'sent'
+  status: 'draft' | 'sending' | 'paused' | 'sent'
   created_by: string
   created_at: string
   sent_at?: string
-  stats?: { targeted: number; sent: number; failed: number }
+  stats?: { targeted: number; sent: number; skipped: number; failed: number; settled: number }
   /** SendGrid event-webhook rollup — null until events arrive (or webhook
    *  unconfigured). */
   engagement?: { opened: number; clicked: number; bounced: number } | null
@@ -3676,7 +4254,10 @@ async function campaignWrite(path: string, body: Record<string, unknown>): Promi
   const token = getAuthToken()
   const res = await credFetch(`${base}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(body),
   })
   const data = await res.json().catch(() => ({}))
@@ -3684,13 +4265,36 @@ async function campaignWrite(path: string, body: Record<string, unknown>): Promi
   return data
 }
 
-export const createCampaign = async (input: Omit<OperatorCampaign, 'id' | 'status' | 'created_by' | 'created_at' | 'sent_at' | 'stats'>, reason: string): Promise<OperatorCampaign> =>
-  ((await campaignWrite('/operator/campaigns', { ...input, reason })) as { campaign: OperatorCampaign }).campaign
+export const createCampaign = async (
+  input: Omit<
+    OperatorCampaign,
+    'id' | 'status' | 'created_by' | 'created_at' | 'sent_at' | 'stats'
+  >,
+  reason: string,
+): Promise<OperatorCampaign> =>
+  (
+    (await campaignWrite('/operator/campaigns', { ...input, reason })) as {
+      campaign: OperatorCampaign
+    }
+  ).campaign
 
-export const previewCampaignAudience = (filter: CampaignFilter): Promise<{ count: number; users: number; leads: number }> =>
-  campaignWrite('/operator/campaigns/preview', { ...filter }) as Promise<{ count: number; users: number; leads: number }>
+export const previewCampaignAudience = (
+  filter: CampaignFilter,
+): Promise<{ count: number; users: number; leads: number }> =>
+  campaignWrite('/operator/campaigns/preview', { ...filter }) as Promise<{
+    count: number
+    users: number
+    leads: number
+  }>
 
-export const sendCampaignNow = (id: string, reason: string) => operatorAction(`/operator/campaigns/${id}/send`, reason)
+export const sendCampaignNow = (id: string, reason: string) =>
+  operatorAction(`/operator/campaigns/${id}/send`, reason)
+
+export const pauseCampaignSend = (id: string, reason: string) =>
+  operatorAction(`/operator/campaigns/${id}/pause`, reason)
+
+export const resumeCampaignSend = (id: string, reason: string) =>
+  operatorAction(`/operator/campaigns/${id}/resume`, reason)
 
 // ── Operator: billing ─────────────────────────────────────────────────────
 
@@ -3702,11 +4306,23 @@ export interface OperatorBillingOverview {
   low_credit_tenants: number
   credits_outstanding: number
   recent_webhooks: Array<{ event_id: string; event_type: string; processed_at: string }>
-  recent_adjustments: Array<{ tenant_id: string; amount: number; reason: string; actor: string; timestamp: string }>
+  recent_adjustments: Array<{
+    tenant_id: string
+    amount: number
+    reason: string
+    actor: string
+    timestamp: string
+  }>
   /** Stripe portal cancellation-survey results, aggregated + recent rows.
    *  'unstated' = churned before the survey existed or reason skipped. */
   churn_by_reason: Record<string, number>
-  recent_churned: Array<{ tenant_id: string; name?: string; reason: string | null; feedback: string | null; churned_at: string | null }>
+  recent_churned: Array<{
+    tenant_id: string
+    name?: string
+    reason: string | null
+    feedback: string | null
+    churned_at: string | null
+  }>
 }
 
 export interface BillingTenant {
@@ -3714,7 +4330,12 @@ export interface BillingTenant {
   name?: string
   plan?: string
   status?: string
-  billing?: { credits_balance?: number; credits_included?: number; currency?: string; trial_ends_at?: string }
+  billing?: {
+    credits_balance?: number
+    credits_included?: number
+    currency?: string
+    trial_ends_at?: string
+  }
   stripe_customer_id?: string
   stripe_subscription_id?: string
 }
@@ -3734,18 +4355,30 @@ export function fetchOperatorBilling(): Promise<OperatorBillingOverview> {
   return operatorRequest('/operator/billing')
 }
 
-export function fetchBillingTenant(id: string): Promise<{ tenant: BillingTenant; ledger: LedgerEntry[]; ledger_has_more: boolean }> {
+export function fetchBillingTenant(
+  id: string,
+): Promise<{ tenant: BillingTenant; ledger: LedgerEntry[]; ledger_has_more: boolean }> {
   return operatorRequest(`/operator/billing/tenants/${encodeURIComponent(id)}`)
 }
 
-export async function adjustTenantCredits(tenantId: string, amount: number, reason: string): Promise<number> {
+export async function adjustTenantCredits(
+  tenantId: string,
+  amount: number,
+  reason: string,
+): Promise<number> {
   const base = getApiBase()
   const token = getAuthToken()
-  const res = await credFetch(`${base}/operator/billing/tenants/${encodeURIComponent(tenantId)}/adjust-credits`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    body: JSON.stringify({ amount, reason }),
-  })
+  const res = await credFetch(
+    `${base}/operator/billing/tenants/${encodeURIComponent(tenantId)}/adjust-credits`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ amount, reason }),
+    },
+  )
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error((data.error as string) || 'Adjustment failed')
   return (data as { credits_balance: number }).credits_balance
@@ -3753,14 +4386,23 @@ export async function adjustTenantCredits(tenantId: string, amount: number, reas
 
 // ── Public lead capture ───────────────────────────────────────────────────
 
-export async function captureLead(input: { email: string; name?: string; source: string; score_band?: string }): Promise<boolean> {
+export async function captureLead(input: {
+  email: string
+  name?: string
+  source: string
+  score_band?: string
+}): Promise<boolean> {
   try {
     captureAttribution()
     const attribution = getAttribution()
     const res = await credFetch(`${getApiBase()}/leads`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...input, consent_marketing: true, ...(attribution ? { attribution } : {}) }),
+      body: JSON.stringify({
+        ...input,
+        consent_marketing: true,
+        ...(attribution ? { attribution } : {}),
+      }),
     })
     return res.ok
   } catch (err) {
@@ -3793,12 +4435,19 @@ export interface SupportCase {
   updated_at: string
 }
 
-async function supportRequest<T>(path: string, method = 'GET', body?: Record<string, unknown>): Promise<T> {
+async function supportRequest<T>(
+  path: string,
+  method = 'GET',
+  body?: Record<string, unknown>,
+): Promise<T> {
   const base = getApiBase()
   const token = getAuthToken()
   const res = await credFetch(`${base}${path}`, {
     method,
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     ...(body ? { body: JSON.stringify(body) } : {}),
   })
   const data = await res.json().catch(() => ({}))
@@ -3811,8 +4460,16 @@ export function askSupport(question: string): Promise<{ answer: string; isLive: 
   return supportRequest('/support/ask', 'POST', { question })
 }
 
-export function createSupportCase(subject: string, message: string, triage?: { question: string; answer: string }[]): Promise<{ case: SupportCase }> {
-  return supportRequest('/support/cases', 'POST', { subject, message, ...(triage?.length ? { triage } : {}) })
+export function createSupportCase(
+  subject: string,
+  message: string,
+  triage?: { question: string; answer: string }[],
+): Promise<{ case: SupportCase }> {
+  return supportRequest('/support/cases', 'POST', {
+    subject,
+    message,
+    ...(triage?.length ? { triage } : {}),
+  })
 }
 
 export function fetchMySupportCases(): Promise<{ cases: SupportCase[] }> {
@@ -3837,7 +4494,12 @@ export interface OperatorCaseDetail {
 
 export function fetchOperatorSupportCases(
   query: { q?: string; status?: string; cursor?: string; limit?: number } = {},
-): Promise<{ cases: SupportCase[]; total?: number; next_cursor?: string; statuses: Record<string, number> }> {
+): Promise<{
+  cases: SupportCase[]
+  total?: number
+  next_cursor?: string
+  statuses: Record<string, number>
+}> {
   const params = new URLSearchParams()
   for (const [k, v] of Object.entries(query)) {
     if (v !== undefined && v !== '') params.set(k, String(v))
@@ -3854,15 +4516,20 @@ export async function replyOperatorCase(id: string, text: string): Promise<void>
   const token = getAuthToken()
   const res = await credFetch(`${base}/operator/support/${encodeURIComponent(id)}/reply`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ text }),
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error((data.error as string) || 'Reply failed')
 }
 
-export const resolveOperatorCase = (id: string, reason: string) => operatorAction(`/operator/support/${id}/resolve`, reason)
-export const reopenOperatorCase = (id: string, reason: string) => operatorAction(`/operator/support/${id}/reopen`, reason)
+export const resolveOperatorCase = (id: string, reason: string) =>
+  operatorAction(`/operator/support/${id}/resolve`, reason)
+export const reopenOperatorCase = (id: string, reason: string) =>
+  operatorAction(`/operator/support/${id}/reopen`, reason)
 
 /** AI-drafted operator reply — proposal only, never sent without the
  *  operator editing and submitting it themselves. */
@@ -3871,7 +4538,10 @@ export function draftOperatorReply(id: string): Promise<{ draft: string }> {
   const token = getAuthToken()
   return credFetch(`${base}/operator/support/${encodeURIComponent(id)}/draft`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: '{}',
   }).then(async (res) => {
     const data = await res.json().catch(() => ({}))
