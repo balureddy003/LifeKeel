@@ -9,17 +9,17 @@ export const PROMISES: { claim: string; title: string; body: string }[] = [
     body: 'Keel earns from subscriptions only. It takes no commissions from providers and shows no ads.',
   },
   {
-    claim: 'cover-estimate',
+    claim: 'no-policy-picks',
     title: 'No policy picks',
     body: 'Keel names no insurer and ranks no policy. For any decision it points you to a licensed professional.',
   },
   {
-    claim: 'cover-estimate',
+    claim: 'no-policy-picks',
     title: 'No switching advice',
     body: 'Keel does not say a policy is too dear or point you to a cheaper one. It shows what you hold and when it renews.',
   },
   {
-    claim: 'approval-first',
+    claim: 'draft-insurer',
     title: 'No claims made for you',
     body: 'Keel finds the policy and the contact, and drafts a message. You make the claim.',
   },
