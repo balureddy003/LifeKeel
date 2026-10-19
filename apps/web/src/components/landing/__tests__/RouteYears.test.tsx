@@ -143,3 +143,32 @@ describe('StickyCta and the footer', () => {
     hero.remove()
   })
 })
+
+describe('StickyCta and the phone hero button', () => {
+  it('stays hidden while the hero signup button in the copy block is on screen', () => {
+    stubMatchMedia(false)
+    const hero = document.createElement('div')
+    hero.id = 'signup'
+    const top = document.createElement('a')
+    top.className = 'lk-hero-cta'
+    document.body.append(hero, top)
+    const cbs = new Map<Element, (es: { isIntersecting: boolean }[]) => void>()
+    window.IntersectionObserver = class {
+      private cb: (es: { isIntersecting: boolean }[]) => void
+      constructor(c: (es: { isIntersecting: boolean }[]) => void) {
+        this.cb = c
+      }
+      observe(el: Element) {
+        cbs.set(el, this.cb)
+      }
+      disconnect() {}
+    } as unknown as typeof IntersectionObserver
+    const { container } = render(<StickyCta />)
+    act(() => cbs.get(hero)!([{ isIntersecting: false }]))
+    expect(container.firstElementChild!.className).toContain('on')
+    act(() => cbs.get(top)!([{ isIntersecting: true }]))
+    expect(container.firstElementChild!.className).not.toContain(' on')
+    hero.remove()
+    top.remove()
+  })
+})

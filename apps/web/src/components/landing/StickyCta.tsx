@@ -17,6 +17,7 @@ export function StickyCta() {
   const [seenClose, setSeenClose] = useState(false)
   const [foot, setFoot] = useState(false)
   const [plans, setPlans] = useState(false)
+  const [heroCta, setHeroCta] = useState(false)
 
   useEffect(() => {
     if (!('IntersectionObserver' in window)) return
@@ -24,7 +25,13 @@ export function StickyCta() {
     const b = document.getElementById('signup-final')
     const c = document.querySelector('.lk-footer')
     const pl = document.querySelector('.lk-plans')
+    const hc = document.querySelector('.lk-hero-cta')
     const ios: IntersectionObserver[] = []
+    if (hc) {
+      const io = new IntersectionObserver((es) => setHeroCta(es[0]!.isIntersecting), { threshold: 0 })
+      io.observe(hc)
+      ios.push(io)
+    }
     if (pl) {
       const io = new IntersectionObserver((es) => setPlans(es[0]!.isIntersecting), { threshold: 0 })
       io.observe(pl)
@@ -56,7 +63,7 @@ export function StickyCta() {
     return () => ios.forEach((io) => io.disconnect())
   }, [])
 
-  const show = !hero && !close && !seenClose && !foot && !plans
+  const show = !hero && !close && !seenClose && !foot && !plans && !heroCta
   return (
     <div className={`lk-sticky${show ? ' on' : ''}`} aria-hidden={!show}>
       <a
