@@ -51,6 +51,16 @@ in PRD-141); time from "paused" to "resolved"; Tier C messages per family per qu
 
 Automatic data fetching to refresh inputs (that is PRD-143 and PRD-144), new detectors.
 
+## Amendments from the October 2026 market review
+
+See [prd-set-market-review-2026-10.md](../reviews/prd-set-market-review-2026-10.md)
+for evidence quality. Numeric defaults below are hypotheses to test, not benchmarks.
+
+1. A check paused for a missing input that never repeats within a quarter (as Tier C
+   specifies) would otherwise sit "paused" with no further prompt. After the first
+   mention, collapse the paused state to a single quiet line in the digest and keep it
+   visible in the app.
+
 ## Becomes
 
 docs/prd/145-freshness-and-completeness-signals.md

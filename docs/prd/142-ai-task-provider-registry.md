@@ -64,6 +64,25 @@ platform, training or fine-tuning of any kind.
 Which processors have signed terms today? The registry cannot be populated with
 approved entries until the user supplies that.
 
+## Amendments from the October 2026 market review
+
+See [prd-set-market-review-2026-10.md](../reviews/prd-set-market-review-2026-10.md)
+for evidence quality. Numeric defaults below are hypotheses to test, not benchmarks.
+
+1. **Registry fields to add**, with the registry refusing to load an entry that leaves
+   any blank: per-model retention class, sub-processors, transfer mechanism, DPA date,
+   breach-notice SLA (alongside endpoint, region, terms reference, review date).
+2. **`source=gmail` flag.** Google's Limited Use rule bars using Gmail data to create or
+   improve generalised AI models and restricts human reading. A flagged source must be
+   blocked from evaluation capture, human review and cross-tenant scorers. The weekly
+   `feature_hash_eval` job (SECURITY.md) loads approved and dismissed insights across
+   tenants and must exclude Gmail-derived insights before PRD-144 ships.
+3. **"Who processes your documents" screen** in the app, listing processors and
+   retention. Apple's guideline 5.1.2(i) requires disclosure and explicit permission
+   for sharing personal data with third-party AI.
+4. **Provider retention differs per model** and zero-retention needs per-organisation
+   approval; record the actual terms per task, never a blanket statement.
+
 ## Becomes
 
 docs/prd/142-ai-task-provider-registry.md

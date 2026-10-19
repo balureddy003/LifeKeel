@@ -54,6 +54,22 @@ weeks before any retention target is set.
 Third-party analytics tools, per-user behavioural profiling, cross-tenant learning
 (CLAUDE.md rule 3).
 
+## Amendments from the October 2026 market review
+
+See [prd-set-market-review-2026-10.md](../reviews/prd-set-market-review-2026-10.md)
+for evidence quality. Numeric defaults below are hypotheses to test, not benchmarks.
+
+1. **Remove survivorship bias.** Conditioning on "still paying" and "did not log in"
+   has no counterfactual. Add a randomised holdout, bounded monthly cohorts, and
+   measure "received value" (a click on a digest item, a confirmed field, a resolved
+   gap) rather than login.
+2. **Baseline of 8 to 12 weeks, or two digest cycles,** not four weeks, which is
+   shorter than one monthly cycle.
+3. **Click-based engagement,** not opens.
+4. **First metric:** scheduled versus delivered digests (PRD-138).
+5. **Dependency:** billing is dormant (PRD-006), so paying-user metrics need cutover
+   first; until then measure free-tier retention only.
+
 ## Becomes
 
 docs/prd/141-retention-and-perceived-protection-metrics.md
