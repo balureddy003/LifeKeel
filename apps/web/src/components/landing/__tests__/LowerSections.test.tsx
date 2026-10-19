@@ -32,6 +32,30 @@ describe('lower sections map to live claims', () => {
   })
 })
 
+describe('price', () => {
+  it('is the same in the pricing card, the FAQ and the billing constants', () => {
+    const { container } = render(<Pricing />)
+    expect(container.textContent).toContain('£7.99')
+    expect(FAQ.filter((f) => f.a.includes('£7.99')).length).toBeGreaterThan(0)
+    const billing = fs.readFileSync(
+      path.resolve(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        '..',
+        '..',
+        'api',
+        'src',
+        'billing',
+        'billing-constants.ts',
+      ),
+      'utf8',
+    )
+    expect(billing).toContain('7.99')
+  })
+})
+
 describe('Security', () => {
   it('shows three plain statements', () => {
     render(<Security />)
@@ -80,6 +104,20 @@ describe('Faq', () => {
     expect(layout).toContain("from '@/components/landing/faq-data'")
     expect(layout).toContain('FAQ.map')
     expect(layout).not.toContain("name: 'Is my financial data sold")
+  })
+})
+
+describe('SiteFooter newsletter', () => {
+  it('shows an error, not a stuck button, when the request throws', async () => {
+    const api = await import('@/lib/api')
+    vi.mocked(api.captureLead).mockRejectedValueOnce(new Error('network'))
+    render(<SiteFooter />)
+    fireEvent.change(screen.getByLabelText(/Family-readiness tips/), {
+      target: { value: 'a@b.co' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Join' }))
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Join' })).toBeTruthy()
   })
 })
 

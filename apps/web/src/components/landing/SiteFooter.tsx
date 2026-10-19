@@ -15,8 +15,12 @@ function Newsletter() {
     e.preventDefault()
     if (!email.trim() || state === 'busy') return
     setState('busy')
-    const ok = await captureLead({ email: email.trim(), source: 'landing_newsletter' })
-    setState(ok ? 'done' : 'error')
+    try {
+      const ok = await captureLead({ email: email.trim(), source: 'landing_newsletter' })
+      setState(ok ? 'done' : 'error')
+    } catch {
+      setState('error')
+    }
   }
 
   if (state === 'done')

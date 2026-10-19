@@ -86,7 +86,7 @@ function MarketingNav() {
             href={appUrl('/welcome')}
             onClick={() => {
               haptic('light')
-              track('landing_get_started_click', { location: 'nav' })
+              track('landing_cta_click', { location: 'nav', method: 'welcome' })
             }}
           >
             <motion.div
