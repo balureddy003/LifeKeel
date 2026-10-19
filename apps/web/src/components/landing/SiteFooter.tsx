@@ -10,11 +10,15 @@ import './bands.css'
 
 function Newsletter() {
   const [email, setEmail] = useState('')
-  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error'>('idle')
+  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error' | 'empty'>('idle')
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!email.trim() || state === 'busy') return
+    if (state === 'busy') return
+    if (!email.trim()) {
+      setState('empty')
+      return
+    }
     setState('busy')
     try {
       const ok = await captureLead({ email: email.trim(), source: 'landing_newsletter' })
@@ -46,13 +50,13 @@ function Newsletter() {
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@example.com"
         />
-        <button type="submit" disabled={state === 'busy' || !email.trim()}>
+        <button type="submit" disabled={state === 'busy'}>
           {state === 'busy' ? '...' : 'Join'}
         </button>
       </div>
-      {state === 'error' && (
+      {(state === 'error' || state === 'empty') && (
         <p className="lk-fine" role="alert">
-          Could not subscribe. Try again.
+          {state === 'empty' ? 'Enter your email address.' : 'Could not subscribe. Try again.'}
         </p>
       )}
     </form>

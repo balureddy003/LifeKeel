@@ -25,7 +25,7 @@ describe('LandingHero', () => {
   it('leads with the chart headline and a direct signup link, with no email or password field', () => {
     const { container } = render(<LandingHero />)
     expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('chart')
-    const signup = screen.getByRole('link', { name: 'Create your free account' })
+    const signup = container.querySelector('.lk-card a.lk-btn') as HTMLElement
     expect(signup.getAttribute('href')).toMatch(/\/signup$/)
     expect(container.querySelector('input')).toBeNull()
     expect(screen.getByRole('link', { name: 'Sign in' }).getAttribute('href')).toMatch(/\/login$/)
@@ -56,9 +56,11 @@ describe('LandingHero', () => {
 
   it('reports signup and sign-in clicks with a location and no personal data', () => {
     render(<LandingHero />)
+    fireEvent.click(screen.getAllByRole('link', { name: 'Create your free account' })[0]!)
+    expect(track).toHaveBeenCalledWith('landing_cta_click', { location: 'hero_top', method: 'signup' })
     const stop = (e: Event) => e.preventDefault() // jsdom cannot navigate
     document.addEventListener('click', stop)
-    fireEvent.click(screen.getByRole('link', { name: 'Create your free account' }))
+    fireEvent.click(document.querySelector('.lk-card a.lk-btn')!)
     expect(track).toHaveBeenCalledWith('landing_cta_click', { location: 'hero', method: 'signup' })
     fireEvent.click(screen.getByRole('link', { name: 'Sign in' }))
     expect(track).toHaveBeenCalledWith('landing_signin_click', { location: 'hero' })

@@ -67,7 +67,7 @@ describe('PlusSpotlight', () => {
   it('labels the policy fields as a sample and links to signup with a location', () => {
     render(<PlusSpotlight />)
     expect(screen.getByText('Sample document')).toBeTruthy()
-    const link = screen.getByRole('link', { name: 'Start free, upgrade later' })
+    const link = screen.getByRole('link', { name: 'Start free, add Plus later' })
     expect(link.getAttribute('href')).toMatch(/\/signup$/)
     document.addEventListener('click', (e) => e.preventDefault(), { once: true })
     fireEvent.click(link)

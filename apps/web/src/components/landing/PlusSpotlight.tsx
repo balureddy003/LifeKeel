@@ -36,7 +36,7 @@ export function PlusSpotlight() {
                 track('landing_cta_click', { location: 'plus_spotlight', method: 'signup' })
               }}
             >
-              Start free, upgrade later
+              Start free, add Plus later
             </a>
           </div>
         </div>
