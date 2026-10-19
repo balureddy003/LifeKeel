@@ -976,18 +976,25 @@ flowchart LR
 
 #### Missing evaluation architecture
 
-- A unified `eval_runs` registry for detector, prompt, model, encoder, judge, and
-  retrieval experiments.
+- ~~A unified `eval_runs` registry~~ — shipped (B13): `apps/api/src/eval/eval-runs.ts`
+  records kind, subject, dataset hash, code SHA, metrics, verdict, approver for
+  detector, task, red-team, model, encoder and judge runs; detector gate verdicts
+  and the red-team suite write into it.
 - Dataset IDs, hashes, lineage, sensitivity, cohort tags, holdout status, and
-  annotation rubric.
+  annotation rubric — partially shipped (hash + cases recorded); cohort/holdout
+  and rubric fields remain open.
 - Task-level goldens for assistant, OCR, email, drafts, scenario narration,
   support, and marketing.
 - Formal human labels separating correctness, groundedness, usefulness,
   acceptance, policy violation, and execution success.
 - Human agreement/adjudication once more than one reviewer exists.
-- Adversarial CI covering direct/indirect injection, jailbreaks, PII leakage,
-  cross-tenant/member access, advice elicitation, fake citations, encoded and
-  multilingual attacks, tool misuse, and context/memory poisoning.
+- ~~Adversarial CI~~ — shipped (B13): `red-team/guard-fixtures.yaml` covers
+  direct/indirect injection, jailbreaks, PII leakage and secret exfiltration
+  against the real guards and governed gateway; encoded, multilingual and
+  unicode-lookalike attacks are pinned as documented `known_gap` misses, not
+  claimed coverage. Remaining: advice-elicitation and cross-tenant/member
+  access fixtures, context/memory-poisoning cases, provider-runner suites
+  (promptfoo/garak class) when volume warrants.
 - Sampled production trace grading aligned with human labels.
 - Input, score, outcome, calibration, safety, cost, and latency drift trends.
 - Automated candidate retirement/rollback when post-promotion gates regress.
@@ -2877,10 +2884,10 @@ page needs a runbook, owner, severity, and safe mitigation.
 | **P1** | Queue visibility/recovery is not lease-aware | Active long jobs can be mistaken for stranded work | Visibility timeout/heartbeat or managed queue semantics with concurrency test |
 | **P1** | Domain ownership is not mechanically enforced | Modular monolith can decay into cross-import coupling | Dependency rules and domain repository interfaces in CI |
 | **P1** | AI task/model registry enforced at the gateway | `definitions/ai-tasks.yaml` policies gate every production call — unknown tasks fail closed, model allowlists/ceilings/deadlines/breaker/guards enforced per task (§8.15) | Remaining: atomic budget reservation, processor-terms review-date blocking, task eval suites |
-| **P1** | AI evaluation artifacts are fragmented, adversarial coverage is missing, and one detector-level eval mixes tenant production data | Prompt/model changes can regress injection, privacy, grounding, advice behavior, or privacy posture invisibly | Unified eval-run lineage plus synthetic/redacted or per-tenant task goldens and red-team CI for every promoted task |
+| ~~**P1**~~ mitigated | ~~AI evaluation artifacts are fragmented, adversarial coverage is missing~~ — `eval_runs` is the unified lineage (kind, subject, dataset hash, code SHA, metrics, verdict, approver); detector gate verdicts record into it, and `red-team/guard-fixtures.yaml` runs against the real guards + governed gateway in CI every build, with known misses pinned as `known_gap` rather than silently uncovered | ~~Prompt/model changes can regress injection, privacy, grounding, advice behavior, or privacy posture invisibly~~ | ~~Eval-run lineage plus red-team CI~~ — shipped: `eval/eval-runs.ts`, `__tests__/red-team.test.ts`. Remaining: task goldens for assistant/OCR/email, formal human-label schema, sampled production trace grading, promptfoo/garak-class runners when volume warrants; one detector eval still mixes tenant production data |
 | **P1** | Local model/artifact supply chain is tag-based | Mutable weights, licenses, quantization and serving images are not reproducible | Digest-pinned artifacts, model cards, AI-BOM/SBOM, signatures and eval hashes |
 | **P1** | No unified event/task envelope and trace propagation | Failures are hard to reconstruct across jobs/providers | Correlation/causation/trace/task/model/guard versions on all asynchronous and AI paths |
-| **P1** | AI telemetry is incomplete and some tenant IDs are Prometheus labels | Cost/quality incidents are hard to correlate while label cardinality can grow unbounded | Metadata-first OTel GenAI traces; tenants in controlled logs/traces, bounded aggregate metrics |
+| ~~**P1**~~ mitigated | ~~AI telemetry is incomplete and some tenant IDs are Prometheus labels~~ — `tenant_id` is gone from every `labelNames` declaration (unbounded cardinality + roster leak); a fitness tripwire in `architecture-claims.test.ts` rejects its return. Tenants now live only in controlled logs/traces | ~~Cost/quality incidents are hard to correlate while label cardinality can grow unbounded~~ | ~~Tenants in controlled logs/traces, bounded aggregate metrics~~ — shipped. Remaining: metadata-first OTel GenAI traces for per-tenant cost/quality correlation |
 | **P2** | Single-region deployment | Region failure can exceed acceptable recovery time | Decision tied to measured SLO/RTO; tested warm/cold recovery or multi-region plan |
 | **P2** | No per-tenant admission/fairness controls | One tenant can consume shared provider/worker capacity | Tenant quotas, fair queues, concurrency and cost limits |
 | **P2** | Feature/config lifecycle is fragmented | Stale flags and environment drift accumulate | Typed capability registry with owner, expiry, audit, and environment validation |

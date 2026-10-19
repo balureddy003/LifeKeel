@@ -106,6 +106,9 @@ const EXEMPT_COLLECTIONS = new Set([
   // eval artifacts written under synthetic `eval_*` tenant ids — not real
   // tenant data
   'detector_eval_baselines',
+  // unified eval-run lineage (B13): dataset hashes, metrics, verdicts —
+  // no family content
+  'eval_runs',
   // detector-level aggregate metrics (precision/recall per detector) — no
   // per-tenant key or family content by design
   'feature_hash_eval_reports',
@@ -376,5 +379,24 @@ describe('architecture claims: queue durability and migration gate', () => {
     expect(src).toContain('migration_pending')
     // The env-var stand-in never reflected the real ledger.
     expect(src).not.toContain("process.env['MIGRATION_VERSION']")
+  })
+
+  it('Prometheus labels never carry tenant_id (B13)', () => {
+    const src = readSrc('apps/api/src/routes/metrics.ts')
+    // tenant_id was a Prometheus label on seven series — unbounded
+    // cardinality plus the tenant roster leaking into metrics infra.
+    for (const m of src.matchAll(/labelNames:\s*\[([^\]]*)\]/g)) {
+      expect(m[1]).not.toContain('tenant_id')
+    }
+  })
+
+  it('red-team fixture suite is wired into CI and records lineage', () => {
+    const src = readSrc('apps/api/src/__tests__/red-team.test.ts')
+    expect(src).toContain('guard-fixtures.yaml')
+    expect(src).toContain('recordEvalRun')
+    // A fixture asserting event 'none' documents a KNOWN miss — the suite
+    // must require known_gap: true for those, else a fake "coverage" claim.
+    expect(src).toContain('known_gap')
+    expect(existsSync(join(REPO_ROOT, 'red-team', 'guard-fixtures.yaml'))).toBe(true)
   })
 })
