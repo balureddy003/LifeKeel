@@ -106,6 +106,9 @@ const EXEMPT_COLLECTIONS = new Set([
   // eval artifacts written under synthetic `eval_*` tenant ids — not real
   // tenant data
   'detector_eval_baselines',
+  // unified eval-run lineage (B13): dataset hashes, metrics, verdicts —
+  // no family content
+  'eval_runs',
   // detector-level aggregate metrics (precision/recall per detector) — no
   // per-tenant key or family content by design
   'feature_hash_eval_reports',
@@ -376,5 +379,67 @@ describe('architecture claims: queue durability and migration gate', () => {
     expect(src).toContain('migration_pending')
     // The env-var stand-in never reflected the real ledger.
     expect(src).not.toContain("process.env['MIGRATION_VERSION']")
+  })
+
+  it('Prometheus labels never carry tenant_id (B13)', () => {
+    const src = readSrc('apps/api/src/routes/metrics.ts')
+    // tenant_id was a Prometheus label on seven series — unbounded
+    // cardinality plus the tenant roster leaking into metrics infra.
+    for (const m of src.matchAll(/labelNames:\s*\[([^\]]*)\]/g)) {
+      expect(m[1]).not.toContain('tenant_id')
+    }
+  })
+
+  it('credential and vault writes go through the per-tenant DEK envelope (B4)', () => {
+    // New ciphertexts must bind to a tenant DEK — the raw global-key helpers
+    // (encryptIfNeeded/encryptBuffer) may only appear on the decrypt/legacy
+    // path inside envelope.ts itself.
+    for (const rel of [
+      'apps/api/src/routes/connector-credentials.ts',
+      'apps/api/src/routes/family-connectors.ts',
+      'apps/api/src/routes/marketing-posts.ts',
+      'apps/api/src/jobs/email-scan.ts',
+    ]) {
+      const src = readSrc(rel)
+      expect(src, `${rel} still uses global-key writes`).not.toContain('encryptIfNeeded(')
+    }
+    expect(readSrc('apps/api/src/routes/vault.ts')).not.toContain('encryptBuffer(')
+    // Crypto-shredding is real: erasure wipes tenant_keys, orphaning every
+    // dek:-format ciphertext for the tenant.
+    expect(deletableCollections()).toContain('tenant_keys')
+  })
+
+  it('red-team fixture suite is wired into CI and records lineage', () => {
+    const src = readSrc('apps/api/src/__tests__/red-team.test.ts')
+    expect(src).toContain('guard-fixtures.yaml')
+    expect(src).toContain('recordEvalRun')
+    // A fixture asserting event 'none' documents a KNOWN miss — the suite
+    // must require known_gap: true for those, else a fake "coverage" claim.
+    expect(src).toContain('known_gap')
+    expect(existsSync(join(REPO_ROOT, 'red-team', 'guard-fixtures.yaml'))).toBe(true)
+  })
+})
+
+describe('architecture claims: service-role split (B7)', () => {
+  it('every cron schedule and queue consumer lives inside the SERVICE_ROLE gate', () => {
+    const src = readSrc('apps/api/src/server.ts')
+    const open = src.indexOf('if (runBackgroundWork) {')
+    const close = src.indexOf('} // end runBackgroundWork')
+    expect(open).toBeGreaterThan(-1)
+    expect(close).toBeGreaterThan(open)
+    const gated = src.slice(open, close)
+    // No timer or consumer may be registered outside the gated region —
+    // an api-role process must run zero background work.
+    expect(src.slice(0, open)).not.toContain('cron.schedule(')
+    expect(src.slice(close)).not.toContain('cron.schedule(')
+    expect(src.slice(close)).not.toContain('.subscribe(')
+    expect(gated).toContain('cron.schedule(')
+    expect(gated).toContain('.subscribe(')
+  })
+
+  it('the queue connection stays role-agnostic — api publishes, jobs consumes', () => {
+    const src = readSrc('apps/api/src/server.ts')
+    const open = src.indexOf('if (runBackgroundWork) {')
+    expect(src.slice(0, open)).toContain('queueManager.connect()')
   })
 })

@@ -1,4 +1,4 @@
-/** Four stages of one sample family and what joins the chart at each. Planned items are dashed and never described as available. */
+/** Four stages of one sample family and what joins the chart at each. Only things available today. */
 export interface Year {
   name: string
   season: string
@@ -33,21 +33,13 @@ export interface YearItem {
   stage: 1 | 2 | 3 | 4
   claim: string
   text: string
-  live: boolean
 }
 
 export const YEAR_ITEMS: YearItem[] = [
-  { stage: 1, claim: 'papers-on-file', text: 'Wills and papers on file', live: true },
-  { stage: 1, claim: 'renewals-duplicates', text: 'Home policy and its renewal date', live: true },
-  { stage: 2, claim: 'retirement-education', text: 'Education savings checks', live: true },
-  { stage: 2, claim: 'cover-on-file', text: 'Cover estimate counts a dependant', live: true },
-  { stage: 3, claim: 'carer-view', text: 'A dedicated view for caring for a parent', live: false },
-  { stage: 4, claim: 'retirement-education', text: 'Retirement gap check', live: true },
-  {
-    stage: 4,
-    claim: 'named-person-access',
-    text: 'Access for a named person outside the family',
-    live: false,
-  },
-  { stage: 4, claim: 'new-life-events', text: 'New checks for new life events', live: false },
+  { stage: 1, claim: 'papers-on-file', text: 'Wills and papers on file' },
+  { stage: 1, claim: 'renewals-duplicates', text: 'Home policy and its renewal date' },
+  { stage: 2, claim: 'retirement-education', text: 'Education savings checks' },
+  { stage: 2, claim: 'cover-on-file', text: 'Cover estimate counts a dependant' },
+  { stage: 3, claim: 'debt-health', text: 'Debt health, as costs change' },
+  { stage: 4, claim: 'retirement-education', text: 'Retirement gap check' },
 ]

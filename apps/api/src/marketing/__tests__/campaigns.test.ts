@@ -1,11 +1,20 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MongoClient, type Db } from 'mongodb'
 import { MongoMemoryServer } from 'mongodb-memory-server'
+
+vi.mock('@sendgrid/mail', () => ({
+  default: { setApiKey: vi.fn(), send: vi.fn().mockResolvedValue([{ statusCode: 202 }]) },
+}))
+
+import sgMail from '@sendgrid/mail'
 import {
   campaignsCol,
   ensureCampaignIndexes,
   resolveAudience,
-  sendCampaign,
+  queueCampaignSend,
+  drainCampaignSends,
+  pauseCampaign,
+  resumeCampaign,
   type CampaignDoc,
 } from '../campaigns.js'
 import {
@@ -34,6 +43,7 @@ beforeEach(async () => {
     await db.collection(name.name).deleteMany({})
   }
   invalidatePlatformConfigCache()
+  process.env['SENDGRID_API_KEY'] = 'test-key'
 })
 
 afterAll(async () => {
@@ -172,14 +182,26 @@ describe('resolveAudience', () => {
   })
 })
 
-describe('sendCampaign', () => {
-  it('sends to both sides, claims ledger keys, records stats', async () => {
+describe('campaign send (durable per-recipient jobs)', () => {
+  /** Route-equivalent: claim draft → sending, queue recipients, then drain
+   *  the queue synchronously (no Redis in tests). */
+  async function sendToCompletion(campaign: CampaignDoc) {
+    await campaignsCol(db).updateOne({ id: campaign.id }, { $set: { status: 'sending' } })
+    const { targeted } = await queueCampaignSend(db, campaign)
+    await drainCampaignSends(db, campaign.id)
+    const done = await campaignsCol(db).findOne({ id: campaign.id })
+    return { targeted, done }
+  }
+
+  it('sends to both sides, claims ledger keys, completes to sent', async () => {
     await seedUser()
     await seedLead()
     const campaign = makeCampaign()
     await campaignsCol(db).insertOne(campaign)
-    const stats = await sendCampaign(db, campaign)
-    expect(stats).toEqual({ targeted: 2, sent: 2, failed: 0 })
+    const { targeted, done } = await sendToCompletion(campaign)
+    expect(targeted).toBe(2)
+    expect(done!['status']).toBe('sent')
+    expect(done!['stats']).toEqual({ targeted: 2, sent: 2, skipped: 0, failed: 0, settled: 2 })
     const sends = await lifecycleSendsCol(db).find({ sequence: 'campaign' }).toArray()
     expect(sends.map((s) => s.key).sort()).toEqual(['campaign:c1:lead-1', 'campaign:c1:u1'])
   })
@@ -188,12 +210,12 @@ describe('sendCampaign', () => {
     await seedUser()
     const campaign = makeCampaign()
     await campaignsCol(db).insertOne(campaign)
-    await sendCampaign(db, campaign)
+    await sendToCompletion(campaign)
     // Simulate a partial resend (e.g. rolled-back draft): the claimed ledger
     // key skips the already-mailed user even though they still match.
-    const stats = await sendCampaign(db, campaign)
-    expect(stats?.targeted).toBe(1)
-    expect(stats?.sent).toBe(0)
+    const { targeted } = await queueCampaignSend(db, campaign)
+    expect(targeted).toBe(1)
+    await drainCampaignSends(db, campaign.id)
     expect(await lifecycleSendsCol(db).countDocuments({ sequence: 'campaign' })).toBe(1)
   })
 
@@ -201,7 +223,63 @@ describe('sendCampaign', () => {
     await seedUser()
     await db.collection('platform_config').insertOne({ key: 'global', marketing_paused: true })
     invalidatePlatformConfigCache()
-    await expect(sendCampaign(db, makeCampaign())).rejects.toThrow('marketing_paused')
+    await expect(queueCampaignSend(db, makeCampaign())).rejects.toThrow('marketing_paused')
     expect(await lifecycleSendsCol(db).countDocuments({})).toBe(0)
+  })
+
+  it('refuses to run without SENDGRID_API_KEY — nothing claimed, nothing "sent"', async () => {
+    delete process.env['SENDGRID_API_KEY']
+    await seedUser()
+    await expect(queueCampaignSend(db, makeCampaign())).rejects.toThrow('SENDGRID_API_KEY')
+    // The route rolls the campaign back to draft on throw; no ledger row may
+    // exist either — an unconfigured run must not look like a delivered one.
+    expect(await lifecycleSendsCol(db).countDocuments({})).toBe(0)
+  })
+
+  it('provider rejections settle failed — the ledger never reads sent', async () => {
+    vi.mocked(sgMail.send).mockRejectedValueOnce(new Error('sendgrid 503'))
+    await seedUser()
+    const campaign = makeCampaign()
+    await campaignsCol(db).insertOne(campaign)
+    const { done } = await sendToCompletion(campaign)
+    expect(done!['stats']).toEqual({ targeted: 1, sent: 0, skipped: 0, failed: 1, settled: 1 })
+    const row = await lifecycleSendsCol(db).findOne({ key: 'campaign:c1:u1' })
+    expect(row!['status']).toBe('failed')
+    expect(String(row!['error'])).toContain('sendgrid 503')
+  })
+
+  it('pause drops in-flight jobs; resume re-enqueues the pending claims', async () => {
+    await seedUser()
+    await seedLead()
+    const campaign = makeCampaign()
+    await campaignsCol(db).insertOne(campaign)
+    await campaignsCol(db).updateOne({ id: 'c1' }, { $set: { status: 'sending' } })
+    await queueCampaignSend(db, campaign)
+
+    expect(await pauseCampaign(db, 'c1')).toBe(true)
+    // Workers see a paused campaign and drop their jobs — claims stay pending.
+    await drainCampaignSends(db, 'c1')
+    expect(await lifecycleSendsCol(db).countDocuments({ status: 'pending' })).toBe(2)
+    expect((await campaignsCol(db).findOne({ id: 'c1' }))!['status']).toBe('paused')
+
+    // Resume re-enqueues (jobs buffer inline without Redis; drain is the
+    // test-side stand-in for the subscriber picking them up).
+    expect(await resumeCampaign(db, 'c1')).toBe(2)
+    await drainCampaignSends(db, 'c1')
+    const done = await campaignsCol(db).findOne({ id: 'c1' })
+    expect(done!['status']).toBe('sent')
+    expect(done!['stats']?.['sent']).toBe(2)
+  })
+
+  it('a redelivered job after settlement is a no-op', async () => {
+    await seedUser()
+    const campaign = makeCampaign()
+    await campaignsCol(db).insertOne(campaign)
+    await sendToCompletion(campaign)
+    const { runCampaignSendJob } = await import('../campaigns.js')
+    // At-least-once delivery: the queue may re-run a job that already ran.
+    await runCampaignSendJob(db, { campaign_id: 'c1', key: 'campaign:c1:u1' })
+    const done = await campaignsCol(db).findOne({ id: 'c1' })
+    expect(done!['stats']?.['sent']).toBe(1)
   })
 })

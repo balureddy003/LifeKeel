@@ -48,7 +48,11 @@ export default function LoginPage() {
   }, [])
 
   const handleSignIn = async () => {
-    if (!email.trim() || !password) return
+    if (loading) return
+    if (!email.trim() || !password) {
+      setError('Enter your email address and password.')
+      return
+    }
     setLoading(true)
     setError(null)
     try {
@@ -70,7 +74,11 @@ export default function LoginPage() {
   }
 
   const handleVerifyMfa = async () => {
-    if (!mfaCode.trim()) return
+    if (loading) return
+    if (!mfaCode.trim()) {
+      setError('Enter the code from your authenticator app.')
+      return
+    }
     setLoading(true)
     setError(null)
     try {
@@ -105,7 +113,14 @@ export default function LoginPage() {
       aside={<RegionSwitch />}
     >
       {mfaPending ? (
-        <>
+        <form
+          className="lk-form"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault()
+            void handleVerifyMfa()
+          }}
+        >
           <div className="lk-field">
             <label htmlFor="mfa-code">
               Enter the 6-digit code from your authenticator app, or a recovery code
@@ -119,21 +134,15 @@ export default function LoginPage() {
               placeholder="000000"
               value={mfaCode}
               onChange={(e) => setMfaCode(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleVerifyMfa()}
               className="lk-input center"
+              aria-invalid={error ? true : undefined}
+              aria-describedby="login-error"
             />
           </div>
-          {error && (
-            <p role="status" aria-live="polite" className="lk-err">
-              {error}
-            </p>
-          )}
-          <button
-            type="button"
-            className="lk-btn"
-            onClick={handleVerifyMfa}
-            disabled={!mfaCode.trim() || loading}
-          >
+          <div id="login-error" role="alert" className="lk-err">
+            {error ?? ''}
+          </div>
+          <button type="submit" className="lk-btn" disabled={loading}>
             {loading ? 'Verifying...' : 'Verify'}
           </button>
           <button
@@ -148,7 +157,7 @@ export default function LoginPage() {
           >
             Back to sign in
           </button>
-        </>
+        </form>
       ) : (
         <>
           <button
@@ -162,52 +171,54 @@ export default function LoginPage() {
 
           <div className="lk-or">or use email</div>
 
-          <div className="lk-field">
-            <label htmlFor="login-email">Email address</label>
-            <input
-              id="login-email"
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSignIn()}
-              autoComplete="email"
-              className="lk-input"
-            />
-          </div>
-          <div className="lk-field">
-            <label htmlFor="login-password">Password</label>
-            <PasswordInput
-              id="login-password"
-              placeholder="Password"
-              value={password}
-              onChange={setPassword}
-              onKeyDown={(e) => e.key === 'Enter' && handleSignIn()}
-              autoComplete="current-password"
-              inputClassName="lk-input"
-              wrapperClassName="lk-pw"
-              toggleClassName="lk-pw-toggle"
-            />
-          </div>
-
-          <Link href="/reset-password" className="lk-textlink" onClick={() => haptic('light')}>
-            Forgot password?
-          </Link>
-
-          {error && (
-            <p role="status" aria-live="polite" className="lk-err">
-              {error}
-            </p>
-          )}
-
-          <button
-            type="button"
-            className="lk-btn"
-            onClick={handleSignIn}
-            disabled={!email.trim() || !password || loading}
+          <form
+            className="lk-form"
+            noValidate
+            onSubmit={(e) => {
+              e.preventDefault()
+              void handleSignIn()
+            }}
           >
-            {loading ? 'Signing in...' : 'Sign In'}
-          </button>
+            <div className="lk-field">
+              <label htmlFor="login-email">Email address</label>
+              <input
+                id="login-email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                className="lk-input"
+                aria-invalid={error ? true : undefined}
+                aria-describedby="login-error"
+              />
+            </div>
+            <div className="lk-field">
+              <label htmlFor="login-password">Password</label>
+              <PasswordInput
+                id="login-password"
+                value={password}
+                onChange={setPassword}
+                autoComplete="current-password"
+                inputClassName="lk-input"
+                wrapperClassName="lk-pw"
+                toggleClassName="lk-pw-toggle"
+                invalid={!!error}
+                describedBy="login-error"
+              />
+            </div>
+
+            <div id="login-error" role="alert" className="lk-err">
+              {error ?? ''}
+            </div>
+
+            <button type="submit" className="lk-btn" disabled={loading}>
+              {loading ? 'Signing in...' : 'Sign In'}
+            </button>
+            <Link href="/reset-password" className="lk-textlink" onClick={() => haptic('light')}>
+              Forgot password?
+            </Link>
+          </form>
           <p className="lk-hint lk-center">
             New to LifeKeel?{' '}
             <Link href="/signup" className="lk-textlink">

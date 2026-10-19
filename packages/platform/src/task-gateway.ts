@@ -188,9 +188,11 @@ export interface TaskGatewayDeps {
    * "not dev mode"; it defaults to NODE_ENV === 'production'.
    */
   failClosed?: boolean
-  /** Per-tenant budget check run before the provider call. */
+  /** Per-tenant budget check run before the provider call. `policy` lets the
+   *  guard differentiate batch vs interactive tasks (Stage B8 plan caps
+   *  only deny batch-class spend). */
   budgetGuard?: {
-    check(tenantId: string, detectorId?: string): Promise<LlmBudgetDecision>
+    check(tenantId: string, detectorId?: string, policy?: AiTaskPolicy): Promise<LlmBudgetDecision>
   }
   /** Receives guard events (injection, PII redaction, forbidden output). */
   guardEventSink?: GuardEventSink
@@ -264,7 +266,7 @@ export function governedLlm(
     }
 
     if (deps.budgetGuard) {
-      const decision = await deps.budgetGuard.check(tenantId, opts.detectorId)
+      const decision = await deps.budgetGuard.check(tenantId, opts.detectorId, policy)
       if (!decision.allowed) {
         throw new BudgetExhaustedError(
           `LLM budget exceeded for tenant ${tenantId}: ${decision.reason}`,

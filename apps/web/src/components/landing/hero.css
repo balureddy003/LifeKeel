@@ -4,7 +4,8 @@
  * Pause control) and prefers-reduced-motion; the first screen is complete at rest.
  */
 .landing * { box-sizing: border-box; }
-.landing h1, .landing p, .landing ul { margin: 0; padding: 0; }
+/* the margin reset is for the landing scenes; public pages keep their own spacing utilities */
+.landing:not(.lk-public) h1, .landing:not(.lk-public) p, .landing:not(.lk-public) ul { margin: 0; padding: 0; }
 .landing .lk-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .landing .lk-fine { font-size: 13px; color: var(--muted); }
 
@@ -39,7 +40,7 @@
 .lk-eyebrow { display: block; margin-bottom: 14px; font: 500 12px/1.3 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
 .lk-copy h1 { font-family: var(--display); font-weight: 400; letter-spacing: -0.01em; text-wrap: balance; font-size: clamp(36px, 4.5vw, 58px); line-height: 1.02; }
 .lk-copy h1 em { color: var(--brass-text); font-style: italic; }
-.lk-lede { color: var(--muted); margin-top: 18px; max-width: 44ch; font-size: 17px; line-height: 1.55; }
+.lk-lede { color: var(--muted); margin-top: 22px; max-width: 44ch; font-size: 17px; line-height: 1.55; }
 .lk-copy > * { animation: lk-rise .5s ease backwards; } .lk-copy > h1 { animation: none; }
 .lk-copy > .lk-lede { animation-delay: .1s; }
 @keyframes lk-rise { from { opacity: 0; transform: translateY(8px); } }
@@ -58,17 +59,17 @@
 .lk-stage { grid-area: stage; grid-row: 1 / 3; position: relative; --tl: 12%; --tw: 74%; }
 .lk-readout { position: absolute; right: 0; top: 0; left: 0; z-index: 2; display: flex; justify-content: flex-end; align-items: flex-start; gap: 16px; flex-wrap: wrap; text-align: right; }
 .lk-read { font-family: var(--display); font-size: clamp(60px, 8vw, 104px); line-height: .9; font-variant-numeric: tabular-nums; contain: layout paint; }
-.lk-read small { font: 500 12px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 8px; }
+.lk-read small { font: 500 12px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 14px; }
 .lk-read .u { font-size: .3em; font-family: var(--body); color: var(--muted); margin-left: 8px; }
 .lk-pill { font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 9px 12px; border-radius: 999px; border: 1px solid currentColor; background: color-mix(in srgb, var(--surface) 90%, transparent); white-space: nowrap; }
 .lk-pill.rough, .lk-pill.holding { color: var(--brass-text); } .lk-pill.steady { color: var(--ok-text); }
 .lk-ctl { flex-basis: 100%; display: flex; justify-content: flex-end; gap: 12px; align-items: center; flex-wrap: wrap; }
-.lk-pause { font: 500 13px var(--body); color: var(--ink); background: color-mix(in srgb, var(--surface) 90%, transparent); border: 1px solid var(--field-line); border-radius: 999px; padding: 8px 14px; min-height: 36px; cursor: pointer; }
+.lk-pause { font: 500 13px var(--body); color: var(--ink); background: color-mix(in srgb, var(--surface) 90%, transparent); border: 1px solid var(--field-line); border-radius: 999px; padding: 8px 16px; min-height: 44px; cursor: pointer; }
 
 /* chart, slips, boats */
 .lk-bm { --bx: 74%; --bw: 170px; --ad: .9s; } .lk-bf1 { --bx: 55%; --bw: 120px; --ad: 1.2s; } .lk-bf2 { --bx: 42%; --bw: 90px; --ad: 1.5s; } .lk-bf3 { --bx: 32%; --bw: 80px; --ad: 1.8s; }
 .lk-chart { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
-.lk-chart line { stroke: var(--ink); stroke-width: 1; vector-effect: non-scaling-stroke; opacity: .13; transform-box: fill-box; }
+.lk-chart line { stroke: var(--ink); stroke-width: 1; vector-effect: non-scaling-stroke; opacity: .08; transform-box: fill-box; }
 .lk-chart .h { transform-origin: left center; animation: lk-wipex 1.4s ease-out backwards; }
 .lk-chart .v { transform-origin: center top; animation: lk-wipey 1.4s ease-out backwards; }
 .lk-chart line:nth-child(2) { animation-delay: .15s; } .lk-chart line:nth-child(3) { animation-delay: .3s; } .lk-chart line:nth-child(4) { animation-delay: .1s; } .lk-chart line:nth-child(5) { animation-delay: .25s; } .lk-chart line:nth-child(6) { animation-delay: .4s; }
@@ -117,7 +118,7 @@
   .lk-stage .lk-pill { position: absolute; left: 0; top: 100px; font-size: 11px; padding: 7px 10px; z-index: 2; }
   .lk-ctl { position: absolute; right: 0; top: 98px; flex-basis: auto; z-index: 2; }
   .lk-ctl .lk-fine { display: none; }
-  .lk-pause { font-size: 12px; padding: 6px 12px; }
+  .lk-pause { font-size: 13px; padding: 6px 12px; }
   .lk-f2, .lk-f3 { display: none; }
   .lk-bm { --bx: 70%; --bw: 116px; } .lk-bf1 { --bx: 44%; --bw: 100px; }
   .lk-boat { width: 96px; margin-left: -48px; } .lk-boat svg { width: 96px; height: 110px; } .lk-boat .lk-refl { height: 110px; }
@@ -141,4 +142,18 @@
 @media (forced-colors: active) {
   .lk-bg, .lk-beam, .lk-refl { display: none; }
   .lk-btn { border: 1px solid ButtonText; }
+}
+
+/* a signup button inside the copy block: phone only, so the first action is above the animation */
+.lk-hero-cta { display: none; margin-top: 18px; }
+@media (max-width: 860px) {
+  .lk-hero-cta { display: flex; margin-bottom: 22px; }
+  .lk-chartkey { top: 158px; }
+  .lk-stage { height: 432px; }
+  .lk-lede { display: block; margin-top: 12px; font-size: 16px; }
+  .lk-f2, .lk-f3 { display: block; }
+  .lk-bm { --bx: 78%; --bw: 96px; } .lk-bf1 { --bx: 56%; --bw: 80px; } .lk-bf2 { --bx: 37%; --bw: 62px; } .lk-bf3 { --bx: 22%; --bw: 50px; }
+  .lk-follower.lk-f1 { width: 76px; margin-left: -38px; } .lk-follower.lk-f1 svg { width: 76px; height: 87px; }
+  .lk-follower.lk-f2 { width: 58px; margin-left: -29px; } .lk-follower.lk-f2 svg { width: 58px; height: 66px; }
+  .lk-follower.lk-f3 { width: 46px; margin-left: -23px; } .lk-follower.lk-f3 svg { width: 46px; height: 53px; }
 }

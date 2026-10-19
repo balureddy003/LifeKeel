@@ -36,10 +36,14 @@ import { runWeeklyDigest } from '../operator/weekly-digest.js'
 import {
   campaignsCol,
   resolveAudience,
-  sendCampaign,
+  queueCampaignSend,
+  pauseCampaign,
+  resumeCampaign,
   type CampaignDoc,
 } from '../marketing/campaigns.js'
 import { lifecycleSendsCol } from '../marketing/lifecycle-emails.js'
+import { platformUnitEconomics } from '../spend-ledger.js'
+import { formatMicroDollars } from '@lifekeel/platform'
 import type { SupportCaseDoc, SupportMessage } from './support.js'
 
 const QuerySchema = z.object({
@@ -326,11 +330,9 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         created_at: { $gte: new Date(weekAgo.getTime() - 7 * 24 * 60 * 60 * 1000), $lt: weekAgo },
       }),
       db.collection('leads').countDocuments({ created_at: { $gte: weekAgo } }),
-      db
-        .collection('leads')
-        .countDocuments({
-          created_at: { $gte: new Date(weekAgo.getTime() - 7 * 24 * 60 * 60 * 1000), $lt: weekAgo },
-        }),
+      db.collection('leads').countDocuments({
+        created_at: { $gte: new Date(weekAgo.getTime() - 7 * 24 * 60 * 60 * 1000), $lt: weekAgo },
+      }),
       // 30-day daily series per funnel event — powers the KPI sparklines.
       // Reads metrics_daily rollups once the hourly job has backfilled;
       // falls back to the raw scan until then (fresh envs, pre-backfill).
@@ -977,19 +979,17 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         },
       )
       if (oldEmail) {
-        await db
-          .collection('leads')
-          .updateOne(
-            { email: oldEmail.toLowerCase() },
-            {
-              $set: {
-                email: `erased-${request.params.id}@erased.invalid`,
-                suppressed: true,
-                updated_at: now,
-              },
-              $unset: { name: '', attribution: '' },
+        await db.collection('leads').updateOne(
+          { email: oldEmail.toLowerCase() },
+          {
+            $set: {
+              email: `erased-${request.params.id}@erased.invalid`,
+              suppressed: true,
+              updated_at: now,
             },
-          )
+            $unset: { name: '', attribution: '' },
+          },
+        )
       }
       // If the erased user held operator privileges, drop the record too —
       // a tombstone account must retain no privileged surface.
@@ -2138,17 +2138,18 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       if (!campaign) return reply.status(404).send({ error: 'Campaign not found' })
       if (campaign.status !== 'draft')
         return reply.status(409).send({ error: `Campaign already ${campaign.status}` })
-      // Claim the send BEFORE mailing — racing double-clicks get 409 off the
-      // status flip, and lifecycle_sends dedup is the second lock anyway.
+      // Claim the send BEFORE queueing — racing double-clicks get 409 off
+      // the status flip, and lifecycle_sends dedup is the second lock anyway.
+      // Status moves draft → sending; the send worker flips it to 'sent'
+      // when every claimed recipient has settled (B11 durable bulk send).
       const claimed = await campaigns.updateOne(
         { id: campaign.id, status: 'draft' },
-        { $set: { status: 'sent', sent_at: new Date() } },
+        { $set: { status: 'sending' } },
       )
       if (claimed.modifiedCount === 0)
-        return reply.status(409).send({ error: 'Campaign already sent' })
+        return reply.status(409).send({ error: `Campaign already ${campaign.status}` })
       try {
-        const stats = await sendCampaign(db, campaign)
-        await campaigns.updateOne({ id: campaign.id }, { $set: { stats } })
+        const stats = await queueCampaignSend(db, campaign)
         await audit.log(
           request,
           'operator.campaign.send',
@@ -2160,14 +2161,58 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         return { ok: true, stats }
       } catch (err) {
         // Roll the draft back so a transient failure (marketing_paused, DB
-        // blip) doesn't wedge the campaign in a half-sent state it can't
-        // leave — the ledger already claimed any sends that went out.
-        await campaigns.updateOne(
-          { id: campaign.id },
-          { $set: { status: 'draft' }, $unset: { sent_at: '' } },
-        )
+        // blip, queue down) doesn't wedge the campaign in a half-queued
+        // state it can't leave — pending claims are skipped by a retry's
+        // claimSend only if the recipient was already settled.
+        await campaigns.updateOne({ id: campaign.id }, { $set: { status: 'draft' } })
         throw err
       }
+    },
+  )
+
+  app.post<{ Params: { id: string } }>(
+    '/operator/campaigns/:id/pause',
+    { preHandler: requireOperator(db, 'marketing.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const ok = await pauseCampaign(db, request.params.id)
+      if (!ok) return reply.status(409).send({ error: 'Campaign is not in a sending state' })
+      await audit.log(
+        request,
+        'operator.campaign.pause',
+        'campaign',
+        request.params.id,
+        parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
+
+  app.post<{ Params: { id: string } }>(
+    '/operator/campaigns/:id/resume',
+    { preHandler: requireOperator(db, 'marketing.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const exists = await campaigns.findOne(
+        { id: request.params.id },
+        { projection: { _id: 0, status: 1 } },
+      )
+      if (!exists) return reply.status(404).send({ error: 'Campaign not found' })
+      const requeued = await resumeCampaign(db, request.params.id)
+      if (requeued === -1) return reply.status(409).send({ error: `Campaign is ${exists.status}` })
+      await audit.log(
+        request,
+        'operator.campaign.resume',
+        'campaign',
+        request.params.id,
+        parsed.data.reason,
+        { requeued },
+      )
+      return { ok: true, requeued }
     },
   )
 
@@ -2276,6 +2321,26 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       })),
     }
   })
+
+  // Unit economics (B8): all-service external spend unioned across
+  // spend_events + llm_usage, cost per active family, top spenders.
+  // Messaging rows are list-price estimates (spend_events.estimated=true)
+  // until billed reconciliation lands — flagged P2 in the register.
+  app.get<{ Querystring: { days?: string } }>(
+    '/operator/unit-economics',
+    { preHandler: requireOperator(db, 'billing.read') },
+    async (request) => {
+      const days = Math.min(Math.max(Number(request.query.days) || 30, 1), 365)
+      const econ = await platformUnitEconomics(db, days)
+      return {
+        ...econ,
+        total_spend_display: formatMicroDollars(econ.total_spend_microdollars),
+        cost_per_active_family_display: formatMicroDollars(
+          econ.cost_per_active_family_microdollars,
+        ),
+      }
+    },
+  )
 
   app.get<{ Params: { id: string } }>(
     '/operator/billing/tenants/:id',
@@ -3128,20 +3193,18 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
         return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-      const result = await db
-        .collection('reminders')
-        .updateOne(
-          { id: request.params.id, status: 'failed' },
-          {
-            $set: {
-              status: 'scheduled',
-              attempts: 0,
-              next_attempt_at: new Date(),
-              updated_at: new Date(),
-            },
-            $unset: { last_error: '' },
+      const result = await db.collection('reminders').updateOne(
+        { id: request.params.id, status: 'failed' },
+        {
+          $set: {
+            status: 'scheduled',
+            attempts: 0,
+            next_attempt_at: new Date(),
+            updated_at: new Date(),
           },
-        )
+          $unset: { last_error: '' },
+        },
+      )
       if (result.matchedCount === 0)
         return reply.status(404).send({ error: 'Reminder not found or not failed' })
       await audit.log(

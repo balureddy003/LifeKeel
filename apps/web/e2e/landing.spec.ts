@@ -79,14 +79,14 @@ test.describe('story sections', () => {
     await expect(page.getByRole('status').filter({ hasText: 'income stops' })).toBeVisible()
   })
 
-  test('the board tags every capability Live or Planned in text', async ({ page }) => {
+  test('the board shows only what is available, with no Live or Planned tags or roadmap', async ({
+    page,
+  }) => {
     await openLanding(page)
     const items = page.locator('#story li')
-    const n = await items.count()
-    expect(n).toBeGreaterThan(10)
-    for (let i = 0; i < n; i++) {
-      await expect(items.nth(i).locator('.lk-st')).toHaveText(/^(Live|Planned)$/)
-    }
+    expect(await items.count()).toBeGreaterThan(8)
+    await expect(page.locator('#story .lk-st')).toHaveCount(0)
+    await expect(page.locator('main, body').first()).not.toContainText(/\bplanned\b/i)
   })
 
   test('the sticky Start free bar appears mid-page on a phone and not at the top', async ({

@@ -20,9 +20,13 @@
  *                  churn doesn't re-trigger it.
  *
  * Safety: every send is a `lifecycle_sends` ledger row keyed
- * `${sequence}:${step}:${recipient}` — a send is claimed by insert BEFORE
- * the email goes out, so racing sweeps can't double-send. The whole
- * engine honors platform_config.marketing_paused and per-lead
+ * `${sequence}:${step}:${recipient}` — a send is claimed in `pending`
+ * BEFORE the email goes out, so racing sweeps can't double-send, then
+ * settled to the outcome the provider actually returned (`sent` only
+ * when SendGrid accepted, `skipped` for a deliberate non-send, `failed`
+ * on provider error). Recoverable rows may be re-claimed up to
+ * MAX_SEND_ATTEMPTS; pending/sent rows suppress re-sends forever.
+ * The whole engine honors platform_config.marketing_paused and per-lead
  * `suppressed`/`consent.marketing`. Content stays informational —
  * no product recommendations, no "buy this policy" (CLAUDE.md rule).
  */
@@ -33,6 +37,7 @@ import { createLogger } from '@lifekeel/platform'
 import { getPlatformConfig } from '../operator/platform-config.js'
 import { getGrowthEventsCollection } from '../db.js'
 import { excludeMinorUsers } from '../family/family-permissions.js'
+import { recordSpend, spendCost } from '../spend-ledger.js'
 
 const log = createLogger({ service: 'lifecycle', version: '0.0.0' })
 
@@ -47,11 +52,21 @@ interface LifecycleSendDoc {
   step: string
   recipient: string // lead id or user id
   email: string
-  status: 'sent' | 'skipped' | 'failed'
+  /** pending = claimed, provider call in flight; sent = SendGrid accepted;
+   *  skipped = deliberately not sent (e.g. provider unconfigured);
+   *  failed = provider rejected. */
+  status: 'pending' | 'sent' | 'skipped' | 'failed'
+  attempts: number
   error?: string
   created_at: Date
+  updated_at?: Date
   /** Set on campaign claims so engagement can roll up per campaign. */
   campaign_id?: string
+  /** Recipient snapshot for campaign claims — the durable send job carries
+   *  only {campaign_id, key}, so the worker rebuilds the recipient from
+   *  these fields (payload-by-reference). */
+  recipient_kind?: 'user' | 'lead'
+  recipient_name?: string
   // Engagement, filled in by the SendGrid event webhook (POST /webhooks/sendgrid).
   delivered_at?: Date
   opened_at?: Date
@@ -124,6 +139,12 @@ function getFromEmail(): string {
   return process.env['SENDGRID_FROM_EMAIL'] ?? 'hello@lifekeel.co.uk'
 }
 
+/** 'sent' = SendGrid accepted the message; 'skipped' = deliberately not
+ *  sent. Provider rejections throw — the caller settles the ledger row
+ *  to 'failed'. Callers must record the outcome; a bare success return
+ *  without a provider call is the bug this signature exists to prevent. */
+export type SendOutcome = 'sent' | 'skipped'
+
 export async function sendEmail(
   to: string,
   subject: string,
@@ -132,11 +153,11 @@ export async function sendEmail(
   /** `lk` = the lifecycle_sends ledger key; SendGrid echoes it back on every
    *  event webhook so opens/clicks/bounces join to the exact send. */
   customArgs?: Record<string, string>,
-): Promise<void> {
+): Promise<SendOutcome> {
   const apiKey = process.env['SENDGRID_API_KEY']
   if (!apiKey) {
     log.warn({ to, subject }, 'No SENDGRID_API_KEY — skipping lifecycle email')
-    return
+    return 'skipped'
   }
   sgMail.setApiKey(apiKey)
   await sgMail.send({
@@ -151,6 +172,77 @@ export async function sendEmail(
     ...(customArgs ? { customArgs } : {}),
     ...(unsubLink ? { headers: { 'List-Unsubscribe': `<${unsubLink}>` } } : {}),
   })
+  return 'sent'
+}
+
+// ── Ledger claim/settle ────────────────────────────────────────────────────
+
+/** Recoverable outcomes may be re-claimed on a later sweep, up to this many
+ *  attempts total. pending/sent rows suppress re-sends permanently — that is
+ *  the dedup guarantee. */
+export const MAX_SEND_ATTEMPTS = 3
+const RETRYABLE_STATUSES = ['skipped', 'failed'] as const
+
+/** Claim a ledger row for `base`. The unique `key` insert wins the first
+ *  attempt; an existing row is re-claimable only while it sits in a
+ *  retryable state under the attempt cap. Returns null when another row
+ *  already owns the key. */
+export async function claimSend(
+  db: Db,
+  base: Omit<LifecycleSendDoc, 'status' | 'attempts'>,
+): Promise<LifecycleSendDoc | null> {
+  const col = lifecycleSendsCol(db)
+  const row: LifecycleSendDoc = { ...base, status: 'pending', attempts: 1 }
+  try {
+    await col.insertOne(row)
+    return row
+  } catch {
+    const retried = await col.findOneAndUpdate(
+      {
+        key: base.key,
+        status: { $in: [...RETRYABLE_STATUSES] },
+        attempts: { $lt: MAX_SEND_ATTEMPTS },
+      },
+      { $set: { status: 'pending', updated_at: new Date() }, $inc: { attempts: 1 } },
+      { returnDocument: 'after' },
+    )
+    return retried ?? null
+  }
+}
+
+/** Settle a claimed row to the outcome the provider actually returned.
+ *  Exported for the campaign worker, which settles rows claimed by
+ *  queueCampaignSend on a different call stack. */
+export async function settleSend(
+  db: Db,
+  key: string,
+  outcome: SendOutcome | 'failed',
+  error?: string,
+) {
+  await lifecycleSendsCol(db).updateOne(
+    { key },
+    { $set: { status: outcome, updated_at: new Date(), ...(error ? { error } : {}) } },
+  )
+}
+
+/** Ledger keys that suppress a new send — pending/sent rows always do;
+ *  retryable rows only once their attempt budget is spent (below the cap
+ *  they resurface in collectJobs and get re-claimed by claimSend). */
+async function claimedSendKeys(db: Db, filter: Record<string, unknown>): Promise<Set<string>> {
+  const rows = await lifecycleSendsCol(db)
+    .find(filter, { projection: { _id: 0, key: 1, status: 1, attempts: 1 } })
+    .toArray()
+  return new Set(
+    rows
+      .filter(
+        (r) =>
+          !(
+            RETRYABLE_STATUSES.includes(r['status'] as 'skipped' | 'failed') &&
+            ((r['attempts'] as number | undefined) ?? 1) < MAX_SEND_ATTEMPTS
+          ),
+      )
+      .map((r) => r['key'] as string),
+  )
 }
 
 export function wrap(body: string, unsubLink?: string): string {
@@ -314,16 +406,10 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
           .toArray()
       ).map((u) => u['email'] as string),
     )
-    const sent = new Set(
-      (
-        await lifecycleSendsCol(db)
-          .find(
-            { sequence: 'lead_nurture', email: { $in: emails } },
-            { projection: { _id: 0, key: 1 } },
-          )
-          .toArray()
-      ).map((s) => s['key'] as string),
-    )
+    const sent = await claimedSendKeys(db, {
+      sequence: 'lead_nurture',
+      email: { $in: emails },
+    })
     for (const lead of leads) {
       const email = lead['email'] as string
       if (signedUp.has(email)) continue // converted — nurture stops itself
@@ -398,19 +484,10 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
           .toArray()
       ).map((p) => p['tenant_id'] as string),
     )
-    const sentKeys = new Set(
-      (
-        await lifecycleSendsCol(db)
-          .find(
-            {
-              sequence: 'activation',
-              recipient: { $in: recentUsers.map((u) => u['id'] as string) },
-            },
-            { projection: { _id: 0, key: 1 } },
-          )
-          .toArray()
-      ).map((s) => s['key'] as string),
-    )
+    const sentKeys = await claimedSendKeys(db, {
+      sequence: 'activation',
+      recipient: { $in: recentUsers.map((u) => u['id'] as string) },
+    })
     for (const u of recentUsers) {
       if (profiled.has(u['tenant_id'] as string)) continue
       const key = `activation:nudge:${u['id']}`
@@ -461,16 +538,10 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
         .limit(500)
         .toArray(),
     )
-    const sentKeys = new Set(
-      (
-        await lifecycleSendsCol(db)
-          .find(
-            { sequence: 'trial', recipient: { $in: users.map((u) => u['id'] as string) } },
-            { projection: { _id: 0, key: 1 } },
-          )
-          .toArray()
-      ).map((s) => s['key'] as string),
-    )
+    const sentKeys = await claimedSendKeys(db, {
+      sequence: 'trial',
+      recipient: { $in: users.map((u) => u['id'] as string) },
+    })
     const endsByTenant = new Map(
       actionableTrials.map((t) => [
         t['tenant_id'] as string,
@@ -549,16 +620,10 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
           .limit(500)
           .toArray(),
       )
-      const sentKeys = new Set(
-        (
-          await lifecycleSendsCol(db)
-            .find(
-              { sequence: 'winback', recipient: { $in: users.map((u) => u['id'] as string) } },
-              { projection: { _id: 0, key: 1 } },
-            )
-            .toArray()
-        ).map((s) => s['key'] as string),
-      )
+      const sentKeys = await claimedSendKeys(db, {
+        sequence: 'winback',
+        recipient: { $in: users.map((u) => u['id'] as string) },
+      })
       for (const u of users) {
         const key = `winback:return:${u['id']}`
         if (sentKeys.has(key)) continue
@@ -636,16 +701,10 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
           .toArray()
       ).map((t) => t['tenant_id'] as string),
     )
-    const sentKeys = new Set(
-      (
-        await lifecycleSendsCol(db)
-          .find(
-            { sequence: 'upgrade', recipient: { $in: users.map((u) => u['id'] as string) } },
-            { projection: { _id: 0, key: 1 } },
-          )
-          .toArray()
-      ).map((s) => s['key'] as string),
-    )
+    const sentKeys = await claimedSendKeys(db, {
+      sequence: 'upgrade',
+      recipient: { $in: users.map((u) => u['id'] as string) },
+    })
     for (const u of users) {
       if (!freeTenants.has(u['tenant_id'] as string)) continue
       const key = `upgrade:nudge:${u['id']}`
@@ -666,7 +725,10 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
 }
 
 /** One lifecycle pass — collects due steps, claims each in the ledger, sends.
- *  Honors marketing_paused globally. Returns the claimed rows. */
+ *  Honors marketing_paused globally. With no provider configured the sweep
+ *  returns early and claims nothing — an unconfigured run must not leave
+ *  rows that look sent, nor burn dedup keys a configured run could use.
+ *  Returns the claimed rows with their settled statuses. */
 export async function runLifecycleSweep(
   db: Db,
   opts: { maxPerSweep?: number; appUrl?: string } = {},
@@ -674,6 +736,10 @@ export async function runLifecycleSweep(
   await ensureLifecycleIndexes(db)
   if ((await getPlatformConfig(db)).marketing_paused) {
     log.info({}, 'marketing_paused — lifecycle sweep skipped')
+    return []
+  }
+  if (!process.env['SENDGRID_API_KEY']) {
+    log.warn({}, 'No SENDGRID_API_KEY — lifecycle sweep skipped, nothing claimed')
     return []
   }
   const appUrl = (opts.appUrl ?? process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(
@@ -685,50 +751,63 @@ export async function runLifecycleSweep(
   const sent: LifecycleSendDoc[] = []
 
   for (const job of jobs.slice(0, max)) {
-    const row: LifecycleSendDoc = {
+    const row = await claimSend(db, {
       id: randomUUID(),
       key: job.key,
       sequence: job.sequence,
       step: job.step,
       recipient: job.recipient,
       email: job.email,
-      status: 'sent',
       created_at: new Date(),
-    }
+    })
+    if (!row) continue // another sweep claimed it, or attempts are spent
     try {
-      await lifecycleSendsCol(db).insertOne(row)
-    } catch {
-      continue // dedup — another sweep already claimed this send
-    }
-    try {
-      await sendEmail(
+      const outcome = await sendEmail(
         job.email,
         job.subject,
         job.html,
         job.leadId ? unsubUrl(appUrl, job.leadId) : undefined,
         { lk: job.key },
       )
-      // First nurture touch promotes the lead out of "new".
-      if (job.leadId) {
-        await db
-          .collection('leads')
-          .updateOne(
-            { id: job.leadId, stage: 'new' },
-            { $set: { stage: 'contacted', updated_at: new Date() } },
-          )
+      await settleSend(
+        db,
+        job.key,
+        outcome,
+        outcome === 'skipped' ? 'sendgrid_not_configured' : undefined,
+      )
+      row.status = outcome
+      if (outcome === 'sent') {
+        // First nurture touch promotes the lead out of "new".
+        if (job.leadId) {
+          await db
+            .collection('leads')
+            .updateOne(
+              { id: job.leadId, stage: 'new' },
+              { $set: { stage: 'contacted', updated_at: new Date() } },
+            )
+        }
+        await getGrowthEventsCollection(db).insertOne({
+          event: 'lifecycle_email_sent',
+          meta: { sequence: job.sequence, step: job.step },
+          created_at: new Date(),
+        })
+        // Lifecycle mail is platform-paid SendGrid spend; leads carry no
+        // tenant, so 'platform' keeps the ledger honest about whose bill
+        // it lands on.
+        void recordSpend(db, {
+          tenant_id: 'platform',
+          service: 'marketing',
+          provider: 'sendgrid',
+          unit: 'email',
+          units: 1,
+          cost_microdollars: spendCost('sendgrid', 'email'),
+          meta: { sequence: job.sequence, step: job.step },
+        }).catch(() => {})
       }
-      await getGrowthEventsCollection(db).insertOne({
-        event: 'lifecycle_email_sent',
-        meta: { sequence: job.sequence, step: job.step },
-        created_at: new Date(),
-      })
     } catch (err) {
       row.status = 'failed'
       row.error = String(err).slice(0, 300)
-      await lifecycleSendsCol(db).updateOne(
-        { id: row.id },
-        { $set: { status: 'failed', error: row.error } },
-      )
+      await settleSend(db, job.key, 'failed', row.error)
     }
     sent.push(row)
   }

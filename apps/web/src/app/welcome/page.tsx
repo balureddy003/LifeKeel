@@ -3,21 +3,22 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Map, MessageSquare, ShieldQuestion, Users, Lock } from 'lucide-react'
 import { AuthShell } from '@/components/landing/AuthShell'
 import { haptic } from '@/lib/haptics'
 const SLIDES = [
   {
     icon: Map,
-    title: "Your Family's Life Map",
+    title: "Your family's chart",
     subtitle:
-      'See everything connected — protection, wealth, goals, and your whole family in one living map.',
+      'What you hold and where it looks light, in one place: cover, savings, wills and papers.',
   },
   {
     icon: MessageSquare,
-    title: 'Just Ask',
+    title: 'Ask about what is on file',
     subtitle:
-      'Never search through menus. Ask "Where is my travel insurance?" and get an instant answer.',
+      'Ask where a policy is, and Keel answers from the papers and figures you have added.',
   },
   {
     icon: ShieldQuestion,
@@ -27,20 +28,21 @@ const SLIDES = [
   },
   {
     icon: Users,
-    title: 'Built for Every Age',
+    title: 'A place for everyone',
     subtitle:
-      'From your 8-year-old to your 70-year-old grandparent — the app adapts to each person.',
+      'Add your partner and children. Each adult has their own view, and children get a simpler one.',
   },
   {
     icon: Lock,
-    title: 'Your Data, Your Control',
+    title: 'Your data, your control',
     subtitle:
-      'Your details are never sold. They are encrypted at rest, and you can export or delete your account from Settings.',
+      'Your details are never sold. They are encrypted at rest, and you can export your data or delete your account from Settings.',
   },
 ]
 
 export default function WelcomePage() {
   const [slide, setSlide] = useState(0)
+  const router = useRouter()
 
   const next = () => {
     haptic('light')
@@ -66,9 +68,9 @@ export default function WelcomePage() {
   const last = slide >= SLIDES.length - 1
 
   return (
-    <AuthShell title={current?.title ?? ''} sub={current?.subtitle} aside={<SkipLink />} wide>
-      {/* Carousel pattern: announce the new slide without stealing focus, so "Continue" stays
-          the one button to keep pressing. The status line is stable, only its text changes. */}
+    <AuthShell title="Welcome to LifeKeel" aside={<SkipLink />} wide>
+      {/* One stable primary button: its label changes on the last slide, so keyboard focus is
+          never lost. The slide is announced through a stable status line. */}
       <p className="lk-sr" role="status">
         {current?.title}. {current?.subtitle}
       </p>
@@ -82,6 +84,8 @@ export default function WelcomePage() {
         >
           <Icon size={36} strokeWidth={1.5} />
         </motion.div>
+        <h2 className="lk-slide-title">{current?.title}</h2>
+        <p className="lk-slide-text">{current?.subtitle}</p>
       </div>
 
       <div className="lk-dots">
@@ -97,22 +101,28 @@ export default function WelcomePage() {
         ))}
       </div>
 
-      {last ? (
-        <Link href="/signup" className="lk-btn">
-          Get Started
-        </Link>
-      ) : (
-        <>
-          <button type="button" className="lk-btn" onClick={next}>
-            Continue
-          </button>
-          {slide > 0 && (
-            <button type="button" className="lk-textlink lk-textlink-muted" onClick={prev}>
-              Back
-            </button>
-          )}
-        </>
-      )}
+      <button
+        type="button"
+        className="lk-btn"
+        onClick={() => {
+          if (last) {
+            haptic('light')
+            router.push('/signup')
+          } else {
+            next()
+          }
+        }}
+      >
+        {last ? 'Create your free account' : 'Continue'}
+      </button>
+      <button
+        type="button"
+        className="lk-textlink lk-textlink-muted"
+        onClick={prev}
+        hidden={slide === 0}
+      >
+        Back
+      </button>
       <p className="lk-hint lk-center">
         Already have an account?{' '}
         <Link href="/login" className="lk-textlink">
@@ -126,7 +136,7 @@ export default function WelcomePage() {
 function SkipLink() {
   return (
     <Link href="/signup" className="lk-textlink lk-textlink-muted" onClick={() => haptic('light')}>
-      Skip
+      Skip to sign up
     </Link>
   )
 }

@@ -58,9 +58,9 @@ const mono = IBM_Plex_Mono({
   preload: false,
 })
 
-const TITLE = "LifeKeel — When life doesn't go to plan, LifeKeel knows what to do next"
+const TITLE = "LifeKeel — your family's cover and next steps, kept in one place"
 const DESCRIPTION =
-  'A guided response plan for job loss, medical crises, and the unexpected — built for families of all ages. Informational only, not financial advice.'
+  'See what you hold on file, where it looks light, and the steps to take on a bad day. Informational only, not financial advice.'
 // Canonical public domain — served via the Firebase Hosting site
 // "lifekeel-trellis" (apps/web/.firebaserc). lifekeel.si redirects here.
 const SITE_URL = 'https://lifekeel.co.uk'
@@ -96,7 +96,7 @@ export const viewport: Viewport = {
   // themeColor is a static export — it can't track data-theme, so it stays
   // the dark palette (the default, and what OS chrome hints show while the
   // inline script below is still resolving the stored preference).
-  themeColor: '#08080c',
+  themeColor: '#0a1822',
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',

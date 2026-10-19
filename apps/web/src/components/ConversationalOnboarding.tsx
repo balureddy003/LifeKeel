@@ -145,7 +145,7 @@ function GrowingGraph({ members }: { members: FamilyMemberDraft[] }) {
           transition={{ duration: 2, repeat: Infinity }}
           className="text-ink-tertiary text-sm"
         >
-          Your family graph will grow here
+          Your family will appear on the chart here
         </motion.div>
       )}
     </div>
@@ -157,7 +157,7 @@ export function ConversationalOnboarding() {
     {
       id: 'intro',
       role: 'ai',
-      text: "Welcome! Let's grow your family's Keel. I'll ask a few quick questions — it takes about 2 minutes. After each answer, you'll see your family graph grow.",
+      text: "Welcome! Let's put your family on the chart. I'll ask a few quick questions, and it takes about 2 minutes. After each answer, you'll see your chart fill in.",
     },
     {
       id: 'q-0',
@@ -303,7 +303,7 @@ export function ConversationalOnboarding() {
     if (currentQuestion.id === 'name') {
       newlyAdded = [{ id: 'self', emoji: '', name: answer, role: 'You', completion: 0 }]
       setMembers((prev) => [...prev, ...newlyAdded])
-      addAIMessage(`Nice to meet you, ${answer}! Let's build your family graph.`)
+      addAIMessage(`Nice to meet you, ${answer}! Let's start your family's chart.`)
     } else if (currentQuestion.id === 'email') {
       addAIMessage("Got it — that's your key back in if you ever need it.")
     } else if (currentQuestion.id === 'married' && answer.startsWith('Yes')) {
@@ -313,7 +313,7 @@ export function ConversationalOnboarding() {
     } else if (currentQuestion.id === 'spouse-name') {
       newlyAdded = [{ id: 'spouse', emoji: '', name: answer, role: 'Partner', completion: 0 }]
       setMembers((prev) => [...prev, ...newlyAdded])
-      addAIMessage(`Lovely! ${answer} has been added to your family graph.`)
+      addAIMessage(`Lovely! ${answer} is on your family's chart.`)
     } else if (currentQuestion.id === 'children' && answer === 'Yes') {
       addAIMessage('Wonderful!')
     } else if (currentQuestion.id === 'children' && answer === 'No') {
@@ -322,7 +322,7 @@ export function ConversationalOnboarding() {
       const names = answer.split(',').map((n) => n.trim()).filter(Boolean)
       newlyAdded = names.map((name, i) => ({ id: `child-${i}`, emoji: '', name, role: 'Child', completion: 0 }))
       setMembers((prev) => [...prev, ...newlyAdded])
-      addAIMessage(`Added ${names.length} ${names.length === 1 ? 'child' : 'children'} to your graph!`)
+      addAIMessage(`Added ${names.length} ${names.length === 1 ? 'child' : 'children'} to your chart!`)
     } else {
       addAIMessage('Got it! Let\'s continue.')
     }
@@ -644,9 +644,9 @@ export function ConversationalOnboarding() {
               disabled={!textValue.trim() || submitting}
               aria-label="Send answer"
               className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-30"
-              style={{ background: 'linear-gradient(135deg, rgb(var(--family-accent)), #6b5ce0)' }}
+              style={{ background: 'rgb(var(--family-500))' }}
             >
-              <Send size={18} color="#fff" />
+              <Send size={18} color="rgb(var(--on-cta))" />
             </motion.button>
           </div>
         )}

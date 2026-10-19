@@ -66,7 +66,7 @@ export function NavRail() {
     <nav
       className="hidden md:flex fixed top-0 left-0 bottom-0 z-nav w-[88px] flex-col items-center safe-area-top"
       style={{
-        background: 'rgba(8, 8, 12, 0.78)',
+        background: 'rgb(var(--nav-bg) / 0.85)',
         backdropFilter: 'blur(24px) saturate(120%)',
         WebkitBackdropFilter: 'blur(24px) saturate(120%)',
         borderRight: '1px solid rgb(var(--tint) / 0.05)',
@@ -79,7 +79,7 @@ export function NavRail() {
         aria-label="LifeKeel — Home"
         className="mt-6 mb-4 flex-shrink-0 active:opacity-70 transition-opacity"
       >
-        <img src="/logo/logo-mono-white.svg" alt="" width={30} height={30} />
+        <img src="/icon.svg" alt="" width={32} height={32} className="rounded-[22%]" />
       </Link>
 
       <div className="flex flex-col items-center gap-1 mt-2">

@@ -27,6 +27,8 @@ export type OperatorAuditAction =
   | 'operator.blog.unpublish'
   | 'operator.campaign.create'
   | 'operator.campaign.send'
+  | 'operator.campaign.pause'
+  | 'operator.campaign.resume'
   | 'operator.billing.adjust_credits'
   | 'operator.reminder.retry'
   | 'operator.user.revoke_sessions'
@@ -74,7 +76,9 @@ export class OperatorAuditLogger {
     Promise.all([
       db.collection('operator_audit_log').createIndex({ created_at: -1 }),
       db.collection('operator_audit_log').createIndex({ operator_user_id: 1, created_at: -1 }),
-      db.collection('operator_audit_log').createIndex({ target_type: 1, target_id: 1, created_at: -1 }),
+      db
+        .collection('operator_audit_log')
+        .createIndex({ target_type: 1, target_id: 1, created_at: -1 }),
     ]).catch(() => {})
   }
 

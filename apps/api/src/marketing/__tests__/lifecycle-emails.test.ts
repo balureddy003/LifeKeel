@@ -1,6 +1,12 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MongoClient, type Db } from 'mongodb'
 import { MongoMemoryServer } from 'mongodb-memory-server'
+
+vi.mock('@sendgrid/mail', () => ({
+  default: { setApiKey: vi.fn(), send: vi.fn().mockResolvedValue([{ statusCode: 202 }]) },
+}))
+
+import sgMail from '@sendgrid/mail'
 import {
   ensureLifecycleIndexes,
   lifecycleSendsCol,
@@ -17,6 +23,8 @@ let db: Db
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
 
+const sgSend = vi.mocked(sgMail.send)
+
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create()
   client = new MongoClient(mongod.getUri())
@@ -30,6 +38,8 @@ beforeEach(async () => {
     await db.collection(name.name).deleteMany({})
   }
   invalidatePlatformConfigCache()
+  process.env['SENDGRID_API_KEY'] = 'test-key'
+  sgSend.mockClear().mockResolvedValue([{ statusCode: 202 }, {}] as never)
 })
 
 afterAll(async () => {
@@ -101,15 +111,13 @@ describe('runLifecycleSweep — lead nurture', () => {
 
   it('stops nurturing the moment the lead signs up', async () => {
     await seedLead()
-    await db
-      .collection('users')
-      .insertOne({
-        id: 'u1',
-        email: 'lead@example.com',
-        status: 'active',
-        tenant_id: 't1',
-        created_at: new Date(),
-      })
+    await db.collection('users').insertOne({
+      id: 'u1',
+      email: 'lead@example.com',
+      status: 'active',
+      tenant_id: 't1',
+      created_at: new Date(),
+    })
     expect(await runLifecycleSweep(db)).toHaveLength(0)
   })
 })
@@ -377,5 +385,62 @@ describe('global gates', () => {
     invalidatePlatformConfigCache()
     expect(await runLifecycleSweep(db)).toHaveLength(0)
     expect(await lifecycleSendsCol(db).countDocuments()).toBe(0)
+  })
+})
+
+describe('ledger honesty — provider acceptance gates the sent state', () => {
+  it('with no SENDGRID_API_KEY the sweep claims nothing and sends nothing', async () => {
+    delete process.env['SENDGRID_API_KEY']
+    await seedLead()
+    expect(await runLifecycleSweep(db)).toHaveLength(0)
+    expect(sgSend).not.toHaveBeenCalled()
+    // No half-claimed rows: a configured sweep later still mails the lead.
+    expect(await lifecycleSendsCol(db).countDocuments()).toBe(0)
+  })
+
+  it('a provider rejection settles the row to failed with the error recorded', async () => {
+    sgSend.mockRejectedValueOnce(new Error('sendgrid 503'))
+    await seedLead()
+    const sent = await runLifecycleSweep(db)
+    expect(sent).toHaveLength(1)
+    expect(sent[0]!['status']).toBe('failed')
+    const row = await lifecycleSendsCol(db).findOne({ key: 'lead_nurture:welcome:lead-1' })
+    expect(row!['status']).toBe('failed')
+    expect(String(row!['error'])).toContain('sendgrid 503')
+    // A send that never happened must not emit the sent metric.
+    expect(
+      await db.collection('growth_events').countDocuments({ event: 'lifecycle_email_sent' }),
+    ).toBe(0)
+  })
+
+  it('a failed claim retries on a later sweep and can still land', async () => {
+    sgSend.mockRejectedValueOnce(new Error('sendgrid 503'))
+    await seedLead()
+    await runLifecycleSweep(db)
+    const retried = await runLifecycleSweep(db)
+    expect(retried).toHaveLength(1)
+    expect(retried[0]!['status']).toBe('sent')
+    const row = await lifecycleSendsCol(db).findOne({ key: 'lead_nurture:welcome:lead-1' })
+    expect(row!['status']).toBe('sent')
+    expect(row!['attempts']).toBe(2)
+    // One ledger row, not two — retries settle the same claim.
+    expect(await lifecycleSendsCol(db).countDocuments()).toBe(1)
+  })
+
+  it('retry budget is bounded — a permanently failing send stops at MAX_SEND_ATTEMPTS', async () => {
+    sgSend.mockRejectedValue(new Error('sendgrid down'))
+    await seedLead()
+    for (let i = 0; i < 4; i++) await runLifecycleSweep(db)
+    const row = await lifecycleSendsCol(db).findOne({ key: 'lead_nurture:welcome:lead-1' })
+    expect(row!['attempts']).toBe(3)
+    expect(row!['status']).toBe('failed')
+    expect(sgSend).toHaveBeenCalledTimes(3)
+  })
+
+  it('a settled sent row suppresses re-sends forever', async () => {
+    await seedLead()
+    await runLifecycleSweep(db)
+    expect(await runLifecycleSweep(db)).toHaveLength(0)
+    expect(sgSend).toHaveBeenCalledTimes(1)
   })
 })

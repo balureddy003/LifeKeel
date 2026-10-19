@@ -417,7 +417,7 @@ function LegacyMap({
         if (!a || !b) return null
         return (
           <g key={i} onMouseEnter={() => setHoverEdge(i)} onMouseLeave={() => setHoverEdge(null)} onClick={() => setHoverEdge(i)}>
-            <line x1={a.x + NODE_W} y1={a.y + NODE_H / 2} x2={b.x} y2={b.y + NODE_H / 2} stroke={hoverEdge === i ? '#7c6ef0' : 'rgba(148,163,184,0.35)'} strokeWidth={hoverEdge === i ? 2 : 1} />
+            <line x1={a.x + NODE_W} y1={a.y + NODE_H / 2} x2={b.x} y2={b.y + NODE_H / 2} stroke={hoverEdge === i ? '#c08a24' : 'rgba(148,163,184,0.35)'} strokeWidth={hoverEdge === i ? 2 : 1} />
             {hoverEdge === i && (
               <text x={(a.x + NODE_W + b.x) / 2} y={(a.y + b.y) / 2 + NODE_H / 2 - 4} textAnchor="middle" fontSize="10" fill="#94a3b8">
                 {e.kind.replace(/_/g, ' ')}{e.label ? ` — ${e.label}` : ''}

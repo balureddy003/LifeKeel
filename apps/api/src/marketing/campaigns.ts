@@ -27,6 +27,8 @@ import { getGrowthEventsCollection } from '../db.js'
 import {
   lifecycleSendsCol,
   ensureLifecycleIndexes,
+  claimSend,
+  settleSend,
   sendEmail,
   wrap,
   cta,
@@ -34,6 +36,8 @@ import {
   userUnsubUrl,
 } from './lifecycle-emails.js'
 import { excludeMinorUsers } from '../family/family-permissions.js'
+import { recordSpend, spendCost } from '../spend-ledger.js'
+import { queueManager } from '../queue/QueueManager.js'
 
 const log = createLogger({ service: 'campaigns', version: '0.0.0' })
 const DAY = 24 * 60 * 60 * 1000
@@ -68,11 +72,18 @@ export interface CampaignDoc {
   cta_url?: string
   cta_label?: string
   filter: CampaignAudience
-  status: 'draft' | 'sent'
+  status: 'draft' | 'sending' | 'paused' | 'sent'
   created_by: string
   created_at: Date
   sent_at?: Date
-  stats?: { targeted: number; sent: number; failed: number }
+  stats?: {
+    targeted: number
+    sent: number
+    skipped: number
+    failed: number
+    /** recipients whose claim row has reached a terminal state */
+    settled: number
+  }
 }
 
 export function campaignsCol(db: Db) {
@@ -218,14 +229,31 @@ function renderBody(campaign: CampaignDoc, r: Recipient, appUrl: string): string
   return wrap(`${paras}\n${ctaHtml}`, unsub)
 }
 
-/** Fire a campaign: resolves the audience fresh (a draft's filter may match
- *  different people by send time), claims each send in the ledger, mails.
- *  One-shot — status 'sent' campaigns 409 upstream. */
-export async function sendCampaign(
+// ── Durable per-recipient send (B11) ──────────────────────────────────────
+// A campaign send is no longer one synchronous loop over up to 2,000
+// recipients: queueCampaignSend writes a claimed `pending` ledger row per
+// recipient and enqueues a payload-by-reference job; runCampaignSendJob is
+// the queue consumer that settles one row. Pause flips campaign.status so
+// workers drop in-flight jobs; resume re-enqueues the still-pending keys.
+// The claim rows double as the per-recipient durable state — a crash loses
+// nothing that was already claimed.
+
+export const CAMPAIGN_SEND_QUEUE = 'campaign-send'
+
+export interface CampaignSendJob {
+  campaign_id: string
+  /** lifecycle_sends claim key — the durable per-recipient row */
+  key: string
+}
+
+/** Claim + enqueue every resolved recipient. Throws before any claims when
+ *  the platform is paused or the provider is unconfigured, so the route's
+ *  draft rollback leaves nothing half-queued. Idempotent under re-run:
+ *  already-claimed keys are skipped by claimSend and re-enqueued. */
+export async function queueCampaignSend(
   db: Db,
   campaign: CampaignDoc,
-  opts: { appUrl?: string } = {},
-): Promise<CampaignDoc['stats']> {
+): Promise<{ targeted: number }> {
   ensureCampaignIndexes(db)
   await ensureLifecycleIndexes(db) // the ledger's unique key index is the dedup lock
   if ((await getPlatformConfig(db)).marketing_paused) {
@@ -233,52 +261,178 @@ export async function sendCampaign(
       statusCode: 409,
     })
   }
-  const appUrl = (opts.appUrl ?? process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(
-    /\/$/,
-    '',
-  )
+  // Provider unconfigured → refuse before any claims: the route rolls the
+  // campaign back to draft, nothing is recorded as sent, and a configured
+  // retry loses nothing.
+  if (!process.env['SENDGRID_API_KEY']) {
+    throw Object.assign(
+      new Error('SENDGRID_API_KEY is not configured — campaign sends are halted'),
+      { statusCode: 503 },
+    )
+  }
   const recipients = await resolveAudience(db, campaign.filter)
-  const stats = { targeted: recipients.length, sent: 0, failed: 0 }
-
+  await campaignsCol(db).updateOne(
+    { id: campaign.id },
+    {
+      $set: { stats: { targeted: recipients.length, sent: 0, skipped: 0, failed: 0, settled: 0 } },
+    },
+  )
   for (const r of recipients) {
     const key = `campaign:${campaign.id}:${r.id}`
-    const claimed = await lifecycleSendsCol(db)
-      .insertOne({
-        id: randomUUID(),
-        key,
-        sequence: 'campaign',
-        step: campaign.name.slice(0, 80),
-        campaign_id: campaign.id,
-        recipient: r.id,
-        email: r.email,
-        status: 'sent',
+    const row = await claimSend(db, {
+      id: randomUUID(),
+      key,
+      sequence: 'campaign',
+      step: campaign.name.slice(0, 80),
+      campaign_id: campaign.id,
+      recipient: r.id,
+      email: r.email,
+      recipient_kind: r.kind,
+      recipient_name: r.firstName,
+      created_at: new Date(),
+    })
+    if (!row) continue // already mailed by a prior/racing send, or attempts spent
+    // Payload-by-reference: the durable state is the claim row, the job is
+    // just a pointer. A dropped job still leaves a re-enqueueable claim.
+    await queueManager.publish(CAMPAIGN_SEND_QUEUE, {
+      campaign_id: campaign.id,
+      key,
+    } satisfies CampaignSendJob)
+  }
+  return { targeted: recipients.length }
+}
+
+/** Queue consumer — settles one recipient claim. Idempotent: at-least-once
+ *  delivery is the queue's contract, so a re-delivered job finds the row
+ *  settled and returns. */
+export async function runCampaignSendJob(db: Db, job: CampaignSendJob): Promise<void> {
+  const campaign = await campaignsCol(db).findOne({ id: job.campaign_id })
+  if (!campaign || campaign.status !== 'sending') {
+    return // paused/cancelled — resume re-enqueues the pending keys
+  }
+  const row = await lifecycleSendsCol(db).findOne({ key: job.key })
+  if (!row || row.status !== 'pending') return // settled or superseded
+
+  const recipient: Recipient = {
+    kind: (row.recipient_kind ?? 'user') as Recipient['kind'],
+    id: row.recipient,
+    email: row.email,
+    firstName: row.recipient_name ?? '',
+  }
+  const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
+  try {
+    const unsub =
+      recipient.kind === 'lead'
+        ? `${appUrl}/leads/unsubscribe?id=${encodeURIComponent(recipient.id)}&sig=${unsubscribeToken(recipient.id)}`
+        : userUnsubUrl(appUrl, recipient.id)
+    const outcome = await sendEmail(
+      recipient.email,
+      campaign.subject,
+      renderBody(campaign, recipient, appUrl),
+      unsub,
+      { lk: job.key },
+    )
+    await settleSend(
+      db,
+      job.key,
+      outcome,
+      outcome === 'skipped' ? 'sendgrid_not_configured' : undefined,
+    )
+    await campaignsCol(db).updateOne(
+      { id: campaign.id },
+      { $inc: { [`stats.${outcome}`]: 1, 'stats.settled': 1 } },
+    )
+    if (outcome === 'sent') {
+      // Campaign mail is platform-paid spend; user recipients could carry
+      // their tenant but leads can't — 'platform' is the honest bucket.
+      void recordSpend(db, {
+        tenant_id: 'platform',
+        service: 'marketing',
+        provider: 'sendgrid',
+        unit: 'email',
+        units: 1,
+        cost_microdollars: spendCost('sendgrid', 'email'),
+        meta: { campaign_id: campaign.id },
+      }).catch(() => {})
+    }
+  } catch (err) {
+    await settleSend(db, job.key, 'failed', String(err).slice(0, 300))
+    await campaignsCol(db).updateOne(
+      { id: campaign.id },
+      { $inc: { 'stats.failed': 1, 'stats.settled': 1 } },
+    )
+    log.warn({ campaign: campaign.id, to: recipient.email, err }, 'campaign send failed')
+  }
+
+  // Completion: no pending claims left → terminal. Conditioned on the
+  // 'sending' state so only the last-settling worker flips it.
+  const pending = await lifecycleSendsCol(db).countDocuments({
+    campaign_id: campaign.id,
+    status: 'pending',
+  })
+  if (pending === 0) {
+    const finished = await campaignsCol(db).updateOne(
+      { id: campaign.id, status: 'sending' },
+      { $set: { status: 'sent', sent_at: new Date() } },
+    )
+    if (finished.modifiedCount === 1) {
+      const done = await campaignsCol(db).findOne({ id: campaign.id })
+      await getGrowthEventsCollection(db).insertOne({
+        event: 'campaign_sent',
+        meta: { campaign_id: campaign.id, name: campaign.name, ...done?.['stats'] },
         created_at: new Date(),
       })
-      .then(() => true)
-      .catch(() => false)
-    if (!claimed) continue // already mailed by a prior/racing send
-    try {
-      const unsub =
-        r.kind === 'lead'
-          ? `${appUrl}/leads/unsubscribe?id=${encodeURIComponent(r.id)}&sig=${unsubscribeToken(r.id)}`
-          : userUnsubUrl(appUrl, r.id)
-      await sendEmail(r.email, campaign.subject, renderBody(campaign, r, appUrl), unsub, {
-        lk: key,
-      })
-      stats.sent++
-    } catch (err) {
-      stats.failed++
-      await lifecycleSendsCol(db).updateOne(
-        { key },
-        { $set: { status: 'failed', error: String(err).slice(0, 300) } },
-      )
-      log.warn({ campaign: campaign.id, to: r.email, err }, 'campaign send failed')
     }
   }
-  await getGrowthEventsCollection(db).insertOne({
-    event: 'campaign_sent',
-    meta: { campaign_id: campaign.id, name: campaign.name, ...stats },
-    created_at: new Date(),
-  })
-  return stats
+}
+
+/** Pause a live send — workers see status != 'sending' and drop their jobs.
+ *  Pending claims stay pending; resume re-enqueues them. */
+export async function pauseCampaign(db: Db, campaignId: string): Promise<boolean> {
+  const res = await campaignsCol(db).updateOne(
+    { id: campaignId, status: 'sending' },
+    { $set: { status: 'paused' } },
+  )
+  return res.modifiedCount === 1
+}
+
+/** Resume a paused send — re-enqueues every still-pending claim. Returns
+ *  the re-enqueued count, or -1 when the campaign wasn't paused. */
+export async function resumeCampaign(db: Db, campaignId: string): Promise<number> {
+  const res = await campaignsCol(db).updateOne(
+    { id: campaignId, status: 'paused' },
+    { $set: { status: 'sending' } },
+  )
+  if (res.modifiedCount === 0) return -1
+  const pending = await lifecycleSendsCol(db)
+    .find({ campaign_id: campaignId, status: 'pending' }, { projection: { _id: 0, key: 1 } })
+    .toArray()
+  if (pending.length === 0) {
+    // Paused after every claim settled — complete immediately rather than
+    // sit 'sending' waiting on jobs that will never arrive.
+    await campaignsCol(db).updateOne(
+      { id: campaignId, status: 'sending' },
+      { $set: { status: 'sent', sent_at: new Date() } },
+    )
+    return 0
+  }
+  for (const row of pending) {
+    await queueManager.publish(CAMPAIGN_SEND_QUEUE, {
+      campaign_id: campaignId,
+      key: row['key'] as string,
+    } satisfies CampaignSendJob)
+  }
+  return pending.length
+}
+
+/** Synchronously drain a campaign's pending claims — used by tests and by
+ *  ops catch-up when a queue outage left claimed rows unprocessed. */
+export async function drainCampaignSends(db: Db, campaignId: string): Promise<number> {
+  const pending = await lifecycleSendsCol(db)
+    .find({ campaign_id: campaignId, status: 'pending' }, { projection: { _id: 0, key: 1 } })
+    .toArray()
+  for (const row of pending) {
+    await runCampaignSendJob(db, { campaign_id: campaignId, key: row['key'] as string })
+  }
+  return pending.length
 }
