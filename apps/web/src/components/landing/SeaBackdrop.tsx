@@ -2,7 +2,7 @@ import { WAVES, wavePath } from './waves'
 
 const PATHS = WAVES.map((w) => ({ ...wavePath(w), hasCrest: !!w.crest }))
 
-function Wave({ i, gid }: { i: number; gid: string }) {
+export function Wave({ i, gid }: { i: number; gid: string }) {
   const p = PATHS[i]!
   return (
     <svg viewBox="0 0 2400 120" preserveAspectRatio="none" aria-hidden="true">

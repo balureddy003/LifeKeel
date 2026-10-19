@@ -15,6 +15,8 @@ export interface Claim {
   status: ClaimStatus
   /** Repo-relative path of the code that makes a live claim true. */
   evidence?: string
+  /** True for statements made on the page outside the story board (promises, cover table). */
+  page?: boolean
   /** Blocked claims only: wording that must not appear in landing copy. */
   forbidden?: string[]
 }
@@ -107,6 +109,43 @@ export const CLAIMS: Claim[] = [
   },
   { id: 'claim-pack', text: 'Claim-ready pack: policies, contacts, papers', status: 'planned' },
   { id: 'new-life-events', text: 'New checks for new life events', status: 'planned' },
+
+  // Statements made outside the board: the six promises and the cover table.
+  {
+    id: 'no-commissions',
+    text: 'Subscriptions only: no commissions, no ads',
+    status: 'live',
+    page: true,
+    evidence: 'apps/api/src/billing/billing-constants.ts',
+  },
+  {
+    id: 'no-selling',
+    text: 'Your details are never sold',
+    status: 'live',
+    page: true,
+    evidence: 'apps/web/src/app/privacy/page.tsx',
+  },
+  {
+    id: 'approval-first',
+    text: 'Nothing leaves LifeKeel for you unless you approve it or switched it on',
+    status: 'live',
+    page: true,
+    evidence: 'apps/api/src/__tests__/trust-tier-gate.test.ts',
+  },
+  {
+    id: 'cover-estimate',
+    text: 'Cover on file against a rough household estimate',
+    status: 'live',
+    page: true,
+    evidence: 'detectors/family/protection-gap.yaml',
+  },
+  {
+    id: 'plus-reads-policy',
+    text: 'Keel Plus reads policy details from an uploaded policy for you to confirm',
+    status: 'live',
+    page: true,
+    evidence: 'apps/api/src/ocr',
+  },
 
   // Blocked: not true of the shipped product, or held by another PRD. Not for landing copy.
   {

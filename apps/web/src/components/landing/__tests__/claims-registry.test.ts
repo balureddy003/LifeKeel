@@ -54,9 +54,9 @@ describe('landing claims registry', () => {
 
   it('every non-blocked claim appears on the board once', () => {
     const used = CAPABILITIES.map((c) => c.claim)
-    const unused = CLAIMS.filter((c) => c.status !== 'blocked' && !used.includes(c.id)).map(
-      (c) => c.id,
-    )
+    const unused = CLAIMS.filter(
+      (c) => c.status !== 'blocked' && !c.page && !used.includes(c.id),
+    ).map((c) => c.id)
     expect(unused).toEqual([])
     expect(new Set(used).size).toBe(used.length)
   })
