@@ -12,10 +12,13 @@
   --wave: #2b7f97; --wave-2: #1d6a82; --wave-3: #14566b;
   --display: var(--font-display), Georgia, 'Times New Roman', serif;
   --body: var(--font-body), system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --wordmark: var(--font-wordmark), Georgia, 'Times New Roman', serif;
   --mono: var(--font-mono), ui-monospace, Menlo, Consolas, monospace;
   background: var(--bg);
   color: var(--ink);
   font-family: var(--body);
+  /* contain child margins so this background paints them, not the app behind */
+  display: flow-root;
 }
 :root[data-theme='dark'] .landing {
   --bg: #0a1822; --surface: #10242f; --ink: #e8eef2; --muted: #93a9b6; --line: #22404f; --field-line: #5f8193;
@@ -26,3 +29,6 @@
   --wave: #1f5f77; --wave-2: #17475a; --wave-3: #0f3647;
 }
 .landing :focus-visible { outline: 3px solid var(--brass-text); outline-offset: 3px; }
+
+/* anchored sections land below the sticky header (68px) */
+.landing[id], .landing [id] { scroll-margin-top: 84px; }

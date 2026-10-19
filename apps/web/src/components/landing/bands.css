@@ -202,10 +202,11 @@
 .lk-faq summary::after { content: '+'; font: 400 22px/1 var(--mono); color: var(--muted); flex: none; }
 .lk-faq details[open] summary::after { content: '\2212'; }
 .lk-faq details p { margin: 0; padding: 0 18px 18px; color: var(--muted); }
-.lk-footer { padding-block: 56px 48px; border-top: 1px solid var(--line); }
+.lk-footer { padding-block: 40px 48px; }
 .lk-foot-grid { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1.4fr; gap: 32px; }
 .landing .lk-foot-grid h3 { font: 500 12px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
-.lk-foot-brand { margin: 0 0 8px; font: 400 26px/1 var(--display); }
+.lk-foot-grid > div:first-child .lk-fine { margin-top: 12px; max-width: 34ch; }
+.lk-foot-inner { border-top: 1px solid var(--line); padding-top: 40px; }
 .lk-foot-grid nav { display: grid; gap: 2px; align-content: start; }
 .lk-foot-grid nav a { color: var(--ink); text-decoration: none; min-height: 44px; display: flex; align-items: center; font-size: 15px; }
 .lk-foot-grid nav a:hover { text-decoration: underline; }
@@ -215,6 +216,7 @@
 .lk-news button { font: 600 15px var(--body); background: var(--cta); color: var(--on-cta); border: 0; border-radius: 12px; padding: 0 18px; min-height: 48px; cursor: pointer; }
 .lk-news button[disabled] { opacity: 0.6; cursor: default; }
 .lk-legalline { margin-top: 36px; max-width: 80ch; }
+@media (min-width: 861px) { .lk-foot-grid nav a { min-height: 38px; } }
 @media (max-width: 860px) {
   .lk-trio { grid-template-columns: minmax(0, 1fr); }
   .lk-trio li + li { padding-left: 0; border-left: 0; }
@@ -222,3 +224,28 @@
   .lk-plans { grid-template-columns: minmax(0, 1fr); }
   .lk-foot-grid { grid-template-columns: minmax(0, 1fr); gap: 24px; }
 }
+
+/* brand lockup, header */
+.lk-brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; min-height: 44px; }
+.lk-brand img { border-radius: 22%; display: block; flex: none; }
+.lk-brand span { font: 600 26px/1 var(--wordmark); letter-spacing: -0.01em; }
+.lk-brand-lg span { font-size: 32px; }
+.lk-header { position: sticky; top: 0; z-index: 40; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid var(--line); }
+.lk-header-in { max-width: 1180px; margin: 0 auto; min-height: 68px; display: flex; align-items: center; gap: 28px; padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)); }
+.lk-nav { display: flex; align-items: center; gap: 2px; }
+.lk-nav a { color: var(--muted); text-decoration: none; padding: 10px 12px; min-height: 44px; display: inline-flex; align-items: center; font-size: 15px; border-radius: 10px; }
+.lk-nav a:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.lk-header-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.lk-signin { color: var(--ink); text-decoration: none; font-weight: 500; font-size: 15px; padding: 10px 12px; min-height: 44px; display: inline-flex; align-items: center; }
+.lk-signin:hover { text-decoration: underline; text-underline-offset: 3px; }
+.lk-btn-sm { min-height: 44px; padding: 8px 18px; font-size: 15px; white-space: nowrap; }
+.lk-menu-btn { display: none; min-width: 44px; min-height: 44px; border: 1px solid var(--field-line); border-radius: 12px; background: transparent; color: var(--ink); font-size: 18px; cursor: pointer; }
+.lk-menu { max-width: 1180px; margin: 0 auto; padding: 4px max(16px, env(safe-area-inset-right, 0px)) 14px max(16px, env(safe-area-inset-left, 0px)); display: grid; border-top: 1px solid var(--line); }
+.lk-menu a { color: var(--ink); text-decoration: none; padding: 12px 4px; min-height: 48px; display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+@media (max-width: 860px) {
+  .lk-nav, .lk-signin { display: none; }
+  .lk-menu-btn { display: inline-flex; align-items: center; justify-content: center; }
+  .lk-header-in { gap: 12px; }
+  .lk-brand span { font-size: 24px; }
+}
+@media (min-width: 861px) { .lk-menu { display: none; } }

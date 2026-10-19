@@ -17,6 +17,7 @@ export function undefinedTokens(css: string): string[] {
     '--font-display',
     '--font-body',
     '--font-mono',
+    '--font-wordmark',
     '--cardh',
     '--heel',
     '--i',
