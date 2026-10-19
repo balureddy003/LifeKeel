@@ -40,7 +40,7 @@ describe('PublicShell', () => {
       </PublicShell>,
     )
     expect(screen.getByRole('link', { name: 'Open LifeKeel' }).getAttribute('href')).toBe('/')
-    expect(screen.queryByRole('link', { name: 'Sign in' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Sign in', hidden: true })).toBeNull() // bar and hidden phone menu
     expect(screen.queryByRole('link', { name: 'Get started' })).toBeNull()
   })
 

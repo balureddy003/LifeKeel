@@ -204,7 +204,7 @@
 .lk-faq details p { margin: 0; padding: 0 18px 18px; color: var(--muted); }
 .lk-footer { padding-block: 40px 48px; }
 .lk-foot-grid { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1.4fr; gap: 32px; }
-.landing .lk-foot-grid h3 { font: 500 12px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
+.landing .lk-foot-grid .lk-foot-h { font: 500 12px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
 .lk-foot-grid > div:first-child .lk-fine { margin-top: 12px; max-width: 34ch; }
 .lk-foot-inner { border-top: 1px solid var(--line); padding-top: 40px; }
 .lk-foot-grid nav { display: grid; gap: 2px; align-content: start; }
@@ -249,3 +249,27 @@
   .lk-brand span { font-size: 24px; }
 }
 @media (min-width: 861px) { .lk-menu { display: none; } }
+
+.lk-news input::placeholder { color: var(--muted); opacity: 1; }
+@media (max-width: 860px) { html:has(.lk-sticky.on) { scroll-padding-bottom: 88px; } }
+.lk-menu[hidden] { display: none; }
+
+/* clarity and polish (UX review) */
+.lk-verdict { margin: 14px 0 0; font-weight: 600; }
+.lk-how { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+.lk-how summary { cursor: pointer; font-size: 14px; color: var(--muted); min-height: 36px; display: flex; align-items: center; }
+.lk-how .lk-maths { margin-top: 8px; padding-top: 0; border-top: 0; }
+.lk-inline-cta { margin-top: 28px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.lk-inline-cta p { margin: 0; color: var(--muted); }
+.lk-inline-cta .lk-btn { min-width: 240px; }
+.lk-plans { align-items: stretch; }
+.lk-plan-card ul { flex: 1; }
+.lk-plan-card .lk-fine { margin: 0; }
+.lk-news button { background: var(--cta); color: var(--on-cta); }
+.lk-legalline { max-width: none; }
+.lk-band:has(.lk-dawn) { padding-bottom: 24px; }
+.lk-menu-btn svg { display: block; }
+
+.landing .lk-band .lk-plan ol { margin-top: 16px; }
+.lk-verdict { margin-bottom: 2px; }
+.landing .lk-footer { padding-block: 8px 48px; }

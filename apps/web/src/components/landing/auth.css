@@ -44,3 +44,13 @@
 @media (min-width: 861px) { .lk-auth-card { margin-top: clamp(40px, 9vh, 96px); } }
 
 .lk-hint .lk-textlink { display: inline; padding: 0; min-height: 0; font-size: inherit; }
+
+.lk-form { display: grid; gap: 14px; }
+.lk-form > .lk-err:empty { margin-block: -7px; }
+.lk-err-field { text-align: left; }
+.lk-input::placeholder { color: var(--muted); opacity: 1; }
+.lk-btn[disabled] { background: var(--line); color: var(--muted); border-color: transparent; opacity: 1; }
+
+.landing .lk-slide-title { margin: 6px 0 0; font: 400 28px / 1.1 var(--display); text-wrap: balance; }
+.lk-slide-text { margin: 0; color: var(--muted); max-width: 44ch; }
+.landing .lk-auth-card h1 { margin: 0; }

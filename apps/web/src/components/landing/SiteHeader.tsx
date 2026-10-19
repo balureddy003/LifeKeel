@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { appUrl } from '@/lib/region'
 import { track } from '@/lib/growth-track'
@@ -27,11 +27,16 @@ const LINKS: { href: string; label: string; page?: boolean }[] = [
 export function SiteHeader({ home = true, signedIn = false }: { home?: boolean; signedIn?: boolean }) {
   const href = (h: string) => (home || !h.startsWith('#') ? h : `/${h}`)
   const [open, setOpen] = useState(false)
+  const menuBtn = useRef<HTMLButtonElement>(null)
 
   // Escape closes the phone menu, as people expect from a disclosure.
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setOpen(false)
+      menuBtn.current?.focus()
+    }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [open])
@@ -72,6 +77,7 @@ export function SiteHeader({ home = true, signedIn = false }: { home?: boolean; 
             </>
           )}
           <button
+            ref={menuBtn}
             type="button"
             className="lk-menu-btn"
             aria-expanded={open}
@@ -79,12 +85,17 @@ export function SiteHeader({ home = true, signedIn = false }: { home?: boolean; 
             aria-label={open ? 'Close menu' : 'Open menu'}
             onClick={() => setOpen((o) => !o)}
           >
-            <span aria-hidden="true">{open ? '✕' : '☰'}</span>
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+              {open ? (
+                <path d="M5 5 L19 19 M19 5 L5 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              ) : (
+                <path d="M4 7 H20 M4 12 H20 M4 17 H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              )}
+            </svg>
           </button>
         </div>
       </div>
-      {open && (
-        <nav id="lk-menu" className="lk-menu" aria-label="Menu">
+      <nav id="lk-menu" className="lk-menu" aria-label="Menu" hidden={!open}>
           {LINKS.map((l) =>
             l.page ? (
               <Link key={l.href} href={l.href} onClick={() => setOpen(false)}>
@@ -96,11 +107,12 @@ export function SiteHeader({ home = true, signedIn = false }: { home?: boolean; 
               </a>
             ),
           )}
-          <a href={appUrl('/login')} onClick={signIn}>
-            Sign in
-          </a>
+          {!signedIn && (
+            <a href={appUrl('/login')} onClick={signIn}>
+              Sign in
+            </a>
+          )}
         </nav>
-      )}
     </header>
   )
 }

@@ -89,6 +89,15 @@ describe('landing claims registry', () => {
   })
 })
 
+describe('llms.txt', () => {
+  it('uses none of the blocked wording and none of the retired product language', () => {
+    const text = fs.readFileSync(path.join(REPO, 'apps/web/public/llms.txt'), 'utf8')
+    const phrases = CLAIMS.filter((c) => c.status === 'blocked').flatMap((c) => c.forbidden ?? [])
+    expect(forbiddenHits(text, phrases)).toEqual([])
+    expect(forbiddenHits(text, ['continuously monitor', 'no competitor', 'readiness score', 'even when nobody logs in'])).toEqual([])
+  })
+})
+
 describe('sample day maths', () => {
   const months = SCENARIOS.map((s) => runwayMonths(s.calc(SAMPLE_FAMILY)))
 

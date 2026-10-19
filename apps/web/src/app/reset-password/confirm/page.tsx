@@ -30,7 +30,11 @@ export default function ConfirmPasswordResetPage() {
   }, [])
 
   const handleSubmit = async () => {
-    if (!token || password.length < 8) return
+    if (loading || !token) return
+    if (password.length < 8) {
+      setError('Use at least 8 characters.')
+      return
+    }
     if (password !== confirmPassword) {
       setError("Passwords don't match")
       return
@@ -84,48 +88,49 @@ export default function ConfirmPasswordResetPage() {
 
   return (
     <AuthShell title="Set a new password" sub="Must be at least 8 characters">
-      <div className="lk-field">
-        <label htmlFor="confirm-new-password">New password</label>
-        <PasswordInput
-          id="confirm-new-password"
-          placeholder="New password"
-          value={password}
-          onChange={setPassword}
-          autoComplete="new-password"
-          inputClassName="lk-input"
-          wrapperClassName="lk-pw"
-          toggleClassName="lk-pw-toggle"
-        />
-      </div>
-      <div className="lk-field">
-        <label htmlFor="confirm-new-password-repeat">Confirm new password</label>
-        <PasswordInput
-          id="confirm-new-password-repeat"
-          placeholder="Confirm new password"
-          value={confirmPassword}
-          onChange={setConfirmPassword}
-          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-          autoComplete="new-password"
-          inputClassName="lk-input"
-          wrapperClassName="lk-pw"
-          toggleClassName="lk-pw-toggle"
-        />
-      </div>
-
-      {error && (
-        <p role="status" aria-live="polite" className="lk-err">
-          {error}
-        </p>
-      )}
-
-      <button
-        type="button"
-        className="lk-btn"
-        onClick={handleSubmit}
-        disabled={password.length < 8 || !confirmPassword || loading}
+      <form
+        className="lk-form"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault()
+          void handleSubmit()
+        }}
       >
-        {loading ? 'Updating...' : 'Update password'}
-      </button>
+        <div className="lk-field">
+          <label htmlFor="confirm-new-password">New password</label>
+          <PasswordInput
+            id="confirm-new-password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="new-password"
+            inputClassName="lk-input"
+            wrapperClassName="lk-pw"
+            toggleClassName="lk-pw-toggle"
+            invalid={!!error}
+            describedBy="confirm-error"
+          />
+        </div>
+        <div className="lk-field">
+          <label htmlFor="confirm-new-password-repeat">Confirm new password</label>
+          <PasswordInput
+            id="confirm-new-password-repeat"
+            value={confirmPassword}
+            onChange={setConfirmPassword}
+            autoComplete="new-password"
+            inputClassName="lk-input"
+            wrapperClassName="lk-pw"
+            toggleClassName="lk-pw-toggle"
+            invalid={!!error}
+            describedBy="confirm-error"
+          />
+        </div>
+        <div id="confirm-error" role="alert" className="lk-err">
+          {error ?? ''}
+        </div>
+        <button type="submit" className="lk-btn" disabled={loading}>
+          {loading ? 'Updating...' : 'Update password'}
+        </button>
+      </form>
     </AuthShell>
   )
 }

@@ -163,10 +163,17 @@ export const CLAIMS: Claim[] = [
   },
   {
     id: 'delete-account',
-    text: 'You can delete your account yourself from Settings',
+    text: 'You can export your data or delete your account yourself from Settings',
     status: 'live',
     page: true,
     evidence: 'apps/api/src/erasure.ts',
+  },
+  {
+    id: 'export-data',
+    text: 'You can export your data from Settings',
+    status: 'live',
+    page: true,
+    evidence: 'apps/api/src/routes/account.ts',
   },
   {
     id: 'free-plan',

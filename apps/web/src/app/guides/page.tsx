@@ -13,7 +13,7 @@ export default function GuidesIndex() {
         <h1 className="mt-2 text-3xl font-bold text-ink-primary">The checks a family should know about</h1>
         <p className="mt-3 text-sm leading-relaxed text-ink-secondary">
           Plain-language explainers for the things that quietly decide whether a household is ready for a
-          bad month — the same checks Keel runs continuously once you sign up.
+          bad month — the same checks Keel runs on the figures you add.
         </p>
 
         <h2 className="mt-10 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">The checks</h2>
