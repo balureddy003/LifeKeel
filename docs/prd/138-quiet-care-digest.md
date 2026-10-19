@@ -65,6 +65,38 @@ Push delivery of the digest (PRD-140), per-insight alerts (PRD-139), any new det
 Whether a month with no completed sweep should send a "we couldn't check" message or
 page an operator first. Default: both, operator first.
 
+## Amendments from the October 2026 market review
+
+See [prd-set-market-review-2026-10.md](../reviews/prd-set-market-review-2026-10.md)
+for evidence quality. Numeric defaults below are hypotheses to test, not benchmarks.
+
+1. **Fix delivery before adding content.** `sendHeartbeatEmail` must return a delivery
+   result; the `heartbeat_sends` row is written only on success; bounces are handled;
+   a missed cycle alerts the operator. "Scheduled versus delivered" is the first
+   metric. Today a failed or skipped send is recorded as sent.
+2. **Fix the monthly window.** The window must be the previous month (today it is the
+   current month so far, about eight hours at 08:00 on the 1st), and send time must be
+   the family's local time, not the server's.
+3. **Strictly informational.** No Keel Plus upsell, no promotion. A promotional element
+   would make the digest direct marketing under PECR and change its legal basis.
+   Include one-click unsubscribe (`List-Unsubscribe`) and a signed-token opt-out.
+4. **Lead with specifics, not counts.** "Last full check 14 Oct; policy renewal 2 Dec"
+   reads as proof; a constant "N checks ran" reads as boilerplate. Show a completeness
+   line only when a check is actually paused. "Counts from real run records" needs a
+   run record that does not exist yet (`sweep_quiet` is feed-only); build it or drop
+   the claim.
+5. **Failure variant:** a digest that says "we couldn't check this month" (and pages an
+   operator), rather than silence.
+6. **First 30 days:** add a short welcome digest around day 7, because early silence is
+   the most ambiguous.
+7. **Cadence is a hypothesis.** Monthly, fortnightly, quarterly and tapered are all
+   unproven here; test cadence, specific-fact versus count copy, and always-send versus
+   suppress on all-clear months. This supersedes PRD-136's weekly default.
+8. **Inclusion:** WCAG 2.2 AA, Slovenian localisation (plural forms, CET/CEST) and a
+   pause for bereavement and for the multi-adult privacy split.
+9. **Sender authentication:** SPF, DKIM, DMARC; decide whether tracking pixels fit the
+   metadata-first policy (prefer click-based measurement).
+
 ## Becomes
 
 docs/prd/138-quiet-care-digest.md

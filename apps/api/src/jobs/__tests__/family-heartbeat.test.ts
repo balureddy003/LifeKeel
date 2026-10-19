@@ -1,10 +1,14 @@
 /**
  * PRD-136 §4 — the family heartbeat: per-adult weekly/monthly email,
  * tenant-level cadence, quiet-week suppression, idempotent re-runs.
- * sendHeartbeatEmail no-ops without SENDGRID_API_KEY, so "sent" is
- * observed via heartbeat_sends rows + the result counters.
+ * sendHeartbeatEmail is mocked: "sent" is observed via heartbeat_sends rows
+ * + the result counters, and a failed delivery must leave no row behind.
  */
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const sendMock = vi.hoisted(() => vi.fn())
+vi.mock('../../auth-email.js', () => ({ sendHeartbeatEmail: sendMock }))
+
 import { runFamilyHeartbeat } from '../family-heartbeat.js'
 import { renderHeartbeat, type HeartbeatData } from '../../feed/render-heartbeat.js'
 import { renderPlaybook } from '../../life-events/render-playbook.js'
@@ -16,7 +20,10 @@ const DAY = 86_400_000
 function matches(doc: Record<string, unknown>, filter: Record<string, unknown>): boolean {
   return Object.entries(filter).every(([k, v]) => {
     if (v && typeof v === 'object' && '$gte' in (v as Record<string, unknown>)) {
-      return new Date(doc[k] as string | Date).getTime() >= new Date((v as Record<string, unknown>)['$gte'] as string).getTime()
+      return (
+        new Date(doc[k] as string | Date).getTime() >=
+        new Date((v as Record<string, unknown>)['$gte'] as string).getTime()
+      )
     }
     return doc[k] === v
   })
@@ -27,8 +34,12 @@ function col(store: Record<string, unknown>[]) {
     find: (filter: Record<string, unknown> = {}) => ({
       toArray: async () => store.filter((d) => matches(d, filter)),
     }),
-    findOne: async (filter: Record<string, unknown> = {}) => store.find((d) => matches(d, filter)) ?? null,
-    insertOne: async (doc: Record<string, unknown>) => { store.push(doc); return { insertedId: doc['id'] } },
+    findOne: async (filter: Record<string, unknown> = {}) =>
+      store.find((d) => matches(d, filter)) ?? null,
+    insertOne: async (doc: Record<string, unknown>) => {
+      store.push(doc)
+      return { insertedId: doc['id'] }
+    },
   }
 }
 
@@ -36,9 +47,30 @@ function makeFamily() {
   return {
     tenant_id: TENANT,
     members: [
-      { id: 'm-org', user_id: 'u-org', name: 'Organizer', email: 'org@x.test', role: 'organizer', status: 'active' },
-      { id: 'm-adult', user_id: 'u-adult', name: 'Adult', email: 'adult@x.test', role: 'adult', status: 'active' },
-      { id: 'm-kid', user_id: 'u-kid', name: 'Kid', email: 'kid@x.test', role: 'child', status: 'active' },
+      {
+        id: 'm-org',
+        user_id: 'u-org',
+        name: 'Organizer',
+        email: 'org@x.test',
+        role: 'organizer',
+        status: 'active',
+      },
+      {
+        id: 'm-adult',
+        user_id: 'u-adult',
+        name: 'Adult',
+        email: 'adult@x.test',
+        role: 'adult',
+        status: 'active',
+      },
+      {
+        id: 'm-kid',
+        user_id: 'u-kid',
+        name: 'Kid',
+        email: 'kid@x.test',
+        role: 'child',
+        status: 'active',
+      },
     ],
   }
 }
@@ -142,6 +174,36 @@ describe('renderHeartbeat', () => {
 })
 
 describe('runFamilyHeartbeat', () => {
+  beforeEach(() => {
+    sendMock.mockReset()
+    sendMock.mockResolvedValue({ ok: true })
+  })
+
+  it('does not record a send (and retries next run) when delivery fails or is skipped', async () => {
+    const { db, stores } = makeDb({ events: [scoreMoved()] })
+    sendMock.mockResolvedValue({ ok: false, reason: 'no_api_key' })
+    const r = await runFamilyHeartbeat(db, { cadence: 'weekly', now: NOW })
+    expect(r.sent).toBe(0)
+    expect(r.failed).toBe(2)
+    expect(stores['heartbeat_sends']).toHaveLength(0)
+
+    // Provider recovers: the same window is retried and now recorded.
+    sendMock.mockResolvedValue({ ok: true })
+    const retry = await runFamilyHeartbeat(db, { cadence: 'weekly', now: NOW })
+    expect(retry.sent).toBe(2)
+    expect(retry.failed).toBe(0)
+    expect(stores['heartbeat_sends']).toHaveLength(2)
+  })
+
+  it('a thrown send error is counted as failed and writes no row', async () => {
+    const { db, stores } = makeDb({ events: [scoreMoved()] })
+    sendMock.mockRejectedValue(new Error('boom'))
+    const r = await runFamilyHeartbeat(db, { cadence: 'weekly', now: NOW })
+    expect(r.sent).toBe(0)
+    expect(r.failed).toBe(2)
+    expect(stores['heartbeat_sends']).toHaveLength(0)
+  })
+
   it('sends to both adults (never the child), records heartbeat_sends, and the copy reflects the window', async () => {
     const signal = lifeEventSignal(2)
     const { db, stores } = makeDb({
@@ -150,7 +212,14 @@ describe('runFamilyHeartbeat', () => {
         { date: isoDaysAgo(6), score: 70 },
         { date: isoDaysAgo(1), score: 74 },
       ],
-      insights: [{ id: 'i1', tenant_id: TENANT, state: 'identified', created_at: new Date(NOW.getTime() - 2 * DAY) }],
+      insights: [
+        {
+          id: 'i1',
+          tenant_id: TENANT,
+          state: 'identified',
+          created_at: new Date(NOW.getTime() - 2 * DAY),
+        },
+      ],
       profile: {
         updated_at: new Date(NOW.getTime() - 10 * DAY),
         policies: [{ type: 'life', renewal_date: isoDaysAgo(-20) }],

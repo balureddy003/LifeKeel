@@ -67,11 +67,44 @@ Social login on the reveal page; saving partial quiz progress; any payment step.
 
 ## Open questions
 
-- Hold the unverified snapshot in a short-TTL server record keyed by an unguessable
-  token, or resend answers from the client on submit? The second avoids storing
-  anything pre-consent and is the default unless it breaks the cross-device case.
+- Resolved by amendment 2: a short-lived pending record created when the user clicks
+  "Keep this result", because resending answers from the client breaks the
+  cross-device case.
 - Does the Capacitor shell open the magic link in-app? (Needs `allowNavigation` and
   an App Links / universal-link entry; see apps/mobile/README.md.)
+
+## Amendments from the October 2026 market review
+
+See [prd-set-market-review-2026-10.md](../reviews/prd-set-market-review-2026-10.md)
+for evidence quality. Numeric defaults below are hypotheses to test, not benchmarks.
+
+1. **Link plus code.** The email carries a link and a 6-digit code. The link's GET
+   renders a "Continue" page and never consumes the token; a POST does. Acceptance
+   criterion: a GET never consumes the token, so mail scanners that prefetch links
+   cannot burn it. The code covers opening mail on a different device.
+2. **Pending record, created on consent.** Resolve the open question above: when the
+   user clicks "Keep this result", store a short-lived pending record (answers and
+   derived components, hashed token, short TTL) so the saved result survives opening
+   the link on another device. Nothing is stored before that click, and the copy says
+   what happens to the email at that moment.
+3. **Enumeration and abuse.** Identical response bodies are not enough: use uniform
+   timing, send asynchronously on both paths, cap sends per address and per IP per
+   hour, protect against mail-bombing, and keep the score out of the email body.
+4. **Link hygiene.** Hard-code the link host, send `Referrer-Policy: no-referrer` on
+   the landing page, set link TTL and a resend cooldown, and make expiry recoverable
+   without losing the answers.
+5. **Existing accounts.** Append the snapshot to an existing account's history; never
+   overwrite.
+6. **Operations.** SPF, DKIM and DMARC are in place before launch. Marketing consent
+   text is versioned and the consent record stores which version was shown. A saved
+   snapshot can be deleted in one step.
+7. **Analytics.** Funnel events must not create a profile before consent. Test that
+   "nothing is saved" is true of analytics, logs and CDN as well as the database.
+8. **Something worth losing.** After the save, show a "what changed" view and offer a
+   PDF export, so the account holds more than a single number.
+9. **Measurement.** Do not plan a one-week baseline at small volume. Test one change
+   at a time at the top of the funnel (ask copy, trust-block placement, link plus code
+   against link only), and watch the guardrails in PRD-204.
 
 ## Becomes
 
