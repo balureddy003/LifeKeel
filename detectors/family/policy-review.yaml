@@ -3,13 +3,13 @@ name: Policy Register Hygiene Detection
 description: >
   Reviews the family's policy register itself rather than coverage
   adequacy: duplicate policies of the same type covering the same person
-  (common after switching providers and forgetting to cancel), and
-  policies still attributed to a member who is no longer on the family
+  (which can be intentional, for example employer cover plus a personal
+  policy), and policies still attributed to a member who is no longer on the family
   roster. These are record-keeping findings, not coverage judgments.
 version: 1.0.0
 signal_types:
   - family.policy_review
-industries: ["family", "insurance"]
+industries: ['family', 'insurance']
 
 rules:
   - id: duplicate_policy_coverage
@@ -17,24 +17,24 @@ rules:
     # One event per (type, holder) overlap group — the composite member_id
     # ("m_123:life" or "household:car") keeps each overlap's entity_key
     # distinct so dedup and stale-resolution stay per-pair.
-    condition: "data.overlap_count > 1"
+    condition: 'data.overlap_count > 1'
     confidence: 0.7
-    impact_low: "data.overlap_monthly_premium_minor"
-    impact_high: "data.overlap_monthly_premium_minor * 12"
+    impact_low: 'data.overlap_monthly_premium_minor'
+    impact_high: 'data.overlap_monthly_premium_minor * 12'
     reasoning_template: >
       {{data.overlap_count}} {{data.overlap_type}} policies appear on file for {{data.overlap_holder}}
       ({{data.overlap_providers}}), costing {{data.overlap_monthly_premium_minor}}/month combined. This can
-      be intentional (e.g. employer cover plus a personal policy), but is worth a review — a duplicate
-      left over from a provider switch is a common source of wasted premiums. This is informational
-      only — consult a licensed insurance professional before changing or cancelling coverage.
+      be intentional (for example, employer cover plus a personal policy), and the records on file cannot
+      show which applies. This is informational only: your insurer or a licensed insurance professional
+      can confirm what each policy covers.
     actions:
-      - Check whether both policies are still active and needed
-      - Confirm you're not paying for a policy you meant to cancel after switching
-      - Consult a licensed insurance professional before cancelling anything — overlapping cover can be deliberate
+      - Check whether both policies are still active and what each one covers
+      - Check each policy's start date, cover amount and renewal date against your own records
+      - Ask your insurer or a licensed insurance professional what each policy covers — overlapping cover can be deliberate
 
   - id: policy_attributed_to_removed_member
     name: Policy Attributed To Someone No Longer On The Roster
-    condition: "data.orphaned_policy_count > 0"
+    condition: 'data.orphaned_policy_count > 0'
     confidence: 0.7
     impact_low: 0
     impact_high: 0
