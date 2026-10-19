@@ -20,10 +20,21 @@ import { getGrowthEventsCollection } from '../db.js'
 
 // Server-side allowlist, not client-trusted free text — keeps the collection
 // from filling up with arbitrary event names from a modified client.
-const KNOWN_EVENTS = new Set([
+export const KNOWN_EVENTS = new Set([
   'landing_view',
   'landing_get_started_click',
   'landing_signin_click',
+  // Sent by the current landing page but previously rejected with a 400.
+  'landing_quiz_click',
+  // New landing (PRD-209): where the visitor clicked, which sample day they picked, and
+  // whether they paused the animation. Meta carries a location or a scenario name only,
+  // never a value the visitor typed.
+  'landing_cta_click',
+  'landing_scenario_select',
+  'landing_pause_click',
+  // Sent by the upgrade page but previously rejected with a 400.
+  'promo_redeem_attempt',
+  'promo_redeemed',
   'signup_completed',
   'family_setup_completed',
   'upgrade_page_view',
@@ -39,7 +50,12 @@ const KNOWN_EVENTS = new Set([
 export async function registerGrowthEventRoutes(app: FastifyInstance, db: Db): Promise<void> {
   /** POST /growth/events — record one funnel event. */
   app.post('/growth/events', async (request, reply) => {
-    const body = request.body as { event?: string; path?: string; anon_id?: string; meta?: Record<string, unknown> }
+    const body = request.body as {
+      event?: string
+      path?: string
+      anon_id?: string
+      meta?: Record<string, unknown>
+    }
     const event = typeof body?.event === 'string' ? body.event : ''
     if (!KNOWN_EVENTS.has(event)) {
       return reply.status(400).send({ error: 'Unknown event' })
@@ -65,12 +81,21 @@ export async function registerGrowthEventRoutes(app: FastifyInstance, db: Db): P
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
     const col = getGrowthEventsCollection(db)
 
-    const counts = await col.aggregate([
-      { $match: { created_at: { $gte: since } } },
-      { $group: { _id: '$event', count: { $sum: 1 }, unique_anon: { $addToSet: '$anon_id' } } },
-      { $project: { event: '$_id', count: 1, unique_anon_count: { $size: '$unique_anon' }, _id: 0 } },
-      { $sort: { count: -1 } },
-    ]).toArray()
+    const counts = await col
+      .aggregate([
+        { $match: { created_at: { $gte: since } } },
+        { $group: { _id: '$event', count: { $sum: 1 }, unique_anon: { $addToSet: '$anon_id' } } },
+        {
+          $project: {
+            event: '$_id',
+            count: 1,
+            unique_anon_count: { $size: '$unique_anon' },
+            _id: 0,
+          },
+        },
+        { $sort: { count: -1 } },
+      ])
+      .toArray()
 
     return reply.send({ since: since.toISOString(), events: counts })
   })

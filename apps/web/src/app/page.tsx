@@ -4,7 +4,30 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { Network, Activity, Lightbulb, ChevronRight, Hand, Star, Target, Bot, Phone, User, FileText, Siren, Search, CalendarClock, X, UserPlus, Sparkles, Check, Upload, Plug, Calculator, Zap } from 'lucide-react'
+import {
+  Network,
+  Activity,
+  Lightbulb,
+  ChevronRight,
+  Hand,
+  Star,
+  Target,
+  Bot,
+  Phone,
+  User,
+  FileText,
+  Siren,
+  Search,
+  CalendarClock,
+  X,
+  UserPlus,
+  Sparkles,
+  Check,
+  Upload,
+  Plug,
+  Calculator,
+  Zap,
+} from 'lucide-react'
 import { FamilyRoster } from '@/components/FamilyRoster'
 import { LifeTimeline } from '@/components/LifeTimeline'
 import { ScoreRing, GlassCard, PageHeader, IfAdvanced, Skeleton, Money } from '@/components/Glass'
@@ -18,7 +41,15 @@ import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@
 import { useAppStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
-import { fetchDocuments, fetchConnectorStatuses, fetchFinancialProfile, fetchLifeChangeNudge, dismissLifeChangeNudge, RESOLVED_INSIGHT_STATES, type FinancialProfile } from '@/lib/api'
+import {
+  fetchDocuments,
+  fetchConnectorStatuses,
+  fetchFinancialProfile,
+  fetchLifeChangeNudge,
+  dismissLifeChangeNudge,
+  RESOLVED_INSIGHT_STATES,
+  type FinancialProfile,
+} from '@/lib/api'
 import { elderlyHomeCopy } from '@/lib/elderlyHomeCopy'
 import { childHomeCopy } from '@/lib/childHomeCopy'
 import { simpleHomeCopy } from '@/lib/simpleHomeCopy'
@@ -30,17 +61,25 @@ function ChildHome() {
 
   useEffect(() => {
     let cancelled = false
-    fetchFinancialProfile().then((p) => { if (!cancelled) setProfile(p) })
-    return () => { cancelled = true }
+    fetchFinancialProfile().then((p) => {
+      if (!cancelled) setProfile(p)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const myFund = profile?.education_funds.find(
     (f) => f.child_name.toLowerCase() === (user?.name ?? '').toLowerCase(),
   )
-  const progress = myFund && myFund.target_savings_minor > 0
-    ? Math.round((myFund.current_savings_minor / myFund.target_savings_minor) * 100)
-    : 0
-  const { subheadline } = childHomeCopy({ loading: profile === undefined, hasLiveData: profile !== null && profile !== undefined })
+  const progress =
+    myFund && myFund.target_savings_minor > 0
+      ? Math.round((myFund.current_savings_minor / myFund.target_savings_minor) * 100)
+      : 0
+  const { subheadline } = childHomeCopy({
+    loading: profile === undefined,
+    hasLiveData: profile !== null && profile !== undefined,
+  })
 
   return (
     <div className="px-4 pt-4 space-y-5">
@@ -65,9 +104,7 @@ function ChildHome() {
               <Target size={20} className="text-family-400" />
             </div>
             <span className="text-base font-semibold flex-1">My Education Fund</span>
-            {myFund && (
-              <span className="text-lg font-bold text-family-400">{progress}%</span>
-            )}
+            {myFund && <span className="text-lg font-bold text-family-400">{progress}%</span>}
           </div>
           {myFund ? (
             <>
@@ -80,8 +117,14 @@ function ChildHome() {
                 />
               </div>
               <p className="text-sm text-ink-secondary">
-                <Money value={`£${Math.round(myFund.current_savings_minor / 100).toLocaleString()}`} /> saved
-                toward your <Money value={`£${Math.round(myFund.target_savings_minor / 100).toLocaleString()}`} /> goal
+                <Money
+                  value={`£${Math.round(myFund.current_savings_minor / 100).toLocaleString()}`}
+                />{' '}
+                saved toward your{' '}
+                <Money
+                  value={`£${Math.round(myFund.target_savings_minor / 100).toLocaleString()}`}
+                />{' '}
+                goal
               </p>
             </>
           ) : (
@@ -179,31 +222,41 @@ function ElderlyHome() {
         ].map((item, i) => {
           const Icon = item.icon
           return (
-          <motion.button
-            key={item.action}
-            onClick={() => handleTileTap(item.action)}
-            whileTap={{ scale: 0.97 }}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.5 + i * 0.1 }}
-            className="w-full rounded-3xl p-6 flex items-center gap-4"
-            style={{
-              minHeight: 80,
-              background: item.danger
-                ? 'linear-gradient(135deg, #f87171, #dc2626)'
-                : 'rgb(var(--tint) / 0.03)',
-              border: item.danger ? 'none' : '1px solid rgb(var(--tint) / 0.08)',
-              backdropFilter: item.danger ? 'none' : 'blur(40px)',
-              WebkitBackdropFilter: item.danger ? 'none' : 'blur(40px)',
-            }}
-          >
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: item.danger ? 'rgba(255,255,255,0.15)' : 'rgb(var(--family-accent) / 0.1)' }}>
-              <Icon size={24} color={item.danger ? '#fff' : 'rgb(var(--family-accent))'} />
-            </div>
-            <span className="text-xl font-semibold" style={{ color: item.danger ? '#fff' : undefined }}>
-              {item.label}
-            </span>
-          </motion.button>
+            <motion.button
+              key={item.action}
+              onClick={() => handleTileTap(item.action)}
+              whileTap={{ scale: 0.97 }}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.5 + i * 0.1 }}
+              className="w-full rounded-3xl p-6 flex items-center gap-4"
+              style={{
+                minHeight: 80,
+                background: item.danger
+                  ? 'linear-gradient(135deg, #f87171, #dc2626)'
+                  : 'rgb(var(--tint) / 0.03)',
+                border: item.danger ? 'none' : '1px solid rgb(var(--tint) / 0.08)',
+                backdropFilter: item.danger ? 'none' : 'blur(40px)',
+                WebkitBackdropFilter: item.danger ? 'none' : 'blur(40px)',
+              }}
+            >
+              <div
+                className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+                style={{
+                  background: item.danger
+                    ? 'rgba(255,255,255,0.15)'
+                    : 'rgb(var(--family-accent) / 0.1)',
+                }}
+              >
+                <Icon size={24} color={item.danger ? '#fff' : 'rgb(var(--family-accent))'} />
+              </div>
+              <span
+                className="text-xl font-semibold"
+                style={{ color: item.danger ? '#fff' : undefined }}
+              >
+                {item.label}
+              </span>
+            </motion.button>
           )
         })}
       </div>
@@ -235,17 +288,27 @@ function InviteFamilyBanner() {
             <UserPlus size={16} className="text-family-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-ink-primary truncate">Add your partner or a caregiver</div>
-            <div className="text-xs text-ink-tertiary">Same plan, whole family &middot; invite code {family.inviteCode}</div>
+            <div className="text-sm font-semibold text-ink-primary truncate">
+              Add your partner or a caregiver
+            </div>
+            <div className="text-xs text-ink-tertiary">
+              Same plan, whole family &middot; invite code {family.inviteCode}
+            </div>
           </div>
           <button
-            onClick={() => { haptic('light'); router.push('/settings?add=1') }}
+            onClick={() => {
+              haptic('light')
+              router.push('/settings?add=1')
+            }}
             className="text-xs font-semibold text-family-400 px-3 py-2 rounded-lg bg-family-500/10 flex-shrink-0"
           >
             Invite
           </button>
           <button
-            onClick={() => { setDismissed(true); haptic('light') }}
+            onClick={() => {
+              setDismissed(true)
+              haptic('light')
+            }}
             aria-label="Dismiss"
             className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-tertiary active:opacity-60 flex-shrink-0"
           >
@@ -260,7 +323,8 @@ function InviteFamilyBanner() {
 // Scoped by tenant so a shared device doesn't leak one user's history into
 // another's, same pattern as the AI Memory dismissals below.
 function lastVisitStorageKey(): string {
-  const tenant = typeof window !== 'undefined' ? localStorage.getItem('lifekeel_tenant') ?? 'anon' : 'anon'
+  const tenant =
+    typeof window !== 'undefined' ? (localStorage.getItem('lifekeel_tenant') ?? 'anon') : 'anon'
   return `lifekeel:last-visit-snapshot:${tenant}`
 }
 
@@ -339,7 +403,9 @@ function SinceLastVisit({
             <Sparkles size={16} className="text-family-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-ink-primary">{timeOfDayGreeting(firstName)}</div>
+            <div className="text-sm font-semibold text-ink-primary">
+              {timeOfDayGreeting(firstName)}
+            </div>
             <div className="text-xs text-ink-tertiary">Everything looks stable.</div>
           </div>
         </GlassCard>
@@ -357,7 +423,9 @@ function SinceLastVisit({
             <Sparkles size={16} className="text-family-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-ink-primary">{timeOfDayGreeting(firstName)}</div>
+            <div className="text-sm font-semibold text-ink-primary">
+              {timeOfDayGreeting(firstName)}
+            </div>
             <div className="text-xs text-ink-tertiary">No changes since your last visit.</div>
           </div>
         </GlassCard>
@@ -367,12 +435,16 @@ function SinceLastVisit({
 
   const parts: string[] = []
   if (scoreDelta !== 0) {
-    parts.push(`Readiness score ${scoreDelta > 0 ? 'up' : 'down'} ${Math.abs(scoreDelta)} point${Math.abs(scoreDelta) === 1 ? '' : 's'}`)
+    parts.push(
+      `Readiness score ${scoreDelta > 0 ? 'up' : 'down'} ${Math.abs(scoreDelta)} point${Math.abs(scoreDelta) === 1 ? '' : 's'}`,
+    )
   }
   if (insightDelta > 0) {
     parts.push(`${insightDelta} new insight${insightDelta === 1 ? '' : 's'} to review`)
   } else if (insightDelta < 0) {
-    parts.push(`${Math.abs(insightDelta)} insight${Math.abs(insightDelta) === 1 ? '' : 's'} resolved`)
+    parts.push(
+      `${Math.abs(insightDelta)} insight${Math.abs(insightDelta) === 1 ? '' : 's'} resolved`,
+    )
   }
 
   return (
@@ -382,7 +454,9 @@ function SinceLastVisit({
           <Sparkles size={16} className="text-family-400" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-xs font-semibold text-ink-tertiary mb-0.5">Since your last visit</div>
+          <div className="text-xs font-semibold text-ink-tertiary mb-0.5">
+            Since your last visit
+          </div>
           <div className="text-sm font-semibold text-ink-primary">{parts.join(' · ')}</div>
         </div>
       </GlassCard>
@@ -403,8 +477,12 @@ function LifeChangeNudge() {
 
   useEffect(() => {
     let cancelled = false
-    fetchLifeChangeNudge().then((r) => { if (!cancelled) setActive(r.active) })
-    return () => { cancelled = true }
+    fetchLifeChangeNudge().then((r) => {
+      if (!cancelled) setActive(r.active)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   if (!active || dismissed) return null
@@ -466,13 +544,18 @@ function UrgencyBanner() {
             <CalendarClock size={16} className="text-family-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-ink-primary line-clamp-2 leading-snug">{nextEvent.label}</div>
+            <div className="text-sm font-semibold text-ink-primary line-clamp-2 leading-snug">
+              {nextEvent.label}
+            </div>
             <div className="text-xs text-ink-tertiary">
               {yearsUntil === 1 ? 'Next year' : `In ${yearsUntil} years`} · {nextEvent.year}
             </div>
           </div>
           <button
-            onClick={() => { setDismissed(true); haptic('light') }}
+            onClick={() => {
+              setDismissed(true)
+              haptic('light')
+            }}
             aria-label="Dismiss"
             className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-tertiary active:opacity-60"
           >
@@ -487,30 +570,59 @@ function UrgencyBanner() {
 // Rotating feature-discovery tip — one per visit, never repeated, dismissible.
 // Stored in localStorage so it persists across sessions.
 const FEATURE_TIPS = [
-  { text: 'Ask Keel anything about your family finances — tap the purple button.', href: '/assistant', cta: 'Try it' },
-  { text: 'Swipe left on an inbox item to dismiss it — you can undo within 5 seconds.', href: '/inbox', cta: 'Open Inbox' },
-  { text: 'Keel can scan your email for renewals and policy changes.', href: '/connect/email', cta: 'Connect email' },
-  { text: 'Upload a will, insurance policy, or bank statement to get insights.', href: '/upload', cta: 'Upload' },
-  { text: 'Run a "What If?" scenario to see how your cover holds up.', href: '/events', cta: 'Explore' },
-  { text: 'Switch to Light mode in Settings under Appearance.', href: '/settings', cta: 'Settings' },
+  {
+    text: 'Ask Keel anything about your family finances — tap the purple button.',
+    href: '/assistant',
+    cta: 'Try it',
+  },
+  {
+    text: 'Swipe left on an inbox item to dismiss it — you can undo within 5 seconds.',
+    href: '/inbox',
+    cta: 'Open Inbox',
+  },
+  {
+    text: 'Keel can scan your email for renewals and policy changes.',
+    href: '/connect/email',
+    cta: 'Connect email',
+  },
+  {
+    text: 'Upload a will, insurance policy, or bank statement to get insights.',
+    href: '/upload',
+    cta: 'Upload',
+  },
+  {
+    text: 'Run a "What If?" scenario to see how your cover holds up.',
+    href: '/events',
+    cta: 'Explore',
+  },
+  {
+    text: 'Switch to Light mode in Settings under Appearance.',
+    href: '/settings',
+    cta: 'Settings',
+  },
 ]
 
 function tipStorageKey(): string {
-  const tenant = typeof window !== 'undefined' ? localStorage.getItem('lifekeel_tenant') ?? 'anon' : 'anon'
+  const tenant =
+    typeof window !== 'undefined' ? (localStorage.getItem('lifekeel_tenant') ?? 'anon') : 'anon'
   return `lifekeel:dismissed-tips:${tenant}`
 }
 
 function FeatureTip() {
-  const [tip, setTip] = useState<typeof FEATURE_TIPS[0] | null>(null)
+  const [tip, setTip] = useState<(typeof FEATURE_TIPS)[0] | null>(null)
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(tipStorageKey())
       const dismissed: number[] = raw ? JSON.parse(raw) : []
-      const available = FEATURE_TIPS.map((t, i) => ({ ...t, idx: i })).filter((t) => !dismissed.includes(t.idx))
+      const available = FEATURE_TIPS.map((t, i) => ({ ...t, idx: i })).filter(
+        (t) => !dismissed.includes(t.idx),
+      )
       if (available.length === 0) return
       setTip(available[0]!)
-    } catch { /* best effort */ }
+    } catch {
+      /* best effort */
+    }
   }, [])
 
   if (!tip) return null
@@ -524,7 +636,9 @@ function FeatureTip() {
       if (idx >= 0 && !dismissed.includes(idx)) {
         localStorage.setItem(tipStorageKey(), JSON.stringify([...dismissed, idx]))
       }
-    } catch { /* best effort */ }
+    } catch {
+      /* best effort */
+    }
     setTip(null)
   }
 
@@ -543,11 +657,19 @@ function FeatureTip() {
             <div className="flex-1 min-w-0">
               <div className="text-xs font-semibold text-ink-tertiary mb-0.5">Did you know?</div>
               <div className="text-sm text-ink-primary leading-snug">{tip.text}</div>
-              <Link href={tip.href} onClick={() => haptic('light')} className="text-xs font-semibold text-family-400 mt-1 inline-block">
+              <Link
+                href={tip.href}
+                onClick={() => haptic('light')}
+                className="text-xs font-semibold text-family-400 mt-1 inline-block"
+              >
                 {tip.cta}
               </Link>
             </div>
-            <button onClick={dismiss} aria-label="Dismiss tip" className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-tertiary active:opacity-60 flex-shrink-0">
+            <button
+              onClick={dismiss}
+              aria-label="Dismiss tip"
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-tertiary active:opacity-60 flex-shrink-0"
+            >
               <X size={16} />
             </button>
           </GlassCard>
@@ -570,33 +692,62 @@ function GettingStarted() {
   const [serverConnectors, setServerConnectors] = useState(0)
   useEffect(() => {
     let cancelled = false
-    fetchDocuments().then((d) => { if (!cancelled) setServerDocs(d.documents.length) })
-    fetchConnectorStatuses().then((cs) => { if (!cancelled) setServerConnectors(cs.filter((c) => c.connected).length) })
-    return () => { cancelled = true }
+    fetchDocuments().then((d) => {
+      if (!cancelled) setServerDocs(d.documents.length)
+    })
+    fetchConnectorStatuses().then((cs) => {
+      if (!cancelled) setServerConnectors(cs.filter((c) => c.connected).length)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
   const docCount = Math.max(docCountLocal, serverDocs)
   const connectorCount = Math.max(connectorsLocal.length, serverConnectors)
 
   const steps = [
-    { label: 'Upload a document', description: 'Insurance policy, will, or bank statement', href: '/upload', icon: Upload, done: docCount > 0 },
-    { label: 'Fill in your financial profile', description: 'Income, protection, savings — finish it to generate your score', href: '/financial-profile', icon: Calculator,
+    {
+      label: 'Upload a document',
+      description: 'Insurance policy, will, or bank statement',
+      href: '/upload',
+      icon: Upload,
+      done: docCount > 0,
+    },
+    {
+      label: 'Fill in your financial profile',
+      description: 'Income, protection, savings — finish it to generate your score',
+      href: '/financial-profile',
+      icon: Calculator,
       // Only rendered while there is no score, i.e. detectors haven't run
       // on the profile yet — so this step is by definition not done, even
       // if a half-saved profile exists.
-      done: false },
-    { label: 'Connect a service', description: 'Email, bank, or insurance provider', href: '/connect', icon: Plug, done: connectorCount > 0 },
+      done: false,
+    },
+    {
+      label: 'Connect a service',
+      description: 'Email, bank, or insurance provider',
+      href: '/connect',
+      icon: Plug,
+      done: connectorCount > 0,
+    },
   ]
 
   const doneCount = steps.filter((s) => s.done).length
   if (doneCount === steps.length) return null // all done — live score card takes over
 
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.05 }}
+    >
       <GlassCard className="p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <div className="text-sm font-semibold text-ink-primary">Get your readiness score</div>
-            <div className="text-xs text-ink-tertiary mt-0.5">{doneCount} of {steps.length} done</div>
+            <div className="text-sm font-semibold text-ink-primary">Add what you have on file</div>
+            <div className="text-xs text-ink-tertiary mt-0.5">
+              {doneCount} of {steps.length} done
+            </div>
           </div>
           <div className="flex items-center gap-1.5">
             {steps.map((s, i) => (
@@ -628,7 +779,9 @@ function GettingStarted() {
               onClick={() => haptic('light')}
               className={`flex items-center gap-3 rounded-xl p-3 transition-colors ${step.done ? 'opacity-60' : 'bg-tint/[0.03] active:bg-tint/[0.06]'}`}
             >
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${step.done ? 'bg-success/15' : 'bg-family-500/10 border border-family-500/20'}`}>
+              <div
+                className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${step.done ? 'bg-success/15' : 'bg-family-500/10 border border-family-500/20'}`}
+              >
                 {step.done ? (
                   <Check size={16} className="text-success" />
                 ) : (
@@ -636,7 +789,11 @@ function GettingStarted() {
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <div className={`text-sm font-semibold ${step.done ? 'line-through text-ink-tertiary' : 'text-ink-primary'}`}>{step.label}</div>
+                <div
+                  className={`text-sm font-semibold ${step.done ? 'line-through text-ink-tertiary' : 'text-ink-primary'}`}
+                >
+                  {step.label}
+                </div>
                 <div className="text-xs text-ink-tertiary truncate">{step.description}</div>
               </div>
               {!step.done && <ChevronRight size={14} className="text-ink-tertiary flex-shrink-0" />}
@@ -656,7 +813,9 @@ function GettingStarted() {
 function ChildDobPrompt() {
   const { family, updateMemberDateOfBirth } = useAuth()
   const [savingId, setSavingId] = useState<string | null>(null)
-  const childrenWithoutDob = (family?.members ?? []).filter((m) => m.role === 'child' && !m.dateOfBirth)
+  const childrenWithoutDob = (family?.members ?? []).filter(
+    (m) => m.role === 'child' && !m.dateOfBirth,
+  )
 
   if (childrenWithoutDob.length === 0) return null
 
@@ -675,7 +834,9 @@ function ChildDobPrompt() {
     <div className="mt-3 space-y-2">
       {childrenWithoutDob.map((m) => (
         <div key={m.id} className="flex items-center gap-2">
-          <span className="text-xs font-medium text-ink-secondary flex-1 truncate">{m.name.split(' ')[0]}&apos;s birthday</span>
+          <span className="text-xs font-medium text-ink-secondary flex-1 truncate">
+            {m.name.split(' ')[0]}&apos;s birthday
+          </span>
           <input
             type="date"
             max={new Date().toISOString().slice(0, 10)}
@@ -758,62 +919,71 @@ export default function HomePage() {
           (a crisis entry point read as daily-dashboard clutter at the
           top), so the score now takes the full row again. */}
       {(scoreLoading || hasLiveData) && (
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.05 }}
-      >
-        <GlassCard className="p-5 h-full">
-          <div className="flex items-center gap-3 mb-3">
-            {scoreLoading ? (
-              <>
-                <Skeleton className="h-20 w-20 rounded-full" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-3 w-full" />
-                </div>
-              </>
-            ) : (
-              <>
-                <ScoreRing score={readinessScore} size={80} />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-sm font-semibold ${onTrack ? 'text-success' : 'text-warning'}`}>
-                      {config.simpleLanguage
-                        ? simpleHomeCopy({ hasLiveData, onTrack: onTrack }).status
-                        : onTrack ? "You're on track" : 'Some insights need review'}
-                    </span>
-                    <motion.span
-                      className={`w-2 h-2 rounded-full ${onTrack ? 'bg-success' : 'bg-warning'}`}
-                      animate={{ opacity: [1, 0.3, 1] }}
-                      transition={{ duration: 2, repeat: Infinity }}
-                    />
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+        >
+          <GlassCard className="p-5 h-full">
+            <div className="flex items-center gap-3 mb-3">
+              {scoreLoading ? (
+                <>
+                  <Skeleton className="h-20 w-20 rounded-full" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-3 w-full" />
                   </div>
-                  <p className="text-sm text-ink-secondary leading-relaxed">
-                    {config.simpleLanguage
-                      ? simpleHomeCopy({ hasLiveData, onTrack: onTrack }).body
-                      : 'Your readiness score reflects the gaps found in your profile so far — it gets more accurate as the profile fills in.'}
-                  </p>
-                  {profileCompleteness > 0 && profileCompleteness < 100 && (
-                    <Link
-                      href="/financial-profile"
-                      className="flex items-center gap-2 mt-2 group"
-                      onClick={() => haptic('light')}
-                      title="How much of the financial profile is filled in — a fuller profile sharpens the readiness score above"
-                    >
-                      <div className="w-16 h-1.5 rounded-full bg-tint/10 overflow-hidden">
-                        <div className="h-full rounded-full bg-family-400 transition-all" style={{ width: `${profileCompleteness}%` }} />
-                      </div>
-                      <span className="text-xs font-semibold text-family-400 group-active:opacity-70">Profile {profileCompleteness}% complete</span>
-                    </Link>
-                  )}
-                  {hasLiveData && <ReadinessSparkline />}
-                </div>
-              </>
-            )}
-          </div>
-        </GlassCard>
-      </motion.div>
+                </>
+              ) : (
+                <>
+                  <ScoreRing score={readinessScore} size={80} />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span
+                        className={`text-sm font-semibold ${onTrack ? 'text-success' : 'text-warning'}`}
+                      >
+                        {config.simpleLanguage
+                          ? simpleHomeCopy({ hasLiveData, onTrack: onTrack }).status
+                          : onTrack
+                            ? "You're on track"
+                            : 'Some insights need review'}
+                      </span>
+                      <motion.span
+                        className={`w-2 h-2 rounded-full ${onTrack ? 'bg-success' : 'bg-warning'}`}
+                        animate={{ opacity: [1, 0.3, 1] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                      />
+                    </div>
+                    <p className="text-sm text-ink-secondary leading-relaxed">
+                      {config.simpleLanguage
+                        ? simpleHomeCopy({ hasLiveData, onTrack: onTrack }).body
+                        : 'Your readiness score reflects the gaps found in your profile so far — it gets more accurate as the profile fills in.'}
+                    </p>
+                    {profileCompleteness > 0 && profileCompleteness < 100 && (
+                      <Link
+                        href="/financial-profile"
+                        className="flex items-center gap-2 mt-2 group"
+                        onClick={() => haptic('light')}
+                        title="How much of the financial profile is filled in — a fuller profile sharpens the readiness score above"
+                      >
+                        <div className="w-16 h-1.5 rounded-full bg-tint/10 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-family-400 transition-all"
+                            style={{ width: `${profileCompleteness}%` }}
+                          />
+                        </div>
+                        <span className="text-xs font-semibold text-family-400 group-active:opacity-70">
+                          Profile {profileCompleteness}% complete
+                        </span>
+                      </Link>
+                    )}
+                    {hasLiveData && <ReadinessSparkline />}
+                  </div>
+                </>
+              )}
+            </div>
+          </GlassCard>
+        </motion.div>
       )}
 
       {/* PRD-136: "What changed" — the feed narration of everything the
@@ -824,7 +994,9 @@ export default function HomePage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.08 }}
         >
-          <ReadinessFeed members={(family?.members ?? []).map((m) => ({ id: m.id, name: m.name }))} />
+          <ReadinessFeed
+            members={(family?.members ?? []).map((m) => ({ id: m.id, name: m.name }))}
+          />
         </motion.div>
       )}
 
@@ -869,13 +1041,16 @@ export default function HomePage() {
             </div>
             <p className="text-sm text-ink-tertiary leading-relaxed">
               {hasChildren
-                ? "Add a birthday to see education milestones here."
+                ? 'Add a birthday to see education milestones here.'
                 : 'Add children to your family profile to see education milestones and future planning events on your timeline.'}
             </p>
             {hasChildren ? (
               <ChildDobPrompt />
             ) : (
-              <Link href="/family" className="text-sm text-family-400 font-semibold flex items-center gap-1 mt-2">
+              <Link
+                href="/family"
+                className="text-sm text-family-400 font-semibold flex items-center gap-1 mt-2"
+              >
                 Set up family <ChevronRight size={14} />
               </Link>
             )}
@@ -906,43 +1081,44 @@ export default function HomePage() {
       </IfAdvanced>
 
       {!retirementSuppressed && (
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-      >
-        <GlassCard className="p-5 border-family-500/20">
-          <div className="flex items-center gap-2 mb-2">
-            <Lightbulb size={18} className="text-family-400" />
-            <span className="text-sm font-semibold text-family-400">One option to consider</span>
-          </div>
-          {hasLiveData && retirementInsight ? (
-            <>
-              <p className="text-sm text-ink-secondary leading-relaxed mb-3">
-                {retirementInsight.reasoning || retirementInsight.hypothesis}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+        >
+          <GlassCard className="p-5 border-family-500/20">
+            <div className="flex items-center gap-2 mb-2">
+              <Lightbulb size={18} className="text-family-400" />
+              <span className="text-sm font-semibold text-family-400">One option to consider</span>
+            </div>
+            {hasLiveData && retirementInsight ? (
+              <>
+                <p className="text-sm text-ink-secondary leading-relaxed mb-3">
+                  {retirementInsight.reasoning || retirementInsight.hypothesis}
+                </p>
+                <Link
+                  href="/events/retirement"
+                  className="text-sm text-family-400 font-semibold flex items-center gap-1"
+                >
+                  See retirement plan <ChevronRight size={14} />
+                </Link>
+                <p className="text-xs text-ink-tertiary mt-3 leading-relaxed">
+                  Keel earns no commission from any insurer or provider — this is information from
+                  your own data, not a recommendation to buy anything.
+                </p>
+              </>
+            ) : hasLiveData ? (
+              <p className="text-sm text-ink-tertiary leading-relaxed">
+                No retirement gap found in your data — your plan looks on track so far.
               </p>
-              <Link
-                href="/events/retirement"
-                className="text-sm text-family-400 font-semibold flex items-center gap-1"
-              >
-                See retirement plan <ChevronRight size={14} />
-              </Link>
-              <p className="text-xs text-ink-tertiary mt-3 leading-relaxed">
-                Keel earns no commission from any insurer or provider — this is information
-                from your own data, not a recommendation to buy anything.
+            ) : (
+              <p className="text-sm text-ink-tertiary leading-relaxed">
+                Connect your accounts and upload documents to receive personalized financial
+                insights and projections.
               </p>
-            </>
-          ) : hasLiveData ? (
-            <p className="text-sm text-ink-tertiary leading-relaxed">
-              No retirement gap found in your data — your plan looks on track so far.
-            </p>
-          ) : (
-            <p className="text-sm text-ink-tertiary leading-relaxed">
-              Connect your accounts and upload documents to receive personalized financial insights and projections.
-            </p>
-          )}
-        </GlassCard>
-      </motion.div>
+            )}
+          </GlassCard>
+        </motion.div>
       )}
 
       {/* Crisis reporting lives at the bottom of the daily dashboard, not
@@ -962,7 +1138,9 @@ export default function HomePage() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold text-ink-primary">Report a life event</div>
-                <div className="text-xs text-ink-tertiary">Job loss, bereavement, or disability — get a plan based on your real data</div>
+                <div className="text-xs text-ink-tertiary">
+                  Job loss, bereavement, or disability — get a plan based on your real data
+                </div>
               </div>
               <ChevronRight size={16} className="text-ink-tertiary" />
             </div>
