@@ -46,7 +46,8 @@ import {
   type SocialPublisher,
   type SocialConnectionDoc,
 } from '../marketing/social-publisher.js'
-import { encryptIfNeeded, type LlmFn } from '@lifekeel/platform'
+import { type LlmFn } from '@lifekeel/platform'
+import { encryptForTenant } from '../crypto/envelope.js'
 import { taskLlm } from '../ai/task-gateway.js'
 import { ConnectorActionExecutor } from '@lifekeel/workflows'
 
@@ -1167,7 +1168,7 @@ export function registerMarketingPostRoutes(
       {
         $set: {
           handle,
-          credentials: { app_password: encryptIfNeeded(app_password)! },
+          credentials: { app_password: await encryptForTenant(db, tenant_id, app_password) },
           service: service ?? 'https://bsky.social',
           did,
           status: 'active',

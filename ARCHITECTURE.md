@@ -976,18 +976,25 @@ flowchart LR
 
 #### Missing evaluation architecture
 
-- A unified `eval_runs` registry for detector, prompt, model, encoder, judge, and
-  retrieval experiments.
+- ~~A unified `eval_runs` registry~~ — shipped (B13): `apps/api/src/eval/eval-runs.ts`
+  records kind, subject, dataset hash, code SHA, metrics, verdict, approver for
+  detector, task, red-team, model, encoder and judge runs; detector gate verdicts
+  and the red-team suite write into it.
 - Dataset IDs, hashes, lineage, sensitivity, cohort tags, holdout status, and
-  annotation rubric.
+  annotation rubric — partially shipped (hash + cases recorded); cohort/holdout
+  and rubric fields remain open.
 - Task-level goldens for assistant, OCR, email, drafts, scenario narration,
   support, and marketing.
 - Formal human labels separating correctness, groundedness, usefulness,
   acceptance, policy violation, and execution success.
 - Human agreement/adjudication once more than one reviewer exists.
-- Adversarial CI covering direct/indirect injection, jailbreaks, PII leakage,
-  cross-tenant/member access, advice elicitation, fake citations, encoded and
-  multilingual attacks, tool misuse, and context/memory poisoning.
+- ~~Adversarial CI~~ — shipped (B13): `red-team/guard-fixtures.yaml` covers
+  direct/indirect injection, jailbreaks, PII leakage and secret exfiltration
+  against the real guards and governed gateway; encoded, multilingual and
+  unicode-lookalike attacks are pinned as documented `known_gap` misses, not
+  claimed coverage. Remaining: advice-elicitation and cross-tenant/member
+  access fixtures, context/memory-poisoning cases, provider-runner suites
+  (promptfoo/garak class) when volume warrants.
 - Sampled production trace grading aligned with human labels.
 - Input, score, outcome, calibration, safety, cost, and latency drift trends.
 - Automated candidate retirement/rollback when post-promotion gates regress.
@@ -2858,7 +2865,7 @@ page needs a runbook, owner, severity, and safe mitigation.
 | **P0** | Erasure inventory is incomplete — and not only AI-derived | Personal data or linkable derived state can survive account deletion: ~20 family-authored collections (assets, cashflow, legacy records, scenarios, member nudges, external accounts, feed/readiness state) plus all AI artifacts (llm_*, scorer/model versions, calibration state, eval reports) sit outside `DELETABLE_COLLECTIONS` | Data catalogue plus deletion test covers family-authored data, cache, spans, guard events, scorer/model versions, eval captures, queues, and provider-retained records |
 | **P0** | Stale federated artifact governance and eval data basis unresolved | Mitigated: eval is now per-tenant (training data never pooled) and scorer warm-start is gated behind `allowFederatedWarmStart` (default off, all production paths off). Remaining: `federated_global_models.latest` artifacts still exist unquarantined, and no governed opt-in path (privacy review, cohort floors, disclosure) exists that could ever set the flag | Delete/quarantine the stale artifact; a federated round may only run behind the governed opt-in controls CLAUDE.md rule 3 requires |
 | **P0** | Children's-data regulatory posture is undefined | Mitigated: `docs/privacy/childrens-data-posture.md` records the engineering posture — organizer-mediated consent, per-feature profiling positions, server-side marketing exclusion for minors (`excludeMinorUsers` across lifecycle + campaign paths, tested incl. the 18th-birthday boundary), the strict `assistant.youth_answer.v1` task (`lifekeel_infra_required`, `retention: none`), and a defined age-out workflow. Remaining: the counsel-led minors' DPIA and lawful-basis mapping; lead-capture age attestation; auth-time age gating | Documented minors' DPIA and consent/profiling/marketing/AI posture implemented and tested before stronger youth claims |
-| **P0** | Backup/erasure contradiction | Mitigated: tombstone replay chosen and implemented — `restore.sh` preserves tombstoned `tenant_id`s across a `--drop` restore and the daily `erasure-replay` cron re-wipes whatever a stale backup resurrects; exercised in `scripts/ops/restore-drill.ts`. Residual hole: a manual raw `mongorestore --drop` bypassing restore.sh is operator discipline, not a technical control | Per-tenant envelope keys (DEKs) enabling crypto-shredding for vault/credential data (Stage B4) |
+| **P0** | Backup/erasure contradiction | Mitigated: tombstone replay chosen and implemented — `restore.sh` preserves tombstoned `tenant_id`s across a `--drop` restore and the daily `erasure-replay` cron re-wipes whatever a stale backup resurrects; exercised in `scripts/ops/restore-drill.ts`. Residual hole: a manual raw `mongorestore --drop` bypassing restore.sh is operator discipline, not a technical control | Per-tenant envelope keys (DEKs) enabling crypto-shredding for vault/credential data — shipped (B4); DEKs live in `tenant_keys` and the erasure wipe is the shred |
 | **P1** | API, scheduler, and worker scale together | Background work can create noisy-neighbor and outage coupling; a bad API deploy also takes down the safety nets that would notice it | Separate entry points/deployments when measured trigger is met; earlier split justified on blast-radius grounds if cheap |
 | **P1** | No DPIA/records-of-processing/lawful-basis register for the live product | DPIA triggers (systematic monitoring, novel technology, children's data) apply to what already ships, not only future features | DPIA, RoPA, and lawful-basis mapping per data class in the data catalogue |
 | **P1** | Member lifecycle transitions are unmodeled | Youth→adult, departure, death, and household split change consent, visibility, and twin ownership for a decades-long product | Named member-status lifecycle driving data, permission, and notification transitions |
@@ -2872,15 +2879,15 @@ page needs a runbook, owner, severity, and safe mitigation.
 | **P1** | No cost attribution rollup | Mitigated: `spend_events` records per-message channel spend (Twilio SMS/WhatsApp, SendGrid) tenant-attributed; `platformUnitEconomics` unions it with `llm_usage` for tenant × service × provider economics, surfaced at `/operator/unit-economics` | Same rollup, plus Stripe subscription revenue per tenant for gross margin |
 | **P1** | Pooled tenant isolation relies on dispersed filters | One missed filter is a severe data incident | Repository policy, raw-access inventory, automated route/resource authorization tests |
 | **P1** | Audit is not tamper-evident and many writes are best effort | Forensic evidence may be absent or alterable | Mandatory action audit + immutable export/hash chain + monitored delivery |
-| **P1** | Encryption key lifecycle is versioned but operationally incomplete | `v{n}:` ciphertext format and `ENCRYPTION_KEY_V{n}` resolution exist (fail-closed on unknown version since 2026-10), but there are no per-tenant DEKs, no rotation/re-encryption runbook, no compromise recovery path | Per-tenant envelope keys, rotation runbook, dual-read migration exercised in a restore drill |
+| ~~**P1**~~ mitigated | ~~Encryption key lifecycle is versioned but operationally incomplete~~ — per-tenant DEKs landed (B4): `crypto/envelope.ts` wraps a per-tenant AES-256-GCM key under the KEK (`tenant_keys` collection), ciphertexts self-describe `dek:{key_id}:…`, `decryptEnveloped` reads both eras for lazy migration, `cryptoShredTenantKeys`/`rotateTenantDek` exist, erasure wipes `tenant_keys` (crypto-shredding), and a fitness tripwire blocks new global-key writes | ~~`v{n}:` ciphertext format and `ENCRYPTION_KEY_V{n}` resolution exist, but there are no per-tenant DEKs, no rotation/re-encryption runbook, no compromise recovery path~~ | ~~Per-tenant envelope keys, rotation runbook~~ — shipped; remaining: KEK compromise recovery drill, eager re-encryption sweep (today migration is lazy), crypto-shredding is not backup-retroactive (pre-shred backups still hold DEKs — bounded by backup retention) |
 | **P1** | No approved SLO/error-budget and capacity model | Reliability priorities remain subjective | Journey SLIs, dashboards, burn alerts, quarterly capacity test |
 | **P1** | Queue visibility/recovery is not lease-aware | Active long jobs can be mistaken for stranded work | Visibility timeout/heartbeat or managed queue semantics with concurrency test |
 | **P1** | Domain ownership is not mechanically enforced | Modular monolith can decay into cross-import coupling | Dependency rules and domain repository interfaces in CI |
 | **P1** | AI task/model registry enforced at the gateway | `definitions/ai-tasks.yaml` policies gate every production call — unknown tasks fail closed, model allowlists/ceilings/deadlines/breaker/guards enforced per task (§8.15) | Remaining: atomic budget reservation, processor-terms review-date blocking, task eval suites |
-| **P1** | AI evaluation artifacts are fragmented, adversarial coverage is missing, and one detector-level eval mixes tenant production data | Prompt/model changes can regress injection, privacy, grounding, advice behavior, or privacy posture invisibly | Unified eval-run lineage plus synthetic/redacted or per-tenant task goldens and red-team CI for every promoted task |
+| ~~**P1**~~ mitigated | ~~AI evaluation artifacts are fragmented, adversarial coverage is missing~~ — `eval_runs` is the unified lineage (kind, subject, dataset hash, code SHA, metrics, verdict, approver); detector gate verdicts record into it, and `red-team/guard-fixtures.yaml` runs against the real guards + governed gateway in CI every build, with known misses pinned as `known_gap` rather than silently uncovered | ~~Prompt/model changes can regress injection, privacy, grounding, advice behavior, or privacy posture invisibly~~ | ~~Eval-run lineage plus red-team CI~~ — shipped: `eval/eval-runs.ts`, `__tests__/red-team.test.ts`. Remaining: task goldens for assistant/OCR/email, formal human-label schema, sampled production trace grading, promptfoo/garak-class runners when volume warrants; one detector eval still mixes tenant production data |
 | **P1** | Local model/artifact supply chain is tag-based | Mutable weights, licenses, quantization and serving images are not reproducible | Digest-pinned artifacts, model cards, AI-BOM/SBOM, signatures and eval hashes |
 | **P1** | No unified event/task envelope and trace propagation | Failures are hard to reconstruct across jobs/providers | Correlation/causation/trace/task/model/guard versions on all asynchronous and AI paths |
-| **P1** | AI telemetry is incomplete and some tenant IDs are Prometheus labels | Cost/quality incidents are hard to correlate while label cardinality can grow unbounded | Metadata-first OTel GenAI traces; tenants in controlled logs/traces, bounded aggregate metrics |
+| ~~**P1**~~ mitigated | ~~AI telemetry is incomplete and some tenant IDs are Prometheus labels~~ — `tenant_id` is gone from every `labelNames` declaration (unbounded cardinality + roster leak); a fitness tripwire in `architecture-claims.test.ts` rejects its return. Tenants now live only in controlled logs/traces | ~~Cost/quality incidents are hard to correlate while label cardinality can grow unbounded~~ | ~~Tenants in controlled logs/traces, bounded aggregate metrics~~ — shipped. Remaining: metadata-first OTel GenAI traces for per-tenant cost/quality correlation |
 | **P2** | Single-region deployment | Region failure can exceed acceptable recovery time | Decision tied to measured SLO/RTO; tested warm/cold recovery or multi-region plan |
 | **P2** | No per-tenant admission/fairness controls | One tenant can consume shared provider/worker capacity | Tenant quotas, fair queues, concurrency and cost limits |
 | **P2** | Feature/config lifecycle is fragmented | Stale flags and environment drift accumulate | Typed capability registry with owner, expiry, audit, and environment validation |

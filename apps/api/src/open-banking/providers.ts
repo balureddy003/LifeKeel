@@ -32,7 +32,7 @@ export interface ExternalAccount {
 }
 
 /** Stored credential shape (decrypted on read — access_token is written
- *  through encryptIfNeeded). */
+ *  through the per-tenant envelope, crypto/envelope.ts). */
 export interface AccountInfoCredential {
   provider: string
   access_token?: string
@@ -128,13 +128,20 @@ const truelayerProvider: AccountInfoProvider = {
       throw new ProviderUnavailableError(`TrueLayer unreachable: ${(err as Error).message}`)
     }
     if (res.status === 401 || res.status === 403) {
-      throw new ProviderAuthError('The bank connection was revoked or expired — reconnect to refresh it')
+      throw new ProviderAuthError(
+        'The bank connection was revoked or expired — reconnect to refresh it',
+      )
     }
     if (!res.ok) {
       throw new ProviderUnavailableError(`TrueLayer returned ${res.status}`)
     }
     const body = (await res.json()) as {
-      results?: Array<{ account_id: string; display_name?: string; account_type?: string; currency?: string }>
+      results?: Array<{
+        account_id: string
+        display_name?: string
+        account_type?: string
+        currency?: string
+      }>
     }
     const accounts = (body.results ?? []).map((a) => ({
       provider_account_id: a.account_id,

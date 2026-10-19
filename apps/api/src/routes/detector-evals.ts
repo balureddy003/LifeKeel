@@ -21,10 +21,12 @@
  * 'create' (admin+ per packages/platform abilities.ts).
  */
 import path from 'node:path'
+import { readFileSync } from 'node:fs'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { DetectorEvalRunner, type Engine } from '@lifekeel/engine'
 import { getAuditLogger } from '../audit/audit-log.js'
+import { recordEvalRun, sha256, codeSha } from '../eval/eval-runs.js'
 
 const MIN_F1 = 0.8
 const BASELINE_ID = 'promotion'
@@ -72,11 +74,41 @@ export function registerDetectorEvalRoutes(
       action: 'detector.eval',
       resource_type: 'detector',
       resource_id: id,
-      metadata: { f1: report.f1, precision: report.precision, recall: report.recall, f1_delta: drift.f1_delta, promotable },
+      metadata: {
+        f1: report.f1,
+        precision: report.precision,
+        recall: report.recall,
+        f1_delta: drift.f1_delta,
+        promotable,
+      },
       ip: request.ip,
       user_agent: request.headers['user-agent'] ?? '',
       timestamp: new Date(),
     })
+
+    // Unified eval-run lineage (B13): every gate verdict lands in
+    // eval_runs keyed to the dataset hash and code SHA, so a promotion
+    // decision can always be traced back to what was tested, with what.
+    const datasetPath = path.join(evalCasesDir, `${id}.yaml`)
+    await recordEvalRun(db, {
+      kind: 'detector',
+      subject: id,
+      dataset: {
+        id: path.basename(datasetPath),
+        hash: sha256(readFileSync(datasetPath, 'utf8')),
+        cases: report.total_cases,
+      },
+      code_sha: codeSha(),
+      metrics: {
+        f1: report.f1,
+        precision: report.precision,
+        recall: report.recall,
+        f1_delta: drift.f1_delta,
+      },
+      verdict: promotable ? 'pass' : 'fail',
+      ...(reasons.length > 0 ? { failures: reasons } : {}),
+      approver: user_id,
+    }).catch(() => {}) // lineage must never fail the gate itself
 
     return {
       detector_id: id,
@@ -99,7 +131,12 @@ export function registerDetectorEvalRoutes(
       },
       failures: report.case_results
         .filter((r) => !r.passed)
-        .map((r) => ({ case_id: r.case_id, reason: r.failure_reason, missing_rules: r.missing_rules, unexpected_insights: r.unexpected_insights })),
+        .map((r) => ({
+          case_id: r.case_id,
+          reason: r.failure_reason,
+          missing_rules: r.missing_rules,
+          unexpected_insights: r.unexpected_insights,
+        })),
     }
   })
 }

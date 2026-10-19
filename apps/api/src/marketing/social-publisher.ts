@@ -69,7 +69,7 @@ export interface SocialPublisher {
 }
 
 import type { Db } from 'mongodb'
-import { decryptIfNeeded } from '@lifekeel/platform'
+import { decryptEnveloped } from '../crypto/envelope.js'
 import { ConnectorActionExecutor } from '@lifekeel/workflows'
 
 interface ChannelHandler {
@@ -110,7 +110,13 @@ function xHandler(token: string): ChannelHandler {
 
 function linkedinHandler(token: string, authorUrn: string): ChannelHandler {
   return {
-    info: { id: 'linkedin:default', name: 'LinkedIn', identifier: 'linkedin', disabled: false, source: 'env' },
+    info: {
+      id: 'linkedin:default',
+      name: 'LinkedIn',
+      identifier: 'linkedin',
+      disabled: false,
+      source: 'env',
+    },
     async publish(content) {
       const res = await fetch('https://api.linkedin.com/rest/posts', {
         method: 'POST',
@@ -144,9 +150,19 @@ function linkedinHandler(token: string, authorUrn: string): ChannelHandler {
 // Bluesky — app-password session then repo createRecord.
 // ---------------------------------------------------------------------------
 
-function blueskyHandler(handle: string, appPassword: string, service = 'https://bsky.social'): ChannelHandler {
+function blueskyHandler(
+  handle: string,
+  appPassword: string,
+  service = 'https://bsky.social',
+): ChannelHandler {
   return {
-    info: { id: 'bluesky:default', name: 'Bluesky', identifier: 'bluesky', disabled: false, source: 'env' },
+    info: {
+      id: 'bluesky:default',
+      name: 'Bluesky',
+      identifier: 'bluesky',
+      disabled: false,
+      source: 'env',
+    },
     async publish(content) {
       const sessRes = await fetch(`${service}/xrpc/com.atproto.server.createSession`, {
         method: 'POST',
@@ -155,7 +171,8 @@ function blueskyHandler(handle: string, appPassword: string, service = 'https://
       })
       await checked(sessRes, 'bluesky createSession')
       const sess = (await sessRes.json()) as { accessJwt?: string; did?: string }
-      if (!sess.accessJwt || !sess.did) throw new Error('bluesky createSession: no session returned')
+      if (!sess.accessJwt || !sess.did)
+        throw new Error('bluesky createSession: no session returned')
 
       const postRes = await fetch(`${service}/xrpc/com.atproto.repo.createRecord`, {
         method: 'POST',
@@ -163,7 +180,11 @@ function blueskyHandler(handle: string, appPassword: string, service = 'https://
         body: JSON.stringify({
           repo: sess.did,
           collection: 'app.bsky.feed.post',
-          record: { $type: 'app.bsky.feed.post', text: content, createdAt: new Date().toISOString() },
+          record: {
+            $type: 'app.bsky.feed.post',
+            text: content,
+            createdAt: new Date().toISOString(),
+          },
         }),
       })
       await checked(postRes, 'bluesky createRecord')
@@ -186,7 +207,13 @@ function blueskyHandler(handle: string, appPassword: string, service = 'https://
 function threadsHandler(token: string, userId: string): ChannelHandler {
   const base = 'https://graph.threads.net/v1.0'
   return {
-    info: { id: 'threads:default', name: 'Threads', identifier: 'threads', disabled: false, source: 'env' },
+    info: {
+      id: 'threads:default',
+      name: 'Threads',
+      identifier: 'threads',
+      disabled: false,
+      source: 'env',
+    },
     async publish(content) {
       const container = await fetch(`${base}/${userId}/threads`, {
         method: 'POST',
@@ -218,7 +245,13 @@ function threadsHandler(token: string, userId: string): ChannelHandler {
 function instagramHandler(pageToken: string, igUserId: string, mediaUrl: string): ChannelHandler {
   const base = 'https://graph.facebook.com/v19.0'
   return {
-    info: { id: 'instagram:default', name: 'Instagram', identifier: 'instagram', disabled: false, source: 'connection' },
+    info: {
+      id: 'instagram:default',
+      name: 'Instagram',
+      identifier: 'instagram',
+      disabled: false,
+      source: 'connection',
+    },
     async publish(content) {
       const container = await fetch(`${base}/${igUserId}/media`, {
         method: 'POST',
@@ -249,7 +282,13 @@ function instagramHandler(pageToken: string, igUserId: string, mediaUrl: string)
 function mastodonHandler(instanceUrl: string, token: string): ChannelHandler {
   const base = instanceUrl.replace(/\/$/, '')
   return {
-    info: { id: 'mastodon:default', name: 'Mastodon', identifier: 'mastodon', disabled: false, source: 'env' },
+    info: {
+      id: 'mastodon:default',
+      name: 'Mastodon',
+      identifier: 'mastodon',
+      disabled: false,
+      source: 'env',
+    },
     async publish(content) {
       const res = await fetch(`${base}/api/v1/statuses`, {
         method: 'POST',
@@ -299,14 +338,15 @@ export function socialPublisherFromEnv(): EnvSocialPublisher | null {
 
   const mastodonInstance = process.env['MASTODON_INSTANCE_URL']
   const mastodonToken = process.env['MASTODON_ACCESS_TOKEN']
-  if (mastodonInstance && mastodonToken) handlers.set('mastodon', mastodonHandler(mastodonInstance, mastodonToken))
+  if (mastodonInstance && mastodonToken)
+    handlers.set('mastodon', mastodonHandler(mastodonInstance, mastodonToken))
 
   return handlers.size === 0 ? null : new EnvSocialPublisher(handlers)
 }
 
 // ---------------------------------------------------------------------------
 // Tenant-stored connections — `social_connections` collection. Credentials
-// are AES-256-GCM encrypted at rest (encryptIfNeeded), same posture as
+// are envelope-encrypted at rest under per-tenant DEKs (crypto/envelope.ts), same posture as
 // connector_credentials. A connection never leaves this module decrypted.
 // ---------------------------------------------------------------------------
 
@@ -344,9 +384,9 @@ export async function verifyBlueskyCredentials(
   return { did: sess.did }
 }
 
-function handlerForConnection(conn: SocialConnectionDoc): ChannelHandler {
+async function handlerForConnection(db: Db, conn: SocialConnectionDoc): Promise<ChannelHandler> {
   if (conn.channel === 'bluesky') {
-    const appPassword = decryptIfNeeded(conn.credentials['app_password'])
+    const appPassword = await decryptEnveloped(db, conn.credentials['app_password'])
     if (!appPassword) throw new Error('bluesky connection: no app password stored')
     return blueskyHandler(conn.handle, appPassword, conn.service)
   }
@@ -441,7 +481,9 @@ export class DbSocialPublisher implements SocialPublisher {
       source: 'connection' as const,
     }))
     for (const cred of creds) {
-      const channel = Object.entries(CONNECTOR_CHANNELS).find(([, c]) => c === cred.connector_id)?.[0]
+      const channel = Object.entries(CONNECTOR_CHANNELS).find(
+        ([, c]) => c === cred.connector_id,
+      )?.[0]
       if (!channel) continue
       connChannels.add(channel)
       connList.push({
@@ -463,11 +505,16 @@ export class DbSocialPublisher implements SocialPublisher {
   /** Publish through an OAuth-connected channel. Returns null when the
    *  channel has no connector credential so the caller falls through to
    *  social_connections/env handlers. */
-  private async publishViaConnector(args: CreatePostArgs): Promise<{ external_id?: string; url?: string } | null> {
+  private async publishViaConnector(
+    args: CreatePostArgs,
+  ): Promise<{ external_id?: string; url?: string } | null> {
     if (!args.tenantId) return null
     const connectorId = CONNECTOR_CHANNELS[args.channel]
     if (!connectorId) return null
-    const cred = await this.connectorCreds.findOne({ tenant_id: args.tenantId, connector_id: connectorId })
+    const cred = await this.connectorCreds.findOne({
+      tenant_id: args.tenantId,
+      connector_id: connectorId,
+    })
     if (!cred) return null
     if (cred.needs_reauth === true) {
       throw new Error(`${args.channel} token expired — reconnect on the Marketing page`)
@@ -478,7 +525,9 @@ export class DbSocialPublisher implements SocialPublisher {
     // decrypt + refresh-on-expiry + provider error surfacing.
     if (args.channel === 'x') {
       const exec = new ConnectorActionExecutor(this.db)
-      const res = await exec.execute(args.tenantId, 'twitter_x', 'createPosts', { text: args.content })
+      const res = await exec.execute(args.tenantId, 'twitter_x', 'createPosts', {
+        text: args.content,
+      })
       if (!res.ok) throw new Error(res.error ?? `x publish failed: HTTP ${res.status}`)
       const id = (res.body as { data?: { id?: string } } | null)?.data?.id
       return { external_id: id, url: id ? `https://x.com/i/web/status/${id}` : undefined }
@@ -497,15 +546,16 @@ export class DbSocialPublisher implements SocialPublisher {
           : { message: args.content },
       )
       if (!res.ok) throw new Error(res.error ?? `facebook publish failed: HTTP ${res.status}`)
-      const id = (res.body as { id?: string; post_id?: string } | null)?.post_id
-        ?? (res.body as { id?: string } | null)?.id
+      const id =
+        (res.body as { id?: string; post_id?: string } | null)?.post_id ??
+        (res.body as { id?: string } | null)?.id
       return { external_id: id, url: id ? `https://facebook.com/${id}` : undefined }
     }
 
     // LinkedIn/Threads/Instagram: dedicated handlers — their contracts are
     // nested bodies or container→publish two-steps the generic executor
     // can't express. Token decrypt is explicit and stays inside this call.
-    const token = cred.access_token ? decryptIfNeeded(cred.access_token) : undefined
+    const token = cred.access_token ? await decryptEnveloped(this.db, cred.access_token) : undefined
     if (!token) throw new Error(`${args.channel}: stored credential has no access token`)
     if (args.channel === 'linkedin') {
       const urn = cred.extra?.['author_urn']
@@ -536,7 +586,7 @@ export class DbSocialPublisher implements SocialPublisher {
       : null
     if (conn) {
       try {
-        const result = await handlerForConnection(conn).publish(args.content)
+        const result = await (await handlerForConnection(this.db, conn)).publish(args.content)
         await this.connections.updateOne(
           { tenant_id: conn.tenant_id, channel: conn.channel },
           { $set: { status: 'active', last_error: null, last_used_at: new Date() } },
