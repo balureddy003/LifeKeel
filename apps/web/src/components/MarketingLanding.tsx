@@ -29,6 +29,9 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { motion, AnimatePresence, useInView } from 'framer-motion'
 import Link from 'next/link'
 import { LandingHero } from './landing/LandingHero'
+import { LandingSymbols } from './landing/LandingSymbols'
+import { SampleDay } from './landing/SampleDay'
+import { StoryBoard } from './landing/StoryBoard'
 import {
   HeartPulse,
   Wand2,
@@ -73,46 +76,6 @@ import { ScoreRing } from '@/components/Glass'
 // not). Leaving these unmarked previously meant the free feature grid quietly
 // promised a paid capability, which undercuts both the page's own "no feature
 // here is aspirational" claim and the upgrade pitch itself.
-const FEATURES = [
-  {
-    icon: Siren,
-    color: '#fbbf24',
-    title: 'Emergency Mode',
-    body: 'One tap, always reachable, drops straight into a guided checklist for the situation you’re actually in — no menu hunting under stress.',
-  },
-  {
-    icon: MessageCircle,
-    color: '#4ade80',
-    title: '"What happens if...?" — answered',
-    body: '"What happens if I lose my job?" gets a real, specific answer built from your data — not a canned FAQ, and not advice, just what you told Keel.',
-  },
-  {
-    icon: HeartPulse,
-    color: '#f87171',
-    title: 'A readiness snapshot, not a score to chase',
-    body: 'Protection, wealth, goals, and savings, read from what you’ve told Keel — a starting point for your own plan, not a recommendation.',
-  },
-  {
-    icon: Wand2,
-    color: '#60a5fa',
-    title: 'Upload a document, skip the retyping',
-    body: 'Photograph an insurance policy or pension statement to store it securely, free. Keel Plus reads the provider, policy number, amount, and dates for you automatically.',
-    plus: true,
-  },
-  {
-    icon: Mail,
-    color: '#9c92ff',
-    title: 'Connect any email, not just Gmail',
-    body: 'Gmail, Outlook, Yahoo, iCloud, or your own domain — free to connect. Keel Plus summarizes every financial email in plain language as it arrives.',
-    plus: true,
-  },
-  {
-    icon: Command,
-    color: 'rgb(var(--family-400))',
-    title: 'A command palette, if you want it',
-    body: 'Cmd+K jumps anywhere in the app instantly. Built for the parent who wants an answer in three seconds, not three taps.',
-  },
-]
 
 // ── Interactive "detector timeline" — shows how Keel watches continuously ──
 // This is the single most differentiated feature: no competitor runs background
@@ -621,6 +584,7 @@ export function MarketingLanding() {
       <MarketingNav />
 
       {/* Hero: the chart story (PRD-209). Signup goes straight to the existing sign-up page. */}
+      <LandingSymbols />
       <LandingHero />
 
       {/* Proof points — reframed with competitive context */}
@@ -676,54 +640,9 @@ export function MarketingLanding() {
         </div>
       </div>
 
-      {/* How it works — 3-step strip */}
-      <div id="how-it-works" className="max-w-6xl mx-auto px-6 sm:px-10 py-10 sm:py-16">
-        <h2 className="text-title-md lg:text-title-lg font-bold text-center mb-2">
-          Ready in three steps
-        </h2>
-        <p className="text-sm text-ink-tertiary text-center mb-7 sm:mb-10 max-w-sm mx-auto">
-          Start with the 60-second check, or sign up for the full picture. No credit card, no sales
-          call.
-        </p>
-        <div className="grid gap-6 sm:grid-cols-3">
-          {[
-            {
-              step: '1',
-              icon: Upload,
-              title: 'Tell Keel about your family',
-              body: 'Income, savings, insurance, dependents. A short form — or upload a document and Keel reads it for you.',
-            },
-            {
-              step: '2',
-              icon: BarChart3,
-              title: 'See your readiness score',
-              body: 'The quick check scores two areas from six answers; a full account scores five — protection, wealth, goals, savings, and estate — from your own numbers. The maths is visible.',
-            },
-            {
-              step: '3',
-              icon: Shield,
-              title: 'Get a plan before you need one',
-              body: 'What happens if you lose your job next month? Keel builds a step-by-step playbook from your real data — not a generic checklist.',
-            },
-          ].map((s) => (
-            <motion.div
-              key={s.step}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="text-center"
-            >
-              <div className="w-12 h-12 rounded-2xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mx-auto mb-4">
-                <s.icon size={20} className="text-family-400" />
-              </div>
-              <div className="text-xs font-bold uppercase tracking-wide text-family-400 mb-1.5">
-                Step {s.step}
-              </div>
-              <h3 className="text-callout font-bold mb-1.5">{s.title}</h3>
-              <p className="text-footnote text-ink-secondary leading-relaxed">{s.body}</p>
-            </motion.div>
-          ))}
-        </div>
+      {/* A read-only sample day (PRD-209). Keeps the #how-it-works anchor the nav links to. */}
+      <div id="how-it-works" className="landing">
+        <SampleDay />
       </div>
 
       {/* ═══ DIFFERENTIATOR 1: "Watches while you don't" ═══
@@ -967,34 +886,9 @@ export function MarketingLanding() {
         </div>
       </div>
 
-      {/* Feature grid */}
-      <div id="features" className="max-w-6xl mx-auto px-6 sm:px-10 py-10 sm:py-16">
-        <h2 className="text-title-md lg:text-title-lg font-bold text-center mb-2">
-          What&apos;s actually in it
-        </h2>
-        <p className="text-sm text-ink-tertiary text-center mb-7 sm:mb-10 max-w-xs mx-auto">
-          No feature here is aspirational &mdash; everything below is something you can do in the
-          app today.
-        </p>
-        <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURES.map((f) => (
-            <div key={f.title} className="glass rounded-2xl p-4 sm:p-5 relative">
-              {f.plus && (
-                <span className="absolute top-4 right-4 text-caption font-bold uppercase tracking-wide text-family-400 bg-family-500/10 border border-family-500/20 rounded-full px-2 py-0.5">
-                  Keel Plus
-                </span>
-              )}
-              <div
-                className="w-9 h-9 rounded-xl flex items-center justify-center mb-3"
-                style={{ background: `${f.color}22` }}
-              >
-                <f.icon size={17} color={f.color} strokeWidth={2} />
-              </div>
-              <h3 className="text-callout font-bold mb-1 pr-16">{f.title}</h3>
-              <p className="text-footnote text-ink-secondary leading-relaxed">{f.body}</p>
-            </div>
-          ))}
-        </div>
+      {/* The story board, built from components/landing/capabilities.ts. Keeps the #features anchor. */}
+      <div id="features" className="landing">
+        <StoryBoard />
       </div>
 
       {/* ═══ Neutrality statement (Claim 5) ═══
