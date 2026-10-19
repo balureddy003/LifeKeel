@@ -252,7 +252,7 @@ export default function SupportPage() {
 
   return (
     <div className="px-5 pt-2 pb-12">
-      <PageHeader title="Support" backHref="/settings" />
+      <PageHeader title="Support" />
 
       {user ? (
         <>

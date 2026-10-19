@@ -84,7 +84,7 @@ export function SiteFooter({ home = true }: { home?: boolean }) {
             </p>
           </div>
           <nav aria-label="Product">
-            <h3>Product</h3>
+            <p className="lk-foot-h">Product</p>
             {PRODUCT.map((l) =>
               l.local ? (
                 <a key={l.href} href={home ? l.href : `/${l.href}`}>
@@ -98,7 +98,7 @@ export function SiteFooter({ home = true }: { home?: boolean }) {
             )}
           </nav>
           <nav aria-label="Company">
-            <h3>Company</h3>
+            <p className="lk-foot-h">Company</p>
             {COMPANY.map((l) => (
               <Link key={l.href} href={l.href}>
                 {l.label}
@@ -106,7 +106,7 @@ export function SiteFooter({ home = true }: { home?: boolean }) {
             ))}
           </nav>
           <div>
-            <h3>Stay in touch</h3>
+            <p className="lk-foot-h">Stay in touch</p>
             <Newsletter />
           </div>
         </div>

@@ -17,7 +17,7 @@ function P({ children }: { children: React.ReactNode }) {
 export default function TermsPage() {
   return (
     <div className="px-5 pt-2 pb-12">
-      <PageHeader title="Terms of Service" backHref="/settings" />
+      <PageHeader title="Terms of Service" />
 
       <div className="rounded-2xl bg-warning/10 border border-warning/20 px-4 py-3.5 flex items-start gap-2.5 mb-6">
         <AlertTriangle size={16} className="text-warning flex-shrink-0 mt-0.5" />

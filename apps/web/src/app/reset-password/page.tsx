@@ -24,7 +24,11 @@ export default function RequestPasswordResetPage() {
   }, [sent])
 
   const handleSubmit = async () => {
-    if (!email.trim()) return
+    if (loading) return
+    if (!email.trim()) {
+      setError('Enter your email address.')
+      return
+    }
     haptic('light')
     setLoading(true)
     setError(null)
@@ -60,34 +64,35 @@ export default function RequestPasswordResetPage() {
 
   return (
     <AuthShell title="Reset your password" sub="Enter your email and we'll send you a reset link">
-      <div className="lk-field">
-        <label htmlFor="reset-email">Email address</label>
-        <input
-          id="reset-email"
-          type="email"
-          placeholder="you@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-          autoComplete="email"
-          className="lk-input"
-        />
-      </div>
-
-      {error && (
-        <p role="status" aria-live="polite" className="lk-err">
-          {error}
-        </p>
-      )}
-
-      <button
-        type="button"
-        className="lk-btn"
-        onClick={handleSubmit}
-        disabled={!email.trim() || loading}
+      <form
+        className="lk-form"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault()
+          void handleSubmit()
+        }}
       >
-        {loading ? 'Sending...' : 'Send reset link'}
-      </button>
+        <div className="lk-field">
+          <label htmlFor="reset-email">Email address</label>
+          <input
+            id="reset-email"
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            className="lk-input"
+            aria-invalid={error ? true : undefined}
+            aria-describedby="reset-error"
+          />
+        </div>
+        <div id="reset-error" role="alert" className="lk-err">
+          {error ?? ''}
+        </div>
+        <button type="submit" className="lk-btn" disabled={loading}>
+          {loading ? 'Sending...' : 'Send reset link'}
+        </button>
+      </form>
 
       <Link href="/login" className="lk-textlink lk-textlink-muted">
         Back to sign in

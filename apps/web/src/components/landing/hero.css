@@ -63,7 +63,7 @@
 .lk-pill { font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 9px 12px; border-radius: 999px; border: 1px solid currentColor; background: color-mix(in srgb, var(--surface) 90%, transparent); white-space: nowrap; }
 .lk-pill.rough, .lk-pill.holding { color: var(--brass-text); } .lk-pill.steady { color: var(--ok-text); }
 .lk-ctl { flex-basis: 100%; display: flex; justify-content: flex-end; gap: 12px; align-items: center; flex-wrap: wrap; }
-.lk-pause { font: 500 13px var(--body); color: var(--ink); background: color-mix(in srgb, var(--surface) 90%, transparent); border: 1px solid var(--field-line); border-radius: 999px; padding: 8px 14px; min-height: 36px; cursor: pointer; }
+.lk-pause { font: 500 13px var(--body); color: var(--ink); background: color-mix(in srgb, var(--surface) 90%, transparent); border: 1px solid var(--field-line); border-radius: 999px; padding: 8px 16px; min-height: 44px; cursor: pointer; }
 
 /* chart, slips, boats */
 .lk-bm { --bx: 74%; --bw: 170px; --ad: .9s; } .lk-bf1 { --bx: 55%; --bw: 120px; --ad: 1.2s; } .lk-bf2 { --bx: 42%; --bw: 90px; --ad: 1.5s; } .lk-bf3 { --bx: 32%; --bw: 80px; --ad: 1.8s; }
@@ -117,7 +117,7 @@
   .lk-stage .lk-pill { position: absolute; left: 0; top: 100px; font-size: 11px; padding: 7px 10px; z-index: 2; }
   .lk-ctl { position: absolute; right: 0; top: 98px; flex-basis: auto; z-index: 2; }
   .lk-ctl .lk-fine { display: none; }
-  .lk-pause { font-size: 12px; padding: 6px 12px; }
+  .lk-pause { font-size: 13px; padding: 6px 12px; }
   .lk-f2, .lk-f3 { display: none; }
   .lk-bm { --bx: 70%; --bw: 116px; } .lk-bf1 { --bx: 44%; --bw: 100px; }
   .lk-boat { width: 96px; margin-left: -48px; } .lk-boat svg { width: 96px; height: 110px; } .lk-boat .lk-refl { height: 110px; }

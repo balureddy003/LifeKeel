@@ -109,7 +109,7 @@ export function LandingHero() {
             <span className={`lk-pill ${level}`}>{BAND_LABEL[level]}</span>
             <div className="lk-ctl">
               <span className="lk-fine">The sample Ellis family: two adults, two children</span>
-              <button className="lk-pause" type="button" aria-pressed={paused} onClick={toggle}>
+              <button className="lk-pause" type="button" onClick={toggle}>
                 {paused ? 'Play animation' : 'Pause animation'}
               </button>
             </div>

@@ -22,6 +22,19 @@ describe('CoverOnFile', () => {
   })
 })
 
+describe('CoverOnFile accessibility', () => {
+  it('keeps table roles when the phone layout turns rows into blocks, and the scroller is keyboard reachable', () => {
+    const { container } = render(<CoverOnFile />)
+    expect(container.querySelector('table')!.getAttribute('role')).toBe('table')
+    expect(container.querySelectorAll('tbody tr[role="row"]').length).toBe(5)
+    expect(container.querySelectorAll('th[role="rowheader"]').length).toBe(5)
+    const scroller = container.querySelector('.lk-scroll')!
+    expect(scroller.getAttribute('tabindex')).toBe('0')
+    expect(scroller.getAttribute('role')).toBe('region')
+    expect(scroller.getAttribute('aria-label')).toBeTruthy()
+  })
+})
+
 describe('CrisisSteps', () => {
   it('shows four sample steps labelled as sample, and states who can open the papers', () => {
     const { container } = render(<CrisisSteps />)

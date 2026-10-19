@@ -1,78 +1,63 @@
 # LifeKeel
 
-> The always-on readiness system for your family. LifeKeel continuously
-> monitors whether a family is protected — emergency fund, insurance coverage,
-> estate documents, retirement trajectory — and surfaces what's missing before
-> anyone needs to ask. Not a budgeting app, not an AI financial advisor, not
-> a vault. Informational and educational only; not financial, investment, tax,
-> or legal advice, and not a substitute for professional emergency services.
+> Your family's chart, kept current. LifeKeel is one home for what a family
+> holds on file: savings, insurance cover, wills and papers. It shows what is
+> there, where it looks light against a rough estimate, and the steps to take
+> on a bad day. Not a budgeting app, not an AI financial advisor. Informational
+> and educational only; not financial, investment, tax, or legal advice, and not
+> a substitute for professional emergency services.
 
-LifeKeel is free to start, with no credit card required. It is not an
-autonomous financial agent — it does not move money, execute trades, or take
-action on a family's behalf without a human approving each step.
+LifeKeel is free to start, with no credit card required. It never moves money
+or buys products. Anything it sends for a person, such as emails to people they
+name if they go quiet, stays off until they switch it on.
 
-## What makes it different
+## Before, during and after
 
-- Continuous detection — 9 YAML-based detectors across protection, savings,
-  retirement, education, debt, and estate run on every data change and on a
-  daily sweep, even when nobody logs in. Most tools wait for a question.
-- Per-member reasoning — each family member (earner, partner, child) gets
-  their own view, readiness score, insights, and scenarios scoped to
-  their life stage. No competitor found does per-member financial reasoning
-  within a shared household.
-- Crisis-native — Emergency Mode with 7 event types and step-by-step
-  playbooks built from the family's real income, policies, and savings, not
-  generic checklists. The closest parallel (Empathy) handles post-event
-  support; Keel handles pre-event readiness.
-- Structurally neutral — subscription-only revenue (£7.99/mo). Zero
-  commissions, zero affiliate links, zero product recommendations. Every
-  insurance gap tool, coverage scorer, and "AI advisor" found in market
-  research makes money when you buy what they suggest. Keel doesn't.
+Everything below works from what the family adds. Items marked planned are not
+available yet.
 
-## Core features (free)
+- Before: savings runway and emergency fund; life, income and health cover on
+  file; policy renewals and duplicate policies for the same person; retirement
+  and education pace; debt health; wills and papers on file; a "what if"
+  simulator. Planned: overlap between partners' policies, one ordered list of
+  next steps, a monthly letter.
+- During: documents the family's adults can open (with optional passphrase
+  sealing, no recovery); steps for seven kinds of bad day, which start when
+  the person says what happened; optional emails to people they name if they
+  go quiet. Planned: access for a named person outside the family.
+- After: who to call, from the policy papers on file; a draft message to the
+  person's own insurer, for them to edit and send. Planned: a how-to-claim
+  guide per policy type, a claim-ready pack.
 
-- Emergency Mode — one-tap guided checklist for a specific crisis (medical
-  emergency, job loss, bereavement, disability, car, property, travel).
-- "What happens if...?" scenarios — member-scoped, multi-step simulations
-  with fund-depletion detection and timeline visualization.
-- Family Readiness Score — five health domains (protection, wealth, goals,
-  savings, estate) with drivers explaining each subscore.
-- 9 detectors: protection gap, emergency fund, retirement gap, education
-  shortfall, estate readiness, debt-to-income, policy review, education
-  pacing, emergency trajectory.
-- Document upload and secure storage for insurance policies, pension
-  statements, and other financial documents.
-- Connect any email provider (Gmail, Outlook, Yahoo, iCloud, or custom
-  domain) so Keel can watch for financial mail.
-- Per-member views — each family member gets their own readiness
-  score, insights, and scenarios.
-- Adaptive insights — detectors escalate language after repeated fires and
-  show what changed since the last alert.
-- Annual profile review prompt with a diff of what changed.
+## Free
 
-## Keel Plus (paid, £7.99/month)
+- Emergency Mode, with seven kinds of event.
+- "What if" scenarios on the family's own figures.
+- A readiness snapshot.
+- Document upload and storage.
+- Connect an email account so Keel can read financial mail.
+- A roster for the whole family. Each adult has their own view and children
+  get a simpler one.
 
-- AI reads uploaded documents and extracts the provider, policy number,
-  amount, and dates automatically.
-- AI-summarized inbox — financial emails explained in plain language as they
-  arrive.
-- Priority support.
+## Keel Plus (paid, 7.99 pounds a month, cancel any time)
+
+- Reads provider, policy number, amount and dates from an uploaded policy, for
+  the person to confirm.
+- A plain-language summary of financial email.
 
 ## Trust and data handling
 
-- Connector passwords and access tokens are encrypted at rest, not just in
-  transit.
+- Connector passwords and access tokens are encrypted before they are stored.
 - Financial data is never sold. Approved AI providers process it only for the
   request; the privacy notice lists who they are.
-- No commissions, no affiliate links, no partner arrangements with insurers
-  or financial product providers.
-- Users can export their data and delete their account themselves from
-  Settings; deletion is immediate and irreversible.
+- No commissions and no ads. Revenue is subscriptions only.
+- People can export their data and delete their account themselves from
+  Settings.
 
 ## Pages
 
-- Marketing / product overview: https://lifekeel.co.uk/
-- Family Readiness Check (free quiz, no signup): https://lifekeel.co.uk/readiness
+- Product overview: https://lifekeel.co.uk/
+- Quick readiness check (six questions): https://lifekeel.co.uk/readiness
 - Blog (plain-language explainers): https://lifekeel.co.uk/blog
 - Guides (evergreen SEO guides): https://lifekeel.co.uk/guides
 - Terms: https://lifekeel.co.uk/terms

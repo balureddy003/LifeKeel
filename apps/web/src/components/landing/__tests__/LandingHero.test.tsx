@@ -44,9 +44,8 @@ describe('LandingHero', () => {
     const pause = screen.getByRole('button', { name: 'Pause animation' })
     fireEvent.click(pause)
     expect(document.documentElement.dataset.motion).toBe('off')
-    expect(
-      screen.getByRole('button', { name: 'Play animation' }).getAttribute('aria-pressed'),
-    ).toBe('true')
+    expect(screen.getByRole('button', { name: 'Play animation' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Play animation' }).getAttribute('aria-pressed')).toBeNull()
   })
 
   it('starts with motion off when the system asks for reduced motion', () => {

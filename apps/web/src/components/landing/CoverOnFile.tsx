@@ -64,21 +64,21 @@ export function CoverOnFile() {
             ))}
           </div>
           <p className="lk-fine">6 of 9 items on file. Keel only checks what is on file.</p>
-          <div className="lk-scroll">
-            <table className="lk-cov">
+          <div className="lk-scroll" role="region" aria-label="Sample cover table, scrolls sideways on small screens" tabIndex={0}>
+            <table className="lk-cov" role="table">
               <thead>
-                <tr>
-                  <th scope="col">Cover</th>
-                  <th scope="col">On file</th>
-                  <th scope="col">Note</th>
+                <tr role="row">
+                  <th scope="col" role="columnheader">Cover</th>
+                  <th scope="col" role="columnheader">On file</th>
+                  <th scope="col" role="columnheader">Note</th>
                 </tr>
               </thead>
               <tbody>
                 {ROWS.map((r) => (
-                  <tr key={r.cover}>
-                    <th scope="row">{r.cover}</th>
-                    <td>{r.onFile}</td>
-                    <td>{r.note}</td>
+                  <tr key={r.cover} role="row">
+                    <th scope="row" role="rowheader">{r.cover}</th>
+                    <td role="cell">{r.onFile}</td>
+                    <td role="cell">{r.note}</td>
                   </tr>
                 ))}
               </tbody>

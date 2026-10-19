@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Home, Inbox, Users, CalendarClock, Settings, WifiOff, Siren, Network, Bot, MailWarning, Wallet, X, Fingerprint } from 'lucide-react'
+import { Home, Inbox, Users, CalendarClock, Settings, WifiOff, Siren, Bot, MailWarning, Wallet, X, Fingerprint } from 'lucide-react'
 import { useNetworkStatus } from '@/lib/useNetworkStatus'
 import { useAuth } from '@/lib/auth-context'
 import { useMode } from '@/lib/mode-context'
@@ -17,6 +17,7 @@ import { fetchInboxItems, fetchFamilyInsights, fetchPublicStatus, resendVerifica
 import { flushMutationQueue } from '@/lib/offline-queue'
 import { warmCache } from '@/lib/fetch-cache'
 import { useToast } from './Toast'
+import { AuthShell } from '@/components/landing/AuthShell'
 import { MarketingLanding } from './MarketingLanding'
 import { NavRail } from './NavRail'
 import { haptic } from '@/lib/haptics'
@@ -427,38 +428,23 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAuthenticated && !isAuthRoute) {
+    // Any app route (or unknown page) reached while signed out: a plain sign-in prompt in the
+    // landing look, not the old purple screen.
     return (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="flex flex-col items-center justify-center min-h-screen px-6 text-center"
+      <AuthShell
+        title="Sign in to continue"
+        sub="This page is part of a LifeKeel account. If you followed a link, sign in or create an account to open it."
       >
-        <div className="w-16 h-16 rounded-2xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-6">
-          <Network size={32} className="text-family-400" />
-        </div>
-        <h1 className="text-3xl font-bold mb-2 text-gradient">LifeKeel</h1>
-        <p className="text-ink-tertiary mb-8 max-w-xs">
-          The always-on readiness system for your family &mdash; know what&apos;s missing before you need it.
-        </p>
-        <div className="w-full max-w-xs space-y-3">
-          <Link href="/welcome" className="block">
-            <motion.button
-              whileTap={{ scale: 0.96 }}
-              className="w-full bg-family-500 text-white font-semibold rounded-2xl py-4 text-base shadow-md shadow-family-500/15 active:opacity-90"
-            >
-              Get Started
-            </motion.button>
-          </Link>
-          <Link href="/login" className="block">
-            <motion.button
-              whileTap={{ scale: 0.96 }}
-              className="w-full glass text-ink-primary font-semibold rounded-2xl py-4 text-base"
-            >
-              I already have an account
-            </motion.button>
-          </Link>
-        </div>
-      </motion.div>
+        <Link href="/login" className="lk-btn">
+          Sign in
+        </Link>
+        <Link href="/signup" className="lk-btn lk-btn-quiet">
+          Create your free account
+        </Link>
+        <Link href="/" className="lk-textlink lk-textlink-muted">
+          Back to home
+        </Link>
+      </AuthShell>
     )
   }
 
