@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { appUrl } from '@/lib/region'
 import { track } from '@/lib/growth-track'
@@ -25,6 +25,14 @@ const LINKS: { href: string; label: string; page?: boolean }[] = [
  */
 export function SiteHeader() {
   const [open, setOpen] = useState(false)
+
+  // Escape closes the phone menu, as people expect from a disclosure.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open])
 
   const signIn = () => {
     haptic('light')

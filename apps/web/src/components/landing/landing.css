@@ -29,3 +29,6 @@
   --wave: #1f5f77; --wave-2: #17475a; --wave-3: #0f3647;
 }
 .landing :focus-visible { outline: 3px solid var(--brass-text); outline-offset: 3px; }
+
+/* anchored sections land below the sticky header (68px) */
+.landing[id], .landing [id] { scroll-margin-top: 84px; }

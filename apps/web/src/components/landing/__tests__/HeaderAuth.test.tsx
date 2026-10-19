@@ -30,11 +30,13 @@ describe('SiteHeader', () => {
     expect(screen.getByRole('link', { name: 'Guides' }).getAttribute('href')).toBe('/guides')
     const start = screen.getByRole('link', { name: 'Get started' })
     expect(start.getAttribute('href')).toMatch(/\/signup$/)
-    document.addEventListener('click', (e) => e.preventDefault())
+    const stop = (e: Event) => e.preventDefault() // jsdom cannot navigate
+    document.addEventListener('click', stop)
     fireEvent.click(start)
     expect(track).toHaveBeenCalledWith('landing_cta_click', { location: 'nav', method: 'signup' })
     fireEvent.click(screen.getAllByRole('link', { name: 'Sign in' })[0]!)
     expect(track).toHaveBeenCalledWith('landing_signin_click', { location: 'nav' })
+    document.removeEventListener('click', stop)
   })
 
   it('opens and closes the phone menu with the right aria state', () => {
@@ -47,6 +49,13 @@ describe('SiteHeader', () => {
     )
     expect(screen.getByRole('navigation', { name: 'Menu' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Close menu' }))
+    expect(screen.queryByRole('navigation', { name: 'Menu' })).toBeNull()
+  })
+
+  it('closes the phone menu on Escape', () => {
+    render(<SiteHeader />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
+    fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('navigation', { name: 'Menu' })).toBeNull()
   })
 })
