@@ -32,6 +32,7 @@ import sgMail from '@sendgrid/mail'
 import { createLogger } from '@lifekeel/platform'
 import { getPlatformConfig } from '../operator/platform-config.js'
 import { getGrowthEventsCollection } from '../db.js'
+import { excludeMinorUsers } from '../family/family-permissions.js'
 
 const log = createLogger({ service: 'lifecycle', version: '0.0.0' })
 
@@ -73,7 +74,9 @@ export function ensureLifecycleIndexes(db: Db): Promise<void> {
   return Promise.all([
     col.createIndex({ key: 1 }, { unique: true }),
     col.createIndex({ created_at: -1 }),
-  ]).then(() => undefined).catch(() => {})
+  ])
+    .then(() => undefined)
+    .catch(() => {})
 }
 
 // ── Unsubscribe tokens ─────────────────────────────────────────────────────
@@ -163,20 +166,29 @@ export const cta = (url: string, label: string) =>
 
 // ── Email bodies (informational only — never advice/arranging) ──────────────
 
-function leadWelcomeBody(firstName: string, scoreBand: string | undefined, appUrl: string, unsub: string): string {
+function leadWelcomeBody(
+  firstName: string,
+  scoreBand: string | undefined,
+  appUrl: string,
+  unsub: string,
+): string {
   const band = scoreBand ? ` Your readiness check came back <strong>${scoreBand}</strong>.` : ''
-  return wrap(`
+  return wrap(
+    `
     <p>Hi ${firstName},</p>
     <p>Thanks for checking your family's readiness with LifeKeel.${band}</p>
     <p>Keel watches the signals families usually find out too late — coverage gaps,
     savings drift, renewal deadlines — and tells you what's on file before it matters.
     Your free account holds your result and starts your family's profile.</p>
     ${cta(`${appUrl}/signup?utm_source=lifecycle&utm_medium=email&utm_campaign=lead_nurture&utm_content=welcome`, 'See your result')}
-  `, unsub)
+  `,
+    unsub,
+  )
 }
 
 function leadEducationBody(firstName: string, appUrl: string, unsub: string): string {
-  return wrap(`
+  return wrap(
+    `
     <p>Hi ${firstName},</p>
     <p>Most families have the same three blind spots: an emergency buffer that looks
     fine until it isn't, a policy that renewed into a worse rate, and an education
@@ -184,18 +196,23 @@ function leadEducationBody(firstName: string, appUrl: string, unsub: string): st
     <p>Keel's detectors look for exactly these — on your numbers, not averages.
     A few minutes of setup is all it takes.</p>
     ${cta(`${appUrl}/signup?utm_source=lifecycle&utm_medium=email&utm_campaign=lead_nurture&utm_content=day3`, 'Set up your family profile')}
-  `, unsub)
+  `,
+    unsub,
+  )
 }
 
 function leadLastCallBody(firstName: string, appUrl: string, unsub: string): string {
-  return wrap(`
+  return wrap(
+    `
     <p>Hi ${firstName},</p>
     <p>Last note from us — your readiness result is still saved. If the timing's
     not right, no problem; if you'd rather not hear from us again, the unsubscribe
     link below is one click.</p>
     <p>Whenever you're ready, Keel is.</p>
     ${cta(`${appUrl}/signup?utm_source=lifecycle&utm_medium=email&utm_campaign=lead_nurture&utm_content=day7`, 'Pick up where you left off')}
-  `, unsub)
+  `,
+    unsub,
+  )
 }
 
 function activationBody(firstName: string, appUrl: string): string {
@@ -275,20 +292,37 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
   const now = Date.now()
 
   // ── lead_nurture: consenting, unsuppressed leads who haven't signed up ──
-  const leads = await db.collection('leads')
-    .find({ 'consent.marketing': true, suppressed: { $ne: true }, stage: { $in: ['new', 'contacted'] } },
-      { projection: { _id: 0, id: 1, email: 1, name: 1, score_band: 1, created_at: 1 } })
+  const leads = await db
+    .collection('leads')
+    .find(
+      {
+        'consent.marketing': true,
+        suppressed: { $ne: true },
+        stage: { $in: ['new', 'contacted'] },
+      },
+      { projection: { _id: 0, id: 1, email: 1, name: 1, score_band: 1, created_at: 1 } },
+    )
     .limit(500)
     .toArray()
   if (leads.length > 0) {
     const emails = leads.map((l) => l['email'] as string)
     const signedUp = new Set(
-      (await db.collection('users').find({ email: { $in: emails } }, { projection: { _id: 0, email: 1 } }).toArray())
-        .map((u) => u['email'] as string),
+      (
+        await db
+          .collection('users')
+          .find({ email: { $in: emails } }, { projection: { _id: 0, email: 1 } })
+          .toArray()
+      ).map((u) => u['email'] as string),
     )
     const sent = new Set(
-      (await lifecycleSendsCol(db).find({ sequence: 'lead_nurture', email: { $in: emails } }, { projection: { _id: 0, key: 1 } }).toArray())
-        .map((s) => s['key'] as string),
+      (
+        await lifecycleSendsCol(db)
+          .find(
+            { sequence: 'lead_nurture', email: { $in: emails } },
+            { projection: { _id: 0, key: 1 } },
+          )
+          .toArray()
+      ).map((s) => s['key'] as string),
     )
     for (const lead of leads) {
       const email = lead['email'] as string
@@ -298,14 +332,38 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
       const firstName = String(lead['name'] ?? 'there').split(' ')[0] || 'there'
       const unsub = unsubUrl(appUrl, id)
       const steps: { step: string; minAge: number; subject: string; html: string }[] = [
-        { step: 'welcome', minAge: 1 * HOUR, subject: 'Your family readiness result', html: leadWelcomeBody(firstName, lead['score_band'] as string | undefined, appUrl, unsub) },
-        { step: 'day3', minAge: 3 * DAY, subject: "The 3 blind spots most families have", html: leadEducationBody(firstName, appUrl, unsub) },
-        { step: 'day7', minAge: 7 * DAY, subject: 'Still here when you\u2019re ready', html: leadLastCallBody(firstName, appUrl, unsub) },
+        {
+          step: 'welcome',
+          minAge: 1 * HOUR,
+          subject: 'Your family readiness result',
+          html: leadWelcomeBody(firstName, lead['score_band'] as string | undefined, appUrl, unsub),
+        },
+        {
+          step: 'day3',
+          minAge: 3 * DAY,
+          subject: 'The 3 blind spots most families have',
+          html: leadEducationBody(firstName, appUrl, unsub),
+        },
+        {
+          step: 'day7',
+          minAge: 7 * DAY,
+          subject: 'Still here when you\u2019re ready',
+          html: leadLastCallBody(firstName, appUrl, unsub),
+        },
       ]
       for (const s of steps) {
         const key = `lead_nurture:${s.step}:${id}`
         if (age >= s.minAge && !sent.has(key)) {
-          jobs.push({ key, sequence: 'lead_nurture', step: s.step, recipient: id, email, subject: s.subject, html: s.html, leadId: id })
+          jobs.push({
+            key,
+            sequence: 'lead_nurture',
+            step: s.step,
+            recipient: id,
+            email,
+            subject: s.subject,
+            html: s.html,
+            leadId: id,
+          })
           break // one step per sweep per lead — no same-day double-send
         }
       }
@@ -313,35 +371,66 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
   }
 
   // ── activation: signed up 48–96h ago, no family profile yet ──
-  const recentUsers = await db.collection('users')
-    .find({ created_at: { $gte: new Date(now - 4 * DAY), $lte: new Date(now - 2 * DAY) }, status: 'active' },
-      { projection: { _id: 0, id: 1, email: 1, name: 1, tenant_id: 1, created_at: 1 } })
-    .limit(500)
-    .toArray()
+  // (every user fetch passes excludeMinorUsers — intent 09: a member whose
+  // roster entry is 'child' or under 18 never receives marketing mail,
+  // whatever flags the account carries)
+  const recentUsers = await excludeMinorUsers(
+    db,
+    await db
+      .collection('users')
+      .find(
+        {
+          created_at: { $gte: new Date(now - 4 * DAY), $lte: new Date(now - 2 * DAY) },
+          status: 'active',
+        },
+        { projection: { _id: 0, id: 1, email: 1, name: 1, tenant_id: 1, created_at: 1 } },
+      )
+      .limit(500)
+      .toArray(),
+  )
   if (recentUsers.length > 0) {
     const tenantIds = [...new Set(recentUsers.map((u) => u['tenant_id'] as string))]
     const profiled = new Set(
-      (await db.collection('family_financial_profile').find({ tenant_id: { $in: tenantIds } }, { projection: { _id: 0, tenant_id: 1 } }).toArray())
-        .map((p) => p['tenant_id'] as string),
+      (
+        await db
+          .collection('family_financial_profile')
+          .find({ tenant_id: { $in: tenantIds } }, { projection: { _id: 0, tenant_id: 1 } })
+          .toArray()
+      ).map((p) => p['tenant_id'] as string),
     )
     const sentKeys = new Set(
-      (await lifecycleSendsCol(db).find({ sequence: 'activation', recipient: { $in: recentUsers.map((u) => u['id'] as string) } }, { projection: { _id: 0, key: 1 } }).toArray())
-        .map((s) => s['key'] as string),
+      (
+        await lifecycleSendsCol(db)
+          .find(
+            {
+              sequence: 'activation',
+              recipient: { $in: recentUsers.map((u) => u['id'] as string) },
+            },
+            { projection: { _id: 0, key: 1 } },
+          )
+          .toArray()
+      ).map((s) => s['key'] as string),
     )
     for (const u of recentUsers) {
       if (profiled.has(u['tenant_id'] as string)) continue
       const key = `activation:nudge:${u['id']}`
       if (sentKeys.has(key)) continue
       jobs.push({
-        key, sequence: 'activation', step: 'nudge', recipient: u['id'] as string, email: u['email'] as string,
-        subject: 'One step left — your family profile', html: activationBody(String(u['name'] ?? 'there').split(' ')[0] || 'there', appUrl),
+        key,
+        sequence: 'activation',
+        step: 'nudge',
+        recipient: u['id'] as string,
+        email: u['email'] as string,
+        subject: 'One step left — your family profile',
+        html: activationBody(String(u['name'] ?? 'there').split(' ')[0] || 'there', appUrl),
       })
     }
   }
 
   // ── trial: free tenants whose signup trial ends in ≤72h or expired ≤48h
   //  ago — the highest-converting lifecycle moment there is. ──
-  const trialTenants = await db.collection('tenants')
+  const trialTenants = await db
+    .collection('tenants')
     .find(
       {
         plan: { $in: ['free', null] },
@@ -361,15 +450,33 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
   })
   if (actionableTrials.length > 0) {
     const tenantIds = actionableTrials.map((t) => t['tenant_id'] as string)
-    const users = await db.collection('users')
-      .find({ tenant_id: { $in: tenantIds }, status: 'active' }, { projection: { _id: 0, id: 1, email: 1, name: 1, tenant_id: 1 } })
-      .limit(500)
-      .toArray()
-    const sentKeys = new Set(
-      (await lifecycleSendsCol(db).find({ sequence: 'trial', recipient: { $in: users.map((u) => u['id'] as string) } }, { projection: { _id: 0, key: 1 } }).toArray())
-        .map((s) => s['key'] as string),
+    const users = await excludeMinorUsers(
+      db,
+      await db
+        .collection('users')
+        .find(
+          { tenant_id: { $in: tenantIds }, status: 'active' },
+          { projection: { _id: 0, id: 1, email: 1, name: 1, tenant_id: 1 } },
+        )
+        .limit(500)
+        .toArray(),
     )
-    const endsByTenant = new Map(actionableTrials.map((t) => [t['tenant_id'] as string, ((t['billing'] as Record<string, unknown>)['trial_ends_at'] as Date)]))
+    const sentKeys = new Set(
+      (
+        await lifecycleSendsCol(db)
+          .find(
+            { sequence: 'trial', recipient: { $in: users.map((u) => u['id'] as string) } },
+            { projection: { _id: 0, key: 1 } },
+          )
+          .toArray()
+      ).map((s) => s['key'] as string),
+    )
+    const endsByTenant = new Map(
+      actionableTrials.map((t) => [
+        t['tenant_id'] as string,
+        (t['billing'] as Record<string, unknown>)['trial_ends_at'] as Date,
+      ]),
+    )
     for (const u of users) {
       const endsAt = endsByTenant.get(u['tenant_id'] as string)
       if (!endsAt) continue
@@ -379,9 +486,15 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
       if (sentKeys.has(key)) continue
       const firstName = String(u['name'] ?? 'there').split(' ')[0] || 'there'
       jobs.push({
-        key, sequence: 'trial', step, recipient: u['id'] as string, email: u['email'] as string,
+        key,
+        sequence: 'trial',
+        step,
+        recipient: u['id'] as string,
+        email: u['email'] as string,
         subject: ending ? 'Your LifeKeel trial ends soon' : 'Your trial has ended — AI is paused',
-        html: ending ? trialEndingBody(firstName, endsAt, appUrl) : trialExpiredBody(firstName, appUrl),
+        html: ending
+          ? trialEndingBody(firstName, endsAt, appUrl)
+          : trialExpiredBody(firstName, appUrl),
       })
     }
   }
@@ -389,7 +502,8 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
   // ── winback: churned 3–14d ago (plan_downgraded audit entry), still
   //  free, not re-subscribed. One email per tenant ever — the dedup key
   //  is per-user so a churn-return-churn cycle doesn't re-mail. ──
-  const churned = await db.collection('audit_log')
+  const churned = await db
+    .collection('audit_log')
     .find(
       {
         action: 'billing.plan_downgraded',
@@ -409,27 +523,51 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
   }
   if (churnedAt.size > 0) {
     const stillFree = new Set(
-      (await db.collection('tenants')
-        .find(
-          { tenant_id: { $in: [...churnedAt.keys()] }, plan: { $in: ['free', null] }, stripe_subscription_id: { $exists: false } },
-          { projection: { _id: 0, tenant_id: 1 } },
-        ).toArray())
-        .map((t) => t['tenant_id'] as string),
+      (
+        await db
+          .collection('tenants')
+          .find(
+            {
+              tenant_id: { $in: [...churnedAt.keys()] },
+              plan: { $in: ['free', null] },
+              stripe_subscription_id: { $exists: false },
+            },
+            { projection: { _id: 0, tenant_id: 1 } },
+          )
+          .toArray()
+      ).map((t) => t['tenant_id'] as string),
     )
     if (stillFree.size > 0) {
-      const users = await db.collection('users')
-        .find({ tenant_id: { $in: [...stillFree] }, status: 'active' }, { projection: { _id: 0, id: 1, email: 1, name: 1, tenant_id: 1 } })
-        .limit(500)
-        .toArray()
+      const users = await excludeMinorUsers(
+        db,
+        await db
+          .collection('users')
+          .find(
+            { tenant_id: { $in: [...stillFree] }, status: 'active' },
+            { projection: { _id: 0, id: 1, email: 1, name: 1, tenant_id: 1 } },
+          )
+          .limit(500)
+          .toArray(),
+      )
       const sentKeys = new Set(
-        (await lifecycleSendsCol(db).find({ sequence: 'winback', recipient: { $in: users.map((u) => u['id'] as string) } }, { projection: { _id: 0, key: 1 } }).toArray())
-          .map((s) => s['key'] as string),
+        (
+          await lifecycleSendsCol(db)
+            .find(
+              { sequence: 'winback', recipient: { $in: users.map((u) => u['id'] as string) } },
+              { projection: { _id: 0, key: 1 } },
+            )
+            .toArray()
+        ).map((s) => s['key'] as string),
       )
       for (const u of users) {
         const key = `winback:return:${u['id']}`
         if (sentKeys.has(key)) continue
         jobs.push({
-          key, sequence: 'winback', step: 'return', recipient: u['id'] as string, email: u['email'] as string,
+          key,
+          sequence: 'winback',
+          step: 'return',
+          recipient: u['id'] as string,
+          email: u['email'] as string,
           subject: 'Your Keel data is still here',
           html: winbackBody(String(u['name'] ?? 'there').split(' ')[0] || 'there', appUrl),
         })
@@ -439,48 +577,85 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
 
   // ── upgrade: free tenant ≥7d, engaged user (≥3 logins/14d), NOT in an
   //  active trial — the trial sequence owns conversion timing there. ──
-  const loginAgg = await db.collection('login_events').aggregate([
-    { $match: { success: true, created_at: { $gte: new Date(now - 14 * DAY) } } },
-    { $group: { _id: '$user_id', logins: { $sum: 1 } } },
-    { $match: { logins: { $gte: 3 } } },
-    { $limit: 500 },
-  ]).toArray()
+  const loginAgg = await db
+    .collection('login_events')
+    .aggregate([
+      { $match: { success: true, created_at: { $gte: new Date(now - 14 * DAY) } } },
+      { $group: { _id: '$user_id', logins: { $sum: 1 } } },
+      { $match: { logins: { $gte: 3 } } },
+      { $limit: 500 },
+    ])
+    .toArray()
   // Tenants that hit a paid wall in the last 14d qualify without the login
   // threshold — paying-intent beats passive engagement as a trigger.
   const intentTenants = new Set(
-    (await db.collection('growth_events')
-      .find({ event: 'upgrade_intent', created_at: { $gte: new Date(now - 14 * DAY) } }, { projection: { _id: 0, 'meta.tenant_id': 1 } })
-      .limit(500).toArray())
-      .map((e) => (e['meta'] as Record<string, unknown> | undefined)?.['tenant_id'] as string),
+    (
+      await db
+        .collection('growth_events')
+        .find(
+          { event: 'upgrade_intent', created_at: { $gte: new Date(now - 14 * DAY) } },
+          { projection: { _id: 0, 'meta.tenant_id': 1 } },
+        )
+        .limit(500)
+        .toArray()
+    ).map((e) => (e['meta'] as Record<string, unknown> | undefined)?.['tenant_id'] as string),
   )
   const engagedUserIds = loginAgg.map((r) => r['_id'] as string)
   if (engagedUserIds.length > 0 || intentTenants.size > 0) {
-    const userFilter: Record<string, unknown> = intentTenants.size > 0
-      ? { status: 'active', $or: [{ id: { $in: engagedUserIds } }, { tenant_id: { $in: [...intentTenants] } }] }
-      : { status: 'active', id: { $in: engagedUserIds } }
-    const users = await db.collection('users')
-      .find(userFilter, { projection: { _id: 0, id: 1, email: 1, name: 1, tenant_id: 1 } })
-      .toArray()
+    const userFilter: Record<string, unknown> =
+      intentTenants.size > 0
+        ? {
+            status: 'active',
+            $or: [{ id: { $in: engagedUserIds } }, { tenant_id: { $in: [...intentTenants] } }],
+          }
+        : { status: 'active', id: { $in: engagedUserIds } }
+    const users = await excludeMinorUsers(
+      db,
+      await db
+        .collection('users')
+        .find(userFilter, { projection: { _id: 0, id: 1, email: 1, name: 1, tenant_id: 1 } })
+        .toArray(),
+    )
     const tenantIds = [...new Set(users.map((u) => u['tenant_id'] as string))]
     const freeTenants = new Set(
-      (await db.collection('tenants')
-        // null/absent plan = free tier. $not $gt now excludes active trials
-        // (missing or already-past trial_ends_at) — trialing tenants get the
-        // trial sequence instead of a generic "what paid unlocks" nudge.
-        .find({ tenant_id: { $in: tenantIds }, plan: { $in: ['free', null] }, created_at: { $lte: new Date(now - 7 * DAY) }, 'billing.trial_ends_at': { $not: { $gt: new Date() } } },
-          { projection: { _id: 0, tenant_id: 1 } }).toArray())
-        .map((t) => t['tenant_id'] as string),
+      (
+        await db
+          .collection('tenants')
+          // null/absent plan = free tier. $not $gt now excludes active trials
+          // (missing or already-past trial_ends_at) — trialing tenants get the
+          // trial sequence instead of a generic "what paid unlocks" nudge.
+          .find(
+            {
+              tenant_id: { $in: tenantIds },
+              plan: { $in: ['free', null] },
+              created_at: { $lte: new Date(now - 7 * DAY) },
+              'billing.trial_ends_at': { $not: { $gt: new Date() } },
+            },
+            { projection: { _id: 0, tenant_id: 1 } },
+          )
+          .toArray()
+      ).map((t) => t['tenant_id'] as string),
     )
     const sentKeys = new Set(
-      (await lifecycleSendsCol(db).find({ sequence: 'upgrade', recipient: { $in: users.map((u) => u['id'] as string) } }, { projection: { _id: 0, key: 1 } }).toArray())
-        .map((s) => s['key'] as string),
+      (
+        await lifecycleSendsCol(db)
+          .find(
+            { sequence: 'upgrade', recipient: { $in: users.map((u) => u['id'] as string) } },
+            { projection: { _id: 0, key: 1 } },
+          )
+          .toArray()
+      ).map((s) => s['key'] as string),
     )
     for (const u of users) {
       if (!freeTenants.has(u['tenant_id'] as string)) continue
       const key = `upgrade:nudge:${u['id']}`
       if (sentKeys.has(key)) continue
       jobs.push({
-        key, sequence: 'upgrade', step: 'nudge', recipient: u['id'] as string, email: u['email'] as string,
+        key,
+        sequence: 'upgrade',
+        step: 'nudge',
+        recipient: u['id'] as string,
+        email: u['email'] as string,
         subject: 'What a paid plan unlocks',
         html: upgradeBody(String(u['name'] ?? 'there').split(' ')[0] || 'there', appUrl),
       })
@@ -492,21 +667,33 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
 
 /** One lifecycle pass — collects due steps, claims each in the ledger, sends.
  *  Honors marketing_paused globally. Returns the claimed rows. */
-export async function runLifecycleSweep(db: Db, opts: { maxPerSweep?: number; appUrl?: string } = {}): Promise<LifecycleSendDoc[]> {
+export async function runLifecycleSweep(
+  db: Db,
+  opts: { maxPerSweep?: number; appUrl?: string } = {},
+): Promise<LifecycleSendDoc[]> {
   await ensureLifecycleIndexes(db)
   if ((await getPlatformConfig(db)).marketing_paused) {
     log.info({}, 'marketing_paused — lifecycle sweep skipped')
     return []
   }
-  const appUrl = (opts.appUrl ?? process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
+  const appUrl = (opts.appUrl ?? process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(
+    /\/$/,
+    '',
+  )
   const max = opts.maxPerSweep ?? 100
   const jobs = await collectJobs(db, appUrl)
   const sent: LifecycleSendDoc[] = []
 
   for (const job of jobs.slice(0, max)) {
     const row: LifecycleSendDoc = {
-      id: randomUUID(), key: job.key, sequence: job.sequence, step: job.step,
-      recipient: job.recipient, email: job.email, status: 'sent', created_at: new Date(),
+      id: randomUUID(),
+      key: job.key,
+      sequence: job.sequence,
+      step: job.step,
+      recipient: job.recipient,
+      email: job.email,
+      status: 'sent',
+      created_at: new Date(),
     }
     try {
       await lifecycleSendsCol(db).insertOne(row)
@@ -514,13 +701,21 @@ export async function runLifecycleSweep(db: Db, opts: { maxPerSweep?: number; ap
       continue // dedup — another sweep already claimed this send
     }
     try {
-      await sendEmail(job.email, job.subject, job.html, job.leadId ? unsubUrl(appUrl, job.leadId) : undefined, { lk: job.key })
+      await sendEmail(
+        job.email,
+        job.subject,
+        job.html,
+        job.leadId ? unsubUrl(appUrl, job.leadId) : undefined,
+        { lk: job.key },
+      )
       // First nurture touch promotes the lead out of "new".
       if (job.leadId) {
-        await db.collection('leads').updateOne(
-          { id: job.leadId, stage: 'new' },
-          { $set: { stage: 'contacted', updated_at: new Date() } },
-        )
+        await db
+          .collection('leads')
+          .updateOne(
+            { id: job.leadId, stage: 'new' },
+            { $set: { stage: 'contacted', updated_at: new Date() } },
+          )
       }
       await getGrowthEventsCollection(db).insertOne({
         event: 'lifecycle_email_sent',
@@ -530,7 +725,10 @@ export async function runLifecycleSweep(db: Db, opts: { maxPerSweep?: number; ap
     } catch (err) {
       row.status = 'failed'
       row.error = String(err).slice(0, 300)
-      await lifecycleSendsCol(db).updateOne({ id: row.id }, { $set: { status: 'failed', error: row.error } })
+      await lifecycleSendsCol(db).updateOne(
+        { id: row.id },
+        { $set: { status: 'failed', error: row.error } },
+      )
     }
     sent.push(row)
   }

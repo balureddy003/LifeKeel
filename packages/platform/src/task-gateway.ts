@@ -44,7 +44,11 @@ export interface AiTaskPolicy {
   purpose?: string
   risk?: 'internal' | 'user_visible' | 'workflow_affecting' | 'external_effect'
   authority?: 'language_only' | 'candidate_for_review' | 'bounded_decision'
-  data_boundary: 'device_only' | 'lifekeel_infra' | 'approved_hosted_provider'
+  /** `lifekeel_infra` may fall back to hosted when the local model is
+   *  undeployed; `lifekeel_infra_required` fails closed instead — for
+   *  tasks whose data must never leave LifeKeel-operated infrastructure. */
+  data_boundary:
+    'device_only' | 'lifekeel_infra' | 'lifekeel_infra_required' | 'approved_hosted_provider'
   processor_terms_ref?: string
   provider_retention_class?:
     'none' | 'service_transient' | 'zero_data_retention' | 'limited_abuse_log'

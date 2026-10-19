@@ -39,9 +39,14 @@ afterAll(async () => {
 
 function seedLead(over: Record<string, unknown> = {}) {
   return db.collection('leads').insertOne({
-    id: 'lead-1', email: 'lead@example.com', name: 'Pat Lee',
-    stage: 'new', suppressed: false, score_band: 'mid',
-    consent: { marketing: true }, created_at: new Date(Date.now() - 2 * HOUR),
+    id: 'lead-1',
+    email: 'lead@example.com',
+    name: 'Pat Lee',
+    stage: 'new',
+    suppressed: false,
+    score_band: 'mid',
+    consent: { marketing: true },
+    created_at: new Date(Date.now() - 2 * HOUR),
     ...over,
   })
 }
@@ -60,9 +65,16 @@ describe('runLifecycleSweep — lead nurture', () => {
     await seedLead()
     const sent = await runLifecycleSweep(db)
     expect(sent).toHaveLength(1)
-    expect(sent[0]).toMatchObject({ sequence: 'lead_nurture', step: 'welcome', email: 'lead@example.com', status: 'sent' })
+    expect(sent[0]).toMatchObject({
+      sequence: 'lead_nurture',
+      step: 'welcome',
+      email: 'lead@example.com',
+      status: 'sent',
+    })
     expect((await db.collection('leads').findOne({ id: 'lead-1' }))!['stage']).toBe('contacted')
-    expect(await db.collection('growth_events').countDocuments({ event: 'lifecycle_email_sent' })).toBe(1)
+    expect(
+      await db.collection('growth_events').countDocuments({ event: 'lifecycle_email_sent' }),
+    ).toBe(1)
   })
 
   it('dedupes — the same step can never send twice', async () => {
@@ -89,7 +101,15 @@ describe('runLifecycleSweep — lead nurture', () => {
 
   it('stops nurturing the moment the lead signs up', async () => {
     await seedLead()
-    await db.collection('users').insertOne({ id: 'u1', email: 'lead@example.com', status: 'active', tenant_id: 't1', created_at: new Date() })
+    await db
+      .collection('users')
+      .insertOne({
+        id: 'u1',
+        email: 'lead@example.com',
+        status: 'active',
+        tenant_id: 't1',
+        created_at: new Date(),
+      })
     expect(await runLifecycleSweep(db)).toHaveLength(0)
   })
 })
@@ -97,7 +117,11 @@ describe('runLifecycleSweep — lead nurture', () => {
 describe('runLifecycleSweep — activation + upgrade', () => {
   it('nudges a user whose tenant still has no family profile after 48h', async () => {
     await db.collection('users').insertOne({
-      id: 'u1', email: 'u@example.com', name: 'Uma', tenant_id: 't1', status: 'active',
+      id: 'u1',
+      email: 'u@example.com',
+      name: 'Uma',
+      tenant_id: 't1',
+      status: 'active',
       created_at: new Date(Date.now() - 3 * DAY),
     })
     const sent = await runLifecycleSweep(db)
@@ -109,38 +133,58 @@ describe('runLifecycleSweep — activation + upgrade', () => {
   })
 
   it('nudges an engaged free-tenant user toward paid — once', async () => {
-    await db.collection('tenants').insertOne({ tenant_id: 't1', plan: 'free', created_at: new Date(Date.now() - 10 * DAY) })
+    await db
+      .collection('tenants')
+      .insertOne({ tenant_id: 't1', plan: 'free', created_at: new Date(Date.now() - 10 * DAY) })
     await db.collection('users').insertOne({
-      id: 'u1', email: 'u@example.com', name: 'Uma', tenant_id: 't1', status: 'active',
+      id: 'u1',
+      email: 'u@example.com',
+      name: 'Uma',
+      tenant_id: 't1',
+      status: 'active',
       created_at: new Date(Date.now() - 10 * DAY),
     })
-    await db.collection('login_events').insertMany(
-      [1, 2, 3].map(() => ({ user_id: 'u1', success: true, created_at: new Date() })),
-    )
+    await db
+      .collection('login_events')
+      .insertMany([1, 2, 3].map(() => ({ user_id: 'u1', success: true, created_at: new Date() })))
     const sent = await runLifecycleSweep(db)
     expect(sent.map((s) => s.sequence)).toEqual(['upgrade'])
     expect(await runLifecycleSweep(db)).toHaveLength(0)
   })
 
   it('leaves paid tenants and dormant users alone', async () => {
-    await db.collection('tenants').insertOne({ tenant_id: 't1', plan: 'growth', created_at: new Date(Date.now() - 10 * DAY) })
+    await db
+      .collection('tenants')
+      .insertOne({ tenant_id: 't1', plan: 'growth', created_at: new Date(Date.now() - 10 * DAY) })
     await db.collection('users').insertOne({
-      id: 'u1', email: 'u@example.com', tenant_id: 't1', status: 'active', created_at: new Date(Date.now() - 10 * DAY),
+      id: 'u1',
+      email: 'u@example.com',
+      tenant_id: 't1',
+      status: 'active',
+      created_at: new Date(Date.now() - 10 * DAY),
     })
-    await db.collection('login_events').insertMany(
-      [1, 2, 3].map(() => ({ user_id: 'u1', success: true, created_at: new Date() })),
-    )
+    await db
+      .collection('login_events')
+      .insertMany([1, 2, 3].map(() => ({ user_id: 'u1', success: true, created_at: new Date() })))
     expect(await runLifecycleSweep(db)).toHaveLength(0)
   })
 
   it('targets a free tenant that hit the paywall even without the login threshold', async () => {
-    await db.collection('tenants').insertOne({ tenant_id: 't1', plan: 'free', created_at: new Date(Date.now() - 10 * DAY) })
+    await db
+      .collection('tenants')
+      .insertOne({ tenant_id: 't1', plan: 'free', created_at: new Date(Date.now() - 10 * DAY) })
     await db.collection('users').insertOne({
-      id: 'u1', email: 'u@example.com', tenant_id: 't1', status: 'active', created_at: new Date(Date.now() - 10 * DAY),
+      id: 'u1',
+      email: 'u@example.com',
+      tenant_id: 't1',
+      status: 'active',
+      created_at: new Date(Date.now() - 10 * DAY),
     })
     // Zero logins — but one document upload hit the extraction wall.
     await db.collection('growth_events').insertOne({
-      event: 'upgrade_intent', meta: { tenant_id: 't1', feature: 'document_ai_extraction' }, created_at: new Date(),
+      event: 'upgrade_intent',
+      meta: { tenant_id: 't1', feature: 'document_ai_extraction' },
+      created_at: new Date(),
     })
     const sent = await runLifecycleSweep(db)
     expect(sent.map((s) => s.sequence)).toEqual(['upgrade'])
@@ -150,11 +194,18 @@ describe('runLifecycleSweep — activation + upgrade', () => {
 describe('runLifecycleSweep — trial sequence', () => {
   it('emails a tenant whose trial ends within 72h — once', async () => {
     await db.collection('tenants').insertOne({
-      tenant_id: 't1', plan: 'free', created_at: new Date(Date.now() - 12 * DAY),
+      tenant_id: 't1',
+      plan: 'free',
+      created_at: new Date(Date.now() - 12 * DAY),
       billing: { trial_ends_at: new Date(Date.now() + 2 * DAY), credits_balance: 40 },
     })
     await db.collection('users').insertOne({
-      id: 'u1', email: 'u@example.com', name: 'Uma', tenant_id: 't1', status: 'active', created_at: new Date(Date.now() - 12 * DAY),
+      id: 'u1',
+      email: 'u@example.com',
+      name: 'Uma',
+      tenant_id: 't1',
+      status: 'active',
+      created_at: new Date(Date.now() - 12 * DAY),
     })
     const sent = await runLifecycleSweep(db)
     expect(sent).toHaveLength(1)
@@ -164,11 +215,17 @@ describe('runLifecycleSweep — trial sequence', () => {
 
   it('sends the winback when a trial expired within the last 48h', async () => {
     await db.collection('tenants').insertOne({
-      tenant_id: 't1', plan: 'free', created_at: new Date(Date.now() - 20 * DAY),
+      tenant_id: 't1',
+      plan: 'free',
+      created_at: new Date(Date.now() - 20 * DAY),
       billing: { trial_ends_at: new Date(Date.now() - DAY), trial_expired: true },
     })
     await db.collection('users').insertOne({
-      id: 'u1', email: 'u@example.com', tenant_id: 't1', status: 'active', created_at: new Date(Date.now() - 20 * DAY),
+      id: 'u1',
+      email: 'u@example.com',
+      tenant_id: 't1',
+      status: 'active',
+      created_at: new Date(Date.now() - 20 * DAY),
     })
     const sent = await runLifecycleSweep(db)
     expect(sent[0]).toMatchObject({ sequence: 'trial', step: 'expired' })
@@ -176,15 +233,21 @@ describe('runLifecycleSweep — trial sequence', () => {
 
   it('does not generic-nudge a tenant mid-trial — the trial sequence owns them', async () => {
     await db.collection('tenants').insertOne({
-      tenant_id: 't1', plan: 'free', created_at: new Date(Date.now() - 10 * DAY),
+      tenant_id: 't1',
+      plan: 'free',
+      created_at: new Date(Date.now() - 10 * DAY),
       billing: { trial_ends_at: new Date(Date.now() + 10 * DAY) }, // 10d out — too early for 'ending'
     })
     await db.collection('users').insertOne({
-      id: 'u1', email: 'u@example.com', tenant_id: 't1', status: 'active', created_at: new Date(Date.now() - 10 * DAY),
+      id: 'u1',
+      email: 'u@example.com',
+      tenant_id: 't1',
+      status: 'active',
+      created_at: new Date(Date.now() - 10 * DAY),
     })
-    await db.collection('login_events').insertMany(
-      [1, 2, 3].map(() => ({ user_id: 'u1', success: true, created_at: new Date() })),
-    )
+    await db
+      .collection('login_events')
+      .insertMany([1, 2, 3].map(() => ({ user_id: 'u1', success: true, created_at: new Date() })))
     // Engaged + free would normally trigger 'upgrade' — but the trial is live.
     expect(await runLifecycleSweep(db)).toHaveLength(0)
   })
@@ -192,12 +255,21 @@ describe('runLifecycleSweep — trial sequence', () => {
 
 describe('runLifecycleSweep — churned-tenant winback', () => {
   it('emails a churned tenant still on free — once, after the 3d grace window', async () => {
-    await db.collection('tenants').insertOne({ tenant_id: 't1', plan: 'free', created_at: new Date(Date.now() - 60 * DAY) })
+    await db
+      .collection('tenants')
+      .insertOne({ tenant_id: 't1', plan: 'free', created_at: new Date(Date.now() - 60 * DAY) })
     await db.collection('users').insertOne({
-      id: 'u1', email: 'u@example.com', name: 'Uma', tenant_id: 't1', status: 'active', created_at: new Date(Date.now() - 60 * DAY),
+      id: 'u1',
+      email: 'u@example.com',
+      name: 'Uma',
+      tenant_id: 't1',
+      status: 'active',
+      created_at: new Date(Date.now() - 60 * DAY),
     })
     await db.collection('audit_log').insertOne({
-      action: 'billing.plan_downgraded', tenant_id: 't1', timestamp: new Date(Date.now() - 5 * DAY),
+      action: 'billing.plan_downgraded',
+      tenant_id: 't1',
+      timestamp: new Date(Date.now() - 5 * DAY),
     })
     const sent = await runLifecycleSweep(db)
     expect(sent).toHaveLength(1)
@@ -209,22 +281,92 @@ describe('runLifecycleSweep — churned-tenant winback', () => {
   it('leaves recent churns and re-subscribed tenants alone', async () => {
     // Too fresh (inside the 3d grace window) — tenant exists and is free,
     // only the timestamp excludes it.
-    await db.collection('tenants').insertOne({ tenant_id: 't1', plan: 'free', created_at: new Date(Date.now() - 60 * DAY) })
+    await db
+      .collection('tenants')
+      .insertOne({ tenant_id: 't1', plan: 'free', created_at: new Date(Date.now() - 60 * DAY) })
     await db.collection('audit_log').insertOne({
-      action: 'billing.plan_downgraded', tenant_id: 't1', timestamp: new Date(Date.now() - 12 * HOUR),
+      action: 'billing.plan_downgraded',
+      tenant_id: 't1',
+      timestamp: new Date(Date.now() - 12 * HOUR),
     })
     // Re-subscribed — stripe_subscription_id back on the tenant.
     await db.collection('tenants').insertOne({
-      tenant_id: 't2', plan: 'free', stripe_subscription_id: 'sub_1', created_at: new Date(Date.now() - 60 * DAY),
+      tenant_id: 't2',
+      plan: 'free',
+      stripe_subscription_id: 'sub_1',
+      created_at: new Date(Date.now() - 60 * DAY),
     })
     await db.collection('audit_log').insertOne({
-      action: 'billing.plan_downgraded', tenant_id: 't2', timestamp: new Date(Date.now() - 5 * DAY),
+      action: 'billing.plan_downgraded',
+      tenant_id: 't2',
+      timestamp: new Date(Date.now() - 5 * DAY),
     })
     await db.collection('users').insertMany([
-      { id: 'u1', email: 'a@x.com', tenant_id: 't1', status: 'active', created_at: new Date(Date.now() - 60 * DAY) },
-      { id: 'u2', email: 'b@x.com', tenant_id: 't2', status: 'active', created_at: new Date(Date.now() - 60 * DAY) },
+      {
+        id: 'u1',
+        email: 'a@x.com',
+        tenant_id: 't1',
+        status: 'active',
+        created_at: new Date(Date.now() - 60 * DAY),
+      },
+      {
+        id: 'u2',
+        email: 'b@x.com',
+        tenant_id: 't2',
+        status: 'active',
+        created_at: new Date(Date.now() - 60 * DAY),
+      },
     ])
     expect(await runLifecycleSweep(db)).toHaveLength(0)
+  })
+})
+
+describe('minor exclusion (intent 09)', () => {
+  async function seedMinorHousehold(memberOver: Record<string, unknown> = {}) {
+    await db.collection('tenants').insertOne({
+      tenant_id: 't1',
+      plan: 'free',
+      created_at: new Date(Date.now() - 12 * DAY),
+      billing: { trial_ends_at: new Date(Date.now() + 2 * DAY) },
+    })
+    await db.collection('users').insertOne({
+      id: 'kid-user',
+      email: 'kid@example.com',
+      name: 'Kit',
+      tenant_id: 't1',
+      status: 'active',
+      created_at: new Date(Date.now() - 3 * DAY),
+    })
+    await db.collection('family_groups').insertOne({
+      tenant_id: 't1',
+      members: [
+        { id: 'm-adult', user_id: 'adult-user', role: 'organizer', status: 'active' },
+        { id: 'm-kid', user_id: 'kid-user', role: 'child', status: 'active', ...memberOver },
+      ],
+    })
+  }
+
+  it('never sends activation/trial mail to a user whose roster member is a child', async () => {
+    await seedMinorHousehold()
+    expect(await runLifecycleSweep(db)).toHaveLength(0)
+  })
+
+  it('excludes by DOB too — an adult-role member under 18 is still a minor', async () => {
+    await seedMinorHousehold({
+      role: 'adult',
+      date_of_birth: new Date(Date.now() - 15 * 365 * DAY).toISOString().slice(0, 10),
+    })
+    expect(await runLifecycleSweep(db)).toHaveLength(0)
+  })
+
+  it('an 18th birthday restores eligibility', async () => {
+    await seedMinorHousehold({
+      role: 'adult',
+      date_of_birth: new Date(Date.now() - 19 * 365 * DAY).toISOString().slice(0, 10),
+    })
+    const sent = await runLifecycleSweep(db)
+    expect(sent.length).toBeGreaterThan(0)
+    expect(sent.every((s) => s.email === 'kid@example.com')).toBe(true)
   })
 })
 

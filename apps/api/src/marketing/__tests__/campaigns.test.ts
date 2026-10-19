@@ -8,7 +8,11 @@ import {
   sendCampaign,
   type CampaignDoc,
 } from '../campaigns.js'
-import { lifecycleSendsCol, userUnsubscribeToken, verifyUserUnsubscribeToken } from '../lifecycle-emails.js'
+import {
+  lifecycleSendsCol,
+  userUnsubscribeToken,
+  verifyUserUnsubscribeToken,
+} from '../lifecycle-emails.js'
 import { invalidatePlatformConfigCache } from '../../operator/platform-config.js'
 
 let mongod: MongoMemoryServer
@@ -39,16 +43,24 @@ afterAll(async () => {
 
 function seedUser(over: Record<string, unknown> = {}) {
   return db.collection('users').insertOne({
-    id: 'u1', email: 'user@example.com', name: 'Sam Keel', tenant_id: 't1',
-    status: 'active', created_at: new Date(Date.now() - 10 * DAY),
+    id: 'u1',
+    email: 'user@example.com',
+    name: 'Sam Keel',
+    tenant_id: 't1',
+    status: 'active',
+    created_at: new Date(Date.now() - 10 * DAY),
     ...over,
   })
 }
 
 function seedLead(over: Record<string, unknown> = {}) {
   return db.collection('leads').insertOne({
-    id: 'lead-1', email: 'lead@example.com', name: 'Pat Lee',
-    stage: 'new', suppressed: false, consent: { marketing: true },
+    id: 'lead-1',
+    email: 'lead@example.com',
+    name: 'Pat Lee',
+    stage: 'new',
+    suppressed: false,
+    consent: { marketing: true },
     created_at: new Date(Date.now() - 2 * DAY),
     ...over,
   })
@@ -56,10 +68,14 @@ function seedLead(over: Record<string, unknown> = {}) {
 
 function makeCampaign(over: Partial<CampaignDoc> = {}): CampaignDoc {
   return {
-    id: 'c1', name: 'Test blast', subject: 'Hi there',
+    id: 'c1',
+    name: 'Test blast',
+    subject: 'Hi there',
     body_text: 'Hello {{first_name}},\n\nSomething happened.',
     filter: { audience: 'both' },
-    status: 'draft', created_by: 'op-1', created_at: new Date(),
+    status: 'draft',
+    created_by: 'op-1',
+    created_at: new Date(),
     ...over,
   }
 }
@@ -110,6 +126,37 @@ describe('resolveAudience', () => {
     expect(no.map((x) => x.id)).toEqual(['u2'])
   })
 
+  it('users audience hard-excludes members who are minors (intent 09)', async () => {
+    await seedUser() // u1 on t1 — linked to a child roster member
+    await seedUser({ id: 'u2', email: 'parent@example.com' })
+    await db.collection('family_groups').insertOne({
+      tenant_id: 't1',
+      members: [
+        { id: 'm-adult', user_id: 'u2', role: 'organizer', status: 'active' },
+        { id: 'm-kid', user_id: 'u1', role: 'child', status: 'active' },
+      ],
+    })
+    const r = await resolveAudience(db, { audience: 'users' })
+    expect(r.map((x) => x.id)).toEqual(['u2'])
+  })
+
+  it('excludes an adult-role member whose DOB is under 18', async () => {
+    await seedUser()
+    await db.collection('family_groups').insertOne({
+      tenant_id: 't1',
+      members: [
+        {
+          id: 'm-1',
+          user_id: 'u1',
+          role: 'adult',
+          status: 'active',
+          date_of_birth: new Date(Date.now() - 15 * 365 * DAY).toISOString().slice(0, 10),
+        },
+      ],
+    })
+    expect(await resolveAudience(db, { audience: 'users' })).toEqual([])
+  })
+
   it('leads audience requires consent and honors suppression + stages', async () => {
     await seedLead()
     await seedLead({ id: 'l2', email: 'noconsent@example.com', consent: { marketing: false } })
@@ -117,7 +164,10 @@ describe('resolveAudience', () => {
     await seedLead({ id: 'l4', email: 'converted@example.com', stage: 'converted' })
     const r = await resolveAudience(db, { audience: 'leads' })
     expect(r.map((x) => x.id)).toEqual(['lead-1'])
-    const withConverted = await resolveAudience(db, { audience: 'leads', lead_stages: ['converted'] })
+    const withConverted = await resolveAudience(db, {
+      audience: 'leads',
+      lead_stages: ['converted'],
+    })
     expect(withConverted.map((x) => x.id)).toEqual(['l4'])
   })
 })
