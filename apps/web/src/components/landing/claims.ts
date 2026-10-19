@@ -166,7 +166,13 @@ export const CLAIMS: Claim[] = [
     id: 'no-training',
     text: 'Family data is never used for training',
     status: 'blocked',
-    forbidden: ['not used for training', 'never used to train', 'nothing trains'],
+    forbidden: [
+      'not used for training',
+      'never used to train',
+      'nothing trains',
+      'to train models',
+      'to train ai',
+    ],
   },
   {
     id: 'sign-in-link',

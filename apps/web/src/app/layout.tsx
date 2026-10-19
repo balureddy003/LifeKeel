@@ -173,10 +173,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     },
                     {
                       '@type': 'Question',
-                      name: 'Is my financial data sold or used to train AI models?',
+                      name: 'Is my financial data sold?',
                       acceptedAnswer: {
                         '@type': 'Answer',
-                        text: "No. Your financial data isn't sold, and it isn't used to train models beyond the request that needs it. Connector passwords and access tokens are encrypted before they're ever stored.",
+                        text: "No. Your financial data isn't sold. Approved AI providers process it only for the request, and the privacy notice lists who they are. Connector passwords and access tokens are encrypted before they're ever stored.",
                       },
                     },
                     {

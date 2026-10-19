@@ -62,8 +62,8 @@ action on a family's behalf without a human approving each step.
 
 - Connector passwords and access tokens are encrypted at rest, not just in
   transit.
-- Financial data is never sold and is not used to train models beyond the
-  request that needs it.
+- Financial data is never sold. Approved AI providers process it only for the
+  request; the privacy notice lists who they are.
 - No commissions, no affiliate links, no partner arrangements with insurers
   or financial product providers.
 - Users can export their data and delete their account themselves from

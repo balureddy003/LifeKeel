@@ -322,8 +322,8 @@ export function MarketingLanding() {
             <div>
               <div className="text-subhead font-bold mb-0.5">Never sold</div>
               <p className="text-footnote text-ink-tertiary leading-relaxed">
-                Your financial data isn&apos;t sold, and it isn&apos;t used to train models beyond
-                the request that needs it.
+                Your financial data isn&apos;t sold. Approved AI providers process it only for the
+                request you make.
               </p>
             </div>
           </div>
@@ -343,11 +343,11 @@ export function MarketingLanding() {
       <LifeKeelPlusSpotlight />
 
       {/* Pricing — includes competitive context per market-positioning doc:
-          "for less than what you pay for a streaming service, Keel watches
-          whether your family is protected" */}
+          "for less than what you pay for a streaming service" (the wording was
+          dropped: it implied watching and protecting, which the claims registry does not back) */}
       <div id="pricing" className="max-w-4xl mx-auto px-6 sm:px-10 py-10 sm:py-16">
         <h2 className="text-title-md lg:text-title-lg font-bold text-center mb-2">
-          Less than a streaming service. More than a safety net.
+          Free to start. One optional paid plan.
         </h2>
         <p className="text-sm text-ink-tertiary text-center mb-7 sm:mb-10 max-w-sm mx-auto">
           Checking what you have told Keel starts free. The only paid tier adds AI document reading.
@@ -468,8 +468,8 @@ export function MarketingLanding() {
               a: 'LifeKeel is free to start, no credit card required. Keel Plus is £7.99/month and adds AI document reading (provider, policy number, amount, and dates pulled automatically) and an AI-summarised inbox on top of everything in the free plan.',
             },
             {
-              q: 'Is my financial data sold or used to train AI models?',
-              a: "No. Your financial data isn't sold, and it isn't used to train models beyond the request that needs it. Connector passwords and access tokens are encrypted before they're ever stored.",
+              q: 'Is my financial data sold?',
+              a: "No. Your financial data isn't sold. Approved AI providers process it only for the request, and the privacy notice lists who they are. Connector passwords and access tokens are encrypted before they're ever stored.",
             },
             {
               q: 'Can I cancel Keel Plus anytime?',

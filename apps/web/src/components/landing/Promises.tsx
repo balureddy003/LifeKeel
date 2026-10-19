@@ -16,7 +16,7 @@ export const PROMISES: { claim: string; title: string; body: string }[] = [
   {
     claim: 'no-policy-picks',
     title: 'No switching advice',
-    body: 'Keel does not say a policy is too dear or point you to a cheaper one. It shows what you hold and when it renews.',
+    body: 'Keel does not judge what you pay or point you to a different policy. It shows what you hold and when it renews.',
   },
   {
     claim: 'draft-insurer',
