@@ -23,7 +23,7 @@ import { z } from 'zod'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { getTenantCollection } from '@lifekeel/platform'
-import { familyDataLlmFromEnv } from '../local-model.js'
+import { taskLlm } from '../ai/task-gateway.js'
 import { getSignalsCollection, getLifeChangeNudgeStateCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { persistSignal } from '../signals.js'
@@ -87,8 +87,6 @@ interface LifeEventSignalDoc {
 }
 
 export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
-  const prepareLlmFn = familyDataLlmFromEnv()
-
   const profileFor = (tenantId: string) =>
     getTenantCollection<FinancialProfile & { tenant_id: string }>(
       db,
@@ -279,6 +277,7 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
         return reply.status(404).send({ error: 'Step not found' })
       }
 
+      const prepareLlmFn = taskLlm('draft.outreach.v1', tenant_id)
       const content = step.contact
         ? await generateDraft(prepareLlmFn, {
             reasoning: step.body,

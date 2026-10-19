@@ -72,7 +72,6 @@ import {
 } from './auth/session-cookie.js'
 import { registerSocialAuthRoutes } from './routes/auth-social.js'
 import {
-  createLlmRouterFromEnv,
   LlmResponseCache,
   MongoLlmCacheStore,
   LlmBudgetGuard,
@@ -91,6 +90,7 @@ import { registerConnectorCredentialRoutes } from './routes/connector-credential
 import { DeliveryRouter } from './delivery/delivery-router.js'
 import { createMoveJudge } from './delivery/move-judge.js'
 import { localDecisionFromEnv } from './local-model.js'
+import { initTaskGateway, taskLlmFor, taskDecideFor, taskVision } from './ai/task-gateway.js'
 import { connectorSchemaRegistry } from '@lifekeel/workflows'
 import cron from 'node-cron'
 import { queueManager } from './queue/QueueManager.js'
@@ -232,8 +232,8 @@ if (process.env['LIFEKEEL_LICENSE_KEY'] && process.env['LIFEKEEL_LICENSE_PUBLIC_
   )
   if (license.expired && !license.grace_period) process.env['LIFEKEEL_EDITION'] = 'busl'
 }
-// LLM function available module-wide for the goal compiler and other routes
-const globalLlmFn = createLlmRouterFromEnv()
+// LLM access is task-governed (intent 01): every model call resolves a
+// policy from definitions/ai-tasks.yaml via taskLlmFor/taskDecideFor.
 
 // MongoDB-backed app database (shares the singleton client from db.ts) —
 // "workflowDb" is a legacy name from before the workflow engine was removed;
@@ -245,12 +245,15 @@ let deliveryRouter: DeliveryRouter | undefined
 try {
   const mongoClient = await getMongoClient()
   workflowDb = mongoClient.db(process.env['MONGODB_DB'] ?? 'lifekeel')
+  // Load the AI task registry before any model path is wired — production
+  // fails closed on unknown task_ids from here on (intent 01).
+  initTaskGateway(workflowDb)
   // Self-hosted judge model (infra/local-judge): when configured, no insight text
   // is sent to a cloud LLM and the judge spends no tokens.
-  const localJudge = localDecisionFromEnv('judge')
+  const localModelConfigured = Boolean(process.env['LOCAL_JUDGE_BASE_URL'])
   log.info(
     {
-      judge: localJudge
+      judge: localModelConfigured
         ? process.env['JUDGE_SHADOW'] === 'true'
           ? 'cloud-with-local-shadow'
           : 'local'
@@ -260,9 +263,14 @@ try {
   )
   deliveryRouter = new DeliveryRouter(
     workflowDb,
-    createMoveJudge(globalLlmFn, workflowDb, localJudge, {
-      shadow: process.env['JUDGE_SHADOW'] === 'true',
-    }),
+    createMoveJudge(
+      taskLlmFor('insight.delivery_judge.v1'),
+      workflowDb,
+      taskDecideFor('insight.delivery_judge.v1', localDecisionFromEnv('judge')),
+      {
+        shadow: process.env['JUDGE_SHADOW'] === 'true',
+      },
+    ),
   )
   // KEEL-003: every cron.schedule job below runs under this lock, keyed by
   // its own name — deploy-api.yml allows up to 4 Cloud Run replicas, and
@@ -373,14 +381,17 @@ try {
   // Retry documents whose local OCR/extraction failed (status 'error'). Only
   // relevant when the self-hosted model is configured; bounded per document by
   // MAX_DOCUMENT_ATTEMPTS and per sweep by SWEEP_LIMIT (see ocr/retry-failed.ts).
-  const ocrRetryDecide = localDecisionFromEnv('ocr')
-  if (ocrRetryDecide) {
+  if (localModelConfigured) {
     cron.schedule(
       '*/10 * * * *',
       async () => {
         try {
           await withCronLock(workflowDb, 'document-ocr-retry', () =>
-            retryFailedDocuments(workflowDb, ocrRetryDecide),
+            retryFailedDocuments(
+              workflowDb,
+              taskDecideFor('document.extract.v1', localDecisionFromEnv('ocr')),
+              (tenantId) => taskVision('document.extract.v1', tenantId),
+            ),
           )
         } catch (err) {
           log.error({ err }, 'Document OCR retry cron failed')
@@ -419,7 +430,7 @@ try {
     async () => {
       try {
         await withCronLock(workflowDb, 'marketing-generate', async () => {
-          await generateDailyMarketingDrafts(workflowDb, globalLlmFn)
+          await generateDailyMarketingDrafts(workflowDb, taskLlmFor('marketing.social_draft.v1'))
         })
       } catch (err) {
         log.error({ err }, 'Marketing draft generation failed')
@@ -1130,7 +1141,7 @@ try {
     (tenantId, task, hit) => recordLlmCacheHitMiss(tenantId, task, hit),
   )
   const budgetGuard = new LlmBudgetGuard(workflowDb)
-  const llmScorer = new ApiLlmScorer(workflowDb, globalLlmFn, {
+  const llmScorer = new ApiLlmScorer(workflowDb, taskLlmFor('insight.score_enrichment.v1'), {
     cache: llmCache,
     budgetGuard,
     disagreementThreshold: 0.15,
@@ -1173,9 +1184,10 @@ try {
       'Local embeddings unavailable — Tier 2 disabled, falling back to trie + LLM only',
     )
   }
+  // No live classify() callers exist — the Tier-3 LLM fallback therefore
+  // gets no fn rather than an ungoverned one (intent 01 tripwire).
   intentClassifier = new IntentClassifier({
     db: workflowDb,
-    llmFn: globalLlmFn,
     embedFn: intentEmbedFn,
     embeddingCache: true, // LRU cache (default 10K entries, 24h TTL)
   })

@@ -9,6 +9,9 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import Fastify from 'fastify'
 import { registerInsightRoutes } from '../insights.js'
+import { initTestGateway } from '../../__tests__/test-gateway.js'
+
+initTestGateway()
 
 const llmMock = vi.fn(async (_system: string, prompt: string) => `Draft based on: ${prompt}`)
 
@@ -23,7 +26,9 @@ const INSIGHT_ID = 'insight-1'
 function makeInsightsCol(insight: Record<string, unknown> | null) {
   return {
     findOne: vi.fn(async (filter: Record<string, unknown>) =>
-      insight && filter['id'] === insight['id'] && filter['tenant_id'] === insight['tenant_id'] ? insight : null,
+      insight && filter['id'] === insight['id'] && filter['tenant_id'] === insight['tenant_id']
+        ? insight
+        : null,
     ),
     updateOne: vi.fn(async () => ({ acknowledged: true })),
   }
@@ -59,7 +64,9 @@ const BASE_INSIGHT = {
 describe('POST /insights/:id/prepare', () => {
   beforeEach(() => {
     llmMock.mockClear()
-    llmMock.mockImplementation(async (_system: string, prompt: string) => `Draft based on: ${prompt}`)
+    llmMock.mockImplementation(
+      async (_system: string, prompt: string) => `Draft based on: ${prompt}`,
+    )
   })
 
   it('generates a draft grounded in the insight and persists it', async () => {
@@ -96,7 +103,9 @@ describe('POST /insights/:id/prepare', () => {
   })
 
   it('degrades gracefully (200, draft: null) when the LLM call fails', async () => {
-    llmMock.mockImplementation(async () => { throw new Error('ANTHROPIC_API_KEY not set') })
+    llmMock.mockImplementation(async () => {
+      throw new Error('ANTHROPIC_API_KEY not set')
+    })
     const { app } = await buildApp(BASE_INSIGHT)
     const res = await app.inject({ method: 'POST', url: `/insights/${INSIGHT_ID}/prepare` })
 
@@ -112,7 +121,10 @@ describe('POST /insights/:id/prepare', () => {
     // not prose — this file's own doc comments legitimately name
     // "@sendgrid/mail" and "SENDGRID_API_KEY" to explain why they must
     // never appear as real code below.
-    const draftSource = readFileSync(new URL('../../insights/generate-draft.ts', import.meta.url), 'utf-8')
+    const draftSource = readFileSync(
+      new URL('../../insights/generate-draft.ts', import.meta.url),
+      'utf-8',
+    )
     const insightsSource = readFileSync(new URL('../insights.ts', import.meta.url), 'utf-8')
 
     for (const source of [draftSource, insightsSource]) {

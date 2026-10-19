@@ -22,6 +22,7 @@ import type { Engine, Insight } from '@lifekeel/engine'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { processDocument } from '../ocr/extract.js'
 import { localDecisionFromEnv } from '../local-model.js'
+import { taskDecide, taskVision } from '../ai/task-gateway.js'
 import {
   evaluateProfileAndGenerateInsights,
   FinancialProfileSchema,
@@ -230,15 +231,18 @@ export function registerDocumentRoutes(
       if (aiExtractionEnabled) {
         log.info({ documentId, filename, tenant_id }, 'Document stored, starting OCR processing')
         // Trigger async OCR processing (non-blocking — errors handled in processDocument)
-        processDocument(
-          db,
-          documentId,
-          tenant_id,
-          fileBuffer,
-          mimeType,
-          filename,
-          localDecisionFromEnv('ocr'),
-        ).catch((err) => {
+        void (async () => {
+          await processDocument(
+            db,
+            documentId,
+            tenant_id,
+            fileBuffer,
+            mimeType,
+            filename,
+            taskDecide('document.extract.v1', tenant_id, localDecisionFromEnv('ocr')),
+            await taskVision('document.extract.v1', tenant_id),
+          )
+        })().catch((err) => {
           log.error({ err, documentId }, 'OCR processing threw unhandled error')
         })
       } else {
@@ -404,7 +408,8 @@ export function registerDocumentRoutes(
       Buffer.concat(chunks),
       String(doc['mime_type'] ?? ''),
       String(doc['filename'] ?? 'document'),
-      localDecisionFromEnv('ocr'),
+      taskDecide('document.extract.v1', tenant_id, localDecisionFromEnv('ocr')),
+      await taskVision('document.extract.v1', tenant_id),
     )
     const after = await documents.findOne({ id: req.params.id })
     return {

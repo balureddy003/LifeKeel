@@ -18,8 +18,8 @@
 import { z } from 'zod'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { getTenantCollection, type LlmFn } from '@lifekeel/platform'
-import { familyDataLlmFromEnv } from '../local-model.js'
+import { getTenantCollection } from '@lifekeel/platform'
+import { taskLlm } from '../ai/task-gateway.js'
 import { getInsightsCollection, getSignalsCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { type ScenarioResult, type ScenarioTimelinePoint } from '../scenarios/calculate.js'
@@ -547,7 +547,8 @@ function formatTimeline(result: ScenarioResult): string {
 }
 
 export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
-  const llmFn: LlmFn = familyDataLlmFromEnv()
+  // Governed per request: assistant.answer.v1 / assistant.scenario_narration.v1
+  // (intent 01) — model allowlist, input ceiling, deadline, breaker, guards.
 
   app.post<{ Body: { query?: string } }>(
     '/assistant/ask',
@@ -590,7 +591,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
       const prompt = `Family data:\n${context}\n\nQuestion: ${query}`
 
       try {
-        const content = await llmFn(SYSTEM_PROMPT, prompt, 'tier:fast')
+        const content = await taskLlm('assistant.answer.v1', tenant_id)(SYSTEM_PROMPT, prompt)
         getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
           is_live: true,
           ...(member_id ? { member_id } : {}),
@@ -670,7 +671,10 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
         `Question: ${question ?? 'What does this scenario mean for our finances?'}`
 
       try {
-        const content = await llmFn(SYSTEM_PROMPT, prompt, 'tier:fast')
+        const content = await taskLlm('assistant.scenario_narration.v1', tenant_id)(
+          SYSTEM_PROMPT,
+          prompt,
+        )
         getAuditLogger()?.fromRequest(req, 'assistant.simulate', 'assistant', 'simulate', {
           is_live: true,
         })

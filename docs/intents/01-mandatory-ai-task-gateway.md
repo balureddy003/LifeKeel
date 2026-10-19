@@ -33,3 +33,47 @@ existing call sites.
 
 **Becomes** — PRD number once accepted: docs/prd/NNN-*.md (or PRD-142
 amendment if scope merges cleanly)
+
+---
+
+## Implementation record (2026-10)
+
+**Shipped.** Registry at `definitions/ai-tasks.yaml` (all 13 §8.4 tasks — the
+architecture list contains 13 names, not 12); platform enforcement in
+`packages/platform/src/task-gateway.ts` (`governedLlm` / `governedDecide` /
+`governedVision`); API wiring in `apps/api/src/ai/task-gateway.ts`
+(`initTaskGateway` at boot, `taskLlm/taskLlmFor/taskDecide/taskDecideFor/
+taskVision` factories).
+
+**Decisions taken:**
+
+- Call sites keep the plain `LlmFn`/`DecisionFn` signature — they changed only
+  *where* the fn comes from. Per-tenant factories (`taskLlmFor`) serve
+  constructors that handle many tenants (scorer, move judge).
+- `data_boundary: device_only` has no server-side path — `taskLlm` throws by
+  construction rather than trusting call sites to check.
+- OCR's direct OpenAI SDK vision call (previously the largest bypass) is
+  wrapped by `governedVision` — same ceiling/deadline/breaker/guard/usage
+  treatment, image parts exempt from the text-token estimate.
+- The router's transport `withRetry` remains the single retry layer; the
+  breaker counts outcomes via `callOnce` (no nested retry).
+- `(task_id, tenant_id)` attribution rides `llmCallContext`
+  (AsyncLocalStorage) into `recordUsage` → `CostLedger`, correct under
+  concurrent tenants sharing one router.
+
+**Deferred inside this intent (recorded, not silently dropped):**
+
+- Atomic budget reservation + reconcile — pre-call budget check is enforced;
+  reservation is the remaining §8.15 debt item 1.
+- Processor-terms review-date blocking — fields are required at parse time;
+  expiry blocking awaits an operator/legal data source (debt item 2).
+- `IntentClassifier` Tier-3 LLM fallback gets no fn — no live `classify()`
+  callers exist, so the tier is off rather than ungoverned.
+- `eval/` CLIs are allow-listed in the tripwire as offline operator tooling.
+
+**Evidence:** `packages/platform/src/__tests__/task-gateway.test.ts` (27 tests:
+parsing, fail-closed, allowlist, ceiling, deadline, breaker, guard symmetry,
+tenant attribution, `llmCallContext`, vision); `apps/api/src/__tests__/
+ai-task-gateway.test.ts` (11 tests: constructor allowlist, `localDecisionFromEnv`
+wrapper check, registry↔call-site consistency, §8.4 seed completeness,
+device_only no-path, integration).

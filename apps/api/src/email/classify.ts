@@ -2,9 +2,9 @@
  * Classifies and summarizes a single email for the Inbox — is this a
  * financial notification worth surfacing (bill, renewal, statement, price
  * change), and if so, what's the one-line summary and suggested action?
- * Text-only, so it goes through the same provider-agnostic LlmFn the rest
- * of the app uses (createLlmRouterFromEnv) rather than the vision-specific
- * client extract.ts needs for document images.
+ * Text-only, so it goes through a task-governed LlmFn the rest of the app
+ * uses (ai/task-gateway.ts taskLlm) rather than the vision-specific client
+ * extract.ts needs for document images.
  */
 
 import { z } from 'zod'
@@ -42,7 +42,18 @@ export interface EmailPolicyDetails {
   contactEmail?: string
 }
 
-const POLICY_TYPES = new Set(['life', 'health', 'critical_illness', 'income_protection', 'travel', 'home', 'car', 'pension', 'mortgage', 'other'])
+const POLICY_TYPES = new Set([
+  'life',
+  'health',
+  'critical_illness',
+  'income_protection',
+  'travel',
+  'home',
+  'car',
+  'pension',
+  'mortgage',
+  'other',
+])
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
 // Typed output for the local model path. Ollama constrains decoding to
@@ -54,17 +65,19 @@ const LocalEmailSchema = z.object({
   action_label: z.string(),
   action_type: z.enum(['review', 'renew', 'compare', 'update', 'info']),
   priority: z.enum(['high', 'medium', 'low']),
-  policy: z.object({
-    provider: z.string().nullish(),
-    type: z.string().nullish(),
-    policy_number: z.string().nullish(),
-    cover_amount: z.number().nullish(),
-    currency: z.string().nullish(),
-    monthly_premium: z.number().nullish(),
-    renewal_date: z.string().nullish(),
-    contact_phone: z.string().nullish(),
-    contact_email: z.string().nullish(),
-  }).nullish(),
+  policy: z
+    .object({
+      provider: z.string().nullish(),
+      type: z.string().nullish(),
+      policy_number: z.string().nullish(),
+      cover_amount: z.number().nullish(),
+      currency: z.string().nullish(),
+      monthly_premium: z.number().nullish(),
+      renewal_date: z.string().nullish(),
+      contact_phone: z.string().nullish(),
+      contact_email: z.string().nullish(),
+    })
+    .nullish(),
 })
 
 // Every policy key is required with an explicit null option: measured on the OCR
@@ -92,7 +105,11 @@ const LOCAL_EMAIL_JSON_SCHEMA = {
     priority: { type: 'string', enum: ['high', 'medium', 'low'] },
     policy: {
       anyOf: [
-        { type: 'object', properties: POLICY_JSON_PROPERTIES, required: Object.keys(POLICY_JSON_PROPERTIES) },
+        {
+          type: 'object',
+          properties: POLICY_JSON_PROPERTIES,
+          required: Object.keys(POLICY_JSON_PROPERTIES),
+        },
         { type: 'null' },
       ],
     },
@@ -104,8 +121,10 @@ const LOCAL_EMAIL_JSON_SCHEMA = {
 function sanitizePolicy(raw: unknown): EmailPolicyDetails | undefined {
   if (!raw || typeof raw !== 'object') return undefined
   const r = raw as Record<string, unknown>
-  const str = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined)
-  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined)
+  const str = (v: unknown, max: number) =>
+    typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined
+  const num = (v: unknown) =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined
   const phone = str(r['contact_phone'], 40)
   const email = str(r['contact_email'], 254)
   const out: EmailPolicyDetails = {
@@ -113,16 +132,24 @@ function sanitizePolicy(raw: unknown): EmailPolicyDetails | undefined {
     type: typeof r['type'] === 'string' && POLICY_TYPES.has(r['type']) ? r['type'] : undefined,
     policyNumber: str(r['policy_number'], 60),
     coverAmount: num(r['cover_amount']),
-    currency: typeof r['currency'] === 'string' && /^[A-Z]{3}$/.test(r['currency']) ? r['currency'] : undefined,
+    currency:
+      typeof r['currency'] === 'string' && /^[A-Z]{3}$/.test(r['currency'])
+        ? r['currency']
+        : undefined,
     monthlyPremium: num(r['monthly_premium']),
-    renewalDate: typeof r['renewal_date'] === 'string' && ISO_DATE.test(r['renewal_date']) ? r['renewal_date'] : undefined,
+    renewalDate:
+      typeof r['renewal_date'] === 'string' && ISO_DATE.test(r['renewal_date'])
+        ? r['renewal_date']
+        : undefined,
     // Loose shape checks, not full validation — this is display/tel:/
     // mailto: text the family reviews before it's ever added to their
     // profile, not something dialed or sent automatically.
     contactPhone: phone && /^[+\d][\d\s()-]{5,}$/.test(phone) ? phone : undefined,
     contactEmail: email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : undefined,
   }
-  const defined = Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined)) as EmailPolicyDetails
+  const defined = Object.fromEntries(
+    Object.entries(out).filter(([, v]) => v !== undefined),
+  ) as EmailPolicyDetails
   return Object.keys(defined).length > 0 ? defined : undefined
 }
 
@@ -152,7 +179,13 @@ If not relevant, return {"is_financial": false, "summary": "", "action_label": "
 const VALID_ACTION_TYPES = new Set(['review', 'renew', 'compare', 'update', 'info'])
 const VALID_PRIORITIES = new Set(['high', 'medium', 'low'])
 
-const NOT_FINANCIAL: EmailClassification = { isFinancial: false, summary: '', actionLabel: '', actionType: 'info', priority: 'low' }
+const NOT_FINANCIAL: EmailClassification = {
+  isFinancial: false,
+  summary: '',
+  actionLabel: '',
+  actionType: 'info',
+  priority: 'low',
+}
 const FAILED: EmailClassification = { ...NOT_FINANCIAL, failed: true }
 
 interface RawClassification {
@@ -165,8 +198,12 @@ interface RawClassification {
 }
 
 function toClassification(parsed: RawClassification): EmailClassification {
-  const actionType = VALID_ACTION_TYPES.has(parsed.action_type ?? '') ? (parsed.action_type as EmailClassification['actionType']) : 'info'
-  const priority = VALID_PRIORITIES.has(parsed.priority ?? '') ? (parsed.priority as EmailClassification['priority']) : 'low'
+  const actionType = VALID_ACTION_TYPES.has(parsed.action_type ?? '')
+    ? (parsed.action_type as EmailClassification['actionType'])
+    : 'info'
+  const priority = VALID_PRIORITIES.has(parsed.priority ?? '')
+    ? (parsed.priority as EmailClassification['priority'])
+    : 'low'
 
   return {
     isFinancial: Boolean(parsed.is_financial),
@@ -217,16 +254,29 @@ export type EncoderOutcome =
   | 'encoder_extra'
   | 'shadow_error'
 
-export async function classifyEmail(llm: LlmFn, email: FetchedEmail, opts: ClassifyEmailOptions = {}): Promise<EmailClassification> {
+export async function classifyEmail(
+  llm: LlmFn,
+  email: FetchedEmail,
+  opts: ClassifyEmailOptions = {},
+): Promise<EmailClassification> {
   if (opts.prefilter && !mightBePolicyRelated(email)) return NOT_FINANCIAL
 
   const enc = opts.encoder
-  const report = (o: EncoderOutcome) => { try { enc?.onOutcome?.(o) } catch { /* metrics must never affect classification */ } }
+  const report = (o: EncoderOutcome) => {
+    try {
+      enc?.onOutcome?.(o)
+    } catch {
+      /* metrics must never affect classification */
+    }
+  }
 
   if (enc?.mode === 'gate') {
     try {
       const verdict = await enc.classify(email)
-      if (!verdict.relevant) { report('gated_skip'); return NOT_FINANCIAL }
+      if (!verdict.relevant) {
+        report('gated_skip')
+        return NOT_FINANCIAL
+      }
       report('gated_pass')
     } catch {
       report('error_fell_back') // fail open to the LLM: an encoder outage must not drop mail
@@ -238,15 +288,25 @@ export async function classifyEmail(llm: LlmFn, email: FetchedEmail, opts: Class
   if (enc?.mode === 'shadow' && !classification.failed) {
     // Compared after the LLM has decided, and never awaited by the caller's decision path.
     void enc.classify(email).then(
-      (v) => report(v.relevant === classification.isFinancial ? 'agree' : classification.isFinancial ? 'encoder_missed' : 'encoder_extra'),
+      (v) =>
+        report(
+          v.relevant === classification.isFinancial
+            ? 'agree'
+            : classification.isFinancial
+              ? 'encoder_missed'
+              : 'encoder_extra',
+        ),
       () => report('shadow_error'),
     )
   }
   return classification
 }
 
-async function classifyWithModel(llm: LlmFn, email: FetchedEmail, opts: ClassifyEmailOptions): Promise<EmailClassification> {
-
+async function classifyWithModel(
+  llm: LlmFn,
+  email: FetchedEmail,
+  opts: ClassifyEmailOptions,
+): Promise<EmailClassification> {
   // KEEL-016: previously string-concatenated directly with no delimiter and
   // no "this is data, not instructions" framing — an inbound email's
   // sender/subject/body is fully attacker-controlled. Explicit tags here,

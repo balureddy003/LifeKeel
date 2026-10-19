@@ -7,7 +7,12 @@
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import Fastify from 'fastify'
-import { registerMarketingPostRoutes, publishDueMarketingPosts, generateDailyMarketingDrafts, pollMarketingEngagement } from '../marketing-posts.js'
+import {
+  registerMarketingPostRoutes,
+  publishDueMarketingPosts,
+  generateDailyMarketingDrafts,
+  pollMarketingEngagement,
+} from '../marketing-posts.js'
 import { AUTO_EXECUTE_TRUST_THRESHOLD } from '../../jobs/auto-execute-trusted.js'
 
 const TENANT = 'tenant-1'
@@ -16,7 +21,7 @@ const USER = 'user-1'
 function matchesFilter(doc: Record<string, unknown>, filter: Record<string, unknown>): boolean {
   return Object.entries(filter).every(([key, cond]) => {
     if (cond && typeof cond === 'object' && '$in' in (cond as Record<string, unknown>)) {
-      return ((cond as { $in: unknown[] }).$in).includes(doc[key])
+      return (cond as { $in: unknown[] }).$in.includes(doc[key])
     }
     return doc[key] === cond
   })
@@ -36,13 +41,20 @@ function makeDb() {
   const connections: Record<string, unknown>[] = []
   const postsCol = {
     createIndex: vi.fn(async () => ({})),
-    insertOne: vi.fn(async (doc: Record<string, unknown>) => { posts.push(doc) }),
-    findOne: vi.fn(async (filter: Record<string, unknown>) => posts.find((d) => matchesFilter(d, filter)) ?? null),
-    updateOne: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
-      const doc = posts.find((d) => matchesFilter(d, filter))
-      if (doc) applySet(doc, update.$set)
-      return { modifiedCount: doc ? 1 : 0 }
+    insertOne: vi.fn(async (doc: Record<string, unknown>) => {
+      posts.push(doc)
     }),
+    findOne: vi.fn(
+      async (filter: Record<string, unknown>) =>
+        posts.find((d) => matchesFilter(d, filter)) ?? null,
+    ),
+    updateOne: vi.fn(
+      async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
+        const doc = posts.find((d) => matchesFilter(d, filter))
+        if (doc) applySet(doc, update.$set)
+        return { modifiedCount: doc ? 1 : 0 }
+      },
+    ),
     findOneAndUpdate: vi.fn(
       async (
         filter: Record<string, unknown>,
@@ -57,47 +69,66 @@ function makeDb() {
     ),
     find: (filter: Record<string, unknown>) => ({
       toArray: async () => posts.filter((d) => matchesFilter(d, filter)),
-      sort: () => ({ limit: () => ({ toArray: async () => posts.filter((d) => matchesFilter(d, filter)) }) }),
+      sort: () => ({
+        limit: () => ({ toArray: async () => posts.filter((d) => matchesFilter(d, filter)) }),
+      }),
     }),
   }
   const settingsCol = {
-    findOne: vi.fn(async (filter: Record<string, unknown>) => settingsDocs.find((d) => matchesFilter(d, filter)) ?? null),
-    updateOne: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
-      let doc = settingsDocs.find((d) => matchesFilter(d, filter))
-      if (!doc) {
-        doc = { ...filter }
-        settingsDocs.push(doc)
-      }
-      for (const [key, value] of Object.entries(update.$set)) {
-        const parts = key.split('.')
-        let target: Record<string, unknown> = doc
-        for (const p of parts.slice(0, -1)) {
-          target[p] = (target[p] ?? {}) as Record<string, unknown>
-          target = target[p] as Record<string, unknown>
+    findOne: vi.fn(
+      async (filter: Record<string, unknown>) =>
+        settingsDocs.find((d) => matchesFilter(d, filter)) ?? null,
+    ),
+    updateOne: vi.fn(
+      async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
+        let doc = settingsDocs.find((d) => matchesFilter(d, filter))
+        if (!doc) {
+          doc = { ...filter }
+          settingsDocs.push(doc)
         }
-        target[parts[parts.length - 1] as string] = value
-      }
-      return { modifiedCount: 1 }
-    }),
+        for (const [key, value] of Object.entries(update.$set)) {
+          const parts = key.split('.')
+          let target: Record<string, unknown> = doc
+          for (const p of parts.slice(0, -1)) {
+            target[p] = (target[p] ?? {}) as Record<string, unknown>
+            target = target[p] as Record<string, unknown>
+          }
+          target[parts[parts.length - 1] as string] = value
+        }
+        return { modifiedCount: 1 }
+      },
+    ),
     find: (filter: Record<string, unknown>) => ({
       toArray: async () => settingsDocs.filter((d) => matchesFilter(d, filter)),
     }),
   }
-  const eventsCol = { insertOne: vi.fn(async (doc: Record<string, unknown>) => { systemEvents.push(doc) }) }
+  const eventsCol = {
+    insertOne: vi.fn(async (doc: Record<string, unknown>) => {
+      systemEvents.push(doc)
+    }),
+  }
   // platform_config read by the global marketing_paused switch in publishPost
   const configCol = { findOne: vi.fn(async () => null) }
   const connectionsCol = {
     createIndex: vi.fn(async () => ({})),
-    findOne: vi.fn(async (filter: Record<string, unknown>) => connections.find((d) => matchesFilter(d, filter)) ?? null),
-    updateOne: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown>; $setOnInsert?: Record<string, unknown> }) => {
-      let doc = connections.find((d) => matchesFilter(d, filter))
-      if (!doc) {
-        doc = { ...filter, ...(update.$setOnInsert ?? {}) }
-        connections.push(doc)
-      }
-      applySet(doc, update.$set)
-      return { modifiedCount: 1 }
-    }),
+    findOne: vi.fn(
+      async (filter: Record<string, unknown>) =>
+        connections.find((d) => matchesFilter(d, filter)) ?? null,
+    ),
+    updateOne: vi.fn(
+      async (
+        filter: Record<string, unknown>,
+        update: { $set: Record<string, unknown>; $setOnInsert?: Record<string, unknown> },
+      ) => {
+        let doc = connections.find((d) => matchesFilter(d, filter))
+        if (!doc) {
+          doc = { ...filter, ...(update.$setOnInsert ?? {}) }
+          connections.push(doc)
+        }
+        applySet(doc, update.$set)
+        return { modifiedCount: 1 }
+      },
+    ),
     deleteOne: vi.fn(async (filter: Record<string, unknown>) => {
       const idx = connections.findIndex((d) => matchesFilter(d, filter))
       if (idx === -1) return { deletedCount: 0 }
@@ -110,10 +141,15 @@ function makeDb() {
   }
   const blogPosts: Record<string, unknown>[] = []
   const blogCol = {
-    findOne: vi.fn(async (filter: Record<string, unknown>) => blogPosts.find((d) => matchesFilter(d, filter)) ?? null),
+    findOne: vi.fn(
+      async (filter: Record<string, unknown>) =>
+        blogPosts.find((d) => matchesFilter(d, filter)) ?? null,
+    ),
     find: (filter: Record<string, unknown>) => ({
       toArray: async () => blogPosts.filter((d) => matchesFilter(d, filter)),
-      sort: () => ({ limit: () => ({ toArray: async () => blogPosts.filter((d) => matchesFilter(d, filter)) }) }),
+      sort: () => ({
+        limit: () => ({ toArray: async () => blogPosts.filter((d) => matchesFilter(d, filter)) }),
+      }),
     }),
   }
   const users: Record<string, unknown>[] = []
@@ -121,19 +157,25 @@ function makeDb() {
   const growthEvents: Record<string, unknown>[] = []
   const connectorCredentials: Record<string, unknown>[] = []
   const credsCol = {
-    findOne: vi.fn(async (filter: Record<string, unknown>) => connectorCredentials.find((d) => matchesFilter(d, filter)) ?? null),
-    updateOne: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
-      const doc = connectorCredentials.find((d) => matchesFilter(d, filter))
-      if (doc) {
-        for (const [k, v] of Object.entries(update.$set)) {
-          const parts = k.split('.')
-          let target = doc
-          for (const p of parts.slice(0, -1)) target = (target[p] ??= {}) as Record<string, unknown>
-          target[parts[parts.length - 1]!] = v
+    findOne: vi.fn(
+      async (filter: Record<string, unknown>) =>
+        connectorCredentials.find((d) => matchesFilter(d, filter)) ?? null,
+    ),
+    updateOne: vi.fn(
+      async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
+        const doc = connectorCredentials.find((d) => matchesFilter(d, filter))
+        if (doc) {
+          for (const [k, v] of Object.entries(update.$set)) {
+            const parts = k.split('.')
+            let target = doc
+            for (const p of parts.slice(0, -1))
+              target = (target[p] ??= {}) as Record<string, unknown>
+            target[parts[parts.length - 1]!] = v
+          }
         }
-      }
-      return { modifiedCount: doc ? 1 : 0 }
-    }),
+        return { modifiedCount: doc ? 1 : 0 }
+      },
+    ),
     deleteOne: vi.fn(async (filter: Record<string, unknown>) => {
       const idx = connectorCredentials.findIndex((d) => matchesFilter(d, filter))
       if (idx === -1) return { deletedCount: 0 }
@@ -145,7 +187,9 @@ function makeDb() {
     }),
   }
   const listCol = (docs: Record<string, unknown>[]) => ({
-    find: (filter: Record<string, unknown>) => ({ toArray: async () => docs.filter((d) => matchesFilter(d, filter)) }),
+    find: (filter: Record<string, unknown>) => ({
+      toArray: async () => docs.filter((d) => matchesFilter(d, filter)),
+    }),
   })
   const collections: Record<string, unknown> = {
     marketing_posts: postsCol,
@@ -159,7 +203,21 @@ function makeDb() {
     leads: listCol(leads),
     growth_events: listCol(growthEvents),
   }
-  return { db: { collection: (name: string) => collections[name] } as any, posts, settingsDocs, systemEvents, postsCol, settingsCol, connections, connectionsCol, blogPosts, users, leads, growthEvents, connectorCredentials }
+  return {
+    db: { collection: (name: string) => collections[name] } as any,
+    posts,
+    settingsDocs,
+    systemEvents,
+    postsCol,
+    settingsCol,
+    connections,
+    connectionsCol,
+    blogPosts,
+    users,
+    leads,
+    growthEvents,
+    connectorCredentials,
+  }
 }
 
 function fakePostiz(overrides: Record<string, unknown> = {}) {
@@ -170,19 +228,36 @@ function fakePostiz(overrides: Record<string, unknown> = {}) {
   } as any
 }
 
-async function buildApp(opts: {
-  postiz?: any
-  settings?: Record<string, unknown>
-  tenant?: string
-  operatorTenants?: string[]
-  llm?: (system: string, prompt: string, model?: string) => Promise<string>
-} = {}) {
-  const { db, posts, settingsDocs, systemEvents, postsCol, connections, blogPosts, users, leads, growthEvents, connectorCredentials } = makeDb()
+async function buildApp(
+  opts: {
+    postiz?: any
+    settings?: Record<string, unknown>
+    tenant?: string
+    operatorTenants?: string[]
+    llm?: (system: string, prompt: string, model?: string) => Promise<string>
+  } = {},
+) {
+  const {
+    db,
+    posts,
+    settingsDocs,
+    systemEvents,
+    postsCol,
+    connections,
+    blogPosts,
+    users,
+    leads,
+    growthEvents,
+    connectorCredentials,
+  } = makeDb()
   const tenant = opts.tenant ?? TENANT
   if (opts.settings) settingsDocs.push({ tenant_id: tenant, automation: opts.settings })
   const app = Fastify()
   app.addHook('onRequest', async (request) => {
-    ;(request as never as Record<string, unknown>)['authContext'] = { tenant_id: tenant, user_id: USER }
+    ;(request as never as Record<string, unknown>)['authContext'] = {
+      tenant_id: tenant,
+      user_id: USER,
+    }
   })
   registerMarketingPostRoutes(app, db, 'postiz' in opts ? opts.postiz : fakePostiz(), {
     operatorTenants: 'operatorTenants' in opts ? opts.operatorTenants! : [TENANT],
@@ -190,11 +265,28 @@ async function buildApp(opts: {
   })
   await app.ready()
   const postiz = 'postiz' in opts ? opts.postiz : null
-  return { app, db, posts, settingsDocs, systemEvents, postsCol, postiz, connections, blogPosts, users, leads, growthEvents, connectorCredentials }
+  return {
+    app,
+    db,
+    posts,
+    settingsDocs,
+    systemEvents,
+    postsCol,
+    postiz,
+    connections,
+    blogPosts,
+    users,
+    leads,
+    growthEvents,
+    connectorCredentials,
+  }
 }
 
 const DRAFT = { integration_id: 'int-1', channel: 'x', content: 'A thing worth posting' }
-const TRUSTED = { auto_execute_enabled: true, trust_level_by_workflow: { 'marketing_social:x': AUTO_EXECUTE_TRUST_THRESHOLD } }
+const TRUSTED = {
+  auto_execute_enabled: true,
+  trust_level_by_workflow: { 'marketing_social:x': AUTO_EXECUTE_TRUST_THRESHOLD },
+}
 
 describe('/marketing/posts', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -217,13 +309,21 @@ describe('/marketing/posts', () => {
     expect(post.state).toBe('published')
     expect(post.auto_published).toBe(true)
     expect(postiz.createPost).toHaveBeenCalledWith(
-      expect.objectContaining({ integrationId: 'int-1', content: DRAFT.content, channel: 'x', type: 'now' }),
+      expect.objectContaining({
+        integrationId: 'int-1',
+        content: DRAFT.content,
+        channel: 'x',
+        type: 'now',
+      }),
     )
   })
 
   it('stays a draft at full trust when auto_execute_enabled is off', async () => {
     const postiz = fakePostiz()
-    const { app } = await buildApp({ postiz, settings: { ...TRUSTED, auto_execute_enabled: false } })
+    const { app } = await buildApp({
+      postiz,
+      settings: { ...TRUSTED, auto_execute_enabled: false },
+    })
     const res = await app.inject({ method: 'POST', url: '/marketing/posts', payload: DRAFT })
     expect(res.json().post.state).toBe('draft')
     expect(postiz.createPost).not.toHaveBeenCalled()
@@ -241,14 +341,20 @@ describe('/marketing/posts', () => {
     expect(postiz.createPost).toHaveBeenCalledTimes(1)
 
     const automation = settingsDocs[0]?.['automation'] as Record<string, unknown>
-    expect((automation['trust_level_by_workflow'] as Record<string, number>)['marketing_social:x']).toBe(1)
+    expect(
+      (automation['trust_level_by_workflow'] as Record<string, number>)['marketing_social:x'],
+    ).toBe(1)
   })
 
   it('stays approved without dispatching when scheduled_at is still future, then the sweep publishes it when due', async () => {
     const postiz = fakePostiz()
     const { app, db, posts } = await buildApp({ postiz, settings: TRUSTED })
     const future = new Date(Date.now() + 3_600_000).toISOString()
-    const res = await app.inject({ method: 'POST', url: '/marketing/posts', payload: { ...DRAFT, scheduled_at: future } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/marketing/posts',
+      payload: { ...DRAFT, scheduled_at: future },
+    })
     // Channels can't hold a schedule — the post waits as 'approved' until
     // the cron sweep dispatches it at due time.
     expect(res.json().post.state).toBe('approved')
@@ -258,12 +364,18 @@ describe('/marketing/posts', () => {
     posts[0]!['scheduled_at'] = new Date(Date.now() - 1000)
     const n = await publishDueMarketingPosts(db, postiz)
     expect(n).toBe(1)
-    expect(postiz.createPost).toHaveBeenCalledWith(expect.objectContaining({ channel: 'x', type: 'now' }))
+    expect(postiz.createPost).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: 'x', type: 'now' }),
+    )
     expect(posts[0]!['state']).toBe('published')
   })
 
   it('a Postiz failure lands in publish_failed with the error kept — and earns no trust', async () => {
-    const postiz = fakePostiz({ createPost: vi.fn(async () => { throw new Error('Postiz 401 unauthorized') }) })
+    const postiz = fakePostiz({
+      createPost: vi.fn(async () => {
+        throw new Error('Postiz 401 unauthorized')
+      }),
+    })
     const { app, posts, settingsDocs } = await buildApp({ postiz })
     await app.inject({ method: 'POST', url: '/marketing/posts', payload: DRAFT })
     const id = posts[0]!['id'] as string
@@ -306,10 +418,17 @@ describe('/marketing/posts', () => {
     const postiz = fakePostiz()
     const { app, db, posts } = await buildApp({ postiz, settings: TRUSTED })
     const future = new Date(Date.now() + 3_600_000).toISOString()
-    await app.inject({ method: 'POST', url: '/marketing/posts', payload: { ...DRAFT, scheduled_at: future } })
+    await app.inject({
+      method: 'POST',
+      url: '/marketing/posts',
+      payload: { ...DRAFT, scheduled_at: future },
+    })
     expect(posts[0]!['state']).toBe('approved')
 
-    const res = await app.inject({ method: 'POST', url: `/marketing/posts/${posts[0]!['id']}/reject` })
+    const res = await app.inject({
+      method: 'POST',
+      url: `/marketing/posts/${posts[0]!['id']}/reject`,
+    })
     expect(res.statusCode).toBe(200)
     expect(res.json().post.state).toBe('rejected')
 
@@ -354,10 +473,17 @@ describe('/marketing/posts', () => {
 
   it('stores the channel response external id/url on a successful publish', async () => {
     const postiz = fakePostiz({
-      createPost: vi.fn(async () => ({ external_id: 'at://did:plc:1/app.bsky.feed.post/3k1', url: 'https://bsky.app/profile/keel/post/3k1' })),
+      createPost: vi.fn(async () => ({
+        external_id: 'at://did:plc:1/app.bsky.feed.post/3k1',
+        url: 'https://bsky.app/profile/keel/post/3k1',
+      })),
     })
     const { app, posts } = await buildApp({ postiz })
-    await app.inject({ method: 'POST', url: '/marketing/posts', payload: { ...DRAFT, channel: 'bluesky' } })
+    await app.inject({
+      method: 'POST',
+      url: '/marketing/posts',
+      payload: { ...DRAFT, channel: 'bluesky' },
+    })
     await app.inject({ method: 'POST', url: `/marketing/posts/${posts[0]!['id']}/approve` })
     expect(posts[0]!['external_id']).toBe('at://did:plc:1/app.bsky.feed.post/3k1')
     expect(posts[0]!['external_url']).toBe('https://bsky.app/profile/keel/post/3k1')
@@ -365,7 +491,10 @@ describe('/marketing/posts', () => {
 
   it('dry_run_mode flips state without a Postiz call; the human review still earns trust', async () => {
     const postiz = fakePostiz()
-    const { app, posts, settingsDocs } = await buildApp({ postiz, settings: { dry_run_mode: true } })
+    const { app, posts, settingsDocs } = await buildApp({
+      postiz,
+      settings: { dry_run_mode: true },
+    })
     await app.inject({ method: 'POST', url: '/marketing/posts', payload: DRAFT })
     const id = posts[0]!['id'] as string
     const res = await app.inject({ method: 'POST', url: `/marketing/posts/${id}/approve` })
@@ -373,21 +502,28 @@ describe('/marketing/posts', () => {
     expect(res.json().post.dry_run).toBe(true)
     expect(postiz.createPost).not.toHaveBeenCalled()
     const automation = settingsDocs[0]?.['automation'] as Record<string, unknown>
-    expect((automation['trust_level_by_workflow'] as Record<string, number>)['marketing_social:x']).toBe(1)
+    expect(
+      (automation['trust_level_by_workflow'] as Record<string, number>)['marketing_social:x'],
+    ).toBe(1)
   })
 
   it('without a Postiz client, drafts still queue and approve lands publish_failed', async () => {
     const { app, posts } = await buildApp({ postiz: null })
     await app.inject({ method: 'POST', url: '/marketing/posts', payload: DRAFT })
     expect(posts[0]!['state']).toBe('draft')
-    const res = await app.inject({ method: 'POST', url: `/marketing/posts/${posts[0]!['id']}/approve` })
+    const res = await app.inject({
+      method: 'POST',
+      url: `/marketing/posts/${posts[0]!['id']}/approve`,
+    })
     expect(res.statusCode).toBe(502)
     expect(posts[0]!['publish_error']).toBe('publisher_not_configured')
   })
 
   it('GET /marketing/integrations 503s when unconfigured, lists channels otherwise', async () => {
     const noKey = await buildApp({ postiz: null })
-    expect((await noKey.app.inject({ method: 'GET', url: '/marketing/integrations' })).statusCode).toBe(503)
+    expect(
+      (await noKey.app.inject({ method: 'GET', url: '/marketing/integrations' })).statusCode,
+    ).toBe(503)
 
     const withKey = await buildApp()
     const res = await withKey.app.inject({ method: 'GET', url: '/marketing/integrations' })
@@ -416,7 +552,11 @@ describe('/marketing/posts', () => {
 
   it('400s on invalid create payloads', async () => {
     const { app } = await buildApp()
-    const res = await app.inject({ method: 'POST', url: '/marketing/posts', payload: { channel: 'x' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/marketing/posts',
+      payload: { channel: 'x' },
+    })
     expect(res.statusCode).toBe(400)
   })
 })
@@ -484,8 +624,12 @@ describe('/marketing/connections', () => {
 
     const del = await app.inject({ method: 'DELETE', url: '/marketing/connections/bluesky' })
     expect(del.statusCode).toBe(200)
-    expect((await app.inject({ method: 'GET', url: '/marketing/connections' })).json().connections).toHaveLength(0)
-    expect((await app.inject({ method: 'DELETE', url: '/marketing/connections/bluesky' })).statusCode).toBe(404)
+    expect(
+      (await app.inject({ method: 'GET', url: '/marketing/connections' })).json().connections,
+    ).toHaveLength(0)
+    expect(
+      (await app.inject({ method: 'DELETE', url: '/marketing/connections/bluesky' })).statusCode,
+    ).toBe(404)
   })
 
   it('a stored connection shows up as a composer channel and shadows env for that channel', async () => {
@@ -526,7 +670,11 @@ describe('/marketing/posts/generate', () => {
     expect(post.generated).toBe('llm')
     expect(post.content).toBe('fresh generated copy')
     expect(posts[0]!['state']).toBe('draft')
-    expect(llm).toHaveBeenCalledWith(expect.stringContaining('Informational'), expect.stringContaining('underinsure'), 'tier:fast')
+    expect(llm).toHaveBeenCalledWith(
+      expect.stringContaining('Informational'),
+      expect.stringContaining('underinsure'),
+      'tier:fast',
+    )
   })
 
   it('promotes a published blog post — prompt carries title, excerpt and verbatim link', async () => {
@@ -537,7 +685,12 @@ describe('/marketing/posts/generate', () => {
       return 'Read this https://keel.example/blog/cover-gap'
     }
     const { app, blogPosts } = await buildApp({ llm })
-    blogPosts.push({ slug: 'cover-gap', published: true, title: 'The cover gap', excerpt: 'Most families miss it.' })
+    blogPosts.push({
+      slug: 'cover-gap',
+      published: true,
+      title: 'The cover gap',
+      excerpt: 'Most families miss it.',
+    })
     const res = await app.inject({
       method: 'POST',
       url: '/marketing/posts/generate',
@@ -556,7 +709,12 @@ describe('/marketing/posts/generate', () => {
       throw new Error('OPENAI_API_KEY not set')
     }
     const { app, blogPosts } = await buildApp({ llm })
-    blogPosts.push({ slug: 'cover-gap', published: true, title: 'The cover gap', excerpt: 'Most families miss it.' })
+    blogPosts.push({
+      slug: 'cover-gap',
+      published: true,
+      title: 'The cover gap',
+      excerpt: 'Most families miss it.',
+    })
     const res = await app.inject({
       method: 'POST',
       url: '/marketing/posts/generate',
@@ -579,7 +737,12 @@ describe('/marketing/posts/generate', () => {
   it('reserves room for the link — a full-length body cannot push it past the clamp', async () => {
     vi.stubEnv('LIFEKEEL_URL', 'https://keel.example')
     const { app, blogPosts } = await buildApp({ llm: async () => 'word '.repeat(100) })
-    blogPosts.push({ slug: 'cover-gap', published: true, title: 'The cover gap', excerpt: 'Most families miss it.' })
+    blogPosts.push({
+      slug: 'cover-gap',
+      published: true,
+      title: 'The cover gap',
+      excerpt: 'Most families miss it.',
+    })
     const res = await app.inject({
       method: 'POST',
       url: '/marketing/posts/generate',
@@ -594,7 +757,9 @@ describe('/marketing/posts/generate', () => {
 
   it('free-topic drafts carry a UTM link to the readiness check', async () => {
     vi.stubEnv('LIFEKEEL_URL', 'https://keel.example')
-    const { app } = await buildApp({ llm: async () => 'A family safety net starts with one question.' })
+    const { app } = await buildApp({
+      llm: async () => 'A family safety net starts with one question.',
+    })
     const res = await app.inject({ method: 'POST', url: '/marketing/posts/generate', payload: GEN })
     const post = res.json().post
     expect(post.content).toContain('https://keel.example/readiness?utm_source=x')
@@ -602,7 +767,10 @@ describe('/marketing/posts/generate', () => {
   })
 
   it('preview mode returns variants without persisting — the operator picks one', async () => {
-    const llm = vi.fn(async (_system: string, _prompt: string, _tier?: string) => 'hook one\n---\nhook two\n---\nhook three')
+    const llm = vi.fn(
+      async (_system: string, _prompt: string, _tier?: string) =>
+        'hook one\n---\nhook two\n---\nhook three',
+    )
     const { app, posts } = await buildApp({ llm })
     const res = await app.inject({
       method: 'POST',
@@ -632,7 +800,13 @@ describe('/marketing/posts/generate', () => {
   it('400s with neither topic nor blog_slug, 404s on an unknown slug', async () => {
     const { app } = await buildApp()
     expect(
-      (await app.inject({ method: 'POST', url: '/marketing/posts/generate', payload: { integration_id: 'i', channel: 'x' } })).statusCode,
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/marketing/posts/generate',
+          payload: { integration_id: 'i', channel: 'x' },
+        })
+      ).statusCode,
     ).toBe(400)
     expect(
       (
@@ -654,9 +828,20 @@ describe('generateDailyMarketingDrafts', () => {
   it('queues a review-first draft for an opted-in tenant with a connection and an unpromoted post', async () => {
     const { db, settingsDocs, connections, blogPosts, posts } = await buildApp()
     settingsDocs.push({ tenant_id: TENANT, automation: { daily_marketing_drafts_enabled: true } })
-    connections.push({ tenant_id: TENANT, channel: 'bluesky', status: 'active', handle: 'keel.bsky.social', credentials: {} })
-    blogPosts.push({ slug: 'cover-gap', published: true, title: 'The cover gap', excerpt: 'Most families miss it.' })
-    const n = await generateDailyMarketingDrafts(db, async () => 'morning draft')
+    connections.push({
+      tenant_id: TENANT,
+      channel: 'bluesky',
+      status: 'active',
+      handle: 'keel.bsky.social',
+      credentials: {},
+    })
+    blogPosts.push({
+      slug: 'cover-gap',
+      published: true,
+      title: 'The cover gap',
+      excerpt: 'Most families miss it.',
+    })
+    const n = await generateDailyMarketingDrafts(db, () => async () => 'morning draft')
     expect(n).toBe(1)
     const post = posts[0]!
     expect(post['state']).toBe('draft')
@@ -670,11 +855,22 @@ describe('generateDailyMarketingDrafts', () => {
     const { db, settingsDocs, connections, blogPosts, posts } = await buildApp()
     blogPosts.push({ slug: 'cover-gap', published: true, title: 'T', excerpt: 'E' })
     // Not opted in — nothing.
-    settingsDocs.push({ tenant_id: 'tenant-off', automation: { daily_marketing_drafts_enabled: false } })
-    connections.push({ tenant_id: 'tenant-off', channel: 'bluesky', status: 'active', credentials: {} })
+    settingsDocs.push({
+      tenant_id: 'tenant-off',
+      automation: { daily_marketing_drafts_enabled: false },
+    })
+    connections.push({
+      tenant_id: 'tenant-off',
+      channel: 'bluesky',
+      status: 'active',
+      credentials: {},
+    })
     // Opted in but no connection — nothing.
-    settingsDocs.push({ tenant_id: 'tenant-noconn', automation: { daily_marketing_drafts_enabled: true } })
-    const n = await generateDailyMarketingDrafts(db, async () => 'x')
+    settingsDocs.push({
+      tenant_id: 'tenant-noconn',
+      automation: { daily_marketing_drafts_enabled: true },
+    })
+    const n = await generateDailyMarketingDrafts(db, () => async () => 'x')
     expect(n).toBe(0)
     expect(posts).toHaveLength(0)
   })
@@ -684,11 +880,17 @@ describe('generateDailyMarketingDrafts', () => {
     settingsDocs.push({ tenant_id: TENANT, automation: { daily_marketing_drafts_enabled: true } })
     connections.push({ tenant_id: TENANT, channel: 'bluesky', status: 'active', credentials: {} })
     blogPosts.push({ slug: 'cover-gap', published: true, title: 'T', excerpt: 'E' })
-    posts.push({ id: 'p1', tenant_id: TENANT, channel: 'bluesky', state: 'published', source_blog_slug: 'cover-gap' })
-    expect(await generateDailyMarketingDrafts(db, async () => 'x')).toBe(0)
+    posts.push({
+      id: 'p1',
+      tenant_id: TENANT,
+      channel: 'bluesky',
+      state: 'published',
+      source_blog_slug: 'cover-gap',
+    })
+    expect(await generateDailyMarketingDrafts(db, () => async () => 'x')).toBe(0)
     // A new post lands → next sweep picks it up.
     blogPosts.push({ slug: 'new-post', published: true, title: 'N', excerpt: 'E2' })
-    expect(await generateDailyMarketingDrafts(db, async () => 'fresh')).toBe(1)
+    expect(await generateDailyMarketingDrafts(db, () => async () => 'fresh')).toBe(1)
     expect(posts.find((p) => p['source_blog_slug'] === 'new-post')).toBeTruthy()
   })
 })
@@ -698,34 +900,85 @@ describe('/marketing/performance', () => {
     const { app, growthEvents, users, leads, blogPosts } = await buildApp()
     blogPosts.push({ slug: 'cover-gap', title: 'The cover gap', published: true })
     growthEvents.push(
-      { event: 'blog_view', path: '/blog/cover-gap', meta: { utm_source: 'bluesky', utm_campaign: 'lifekeel_social' } },
+      {
+        event: 'blog_view',
+        path: '/blog/cover-gap',
+        meta: { utm_source: 'bluesky', utm_campaign: 'lifekeel_social' },
+      },
       { event: 'blog_view', path: '/blog/cover-gap', meta: { utm_source: 'bluesky' } },
       { event: 'blog_view', path: '/blog/cover-gap', meta: { utm_source: 'x' } },
-      { event: 'blog_view', path: '/blog/other-post' },                    // no utm — view counts, channel doesn't
+      { event: 'blog_view', path: '/blog/other-post' }, // no utm — view counts, channel doesn't
       { event: 'blog_cta_click', path: '/blog/cover-gap' },
       { event: 'blog_cta_click', path: '/blog/cover-gap', meta: { utm_source: 'bluesky' } }, // channel-level CTA
-      { event: 'landing_view', path: '/' },                                // unrelated event — ignored
-      { event: 'blog_view', path: '/settings' },                           // non-blog path — ignored
+      { event: 'landing_view', path: '/' }, // unrelated event — ignored
+      { event: 'blog_view', path: '/settings' }, // non-blog path — ignored
     )
     users.push(
-      { attribution: { utm_source: 'bluesky', utm_medium: 'social', utm_campaign: 'lifekeel_social', utm_content: 'cover-gap' } },
-      { attribution: { utm_source: 'bluesky', utm_medium: 'social', utm_campaign: 'autumn_push', utm_content: 'cover-gap' } },
-      { attribution: { utm_source: 'google', utm_medium: 'cpc', utm_campaign: 'ads', utm_content: 'cover-gap' } }, // non-social medium — excluded
-      { attribution: { utm_source: 'x', utm_medium: 'social', utm_campaign: 'lifekeel_social' } },                      // campaign but no slug — channel only
+      {
+        attribution: {
+          utm_source: 'bluesky',
+          utm_medium: 'social',
+          utm_campaign: 'lifekeel_social',
+          utm_content: 'cover-gap',
+        },
+      },
+      {
+        attribution: {
+          utm_source: 'bluesky',
+          utm_medium: 'social',
+          utm_campaign: 'autumn_push',
+          utm_content: 'cover-gap',
+        },
+      },
+      {
+        attribution: {
+          utm_source: 'google',
+          utm_medium: 'cpc',
+          utm_campaign: 'ads',
+          utm_content: 'cover-gap',
+        },
+      }, // non-social medium — excluded
+      { attribution: { utm_source: 'x', utm_medium: 'social', utm_campaign: 'lifekeel_social' } }, // campaign but no slug — channel only
     )
-    leads.push({ attribution: { utm_source: 'x', utm_medium: 'social', utm_campaign: 'lifekeel_social', utm_content: 'cover-gap' } })
+    leads.push({
+      attribution: {
+        utm_source: 'x',
+        utm_medium: 'social',
+        utm_campaign: 'lifekeel_social',
+        utm_content: 'cover-gap',
+      },
+    })
 
     const res = await app.inject({ method: 'GET', url: '/marketing/performance' })
     expect(res.statusCode).toBe(200)
     const { posts, channels, campaigns, totals } = res.json() as {
-      posts: { slug: string; views: number; cta_clicks: number; signups: number; leads: number; title?: string }[]
-      channels: { channel: string; views: number; cta_clicks: number; leads: number; signups: number }[]
+      posts: {
+        slug: string
+        views: number
+        cta_clicks: number
+        signups: number
+        leads: number
+        title?: string
+      }[]
+      channels: {
+        channel: string
+        views: number
+        cta_clicks: number
+        leads: number
+        signups: number
+      }[]
       campaigns: { campaign: string; views: number; signups: number; leads: number }[]
       totals: { views: number; signups: number; leads: number }
     }
 
     const gap = posts.find((p) => p.slug === 'cover-gap')!
-    expect(gap).toMatchObject({ views: 3, cta_clicks: 2, signups: 2, leads: 1, title: 'The cover gap' })
+    expect(gap).toMatchObject({
+      views: 3,
+      cta_clicks: 2,
+      signups: 2,
+      leads: 1,
+      title: 'The cover gap',
+    })
     const other = posts.find((p) => p.slug === 'other-post')!
     expect(other.views).toBe(1)
     // Totals are the sum of per-post rows — a campaign signup without
@@ -750,7 +1003,9 @@ describe('/marketing/performance', () => {
     const res = await app.inject({ method: 'GET', url: '/marketing/performance' })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual({
-      posts: [], channels: [], campaigns: [],
+      posts: [],
+      channels: [],
+      campaigns: [],
       totals: { views: 0, cta_clicks: 0, signups: 0, leads: 0 },
       insights: { measured_posts: 0, unmeasured_channels: [], rows: [] },
     })
@@ -759,18 +1014,52 @@ describe('/marketing/performance', () => {
   it('surfaces trait-level engagement insight over measured posts', async () => {
     const { app, posts } = await buildApp()
     const post = (over: Record<string, unknown>) => ({
-      tenant_id: TENANT, channel: 'x', state: 'published', created_by: USER, created_at: new Date(),
+      tenant_id: TENANT,
+      channel: 'x',
+      state: 'published',
+      created_by: USER,
+      created_at: new Date(),
       ...over,
     })
     // Three question posts with high engagement vs three statement flops —
     // "asks a question" should separate from the account median.
     posts.push(
-      post({ id: 'q1', content: 'Does your cover actually match your mortgage?', metrics: { likes: 40 }, metrics_at: new Date() }),
-      post({ id: 'q2', content: 'When did you last check your beneficiaries?', metrics: { likes: 30 }, metrics_at: new Date() }),
-      post({ id: 'q3', content: 'Know what your policy excludes?', metrics: { likes: 50 }, metrics_at: new Date() }),
-      post({ id: 's1', content: 'We published a new blog post about cover gaps', metrics: { likes: 2 }, metrics_at: new Date() }),
-      post({ id: 's2', content: 'Keel helps families see their whole picture', metrics: { likes: 1 }, metrics_at: new Date() }),
-      post({ id: 's3', content: 'New feature shipped this week for families', metrics: { likes: 0 }, metrics_at: new Date() }),
+      post({
+        id: 'q1',
+        content: 'Does your cover actually match your mortgage?',
+        metrics: { likes: 40 },
+        metrics_at: new Date(),
+      }),
+      post({
+        id: 'q2',
+        content: 'When did you last check your beneficiaries?',
+        metrics: { likes: 30 },
+        metrics_at: new Date(),
+      }),
+      post({
+        id: 'q3',
+        content: 'Know what your policy excludes?',
+        metrics: { likes: 50 },
+        metrics_at: new Date(),
+      }),
+      post({
+        id: 's1',
+        content: 'We published a new blog post about cover gaps',
+        metrics: { likes: 2 },
+        metrics_at: new Date(),
+      }),
+      post({
+        id: 's2',
+        content: 'Keel helps families see their whole picture',
+        metrics: { likes: 1 },
+        metrics_at: new Date(),
+      }),
+      post({
+        id: 's3',
+        content: 'New feature shipped this week for families',
+        metrics: { likes: 0 },
+        metrics_at: new Date(),
+      }),
       // LinkedIn can't be polled — published, never measured, gets flagged.
       post({ id: 'li1', channel: 'linkedin', content: 'A LinkedIn post' }),
     )
@@ -802,17 +1091,49 @@ describe('pollMarketingEngagement', () => {
   it('writes like/repost/reply counts onto published bluesky posts; skips dry-runs and other channels', async () => {
     const { db, posts } = await buildApp()
     posts.push(
-      { id: 'p1', tenant_id: TENANT, channel: 'bluesky', state: 'published', external_id: 'at://did:plc:1/app.bsky.feed.post/3k1', published_at: new Date() },
-      { id: 'p2', tenant_id: TENANT, channel: 'x', state: 'published', external_id: 'tw-1', published_at: new Date() },
-      { id: 'p3', tenant_id: TENANT, channel: 'bluesky', state: 'published', dry_run: true, external_id: 'at://did/dry', published_at: new Date() },
+      {
+        id: 'p1',
+        tenant_id: TENANT,
+        channel: 'bluesky',
+        state: 'published',
+        external_id: 'at://did:plc:1/app.bsky.feed.post/3k1',
+        published_at: new Date(),
+      },
+      {
+        id: 'p2',
+        tenant_id: TENANT,
+        channel: 'x',
+        state: 'published',
+        external_id: 'tw-1',
+        published_at: new Date(),
+      },
+      {
+        id: 'p3',
+        tenant_id: TENANT,
+        channel: 'bluesky',
+        state: 'published',
+        dry_run: true,
+        external_id: 'at://did/dry',
+        published_at: new Date(),
+      },
     )
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () =>
-        new Response(
-          JSON.stringify({ posts: [{ uri: 'at://did:plc:1/app.bsky.feed.post/3k1', likeCount: 7, repostCount: 2, replyCount: 1 }] }),
-          { status: 200 },
-        ),
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              posts: [
+                {
+                  uri: 'at://did:plc:1/app.bsky.feed.post/3k1',
+                  likeCount: 7,
+                  repostCount: 2,
+                  replyCount: 1,
+                },
+              ],
+            }),
+            { status: 200 },
+          ),
       ),
     )
     const n = await pollMarketingEngagement(db)
@@ -824,8 +1145,18 @@ describe('pollMarketingEngagement', () => {
 
   it('survives a transient Bluesky failure without touching metrics', async () => {
     const { db, posts } = await buildApp()
-    posts.push({ id: 'p1', tenant_id: TENANT, channel: 'bluesky', state: 'published', external_id: 'at://did/1', published_at: new Date() })
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('err', { status: 503 })))
+    posts.push({
+      id: 'p1',
+      tenant_id: TENANT,
+      channel: 'bluesky',
+      state: 'published',
+      external_id: 'at://did/1',
+      published_at: new Date(),
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('err', { status: 503 })),
+    )
     expect(await pollMarketingEngagement(db)).toBe(0)
     expect(posts[0]!['metrics']).toBeUndefined()
   })
@@ -872,21 +1203,42 @@ describe('X OAuth connection (connector_credentials)', () => {
     const del = await app.inject({ method: 'DELETE', url: '/marketing/connections/x' })
     expect(del.statusCode).toBe(200)
     expect(connectorCredentials).toHaveLength(0)
-    expect((await app.inject({ method: 'DELETE', url: '/marketing/connections/x' })).statusCode).toBe(404)
+    expect(
+      (await app.inject({ method: 'DELETE', url: '/marketing/connections/x' })).statusCode,
+    ).toBe(404)
   })
 
   it('engagement poller reads public_metrics for X posts via the connector token', async () => {
     const { db, posts, connectorCredentials } = await buildApp()
     connectorCredentials.push(xCred())
     posts.push(
-      { id: 'p1', tenant_id: TENANT, channel: 'x', state: 'published', external_id: 'tw-55', published_at: new Date() },
-      { id: 'p2', tenant_id: TENANT, channel: 'x', state: 'published', external_id: 'tw-56', published_at: new Date() },
+      {
+        id: 'p1',
+        tenant_id: TENANT,
+        channel: 'x',
+        state: 'published',
+        external_id: 'tw-55',
+        published_at: new Date(),
+      },
+      {
+        id: 'p2',
+        tenant_id: TENANT,
+        channel: 'x',
+        state: 'published',
+        external_id: 'tw-56',
+        published_at: new Date(),
+      },
     )
     const fetchMock = vi.fn(async (input: unknown) => {
       const url = String(input)
       if (url.includes('/2/tweets/tw-55')) {
         return new Response(
-          JSON.stringify({ data: { id: 'tw-55', public_metrics: { like_count: 9, repost_count: 3, reply_count: 2 } } }),
+          JSON.stringify({
+            data: {
+              id: 'tw-55',
+              public_metrics: { like_count: 9, repost_count: 3, reply_count: 2 },
+            },
+          }),
           { status: 200 },
         )
       }
@@ -901,7 +1253,14 @@ describe('X OAuth connection (connector_credentials)', () => {
 
   it('poller skips X posts entirely when the tenant has no credential', async () => {
     const { db, posts } = await buildApp()
-    posts.push({ id: 'p1', tenant_id: TENANT, channel: 'x', state: 'published', external_id: 'tw-1', published_at: new Date() })
+    posts.push({
+      id: 'p1',
+      tenant_id: TENANT,
+      channel: 'x',
+      state: 'published',
+      external_id: 'tw-1',
+      published_at: new Date(),
+    })
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     expect(await pollMarketingEngagement(db)).toBe(0)
@@ -914,9 +1273,15 @@ describe('learning loop — performance-informed generation', () => {
 
   const GEN = { integration_id: 'int-1', channel: 'x', topic: 'why families underinsure' }
   const pubPost = (over: Record<string, unknown>) => ({
-    id: 'p', tenant_id: TENANT, channel: 'x', integration_id: 'i',
-    content: 'post text', state: 'published',
-    created_by: 'u', created_at: new Date(), published_at: new Date(),
+    id: 'p',
+    tenant_id: TENANT,
+    channel: 'x',
+    integration_id: 'i',
+    content: 'post text',
+    state: 'published',
+    created_by: 'u',
+    created_at: new Date(),
+    published_at: new Date(),
     ...over,
   })
 
@@ -928,8 +1293,18 @@ describe('learning loop — performance-informed generation', () => {
     }
     const { app, posts } = await buildApp({ llm })
     posts.push(
-      pubPost({ id: 'w1', content: 'What happens to the mortgage if paychecks stop tomorrow?', metrics: { likes: 12, reposts: 3, replies: 2 }, metrics_at: new Date() }),
-      pubPost({ id: 'f1', content: 'Generic brand broadcast copy', metrics: { likes: 0, reposts: 0, replies: 0 }, metrics_at: new Date() }),
+      pubPost({
+        id: 'w1',
+        content: 'What happens to the mortgage if paychecks stop tomorrow?',
+        metrics: { likes: 12, reposts: 3, replies: 2 },
+        metrics_at: new Date(),
+      }),
+      pubPost({
+        id: 'f1',
+        content: 'Generic brand broadcast copy',
+        metrics: { likes: 0, reposts: 0, replies: 0 },
+        metrics_at: new Date(),
+      }),
     )
     const res = await app.inject({ method: 'POST', url: '/marketing/posts/generate', payload: GEN })
     expect(res.statusCode).toBe(201)
@@ -950,8 +1325,20 @@ describe('learning loop — performance-informed generation', () => {
     }
     const { app, posts, users } = await buildApp({ llm })
     posts.push(
-      pubPost({ id: 'w1', source_blog_slug: 'cover-gap', content: 'The cover gap nobody checks', metrics: { likes: 2 }, metrics_at: new Date() }),
-      pubPost({ id: 'w2', source_blog_slug: 'other-post', content: 'Second promoted post', metrics: { likes: 1 }, metrics_at: new Date() }),
+      pubPost({
+        id: 'w1',
+        source_blog_slug: 'cover-gap',
+        content: 'The cover gap nobody checks',
+        metrics: { likes: 2 },
+        metrics_at: new Date(),
+      }),
+      pubPost({
+        id: 'w2',
+        source_blog_slug: 'other-post',
+        content: 'Second promoted post',
+        metrics: { likes: 1 },
+        metrics_at: new Date(),
+      }),
     )
     users.push({ attribution: { utm_medium: 'social', utm_source: 'x', utm_content: 'cover-gap' } })
     const res = await app.inject({ method: 'POST', url: '/marketing/posts/generate', payload: GEN })
@@ -960,7 +1347,7 @@ describe('learning loop — performance-informed generation', () => {
     expect(seen[0]).toContain('1 signups/leads')
   })
 
-  it('never leaks another tenant\'s published posts into the prompt', async () => {
+  it("never leaks another tenant's published posts into the prompt", async () => {
     const seen: string[] = []
     const llm = async (_s: string, prompt: string) => {
       seen.push(prompt)
@@ -968,9 +1355,25 @@ describe('learning loop — performance-informed generation', () => {
     }
     const { app, posts } = await buildApp({ llm })
     posts.push(
-      pubPost({ id: 'w1', content: 'Tenant one winner', metrics: { likes: 5 }, metrics_at: new Date() }),
-      pubPost({ id: 'w2', content: 'Tenant one runner-up', metrics: { likes: 2 }, metrics_at: new Date() }),
-      pubPost({ id: 'other', tenant_id: 'tenant-2', content: 'SECRET_OTHER_TENANT_WINNER', metrics: { likes: 999 }, metrics_at: new Date() }),
+      pubPost({
+        id: 'w1',
+        content: 'Tenant one winner',
+        metrics: { likes: 5 },
+        metrics_at: new Date(),
+      }),
+      pubPost({
+        id: 'w2',
+        content: 'Tenant one runner-up',
+        metrics: { likes: 2 },
+        metrics_at: new Date(),
+      }),
+      pubPost({
+        id: 'other',
+        tenant_id: 'tenant-2',
+        content: 'SECRET_OTHER_TENANT_WINNER',
+        metrics: { likes: 999 },
+        metrics_at: new Date(),
+      }),
     )
     const res = await app.inject({ method: 'POST', url: '/marketing/posts/generate', payload: GEN })
     expect(res.statusCode).toBe(201)

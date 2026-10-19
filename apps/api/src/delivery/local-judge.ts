@@ -34,8 +34,13 @@ export const LOCAL_JUDGE_JSON_SCHEMA = {
     feedback: { type: 'string' },
   },
   required: [
-    'coherent', 'grounded', 'actionable', 'gives_advice_or_names_provider',
-    'contains_pii_or_credentials', 'uncertain', 'feedback',
+    'coherent',
+    'grounded',
+    'actionable',
+    'gives_advice_or_names_provider',
+    'contains_pii_or_credentials',
+    'uncertain',
+    'feedback',
   ],
 } as const
 
@@ -74,8 +79,12 @@ export function checklistToScores(c: LocalJudgeChecklist): JudgeScores {
   }
 }
 
-export function createLocalJudgeEvaluator(decide: DecisionFn): JudgeEvaluator {
+export function createLocalJudgeEvaluator(
+  decideFor: (tenantId: string) => DecisionFn | undefined,
+): JudgeEvaluator {
   return async (input: JudgeInput): Promise<JudgeScores> => {
+    const decide = decideFor(input.insight.tenant_id ?? 'unknown')
+    if (!decide) throw new Error('Local judge decision model unavailable for this tenant')
     const evidence = JSON.stringify(input.evidence).slice(0, MAX_EVIDENCE_CHARS)
     const { value } = await decide({
       system: SYSTEM,
@@ -85,7 +94,10 @@ export function createLocalJudgeEvaluator(decide: DecisionFn): JudgeEvaluator {
         evidence,
         reasoning: input.insight.reasoning,
         actions: input.insight.actions,
-        estimated_impact_range: [input.insight.estimated_impact_low, input.insight.estimated_impact_high],
+        estimated_impact_range: [
+          input.insight.estimated_impact_low,
+          input.insight.estimated_impact_high,
+        ],
       }),
     })
     // Throws on `uncertain`; MoveJudge turns any throw into a block + human review.

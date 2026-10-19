@@ -17,8 +17,8 @@ import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { getTenantCollection, type LlmFn } from '@lifekeel/platform'
-import { familyDataLlmFromEnv } from '../local-model.js'
+import { getTenantCollection } from '@lifekeel/platform'
+import { taskLlm } from '../ai/task-gateway.js'
 
 const AskSchema = z.object({ question: z.string().trim().min(1).max(2000) })
 const CreateCaseSchema = z.object({
@@ -76,10 +76,10 @@ Rules:
 - If you don't know, say so and suggest opening a case rather than guessing.
 - Be concise — 2–4 short sentences unless the steps genuinely need more.`
 
-const ASK_FALLBACK = "I couldn't reach my answer service just now. If this is urgent, open a support case below and a teammate will pick it up."
+const ASK_FALLBACK =
+  "I couldn't reach my answer service just now. If this is urgent, open a support case below and a teammate will pick it up."
 
 export function registerSupportRoutes(app: FastifyInstance, db: Db): void {
-  const llmFn: LlmFn = familyDataLlmFromEnv()
   const cases = db.collection<SupportCaseDoc>('support_cases')
   const users = db.collection('users')
 
@@ -91,7 +91,8 @@ export function registerSupportRoutes(app: FastifyInstance, db: Db): void {
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const parsed = AskSchema.safeParse(req.body)
-      if (!parsed.success) return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
       const { tenant_id, user_id } = req.authContext
 
       // Light account context — enough for "am I on the right plan?" style
@@ -102,7 +103,10 @@ export function registerSupportRoutes(app: FastifyInstance, db: Db): void {
       ])
       const context = `Account: plan ${(tenant?.['plan'] as string) ?? 'free'}, workspace "${(tenant?.['name'] as string) ?? tenant_id}".`
       try {
-        const content = await llmFn(SUPPORT_PROMPT, `${context}\n\nQuestion from ${(user?.['name'] as string) ?? 'the user'}: ${parsed.data.question}`, 'tier:fast')
+        const content = await taskLlm('support.reply_draft.v1', tenant_id)(
+          SUPPORT_PROMPT,
+          `${context}\n\nQuestion from ${(user?.['name'] as string) ?? 'the user'}: ${parsed.data.question}`,
+        )
         return reply.send({ answer: content, isLive: true })
       } catch (err) {
         req.log.warn({ err }, 'Support triage LLM call failed — falling back')
@@ -113,7 +117,8 @@ export function registerSupportRoutes(app: FastifyInstance, db: Db): void {
 
   app.post<{ Body: unknown }>('/support/cases', async (req, reply) => {
     const parsed = CreateCaseSchema.safeParse(req.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
+    if (!parsed.success)
+      return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
     const { tenant_id, user_id } = req.authContext
     const { subject, message, triage } = parsed.data
 
@@ -123,11 +128,24 @@ export function registerSupportRoutes(app: FastifyInstance, db: Db): void {
     // Triage transcript first so the thread reads chronologically.
     for (const turn of triage ?? []) {
       messages.push(
-        { id: randomUUID(), author: 'user', author_id: user_id, text: turn.question, created_at: now },
+        {
+          id: randomUUID(),
+          author: 'user',
+          author_id: user_id,
+          text: turn.question,
+          created_at: now,
+        },
         { id: randomUUID(), author: 'keel', text: turn.answer, created_at: now },
       )
     }
-    messages.push({ id: randomUUID(), author: 'user', author_id: user_id, author_name: (user?.['name'] as string) ?? undefined, text: message, created_at: now })
+    messages.push({
+      id: randomUUID(),
+      author: 'user',
+      author_id: user_id,
+      author_name: (user?.['name'] as string) ?? undefined,
+      text: message,
+      created_at: now,
+    })
 
     const doc: SupportCaseDoc = {
       id: randomUUID(),
@@ -164,25 +182,33 @@ export function registerSupportRoutes(app: FastifyInstance, db: Db): void {
 
   /** User follow-up on their own case — any reply reopens a resolved case so
    *  the operator inbox sees it again. */
-  app.post<{ Params: { id: string }; Body: unknown }>('/support/cases/:id/messages', async (req, reply) => {
-    const parsed = MessageSchema.safeParse(req.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
-    const { user_id } = req.authContext
-    const user = await users.findOne({ id: user_id }, { projection: { name: 1 } })
-    const now = new Date()
-    const message: SupportMessage = {
-      id: randomUUID(),
-      author: 'user',
-      author_id: user_id,
-      author_name: (user?.['name'] as string) ?? undefined,
-      text: parsed.data.text,
-      created_at: now,
-    }
-    const result = await cases.updateOne(
-      { id: req.params.id, user_id },
-      { $push: { messages: message }, $set: { status: 'open', updated_at: now }, $unset: { resolved_by: '', resolved_at: '' } },
-    )
-    if (result.matchedCount === 0) return reply.status(404).send({ error: 'Case not found' })
-    return { ok: true }
-  })
+  app.post<{ Params: { id: string }; Body: unknown }>(
+    '/support/cases/:id/messages',
+    async (req, reply) => {
+      const parsed = MessageSchema.safeParse(req.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
+      const { user_id } = req.authContext
+      const user = await users.findOne({ id: user_id }, { projection: { name: 1 } })
+      const now = new Date()
+      const message: SupportMessage = {
+        id: randomUUID(),
+        author: 'user',
+        author_id: user_id,
+        author_name: (user?.['name'] as string) ?? undefined,
+        text: parsed.data.text,
+        created_at: now,
+      }
+      const result = await cases.updateOne(
+        { id: req.params.id, user_id },
+        {
+          $push: { messages: message },
+          $set: { status: 'open', updated_at: now },
+          $unset: { resolved_by: '', resolved_at: '' },
+        },
+      )
+      if (result.matchedCount === 0) return reply.status(404).send({ error: 'Case not found' })
+      return { ok: true }
+    },
+  )
 }

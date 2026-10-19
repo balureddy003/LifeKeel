@@ -47,10 +47,12 @@ import {
   type SocialPublisher,
   type SocialConnectionDoc,
 } from '../marketing/social-publisher.js'
-import { encryptIfNeeded, createLlmRouterFromEnv, type LlmFn } from '@lifekeel/platform'
+import { encryptIfNeeded, type LlmFn } from '@lifekeel/platform'
+import { taskLlm } from '../ai/task-gateway.js'
 import { ConnectorActionExecutor } from '@lifekeel/workflows'
 
-export type MarketingPostState = 'draft' | 'approved' | 'publishing' | 'published' | 'publish_failed' | 'rejected'
+export type MarketingPostState =
+  'draft' | 'approved' | 'publishing' | 'published' | 'publish_failed' | 'rejected'
 
 export interface MarketingPostDoc {
   id: string
@@ -155,11 +157,13 @@ async function incrementTrustScope(db: Db, tenantId: string, scope: string): Pro
   const current = (await getAutomation(db, tenantId)).trust_level_by_workflow?.[scope] ?? 0
   if (current >= AUTO_EXECUTE_TRUST_THRESHOLD) return
   const next = current + 1
-  await db.collection('tenant_settings').updateOne(
-    { tenant_id: tenantId },
-    { $set: { [`automation.trust_level_by_workflow.${scope}`]: next, updated_at: new Date() } },
-    { upsert: true },
-  )
+  await db
+    .collection('tenant_settings')
+    .updateOne(
+      { tenant_id: tenantId },
+      { $set: { [`automation.trust_level_by_workflow.${scope}`]: next, updated_at: new Date() } },
+      { upsert: true },
+    )
   if (next === AUTO_EXECUTE_TRUST_THRESHOLD) {
     await db.collection('system_events').insertOne({
       tenant_id: tenantId,
@@ -190,10 +194,7 @@ async function publishPost(
   // (not publish_failed — nothing is wrong with it) and can be retried
   // through the same approve route once the pause lifts.
   if ((await getPlatformConfig(db)).marketing_paused) {
-    await col.updateOne(
-      { id: post.id },
-      { $set: { publish_error: 'marketing_paused' } },
-    )
+    await col.updateOne({ id: post.id }, { $set: { publish_error: 'marketing_paused' } })
     return { ok: false }
   }
   const now = new Date()
@@ -256,11 +257,8 @@ export async function publishDueMarketingPosts(
 ): Promise<number> {
   const col = db.collection<MarketingPostDoc>('marketing_posts')
   const now = new Date()
-  const due = (await col
-    .find({ state: 'approved' })
-    .sort({ scheduled_at: 1 })
-    .limit(50)
-    .toArray()).filter((p) => !p.scheduled_at || p.scheduled_at.getTime() <= now.getTime())
+  const due = (await col.find({ state: 'approved' }).sort({ scheduled_at: 1 }).limit(50).toArray())
+    .filter((p) => !p.scheduled_at || p.scheduled_at.getTime() <= now.getTime())
     .slice(0, 20)
   let dispatched = 0
   for (const post of due) {
@@ -288,12 +286,19 @@ export async function publishDueMarketingPosts(
  *  post the tenant hasn't promoted yet (source_blog_slug dedupe) and skips
  *  the day when everything's been promoted. The draft is always 'draft' —
  *  generated content never skips human review regardless of trust. */
-export async function generateDailyMarketingDrafts(db: Db, llm: LlmFn): Promise<number> {
+export async function generateDailyMarketingDrafts(
+  db: Db,
+  llmFor: (tenantId: string) => LlmFn,
+): Promise<number> {
   const postsCol = db.collection<MarketingPostDoc>('marketing_posts')
   const connsCol = db.collection<SocialConnectionDoc>('social_connections')
   const blogsCol = db.collection('blog_posts')
-  const optedIn = (await db.collection('tenant_settings').find({}).toArray())
-    .filter((d) => (d['automation'] as Record<string, unknown> | undefined)?.['daily_marketing_drafts_enabled'] === true)
+  const optedIn = (await db.collection('tenant_settings').find({}).toArray()).filter(
+    (d) =>
+      (d['automation'] as Record<string, unknown> | undefined)?.[
+        'daily_marketing_drafts_enabled'
+      ] === true,
+  )
 
   let queued = 0
   for (const s of optedIn) {
@@ -305,15 +310,22 @@ export async function generateDailyMarketingDrafts(db: Db, llm: LlmFn): Promise<
         .map((p) => p.source_blog_slug)
         .filter((x): x is string => Boolean(x)),
     )
-    const candidate = (await blogsCol.find({ published: true }).sort({ published_at: -1 }).limit(50).toArray())
-      .find((b) => !usedSlugs.has(b['slug'] as string))
+    const candidate = (
+      await blogsCol.find({ published: true }).sort({ published_at: -1 }).limit(50).toArray()
+    ).find((b) => !usedSlugs.has(b['slug'] as string))
     if (!candidate) continue
 
     const slug = candidate['slug'] as string
     const src = await blogSourceBlock(db, slug, conn.channel)
     if (!src) continue
     const learning = await learningContextBlock(db, tenantId, conn.channel)
-    const { content, generated } = await draftPostText(llm, conn.channel, src.sourceBlock, src.link, learning)
+    const { content, generated } = await draftPostText(
+      llmFor(tenantId),
+      conn.channel,
+      src.sourceBlock,
+      src.link,
+      learning,
+    )
     const post: MarketingPostDoc = {
       id: randomUUID(),
       tenant_id: tenantId,
@@ -339,7 +351,7 @@ export async function generateDailyMarketingDrafts(db: Db, llm: LlmFn): Promise<
  *  connection. Generated content still never skips human review. */
 export async function draftBlogPromoPost(
   db: Db,
-  llm: LlmFn,
+  llmFor: (tenantId: string) => LlmFn,
   tenantId: string,
   blogSlug: string,
   channel: string,
@@ -348,7 +360,13 @@ export async function draftBlogPromoPost(
   const src = await blogSourceBlock(db, blogSlug, channel)
   if (!src) return null
   const learning = await learningContextBlock(db, tenantId, channel)
-  const { content, generated } = await draftPostText(llm, channel, src.sourceBlock, src.link, learning)
+  const { content, generated } = await draftPostText(
+    llmFor(tenantId),
+    channel,
+    src.sourceBlock,
+    src.link,
+    learning,
+  )
   const post: MarketingPostDoc = {
     id: randomUUID(),
     tenant_id: tenantId,
@@ -404,8 +422,22 @@ export async function marketingPerformance(db: Db): Promise<{
   const users = await db.collection('users').find({}).toArray()
   const leads = await db.collection('leads').find({}).toArray()
   const blogs = await db.collection('blog_posts').find({}).toArray()
-  const publishedPosts = await db.collection<MarketingPostDoc>('marketing_posts')
-    .find({ state: 'published' }, { projection: { _id: 0, channel: 1, content: 1, metrics: 1, metrics_at: 1, source_blog_slug: 1, external_url: 1 } })
+  const publishedPosts = await db
+    .collection<MarketingPostDoc>('marketing_posts')
+    .find(
+      { state: 'published' },
+      {
+        projection: {
+          _id: 0,
+          channel: 1,
+          content: 1,
+          metrics: 1,
+          metrics_at: 1,
+          source_blog_slug: 1,
+          external_url: 1,
+        },
+      },
+    )
     .toArray()
   const titleBy = new Map(blogs.map((b) => [b['slug'] as string, b['title'] as string]))
 
@@ -470,7 +502,14 @@ export async function marketingPerformance(db: Db): Promise<{
   const posts = [...rows.values()]
     .map((r) => ({ ...r, title: titleBy.get(r.slug) }))
     .sort((a, b) => b.signups - a.signups || b.views - a.views)
-  const channels = [...new Set([...channelViews.keys(), ...channelSignups.keys(), ...channelCtas.keys(), ...channelLeads.keys()])]
+  const channels = [
+    ...new Set([
+      ...channelViews.keys(),
+      ...channelSignups.keys(),
+      ...channelCtas.keys(),
+      ...channelLeads.keys(),
+    ]),
+  ]
     .map((c) => ({
       channel: c,
       views: channelViews.get(c) ?? 0,
@@ -479,11 +518,23 @@ export async function marketingPerformance(db: Db): Promise<{
       signups: channelSignups.get(c) ?? 0,
     }))
     .sort((a, b) => b.signups - a.signups || b.views - a.views)
-  const campaigns = [...new Set([...campaignViews.keys(), ...campaignSignups.keys(), ...campaignLeads.keys()])]
-    .map((c) => ({ campaign: c, views: campaignViews.get(c) ?? 0, signups: campaignSignups.get(c) ?? 0, leads: campaignLeads.get(c) ?? 0 }))
+  const campaigns = [
+    ...new Set([...campaignViews.keys(), ...campaignSignups.keys(), ...campaignLeads.keys()]),
+  ]
+    .map((c) => ({
+      campaign: c,
+      views: campaignViews.get(c) ?? 0,
+      signups: campaignSignups.get(c) ?? 0,
+      leads: campaignLeads.get(c) ?? 0,
+    }))
     .sort((a, b) => b.signups - a.signups || b.views - a.views)
   const totals = posts.reduce(
-    (t, r) => ({ views: t.views + r.views, cta_clicks: t.cta_clicks + r.cta_clicks, signups: t.signups + r.signups, leads: t.leads + r.leads }),
+    (t, r) => ({
+      views: t.views + r.views,
+      cta_clicks: t.cta_clicks + r.cta_clicks,
+      signups: t.signups + r.signups,
+      leads: t.leads + r.leads,
+    }),
     { views: 0, cta_clicks: 0, signups: 0, leads: 0 },
   )
 
@@ -493,11 +544,15 @@ export async function marketingPerformance(db: Db): Promise<{
     return (m.likes ?? 0) + (m.reposts ?? 0) * 3 + (m.replies ?? 0) * 2
   }
   const measured = publishedPosts.filter((p) => p.metrics_at)
-  const unmeasuredChannels = [...new Set(publishedPosts.filter((p) => !p.metrics_at).map((p) => p.channel))].sort()
+  const unmeasuredChannels = [
+    ...new Set(publishedPosts.filter((p) => !p.metrics_at).map((p) => p.channel)),
+  ].sort()
   const medianOf = (nums: number[]) => {
     if (nums.length === 0) return 0
     const s = [...nums].sort((a, b) => a - b)
-    return s.length % 2 === 1 ? s[Math.floor(s.length / 2)]! : (s[s.length / 2 - 1]! + s[s.length / 2]!) / 2
+    return s.length % 2 === 1
+      ? s[Math.floor(s.length / 2)]!
+      : (s[s.length / 2 - 1]! + s[s.length / 2]!) / 2
   }
   const accountMedian = medianOf(measured.map(engagement))
   const traits: { label: string; match: (p: MarketingPostDoc) => boolean }[] = [
@@ -511,19 +566,31 @@ export async function marketingPerformance(db: Db): Promise<{
     .map((t) => {
       const inBucket = measured.filter(t.match)
       if (inBucket.length < 3) return null // too thin to mean anything
-      const x = accountMedian === 0 ? null : Math.round((medianOf(inBucket.map(engagement)) / accountMedian) * 10) / 10
+      const x =
+        accountMedian === 0
+          ? null
+          : Math.round((medianOf(inBucket.map(engagement)) / accountMedian) * 10) / 10
       if (x === null || (x > 0.75 && x < 1.33)) return null // no signal either way
       return { label: t.label, measured: inBucket.length, engagement_x: x }
     })
     .filter((r): r is NonNullable<typeof r> => r !== null)
     .sort((a, b) => b.engagement_x - a.engagement_x)
-  const top = measured.length === 0 ? undefined : [...measured].sort((a, b) => engagement(b) - engagement(a))[0]
+  const top =
+    measured.length === 0
+      ? undefined
+      : [...measured].sort((a, b) => engagement(b) - engagement(a))[0]
   const insights = {
     measured_posts: measured.length,
     unmeasured_channels: unmeasuredChannels,
     rows: insightRows,
     ...(top
-      ? { top_post: { channel: top.channel, excerpt: top.content.replace(/\s+/g, ' ').trim().slice(0, 140), engagement: engagement(top) } }
+      ? {
+          top_post: {
+            channel: top.channel,
+            excerpt: top.content.replace(/\s+/g, ' ').trim().slice(0, 140),
+            engagement: engagement(top),
+          },
+        }
       : {}),
   }
   return { posts, channels, campaigns, totals, insights }
@@ -540,10 +607,17 @@ export async function pollMarketingEngagement(db: Db): Promise<number> {
   const col = db.collection<MarketingPostDoc>('marketing_posts')
   const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
   const published = (await col.find({ state: 'published' }).toArray())
-    .filter((p) => p.external_id && !p.dry_run && (!p.published_at || p.published_at.getTime() >= cutoff.getTime()))
+    .filter(
+      (p) =>
+        p.external_id &&
+        !p.dry_run &&
+        (!p.published_at || p.published_at.getTime() >= cutoff.getTime()),
+    )
     .slice(0, 200)
 
-  const bsky = published.filter((p) => p.channel === 'bluesky' && p.external_id!.startsWith('at://'))
+  const bsky = published.filter(
+    (p) => p.channel === 'bluesky' && p.external_id!.startsWith('at://'),
+  )
   let updated = 0
   for (let i = 0; i < bsky.length; i += 25) {
     const chunk = bsky.slice(i, i + 25)
@@ -561,7 +635,11 @@ export async function pollMarketingEngagement(db: Db): Promise<number> {
         { id: post.id },
         {
           $set: {
-            metrics: { likes: rec.likeCount ?? 0, reposts: rec.repostCount ?? 0, replies: rec.replyCount ?? 0 },
+            metrics: {
+              likes: rec.likeCount ?? 0,
+              reposts: rec.repostCount ?? 0,
+              replies: rec.replyCount ?? 0,
+            },
             metrics_at: new Date(),
           },
         },
@@ -580,21 +658,34 @@ export async function pollMarketingEngagement(db: Db): Promise<number> {
     for (const post of xPosts) {
       let ok = hasCred.get(post.tenant_id)
       if (ok === undefined) {
-        const cred = await db.collection<Record<string, unknown>>('connector_credentials')
+        const cred = await db
+          .collection<Record<string, unknown>>('connector_credentials')
           .findOne({ tenant_id: post.tenant_id, connector_id: 'twitter_x' })
         ok = !!cred && cred['needs_reauth'] !== true
         hasCred.set(post.tenant_id, ok)
       }
       if (!ok) continue
       try {
-        const res = await exec.execute(post.tenant_id, 'twitter_x', 'getPostsById', { post_id: post.external_id })
-        const m = (res.body as { data?: { public_metrics?: { like_count?: number; repost_count?: number; reply_count?: number } } } | null)?.data?.public_metrics
+        const res = await exec.execute(post.tenant_id, 'twitter_x', 'getPostsById', {
+          post_id: post.external_id,
+        })
+        const m = (
+          res.body as {
+            data?: {
+              public_metrics?: { like_count?: number; repost_count?: number; reply_count?: number }
+            }
+          } | null
+        )?.data?.public_metrics
         if (!res.ok || !m) continue
         await col.updateOne(
           { id: post.id },
           {
             $set: {
-              metrics: { likes: m.like_count ?? 0, reposts: m.repost_count ?? 0, replies: m.reply_count ?? 0 },
+              metrics: {
+                likes: m.like_count ?? 0,
+                reposts: m.repost_count ?? 0,
+                replies: m.reply_count ?? 0,
+              },
               metrics_at: new Date(),
             },
           },
@@ -609,36 +700,58 @@ export async function pollMarketingEngagement(db: Db): Promise<number> {
   // Facebook Pages — GET /{post_id}?fields=likes.summary(true),comments.
   // summary(true),shares under the stored page token.
   const fbPosts = published.filter((p) => p.channel === 'facebook')
-  if (fbPosts.length) updated += await pollViaExecutor(db, col, fbPosts, 'facebook_pages', 'get_post', (body) => {
-    const b = body as {
-      likes?: { summary?: { total_count?: number } }
-      comments?: { summary?: { total_count?: number } }
-      shares?: { count?: number }
-    } | null
-    if (!b) return null
-    return {
-      likes: b.likes?.summary?.total_count ?? 0,
-      reposts: b.shares?.count ?? 0,
-      replies: b.comments?.summary?.total_count ?? 0,
-    }
-  })
+  if (fbPosts.length)
+    updated += await pollViaExecutor(db, col, fbPosts, 'facebook_pages', 'get_post', (body) => {
+      const b = body as {
+        likes?: { summary?: { total_count?: number } }
+        comments?: { summary?: { total_count?: number } }
+        shares?: { count?: number }
+      } | null
+      if (!b) return null
+      return {
+        likes: b.likes?.summary?.total_count ?? 0,
+        reposts: b.shares?.count ?? 0,
+        replies: b.comments?.summary?.total_count ?? 0,
+      }
+    })
 
   // Instagram — like/comment counts are plain fields on the media object.
   const igPosts = published.filter((p) => p.channel === 'instagram')
-  if (igPosts.length) updated += await pollViaExecutor(db, col, igPosts, 'instagram_business', 'get_media', (body) => {
-    const b = body as { like_count?: number; comments_count?: number } | null
-    if (!b) return null
-    return { likes: b.like_count ?? 0, replies: b.comments_count ?? 0 }
-  })
+  if (igPosts.length)
+    updated += await pollViaExecutor(
+      db,
+      col,
+      igPosts,
+      'instagram_business',
+      'get_media',
+      (body) => {
+        const b = body as { like_count?: number; comments_count?: number } | null
+        if (!b) return null
+        return { likes: b.like_count ?? 0, replies: b.comments_count ?? 0 }
+      },
+    )
 
   // Threads — insights endpoint returns a metric list, not flat fields.
   const threadPosts = published.filter((p) => p.channel === 'threads')
-  if (threadPosts.length) updated += await pollViaExecutor(db, col, threadPosts, 'threads', 'get_media_insights', (body) => {
-    const data = (body as { data?: { name?: string; values?: { value?: number }[] }[] } | null)?.data
-    if (!data) return null
-    const metric = (name: string) => data.find((d) => d.name === name)?.values?.[0]?.value ?? 0
-    return { likes: metric('likes'), reposts: metric('reposts') + metric('quotes'), replies: metric('replies') }
-  })
+  if (threadPosts.length)
+    updated += await pollViaExecutor(
+      db,
+      col,
+      threadPosts,
+      'threads',
+      'get_media_insights',
+      (body) => {
+        const data = (body as { data?: { name?: string; values?: { value?: number }[] }[] } | null)
+          ?.data
+        if (!data) return null
+        const metric = (name: string) => data.find((d) => d.name === name)?.values?.[0]?.value ?? 0
+        return {
+          likes: metric('likes'),
+          reposts: metric('reposts') + metric('quotes'),
+          replies: metric('replies'),
+        }
+      },
+    )
 
   // Mastodon — the status object carries counts; env-token read.
   const mastoPosts = published.filter((p) => p.channel === 'mastodon')
@@ -651,12 +764,20 @@ export async function pollMarketingEngagement(db: Db): Promise<number> {
           headers: { Authorization: `Bearer ${mastoToken}` },
         })
         if (!res.ok) continue
-        const s = (await res.json()) as { favourites_count?: number; reblogs_count?: number; replies_count?: number }
+        const s = (await res.json()) as {
+          favourites_count?: number
+          reblogs_count?: number
+          replies_count?: number
+        }
         await col.updateOne(
           { id: post.id },
           {
             $set: {
-              metrics: { likes: s.favourites_count ?? 0, reposts: s.reblogs_count ?? 0, replies: s.replies_count ?? 0 },
+              metrics: {
+                likes: s.favourites_count ?? 0,
+                reposts: s.reblogs_count ?? 0,
+                replies: s.replies_count ?? 0,
+              },
               metrics_at: new Date(),
             },
           },
@@ -687,7 +808,8 @@ async function pollViaExecutor(
   for (const post of posts) {
     let ok = hasCred.get(post.tenant_id)
     if (ok === undefined) {
-      const cred = await db.collection<Record<string, unknown>>('connector_credentials')
+      const cred = await db
+        .collection<Record<string, unknown>>('connector_credentials')
         .findOne({ tenant_id: post.tenant_id, connector_id: connectorId })
       ok = !!cred && cred['needs_reauth'] !== true
       hasCred.set(post.tenant_id, ok)
@@ -695,7 +817,9 @@ async function pollViaExecutor(
     if (!ok) continue
     try {
       const paramKey = connectorId === 'facebook_pages' ? 'post_id' : 'media_id'
-      const res = await exec.execute(post.tenant_id, connectorId, actionId, { [paramKey]: post.external_id })
+      const res = await exec.execute(post.tenant_id, connectorId, actionId, {
+        [paramKey]: post.external_id,
+      })
       const metrics = res.ok ? decode(res.body) : null
       if (!metrics) continue
       await col.updateOne({ id: post.id }, { $set: { metrics, metrics_at: new Date() } })
@@ -763,14 +887,24 @@ Rules — these are non-negotiable:
 
 /** UTM'd site link — clicks land in users.attribution.utm_source so the
  *  operator funnel can attribute signups back to the channel/post. */
-function siteLink(channel: string, path: string, contentTag: string, campaign = 'lifekeel_social'): string {
+function siteLink(
+  channel: string,
+  path: string,
+  contentTag: string,
+  campaign = 'lifekeel_social',
+): string {
   const base = (process.env['LIFEKEEL_URL'] ?? '').replace(/\/$/, '')
   return base
     ? `${base}${path}?utm_source=${encodeURIComponent(channel)}&utm_medium=social&utm_campaign=${encodeURIComponent(campaign)}&utm_content=${encodeURIComponent(contentTag)}`
     : ''
 }
 
-async function blogSourceBlock(db: Db, blogSlug: string, channel: string, campaign = 'lifekeel_social'): Promise<{ sourceBlock: string; link: string } | null> {
+async function blogSourceBlock(
+  db: Db,
+  blogSlug: string,
+  channel: string,
+  campaign = 'lifekeel_social',
+): Promise<{ sourceBlock: string; link: string } | null> {
   const post = await db.collection('blog_posts').findOne({ slug: blogSlug, published: true })
   if (!post) return null
   // utm_content carries the slug for per-post reads.
@@ -789,7 +923,8 @@ async function blogSourceBlock(db: Db, blogSlug: string, channel: string, campai
  *  Returns '' when the sample is too thin for "learning" to mean anything,
  *  so a brand-new tenant generates exactly as before. */
 async function learningContextBlock(db: Db, tenantId: string, channel: string): Promise<string> {
-  const published = await db.collection<MarketingPostDoc>('marketing_posts')
+  const published = await db
+    .collection<MarketingPostDoc>('marketing_posts')
     .find({ tenant_id: tenantId, state: 'published' })
     .toArray()
   if (published.length < 2) return ''
@@ -797,7 +932,8 @@ async function learningContextBlock(db: Db, tenantId: string, channel: string): 
   // Conversions join back through the slug the post promoted.
   const conversionsBySlug = new Map<string, number>()
   const bump = (slug: unknown, n = 1) => {
-    if (typeof slug === 'string' && slug) conversionsBySlug.set(slug, (conversionsBySlug.get(slug) ?? 0) + n)
+    if (typeof slug === 'string' && slug)
+      conversionsBySlug.set(slug, (conversionsBySlug.get(slug) ?? 0) + n)
   }
   for (const u of await db.collection('users').find({}).toArray()) {
     const a = u['attribution'] as Record<string, string> | undefined
@@ -813,21 +949,17 @@ async function learningContextBlock(db: Db, tenantId: string, channel: string): 
     const conversions = p.source_blog_slug ? (conversionsBySlug.get(p.source_blog_slug) ?? 0) : 0
     // Conversions outweigh vanity metrics by a wide margin — a signup is
     // the actual goal; a like is directional signal at best.
-    const score =
-      conversions * 10 +
-      (m.reposts ?? 0) * 3 +
-      (m.replies ?? 0) * 2 +
-      (m.likes ?? 0)
+    const score = conversions * 10 + (m.reposts ?? 0) * 3 + (m.replies ?? 0) * 2 + (m.likes ?? 0)
     return { p, score, conversions }
   })
 
   // Same-channel winners first — platform conventions differ, then fill
   // with cross-channel signal if the channel itself is thin.
-  const winners = scored
-    .filter((s) => s.score > 0)
-    .sort((a, b) => b.score - a.score)
+  const winners = scored.filter((s) => s.score > 0).sort((a, b) => b.score - a.score)
   const channelWinners = winners.filter((s) => s.p.channel === channel).slice(0, 3)
-  const otherWinners = winners.filter((s) => s.p.channel !== channel).slice(0, Math.max(0, 3 - channelWinners.length))
+  const otherWinners = winners
+    .filter((s) => s.p.channel !== channel)
+    .slice(0, Math.max(0, 3 - channelWinners.length))
   const flops = scored
     .filter((s) => s.score === 0 && s.p.metrics_at) // only "measured and flat", never unmeasured
     .slice(0, 2)
@@ -846,11 +978,15 @@ async function learningContextBlock(db: Db, tenantId: string, channel: string): 
       `${m.reposts ?? 0} reposts`,
       `${m.replies ?? 0} replies`,
       conversions > 0 ? `${conversions} signups/leads` : null,
-    ].filter(Boolean).join(', ')
+    ]
+      .filter(Boolean)
+      .join(', ')
     lines.push(`WINNER [${p.channel}]: "${excerpt(p.content)}" → ${stats}`)
   }
   for (const { p } of flops) {
-    lines.push(`FLOP [${p.channel}]: "${excerpt(p.content)}" → no measured response — avoid this angle/style`)
+    lines.push(
+      `FLOP [${p.channel}]: "${excerpt(p.content)}" → no measured response — avoid this angle/style`,
+    )
   }
   return lines.join('\n')
 }
@@ -875,7 +1011,11 @@ async function draftPostText(
     if (!content) throw new Error('empty generation')
     return { content, generated: 'llm' }
   } catch {
-    const body = clampPost(sourceBlock.split('\n').slice(1).join('\n'), limit, link ? link.length + 2 : 0)
+    const body = clampPost(
+      sourceBlock.split('\n').slice(1).join('\n'),
+      limit,
+      link ? link.length + 2 : 0,
+    )
     return { generated: 'template', content: `${body}${link ? `\n\n${link}` : ''}` }
   }
 }
@@ -931,7 +1071,8 @@ export function registerMarketingPostRoutes(
   publisher?: SocialPublisher | null,
   opts?: MarketingRouteOptions,
 ): void {
-  const client = publisher === undefined ? new DbSocialPublisher(db, socialPublisherFromEnv()) : publisher
+  const client =
+    publisher === undefined ? new DbSocialPublisher(db, socialPublisherFromEnv()) : publisher
   const col = db.collection<MarketingPostDoc>('marketing_posts')
   const connectionsCol = db.collection<SocialConnectionDoc>('social_connections')
   col.createIndex({ tenant_id: 1, created_at: -1 }).catch(() => {})
@@ -944,18 +1085,28 @@ export function registerMarketingPostRoutes(
       await reply.status(503).send({ error: 'marketing_not_configured' })
       return
     }
-    if (!allowed.has(req.authContext.tenant_id)) await reply.status(403).send({ error: 'Forbidden: not an operator tenant' })
+    if (!allowed.has(req.authContext.tenant_id))
+      await reply.status(403).send({ error: 'Forbidden: not an operator tenant' })
   }
   const readGate = opts?.operatorTenants ? testGate : requireOperator(db, 'marketing.read')
   const manageGate = opts?.operatorTenants ? testGate : requireOperator(db, 'marketing.manage')
-  const llm = opts?.llm ?? createLlmRouterFromEnv()
+  // Governed per-tenant fn (intent 01); opts.llm remains the test seam.
+  const llmFor = (tenantId: string) => opts?.llm ?? taskLlm('marketing.social_draft.v1', tenantId)
 
   /** GET /marketing/integrations — channels the composer can target: this
    *  tenant's stored connections plus any env-configured channels. */
   app.get('/marketing/integrations', { preHandler: readGate }, async (req, reply) => {
     if (!client) return reply.status(503).send({ error: 'publisher_not_configured' })
     const integrations = await client.listIntegrations(req.authContext.tenant_id)
-    return { integrations: integrations.map((i) => ({ id: i.id, name: i.name, identifier: i.identifier, disabled: i.disabled === true, source: i.source })) }
+    return {
+      integrations: integrations.map((i) => ({
+        id: i.id,
+        name: i.name,
+        identifier: i.identifier,
+        disabled: i.disabled === true,
+        source: i.source,
+      })),
+    }
   })
 
   /** GET /marketing/connections — this tenant's stored channel credentials,
@@ -967,7 +1118,8 @@ export function registerMarketingPostRoutes(
     const tenantId = req.authContext.tenant_id
     const [conns, creds] = await Promise.all([
       connectionsCol.find({ tenant_id: tenantId }).toArray(),
-      db.collection<Record<string, unknown>>('connector_credentials')
+      db
+        .collection<Record<string, unknown>>('connector_credentials')
         .find({ tenant_id: tenantId, connector_id: { $in: Object.values(CONNECTOR_CHANNELS) } })
         .toArray(),
     ])
@@ -978,13 +1130,19 @@ export function registerMarketingPostRoutes(
       connections: [
         ...conns.map(({ credentials: _credentials, ...rest }) => rest),
         ...creds.map((cred) => {
-          const channel = channelByConnector.get(cred['connector_id'] as string) ?? cred['connector_id']
+          const channel =
+            channelByConnector.get(cred['connector_id'] as string) ?? cred['connector_id']
           const extra = cred['extra'] as Record<string, string> | undefined
           const needsReauth = cred['needs_reauth'] === true
           return {
             tenant_id: tenantId,
             channel,
-            handle: extra?.['username'] ?? extra?.['page_name'] ?? extra?.['name'] ?? extra?.['ig_username'] ?? '',
+            handle:
+              extra?.['username'] ??
+              extra?.['page_name'] ??
+              extra?.['name'] ??
+              extra?.['ig_username'] ??
+              '',
             status: needsReauth ? 'error' : 'active',
             last_error: needsReauth ? `${channel} token expired — reconnect` : null,
             connected_by: 'oauth',
@@ -1029,12 +1187,26 @@ export function registerMarketingPostRoutes(
       },
       { upsert: true },
     )
-    getAuditLogger()?.fromRequest(req, 'marketing.connection_connect', 'social_connection', `bluesky:${tenant_id}`, {
-      channel: 'bluesky',
-      handle,
-    })
+    getAuditLogger()?.fromRequest(
+      req,
+      'marketing.connection_connect',
+      'social_connection',
+      `bluesky:${tenant_id}`,
+      {
+        channel: 'bluesky',
+        handle,
+      },
+    )
     return reply.status(201).send({
-      connection: { tenant_id, channel: 'bluesky', handle, did, status: 'active', connected_by: user_id, updated_at: now },
+      connection: {
+        tenant_id,
+        channel: 'bluesky',
+        handle,
+        did,
+        status: 'active',
+        connected_by: user_id,
+        updated_at: now,
+      },
     })
   })
 
@@ -1051,12 +1223,19 @@ export function registerMarketingPostRoutes(
       // OAuth flow), not social_connections — disconnect removes them too.
       const connectorId = CONNECTOR_CHANNELS[req.params.channel]
       if (connectorId) {
-        const credRes = await db.collection('connector_credentials')
+        const credRes = await db
+          .collection('connector_credentials')
           .deleteOne({ tenant_id, connector_id: connectorId })
         deleted += credRes.deletedCount ?? 0
       }
       if (!deleted) return reply.status(404).send({ error: 'No such connection' })
-      getAuditLogger()?.fromRequest(req, 'marketing.connection_disconnect', 'social_connection', `${req.params.channel}:${tenant_id}`, {})
+      getAuditLogger()?.fromRequest(
+        req,
+        'marketing.connection_disconnect',
+        'social_connection',
+        `${req.params.channel}:${tenant_id}`,
+        {},
+      )
       return { ok: true }
     },
   )
@@ -1108,10 +1287,18 @@ export function registerMarketingPostRoutes(
         { returnDocument: 'after' },
       )) as MarketingPostDoc | null
       if (claimed) {
-        const result = await publishPost(db, col, client, claimed, { dryRun: automation.dry_run_mode === true })
+        const result = await publishPost(db, col, client, claimed, {
+          dryRun: automation.dry_run_mode === true,
+        })
         if (result.ok) {
           await col.updateOne({ id: post.id }, { $set: { auto_published: true } })
-          getAuditLogger()?.fromRequest(req, 'marketing.post_auto_publish', 'marketing_post', post.id, { channel })
+          getAuditLogger()?.fromRequest(
+            req,
+            'marketing.post_auto_publish',
+            'marketing_post',
+            post.id,
+            { channel },
+          )
         }
       }
     }
@@ -1155,16 +1342,36 @@ export function registerMarketingPostRoutes(
 
     if (preview) {
       try {
-        const drafts = await draftPostVariants(llm, channel, sourceBlock, link, count ?? 3, learning)
+        const drafts = await draftPostVariants(
+          llmFor(tenant_id),
+          channel,
+          sourceBlock,
+          link,
+          count ?? 3,
+          learning,
+        )
         return { drafts }
       } catch {
         // Same deterministic fallback as the persisted path.
-        const { content } = await draftPostText(async () => { throw new Error('fallback') }, channel, sourceBlock, link)
+        const { content } = await draftPostText(
+          async () => {
+            throw new Error('fallback')
+          },
+          channel,
+          sourceBlock,
+          link,
+        )
         return { drafts: [content] }
       }
     }
 
-    const { content, generated } = await draftPostText(llm, channel, sourceBlock, link, learning)
+    const { content, generated } = await draftPostText(
+      llmFor(tenant_id),
+      channel,
+      sourceBlock,
+      link,
+      learning,
+    )
 
     const now = new Date()
     const post: MarketingPostDoc = {
@@ -1181,7 +1388,10 @@ export function registerMarketingPostRoutes(
       created_at: now,
     }
     await col.insertOne(post)
-    getAuditLogger()?.fromRequest(req, 'marketing.post_generate', 'marketing_post', post.id, { channel, generated })
+    getAuditLogger()?.fromRequest(req, 'marketing.post_generate', 'marketing_post', post.id, {
+      channel,
+      generated,
+    })
     return reply.status(201).send({ post })
   })
 
@@ -1189,82 +1399,107 @@ export function registerMarketingPostRoutes(
    *  schedule. Only 'draft' and 'publish_failed' are editable — 'approved'
    *  is already claimed for dispatch, so rescheduling there would race the
    *  sweep; cancel it (reject) and edit from draft instead. */
-  app.patch<{ Params: { id: string } }>('/marketing/posts/:id', { preHandler: manageGate }, async (req, reply) => {
-    const { tenant_id } = req.authContext
-    const parsed = UpdatePostSchema.safeParse(req.body)
-    if (!parsed.success) {
-      return reply.status(400).send({ error: 'Invalid update', issues: parsed.error.issues })
-    }
-    const { content, scheduled_at, media_url } = parsed.data
-    const set: Record<string, unknown> = {}
-    const unset: Record<string, ''> = {}
-    if (content !== undefined) set['content'] = content
-    if (scheduled_at) set['scheduled_at'] = new Date(scheduled_at)
-    else if (scheduled_at !== undefined) unset['scheduled_at'] = ''
-    if (media_url) set['media_url'] = media_url
-    else if (media_url !== undefined) unset['media_url'] = ''
-    if (Object.keys(set).length === 0 && Object.keys(unset).length === 0) {
-      return reply.status(400).send({ error: 'Nothing to update' })
-    }
-    const post = (await col.findOneAndUpdate(
-      { id: req.params.id, tenant_id, state: { $in: ['draft', 'publish_failed'] } },
-      { ...(Object.keys(set).length ? { $set: set } : {}), ...(Object.keys(unset).length ? { $unset: unset } : {}) },
-      { returnDocument: 'after' },
-    )) as MarketingPostDoc | null
-    if (!post) return reply.status(404).send({ error: 'Post not found or not editable' })
-    getAuditLogger()?.fromRequest(req, 'marketing.post_update', 'marketing_post', post.id, {
-      channel: post.channel,
-      edited: [...Object.keys(set), ...Object.keys(unset)],
-    })
-    return { post }
-  })
+  app.patch<{ Params: { id: string } }>(
+    '/marketing/posts/:id',
+    { preHandler: manageGate },
+    async (req, reply) => {
+      const { tenant_id } = req.authContext
+      const parsed = UpdatePostSchema.safeParse(req.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Invalid update', issues: parsed.error.issues })
+      }
+      const { content, scheduled_at, media_url } = parsed.data
+      const set: Record<string, unknown> = {}
+      const unset: Record<string, ''> = {}
+      if (content !== undefined) set['content'] = content
+      if (scheduled_at) set['scheduled_at'] = new Date(scheduled_at)
+      else if (scheduled_at !== undefined) unset['scheduled_at'] = ''
+      if (media_url) set['media_url'] = media_url
+      else if (media_url !== undefined) unset['media_url'] = ''
+      if (Object.keys(set).length === 0 && Object.keys(unset).length === 0) {
+        return reply.status(400).send({ error: 'Nothing to update' })
+      }
+      const post = (await col.findOneAndUpdate(
+        { id: req.params.id, tenant_id, state: { $in: ['draft', 'publish_failed'] } },
+        {
+          ...(Object.keys(set).length ? { $set: set } : {}),
+          ...(Object.keys(unset).length ? { $unset: unset } : {}),
+        },
+        { returnDocument: 'after' },
+      )) as MarketingPostDoc | null
+      if (!post) return reply.status(404).send({ error: 'Post not found or not editable' })
+      getAuditLogger()?.fromRequest(req, 'marketing.post_update', 'marketing_post', post.id, {
+        channel: post.channel,
+        edited: [...Object.keys(set), ...Object.keys(unset)],
+      })
+      return { post }
+    },
+  )
 
   /** POST /marketing/posts/:id/approve — human decision; publishes and earns
    *  channel trust on success. Retries publish_failed posts. */
-  app.post<{ Params: { id: string } }>('/marketing/posts/:id/approve', { preHandler: manageGate }, async (req, reply) => {
-    const { tenant_id, user_id } = req.authContext
-    const claimed = (await col.findOneAndUpdate(
-      { id: req.params.id, tenant_id, state: { $in: ['draft', 'publish_failed'] } },
-      { $set: { state: 'approved', approved_at: new Date(), approved_by: user_id } },
-      { returnDocument: 'after' },
-    )) as MarketingPostDoc | null
-    if (!claimed) {
-      return reply.status(404).send({ error: 'Post not found or already decided' })
-    }
+  app.post<{ Params: { id: string } }>(
+    '/marketing/posts/:id/approve',
+    { preHandler: manageGate },
+    async (req, reply) => {
+      const { tenant_id, user_id } = req.authContext
+      const claimed = (await col.findOneAndUpdate(
+        { id: req.params.id, tenant_id, state: { $in: ['draft', 'publish_failed'] } },
+        { $set: { state: 'approved', approved_at: new Date(), approved_by: user_id } },
+        { returnDocument: 'after' },
+      )) as MarketingPostDoc | null
+      if (!claimed) {
+        return reply.status(404).send({ error: 'Post not found or already decided' })
+      }
 
-    const automation = await getAutomation(db, tenant_id)
-    const result = await publishPost(db, col, client, claimed, { dryRun: automation.dry_run_mode === true })
-    if (!result.ok) {
-      const failed = await col.findOne({ id: claimed.id })
+      const automation = await getAutomation(db, tenant_id)
+      const result = await publishPost(db, col, client, claimed, {
+        dryRun: automation.dry_run_mode === true,
+      })
+      if (!result.ok) {
+        const failed = await col.findOne({ id: claimed.id })
+        getAuditLogger()?.fromRequest(req, 'marketing.post_approve', 'marketing_post', claimed.id, {
+          channel: claimed.channel,
+          outcome: 'publish_failed',
+          publish_error: failed?.publish_error,
+        })
+        return reply.status(502).send({ error: 'Publish failed', post: failed })
+      }
+
+      await incrementTrustScope(db, tenant_id, trustScope(claimed.channel))
       getAuditLogger()?.fromRequest(req, 'marketing.post_approve', 'marketing_post', claimed.id, {
         channel: claimed.channel,
-        outcome: 'publish_failed',
-        publish_error: failed?.publish_error,
       })
-      return reply.status(502).send({ error: 'Publish failed', post: failed })
-    }
-
-    await incrementTrustScope(db, tenant_id, trustScope(claimed.channel))
-    getAuditLogger()?.fromRequest(req, 'marketing.post_approve', 'marketing_post', claimed.id, { channel: claimed.channel })
-    const post = await col.findOne({ id: claimed.id })
-    return { post }
-  })
+      const post = await col.findOne({ id: claimed.id })
+      return { post }
+    },
+  )
 
   /** POST /marketing/posts/:id/reject — kill a queued draft. 'approved' is
    *  included so a scheduled post can be pulled before the publish sweep
    *  picks it up; 'publishing' is excluded — a claimed dispatch can't be
    *  unwound. */
-  app.post<{ Params: { id: string } }>('/marketing/posts/:id/reject', { preHandler: manageGate }, async (req, reply) => {
-    const { tenant_id, user_id } = req.authContext
-    const result = (await col.findOneAndUpdate(
-      { id: req.params.id, tenant_id, state: { $in: ['draft', 'publish_failed', 'approved'] } },
-      { $set: { state: 'rejected', rejected_by: user_id, rejected_at: new Date() } },
-      { returnDocument: 'after' },
-    )) as MarketingPostDoc | null
-    if (!result) {
-      return reply.status(404).send({ error: 'Post not found or already decided' })
-    }
-    getAuditLogger()?.fromRequest(req, 'marketing.post_reject', 'marketing_post', req.params.id, {})
-    return { post: result }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/marketing/posts/:id/reject',
+    { preHandler: manageGate },
+    async (req, reply) => {
+      const { tenant_id, user_id } = req.authContext
+      const result = (await col.findOneAndUpdate(
+        { id: req.params.id, tenant_id, state: { $in: ['draft', 'publish_failed', 'approved'] } },
+        { $set: { state: 'rejected', rejected_by: user_id, rejected_at: new Date() } },
+        { returnDocument: 'after' },
+      )) as MarketingPostDoc | null
+      if (!result) {
+        return reply.status(404).send({ error: 'Post not found or already decided' })
+      }
+      getAuditLogger()?.fromRequest(
+        req,
+        'marketing.post_reject',
+        'marketing_post',
+        req.params.id,
+        {},
+      )
+      return { post: result }
+    },
+  )
 }
