@@ -17,7 +17,7 @@ action on a family's behalf without a human approving each step.
   retirement, education, debt, and estate run on every data change and on a
   daily sweep, even when nobody logs in. Most tools wait for a question.
 - Per-member reasoning — each family member (earner, partner, child) gets
-  their own digital twin, readiness score, insights, and scenarios scoped to
+  their own view, readiness score, insights, and scenarios scoped to
   their life stage. No competitor found does per-member financial reasoning
   within a shared household.
 - Crisis-native — Emergency Mode with 7 event types and step-by-step
@@ -44,7 +44,7 @@ action on a family's behalf without a human approving each step.
   statements, and other financial documents.
 - Connect any email provider (Gmail, Outlook, Yahoo, iCloud, or custom
   domain) so Keel can watch for financial mail.
-- Per-member digital twins — each family member gets their own readiness
+- Per-member views — each family member gets their own readiness
   score, insights, and scenarios.
 - Adaptive insights — detectors escalate language after repeated fires and
   show what changed since the last alert.

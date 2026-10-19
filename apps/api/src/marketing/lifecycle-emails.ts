@@ -154,7 +154,7 @@ export function wrap(body: string, unsubLink?: string): string {
   return `<div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;color:#1a1a2e;">
 ${body}
 <p style="color:#9a9ab0;font-size:11px;margin-top:32px;border-top:1px solid #eee;padding-top:12px;">
-LifeKeel — your family's digital twin.${unsubLink ? ` <a href="${unsubLink}" style="color:#9a9ab0;">Unsubscribe</a>` : ''}
+LifeKeel — your family's chart, kept current.${unsubLink ? ` <a href="${unsubLink}" style="color:#9a9ab0;">Unsubscribe</a>` : ''}
 </p></div>`
 }
 
