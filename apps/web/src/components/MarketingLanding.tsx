@@ -22,6 +22,9 @@ import { CoverOnFile } from './landing/CoverOnFile'
 import { CrisisSteps } from './landing/CrisisSteps'
 import { Promises } from './landing/Promises'
 import { DawnClose } from './landing/DawnClose'
+import { MarkedRoute } from './landing/MarkedRoute'
+import { YearsTimelapse } from './landing/YearsTimelapse'
+import { StickyCta } from './landing/StickyCta'
 import {
   Lock,
   ShieldCheck,
@@ -277,6 +280,12 @@ export function MarketingLanding() {
         <SampleDay />
       </div>
 
+      {/* The marked route and the years: previews of what is planned and how the chart grows. */}
+      <div className="landing">
+        <MarkedRoute />
+        <YearsTimelapse />
+      </div>
+
       {/* The story board, built from components/landing/capabilities.ts. Keeps the #features anchor. */}
       <div id="features" className="landing">
         <StoryBoard />
@@ -494,6 +503,9 @@ export function MarketingLanding() {
       {/* The close: same sea at dawn, one signup link (PRD-209). */}
       <div className="landing">
         <DawnClose />
+      </div>
+      <div className="landing">
+        <StickyCta />
       </div>
 
       {/* Footer */}

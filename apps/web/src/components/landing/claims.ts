@@ -154,6 +154,13 @@ export const CLAIMS: Claim[] = [
     evidence: 'apps/api/src/ocr',
   },
 
+  {
+    id: 'carer-view',
+    text: 'A dedicated view for caring for a parent',
+    status: 'planned',
+    page: true,
+  },
+
   // Blocked: not true of the shipped product, or held by another PRD. Not for landing copy.
   {
     id: 'no-training',

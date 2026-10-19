@@ -14,7 +14,7 @@ export function DawnClose() {
     <section className="lk-band" aria-labelledby="lk-dawn-h">
       <div className="lk-dawn">
         <h2 id="lk-dawn-h">Make your account. Keel starts checking what you tell it.</h2>
-        <div className="lk-dawn-cta">
+        <div className="lk-dawn-cta" id="signup-final">
           <a
             className="lk-btn"
             href={appUrl('/signup')}
