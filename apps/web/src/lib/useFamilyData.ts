@@ -84,7 +84,11 @@ export function useFamilyReadinessScore() {
     async function load() {
       setLoading(true)
       try {
-        const { score: apiScore, hasLiveData: liveData } = await fetchFamilyReadinessScore()
+        // A hung request must not leave the home score card as a skeleton forever.
+        const { score: apiScore, hasLiveData: liveData } = await Promise.race([
+          fetchFamilyReadinessScore(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10_000)),
+        ])
         if (!cancelled) {
           setScore(apiScore)
           setHasLiveData(liveData)
