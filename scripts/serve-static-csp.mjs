@@ -29,7 +29,7 @@ http
   .createServer((req, res) => {
     let p = decodeURIComponent(req.url.split('?')[0])
     let f = path.join(root, p)
-    if (!f.startsWith(root)) {
+    if (f !== root && !f.startsWith(root + path.sep)) {
       res.writeHead(403)
       return res.end()
     }
@@ -41,4 +41,4 @@ http
     })
     fs.createReadStream(f).pipe(res)
   })
-  .listen(8770, () => console.log('serving', root, 'on 8770'))
+  .listen(8770, '127.0.0.1', () => console.log('serving', root, 'on 8770'))

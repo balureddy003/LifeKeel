@@ -26,21 +26,25 @@ const dir = args[0] ?? (nextMode ? 'apps/web/.next' : 'apps/web/out')
 // that says why.
 const budgetKb = Number(args[1] ?? (nextMode ? 270 : 280))
 
-export function scriptUrls(html) {
+function scriptUrls(html) {
   const urls = new Set()
-  for (const m of html.matchAll(/<script\b([^>]*)\bsrc="([^"]+)"([^>]*)>/gi)) {
+  for (const m of html.matchAll(/<script\b([^>]*)\bsrc=["']([^"']+)["']([^>]*)>/gi)) {
     // nomodule scripts (Next's legacy polyfills) are not downloaded by current browsers
     if (/\bnomodule\b|\bnoModule\b/.test(m[1] + m[3])) continue
     urls.add(m[2])
   }
-  for (const m of html.matchAll(/<link\b[^>]*rel="preload"[^>]*as="script"[^>]*href="([^"]+)"/gi))
+  for (const m of html.matchAll(
+    /<link\b[^>]*rel=["']preload["'][^>]*as=["']script["'][^>]*href=["']([^"']+)["']/gi,
+  ))
     urls.add(m[1])
-  for (const m of html.matchAll(/<link\b[^>]*href="([^"]+)"[^>]*rel="preload"[^>]*as="script"/gi))
+  for (const m of html.matchAll(
+    /<link\b[^>]*href=["']([^"']+)["'][^>]*rel=["']preload["'][^>]*as=["']script["']/gi,
+  ))
     urls.add(m[1])
   return [...urls].filter((u) => u.startsWith('/'))
 }
 
-export function measure(dir, nextMode = false) {
+function measure(dir, nextMode = false) {
   const html = readFileSync(
     path.join(dir, nextMode ? 'server/app/index.html' : 'index.html'),
     'utf8',
@@ -54,21 +58,18 @@ export function measure(dir, nextMode = false) {
   return { files, total: files.reduce((n, f) => n + f.gz, 0) }
 }
 
-if (
-  process.argv[1] &&
-  path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)
-) {
-  const { files, total } = measure(dir, nextMode)
-  files.sort((a, b) => b.gz - a.gz)
-  for (const f of files.slice(0, 8))
-    console.log(`${(f.gz / 1024).toFixed(1).padStart(7)} KB  ${f.url}`)
-  console.log(
-    `${files.length} scripts, ${(total / 1024).toFixed(1)} KB gzipped (budget ${budgetKb} KB)`,
+// Run unconditionally: nothing imports this file, and a "am I the main module" check
+// breaks on symlinked or space-containing paths, which would make the gate pass silently.
+const { files, total } = measure(dir, nextMode)
+files.sort((a, b) => b.gz - a.gz)
+for (const f of files.slice(0, 8))
+  console.log(`${(f.gz / 1024).toFixed(1).padStart(7)} KB  ${f.url}`)
+console.log(
+  `${files.length} scripts, ${(total / 1024).toFixed(1)} KB gzipped (budget ${budgetKb} KB)`,
+)
+if (total > budgetKb * 1024) {
+  console.error(
+    `FAIL: landing first-load JS is over budget by ${((total - budgetKb * 1024) / 1024).toFixed(1)} KB`,
   )
-  if (total > budgetKb * 1024) {
-    console.error(
-      `FAIL: landing first-load JS is over budget by ${((total - budgetKb * 1024) / 1024).toFixed(1)} KB`,
-    )
-    process.exit(1)
-  }
+  process.exit(1)
 }
