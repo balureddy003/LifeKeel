@@ -105,6 +105,11 @@ import {
   runQueuedInboxScan,
   EMAIL_SCAN_QUEUE,
 } from './jobs/email-scan.js'
+import {
+  CAMPAIGN_SEND_QUEUE,
+  runCampaignSendJob,
+  type CampaignSendJob,
+} from './marketing/campaigns.js'
 import { retryFailedDocuments } from './ocr/retry-failed.js'
 import {
   withCronLock,
@@ -1115,6 +1120,18 @@ try {
     })
     log.info({ concurrency: scanConcurrency }, 'Email scan fan-out workers started')
   }
+
+  // Campaign bulk send — one durable job per recipient claim (B11). Bounded
+  // concurrency keeps bulk mail under SendGrid's rate ceiling; the claim
+  // rows are the durable per-recipient state, so a worker crash loses
+  // nothing already claimed.
+  const campaignConcurrency = Number(process.env['CAMPAIGN_SEND_CONCURRENCY']) || 4
+  queueManager.subscribe(
+    CAMPAIGN_SEND_QUEUE,
+    (payload) => runCampaignSendJob(workflowDb, payload as CampaignSendJob),
+    { concurrency: campaignConcurrency },
+  )
+  log.info({ concurrency: campaignConcurrency }, 'Campaign send workers started')
   log.info({}, 'Queue manager connected')
 
   // ── Score calibration ─────────────────────────────────────────────────────

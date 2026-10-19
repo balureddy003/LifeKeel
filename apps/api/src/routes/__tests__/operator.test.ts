@@ -122,19 +122,17 @@ describe('/operator control plane', () => {
     // A rollup row for an event that does NOT exist in raw growth_events —
     // if it shows up, the overview read the rollup, not the collection scan.
     const today = new Date().toISOString().slice(0, 10)
-    await db
-      .collection<{ _id: string }>('metrics_daily')
-      .insertMany([
-        { _id: 'meta', backfilled_at: new Date() } as never,
-        {
-          _id: `${today}|growth_event|quiz_completed`,
-          day: today,
-          metric: 'growth_event',
-          dim: 'quiz_completed',
-          count: 7,
-          updated_at: new Date(),
-        } as never,
-      ])
+    await db.collection<{ _id: string }>('metrics_daily').insertMany([
+      { _id: 'meta', backfilled_at: new Date() } as never,
+      {
+        _id: `${today}|growth_event|quiz_completed`,
+        day: today,
+        metric: 'growth_event',
+        dim: 'quiz_completed',
+        count: 7,
+        updated_at: new Date(),
+      } as never,
+    ])
     const app = await buildApp()
     const response = await app.inject({ method: 'GET', url: '/operator/overview' })
     expect(response.statusCode).toBe(200)
@@ -490,14 +488,12 @@ describe('/operator control plane', () => {
       used_count: 0,
     })
 
-    await db
-      .collection('promo_redemptions')
-      .insertOne({
-        tenant_id: 'family-1',
-        code: 'LAUNCH50',
-        grant_credits: 50,
-        redeemed_at: new Date(),
-      })
+    await db.collection('promo_redemptions').insertOne({
+      tenant_id: 'family-1',
+      code: 'LAUNCH50',
+      grant_credits: 50,
+      redeemed_at: new Date(),
+    })
     const redemptions = await app.inject({
       method: 'GET',
       url: '/operator/promotions/LAUNCH50/redemptions',
@@ -638,19 +634,17 @@ describe('/operator control plane', () => {
     await db
       .collection('platform_operators')
       .insertOne({ user_id: 'operator-1', status: 'active', roles: ['marketing_operator'] })
-    await db
-      .collection('blog_posts')
-      .insertOne({
-        id: 'p1',
-        slug: 'taken',
-        title: 'T',
-        content: 'C',
-        excerpt: 'E',
-        category: 'news',
-        author: 'A',
-        published: true,
-        created_at: new Date(),
-      })
+    await db.collection('blog_posts').insertOne({
+      id: 'p1',
+      slug: 'taken',
+      title: 'T',
+      content: 'C',
+      excerpt: 'E',
+      category: 'news',
+      author: 'A',
+      published: true,
+      created_at: new Date(),
+    })
     const app = await buildApp()
 
     const dup = await app.inject({
@@ -683,17 +677,15 @@ describe('/operator control plane', () => {
     await db
       .collection('platform_operators')
       .insertOne({ user_id: 'operator-1', status: 'active', roles: ['finance_operator'] })
-    await db
-      .collection('tenants')
-      .updateOne(
-        { tenant_id: 'family-1' },
-        {
-          $set: {
-            billing: { credits_balance: 12, credits_included: 10, currency: 'GBP' },
-            stripe_customer_id: 'cus_123',
-          },
+    await db.collection('tenants').updateOne(
+      { tenant_id: 'family-1' },
+      {
+        $set: {
+          billing: { credits_balance: 12, credits_included: 10, currency: 'GBP' },
+          stripe_customer_id: 'cus_123',
         },
-      )
+      },
+    )
     await db
       .collection('stripe_webhook_events')
       .insertOne({ event_id: 'evt_1', event_type: 'invoice.paid', processed_at: new Date() })
@@ -864,15 +856,13 @@ describe('operations depth', () => {
         expires_at: new Date(Date.now() - 60000),
       },
     ])
-    await db
-      .collection('marketing_posts')
-      .insertOne({
-        id: 'post-1',
-        state: 'publish_failed',
-        channel: 'x',
-        publish_error: 'rate limited',
-        updated_at: new Date(),
-      })
+    await db.collection('marketing_posts').insertOne({
+      id: 'post-1',
+      state: 'publish_failed',
+      channel: 'x',
+      publish_error: 'rate limited',
+      updated_at: new Date(),
+    })
 
     const app = await buildApp()
     const ops = await app.inject({ method: 'GET', url: '/operator/operations' })
@@ -961,16 +951,14 @@ describe('operations depth', () => {
     await db
       .collection('platform_operators')
       .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
-    await db
-      .collection('reminders')
-      .insertOne({
-        id: 'rem-1',
-        tenant_id: 'family-1',
-        status: 'failed',
-        attempts: 6,
-        due_at: new Date(),
-        updated_at: new Date(),
-      })
+    await db.collection('reminders').insertOne({
+      id: 'rem-1',
+      tenant_id: 'family-1',
+      status: 'failed',
+      attempts: 6,
+      due_at: new Date(),
+      updated_at: new Date(),
+    })
     const app = await buildApp()
     const response = await app.inject({
       method: 'POST',
@@ -1152,14 +1140,12 @@ describe('leads detail, funnel, connectors, configuration, infrastructure', () =
     expect(entry?.['target_id']).toBe('family-1/gmail')
 
     // The ops view exposes the connector list without credential fields.
-    await db
-      .collection('connector_credentials')
-      .insertOne({
-        tenant_id: 'family-1',
-        connector_id: 'outlook',
-        auth_type: 'oauth2',
-        access_token: 'enc:hidden',
-      })
+    await db.collection('connector_credentials').insertOne({
+      tenant_id: 'family-1',
+      connector_id: 'outlook',
+      auth_type: 'oauth2',
+      access_token: 'enc:hidden',
+    })
     const ops = await app.inject({ method: 'GET', url: '/operator/operations' })
     expect(ops.json().connectors.list[0].connector_id).toBe('outlook')
     expect(JSON.stringify(ops.json().connectors.list)).not.toContain('enc:hidden')
@@ -1532,16 +1518,14 @@ describe('security monitoring', () => {
       { user_id: 'operator-1', status: 'active', roles: ['platform_admin'] },
       { user_id: 'user-2', status: 'active', roles: ['support'] },
     ])
-    await db
-      .collection('leads')
-      .insertOne({
-        id: 'lead-1',
-        email: 'family@example.com',
-        name: 'Family User',
-        source: 'readiness_quiz',
-        stage: 'new',
-        created_at: new Date(),
-      })
+    await db.collection('leads').insertOne({
+      id: 'lead-1',
+      email: 'family@example.com',
+      name: 'Family User',
+      source: 'readiness_quiz',
+      stage: 'new',
+      created_at: new Date(),
+    })
     const app = await buildApp()
 
     const res = await app.inject({
@@ -1675,13 +1659,11 @@ describe('security monitoring', () => {
     await db
       .collection('users')
       .updateOne({ id: 'user-2' }, { $set: { locked_until: new Date(Date.now() + 60_000) } })
-    await db
-      .collection('connector_credentials')
-      .insertOne({
-        tenant_id: 'family-1',
-        connector_id: 'bank',
-        token_expires_at: new Date(Date.now() + 60_000),
-      })
+    await db.collection('connector_credentials').insertOne({
+      tenant_id: 'family-1',
+      connector_id: 'bank',
+      token_expires_at: new Date(Date.now() + 60_000),
+    })
     await db.collection('support_cases').insertOne({
       id: 'case-h',
       user_id: 'user-2',
@@ -1725,20 +1707,16 @@ describe('security monitoring', () => {
     await db
       .collection('family_financial_profile')
       .insertOne({ tenant_id: 'family-1', updated_at: new Date() })
-    await db
-      .collection('connector_credentials')
-      .insertOne({
-        tenant_id: 'family-1',
-        connector_id: 'bank',
-        token_expires_at: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
-      })
-    await db
-      .collection('insights')
-      .insertOne({
-        tenant_id: 'family-1',
-        state: 'sent',
-        created_at: new Date(Date.now() + twoHours),
-      })
+    await db.collection('connector_credentials').insertOne({
+      tenant_id: 'family-1',
+      connector_id: 'bank',
+      token_expires_at: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+    })
+    await db.collection('insights').insertOne({
+      tenant_id: 'family-1',
+      state: 'sent',
+      created_at: new Date(Date.now() + twoHours),
+    })
     const app = await buildApp()
     const response = await app.inject({ method: 'GET', url: '/operator/funnel' })
     expect(response.statusCode).toBe(200)
@@ -1927,14 +1905,12 @@ describe('security monitoring', () => {
       { tenant_id: 'family-1', code: 'KEEL-AAAA', created_at: new Date() },
       { tenant_id: 'family-2', code: 'KEEL-BBBB', created_at: new Date() },
     ])
-    await db
-      .collection('tenants')
-      .insertOne({
-        tenant_id: 'family-2',
-        name: 'Family Two',
-        status: 'active',
-        created_at: new Date(),
-      })
+    await db.collection('tenants').insertOne({
+      tenant_id: 'family-2',
+      name: 'Family Two',
+      status: 'active',
+      created_at: new Date(),
+    })
     await db.collection('referrals').insertMany([
       {
         referrer_tenant_id: 'family-1',
@@ -2248,7 +2224,10 @@ describe('segment campaigns', () => {
       payload: { reason: 'Firing the campaign' },
     })
     expect(send.statusCode).toBe(200)
-    expect(send.json().stats).toMatchObject({ targeted: 2, sent: 2, failed: 0 })
+    // B11: send is queue-driven — the route claims each recipient and
+    // returns the targeted count; workers settle rows asynchronously.
+    expect(send.json().stats).toMatchObject({ targeted: 2 })
+    expect((await db.collection('campaigns').findOne({ id }))?.['status']).toBe('sending')
 
     // One-shot — a second send is a hard 409.
     const resend = await app.inject({
@@ -2269,6 +2248,54 @@ describe('segment campaigns', () => {
         .countDocuments({ action: 'operator.campaign.send' }),
     ).toBe(1)
     expect(await db.collection('lifecycle_sends').countDocuments({ sequence: 'campaign' })).toBe(2)
+    await app.close()
+  })
+
+  it('pauses and resumes an in-flight send — both audited', async () => {
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['marketing_operator'] })
+    const app = await buildApp()
+    const created = await app.inject({
+      method: 'POST',
+      url: '/operator/campaigns',
+      payload: campaignBody,
+    })
+    const id = created.json().campaign.id
+    await app.inject({
+      method: 'POST',
+      url: `/operator/campaigns/${id}/send`,
+      payload: { reason: 'Firing the campaign' },
+    })
+
+    const pause = await app.inject({
+      method: 'POST',
+      url: `/operator/campaigns/${id}/pause`,
+      payload: { reason: 'Provider throttling, hold the blast' },
+    })
+    expect(pause.statusCode).toBe(200)
+    expect((await db.collection('campaigns').findOne({ id }))?.['status']).toBe('paused')
+
+    // Pause on a non-sending campaign is a hard conflict.
+    const wrongState = await app.inject({
+      method: 'POST',
+      url: `/operator/campaigns/${id}/pause`,
+      payload: { reason: 'Second pause should conflict' },
+    })
+    expect(wrongState.statusCode).toBe(409)
+
+    const resume = await app.inject({
+      method: 'POST',
+      url: `/operator/campaigns/${id}/resume`,
+      payload: { reason: 'Throttle cleared, carry on' },
+    })
+    expect(resume.statusCode).toBe(200)
+    expect(resume.json().requeued).toBe(2)
+    expect((await db.collection('campaigns').findOne({ id }))?.['status']).toBe('sending')
+
+    for (const action of ['operator.campaign.pause', 'operator.campaign.resume']) {
+      expect(await db.collection('operator_audit_log').countDocuments({ action })).toBe(1)
+    }
     await app.close()
   })
 
@@ -2303,7 +2330,15 @@ describe('segment campaigns', () => {
       url: `/operator/campaigns/${id}/send`,
       payload: { reason: 'Firing the campaign' },
     })
-    expect(send.json().stats.sent).toBe(1) // only operator-1 — user-2 opted out
+    // Queue-driven send: the response reports who was claimed. Only
+    // operator-1 — user-2 opted out before resolution.
+    expect(send.json().stats.targeted).toBe(1)
+    const keys = await db
+      .collection('lifecycle_sends')
+      .find({ sequence: 'campaign' }, { projection: { _id: 0, recipient: 1 } })
+      .toArray()
+    expect(keys).toHaveLength(1)
+    expect(keys[0]!['recipient']).not.toBe('user-2')
     await app.close()
   })
 })

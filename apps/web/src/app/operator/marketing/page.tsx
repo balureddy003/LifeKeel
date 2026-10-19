@@ -41,6 +41,8 @@ import {
   createCampaign,
   previewCampaignAudience,
   sendCampaignNow,
+  pauseCampaignSend,
+  resumeCampaignSend,
   type OperatorCampaign,
   type CampaignFilter,
 } from '@/lib/api'
@@ -1429,7 +1431,21 @@ function CampaignsPanel() {
 
   async function send(id: string, reason: string) {
     await sendCampaignNow(id, reason)
-    toast({ message: 'Campaign sent' })
+    toast({ message: 'Campaign queued — recipients send in the background' })
+    const r = await fetchOperatorCampaigns()
+    setCampaigns(r.campaigns)
+  }
+
+  async function pause(id: string, reason: string) {
+    await pauseCampaignSend(id, reason)
+    toast({ message: 'Campaign paused — pending recipients hold' })
+    const r = await fetchOperatorCampaigns()
+    setCampaigns(r.campaigns)
+  }
+
+  async function resume(id: string, reason: string) {
+    await resumeCampaignSend(id, reason)
+    toast({ message: 'Campaign resumed' })
     const r = await fetchOperatorCampaigns()
     setCampaigns(r.campaigns)
   }
@@ -1611,7 +1627,32 @@ function CampaignsPanel() {
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
-                    {c.status === 'sent' ? (
+                    {c.status === 'sending' || c.status === 'paused' ? (
+                      <div className="space-y-1">
+                        <p className="text-xs text-ink-tertiary">
+                          {c.status === 'sending' ? 'sending' : 'paused'}{' '}
+                          {c.stats ? `${c.stats.settled ?? 0}/${c.stats.targeted} settled` : ''}
+                          {c.stats?.failed ? (
+                            <span className="text-danger"> · {c.stats.failed} failed</span>
+                          ) : (
+                            ''
+                          )}
+                        </p>
+                        {c.status === 'sending' ? (
+                          <ReasonAction
+                            label="Pause"
+                            description="Stops dispatching new recipient sends. Claimed-but-unsent recipients stay queued until you resume."
+                            onConfirm={(reason) => pause(c.id, reason)}
+                          />
+                        ) : (
+                          <ReasonAction
+                            label="Resume"
+                            description="Re-queues every still-pending recipient send."
+                            onConfirm={(reason) => resume(c.id, reason)}
+                          />
+                        )}
+                      </div>
+                    ) : c.status === 'sent' ? (
                       <p className="text-xs text-ink-tertiary">
                         sent {c.stats ? `${c.stats.sent}/${c.stats.targeted}` : ''}
                         {c.stats?.failed ? (
