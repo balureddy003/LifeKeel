@@ -16,6 +16,7 @@ function dbWithOperator(operator: Record<string, unknown> | null, activeSuperAdm
 
 afterEach(() => {
   delete process.env['PLATFORM_OPERATOR_USER_IDS']
+  delete process.env['PLATFORM_OPERATOR_BOOTSTRAP_UNTIL']
 })
 
 describe('operator authorization', () => {
@@ -28,7 +29,12 @@ describe('operator authorization', () => {
       dbWithOperator({ user_id: 'user-1', status: 'active', roles: ['support'] }),
       request(),
     )
-    expect(result).toEqual({ user_id: 'user-1', tenant_id: 'tenant-1', roles: ['support'], source: 'database' })
+    expect(result).toEqual({
+      user_id: 'user-1',
+      tenant_id: 'tenant-1',
+      roles: ['support'],
+      source: 'database',
+    })
   })
 
   it('supports an explicit bootstrap user ID as super admin', async () => {
@@ -57,12 +63,28 @@ describe('operator authorization', () => {
 
   it('never grants operator access to demo tokens', async () => {
     process.env['PLATFORM_OPERATOR_USER_IDS'] = 'user-1'
-    expect(await resolveOperator(dbWithOperator(null), request('user-1', 'tenant-1', true))).toBeNull()
+    expect(
+      await resolveOperator(dbWithOperator(null), request('user-1', 'tenant-1', true)),
+    ).toBeNull()
   })
 
   it('keeps support read-only while platform admins can manage users', () => {
     expect(hasOperatorPermission(['support'], 'users.read')).toBe(true)
     expect(hasOperatorPermission(['support'], 'users.manage')).toBe(false)
     expect(hasOperatorPermission(['platform_admin'], 'users.manage')).toBe(true)
+  })
+
+  it('expired break-glass: bootstrap denies after PLATFORM_OPERATOR_BOOTSTRAP_UNTIL', async () => {
+    process.env['PLATFORM_OPERATOR_USER_IDS'] = 'user-1'
+    process.env['PLATFORM_OPERATOR_BOOTSTRAP_UNTIL'] = new Date(Date.now() - 60_000).toISOString()
+    // No DB super_admin — before the expiry env, this resolved bootstrap.
+    expect(await resolveOperator(dbWithOperator(null, 0), request())).toBeNull()
+  })
+
+  it('unexpired break-glass still resolves while the window is open', async () => {
+    process.env['PLATFORM_OPERATOR_USER_IDS'] = 'user-1'
+    process.env['PLATFORM_OPERATOR_BOOTSTRAP_UNTIL'] = new Date(Date.now() + 60_000).toISOString()
+    const result = await resolveOperator(dbWithOperator(null, 0), request())
+    expect(result?.source).toBe('bootstrap')
   })
 })

@@ -10,6 +10,12 @@ import {
   type PlatformRole,
   type OperatorPermission,
 } from '../operator/operator-auth.js'
+import {
+  checkDualApproval,
+  ensureDualControlIndexes,
+  hashState,
+  type DualApprovalDoc,
+} from '../operator/dual-control.js'
 import { sendPasswordResetEmail } from '../auth-email.js'
 import { recordLedgerEntry, getLedgerHistory } from '../billing/credit-ledger.js'
 import { queueManager } from '../queue/QueueManager.js'
@@ -59,7 +65,12 @@ const QuerySchema = z.object({
   cursor: z.string().max(300).optional(),
 })
 
-const ReasonSchema = z.object({ reason: z.string().trim().min(5).max(500) })
+const ReasonSchema = z.object({
+  reason: z.string().trim().min(5).max(500),
+  /** Dual-control spend token — a confirmed operator_dual_approvals id for
+   *  the highest-blast-radius actions (see operator/dual-control.ts). */
+  confirmation_id: z.string().trim().max(100).optional(),
+})
 
 const PLATFORM_ROLES = [
   'support',
@@ -74,10 +85,12 @@ const OperatorCreateSchema = z.object({
   user_id: z.string().trim().min(1).max(100),
   roles: RolesSchema,
   reason: z.string().trim().min(5).max(500),
+  confirmation_id: z.string().trim().max(100).optional(),
 })
 const OperatorUpdateSchema = z.object({
   roles: RolesSchema,
   reason: z.string().trim().min(5).max(500),
+  confirmation_id: z.string().trim().max(100).optional(),
 })
 const LEAD_STAGES = ['new', 'qualified', 'contacted', 'trial', 'converted', 'lost'] as const
 const LeadUpdateSchema = z.object({
@@ -160,12 +173,19 @@ const CreditAdjustSchema = z.object({
     .max(10000)
     .refine((v) => v !== 0, 'Amount cannot be zero'),
   reason: z.string().trim().min(5).max(500),
+  confirmation_id: z.string().trim().max(100).optional(),
 })
 const AuditQuerySchema = z.object({
   action: z.string().trim().max(80).optional(),
   target_type: z.string().trim().max(40).optional(),
   target_id: z.string().trim().max(100).optional(),
   operator_user_id: z.string().trim().max(100).optional(),
+  /** operator (default): the operator_audit_log console trail.
+   *  all: union with the product audit_log — an operator investigating a
+   *  user/tenant sees both operator actions and family-side product events
+   *  (insight approvals, connector changes, auth events) on the target in
+   *  one feed, tagged source: 'operator' | 'product'. */
+  source: z.enum(['operator', 'all']).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
   cursor: z.string().max(300).optional(),
@@ -244,6 +264,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   db.collection('operator_audit_log')
     .createIndex({ created_at: -1 })
     .catch(() => {})
+  ensureDualControlIndexes(db).catch(() => {})
   // Support inbox: status-filtered, updated_at-ordered.
   db.collection('support_cases')
     .createIndex({ status: 1, updated_at: -1 })
@@ -521,25 +542,30 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   app.post<{ Params: { id: string } }>(
     '/operator/users/:id/suspend',
-    { preHandler: requireOperator(db, 'users.manage') },
+    { preHandler: requireOperator(db, 'users.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
         return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
       if (request.params.id === request.operatorContext?.user_id)
         return reply.status(409).send({ error: 'Operators cannot suspend themselves' })
+      const before = await users.findOne({ id: request.params.id })
+      if (!before) return reply.status(404).send({ error: 'User not found or already suspended' })
       const result = await users.updateOne(
         { id: request.params.id, status: { $ne: 'suspended' } },
         { $set: { status: 'suspended', suspended_at: new Date(), updated_at: new Date() } },
       )
       if (result.matchedCount === 0)
         return reply.status(404).send({ error: 'User not found or already suspended' })
+      const after = await users.findOne({ id: request.params.id })
       await audit.log(
         request,
         'operator.user.suspend',
         'user',
         request.params.id,
         parsed.data.reason,
+        undefined,
+        { before, after },
       )
       return { ok: true }
     },
@@ -547,7 +573,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   app.post<{ Params: { id: string } }>(
     '/operator/users/:id/reactivate',
-    { preHandler: requireOperator(db, 'users.manage') },
+    { preHandler: requireOperator(db, 'users.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -661,11 +687,24 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
    *  auth middleware requires status active|trial. */
   app.post<{ Params: { id: string } }>(
     '/operator/tenants/:id/suspend',
-    { preHandler: requireOperator(db, 'tenants.manage') },
+    { preHandler: requireOperator(db, 'tenants.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
         return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      // Whole-tenant kill switch — four-eyes.
+      const gate = await checkDualApproval(db, audit, request, {
+        action: 'operator.tenant.suspend',
+        targetType: 'tenant',
+        targetId: request.params.id,
+        payload: { reason: parsed.data.reason },
+        permission: 'tenants.manage',
+        reason: parsed.data.reason,
+      })
+      if (gate.kind !== 'proceed') return reply.status(gate.status).send(gate.body)
+      const before = await tenants.findOne({
+        $or: [{ tenant_id: request.params.id }, { id: request.params.id }],
+      })
       const result = await tenants.updateOne(
         {
           $or: [{ tenant_id: request.params.id }, { id: request.params.id }],
@@ -675,12 +714,17 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       )
       if (result.matchedCount === 0)
         return reply.status(404).send({ error: 'Tenant not found or already suspended' })
+      const after = await tenants.findOne({
+        $or: [{ tenant_id: request.params.id }, { id: request.params.id }],
+      })
       await audit.log(
         request,
         'operator.tenant.suspend',
         'tenant',
         request.params.id,
         parsed.data.reason,
+        undefined,
+        { before, after },
       )
       return { ok: true }
     },
@@ -688,7 +732,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   app.post<{ Params: { id: string } }>(
     '/operator/tenants/:id/reactivate',
-    { preHandler: requireOperator(db, 'tenants.manage') },
+    { preHandler: requireOperator(db, 'tenants.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -717,7 +761,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
    *  and 1h expiry as the self-service flow. */
   app.post<{ Params: { id: string } }>(
     '/operator/users/:id/password-reset',
-    { preHandler: requireOperator(db, 'users.manage') },
+    { preHandler: requireOperator(db, 'users.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -757,7 +801,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
    *  issued at or before that instant. New logins still work. */
   app.post<{ Params: { id: string } }>(
     '/operator/users/:id/revoke-sessions',
-    { preHandler: requireOperator(db, 'users.manage') },
+    { preHandler: requireOperator(db, 'users.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -783,7 +827,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
    *  security-relevant action. */
   app.post<{ Params: { id: string } }>(
     '/operator/users/:id/unlock',
-    { preHandler: requireOperator(db, 'users.manage') },
+    { preHandler: requireOperator(db, 'users.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -820,7 +864,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
    *  past the reset. */
   app.post<{ Params: { id: string } }>(
     '/operator/users/:id/mfa-disable',
-    { preHandler: requireOperator(db, 'users.manage') },
+    { preHandler: requireOperator(db, 'users.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -852,7 +896,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
    *  don't already expose, just assembled — and the audit entry records it. */
   app.post<{ Params: { id: string } }>(
     '/operator/users/:id/export',
-    { preHandler: requireOperator(db, 'users.read') },
+    { preHandler: requireOperator(db, 'users.read', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -933,7 +977,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
    *  and it's deliberately not exposed to any autopilot path. */
   app.post<{ Params: { id: string } }>(
     '/operator/users/:id/erase',
-    { preHandler: requireOperator(db, 'users.manage') },
+    { preHandler: requireOperator(db, 'users.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -941,13 +985,22 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       if (request.params.id === request.operatorContext?.user_id) {
         return reply.status(409).send({ error: 'Operators cannot erase themselves' })
       }
-      const user = await users.findOne(
-        { id: request.params.id },
-        { projection: { email: 1, status: 1 } },
-      )
+      const user = await users.findOne({ id: request.params.id })
       if (!user) return reply.status(404).send({ error: 'User not found' })
       if (user['status'] === 'erased')
         return reply.status(409).send({ error: 'User already erased' })
+      // Irreversible PII destruction — a second operator must confirm.
+      const gate = await checkDualApproval(db, audit, request, {
+        action: 'operator.user.erase',
+        targetType: 'user',
+        targetId: request.params.id,
+        // Hash the semantic fields only — confirmation_id is the spend
+        // ticket itself, not part of what was approved.
+        payload: { reason: parsed.data.reason },
+        permission: 'users.manage',
+        reason: parsed.data.reason,
+      })
+      if (gate.kind !== 'proceed') return reply.status(gate.status).send(gate.body)
       const now = new Date()
       const oldEmail = user['email'] as string | undefined
       await users.updateOne(
@@ -994,7 +1047,16 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       // If the erased user held operator privileges, drop the record too —
       // a tombstone account must retain no privileged surface.
       await db.collection('platform_operators').deleteOne({ user_id: request.params.id })
-      await audit.log(request, 'operator.user.erase', 'user', request.params.id, parsed.data.reason)
+      const erasedUser = await users.findOne({ id: request.params.id })
+      await audit.log(
+        request,
+        'operator.user.erase',
+        'user',
+        request.params.id,
+        parsed.data.reason,
+        undefined,
+        { before: user, after: erasedUser },
+      )
       return { ok: true }
     },
   )
@@ -1148,7 +1210,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   app.post(
     '/operator/operators',
-    { preHandler: requireOperator(db, 'operators.manage') },
+    { preHandler: requireOperator(db, 'operators.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = OperatorCreateSchema.safeParse(request.body)
       if (!parsed.success)
@@ -1159,6 +1221,17 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         { projection: { _id: 0, id: 1, email: 1, name: 1 } },
       )
       if (!user) return reply.status(404).send({ error: 'User not found' })
+      // Granting platform privilege — four-eyes.
+      const gate = await checkDualApproval(db, audit, request, {
+        action: 'operator.operator.create',
+        targetType: 'operator',
+        targetId: user_id,
+        payload: { user_id, roles, reason },
+        permission: 'operators.manage',
+        reason,
+      })
+      if (gate.kind !== 'proceed') return reply.status(gate.status).send(gate.body)
+      const before = await operators.findOne({ user_id })
       await operators.updateOne(
         { user_id },
         {
@@ -1167,14 +1240,23 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         },
         { upsert: true },
       )
-      await audit.log(request, 'operator.operator.create', 'operator', user_id, reason, { roles })
+      const after = await operators.findOne({ user_id })
+      await audit.log(
+        request,
+        'operator.operator.create',
+        'operator',
+        user_id,
+        reason,
+        { roles },
+        { before, after },
+      )
       return { ok: true, user }
     },
   )
 
   app.patch<{ Params: { id: string } }>(
     '/operator/operators/:id',
-    { preHandler: requireOperator(db, 'operators.manage') },
+    { preHandler: requireOperator(db, 'operators.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = OperatorUpdateSchema.safeParse(request.body)
       if (!parsed.success)
@@ -1192,10 +1274,21 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       ) {
         return reply.status(409).send({ error: 'Cannot remove the last super_admin' })
       }
+      // Privilege change — four-eyes.
+      const gate = await checkDualApproval(db, audit, request, {
+        action: 'operator.operator.update_roles',
+        targetType: 'operator',
+        targetId,
+        payload: { roles: parsed.data.roles, reason: parsed.data.reason },
+        permission: 'operators.manage',
+        reason: parsed.data.reason,
+      })
+      if (gate.kind !== 'proceed') return reply.status(gate.status).send(gate.body)
       await operators.updateOne(
         { user_id: targetId },
         { $set: { roles: parsed.data.roles, updated_at: new Date() } },
       )
+      const after = await operators.findOne({ user_id: targetId })
       await audit.log(
         request,
         'operator.operator.update_roles',
@@ -1203,6 +1296,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         targetId,
         parsed.data.reason,
         { roles: parsed.data.roles },
+        { before: target, after },
       )
       return { ok: true }
     },
@@ -1210,7 +1304,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   app.post<{ Params: { id: string } }>(
     '/operator/operators/:id/suspend',
-    { preHandler: requireOperator(db, 'operators.manage') },
+    { preHandler: requireOperator(db, 'operators.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -1232,12 +1326,15 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         { user_id: targetId },
         { $set: { status: 'suspended', updated_at: new Date() } },
       )
+      const after = await operators.findOne({ user_id: targetId })
       await audit.log(
         request,
         'operator.operator.suspend',
         'operator',
         targetId,
         parsed.data.reason,
+        undefined,
+        { before: target, after },
       )
       return { ok: true }
     },
@@ -1245,7 +1342,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   app.post<{ Params: { id: string } }>(
     '/operator/operators/:id/reactivate',
-    { preHandler: requireOperator(db, 'operators.manage') },
+    { preHandler: requireOperator(db, 'operators.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -1262,6 +1359,72 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         'operator',
         request.params.id,
         parsed.data.reason,
+      )
+      return { ok: true }
+    },
+  )
+
+  // ── Dual control (four-eyes) ──────────────────────────────────────────────
+  // The highest-blast-radius actions (erase, credit adjust, bulk send,
+  // privilege grants, tenant suspend) require a second operator holding the
+  // same permission to confirm before the requester can execute — see
+  // operator/dual-control.ts for the approval lifecycle.
+
+  const dualApprovals = db.collection<DualApprovalDoc>('operator_dual_approvals')
+
+  app.get(
+    '/operator/dual-approvals',
+    { preHandler: requireOperator(db, 'overview.read') },
+    async (request) => {
+      const raw = (request.query as { status?: string })['status'] ?? 'pending'
+      const status: DualApprovalDoc['status'] = (
+        ['pending', 'confirmed', 'consumed'] as const
+      ).includes(raw as DualApprovalDoc['status'])
+        ? (raw as DualApprovalDoc['status'])
+        : 'pending'
+      const docs = await dualApprovals
+        .find({ status }, { projection: { _id: 0, payload_hash: 0 } })
+        .sort({ created_at: -1 })
+        .limit(50)
+        .toArray()
+      return { approvals: docs }
+    },
+  )
+
+  app.post<{ Params: { id: string } }>(
+    '/operator/dual-approvals/:id/confirm',
+    { preHandler: requireOperator(db, 'overview.read', { stepUp: true }) },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body ?? { reason: 'confirmed' })
+      const reason = parsed.success ? parsed.data.reason : 'confirmed'
+      const doc = await dualApprovals.findOne({ id: request.params.id })
+      if (!doc || doc.status !== 'pending')
+        return reply.status(404).send({ error: 'Approval not found or already resolved' })
+      if (doc.expires_at.getTime() < Date.now())
+        return reply.status(409).send({ error: 'Approval expired — request a new one' })
+      const confirmer = request.operatorContext?.user_id ?? ''
+      if (doc.requested_by === confirmer)
+        return reply
+          .status(403)
+          .send({ error: 'A second operator must confirm — self-approval is not allowed' })
+      if (!hasOperatorPermission(request.operatorContext?.roles ?? [], doc.required_permission))
+        return reply
+          .status(403)
+          .send({ error: `This approval requires ${doc.required_permission}` })
+      // Atomic transition — two racing confirmers can't both land it.
+      const claimed = await dualApprovals.updateOne(
+        { id: doc.id, status: 'pending' },
+        { $set: { status: 'confirmed', confirmed_by: confirmer, confirmed_at: new Date() } },
+      )
+      if (claimed.modifiedCount === 0)
+        return reply.status(409).send({ error: 'Approval already resolved' })
+      await audit.log(
+        request,
+        'operator.dual_control.confirm',
+        doc.target_type,
+        doc.target_id,
+        reason,
+        { approval_id: doc.id, action: doc.action, requested_by: doc.requested_by },
       )
       return { ok: true }
     },
@@ -1384,7 +1547,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
    *  never cleared by re-capture — the public /leads upsert doesn't touch it. */
   app.post<{ Params: { id: string } }>(
     '/operator/leads/:id/suppress',
-    { preHandler: requireOperator(db, 'leads.manage') },
+    { preHandler: requireOperator(db, 'leads.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -1828,7 +1991,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   app.post(
     '/operator/promotions',
-    { preHandler: requireOperator(db, 'promotions.manage') },
+    { preHandler: requireOperator(db, 'promotions.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = PromotionCreateSchema.safeParse(request.body)
       if (!parsed.success)
@@ -1862,7 +2025,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   app.post<{ Params: { code: string } }>(
     '/operator/promotions/:code/deactivate',
-    { preHandler: requireOperator(db, 'promotions.manage') },
+    { preHandler: requireOperator(db, 'promotions.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -1887,7 +2050,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   app.post<{ Params: { code: string } }>(
     '/operator/promotions/:code/reactivate',
-    { preHandler: requireOperator(db, 'promotions.manage') },
+    { preHandler: requireOperator(db, 'promotions.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -1999,7 +2162,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   app.post<{ Params: { id: string } }>(
     '/operator/blog/posts/:id/publish',
-    { preHandler: requireOperator(db, 'marketing.manage') },
+    { preHandler: requireOperator(db, 'marketing.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -2023,7 +2186,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   app.post<{ Params: { id: string } }>(
     '/operator/blog/posts/:id/unpublish',
-    { preHandler: requireOperator(db, 'marketing.manage') },
+    { preHandler: requireOperator(db, 'marketing.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -2129,7 +2292,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   app.post<{ Params: { id: string } }>(
     '/operator/campaigns/:id/send',
-    { preHandler: requireOperator(db, 'marketing.manage') },
+    { preHandler: requireOperator(db, 'marketing.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -2138,6 +2301,16 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       if (!campaign) return reply.status(404).send({ error: 'Campaign not found' })
       if (campaign.status !== 'draft')
         return reply.status(409).send({ error: `Campaign already ${campaign.status}` })
+      // Bulk external send — four-eyes.
+      const gate = await checkDualApproval(db, audit, request, {
+        action: 'operator.campaign.send',
+        targetType: 'campaign',
+        targetId: request.params.id,
+        payload: { reason: parsed.data.reason },
+        permission: 'marketing.manage',
+        reason: parsed.data.reason,
+      })
+      if (gate.kind !== 'proceed') return reply.status(gate.status).send(gate.body)
       // Claim the send BEFORE queueing — racing double-clicks get 409 off
       // the status flip, and lifecycle_sends dedup is the second lock anyway.
       // Status moves draft → sending; the send worker flips it to 'sent'
@@ -2150,6 +2323,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         return reply.status(409).send({ error: `Campaign already ${campaign.status}` })
       try {
         const stats = await queueCampaignSend(db, campaign)
+        const after = await campaigns.findOne({ id: campaign.id })
         await audit.log(
           request,
           'operator.campaign.send',
@@ -2157,6 +2331,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
           campaign.id,
           parsed.data.reason,
           stats,
+          { before: campaign, after },
         )
         return { ok: true, stats }
       } catch (err) {
@@ -2172,7 +2347,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   app.post<{ Params: { id: string } }>(
     '/operator/campaigns/:id/pause',
-    { preHandler: requireOperator(db, 'marketing.manage') },
+    { preHandler: requireOperator(db, 'marketing.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -2192,7 +2367,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   app.post<{ Params: { id: string } }>(
     '/operator/campaigns/:id/resume',
-    { preHandler: requireOperator(db, 'marketing.manage') },
+    { preHandler: requireOperator(db, 'marketing.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -2375,7 +2550,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
    *  negative, always ledgered (when billing v2 is on) and audited. */
   app.post<{ Params: { id: string } }>(
     '/operator/billing/tenants/:id/adjust-credits',
-    { preHandler: requireOperator(db, 'billing.manage') },
+    { preHandler: requireOperator(db, 'billing.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = CreditAdjustSchema.safeParse(request.body)
       if (!parsed.success)
@@ -2392,6 +2567,27 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
           .status(409)
           .send({ error: 'Unlimited plan — balance adjustments do not apply' })
       }
+
+      // Pre-check the balance before creating an approval request — an
+      // adjustment that can never apply shouldn't burn a second operator's
+      // review. The atomic $gte claim below still guards the real mutation.
+      const currentBalance = (tenant['billing']?.['credits_balance'] as number | undefined) ?? 0
+      if (amount < 0 && currentBalance < -amount) {
+        return reply.status(409).send({ error: 'Insufficient credit balance for this adjustment' })
+      }
+
+      // Money movement — four-eyes. The hash binds the approval to the
+      // exact amount+reason, so the confirmation can't be spent on a
+      // different adjustment.
+      const gate = await checkDualApproval(db, audit, request, {
+        action: 'operator.billing.adjust_credits',
+        targetType: 'tenant',
+        targetId: tenantId,
+        payload: { amount, reason },
+        permission: 'billing.manage',
+        reason,
+      })
+      if (gate.kind !== 'proceed') return reply.status(gate.status).send(gate.body)
 
       // Negative adjustments claim atomically against the balance so the
       // result can never go below zero (same shape as the C2 charge guard).
@@ -2417,9 +2613,15 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         reason,
         actor: request.operatorContext?.user_id ?? 'unknown',
       }).catch(() => {})
-      await audit.log(request, 'operator.billing.adjust_credits', 'tenant', tenantId, reason, {
-        amount,
-      })
+      await audit.log(
+        request,
+        'operator.billing.adjust_credits',
+        'tenant',
+        tenantId,
+        reason,
+        { amount },
+        { before: tenant, after: updated },
+      )
 
       return { ok: true, credits_balance: updated['billing']?.['credits_balance'] }
     },
@@ -2501,7 +2703,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
    *  every chat message. */
   app.post<{ Params: { id: string } }>(
     '/operator/support/:id/reply',
-    { preHandler: requireOperator(db, 'support.manage') },
+    { preHandler: requireOperator(db, 'support.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = SupportMessageWriteSchema.safeParse(request.body)
       if (!parsed.success)
@@ -2743,7 +2945,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   app.put<{ Params: { rule: string } }>(
     '/operator/autopilot/:rule',
-    { preHandler: requireOperator(db, 'operations.manage') },
+    { preHandler: requireOperator(db, 'operations.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = AutopilotUpdateSchema.safeParse(request.body)
       if (!parsed.success)
@@ -2815,7 +3017,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
    *  operations.read. */
   app.post<{ Params: { id: string } }>(
     '/operator/autopilot/proposals/:id/approve',
-    { preHandler: requireOperator(db, 'operations.read') },
+    { preHandler: requireOperator(db, 'operations.read', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -2930,7 +3132,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   app.post(
     '/operator/digest/send',
-    { preHandler: requireOperator(db, 'operations.manage') },
+    { preHandler: requireOperator(db, 'operations.manage', { stepUp: true }) },
     async (request) => {
       const digest = await runWeeklyDigest(db)
       await audit.log(
@@ -2953,7 +3155,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       const parsed = AuditQuerySchema.safeParse(request.query)
       if (!parsed.success)
         return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
-      const { action, target_type, target_id, operator_user_id, limit, offset, cursor } =
+      const { action, target_type, target_id, operator_user_id, source, limit, offset, cursor } =
         parsed.data
       const filter: Record<string, unknown> = {}
       if (action) filter['action'] = action
@@ -2988,7 +3190,45 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         rawItems.length === limit && last
           ? encodeCursor({ created_at: last['created_at'], _id: last['_id'].toHexString() }, '_id')
           : undefined
-      const items = rawItems.map(({ _id, ...rest }) => rest)
+      let items: Record<string, unknown>[] = rawItems.map(({ _id, ...rest }) => ({
+        source: 'operator',
+        ...rest,
+      }))
+      // Unified view: fold in product-side audit_log rows that touch the
+      // same target (resource_id match) so operator and family actions on
+      // the same record are one feed. Offset/cursor stay operator-side;
+      // the product slice is a bounded companion read, not a second page.
+      if (source === 'all') {
+        const productFilter: Record<string, unknown> = {}
+        // Operator targets are usually a user id or tenant id — match
+        // product rows on either axis.
+        if (target_id) productFilter['$or'] = [{ resource_id: target_id }, { tenant_id: target_id }]
+        if (action) productFilter['action'] = action
+        const productRows = await db
+          .collection('audit_log')
+          .find(productFilter, { projection: { _id: 0 } })
+          .sort({ timestamp: -1 })
+          .limit(limit)
+          .toArray()
+        const normalized = productRows.map((row) => ({
+          source: 'product',
+          operator_user_id: row['user_id'],
+          action: row['action'],
+          target_type: row['resource_type'],
+          target_id: row['resource_id'],
+          tenant_id: row['tenant_id'],
+          metadata: row['metadata'],
+          ip: row['ip'],
+          created_at: row['timestamp'],
+        }))
+        items = [...items, ...normalized]
+          .sort(
+            (a, b) =>
+              new Date(b['created_at'] as string).getTime() -
+              new Date(a['created_at'] as string).getTime(),
+          )
+          .slice(0, limit * 2)
+      }
       return {
         entries: items,
         total,
@@ -3188,7 +3428,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
    *  Audited like every other operator mutation. */
   app.post<{ Params: { id: string } }>(
     '/operator/reminders/:id/retry',
-    { preHandler: requireOperator(db, 'operations.manage') },
+    { preHandler: requireOperator(db, 'operations.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -3223,7 +3463,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   const REQUEUEABLE_QUEUES = new Set([WEBHOOK_INGEST_QUEUE])
   app.post<{ Params: { queue: string; jobId: string } }>(
     '/operator/queues/:queue/dead/:jobId/requeue',
-    { preHandler: requireOperator(db, 'operations.manage') },
+    { preHandler: requireOperator(db, 'operations.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -3252,7 +3492,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
    *  for the tenant's data feed; audited like other operator mutations. */
   app.post<{ Params: { connectorId: string; tenantId: string } }>(
     '/operator/connectors/:connectorId/tenants/:tenantId/revoke',
-    { preHandler: requireOperator(db, 'operations.manage') },
+    { preHandler: requireOperator(db, 'operations.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
@@ -3319,7 +3559,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
 
   app.put(
     '/operator/configuration',
-    { preHandler: requireOperator(db, 'configuration.manage') },
+    { preHandler: requireOperator(db, 'configuration.manage', { stepUp: true }) },
     async (request, reply) => {
       const parsed = ConfigUpdateSchema.safeParse(request.body)
       if (!parsed.success)
