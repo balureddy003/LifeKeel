@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { PublicShell } from '@/components/landing/PublicShell'
 
 // readiness/page.tsx is 'use client' (it's an interactive quiz) so it can't
 // export its own metadata — a server-only layout alongside it is the
@@ -9,20 +10,23 @@ import type { Metadata } from 'next'
 // layout's site-wide metadata is the right default.
 export const metadata: Metadata = {
   title: 'Family Readiness Check — LifeKeel',
-  description: 'Six quick questions, no signup. See your Family Readiness Check result and what Keel would flag for your household — free, in about a minute.',
+  description:
+    'Six quick questions, no signup. See your Family Readiness Check result and what Keel would flag for your household — free, in about a minute.',
   openGraph: {
     title: 'Family Readiness Check — LifeKeel',
-    description: 'Six quick questions, no signup. See your Family Readiness Check result in about a minute.',
+    description:
+      'Six quick questions, no signup. See your Family Readiness Check result in about a minute.',
     url: 'https://lifekeel.co.uk/readiness',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Family Readiness Check — LifeKeel',
-    description: 'Six quick questions, no signup. See your Family Readiness Check result in about a minute.',
+    description:
+      'Six quick questions, no signup. See your Family Readiness Check result in about a minute.',
   },
 }
 
 export default function ReadinessLayout({ children }: { children: React.ReactNode }) {
-  return children
+  return <PublicShell>{children}</PublicShell>
 }

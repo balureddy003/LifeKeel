@@ -71,7 +71,7 @@ const COMPANY = [
   { href: '/privacy', label: 'Privacy' },
 ]
 
-export function SiteFooter() {
+export function SiteFooter({ home = true }: { home?: boolean }) {
   return (
     <footer className="lk-band lk-footer">
       <div className="lk-foot-inner">
@@ -87,7 +87,7 @@ export function SiteFooter() {
             <h3>Product</h3>
             {PRODUCT.map((l) =>
               l.local ? (
-                <a key={l.href} href={l.href}>
+                <a key={l.href} href={home ? l.href : `/${l.href}`}>
                   {l.label}
                 </a>
               ) : (

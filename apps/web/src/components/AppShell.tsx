@@ -4,7 +4,21 @@ import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Home, Inbox, Users, CalendarClock, Settings, WifiOff, Siren, Network, Bot, MailWarning, Wallet, X, Fingerprint } from 'lucide-react'
+import {
+  Home,
+  Inbox,
+  Users,
+  CalendarClock,
+  Settings,
+  WifiOff,
+  Siren,
+  Network,
+  Bot,
+  MailWarning,
+  Wallet,
+  X,
+  Fingerprint,
+} from 'lucide-react'
 import { useNetworkStatus } from '@/lib/useNetworkStatus'
 import { useAuth } from '@/lib/auth-context'
 import { useMode } from '@/lib/mode-context'
@@ -13,7 +27,13 @@ import { MeshGradient, Skeleton, SkeletonCard } from './Glass'
 import { EmergencyMode } from './EmergencyMode'
 import { CommandPalette } from './CommandPalette'
 import { DisclaimerFooter } from './Disclaimer'
-import { fetchInboxItems, fetchFamilyInsights, fetchPublicStatus, resendVerificationEmail, type PublicStatus } from '@/lib/api'
+import {
+  fetchInboxItems,
+  fetchFamilyInsights,
+  fetchPublicStatus,
+  resendVerificationEmail,
+  type PublicStatus,
+} from '@/lib/api'
 import { flushMutationQueue } from '@/lib/offline-queue'
 import { warmCache } from '@/lib/fetch-cache'
 import { useToast } from './Toast'
@@ -52,11 +72,11 @@ function LiquidTabBar() {
 
   useEffect(() => {
     const overrideEntry = Object.entries(ROUTE_TAB_OVERRIDES).find(([prefix]) =>
-      pathname.startsWith(prefix)
+      pathname.startsWith(prefix),
     )
     const effectivePath = overrideEntry ? overrideEntry[1] : pathname
     const idx = NAV_ITEMS.findIndex((item) =>
-      item.href === '/' ? effectivePath === '/' : effectivePath.startsWith(item.href)
+      item.href === '/' ? effectivePath === '/' : effectivePath.startsWith(item.href),
     )
     setActiveIndex(idx >= 0 ? idx : 0)
   }, [pathname])
@@ -153,7 +173,10 @@ function MaintenanceBanner() {
 
   useEffect(() => {
     let cancelled = false
-    const check = () => fetchPublicStatus().then((s) => { if (!cancelled) setStatus(s) })
+    const check = () =>
+      fetchPublicStatus().then((s) => {
+        if (!cancelled) setStatus(s)
+      })
     check()
     const id = window.setInterval(check, 60_000)
     return () => {
@@ -214,7 +237,11 @@ function VerifyEmailBanner() {
   const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
 
   useEffect(() => {
-    try { setDismissed(sessionStorage.getItem(VERIFY_BANNER_DISMISSED) === '1') } catch { /* private mode */ }
+    try {
+      setDismissed(sessionStorage.getItem(VERIFY_BANNER_DISMISSED) === '1')
+    } catch {
+      /* private mode */
+    }
   }, [])
 
   const resend = async () => {
@@ -229,7 +256,11 @@ function VerifyEmailBanner() {
 
   const dismiss = () => {
     setDismissed(true)
-    try { sessionStorage.setItem(VERIFY_BANNER_DISMISSED, '1') } catch { /* private mode */ }
+    try {
+      sessionStorage.setItem(VERIFY_BANNER_DISMISSED, '1')
+    } catch {
+      /* private mode */
+    }
   }
 
   const show = isAuthenticated && user?.emailVerified === false && !dismissed
@@ -247,9 +278,11 @@ function VerifyEmailBanner() {
         >
           <MailWarning size={16} className="text-warning flex-shrink-0" />
           <span className="text-sm text-ink-secondary font-medium">
-            {state === 'sent' ? 'Verification link sent — check your inbox' :
-             state === 'error' ? "Couldn't send the link — try again in a moment" :
-             'Verify your email so invites and recovery reach you'}
+            {state === 'sent'
+              ? 'Verification link sent — check your inbox'
+              : state === 'error'
+                ? "Couldn't send the link — try again in a moment"
+                : 'Verify your email so invites and recovery reach you'}
           </span>
           {state !== 'sent' && (
             <button
@@ -321,10 +354,7 @@ function EmergencyButton() {
       }}
       aria-label="Emergency"
     >
-      <motion.div
-        animate={{ scale: [1, 1.1, 1] }}
-        transition={{ duration: 2, repeat: Infinity }}
-      >
+      <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 2, repeat: Infinity }}>
         <Siren size={18} color="#fff" />
       </motion.div>
       <span className="text-xs font-bold text-white tracking-wide">SOS</span>
@@ -379,7 +409,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   // /operator is exempt too: the operator shell has its own OperatorGate
   // (a logged-in operator with no family group would otherwise hit the
   // "Set up your family" wall and never reach the console).
-  const isAuthRoute = pathname.startsWith('/welcome') ||
+  const isAuthRoute =
+    pathname.startsWith('/welcome') ||
     pathname.startsWith('/signup') ||
     pathname.startsWith('/login') ||
     pathname.startsWith('/family-setup') ||
@@ -405,7 +436,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         <SkeletonCard lines={2} />
         <div className="space-y-2">
           {[0, 1].map((i) => (
-            <div key={i} className="rounded-2xl border border-tint/[0.05] bg-tint/[0.03] p-4 flex items-center gap-3">
+            <div
+              key={i}
+              className="rounded-2xl border border-tint/[0.05] bg-tint/[0.03] p-4 flex items-center gap-3"
+            >
               <Skeleton className="h-10 w-10 rounded-2xl flex-shrink-0" />
               <div className="flex-1 space-y-2">
                 <Skeleton className="h-3.5 w-2/3" />
@@ -438,7 +472,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         </div>
         <h1 className="text-3xl font-bold mb-2 text-gradient">LifeKeel</h1>
         <p className="text-ink-tertiary mb-8 max-w-xs">
-          The always-on readiness system for your family &mdash; know what&apos;s missing before you need it.
+          The always-on readiness system for your family &mdash; know what&apos;s missing before you
+          need it.
         </p>
         <div className="w-full max-w-xs space-y-3">
           <Link href="/welcome" className="block">
@@ -587,7 +622,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const inboxUnreadCount = useAppStore((s) => s.inboxUnreadCount)
   useEffect(() => {
     if (!('setAppBadge' in navigator)) return
-    const nav = navigator as Navigator & { setAppBadge?: (n: number) => Promise<void>; clearAppBadge?: () => Promise<void> }
+    const nav = navigator as Navigator & {
+      setAppBadge?: (n: number) => Promise<void>
+      clearAppBadge?: () => Promise<void>
+    }
     if (inboxUnreadCount > 0) {
       nav.setAppBadge?.(inboxUnreadCount).catch(() => {})
     } else {
@@ -616,7 +654,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('online', flush)
   }, [isAuthenticated, toast])
 
-  const isAuthRoute = pathname.startsWith('/welcome') ||
+  const isAuthRoute =
+    pathname.startsWith('/welcome') ||
     pathname.startsWith('/signup') ||
     pathname.startsWith('/login') ||
     pathname.startsWith('/family-setup') ||
@@ -647,9 +686,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // bottom-bar-sized one. When both floating buttons stack (Ask Keel above
   // Emergency), the reserved band needs to be taller than either alone.
   const bottomPadding =
-    showEmergency && showAskKeel ? 'pb-56 md:pb-10' :
-    showEmergency || showAskKeel ? 'pb-32 md:pb-10' :
-    showNav ? 'pb-20 md:pb-10' : ''
+    showEmergency && showAskKeel
+      ? 'pb-56 md:pb-10'
+      : showEmergency || showAskKeel
+        ? 'pb-32 md:pb-10'
+        : showNav
+          ? 'pb-20 md:pb-10'
+          : ''
   // The floating button(s) sit fixed bottom-right, independent of scroll
   // position — without a matching permanent gutter, any list row that
   // happens to render in that band sits underneath and gets its text/tap
@@ -668,12 +711,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // reserves NavRail's own width so the content centers in what's left of
   // the viewport, not in the full viewport underneath the rail.
   const isMarketingPage = !isAuthenticated && pathname === '/'
-  // The sign-in, sign-up and welcome screens frame themselves (components/landing/AuthShell)
-  // on the same container as the landing page, so they must not inherit the phone-width wrapper.
-  const isAccountScreen = ['/welcome', '/signup', '/login', '/reset-password', '/verify-email'].some(
-    (p) => pathname.startsWith(p),
-  )
-  const widthClass = isMarketingPage || isOperatorRoute || isAccountScreen ? '' : 'max-w-md md:max-w-xl lg:max-w-3xl xl:max-w-4xl mx-auto'
+  // The sign-in screens (AuthShell) and the public pages (PublicShell) frame themselves on the
+  // same container as the landing page, so they must not inherit the phone-width wrapper.
+  const isAccountScreen = [
+    '/welcome',
+    '/signup',
+    '/login',
+    '/reset-password',
+    '/verify-email',
+    '/terms',
+    '/privacy',
+    '/support',
+    '/blog',
+    '/guides',
+    '/readiness',
+  ].some((p) => pathname.startsWith(p))
+  const widthClass =
+    isMarketingPage || isOperatorRoute || isAccountScreen
+      ? ''
+      : 'max-w-md md:max-w-xl lg:max-w-3xl xl:max-w-4xl mx-auto'
   const railGutter = showNav ? 'md:pl-[88px]' : ''
 
   return (
@@ -698,7 +754,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <ModeEffects />
       {showNav && <NavRail />}
       <div className={[railGutter, 'min-h-screen'].filter(Boolean).join(' ')}>
-        <div id="main-content" tabIndex={-1} className={[widthClass, bottomPadding, emergencyGutter, isMarketingPage || isAccountScreen ? '' : 'pt-2', 'relative z-raised outline-none'].filter(Boolean).join(' ')}>
+        <div
+          id="main-content"
+          tabIndex={-1}
+          className={[
+            widthClass,
+            bottomPadding,
+            emergencyGutter,
+            isMarketingPage || isAccountScreen ? '' : 'pt-2',
+            'relative z-raised outline-none',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
           <AuthGate>{children}</AuthGate>
           {showNav && <DisclaimerFooter />}
         </div>
