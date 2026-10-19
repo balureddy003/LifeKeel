@@ -9,6 +9,7 @@ import { GlassCard, PageHeader, ScoreRing, Money } from '@/components/Glass'
 import { useFamilyHealthDomains, type HealthDomain } from '@/lib/useFamilyData'
 import { learnMoreHref } from '@/lib/detector-content'
 import { RESOLVED_INSIGHT_STATES, type FamilyInsight } from '@/lib/api'
+import { readableHypothesis } from '@/lib/insight-text'
 
 // Domain accent colors come from the semantic vars (same hues) rather
 // than the pastel literals — they're used as label text and icon colors
@@ -50,15 +51,6 @@ function isHealthDomain(value: string): value is HealthDomain {
   return value === 'protection' || value === 'wealth' || value === 'goals' || value === 'savings' || value === 'estate'
 }
 
-// insight.hypothesis is the detector rule's internal snake_case id (e.g.
-// "life_insurance_below_household_needs"), not display text — Studio's
-// insight-title.ts hits the same thing and title-cases it as a fallback
-// rather than showing the raw id. Same fix here, scoped to this one render
-// site rather than changing what the shared engine populates the field
-// with (hypothesis is used as a stable value elsewhere, not just display).
-function readableHypothesis(hypothesis: string): string {
-  return hypothesis.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-}
 
 // PRD-107: resolved insights (the condition no longer holds, auto-retracted
 // by a later evaluation) get their own quiet section rather than sitting

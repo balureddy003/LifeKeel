@@ -28,6 +28,7 @@ import {
 } from '@/lib/api'
 import { learnMoreHref } from '@/lib/detector-content'
 import { appUrl } from '@/lib/region'
+import { readableHypothesis } from '@/lib/insight-text'
 
 // (Share links route through readinessShareUrl → the API's per-score OG
 // card, not a hardcoded site URL — see lib/api.ts.)
@@ -109,9 +110,6 @@ function toMinor(whole: string): number {
   return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : 0
 }
 
-function readableHypothesis(hypothesis: string): string {
-  return hypothesis.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-}
 
 function Field({
   label,

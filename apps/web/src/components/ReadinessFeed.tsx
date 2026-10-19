@@ -19,6 +19,7 @@ import {
   FileText, Eye, Siren, Sparkles, ChevronDown,
 } from 'lucide-react'
 import { GlassCard, Skeleton } from '@/components/Glass'
+import { readableHypothesis } from '@/lib/insight-text'
 import { fetchFeed, fetchFeedSummary, submitFeedback, type FeedEvent, type FeedFeedbackValue, type FeedSummary } from '@/lib/api'
 
 const TYPE_ICON: Record<FeedEvent['type'], typeof BarChart3> = {
@@ -145,10 +146,10 @@ export function ReadinessFeed({ members = [], mode }: ReadinessFeedProps) {
                     <div className="flex items-center gap-1.5">
                       {href ? (
                         <Link href={href} className="text-sm font-medium text-ink-primary truncate active:opacity-70">
-                          {evt.title}
+                          {readableHypothesis(evt.title)}
                         </Link>
                       ) : (
-                        <span className="text-sm font-medium text-ink-primary truncate">{evt.title}</span>
+                        <span className="text-sm font-medium text-ink-primary truncate">{readableHypothesis(evt.title)}</span>
                       )}
                       {evt.direction === 'up' && <TrendingUp size={13} className="text-success flex-shrink-0" />}
                       {evt.direction === 'down' && <TrendingDown size={13} className="text-danger flex-shrink-0" />}
