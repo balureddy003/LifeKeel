@@ -20,10 +20,19 @@ import { getGrowthEventsCollection } from '../db.js'
 
 // Server-side allowlist, not client-trusted free text — keeps the collection
 // from filling up with arbitrary event names from a modified client.
-const KNOWN_EVENTS = new Set([
+export const KNOWN_EVENTS = new Set([
   'landing_view',
   'landing_get_started_click',
   'landing_signin_click',
+  // Sent by the current landing page but previously rejected with a 400.
+  'landing_quiz_click',
+  // New landing (PRD-209): CTA location, sample-day name and pause only, never a typed value.
+  'landing_cta_click',
+  'landing_scenario_select',
+  'landing_pause_click',
+  // Sent by the upgrade page but previously rejected with a 400.
+  'promo_redeem_attempt',
+  'promo_redeemed',
   'signup_completed',
   'family_setup_completed',
   'upgrade_page_view',
