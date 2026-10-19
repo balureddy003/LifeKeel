@@ -8,6 +8,7 @@
   --brass: #a6730f; --brass-text: #7a5206; --ok: #1f7a5a; --ok-text: #17664a;
   --cta: #d9a441; --on-cta: #14202a; --crest: rgba(255, 255, 255, 0.55);
   --sky-a: #cfe3ea; --sky-b: #f7ecd9; --dusk-a: #cfd9e6; --dusk-b: #ebd9c4;
+  --sn1: #d3ead9; --sn2: #f6e6b4; --sn3: #ecc8a0; --sn4: #d0dcea;
   --wave: #2b7f97; --wave-2: #1d6a82; --wave-3: #14566b;
   --display: var(--font-display), Georgia, 'Times New Roman', serif;
   --body: var(--font-body), system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -21,6 +22,7 @@
   --brass: #e2b45c; --brass-text: #e2b45c; --ok: #6fc2a0; --ok-text: #6fc2a0;
   --cta: #e2b45c; --on-cta: #1a1203; --crest: rgba(255, 255, 255, 0.16);
   --sky-a: #0d2a3a; --sky-b: #1d4a5c; --dusk-a: #0a1420; --dusk-b: #2d2540;
+  --sn1: #123a34; --sn2: #3a3320; --sn3: #3a2a1c; --sn4: #16283c;
   --wave: #1f5f77; --wave-2: #17475a; --wave-3: #0f3647;
 }
 .landing :focus-visible { outline: 3px solid var(--brass-text); outline-offset: 3px; }

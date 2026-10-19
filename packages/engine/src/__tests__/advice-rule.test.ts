@@ -70,7 +70,10 @@ function webCopyFiles(): string[] {
 
 /** The new landing page (PRD-209). claims.ts is excluded: it quotes blocked wording on purpose. */
 function landingFiles(): string[] {
-  return walk('apps/web/src/components/landing').filter((f) => !f.endsWith('claims.ts'))
+  return [
+    ...walk('apps/web/src/components/landing').filter((f) => !f.endsWith('claims.ts')),
+    'apps/web/src/components/MarketingLanding.tsx',
+  ]
 }
 
 /**

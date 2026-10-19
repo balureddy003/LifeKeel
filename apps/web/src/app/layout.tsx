@@ -12,6 +12,7 @@ import { AdPixels } from '@/components/AdPixels'
 import { ConfirmSheetProvider } from '@/components/ConfirmSheetProvider'
 import { ToastProvider } from '@/components/Toast'
 import { NativeRegionGate } from '@/components/NativeRegionGate'
+import { FAQ } from '@/components/landing/faq-data'
 
 // globals.css's --font-sans was always 'Inter' by declaration, but no font
 // was ever loaded — every visitor actually got system-ui. next/font self-
@@ -146,56 +147,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 },
                 {
                   '@type': 'FAQPage',
-                  mainEntity: [
-                    {
-                      '@type': 'Question',
-                      name: 'Is LifeKeel financial advice?',
-                      acceptedAnswer: {
-                        '@type': 'Answer',
-                        text: 'No. LifeKeel is informational and educational only — not financial, investment, tax, or legal advice, and not a substitute for a licensed professional or for calling emergency services (999, 112, 911) in a real emergency.',
-                      },
-                    },
-                    {
-                      '@type': 'Question',
-                      name: 'Will Keel move money or act on my behalf?',
-                      acceptedAnswer: {
-                        '@type': 'Answer',
-                        text: 'No. Keel shows you what is on file and estimates possible gaps. It never moves money, buys products, or contacts anyone for you without you approving each step — and it has no commercial relationship with any insurer or provider.',
-                      },
-                    },
-                    {
-                      '@type': 'Question',
-                      name: 'How much does LifeKeel cost?',
-                      acceptedAnswer: {
-                        '@type': 'Answer',
-                        text: 'LifeKeel is free to start, no credit card required. Keel Plus is £7.99/month and adds AI document reading (provider, policy number, amount, and dates pulled automatically) and an AI-summarized inbox on top of everything in the free plan.',
-                      },
-                    },
-                    {
-                      '@type': 'Question',
-                      name: 'Is my financial data sold or used to train AI models?',
-                      acceptedAnswer: {
-                        '@type': 'Answer',
-                        text: "No. Your financial data isn't sold, and it isn't used to train models beyond the request that needs it. Connector passwords and access tokens are encrypted before they're ever stored.",
-                      },
-                    },
-                    {
-                      '@type': 'Question',
-                      name: 'Can I cancel Keel Plus anytime?',
-                      acceptedAnswer: {
-                        '@type': 'Answer',
-                        text: 'Yes. No credit card is required to start free, and you can cancel Keel Plus anytime from your account.',
-                      },
-                    },
-                    {
-                      '@type': 'Question',
-                      name: 'Does LifeKeel work for the whole family, not just one person?',
-                      acceptedAnswer: {
-                        '@type': 'Answer',
-                        text: 'Yes. Add your partner and kids to your family\'s roster and every score, insight, and "what if" scenario accounts for the whole household, not just the person who signed up.',
-                      },
-                    },
-                  ],
+                  mainEntity: FAQ.map((f) => ({
+                    '@type': 'Question',
+                    name: f.q,
+                    acceptedAnswer: { '@type': 'Answer', text: f.a },
+                  })),
                 },
               ],
             }),
