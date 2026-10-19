@@ -81,7 +81,7 @@ export default function VerifyEmailPage() {
       title={state === 'no-token' ? 'Invalid verification link' : 'Link expired or already used'}
       sub={
         state === 'no-token'
-          ? 'This link is missing its verification token. Request a new one to continue.'
+          ? 'This link is missing its verification token. Sign in and use the verification prompt to request a fresh link.'
           : 'Verification links expire after 24 hours and can only be used once.'
       }
     >
@@ -102,11 +102,11 @@ export default function VerifyEmailPage() {
         )
       ) : (
         <p className="lk-hint lk-center">
-          Sign in first, then request a fresh link from the verification prompt.
+          Sign in and use the verification prompt to send a fresh link.
         </p>
       )}
       <Link href={isAuthenticated ? '/' : '/login'} className="lk-btn lk-btn-quiet">
-        {isAuthenticated ? 'Back to home' : 'Go to sign in'}
+        {isAuthenticated ? 'Back to home' : 'Sign in to get a new link'}
       </Link>
     </AuthShell>
   )

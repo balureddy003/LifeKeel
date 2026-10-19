@@ -1,5 +1,8 @@
 import { Lantern } from './Lantern'
 import { CAPABILITIES, MOMENTS } from './capabilities'
+
+const LIVE = CAPABILITIES.filter((c) => c.live).length
+const PLANNED = CAPABILITIES.length - LIVE
 import './landing.css'
 import './hero.css'
 import './bands.css'
@@ -17,7 +20,8 @@ export function StoryBoard() {
       <p className="lk-intro">
         LifeKeel is one platform for your family&rsquo;s picture, and it is useful at three
         different moments. New checks and tools join the same picture over time, and this is where
-        you will see them arrive. Everything on it comes from what you add.
+        you will see them arrive. Everything on it comes from what you add.{' '}
+        <b>{LIVE} things are live today</b>, and {PLANNED} are planned.
       </p>
       <div className="lk-moments">
         {MOMENTS.map((m) => (

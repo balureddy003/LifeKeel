@@ -72,7 +72,7 @@ export const GUIDES: Guide[] = [
       {
         heading: 'How Keel checks this',
         paragraphs: [
-          'Keel compares your listed emergency savings against your monthly expenses and flags a fund below three months or above twelve alongside high-interest debt — the same arithmetic on this page, run continuously against your actual numbers rather than a worksheet you fill in once.',
+          'Keel compares your listed emergency savings against your monthly expenses and flags a fund below three months or above twelve alongside high-interest debt — the same arithmetic on this page, run against your actual numbers rather than a worksheet you fill in once.',
         ],
       },
     ],
@@ -543,7 +543,7 @@ export const GUIDES: Guide[] = [
       {
         heading: 'How Keel checks this',
         paragraphs: [
-          'For each child listed in a profile, Keel tracks savings against target and years remaining — flagging a fund below half-target inside the five-year window, and a fund not started for a child under sixteen, so the countdown is watched continuously rather than remembered annually.',
+          'For each child listed in a profile, Keel tracks savings against target and years remaining — flagging a fund below half-target inside the five-year window, and a fund not started for a child under sixteen, so the countdown is tracked rather than remembered annually.',
         ],
       },
     ],

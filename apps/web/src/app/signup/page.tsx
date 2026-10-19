@@ -37,8 +37,22 @@ export default function SignUpPage() {
     fetchPublicStatus().then((s) => setSignupsOpen(s.signups_enabled))
   }, [])
 
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; email?: string; password?: string }>({})
+
+  const validate = () => {
+    const e: { name?: string; email?: string; password?: string } = {}
+    if (!name.trim()) e.name = 'Enter your name.'
+    if (!email.trim()) e.email = 'Enter your email address.'
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) e.email = 'That email address looks incomplete.'
+    if (password.length < 8) e.password = 'Use at least 8 characters.'
+    setFieldErrors(e)
+    const first = (['name', 'email', 'password'] as const).find((k) => e[k])
+    if (first) document.getElementById(`signup-${first}`)?.focus()
+    return !first
+  }
+
   const handleSignUp = async () => {
-    if (!name.trim() || !email.trim() || password.length < 8) return
+    if (loading || !validate()) return
     setLoading(true)
     setError(null)
     try {
@@ -98,76 +112,93 @@ export default function SignUpPage() {
 
       <div className="lk-or">or use email</div>
 
-      <div className="lk-field">
-        <label htmlFor="signup-name">Your name</label>
-        <input
-          id="signup-name"
-          type="text"
-          placeholder="Your name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSignUp()}
-          autoComplete="name"
-          className="lk-input"
-        />
-      </div>
-      <div className="lk-field">
-        <label htmlFor="signup-email">Email address</label>
-        <input
-          id="signup-email"
-          type="email"
-          placeholder="you@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSignUp()}
-          autoComplete="email"
-          className="lk-input"
-        />
-      </div>
-      <div className="lk-field">
-        <label htmlFor="signup-password">Password (min. 8 characters)</label>
-        <PasswordInput
-          id="signup-password"
-          placeholder="Password"
-          value={password}
-          onChange={setPassword}
-          onKeyDown={(e) => e.key === 'Enter' && handleSignUp()}
-          autoComplete="new-password"
-          inputClassName="lk-input"
-          wrapperClassName="lk-pw"
-          toggleClassName="lk-pw-toggle"
-        />
-        {/* Live-verification finding: the only feedback for a too-short
-            password was the Create Account button staying disabled, with
-            no visible reason beyond the static label. This updates as they
-            type instead of only failing silently at submit. */}
-        {password.length > 0 && (
+      <form
+        className="lk-form"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault()
+          void handleSignUp()
+        }}
+      >
+        <div className="lk-field">
+          <label htmlFor="signup-name">Your name</label>
+          <input
+            id="signup-name"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoComplete="name"
+            className="lk-input"
+            aria-invalid={fieldErrors.name ? true : undefined}
+            aria-describedby={fieldErrors.name ? 'signup-name-err' : undefined}
+          />
+          {fieldErrors.name && (
+            <p id="signup-name-err" className="lk-err lk-err-field">
+              {fieldErrors.name}
+            </p>
+          )}
+        </div>
+        <div className="lk-field">
+          <label htmlFor="signup-email">Email address</label>
+          <input
+            id="signup-email"
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            className="lk-input"
+            aria-invalid={fieldErrors.email ? true : undefined}
+            aria-describedby={fieldErrors.email ? 'signup-email-err' : undefined}
+          />
+          {fieldErrors.email && (
+            <p id="signup-email-err" className="lk-err lk-err-field">
+              {fieldErrors.email}
+            </p>
+          )}
+        </div>
+        <div className="lk-field">
+          <label htmlFor="signup-password">Password (at least 8 characters)</label>
+          <PasswordInput
+            id="signup-password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="new-password"
+            inputClassName="lk-input"
+            wrapperClassName="lk-pw"
+            toggleClassName="lk-pw-toggle"
+            invalid={!!fieldErrors.password}
+            describedBy="signup-password-hint"
+          />
+          {/* Permanent polite region: a region inserted with its text already in it is often not
+              announced, so the element stays mounted and only its text changes. */}
           <div
+            id="signup-password-hint"
             role="status"
             aria-live="polite"
             className={`lk-hint ${password.length >= 8 ? 'lk-ok' : ''}`}
           >
-            {password.length >= 8
-              ? 'Password length looks good'
-              : `${8 - password.length} more character${8 - password.length === 1 ? '' : 's'} needed`}
+            {password.length === 0
+              ? (fieldErrors.password ?? '')
+              : password.length >= 8
+                ? 'Password length looks good'
+                : `${8 - password.length} more character${8 - password.length === 1 ? '' : 's'} needed`}
           </div>
-        )}
-      </div>
+        </div>
 
-      {error && (
-        <p role="status" aria-live="polite" className="lk-err">
-          {error}
-        </p>
-      )}
+        <div role="alert" className="lk-err">
+          {error ?? ''}
+        </div>
 
-      <button
-        type="button"
-        className="lk-btn"
-        onClick={handleSignUp}
-        disabled={!name.trim() || !email.trim() || password.length < 8 || loading}
-      >
-        {loading ? 'Creating...' : 'Create Account'}
-      </button>
+        <button type="submit" className="lk-btn" disabled={loading}>
+          {loading ? 'Creating...' : 'Create your free account'}
+        </button>
+      </form>
+
+      <p className="lk-hint lk-center">
+        Next you add the people in your household, then what you have on file. Your financial data
+        isn&apos;t sold.
+      </p>
 
       <p className="lk-hint lk-center">
         By continuing, you agree to our{' '}

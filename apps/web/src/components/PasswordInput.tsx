@@ -13,6 +13,8 @@ interface PasswordInputProps {
   inputClassName?: string
   wrapperClassName?: string
   toggleClassName?: string
+  invalid?: boolean
+  describedBy?: string
 }
 
 const DEFAULT_INPUT_CLASSES =
@@ -31,6 +33,8 @@ export function PasswordInput({
   inputClassName,
   wrapperClassName,
   toggleClassName,
+  invalid,
+  describedBy,
 }: PasswordInputProps) {
   const [visible, setVisible] = useState(false)
 
@@ -44,6 +48,8 @@ export function PasswordInput({
         onKeyDown={onKeyDown}
         placeholder={placeholder}
         autoComplete={autoComplete}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
         className={inputClassName ?? DEFAULT_INPUT_CLASSES}
       />
       <button

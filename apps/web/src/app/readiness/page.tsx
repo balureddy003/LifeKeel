@@ -279,24 +279,24 @@ const STEPS: {
 function scoreBand(score: number): { label: string; color: string; description: string } {
   if (score >= 80)
     return {
-      label: 'Strong',
+      label: 'Well covered',
       color: 'text-success',
       description: 'Your household has solid buffers in the areas this quiz covers.',
     }
   if (score >= 60)
     return {
-      label: 'Fair',
+      label: 'Some gaps',
       color: 'text-warning',
       description: 'Some areas are covered, but there are gaps worth knowing about.',
     }
   if (score >= 40)
     return {
-      label: 'Needs attention',
+      label: 'Several gaps',
       color: 'text-orange-400',
       description: 'Meaningful gaps exist — knowing them is the first step to addressing them.',
     }
   return {
-    label: 'At risk',
+    label: 'Many gaps',
     color: 'text-danger',
     description: 'Significant gaps in coverage or savings — worth reviewing with a professional.',
   }
@@ -384,7 +384,7 @@ export default function ReadinessQuizPage() {
                   {...(s.prefix ? { prefix: s.prefix } : {})}
                   {...(s.placeholder ? { placeholder: s.placeholder } : {})}
                 />
-                <p className="text-[11px] text-ink-tertiary -mt-2 mb-4 px-1">{s.hint}</p>
+                <p className="text-[11px] text-ink-tertiary -mt-3 mb-6 px-1">{s.hint}</p>
               </div>
             ))}
             <GlassButton onClick={handleSubmit} disabled={submitting}>
@@ -406,7 +406,7 @@ export default function ReadinessQuizPage() {
                   {...(currentStep.prefix ? { prefix: currentStep.prefix } : {})}
                   {...(currentStep.placeholder ? { placeholder: currentStep.placeholder } : {})}
                 />
-                <p className="text-[11px] text-ink-tertiary -mt-2 mb-4 px-1">{currentStep.hint}</p>
+                <p className="text-[11px] text-ink-tertiary -mt-3 mb-6 px-1">{currentStep.hint}</p>
                 <div className="flex gap-2">
                   {step > 0 && (
                     <button
@@ -512,39 +512,33 @@ export default function ReadinessQuizPage() {
 
               <GlassCard className="p-4 mt-4 w-full">
                 <p className="text-sm font-semibold text-ink-primary mb-2">
-                  This was a snapshot. Keel is a system that keeps watching.
+                  This was a snapshot. Your chart goes further.
                 </p>
                 <p className="text-sm text-ink-secondary leading-relaxed mb-3">
-                  The quiz scored two domains from six questions. A full account scores five
-                  domains, monitors them continuously with 9 detectors, and alerts you when
-                  something changes &mdash; even when nobody logs in.
+                  The quiz looked at two areas from six answers. A full account lets you add what you
+                  have on file, shows what is there and where it looks light, and lists the steps to
+                  take on a bad day.
                 </p>
                 <ul className="text-xs text-ink-tertiary leading-relaxed space-y-1.5 mb-3">
+                  <li>• Cover, savings, wills and papers in one place</li>
+                  <li>• Each adult has their own view, and children get a simpler one</li>
                   <li>
-                    • Protection, wealth, goals, savings, and estate &mdash; scored and monitored
-                    daily
+                    • Steps for seven kinds of bad day, with your policies and contacts filled in
                   </li>
-                  <li>
-                    • Every family member gets their own readiness view, scoped to their life stage
-                  </li>
-                  <li>• Crisis playbooks built from your real data, not generic checklists</li>
-                  <li>
-                    • Zero commissions &mdash; Keel has no financial relationship with any insurer
-                  </li>
+                  <li>• No commissions: Keel earns from subscriptions only</li>
                 </ul>
-                {/* plain <a>: /welcome lives on the app host — a <Link>'s RSC fetch dies on the cross-origin redirect (see appUrl) */}
+                {/* plain <a>: /signup lives on the app host — a <Link>'s RSC fetch dies on the cross-origin redirect (see appUrl) */}
                 <a
-                  href={appUrl('/welcome')}
+                  href={appUrl('/signup')}
                   onClick={() => {
                     haptic('light')
-                    track('landing_get_started_click', { location: 'readiness_quiz' })
+                    track('landing_cta_click', { location: 'readiness_quiz', method: 'signup' })
                   }}
                 >
-                  <GlassButton>Start monitoring for free</GlassButton>
+                  <GlassButton>Create your free account</GlassButton>
                 </a>
                 <p className="text-[11px] text-ink-tertiary mt-2">
-                  No card required. Free forever for core features. Keel Plus (£7.99/mo) adds AI
-                  document reading.
+                  No card needed to start. Keel Plus (£7.99/mo) adds AI document reading.
                 </p>
               </GlassCard>
             </div>
