@@ -15,14 +15,68 @@ let mongod: MongoMemoryServer
 let client: MongoClient
 let db: Db
 
-async function buildApp(userId = 'operator-1'): Promise<FastifyInstance> {
+async function buildApp(
+  userId = 'operator-1',
+  iat: number | null = Math.floor(Date.now() / 1000),
+): Promise<FastifyInstance> {
   const app = Fastify()
   app.addHook('onRequest', async (request) => {
-    request.authContext = { user_id: userId, tenant_id: 'operator-tenant', roles: ['admin'] }
+    request.authContext = {
+      user_id: userId,
+      tenant_id: 'operator-tenant',
+      roles: ['admin'],
+      ...(iat !== null ? { iat } : {}),
+    }
   })
   await registerOperatorRoutes(app, db)
   await app.ready()
   return app
+}
+
+const SECOND_OPERATOR = { id: 'operator-2', email: 'op2@example.com' }
+
+/** A second operator account — dual-control confirmations must come from a
+ *  different user_id than the requester. */
+async function seedSecondOperator(roles: string[] = ['super_admin']): Promise<void> {
+  // No users row on purpose: resolveOperator only needs the
+  // platform_operators doc, and a users row would pollute campaign
+  // audiences and overview counts.
+  await db
+    .collection('platform_operators')
+    .updateOne(
+      { user_id: SECOND_OPERATOR.id },
+      { $set: { status: 'active', roles }, $setOnInsert: { user_id: SECOND_OPERATOR.id } },
+      { upsert: true },
+    )
+}
+
+/** Two-phase gated action: post → 202 pending → second operator confirms →
+ *  the SAME requester re-posts without confirmation_id and the confirmed
+ *  approval is auto-spent (the UI loop). Returns the final response. */
+async function confirmedPost(
+  app: FastifyInstance,
+  url: string,
+  payload: Record<string, unknown>,
+  confirmerRoles: string[] = ['super_admin'],
+) {
+  await seedSecondOperator(confirmerRoles)
+  const first = await app.inject({ method: 'POST', url, payload })
+  expect(first.statusCode, `expected 202 approval pending: ${first.body}`).toBe(202)
+  const approvalId = first.json().approval_id as string
+  // Idempotent initiation: re-posting while pending returns the SAME
+  // approval rather than stacking a duplicate.
+  const again = await app.inject({ method: 'POST', url, payload })
+  expect(again.statusCode).toBe(202)
+  expect(again.json().approval_id).toBe(approvalId)
+  const app2 = await buildApp(SECOND_OPERATOR.id)
+  const confirm = await app2.inject({
+    method: 'POST',
+    url: `/operator/dual-approvals/${approvalId}/confirm`,
+    payload: { reason: 'Second pair of eyes' },
+  })
+  expect(confirm.statusCode).toBe(200)
+  await app2.close()
+  return app.inject({ method: 'POST', url, payload })
 }
 
 beforeAll(async () => {
@@ -227,10 +281,8 @@ describe('/operator control plane', () => {
       .collection('platform_operators')
       .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
     const app = await buildApp()
-    const suspend = await app.inject({
-      method: 'POST',
-      url: '/operator/tenants/family-1/suspend',
-      payload: { reason: 'Abuse investigation' },
+    const suspend = await confirmedPost(app, '/operator/tenants/family-1/suspend', {
+      reason: 'Abuse investigation',
     })
     expect(suspend.statusCode).toBe(200)
     expect((await db.collection('tenants').findOne({ tenant_id: 'family-1' }))?.['status']).toBe(
@@ -247,6 +299,8 @@ describe('/operator control plane', () => {
       .find({ target_type: 'tenant' })
       .toArray()
     expect(entries.map((e) => e['action']).sort()).toEqual([
+      'operator.dual_control.confirm',
+      'operator.dual_control.request',
       'operator.tenant.reactivate',
       'operator.tenant.suspend',
     ])
@@ -323,10 +377,10 @@ describe('/operator control plane', () => {
       .insertOne({ user_id: 'operator-1', status: 'active', roles: ['super_admin'] })
     const app = await buildApp()
 
-    const create = await app.inject({
-      method: 'POST',
-      url: '/operator/operators',
-      payload: { user_id: 'user-2', roles: ['support'], reason: 'Support onboarding' },
+    const create = await confirmedPost(app, '/operator/operators', {
+      user_id: 'user-2',
+      roles: ['support'],
+      reason: 'Support onboarding',
     })
     expect(create.statusCode).toBe(200)
 
@@ -346,7 +400,9 @@ describe('/operator control plane', () => {
 
     const list = await app.inject({ method: 'GET', url: '/operator/operators' })
     expect(list.statusCode).toBe(200)
-    expect(list.json().operators).toHaveLength(2)
+    // operator-1 (super_admin) + user-2 (created above) + operator-2 (the
+    // dual-control confirmer).
+    expect(list.json().operators).toHaveLength(3)
     await app.close()
   })
 
@@ -370,11 +426,10 @@ describe('/operator control plane', () => {
       .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
     await db.collection('insights').insertOne({ state: 'identified' })
     const app = await buildApp()
-    await app.inject({
-      method: 'POST',
-      url: '/operator/tenants/family-1/suspend',
-      payload: { reason: 'Audit test entry' },
+    const suspend = await confirmedPost(app, '/operator/tenants/family-1/suspend', {
+      reason: 'Audit test entry',
     })
+    expect(suspend.statusCode).toBe(200)
 
     const audit = await app.inject({ method: 'GET', url: '/operator/audit?target_type=tenant' })
     expect(audit.statusCode).toBe(200)
@@ -719,11 +774,12 @@ describe('/operator control plane', () => {
         )
       const app = await buildApp()
 
-      const grant = await app.inject({
-        method: 'POST',
-        url: '/operator/billing/tenants/family-1/adjust-credits',
-        payload: { amount: 10, reason: 'Goodwill after outage' },
-      })
+      const grant = await confirmedPost(
+        app,
+        '/operator/billing/tenants/family-1/adjust-credits',
+        { amount: 10, reason: 'Goodwill after outage' },
+        ['finance_operator'],
+      )
       expect(grant.statusCode).toBe(200)
       expect(grant.json().credits_balance).toBe(15)
 
@@ -739,11 +795,12 @@ describe('/operator control plane', () => {
         ],
       ).toBe(15)
 
-      const deduct = await app.inject({
-        method: 'POST',
-        url: '/operator/billing/tenants/family-1/adjust-credits',
-        payload: { amount: -5, reason: 'Correction of duplicate grant' },
-      })
+      const deduct = await confirmedPost(
+        app,
+        '/operator/billing/tenants/family-1/adjust-credits',
+        { amount: -5, reason: 'Correction of duplicate grant' },
+        ['finance_operator'],
+      )
       expect(deduct.statusCode).toBe(200)
       expect(deduct.json().credits_balance).toBe(10)
 
@@ -1528,10 +1585,8 @@ describe('security monitoring', () => {
     })
     const app = await buildApp()
 
-    const res = await app.inject({
-      method: 'POST',
-      url: '/operator/users/user-2/erase',
-      payload: { reason: 'Right-to-erasure request #7' },
+    const res = await confirmedPost(app, '/operator/users/user-2/erase', {
+      reason: 'Right-to-erasure request #7',
     })
     expect(res.statusCode).toBe(200)
     const user = await db.collection('users').findOne({ id: 'user-2' })
@@ -2218,11 +2273,12 @@ describe('segment campaigns', () => {
     expect(list.json().campaigns).toHaveLength(1)
     expect(list.json().campaigns[0].status).toBe('draft')
 
-    const send = await app.inject({
-      method: 'POST',
-      url: `/operator/campaigns/${id}/send`,
-      payload: { reason: 'Firing the campaign' },
-    })
+    const send = await confirmedPost(
+      app,
+      `/operator/campaigns/${id}/send`,
+      { reason: 'Firing the campaign' },
+      ['marketing_operator'],
+    )
     expect(send.statusCode).toBe(200)
     // B11: send is queue-driven — the route claims each recipient and
     // returns the targeted count; workers settle rows asynchronously.
@@ -2262,11 +2318,13 @@ describe('segment campaigns', () => {
       payload: campaignBody,
     })
     const id = created.json().campaign.id
-    await app.inject({
-      method: 'POST',
-      url: `/operator/campaigns/${id}/send`,
-      payload: { reason: 'Firing the campaign' },
-    })
+    const fired = await confirmedPost(
+      app,
+      `/operator/campaigns/${id}/send`,
+      { reason: 'Firing the campaign' },
+      ['marketing_operator'],
+    )
+    expect(fired.statusCode).toBe(200)
 
     const pause = await app.inject({
       method: 'POST',
@@ -2325,11 +2383,12 @@ describe('segment campaigns', () => {
       payload: campaignBody,
     })
     const id = created.json().campaign.id
-    const send = await app.inject({
-      method: 'POST',
-      url: `/operator/campaigns/${id}/send`,
-      payload: { reason: 'Firing the campaign' },
-    })
+    const send = await confirmedPost(
+      app,
+      `/operator/campaigns/${id}/send`,
+      { reason: 'Firing the campaign' },
+      ['marketing_operator'],
+    )
     // Queue-driven send: the response reports who was claimed. Only
     // operator-1 — user-2 opted out before resolution.
     expect(send.json().stats.targeted).toBe(1)
@@ -2339,6 +2398,189 @@ describe('segment campaigns', () => {
       .toArray()
     expect(keys).toHaveLength(1)
     expect(keys[0]!['recipient']).not.toBe('user-2')
+    await app.close()
+  })
+})
+
+describe('operator hardening (B10)', () => {
+  it('step-up: stale sessions are denied on elevated routes, allowed on reads', async () => {
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    const stale = Math.floor(Date.now() / 1000) - 60 * 60 // 1h old session
+    const app = await buildApp('operator-1', stale)
+
+    const elevated = await app.inject({
+      method: 'POST',
+      url: '/operator/users/user-2/suspend',
+      payload: { reason: 'Stale session must not suspend' },
+    })
+    expect(elevated.statusCode).toBe(403)
+    expect(elevated.json().code).toBe('step_up_required')
+
+    // Reads and non-elevated state stay usable on an older session.
+    const read = await app.inject({ method: 'GET', url: '/operator/overview' })
+    expect(read.statusCode).toBe(200)
+    const supportReply = await app.inject({
+      method: 'POST',
+      url: '/operator/users/user-2/unlock',
+      payload: { reason: 'Also elevated — still stale' },
+    })
+    expect(supportReply.statusCode).toBe(403)
+    await app.close()
+
+    // A session with no iat at all fails closed on elevated routes.
+    const noIat = await buildApp('operator-1', null)
+    const denied = await noIat.inject({
+      method: 'POST',
+      url: '/operator/users/user-2/suspend',
+      payload: { reason: 'Missing iat must not pass' },
+    })
+    expect(denied.statusCode).toBe(403)
+    await noIat.close()
+  })
+
+  it('dual control: pending → self-confirm refused → second operator confirms → one spend', async () => {
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    const app = await buildApp()
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/operator/users/user-2/erase',
+      payload: { reason: 'DSAR ticket #9' },
+    })
+    expect(first.statusCode).toBe(202)
+    const approvalId = first.json().approval_id as string
+
+    // Self-confirmation is refused — the point of four-eyes.
+    const selfConfirm = await app.inject({
+      method: 'POST',
+      url: `/operator/dual-approvals/${approvalId}/confirm`,
+      payload: { reason: 'Me again' },
+    })
+    expect(selfConfirm.statusCode).toBe(403)
+
+    // A second operator without the required permission cannot confirm.
+    await seedSecondOperator(['support'])
+    const app2 = await buildApp(SECOND_OPERATOR.id)
+    const wrongRole = await app2.inject({
+      method: 'POST',
+      url: `/operator/dual-approvals/${approvalId}/confirm`,
+      payload: { reason: 'No permission' },
+    })
+    expect(wrongRole.statusCode).toBe(403)
+    await db
+      .collection('platform_operators')
+      .updateOne({ user_id: SECOND_OPERATOR.id }, { $set: { roles: ['platform_admin'] } })
+    const confirm = await app2.inject({
+      method: 'POST',
+      url: `/operator/dual-approvals/${approvalId}/confirm`,
+      payload: { reason: 'Reviewed DSAR ticket' },
+    })
+    expect(confirm.statusCode).toBe(200)
+
+    // Payload tampering between request and spend is caught by the hash.
+    const tampered = await app.inject({
+      method: 'POST',
+      url: '/operator/users/user-2/erase',
+      payload: { reason: 'A different reason entirely', confirmation_id: approvalId },
+    })
+    expect(tampered.statusCode).toBe(409)
+
+    const execute = await app.inject({
+      method: 'POST',
+      url: '/operator/users/user-2/erase',
+      payload: { reason: 'DSAR ticket #9', confirmation_id: approvalId },
+    })
+    expect(execute.statusCode).toBe(200)
+
+    // A consumed approval cannot be spent twice — but the user is already
+    // erased anyway, so verify the approval doc is spent either way.
+    const doc = await db.collection('operator_dual_approvals').findOne({ id: approvalId })
+    expect(doc?.['status']).toBe('consumed')
+    await app.close()
+    await app2.close()
+  })
+
+  it('dual control: request and confirmation are both audited', async () => {
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    const app = await buildApp()
+    const res = await confirmedPost(app, '/operator/users/user-2/erase', {
+      reason: 'Audited erasure',
+    })
+    expect(res.statusCode).toBe(200)
+    const actions = (
+      await db
+        .collection('operator_audit_log')
+        .find({}, { projection: { action: 1 } })
+        .toArray()
+    ).map((e) => e['action'])
+    expect(actions).toContain('operator.dual_control.request')
+    expect(actions).toContain('operator.dual_control.confirm')
+    expect(actions).toContain('operator.user.erase')
+    await app.close()
+  })
+
+  it('records before/after state hashes on destructive audit entries', async () => {
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    const app = await buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/operator/users/user-2/suspend',
+      payload: { reason: 'Suspicious login pattern' },
+    })
+    expect(res.statusCode).toBe(200)
+    const entry = await db
+      .collection('operator_audit_log')
+      .findOne({ action: 'operator.user.suspend' })
+    expect(entry?.['before_hash']).toMatch(/^[0-9a-f]{64}$/)
+    expect(entry?.['after_hash']).toMatch(/^[0-9a-f]{64}$/)
+    expect(entry?.['before_hash']).not.toBe(entry?.['after_hash'])
+    await app.close()
+  })
+
+  it('unified audit: source=all folds product audit_log rows into the feed', async () => {
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    await db.collection('audit_log').insertOne({
+      tenant_id: 'family-1',
+      user_id: 'user-2',
+      action: 'insight.approve',
+      resource_type: 'insight',
+      resource_id: 'insight-9',
+      ip: '1.2.3.4',
+      user_agent: 'test',
+      timestamp: new Date(),
+    })
+    const app = await buildApp()
+    await confirmedPost(app, '/operator/tenants/family-1/suspend', {
+      reason: 'Unified feed test',
+    })
+
+    const operatorOnly = await app.inject({
+      method: 'GET',
+      url: '/operator/audit?target_id=family-1',
+    })
+    const unified = await app.inject({
+      method: 'GET',
+      url: '/operator/audit?target_id=family-1&source=all',
+    })
+    expect(operatorOnly.statusCode).toBe(200)
+    expect(unified.statusCode).toBe(200)
+    const unifiedEntries = unified.json().entries as Record<string, unknown>[]
+    // The operator row (tenant.suspend on family-1) and the product row
+    // (insight.approve inside tenant family-1) share one feed.
+    expect(unifiedEntries.some((e) => e['source'] === 'operator')).toBe(true)
+    expect(
+      unifiedEntries.some((e) => e['source'] === 'product' && e['action'] === 'insight.approve'),
+    ).toBe(true)
     await app.close()
   })
 })
