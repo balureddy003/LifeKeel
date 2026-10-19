@@ -69,6 +69,16 @@ describe('header and footer share one lockup', () => {
   })
 })
 
+describe('hero shell', () => {
+  it('uses the same 1148px content width as the header and bands, so the corners line up', () => {
+    const hero = fs.readFileSync(path.resolve(__dirname, '..', 'hero.css'), 'utf8')
+    expect(hero).toMatch(/\.lk-scene\s*\{[^}]*width:\s*min\(1148px,\s*calc\(100% - 32px\)\)/)
+    const bands = fs.readFileSync(path.resolve(__dirname, '..', 'bands.css'), 'utf8')
+    // 1180px band minus 16px padding on each side = 1148px of content
+    expect(bands).toMatch(/\.landing \.lk-band\s*\{[^}]*max-width:\s*1180px[^}]*padding:[^}]*16px/)
+  })
+})
+
 describe('AuthShell', () => {
   it('frames a screen with the brand, one h1, the sub line and legal links', () => {
     render(

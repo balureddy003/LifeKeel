@@ -8,7 +8,7 @@
 .landing .lk-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .landing .lk-fine { font-size: 13px; color: var(--muted); }
 
-.lk-scene { position: relative; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); grid-template-areas: 'copy stage' 'card stage'; column-gap: clamp(20px, 4vw, 56px); border-radius: 26px; overflow: hidden; padding: clamp(28px, 4vw, 56px); padding-bottom: 0; min-height: 700px; isolation: isolate; --wl: 200px; border: 1px solid var(--line); background: var(--sky-a); max-width: 1180px; margin: 16px auto 0; }
+.lk-scene { position: relative; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); grid-template-areas: 'copy stage' 'card stage'; column-gap: clamp(20px, 4vw, 56px); border-radius: 26px; overflow: hidden; padding: clamp(28px, 4vw, 56px); padding-bottom: 0; min-height: 700px; isolation: isolate; --wl: 200px; border: 1px solid var(--line); background: var(--sky-a); width: min(1148px, calc(100% - 32px)); margin: 16px auto 0; }
 .lk-scene::before { content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none; background: radial-gradient(130% 100% at 50% 35%, transparent 62%, color-mix(in srgb, var(--ink) 7%, transparent)); }
 
 /* backdrop */
@@ -107,7 +107,7 @@
 
 /* phone */
 @media (max-width: 860px) {
-  .lk-scene { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'copy' 'stage' 'card'; padding: 20px 16px 0; min-height: 0; --wl: 70px; row-gap: 0; border-radius: 20px; }
+  .lk-scene { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'copy' 'stage' 'card'; padding: 20px 16px 0; min-height: 0; --wl: 70px; row-gap: 0; border-radius: 20px; background: var(--wave-3); }
   .lk-scene::before { background: none; }
   .lk-bg { bottom: auto; height: calc(100% - var(--cardh, 330px)); }
   .lk-scene > .lk-front { bottom: var(--cardh, 330px); }
