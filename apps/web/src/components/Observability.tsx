@@ -44,8 +44,8 @@ function showManualReloadFallback(): void {
     '<h1 style="font-size:22px;font-weight:700;margin-bottom:8px;">Something went wrong</h1>' +
     '<p style="color:#6b7280;max-width:320px;margin-bottom:24px;">' +
     'This page couldn’t load. Your data is safe — try reloading.</p>' +
-    '<button id="lifekeel-chunk-fallback-btn" style="width:100%;max-width:320px;background:#6b5ce0;' +
-    'color:#fff;font-weight:600;border:none;border-radius:16px;padding:16px;font-size:16px;">Reload</button>'
+    '<button id="lifekeel-chunk-fallback-btn" style="width:100%;max-width:320px;background:#d9a441;' +
+    'color:#14202a;font-weight:600;border:none;border-radius:16px;padding:16px;font-size:16px;">Reload</button>'
   document.body.appendChild(el)
   document.getElementById('lifekeel-chunk-fallback-btn')?.addEventListener('click', () => location.reload())
 }

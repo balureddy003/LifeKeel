@@ -12,81 +12,73 @@
    without the component knowing which theme is active. */
 :root {
   color-scheme: dark;
-  /* --font-sans is owned by next/font in layout.tsx (it sets the variable
-     to the self-hosted Inter family + fallbacks on <html>). Declaring it
-     here too would race on specificity — leave it out. */
+  /* LifeKeel palette (shared with the landing page: components/landing/landing.css). The app's
+     colour utilities read these variables, so changing them re-themes every screen. Values are
+     RGB triplets so Tailwind alpha modifiers keep working. */
 
-  /* Surface overlay color — "the thing layered on the background".
-     Dark theme: white. Light theme: near-black slate. */
+  /* Surface overlay colour: white at low opacity on the dark sea. */
   --tint: 255 255 255;
 
-  --surface-0: 8 8 12;
-  --surface-1: 15 15 21;
-  --surface-2: 22 22 30;
-  --surface-3: 29 29 40;
+  --surface-0: 10 24 34;
+  --surface-1: 16 36 47;
+  --surface-2: 20 44 58;
+  --surface-3: 26 54 70;
 
-  --ink-1: 245 245 247;
-  --ink-2: 160 160 176;
-  --ink-3: 123 123 145;
+  --ink-1: 232 238 242;
+  --ink-2: 190 205 214;
+  --ink-3: 147 169 182;
 
-  --haze: 42 42 53;
-  --haze-light: 58 58 72;
+  --haze: 34 64 79;
+  --haze-light: 44 78 95;
 
-  /* Sticky nav/header chrome (distinct from surface-0 so light mode can
-     use a translucent white bar rather than a gray one). */
-  --nav-bg: 8 8 12;
+  --nav-bg: 10 24 34;
 
-  /* The lighter brand purple for FOREGROUND accents on dark surfaces —
-     icons, dots, gradients, active nav states. Deliberately different from
-     family-500 (#7061ef), which is darkened for white-text-on-fill contrast;
-     this lighter value is what passes 4.5:1 as text/icon color against the
-     dark background. JS color-math that can't consume var() (hex-alpha
-     suffixes like `${color}14`) imports FAMILY_ACCENT from
-     lib/familySections.ts instead — keep the two literals in sync. */
-  --family-accent: 124 110 240;
+  /* Brass: the accent and the call to action. 400 is text and icons, 500 is the fill. */
+  --family-accent: 226 180 92;
+  --family-400: 226 180 92;
+  --family-500: 226 180 92;
+  --family-600: 205 158 70;
+  --family-700: 176 130 50;
+  /* Text on a brass fill. */
+  --on-cta: 26 18 3;
+  /* JS-land twin: FAMILY_ACCENT in lib/familySections.ts, for hex-alpha colour maths. */
 
-  /* family-400 as a text/link color — lighter than 500 on dark, darker on
-     light. Stored as a triplet for alpha-composable uses (bg-family-400/10). */
-  --family-400: 139 128 248;
-
-  /* Semantic colors — the bright variants are tuned for dark backgrounds;
-     light theme needs deeper shades to keep WCAG AA as text. */
-  --success: 74 222 128;
-  --warning: 251 191 36;
-  --danger: 248 113 113;
-  --info: 96 165 250;
+  --success: 111 194 160;
+  --warning: 226 180 92;
+  --danger: 241 154 124;
+  --info: 125 211 252;
 }
 
 [data-theme='light'] {
   color-scheme: light;
 
-  --tint: 17 17 26;
+  --tint: 14 36 51;
 
-  --surface-0: 242 242 247;
+  --surface-0: 238 243 244;
   --surface-1: 255 255 255;
-  --surface-2: 250 250 252;
-  --surface-3: 237 237 243;
+  --surface-2: 247 250 250;
+  --surface-3: 230 238 240;
 
-  --ink-1: 24 24 34;
-  --ink-2: 72 72 90;
-  --ink-3: 98 98 118;
+  --ink-1: 14 36 51;
+  --ink-2: 47 74 92;
+  --ink-3: 66 89 106;
 
-  --haze: 213 213 226;
-  --haze-light: 225 225 236;
+  --haze: 207 220 224;
+  --haze-light: 220 230 233;
 
-  --nav-bg: 255 255 255;
+  --nav-bg: 238 243 244;
 
-  /* family-600 — on the light background, #7c6ef0 only reaches ~3.6:1.
-     #6b5ce0 clears AA for text/icons (~5.1:1). */
-  --family-accent: 107 92 224;
-  --family-400: 107 92 224;
+  --family-accent: 166 115 15;
+  --family-400: 122 82 6;
+  --family-500: 217 164 65;
+  --family-600: 190 138 40;
+  --family-700: 166 115 15;
+  --on-cta: 20 32 42;
 
-  /* Deeper shades — the dark-theme values are pastel-on-white failures
-     (green-400 on white is ~1.9:1). These are the tailwind -600/-700s. */
-  --success: 21 128 61;
-  --warning: 180 83 9;
-  --danger: 220 38 38;
-  --info: 37 99 235;
+  --success: 23 102 74;
+  --warning: 154 91 6;
+  --danger: 156 58 34;
+  --info: 29 106 130;
 }
 
 * {
@@ -102,7 +94,7 @@ html {
 body {
   background: rgb(var(--surface-0));
   color: rgb(var(--ink-1));
-  font-family: var(--font-sans);
+  font-family: var(--font-body), var(--font-sans), system-ui, sans-serif;
   overscroll-behavior-y: none;
   touch-action: manipulation;
   -webkit-font-smoothing: antialiased;
@@ -231,12 +223,9 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 }
 
 .btn-primary {
-  /* Was #7c6ef0 — 3.93:1 for the white label, below WCAG AA's 4.5:1.
-     This is the same bug family-500 was darkened to fix (see
-     tailwind.config.js) — the utility class just never got the memo.
-     #7061ef = current family-500, 4.52:1. */
-  background: #7061ef;
-  color: #fff;
+  /* The brass call to action, with the dark on-cta label (about 8:1 in light, 11:1 in dark). */
+  background: rgb(var(--family-500));
+  color: rgb(var(--on-cta));
   font-weight: 600;
   border-radius: 1rem;
   padding: 1rem 1.25rem;
@@ -245,7 +234,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  box-shadow: 0 8px 24px rgba(124, 110, 240, 0.15);
+  box-shadow: 0 8px 24px rgb(var(--family-500) / 0.18);
   transition: opacity 0.15s ease;
   width: 100%;
   text-align: center;
@@ -385,3 +374,15 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
     padding-right: 0 !important;
   }
 }
+
+/* LifeKeel type and call to action, app-wide. The call-to-action fill is brass, so the label on it is dark. */
+h1, h2 {
+  font-family: var(--font-display), Georgia, 'Times New Roman', serif;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+.bg-family-500.text-white, .bg-family-500 .text-white { color: rgb(var(--on-cta)); }
+.bg-family-500 { box-shadow: none; }
+
+/* Instrument Serif is condensed, so a page title at the sans size reads small. */
+h1.text-title-md, h1.text-title-lg, h1.text-2xl, h1.text-xl { font-size: 1.9rem; line-height: 1.1; }

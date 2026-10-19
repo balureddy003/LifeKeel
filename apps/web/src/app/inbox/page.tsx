@@ -38,7 +38,7 @@ const actionTypeColor = (type: InboxItem['actionType']) => {
     review: '#fbbf24',
     renew: '#f87171',
     compare: '#60a5fa',
-    update: '#a78bfa',
+    update: '#38bdf8',
     info: '#8a8070',
   }
   return colors[type] ?? '#8a8070'

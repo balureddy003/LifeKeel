@@ -362,13 +362,13 @@ function AskKeelButton({ context }: { context?: string }) {
       // stays nearest the thumb; SOS — the dangerous mis-tap — is above it.
       className="fixed bottom-32 right-4 z-fab w-12 h-12 rounded-full flex items-center justify-center"
       style={{
-        background: 'linear-gradient(135deg, #8b80f8, #6b5ce0)',
-        border: '1px solid rgba(255,255,255,0.2)',
-        boxShadow: '0 12px 24px -6px rgba(0,0,0,0.55), 0 8px 20px rgba(139,128,248,0.3)',
+        background: 'rgb(var(--family-500))',
+        border: '1px solid rgb(var(--tint) / 0.15)',
+        boxShadow: '0 12px 24px -6px rgba(0,0,0,0.35)',
       }}
       aria-label="Ask Keel"
     >
-      <Bot size={20} color="#fff" />
+      <Bot size={20} color="rgb(var(--on-cta))" />
     </motion.button>
   )
 }

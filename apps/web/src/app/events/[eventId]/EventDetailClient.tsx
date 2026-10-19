@@ -329,7 +329,7 @@ export default function EventDetailClient() {
                 }}
                 style={{ border: '2px solid' }}
               >
-                {action.done && <Check size={14} color="#08080c" />}
+                {action.done && <Check size={14} color="rgb(var(--on-cta))" />}
               </motion.div>
               <span className={`text-sm text-left flex-1 ${action.done ? 'text-ink-tertiary line-through' : 'text-ink-primary'}`}>
                 {personalizeAction(action, policies)}

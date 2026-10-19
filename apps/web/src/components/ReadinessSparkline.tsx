@@ -45,7 +45,7 @@ export function ReadinessSparkline() {
   const latest = scores[scores.length - 1]!
   const previous = scores[scores.length - 2]!
   const delta = latest - previous
-  const trendColor = delta > 0 ? '#4ade80' : delta < 0 ? '#f87171' : '#8b80f8'
+  const trendColor = delta > 0 ? '#4ade80' : delta < 0 ? '#f87171' : '#c08a24'
   const TrendIcon = delta > 0 ? TrendingUp : delta < 0 ? TrendingDown : Minus
 
   return (

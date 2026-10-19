@@ -50,11 +50,11 @@ export interface MemberSection {
   category: GraphCategory
 }
 
-// The JS-land twin of globals.css's --family-accent: consumers here do
+// The JS-land twin of globals.css's --family-accent (brass; one mid value that reads on both themes): consumers here do
 // hex-alpha suffix math (`${color}14`) that var() strings can't survive,
 // so the literal has to live somewhere — it lives here, once, and the CSS
 // var's comment points at this line so the two stay in sync.
-export const FAMILY_ACCENT = '#7c6ef0'
+export const FAMILY_ACCENT = '#c08a24'
 
 export const CATEGORY_COLOR: Record<GraphCategory, string> = {
   family: FAMILY_ACCENT,

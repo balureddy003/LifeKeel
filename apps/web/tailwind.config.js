@@ -8,10 +8,10 @@ module.exports = {
       colors: {
         // Refined accent — cool indigo/violet (Linear/Perplexity-inspired)
         family: {
-          50: '#f0f0ff',
-          100: '#e0e0ff',
-          200: '#c4c0ff',
-          300: '#a8a0ff',
+          50: '#fdf6e7',
+          100: '#faecc8',
+          200: '#f3d896',
+          300: '#ecc56a',
           // Text/link purple on the page surface — reads from the CSS var
           // so it stays AA-legible in both themes (light theme darkens it).
           400: 'rgb(var(--family-400) / <alpha-value>)',
@@ -23,16 +23,16 @@ module.exports = {
           // lighter family-400 against dark surfaces instead), so
           // darkening it can't regress contrast the other direction.
           // Same hue/saturation, darkened just enough for 4.52:1.
-          500: '#7061ef',
+          500: 'rgb(var(--family-500) / <alpha-value>)',
           // Foreground accent on the page surface (icons, active states,
           // gradients) — reads from the CSS var so it stays AA-legible in
           // both themes (light theme darkens it) and can never drift from
           // the value components use in inline styles.
           accent: 'rgb(var(--family-accent) / <alpha-value>)',
-          600: '#6b5ce0',
-          700: '#5a4dd0',
-          800: '#4a3eb0',
-          900: '#3a2e90',
+          600: 'rgb(var(--family-600) / <alpha-value>)',
+          700: 'rgb(var(--family-700) / <alpha-value>)',
+          800: '#7a5206',
+          900: '#5c3d04',
         },
         // The one token every white-alpha surface goes through. Dark theme
         // maps it to white; light theme to near-black — so bg-tint/5 is the
@@ -72,7 +72,7 @@ module.exports = {
         info: 'rgb(var(--info) / <alpha-value>)',
       },
       fontFamily: {
-        sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
+        sans: ['var(--font-body)', 'var(--font-sans)', 'system-ui', 'sans-serif'],
       },
       // Named type ramp — replaces the ~20 one-off text-[Npx]/text-[Nrem]
       // literals that had accreted across the app (10px, 10.5px, 11px,
