@@ -1,6 +1,12 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MongoClient, type Db } from 'mongodb'
 import { MongoMemoryServer } from 'mongodb-memory-server'
+
+vi.mock('@sendgrid/mail', () => ({
+  default: { setApiKey: vi.fn(), send: vi.fn().mockResolvedValue([{ statusCode: 202 }]) },
+}))
+
+import sgMail from '@sendgrid/mail'
 import {
   campaignsCol,
   ensureCampaignIndexes,
@@ -34,6 +40,7 @@ beforeEach(async () => {
     await db.collection(name.name).deleteMany({})
   }
   invalidatePlatformConfigCache()
+  process.env['SENDGRID_API_KEY'] = 'test-key'
 })
 
 afterAll(async () => {
@@ -179,7 +186,7 @@ describe('sendCampaign', () => {
     const campaign = makeCampaign()
     await campaignsCol(db).insertOne(campaign)
     const stats = await sendCampaign(db, campaign)
-    expect(stats).toEqual({ targeted: 2, sent: 2, failed: 0 })
+    expect(stats).toEqual({ targeted: 2, sent: 2, skipped: 0, failed: 0 })
     const sends = await lifecycleSendsCol(db).find({ sequence: 'campaign' }).toArray()
     expect(sends.map((s) => s.key).sort()).toEqual(['campaign:c1:lead-1', 'campaign:c1:u1'])
   })
@@ -203,5 +210,24 @@ describe('sendCampaign', () => {
     invalidatePlatformConfigCache()
     await expect(sendCampaign(db, makeCampaign())).rejects.toThrow('marketing_paused')
     expect(await lifecycleSendsCol(db).countDocuments({})).toBe(0)
+  })
+
+  it('refuses to run without SENDGRID_API_KEY — nothing claimed, nothing "sent"', async () => {
+    delete process.env['SENDGRID_API_KEY']
+    await seedUser()
+    await expect(sendCampaign(db, makeCampaign())).rejects.toThrow('SENDGRID_API_KEY')
+    // The route rolls the campaign back to draft on throw; no ledger row may
+    // exist either — an unconfigured run must not look like a delivered one.
+    expect(await lifecycleSendsCol(db).countDocuments({})).toBe(0)
+  })
+
+  it('provider rejections settle failed — the ledger never reads sent', async () => {
+    vi.mocked(sgMail.send).mockRejectedValueOnce(new Error('sendgrid 503'))
+    await seedUser()
+    const stats = await sendCampaign(db, makeCampaign())
+    expect(stats).toEqual({ targeted: 1, sent: 0, skipped: 0, failed: 1 })
+    const row = await lifecycleSendsCol(db).findOne({ key: 'campaign:c1:u1' })
+    expect(row!['status']).toBe('failed')
+    expect(String(row!['error'])).toContain('sendgrid 503')
   })
 })

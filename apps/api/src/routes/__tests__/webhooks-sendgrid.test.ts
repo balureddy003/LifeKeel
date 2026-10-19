@@ -14,7 +14,9 @@ let app: FastifyInstance
 // A real Ed25519 keypair — the route verifies SendGrid's signature over
 // `timestamp + rawBody`, so tests sign exactly the same way.
 const { publicKey, privateKey } = generateKeyPairSync('ed25519')
-const pubB64 = (publicKey.export({ format: 'der', type: 'spki' }) as Buffer).subarray(12).toString('base64')
+const pubB64 = (publicKey.export({ format: 'der', type: 'spki' }) as Buffer)
+  .subarray(12)
+  .toString('base64')
 
 function signBody(body: string): { timestamp: string; signature: string } {
   const timestamp = String(Math.floor(Date.now() / 1000))
@@ -57,8 +59,12 @@ beforeEach(async () => {
 })
 
 const PREV_KEY = process.env['SENDGRID_EVENT_WEBHOOK_KEY']
-beforeAll(() => { process.env['SENDGRID_EVENT_WEBHOOK_KEY'] = pubB64 })
-afterAll(() => { process.env['SENDGRID_EVENT_WEBHOOK_KEY'] = PREV_KEY })
+beforeAll(() => {
+  process.env['SENDGRID_EVENT_WEBHOOK_KEY'] = pubB64
+})
+afterAll(() => {
+  process.env['SENDGRID_EVENT_WEBHOOK_KEY'] = PREV_KEY
+})
 
 async function postEvents(events: object[], signIt = true) {
   const body = JSON.stringify(events)
@@ -73,8 +79,15 @@ async function postEvents(events: object[], signIt = true) {
 
 async function claimSend(key: string, recipient = 'lead-1') {
   await lifecycleSendsCol(db).insertOne({
-    id: 'x', key, sequence: 'campaign', step: 's', recipient,
-    email: 'a@b.co', status: 'sent', created_at: new Date(),
+    id: 'x',
+    key,
+    sequence: 'campaign',
+    step: 's',
+    recipient,
+    email: 'a@b.co',
+    status: 'sent',
+    attempts: 1,
+    created_at: new Date(),
   })
 }
 
@@ -87,7 +100,9 @@ describe('POST /webhooks/sendgrid', () => {
   it('rejects a forged signature', async () => {
     const body = JSON.stringify([{ event: 'open', lk: 'k' }])
     const res = await app.inject({
-      method: 'POST', url: '/webhooks/sendgrid', payload: body,
+      method: 'POST',
+      url: '/webhooks/sendgrid',
+      payload: body,
       headers: {
         'content-type': 'application/json',
         'x-twilio-email-event-webhook-timestamp': '1',
