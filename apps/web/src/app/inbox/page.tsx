@@ -348,7 +348,7 @@ export default function InboxPage() {
           </div>
           <p className="text-sm text-ink-secondary leading-relaxed">
             {unreadCount > 0
-              ? `Keel has ${unreadCount} recommendation${unreadCount === 1 ? '' : 's'} for you to look at.`
+              ? `Keel has ${unreadCount} ${unreadCount === 1 ? 'thing' : 'things'} for you to look at.`
               : 'Nothing new — you have seen everything Keel has for you.'}
           </p>
         </GlassCard>
@@ -463,7 +463,7 @@ export default function InboxPage() {
           <GlassCard>
             <EmptyState
               icon={Bot}
-              title="Couldn't load your recommendations"
+              title="Couldn't load your inbox"
               description="Keel couldn't reach the server just now — this isn't the same as having nothing to show you. Check your connection and try again."
               actionLabel="Try again"
               onAction={retryLoad}

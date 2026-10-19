@@ -3,7 +3,7 @@ import { readableHypothesis } from '../insight-text'
 
 describe('readableHypothesis', () => {
   it('turns a rule id into a sentence-style label', () => {
-    expect(readableHypothesis('estate_no_will')).toBe('Estate no will')
+    expect(readableHypothesis('estate_no_will')).toBe('No will')
     expect(readableHypothesis('no_income_protection')).toBe('No income protection')
   })
   it('leaves real sentences alone', () => {
