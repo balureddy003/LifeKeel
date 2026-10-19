@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter, Instrument_Serif, Hanken_Grotesk, IBM_Plex_Mono } from 'next/font/google'
+import { Inter, Instrument_Serif, Hanken_Grotesk, IBM_Plex_Mono, Fraunces } from 'next/font/google'
 import { MotionConfig } from 'framer-motion'
 import './globals.css'
 import '@/components/landing/landing.css'
@@ -34,6 +34,14 @@ const display = Instrument_Serif({
   weight: '400',
   style: ['normal', 'italic'],
   variable: '--font-display',
+  display: 'swap',
+})
+// The LifeKeel wordmark face (public/logo/README.md): Fraunces 600. Preloaded because the
+// header lockup is on the first screen of every public page.
+const wordmark = Fraunces({
+  subsets: ['latin'],
+  weight: '600',
+  variable: '--font-wordmark',
   display: 'swap',
 })
 const body = Hanken_Grotesk({
@@ -104,7 +112,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${display.variable} ${body.variable} ${mono.variable}`}
+      className={`${inter.variable} ${display.variable} ${body.variable} ${mono.variable} ${wordmark.variable}`}
       suppressHydrationWarning
     >
       <head>

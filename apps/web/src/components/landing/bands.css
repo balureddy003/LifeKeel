@@ -228,8 +228,8 @@
 /* brand lockup, header */
 .lk-brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; min-height: 44px; }
 .lk-brand img { border-radius: 22%; display: block; flex: none; }
-.lk-brand span { font: 400 28px/1 var(--display); letter-spacing: -0.01em; }
-.lk-brand-lg span { font-size: 34px; }
+.lk-brand span { font: 600 26px/1 var(--wordmark); letter-spacing: -0.01em; }
+.lk-brand-lg span { font-size: 32px; }
 .lk-header { position: sticky; top: 0; z-index: 40; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid var(--line); }
 .lk-header-in { max-width: 1180px; margin: 0 auto; min-height: 68px; display: flex; align-items: center; gap: 28px; padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)); }
 .lk-nav { display: flex; align-items: center; gap: 2px; }
@@ -246,6 +246,6 @@
   .lk-nav, .lk-signin { display: none; }
   .lk-menu-btn { display: inline-flex; align-items: center; justify-content: center; }
   .lk-header-in { gap: 12px; }
-  .lk-brand span { font-size: 26px; }
+  .lk-brand span { font-size: 24px; }
 }
 @media (min-width: 861px) { .lk-menu { display: none; } }
