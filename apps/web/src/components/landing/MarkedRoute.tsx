@@ -111,7 +111,7 @@ export function MarkedRoute() {
               strokeDasharray="0.1 11"
             />
           </g>
-          {ROUTE.map((c, i) => {
+          {ROUTE.map((c) => {
             const lit = prog * 1000 >= c.x - 12
             return (
               <use
@@ -119,7 +119,7 @@ export function MarkedRoute() {
                 className={`lk-wl${lit ? ' lit' : ''}${c.live ? '' : ' pl'}`}
                 href={c.live ? '#lk-lantern' : '#lk-lantern-off'}
                 x={c.x - 12}
-                y={[56, 30, 64, 24, 56, 32][i]}
+                y={c.y}
                 width="24"
                 height="36"
               />

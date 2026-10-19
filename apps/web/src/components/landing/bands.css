@@ -134,7 +134,7 @@
 .lk-rcard dl { margin: 12px 0 0; display: grid; gap: 10px; font-size: 14px; }
 .lk-rcard dt { font: 500 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .lk-rcard dd { margin: 2px 0 0; }
-.lk-yrs-set { margin-top: 24px !important; }
+.landing .lk-band fieldset.lk-yrs-set { margin-top: 24px; }
 .lk-yrs { display: flex; flex-wrap: wrap; gap: 8px; }
 .lk-yrs .lk-opt { flex: 1 1 150px; }
 .lk-ssn { opacity: 0; transition: opacity 1.8s ease; mix-blend-mode: multiply; }

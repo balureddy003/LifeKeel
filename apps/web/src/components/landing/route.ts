@@ -13,8 +13,9 @@ export interface RouteCard {
   onFile: string
   needs: string
   does: string
-  /** x position (of 1000) of this card's lantern on the course. */
+  /** Position (of 1000 wide, 220 tall) of this card's lantern on the course. */
   x: number
+  y: number
 }
 
 export const ROUTE: RouteCard[] = [
@@ -27,6 +28,7 @@ export const ROUTE: RouteCard[] = [
     needs: 'Nothing. Mark as seen when you like.',
     does: 'Shows the renewal date and the terms on file. Sends a reminder only if you turn reminders on.',
     x: 240,
+    y: 56,
   },
   {
     claim: 'cover-on-file',
@@ -37,6 +39,7 @@ export const ROUTE: RouteCard[] = [
     needs: 'Check the amount against your policy papers.',
     does: 'Notes that cover on file is below a rough estimate. A licensed professional can say what suits you.',
     x: 380,
+    y: 30,
   },
   {
     claim: 'cover-on-file',
@@ -47,6 +50,7 @@ export const ROUTE: RouteCard[] = [
     needs: 'Add one if you hold it, or leave it.',
     does: 'Lists what it checked. It cannot see policies you have not entered.',
     x: 530,
+    y: 64,
   },
   {
     claim: 'bad-day-steps',
@@ -57,6 +61,7 @@ export const ROUTE: RouteCard[] = [
     needs: 'Tell Keel what happened.',
     does: 'Lists the steps in order with your contacts filled in, and drafts a message to your own insurer. You send it.',
     x: 680,
+    y: 24,
   },
   {
     claim: 'partner-overlap',
@@ -67,6 +72,7 @@ export const ROUTE: RouteCard[] = [
     needs: 'Nothing today.',
     does: 'Will note when two policies of a shared type are on file, and will say it cannot tell if that is intended.',
     x: 830,
+    y: 56,
   },
   {
     claim: 'claim-pack',
@@ -77,5 +83,6 @@ export const ROUTE: RouteCard[] = [
     needs: 'Nothing today.',
     does: 'Will put them on one page. You make the claim.',
     x: 940,
+    y: 32,
   },
 ]
