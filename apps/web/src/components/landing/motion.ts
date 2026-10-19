@@ -1,36 +1,61 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
 /**
  * One switch for every ambient animation on the landing page (WCAG 2.2.2).
  * Motion is on unless the visitor pressed Pause or their system asks for reduced
- * motion. The state is mirrored to data-motion on <html> so CSS can stop loops
- * without each component knowing about it.
+ * motion. The state is shared by every landing component and mirrored to
+ * data-motion on <html> so CSS can stop loops without each component knowing.
+ * It resets whenever the last landing component unmounts.
  */
-export function useLandingMotion(): { on: boolean; paused: boolean; toggle: () => void } {
-  const [paused, setPaused] = useState(false)
-  const [reduced, setReduced] = useState(false)
+let paused = false
+let reduced = false
+const listeners = new Set<() => void>()
 
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const sync = () => setReduced(mq.matches)
-    sync()
-    mq.addEventListener('change', sync)
-    return () => mq.removeEventListener('change', sync)
-  }, [])
+const isOn = () => !paused && !reduced
 
-  const on = !paused && !reduced
+function emit() {
+  document.documentElement.dataset.motion = isOn() ? 'on' : 'off'
+  listeners.forEach((l) => l())
+}
 
-  useEffect(() => {
-    document.documentElement.dataset.motion = on ? 'on' : 'off'
-    return () => {
+let mq: MediaQueryList | null = null
+const onMq = () => {
+  reduced = !!mq?.matches
+  emit()
+}
+
+function subscribe(l: () => void) {
+  if (listeners.size === 0) {
+    paused = false
+    mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    reduced = mq.matches
+    mq.addEventListener('change', onMq)
+    document.documentElement.dataset.motion = isOn() ? 'on' : 'off'
+  }
+  listeners.add(l)
+  return () => {
+    listeners.delete(l)
+    if (listeners.size === 0) {
+      mq?.removeEventListener('change', onMq)
       delete document.documentElement.dataset.motion
     }
-  }, [on])
+  }
+}
 
-  const toggle = useCallback(() => setPaused((p) => !p), [])
-  return { on, paused, toggle }
+export function useLandingMotion(): { on: boolean; paused: boolean; toggle: () => void } {
+  const on = useSyncExternalStore(subscribe, isOn, () => true)
+  const isPaused = useSyncExternalStore(
+    subscribe,
+    () => paused,
+    () => false,
+  )
+  const toggle = useCallback(() => {
+    paused = !paused
+    emit()
+  }, [])
+  return { on, paused: isPaused, toggle }
 }
 
 /** Counts towards `target` over 900ms; jumps straight there when motion is off. */

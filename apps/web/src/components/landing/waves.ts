@@ -14,14 +14,14 @@ export const WAVES: WaveSpec[] = [
   { amp: 9, n: 6, base: 18, ph: 0.6, crest: true },
 ]
 
-export function wavePath(w: WaveSpec, h = 120): { fill: string; crest: string } {
+export function wavePath(w: WaveSpec, h = 120, width = 2400): { fill: string; crest: string } {
   const pts: string[] = []
-  for (let x = 0; x <= 2400; x += 16) {
+  for (let x = 0; x <= width; x += 16) {
     const y =
       w.base +
-      w.amp * Math.sin(((2 * Math.PI * w.n * x) / 2400) * 2 + w.ph) +
-      w.amp * 0.35 * Math.sin((2 * Math.PI * w.n * 2 * x) / 1200 + w.ph * 1.7)
+      w.amp * Math.sin(((2 * Math.PI * w.n * x) / width) * 2 + w.ph) +
+      w.amp * 0.35 * Math.sin((2 * Math.PI * w.n * 2 * x) / (width / 2) + w.ph * 1.7)
     pts.push(`${x} ${y.toFixed(1)}`)
   }
-  return { fill: `M0 ${h} L${pts.join(' L')} L2400 ${h} Z`, crest: `M${pts.join(' L')}` }
+  return { fill: `M0 ${h} L${pts.join(' L')} L${width} ${h} Z`, crest: `M${pts.join(' L')}` }
 }
