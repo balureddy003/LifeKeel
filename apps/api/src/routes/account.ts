@@ -34,41 +34,8 @@
  */
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { GridFSBucket } from 'mongodb'
 import { getAuditLogger } from '../audit/audit-log.js'
-
-// Collections holding tenant-tagged family data, wiped on delete. Anything
-// tenant-scoped the family product writes must be in this list — internal
-// ML/billing/platform collections are intentionally not (see header).
-// Exported so the architecture-claims fitness test can keep this list in
-// sync with the tenant-scoped collection catalogue.
-export const DELETABLE_COLLECTIONS = [
-  'users',
-  'family_groups',
-  'family_financial_profile',
-  'documents',
-  'signals',
-  'insights',
-  'goals',
-  'goal_kpi_snapshots',
-  'inbox_items',
-  'tenant_settings',
-  'connector_credentials',
-  'action_receipts',
-  'agent_memory',
-  'verified_moments',
-  'outcome_events',
-  'delivery_preferences',
-  'delivery_queue',
-  'delivery_receipts',
-  'digest_queue',
-  'move_rewrite_queue',
-  'manual_review_queue',
-  'move_judge_verdicts',
-  'reminders',
-  'web_push_subscriptions',
-  'mobile_push_tokens',
-] as const
+import { eraseTenantData } from '../erasure.js'
 
 // Fields stripped from the exported user record — auth material, not data
 // about the family.
@@ -156,27 +123,9 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
     // compliance record the header describes.
     getAuditLogger()?.fromRequest(request, 'account.deleted', 'account', tenant_id, {})
 
-    // GridFS document blobs are keyed by metadata.tenant_id — delete them
-    // before the metadata rows below so a partial failure leaves orphaned
-    // metadata (harmless: unreferenced) rather than orphaned blobs with no
-    // way to identify whose they were.
-    const files = await db
-      .collection('documents.files')
-      .find({ 'metadata.tenant_id': tenant_id })
-      .project({ _id: 1 })
-      .toArray()
-    const bucket = new GridFSBucket(db, { bucketName: 'documents' })
-    for (const f of files) {
-      try {
-        await bucket.delete(f._id)
-      } catch {
-        /* blob may already be gone */
-      }
-    }
-
-    for (const name of DELETABLE_COLLECTIONS) {
-      await db.collection(name).deleteMany({ tenant_id })
-    }
+    // The wipe itself lives in erasure.ts so the account route, the daily
+    // erasure-replay cron, and post-restore reconciliation run identical code.
+    await eraseTenantData(db, tenant_id)
 
     // Keep the tenants row but make it dead: the auth middleware admits only
     // 'active'/'trial' tenants, so every outstanding JWT 403s from here on.

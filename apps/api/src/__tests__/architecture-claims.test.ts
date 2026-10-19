@@ -40,73 +40,13 @@ function readSrc(rel: string): string {
 /* question into review before the data exists.                          */
 /* ------------------------------------------------------------------ */
 
-// Tenant-scoped collections the account-deletion handler DOES NOT yet
-// wipe — the documented A4/intent-04 remediation list. When a collection
-// is added to DELETABLE_COLLECTIONS in routes/account.ts, remove it here:
-// this test fails on stale gap entries as well as unclassified collections.
-const KNOWN_ERASURE_GAPS = new Set([
-  // --- family-authored data the family product writes ---
-  'events', // domain event log (tenant_id indexed)
-  'family_assets',
-  'family_cashflow_entries',
-  'family_scenarios',
-  'family_continuity_state',
-  'family_join_requests',
-  'family_member_invites',
-  'family_life_change_nudge_state',
-  'feed_mutes',
-  'heartbeat_sends',
-  'insight_attribution',
-  'legacy_contacts',
-  'legacy_documents',
-  'legacy_notes',
-  'member_nudges',
-  'readiness_events',
-  'external_accounts',
-  'pending_trades',
-  'tenants', // tenant registry doc — verify closure path
-  // --- AI-derived / ML artifacts ---
-  'adaptive_thresholds',
-  'adwin_states',
-  'calibration_alerts',
-  'calibration_ece_history',
-  'calibration_jobs',
-  'calibration_params',
-  'causal_experiments',
-  'change_point_state',
-  'cusum_states',
-  'detector_eval_baselines',
-  'exp_smoother_states',
-  'feature_hash_eval_reports',
-  'feature_hash_model_versions',
-  'feature_hash_models',
-  'intent_centroids',
-  'llm_cache',
-  'llm_guard_events',
-  'llm_spans',
-  'llm_usage',
-  'novelty_sketches',
-  'novelty_tracker',
-  'outcome_attributions',
-  'prompt_versions',
-  'raw_events',
-  'skill_opt_history',
-  'skill_rejection_memory',
-  'tenant_level_models',
-  'workflow_approvals',
-  // --- connector + pipeline state ---
-  'connector_health_dedup',
-  'connector_sync_state',
-  'email_classify_failures',
-  // --- growth/operator surfaces keyed to tenant or member ---
-  'growth_events',
-  'lifecycle_sends',
-  'marketing_posts',
-  'referral_codes',
-  'referrals',
-  'social_connections',
-  'support_cases',
-])
+// Tenant-scoped collections the account-deletion handler is KNOWN to miss.
+// The 2026-10 audit list was closed out (every entry moved into the wipe
+// or classified exempt); the set remains as the mechanism for documenting
+// any future gap pending a named fix. An entry must (a) be a real
+// collection found in code, and (b) NOT already be in the wipe — the test
+// fails on stale or dishonest entries.
+const KNOWN_ERASURE_GAPS = new Set<string>([])
 
 // Platform/audit/global collections that are intentionally NOT in the
 // per-tenant wipe, with the reason each is exempt. Membership in this set
@@ -153,11 +93,22 @@ const EXEMPT_COLLECTIONS = new Set([
   'autopilot_rules',
   'workflow_runs',
   // global aggregate — not per-tenant deletable; warm-start gated by
-  // enableFederatedWarmStart (intent 06) until governance exists
+  // allowFederatedWarmStart (intent 06) until governance exists
   'federated_global_models',
   // GridFS buckets — emptied via bucket.delete() in the deletion path
   'documents.files',
   'documents.chunks',
+  // registry doc is tombstoned status:'deleted', not removed — the marker
+  // is what makes outstanding stateless JWTs die on the next request
+  'tenants',
+  // shared platform prompt definitions keyed by id — not tenant data
+  'prompt_versions',
+  // eval artifacts written under synthetic `eval_*` tenant ids — not real
+  // tenant data
+  'detector_eval_baselines',
+  // detector-level aggregate metrics (precision/recall per detector) — no
+  // per-tenant key or family content by design
+  'feature_hash_eval_reports',
 ])
 
 // Collection-name literals at known access patterns. Kept deliberately
@@ -181,13 +132,22 @@ function collectionsInSource(root: string): Set<string> {
   return names
 }
 
-// The deletion list, extracted statically from account.ts so this test
-// stays a pure tripwire with no module side effects.
+// The deletion list, extracted statically from erasure.ts (the shared wipe
+// module) so this test stays a pure tripwire with no module side effects.
 function deletableCollections(): string[] {
-  const src = readSrc('apps/api/src/routes/account.ts')
+  const src = readSrc('apps/api/src/erasure.ts')
   const m = src.match(/DELETABLE_COLLECTIONS\s*=\s*\[([\s\S]*?)\]\s*as const/)
   if (!m) return []
   return [...m[1]!.matchAll(/'([a-z_]+)'/g)].map((g) => g[1]!)
+}
+
+// Collections wiped via CUSTOM_DELETES' per-collection filters instead of
+// the default tenant_id deleteMany.
+function customDeletedCollections(): string[] {
+  const src = readSrc('apps/api/src/erasure.ts')
+  const m = src.match(/CUSTOM_DELETES[^=]*=\s*[\s\S]*?\n\]\s*\n/)
+  if (!m) return []
+  return [...m[0].matchAll(/collection:\s*'([a-z_]+)'/g)].map((g) => g[1]!)
 }
 
 describe('architecture claims: account erasure coverage', () => {
@@ -200,12 +160,14 @@ describe('architecture claims: account erasure coverage', () => {
   const found = new Set<string>()
   for (const root of scanRoots) for (const n of collectionsInSource(root)) found.add(n)
   const deletable = new Set(deletableCollections())
+  const customDeleted = new Set(customDeletedCollections())
 
-  it('DELETABLE_COLLECTIONS was extracted from account.ts', () => {
+  it('DELETABLE_COLLECTIONS and CUSTOM_DELETES were extracted from erasure.ts', () => {
     expect(deletable.size).toBeGreaterThan(20)
+    expect(customDeleted.size).toBeGreaterThan(0)
   })
 
-  it('DELETABLE_COLLECTIONS and the gap list are disjoint', () => {
+  it('delete lists, gap list, and exempt list are all disjoint', () => {
     for (const name of deletable) {
       expect(
         KNOWN_ERASURE_GAPS.has(name),
@@ -215,11 +177,24 @@ describe('architecture claims: account erasure coverage', () => {
         EXEMPT_COLLECTIONS.has(name),
         `'${name}' is deleted AND listed as exempt — fix the catalogue`,
       ).toBe(false)
+      expect(
+        customDeleted.has(name),
+        `'${name}' has a custom filter AND sits in the default wipe — pick one`,
+      ).toBe(false)
+    }
+    for (const name of customDeleted) {
+      expect(KNOWN_ERASURE_GAPS.has(name)).toBe(false)
+      expect(EXEMPT_COLLECTIONS.has(name)).toBe(false)
     }
   })
 
-  it('every collection referenced in code is classified: deletable, known gap, or exempt', () => {
-    const classified = new Set<string>([...deletable, ...KNOWN_ERASURE_GAPS, ...EXEMPT_COLLECTIONS])
+  it('every collection referenced in code is classified: deletable, custom-deleted, known gap, or exempt', () => {
+    const classified = new Set<string>([
+      ...deletable,
+      ...customDeleted,
+      ...KNOWN_ERASURE_GAPS,
+      ...EXEMPT_COLLECTIONS,
+    ])
     const unclassified = [...found].filter((n) => !classified.has(n)).sort()
     expect(
       unclassified,
@@ -326,5 +301,33 @@ describe('architecture claims: production deliverability', () => {
 
   it('key registry fails closed once versioned keys exist', () => {
     expect(readSrc('packages/platform/src/key-registry.ts')).toContain('hasVersionedKeys')
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* Claim 5: erasure is durable across restores (intent 04/05)           */
+/* ------------------------------------------------------------------ */
+
+describe('architecture claims: erasure survives backup restore', () => {
+  it('erasure-replay is scheduled daily and re-wipes tombstoned tenants', () => {
+    expect(readSrc('apps/api/src/server.ts')).toContain("'erasure-replay'")
+    const job = readSrc('apps/api/src/jobs/erasure-replay.ts')
+    // The replay keys on the durable marker — the tenants tombstone that
+    // restore.sh re-applies after a --drop restore.
+    expect(job).toContain("status: 'deleted'")
+    expect(job).toContain('eraseTenantData')
+  })
+
+  it('the shared eraseTenantData wipe is what the delete route and the replay both call', () => {
+    expect(readSrc('apps/api/src/routes/account.ts')).toContain('eraseTenantData')
+    expect(readSrc('apps/api/src/erasure.ts')).toContain('export async function eraseTenantData')
+  })
+
+  it('restore.sh preserves tombstones across a --drop restore', () => {
+    const src = readSrc('scripts/ops/restore.sh')
+    // Without this, a stale backup un-deletes accounts: the restored
+    // tenants row carries status:'active' and replay finds nothing.
+    expect(src).toContain("status: 'deleted'")
+    expect(src).toContain('tombstoned tenant_ids')
   })
 })

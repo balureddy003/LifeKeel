@@ -729,6 +729,23 @@ try {
   )
   log.info({}, 'Calibration drift cron started')
 
+  // ── Erasure replay — 4:30 AM daily ─────────────────────────────────────────
+  // Backup↔erasure reconciliation (intent 04): a restore taken before an
+  // account deletion can resurrect the tenant's rows — and their tombstone.
+  // Re-wiping every status:'deleted' tenant makes the erasure durable across
+  // restores. Idempotent and a no-op when nothing is tombstoned.
+  cron.schedule(
+    '30 4 * * *',
+    async () => {
+      await withCronLock(workflowDb, 'erasure-replay', async () => {
+        const { runErasureReplay } = await import('./jobs/erasure-replay.js')
+        await runErasureReplay(workflowDb)
+      })
+    },
+    { missedExecutionTolerance: 60_000 },
+  )
+  log.info({}, 'Erasure replay cron started')
+
   // ── Calibration fitting — 3 AM nightly (D1b) ──────────────────────────────
   // Builds calibration pairs from recent approve/dismiss receipts (which now
   // carry metadata.insight_score) and calls ScoreCalibrator.fit() to update
