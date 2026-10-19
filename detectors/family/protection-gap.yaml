@@ -80,13 +80,14 @@ rules:
     impact_high: 0
     reasoning_template: >
       Your {{data.soonest_renewal_type}} policy with {{data.soonest_renewal_provider}} renews in
-      {{data.soonest_renewal_days}} days. This is a good time to review whether the coverage amount
-      and terms still match your household's needs — please consult a licensed insurance professional
-      before making any changes.
+      {{data.soonest_renewal_days}} days. The coverage amount and terms are set out in your policy documents,
+      and a licensed insurance professional can say whether they still match your household's needs. This
+      is informational only.
     actions:
       - Review the renewal terms and any premium change
-      - Compare against current market quotes before renewing automatically
-      - Confirm the coverage amount still matches your household's needs
+      - Check whether the policy renews automatically and when any notice period ends
+      - Confirm the coverage amount on file still matches your policy documents
+      - If you want to review your options, a licensed insurance professional can explain them
       - Email me a reminder before this policy renews
     # PRD-116: the first detector-declared executable intent in the family
     # vertical — a renewal reminder emailed to the family's own address
