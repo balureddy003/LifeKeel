@@ -1,0 +1,86 @@
+# AI bill of materials (B14) — every model and model-serving base image the
+# platform depends on, with the exact immutable artifact it resolves to.
+#
+# Rules:
+#  - Every entry MUST pin an immutable reference (commit SHA or content
+#    digest). Mutable tags appear only as the human-readable `tag` field —
+#    the pin is what CI and builds verify.
+#  - Every model entry MUST have a card under docs/models/ describing what
+#    it does, what data it sees, and the evidence for choosing it.
+#  - architecture-claims.test.ts cross-checks these pins against the code
+#    and Dockerfiles — a drift between this file and a FROM/ARG/revision
+#    fails CI rather than silently shipping a different model.
+version: 1
+artifacts:
+  - id: local-judge-model
+    kind: model
+    name: qwen2.5
+    tag: '7b'
+    source: registry.ollama.ai/library/qwen2.5
+    license: apache-2.0
+    pin:
+      kind: oci-manifest-digest
+      # sha256 of the registry manifest for qwen2.5:7b (verified
+      # 2026-10-19). The Ollama image build verifies the pulled manifest
+      # against this digest; see infra/local-judge/Dockerfile.
+      value: sha256:845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e
+    card: docs/models/qwen2.5.md
+    purpose: >-
+      Self-hosted judge, email classifier, OCR assist and LOCAL_TEXT path
+      for family-data tasks — the reason these stay off hosted LLMs.
+    data_boundary: >-
+      Family content. Runs on our own Ollama service; never leaves our
+      infrastructure.
+
+  - id: local-embedding-model
+    kind: model
+    name: Xenova/bge-small-en-v1.5
+    tag: main
+    source: huggingface.co/Xenova/bge-small-en-v1.5
+    license: mit
+    pin:
+      kind: hf-revision
+      value: ea104dacec62c0de699686887e3f920caeb4f3e3
+    card: docs/models/bge-small-en-v1.5.md
+    purpose: >-
+      Tier-2 intent-classifier embeddings (LocalEmbeddingProvider, ONNX in
+      process) — free, fast, no external call.
+    data_boundary: >-
+      Event/insight text in-process via Transformers.js. Downloaded once at
+      build/first-run; inference is fully local.
+
+  - id: encoder-model
+    kind: model
+    name: fastino/GLiNER2.5-Decide
+    tag: main
+    source: huggingface.co/fastino/GLiNER2.5-Decide
+    license: apache-2.0
+    pin:
+      kind: hf-revision
+      value: 9d1bfb848cd16d93ee56ccbc59cd92bf0f284d90
+    card: docs/models/gliner2.5-decide.md
+    purpose: >-
+      Policy-relevance encoder (infra/encoder-service): is an inbound email
+      about a policy the household already holds.
+    data_boundary: >-
+      Email from/subject/body on our own CPU service behind Cloud Run IAM.
+
+  - id: local-judge-base-image
+    kind: base-image
+    name: ollama/ollama
+    tag: '0.35.0'
+    source: hub.docker.com/ollama/ollama
+    pin:
+      kind: docker-content-digest
+      value: sha256:2a6e883b917fc543389599dae79918f5cac9e1438890506982f44aa4f5625d01
+    purpose: Ollama server that bakes and serves local-judge-model.
+
+  - id: encoder-base-image
+    kind: base-image
+    name: python
+    tag: 3.11-slim
+    source: hub.docker.com/library/python
+    pin:
+      kind: docker-content-digest
+      value: sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce
+    purpose: Runtime for infra/encoder-service.
