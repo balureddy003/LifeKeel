@@ -72,12 +72,16 @@ export interface ApiLlmScorerOptions {
 }
 
 export class ApiLlmScorer {
-  private settingCache = new Map<string, { enabled: boolean; skipThreshold: number; disagreementThreshold: number; ts: number }>()
+  private settingCache = new Map<
+    string,
+    { enabled: boolean; skipThreshold: number; disagreementThreshold: number; ts: number }
+  >()
   private readonly cacheTtlMs = 60_000 // 1 minute
 
   constructor(
     private readonly db: Db,
-    private readonly llmFn: LlmFn,
+    /** Governed-fn factory — one policy-bound LlmFn per tenant (intent 01). */
+    private readonly llmFor: (tenantId: string) => LlmFn,
     private readonly opts: ApiLlmScorerOptions = {},
   ) {}
 
@@ -86,24 +90,41 @@ export class ApiLlmScorer {
     return settings.enabled
   }
 
-  private async getSettings(tenantId: string): Promise<{ enabled: boolean; skipThreshold: number; disagreementThreshold: number }> {
+  private async getSettings(
+    tenantId: string,
+  ): Promise<{ enabled: boolean; skipThreshold: number; disagreementThreshold: number }> {
     const cached = this.settingCache.get(tenantId)
     if (cached && Date.now() - cached.ts < this.cacheTtlMs) {
-      return { enabled: cached.enabled, skipThreshold: cached.skipThreshold, disagreementThreshold: cached.disagreementThreshold }
+      return {
+        enabled: cached.enabled,
+        skipThreshold: cached.skipThreshold,
+        disagreementThreshold: cached.disagreementThreshold,
+      }
     }
     try {
       const doc = await this.db.collection('tenant_settings').findOne({
         tenant_id: tenantId,
         key: 'llm_scoring_config',
       })
-      const cfg = doc?.['value'] as { enabled?: boolean; skip_threshold?: number; disagreement_threshold?: number } | undefined
+      const cfg = doc?.['value'] as
+        { enabled?: boolean; skip_threshold?: number; disagreement_threshold?: number } | undefined
       const enabled = cfg?.enabled ?? false
-      const skipThreshold = cfg?.skip_threshold ?? 0.90
-      const disagreementThreshold = cfg?.disagreement_threshold ?? this.opts.disagreementThreshold ?? 0.15
-      this.settingCache.set(tenantId, { enabled, skipThreshold, disagreementThreshold, ts: Date.now() })
+      const skipThreshold = cfg?.skip_threshold ?? 0.9
+      const disagreementThreshold =
+        cfg?.disagreement_threshold ?? this.opts.disagreementThreshold ?? 0.15
+      this.settingCache.set(tenantId, {
+        enabled,
+        skipThreshold,
+        disagreementThreshold,
+        ts: Date.now(),
+      })
       return { enabled, skipThreshold, disagreementThreshold }
     } catch {
-      return { enabled: false, skipThreshold: 0.90, disagreementThreshold: this.opts.disagreementThreshold ?? 0.15 }
+      return {
+        enabled: false,
+        skipThreshold: 0.9,
+        disagreementThreshold: this.opts.disagreementThreshold ?? 0.15,
+      }
     }
   }
 
@@ -116,7 +137,9 @@ export class ApiLlmScorer {
     if (insights.length === 0) return scores
 
     // Per-tenant opt-in check
-    const { enabled, skipThreshold, disagreementThreshold } = await this.getSettings(context.tenant_id)
+    const { enabled, skipThreshold, disagreementThreshold } = await this.getSettings(
+      context.tenant_id,
+    )
     if (!enabled) return scores
 
     // Budget guard — refuse to call LLM if tenant's budget is exhausted
@@ -132,21 +155,28 @@ export class ApiLlmScorer {
     // Skip insights where the rule confidence is already high enough that
     // LLM enrichment adds <2% delta. The engine also gates at maxOrScoreToEnrich
     // (0.90), but the per-tenant skip_threshold can be lower.
-    const toScore = insights.filter(i => i.confidence_breakdown.or_score < skipThreshold)
+    const toScore = insights.filter((i) => i.confidence_breakdown.or_score < skipThreshold)
     if (toScore.length === 0) return scores
 
     // Score in parallel with a concurrency limit
     const concurrency = this.opts.concurrency ?? 5
     const results = await this.mapWithConcurrency(toScore, concurrency, async (insight) => {
       try {
-        const llmScore = await this.scoreOne(insight, context.tenant_id, reasoningContexts?.get(insight.id))
+        const llmScore = await this.scoreOne(
+          insight,
+          context.tenant_id,
+          reasoningContexts?.get(insight.id),
+        )
         if (llmScore === undefined) return null
 
         // Disagreement detector: only return the LLM score if it differs
         // from the rule confidence by more than the threshold. When the LLM
         // agrees with the rule, the rule was right — skip the overwrite.
         const ruleConfidence = insight.confidence_breakdown.or_score
-        if (disagreementThreshold > 0 && Math.abs(llmScore - ruleConfidence) <= disagreementThreshold) {
+        if (
+          disagreementThreshold > 0 &&
+          Math.abs(llmScore - ruleConfidence) <= disagreementThreshold
+        ) {
           return null // agreement — don't overwrite the rule score
         }
         return { id: insight.id, score: llmScore }
@@ -170,21 +200,26 @@ export class ApiLlmScorer {
 
     // Wrap with cache if configured
     const llm = this.opts.cache
-      ? this.opts.cache.getOrCompute(
-          tenantId,
-          'scorer',
-          this.cacheKey(insight),
-          () => this.callLlmStructured(prompt),
-          this.opts.cacheConfig,
-        ).then(r => r.value)
-      : this.callLlmStructured(prompt)
+      ? this.opts.cache
+          .getOrCompute(
+            tenantId,
+            'scorer',
+            this.cacheKey(insight),
+            () => this.callLlmStructured(prompt, tenantId),
+            this.opts.cacheConfig,
+          )
+          .then((r) => r.value)
+      : this.callLlmStructured(prompt, tenantId)
 
     const { data } = await llm
     return data.score
   }
 
-  private async callLlmStructured(prompt: string): Promise<{ data: { score: number; reasoning: string } }> {
-    const result = await callStructured(this.llmFn, {
+  private async callLlmStructured(
+    prompt: string,
+    tenantId: string,
+  ): Promise<{ data: { score: number; reasoning: string } }> {
+    const result = await callStructured(this.llmFor(tenantId), {
       schema: ScorerOutputSchema,
       system: SCORING_SYSTEM_PROMPT,
       prompt,
@@ -196,9 +231,10 @@ export class ApiLlmScorer {
 
   /** Cache key derived from detector + rule + evidence — same detector on similar evidence = same score. */
   private cacheKey(insight: Insight): unknown {
-    const evidence = insight.evidence_trail?.source_events
-      ?.map(e => `${e.event_type}:${e.excerpt?.slice(0, 100)}`)
-      .join('|') ?? ''
+    const evidence =
+      insight.evidence_trail?.source_events
+        ?.map((e) => `${e.event_type}:${e.excerpt?.slice(0, 100)}`)
+        .join('|') ?? ''
     return {
       detector_id: insight.detector_id,
       rule_id: insight.rule_id,
@@ -208,9 +244,10 @@ export class ApiLlmScorer {
   }
 
   private buildPrompt(insight: Insight, reasoningContext?: ReasoningContext): string {
-    const evidence = insight.evidence_trail?.source_events
-      ?.map(e => `${e.event_type}: ${e.excerpt}`)
-      .join('\n') ?? ''
+    const evidence =
+      insight.evidence_trail?.source_events
+        ?.map((e) => `${e.event_type}: ${e.excerpt}`)
+        .join('\n') ?? ''
     const retrievedEvidence = [
       ...(reasoningContext?.episodic_snippets ?? []),
       ...(reasoningContext?.semantic_snippets ?? []),

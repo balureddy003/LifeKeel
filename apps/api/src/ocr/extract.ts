@@ -18,7 +18,14 @@
 
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { createLogger, getTenantCollection, isValidAzureEndpoint, isAzureFoundryEndpoint, type DecisionFn } from '@lifekeel/platform'
+import {
+  createLogger,
+  getTenantCollection,
+  isValidAzureEndpoint,
+  isAzureFoundryEndpoint,
+  type DecisionFn,
+  type VisionFn,
+} from '@lifekeel/platform'
 import { isOcrableImage, ocrImageToText } from './local-ocr.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 
@@ -37,7 +44,7 @@ interface VisionClientConfig {
  * document upload works with the exact same Azure resource the rest of the
  * app already talks to.
  */
-async function resolveVisionClient(): Promise<VisionClientConfig | null> {
+export async function resolveVisionClient(): Promise<VisionClientConfig | null> {
   const { default: OpenAI } = await import('openai')
 
   const openaiKey = process.env['OPENAI_API_KEY']
@@ -50,7 +57,10 @@ async function resolveVisionClient(): Promise<VisionClientConfig | null> {
   if (azureKey && azureEndpoint) {
     const normalizedEndpoint = azureEndpoint.replace(/\/$/, '').replace(/\/openai.*$/, '')
     if (!isValidAzureEndpoint(normalizedEndpoint)) {
-      log.warn({ azureEndpoint }, 'AZURE_OPENAI_ENDPOINT is set but not a recognized Azure endpoint format')
+      log.warn(
+        { azureEndpoint },
+        'AZURE_OPENAI_ENDPOINT is set but not a recognized Azure endpoint format',
+      )
       return null
     }
     const deployment = process.env['AZURE_OPENAI_DEPLOYMENT'] ?? 'gpt-4o'
@@ -131,31 +141,70 @@ If you cannot read the document clearly, return:
 // so decoding is constrained and nothing leaves our infrastructure. The keys
 // match what profile-mapping.ts looks for.
 
-const CATEGORIES = ['insurance', 'pension', 'mortgage', 'income', 'investment', 'tax', 'will', 'other'] as const
-const POLICY_TYPE_VALUES = ['life', 'income_protection', 'critical_illness', 'health', 'car', 'home', 'travel'] as const
+const CATEGORIES = [
+  'insurance',
+  'pension',
+  'mortgage',
+  'income',
+  'investment',
+  'tax',
+  'will',
+  'other',
+] as const
+const POLICY_TYPE_VALUES = [
+  'life',
+  'income_protection',
+  'critical_illness',
+  'health',
+  'car',
+  'home',
+  'travel',
+] as const
 const FIELD_KEYS = [
-  'provider', 'policy_number', 'account_number', 'premium', 'renewal_date', 'maturity_date', 'due_date',
-  'coverage_amount', 'balance', 'interest_rate', 'beneficiary', 'period', 'net_pay', 'gross_pay',
-  'claims_phone', 'claims_email',
+  'provider',
+  'policy_number',
+  'account_number',
+  'premium',
+  'renewal_date',
+  'maturity_date',
+  'due_date',
+  'coverage_amount',
+  'balance',
+  'interest_rate',
+  'beneficiary',
+  'period',
+  'net_pay',
+  'gross_pay',
+  'claims_phone',
+  'claims_email',
 ] as const
 
-const LocalExtractionSchema = z.object({
-  category: z.enum(CATEGORIES),
-  policy_type: z.enum(POLICY_TYPE_VALUES).nullish(),
-  summary: z.string(),
-}).extend(Object.fromEntries(FIELD_KEYS.map(k => [k, z.string().nullish()])) as Record<(typeof FIELD_KEYS)[number], z.ZodOptional<z.ZodNullable<z.ZodString>>>)
+const LocalExtractionSchema = z
+  .object({
+    category: z.enum(CATEGORIES),
+    policy_type: z.enum(POLICY_TYPE_VALUES).nullish(),
+    summary: z.string(),
+  })
+  .extend(
+    Object.fromEntries(FIELD_KEYS.map((k) => [k, z.string().nullish()])) as Record<
+      (typeof FIELD_KEYS)[number],
+      z.ZodOptional<z.ZodNullable<z.ZodString>>
+    >,
+  )
 
 // Every key is required, with an explicit null option. Measured: with optional
 // keys the model skips fields it could read (a payslip's net/gross pay came back
 // empty); required-or-null keeps extraction complete and null only for absent values.
-const nullable = (extra: Record<string, unknown> = {}) => ({ anyOf: [{ type: 'string', ...extra }, { type: 'null' }] })
+const nullable = (extra: Record<string, unknown> = {}) => ({
+  anyOf: [{ type: 'string', ...extra }, { type: 'null' }],
+})
 const LOCAL_EXTRACTION_JSON_SCHEMA = {
   type: 'object',
   properties: {
     category: { type: 'string', enum: [...CATEGORIES] },
     policy_type: nullable({ enum: [...POLICY_TYPE_VALUES] }),
     summary: { type: 'string' },
-    ...Object.fromEntries(FIELD_KEYS.map(k => [k, nullable()])),
+    ...Object.fromEntries(FIELD_KEYS.map((k) => [k, nullable()])),
   },
   required: ['category', 'policy_type', 'summary', ...FIELD_KEYS],
 } as const
@@ -183,7 +232,10 @@ function toLocalResult(v: z.infer<typeof LocalExtractionSchema>): ExtractionResu
 
 /** The local engine or model failed (as opposed to the document legitimately having nothing to extract). */
 export class LocalExtractionError extends Error {
-  constructor(message: string, readonly cause_?: unknown) {
+  constructor(
+    message: string,
+    readonly cause_?: unknown,
+  ) {
     super(message)
     this.name = 'LocalExtractionError'
   }
@@ -205,10 +257,12 @@ export async function extractDocumentFieldsLocal(
   try {
     if (mimeType === 'application/pdf') {
       text = await extractPdfText(fileBuffer)
-      if (!text) return { category: 'other', fields: {}, rawText: 'Scanned PDF — no text layer to read' }
+      if (!text)
+        return { category: 'other', fields: {}, rawText: 'Scanned PDF — no text layer to read' }
     } else if (isOcrableImage(mimeType)) {
       text = await ocrImageToText(fileBuffer, mimeType)
-      if (!text) return { category: 'other', fields: {}, rawText: 'Unable to extract text from document' }
+      if (!text)
+        return { category: 'other', fields: {}, rawText: 'Unable to extract text from document' }
     } else {
       return { category: 'other', fields: {}, rawText: `Unsupported file type: ${mimeType}` }
     }
@@ -226,7 +280,10 @@ export async function extractDocumentFieldsLocal(
       jsonSchema: LOCAL_EXTRACTION_JSON_SCHEMA as unknown as Record<string, unknown>,
     })
     const result = toLocalResult(value)
-    log.info({ filename, category: result.category, field_count: Object.keys(result.fields).length }, 'Local OCR extraction complete')
+    log.info(
+      { filename, category: result.category, field_count: Object.keys(result.fields).length },
+      'Local OCR extraction complete',
+    )
     return result
   } catch (err) {
     log.error({ err, filename }, 'Local extraction model failed')
@@ -261,27 +318,15 @@ export async function extractDocumentFields(
   fileBuffer: Buffer,
   mimeType: string,
   filename: string,
+  /** Policy-governed vision call from the AI task gateway (intent 01). */
+  vision: VisionFn,
 ): Promise<ExtractionResult> {
-  const vision = await resolveVisionClient()
-  if (!vision) {
-    log.warn({ filename }, 'Neither OPENAI_API_KEY nor AZURE_OPENAI_* configured — skipping OCR extraction')
-    return {
-      category: 'other',
-      fields: {},
-      rawText: 'OCR not configured — document stored without extraction',
-    }
-  }
-
   try {
-    const { client, model, provider } = vision
-
     // The vision API only accepts image MIME types — sending a PDF as a
     // data URL is a 400, which silently left every PDF (policy schedules,
     // statements, claim forms) "extracted" with no fields. PDFs go in as
     // their extracted text instead.
-    let userContent: Array<
-      { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string; detail: 'high' } }
-    >
+    let userContent: Parameters<VisionFn>[0]
     if (mimeType === 'application/pdf') {
       const text = await extractPdfText(fileBuffer)
       if (!text) {
@@ -297,15 +342,8 @@ export async function extractDocumentFields(
       ]
     }
 
-    log.info({ filename, provider, model }, 'Starting OCR extraction')
-    const response = await client.chat.completions.create({
-      model,
-      messages: [{ role: 'user', content: userContent }],
-      max_tokens: 1000,
-      temperature: 0,
-    })
-
-    const content = response.choices[0]?.message?.content ?? ''
+    log.info({ filename }, 'Starting OCR extraction')
+    const content = await vision(userContent)
     const jsonMatch = content.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
       log.warn({ filename, content_length: content.length }, 'No JSON in OCR response')
@@ -313,7 +351,10 @@ export async function extractDocumentFields(
     }
 
     const parsed = JSON.parse(jsonMatch[0]) as ExtractionResult
-    log.info({ filename, category: parsed.category, field_count: Object.keys(parsed.fields).length }, 'OCR extraction complete')
+    log.info(
+      { filename, category: parsed.category, field_count: Object.keys(parsed.fields).length },
+      'OCR extraction complete',
+    )
     return parsed
   } catch (err) {
     log.error({ err, filename }, 'OCR extraction failed')
@@ -338,6 +379,8 @@ export async function processDocument(
   filename: string,
   /** Self-hosted model; when provided the document is read locally and never sent to a cloud model. */
   decide?: DecisionFn,
+  /** Governed cloud vision call; used only when no local model is configured. */
+  vision?: VisionFn,
 ): Promise<void> {
   const docId = documentId || randomUUID()
   const documents = getTenantCollection<Record<string, unknown>>(db, 'documents', tenantId)
@@ -351,7 +394,13 @@ export async function processDocument(
 
     const result = decide
       ? await extractDocumentFieldsLocal(fileBuffer, mimeType, filename, decide)
-      : await extractDocumentFields(fileBuffer, mimeType, filename)
+      : vision
+        ? await extractDocumentFields(fileBuffer, mimeType, filename, vision)
+        : {
+            category: 'other',
+            fields: {},
+            rawText: 'OCR not configured — document stored without extraction',
+          }
 
     // Update with extracted data
     await documents.updateOne(

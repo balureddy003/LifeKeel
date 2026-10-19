@@ -92,7 +92,10 @@ export const AUTOPILOT_RULES: AutopilotRule[] = [
     collect: async (db) => {
       const users = await db
         .collection('users')
-        .find({ locked_until: { $lt: new Date() } }, { projection: { _id: 0, id: 1, locked_until: 1 } })
+        .find(
+          { locked_until: { $lt: new Date() } },
+          { projection: { _id: 0, id: 1, locked_until: 1 } },
+        )
         .limit(200)
         .toArray()
       return users.map((u) => ({
@@ -105,7 +108,10 @@ export const AUTOPILOT_RULES: AutopilotRule[] = [
             .collection('users')
             .updateOne(
               { id: u['id'], locked_until: { $lt: new Date() } },
-              { $set: { failed_login_attempts: 0, updated_at: new Date() }, $unset: { locked_until: '' } },
+              {
+                $set: { failed_login_attempts: 0, updated_at: new Date() },
+                $unset: { locked_until: '' },
+              },
             )
           return r.modifiedCount === 0 ? 'already cleared' : 'cleared lockout residue'
         },
@@ -160,7 +166,15 @@ export const AUTOPILOT_RULES: AutopilotRule[] = [
             // status filter is the race guard — a reminder that already
             // re-failed or got manually retried is left alone.
             { id: r['id'], status: 'failed' },
-            { $set: { status: 'scheduled', attempts: 0, next_attempt_at: new Date(), updated_at: new Date() }, $unset: { last_error: '' } },
+            {
+              $set: {
+                status: 'scheduled',
+                attempts: 0,
+                next_attempt_at: new Date(),
+                updated_at: new Date(),
+              },
+              $unset: { last_error: '' },
+            },
           )
           return res.modifiedCount === 0 ? 'no longer failed — skipped' : 'rescheduled'
         },
@@ -178,7 +192,10 @@ export const AUTOPILOT_RULES: AutopilotRule[] = [
       const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000)
       const stale = await db
         .collection('leads')
-        .find({ stage: 'new', created_at: { $lt: cutoff } }, { projection: { _id: 0, id: 1, email: 1 } })
+        .find(
+          { stage: 'new', created_at: { $lt: cutoff } },
+          { projection: { _id: 0, id: 1, email: 1 } },
+        )
         .limit(200)
         .toArray()
       if (stale.length === 0) return []
@@ -187,11 +204,19 @@ export const AUTOPILOT_RULES: AutopilotRule[] = [
       const eligible: PlatformRole[] = rolesWithPermission('leads.manage')
       const operators = await db
         .collection('platform_operators')
-        .find({ status: 'active', roles: { $in: eligible } }, { projection: { _id: 0, user_id: 1 } })
+        .find(
+          { status: 'active', roles: { $in: eligible } },
+          { projection: { _id: 0, user_id: 1 } },
+        )
         .toArray()
-      const assigned = await db.collection('operator_alerts').countDocuments({ dedup_key: /^stale_lead:/, assignee: { $exists: true } })
+      const assigned = await db
+        .collection('operator_alerts')
+        .countDocuments({ dedup_key: /^stale_lead:/, assignee: { $exists: true } })
       return stale.map((lead, i) => {
-        const assignee = operators.length > 0 ? (operators[(assigned + i) % operators.length]!['user_id'] as string) : null
+        const assignee =
+          operators.length > 0
+            ? (operators[(assigned + i) % operators.length]!['user_id'] as string)
+            : null
         return {
           target_type: 'lead',
           target_id: lead['id'] as string,
@@ -307,7 +332,9 @@ export const AUTOPILOT_RULES: AutopilotRule[] = [
         const userId = s['_id'] as string
         const ipCount = (s['ips'] as unknown[]).length
         if (ipCount < 3) continue
-        const user = await db.collection('users').findOne({ id: userId }, { projection: { _id: 0, status: 1, email: 1 } })
+        const user = await db
+          .collection('users')
+          .findOne({ id: userId }, { projection: { _id: 0, status: 1, email: 1 } })
         if (!user || user['status'] !== 'active') continue
         out.push({
           target_type: 'user',
@@ -338,9 +365,21 @@ export const AUTOPILOT_RULES: AutopilotRule[] = [
     collect: async (db) => {
       const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
       const [blogs, posts, conns] = await Promise.all([
-        db.collection('blog_posts').find({ published: true, published_at: { $lt: cutoff } }, { projection: { _id: 0, slug: 1, title: 1 } }).toArray(),
-        db.collection('marketing_posts').find({}, { projection: { _id: 0, tenant_id: 1, source_blog_slug: 1 } }).toArray(),
-        db.collection('social_connections').find({ status: 'active' }, { projection: { _id: 0, tenant_id: 1, channel: 1 } }).toArray(),
+        db
+          .collection('blog_posts')
+          .find(
+            { published: true, published_at: { $lt: cutoff } },
+            { projection: { _id: 0, slug: 1, title: 1 } },
+          )
+          .toArray(),
+        db
+          .collection('marketing_posts')
+          .find({}, { projection: { _id: 0, tenant_id: 1, source_blog_slug: 1 } })
+          .toArray(),
+        db
+          .collection('social_connections')
+          .find({ status: 'active' }, { projection: { _id: 0, tenant_id: 1, channel: 1 } })
+          .toArray(),
       ])
       if (conns.length === 0) return []
       const promoted = new Set(posts.map((p) => `${p['tenant_id']}:${p['source_blog_slug']}`))
@@ -374,11 +413,20 @@ export const AUTOPILOT_RULES: AutopilotRule[] = [
  *  them and the PUT route validates against the registry. Irreversible,
  *  financial, regulated, or externally publishing by construction. */
 export const NEVER_AUTONOMOUS = [
-  'user.erase', 'user.suspend', 'user.export',
-  'operator.grant', 'operator.update_roles',
-  'promotion.create', 'billing.adjust_credits', 'plan.change',
-  'marketing.publish', 'marketing.approve', 'social.post',
-  'configuration.update', 'connector.revoke', 'support.reply',
+  'user.erase',
+  'user.suspend',
+  'user.export',
+  'operator.grant',
+  'operator.update_roles',
+  'promotion.create',
+  'billing.adjust_credits',
+  'plan.change',
+  'marketing.publish',
+  'marketing.approve',
+  'social.post',
+  'configuration.update',
+  'connector.revoke',
+  'support.reply',
 ] as const
 
 const RULES_BY_ID = new Map(AUTOPILOT_RULES.map((r) => [r.id, r]))
@@ -400,22 +448,37 @@ export function actionsCol(db: Db) {
  *  the same mutation a human operator would trigger through the
  *  corresponding endpoint. */
 export interface ProposalDeps {
-  llm?: LlmFn
+  /** Governed-fn factory — one policy-bound LlmFn per tenant (intent 01). */
+  llmFor?: (tenantId: string) => LlmFn
 }
-export const PROPOSAL_HANDLERS: Record<string, (db: Db, payload: Record<string, unknown>, deps: ProposalDeps) => Promise<string>> = {
+export const PROPOSAL_HANDLERS: Record<
+  string,
+  (db: Db, payload: Record<string, unknown>, deps: ProposalDeps) => Promise<string>
+> = {
   'user.suspend': async (db, payload) => {
     const userId = payload['user_id'] as string
-    const result = await db.collection('users').updateOne(
-      { id: userId, status: { $nin: ['suspended', 'erased'] } },
-      { $set: { status: 'suspended', suspended_at: new Date(), sessions_revoked_at: new Date(), updated_at: new Date() } },
-    )
-    return result.modifiedCount === 0 ? 'user already suspended/erased — no-op' : 'user suspended, sessions revoked'
+    const result = await db
+      .collection('users')
+      .updateOne(
+        { id: userId, status: { $nin: ['suspended', 'erased'] } },
+        {
+          $set: {
+            status: 'suspended',
+            suspended_at: new Date(),
+            sessions_revoked_at: new Date(),
+            updated_at: new Date(),
+          },
+        },
+      )
+    return result.modifiedCount === 0
+      ? 'user already suspended/erased — no-op'
+      : 'user suspended, sessions revoked'
   },
   'marketing.blog_draft': async (db, payload, deps) => {
-    if (!deps.llm) throw new Error('No LLM provider — cannot generate draft')
+    if (!deps.llmFor) throw new Error('No LLM provider — cannot generate draft')
     const post = await draftBlogPromoPost(
       db,
-      deps.llm,
+      deps.llmFor,
       payload['tenant_id'] as string,
       payload['blog_slug'] as string,
       payload['channel'] as string,
@@ -425,14 +488,22 @@ export const PROPOSAL_HANDLERS: Record<string, (db: Db, payload: Record<string, 
 }
 
 export function ensureAutopilotIndexes(db: Db): void {
-  actionsCol(db).createIndex({ dedup_key: 1 }, { unique: true }).catch(() => {})
-  actionsCol(db).createIndex({ created_at: -1 }).catch(() => {})
-  db.collection('operator_digests').createIndex({ created_at: -1 }).catch(() => {})
+  actionsCol(db)
+    .createIndex({ dedup_key: 1 }, { unique: true })
+    .catch(() => {})
+  actionsCol(db)
+    .createIndex({ created_at: -1 })
+    .catch(() => {})
+  db.collection('operator_digests')
+    .createIndex({ created_at: -1 })
+    .catch(() => {})
 }
 
 /** Config merged over registry defaults — a rule with no stored doc is
  *  present-but-disabled, so enabling is always a deliberate act. */
-export async function listAutopilotRules(db: Db): Promise<(AutopilotRuleConfig & { label: string; description: string })[]> {
+export async function listAutopilotRules(
+  db: Db,
+): Promise<(AutopilotRuleConfig & { label: string; description: string })[]> {
   const stored = new Map((await rulesCol(db).find({}).toArray()).map((c) => [c.rule, c]))
   return AUTOPILOT_RULES.map((r) => ({
     rule: r.id,
@@ -492,7 +563,10 @@ export async function runAutopilotSweep(db: Db): Promise<AutopilotActionDoc[]> {
           row.status = 'failed'
           row.result = String(err).slice(0, 300)
         }
-        await actionsCol(db).updateOne({ id: row.id }, { $set: { status: row.status, result: row.result } })
+        await actionsCol(db).updateOne(
+          { id: row.id },
+          { $set: { status: row.status, result: row.result } },
+        )
         if (row.status === 'executed') acted += 1
       } else {
         acted += 1 // proposals count against the blast radius too

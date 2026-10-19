@@ -34,11 +34,9 @@ afterAll(async () => {
 })
 
 async function enableRule(rule: string, over: Record<string, unknown> = {}) {
-  await db.collection('autopilot_rules').updateOne(
-    { rule },
-    { $set: { rule, enabled: true, ...over } },
-    { upsert: true },
-  )
+  await db
+    .collection('autopilot_rules')
+    .updateOne({ rule }, { $set: { rule, enabled: true, ...over } }, { upsert: true })
 }
 
 describe('autopilot rules', () => {
@@ -72,12 +70,19 @@ describe('runAutopilotSweep', () => {
     await enableRule('auto_unlock_expired')
     const lockedUntil = new Date(Date.now() - 60_000)
     await db.collection('users').insertOne({
-      id: 'u1', failed_login_attempts: 7, locked_until: lockedUntil, status: 'active',
+      id: 'u1',
+      failed_login_attempts: 7,
+      locked_until: lockedUntil,
+      status: 'active',
     })
 
     const first = await runAutopilotSweep(db)
     expect(first).toHaveLength(1)
-    expect(first[0]).toMatchObject({ rule: 'auto_unlock_expired', target_id: 'u1', status: 'executed' })
+    expect(first[0]).toMatchObject({
+      rule: 'auto_unlock_expired',
+      target_id: 'u1',
+      status: 'executed',
+    })
     const user = await db.collection('users').findOne({ id: 'u1' })
     expect(user!['locked_until']).toBeUndefined()
     expect(user!['failed_login_attempts']).toBe(0)
@@ -87,31 +92,47 @@ describe('runAutopilotSweep', () => {
 
     // …and even after cooldown, the dedup key stops the same lock
     // being re-acted-on. A NEW lock gets a new dedup key and is handled.
-    await db.collection('autopilot_rules').updateOne({ rule: 'auto_unlock_expired' }, { $set: { cooldown_minutes: 5, last_run_at: new Date(0) } })
+    await db
+      .collection('autopilot_rules')
+      .updateOne(
+        { rule: 'auto_unlock_expired' },
+        { $set: { cooldown_minutes: 5, last_run_at: new Date(0) } },
+      )
     expect(await runAutopilotSweep(db)).toHaveLength(0)
-    await db.collection('users').updateOne(
-      { id: 'u1' },
-      { $set: { failed_login_attempts: 5, locked_until: new Date(Date.now() - 30_000) } },
-    )
+    await db
+      .collection('users')
+      .updateOne(
+        { id: 'u1' },
+        { $set: { failed_login_attempts: 5, locked_until: new Date(Date.now() - 30_000) } },
+      )
     // The empty sweep above still stamped last_run_at — reset again.
-    await db.collection('autopilot_rules').updateOne({ rule: 'auto_unlock_expired' }, { $set: { last_run_at: new Date(0) } })
+    await db
+      .collection('autopilot_rules')
+      .updateOne({ rule: 'auto_unlock_expired' }, { $set: { last_run_at: new Date(0) } })
     const second = await runAutopilotSweep(db)
     expect(second).toHaveLength(1)
 
-    const audit = await db.collection('operator_audit_log').find({ action: 'autopilot.action' }).toArray()
+    const audit = await db
+      .collection('operator_audit_log')
+      .find({ action: 'autopilot.action' })
+      .toArray()
     expect(audit).toHaveLength(2)
     expect(audit[0]!['operator_user_id']).toBe('autopilot')
   })
 
   it('leaves an unexpired lockout untouched', async () => {
     await enableRule('auto_unlock_expired')
-    await db.collection('users').insertOne({ id: 'u1', locked_until: new Date(Date.now() + 60_000) })
+    await db
+      .collection('users')
+      .insertOne({ id: 'u1', locked_until: new Date(Date.now() + 60_000) })
     expect(await runAutopilotSweep(db)).toHaveLength(0)
   })
 
   it('reschedules a failed reminder exactly once', async () => {
     await enableRule('auto_retry_failed_reminders', { cooldown_minutes: 5 })
-    await db.collection('reminders').insertOne({ id: 'r1', status: 'failed', attempts: 5, last_error: 'smtp down' })
+    await db
+      .collection('reminders')
+      .insertOne({ id: 'r1', status: 'failed', attempts: 5, last_error: 'smtp down' })
 
     await runAutopilotSweep(db)
     const reminder = await db.collection('reminders').findOne({ id: 'r1' })
@@ -120,20 +141,28 @@ describe('runAutopilotSweep', () => {
     expect(reminder!['last_error']).toBeUndefined()
 
     // Re-fail it — autopilot already spent its one attempt on this reminder.
-    await db.collection('reminders').updateOne({ id: 'r1' }, { $set: { status: 'failed', attempts: 5 } })
-    await db.collection('autopilot_rules').updateOne({ rule: 'auto_retry_failed_reminders' }, { $set: { last_run_at: new Date(0) } })
+    await db
+      .collection('reminders')
+      .updateOne({ id: 'r1' }, { $set: { status: 'failed', attempts: 5 } })
+    await db
+      .collection('autopilot_rules')
+      .updateOne({ rule: 'auto_retry_failed_reminders' }, { $set: { last_run_at: new Date(0) } })
     await runAutopilotSweep(db)
     expect((await db.collection('reminders').findOne({ id: 'r1' }))!['status']).toBe('failed')
   })
 
   it('honors the blast-radius cap per sweep', async () => {
     await enableRule('auto_unlock_expired', { max_blast_radius: 2, cooldown_minutes: 5 })
-    await db.collection('users').insertMany(
-      ['a', 'b', 'c', 'd'].map((id) => ({ id, locked_until: new Date(Date.now() - 1000) })),
-    )
+    await db
+      .collection('users')
+      .insertMany(
+        ['a', 'b', 'c', 'd'].map((id) => ({ id, locked_until: new Date(Date.now() - 1000) })),
+      )
     const executed = await runAutopilotSweep(db)
     expect(executed.filter((a) => a.status === 'executed')).toHaveLength(2)
-    const stillLocked = await db.collection('users').countDocuments({ locked_until: { $exists: true } })
+    const stillLocked = await db
+      .collection('users')
+      .countDocuments({ locked_until: { $exists: true } })
     expect(stillLocked).toBe(2)
   })
 
@@ -144,23 +173,38 @@ describe('runAutopilotSweep', () => {
       { user_id: 'op-2', status: 'active', roles: ['marketing_operator'] }, // leads.manage ✓
     ])
     await db.collection('leads').insertMany([
-      { id: 'lead-old', email: 'old@example.com', stage: 'new', created_at: new Date(Date.now() - 72 * 3600_000) },
+      {
+        id: 'lead-old',
+        email: 'old@example.com',
+        stage: 'new',
+        created_at: new Date(Date.now() - 72 * 3600_000),
+      },
       { id: 'lead-fresh', email: 'fresh@example.com', stage: 'new', created_at: new Date() },
     ])
     const executed = await runAutopilotSweep(db)
     expect(executed).toHaveLength(1)
-    const alert = await db.collection('operator_alerts').findOne({ dedup_key: 'stale_lead:lead-old' })
+    const alert = await db
+      .collection('operator_alerts')
+      .findOne({ dedup_key: 'stale_lead:lead-old' })
     expect(alert).toMatchObject({ status: 'open', assignee: 'op-2' })
     // Upsert preserved — a second sweep creates no duplicate.
-    await db.collection('autopilot_rules').updateOne({ rule: 'stale_lead_alerts' }, { $set: { last_run_at: new Date(0) } })
+    await db
+      .collection('autopilot_rules')
+      .updateOne({ rule: 'stale_lead_alerts' }, { $set: { last_run_at: new Date(0) } })
     await runAutopilotSweep(db)
-    expect(await db.collection('operator_alerts').countDocuments({ dedup_key: 'stale_lead:lead-old' })).toBe(1)
+    expect(
+      await db.collection('operator_alerts').countDocuments({ dedup_key: 'stale_lead:lead-old' }),
+    ).toBe(1)
   })
 
   it('flags a channel whose last 3 publishes all failed with auth errors', async () => {
     await enableRule('channel_auth_failure_alert')
     const post = (id: string, channel: string, error: string, minsAgo: number) => ({
-      id, tenant_id: 't1', channel, state: 'publish_failed', publish_error: error,
+      id,
+      tenant_id: 't1',
+      channel,
+      state: 'publish_failed',
+      publish_error: error,
       updated_at: new Date(Date.now() - minsAgo * 60_000),
     })
     await db.collection('marketing_posts').insertMany([
@@ -173,20 +217,31 @@ describe('runAutopilotSweep', () => {
       post('p6', 'bluesky', 'content rejected', 30),
     ])
     await runAutopilotSweep(db)
-    const alert = await db.collection('operator_alerts').findOne({ dedup_key: 'channel_auth_failure:t1:x' })
+    const alert = await db
+      .collection('operator_alerts')
+      .findOne({ dedup_key: 'channel_auth_failure:t1:x' })
     expect(alert).toMatchObject({ status: 'open', severity: 'danger' })
-    expect(await db.collection('operator_alerts').findOne({ dedup_key: 'channel_auth_failure:t1:bluesky' })).toBeNull()
+    expect(
+      await db
+        .collection('operator_alerts')
+        .findOne({ dedup_key: 'channel_auth_failure:t1:bluesky' }),
+    ).toBeNull()
   })
 })
 
 describe('tier-2 proposals', () => {
   it('proposes — but never executes — a suspend for a brute-forced account', async () => {
     await enableRule('propose_suspend_brute_force')
-    await db.collection('users').insertOne({ id: 'victim', email: 'v@example.com', status: 'active' })
+    await db
+      .collection('users')
+      .insertOne({ id: 'victim', email: 'v@example.com', status: 'active' })
     // 15 failures across 3 IPs in the last 24h.
     const events = Array.from({ length: 15 }, (_, i) => ({
-      user_id: 'victim', success: false, reason: 'bad_password',
-      ip: `10.0.0.${i % 3}`, created_at: new Date(),
+      user_id: 'victim',
+      success: false,
+      reason: 'bad_password',
+      ip: `10.0.0.${i % 3}`,
+      created_at: new Date(),
     }))
     await db.collection('login_events').insertMany(events)
 
@@ -197,7 +252,10 @@ describe('tier-2 proposals', () => {
       status: 'proposed',
       target_id: 'victim',
     })
-    expect(rows[0]!.proposal).toMatchObject({ kind: 'user.suspend', required_permission: 'users.manage' })
+    expect(rows[0]!.proposal).toMatchObject({
+      kind: 'user.suspend',
+      required_permission: 'users.manage',
+    })
     // The mutation did NOT run — proposals file, they never act.
     expect((await db.collection('users').findOne({ id: 'victim' }))!['status']).toBe('active')
     const audit = await db.collection('operator_audit_log').findOne({ action: 'autopilot.propose' })
@@ -207,20 +265,36 @@ describe('tier-2 proposals', () => {
   it('ignores failures from a single IP — that is a forgot-password user, not stuffing', async () => {
     await enableRule('propose_suspend_brute_force')
     await db.collection('users').insertOne({ id: 'u1', status: 'active' })
-    await db.collection('login_events').insertMany(
-      Array.from({ length: 20 }, () => ({ user_id: 'u1', success: false, ip: '10.0.0.1', created_at: new Date() })),
-    )
+    await db
+      .collection('login_events')
+      .insertMany(
+        Array.from({ length: 20 }, () => ({
+          user_id: 'u1',
+          success: false,
+          ip: '10.0.0.1',
+          created_at: new Date(),
+        })),
+      )
     expect(await runAutopilotSweep(db)).toHaveLength(0)
   })
 
   it('dedupes proposals — a second sweep files nothing for the same window', async () => {
     await enableRule('propose_suspend_brute_force')
     await db.collection('users').insertOne({ id: 'victim', status: 'active' })
-    await db.collection('login_events').insertMany(
-      Array.from({ length: 15 }, (_, i) => ({ user_id: 'victim', success: false, ip: `10.0.0.${i % 3}`, created_at: new Date() })),
-    )
+    await db
+      .collection('login_events')
+      .insertMany(
+        Array.from({ length: 15 }, (_, i) => ({
+          user_id: 'victim',
+          success: false,
+          ip: `10.0.0.${i % 3}`,
+          created_at: new Date(),
+        })),
+      )
     await runAutopilotSweep(db)
-    await db.collection('autopilot_rules').updateOne({ rule: 'propose_suspend_brute_force' }, { $set: { last_run_at: new Date(0) } })
+    await db
+      .collection('autopilot_rules')
+      .updateOne({ rule: 'propose_suspend_brute_force' }, { $set: { last_run_at: new Date(0) } })
     expect(await runAutopilotSweep(db)).toHaveLength(0)
     expect(await db.collection('autopilot_actions').countDocuments({ status: 'proposed' })).toBe(1)
   })
@@ -228,19 +302,31 @@ describe('tier-2 proposals', () => {
   it('skips users already suspended', async () => {
     await enableRule('propose_suspend_brute_force')
     await db.collection('users').insertOne({ id: 'u1', status: 'suspended' })
-    await db.collection('login_events').insertMany(
-      Array.from({ length: 15 }, (_, i) => ({ user_id: 'u1', success: false, ip: `10.0.0.${i % 3}`, created_at: new Date() })),
-    )
+    await db
+      .collection('login_events')
+      .insertMany(
+        Array.from({ length: 15 }, (_, i) => ({
+          user_id: 'u1',
+          success: false,
+          ip: `10.0.0.${i % 3}`,
+          created_at: new Date(),
+        })),
+      )
     expect(await runAutopilotSweep(db)).toHaveLength(0)
   })
 
   it('proposes a promo draft for a published blog post no channel has promoted', async () => {
     await enableRule('propose_blog_promo')
     await db.collection('blog_posts').insertOne({
-      slug: 'ready-check', title: 'The readiness check', published: true,
-      published_at: new Date(Date.now() - 5 * 24 * 3600_000), excerpt: 'excerpt',
+      slug: 'ready-check',
+      title: 'The readiness check',
+      published: true,
+      published_at: new Date(Date.now() - 5 * 24 * 3600_000),
+      excerpt: 'excerpt',
     })
-    await db.collection('social_connections').insertOne({ tenant_id: 't1', channel: 'x', status: 'active' })
+    await db
+      .collection('social_connections')
+      .insertOne({ tenant_id: 't1', channel: 'x', status: 'active' })
 
     const rows = await runAutopilotSweep(db)
     expect(rows).toHaveLength(1)
@@ -255,11 +341,17 @@ describe('tier-2 proposals', () => {
   it('does not re-propose a post already promoted on that tenant', async () => {
     await enableRule('propose_blog_promo')
     await db.collection('blog_posts').insertOne({
-      slug: 'ready-check', title: 'T', published: true,
+      slug: 'ready-check',
+      title: 'T',
+      published: true,
       published_at: new Date(Date.now() - 5 * 24 * 3600_000),
     })
-    await db.collection('social_connections').insertOne({ tenant_id: 't1', channel: 'x', status: 'active' })
-    await db.collection('marketing_posts').insertOne({ tenant_id: 't1', source_blog_slug: 'ready-check', state: 'draft' })
+    await db
+      .collection('social_connections')
+      .insertOne({ tenant_id: 't1', channel: 'x', status: 'active' })
+    await db
+      .collection('marketing_posts')
+      .insertOne({ tenant_id: 't1', source_blog_slug: 'ready-check', state: 'draft' })
     expect(await runAutopilotSweep(db)).toHaveLength(0)
   })
 })
@@ -273,20 +365,34 @@ describe('PROPOSAL_HANDLERS', () => {
     expect(user).toMatchObject({ status: 'suspended' })
     expect(user!['sessions_revoked_at']).toBeTruthy()
     // Idempotent — approving a stale proposal no-ops instead of failing.
-    expect(await PROPOSAL_HANDLERS['user.suspend']!(db, { user_id: 'victim' }, {})).toContain('no-op')
+    expect(await PROPOSAL_HANDLERS['user.suspend']!(db, { user_id: 'victim' }, {})).toContain(
+      'no-op',
+    )
   })
 
   it('marketing.blog_draft creates a review-gated draft, never a published post', async () => {
     await db.collection('blog_posts').insertOne({
-      slug: 'ready-check', title: 'The readiness check', excerpt: 'excerpt', published: true,
+      slug: 'ready-check',
+      title: 'The readiness check',
+      excerpt: 'excerpt',
+      published: true,
     })
     const result = await PROPOSAL_HANDLERS['marketing.blog_draft']!(
       db,
       { tenant_id: 't1', blog_slug: 'ready-check', channel: 'x' },
-      { llm: async () => { throw new Error('no provider') } }, // template fallback path
+      {
+        llmFor: () => async () => {
+          throw new Error('no provider')
+        },
+      }, // template fallback path
     )
     expect(result).toContain('draft')
     const post = await db.collection('marketing_posts').findOne({ source_blog_slug: 'ready-check' })
-    expect(post).toMatchObject({ state: 'draft', tenant_id: 't1', channel: 'x', generated: 'template' })
+    expect(post).toMatchObject({
+      state: 'draft',
+      tenant_id: 't1',
+      channel: 'x',
+      generated: 'template',
+    })
   })
 })

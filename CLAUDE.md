@@ -101,11 +101,14 @@ scorer warm-start can use it.
   allow-lists the only callers of `ActionExecutor` and requires each
   `execute()` to name `approvedBy`. Adding a caller means editing that list,
   which forces the tier question into review. It is a tripwire, not proof.
-- **AI data use (rule 3):** the intended tripwire is the task/provider registry
-  described in `ARCHITECTURE.md`: no hosted model call should run without an
-  approved endpoint/model, no-training basis, retention/deletion mode, and
-  task-level data boundary. Until that registry is wired, do not claim the rule
-  is technically enforced by code alone.
+- **AI data use (rule 3):** the AI task gateway (`apps/api/src/ai/task-gateway.ts`,
+  policies in `definitions/ai-tasks.yaml`) is the only door to a model call.
+  `apps/api/src/__tests__/ai-task-gateway.test.ts` fails CI if a source file
+  constructs a raw model client outside the allow-listed factories, if a
+  `taskLlm/taskDecide/taskVision` call names an unregistered task, or if a raw
+  `localDecisionFromEnv` escapes its `taskDecide` wrapper. Unknown task_ids
+  fail closed outside dev. Processor-terms *review* stays procedural — see
+  ARCHITECTURE.md §8.15 for what's enforced vs still debt.
 
 Detail on what each check catches (and cannot):
 [docs/ai-native-sdlc-playbook.md](docs/ai-native-sdlc-playbook.md#8-rules-to-enforcement).
