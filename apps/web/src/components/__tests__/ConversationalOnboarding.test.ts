@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { attemptOnboardingSignup, isValidEmailFormat, onboardingRecoveryEmailToLink } from '../ConversationalOnboarding'
+import { attemptOnboardingSignup, isValidEmailFormat, onboardingRecoveryEmailToLink, onboardingSeedFromAccount } from '../ConversationalOnboarding'
 
 describe('KEEL-017: attemptOnboardingSignup', () => {
   it('returns ok:true with the signed-up user on success', async () => {
@@ -77,5 +77,19 @@ describe('live-verification finding: onboardingRecoveryEmailToLink', () => {
     expect(onboardingRecoveryEmailToLink({ email: 'signup-address@example.com' }, '  recovery-address@example.com  ')).toBe(
       'recovery-address@example.com',
     )
+  })
+})
+
+describe('onboardingSeedFromAccount', () => {
+  it('skips the name and email questions for a signed-in user', () => {
+    const seed = onboardingSeedFromAccount({ name: ' Sam ', email: 'sam@example.com' })
+    expect(seed?.answers).toEqual({ name: 'Sam', email: 'sam@example.com' })
+    expect(seed?.members.map((m) => m.name)).toEqual(['Sam'])
+    expect(seed?.nextIndex).toBe(2)
+  })
+
+  it('asks everything when there is no account or no name', () => {
+    expect(onboardingSeedFromAccount(null)).toBeNull()
+    expect(onboardingSeedFromAccount({ name: '  ', email: 'a@b.co' })).toBeNull()
   })
 })
