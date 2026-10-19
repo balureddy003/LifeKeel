@@ -1518,11 +1518,16 @@ prevent incidental special-category content arriving through user uploads and
 email; an upload classification/acceptable-use position is required so the
 deferral is real rather than a labeling choice.
 
-The critical review also identifies a children's-data posture gap: the product
-models youth members by design, so Age-Appropriate Design Code obligations —
-parental consent model, profiling position, marketing exclusion, youth AI task
-policy, and age-out transition — need an explicit section before stronger youth
-claims. See `docs/reviews/architecture-critical-review-2026-10.md` (F1/F4).
+Children's-data posture is recorded in
+`docs/privacy/childrens-data-posture.md` (intent 09): a minor is a roster
+member with `role === 'child'` or a `date_of_birth` under 18; marketing and
+lifecycle paths exclude them server-side regardless of consent flags; the
+only permitted youth-facing AI task is `assistant.youth_answer.v1`
+(`lifekeel_infra_required` — fails closed rather than reaching a hosted
+provider, `provider_retention_class: none`, quarter-size input budget);
+the age-out workflow is defined. Outstanding: the counsel-led minors' DPIA,
+lawful-basis mapping, lead-capture age attestation, and auth-time age
+gating.
 
 ---
 
@@ -2845,7 +2850,7 @@ page needs a runbook, owner, severity, and safe mitigation.
 | **P0** | Hosted AI processor terms are not enforced by routing | “Not used for training” is a legal/operations claim, not yet a technical gate | Task registry denies providers without recorded no-training terms, region, retention/deletion mode, subprocessor review, and approved endpoint |
 | **P0** | Erasure inventory is incomplete — and not only AI-derived | Personal data or linkable derived state can survive account deletion: ~20 family-authored collections (assets, cashflow, legacy records, scenarios, member nudges, external accounts, feed/readiness state) plus all AI artifacts (llm_*, scorer/model versions, calibration state, eval reports) sit outside `DELETABLE_COLLECTIONS` | Data catalogue plus deletion test covers family-authored data, cache, spans, guard events, scorer/model versions, eval captures, queues, and provider-retained records |
 | **P0** | Stale federated artifact governance and eval data basis unresolved | Mitigated: eval is now per-tenant (training data never pooled) and scorer warm-start is gated behind `allowFederatedWarmStart` (default off, all production paths off). Remaining: `federated_global_models.latest` artifacts still exist unquarantined, and no governed opt-in path (privacy review, cohort floors, disclosure) exists that could ever set the flag | Delete/quarantine the stale artifact; a federated round may only run behind the governed opt-in controls CLAUDE.md rule 3 requires |
-| **P0** | Children's-data regulatory posture is undefined | The product models youth members by design; Age-Appropriate Design Code obligations (parental consent, profiling position, marketing exclusion, youth AI policy, age-out transition) are unrecorded | Documented minors' DPIA and consent/profiling/marketing/AI posture implemented and tested before stronger youth claims |
+| **P0** | Children's-data regulatory posture is undefined | Mitigated: `docs/privacy/childrens-data-posture.md` records the engineering posture — organizer-mediated consent, per-feature profiling positions, server-side marketing exclusion for minors (`excludeMinorUsers` across lifecycle + campaign paths, tested incl. the 18th-birthday boundary), the strict `assistant.youth_answer.v1` task (`lifekeel_infra_required`, `retention: none`), and a defined age-out workflow. Remaining: the counsel-led minors' DPIA and lawful-basis mapping; lead-capture age attestation; auth-time age gating | Documented minors' DPIA and consent/profiling/marketing/AI posture implemented and tested before stronger youth claims |
 | **P0** | Backup/erasure contradiction | Mitigated: tombstone replay chosen and implemented — `restore.sh` preserves tombstoned `tenant_id`s across a `--drop` restore and the daily `erasure-replay` cron re-wipes whatever a stale backup resurrects; exercised in `scripts/ops/restore-drill.ts`. Residual hole: a manual raw `mongorestore --drop` bypassing restore.sh is operator discipline, not a technical control | Per-tenant envelope keys (DEKs) enabling crypto-shredding for vault/credential data (Stage B4) |
 | **P1** | API, scheduler, and worker scale together | Background work can create noisy-neighbor and outage coupling; a bad API deploy also takes down the safety nets that would notice it | Separate entry points/deployments when measured trigger is met; earlier split justified on blast-radius grounds if cheap |
 | **P1** | No DPIA/records-of-processing/lawful-basis register for the live product | DPIA triggers (systematic monitoring, novel technology, children's data) apply to what already ships, not only future features | DPIA, RoPA, and lawful-basis mapping per data class in the data catalogue |

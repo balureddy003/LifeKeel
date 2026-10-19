@@ -222,3 +222,26 @@ tasks:
     max_output_tokens: 800
     budget_class: batch
     guard_policy: standard
+
+  assistant.youth_answer.v1:
+    # Intent 09 — the only permitted task id for any future youth-facing
+    # assistant path. Stricter than assistant.answer.v1 in every enforced
+    # dimension: the call fails closed unless the self-hosted model is
+    # deployed (a child's data never reaches a hosted provider, so no
+    # provider-retention class beyond 'none' is needed), the prompt carries
+    # the youth twin only — savings-goal progress and literacy content,
+    # never household finances — inside a quarter of the adult budget.
+    purpose: Youth-facing Ask Keel — answer a minor's question from their own youth twin
+    risk: user_visible
+    authority: language_only
+    data_boundary: lifekeel_infra_required
+    processor_terms_ref: none — self-hosted only, no processor
+    provider_retention_class: none
+    allowed_models: [tier:fast]
+    primary_model: tier:fast
+    preferred_execution: local_cpu
+    deadline_ms: 20000
+    max_input_tokens: 2000
+    max_output_tokens: 600
+    budget_class: interactive
+    guard_policy: youth_context_min

@@ -24,7 +24,16 @@ import type { Db } from 'mongodb'
 import { createLogger } from '@lifekeel/platform'
 import { getPlatformConfig } from '../operator/platform-config.js'
 import { getGrowthEventsCollection } from '../db.js'
-import { lifecycleSendsCol, ensureLifecycleIndexes, sendEmail, wrap, cta, unsubscribeToken, userUnsubUrl } from './lifecycle-emails.js'
+import {
+  lifecycleSendsCol,
+  ensureLifecycleIndexes,
+  sendEmail,
+  wrap,
+  cta,
+  unsubscribeToken,
+  userUnsubUrl,
+} from './lifecycle-emails.js'
+import { excludeMinorUsers } from '../family/family-permissions.js'
 
 const log = createLogger({ service: 'campaigns', version: '0.0.0' })
 const DAY = 24 * 60 * 60 * 1000
@@ -71,8 +80,12 @@ export function campaignsCol(db: Db) {
 }
 
 export function ensureCampaignIndexes(db: Db): void {
-  campaignsCol(db).createIndex({ id: 1 }, { unique: true }).catch(() => {})
-  campaignsCol(db).createIndex({ status: 1, created_at: -1 }).catch(() => {})
+  campaignsCol(db)
+    .createIndex({ id: 1 }, { unique: true })
+    .catch(() => {})
+  campaignsCol(db)
+    .createIndex({ status: 1, created_at: -1 })
+    .catch(() => {})
 }
 
 interface Recipient {
@@ -93,33 +106,53 @@ async function resolveUsers(db: Db, filter: CampaignAudience, now: number): Prom
   const q: Record<string, unknown> = { status: 'active', email_opt_out: { $ne: true } }
   const win = createdWindow(filter, now)
   if (win) q['created_at'] = win
-  const users = await db.collection('users')
-    .find(q, { projection: { _id: 0, id: 1, email: 1, name: 1, tenant_id: 1, attribution: 1 } })
-    .limit(MAX_RECIPIENTS)
-    .toArray()
+  // Intent 09: a member whose roster entry is 'child' or under 18 never
+  // receives campaign mail, whatever consent flags the account carries.
+  const users = await excludeMinorUsers(
+    db,
+    await db
+      .collection('users')
+      .find(q, { projection: { _id: 0, id: 1, email: 1, name: 1, tenant_id: 1, attribution: 1 } })
+      .limit(MAX_RECIPIENTS)
+      .toArray(),
+  )
   let list = users
   if (filter.utm_sources?.length) {
     const allowed = new Set(filter.utm_sources)
-    list = list.filter((u) => allowed.has(String((u['attribution'] as Record<string, unknown> | undefined)?.['utm_source'] ?? '')))
+    list = list.filter((u) =>
+      allowed.has(
+        String((u['attribution'] as Record<string, unknown> | undefined)?.['utm_source'] ?? ''),
+      ),
+    )
   }
 
-  const needsTenants = !!(filter.plans?.length || filter.trialing !== undefined || filter.has_profile !== undefined)
+  const needsTenants = !!(
+    filter.plans?.length ||
+    filter.trialing !== undefined ||
+    filter.has_profile !== undefined
+  )
   if (needsTenants && list.length > 0) {
     const tids = [...new Set(list.map((u) => u['tenant_id'] as string))]
     const tq: Record<string, unknown> = { tenant_id: { $in: tids } }
     if (filter.plans?.length) tq['plan'] = { $in: filter.plans }
     if (filter.trialing === true) tq['billing.trial_ends_at'] = { $gt: new Date() }
     if (filter.trialing === false) tq['billing.trial_ends_at'] = { $not: { $gt: new Date() } }
-    const tenants = await db.collection('tenants').find(tq, { projection: { _id: 0, tenant_id: 1 } }).toArray()
+    const tenants = await db
+      .collection('tenants')
+      .find(tq, { projection: { _id: 0, tenant_id: 1 } })
+      .toArray()
     const ok = new Set(tenants.map((t) => t['tenant_id'] as string))
     list = list.filter((u) => ok.has(u['tenant_id'] as string))
 
     if (filter.has_profile !== undefined && list.length > 0) {
       const remaining = [...new Set(list.map((u) => u['tenant_id'] as string))]
       const profiled = new Set(
-        (await db.collection('family_financial_profile')
-          .find({ tenant_id: { $in: remaining } }, { projection: { _id: 0, tenant_id: 1 } }).toArray())
-          .map((p) => p['tenant_id'] as string),
+        (
+          await db
+            .collection('family_financial_profile')
+            .find({ tenant_id: { $in: remaining } }, { projection: { _id: 0, tenant_id: 1 } })
+            .toArray()
+        ).map((p) => p['tenant_id'] as string),
       )
       list = list.filter((u) => profiled.has(u['tenant_id'] as string) === filter.has_profile)
     }
@@ -141,7 +174,8 @@ async function resolveLeads(db: Db, filter: CampaignAudience, now: number): Prom
   const win = createdWindow(filter, now)
   if (win) q['created_at'] = win
   if (filter.utm_sources?.length) q['attribution.utm_source'] = { $in: filter.utm_sources }
-  const leads = await db.collection('leads')
+  const leads = await db
+    .collection('leads')
     .find(q, { projection: { _id: 0, id: 1, email: 1, name: 1 } })
     .limit(MAX_RECIPIENTS)
     .toArray()
@@ -156,8 +190,10 @@ async function resolveLeads(db: Db, filter: CampaignAudience, now: number): Prom
 export async function resolveAudience(db: Db, filter: CampaignAudience): Promise<Recipient[]> {
   const now = Date.now()
   const out: Recipient[] = []
-  if (filter.audience === 'users' || filter.audience === 'both') out.push(...await resolveUsers(db, filter, now))
-  if (filter.audience === 'leads' || filter.audience === 'both') out.push(...await resolveLeads(db, filter, now))
+  if (filter.audience === 'users' || filter.audience === 'both')
+    out.push(...(await resolveUsers(db, filter, now)))
+  if (filter.audience === 'leads' || filter.audience === 'both')
+    out.push(...(await resolveLeads(db, filter, now)))
   return out.slice(0, MAX_RECIPIENTS)
 }
 
@@ -165,46 +201,77 @@ export async function resolveAudience(db: Db, filter: CampaignAudience): Promise
  *  interpolation, minimal escaping (the operator writes copy, not HTML). */
 function renderBody(campaign: CampaignDoc, r: Recipient, appUrl: string): string {
   const escaped = campaign.body_text
-    .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
     .replaceAll('{{first_name}}', r.firstName)
-  const paras = escaped.split(/\n{2,}/).map((p) => `<p>${p.replaceAll('\n', '<br>')}</p>`).join('\n')
-  const unsub = r.kind === 'lead'
-    ? `${appUrl}/leads/unsubscribe?id=${encodeURIComponent(r.id)}&sig=${unsubscribeToken(r.id)}`
-    : userUnsubUrl(appUrl, r.id)
-  const ctaHtml = campaign.cta_url && campaign.cta_label ? cta(campaign.cta_url, campaign.cta_label) : ''
+  const paras = escaped
+    .split(/\n{2,}/)
+    .map((p) => `<p>${p.replaceAll('\n', '<br>')}</p>`)
+    .join('\n')
+  const unsub =
+    r.kind === 'lead'
+      ? `${appUrl}/leads/unsubscribe?id=${encodeURIComponent(r.id)}&sig=${unsubscribeToken(r.id)}`
+      : userUnsubUrl(appUrl, r.id)
+  const ctaHtml =
+    campaign.cta_url && campaign.cta_label ? cta(campaign.cta_url, campaign.cta_label) : ''
   return wrap(`${paras}\n${ctaHtml}`, unsub)
 }
 
 /** Fire a campaign: resolves the audience fresh (a draft's filter may match
  *  different people by send time), claims each send in the ledger, mails.
  *  One-shot — status 'sent' campaigns 409 upstream. */
-export async function sendCampaign(db: Db, campaign: CampaignDoc, opts: { appUrl?: string } = {}): Promise<CampaignDoc['stats']> {
+export async function sendCampaign(
+  db: Db,
+  campaign: CampaignDoc,
+  opts: { appUrl?: string } = {},
+): Promise<CampaignDoc['stats']> {
   ensureCampaignIndexes(db)
   await ensureLifecycleIndexes(db) // the ledger's unique key index is the dedup lock
   if ((await getPlatformConfig(db)).marketing_paused) {
-    throw Object.assign(new Error('marketing_paused is set — campaign sends are halted'), { statusCode: 409 })
+    throw Object.assign(new Error('marketing_paused is set — campaign sends are halted'), {
+      statusCode: 409,
+    })
   }
-  const appUrl = (opts.appUrl ?? process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
+  const appUrl = (opts.appUrl ?? process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(
+    /\/$/,
+    '',
+  )
   const recipients = await resolveAudience(db, campaign.filter)
   const stats = { targeted: recipients.length, sent: 0, failed: 0 }
 
   for (const r of recipients) {
     const key = `campaign:${campaign.id}:${r.id}`
-    const claimed = await lifecycleSendsCol(db).insertOne({
-      id: randomUUID(), key, sequence: 'campaign', step: campaign.name.slice(0, 80),
-      campaign_id: campaign.id,
-      recipient: r.id, email: r.email, status: 'sent', created_at: new Date(),
-    }).then(() => true).catch(() => false)
+    const claimed = await lifecycleSendsCol(db)
+      .insertOne({
+        id: randomUUID(),
+        key,
+        sequence: 'campaign',
+        step: campaign.name.slice(0, 80),
+        campaign_id: campaign.id,
+        recipient: r.id,
+        email: r.email,
+        status: 'sent',
+        created_at: new Date(),
+      })
+      .then(() => true)
+      .catch(() => false)
     if (!claimed) continue // already mailed by a prior/racing send
     try {
-      const unsub = r.kind === 'lead'
-        ? `${appUrl}/leads/unsubscribe?id=${encodeURIComponent(r.id)}&sig=${unsubscribeToken(r.id)}`
-        : userUnsubUrl(appUrl, r.id)
-      await sendEmail(r.email, campaign.subject, renderBody(campaign, r, appUrl), unsub, { lk: key })
+      const unsub =
+        r.kind === 'lead'
+          ? `${appUrl}/leads/unsubscribe?id=${encodeURIComponent(r.id)}&sig=${unsubscribeToken(r.id)}`
+          : userUnsubUrl(appUrl, r.id)
+      await sendEmail(r.email, campaign.subject, renderBody(campaign, r, appUrl), unsub, {
+        lk: key,
+      })
       stats.sent++
     } catch (err) {
       stats.failed++
-      await lifecycleSendsCol(db).updateOne({ key }, { $set: { status: 'failed', error: String(err).slice(0, 300) } })
+      await lifecycleSendsCol(db).updateOne(
+        { key },
+        { $set: { status: 'failed', error: String(err).slice(0, 300) } },
+      )
       log.warn({ campaign: campaign.id, to: r.email, err }, 'campaign send failed')
     }
   }

@@ -112,8 +112,47 @@ describe('AI task gateway — no bypass paths', () => {
       'draft.crisis_on_device.v1',
       'support.reply_draft.v1',
       'marketing.social_draft.v1',
+      'assistant.youth_answer.v1',
     ]) {
       expect(registry.has(id), `§8.4 task '${id}' missing`).toBe(true)
+    }
+  })
+
+  it('the youth task is stricter than the adult assistant in every enforced dimension (intent 09)', () => {
+    const yaml = loadYaml(
+      fs.readFileSync(path.join(repoRoot(), 'definitions', 'ai-tasks.yaml'), 'utf8'),
+    )
+    const registry = parseTaskRegistry(yaml)
+    const youth = registry.get('assistant.youth_answer.v1')!
+    const adult = registry.get('assistant.answer.v1')!
+    // Never a hosted provider — fails closed when the self-hosted model is
+    // undeployed rather than falling back like lifekeel_infra tasks do.
+    expect(youth.data_boundary).toBe('lifekeel_infra_required')
+    expect(youth.provider_retention_class).toBe('none')
+    // Task-minimized context: the youth twin only, a quarter of the adult budget.
+    expect(youth.max_input_tokens).toBeLessThanOrEqual(adult.max_input_tokens / 4)
+    expect(youth.max_output_tokens).toBeLessThanOrEqual(adult.max_output_tokens / 2)
+  })
+
+  it('a lifekeel_infra_required task fails closed without the local model, never falling back to cloud', () => {
+    initTaskGatewayForTests(
+      parseTaskRegistry(
+        loadYaml(fs.readFileSync(path.join(repoRoot(), 'definitions', 'ai-tasks.yaml'), 'utf8')),
+      ),
+    )
+    const saved = {
+      base: process.env['LOCAL_JUDGE_BASE_URL'],
+      text: process.env['LOCAL_TEXT_ENABLED'],
+    }
+    try {
+      delete process.env['LOCAL_JUDGE_BASE_URL']
+      delete process.env['LOCAL_TEXT_ENABLED']
+      expect(() => taskLlm('assistant.youth_answer.v1', 'tenant-1')).toThrow(
+        /lifekeel_infra_required/,
+      )
+    } finally {
+      if (saved.base !== undefined) process.env['LOCAL_JUDGE_BASE_URL'] = saved.base
+      if (saved.text !== undefined) process.env['LOCAL_TEXT_ENABLED'] = saved.text
     }
   })
 

@@ -139,6 +139,18 @@ function baseFor(policy: AiTaskPolicy): LlmFn {
       `Task '${policy.task_id}' is device_only — it must run on-device and has no server-side path`,
     )
   }
+  if (policy.data_boundary === 'lifekeel_infra_required') {
+    // Youth-class tasks (intent 09): no silent hop to a hosted provider
+    // when the self-hosted model is undeployed — the call fails closed.
+    const localTextConfigured =
+      !!process.env['LOCAL_JUDGE_BASE_URL'] && process.env['LOCAL_TEXT_ENABLED'] === 'true'
+    if (!localTextConfigured) {
+      throw new TaskPolicyError(
+        `Task '${policy.task_id}' requires the self-hosted model (lifekeel_infra_required) — LOCAL_TEXT_ENABLED is not on`,
+      )
+    }
+    return familyLlm()
+  }
   return policy.data_boundary === 'lifekeel_infra' ? familyLlm() : cloudLlm()
 }
 
