@@ -3,6 +3,24 @@ import './landing.css'
 import './hero.css'
 import './bands.css'
 
+/** Drawn inline so the board does not depend on symbols rendered elsewhere on the page. */
+function Lantern({ lit }: { lit: boolean }) {
+  return (
+    <svg viewBox="0 0 20 30" aria-hidden="true">
+      <path
+        d="M10 1 V5 M6 5 H14 L16 9 V21 L14 25 H6 L4 21 V9 Z M7 25 V28 H13 V25"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        strokeDasharray={lit ? undefined : '3 2.5'}
+      />
+      {lit && <circle cx="10" cy="15" r="3.4" fill="currentColor" />}
+    </svg>
+  )
+}
+
 /**
  * "Ready before. Found during. Sorted after." One column per moment, built from the
  * capabilities data. Live and Planned are text tags, and every Live item carries a
@@ -29,9 +47,7 @@ export function StoryBoard() {
             <ul>
               {CAPABILITIES.filter((c) => c.moment === m.id).map((c) => (
                 <li key={c.claim} className={c.live ? 'live' : 'planned'}>
-                  <svg viewBox="0 0 20 30" aria-hidden="true">
-                    <use href={c.live ? '#lk-lantern' : '#lk-lantern-off'} />
-                  </svg>
+                  <Lantern lit={c.live} />
                   <span>
                     {c.text}
                     {c.qualifier && <small className="lk-q">{c.qualifier}</small>}

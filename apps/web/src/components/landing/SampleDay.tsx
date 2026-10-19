@@ -91,7 +91,7 @@ export function SampleDay() {
           <p className="lk-maths">
             {gap === 0
               ? `Monthly gap = ${gbp(c.spend)} spending - ${gbp(c.income)} income = £0, so savings are not drawn on.`
-              : `Runway = ${gbp(c.fund)} / (${gbp(c.spend)} spending - ${gbp(c.income)} income) = ${fmt(months)} months. Common rules of thumb run from 3 to 6 months. Yours may differ.`}
+              : `Runway = ${gbp(c.fund)} / (${gbp(c.spend)} spending - ${gbp(c.income)} income) = ${months.toFixed(1)} months${months >= RUNWAY_CAP ? ` (drawn as ${RUNWAY_CAP}+)` : ''}. Common rules of thumb run from 3 to 6 months. Yours may differ.`}
           </p>
           <p className="lk-own">
             Sample figures for a made-up household. After you sign up, Keel uses only what you tell

@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { SampleDay } from '../SampleDay'
@@ -28,10 +30,11 @@ describe('SampleDay', () => {
     expect(screen.getByText('If income stops')).toBeTruthy()
   })
 
-  it('draws the earner scenario as 24+ rather than an unbounded number, and shows its hard-day note', () => {
+  it('draws the earner scenario as 24+ and shows the real figure in the maths, plus its hard-day note', () => {
     render(<SampleDay />)
     fireEvent.click(screen.getByRole('radio', { name: 'Losing a main earner' }))
     expect(screen.getByText('24+')).toBeTruthy()
+    expect(screen.getByText(/= 64\.9 months \(drawn as 24\+\)/)).toBeTruthy()
     expect(screen.getByText(/hard one to look at/)).toBeTruthy()
   })
 })
@@ -49,11 +52,30 @@ describe('StoryBoard', () => {
     }
   })
 
-  it('uses the word platform once and never in a heading', () => {
+  it('uses the word platform once on the whole page copy, and never in a heading', () => {
+    const dir = path.resolve(__dirname, '..')
+    const files = [
+      ...fs
+        .readdirSync(dir)
+        .filter((f) => /\.tsx?$/.test(f) && f !== 'claims.ts')
+        .map((f) => path.join(dir, f)),
+      path.resolve(dir, '..', 'MarketingLanding.tsx'),
+    ]
+    const hits = files.flatMap((f) =>
+      fs
+        .readFileSync(f, 'utf8')
+        .split('\n')
+        .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l) && /\bplatform\b/i.test(l)),
+    )
+    expect(hits).toHaveLength(1)
     const { container } = render(<StoryBoard />)
-    expect((container.textContent!.match(/platform/gi) ?? []).length).toBe(1)
     expect(
       [...container.querySelectorAll('h2,h3')].some((h) => /platform/i.test(h.textContent!)),
     ).toBe(false)
+  })
+
+  it('draws lanterns inline, with no dependency on shared symbols', () => {
+    const { container } = render(<StoryBoard />)
+    expect(container.querySelector('use')).toBeNull()
   })
 })
