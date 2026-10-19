@@ -355,9 +355,11 @@ try {
         await withCronLock(workflowDb, 'email-scan', () =>
           emailScanFanout
             ? // Fan-out: this tick only enqueues (fast); workers below do the scans in parallel.
-              enqueueConnectedInboxScans(workflowDb, (q, p) => queueManager.publish(q, p)).then(
-                () => undefined,
-              )
+              // allowInline: a scan is idempotent and re-runnable — losing one
+              // fan-out to a crash costs nothing durable.
+              enqueueConnectedInboxScans(workflowDb, (q, p) =>
+                queueManager.publish(q, p, { allowInline: true }),
+              ).then(() => undefined)
             : scanAllConnectedInboxes(workflowDb),
         )
       } catch (err) {

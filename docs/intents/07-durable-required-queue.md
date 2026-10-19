@@ -29,3 +29,15 @@ Evidence: `queue/QueueManager.ts:96-148, 179-182, 217-219`.
 replacing the queue if the durability fix is cheap.
 
 **Becomes** — PRD number once accepted: docs/prd/NNN-*.md
+
+**Recorded decision (2026-10-19)** — lease-aware Redis, not BullMQ, this
+round. The two live gaps (volatile inline fallback, blind processing-list
+recovery) closed for ~200 lines inside the existing `QueueManager`:
+`QUEUE_MODE=required` default outside dev/airgap with an explicit
+`allowInline` opt for re-runnable jobs, and visibility leases
+(`lease:<queue>:<jobId>`) renewed by workers and checked by a periodic
+sweeper. BullMQ adoption would have meant a new dependency plus a
+subscribe/publish/DLQ/inspect/requeue surface rewrite — not justified by
+the current two-queue footprint (webhook ingest, email scan). Revisit if
+queues need fair scheduling, priority bulkheads, or payload-by-reference —
+that is the point where the hand-rolled layer becomes a BullMQ rebuild.
