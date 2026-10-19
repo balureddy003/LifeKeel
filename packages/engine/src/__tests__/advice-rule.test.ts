@@ -64,8 +64,31 @@ function webCopyFiles(): string[] {
     'apps/web/src/components/MarketingLanding.tsx',
     'apps/web/src/app/guides/guides-data.ts',
     ...walk('apps/web/src/app/blog'),
+    ...landingFiles(),
   ]
 }
+
+/** The new landing page (PRD-209). claims.ts is excluded: it quotes blocked wording on purpose. */
+function landingFiles(): string[] {
+  return walk('apps/web/src/components/landing').filter((f) => !f.endsWith('claims.ts'))
+}
+
+/**
+ * Extra wording banned only in landing copy, from the trust review: shopping-around
+ * nudges, savings promises, and the claims LifeKeel cannot stand behind.
+ */
+const LANDING_BANNED: Array<{ name: string; pattern: RegExp }> = [
+  { name: 'shopping-around nudge', pattern: /\b(compare|cheaper|better deal)\b/i },
+  {
+    name: 'savings or optimising promise',
+    pattern: /\b(saves? (you )?(money|£)|optimi[sz]e[sd]?|optimi[sz]ation)\b/i,
+  },
+  {
+    name: 'unsupported claim',
+    pattern:
+      /\b(starts watching|safety net|autonomous|knows (you|your family)|always on|protect your family|guaranteed|risk-free|act now)\b/i,
+  },
+]
 
 export function findViolations(file: string, text: string, rules = BANNED): string[] {
   const out: string[] = []
@@ -97,6 +120,18 @@ describe('advice rule (CLAUDE.md second rule)', () => {
       findViolations(f, fs.readFileSync(path.join(ROOT, f), 'utf8'), WEB_BANNED),
     )
     expect(violations).toEqual([])
+  })
+
+  it('landing copy avoids shopping-around, savings and unsupported-claim wording', () => {
+    const files = landingFiles()
+    expect(files.length).toBeGreaterThan(1)
+    const violations = files.flatMap((f) =>
+      findViolations(f, fs.readFileSync(path.join(ROOT, f), 'utf8'), LANDING_BANNED),
+    )
+    expect(violations).toEqual([])
+    expect(
+      findViolations('x.ts', 'We help you compare and save money', LANDING_BANNED),
+    ).toHaveLength(2)
   })
 
   it('the checker itself catches advice-like copy (test would fail without it)', () => {

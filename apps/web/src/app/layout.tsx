@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
+import { Inter, Instrument_Serif, Hanken_Grotesk, IBM_Plex_Mono } from 'next/font/google'
 import { MotionConfig } from 'framer-motion'
 import './globals.css'
+import '@/components/landing/landing.css'
 import { AuthProvider } from '@/lib/auth-context'
 import { ModeProvider } from '@/lib/mode-context'
 import { AppShell } from '@/components/AppShell'
@@ -22,6 +23,30 @@ const inter = Inter({
   subsets: ['latin'],
   variable: '--font-sans',
   display: 'swap',
+})
+
+// Landing-only faces (PRD-209), self-hosted at build like Inter. Only the display
+// face is preloaded; the others load when the landing uses them. Used through the
+// .landing token layer, so the signed-in app keeps Inter.
+const display = Instrument_Serif({
+  subsets: ['latin'],
+  weight: '400',
+  style: ['normal', 'italic'],
+  variable: '--font-display',
+  display: 'swap',
+})
+const body = Hanken_Grotesk({
+  subsets: ['latin'],
+  variable: '--font-body',
+  display: 'swap',
+  preload: false,
+})
+const mono = IBM_Plex_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500'],
+  variable: '--font-mono',
+  display: 'swap',
+  preload: false,
 })
 
 const TITLE = "LifeKeel — When life doesn't go to plan, LifeKeel knows what to do next"
@@ -76,7 +101,11 @@ const THEME_INIT = `(function(){try{var p=localStorage.getItem('lifekeel-theme')
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${inter.variable} ${display.variable} ${body.variable} ${mono.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         {/* Dark is the default stylesheet assumption; this flips the html
             attribute before first paint for stored/system light. */}
