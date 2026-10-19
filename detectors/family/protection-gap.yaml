@@ -10,7 +10,7 @@ signal_types:
   - family.policy
   - family.household
   - family.expenses
-industries: ['family', 'insurance', 'wealth']
+industries: ["family", "insurance", "wealth"]
 
 rules:
   - id: life_insurance_below_household_needs
@@ -34,8 +34,8 @@ rules:
       (data.has_dependents >= 1 or data.mortgage_outstanding_minor > 0) and
       data.life_cover_minor < data.mortgage_outstanding_minor + data.education_funding_gap_minor + (data.annual_living_expenses_minor * 5)
     confidence: 0.82
-    impact_low: '(data.mortgage_outstanding_minor + data.education_funding_gap_minor + (data.annual_living_expenses_minor * 5) - data.life_cover_minor) * 0.3'
-    impact_high: 'data.mortgage_outstanding_minor + data.education_funding_gap_minor + (data.annual_living_expenses_minor * 5) - data.life_cover_minor'
+    impact_low: "(data.mortgage_outstanding_minor + data.education_funding_gap_minor + (data.annual_living_expenses_minor * 5) - data.life_cover_minor) * 0.3"
+    impact_high: "data.mortgage_outstanding_minor + data.education_funding_gap_minor + (data.annual_living_expenses_minor * 5) - data.life_cover_minor"
     reasoning_template: >
       Your listed life insurance cover of {{data.life_cover_minor}} appears below the estimated household need of
       {{data.mortgage_outstanding_minor + data.education_funding_gap_minor + (data.annual_living_expenses_minor * 5)}}
@@ -53,10 +53,10 @@ rules:
     # `years_to_retirement > 1` keeps this from firing for households within
     # a year of (or past) their target retirement age, where a new income
     # protection policy isn't a meaningful gap to surface.
-    condition: 'data.income_protection_monthly_minor == 0 and data.employed >= 1 and data.years_to_retirement > 1'
+    condition: "data.income_protection_monthly_minor == 0 and data.employed >= 1 and data.years_to_retirement > 1"
     confidence: 0.75
-    impact_low: 'data.monthly_salary_minor * 6'
-    impact_high: 'data.monthly_salary_minor * 24'
+    impact_low: "data.monthly_salary_minor * 6"
+    impact_high: "data.monthly_salary_minor * 24"
     reasoning_template: >
       No income protection policy is listed in your family profile. If you were unable to work due to illness or injury,
       the estimated impact over 6-24 months could be {{data.monthly_salary_minor * 6}} to {{data.monthly_salary_minor * 24}}
@@ -74,7 +74,7 @@ rules:
     # fires, the same "absence of data means the rule can't fire" shape as
     # `employed` gating no_income_protection above. Lower confidence than
     # the two rules above: a timing nudge, not a coverage-adequacy gap.
-    condition: 'data.soonest_renewal_days <= 60'
+    condition: "data.soonest_renewal_days <= 60"
     confidence: 0.7
     impact_low: 0
     impact_high: 0
@@ -115,8 +115,8 @@ rules:
       data.member_has_dependents >= 1 and data.member_life_cover_minor <= 0 and
       data.years_to_retirement > 1
     confidence: 0.78
-    impact_low: 'data.monthly_salary_minor * 12 * 2'
-    impact_high: 'data.monthly_salary_minor * 12 * 5'
+    impact_low: "data.monthly_salary_minor * 12 * 2"
+    impact_high: "data.monthly_salary_minor * 12 * 5"
     reasoning_template: >
       A second earner in your household has income on file but no life insurance policy attributed to them,
       even though dependents are on file. If they were unable to provide, the household would lose
@@ -132,7 +132,7 @@ rules:
     # has_dependents is derived from education_funds.length > 0 — reuses
     # the existing "does this household have kids on file" signal rather
     # than a new family-roster lookup (see family-financial-profile.ts).
-    condition: 'data.has_dependents >= 1 and data.has_health_or_ci_cover == 0'
+    condition: "data.has_dependents >= 1 and data.has_health_or_ci_cover == 0"
     confidence: 0.7
     impact_low: 0
     impact_high: 0

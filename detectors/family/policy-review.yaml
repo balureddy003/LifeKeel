@@ -9,7 +9,7 @@ description: >
 version: 1.0.0
 signal_types:
   - family.policy_review
-industries: ['family', 'insurance']
+industries: ["family", "insurance"]
 
 rules:
   - id: duplicate_policy_coverage
@@ -17,10 +17,10 @@ rules:
     # One event per (type, holder) overlap group — the composite member_id
     # ("m_123:life" or "household:car") keeps each overlap's entity_key
     # distinct so dedup and stale-resolution stay per-pair.
-    condition: 'data.overlap_count > 1'
+    condition: "data.overlap_count > 1"
     confidence: 0.7
-    impact_low: 'data.overlap_monthly_premium_minor'
-    impact_high: 'data.overlap_monthly_premium_minor * 12'
+    impact_low: "data.overlap_monthly_premium_minor"
+    impact_high: "data.overlap_monthly_premium_minor * 12"
     reasoning_template: >
       {{data.overlap_count}} {{data.overlap_type}} policies appear on file for {{data.overlap_holder}}
       ({{data.overlap_providers}}), costing {{data.overlap_monthly_premium_minor}}/month combined. This can
@@ -34,7 +34,7 @@ rules:
 
   - id: policy_attributed_to_removed_member
     name: Policy Attributed To Someone No Longer On The Roster
-    condition: 'data.orphaned_policy_count > 0'
+    condition: "data.orphaned_policy_count > 0"
     confidence: 0.7
     impact_low: 0
     impact_high: 0
