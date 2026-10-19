@@ -340,3 +340,41 @@ describe('architecture claims: erasure survives backup restore', () => {
     expect(src).toContain('tombstoned tenant_ids')
   })
 })
+
+/* ------------------------------------------------------------------ */
+/* Claim 6: queue durability + migration deploy gate (intent 07/08)     */
+/* ------------------------------------------------------------------ */
+
+describe('architecture claims: queue durability and migration gate', () => {
+  it('durable queues fail closed in production — no silent in-memory fallback', () => {
+    const src = readSrc('apps/api/src/queue/QueueManager.ts')
+    // QUEUE_MODE=required is the production default; removing it restores
+    // the inline fallback that loses buffered jobs on crash.
+    expect(src).toContain('QueueUnavailableError')
+    expect(src).toContain('allowInline')
+    expect(src).toMatch(/'dev'\s*\|\|\s*deploymentConfig\.mode === 'airgap'/)
+  })
+
+  it('processing-list recovery is visibility-lease aware, not blind', () => {
+    const src = readSrc('apps/api/src/queue/QueueManager.ts')
+    // Pre-lease recovery requeued every :processing entry on subscribe —
+    // including a live replica's in-flight job.
+    expect(src).toContain('recoverStrandedJobs')
+    expect(src).toContain('lease:')
+  })
+
+  it('migration failure fails boot outside dev', () => {
+    const src = readSrc('apps/api/src/server.ts')
+    expect(src).toContain("deploymentConfig.mode !== 'dev'")
+    expect(src).not.toContain("'Database migration failed — starting anyway'")
+  })
+
+  it('/health/ready reports real migration and index state — the canary gate', () => {
+    const src = readSrc('apps/api/src/server.ts')
+    expect(src).toContain('pendingMigrations')
+    expect(src).toContain('verifyCriticalIndexes')
+    expect(src).toContain('migration_pending')
+    // The env-var stand-in never reflected the real ledger.
+    expect(src).not.toContain("process.env['MIGRATION_VERSION']")
+  })
+})

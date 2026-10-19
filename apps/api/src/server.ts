@@ -355,9 +355,11 @@ try {
         await withCronLock(workflowDb, 'email-scan', () =>
           emailScanFanout
             ? // Fan-out: this tick only enqueues (fast); workers below do the scans in parallel.
-              enqueueConnectedInboxScans(workflowDb, (q, p) => queueManager.publish(q, p)).then(
-                () => undefined,
-              )
+              // allowInline: a scan is idempotent and re-runnable — losing one
+              // fan-out to a crash costs nothing durable.
+              enqueueConnectedInboxScans(workflowDb, (q, p) =>
+                queueManager.publish(q, p, { allowInline: true }),
+              ).then(() => undefined)
             : scanAllConnectedInboxes(workflowDb),
         )
       } catch (err) {
@@ -1843,6 +1845,22 @@ app.get('/health/live', async () => ({ status: 'live' }))
 // Public product status — stays reachable during maintenance so the
 // frontend can render the outage banner instead of dead pages.
 registerPublicStatusRoute(app, () => workflowDb)
+// Readiness-side schema checks: the canary only ever calls /health/ready,
+// so migration/index state must surface HERE for the deploy gate intent 08
+// describes to be real — a deploy whose migrations didn't land reports
+// not_ready and never takes traffic. Index verification is cached — a
+// canary shouldn't issue indexes() per collection on every hit.
+let indexCheckCache: { at: number; missing: string[] } | null = null
+async function criticalIndexesMissing(): Promise<string[]> {
+  if (indexCheckCache && Date.now() - indexCheckCache.at < 60_000) return indexCheckCache.missing
+  const { verifyCriticalIndexes } = await import('./migrate.js')
+  // Fail closed: an index check that can't run reports a missing index,
+  // not an empty list — a gate that silently opens on error isn't a gate.
+  const missing = workflowDb ? await verifyCriticalIndexes(workflowDb) : ['<index check failed>']
+  indexCheckCache = { at: Date.now(), missing }
+  return missing
+}
+
 app.get('/health/ready', async (_request, reply) => {
   let mongodb = 'disconnected'
   try {
@@ -1851,13 +1869,31 @@ app.get('/health/ready', async (_request, reply) => {
   } catch {
     // reported below
   }
-  const ready = mongodb === 'connected' && queueManager.isAvailable()
+  let migrationVersion: string | null = null
+  let pending: string[] = []
+  let missingIndexes: string[] = []
+  if (mongodb === 'connected') {
+    const { migrationHead, pendingMigrations, migrations: expected } = await import('./migrate.js')
+    migrationVersion = await migrationHead(workflowDb).catch(() => null)
+    // Fail closed: an unreadable ledger reports everything pending rather
+    // than nothing.
+    pending = await pendingMigrations(workflowDb).catch(() => expected.map((m) => m.id))
+    missingIndexes = await criticalIndexesMissing().catch(() => ['<index check failed>'])
+  }
+  const migrationsPending = mongodb === 'connected' && pending.length > 0
+  const ready =
+    mongodb === 'connected' &&
+    queueManager.isAvailable() &&
+    !migrationsPending &&
+    missingIndexes.length === 0
   return reply.status(ready ? 200 : 503).send({
     status: ready ? 'ready' : 'not_ready',
     dependencies: {
       mongodb,
       redis: queueManager.isAvailable() ? 'connected' : 'disconnected',
-      migration_version: process.env['MIGRATION_VERSION'] ?? 'unmanaged',
+      migration_version: migrationVersion ?? 'unknown',
+      migration_pending: migrationsPending,
+      ...(missingIndexes.length > 0 ? { missing_indexes: missingIndexes } : {}),
     },
     circuits: Object.fromEntries(
       [...getAllCircuitBreakers()].map(([key, breaker]) => [key, breaker.getState()]),
@@ -1946,12 +1982,21 @@ await registerMetricsRoutes(app, engine, scoreCalibrator)
 logDeploymentMode()
 log.info({ mode: deploymentConfig.mode }, 'Queue mode')
 
-// Run pending database migrations before accepting traffic
+// Run pending database migrations before accepting traffic. In production
+// deployment modes a failed migration fails the boot — "starting anyway"
+// is how a half-migrated schema took traffic undetected (intent 08). Dev
+// keeps the warn-and-continue behavior.
 try {
   const { runMigrations } = await import('./migrate.js')
-  await runMigrations()
+  const result = await runMigrations(workflowDb)
+  if (result.failed.length > 0) {
+    const msg = `Migrations failed: ${result.failed.join(', ')}`
+    if (deploymentConfig.mode !== 'dev') throw new Error(msg)
+    log.error({ failed: result.failed }, 'Database migration failed — starting anyway (dev)')
+  }
 } catch (err) {
-  log.error({ err }, 'Database migration failed — starting anyway')
+  if (deploymentConfig.mode !== 'dev') throw err
+  log.error({ err }, 'Database migration failed — starting anyway (dev)')
 }
 
 const port = parseInt(process.env['PORT'] ?? '3001', 10)

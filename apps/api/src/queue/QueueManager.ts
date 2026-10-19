@@ -24,16 +24,51 @@
  */
 
 import { createLogger } from '@lifekeel/platform'
+import { deploymentConfig } from '../config/deployment.js'
 
 const log = createLogger({ service: 'queue-manager', version: '0.0.0' })
 
 const MAX_ATTEMPTS = 3
 const DELAYED_POLL_MS = 1000
 const INLINE_RETRY_MS = 500
+// Visibility lease on :processing entries — a worker crash leaves a job
+// reclaimable only after its lease expires, and a live worker's long job
+// can't be double-claimed by a replica's recovery sweep.
+const LEASE_TTL_MS = 60_000
+const LEASE_RENEW_MS = 20_000
+const RECOVERY_POLL_MS = 30_000
+
+export class QueueUnavailableError extends Error {
+  constructor(queueName: string) {
+    super(`Queue '${queueName}' requires Redis (QUEUE_MODE=required) and Redis is unavailable`)
+    this.name = 'QueueUnavailableError'
+  }
+}
+
+/**
+ * QUEUE_MODE env: 'auto' (Redis down → inline fallback) or 'required'
+ * (Redis down → durable publishes refuse honestly). Default follows the
+ * deployment mode: cloud/accountant get 'required' — an in-memory fallback
+ * there is a silent job-loss machine; dev and airgap legitimately run
+ * without Redis.
+ */
+export function queueMode(): 'auto' | 'required' {
+  const v = (process.env['QUEUE_MODE'] ?? '').toLowerCase()
+  if (v === 'required') return 'required'
+  if (v === 'auto' || v === 'inline') return 'auto'
+  return deploymentConfig.mode === 'dev' || deploymentConfig.mode === 'airgap' ? 'auto' : 'required'
+}
 
 export interface PublishOpts {
   delay?: number
   priority?: number
+  /**
+   * In QUEUE_MODE=required, publishing while Redis is down throws
+   * QueueUnavailableError — unless the job is explicitly marked
+   * inline-safe: re-runnable and idempotent, so losing it on a crash is
+   * acceptable (e.g. the email-scan fan-out — a missed scan re-triggers).
+   */
+  allowInline?: boolean
 }
 
 export interface SubscribeOpts {
@@ -48,7 +83,7 @@ interface QueueJob {
   attempts?: number
 }
 
-type RedisClient = {
+export type RedisClient = {
   lpush(key: string, ...values: string[]): Promise<number>
   llen(key: string): Promise<number>
   brpop(key: string, timeout: number): Promise<[string, string] | null>
@@ -57,8 +92,16 @@ type RedisClient = {
   lrange(key: string, start: number, stop: number): Promise<string[]>
   zadd(key: string, score: number, value: string): Promise<number>
   zcard(key: string): Promise<number>
-  zrangebyscore(key: string, min: number | string, max: number | string, ...rest: string[]): Promise<string[]>
+  zrangebyscore(
+    key: string,
+    min: number | string,
+    max: number | string,
+    ...rest: string[]
+  ): Promise<string[]>
   zrem(key: string, ...values: string[]): Promise<number>
+  set(key: string, value: string, ...args: string[]): Promise<string | null>
+  get(key: string): Promise<string | null>
+  del(...keys: string[]): Promise<number>
   quit(): Promise<string>
   duplicate(): RedisClient
   on(event: string, handler: (...args: unknown[]) => void): void
@@ -79,8 +122,11 @@ async function loadRedis(): Promise<RedisClient | null> {
 
   try {
     // Dynamic import so the server boots even when ioredis is absent
-    const mod = await import('ioredis' as string) as { default?: unknown }
-    const Redis = (mod.default ?? mod) as new (url: string, opts?: Record<string, unknown>) => RedisClient
+    const mod = (await import('ioredis' as string)) as { default?: unknown }
+    const Redis = (mod.default ?? mod) as new (
+      url: string,
+      opts?: Record<string, unknown>,
+    ) => RedisClient
 
     const client = new Redis(url, {
       lazyConnect: true,
@@ -100,13 +146,18 @@ async function loadRedis(): Promise<RedisClient | null> {
       }
       redisAvailable = false
     })
-    client.on('close', () => { redisAvailable = false })
+    client.on('close', () => {
+      redisAvailable = false
+    })
 
     await client.connect()
     redisClient = client
     return client
   } catch (err) {
-    log.warn({ err: (err as Error).message }, 'ioredis not available or Redis unreachable — queue will run inline')
+    log.warn(
+      { err: (err as Error).message },
+      'ioredis not available or Redis unreachable — queue will run inline',
+    )
     return null
   }
 }
@@ -122,6 +173,7 @@ export class QueueManager {
   private subscriptions = new Map<string, boolean>()
   private subscriberClients: RedisClient[] = []
   private delayedTimer: ReturnType<typeof setInterval> | null = null
+  private recoveryTimer: ReturnType<typeof setInterval> | null = null
 
   async connect(): Promise<void> {
     await loadRedis()
@@ -143,6 +195,9 @@ export class QueueManager {
 
     const client = redisClient
     if (!client || !redisAvailable) {
+      if (queueMode() === 'required' && opts?.allowInline !== true) {
+        throw new QueueUnavailableError(queueName)
+      }
       this.publishInline(queueName, job)
       return
     }
@@ -181,9 +236,12 @@ export class QueueManager {
       return
     }
 
-    // Recover jobs a previous process left in :processing (crash mid-handler).
+    // Recover jobs a previous process left in :processing (crash
+    // mid-handler), then keep sweeping — a crash later in this process's
+    // lifetime should not need a subscribe() to be noticed.
     void this.recoverProcessing(client, queueName)
     this.startDelayedMover(client)
+    this.startRecoverySweeper(client)
 
     const concurrency = opts?.concurrency ?? 1
     for (let i = 0; i < concurrency; i++) {
@@ -195,37 +253,24 @@ export class QueueManager {
     log.info({ queue: queueName }, 'Subscribed to queue')
   }
 
-  /**
-   * Requeue anything a dead worker left in `${queue}:processing`. Runs once
-   * per subscribe; safe under multiple replicas because lrem-by-value only
-   * removes the entry this caller moved.
-   */
   private async recoverProcessing(client: RedisClient, queueName: string): Promise<void> {
-    const processingKey = `${queueName}:processing`
     try {
-      const stranded = await client.lrange(processingKey, 0, -1)
-      for (const raw of stranded) {
-        const removed = await client.lrem(processingKey, 1, raw)
-        if (removed !== 1) continue // another recoverer claimed it
-        let job: QueueJob | null = null
-        try { job = JSON.parse(raw) as QueueJob } catch { /* fallthrough */ }
-        if (job === null) {
-          log.error({ queue: queueName }, 'Dropping malformed stranded job')
-          continue
-        }
-        const attempts = (job.attempts ?? 0) + 1
-        if (attempts >= MAX_ATTEMPTS) {
-          await client.lpush(`${queueName}:dead`, raw)
-          log.error({ queue: queueName, job_id: job.id, attempts }, 'Stranded job dead-lettered')
-        } else {
-          job.attempts = attempts
-          await client.lpush(queueName, JSON.stringify(job))
-          log.warn({ queue: queueName, job_id: job.id, attempts }, 'Recovered stranded job')
-        }
-      }
+      await recoverStrandedJobs(client, queueName)
     } catch (err) {
       log.warn({ queue: queueName, err }, 'Processing-list recovery failed')
     }
+  }
+
+  /** Periodic lease-aware sweep so a mid-life worker crash is recovered
+   *  without waiting for a subscribe/restart. */
+  private startRecoverySweeper(client: RedisClient): void {
+    if (this.recoveryTimer) return
+    this.recoveryTimer = setInterval(() => {
+      for (const queueName of this.subscriptions.keys()) {
+        if (this.subscriptions.get(queueName)) void this.recoverProcessing(client, queueName)
+      }
+    }, RECOVERY_POLL_MS)
+    this.recoveryTimer.unref()
   }
 
   /** Promote due entries from `${queue}:delayed` zsets to their live lists. */
@@ -274,6 +319,21 @@ export class QueueManager {
           continue
         }
 
+        // Visibility lease: recovery leaves this entry alone while a live
+        // worker renews it. The key value is the expiry timestamp (a plain
+        // TTL would make "expired" and "finished cleanly" indistinguishable
+        // to the sweeper). XX on renewal so a deleted lease isn't resurrected.
+        const leaseKey = `lease:${queueName}:${job.id}`
+        await client
+          .set(leaseKey, String(Date.now() + LEASE_TTL_MS), 'PX', String(LEASE_TTL_MS * 10))
+          .catch(() => {})
+        const renew = setInterval(() => {
+          client
+            .set(leaseKey, String(Date.now() + LEASE_TTL_MS), 'XX', 'PX', String(LEASE_TTL_MS * 10))
+            .catch(() => {})
+        }, LEASE_RENEW_MS)
+        renew.unref()
+
         try {
           await handler(job.payload)
           await client.lrem(processingKey, 1, raw)
@@ -282,16 +342,25 @@ export class QueueManager {
           const attempts = (job.attempts ?? 0) + 1
           if (attempts >= MAX_ATTEMPTS) {
             await client.lpush(`${queueName}:dead`, raw)
-            log.error({ queue: queueName, job_id: job.id, attempts, err }, 'Job dead-lettered after max attempts')
+            log.error(
+              { queue: queueName, job_id: job.id, attempts, err },
+              'Job dead-lettered after max attempts',
+            )
           } else {
             job.attempts = attempts
             await client.lpush(queueName, JSON.stringify(job))
-            log.warn({ queue: queueName, job_id: job.id, attempts, err }, 'Handler error — job re-queued')
+            log.warn(
+              { queue: queueName, job_id: job.id, attempts, err },
+              'Handler error — job re-queued',
+            )
           }
+        } finally {
+          clearInterval(renew)
+          await client.del(leaseKey).catch(() => 0)
         }
       } catch {
         // Redis disconnected — wait and retry
-        await new Promise(r => setTimeout(r, 1000))
+        await new Promise((r) => setTimeout(r, 1000))
       }
     }
   }
@@ -321,11 +390,17 @@ export class QueueManager {
       } catch (err) {
         const attempts = (job.attempts ?? 0) + 1
         if (attempts >= MAX_ATTEMPTS) {
-          log.error({ queue: queueName, job_id: job.id, attempts, err }, 'Inline job failed permanently')
+          log.error(
+            { queue: queueName, job_id: job.id, attempts, err },
+            'Inline job failed permanently',
+          )
           return
         }
         job.attempts = attempts
-        log.warn({ queue: queueName, job_id: job.id, attempts, err }, 'Inline handler error — retrying')
+        log.warn(
+          { queue: queueName, job_id: job.id, attempts, err },
+          'Inline handler error — retrying',
+        )
         const timer = setTimeout(() => this.runInline(queueName, job), INLINE_RETRY_MS * attempts)
         timer.unref()
       }
@@ -390,12 +465,18 @@ export class QueueManager {
       clearInterval(this.delayedTimer)
       this.delayedTimer = null
     }
+    if (this.recoveryTimer) {
+      clearInterval(this.recoveryTimer)
+      this.recoveryTimer = null
+    }
     for (const sub of this.subscriberClients) {
       try {
         // quit() on a half-dead connection can wait on a socket timeout —
         // bound it so shutdown always completes.
-        await Promise.race([sub.quit(), new Promise(r => setTimeout(r, 3000))])
-      } catch { /* ignore */ }
+        await Promise.race([sub.quit(), new Promise((r) => setTimeout(r, 3000))])
+      } catch {
+        /* ignore */
+      }
     }
     this.subscriberClients.length = 0
   }
@@ -406,16 +487,69 @@ export class QueueManager {
 export const queueManager = new QueueManager()
 
 /**
+ * Lease-aware stranded-job recovery, exported separately so it can be
+ * unit-tested with a mock client. A processing entry is reclaimed only
+ * when its visibility lease is missing or expired — a live worker's job
+ * is left alone. The lrem-by-value claim is atomic, so parallel sweepers
+ * can't double-recover the same entry.
+ */
+export async function recoverStrandedJobs(
+  client: RedisClient,
+  queueName: string,
+  now = Date.now(),
+): Promise<void> {
+  const processingKey = `${queueName}:processing`
+  const stranded = await client.lrange(processingKey, 0, -1)
+  for (const raw of stranded) {
+    let job: QueueJob | null = null
+    try {
+      job = JSON.parse(raw) as QueueJob
+    } catch {
+      /* fallthrough */
+    }
+    const leaseKey = job === null ? null : `lease:${queueName}:${job.id}`
+    if (leaseKey) {
+      const leaseUntil = Number((await client.get(leaseKey)) ?? 0)
+      if (leaseUntil > now) continue // a live worker still holds this job
+    }
+    const removed = await client.lrem(processingKey, 1, raw)
+    if (removed !== 1) continue // another recoverer claimed it
+    if (leaseKey) await client.del(leaseKey).catch(() => 0)
+    if (job === null) {
+      log.error({ queue: queueName }, 'Dropping malformed stranded job')
+      continue
+    }
+    const attempts = (job.attempts ?? 0) + 1
+    if (attempts >= MAX_ATTEMPTS) {
+      await client.lpush(`${queueName}:dead`, raw)
+      log.error({ queue: queueName, job_id: job.id, attempts }, 'Stranded job dead-lettered')
+    } else {
+      job.attempts = attempts
+      await client.lpush(queueName, JSON.stringify(job))
+      log.warn({ queue: queueName, job_id: job.id, attempts }, 'Recovered stranded job')
+    }
+  }
+}
+
+/**
  * Pure requeue operation, exported separately so it can be unit-tested
  * with a mock client. The lrem-by-value claim means only one caller can
  * move a given dead entry — safe under concurrent operators.
  */
-export async function requeueDeadJob(client: RedisClient, queueName: string, jobId: string): Promise<boolean> {
+export async function requeueDeadJob(
+  client: RedisClient,
+  queueName: string,
+  jobId: string,
+): Promise<boolean> {
   const deadKey = `${queueName}:dead`
   const entries = await client.lrange(deadKey, 0, -1)
   for (const raw of entries) {
     let job: QueueJob
-    try { job = JSON.parse(raw) as QueueJob } catch { continue }
+    try {
+      job = JSON.parse(raw) as QueueJob
+    } catch {
+      continue
+    }
     if (job.id !== jobId) continue
     if ((await client.lrem(deadKey, 1, raw)) !== 1) return false // another operator claimed it
     job.attempts = 0
