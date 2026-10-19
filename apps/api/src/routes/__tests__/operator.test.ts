@@ -1,7 +1,14 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import Fastify, { type FastifyInstance } from 'fastify'
 import { MongoClient, type Db } from 'mongodb'
 import { MongoMemoryServer } from 'mongodb-memory-server'
+
+// Campaign sends hit the real lifecycle sendEmail — keep the provider mocked
+// and the key present so ledger rows can settle to 'sent'.
+vi.mock('@sendgrid/mail', () => ({
+  default: { setApiKey: vi.fn(), send: vi.fn().mockResolvedValue([{ statusCode: 202 }]) },
+}))
+
 import { registerOperatorRoutes } from '../operator.js'
 
 let mongod: MongoMemoryServer
@@ -26,20 +33,47 @@ beforeAll(async () => {
 })
 
 beforeEach(async () => {
+  process.env['SENDGRID_API_KEY'] = 'test-key'
   await db.dropDatabase()
   await db.collection('users').insertMany([
     {
-      id: 'operator-1', tenant_id: 'operator-tenant', email: 'operator@example.com', name: 'Operator',
-      roles: ['admin'], status: 'active', password_hash: 'secret-hash', salt: 'secret-salt', created_at: new Date(),
+      id: 'operator-1',
+      tenant_id: 'operator-tenant',
+      email: 'operator@example.com',
+      name: 'Operator',
+      roles: ['admin'],
+      status: 'active',
+      password_hash: 'secret-hash',
+      salt: 'secret-salt',
+      created_at: new Date(),
     },
     {
-      id: 'user-2', tenant_id: 'family-1', email: 'family@example.com', name: 'Family User',
-      roles: ['admin'], status: 'active', password_hash: 'secret-hash', salt: 'secret-salt', created_at: new Date(),
+      id: 'user-2',
+      tenant_id: 'family-1',
+      email: 'family@example.com',
+      name: 'Family User',
+      roles: ['admin'],
+      status: 'active',
+      password_hash: 'secret-hash',
+      salt: 'secret-salt',
+      created_at: new Date(),
     },
   ])
   await db.collection('tenants').insertMany([
-    { tenant_id: 'operator-tenant', name: 'Operator', status: 'active', plan: 'free', created_at: new Date() },
-    { tenant_id: 'family-1', name: 'Family One', status: 'active', plan: 'plus', created_at: new Date() },
+    {
+      tenant_id: 'operator-tenant',
+      name: 'Operator',
+      status: 'active',
+      plan: 'free',
+      created_at: new Date(),
+    },
+    {
+      tenant_id: 'family-1',
+      name: 'Family One',
+      status: 'active',
+      plan: 'plus',
+      created_at: new Date(),
+    },
   ])
 })
 
@@ -57,9 +91,13 @@ describe('/operator control plane', () => {
   })
 
   it('returns a cross-tenant overview to a platform operator', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     await db.collection('marketing_posts').insertOne({ id: 'post-1', state: 'publish_failed' })
-    await db.collection('growth_events').insertOne({ event: 'signup_completed', created_at: new Date() })
+    await db
+      .collection('growth_events')
+      .insertOne({ event: 'signup_completed', created_at: new Date() })
     const app = await buildApp()
     const response = await app.inject({ method: 'GET', url: '/operator/overview' })
     expect(response.statusCode).toBe(200)
@@ -69,21 +107,34 @@ describe('/operator control plane', () => {
     expect(response.json().growth_events_7d).toContainEqual({ event: 'signup_completed', count: 1 })
     // 30-day activity series for the command-center sparklines.
     const activity = response.json().activity_30d as { day: string; event: string; count: number }[]
-    expect(activity).toContainEqual(expect.objectContaining({ event: 'signup_completed', count: 1 }))
+    expect(activity).toContainEqual(
+      expect.objectContaining({ event: 'signup_completed', count: 1 }),
+    )
     expect(response.json().users.signups_prev_week).toBe(0)
     expect(response.json().leads_7d).toBe(0)
     await app.close()
   })
 
   it('serves the activity series from metrics_daily once the rollup has backfilled', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     // A rollup row for an event that does NOT exist in raw growth_events —
     // if it shows up, the overview read the rollup, not the collection scan.
     const today = new Date().toISOString().slice(0, 10)
-    await db.collection<{ _id: string }>('metrics_daily').insertMany([
-      { _id: 'meta', backfilled_at: new Date() } as never,
-      { _id: `${today}|growth_event|quiz_completed`, day: today, metric: 'growth_event', dim: 'quiz_completed', count: 7, updated_at: new Date() } as never,
-    ])
+    await db
+      .collection<{ _id: string }>('metrics_daily')
+      .insertMany([
+        { _id: 'meta', backfilled_at: new Date() } as never,
+        {
+          _id: `${today}|growth_event|quiz_completed`,
+          day: today,
+          metric: 'growth_event',
+          dim: 'quiz_completed',
+          count: 7,
+          updated_at: new Date(),
+        } as never,
+      ])
     const app = await buildApp()
     const response = await app.inject({ method: 'GET', url: '/operator/overview' })
     expect(response.statusCode).toBe(200)
@@ -93,7 +144,9 @@ describe('/operator control plane', () => {
   })
 
   it('searches users without returning credential material', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     const app = await buildApp()
     const response = await app.inject({ method: 'GET', url: '/operator/users?q=family' })
     expect(response.statusCode).toBe(200)
@@ -105,10 +158,17 @@ describe('/operator control plane', () => {
   })
 
   it('filters users by exact tenant for the members drill-down', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     await db.collection('users').insertOne({
-      id: 'user-3', tenant_id: 'family-10', email: 'other@example.com', name: 'Other',
-      roles: ['member'], status: 'active', created_at: new Date(),
+      id: 'user-3',
+      tenant_id: 'family-10',
+      email: 'other@example.com',
+      name: 'Other',
+      roles: ['member'],
+      status: 'active',
+      created_at: new Date(),
     })
     const app = await buildApp()
     const response = await app.inject({ method: 'GET', url: '/operator/users?tenant=family-1' })
@@ -119,10 +179,14 @@ describe('/operator control plane', () => {
   })
 
   it('prevents support operators from suspending users', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     const app = await buildApp()
     const response = await app.inject({
-      method: 'POST', url: '/operator/users/user-2/suspend', payload: { reason: 'Support request' },
+      method: 'POST',
+      url: '/operator/users/user-2/suspend',
+      payload: { reason: 'Support request' },
     })
     expect(response.statusCode).toBe(403)
     expect((await db.collection('users').findOne({ id: 'user-2' }))?.['status']).toBe('active')
@@ -130,10 +194,14 @@ describe('/operator control plane', () => {
   })
 
   it('suspends a user with a required reason and immutable operator audit entry', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
     const app = await buildApp()
     const response = await app.inject({
-      method: 'POST', url: '/operator/users/user-2/suspend', payload: { reason: 'Confirmed account abuse' },
+      method: 'POST',
+      url: '/operator/users/user-2/suspend',
+      payload: { reason: 'Confirmed account abuse' },
     })
     expect(response.statusCode).toBe(200)
     expect((await db.collection('users').findOne({ id: 'user-2' }))?.['status']).toBe('suspended')
@@ -145,7 +213,9 @@ describe('/operator control plane', () => {
   })
 
   it('lists tenants with cross-tenant member counts', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     const app = await buildApp()
     const response = await app.inject({ method: 'GET', url: '/operator/tenants?q=Family' })
     expect(response.statusCode).toBe(200)
@@ -155,22 +225,46 @@ describe('/operator control plane', () => {
   })
 
   it('suspends and reactivates a tenant with audit entries', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
     const app = await buildApp()
-    const suspend = await app.inject({ method: 'POST', url: '/operator/tenants/family-1/suspend', payload: { reason: 'Abuse investigation' } })
+    const suspend = await app.inject({
+      method: 'POST',
+      url: '/operator/tenants/family-1/suspend',
+      payload: { reason: 'Abuse investigation' },
+    })
     expect(suspend.statusCode).toBe(200)
-    expect((await db.collection('tenants').findOne({ tenant_id: 'family-1' }))?.['status']).toBe('suspended')
-    const reactivate = await app.inject({ method: 'POST', url: '/operator/tenants/family-1/reactivate', payload: { reason: 'Investigation cleared' } })
+    expect((await db.collection('tenants').findOne({ tenant_id: 'family-1' }))?.['status']).toBe(
+      'suspended',
+    )
+    const reactivate = await app.inject({
+      method: 'POST',
+      url: '/operator/tenants/family-1/reactivate',
+      payload: { reason: 'Investigation cleared' },
+    })
     expect(reactivate.statusCode).toBe(200)
-    const entries = await db.collection('operator_audit_log').find({ target_type: 'tenant' }).toArray()
-    expect(entries.map((e) => e['action']).sort()).toEqual(['operator.tenant.reactivate', 'operator.tenant.suspend'])
+    const entries = await db
+      .collection('operator_audit_log')
+      .find({ target_type: 'tenant' })
+      .toArray()
+    expect(entries.map((e) => e['action']).sort()).toEqual([
+      'operator.tenant.reactivate',
+      'operator.tenant.suspend',
+    ])
     await app.close()
   })
 
   it('issues a password-reset token through the standard email path', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
     const app = await buildApp()
-    const response = await app.inject({ method: 'POST', url: '/operator/users/user-2/password-reset', payload: { reason: 'User requested via support' } })
+    const response = await app.inject({
+      method: 'POST',
+      url: '/operator/users/user-2/password-reset',
+      payload: { reason: 'User requested via support' },
+    })
     expect(response.statusCode).toBe(200)
     const user = await db.collection('users').findOne({ id: 'user-2' })
     expect(typeof user?.['password_reset_token']).toBe('string')
@@ -179,14 +273,20 @@ describe('/operator control plane', () => {
   })
 
   it('mfa-disable clears enrollment, revokes sessions, and writes an audit entry', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
-    await db.collection('users').updateOne(
-      { id: 'user-2' },
-      { $set: { mfa_enabled: true, mfa_secret: 'SECRETHERE', mfa_recovery_hashes: ['h1'] } },
-    )
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    await db
+      .collection('users')
+      .updateOne(
+        { id: 'user-2' },
+        { $set: { mfa_enabled: true, mfa_secret: 'SECRETHERE', mfa_recovery_hashes: ['h1'] } },
+      )
     const app = await buildApp()
     const response = await app.inject({
-      method: 'POST', url: '/operator/users/user-2/mfa-disable', payload: { reason: 'Ticket #1234 — verified via recovery email' },
+      method: 'POST',
+      url: '/operator/users/user-2/mfa-disable',
+      payload: { reason: 'Ticket #1234 — verified via recovery email' },
     })
     expect(response.statusCode).toBe(200)
     const user = await db.collection('users').findOne({ id: 'user-2' })
@@ -200,28 +300,50 @@ describe('/operator control plane', () => {
   })
 
   it('mfa-disable 404s when the user has no enrollment and requires a reason', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
     const app = await buildApp()
-    const noReason = await app.inject({ method: 'POST', url: '/operator/users/user-2/mfa-disable', payload: {} })
+    const noReason = await app.inject({
+      method: 'POST',
+      url: '/operator/users/user-2/mfa-disable',
+      payload: {},
+    })
     expect(noReason.statusCode).toBe(400)
     const notEnrolled = await app.inject({
-      method: 'POST', url: '/operator/users/user-2/mfa-disable', payload: { reason: 'Ticket #1234 — verified' },
+      method: 'POST',
+      url: '/operator/users/user-2/mfa-disable',
+      payload: { reason: 'Ticket #1234 — verified' },
     })
     expect(notEnrolled.statusCode).toBe(404)
     await app.close()
   })
 
   it('manages platform operators while protecting self and the last super_admin', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['super_admin'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['super_admin'] })
     const app = await buildApp()
 
-    const create = await app.inject({ method: 'POST', url: '/operator/operators', payload: { user_id: 'user-2', roles: ['support'], reason: 'Support onboarding' } })
+    const create = await app.inject({
+      method: 'POST',
+      url: '/operator/operators',
+      payload: { user_id: 'user-2', roles: ['support'], reason: 'Support onboarding' },
+    })
     expect(create.statusCode).toBe(200)
 
-    const demoteSelf = await app.inject({ method: 'PATCH', url: '/operator/operators/operator-1', payload: { roles: ['support'], reason: 'Should not work' } })
+    const demoteSelf = await app.inject({
+      method: 'PATCH',
+      url: '/operator/operators/operator-1',
+      payload: { roles: ['support'], reason: 'Should not work' },
+    })
     expect(demoteSelf.statusCode).toBe(409)
 
-    const suspendSelf = await app.inject({ method: 'POST', url: '/operator/operators/operator-1/suspend', payload: { reason: 'Should not work' } })
+    const suspendSelf = await app.inject({
+      method: 'POST',
+      url: '/operator/operators/operator-1/suspend',
+      payload: { reason: 'Should not work' },
+    })
     expect(suspendSelf.statusCode).toBe(409)
 
     const list = await app.inject({ method: 'GET', url: '/operator/operators' })
@@ -231,18 +353,30 @@ describe('/operator control plane', () => {
   })
 
   it('blocks operator management from non-super_admin platform roles', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
     const app = await buildApp()
-    const response = await app.inject({ method: 'POST', url: '/operator/operators', payload: { user_id: 'user-2', roles: ['support'], reason: 'Not allowed' } })
+    const response = await app.inject({
+      method: 'POST',
+      url: '/operator/operators',
+      payload: { user_id: 'user-2', roles: ['support'], reason: 'Not allowed' },
+    })
     expect(response.statusCode).toBe(403)
     await app.close()
   })
 
   it('returns the operator audit trail and operations health', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
     await db.collection('insights').insertOne({ state: 'identified' })
     const app = await buildApp()
-    await app.inject({ method: 'POST', url: '/operator/tenants/family-1/suspend', payload: { reason: 'Audit test entry' } })
+    await app.inject({
+      method: 'POST',
+      url: '/operator/tenants/family-1/suspend',
+      payload: { reason: 'Audit test entry' },
+    })
 
     const audit = await app.inject({ method: 'GET', url: '/operator/audit?target_type=tenant' })
     expect(audit.statusCode).toBe(200)
@@ -258,10 +392,18 @@ describe('/operator control plane', () => {
   })
 
   it('lists, updates, and suppresses leads with audit entries', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['marketing_operator'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['marketing_operator'] })
     await db.collection('leads').insertOne({
-      id: 'lead-1', email: 'lead@example.com', stage: 'new', source: 'readiness_quiz',
-      suppressed: false, notes: [], consent: { marketing: true }, created_at: new Date(),
+      id: 'lead-1',
+      email: 'lead@example.com',
+      stage: 'new',
+      source: 'readiness_quiz',
+      suppressed: false,
+      notes: [],
+      consent: { marketing: true },
+      created_at: new Date(),
     })
     const app = await buildApp()
 
@@ -272,8 +414,13 @@ describe('/operator control plane', () => {
     expect(list.json().sources.readiness_quiz).toBe(1)
 
     const update = await app.inject({
-      method: 'PATCH', url: '/operator/leads/lead-1',
-      payload: { stage: 'contacted', note: 'Replied to intro email', reason: 'Pipeline progression' },
+      method: 'PATCH',
+      url: '/operator/leads/lead-1',
+      payload: {
+        stage: 'contacted',
+        note: 'Replied to intro email',
+        reason: 'Pipeline progression',
+      },
     })
     expect(update.statusCode).toBe(200)
     expect(update.json().lead.stage).toBe('contacted')
@@ -281,68 +428,109 @@ describe('/operator control plane', () => {
     expect(update.json().lead.notes[0].author_id).toBe('operator-1')
 
     const suppress = await app.inject({
-      method: 'POST', url: '/operator/leads/lead-1/suppress', payload: { reason: 'Unsubscribe request received' },
+      method: 'POST',
+      url: '/operator/leads/lead-1/suppress',
+      payload: { reason: 'Unsubscribe request received' },
     })
     expect(suppress.statusCode).toBe(200)
     expect((await db.collection('leads').findOne({ id: 'lead-1' }))?.['suppressed']).toBe(true)
 
-    const actions = (await db.collection('operator_audit_log').find({ target_id: 'lead-1' }).toArray()).map((e) => e['action'])
-    expect(actions.sort()).toEqual(['operator.lead.add_note', 'operator.lead.suppress', 'operator.lead.update_stage'])
+    const actions = (
+      await db.collection('operator_audit_log').find({ target_id: 'lead-1' }).toArray()
+    ).map((e) => e['action'])
+    expect(actions.sort()).toEqual([
+      'operator.lead.add_note',
+      'operator.lead.suppress',
+      'operator.lead.update_stage',
+    ])
     await app.close()
   })
 
   it('blocks lead management from roles without leads.manage', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     const app = await buildApp()
     const response = await app.inject({
-      method: 'PATCH', url: '/operator/leads/lead-1', payload: { stage: 'contacted', reason: 'Should not work' },
+      method: 'PATCH',
+      url: '/operator/leads/lead-1',
+      payload: { stage: 'contacted', reason: 'Should not work' },
     })
     expect(response.statusCode).toBe(403)
     await app.close()
   })
 
   it('creates, lists, and deactivates promo codes with audit entries', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['finance_operator'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['finance_operator'] })
     const app = await buildApp()
 
     const create = await app.inject({
-      method: 'POST', url: '/operator/promotions',
+      method: 'POST',
+      url: '/operator/promotions',
       payload: { code: 'launch50', grant_credits: 50, max_uses: 100, reason: 'Launch campaign' },
     })
     expect(create.statusCode).toBe(200)
     expect(create.json().code).toBe('LAUNCH50')
 
     const dup = await app.inject({
-      method: 'POST', url: '/operator/promotions',
+      method: 'POST',
+      url: '/operator/promotions',
       payload: { code: 'LAUNCH50', grant_credits: 10, max_uses: 1, reason: 'Duplicate attempt' },
     })
     expect(dup.statusCode).toBe(409)
 
     const list = await app.inject({ method: 'GET', url: '/operator/promotions' })
     expect(list.json().promotions).toHaveLength(1)
-    expect(list.json().promotions[0]).toMatchObject({ code: 'LAUNCH50', grant_credits: 50, active: true, used_count: 0 })
+    expect(list.json().promotions[0]).toMatchObject({
+      code: 'LAUNCH50',
+      grant_credits: 50,
+      active: true,
+      used_count: 0,
+    })
 
-    await db.collection('promo_redemptions').insertOne({ tenant_id: 'family-1', code: 'LAUNCH50', grant_credits: 50, redeemed_at: new Date() })
-    const redemptions = await app.inject({ method: 'GET', url: '/operator/promotions/LAUNCH50/redemptions' })
+    await db
+      .collection('promo_redemptions')
+      .insertOne({
+        tenant_id: 'family-1',
+        code: 'LAUNCH50',
+        grant_credits: 50,
+        redeemed_at: new Date(),
+      })
+    const redemptions = await app.inject({
+      method: 'GET',
+      url: '/operator/promotions/LAUNCH50/redemptions',
+    })
     expect(redemptions.statusCode).toBe(200)
     expect(redemptions.json().redemptions).toHaveLength(1)
 
     const deactivate = await app.inject({
-      method: 'POST', url: '/operator/promotions/LAUNCH50/deactivate', payload: { reason: 'Campaign ended' },
+      method: 'POST',
+      url: '/operator/promotions/LAUNCH50/deactivate',
+      payload: { reason: 'Campaign ended' },
     })
     expect(deactivate.statusCode).toBe(200)
-    expect((await db.collection('promo_codes').findOne({ code: 'LAUNCH50' }))?.['active']).toBe(false)
+    expect((await db.collection('promo_codes').findOne({ code: 'LAUNCH50' }))?.['active']).toBe(
+      false,
+    )
 
-    const actions = (await db.collection('operator_audit_log').find({ target_type: 'promotion' }).toArray()).map((e) => e['action'])
+    const actions = (
+      await db.collection('operator_audit_log').find({ target_type: 'promotion' }).toArray()
+    ).map((e) => e['action'])
     expect(actions.sort()).toEqual(['operator.promotion.create', 'operator.promotion.deactivate'])
     await app.close()
   })
 
   it('blocks promotion management from non-finance roles', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     const app = await buildApp()
     const response = await app.inject({
-      method: 'POST', url: '/operator/promotions', payload: { code: 'TEST1', grant_credits: 5, reason: 'Should not work' },
+      method: 'POST',
+      url: '/operator/promotions',
+      payload: { code: 'TEST1', grant_credits: 5, reason: 'Should not work' },
     })
     expect(response.statusCode).toBe(403)
     expect(await db.collection('promo_codes').countDocuments({})).toBe(0)
@@ -350,10 +538,26 @@ describe('/operator control plane', () => {
   })
 
   it('reports signups grouped by utm_source on the overview', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     await db.collection('users').insertMany([
-      { id: 'u-x', tenant_id: 't-x', email: 'x@x.com', roles: ['admin'], created_at: new Date(), attribution: { utm_source: 'linkedin' } },
-      { id: 'u-y', tenant_id: 't-y', email: 'y@y.com', roles: ['admin'], created_at: new Date(), attribution: { utm_source: 'linkedin' } },
+      {
+        id: 'u-x',
+        tenant_id: 't-x',
+        email: 'x@x.com',
+        roles: ['admin'],
+        created_at: new Date(),
+        attribution: { utm_source: 'linkedin' },
+      },
+      {
+        id: 'u-y',
+        tenant_id: 't-y',
+        email: 'y@y.com',
+        roles: ['admin'],
+        created_at: new Date(),
+        attribution: { utm_source: 'linkedin' },
+      },
       { id: 'u-z', tenant_id: 't-z', email: 'z@z.com', roles: ['admin'], created_at: new Date() },
     ])
     const app = await buildApp()
@@ -364,14 +568,23 @@ describe('/operator control plane', () => {
   })
 
   it('manages the blog lifecycle with audited, reasoned actions', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['marketing_operator'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['marketing_operator'] })
     const app = await buildApp()
 
     const create = await app.inject({
-      method: 'POST', url: '/operator/blog/posts',
+      method: 'POST',
+      url: '/operator/blog/posts',
       payload: {
-        title: 'Emergency funds', slug: 'emergency-funds', content: '# Body', excerpt: 'An excerpt',
-        category: 'tutorial', author: 'Keel', meta_description: 'SEO description', reason: 'Content calendar week 12',
+        title: 'Emergency funds',
+        slug: 'emergency-funds',
+        content: '# Body',
+        excerpt: 'An excerpt',
+        category: 'tutorial',
+        author: 'Keel',
+        meta_description: 'SEO description',
+        reason: 'Content calendar week 12',
       },
     })
     expect(create.statusCode).toBe(200)
@@ -379,38 +592,79 @@ describe('/operator control plane', () => {
     expect(create.json().post.published).toBe(false)
 
     // Drafts must not leak onto the public list (mirrors blog.ts's filter).
-    expect(await db.collection('blog_posts').countDocuments({ id: postId, published: true })).toBe(0)
+    expect(await db.collection('blog_posts').countDocuments({ id: postId, published: true })).toBe(
+      0,
+    )
 
     const update = await app.inject({
-      method: 'PATCH', url: `/operator/blog/posts/${postId}`,
+      method: 'PATCH',
+      url: `/operator/blog/posts/${postId}`,
       payload: { excerpt: 'Better excerpt', reason: 'Editorial review' },
     })
     expect(update.statusCode).toBe(200)
     expect(update.json().post.excerpt).toBe('Better excerpt')
 
-    const publish = await app.inject({ method: 'POST', url: `/operator/blog/posts/${postId}/publish`, payload: { reason: 'Approved for publication' } })
+    const publish = await app.inject({
+      method: 'POST',
+      url: `/operator/blog/posts/${postId}/publish`,
+      payload: { reason: 'Approved for publication' },
+    })
     expect(publish.statusCode).toBe(200)
     const published = await db.collection('blog_posts').findOne({ id: postId })
     expect(published?.['published']).toBe(true)
     expect(published?.['published_at']).toBeInstanceOf(Date)
 
-    const unpublish = await app.inject({ method: 'POST', url: `/operator/blog/posts/${postId}/unpublish`, payload: { reason: 'Content needs revision' } })
+    const unpublish = await app.inject({
+      method: 'POST',
+      url: `/operator/blog/posts/${postId}/unpublish`,
+      payload: { reason: 'Content needs revision' },
+    })
     expect(unpublish.statusCode).toBe(200)
     expect((await db.collection('blog_posts').findOne({ id: postId }))?.['published']).toBe(false)
 
-    const actions = (await db.collection('operator_audit_log').find({ target_type: 'blog_post' }).toArray()).map((e) => e['action'])
-    expect(actions.sort()).toEqual(['operator.blog.create', 'operator.blog.publish', 'operator.blog.unpublish', 'operator.blog.update'])
+    const actions = (
+      await db.collection('operator_audit_log').find({ target_type: 'blog_post' }).toArray()
+    ).map((e) => e['action'])
+    expect(actions.sort()).toEqual([
+      'operator.blog.create',
+      'operator.blog.publish',
+      'operator.blog.unpublish',
+      'operator.blog.update',
+    ])
     await app.close()
   })
 
   it('rejects duplicate blog slugs and non-marketing roles', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['marketing_operator'] })
-    await db.collection('blog_posts').insertOne({ id: 'p1', slug: 'taken', title: 'T', content: 'C', excerpt: 'E', category: 'news', author: 'A', published: true, created_at: new Date() })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['marketing_operator'] })
+    await db
+      .collection('blog_posts')
+      .insertOne({
+        id: 'p1',
+        slug: 'taken',
+        title: 'T',
+        content: 'C',
+        excerpt: 'E',
+        category: 'news',
+        author: 'A',
+        published: true,
+        created_at: new Date(),
+      })
     const app = await buildApp()
 
     const dup = await app.inject({
-      method: 'POST', url: '/operator/blog/posts',
-      payload: { title: 'T2', slug: 'taken', content: 'C', excerpt: 'E', category: 'news', author: 'A', reason: 'Dup slug attempt' },
+      method: 'POST',
+      url: '/operator/blog/posts',
+      payload: {
+        title: 'T2',
+        slug: 'taken',
+        content: 'C',
+        excerpt: 'E',
+        category: 'news',
+        author: 'A',
+        reason: 'Dup slug attempt',
+      },
     })
     expect(dup.statusCode).toBe(409)
 
@@ -426,12 +680,23 @@ describe('/operator control plane', () => {
   })
 
   it('reports billing overview and tenant ledger detail', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['finance_operator'] })
-    await db.collection('tenants').updateOne(
-      { tenant_id: 'family-1' },
-      { $set: { billing: { credits_balance: 12, credits_included: 10, currency: 'GBP' }, stripe_customer_id: 'cus_123' } },
-    )
-    await db.collection('stripe_webhook_events').insertOne({ event_id: 'evt_1', event_type: 'invoice.paid', processed_at: new Date() })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['finance_operator'] })
+    await db
+      .collection('tenants')
+      .updateOne(
+        { tenant_id: 'family-1' },
+        {
+          $set: {
+            billing: { credits_balance: 12, credits_included: 10, currency: 'GBP' },
+            stripe_customer_id: 'cus_123',
+          },
+        },
+      )
+    await db
+      .collection('stripe_webhook_events')
+      .insertOne({ event_id: 'evt_1', event_type: 'invoice.paid', processed_at: new Date() })
     const app = await buildApp()
 
     const overview = await app.inject({ method: 'GET', url: '/operator/billing' })
@@ -451,39 +716,58 @@ describe('/operator control plane', () => {
   it('adjusts credits atomically with ledger and audit records', async () => {
     process.env['BILLING_V2_ENABLED'] = 'true'
     try {
-      await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['finance_operator'] })
-      await db.collection('tenants').updateOne(
-        { tenant_id: 'family-1' },
-        { $set: { billing: { credits_balance: 5, credits_included: 5, currency: 'GBP' } } },
-      )
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles: ['finance_operator'] })
+      await db
+        .collection('tenants')
+        .updateOne(
+          { tenant_id: 'family-1' },
+          { $set: { billing: { credits_balance: 5, credits_included: 5, currency: 'GBP' } } },
+        )
       const app = await buildApp()
 
       const grant = await app.inject({
-        method: 'POST', url: '/operator/billing/tenants/family-1/adjust-credits',
+        method: 'POST',
+        url: '/operator/billing/tenants/family-1/adjust-credits',
         payload: { amount: 10, reason: 'Goodwill after outage' },
       })
       expect(grant.statusCode).toBe(200)
       expect(grant.json().credits_balance).toBe(15)
 
       const overDeduct = await app.inject({
-        method: 'POST', url: '/operator/billing/tenants/family-1/adjust-credits',
+        method: 'POST',
+        url: '/operator/billing/tenants/family-1/adjust-credits',
         payload: { amount: -50, reason: 'Should fail' },
       })
       expect(overDeduct.statusCode).toBe(409)
-      expect((await db.collection('tenants').findOne({ tenant_id: 'family-1' }))?.['billing']?.['credits_balance']).toBe(15)
+      expect(
+        (await db.collection('tenants').findOne({ tenant_id: 'family-1' }))?.['billing']?.[
+          'credits_balance'
+        ],
+      ).toBe(15)
 
       const deduct = await app.inject({
-        method: 'POST', url: '/operator/billing/tenants/family-1/adjust-credits',
+        method: 'POST',
+        url: '/operator/billing/tenants/family-1/adjust-credits',
         payload: { amount: -5, reason: 'Correction of duplicate grant' },
       })
       expect(deduct.statusCode).toBe(200)
       expect(deduct.json().credits_balance).toBe(10)
 
-      const entries = await db.collection('credit_ledger').find({ tenant_id: 'family-1', type: 'admin_adjustment' }).toArray()
-      expect(entries.map((e) => e['amount']).sort((a, b) => (a as number) - (b as number))).toEqual([-5, 10])
+      const entries = await db
+        .collection('credit_ledger')
+        .find({ tenant_id: 'family-1', type: 'admin_adjustment' })
+        .toArray()
+      expect(entries.map((e) => e['amount']).sort((a, b) => (a as number) - (b as number))).toEqual(
+        [-5, 10],
+      )
       expect(entries[0]?.['actor']).toBe('operator-1')
 
-      const audits = (await db.collection('operator_audit_log').find({ action: 'operator.billing.adjust_credits' }).toArray())
+      const audits = await db
+        .collection('operator_audit_log')
+        .find({ action: 'operator.billing.adjust_credits' })
+        .toArray()
       expect(audits).toHaveLength(2)
       await app.close()
     } finally {
@@ -492,23 +776,31 @@ describe('/operator control plane', () => {
   })
 
   it('rejects credit adjustment on unlimited plans and non-finance roles', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['finance_operator'] })
-    await db.collection('tenants').updateOne(
-      { tenant_id: 'family-1' },
-      { $set: { billing: { credits_balance: Number.MAX_SAFE_INTEGER, currency: 'GBP' } } },
-    )
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['finance_operator'] })
+    await db
+      .collection('tenants')
+      .updateOne(
+        { tenant_id: 'family-1' },
+        { $set: { billing: { credits_balance: Number.MAX_SAFE_INTEGER, currency: 'GBP' } } },
+      )
     const app = await buildApp()
     const unlimited = await app.inject({
-      method: 'POST', url: '/operator/billing/tenants/family-1/adjust-credits',
+      method: 'POST',
+      url: '/operator/billing/tenants/family-1/adjust-credits',
       payload: { amount: 10, reason: 'Should not apply' },
     })
     expect(unlimited.statusCode).toBe(409)
     await app.close()
 
-    await db.collection('platform_operators').updateOne({ user_id: 'operator-1' }, { $set: { roles: ['support'] } })
+    await db
+      .collection('platform_operators')
+      .updateOne({ user_id: 'operator-1' }, { $set: { roles: ['support'] } })
     const app2 = await buildApp()
     const denied = await app2.inject({
-      method: 'POST', url: '/operator/billing/tenants/family-1/adjust-credits',
+      method: 'POST',
+      url: '/operator/billing/tenants/family-1/adjust-credits',
       payload: { amount: 10, reason: 'Support cannot do this' },
     })
     expect(denied.statusCode).toBe(403)
@@ -518,21 +810,69 @@ describe('/operator control plane', () => {
 
 describe('operations depth', () => {
   it('reports reminder, connector, cron, and queue health without secrets', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
     await db.collection('reminders').insertMany([
-      { id: 'rem-1', tenant_id: 'family-1', status: 'failed', attempts: 6, last_error: 'SMTP timeout', due_at: new Date(), policy: { type: 'motor', provider: 'Acme', policy_number: 'SECRET-123' }, updated_at: new Date() },
-      { id: 'rem-2', tenant_id: 'family-1', status: 'scheduled', attempts: 0, due_at: new Date(), updated_at: new Date() },
-      { id: 'rem-3', tenant_id: 'family-1', status: 'sending', attempts: 1, due_at: new Date(), updated_at: new Date(Date.now() - 20 * 60 * 1000) },
+      {
+        id: 'rem-1',
+        tenant_id: 'family-1',
+        status: 'failed',
+        attempts: 6,
+        last_error: 'SMTP timeout',
+        due_at: new Date(),
+        policy: { type: 'motor', provider: 'Acme', policy_number: 'SECRET-123' },
+        updated_at: new Date(),
+      },
+      {
+        id: 'rem-2',
+        tenant_id: 'family-1',
+        status: 'scheduled',
+        attempts: 0,
+        due_at: new Date(),
+        updated_at: new Date(),
+      },
+      {
+        id: 'rem-3',
+        tenant_id: 'family-1',
+        status: 'sending',
+        attempts: 1,
+        due_at: new Date(),
+        updated_at: new Date(Date.now() - 20 * 60 * 1000),
+      },
     ])
     await db.collection('connector_credentials').insertMany([
-      { tenant_id: 'family-1', connector_id: 'gmail', credentials_encrypted: 'enc', token_expires_at: new Date(Date.now() + 3 * 86400000) },
+      {
+        tenant_id: 'family-1',
+        connector_id: 'gmail',
+        credentials_encrypted: 'enc',
+        token_expires_at: new Date(Date.now() + 3 * 86400000),
+      },
       { tenant_id: 'family-1', connector_id: 'outlook', credentials_encrypted: 'enc' },
     ])
     await db.collection('cron_locks').insertMany([
-      { name: 'email-scan', owner: 'worker-1', acquired_at: new Date(), expires_at: new Date(Date.now() + 60000) },
-      { name: 'dead-job', owner: 'worker-2', acquired_at: new Date(Date.now() - 3600000), expires_at: new Date(Date.now() - 60000) },
+      {
+        name: 'email-scan',
+        owner: 'worker-1',
+        acquired_at: new Date(),
+        expires_at: new Date(Date.now() + 60000),
+      },
+      {
+        name: 'dead-job',
+        owner: 'worker-2',
+        acquired_at: new Date(Date.now() - 3600000),
+        expires_at: new Date(Date.now() - 60000),
+      },
     ])
-    await db.collection('marketing_posts').insertOne({ id: 'post-1', state: 'publish_failed', channel: 'x', publish_error: 'rate limited', updated_at: new Date() })
+    await db
+      .collection('marketing_posts')
+      .insertOne({
+        id: 'post-1',
+        state: 'publish_failed',
+        channel: 'x',
+        publish_error: 'rate limited',
+        updated_at: new Date(),
+      })
 
     const app = await buildApp()
     const ops = await app.inject({ method: 'GET', url: '/operator/operations' })
@@ -561,36 +901,82 @@ describe('operations depth', () => {
   })
 
   it('retries a failed reminder with audit, rejects non-failed reminders', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
     await db.collection('reminders').insertMany([
-      { id: 'rem-1', tenant_id: 'family-1', status: 'failed', attempts: 6, last_error: 'SMTP timeout', due_at: new Date(), updated_at: new Date() },
-      { id: 'rem-2', tenant_id: 'family-1', status: 'sent', attempts: 1, due_at: new Date(), updated_at: new Date() },
+      {
+        id: 'rem-1',
+        tenant_id: 'family-1',
+        status: 'failed',
+        attempts: 6,
+        last_error: 'SMTP timeout',
+        due_at: new Date(),
+        updated_at: new Date(),
+      },
+      {
+        id: 'rem-2',
+        tenant_id: 'family-1',
+        status: 'sent',
+        attempts: 1,
+        due_at: new Date(),
+        updated_at: new Date(),
+      },
     ])
     const app = await buildApp()
 
-    const denied = await app.inject({ method: 'POST', url: '/operator/reminders/rem-1/retry', payload: { reason: 'no' } })
+    const denied = await app.inject({
+      method: 'POST',
+      url: '/operator/reminders/rem-1/retry',
+      payload: { reason: 'no' },
+    })
     expect(denied.statusCode).toBe(400)
 
-    const notFailed = await app.inject({ method: 'POST', url: '/operator/reminders/rem-2/retry', payload: { reason: 'Trying anyway' } })
+    const notFailed = await app.inject({
+      method: 'POST',
+      url: '/operator/reminders/rem-2/retry',
+      payload: { reason: 'Trying anyway' },
+    })
     expect(notFailed.statusCode).toBe(404)
 
-    const retry = await app.inject({ method: 'POST', url: '/operator/reminders/rem-1/retry', payload: { reason: 'SMTP fixed, resending' } })
+    const retry = await app.inject({
+      method: 'POST',
+      url: '/operator/reminders/rem-1/retry',
+      payload: { reason: 'SMTP fixed, resending' },
+    })
     expect(retry.statusCode).toBe(200)
     const doc = await db.collection('reminders').findOne({ id: 'rem-1' })
     expect(doc?.['status']).toBe('scheduled')
     expect(doc?.['attempts']).toBe(0)
     expect(doc?.['last_error']).toBeUndefined()
 
-    const auditEntry = await db.collection('operator_audit_log').findOne({ action: 'operator.reminder.retry' })
+    const auditEntry = await db
+      .collection('operator_audit_log')
+      .findOne({ action: 'operator.reminder.retry' })
     expect(auditEntry?.['reason']).toBe('SMTP fixed, resending')
     await app.close()
   })
 
   it('denies reminder retry to read-only roles', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
-    await db.collection('reminders').insertOne({ id: 'rem-1', tenant_id: 'family-1', status: 'failed', attempts: 6, due_at: new Date(), updated_at: new Date() })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('reminders')
+      .insertOne({
+        id: 'rem-1',
+        tenant_id: 'family-1',
+        status: 'failed',
+        attempts: 6,
+        due_at: new Date(),
+        updated_at: new Date(),
+      })
     const app = await buildApp()
-    const response = await app.inject({ method: 'POST', url: '/operator/reminders/rem-1/retry', payload: { reason: 'Support should not do this' } })
+    const response = await app.inject({
+      method: 'POST',
+      url: '/operator/reminders/rem-1/retry',
+      payload: { reason: 'Support should not do this' },
+    })
     expect(response.statusCode).toBe(403)
     await app.close()
   })
@@ -598,30 +984,52 @@ describe('operations depth', () => {
 
 describe('session revocation', () => {
   it('stamps sessions_revoked_at with an audit entry', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
     const app = await buildApp()
 
-    const missing = await app.inject({ method: 'POST', url: '/operator/users/ghost/revoke-sessions', payload: { reason: 'No such user' } })
+    const missing = await app.inject({
+      method: 'POST',
+      url: '/operator/users/ghost/revoke-sessions',
+      payload: { reason: 'No such user' },
+    })
     expect(missing.statusCode).toBe(404)
 
-    const noReason = await app.inject({ method: 'POST', url: '/operator/users/user-2/revoke-sessions', payload: {} })
+    const noReason = await app.inject({
+      method: 'POST',
+      url: '/operator/users/user-2/revoke-sessions',
+      payload: {},
+    })
     expect(noReason.statusCode).toBe(400)
 
-    const res = await app.inject({ method: 'POST', url: '/operator/users/user-2/revoke-sessions', payload: { reason: 'Device reported stolen' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/operator/users/user-2/revoke-sessions',
+      payload: { reason: 'Device reported stolen' },
+    })
     expect(res.statusCode).toBe(200)
     const user = await db.collection('users').findOne({ id: 'user-2' })
     expect(user?.['sessions_revoked_at']).toBeInstanceOf(Date)
     expect(user?.['status']).toBe('active') // revocation does not suspend
 
-    const auditEntry = await db.collection('operator_audit_log').findOne({ action: 'operator.user.revoke_sessions' })
+    const auditEntry = await db
+      .collection('operator_audit_log')
+      .findOne({ action: 'operator.user.revoke_sessions' })
     expect(auditEntry?.['target_id']).toBe('user-2')
     await app.close()
   })
 
   it('denies session revocation to roles without users.manage', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['finance_operator'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['finance_operator'] })
     const app = await buildApp()
-    const res = await app.inject({ method: 'POST', url: '/operator/users/user-2/revoke-sessions', payload: { reason: 'Finance should not do this' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/operator/users/user-2/revoke-sessions',
+      payload: { reason: 'Finance should not do this' },
+    })
     expect(res.statusCode).toBe(403)
     await app.close()
   })
@@ -629,21 +1037,41 @@ describe('session revocation', () => {
 
 describe('dead-letter requeue', () => {
   it('requires operations.manage and a whitelisted queue', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     const app = await buildApp()
-    const denied = await app.inject({ method: 'POST', url: '/operator/queues/webhook.ingest/dead/job-1/requeue', payload: { reason: 'Support cannot requeue' } })
+    const denied = await app.inject({
+      method: 'POST',
+      url: '/operator/queues/webhook.ingest/dead/job-1/requeue',
+      payload: { reason: 'Support cannot requeue' },
+    })
     expect(denied.statusCode).toBe(403)
     await app.close()
 
-    await db.collection('platform_operators').updateOne({ user_id: 'operator-1' }, { $set: { roles: ['operations'] } })
+    await db
+      .collection('platform_operators')
+      .updateOne({ user_id: 'operator-1' }, { $set: { roles: ['operations'] } })
     const app2 = await buildApp()
-    const unknownQueue = await app2.inject({ method: 'POST', url: '/operator/queues/evil.queue/dead/job-1/requeue', payload: { reason: 'Arbitrary key access attempt' } })
+    const unknownQueue = await app2.inject({
+      method: 'POST',
+      url: '/operator/queues/evil.queue/dead/job-1/requeue',
+      payload: { reason: 'Arbitrary key access attempt' },
+    })
     expect(unknownQueue.statusCode).toBe(404)
-    const noReason = await app2.inject({ method: 'POST', url: '/operator/queues/webhook.ingest/dead/job-1/requeue', payload: {} })
+    const noReason = await app2.inject({
+      method: 'POST',
+      url: '/operator/queues/webhook.ingest/dead/job-1/requeue',
+      payload: {},
+    })
     expect(noReason.statusCode).toBe(400)
     // No Redis in the test env — inline mode means there is no durable
     // dead-letter list, so the route reports the backend as unavailable.
-    const unavailable = await app2.inject({ method: 'POST', url: '/operator/queues/webhook.ingest/dead/job-1/requeue', payload: { reason: 'Retry after webhook fix' } })
+    const unavailable = await app2.inject({
+      method: 'POST',
+      url: '/operator/queues/webhook.ingest/dead/job-1/requeue',
+      payload: { reason: 'Retry after webhook fix' },
+    })
     expect(unavailable.statusCode).toBe(503)
     await app2.close()
   })
@@ -651,11 +1079,19 @@ describe('dead-letter requeue', () => {
 
 describe('leads detail, funnel, connectors, configuration, infrastructure', () => {
   it('returns a full lead record and the 30d funnel', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['marketing_operator'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['marketing_operator'] })
     await db.collection('leads').insertOne({
-      id: 'lead-1', email: 'lead@example.com', stage: 'new', source: 'readiness_quiz',
-      suppressed: false, notes: [{ text: 'n1', author_id: 'operator-1', created_at: new Date() }],
-      consent: { marketing: true }, attribution: { utm_source: 'x' }, created_at: new Date(),
+      id: 'lead-1',
+      email: 'lead@example.com',
+      stage: 'new',
+      source: 'readiness_quiz',
+      suppressed: false,
+      notes: [{ text: 'n1', author_id: 'operator-1', created_at: new Date() }],
+      consent: { marketing: true },
+      attribution: { utm_source: 'x' },
+      created_at: new Date(),
     })
     await db.collection('insights').insertOne({ tenant_id: 'family-1', state: 'identified' })
     await db.collection('tenants').updateOne({ tenant_id: 'family-1' }, { $set: { plan: 'plus' } })
@@ -673,31 +1109,57 @@ describe('leads detail, funnel, connectors, configuration, infrastructure', () =
     expect(funnel.json().totals.activated_tenants).toBe(1)
     expect(funnel.json().totals.paying_tenants).toBe(1)
     expect(funnel.json().leads_by_stage.new).toBe(1)
-    const quizRow = funnel.json().by_source.find((s: { source: string }) => s.source === 'readiness_quiz')
+    const quizRow = funnel
+      .json()
+      .by_source.find((s: { source: string }) => s.source === 'readiness_quiz')
     expect(quizRow.leads).toBe(1)
     await app.close()
   })
 
   it('revokes a connector credential with audit, never touching secret fields', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
     await db.collection('connector_credentials').insertOne({
-      tenant_id: 'family-1', connector_id: 'gmail', auth_type: 'oauth2',
-      access_token: 'enc:secret', refresh_token: 'enc:secret',
+      tenant_id: 'family-1',
+      connector_id: 'gmail',
+      auth_type: 'oauth2',
+      access_token: 'enc:secret',
+      refresh_token: 'enc:secret',
     })
     const app = await buildApp()
 
-    const missing = await app.inject({ method: 'POST', url: '/operator/connectors/gmail/tenants/ghost/revoke', payload: { reason: 'No such credential' } })
+    const missing = await app.inject({
+      method: 'POST',
+      url: '/operator/connectors/gmail/tenants/ghost/revoke',
+      payload: { reason: 'No such credential' },
+    })
     expect(missing.statusCode).toBe(404)
 
-    const res = await app.inject({ method: 'POST', url: '/operator/connectors/gmail/tenants/family-1/revoke', payload: { reason: 'Tenant requested disconnect' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/operator/connectors/gmail/tenants/family-1/revoke',
+      payload: { reason: 'Tenant requested disconnect' },
+    })
     expect(res.statusCode).toBe(200)
-    expect(await db.collection('connector_credentials').findOne({ tenant_id: 'family-1' })).toBeNull()
+    expect(
+      await db.collection('connector_credentials').findOne({ tenant_id: 'family-1' }),
+    ).toBeNull()
 
-    const entry = await db.collection('operator_audit_log').findOne({ action: 'operator.connector.revoke' })
+    const entry = await db
+      .collection('operator_audit_log')
+      .findOne({ action: 'operator.connector.revoke' })
     expect(entry?.['target_id']).toBe('family-1/gmail')
 
     // The ops view exposes the connector list without credential fields.
-    await db.collection('connector_credentials').insertOne({ tenant_id: 'family-1', connector_id: 'outlook', auth_type: 'oauth2', access_token: 'enc:hidden' })
+    await db
+      .collection('connector_credentials')
+      .insertOne({
+        tenant_id: 'family-1',
+        connector_id: 'outlook',
+        auth_type: 'oauth2',
+        access_token: 'enc:hidden',
+      })
     const ops = await app.inject({ method: 'GET', url: '/operator/operations' })
     expect(ops.json().connectors.list[0].connector_id).toBe('outlook')
     expect(JSON.stringify(ops.json().connectors.list)).not.toContain('enc:hidden')
@@ -705,27 +1167,49 @@ describe('leads detail, funnel, connectors, configuration, infrastructure', () =
   })
 
   it('denies connector revoke to roles without operations.manage', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
-    await db.collection('connector_credentials').insertOne({ tenant_id: 'family-1', connector_id: 'gmail' })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('connector_credentials')
+      .insertOne({ tenant_id: 'family-1', connector_id: 'gmail' })
     const app = await buildApp()
-    const res = await app.inject({ method: 'POST', url: '/operator/connectors/gmail/tenants/family-1/revoke', payload: { reason: 'Not allowed for support' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/operator/connectors/gmail/tenants/family-1/revoke',
+      payload: { reason: 'Not allowed for support' },
+    })
     expect(res.statusCode).toBe(403)
     expect(await db.collection('connector_credentials').countDocuments()).toBe(1)
     await app.close()
   })
 
   it('reads and updates platform configuration with history and audit', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
     const app = await buildApp()
 
     const read = await app.inject({ method: 'GET', url: '/operator/configuration' })
     expect(read.statusCode).toBe(200)
     expect(read.json().config.signups_enabled).toBe(true)
 
-    const noop = await app.inject({ method: 'PUT', url: '/operator/configuration', payload: { signups_enabled: true, reason: 'Already enabled' } })
+    const noop = await app.inject({
+      method: 'PUT',
+      url: '/operator/configuration',
+      payload: { signups_enabled: true, reason: 'Already enabled' },
+    })
     expect(noop.statusCode).toBe(400)
 
-    const update = await app.inject({ method: 'PUT', url: '/operator/configuration', payload: { maintenance_mode: true, marketing_paused: true, reason: 'Deploying schema migration' } })
+    const update = await app.inject({
+      method: 'PUT',
+      url: '/operator/configuration',
+      payload: {
+        maintenance_mode: true,
+        marketing_paused: true,
+        reason: 'Deploying schema migration',
+      },
+    })
     expect(update.statusCode).toBe(200)
     expect(update.json().config.maintenance_mode).toBe(true)
     expect(update.json().config.signups_enabled).toBe(true)
@@ -735,29 +1219,55 @@ describe('leads detail, funnel, connectors, configuration, infrastructure', () =
     expect(history[0]?.['before'].maintenance_mode).toBe(false)
     expect(history[0]?.['after'].maintenance_mode).toBe(true)
 
-    const entry = await db.collection('operator_audit_log').findOne({ action: 'operator.configuration.update' })
+    const entry = await db
+      .collection('operator_audit_log')
+      .findOne({ action: 'operator.configuration.update' })
     expect(entry?.['reason']).toBe('Deploying schema migration')
     await app.close()
   })
 
   it('denies configuration changes to roles without configuration.manage', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
     const app = await buildApp()
-    const res = await app.inject({ method: 'PUT', url: '/operator/configuration', payload: { maintenance_mode: true, reason: 'Ops should not flip this' } })
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/operator/configuration',
+      payload: { maintenance_mode: true, reason: 'Ops should not flip this' },
+    })
     expect(res.statusCode).toBe(403)
     await app.close()
   })
 
   it('records infra cost snapshots and reports latest per service', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
     const app = await buildApp()
 
-    const denied = await app.inject({ method: 'POST', url: '/operator/infrastructure/snapshots', payload: { service: 'mongodb', monthly_usd: 10, reason: 'no' } })
+    const denied = await app.inject({
+      method: 'POST',
+      url: '/operator/infrastructure/snapshots',
+      payload: { service: 'mongodb', monthly_usd: 10, reason: 'no' },
+    })
     expect(denied.statusCode).toBe(400)
 
-    await app.inject({ method: 'POST', url: '/operator/infrastructure/snapshots', payload: { service: 'MongoDB Atlas', monthly_usd: 57, reason: 'October bill' } })
-    await app.inject({ method: 'POST', url: '/operator/infrastructure/snapshots', payload: { service: 'mongodb atlas', monthly_usd: 62, reason: 'November bill' } })
-    await app.inject({ method: 'POST', url: '/operator/infrastructure/snapshots', payload: { service: 'Firebase', monthly_usd: 12, reason: 'November bill' } })
+    await app.inject({
+      method: 'POST',
+      url: '/operator/infrastructure/snapshots',
+      payload: { service: 'MongoDB Atlas', monthly_usd: 57, reason: 'October bill' },
+    })
+    await app.inject({
+      method: 'POST',
+      url: '/operator/infrastructure/snapshots',
+      payload: { service: 'mongodb atlas', monthly_usd: 62, reason: 'November bill' },
+    })
+    await app.inject({
+      method: 'POST',
+      url: '/operator/infrastructure/snapshots',
+      payload: { service: 'Firebase', monthly_usd: 12, reason: 'November bill' },
+    })
 
     const infra = await app.inject({ method: 'GET', url: '/operator/infrastructure' })
     expect(infra.statusCode).toBe(200)
@@ -766,17 +1276,40 @@ describe('leads detail, funnel, connectors, configuration, infrastructure', () =
     expect(infra.json().total_monthly_usd).toBe(74)
     expect(infra.json().history).toHaveLength(3)
 
-    const entry = await db.collection('operator_audit_log').findOne({ action: 'operator.infrastructure.record_cost' })
+    const entry = await db
+      .collection('operator_audit_log')
+      .findOne({ action: 'operator.infrastructure.record_cost' })
     expect(entry).not.toBeNull()
     await app.close()
   })
 
   it('reports delivery pipeline state and recent failures', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
     await db.collection('delivery_queue').insertMany([
-      { tenant_id: 'family-1', insight_id: 'ins-1', channel: 'whatsapp', status: 'sent', created_at: new Date() },
-      { tenant_id: 'family-1', insight_id: 'ins-2', channel: 'email', status: 'failed', error: 'smtp bounce', updated_at: new Date() },
-      { tenant_id: 'family-1', insight_id: 'ins-3', channel: 'push', status: 'queued', created_at: new Date() },
+      {
+        tenant_id: 'family-1',
+        insight_id: 'ins-1',
+        channel: 'whatsapp',
+        status: 'sent',
+        created_at: new Date(),
+      },
+      {
+        tenant_id: 'family-1',
+        insight_id: 'ins-2',
+        channel: 'email',
+        status: 'failed',
+        error: 'smtp bounce',
+        updated_at: new Date(),
+      },
+      {
+        tenant_id: 'family-1',
+        insight_id: 'ins-3',
+        channel: 'push',
+        status: 'queued',
+        created_at: new Date(),
+      },
     ])
     const app = await buildApp()
     const ops = await app.inject({ method: 'GET', url: '/operator/operations' })
@@ -792,11 +1325,15 @@ describe('leads detail, funnel, connectors, configuration, infrastructure', () =
 
 describe('security monitoring', () => {
   it('surfaces locked accounts and supports audited early unlock', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
-    await db.collection('users').updateOne(
-      { id: 'user-2' },
-      { $set: { failed_login_attempts: 5, locked_until: new Date(Date.now() + 10 * 60 * 1000) } },
-    )
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    await db
+      .collection('users')
+      .updateOne(
+        { id: 'user-2' },
+        { $set: { failed_login_attempts: 5, locked_until: new Date(Date.now() + 10 * 60 * 1000) } },
+      )
     const app = await buildApp()
 
     const sec = await app.inject({ method: 'GET', url: '/operator/security' })
@@ -809,37 +1346,82 @@ describe('security monitoring', () => {
     const list = await app.inject({ method: 'GET', url: '/operator/users?q=family@example.com' })
     expect(list.json().users[0].locked_until).toBeDefined()
 
-    const unlock = await app.inject({ method: 'POST', url: '/operator/users/user-2/unlock', payload: { reason: 'Verified identity via support call' } })
+    const unlock = await app.inject({
+      method: 'POST',
+      url: '/operator/users/user-2/unlock',
+      payload: { reason: 'Verified identity via support call' },
+    })
     expect(unlock.statusCode).toBe(200)
     const user = await db.collection('users').findOne({ id: 'user-2' })
     expect(user?.['locked_until']).toBeUndefined()
     expect(user?.['failed_login_attempts']).toBe(0)
 
-    const again = await app.inject({ method: 'POST', url: '/operator/users/user-2/unlock', payload: { reason: 'Already unlocked now' } })
+    const again = await app.inject({
+      method: 'POST',
+      url: '/operator/users/user-2/unlock',
+      payload: { reason: 'Already unlocked now' },
+    })
     expect(again.statusCode).toBe(404)
 
-    const entry = await db.collection('operator_audit_log').findOne({ action: 'operator.user.unlock' })
+    const entry = await db
+      .collection('operator_audit_log')
+      .findOne({ action: 'operator.user.unlock' })
     expect(entry?.['target_id']).toBe('user-2')
     await app.close()
   })
 
   it('denies unlock to roles without users.manage', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     const app = await buildApp()
-    const res = await app.inject({ method: 'POST', url: '/operator/users/user-2/unlock', payload: { reason: 'Support cannot unlock' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/operator/users/user-2/unlock',
+      payload: { reason: 'Support cannot unlock' },
+    })
     expect(res.statusCode).toBe(403)
     await app.close()
   })
 
   it('aggregates 24h login telemetry — failures by IP, first-seen IPs, event feed', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     const now = Date.now()
     await db.collection('login_events').insertMany([
-      { email: 'family@example.com', user_id: 'user-2', success: false, reason: 'bad_password', ip: '203.0.113.9', created_at: new Date(now - 3600_000) },
-      { email: 'family@example.com', user_id: 'user-2', success: false, reason: 'bad_password', ip: '203.0.113.9', created_at: new Date(now - 3500_000) },
-      { email: 'operator@example.com', user_id: 'operator-1', success: true, ip: '198.51.100.4', created_at: new Date(now - 1800_000) },
+      {
+        email: 'family@example.com',
+        user_id: 'user-2',
+        success: false,
+        reason: 'bad_password',
+        ip: '203.0.113.9',
+        created_at: new Date(now - 3600_000),
+      },
+      {
+        email: 'family@example.com',
+        user_id: 'user-2',
+        success: false,
+        reason: 'bad_password',
+        ip: '203.0.113.9',
+        created_at: new Date(now - 3500_000),
+      },
+      {
+        email: 'operator@example.com',
+        user_id: 'operator-1',
+        success: true,
+        ip: '198.51.100.4',
+        created_at: new Date(now - 1800_000),
+      },
       // A week-old failure — outside the 24h window, must not be counted.
-      { email: 'family@example.com', user_id: 'user-2', success: false, reason: 'bad_password', ip: '203.0.113.9', created_at: new Date(now - 7 * 86400_000) },
+      {
+        email: 'family@example.com',
+        user_id: 'user-2',
+        success: false,
+        reason: 'bad_password',
+        ip: '203.0.113.9',
+        created_at: new Date(now - 7 * 86400_000),
+      },
     ])
     const app = await buildApp()
 
@@ -848,14 +1430,18 @@ describe('security monitoring', () => {
     const body = res.json()
     expect(body.logins_24h).toEqual({ successful: 1, failed: 2 })
     expect(body.failed_by_ip_24h).toEqual([{ ip: '203.0.113.9', count: 2 }])
-    expect(body.new_ip_logins_24h).toEqual([{ email: 'operator@example.com', ip: '198.51.100.4', first_seen: expect.any(String) }])
+    expect(body.new_ip_logins_24h).toEqual([
+      { email: 'operator@example.com', ip: '198.51.100.4', first_seen: expect.any(String) },
+    ])
     expect(body.recent_login_events).toHaveLength(4)
     expect(body.recent_login_events[0].success).toBe(true)
     await app.close()
   })
 
   it('/operator/me resolves the permission union for the operator roles', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     const app = await buildApp()
     const res = await app.inject({ method: 'GET', url: '/operator/me' })
     expect(res.statusCode).toBe(200)
@@ -869,13 +1455,20 @@ describe('security monitoring', () => {
   })
 
   it('keyset-paginates users with next_cursor and no overlap', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     // Controlled timestamps — the two seeded users share created_at ~now.
     const base = Date.now() - 60_000
     await db.collection('users').insertMany(
       [0, 1, 2].map((i) => ({
-        id: `page-user-${i}`, tenant_id: 'family-1', email: `page${i}@example.com`, name: `Page ${i}`,
-        roles: ['member'], status: 'active', created_at: new Date(base - i * 1000),
+        id: `page-user-${i}`,
+        tenant_id: 'family-1',
+        email: `page${i}@example.com`,
+        name: `Page ${i}`,
+        roles: ['member'],
+        status: 'active',
+        created_at: new Date(base - i * 1000),
       })),
     )
     const app = await buildApp()
@@ -897,17 +1490,28 @@ describe('security monitoring', () => {
   })
 
   it('rejects a malformed cursor', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     const app = await buildApp()
-    const res = await app.inject({ method: 'GET', url: `/operator/users?cursor=${Buffer.from('not-a-cursor').toString('base64url')}` })
+    const res = await app.inject({
+      method: 'GET',
+      url: `/operator/users?cursor=${Buffer.from('not-a-cursor').toString('base64url')}`,
+    })
     expect(res.statusCode).toBe(400)
     await app.close()
   })
 
   it('exports a user bundle without credential material', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     const app = await buildApp()
-    const res = await app.inject({ method: 'POST', url: '/operator/users/user-2/export', payload: { reason: 'GDPR data request ticket #42' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/operator/users/user-2/export',
+      payload: { reason: 'GDPR data request ticket #42' },
+    })
     expect(res.statusCode).toBe(200)
     const body = res.json()
     expect(body.user.id).toBe('user-2')
@@ -916,7 +1520,9 @@ describe('security monitoring', () => {
     expect(body.user.salt).toBeUndefined()
     expect(body.tenant.tenant_id).toBe('family-1')
     expect(body.members).toHaveLength(1)
-    const audit = await db.collection('operator_audit_log').findOne({ action: 'operator.user.export' })
+    const audit = await db
+      .collection('operator_audit_log')
+      .findOne({ action: 'operator.user.export' })
     expect(audit?.['reason']).toBe('GDPR data request ticket #42')
     await app.close()
   })
@@ -926,10 +1532,23 @@ describe('security monitoring', () => {
       { user_id: 'operator-1', status: 'active', roles: ['platform_admin'] },
       { user_id: 'user-2', status: 'active', roles: ['support'] },
     ])
-    await db.collection('leads').insertOne({ id: 'lead-1', email: 'family@example.com', name: 'Family User', source: 'readiness_quiz', stage: 'new', created_at: new Date() })
+    await db
+      .collection('leads')
+      .insertOne({
+        id: 'lead-1',
+        email: 'family@example.com',
+        name: 'Family User',
+        source: 'readiness_quiz',
+        stage: 'new',
+        created_at: new Date(),
+      })
     const app = await buildApp()
 
-    const res = await app.inject({ method: 'POST', url: '/operator/users/user-2/erase', payload: { reason: 'Right-to-erasure request #7' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/operator/users/user-2/erase',
+      payload: { reason: 'Right-to-erasure request #7' },
+    })
     expect(res.statusCode).toBe(200)
     const user = await db.collection('users').findOne({ id: 'user-2' })
     expect(user?.['status']).toBe('erased')
@@ -943,43 +1562,86 @@ describe('security monitoring', () => {
     const lead = await db.collection('leads').findOne({ id: 'lead-1' })
     expect(lead?.['email']).toBe('erased-user-2@erased.invalid')
     expect(lead?.['suppressed']).toBe(true)
-    const audit = await db.collection('operator_audit_log').findOne({ action: 'operator.user.erase' })
+    const audit = await db
+      .collection('operator_audit_log')
+      .findOne({ action: 'operator.user.erase' })
     expect(audit?.['target_id']).toBe('user-2')
 
     // Idempotent-ish: a second erase refuses rather than re-scrubbing.
-    const again = await app.inject({ method: 'POST', url: '/operator/users/user-2/erase', payload: { reason: 'Duplicate request' } })
+    const again = await app.inject({
+      method: 'POST',
+      url: '/operator/users/user-2/erase',
+      payload: { reason: 'Duplicate request' },
+    })
     expect(again.statusCode).toBe(409)
     await app.close()
   })
 
   it('refuses self-erasure and denies erase to read-only roles', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
     const app = await buildApp()
-    const self = await app.inject({ method: 'POST', url: '/operator/users/operator-1/erase', payload: { reason: 'Must not be allowed' } })
+    const self = await app.inject({
+      method: 'POST',
+      url: '/operator/users/operator-1/erase',
+      payload: { reason: 'Must not be allowed' },
+    })
     expect(self.statusCode).toBe(409)
     await app.close()
 
     const app2 = await buildApp()
-    await db.collection('platform_operators').updateOne({ user_id: 'operator-1' }, { $set: { roles: ['support'] } })
-    const denied = await app2.inject({ method: 'POST', url: '/operator/users/user-2/erase', payload: { reason: 'Support cannot erase' } })
+    await db
+      .collection('platform_operators')
+      .updateOne({ user_id: 'operator-1' }, { $set: { roles: ['support'] } })
+    const denied = await app2.inject({
+      method: 'POST',
+      url: '/operator/users/user-2/erase',
+      payload: { reason: 'Support cannot erase' },
+    })
     expect(denied.statusCode).toBe(403)
     await app2.close()
   })
 
   it('returns a support dossier with logins, insights, ledger, cases and audit trail', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
     await db.collection('login_events').insertMany([
-      { user_id: 'user-2', tenant_id: 'family-1', success: true, method: 'password', ip: '10.0.0.1', created_at: yesterday },
-      { user_id: 'user-2', tenant_id: 'family-1', success: false, method: 'password', ip: '10.0.0.9', created_at: new Date() },
+      {
+        user_id: 'user-2',
+        tenant_id: 'family-1',
+        success: true,
+        method: 'password',
+        ip: '10.0.0.1',
+        created_at: yesterday,
+      },
+      {
+        user_id: 'user-2',
+        tenant_id: 'family-1',
+        success: false,
+        method: 'password',
+        ip: '10.0.0.9',
+        created_at: new Date(),
+      },
     ])
     await db.collection('insights').insertMany([
-      { tenant_id: 'family-1', state: 'sent' }, { tenant_id: 'family-1', state: 'sent' }, { tenant_id: 'family-1', state: 'dismissed' },
+      { tenant_id: 'family-1', state: 'sent' },
+      { tenant_id: 'family-1', state: 'sent' },
+      { tenant_id: 'family-1', state: 'dismissed' },
     ])
     await db.collection('support_cases').insertOne({
-      id: 'case-1', user_id: 'user-2', tenant_id: 'family-1', subject: 'Billing question', status: 'open',
-      messages: [{ id: 'm1', author: 'user', text: 'should not be projected', created_at: new Date() }],
-      created_at: new Date(), updated_at: new Date(),
+      id: 'case-1',
+      user_id: 'user-2',
+      tenant_id: 'family-1',
+      subject: 'Billing question',
+      status: 'open',
+      messages: [
+        { id: 'm1', author: 'user', text: 'should not be projected', created_at: new Date() },
+      ],
+      created_at: new Date(),
+      updated_at: new Date(),
     })
     const app = await buildApp()
     const response = await app.inject({ method: 'GET', url: '/operator/users/user-2' })
@@ -1001,20 +1663,42 @@ describe('security monitoring', () => {
   })
 
   it('scores tenant health from operational signals and explains deductions', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-    await db.collection('tenants').updateOne({ tenant_id: 'family-1' }, { $set: { created_at: old } })
+    await db
+      .collection('tenants')
+      .updateOne({ tenant_id: 'family-1' }, { $set: { created_at: old } })
     await db.collection('users').updateOne({ id: 'user-2' }, { $set: { created_at: old } })
     await db.collection('reminders').insertOne({ tenant_id: 'family-1', status: 'failed' })
-    await db.collection('users').updateOne({ id: 'user-2' }, { $set: { locked_until: new Date(Date.now() + 60_000) } })
-    await db.collection('connector_credentials').insertOne({ tenant_id: 'family-1', connector_id: 'bank', token_expires_at: new Date(Date.now() + 60_000) })
+    await db
+      .collection('users')
+      .updateOne({ id: 'user-2' }, { $set: { locked_until: new Date(Date.now() + 60_000) } })
+    await db
+      .collection('connector_credentials')
+      .insertOne({
+        tenant_id: 'family-1',
+        connector_id: 'bank',
+        token_expires_at: new Date(Date.now() + 60_000),
+      })
     await db.collection('support_cases').insertOne({
-      id: 'case-h', user_id: 'user-2', tenant_id: 'family-1', subject: 'Help', status: 'open', messages: [], created_at: new Date(), updated_at: new Date(),
+      id: 'case-h',
+      user_id: 'user-2',
+      tenant_id: 'family-1',
+      subject: 'Help',
+      status: 'open',
+      messages: [],
+      created_at: new Date(),
+      updated_at: new Date(),
     })
     const app = await buildApp()
     const response = await app.inject({ method: 'GET', url: '/operator/tenants' })
     expect(response.statusCode).toBe(200)
-    const rows = response.json().tenants as { tenant_id: string; health: { score: number; factors: { label: string; points: number }[] } }[]
+    const rows = response.json().tenants as {
+      tenant_id: string
+      health: { score: number; factors: { label: string; points: number }[] }
+    }[]
     const family = rows.find((t) => t.tenant_id === 'family-1')!
     // 100 - 10 (reminder) - 15 (locked) - 20 (token) - 10 (case) - 25 (stale)
     expect(family.health.score).toBe(20)
@@ -1032,13 +1716,29 @@ describe('security monitoring', () => {
   })
 
   it('reports activation steps and median time-to-first-insight for the signup cohort', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     // user-2 (family-1) signed up now in beforeEach. Give family-1 a
     // profile, a connector, and a first insight ~2h after signup.
     const twoHours = 2 * 60 * 60 * 1000
-    await db.collection('family_financial_profile').insertOne({ tenant_id: 'family-1', updated_at: new Date() })
-    await db.collection('connector_credentials').insertOne({ tenant_id: 'family-1', connector_id: 'bank', token_expires_at: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000) })
-    await db.collection('insights').insertOne({ tenant_id: 'family-1', state: 'sent', created_at: new Date(Date.now() + twoHours) })
+    await db
+      .collection('family_financial_profile')
+      .insertOne({ tenant_id: 'family-1', updated_at: new Date() })
+    await db
+      .collection('connector_credentials')
+      .insertOne({
+        tenant_id: 'family-1',
+        connector_id: 'bank',
+        token_expires_at: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+      })
+    await db
+      .collection('insights')
+      .insertOne({
+        tenant_id: 'family-1',
+        state: 'sent',
+        created_at: new Date(Date.now() + twoHours),
+      })
     const app = await buildApp()
     const response = await app.inject({ method: 'GET', url: '/operator/funnel' })
     expect(response.statusCode).toBe(200)
@@ -1046,7 +1746,9 @@ describe('security monitoring', () => {
     // operator-tenant also has a cohort signup (operator-1) with no profile,
     // insight or connector — so the cohort is 2 signups, half activating.
     expect(activation.cohort_signups_30d).toBe(2)
-    const steps = Object.fromEntries(activation.steps.map((s: { key: string; count: number; pct: number }) => [s.key, s]))
+    const steps = Object.fromEntries(
+      activation.steps.map((s: { key: string; count: number; pct: number }) => [s.key, s]),
+    )
     expect(steps.signed_up.count).toBe(2)
     expect(steps.profile_completed.count).toBe(1)
     expect(steps.first_insight.count).toBe(1)
@@ -1058,24 +1760,44 @@ describe('security monitoring', () => {
   })
 
   it('reports the revenue leg — payers in-window, trial pipeline, MRR, per-source', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     // family-1 (plan 'plus' from beforeEach) upgraded 5 days ago per the
     // ledger — a new payer in-window. family-2 is a free tenant mid-trial.
     const fiveDays = 5 * 24 * 60 * 60 * 1000
     await db.collection('credit_ledger').insertOne({
-      tenant_id: 'family-1', type: 'plan_grant', amount: 100, balance_after: 100,
-      reference: 'plus', reason: 'test', actor: 'stripe_webhook', timestamp: new Date(Date.now() - fiveDays),
+      tenant_id: 'family-1',
+      type: 'plan_grant',
+      amount: 100,
+      balance_after: 100,
+      reference: 'plus',
+      reason: 'test',
+      actor: 'stripe_webhook',
+      timestamp: new Date(Date.now() - fiveDays),
     })
     await db.collection('tenants').insertOne({
-      tenant_id: 'family-2', name: 'Trialing', status: 'active', plan: 'free',
-      billing: { trial_ends_at: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000) }, created_at: new Date(),
+      tenant_id: 'family-2',
+      name: 'Trialing',
+      status: 'active',
+      plan: 'free',
+      billing: { trial_ends_at: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000) },
+      created_at: new Date(),
     })
     await db.collection('users').insertOne({
-      id: 'user-3', tenant_id: 'family-2', email: 't@example.com', name: 'T',
-      roles: ['admin'], status: 'active', attribution: { utm_source: 'instagram' }, created_at: new Date(),
+      id: 'user-3',
+      tenant_id: 'family-2',
+      email: 't@example.com',
+      name: 'T',
+      roles: ['admin'],
+      status: 'active',
+      attribution: { utm_source: 'instagram' },
+      created_at: new Date(),
     })
     // user-2's signup attribution — family-1's paying status should join to it.
-    await db.collection('users').updateOne({ id: 'user-2' }, { $set: { attribution: { utm_source: 'x' } } })
+    await db
+      .collection('users')
+      .updateOne({ id: 'user-2' }, { $set: { attribution: { utm_source: 'x' } } })
     const app = await buildApp()
 
     const funnel = await app.inject({ method: 'GET', url: '/operator/funnel' })
@@ -1095,22 +1817,32 @@ describe('security monitoring', () => {
   })
 
   it('persists alert triage state with an audit entry per action', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     const app = await buildApp()
 
     const empty = await app.inject({ method: 'GET', url: '/operator/alerts' })
     expect(empty.json().alerts).toEqual([])
 
     const ack = await app.inject({
-      method: 'POST', url: '/operator/alerts/state',
-      payload: { dedup_key: 'dead_letters', action: 'ack', title: '2 dead-lettered jobs', severity: 'danger', signal_value: 2 },
+      method: 'POST',
+      url: '/operator/alerts/state',
+      payload: {
+        dedup_key: 'dead_letters',
+        action: 'ack',
+        title: '2 dead-lettered jobs',
+        severity: 'danger',
+        signal_value: 2,
+      },
     })
     expect(ack.statusCode).toBe(200)
     let doc = await db.collection('operator_alerts').findOne({ dedup_key: 'dead_letters' })
     expect(doc?.['status']).toBe('ack')
 
     const resolve = await app.inject({
-      method: 'POST', url: '/operator/alerts/state',
+      method: 'POST',
+      url: '/operator/alerts/state',
       payload: { dedup_key: 'dead_letters', action: 'resolve', signal_value: 2 },
     })
     expect(resolve.statusCode).toBe(200)
@@ -1118,40 +1850,66 @@ describe('security monitoring', () => {
     expect(doc?.['status']).toBe('resolved')
     expect(doc?.['resolved_signal_value']).toBe(2)
 
-    const auditCount = await db.collection('operator_audit_log').countDocuments({ action: { $in: ['operator.alert.ack', 'operator.alert.resolve'] } })
+    const auditCount = await db
+      .collection('operator_audit_log')
+      .countDocuments({ action: { $in: ['operator.alert.ack', 'operator.alert.resolve'] } })
     expect(auditCount).toBe(2)
 
     // Non-operators can't touch triage state.
     const outsider = await buildApp('user-2')
-    const denied = await outsider.inject({ method: 'POST', url: '/operator/alerts/state', payload: { dedup_key: 'x', action: 'resolve' } })
+    const denied = await outsider.inject({
+      method: 'POST',
+      url: '/operator/alerts/state',
+      payload: { dedup_key: 'x', action: 'resolve' },
+    })
     expect(denied.statusCode).toBe(403)
     await outsider.close()
     await app.close()
   })
 
   it('schedules, exposes, and clears a maintenance window', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
     const app = await buildApp()
-    const window = { starts_at: new Date(Date.now() + 3600_000).toISOString(), ends_at: new Date(Date.now() + 7200_000).toISOString(), message: 'DB maintenance' }
-    const set = await app.inject({ method: 'PUT', url: '/operator/configuration', payload: { maintenance_window: window, reason: 'Planned DB upgrade' } })
+    const window = {
+      starts_at: new Date(Date.now() + 3600_000).toISOString(),
+      ends_at: new Date(Date.now() + 7200_000).toISOString(),
+      message: 'DB maintenance',
+    }
+    const set = await app.inject({
+      method: 'PUT',
+      url: '/operator/configuration',
+      payload: { maintenance_window: window, reason: 'Planned DB upgrade' },
+    })
     expect(set.statusCode).toBe(200)
     expect(set.json().config.maintenance_window.message).toBe('DB maintenance')
 
     // Backwards window rejected.
     const bad = await app.inject({
-      method: 'PUT', url: '/operator/configuration',
-      payload: { maintenance_window: { starts_at: window.ends_at, ends_at: window.starts_at, message: 'x' }, reason: 'Bad window' },
+      method: 'PUT',
+      url: '/operator/configuration',
+      payload: {
+        maintenance_window: { starts_at: window.ends_at, ends_at: window.starts_at, message: 'x' },
+        reason: 'Bad window',
+      },
     })
     expect(bad.statusCode).toBe(400)
 
-    const cleared = await app.inject({ method: 'PUT', url: '/operator/configuration', payload: { maintenance_window: null, reason: 'Maintenance finished early' } })
+    const cleared = await app.inject({
+      method: 'PUT',
+      url: '/operator/configuration',
+      payload: { maintenance_window: null, reason: 'Maintenance finished early' },
+    })
     expect(cleared.statusCode).toBe(200)
     expect(cleared.json().config.maintenance_window).toBeNull()
     await app.close()
   })
 
   it('serves runbook notes alongside operations health', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
     const app = await buildApp()
     const response = await app.inject({ method: 'GET', url: '/operator/operations' })
     expect(response.statusCode).toBe(200)
@@ -1162,25 +1920,62 @@ describe('security monitoring', () => {
   })
 
   it('serves the referral leaderboard with totals and tenant names', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     await db.collection('referral_codes').insertMany([
       { tenant_id: 'family-1', code: 'KEEL-AAAA', created_at: new Date() },
       { tenant_id: 'family-2', code: 'KEEL-BBBB', created_at: new Date() },
     ])
-    await db.collection('tenants').insertOne({ tenant_id: 'family-2', name: 'Family Two', status: 'active', created_at: new Date() })
+    await db
+      .collection('tenants')
+      .insertOne({
+        tenant_id: 'family-2',
+        name: 'Family Two',
+        status: 'active',
+        created_at: new Date(),
+      })
     await db.collection('referrals').insertMany([
-      { referrer_tenant_id: 'family-1', referred_tenant_id: 'family-9', code: 'KEEL-AAAA', status: 'rewarded', created_at: new Date(), rewarded_at: new Date() },
-      { referrer_tenant_id: 'family-1', referred_tenant_id: 'family-8', code: 'KEEL-AAAA', status: 'pending', created_at: new Date() },
+      {
+        referrer_tenant_id: 'family-1',
+        referred_tenant_id: 'family-9',
+        code: 'KEEL-AAAA',
+        status: 'rewarded',
+        created_at: new Date(),
+        rewarded_at: new Date(),
+      },
+      {
+        referrer_tenant_id: 'family-1',
+        referred_tenant_id: 'family-8',
+        code: 'KEEL-AAAA',
+        status: 'pending',
+        created_at: new Date(),
+      },
     ])
     const app = await buildApp()
     const response = await app.inject({ method: 'GET', url: '/operator/referrals' })
     expect(response.statusCode).toBe(200)
     const body = response.json()
-    expect(body.totals).toEqual({ codes_issued: 2, referrals: 2, pending: 1, rewarded: 1, credits_granted: 50 })
+    expect(body.totals).toEqual({
+      codes_issued: 2,
+      referrals: 2,
+      pending: 1,
+      rewarded: 1,
+      credits_granted: 50,
+    })
     // Family One tops the board; the zero-referral code still appears as a signal.
     expect(body.leaderboard[0].tenant_name).toBe('Family One')
-    expect(body.leaderboard[0]).toMatchObject({ code: 'KEEL-AAAA', rewarded: 1, pending: 1, referrals: 2 })
-    expect(body.leaderboard[1]).toMatchObject({ tenant_name: 'Family Two', code: 'KEEL-BBBB', referrals: 0 })
+    expect(body.leaderboard[0]).toMatchObject({
+      code: 'KEEL-AAAA',
+      rewarded: 1,
+      pending: 1,
+      referrals: 2,
+    })
+    expect(body.leaderboard[1]).toMatchObject({
+      tenant_name: 'Family Two',
+      code: 'KEEL-BBBB',
+      referrals: 0,
+    })
     expect(body.recent[0].referrer_name).toBe('Family One')
     await app.close()
   })
@@ -1193,7 +1988,9 @@ describe('security monitoring', () => {
   })
 
   it('lists autopilot rules all-disabled and toggles one with audit', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
     const app = await buildApp()
 
     const list = await app.inject({ method: 'GET', url: '/operator/autopilot' })
@@ -1205,7 +2002,8 @@ describe('security monitoring', () => {
     expect(list.json().never_autonomous).toContain('marketing.publish')
 
     const toggle = await app.inject({
-      method: 'PUT', url: '/operator/autopilot/auto_unlock_expired',
+      method: 'PUT',
+      url: '/operator/autopilot/auto_unlock_expired',
       payload: { enabled: true, max_blast_radius: 5, reason: 'Trial the safest rule first' },
     })
     expect(toggle.statusCode).toBe(200)
@@ -1215,22 +2013,28 @@ describe('security monitoring', () => {
     // Unknown rules can't be invented — the never-autonomous boundary is
     // enforced by the registry, not by naming.
     const bogus = await app.inject({
-      method: 'PUT', url: '/operator/autopilot/user.erase',
+      method: 'PUT',
+      url: '/operator/autopilot/user.erase',
       payload: { enabled: true, reason: 'Try to automate erasure' },
     })
     expect(bogus.statusCode).toBe(404)
 
-    const auditCount = await db.collection('operator_audit_log').countDocuments({ action: 'operator.autopilot.update' })
+    const auditCount = await db
+      .collection('operator_audit_log')
+      .countDocuments({ action: 'operator.autopilot.update' })
     expect(auditCount).toBe(1)
     await app.close()
   })
 
   it('denies autopilot changes to roles without operations.manage', async () => {
     // support has operations.read but not operations.manage
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     const app = await buildApp()
     const denied = await app.inject({
-      method: 'PUT', url: '/operator/autopilot/auto_unlock_expired',
+      method: 'PUT',
+      url: '/operator/autopilot/auto_unlock_expired',
       payload: { enabled: true, reason: 'Support should not touch this' },
     })
     expect(denied.statusCode).toBe(403)
@@ -1241,81 +2045,137 @@ describe('security monitoring', () => {
 
   it('approves a suspend proposal — executes the mutation, audits, and cannot be re-approved', async () => {
     // platform_admin carries both operations.read and users.manage.
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
     await db.collection('autopilot_actions').insertOne({
-      id: 'prop-1', rule: 'propose_suspend_brute_force', dedup_key: 'dk1',
-      target_type: 'user', target_id: 'user-2', reason: '30 failed logins / 5 IPs',
+      id: 'prop-1',
+      rule: 'propose_suspend_brute_force',
+      dedup_key: 'dk1',
+      target_type: 'user',
+      target_id: 'user-2',
+      reason: '30 failed logins / 5 IPs',
       status: 'proposed',
-      proposal: { kind: 'user.suspend', required_permission: 'users.manage', summary: 'Suspend family@example.com', payload: { user_id: 'user-2' } },
+      proposal: {
+        kind: 'user.suspend',
+        required_permission: 'users.manage',
+        summary: 'Suspend family@example.com',
+        payload: { user_id: 'user-2' },
+      },
       created_at: new Date(),
     })
     const app = await buildApp()
 
     const approve = await app.inject({
-      method: 'POST', url: '/operator/autopilot/proposals/prop-1/approve',
+      method: 'POST',
+      url: '/operator/autopilot/proposals/prop-1/approve',
       payload: { reason: 'Confirmed credential-stuffing pattern' },
     })
     expect(approve.statusCode).toBe(200)
     expect(approve.json().result).toContain('suspended')
     expect((await db.collection('users').findOne({ id: 'user-2' }))!['status']).toBe('suspended')
-    expect((await db.collection('users').findOne({ id: 'user-2' }))!['sessions_revoked_at']).toBeTruthy()
+    expect(
+      (await db.collection('users').findOne({ id: 'user-2' }))!['sessions_revoked_at'],
+    ).toBeTruthy()
 
     const row = await db.collection('autopilot_actions').findOne({ id: 'prop-1' })
     expect(row).toMatchObject({ status: 'executed', resolved_by: 'operator-1' })
     // Terminal — second approve 404s rather than re-running.
     const again = await app.inject({
-      method: 'POST', url: '/operator/autopilot/proposals/prop-1/approve',
+      method: 'POST',
+      url: '/operator/autopilot/proposals/prop-1/approve',
       payload: { reason: 'Second click must not re-execute' },
     })
     expect(again.statusCode).toBe(404)
-    expect(await db.collection('operator_audit_log').countDocuments({ action: 'operator.autopilot.approve' })).toBe(1)
+    expect(
+      await db
+        .collection('operator_audit_log')
+        .countDocuments({ action: 'operator.autopilot.approve' }),
+    ).toBe(1)
     await app.close()
   })
 
   it('enforces the proposal required_permission — operations alone cannot approve a suspend', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
     await db.collection('autopilot_actions').insertOne({
-      id: 'prop-1', rule: 'propose_suspend_brute_force', dedup_key: 'dk1',
-      target_type: 'user', target_id: 'user-2', reason: 'x',
+      id: 'prop-1',
+      rule: 'propose_suspend_brute_force',
+      dedup_key: 'dk1',
+      target_type: 'user',
+      target_id: 'user-2',
+      reason: 'x',
       status: 'proposed',
-      proposal: { kind: 'user.suspend', required_permission: 'users.manage', summary: 's', payload: { user_id: 'user-2' } },
+      proposal: {
+        kind: 'user.suspend',
+        required_permission: 'users.manage',
+        summary: 's',
+        payload: { user_id: 'user-2' },
+      },
       created_at: new Date(),
     })
     const app = await buildApp()
     const res = await app.inject({
-      method: 'POST', url: '/operator/autopilot/proposals/prop-1/approve',
+      method: 'POST',
+      url: '/operator/autopilot/proposals/prop-1/approve',
       payload: { reason: 'operations role lacks users.manage' },
     })
     expect(res.statusCode).toBe(403)
     expect((await db.collection('users').findOne({ id: 'user-2' }))!['status']).toBe('active')
-    expect((await db.collection('autopilot_actions').findOne({ id: 'prop-1' }))!['status']).toBe('proposed')
+    expect((await db.collection('autopilot_actions').findOne({ id: 'prop-1' }))!['status']).toBe(
+      'proposed',
+    )
     await app.close()
   })
 
   it('rejects a proposal with reason — terminal and audited', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
     await db.collection('autopilot_actions').insertOne({
-      id: 'prop-1', rule: 'propose_suspend_brute_force', dedup_key: 'dk1',
-      target_type: 'user', target_id: 'user-2', reason: 'x',
+      id: 'prop-1',
+      rule: 'propose_suspend_brute_force',
+      dedup_key: 'dk1',
+      target_type: 'user',
+      target_id: 'user-2',
+      reason: 'x',
       status: 'proposed',
-      proposal: { kind: 'user.suspend', required_permission: 'users.manage', summary: 's', payload: { user_id: 'user-2' } },
+      proposal: {
+        kind: 'user.suspend',
+        required_permission: 'users.manage',
+        summary: 's',
+        payload: { user_id: 'user-2' },
+      },
       created_at: new Date(),
     })
     const app = await buildApp()
-    const noReason = await app.inject({ method: 'POST', url: '/operator/autopilot/proposals/prop-1/reject', payload: {} })
+    const noReason = await app.inject({
+      method: 'POST',
+      url: '/operator/autopilot/proposals/prop-1/reject',
+      payload: {},
+    })
     expect(noReason.statusCode).toBe(400)
     const reject = await app.inject({
-      method: 'POST', url: '/operator/autopilot/proposals/prop-1/reject',
+      method: 'POST',
+      url: '/operator/autopilot/proposals/prop-1/reject',
       payload: { reason: 'Just a forgetful user, watching instead' },
     })
     expect(reject.statusCode).toBe(200)
-    expect((await db.collection('autopilot_actions').findOne({ id: 'prop-1' }))!['status']).toBe('rejected')
+    expect((await db.collection('autopilot_actions').findOne({ id: 'prop-1' }))!['status']).toBe(
+      'rejected',
+    )
     expect((await db.collection('users').findOne({ id: 'user-2' }))!['status']).toBe('active')
-    expect(await db.collection('operator_audit_log').countDocuments({ action: 'operator.autopilot.reject' })).toBe(1)
+    expect(
+      await db
+        .collection('operator_audit_log')
+        .countDocuments({ action: 'operator.autopilot.reject' }),
+    ).toBe(1)
     // A rejected proposal cannot later execute.
     const app2 = await buildApp()
     const lateApprove = await app2.inject({
-      method: 'POST', url: '/operator/autopilot/proposals/prop-1/approve',
+      method: 'POST',
+      url: '/operator/autopilot/proposals/prop-1/approve',
       payload: { reason: 'Trying to approve a rejected proposal' },
     })
     expect(lateApprove.statusCode).toBe(404)
@@ -1324,7 +2184,9 @@ describe('security monitoring', () => {
   })
 
   it('serves the latest weekly digest and generates one on demand', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
     const app = await buildApp()
 
     const empty = await app.inject({ method: 'GET', url: '/operator/digest' })
@@ -1337,7 +2199,9 @@ describe('security monitoring', () => {
 
     const latest = await app.inject({ method: 'GET', url: '/operator/digest' })
     expect(latest.json().digest.id).toBe(send.json().digest.id)
-    expect(await db.collection('operator_audit_log').countDocuments({ action: 'operator.digest.send' })).toBe(1)
+    expect(
+      await db.collection('operator_audit_log').countDocuments({ action: 'operator.digest.send' }),
+    ).toBe(1)
     await app.close()
   })
 })
@@ -1352,15 +2216,25 @@ describe('segment campaigns', () => {
   }
 
   it('creates, previews, sends once — all audited', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['marketing_operator'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['marketing_operator'] })
     const app = await buildApp()
 
     // Preview reflects seeded users (operator-1 + user-2 are both active).
-    const preview = await app.inject({ method: 'POST', url: '/operator/campaigns/preview', payload: { audience: 'users' } })
+    const preview = await app.inject({
+      method: 'POST',
+      url: '/operator/campaigns/preview',
+      payload: { audience: 'users' },
+    })
     expect(preview.statusCode).toBe(200)
     expect(preview.json().count).toBe(2)
 
-    const created = await app.inject({ method: 'POST', url: '/operator/campaigns', payload: campaignBody })
+    const created = await app.inject({
+      method: 'POST',
+      url: '/operator/campaigns',
+      payload: campaignBody,
+    })
     expect(created.statusCode).toBe(200)
     const id = created.json().campaign.id
 
@@ -1368,35 +2242,67 @@ describe('segment campaigns', () => {
     expect(list.json().campaigns).toHaveLength(1)
     expect(list.json().campaigns[0].status).toBe('draft')
 
-    const send = await app.inject({ method: 'POST', url: `/operator/campaigns/${id}/send`, payload: { reason: 'Firing the campaign' } })
+    const send = await app.inject({
+      method: 'POST',
+      url: `/operator/campaigns/${id}/send`,
+      payload: { reason: 'Firing the campaign' },
+    })
     expect(send.statusCode).toBe(200)
     expect(send.json().stats).toMatchObject({ targeted: 2, sent: 2, failed: 0 })
 
     // One-shot — a second send is a hard 409.
-    const resend = await app.inject({ method: 'POST', url: `/operator/campaigns/${id}/send`, payload: { reason: 'Trying again anyway' } })
+    const resend = await app.inject({
+      method: 'POST',
+      url: `/operator/campaigns/${id}/send`,
+      payload: { reason: 'Trying again anyway' },
+    })
     expect(resend.statusCode).toBe(409)
 
-    expect(await db.collection('operator_audit_log').countDocuments({ action: 'operator.campaign.create' })).toBe(1)
-    expect(await db.collection('operator_audit_log').countDocuments({ action: 'operator.campaign.send' })).toBe(1)
+    expect(
+      await db
+        .collection('operator_audit_log')
+        .countDocuments({ action: 'operator.campaign.create' }),
+    ).toBe(1)
+    expect(
+      await db
+        .collection('operator_audit_log')
+        .countDocuments({ action: 'operator.campaign.send' }),
+    ).toBe(1)
     expect(await db.collection('lifecycle_sends').countDocuments({ sequence: 'campaign' })).toBe(2)
     await app.close()
   })
 
   it('denies campaign writes to operators without marketing.manage', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
     const app = await buildApp()
-    const created = await app.inject({ method: 'POST', url: '/operator/campaigns', payload: campaignBody })
+    const created = await app.inject({
+      method: 'POST',
+      url: '/operator/campaigns',
+      payload: campaignBody,
+    })
     expect(created.statusCode).toBe(403)
     await app.close()
   })
 
   it('skips users who opted out of marketing email', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['marketing_operator'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['marketing_operator'] })
     await db.collection('users').updateOne({ id: 'user-2' }, { $set: { email_opt_out: true } })
     const app = await buildApp()
-    const created = await app.inject({ method: 'POST', url: '/operator/campaigns', payload: campaignBody })
+    const created = await app.inject({
+      method: 'POST',
+      url: '/operator/campaigns',
+      payload: campaignBody,
+    })
     const id = created.json().campaign.id
-    const send = await app.inject({ method: 'POST', url: `/operator/campaigns/${id}/send`, payload: { reason: 'Firing the campaign' } })
+    const send = await app.inject({
+      method: 'POST',
+      url: `/operator/campaigns/${id}/send`,
+      payload: { reason: 'Firing the campaign' },
+    })
     expect(send.json().stats.sent).toBe(1) // only operator-1 — user-2 opted out
     await app.close()
   })

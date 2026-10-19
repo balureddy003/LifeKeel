@@ -27,6 +27,7 @@ import { getGrowthEventsCollection } from '../db.js'
 import {
   lifecycleSendsCol,
   ensureLifecycleIndexes,
+  claimSend,
   sendEmail,
   wrap,
   cta,
@@ -72,7 +73,7 @@ export interface CampaignDoc {
   created_by: string
   created_at: Date
   sent_at?: Date
-  stats?: { targeted: number; sent: number; failed: number }
+  stats?: { targeted: number; sent: number; skipped: number; failed: number }
 }
 
 export function campaignsCol(db: Db) {
@@ -233,44 +234,64 @@ export async function sendCampaign(
       statusCode: 409,
     })
   }
+  // Provider unconfigured → refuse before any claims: the route rolls the
+  // campaign back to draft, nothing is recorded as sent, and a configured
+  // retry loses nothing.
+  if (!process.env['SENDGRID_API_KEY']) {
+    throw Object.assign(
+      new Error('SENDGRID_API_KEY is not configured — campaign sends are halted'),
+      { statusCode: 503 },
+    )
+  }
   const appUrl = (opts.appUrl ?? process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(
     /\/$/,
     '',
   )
   const recipients = await resolveAudience(db, campaign.filter)
-  const stats = { targeted: recipients.length, sent: 0, failed: 0 }
+  const stats = { targeted: recipients.length, sent: 0, skipped: 0, failed: 0 }
 
   for (const r of recipients) {
     const key = `campaign:${campaign.id}:${r.id}`
-    const claimed = await lifecycleSendsCol(db)
-      .insertOne({
-        id: randomUUID(),
-        key,
-        sequence: 'campaign',
-        step: campaign.name.slice(0, 80),
-        campaign_id: campaign.id,
-        recipient: r.id,
-        email: r.email,
-        status: 'sent',
-        created_at: new Date(),
-      })
-      .then(() => true)
-      .catch(() => false)
-    if (!claimed) continue // already mailed by a prior/racing send
+    const row = await claimSend(db, {
+      id: randomUUID(),
+      key,
+      sequence: 'campaign',
+      step: campaign.name.slice(0, 80),
+      campaign_id: campaign.id,
+      recipient: r.id,
+      email: r.email,
+      created_at: new Date(),
+    })
+    if (!row) continue // already mailed by a prior/racing send, or attempts spent
     try {
       const unsub =
         r.kind === 'lead'
           ? `${appUrl}/leads/unsubscribe?id=${encodeURIComponent(r.id)}&sig=${unsubscribeToken(r.id)}`
           : userUnsubUrl(appUrl, r.id)
-      await sendEmail(r.email, campaign.subject, renderBody(campaign, r, appUrl), unsub, {
-        lk: key,
-      })
-      stats.sent++
+      const outcome = await sendEmail(
+        r.email,
+        campaign.subject,
+        renderBody(campaign, r, appUrl),
+        unsub,
+        { lk: key },
+      )
+      await lifecycleSendsCol(db).updateOne(
+        { key },
+        {
+          $set: {
+            status: outcome,
+            updated_at: new Date(),
+            ...(outcome === 'skipped' ? { error: 'sendgrid_not_configured' } : {}),
+          },
+        },
+      )
+      if (outcome === 'sent') stats.sent++
+      else stats.skipped++
     } catch (err) {
       stats.failed++
       await lifecycleSendsCol(db).updateOne(
         { key },
-        { $set: { status: 'failed', error: String(err).slice(0, 300) } },
+        { $set: { status: 'failed', error: String(err).slice(0, 300), updated_at: new Date() } },
       )
       log.warn({ campaign: campaign.id, to: r.email, err }, 'campaign send failed')
     }
