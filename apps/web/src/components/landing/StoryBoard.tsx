@@ -1,16 +1,16 @@
 import { Lantern } from './Lantern'
 import { CAPABILITIES, MOMENTS } from './capabilities'
-
-const LIVE = CAPABILITIES.filter((c) => c.live).length
-const PLANNED = CAPABILITIES.length - LIVE
 import './landing.css'
 import './hero.css'
 import './bands.css'
 
+/** Only what is available today. Planned work is not shown on the public site (it lives in the app). */
+const AVAILABLE = CAPABILITIES.filter((c) => c.live)
+
 /**
  * "Ready before. Found during. Sorted after." One column per moment, built from the
- * capabilities data. Live and Planned are text tags, and every Live item carries a
- * qualifier so Live is never read as always-on or unconditional.
+ * capabilities data. Every item carries a note saying what it depends on, so nothing
+ * reads as always-on or unconditional.
  */
 export function StoryBoard() {
   return (
@@ -19,9 +19,7 @@ export function StoryBoard() {
       <h2 id="lk-story-h">Ready before. Found during. Sorted after.</h2>
       <p className="lk-intro">
         LifeKeel is one platform for your family&rsquo;s picture, and it is useful at three
-        different moments. New checks and tools join the same picture over time, and this is where
-        you will see them arrive. Everything on it comes from what you add.{' '}
-        <b>{LIVE} things are live today</b>, and {PLANNED} are planned.
+        different moments. Everything on it comes from what you add.
       </p>
       <div className="lk-moments">
         {MOMENTS.map((m) => (
@@ -32,14 +30,13 @@ export function StoryBoard() {
               <p>{m.line}</p>
             </header>
             <ul>
-              {CAPABILITIES.filter((c) => c.moment === m.id).map((c) => (
-                <li key={c.claim} className={c.live ? 'live' : 'planned'}>
-                  <Lantern lit={c.live} />
+              {AVAILABLE.filter((c) => c.moment === m.id).map((c) => (
+                <li key={c.claim}>
+                  <Lantern lit />
                   <span>
                     {c.text}
                     {c.qualifier && <small className="lk-q">{c.qualifier}</small>}
                   </span>
-                  <span className="lk-st">{c.live ? 'Live' : 'Planned'}</span>
                 </li>
               ))}
             </ul>
@@ -47,10 +44,8 @@ export function StoryBoard() {
         ))}
       </div>
       <p className="lk-fine lk-key">
-        Each capability joins the same chart, one at a time. <b>Live</b> means you can use it today,
-        within the note beside it. It is not a promise that it covers everything. <b>Planned</b>{' '}
-        means we intend to build it. Nothing planned is promised. Each adult gets their own view of
-        the picture, and children get a simpler one.
+        Each adult gets their own view of the picture, and children get a simpler one. Each item
+        works within the note beside it; none of them covers everything.
       </p>
     </section>
   )

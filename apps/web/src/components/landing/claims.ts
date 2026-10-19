@@ -2,9 +2,10 @@
  * Claims registry for the public landing page (PRD-209).
  *
  * Every capability on the story board points at one claim here. A `live` claim
- * must name a file that implements it; a `planned` claim may only appear on the
- * page with its Planned tag; a `blocked` claim must not appear in the landing
- * copy at all. `claims-registry.test.ts` enforces all three.
+ * must name a file that implements it. A `planned` claim is kept for the in-app
+ * roadmap and never reaches the public site (`NoRoadmap.test.tsx`). A `blocked`
+ * claim must not appear in the landing copy at all. `claims-registry.test.ts`
+ * enforces these.
  */
 export type ClaimStatus = 'live' | 'planned' | 'blocked'
 

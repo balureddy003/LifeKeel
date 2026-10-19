@@ -16,7 +16,7 @@ const STEP_MS = 3200
 /**
  * The same chart at four stages of life. Native radios choose the stage; when the
  * figure first scrolls into view and motion is on it steps through the stages once.
- * Choosing a stage ends the auto-play. Planned items are dashed and tagged Planned.
+ * Choosing a stage ends the auto-play.
  */
 export function YearsTimelapse() {
   const { on } = useLandingMotion()
@@ -57,7 +57,7 @@ export function YearsTimelapse() {
     const items = YEAR_ITEMS.filter((i) => i.stage === n)
     setAnnounce(
       `${yr.name}. ${yr.line} New on the chart: ${items
-        .map((i) => `${i.text} (${i.live ? 'Live' : 'Planned'})`)
+        .map((i) => i.text)
         .join('; ')}.`,
     )
   }
@@ -67,8 +67,7 @@ export function YearsTimelapse() {
       <p className="lk-eyebrow">As the years go by</p>
       <h2 id="lk-years-h">The same chart, as life changes.</h2>
       <p className="lk-intro">
-        You do not start again when life changes. You add to the chart. Items that are planned
-        arrive as dashed outlines and are never described as available.
+        You do not start again when life changes. You add to the chart.
       </p>
       <fieldset className="lk-yrs-set">
         <legend>Pick a stage</legend>
@@ -112,8 +111,8 @@ export function YearsTimelapse() {
             {YEAR_ITEMS.map((it, i) => (
               <use
                 key={it.text}
-                className={`lk-yl${it.live ? '' : ' pl'}${it.stage <= stage ? ' in' : ''}`}
-                href={it.live ? '#lk-lantern' : '#lk-lantern-off'}
+                className={`lk-yl${it.stage <= stage ? ' in' : ''}`}
+                href="#lk-lantern"
                 x={110 + i * 112}
                 y={58 + (i % 2) * 22}
                 width="26"
@@ -150,10 +149,9 @@ export function YearsTimelapse() {
           <p className="lk-eyebrow">New on the chart at this stage</p>
           <ul className="lk-yrnew">
             {fresh.map((it) => (
-              <li key={it.text} className={it.live ? 'live' : 'planned'}>
-                <Lantern lit={it.live} />
+              <li key={it.text}>
+                <Lantern lit />
                 <span>{it.text}</span>
-                <span className="lk-st">{it.live ? 'Live' : 'Planned'}</span>
               </li>
             ))}
           </ul>

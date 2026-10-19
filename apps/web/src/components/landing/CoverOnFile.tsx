@@ -24,16 +24,6 @@ const ROWS: { cover: string; onFile: string; note: React.ReactNode }[] = [
     onFile: 'Same person, same type',
     note: 'Two policies of one type are on file. Keel cannot say if that is intended.',
   },
-  {
-    cover: 'Home contents',
-    onFile: "Two policies, one in each partner's name",
-    note: (
-      <>
-        Some policies cover the whole household, so this may be intended. Keel cannot say.{' '}
-        <span className="lk-tag">Planned check</span>
-      </>
-    ),
-  },
 ]
 
 /** Before: a made-up cover-on-file table. Information from what is entered; no insurer named, nothing recommended. */
