@@ -359,6 +359,12 @@ building disconnected marketing tooling.
    **proposed.** A public trust page where every statement is evidenced,
    a live sub-processor table, security testing and external marks, with
    a rule that claims wait for the code that backs them.
+9. [209-landing-chart-story.md](209-landing-chart-story.md) —
+   **proposed.** The landing page told as one extensible story ("The Chart":
+   ready before, found during, sorted after) with direct signup, an animated
+   sea hero, a Live/Planned capability board, and a claims registry. It
+   supersedes the quiz-based parts of 201, 203, 204 and 205 for the landing
+   page; those are deferred, not deleted. Tier 0.
 
 ## Suggested build order for 138–147 and 203–206
 
@@ -387,6 +393,13 @@ them. It is a recommendation, not a commitment.
    (evidence from steps 1 and 2 decides the ranking), PRD-149 jurisdiction pack
    before any serious push on the `.si` product, PRD-208 trust marks alongside the
    upload path, and PRD-207 partner distribution once there is something to sell.
+9. **Landing story, on the existing signup (founder decision, no quiz):** PRD-209.
+   It is independent of the sequence above except that it must not claim anything
+   those PRDs have not shipped (no "emailed sign-in link", monthly letter or
+   "not used for training" until an email sign-in link PRD, PRD-138 and PRD-142
+   land). The quiz-based result-save PRDs named in the steps above (203, 204, 205)
+   are deferred by this decision, and an email sign-in link PRD replaces them when
+   it is written.
 
 ## Deliberately not written as PRDs yet
 
