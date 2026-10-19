@@ -24,9 +24,30 @@ import { closeDb } from '../../db.js'
 
 const TENANT = 'tenant-links'
 
-const PASS: JudgeScores = { coherence: 5, groundedness: 5, actionability: 5, proportionality: 5, safety: 5, feedback: '' }
-const REWRITE: JudgeScores = { coherence: 2, groundedness: 2, actionability: 2, proportionality: 5, safety: 5, feedback: 'weak' }
-const BLOCK: JudgeScores = { coherence: 5, groundedness: 5, actionability: 5, proportionality: 5, safety: 4, feedback: 'unsafe' }
+const PASS: JudgeScores = {
+  coherence: 5,
+  groundedness: 5,
+  actionability: 5,
+  proportionality: 5,
+  safety: 5,
+  feedback: '',
+}
+const REWRITE: JudgeScores = {
+  coherence: 2,
+  groundedness: 2,
+  actionability: 2,
+  proportionality: 5,
+  safety: 5,
+  feedback: 'weak',
+}
+const BLOCK: JudgeScores = {
+  coherence: 5,
+  groundedness: 5,
+  actionability: 5,
+  proportionality: 5,
+  safety: 4,
+  feedback: 'unsafe',
+}
 
 let mongod: MongoMemoryServer
 let client: MongoClient
@@ -68,7 +89,15 @@ beforeAll(async () => {
   // param parser 414s the whole feature.
   app = Fastify({ routerOptions: { maxParamLength: 512 } })
   app.addHook('onRequest', async (request) => {
-    ;(request as never as Record<string, unknown>)['authContext'] = { tenant_id: TENANT, user_id: 'user-1' }
+    // Mimics server.ts's opportunistic open-path auth: a session rides
+    // along only when the request carries one. x-test-* headers let a
+    // test simulate "no session" and "other tenant's session".
+    if (request.headers['x-test-unauthenticated']) return
+    const tenant = (request.headers['x-test-tenant'] as string) ?? TENANT
+    ;(request as never as Record<string, unknown>)['authContext'] = {
+      tenant_id: tenant,
+      user_id: 'user-1',
+    }
   })
   await registerInsightRoutes(app, {} as never, undefined, db, undefined, router)
 })
@@ -76,7 +105,22 @@ beforeAll(async () => {
 afterEach(async () => {
   judgeScores = PASS
   judgeEvaluator.mockClear()
-  for (const name of ['insights', 'action_receipts', 'tenant_settings', 'delivery_preferences', 'delivery_queue', 'delivery_receipts', 'tenants', 'verified_moments', 'agent_memory', 'move_rewrite_queue', 'manual_review_queue', 'move_judge_verdicts', 'family_groups', 'audit_log']) {
+  for (const name of [
+    'insights',
+    'action_receipts',
+    'tenant_settings',
+    'delivery_preferences',
+    'delivery_queue',
+    'delivery_receipts',
+    'tenants',
+    'verified_moments',
+    'agent_memory',
+    'move_rewrite_queue',
+    'manual_review_queue',
+    'move_judge_verdicts',
+    'family_groups',
+    'audit_log',
+  ]) {
     await db.collection(name).deleteMany({})
   }
 })
@@ -109,12 +153,39 @@ describe('GET /a/:token (confirmation page — prefetch-safe)', () => {
     const res = await app.inject({ method: 'GET', url: `/a/${token}` })
     expect(res.statusCode).toBe(200)
     expect(res.body).toContain('Dismiss')
-    expect((await db.collection('insights').findOne({ id: 'insight-link-1' }))?.['state']).toBe('identified')
+    expect((await db.collection('insights').findOne({ id: 'insight-link-1' }))?.['state']).toBe(
+      'identified',
+    )
   })
 
   it('rejects a forged or expired token', async () => {
     const res = await app.inject({ method: 'GET', url: '/a/not-a-real-token' })
     expect(res.statusCode).toBe(410)
+  })
+
+  it('shows the classified action preview — the same effects approve dispatches', async () => {
+    await db
+      .collection('insights')
+      .insertOne(insightDoc({ actions: ['Email a summary to the family'] }))
+    const token = router.signActionToken('insight-link-1', TENANT, 'approve')
+
+    const res = await app.inject({ method: 'GET', url: `/a/${token}` })
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toContain('Email a summary to the family')
+  })
+
+  it('renders a sign-in page instead of an approve button without a session', async () => {
+    await db.collection('insights').insertOne(insightDoc())
+    const token = router.signActionToken('insight-link-1', TENANT, 'approve')
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/a/${token}`,
+      headers: { 'x-test-unauthenticated': '1' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toContain('Sign in to approve')
+    expect(res.body).not.toContain('<form')
   })
 })
 
@@ -130,11 +201,77 @@ describe('POST /a/:token (executes the decision)', () => {
     const doc = await db.collection('insights').findOne({ id: 'insight-link-1' })
     // No recommended actions → execution completes immediately.
     expect(doc?.['state']).toBe('completed')
-    expect(doc?.['approved_by']).toBe('signed-link')
+    // Authenticated continuation: the real user is the approver; the link
+    // survives only as provenance on via/approved_via.
+    expect(doc?.['approved_by']).toBe('user-1')
 
-    const receipt = await db.collection('action_receipts').findOne({ insight_id: 'insight-link-1', action_type: 'insight.approve' })
+    const receipt = await db
+      .collection('action_receipts')
+      .findOne({ insight_id: 'insight-link-1', action_type: 'insight.approve' })
     expect(receipt).not.toBeNull()
-    expect(receipt?.['approved_by']).toBe('signed-link')
+    expect(receipt?.['approved_by']).toBe('user-1')
+    expect(receipt?.['approved_via']).toBe('signed_link')
+  })
+
+  it('refuses approve without a session — the bearer link alone cannot dispatch', async () => {
+    await db.collection('insights').insertOne(insightDoc())
+    const token = router.signActionToken('insight-link-1', TENANT, 'approve')
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/a/${token}`,
+      headers: { 'x-test-unauthenticated': '1' },
+    })
+    expect(res.statusCode).toBe(401)
+    expect(res.body).toContain('Sign in')
+    expect((await db.collection('insights').findOne({ id: 'insight-link-1' }))?.['state']).toBe(
+      'identified',
+    )
+  })
+
+  it('refuses approve when the session belongs to a different tenant', async () => {
+    await db.collection('insights').insertOne(insightDoc())
+    const token = router.signActionToken('insight-link-1', TENANT, 'approve')
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/a/${token}`,
+      headers: { 'x-test-tenant': 'tenant-other' },
+    })
+    expect(res.statusCode).toBe(401)
+    expect((await db.collection('insights').findOne({ id: 'insight-link-1' }))?.['state']).toBe(
+      'identified',
+    )
+  })
+
+  it('rejects a browser POST from an unlisted origin', async () => {
+    await db.collection('insights').insertOne(insightDoc())
+    const token = router.signActionToken('insight-link-1', TENANT, 'approve')
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/a/${token}`,
+      headers: { origin: 'https://evil.example' },
+    })
+    expect(res.statusCode).toBe(403)
+    expect((await db.collection('insights').findOne({ id: 'insight-link-1' }))?.['state']).toBe(
+      'identified',
+    )
+  })
+
+  it('dismiss still works unauthenticated — documented bearer exception', async () => {
+    await db.collection('insights').insertOne(insightDoc())
+    const token = router.signActionToken('insight-link-1', TENANT, 'dismiss')
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/a/${token}`,
+      headers: { 'x-test-unauthenticated': '1' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect((await db.collection('insights').findOne({ id: 'insight-link-1' }))?.['state']).toBe(
+      'dismissed',
+    )
   })
 
   it('dismisses the insight through the shared decision path', async () => {
@@ -151,12 +288,16 @@ describe('POST /a/:token (executes the decision)', () => {
 
   it('honors the quota/credit gates the authenticated route applies', async () => {
     await db.collection('insights').insertOne(insightDoc())
-    await db.collection('tenants').insertOne({ tenant_id: TENANT, tier: 'pro', billing: { credits_balance: 0 } })
+    await db
+      .collection('tenants')
+      .insertOne({ tenant_id: TENANT, tier: 'pro', billing: { credits_balance: 0 } })
     const token = router.signActionToken('insight-link-1', TENANT, 'approve')
 
     const res = await app.inject({ method: 'POST', url: `/a/${token}` })
     expect(res.statusCode).toBe(402)
-    expect((await db.collection('insights').findOne({ id: 'insight-link-1' }))?.['state']).toBe('identified')
+    expect((await db.collection('insights').findOne({ id: 'insight-link-1' }))?.['state']).toBe(
+      'identified',
+    )
   })
 
   it('returns an error page for a second POST on an already-actioned insight', async () => {
@@ -190,26 +331,46 @@ describe('GET /why/:token (read-only evidence)', () => {
 
 describe('drainDeliveryQueue (escalation consumer)', () => {
   it('sends a queued escalation on its named channel and marks it sent', async () => {
-    const smsSend = vi.fn(async () => ({ channel: 'sms' as const, success: true, delivered_at: new Date() }))
+    const smsSend = vi.fn(async () => ({
+      channel: 'sms' as const,
+      success: true,
+      delivered_at: new Date(),
+    }))
     ;(router as unknown as Record<string, unknown>)['sms'] = { send: smsSend }
 
     await db.collection('insights').insertOne(insightDoc())
-    await db.collection('delivery_preferences').insertOne({ tenant_id: TENANT, enabled: true, channels: ['sms'], sms_to: '+15550001111' })
+    await db
+      .collection('delivery_preferences')
+      .insertOne({ tenant_id: TENANT, enabled: true, channels: ['sms'], sms_to: '+15550001111' })
     await db.collection('delivery_queue').insertOne({
-      tenant_id: TENANT, insight_id: 'insight-link-1', channel: 'sms', target: '+15550009999',
-      escalation: true, status: 'queued', created_at: new Date(),
+      tenant_id: TENANT,
+      insight_id: 'insight-link-1',
+      channel: 'sms',
+      target: '+15550009999',
+      escalation: true,
+      status: 'queued',
+      created_at: new Date(),
     })
 
     const summary = await router.drainDeliveryQueue()
     expect(summary).toEqual({ sent: 1, failed: 0 })
-    expect(smsSend).toHaveBeenCalledWith('+15550009999', expect.objectContaining({ insight_id: 'insight-link-1' }))
+    expect(smsSend).toHaveBeenCalledWith(
+      '+15550009999',
+      expect.objectContaining({ insight_id: 'insight-link-1' }),
+    )
     expect((await db.collection('delivery_queue').findOne({}))?.['status']).toBe('sent')
-    expect(await db.collection('delivery_receipts').countDocuments({ channel: 'sms', success: true })).toBe(1)
+    expect(
+      await db.collection('delivery_receipts').countDocuments({ channel: 'sms', success: true }),
+    ).toBe(1)
   })
 
   it('marks a row failed when its insight no longer exists', async () => {
     await db.collection('delivery_queue').insertOne({
-      tenant_id: TENANT, insight_id: 'ghost', channel: 'sms', status: 'queued', created_at: new Date(),
+      tenant_id: TENANT,
+      insight_id: 'ghost',
+      channel: 'sms',
+      status: 'queued',
+      created_at: new Date(),
     })
     const summary = await router.drainDeliveryQueue()
     expect(summary.failed).toBe(1)
@@ -219,14 +380,23 @@ describe('drainDeliveryQueue (escalation consumer)', () => {
   })
 
   it('recovers a stale "sending" claim rather than losing the escalation', async () => {
-    const smsSend = vi.fn(async () => ({ channel: 'sms' as const, success: true, delivered_at: new Date() }))
+    const smsSend = vi.fn(async () => ({
+      channel: 'sms' as const,
+      success: true,
+      delivered_at: new Date(),
+    }))
     ;(router as unknown as Record<string, unknown>)['sms'] = { send: smsSend }
 
     await db.collection('insights').insertOne(insightDoc())
-    await db.collection('delivery_preferences').insertOne({ tenant_id: TENANT, enabled: true, channels: ['sms'], sms_to: '+15550001111' })
+    await db
+      .collection('delivery_preferences')
+      .insertOne({ tenant_id: TENANT, enabled: true, channels: ['sms'], sms_to: '+15550001111' })
     await db.collection('delivery_queue').insertOne({
-      tenant_id: TENANT, insight_id: 'insight-link-1', channel: 'sms',
-      escalation: true, status: 'sending',
+      tenant_id: TENANT,
+      insight_id: 'insight-link-1',
+      channel: 'sms',
+      escalation: true,
+      status: 'sending',
       claimed_at: new Date(Date.now() - 20 * 60 * 1000), // 20m ago — past the 10m stale window
       created_at: new Date(),
     })
@@ -238,7 +408,11 @@ describe('drainDeliveryQueue (escalation consumer)', () => {
 })
 
 function stubSms() {
-  const smsSend = vi.fn(async () => ({ channel: 'sms' as const, success: true, delivered_at: new Date() }))
+  const smsSend = vi.fn(async () => ({
+    channel: 'sms' as const,
+    success: true,
+    delivered_at: new Date(),
+  }))
   ;(router as unknown as Record<string, unknown>)['sms'] = { send: smsSend }
   return smsSend
 }
@@ -261,7 +435,9 @@ describe('drainReviewQueues (judge review-queue consumer)', () => {
   it('re-pends a due rewrite row with backoff when the judge still blocks it', async () => {
     judgeScores = REWRITE
     await db.collection('insights').insertOne(insightDoc())
-    await db.collection('delivery_preferences').insertOne({ tenant_id: TENANT, enabled: true, channels: ['sms'], sms_to: '+15550001111' })
+    await db
+      .collection('delivery_preferences')
+      .insertOne({ tenant_id: TENANT, enabled: true, channels: ['sms'], sms_to: '+15550001111' })
     await db.collection('move_rewrite_queue').insertOne(queuedReviewRow())
 
     const summary = await router.drainReviewQueues()
@@ -277,7 +453,9 @@ describe('drainReviewQueues (judge review-queue consumer)', () => {
   it('delivers and resolves the row when the judge now passes', async () => {
     const smsSend = stubSms()
     await db.collection('insights').insertOne(insightDoc())
-    await db.collection('delivery_preferences').insertOne({ tenant_id: TENANT, enabled: true, channels: ['sms'], sms_to: '+15550001111' })
+    await db
+      .collection('delivery_preferences')
+      .insertOne({ tenant_id: TENANT, enabled: true, channels: ['sms'], sms_to: '+15550001111' })
     await db.collection('move_rewrite_queue').insertOne(queuedReviewRow())
 
     const summary = await router.drainReviewQueues()
@@ -295,7 +473,9 @@ describe('drainReviewQueues (judge review-queue consumer)', () => {
   it('marks the row exhausted at the attempt cap instead of retrying forever', async () => {
     judgeScores = REWRITE
     await db.collection('insights').insertOne(insightDoc())
-    await db.collection('delivery_preferences').insertOne({ tenant_id: TENANT, enabled: true, channels: ['sms'], sms_to: '+15550001111' })
+    await db
+      .collection('delivery_preferences')
+      .insertOne({ tenant_id: TENANT, enabled: true, channels: ['sms'], sms_to: '+15550001111' })
     await db.collection('move_rewrite_queue').insertOne(queuedReviewRow({ attempts: 5 }))
 
     await router.drainReviewQueues()
@@ -307,7 +487,9 @@ describe('drainReviewQueues (judge review-queue consumer)', () => {
   it('supersedes the old row when the verdict flips queues', async () => {
     judgeScores = BLOCK // pending rewrite row, but the fresh verdict is block
     await db.collection('insights').insertOne(insightDoc())
-    await db.collection('delivery_preferences').insertOne({ tenant_id: TENANT, enabled: true, channels: ['sms'], sms_to: '+15550001111' })
+    await db
+      .collection('delivery_preferences')
+      .insertOne({ tenant_id: TENANT, enabled: true, channels: ['sms'], sms_to: '+15550001111' })
     await db.collection('move_rewrite_queue').insertOne(queuedReviewRow())
 
     await router.drainReviewQueues()
@@ -327,24 +509,32 @@ describe('drainReviewQueues (judge review-queue consumer)', () => {
     const summary = await router.drainReviewQueues()
     expect(summary.resolved).toBe(1)
     expect(judgeEvaluator).not.toHaveBeenCalled()
-    expect((await db.collection('move_rewrite_queue').findOne({}))?.['resolved_reason']).toBe('already_terminal')
+    expect((await db.collection('move_rewrite_queue').findOne({}))?.['resolved_reason']).toBe(
+      'already_terminal',
+    )
   })
 
   it('resolves rows whose insight no longer exists', async () => {
     await db.collection('move_rewrite_queue').insertOne(queuedReviewRow())
     const summary = await router.drainReviewQueues()
     expect(summary.resolved).toBe(1)
-    expect((await db.collection('move_rewrite_queue').findOne({}))?.['resolved_reason']).toBe('insight_not_found')
+    expect((await db.collection('move_rewrite_queue').findOne({}))?.['resolved_reason']).toBe(
+      'insight_not_found',
+    )
   })
 
   it('recovers a stale "evaluating" claim', async () => {
     const smsSend = stubSms()
     await db.collection('insights').insertOne(insightDoc())
-    await db.collection('delivery_preferences').insertOne({ tenant_id: TENANT, enabled: true, channels: ['sms'], sms_to: '+15550001111' })
-    await db.collection('move_rewrite_queue').insertOne(queuedReviewRow({
-      status: 'evaluating',
-      claimed_at: new Date(Date.now() - 20 * 60_000),
-    }))
+    await db
+      .collection('delivery_preferences')
+      .insertOne({ tenant_id: TENANT, enabled: true, channels: ['sms'], sms_to: '+15550001111' })
+    await db.collection('move_rewrite_queue').insertOne(
+      queuedReviewRow({
+        status: 'evaluating',
+        claimed_at: new Date(Date.now() - 20 * 60_000),
+      }),
+    )
 
     const summary = await router.drainReviewQueues()
     expect(summary.released).toBe(1)
@@ -370,7 +560,16 @@ describe('review-queue routes (human surface for held insights)', () => {
   async function makeOrganizer() {
     await db.collection('family_groups').insertOne({
       tenant_id: TENANT,
-      members: [{ id: 'user-1', role: 'organizer', status: 'active', name: 'Org', email: 'o@x.test', joined_at: new Date() }],
+      members: [
+        {
+          id: 'user-1',
+          role: 'organizer',
+          status: 'active',
+          name: 'Org',
+          email: 'o@x.test',
+          joined_at: new Date(),
+        },
+      ],
     })
   }
 
@@ -383,7 +582,9 @@ describe('review-queue routes (human surface for held insights)', () => {
     const { items } = res.json() as { items: Array<Record<string, unknown>> }
     expect(items).toHaveLength(1)
     expect(items[0]?.['queue']).toBe('move_rewrite_queue')
-    expect((items[0]?.['insight'] as Record<string, unknown>)?.['hypothesis']).toBe('Life cover gap on file')
+    expect((items[0]?.['insight'] as Record<string, unknown>)?.['hypothesis']).toBe(
+      'Life cover gap on file',
+    )
   })
 
   it('releases a held insight despite an active block verdict', async () => {
@@ -391,12 +592,16 @@ describe('review-queue routes (human surface for held insights)', () => {
     const smsSend = stubSms()
     await makeOrganizer()
     await db.collection('insights').insertOne(insightDoc())
-    await db.collection('delivery_preferences').insertOne({ tenant_id: TENANT, enabled: true, channels: ['sms'], sms_to: '+15550001111' })
-    await db.collection('manual_review_queue').insertOne(queuedReviewRow({
-      verdict: { decision: 'block', judge_skipped: false, evaluated_at: new Date() },
-      retry_at: undefined,
-      re_evaluate_at: new Date(Date.now() - 60_000),
-    }))
+    await db
+      .collection('delivery_preferences')
+      .insertOne({ tenant_id: TENANT, enabled: true, channels: ['sms'], sms_to: '+15550001111' })
+    await db.collection('manual_review_queue').insertOne(
+      queuedReviewRow({
+        verdict: { decision: 'block', judge_skipped: false, evaluated_at: new Date() },
+        retry_at: undefined,
+        re_evaluate_at: new Date(Date.now() - 60_000),
+      }),
+    )
 
     const res = await app.inject({ method: 'POST', url: '/insights/insight-link-1/review-release' })
     expect(res.statusCode).toBe(200)
@@ -414,7 +619,16 @@ describe('review-queue routes (human surface for held insights)', () => {
   it('rejects release from a non-organizer family member', async () => {
     await db.collection('family_groups').insertOne({
       tenant_id: TENANT,
-      members: [{ id: 'user-1', role: 'member', status: 'active', name: 'M', email: 'm@x.test', joined_at: new Date() }],
+      members: [
+        {
+          id: 'user-1',
+          role: 'member',
+          status: 'active',
+          name: 'M',
+          email: 'm@x.test',
+          joined_at: new Date(),
+        },
+      ],
     })
     await db.collection('insights').insertOne(insightDoc())
     await db.collection('move_rewrite_queue').insertOne(queuedReviewRow())
@@ -436,7 +650,11 @@ describe('review-queue routes (human surface for held insights)', () => {
     await db.collection('insights').insertOne(insightDoc())
     await db.collection('move_rewrite_queue').insertOne(queuedReviewRow())
 
-    const res = await app.inject({ method: 'POST', url: '/insights/insight-link-1/review-discard', payload: { reason: 'agree with judge' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/insights/insight-link-1/review-discard',
+      payload: { reason: 'agree with judge' },
+    })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual({ discarded: true, insight_dismissed: true })
 
@@ -445,6 +663,8 @@ describe('review-queue routes (human surface for held insights)', () => {
     const insight = await db.collection('insights').findOne({})
     expect(insight?.['state']).toBe('dismissed')
     expect(insight?.['dismissed_by']).toBe('user-1')
-    expect(await db.collection('action_receipts').countDocuments({ action_type: 'insight.dismiss' })).toBe(1)
+    expect(
+      await db.collection('action_receipts').countDocuments({ action_type: 'insight.dismiss' }),
+    ).toBe(1)
   })
 })

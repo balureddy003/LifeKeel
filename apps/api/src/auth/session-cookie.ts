@@ -73,6 +73,9 @@ const ALLOWED_ORIGINS = new Set(
     process.env['CORS_ORIGIN'] ?? '',
     process.env['LIFEKEEL_URL'] ?? '',
     process.env['STUDIO_URL'] ?? '',
+    // The API itself is a credentialed origin: it serves the /a/ signed-link
+    // confirmation forms that POST session-authed approvals back to it.
+    process.env['API_BASE_URL'] ?? '',
     ...DEV_ORIGINS,
   ]
     .flatMap((s) => s.split(','))

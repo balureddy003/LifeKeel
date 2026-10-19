@@ -29,6 +29,7 @@ import type { DeliveryRouter } from '../delivery/delivery-router.js'
 import { recordInsightRouteError } from './metrics.js'
 import { sendOpsAlert } from '../operator/ops-alerts.js'
 import { ActionExecutor, previewActions } from '../actions/action-executor.js'
+import { isOriginAllowedForCookieAuth } from '../auth/session-cookie.js'
 import { recordMomentDecision } from '../verified-moments.js'
 import { generateDraft } from '../insights/generate-draft.js'
 import { extractDraftProvenance } from '../insights/draft-provenance.js'
@@ -598,6 +599,7 @@ export async function registerInsightRoutes(
           outcome_reason: tenantDryRun ? 'dry_run_mode' : undefined,
           executed_at: new Date(),
           approved_by: ctx.userId,
+          approved_via: ctx.via,
           payload_hash: createHash('sha256').update(JSON.stringify({ id, notes })).digest('hex'),
           dry_run: dryRun,
           learning_suppressed: !learningAllowed,
@@ -1077,6 +1079,15 @@ export async function registerInsightRoutes(
   // the family's behalf. The POST — which only a deliberate button press
   // produces — runs the exact same decision as POST /insights/:id/approve,
   // including the quota/credit gates and dry-run honoring.
+  //
+  // Approval requires authenticated continuation (intent 02): a bearer
+  // token alone can preview, but POST approve only runs when a session
+  // belonging to the SAME tenant rides along — the link is a pointer to
+  // the decision, not the authority for it. Dismiss keeps bearer
+  // semantics deliberately: it has no external side effects, and the
+  // worst case of a forwarded link is suppressing an insight the link
+  // holder could already read — identical exposure to the notification
+  // that carried it.
   const escHtml = (s: unknown): string =>
     String(s ?? '').replace(
       /[&<>"']/g,
@@ -1099,13 +1110,15 @@ export async function registerInsightRoutes(
   if (deliveryRouter) {
     const router = deliveryRouter
 
+    const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
+
     app.get<{ Params: { token: string } }>('/a/:token', async (request, reply) => {
       const decoded = router.verifyActionToken(request.params.token)
       if (!decoded) return reply.status(410).type('text/html').send(expiredPage)
       const col = await getInsightsCollection()
       const insight = await col.findOne(
         { id: decoded.insight_id, tenant_id: decoded.tenant_id },
-        { projection: { hypothesis: 1, reasoning: 1, state: 1 } },
+        { projection: { hypothesis: 1, reasoning: 1, state: 1, actions: 1, action_intents: 1 } },
       )
       if (!insight)
         return reply
@@ -1113,6 +1126,42 @@ export async function registerInsightRoutes(
           .type('text/html')
           .send(linkPage('Not found', `<h1>Insight not found</h1><p>It may have been removed.</p>`))
       const approve = decoded.action === 'approve'
+
+      // Same classified preview as GET /insights/:id/action-preview —
+      // previewActions shares ActionExecutor's classifyAction, so what the
+      // link shows can't drift from what approving dispatches.
+      const preview = approve
+        ? previewActions(
+            ((insight as { actions?: string[] }).actions ?? []) as string[],
+            (insight as { action_intents?: never[] }).action_intents,
+          )
+            .map(
+              (a) =>
+                `<li><strong>${escHtml(a.label)}</strong> — ${escHtml(a.summary)}${a.external ? ' (external effect)' : ''}</li>`,
+            )
+            .join('')
+        : ''
+
+      // Opportunistic session: server.ts's open-path hook populates
+      // authContext when a valid session cookie/Bearer rides along. Only a
+      // session for the token's own tenant counts as continuation.
+      const authed = request.authContext?.tenant_id === decoded.tenant_id
+
+      if (approve && !authed) {
+        return reply.type('text/html').send(
+          linkPage(
+            'Sign in to approve',
+            `
+          <h1>Sign in to approve this insight</h1>
+          <div class="card"><strong>${escHtml(insight['hypothesis'] ?? 'Insight')}</strong>
+          <p>${escHtml(insight['reasoning'] ?? '')}</p>
+          ${preview ? `<ul>${preview}</ul>` : ''}</div>
+          <p>Approving runs external actions on your family's behalf, so the link alone isn't enough — sign in, then come back to this link.</p>
+          <p><a href="${escHtml(appUrl)}"><button class="primary">Open LifeKeel to sign in</button></a></p>`,
+          ),
+        )
+      }
+
       const verb = approve ? 'Approve' : 'Dismiss'
       return reply.type('text/html').send(
         linkPage(
@@ -1120,7 +1169,8 @@ export async function registerInsightRoutes(
           `
         <h1>${verb} this insight?</h1>
         <div class="card"><strong>${escHtml(insight['hypothesis'] ?? 'Insight')}</strong>
-        <p>${escHtml(insight['reasoning'] ?? '')}</p></div>
+        <p>${escHtml(insight['reasoning'] ?? '')}</p>
+        ${preview ? `<ul>${preview}</ul>` : ''}</div>
         <form method="POST" action="/a/${escHtml(request.params.token)}">
           <button type="submit" class="${approve ? 'primary' : 'secondary'}">${verb}</button>
         </form>`,
@@ -1131,21 +1181,70 @@ export async function registerInsightRoutes(
     app.post<{ Params: { token: string } }>('/a/:token', async (request, reply) => {
       const decoded = router.verifyActionToken(request.params.token)
       if (!decoded) return reply.status(410).type('text/html').send(expiredPage)
+
+      // The confirmation form posts from the API's own origin — anything
+      // else presenting a browser Origin header is a cross-site attempt.
+      // (Non-browser clients omit Origin; the token is still their gate.)
+      if (!isOriginAllowedForCookieAuth(request)) {
+        return reply
+          .status(403)
+          .type('text/html')
+          .send(linkPage('Not allowed', `<h1>Request rejected</h1>`))
+      }
+
       const base = {
         id: decoded.insight_id,
         tenantId: decoded.tenant_id,
-        // No user identity travels in the token — the signed link itself is
-        // the authority, so the actor is recorded as 'signed-link' in
-        // receipts, approved_by/dismissed_by, and the audit trail.
-        userId: 'signed-link',
-        via: 'signed_link',
         ip: request.ip,
         userAgent: request.headers['user-agent'],
       }
-      const outcome =
-        decoded.action === 'approve'
-          ? await approveInsightDecision(base)
-          : await dismissInsightDecision(base)
+
+      if (decoded.action === 'approve') {
+        // Authenticated continuation: the approving session must belong to
+        // the token's tenant — an unauthenticated bearer link can no longer
+        // dispatch external effects.
+        const ctx = request.authContext
+        if (!ctx || ctx.tenant_id !== decoded.tenant_id) {
+          return reply
+            .status(401)
+            .type('text/html')
+            .send(
+              linkPage(
+                'Sign in required',
+                `<h1>Sign in to approve</h1><p>Open LifeKeel, sign in, then return to this link — it's valid for 7 days.</p>
+               <p><a href="${escHtml(appUrl)}"><button class="primary">Open LifeKeel</button></a></p>`,
+              ),
+            )
+        }
+        const outcome = await approveInsightDecision({
+          ...base,
+          userId: ctx.user_id,
+          via: 'signed_link',
+        })
+        if (outcome.code !== 200) {
+          const err = (outcome.body as { error?: string }).error ?? 'Please try again'
+          return reply
+            .status(outcome.code)
+            .type('text/html')
+            .send(
+              linkPage(
+                "Couldn't approve",
+                `<h1>Couldn't approve that insight</h1><p>${escHtml(err)}</p>`,
+              ),
+            )
+        }
+        const msg = (outcome.body as { message?: string }).message ?? 'Done'
+        return reply
+          .type('text/html')
+          .send(linkPage('Done', `<h1>Approved</h1><p>${escHtml(msg)}</p>`))
+      }
+
+      // Dismiss keeps bearer semantics — see the comment above GET /a/:token.
+      const outcome = await dismissInsightDecision({
+        ...base,
+        userId: 'signed-link',
+        via: 'signed_link',
+      })
       if (outcome.code !== 200) {
         const err = (outcome.body as { error?: string }).error ?? 'Please try again'
         return reply
@@ -1153,20 +1252,15 @@ export async function registerInsightRoutes(
           .type('text/html')
           .send(
             linkPage(
-              `Couldn't ${decoded.action}`,
-              `<h1>Couldn't ${decoded.action} that insight</h1><p>${escHtml(err)}</p>`,
+              "Couldn't dismiss",
+              `<h1>Couldn't dismiss that insight</h1><p>${escHtml(err)}</p>`,
             ),
           )
       }
       const msg = (outcome.body as { message?: string }).message ?? 'Done'
       return reply
         .type('text/html')
-        .send(
-          linkPage(
-            'Done',
-            `<h1>${decoded.action === 'approve' ? 'Approved' : 'Dismissed'}</h1><p>${escHtml(msg)}</p>`,
-          ),
-        )
+        .send(linkPage('Done', `<h1>Dismissed</h1><p>${escHtml(msg)}</p>`))
     })
 
     // GET /why/:token — read-only evidence view, safe as a plain GET.
