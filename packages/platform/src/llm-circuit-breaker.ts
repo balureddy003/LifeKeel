@@ -64,8 +64,16 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
       lastErr = err
       if (!isRetryable(err) || attempt === MAX_RETRIES) break
       const delay = jitter(BASE_DELAY_MS * Math.pow(2, attempt))
-      log.warn({ attempt: attempt + 1, max_retries: MAX_RETRIES, delay_ms: Math.round(delay), err: (err as Error).message }, 'Retrying LLM call')
-      await new Promise(r => setTimeout(r, delay))
+      log.warn(
+        {
+          attempt: attempt + 1,
+          max_retries: MAX_RETRIES,
+          delay_ms: Math.round(delay),
+          err: (err as Error).message,
+        },
+        'Retrying LLM call',
+      )
+      await new Promise((r) => setTimeout(r, delay))
     }
   }
   throw lastErr
@@ -84,7 +92,10 @@ export class LlmCircuitBreaker {
   private readonly failureThreshold: number
   private readonly openDurationMs: number
 
-  constructor(private readonly key: string, options: CircuitBreakerOptions = {}) {
+  constructor(
+    private readonly key: string,
+    options: CircuitBreakerOptions = {},
+  ) {
     this.failureThreshold = options.failureThreshold ?? FAILURE_THRESHOLD
     this.openDurationMs = options.openDurationMs ?? OPEN_DURATION_MS
   }
@@ -102,9 +113,9 @@ export class LlmCircuitBreaker {
     if (this.state === 'open') {
       if (elapsed >= this.openDurationMs) {
         this.transition('half-open')
-        return false  // allow the probe
+        return false // allow the probe
       }
-      return true  // still locked out
+      return true // still locked out
     }
 
     // half-open: allow exactly one probe through
@@ -112,13 +123,28 @@ export class LlmCircuitBreaker {
   }
 
   async call<T>(fn: () => Promise<T>): Promise<T> {
+    return this.invoke(fn, true)
+  }
+
+  /**
+   * Same state machine as call() but a single attempt — for callers whose
+   * inner function already retries (the LLM router retries transports
+   * itself; nesting a second retry layer would multiply attempts).
+   */
+  async callOnce<T>(fn: () => Promise<T>): Promise<T> {
+    return this.invoke(fn, false)
+  }
+
+  private async invoke<T>(fn: () => Promise<T>, retry: boolean): Promise<T> {
     if (this.isOpen()) {
-      const remaining = Math.ceil((this.openDurationMs - (Date.now() - (this.openedAt ?? 0))) / 1000)
+      const remaining = Math.ceil(
+        (this.openDurationMs - (Date.now() - (this.openedAt ?? 0))) / 1000,
+      )
       throw new Error(`[LlmCircuitBreaker:${this.key}] Circuit open — retry in ~${remaining}s`)
     }
 
     try {
-      const result = await withRetry(fn)
+      const result = retry ? await withRetry(fn) : await fn()
       // Success — reset failure count and close
       if (this.consecutiveFailures > 0 || this.state !== 'closed') {
         this.consecutiveFailures = 0
@@ -128,7 +154,10 @@ export class LlmCircuitBreaker {
       return result
     } catch (err) {
       this.consecutiveFailures++
-      log.warn({ key: this.key, failure_count: this.consecutiveFailures, err: (err as Error).message }, 'Circuit breaker failure')
+      log.warn(
+        { key: this.key, failure_count: this.consecutiveFailures, err: (err as Error).message },
+        'Circuit breaker failure',
+      )
 
       if (this.state === 'half-open') {
         // Probe failed — reopen for another 60s
@@ -168,7 +197,10 @@ const breakers = new Map<string, LlmCircuitBreaker>()
  * Returns (or creates) a singleton `LlmCircuitBreaker` for the given provider key.
  * Safe to call multiple times — always returns the same instance per key.
  */
-export function getCircuitBreaker(key: string, options: CircuitBreakerOptions = {}): LlmCircuitBreaker {
+export function getCircuitBreaker(
+  key: string,
+  options: CircuitBreakerOptions = {},
+): LlmCircuitBreaker {
   if (!breakers.has(key)) {
     breakers.set(key, new LlmCircuitBreaker(key, options))
   }

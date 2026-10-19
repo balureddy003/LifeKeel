@@ -136,6 +136,24 @@ export {
 export type { LocalEmbeddingOptions } from './memory/LocalEmbeddingProvider.js'
 export { repoRoot } from './repo-root.js'
 export {
+  parseTaskRegistry,
+  resolveTaskPolicy,
+  governedLlm,
+  governedDecide,
+  governedVision,
+  llmCallContext,
+  TaskPolicyError,
+  TaskDeadlineError,
+} from './task-gateway.js'
+export type {
+  AiTaskPolicy,
+  TaskRegistry,
+  TaskGatewayDeps,
+  LlmCallContext,
+  VisionContent,
+  VisionFn,
+} from './task-gateway.js'
+export {
   PERSONA_VERTICALS,
   RISK_TIER_PRESETS,
   STRATEGY_DEFAULTS,

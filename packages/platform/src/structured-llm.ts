@@ -25,7 +25,12 @@
 
 import { z } from 'zod'
 import type { LlmFn } from './llm.js'
-import { LlmInputGuard, LlmOutputGuard, type LlmGuardEvent, type LlmGuardOptions } from './llm-guards.js'
+import {
+  LlmInputGuard,
+  LlmOutputGuard,
+  type LlmGuardEvent,
+  type LlmGuardOptions,
+} from './llm-guards.js'
 import type { LlmBudgetGuard } from './llm-budget.js'
 import type { GuardEventSink } from './guard-event-sink.js'
 
@@ -109,12 +114,16 @@ export async function callStructured<T>(
     ...baseGuardOpts,
     ...(options.governance?.tenantId ? { tenantId: options.governance.tenantId } : {}),
   }
-  const inputGuard = options.inputGuard === false
-    ? null
-    : new LlmInputGuard(guardOpts)
-  const outputGuard = options.outputGuard === false
-    ? null
-    : new LlmOutputGuard(typeof options.outputGuard === 'object' ? options.outputGuard : {})
+  const inputGuard = options.inputGuard === false ? null : new LlmInputGuard(guardOpts)
+  const outputGuard =
+    options.outputGuard === false
+      ? null
+      : new LlmOutputGuard({
+          ...(typeof options.outputGuard === 'object' ? options.outputGuard : {}),
+          // The output guard previously dropped tenant_id — events landed as
+          // 'unknown' and couldn't be traced back (§8.12 traceability).
+          ...(options.governance?.tenantId ? { tenantId: options.governance.tenantId } : {}),
+        })
   const guardedPrompt = inputGuard?.guard(options.prompt) ?? { value: options.prompt, events: [] }
 
   // Generate JSON schema from Zod type for the system prompt
@@ -138,9 +147,10 @@ export async function callStructured<T>(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     // On retries, append the previous error to guide the model
-    const system = attempt === 0 || !lastError
-      ? baseSystem
-      : `${baseSystem}\n\n## Previous attempt was invalid\nError: ${lastError}\nPlease fix your response.`
+    const system =
+      attempt === 0 || !lastError
+        ? baseSystem
+        : `${baseSystem}\n\n## Previous attempt was invalid\nError: ${lastError}\nPlease fix your response.`
 
     let raw: string
     try {
@@ -172,7 +182,9 @@ export async function callStructured<T>(
       const allEvents = [...guardedPrompt.events, ...guardedOutput.events]
       // ── ADR-0040: Persist guard events ───────────────────────────────────────
       if (allEvents.length > 0 && options.governance?.guardEventSink) {
-        await options.governance.guardEventSink(allEvents).catch(() => { /* best-effort */ })
+        await options.governance.guardEventSink(allEvents).catch(() => {
+          /* best-effort */
+        })
       }
       return {
         data: result.data,
@@ -185,7 +197,7 @@ export async function callStructured<T>(
 
     // Format Zod errors for the retry prompt
     lastError = `Schema validation failed:\n${result.error.errors
-      .map(e => `  - ${e.path.join('.')}: ${e.message}`)
+      .map((e) => `  - ${e.path.join('.')}: ${e.message}`)
       .join('\n')}`
     retries++
   }
@@ -193,7 +205,9 @@ export async function callStructured<T>(
   // Persist guard events even on failure (best-effort; ADR-0040)
   const failureEvents = [...(guardedPrompt?.events ?? [])]
   if (failureEvents.length > 0 && options.governance?.guardEventSink) {
-    await options.governance.guardEventSink(failureEvents).catch(() => { /* best-effort */ })
+    await options.governance.guardEventSink(failureEvents).catch(() => {
+      /* best-effort */
+    })
   }
 
   throw new StructuredOutputError(
@@ -205,14 +219,24 @@ export async function callStructured<T>(
 // ── Error type ─────────────────────────────────────────────────────────────────
 
 export class StructuredOutputError extends Error {
-  constructor(message: string, public readonly lastValidationError: string | null) {
+  constructor(
+    message: string,
+    public readonly lastValidationError: string | null,
+  ) {
     super(message)
     this.name = 'StructuredOutputError'
   }
 }
 
 export class BudgetExhaustedError extends Error {
-  constructor(message: string, public readonly decision: { spent_microdollars: number; limit_microdollars: number | null; reason?: string }) {
+  constructor(
+    message: string,
+    public readonly decision: {
+      spent_microdollars: number
+      limit_microdollars: number | null
+      reason?: string
+    },
+  ) {
     super(message)
     this.name = 'BudgetExhaustedError'
   }
@@ -257,7 +281,7 @@ function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
   }
   if (schema instanceof z.ZodRecord) {
     // ZodRecord's value type is accessible via ._def.valueType
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const valueType = (schema as any)._def?.valueType as z.ZodType | undefined
     return { type: 'object', additionalProperties: valueType ? zodToJsonSchema(valueType) : {} }
   }

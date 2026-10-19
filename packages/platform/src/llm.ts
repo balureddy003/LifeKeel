@@ -437,6 +437,7 @@ async function callAzure(
   maxTokens: number,
   temperature: number,
   foundry = false,
+  onUsage?: LlmUsageCallback,
 ): Promise<string> {
   const { default: OpenAI } = await import('openai')
   // Singleton client — reuse across calls to avoid connection pool exhaustion.
@@ -461,6 +462,7 @@ async function callAzure(
     () => new OpenAI(clientOpts),
   )
   return withRetry(async () => {
+    const t0 = Date.now()
     const response = await client.chat.completions.create({
       model: deployment,
       max_tokens: maxTokens as number | null,
@@ -470,6 +472,15 @@ async function callAzure(
         { role: 'user', content: prompt },
       ],
     })
+    if (response.usage) {
+      onUsage?.({
+        input_tokens: response.usage.prompt_tokens,
+        output_tokens: response.usage.completion_tokens,
+        model: deployment,
+        provider: 'azure',
+        latency_ms: Date.now() - t0,
+      })
+    }
     return response.choices[0]?.message.content ?? ''
   })
 }
@@ -523,6 +534,7 @@ async function callOllama(
   maxTokens: number,
   temperature: number,
   getHeaders?: () => Promise<Record<string, string>>,
+  onUsage?: LlmUsageCallback,
 ): Promise<string> {
   const url = `${baseUrl}/api/chat`
   const body = {
@@ -535,6 +547,7 @@ async function callOllama(
     ],
   }
   return withRetry(async () => {
+    const t0 = Date.now()
     let res: Response
     try {
       res = await fetch(url, {
@@ -552,7 +565,20 @@ async function callOllama(
       throw err
     }
     if (!res.ok) throw new Error(`Ollama HTTP ${res.status}: ${await res.text()}`)
-    const data = (await res.json()) as { message?: { content?: string } }
+    const data = (await res.json()) as {
+      message?: { content?: string }
+      prompt_eval_count?: number
+      eval_count?: number
+    }
+    if (data.prompt_eval_count !== undefined || data.eval_count !== undefined) {
+      onUsage?.({
+        input_tokens: data.prompt_eval_count ?? 0,
+        output_tokens: data.eval_count ?? 0,
+        model,
+        provider: 'ollama',
+        latency_ms: Date.now() - t0,
+      })
+    }
     return data.message?.content ?? ''
   })
 }
@@ -675,6 +701,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
             maxTokens,
             temperature,
             foundry,
+            cfg.onUsage,
           )
         }
 
@@ -703,6 +730,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
             maxTokens,
             temperature,
             cfg.ollamaHeaders,
+            cfg.onUsage,
           )
         }
 
@@ -723,13 +751,13 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
  */
 let loggedEnvProvider = false
 
-export function createLlmRouterFromEnv(): LlmFn {
+export function createLlmRouterFromEnv(cfg: LlmConfig = {}): LlmFn {
   const provider = detectActiveProvider()
   if (!loggedEnvProvider) {
     log.info({ provider: provider ?? 'none' }, 'Active LLM provider')
     loggedEnvProvider = true
   }
-  return createLlmRouter({ provider: provider ?? 'anthropic' })
+  return createLlmRouter({ ...cfg, provider: cfg.provider ?? provider ?? 'anthropic' })
 }
 
 function detectActiveProvider(): LlmProvider | null {
