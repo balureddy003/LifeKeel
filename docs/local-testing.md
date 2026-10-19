@@ -143,6 +143,22 @@ export EMAIL_ENCODER_URL=http://127.0.0.1:8080 EMAIL_ENCODER_MODE=shadow   # or 
 Start with `shadow` (no effect on results) and watch
 `lifekeel_email_encoder_total{outcome="encoder_missed"}` on the metrics endpoint.
 
+## 7b. The web app under the production CSP
+
+The deployed site sends `script-src 'self'`, so a page that works in `next dev` can be
+blank in production (inline scripts blocked). To check the static export the way Firebase
+serves it, and the landing page's first-load JS budget:
+
+```bash
+pnpm --filter @lifekeel/web run build:export
+node scripts/externalize-inline-scripts.mjs apps/web/out
+node scripts/check-landing-size.mjs apps/web/out
+node scripts/serve-static-csp.mjs apps/web/out apps/web/firebase.json   # http://localhost:8770
+```
+
+Open the page and watch the console for `Refused to ...` messages. CI runs the size check
+against the ordinary build (`node scripts/check-landing-size.mjs --next apps/web/.next`).
+
 ## 8. What these checks do not cover
 
 - Real traffic, real data, and load. No load test has been run on a real instance type.

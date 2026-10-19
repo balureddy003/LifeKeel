@@ -65,6 +65,9 @@ jobs:
       # One turbo invocation runs typecheck, lint, test and build as a single graph, so independent
       # tasks overlap and build runs once; four separate commands ran them one after another.
       - run: pnpm turbo run typecheck lint test build
+      # First-load JS budget for the landing page (PRD-209). Reads the build that just ran; no second build.
+      - name: Landing size budget
+        run: node scripts/check-landing-size.mjs --next apps/web/.next
       # Boots the built API like a deploy would (every optional deploy variable set to EMPTY, as an unset
       # repo variable is) and requires /health/ready. Unit tests never start the server, so this is what
       # catches a bad deploy-time environment. See scripts/boot-smoke.sh.
