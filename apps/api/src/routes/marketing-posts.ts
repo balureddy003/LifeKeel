@@ -3,17 +3,16 @@
  * approve → publish directly to each channel's own API (X, LinkedIn,
  * Bluesky — see marketing/social-publisher.ts).
  *
- * Autonomy model — earned trust, from day one. Posting publicly on a
- * channel is an external, effectively-irreversible action, so it sits on
- * the same trust ladder insights do (automation.trust_level_by_workflow),
- * scoped per channel: `marketing_social:<channel>`. A human approving a
- * draft increments that channel's counter (cap AUTO_EXECUTE_TRUST_THRESHOLD,
- * same as insights); once a channel is at threshold AND the tenant has
- * opted in via automation.auto_execute_enabled, a newly-created draft for
- * that channel publishes immediately without a human tap — and a human
- * can always reject a queued draft before then. The counter only moves on
- * human approvals — an auto-publish never feeds the trust it relied on,
- * matching auto-execute-trusted.ts's learning_suppressed posture.
+ * Autonomy model — human approval, always. Posting publicly on a channel
+ * is an external, effectively-irreversible action, so intent 03 decided
+ * earned trust never buys it: every post — however trusted the channel —
+ * publishes only via the human approve route (or the cron sweep acting on
+ * a human-approved schedule). Approving a draft still increments the
+ * channel's trust counter (`marketing_social:<channel>`, cap
+ * AUTO_EXECUTE_TRUST_THRESHOLD, same as insights) as a display of earned
+ * confidence — it unlocks nothing. This matches autopilot's
+ * NEVER_AUTONOMOUS, which lists 'marketing.publish' and 'social.post';
+ * a fitness test asserts the two cannot disagree.
  *
  * dry_run_mode is honored: a simulating tenant's drafts still "publish"
  * (state flips, no channel call) so the whole pipeline can be rehearsed —
@@ -142,13 +141,6 @@ interface AutomationSettings {
 async function getAutomation(db: Db, tenantId: string): Promise<AutomationSettings> {
   const doc = await db.collection('tenant_settings').findOne({ tenant_id: tenantId })
   return (doc?.['automation'] as AutomationSettings | undefined) ?? {}
-}
-
-function autoPublishEligible(automation: AutomationSettings, scope: string): boolean {
-  return (
-    automation.auto_execute_enabled === true &&
-    (automation.trust_level_by_workflow?.[scope] ?? 0) >= AUTO_EXECUTE_TRUST_THRESHOLD
-  )
 }
 
 /** Mirrors the trust increment in insights.ts's approve path — same counter,
@@ -1276,32 +1268,12 @@ export function registerMarketingPostRoutes(
       created_by: user_id,
       created_at: now,
     }
+    // Every post lands 'draft' — publishing always requires the human approve
+    // route, whatever the channel's earned trust. Earned trust never buys an
+    // external effect (intent 03; 'marketing.publish'/'social.post' sit in
+    // autopilot's NEVER_AUTONOMOUS). The trust counter still increments on
+    // approve as an earned-confidence display, nothing more.
     await col.insertOne(post)
-
-    const automation = await getAutomation(db, tenant_id)
-    if (autoPublishEligible(automation, trustScope(channel))) {
-      // Conditional claim: a human approve/reject landing in this window wins.
-      const claimed = (await col.findOneAndUpdate(
-        { id: post.id, state: 'draft' },
-        { $set: { state: 'approved', approved_at: now, approved_by: 'auto-trust' } },
-        { returnDocument: 'after' },
-      )) as MarketingPostDoc | null
-      if (claimed) {
-        const result = await publishPost(db, col, client, claimed, {
-          dryRun: automation.dry_run_mode === true,
-        })
-        if (result.ok) {
-          await col.updateOne({ id: post.id }, { $set: { auto_published: true } })
-          getAuditLogger()?.fromRequest(
-            req,
-            'marketing.post_auto_publish',
-            'marketing_post',
-            post.id,
-            { channel },
-          )
-        }
-      }
-    }
 
     const saved = await col.findOne({ id: post.id })
     return reply.status(201).send({ post: saved })
@@ -1309,9 +1281,9 @@ export function registerMarketingPostRoutes(
 
   /** POST /marketing/posts/generate — LLM-drafted post from a blog post or
    *  free topic. Deliberately always lands 'draft': AI-authored content
-   *  gets human eyes regardless of the channel's earned trust (the trust
-   *  ladder gates human-drafted posts; generated content sits one tier
-   *  lower). Falls back to a deterministic template when no LLM provider
+   *  gets human eyes regardless of the channel's earned trust — the same
+   *  gate every post gets now that no trust level buys auto-publish.
+   *  Falls back to a deterministic template when no LLM provider
    *  is configured — the feature stays usable, marked generated:template. */
   app.post('/marketing/posts/generate', { preHandler: manageGate }, async (req, reply) => {
     const { tenant_id, user_id } = req.authContext

@@ -68,7 +68,10 @@ const STATE_LABEL: Record<MarketingPost['state'], string> = {
  *  uses the cap so a draft can't go out that the provider would reject.
  *  media: 'required' channels can't publish without an image (Instagram's
  *  API has no text post); 'optional' attaches it as a photo (Facebook). */
-const CHANNEL_META: Record<string, { label: string; limit: number; media?: 'required' | 'optional' }> = {
+const CHANNEL_META: Record<
+  string,
+  { label: string; limit: number; media?: 'required' | 'optional' }
+> = {
   x: { label: 'X', limit: 280 },
   bluesky: { label: 'Bluesky', limit: 300 },
   threads: { label: 'Threads', limit: 500 },
@@ -135,7 +138,13 @@ export default function MarketingPage() {
   const [showLinkBuilder, setShowLinkBuilder] = useState(false)
 
   useEffect(() => {
-    Promise.all([fetchMarketingPosts(), fetchMarketingIntegrations(), fetchAutomationSettings(), fetchSocialConnections(), fetchMarketingPerformance()])
+    Promise.all([
+      fetchMarketingPosts(),
+      fetchMarketingIntegrations(),
+      fetchAutomationSettings(),
+      fetchSocialConnections(),
+      fetchMarketingPerformance(),
+    ])
       .then(([p, i, a, c, perf]) => {
         setPosts(p)
         setIntegrations(i)
@@ -162,19 +171,26 @@ export default function MarketingPage() {
       refreshChannels()
     } else if (err) {
       const label = OAUTH_CHANNELS.find((o) => o.connector === q.get('connect'))?.label ?? 'Channel'
-      const hint = err === 'no_facebook_page'
-        ? ' — no managed Facebook Page found'
-        : err === 'no_instagram_business_account'
-          ? ' — no Instagram Business account linked to your Page'
-          : ''
-      toast({ message: `${label} connect failed: ${q.get('detail') ?? err}${hint}`, variant: 'error' })
+      const hint =
+        err === 'no_facebook_page'
+          ? ' — no managed Facebook Page found'
+          : err === 'no_instagram_business_account'
+            ? ' — no Instagram Business account linked to your Page'
+            : ''
+      toast({
+        message: `${label} connect failed: ${q.get('detail') ?? err}${hint}`,
+        variant: 'error',
+      })
     }
     window.history.replaceState({}, '', '/operator/marketing')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function refreshChannels() {
-    const [ints, conns] = await Promise.all([fetchMarketingIntegrations(), fetchSocialConnections()])
+    const [ints, conns] = await Promise.all([
+      fetchMarketingIntegrations(),
+      fetchSocialConnections(),
+    ])
     setIntegrations(ints)
     setConnections(conns)
     const first = (ints ?? []).find((x) => !x.disabled)
@@ -205,7 +221,11 @@ export default function MarketingPage() {
     try {
       const res = await startConnectorConnect(connectorId)
       if (res?.auth_url) window.location.assign(res.auth_url)
-      else toast({ message: `${label} OAuth not configured — set its client credentials on the API`, variant: 'error' })
+      else
+        toast({
+          message: `${label} OAuth not configured — set its client credentials on the API`,
+          variant: 'error',
+        })
     } catch (err) {
       toast({ message: err instanceof Error ? err.message : 'Connect failed', variant: 'error' })
     } finally {
@@ -263,12 +283,13 @@ export default function MarketingPage() {
   const channel = selected?.identifier ?? 'other'
   const selectedAccount = selected?.name ?? 'LifeKeel'
   const trustLevel = automation?.trust_level_by_workflow?.[trustScope(channel)] ?? 0
-  const autoEnabled = automation?.auto_execute_enabled === true
   const limit = channelLimit(channel)
   const overLimit = content.length > limit
   const mediaMode = channelMedia(channel)
   const mediaMissing = mediaMode === 'required' && !mediaUrl.trim()
-  const pendingCount = posts.filter((p) => p.state === 'draft' || p.state === 'publish_failed').length
+  const pendingCount = posts.filter(
+    (p) => p.state === 'draft' || p.state === 'publish_failed',
+  ).length
 
   const knownCampaigns = useMemo(() => {
     const set = new Set<string>([DEFAULT_CAMPAIGN])
@@ -277,13 +298,18 @@ export default function MarketingPage() {
     return [...set].sort()
   }, [posts, performance])
 
-  const visiblePosts = campaignFilter ? posts.filter((p) => (p.campaign ?? DEFAULT_CAMPAIGN) === campaignFilter) : posts
+  const visiblePosts = campaignFilter
+    ? posts.filter((p) => (p.campaign ?? DEFAULT_CAMPAIGN) === campaignFilter)
+    : posts
 
   async function submit() {
     if (!selected || !content.trim()) return
     const camp = campaign.trim() || DEFAULT_CAMPAIGN
     if (!CAMPAIGN_RE.test(camp)) {
-      toast({ message: 'Campaign names must be lowercase letters, numbers, - or _', variant: 'error' })
+      toast({
+        message: 'Campaign names must be lowercase letters, numbers, - or _',
+        variant: 'error',
+      })
       return
     }
     haptic('medium')
@@ -304,7 +330,10 @@ export default function MarketingPage() {
       setTab('queue')
       toast({ message: post.state === 'published' ? 'Published' : 'Draft queued for review' })
     } catch (err) {
-      toast({ message: err instanceof Error ? err.message : "Couldn't save that draft", variant: 'error' })
+      toast({
+        message: err instanceof Error ? err.message : "Couldn't save that draft",
+        variant: 'error',
+      })
     } finally {
       setBusy(null)
     }
@@ -314,11 +343,15 @@ export default function MarketingPage() {
     haptic('light')
     setBusy(id)
     try {
-      const post = action === 'approve' ? await approveMarketingPost(id) : await rejectMarketingPost(id)
+      const post =
+        action === 'approve' ? await approveMarketingPost(id) : await rejectMarketingPost(id)
       setPosts((p) => p.map((x) => (x.id === id ? post : x)))
       toast({ message: action === 'approve' ? 'Published' : 'Draft rejected' })
     } catch (err) {
-      toast({ message: err instanceof Error ? err.message : 'That did not work — try again', variant: 'error' })
+      toast({
+        message: err instanceof Error ? err.message : 'That did not work — try again',
+        variant: 'error',
+      })
     } finally {
       setBusy(null)
     }
@@ -343,7 +376,10 @@ export default function MarketingPage() {
       setEditingId(null)
       toast({ message: 'Draft updated' })
     } catch (err) {
-      toast({ message: err instanceof Error ? err.message : "Couldn't save that edit", variant: 'error' })
+      toast({
+        message: err instanceof Error ? err.message : "Couldn't save that edit",
+        variant: 'error',
+      })
     } finally {
       setBusy(null)
     }
@@ -353,7 +389,9 @@ export default function MarketingPage() {
     <div>
       <div className="mb-5">
         <h1 className="text-2xl font-semibold">Marketing</h1>
-        <p className="mt-1 text-sm text-ink-tertiary">Outbound posts — drafted, reviewed, published, measured.</p>
+        <p className="mt-1 text-sm text-ink-tertiary">
+          Outbound posts — drafted, reviewed, published, measured.
+        </p>
       </div>
 
       {loading && <div className="shimmer h-24 rounded-2xl" />}
@@ -378,7 +416,10 @@ export default function MarketingPage() {
             ) : (
               <ul className="space-y-2.5">
                 {(integrations ?? []).map((i) => {
-                  const conn = i.source === 'connection' ? connections.find((c) => c.channel === i.identifier) : undefined
+                  const conn =
+                    i.source === 'connection'
+                      ? connections.find((c) => c.channel === i.identifier)
+                      : undefined
                   const ok = conn?.status !== 'error'
                   return (
                     <li key={i.id} className="flex items-center justify-between gap-2">
@@ -390,7 +431,9 @@ export default function MarketingPage() {
                         <div className="min-w-0">
                           <p className="text-sm text-ink-primary truncate">
                             {i.name}
-                            {i.source === 'env' && <span className="text-ink-tertiary"> · server env</span>}
+                            {i.source === 'env' && (
+                              <span className="text-ink-tertiary"> · server env</span>
+                            )}
                           </p>
                           {!ok && conn?.last_error && (
                             <p className="text-xs text-danger truncate">{conn.last_error}</p>
@@ -415,7 +458,9 @@ export default function MarketingPage() {
               <div className="mt-3 pt-3 border-t border-tint/[0.06] space-y-3">
                 {/* OAuth channels — each appears until connected */}
                 <div className="flex flex-wrap gap-2">
-                  {OAUTH_CHANNELS.filter((o) => !(integrations ?? []).some((i) => i.identifier === o.channel)).map((o) => (
+                  {OAUTH_CHANNELS.filter(
+                    (o) => !(integrations ?? []).some((i) => i.identifier === o.channel),
+                  ).map((o) => (
                     <button
                       key={o.connector}
                       onClick={() => connectOAuth(o.connector, o.label)}
@@ -425,9 +470,9 @@ export default function MarketingPage() {
                       {busy === `connect-${o.connector}` ? 'Redirecting…' : `Connect ${o.label}`}
                     </button>
                   ))}
-                  {OAUTH_CHANNELS.every((o) => (integrations ?? []).some((i) => i.identifier === o.channel)) && (
-                    <p className="text-xs text-ink-tertiary">All OAuth channels connected.</p>
-                  )}
+                  {OAUTH_CHANNELS.every((o) =>
+                    (integrations ?? []).some((i) => i.identifier === o.channel),
+                  ) && <p className="text-xs text-ink-tertiary">All OAuth channels connected.</p>}
                 </div>
                 <div>
                   <p className="text-caption text-ink-tertiary mb-1.5">Bluesky — app password</p>
@@ -445,16 +490,20 @@ export default function MarketingPage() {
                       placeholder="app password (bsky.app → Settings → App passwords)"
                       className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
                     />
-                    <GlassButton onClick={connect} disabled={busy === 'connect' || !bskyHandle.trim() || !bskyPassword.trim()}>
+                    <GlassButton
+                      onClick={connect}
+                      disabled={busy === 'connect' || !bskyHandle.trim() || !bskyPassword.trim()}
+                    >
                       {busy === 'connect' ? 'Verifying…' : 'Verify & connect'}
                     </GlassButton>
                   </div>
                 </div>
                 <p className="text-caption text-ink-tertiary leading-relaxed">
-                  Facebook + Instagram need a Meta app (META_CLIENT_ID/SECRET) and a Page with a linked Business
-                  account. Threads uses the same Meta app (or THREADS_CLIENT_ID). LinkedIn needs a LinkedIn app with
-                  "Share on LinkedIn" enabled (LINKEDIN_CLIENT_ID/SECRET). Mastodon runs off env:
-                  MASTODON_INSTANCE_URL + MASTODON_ACCESS_TOKEN.
+                  Facebook + Instagram need a Meta app (META_CLIENT_ID/SECRET) and a Page with a
+                  linked Business account. Threads uses the same Meta app (or THREADS_CLIENT_ID).
+                  LinkedIn needs a LinkedIn app with "Share on LinkedIn" enabled
+                  (LINKEDIN_CLIENT_ID/SECRET). Mastodon runs off env: MASTODON_INSTANCE_URL +
+                  MASTODON_ACCESS_TOKEN.
                 </p>
               </div>
             )}
@@ -475,7 +524,9 @@ export default function MarketingPage() {
                 key={key}
                 onClick={() => setTab(key)}
                 className={`flex-1 rounded-lg px-2 py-2 text-xs font-semibold transition-colors ${
-                  tab === key ? 'bg-family-500/20 text-family-300' : 'text-ink-tertiary hover:text-ink-secondary'
+                  tab === key
+                    ? 'bg-family-500/20 text-family-300'
+                    : 'text-ink-tertiary hover:text-ink-secondary'
                 }`}
               >
                 {label}
@@ -526,19 +577,30 @@ export default function MarketingPage() {
                     </p>
                     <p
                       className={`text-caption tabular-nums ${
-                        overLimit ? 'text-danger font-semibold' : content.length > limit * 0.9 ? 'text-warning' : 'text-ink-tertiary'
+                        overLimit
+                          ? 'text-danger font-semibold'
+                          : content.length > limit * 0.9
+                            ? 'text-warning'
+                            : 'text-ink-tertiary'
                       }`}
                     >
                       {content.length}/{limit === 5000 ? '∞' : limit}
                     </p>
                   </div>
                   <div className="mb-3">
-                    <PostPreview channel={channel} content={content} accountName={selectedAccount} />
+                    <PostPreview
+                      channel={channel}
+                      content={content}
+                      accountName={selectedAccount}
+                    />
                   </div>
                   {mediaMode && (
                     <div className="mb-3">
                       <label className="block text-caption text-ink-tertiary mb-1">
-                        Image URL {mediaMode === 'required' ? '— Instagram requires an image' : '— optional, posts as a photo'}
+                        Image URL{' '}
+                        {mediaMode === 'required'
+                          ? '— Instagram requires an image'
+                          : '— optional, posts as a photo'}
                       </label>
                       <input
                         value={mediaUrl}
@@ -550,7 +612,9 @@ export default function MarketingPage() {
                   )}
                   <div className="grid sm:grid-cols-2 gap-3 mb-3">
                     <div>
-                      <label className="block text-caption text-ink-tertiary mb-1">Schedule for later — optional</label>
+                      <label className="block text-caption text-ink-tertiary mb-1">
+                        Schedule for later — optional
+                      </label>
                       <input
                         type="datetime-local"
                         value={scheduleAt}
@@ -575,21 +639,31 @@ export default function MarketingPage() {
                       </datalist>
                     </div>
                   </div>
-                  <GlassButton onClick={submit} disabled={busy === 'create' || !content.trim() || overLimit || mediaMissing}>
-                    {busy === 'create' ? 'Queueing…' : scheduleAt ? 'Queue scheduled draft' : 'Queue draft'}
+                  <GlassButton
+                    onClick={submit}
+                    disabled={busy === 'create' || !content.trim() || overLimit || mediaMissing}
+                  >
+                    {busy === 'create'
+                      ? 'Queueing…'
+                      : scheduleAt
+                        ? 'Queue scheduled draft'
+                        : 'Queue draft'}
                   </GlassButton>
                   {scheduleAt && (
                     <p className="text-xs text-ink-tertiary mt-2 leading-relaxed">
-                      Approving a scheduled draft publishes it at {new Date(scheduleAt).toLocaleString()} — cancel it from the queue anytime before then.
+                      Approving a scheduled draft publishes it at{' '}
+                      {new Date(scheduleAt).toLocaleString()} — cancel it from the queue anytime
+                      before then.
                     </p>
                   )}
                   <p className="text-xs text-ink-tertiary mt-2.5 leading-relaxed">
-                    {autoEnabled
-                      ? `${Math.min(trustLevel, 5)}/5 approvals on ${channelLabel(channel)} — at 5, Keel publishes new drafts here itself.`
-                      : `Earned-trust publishing is off (Settings → Automation). ${Math.min(trustLevel, 5)}/5 approvals on ${channelLabel(channel)} so far.`}
+                    {`${Math.min(trustLevel, 5)}/5 approvals on ${channelLabel(channel)} so far — every publish stays a human tap; Keel never posts on its own.`}
                   </p>
                   <div className="mt-3 pt-3 border-t border-tint/[0.06]">
-                    <button onClick={openGenerator} className="flex items-center gap-1.5 text-xs font-semibold text-family-400">
+                    <button
+                      onClick={openGenerator}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-family-400"
+                    >
                       <Sparkles size={13} />
                       {showGenerate ? 'Close generator' : 'Generate variants with Keel'}
                     </button>
@@ -615,14 +689,22 @@ export default function MarketingPage() {
                             className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
                           />
                         )}
-                        <GlassButton onClick={generateVariants} disabled={busy === 'generate' || (!genBlogSlug && !genTopic.trim())}>
+                        <GlassButton
+                          onClick={generateVariants}
+                          disabled={busy === 'generate' || (!genBlogSlug && !genTopic.trim())}
+                        >
                           {busy === 'generate' ? 'Generating…' : 'Generate 3 variants'}
                         </GlassButton>
                         {variants && (
                           <div className="space-y-2 pt-1">
                             {variants.map((v, i) => (
-                              <div key={i} className="rounded-xl border border-tint/[0.08] bg-tint/[0.02] p-3">
-                                <p className="text-xs text-ink-primary leading-relaxed whitespace-pre-wrap">{v}</p>
+                              <div
+                                key={i}
+                                className="rounded-xl border border-tint/[0.08] bg-tint/[0.02] p-3"
+                              >
+                                <p className="text-xs text-ink-primary leading-relaxed whitespace-pre-wrap">
+                                  {v}
+                                </p>
                                 <button
                                   onClick={() => {
                                     setContent(v)
@@ -636,7 +718,9 @@ export default function MarketingPage() {
                                 </button>
                               </div>
                             ))}
-                            <p className="text-caption text-ink-tertiary">Picking one fills the composer — edit it, then queue.</p>
+                            <p className="text-caption text-ink-tertiary">
+                              Picking one fills the composer — edit it, then queue.
+                            </p>
                           </div>
                         )}
                         <label className="flex items-start gap-2 cursor-pointer pt-1">
@@ -644,14 +728,21 @@ export default function MarketingPage() {
                             type="checkbox"
                             checked={automation?.daily_marketing_drafts_enabled === true}
                             onChange={async (e) => {
-                              const next = await updateAutomationSettings({ daily_marketing_drafts_enabled: e.target.checked })
+                              const next = await updateAutomationSettings({
+                                daily_marketing_drafts_enabled: e.target.checked,
+                              })
                               if (next && next !== 'queued') setAutomation(next)
-                              toast({ message: e.target.checked ? 'Daily drafts on — one queued each morning' : 'Daily drafts off' })
+                              toast({
+                                message: e.target.checked
+                                  ? 'Daily drafts on — one queued each morning'
+                                  : 'Daily drafts off',
+                              })
                             }}
                             className="mt-0.5 accent-family-500"
                           />
                           <span className="text-xs text-ink-secondary leading-relaxed">
-                            Queue one for review every morning — promotes a blog post you haven't pushed yet.
+                            Queue one for review every morning — promotes a blog post you haven't
+                            pushed yet.
                           </span>
                         </label>
                         <p className="text-xs text-ink-tertiary leading-relaxed">
@@ -661,11 +752,16 @@ export default function MarketingPage() {
                     )}
                   </div>
                   <div className="mt-3 pt-3 border-t border-tint/[0.06]">
-                    <button onClick={() => setShowLinkBuilder((v) => !v)} className="flex items-center gap-1.5 text-xs font-semibold text-family-400">
+                    <button
+                      onClick={() => setShowLinkBuilder((v) => !v)}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-family-400"
+                    >
                       <Link2 size={13} />
                       {showLinkBuilder ? 'Close link builder' : 'Build a tracked link'}
                     </button>
-                    {showLinkBuilder && <LinkBuilder blogs={blogs} campaigns={knownCampaigns} onToast={toast} />}
+                    {showLinkBuilder && (
+                      <LinkBuilder blogs={blogs} campaigns={knownCampaigns} onToast={toast} />
+                    )}
                   </div>
                 </>
               )}
@@ -712,25 +808,36 @@ export default function MarketingPage() {
               {visiblePosts.map((post) => (
                 <GlassCard key={post.id} className="p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className={`text-caption font-bold uppercase tracking-wide rounded-full px-2 py-0.5 border ${STATE_STYLE[post.state]}`}>
+                    <span
+                      className={`text-caption font-bold uppercase tracking-wide rounded-full px-2 py-0.5 border ${STATE_STYLE[post.state]}`}
+                    >
                       {STATE_LABEL[post.state]}
                     </span>
-                    <span className="text-caption text-ink-tertiary">{channelLabel(post.channel)}</span>
+                    <span className="text-caption text-ink-tertiary">
+                      {channelLabel(post.channel)}
+                    </span>
                     {post.campaign && post.campaign !== DEFAULT_CAMPAIGN && (
                       <span className="text-caption text-family-400">{post.campaign}</span>
                     )}
-                    {post.auto_published && <span className="text-caption text-family-400">auto</span>}
-                    {post.generated && <span className="text-caption text-ink-tertiary">ai draft</span>}
-                    {post.dry_run && <span className="text-caption text-ink-tertiary">dry run</span>}
-                    {(post.state === 'draft' || post.state === 'publish_failed') && editingId !== post.id && (
-                      <button
-                        onClick={() => startEdit(post)}
-                        className="ml-auto flex items-center gap-1 text-caption font-semibold text-ink-tertiary"
-                        aria-label="Edit draft"
-                      >
-                        <Pencil size={11} /> Edit
-                      </button>
+                    {post.auto_published && (
+                      <span className="text-caption text-family-400">auto</span>
                     )}
+                    {post.generated && (
+                      <span className="text-caption text-ink-tertiary">ai draft</span>
+                    )}
+                    {post.dry_run && (
+                      <span className="text-caption text-ink-tertiary">dry run</span>
+                    )}
+                    {(post.state === 'draft' || post.state === 'publish_failed') &&
+                      editingId !== post.id && (
+                        <button
+                          onClick={() => startEdit(post)}
+                          className="ml-auto flex items-center gap-1 text-caption font-semibold text-ink-tertiary"
+                          aria-label="Edit draft"
+                        >
+                          <Pencil size={11} /> Edit
+                        </button>
+                      )}
                   </div>
                   {editingId === post.id ? (
                     <div>
@@ -740,7 +847,9 @@ export default function MarketingPage() {
                         rows={4}
                         className="glass-input w-full rounded-xl px-4 py-3 text-sm text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 resize-none"
                       />
-                      <p className={`text-caption tabular-nums mt-1 text-right ${editContent.length > channelLimit(post.channel) ? 'text-danger font-semibold' : 'text-ink-tertiary'}`}>
+                      <p
+                        className={`text-caption tabular-nums mt-1 text-right ${editContent.length > channelLimit(post.channel) ? 'text-danger font-semibold' : 'text-ink-tertiary'}`}
+                      >
                         {editContent.length}/{channelLimit(post.channel)}
                       </p>
                       <input
@@ -753,7 +862,11 @@ export default function MarketingPage() {
                       <div className="flex gap-2 mt-2.5">
                         <button
                           onClick={() => saveEdit(post)}
-                          disabled={busy === `edit:${post.id}` || !editContent.trim() || editContent.length > channelLimit(post.channel)}
+                          disabled={
+                            busy === `edit:${post.id}` ||
+                            !editContent.trim() ||
+                            editContent.length > channelLimit(post.channel)
+                          }
                           className="flex-1 rounded-xl py-2 text-sm font-semibold bg-family-500/15 border border-family-500/25 text-family-400 disabled:opacity-40"
                         >
                           {busy === `edit:${post.id}` ? 'Saving…' : 'Save changes'}
@@ -768,35 +881,44 @@ export default function MarketingPage() {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-sm text-ink-primary leading-relaxed whitespace-pre-wrap">{post.content}</p>
+                    <p className="text-sm text-ink-primary leading-relaxed whitespace-pre-wrap">
+                      {post.content}
+                    </p>
                   )}
                   {post.publish_error && (
                     <p className="text-xs text-danger mt-2 leading-snug">{post.publish_error}</p>
                   )}
-                  {(post.state === 'draft' || post.state === 'publish_failed') && editingId !== post.id && (
-                    <div className="flex gap-2 mt-3">
-                      <button
-                        onClick={() => decide(post.id, 'approve')}
-                        disabled={busy === post.id}
-                        className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold bg-family-500/15 border border-family-500/25 text-family-400 disabled:opacity-40"
-                      >
-                        {busy === post.id ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-                        {post.state === 'publish_failed' ? 'Retry publish' : 'Approve & publish'}
-                      </button>
-                      <button
-                        onClick={() => decide(post.id, 'reject')}
-                        disabled={busy === post.id}
-                        className="w-11 flex items-center justify-center rounded-xl bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary disabled:opacity-40"
-                        aria-label="Reject draft"
-                      >
-                        <X size={15} />
-                      </button>
-                    </div>
-                  )}
+                  {(post.state === 'draft' || post.state === 'publish_failed') &&
+                    editingId !== post.id && (
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          onClick={() => decide(post.id, 'approve')}
+                          disabled={busy === post.id}
+                          className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold bg-family-500/15 border border-family-500/25 text-family-400 disabled:opacity-40"
+                        >
+                          {busy === post.id ? (
+                            <Loader2 size={15} className="animate-spin" />
+                          ) : (
+                            <Send size={15} />
+                          )}
+                          {post.state === 'publish_failed' ? 'Retry publish' : 'Approve & publish'}
+                        </button>
+                        <button
+                          onClick={() => decide(post.id, 'reject')}
+                          disabled={busy === post.id}
+                          className="w-11 flex items-center justify-center rounded-xl bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary disabled:opacity-40"
+                          aria-label="Reject draft"
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+                    )}
                   {post.state === 'approved' && (
                     <div className="flex items-center justify-between gap-2 mt-3">
                       <span className="text-xs text-ink-tertiary">
-                        {post.scheduled_at ? `Scheduled for ${new Date(post.scheduled_at).toLocaleString()}` : 'Approved — publishes on the next sweep'}
+                        {post.scheduled_at
+                          ? `Scheduled for ${new Date(post.scheduled_at).toLocaleString()}`
+                          : 'Approved — publishes on the next sweep'}
                       </span>
                       <button
                         onClick={() => decide(post.id, 'reject')}
@@ -817,11 +939,17 @@ export default function MarketingPage() {
                       )}
                       {post.metrics && (
                         <span>
-                          {post.metrics.likes ?? 0} likes · {post.metrics.reposts ?? 0} reposts · {post.metrics.replies ?? 0} replies
+                          {post.metrics.likes ?? 0} likes · {post.metrics.reposts ?? 0} reposts ·{' '}
+                          {post.metrics.replies ?? 0} replies
                         </span>
                       )}
                       {post.external_url && (
-                        <a href={post.external_url} target="_blank" rel="noopener noreferrer" className="text-family-400 font-semibold">
+                        <a
+                          href={post.external_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-family-400 font-semibold"
+                        >
                           View post ↗
                         </a>
                       )}
@@ -838,25 +966,54 @@ export default function MarketingPage() {
           {/* Performance */}
           {tab === 'performance' && (
             <>
-              {performance && (performance.totals.views > 0 || performance.totals.signups > 0 || performance.channels.length > 0) ? (
+              {performance &&
+              (performance.totals.views > 0 ||
+                performance.totals.signups > 0 ||
+                performance.channels.length > 0) ? (
                 <div className="space-y-4">
                   <GlassCard className="p-4">
                     <div className="flex gap-4 mb-1 text-center">
-                      <div><p className="text-lg font-bold text-ink-primary">{performance.totals.views}</p><p className="text-caption text-ink-tertiary">views</p></div>
-                      <div><p className="text-lg font-bold text-ink-primary">{performance.totals.cta_clicks}</p><p className="text-caption text-ink-tertiary">CTA taps</p></div>
-                      <div><p className="text-lg font-bold text-ink-primary">{performance.totals.leads}</p><p className="text-caption text-ink-tertiary">leads</p></div>
-                      <div><p className="text-lg font-bold text-success">{performance.totals.signups}</p><p className="text-caption text-ink-tertiary">signups</p></div>
+                      <div>
+                        <p className="text-lg font-bold text-ink-primary">
+                          {performance.totals.views}
+                        </p>
+                        <p className="text-caption text-ink-tertiary">views</p>
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold text-ink-primary">
+                          {performance.totals.cta_clicks}
+                        </p>
+                        <p className="text-caption text-ink-tertiary">CTA taps</p>
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold text-ink-primary">
+                          {performance.totals.leads}
+                        </p>
+                        <p className="text-caption text-ink-tertiary">leads</p>
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold text-success">
+                          {performance.totals.signups}
+                        </p>
+                        <p className="text-caption text-ink-tertiary">signups</p>
+                      </div>
                     </div>
                     {performance.totals.views > 0 && (
                       <p className="text-caption text-ink-tertiary">
-                        {((performance.totals.cta_clicks / performance.totals.views) * 100).toFixed(1)}% view→CTA
-                        {performance.totals.cta_clicks > 0 && ` · ${((performance.totals.signups / performance.totals.cta_clicks) * 100).toFixed(1)}% CTA→signup`}
+                        {((performance.totals.cta_clicks / performance.totals.views) * 100).toFixed(
+                          1,
+                        )}
+                        % view→CTA
+                        {performance.totals.cta_clicks > 0 &&
+                          ` · ${((performance.totals.signups / performance.totals.cta_clicks) * 100).toFixed(1)}% CTA→signup`}
                       </p>
                     )}
                   </GlassCard>
                   {performance.channels.length > 0 && (
                     <GlassCard className="p-4">
-                      <p className="text-caption font-semibold text-ink-tertiary mb-2">Channel funnel — where the clicks actually convert</p>
+                      <p className="text-caption font-semibold text-ink-tertiary mb-2">
+                        Channel funnel — where the clicks actually convert
+                      </p>
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs">
                           <thead>
@@ -874,10 +1031,18 @@ export default function MarketingPage() {
                               <tr key={c.channel}>
                                 <td className="py-2 font-medium text-ink-primary">{c.channel}</td>
                                 <td className="py-2 text-right text-ink-secondary">{c.views}</td>
-                                <td className="py-2 text-right text-ink-secondary">{c.cta_clicks}</td>
+                                <td className="py-2 text-right text-ink-secondary">
+                                  {c.cta_clicks}
+                                </td>
                                 <td className="py-2 text-right text-ink-secondary">{c.leads}</td>
-                                <td className="py-2 text-right font-semibold text-success">{c.signups}</td>
-                                <td className="py-2 text-right text-ink-tertiary">{c.views > 0 ? `${((c.signups / c.views) * 100).toFixed(1)}%` : '—'}</td>
+                                <td className="py-2 text-right font-semibold text-success">
+                                  {c.signups}
+                                </td>
+                                <td className="py-2 text-right text-ink-tertiary">
+                                  {c.views > 0
+                                    ? `${((c.signups / c.views) * 100).toFixed(1)}%`
+                                    : '—'}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -890,11 +1055,19 @@ export default function MarketingPage() {
                       <p className="text-caption font-semibold text-ink-tertiary mb-2">Campaigns</p>
                       <ul className="space-y-1.5">
                         {performance.campaigns.map((c) => (
-                          <li key={c.campaign} className="flex items-center justify-between gap-2 text-xs">
+                          <li
+                            key={c.campaign}
+                            className="flex items-center justify-between gap-2 text-xs"
+                          >
                             <span className="text-ink-secondary truncate">{c.campaign}</span>
                             <span className="text-ink-tertiary shrink-0">
-                              {c.views}v · {c.leads}l · <span className="text-success">{c.signups}s</span>
-                              {c.views > 0 && <span className="ml-1">({((c.signups / c.views) * 100).toFixed(1)}%)</span>}
+                              {c.views}v · {c.leads}l ·{' '}
+                              <span className="text-success">{c.signups}s</span>
+                              {c.views > 0 && (
+                                <span className="ml-1">
+                                  ({((c.signups / c.views) * 100).toFixed(1)}%)
+                                </span>
+                              )}
                             </span>
                           </li>
                         ))}
@@ -902,49 +1075,77 @@ export default function MarketingPage() {
                     </GlassCard>
                   )}
                   <GlassCard className="p-4">
-                    <p className="text-caption font-semibold text-ink-tertiary mb-2">Top content — the learning loop reads this same ranking</p>
+                    <p className="text-caption font-semibold text-ink-tertiary mb-2">
+                      Top content — the learning loop reads this same ranking
+                    </p>
                     <ul className="space-y-1.5">
                       {performance.posts.slice(0, 8).map((p) => (
-                        <li key={p.slug} className="flex items-center justify-between gap-2 text-xs">
+                        <li
+                          key={p.slug}
+                          className="flex items-center justify-between gap-2 text-xs"
+                        >
                           <span className="text-ink-secondary truncate">{p.title ?? p.slug}</span>
                           <span className="text-ink-tertiary shrink-0">
-                            {p.views}v · {p.cta_clicks}c · {p.leads}l · <span className="text-success">{p.signups}s</span>
+                            {p.views}v · {p.cta_clicks}c · {p.leads}l ·{' '}
+                            <span className="text-success">{p.signups}s</span>
                           </span>
                         </li>
                       ))}
                     </ul>
                   </GlassCard>
-                  {(performance.insights.measured_posts > 0 || performance.insights.unmeasured_channels.length > 0) && (
+                  {(performance.insights.measured_posts > 0 ||
+                    performance.insights.unmeasured_channels.length > 0) && (
                     <GlassCard className="p-4">
-                      <p className="text-caption font-semibold text-ink-tertiary mb-1">What works</p>
+                      <p className="text-caption font-semibold text-ink-tertiary mb-1">
+                        What works
+                      </p>
                       <p className="text-caption text-ink-tertiary mb-3">
-                        Engagement vs. this account&apos;s own median across {performance.insights.measured_posts} measured
-                        {performance.insights.measured_posts === 1 ? ' post' : ' posts'} — providers don&apos;t expose impressions, so multipliers are relative, not absolute rates.
+                        Engagement vs. this account&apos;s own median across{' '}
+                        {performance.insights.measured_posts} measured
+                        {performance.insights.measured_posts === 1 ? ' post' : ' posts'} — providers
+                        don&apos;t expose impressions, so multipliers are relative, not absolute
+                        rates.
                       </p>
                       {performance.insights.rows.length > 0 ? (
                         <ul className="space-y-1.5">
                           {performance.insights.rows.map((r) => (
-                            <li key={r.label} className="flex items-center justify-between gap-2 text-xs">
+                            <li
+                              key={r.label}
+                              className="flex items-center justify-between gap-2 text-xs"
+                            >
                               <span className="text-ink-secondary">{r.label}</span>
-                              <span className={`shrink-0 font-semibold tabular-nums ${r.engagement_x >= 1 ? 'text-success' : 'text-danger'}`}>
-                                {r.engagement_x}× <span className="font-normal text-ink-tertiary">({r.measured} posts)</span>
+                              <span
+                                className={`shrink-0 font-semibold tabular-nums ${r.engagement_x >= 1 ? 'text-success' : 'text-danger'}`}
+                              >
+                                {r.engagement_x}×{' '}
+                                <span className="font-normal text-ink-tertiary">
+                                  ({r.measured} posts)
+                                </span>
                               </span>
                             </li>
                           ))}
                         </ul>
                       ) : (
-                        <p className="text-xs text-ink-tertiary">No trait separates winners from flops yet — keep publishing.</p>
+                        <p className="text-xs text-ink-tertiary">
+                          No trait separates winners from flops yet — keep publishing.
+                        </p>
                       )}
                       {performance.insights.top_post && (
                         <p className="text-xs text-ink-secondary mt-3 pt-3 border-t border-tint/[0.06]">
-                          Best post: <span className="text-ink-tertiary">[{performance.insights.top_post.channel}]</span>{' '}
+                          Best post:{' '}
+                          <span className="text-ink-tertiary">
+                            [{performance.insights.top_post.channel}]
+                          </span>{' '}
                           &ldquo;{performance.insights.top_post.excerpt}&rdquo;{' '}
-                          <span className="text-success">({performance.insights.top_post.engagement} engagement)</span>
+                          <span className="text-success">
+                            ({performance.insights.top_post.engagement} engagement)
+                          </span>
                         </p>
                       )}
                       {performance.insights.unmeasured_channels.length > 0 && (
                         <p className="text-caption text-ink-tertiary mt-2">
-                          Unmeasured: {performance.insights.unmeasured_channels.join(', ')} — their APIs can&apos;t be polled for engagement yet.
+                          Unmeasured: {performance.insights.unmeasured_channels.join(', ')} — their
+                          APIs can&apos;t be polled for engagement yet.
                         </p>
                       )}
                     </GlassCard>
@@ -953,7 +1154,8 @@ export default function MarketingPage() {
               ) : (
                 <GlassCard className="p-4">
                   <p className="text-sm text-ink-secondary leading-relaxed">
-                    No attributed traffic yet — published posts carry UTM'd links, and views, CTA taps, leads and signups land here once posts go out.
+                    No attributed traffic yet — published posts carry UTM'd links, and views, CTA
+                    taps, leads and signups land here once posts go out.
                   </p>
                 </GlassCard>
               )}
@@ -977,7 +1179,16 @@ function trustScope(channel: string): string {
  *  utm_content=slug) so clicks land in attribution and the funnel joins
  *  them back to the channel. Presets enforce naming hygiene — free text
  *  stays possible for off-preset sources. */
-const LINK_SOURCE_PRESETS = ['x', 'linkedin', 'bluesky', 'threads', 'facebook', 'instagram', 'newsletter', 'bio']
+const LINK_SOURCE_PRESETS = [
+  'x',
+  'linkedin',
+  'bluesky',
+  'threads',
+  'facebook',
+  'instagram',
+  'newsletter',
+  'bio',
+]
 const LINK_MEDIUM_PRESETS = ['social', 'newsletter', 'referral', 'bio', 'paid']
 const LINK_PATH_PRESETS = ['/', '/readiness', '/signup']
 
@@ -1117,12 +1328,15 @@ function LinkBuilder({
       </div>
       {url && (
         <div className="flex items-center gap-2">
-          <code className="flex-1 truncate rounded-xl border border-tint/[0.08] bg-tint/[0.02] px-3 py-2 text-xs text-ink-secondary">{url}</code>
+          <code className="flex-1 truncate rounded-xl border border-tint/[0.08] bg-tint/[0.02] px-3 py-2 text-xs text-ink-secondary">
+            {url}
+          </code>
           <GlassButton onClick={copy}>Copy</GlassButton>
         </div>
       )}
       <p className="text-caption text-ink-tertiary leading-relaxed">
-        Keep <span className="font-semibold">medium = social</span> for channel posts — the performance tab only joins utm_medium=social traffic.
+        Keep <span className="font-semibold">medium = social</span> for channel posts — the
+        performance tab only joins utm_medium=social traffic.
       </p>
     </div>
   )
@@ -1145,11 +1359,15 @@ function CampaignsPanel() {
   const [trialing, setTrialing] = useState('')
   const [hasProfile, setHasProfile] = useState('')
   const [sources, setSources] = useState('')
-  const [preview, setPreview] = useState<{ count: number; users: number; leads: number } | null>(null)
+  const [preview, setPreview] = useState<{ count: number; users: number; leads: number } | null>(
+    null,
+  )
   const [busy, setBusy] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchOperatorCampaigns().then((r) => setCampaigns(r.campaigns)).catch(() => setCampaigns([]))
+    fetchOperatorCampaigns()
+      .then((r) => setCampaigns(r.campaigns))
+      .catch(() => setCampaigns([]))
   }, [])
 
   function buildFilter(): CampaignFilter {
@@ -1159,7 +1377,10 @@ function CampaignsPanel() {
     if (trialing === 'exclude') f.trialing = false
     if (hasProfile === 'yes') f.has_profile = true
     if (hasProfile === 'no') f.has_profile = false
-    const srcs = sources.split(',').map((s) => s.trim()).filter(Boolean)
+    const srcs = sources
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
     if (srcs.length > 0) f.utm_sources = srcs
     return f
   }
@@ -1191,7 +1412,12 @@ function CampaignsPanel() {
       )
       toast({ message: 'Campaign draft created' })
       setShowCreate(false)
-      setName(''); setSubject(''); setBody(''); setCtaUrl(''); setCtaLabel(''); setPreview(null)
+      setName('')
+      setSubject('')
+      setBody('')
+      setCtaUrl('')
+      setCtaLabel('')
+      setPreview(null)
       const r = await fetchOperatorCampaigns()
       setCampaigns(r.campaigns)
     } catch (err) {
@@ -1215,65 +1441,117 @@ function CampaignsPanel() {
       <GlassCard className="p-4">
         <div className="flex items-center justify-between mb-1">
           <p className="text-sm font-semibold text-ink-primary">Email campaigns</p>
-          <button onClick={() => setShowCreate((v) => !v)} className="text-xs font-semibold text-family-400">
+          <button
+            onClick={() => setShowCreate((v) => !v)}
+            className="text-xs font-semibold text-family-400"
+          >
             {showCreate ? 'Close' : 'New campaign'}
           </button>
         </div>
         <p className="text-caption text-ink-tertiary leading-relaxed">
-          One-shot email to a filtered cohort — users honor <code>email_opt_out</code>, leads honor consent +
-          suppression. The send button is the approval gate: once fired, a campaign can&apos;t re-send.
+          One-shot email to a filtered cohort — users honor <code>email_opt_out</code>, leads honor
+          consent + suppression. The send button is the approval gate: once fired, a campaign
+          can&apos;t re-send.
         </p>
 
         {showCreate && (
           <div className="mt-3 pt-3 border-t border-tint/[0.06] space-y-2.5">
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Campaign name — e.g. trial-nudge-march"
-              className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none" />
-            <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject line"
-              className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none" />
-            <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={5}
-              placeholder={'Body — blank lines split paragraphs.\nUse {{first_name}} to personalize.'}
-              className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none resize-y" />
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Campaign name — e.g. trial-nudge-march"
+              className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
+            />
+            <input
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="Subject line"
+              className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
+            />
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={5}
+              placeholder={
+                'Body — blank lines split paragraphs.\nUse {{first_name}} to personalize.'
+              }
+              className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none resize-y"
+            />
             <div className="flex gap-2">
-              <input value={ctaUrl} onChange={(e) => setCtaUrl(e.target.value)} placeholder="CTA URL (optional)"
-                className="glass-input flex-1 rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none" />
-              <input value={ctaLabel} onChange={(e) => setCtaLabel(e.target.value)} placeholder="CTA label"
-                className="glass-input w-40 rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none" />
+              <input
+                value={ctaUrl}
+                onChange={(e) => setCtaUrl(e.target.value)}
+                placeholder="CTA URL (optional)"
+                className="glass-input flex-1 rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
+              />
+              <input
+                value={ctaLabel}
+                onChange={(e) => setCtaLabel(e.target.value)}
+                placeholder="CTA label"
+                className="glass-input w-40 rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-2">
-              <select value={audience} onChange={(e) => setAudience(e.target.value as CampaignFilter['audience'])} className={selectCls}>
+              <select
+                value={audience}
+                onChange={(e) => setAudience(e.target.value as CampaignFilter['audience'])}
+                className={selectCls}
+              >
                 <option value="users">Users only</option>
                 <option value="leads">Leads only</option>
                 <option value="both">Users + leads</option>
               </select>
-              <select value={planFilter} onChange={(e) => setPlanFilter(e.target.value)} className={selectCls}>
+              <select
+                value={planFilter}
+                onChange={(e) => setPlanFilter(e.target.value)}
+                className={selectCls}
+              >
                 <option value="">Any plan</option>
                 <option value="free">Free</option>
                 <option value="starter">Keel Plus</option>
               </select>
-              <select value={trialing} onChange={(e) => setTrialing(e.target.value)} className={selectCls}>
+              <select
+                value={trialing}
+                onChange={(e) => setTrialing(e.target.value)}
+                className={selectCls}
+              >
                 <option value="">Trial: any</option>
                 <option value="only">Trialing only</option>
                 <option value="exclude">Not trialing</option>
               </select>
-              <select value={hasProfile} onChange={(e) => setHasProfile(e.target.value)} className={selectCls}>
+              <select
+                value={hasProfile}
+                onChange={(e) => setHasProfile(e.target.value)}
+                className={selectCls}
+              >
                 <option value="">Profile: any</option>
                 <option value="yes">Has profile</option>
                 <option value="no">No profile</option>
               </select>
             </div>
-            <input value={sources} onChange={(e) => setSources(e.target.value)} placeholder="utm_source filter — comma-separated, optional"
-              className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none" />
+            <input
+              value={sources}
+              onChange={(e) => setSources(e.target.value)}
+              placeholder="utm_source filter — comma-separated, optional"
+              className="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none"
+            />
 
             <div className="flex items-center gap-3">
-              <button onClick={runPreview} disabled={busy === 'preview'}
-                className="rounded-lg border border-tint/[0.1] px-3 py-1.5 text-xs font-medium text-ink-secondary hover:text-ink-primary disabled:opacity-40">
+              <button
+                onClick={runPreview}
+                disabled={busy === 'preview'}
+                className="rounded-lg border border-tint/[0.1] px-3 py-1.5 text-xs font-medium text-ink-secondary hover:text-ink-primary disabled:opacity-40"
+              >
                 {busy === 'preview' ? 'Counting…' : 'Preview audience'}
               </button>
               {preview && (
                 <p className="text-xs text-ink-secondary">
                   <span className="font-semibold text-ink-primary">{preview.count}</span> recipients
-                  <span className="text-ink-tertiary"> ({preview.users} users · {preview.leads} leads)</span>
+                  <span className="text-ink-tertiary">
+                    {' '}
+                    ({preview.users} users · {preview.leads} leads)
+                  </span>
                 </p>
               )}
             </div>
@@ -1282,7 +1560,11 @@ function CampaignsPanel() {
               label="Create draft"
               description="Creates a draft — nothing sends until you fire it from the list below."
               onConfirm={async (reason) => {
-                if (name.trim().length < 3 || subject.trim().length < 3 || body.trim().length < 20) {
+                if (
+                  name.trim().length < 3 ||
+                  subject.trim().length < 3 ||
+                  body.trim().length < 20
+                ) {
                   throw new Error('Name, subject, and a 20+ character body are required')
                 }
                 await create(reason)
@@ -1296,7 +1578,10 @@ function CampaignsPanel() {
         <div className="shimmer h-20 rounded-2xl" />
       ) : campaigns.length === 0 ? (
         <GlassCard className="p-4">
-          <p className="text-sm text-ink-secondary">No campaigns yet — the lifecycle sequences handle the always-on mail; campaigns are for the moments in between.</p>
+          <p className="text-sm text-ink-secondary">
+            No campaigns yet — the lifecycle sequences handle the always-on mail; campaigns are for
+            the moments in between.
+          </p>
         </GlassCard>
       ) : (
         <GlassCard className="p-4">
@@ -1310,20 +1595,39 @@ function CampaignsPanel() {
                     <p className="text-caption text-ink-tertiary mt-0.5">
                       {c.filter.audience}
                       {c.filter.plans?.length ? ` · ${c.filter.plans.join(',')}` : ''}
-                      {c.filter.trialing !== undefined ? (c.filter.trialing ? ' · trialing' : ' · not trialing') : ''}
-                      {c.filter.has_profile !== undefined ? (c.filter.has_profile ? ' · has profile' : ' · no profile') : ''}
-                      {c.filter.utm_sources?.length ? ` · src: ${c.filter.utm_sources.join(',')}` : ''}
+                      {c.filter.trialing !== undefined
+                        ? c.filter.trialing
+                          ? ' · trialing'
+                          : ' · not trialing'
+                        : ''}
+                      {c.filter.has_profile !== undefined
+                        ? c.filter.has_profile
+                          ? ' · has profile'
+                          : ' · no profile'
+                        : ''}
+                      {c.filter.utm_sources?.length
+                        ? ` · src: ${c.filter.utm_sources.join(',')}`
+                        : ''}
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
                     {c.status === 'sent' ? (
                       <p className="text-xs text-ink-tertiary">
                         sent {c.stats ? `${c.stats.sent}/${c.stats.targeted}` : ''}
-                        {c.stats?.failed ? <span className="text-danger"> ({c.stats.failed} failed)</span> : ''}
+                        {c.stats?.failed ? (
+                          <span className="text-danger"> ({c.stats.failed} failed)</span>
+                        ) : (
+                          ''
+                        )}
                         {c.engagement && (
                           <span>
-                            {' · '}{c.engagement.opened} opened · {c.engagement.clicked} clicked
-                            {c.engagement.bounced ? <span className="text-danger"> · {c.engagement.bounced} bounced</span> : ''}
+                            {' · '}
+                            {c.engagement.opened} opened · {c.engagement.clicked} clicked
+                            {c.engagement.bounced ? (
+                              <span className="text-danger"> · {c.engagement.bounced} bounced</span>
+                            ) : (
+                              ''
+                            )}
                           </span>
                         )}
                       </p>

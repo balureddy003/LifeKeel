@@ -104,15 +104,13 @@ export const AUTOPILOT_RULES: AutopilotRule[] = [
         dedup_key: `auto_unlock_expired:${u['id']}:${(u['locked_until'] as Date)?.toISOString()}`,
         reason: 'Lockout window expired — clearing residual lock state',
         act: async () => {
-          const r = await db
-            .collection('users')
-            .updateOne(
-              { id: u['id'], locked_until: { $lt: new Date() } },
-              {
-                $set: { failed_login_attempts: 0, updated_at: new Date() },
-                $unset: { locked_until: '' },
-              },
-            )
+          const r = await db.collection('users').updateOne(
+            { id: u['id'], locked_until: { $lt: new Date() } },
+            {
+              $set: { failed_login_attempts: 0, updated_at: new Date() },
+              $unset: { locked_until: '' },
+            },
+          )
           return r.modifiedCount === 0 ? 'already cleared' : 'cleared lockout residue'
         },
       }))
@@ -411,7 +409,12 @@ export const AUTOPILOT_RULES: AutopilotRule[] = [
 /** Hard-coded, not config: these action families can never be automated.
  *  Even a super_admin cannot toggle them on — the registry doesn't carry
  *  them and the PUT route validates against the registry. Irreversible,
- *  financial, regulated, or externally publishing by construction. */
+ *  financial, regulated, or externally publishing by construction.
+ *
+ *  Intent 03 made this the single publish-policy door: the former
+ *  marketing-posts 'auto-trust' path (trust_level ≥ 5 auto-published new
+ *  drafts) was removed rather than formalised, so earned trust can never
+ *  buy an external effect anywhere in the codebase. */
 export const NEVER_AUTONOMOUS = [
   'user.erase',
   'user.suspend',
@@ -457,19 +460,17 @@ export const PROPOSAL_HANDLERS: Record<
 > = {
   'user.suspend': async (db, payload) => {
     const userId = payload['user_id'] as string
-    const result = await db
-      .collection('users')
-      .updateOne(
-        { id: userId, status: { $nin: ['suspended', 'erased'] } },
-        {
-          $set: {
-            status: 'suspended',
-            suspended_at: new Date(),
-            sessions_revoked_at: new Date(),
-            updated_at: new Date(),
-          },
+    const result = await db.collection('users').updateOne(
+      { id: userId, status: { $nin: ['suspended', 'erased'] } },
+      {
+        $set: {
+          status: 'suspended',
+          suspended_at: new Date(),
+          sessions_revoked_at: new Date(),
+          updated_at: new Date(),
         },
-      )
+      },
+    )
     return result.modifiedCount === 0
       ? 'user already suspended/erased — no-op'
       : 'user suspended, sessions revoked'
