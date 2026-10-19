@@ -18,13 +18,23 @@ export class EnvKeyRegistry implements KeyRegistry {
 
   getKey(version?: number): string | undefined {
     const v = version ?? this.currentVersion()
-    return process.env[`ENCRYPTION_KEY_V${v}`] ?? process.env['SETTINGS_ENCRYPTION_KEY']
+    const versioned = process.env[`ENCRYPTION_KEY_V${v}`]
+    if (versioned) return versioned
+    // Fail closed once any versioned keys exist: a ciphertext written under
+    // v{n} must not silently decrypt under the legacy key — that hides
+    // rotation misconfiguration and can return wrong-key garbage (GCM fails
+    // loudly anyway, but the failure should name the right cause). The
+    // legacy key only serves deployments with NO versioned keys at all
+    // (pre-rotation single-key setups).
+    const hasVersionedKeys = Object.keys(process.env).some((k) => /^ENCRYPTION_KEY_V\d+$/.test(k))
+    if (!hasVersionedKeys) return process.env['SETTINGS_ENCRYPTION_KEY']
+    return undefined
   }
 
   listVersions(): number[] {
     const keys = Object.keys(process.env)
-      .filter(k => /^ENCRYPTION_KEY_V\d+$/.test(k))
-      .map(k => Number(k.replace(/^ENCRYPTION_KEY_V/, '')))
+      .filter((k) => /^ENCRYPTION_KEY_V\d+$/.test(k))
+      .map((k) => Number(k.replace(/^ENCRYPTION_KEY_V/, '')))
       .sort((a, b) => a - b)
     if (process.env['SETTINGS_ENCRYPTION_KEY'] && keys.length === 0) return [1]
     return keys

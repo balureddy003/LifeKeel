@@ -153,6 +153,14 @@ export interface FeatureHashScorerOptions {
    * (flushed to MongoDB first if it has pending updates).
    */
   maxLoadedModels?: number
+  /**
+   * Whether cold-start loads may warm-start from the cross-tenant
+   * `federated_global_models` artifact. Defaults to **false**: reading a
+   * cross-tenant model is a governed decision (CLAUDE.md rule 3 — explicit
+   * opt-in, DPIA/privacy review, minimum-cohort controls, disclosure), not a
+   * cold-start convenience. Leave unset unless that governed path exists.
+   */
+  allowFederatedWarmStart?: boolean
 }
 
 /** Optional metrics hook — called on cache events. Decouples engine from prom-client. */
@@ -187,6 +195,8 @@ export class FeatureHashScorer {
   private metrics: FeatureHashScorerMetrics | undefined
   /** DB reference for the versions collection (used by createModelVersion + rollback). */
   private db: MongoDb
+  /** See FeatureHashScorerOptions.allowFederatedWarmStart — default off. */
+  private allowFederatedWarmStart: boolean
 
   constructor(
     db: MongoDb,
@@ -200,6 +210,7 @@ export class FeatureHashScorer {
       .createIndex({ tenant_id: 1, detector_id: 1, version: 1 }, { unique: true })
       .catch(() => {})
     this.maxLoadedModels = options.maxLoadedModels ?? 200
+    this.allowFederatedWarmStart = options.allowFederatedWarmStart === true
     this.metrics = metrics
   }
 
@@ -272,6 +283,10 @@ export class FeatureHashScorer {
    * zero-initialized weights).
    */
   private async tryWarmStart(tenantId: string, detectorId: string): Promise<boolean> {
+    // Gated: consuming a cross-tenant artifact is governed opt-in (CLAUDE.md
+    // rule 3). Default off — callers must pass allowFederatedWarmStart: true
+    // explicitly, which only the governed federated-learning path may do.
+    if (!this.allowFederatedWarmStart) return false
     try {
       const globalCol = this.db.collection('federated_global_models')
       const globalDoc = (await globalCol.findOne({ _id: 'latest' })) as {

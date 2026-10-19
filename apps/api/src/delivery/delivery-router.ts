@@ -113,8 +113,24 @@ export class DeliveryRouter {
   constructor(db: Db, moveJudge?: MoveJudge) {
     this.db = db
     this.moveJudge = moveJudge
-    this.signingSecret =
-      process.env['DELIVERY_SIGNING_SECRET'] ?? process.env['JWT_SECRET'] ?? 'change-me'
+    // Fail closed outside dev/test: signed notification links authorize real
+    // external effects (SendGrid/Twilio/CRM) for their 7-day TTL, so the
+    // HMAC secret must never silently default. Checking NODE_ENV !==
+    // production is not enough — a 'staging'/'qa' deploy would still take
+    // the weak fallback. Dev/test gets a per-boot random secret instead:
+    // links can't be forged with a known constant, and they expire with the
+    // process, which is fine locally.
+    const signingSecret = process.env['DELIVERY_SIGNING_SECRET'] ?? process.env['JWT_SECRET'] ?? ''
+    const isDevOrTest =
+      !process.env['NODE_ENV'] ||
+      process.env['NODE_ENV'] === 'development' ||
+      process.env['NODE_ENV'] === 'test'
+    if (signingSecret.length < 32 && !isDevOrTest) {
+      throw new Error(
+        'DELIVERY_SIGNING_SECRET (or JWT_SECRET) must be set to a strong value outside dev/test',
+      )
+    }
+    this.signingSecret = signingSecret || crypto.randomBytes(32).toString('hex')
     // Deep links in notifications point at the family app (apps/web), not
     // kairos-ai's Studio — LIFEKEEL_URL is the same env var auth-social.ts,
     // billing.ts, and connector-credentials.ts already use for it.

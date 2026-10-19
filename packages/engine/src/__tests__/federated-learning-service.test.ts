@@ -126,8 +126,11 @@ describe('FederatedLearningService', () => {
 
   // ── Global model warm-start ────────────────────────────────────────────────
 
-  it('new tenant warm-starts from the global model', async () => {
-    const scorer = new TenantLevelScorer(db)
+  it('new tenant warm-starts from the global model only with the governed opt-in', async () => {
+    // allowFederatedWarmStart is the explicit opt-in the governed federated-
+    // learning path would set — CLAUDE.md rule 3 makes cross-tenant model
+    // consumption a decision, not a cold-start default.
+    const scorer = new TenantLevelScorer(db, { allowFederatedWarmStart: true })
 
     // Store a global model with indices that match actual token hash positions
     // for score('new_tenant', 'e1', 'sig', 'det', [])
@@ -152,8 +155,30 @@ describe('FederatedLearningService', () => {
     expect(result.score).not.toBeCloseTo(0.5, 2)
   })
 
-  it('new tenant starts from zero when no global model exists', async () => {
+  it('new tenant does NOT warm-start by default even when a global model exists', async () => {
     const scorer = new TenantLevelScorer(db)
+
+    const globalCol = db.collection('federated_global_models')
+    await globalCol.replaceOne(
+      { _id: 'latest' },
+      {
+        _id: 'latest',
+        indices: [26928, 27455, 37607],
+        deltas: [0.5, 0.3, 0.2],
+        participant_count: 25,
+        total_samples: 500,
+        updated_at: new Date(),
+      },
+      { upsert: true },
+    )
+
+    // Default: no cross-tenant artifact consumed — weights stay at zero.
+    const result = await scorer.score('new_tenant', 'e1', 'sig', 'det', [])
+    expect(result.score).toBeCloseTo(0.5, 4)
+  })
+
+  it('new tenant starts from zero when no global model exists', async () => {
+    const scorer = new TenantLevelScorer(db, { allowFederatedWarmStart: true })
     const result = await scorer.score('new_tenant', 'e1', 'sig', 'det', [])
     expect(result.score).toBeCloseTo(0.5, 4) // sigmoid(0)
   })

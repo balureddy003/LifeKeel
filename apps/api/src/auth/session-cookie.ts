@@ -60,15 +60,20 @@ export function readSessionCookie(request: FastifyRequest): string | null {
  * clients (curl, server-to-server) omit it and are unaffected — they can't
  * have been given the cookie by a hostile page anyway.
  */
+// Localhost defaults exist only outside production: in a cloud deployment an
+// Origin allowlist that includes localhost would let a local page (or anything
+// else a developer machine runs) ride the SameSite=None cookie boundary.
+// Dev/airgap still gets them because that's where the local apps live.
+const DEV_ORIGINS = IS_CLOUD
+  ? []
+  : ['http://localhost:3000', 'http://localhost:3002', 'http://localhost:3001']
+
 const ALLOWED_ORIGINS = new Set(
   [
     process.env['CORS_ORIGIN'] ?? '',
     process.env['LIFEKEEL_URL'] ?? '',
     process.env['STUDIO_URL'] ?? '',
-    // Dev defaults — both local apps the API actually serves.
-    'http://localhost:3000',
-    'http://localhost:3002',
-    'http://localhost:3001',
+    ...DEV_ORIGINS,
   ]
     .flatMap((s) => s.split(','))
     .map((s) => s.trim().replace(/\/$/, ''))

@@ -21,7 +21,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import type { Engine, FeatureHashScorer, TenantLevelScorer, RecentInsight } from '@lifekeel/engine'
 import type { ActionReceipt } from '@lifekeel/workflows'
-import { ApprovalSignalHealthMonitor, createLogger , FreeTierPolicy } from '@lifekeel/platform'
+import { ApprovalSignalHealthMonitor, createLogger, FreeTierPolicy } from '@lifekeel/platform'
 import { familyDataLlmFromEnv } from '../local-model.js'
 import { getInsightsCollection, getReceiptsCollection } from '../db.js'
 import { getAuditLogger, type AuditAction } from '../audit/audit-log.js'
@@ -725,6 +725,7 @@ export async function registerInsightRoutes(
             .execute(result as never, result.tenant_id as string, {
               dryRun,
               approvedBy: ctx.userId,
+              approvedVia: ctx.via,
             })
             .catch((err) => {
               app.log.error({ err, insight_id: id }, 'Action execution failed')

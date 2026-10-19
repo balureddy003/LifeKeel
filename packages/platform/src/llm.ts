@@ -89,32 +89,32 @@ export type ReasoningTier = 'fast' | 'balanced' | 'powerful'
  */
 export const DEFAULT_TIER_MODELS: Record<LlmProvider, Record<ReasoningTier, string>> = {
   anthropic: {
-    fast:     'claude-haiku-4-5',
+    fast: 'claude-haiku-4-5',
     balanced: 'claude-3-5-sonnet-20241022',
     powerful: 'claude-opus-4',
   },
   openai: {
-    fast:     'gpt-4o-mini',
+    fast: 'gpt-4o-mini',
     balanced: 'gpt-4o',
     powerful: 'o3-mini',
   },
   groq: {
-    fast:     'llama-3.1-8b-instant',
+    fast: 'llama-3.1-8b-instant',
     balanced: 'llama-3.1-70b-versatile',
-    powerful: 'llama-3.1-70b-versatile',   // Groq doesn't have o-series yet
+    powerful: 'llama-3.1-70b-versatile', // Groq doesn't have o-series yet
   },
   azure: {
-    fast:     'gpt-4o-mini',
+    fast: 'gpt-4o-mini',
     balanced: 'gpt-4o',
     powerful: 'gpt-4o',
   },
   ollama: {
-    fast:     'llama3.2:3b',
+    fast: 'llama3.2:3b',
     balanced: 'qwen2.5:7b',
     powerful: 'qwen2.5:14b',
   },
   auto: {
-    fast:     'claude-haiku-4-5',
+    fast: 'claude-haiku-4-5',
     balanced: 'claude-3-5-sonnet-20241022',
     powerful: 'claude-opus-4',
   },
@@ -130,20 +130,45 @@ export function estimateReasoningTier(prompt: string, systemHint?: string): Reas
 
   // Signals of high complexity → powerful tier
   const powerfulSignals = [
-    'reason through', 'step by step', 'analyze', 'evaluate trade-offs',
-    'compare', 'pros and cons', 'strategic', 'plan', 'decide', 'recommend',
-    'synthesize', 'critique', 'assess risk', 'legal', 'financial', 'medical',
-    'multi-step', 'chain of thought', 'justify', 'argue',
+    'reason through',
+    'step by step',
+    'analyze',
+    'evaluate trade-offs',
+    'compare',
+    'pros and cons',
+    'strategic',
+    'plan',
+    'decide',
+    'recommend',
+    'synthesize',
+    'critique',
+    'assess risk',
+    'legal',
+    'financial',
+    'medical',
+    'multi-step',
+    'chain of thought',
+    'justify',
+    'argue',
   ]
-  if (powerfulSignals.some(s => text.includes(s)) || len > 2000) return 'powerful'
+  if (powerfulSignals.some((s) => text.includes(s)) || len > 2000) return 'powerful'
 
   // Signals of simple tasks → fast tier
   const fastSignals = [
-    'classify', 'label', 'categorize', 'translate', 'sentiment',
-    'positive or negative', 'yes or no', 'true or false',
-    'format', 'extract', 'parse', 'summarize in one',
+    'classify',
+    'label',
+    'categorize',
+    'translate',
+    'sentiment',
+    'positive or negative',
+    'yes or no',
+    'true or false',
+    'format',
+    'extract',
+    'parse',
+    'summarize in one',
   ]
-  if (fastSignals.some(s => text.includes(s)) && len < 500) return 'fast'
+  if (fastSignals.some((s) => text.includes(s)) && len < 500) return 'fast'
 
   return 'balanced'
 }
@@ -202,31 +227,31 @@ export type LlmFn = (system: string, prompt: string, model?: string) => Promise<
  */
 const MODEL_PROVIDER_MAP: Record<string, LlmProvider> = {
   // Anthropic
-  'claude-3-haiku':        'anthropic',
+  'claude-3-haiku': 'anthropic',
   'claude-3-haiku-20240307': 'anthropic',
-  'claude-haiku-4-5':      'anthropic',
-  'claude-3-5-haiku':      'anthropic',
+  'claude-haiku-4-5': 'anthropic',
+  'claude-3-5-haiku': 'anthropic',
   'claude-3-5-haiku-20241022': 'anthropic',
-  'claude-3-sonnet':       'anthropic',
-  'claude-3-5-sonnet':     'anthropic',
+  'claude-3-sonnet': 'anthropic',
+  'claude-3-5-sonnet': 'anthropic',
   'claude-3-5-sonnet-20241022': 'anthropic',
-  'claude-opus-4':         'anthropic',
-  'claude-3-opus-20240229':'anthropic',
+  'claude-opus-4': 'anthropic',
+  'claude-3-opus-20240229': 'anthropic',
   // OpenAI
-  'gpt-4o':                'openai',
-  'gpt-4o-mini':           'openai',
-  'gpt-4-turbo':           'openai',
-  'gpt-4':                 'openai',
-  'gpt-3.5-turbo':         'openai',
-  'o1':                    'openai',
-  'o1-mini':               'openai',
-  'o3':                    'openai',
-  'o3-mini':               'openai',
+  'gpt-4o': 'openai',
+  'gpt-4o-mini': 'openai',
+  'gpt-4-turbo': 'openai',
+  'gpt-4': 'openai',
+  'gpt-3.5-turbo': 'openai',
+  o1: 'openai',
+  'o1-mini': 'openai',
+  o3: 'openai',
+  'o3-mini': 'openai',
   // Groq
   'llama-3.1-70b-versatile': 'groq',
-  'llama-3.1-8b-instant':    'groq',
-  'mixtral-8x7b-32768':      'groq',
-  'gemma2-9b-it':            'groq',
+  'llama-3.1-8b-instant': 'groq',
+  'mixtral-8x7b-32768': 'groq',
+  'gemma2-9b-it': 'groq',
 }
 
 function detectProviderFromModel(model: string): LlmProvider | null {
@@ -235,7 +260,8 @@ function detectProviderFromModel(model: string): LlmProvider | null {
   // Prefix match
   if (model.startsWith('claude')) return 'anthropic'
   if (model.startsWith('gpt-') || model.startsWith('o1') || model.startsWith('o3')) return 'openai'
-  if (model.startsWith('llama') || model.startsWith('mixtral') || model.startsWith('gemma')) return 'groq'
+  if (model.startsWith('llama') || model.startsWith('mixtral') || model.startsWith('gemma'))
+    return 'groq'
   return null
 }
 
@@ -249,7 +275,13 @@ function resolveProvider(cfg: LlmConfig, model: string): LlmProvider {
   if (process.env['OPENAI_API_KEY']) return 'openai'
   if (process.env['GROQ_API_KEY']) return 'groq'
   if (process.env['AZURE_OPENAI_ENDPOINT']) return 'azure'
-  if (process.env['OLLAMA_BASE_URL'] || model.startsWith('llama') || model.startsWith('phi') || model.startsWith('mistral')) return 'ollama'
+  if (
+    process.env['OLLAMA_BASE_URL'] ||
+    model.startsWith('llama') ||
+    model.startsWith('phi') ||
+    model.startsWith('mistral')
+  )
+    return 'ollama'
   // Hard default
   return 'anthropic'
 }
@@ -278,24 +310,30 @@ async function withRetry<T>(
       lastErr = err
       const isRetryable =
         // Rate limit or server error from HTTP status in message
-        (err instanceof Error && RETRYABLE_STATUS_CODES.has(Number(
-          err.message.match(/\b(429|5\d\d)\b/)?.[1] ?? 0
-        ))) ||
+        (err instanceof Error &&
+          RETRYABLE_STATUS_CODES.has(Number(err.message.match(/\b(429|5\d\d)\b/)?.[1] ?? 0))) ||
         // Network / connection error (no HTTP status)
         (err instanceof TypeError && err.message.includes('fetch')) ||
         // Provider SDK rate-limit error shape
-        (err instanceof Error && (
-          err.message.toLowerCase().includes('rate limit') ||
-          err.message.toLowerCase().includes('overloaded') ||
-          err.message.toLowerCase().includes('timeout')
-        ))
+        (err instanceof Error &&
+          (err.message.toLowerCase().includes('rate limit') ||
+            err.message.toLowerCase().includes('overloaded') ||
+            err.message.toLowerCase().includes('timeout')))
 
       if (!isRetryable || attempt === retries) break
 
       const jitter = Math.random() * delayMs * 0.3
       const wait = delayMs * Math.pow(2, attempt) + jitter
-      log.warn({ attempt: attempt + 1, retries: retries + 1, delay_ms: Math.round(wait), err: (err as Error).message }, 'LLM attempt failed — retrying')
-      await new Promise(r => setTimeout(r, wait))
+      log.warn(
+        {
+          attempt: attempt + 1,
+          retries: retries + 1,
+          delay_ms: Math.round(wait),
+          err: (err as Error).message,
+        },
+        'LLM attempt failed — retrying',
+      )
+      await new Promise((r) => setTimeout(r, wait))
     }
   }
   throw lastErr
@@ -367,8 +405,8 @@ async function callOpenAI(
     const t0 = Date.now()
     const response = await client.chat.completions.create({
       model,
-      max_tokens: isReasoningModel ? null : maxTokens as number | null,
-      temperature: isReasoningModel ? null : temperature as number | null,
+      max_tokens: isReasoningModel ? null : (maxTokens as number | null),
+      temperature: isReasoningModel ? null : (temperature as number | null),
       messages: isReasoningModel
         ? [{ role: 'user', content: `${system}\n\n${prompt}` }]
         : [
@@ -418,14 +456,11 @@ async function callAzure(
   if (!foundry) {
     clientOpts.defaultQuery = { 'api-version': apiVersion }
   }
-  const client = getCachedClient(`azure:${azureBaseUrl}:${apiKey}:${foundry}`, () => new OpenAI(clientOpts))
+  const client = getCachedClient(
+    `azure:${azureBaseUrl}:${apiKey}:${foundry}`,
+    () => new OpenAI(clientOpts),
+  )
   return withRetry(async () => {
-    console.log('Making Azure OpenAI request:', {
-      baseURL: client.baseURL,
-      model: deployment,
-      apiVersion,
-      foundry,
-    })
     const response = await client.chat.completions.create({
       model: deployment,
       max_tokens: maxTokens as number | null,
@@ -435,7 +470,6 @@ async function callAzure(
         { role: 'user', content: prompt },
       ],
     })
-    console.log('Azure response successful:', response.choices[0]?.message.content?.substring(0, 50))
     return response.choices[0]?.message.content ?? ''
   })
 }
@@ -451,7 +485,10 @@ async function callGroq(
 ): Promise<string> {
   // Groq uses OpenAI-compatible API — singleton client
   const { default: OpenAI } = await import('openai')
-  const client = getCachedClient(`groq:${apiKey}`, () => new OpenAI({ apiKey, baseURL: 'https://api.groq.com/openai/v1' }))
+  const client = getCachedClient(
+    `groq:${apiKey}`,
+    () => new OpenAI({ apiKey, baseURL: 'https://api.groq.com/openai/v1' }),
+  )
   return withRetry(async () => {
     const t0 = Date.now()
     const response = await client.chat.completions.create({
@@ -510,11 +547,12 @@ async function callOllama(
     } catch (err) {
       // withRetry retries anything whose message contains "timeout"; a call that
       // already burned the whole budget must fail fast, not retry 3x (~12 min).
-      if ((err as Error).name === 'TimeoutError') throw new Error(`Ollama call exceeded ${OLLAMA_TIMEOUT_MS / 1000}s and was abandoned`)
+      if ((err as Error).name === 'TimeoutError')
+        throw new Error(`Ollama call exceeded ${OLLAMA_TIMEOUT_MS / 1000}s and was abandoned`)
       throw err
     }
     if (!res.ok) throw new Error(`Ollama HTTP ${res.status}: ${await res.text()}`)
-    const data = await res.json() as { message?: { content?: string } }
+    const data = (await res.json()) as { message?: { content?: string } }
     return data.message?.content ?? ''
   })
 }
@@ -568,21 +606,39 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
         case 'anthropic': {
           const apiKey = cfg.apiKey ?? process.env['ANTHROPIC_API_KEY'] ?? ''
           if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set')
-          return await callAnthropic(system, prompt, resolvedModel, apiKey, maxTokens, temperature, cfg.onUsage)
+          return await callAnthropic(
+            system,
+            prompt,
+            resolvedModel,
+            apiKey,
+            maxTokens,
+            temperature,
+            cfg.onUsage,
+          )
         }
 
         case 'openai': {
           const apiKey = cfg.apiKey ?? process.env['OPENAI_API_KEY'] ?? ''
           if (!apiKey) throw new Error('OPENAI_API_KEY not set')
-          return await callOpenAI(system, prompt, resolvedModel, apiKey, maxTokens, temperature, cfg.onUsage)
+          return await callOpenAI(
+            system,
+            prompt,
+            resolvedModel,
+            apiKey,
+            maxTokens,
+            temperature,
+            cfg.onUsage,
+          )
         }
 
         case 'azure': {
           const apiKey = cfg.apiKey ?? process.env['AZURE_OPENAI_API_KEY'] ?? ''
           const endpoint = cfg.azureEndpoint ?? process.env['AZURE_OPENAI_ENDPOINT'] ?? ''
-          const deployment = cfg.azureDeployment ?? process.env['AZURE_OPENAI_DEPLOYMENT'] ?? resolvedModel
-          const apiVersion = cfg.azureApiVersion ?? process.env['AZURE_OPENAI_API_VERSION'] ?? '2024-10-21'
-          
+          const deployment =
+            cfg.azureDeployment ?? process.env['AZURE_OPENAI_DEPLOYMENT'] ?? resolvedModel
+          const apiVersion =
+            cfg.azureApiVersion ?? process.env['AZURE_OPENAI_API_VERSION'] ?? '2024-10-21'
+
           // Enhanced validation with specific error messages
           if (!apiKey) {
             throw new Error('AZURE_OPENAI_API_KEY not set')
@@ -590,13 +646,14 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
           if (!endpoint) {
             throw new Error('AZURE_OPENAI_ENDPOINT not set')
           }
-          
+
           // Validate endpoint format
           const normalizedEndpoint = endpoint.replace(/\/$/, '').replace(/\/openai.*$/, '')
-          console.log('Azure endpoint processing:', { original: endpoint, normalized: normalizedEndpoint })
 
           if (!isValidAzureEndpoint(normalizedEndpoint)) {
-            throw new Error(`Invalid Azure endpoint: ${endpoint}. Expected format: https://<resource>.openai.azure.com or https://<resource>.services.ai.azure.com`)
+            throw new Error(
+              `Invalid Azure endpoint: ${endpoint}. Expected format: https://<resource>.openai.azure.com or https://<resource>.services.ai.azure.com`,
+            )
           }
 
           // Gap A6: AI Foundry resources (.services.ai.azure.com) use the
@@ -607,28 +664,46 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
           const azureBaseUrl = foundry
             ? `${normalizedEndpoint}/openai/v1`
             : `${normalizedEndpoint}/openai/deployments/${deployment}`
-          
-          console.log('Azure call details:', {
-            normalizedEndpoint,
-            deployment,
-            apiVersion,
-            azureBaseUrl,
-            foundry,
-            hasApiKey: !!apiKey
-          })
 
-  return await callAzure(system, prompt, deployment, azureBaseUrl, apiKey, apiVersion, maxTokens, temperature, foundry)
+          return await callAzure(
+            system,
+            prompt,
+            deployment,
+            azureBaseUrl,
+            apiKey,
+            apiVersion,
+            maxTokens,
+            temperature,
+            foundry,
+          )
         }
 
         case 'groq': {
           const apiKey = cfg.apiKey ?? process.env['GROQ_API_KEY'] ?? ''
           if (!apiKey) throw new Error('GROQ_API_KEY not set')
-          return await callGroq(system, prompt, resolvedModel, apiKey, maxTokens, temperature, cfg.onUsage)
+          return await callGroq(
+            system,
+            prompt,
+            resolvedModel,
+            apiKey,
+            maxTokens,
+            temperature,
+            cfg.onUsage,
+          )
         }
 
         case 'ollama': {
-          const baseUrl = cfg.ollamaBaseUrl ?? process.env['OLLAMA_BASE_URL'] ?? 'http://localhost:11434'
-          return await callOllama(system, prompt, resolvedModel, baseUrl, maxTokens, temperature, cfg.ollamaHeaders)
+          const baseUrl =
+            cfg.ollamaBaseUrl ?? process.env['OLLAMA_BASE_URL'] ?? 'http://localhost:11434'
+          return await callOllama(
+            system,
+            prompt,
+            resolvedModel,
+            baseUrl,
+            maxTokens,
+            temperature,
+            cfg.ollamaHeaders,
+          )
         }
 
         default:
@@ -637,7 +712,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
     } catch (err) {
       // Structured fallback — never crash the workflow
       log.error({ provider, model: resolvedModel, err: (err as Error).message }, 'LLM call failed')
-      throw err  // let caller decide whether to use fallback
+      throw err // let caller decide whether to use fallback
     }
   }
 }
@@ -669,9 +744,9 @@ function detectActiveProvider(): LlmProvider | null {
 /** Default model to use when none specified, per provider */
 export const DEFAULT_MODELS: Record<LlmProvider, string> = {
   anthropic: 'claude-haiku-4-5',
-  openai:    'gpt-4o-mini',
-  azure:     'gpt-4o',
-  groq:      'llama-3.1-70b-versatile',
-  ollama:    'llama3.1',
-  auto:      'claude-haiku-4-5',
+  openai: 'gpt-4o-mini',
+  azure: 'gpt-4o',
+  groq: 'llama-3.1-70b-versatile',
+  ollama: 'llama3.1',
+  auto: 'claude-haiku-4-5',
 }

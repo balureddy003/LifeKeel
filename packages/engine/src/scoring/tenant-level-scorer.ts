@@ -47,7 +47,7 @@
  */
 
 // MongoDB structural type
- 
+
 type MongoDb = { collection: (name: string) => any }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -88,7 +88,7 @@ function sigmoid(x: number): number {
 export interface RecentInsight {
   detector_id: string
   signal_type?: string
-  state?: string  // 'identified' | 'approved' | 'dismissed' | 'completed'
+  state?: string // 'identified' | 'approved' | 'dismissed' | 'completed'
   created_at: Date
 }
 
@@ -105,6 +105,13 @@ export interface TenantLevelScoreResult {
 export interface TenantLevelScorerOptions {
   /** Max tenant models in memory. Default: 200 (~200MB). */
   maxLoadedTenants?: number
+  /**
+   * Whether first-load may warm-start from the cross-tenant
+   * `federated_global_models` artifact. Defaults to **false** — reading a
+   * cross-tenant model is a governed opt-in decision (CLAUDE.md rule 3), not
+   * a cold-start convenience.
+   */
+  allowFederatedWarmStart?: boolean
 }
 
 export interface TenantLevelScorerMetrics {
@@ -131,7 +138,7 @@ function buildCrossSignalTokens(
 ): string[] {
   const now = Date.now()
   const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000
-  const recent = recentInsights.filter(i => now - i.created_at.getTime() < SEVEN_DAYS)
+  const recent = recentInsights.filter((i) => now - i.created_at.getTime() < SEVEN_DAYS)
 
   const unigrams: string[] = []
 
@@ -147,7 +154,7 @@ function buildCrossSignalTokens(
   unigrams.push(`recent_insight_count_7d=${bucketCount(insightCount)}`)
 
   // Detector diversity — how many distinct detectors fired
-  const distinctDetectors = new Set(recent.map(i => i.detector_id))
+  const distinctDetectors = new Set(recent.map((i) => i.detector_id))
   unigrams.push(`recent_detector_diversity=${bucketCount(distinctDetectors.size)}`)
 
   // Last outcome — what did the user do with the most recent insight?
@@ -156,7 +163,7 @@ function buildCrossSignalTokens(
   unigrams.push(`last_outcome=${lastOutcome}`)
 
   // Active signal types — what's happening for this entity (sorted, comma-joined)
-  const signalTypes = [...new Set(recent.map(i => i.signal_type).filter(Boolean))].sort()
+  const signalTypes = [...new Set(recent.map((i) => i.signal_type).filter(Boolean))].sort()
   if (signalTypes.length > 0) {
     unigrams.push(`active_signal_types=${signalTypes.join(',')}`)
   }
@@ -192,7 +199,6 @@ function bucketCount(n: number): string {
 // ── TenantLevelScorer ─────────────────────────────────────────────────────────
 
 export class TenantLevelScorer {
-   
   private col: any
   private db: MongoDb
   /** In-memory weight vectors: tenantId → Float32Array */
@@ -204,12 +210,19 @@ export class TenantLevelScorer {
   private accessClock = 0
   private maxLoadedTenants: number
   private metrics: TenantLevelScorerMetrics | undefined
+  /** See TenantLevelScorerOptions.allowFederatedWarmStart — default off. */
+  private allowFederatedWarmStart: boolean
 
-  constructor(db: MongoDb, options: TenantLevelScorerOptions = {}, metrics?: TenantLevelScorerMetrics) {
+  constructor(
+    db: MongoDb,
+    options: TenantLevelScorerOptions = {},
+    metrics?: TenantLevelScorerMetrics,
+  ) {
     this.db = db
     this.col = db.collection('tenant_level_models')
     this.col.createIndex({ tenant_id: 1 }, { unique: true }).catch(() => {})
     this.maxLoadedTenants = options.maxLoadedTenants ?? 200
+    this.allowFederatedWarmStart = options.allowFederatedWarmStart === true
     this.metrics = metrics
   }
 
@@ -230,7 +243,7 @@ export class TenantLevelScorer {
   }
 
   private async load(tenantId: string): Promise<void> {
-    const doc = await this.col.findOne({ tenant_id: tenantId }) as {
+    const doc = (await this.col.findOne({ tenant_id: tenantId })) as {
       weights?: { buffer: ArrayBuffer } | Uint8Array
       update_count?: number
     } | null
@@ -294,7 +307,12 @@ export class TenantLevelScorer {
   ): Promise<TenantLevelScoreResult> {
     await this.ensureLoaded(tenantId)
     const w = this.weights.get(tenantId)!
-    const tokens = buildCrossSignalTokens(entityKey, currentSignalType, currentDetectorId, recentInsights)
+    const tokens = buildCrossSignalTokens(
+      entityKey,
+      currentSignalType,
+      currentDetectorId,
+      recentInsights,
+    )
 
     let dot = 0
     for (const token of tokens) {
@@ -322,7 +340,12 @@ export class TenantLevelScorer {
   ): Promise<void> {
     await this.ensureLoaded(tenantId)
     const w = this.weights.get(tenantId)!
-    const tokens = buildCrossSignalTokens(entityKey, currentSignalType, currentDetectorId, recentInsights)
+    const tokens = buildCrossSignalTokens(
+      entityKey,
+      currentSignalType,
+      currentDetectorId,
+      recentInsights,
+    )
     const effectiveLr = lr ?? DEFAULT_LR
 
     // Score current prediction
@@ -412,7 +435,9 @@ export class TenantLevelScorer {
    *
    * After extraction, the current weights become the new baseline.
    */
-  async extractGradient(tenantId: string): Promise<{ indices: number[]; deltas: number[]; sampleCount: number }> {
+  async extractGradient(
+    tenantId: string,
+  ): Promise<{ indices: number[]; deltas: number[]; sampleCount: number }> {
     await this.ensureLoaded(tenantId)
     const w = this.weights.get(tenantId)!
     const baseline = this.federatedBaselines.get(tenantId) ?? new Float32Array(HASH_SIZE)
@@ -486,8 +511,11 @@ export class TenantLevelScorer {
    * The global model is stored in MongoDB by the FederatedLearningService.
    */
   private async tryWarmStart(tenantId: string): Promise<boolean> {
+    // Gated: consuming a cross-tenant artifact is governed opt-in (CLAUDE.md
+    // rule 3). Default off — see TenantLevelScorerOptions.
+    if (!this.allowFederatedWarmStart) return false
     const globalCol = this.db.collection('federated_global_models')
-    const globalDoc = await globalCol.findOne({ _id: 'latest' }) as {
+    const globalDoc = (await globalCol.findOne({ _id: 'latest' })) as {
       indices?: number[]
       deltas?: number[]
       version?: string

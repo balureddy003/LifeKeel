@@ -12,11 +12,11 @@
  *   - Calibration (mean predicted score vs actual approval rate, binned)
  *   - Confusion matrix at the threshold
  *
- * The eval is train-on-past, test-on-future: insights are sorted by
- * created_at, the first 80% are used to train the scorer (simulating the
- * online updates that already happened), and the last 20% are held out for
- * evaluation. This mirrors how the model is used in production — it scores
- * new insights based on weights learned from past approvals/dismissals.
+ * The eval is train-on-past, test-on-future, **per tenant**: each scorer is
+ * trained only on that tenant's own approve/dismiss history (CLAUDE.md rule 3
+ * — no cross-tenant training data pooling), evaluated on its held-out 20%,
+ * and the resulting predictions pooled across tenants for the detector-level
+ * report.
  *
  * Usage:
  *   MONGODB_URL=mongodb://... pnpm exec tsx scripts/feature-hash-eval.ts
@@ -31,6 +31,7 @@ const log = createLogger({ service: 'feature-hash-eval', version: '0.0.0' })
 export interface FeatureHashEvalReport {
   detector_id: string
   run_at: Date
+  tenant_count: number
   total_insights: number
   train_count: number
   test_count: number
@@ -59,70 +60,85 @@ export async function evaluateFeatureHashScorer(
   detectorId: string,
   threshold = 0.65,
 ): Promise<FeatureHashEvalReport | null> {
-  // Load all approved/dismissed insights for this detector, sorted by time.
-  // These are the only insights with a known outcome (label):
-  //   approved (state='completed') → outcome 1
-  //   dismissed (state='dismissed') → outcome 0
+  // Per-tenant evaluation (CLAUDE.md rule 3): a scorer is trained ONLY on
+  // the tenant's own approve/dismiss history and evaluated on that tenant's
+  // held-out slice. Predictions are pooled across tenants for the
+  // detector-level report — training data is never pooled.
   const insightsCol = db.collection('insights')
-  const insights = await insightsCol
-    .find({
-      detector_id: detectorId,
-      state: { $in: ['completed', 'dismissed'] },
-    })
-    .sort({ created_at: 1 })
-    .toArray()
+  const tenantIds = await insightsCol.distinct('tenant_id', {
+    detector_id: detectorId,
+    state: { $in: ['completed', 'dismissed'] },
+  })
 
-  if (insights.length < 10) {
-    // Not enough data to produce a meaningful eval
-    return null
-  }
-
-  // Split into train (80%) and test (20%), time-ordered
-  const splitIdx = Math.floor(insights.length * 0.8)
-  const trainSet = insights.slice(0, splitIdx)
-  const testSet = insights.slice(splitIdx)
-
-  // Build a scorer and train it on the train set
-  // We use a fresh in-memory scorer (not the persisted one) to get a clean
-  // train-on-past evaluation
   const { FeatureHashScorer } = await import('@lifekeel/engine')
-  // Use a lightweight in-memory DB mock — we don't need persistence for eval
-  const memDb = {
-    collection: () => ({
-      findOne: async () => null,
-      createIndex: async () => '',
-      updateOne: async () => ({ acknowledged: true }),
-    }),
-  }
-  const scorer = new FeatureHashScorer(memDb as never)
-  const tenantId = 'eval'
-  await scorer.load(tenantId, detectorId)
-
-  // Default config — matches the standard FeatureHashConfig defaults
-  const config = {
-    features: ['data.ticker', 'data.portfolio_weight_pct', 'data.current_price'],
-    min_score: threshold,
-    use_bigrams: true,
-    l2_reg: 0.0001,
-    l1_reg: 0.01,
-    learning_rate: 0.01,
-  }
-
-  // Train on the train set
-  for (const insight of trainSet) {
-    const outcome: 0 | 1 = insight['state'] === 'completed' ? 1 : 0
-    const data = (insight['feature_snapshot'] as Record<string, unknown>) ?? {}
-    await scorer.update(tenantId, detectorId, data, outcome, config)
-  }
-
-  // Evaluate on the test set
   const predictions: Array<{ score: number; actual: number }> = []
-  for (const insight of testSet) {
-    const actual: 0 | 1 = insight['state'] === 'completed' ? 1 : 0
-    const data = (insight['feature_snapshot'] as Record<string, unknown>) ?? {}
-    const result = await scorer.score(tenantId, detectorId, data, config)
-    predictions.push({ score: result.score, actual })
+  let tenantCount = 0
+  let totalInsights = 0
+  let trainCount = 0
+  let testCount = 0
+
+  for (const rawTenantId of tenantIds) {
+    const tenantId = String(rawTenantId)
+    // This tenant's labeled insights, sorted by time:
+    //   approved (state='completed') → outcome 1
+    //   dismissed (state='dismissed') → outcome 0
+    const insights = await insightsCol
+      .find({
+        tenant_id: tenantId,
+        detector_id: detectorId,
+        state: { $in: ['completed', 'dismissed'] },
+      })
+      .sort({ created_at: 1 })
+      .toArray()
+
+    if (insights.length < 10) {
+      // Not enough of this tenant's own data to produce a meaningful eval
+      continue
+    }
+
+    // Split into train (80%) and test (20%), time-ordered
+    const splitIdx = Math.floor(insights.length * 0.8)
+    const trainSet = insights.slice(0, splitIdx)
+    const testSet = insights.slice(splitIdx)
+
+    // Fresh in-memory scorer per tenant — never warm-started from
+    // cross-tenant state, never persisted.
+    const memDb = {
+      collection: () => ({
+        findOne: async () => null,
+        createIndex: async () => '',
+        updateOne: async () => ({ acknowledged: true }),
+      }),
+    }
+    const scorer = new FeatureHashScorer(memDb as never)
+    await scorer.load(tenantId, detectorId)
+
+    for (const insight of trainSet) {
+      const outcome: 0 | 1 = insight['state'] === 'completed' ? 1 : 0
+      const data = (insight['feature_snapshot'] as Record<string, unknown>) ?? {}
+      // Match production scoring: feature paths derived from the snapshot's
+      // own keys (routes/insights.ts does the same on approve/dismiss).
+      await scorer.update(tenantId, detectorId, data, outcome, {
+        features: Object.keys(data).map((k) => `data.${k}`),
+      })
+    }
+
+    for (const insight of testSet) {
+      const actual: 0 | 1 = insight['state'] === 'completed' ? 1 : 0
+      const data = (insight['feature_snapshot'] as Record<string, unknown>) ?? {}
+      const result = await scorer.score(tenantId, detectorId, data, {
+        features: Object.keys(data).map((k) => `data.${k}`),
+      })
+      predictions.push({ score: result.score, actual })
+    }
+
+    tenantCount++
+    totalInsights += insights.length
+    trainCount += trainSet.length
+    testCount += testSet.length
   }
+
+  if (tenantCount === 0) return null
 
   // Compute metrics
   const tp = predictions.filter((p) => p.score >= threshold && p.actual === 1).length
@@ -167,9 +183,10 @@ export async function evaluateFeatureHashScorer(
   return {
     detector_id: detectorId,
     run_at: new Date(),
-    total_insights: insights.length,
-    train_count: trainSet.length,
-    test_count: testSet.length,
+    tenant_count: tenantCount,
+    total_insights: totalInsights,
+    train_count: trainCount,
+    test_count: testCount,
     precision: Math.round(precision * 10000) / 10000,
     recall: Math.round(recall * 10000) / 10000,
     f1: Math.round(f1 * 10000) / 10000,
@@ -196,11 +213,13 @@ export async function runFeatureHashEval(db: Db): Promise<FeatureHashEvalReport[
   for (const detectorId of detectorIds) {
     const report = await evaluateFeatureHashScorer(db, String(detectorId))
     if (report) {
-      await db.collection('feature_hash_eval_reports').updateOne(
-        { detector_id: report.detector_id, run_at: report.run_at },
-        { $set: report },
-        { upsert: true },
-      )
+      await db
+        .collection('feature_hash_eval_reports')
+        .updateOne(
+          { detector_id: report.detector_id, run_at: report.run_at },
+          { $set: report },
+          { upsert: true },
+        )
       reports.push(report)
     }
   }
@@ -222,17 +241,48 @@ if (process.argv[1]?.endsWith('feature-hash-eval.ts')) {
     log.info({}, 'Running FeatureHashScorer offline eval...')
     const reports = await runFeatureHashEval(db)
     if (reports.length === 0) {
-      log.info({}, 'No detectors with enough data to evaluate (need ≥10 approved/dismissed insights).')
+      log.info(
+        {},
+        'No detectors with enough data to evaluate (need ≥10 approved/dismissed insights).',
+      )
     } else {
       for (const r of reports) {
         log.info({ detector_id: r.detector_id }, `=== ${r.detector_id} ===`)
-        log.info({ total_insights: r.total_insights, train: r.train_count, test: r.test_count }, `Insights: ${r.total_insights} (train ${r.train_count}, test ${r.test_count})`)
-        log.info({ precision: r.precision, recall: r.recall, f1: r.f1 }, `Precision: ${r.precision}  Recall: ${r.recall}  F1: ${r.f1}`)
+        log.info(
+          {
+            total_insights: r.total_insights,
+            train: r.train_count,
+            test: r.test_count,
+            tenants: r.tenant_count,
+          },
+          `Insights: ${r.total_insights} across ${r.tenant_count} tenant(s) (train ${r.train_count}, test ${r.test_count})`,
+        )
+        log.info(
+          { precision: r.precision, recall: r.recall, f1: r.f1 },
+          `Precision: ${r.precision}  Recall: ${r.recall}  F1: ${r.f1}`,
+        )
         log.info({ auc_roc: r.auc_roc }, `AUC-ROC: ${r.auc_roc}`)
-        log.info({ threshold: r.threshold, tp: r.confusion.tp, fp: r.confusion.fp, fn: r.confusion.fn, tn: r.confusion.tn }, `Confusion @ threshold ${r.threshold}: TP=${r.confusion.tp} FP=${r.confusion.fp} FN=${r.confusion.fn} TN=${r.confusion.tn}`)
+        log.info(
+          {
+            threshold: r.threshold,
+            tp: r.confusion.tp,
+            fp: r.confusion.fp,
+            fn: r.confusion.fn,
+            tn: r.confusion.tn,
+          },
+          `Confusion @ threshold ${r.threshold}: TP=${r.confusion.tp} FP=${r.confusion.fp} FN=${r.confusion.fn} TN=${r.confusion.tn}`,
+        )
         log.info({}, 'Calibration:')
         for (const c of r.calibration) {
-          log.info({ bin: c.bin, predicted: c.predicted.toFixed(3), actual: c.actual.toFixed(3), count: c.count }, `Calibration: ${c.bin}: predicted ${c.predicted.toFixed(3)}, actual ${c.actual.toFixed(3)}, n=${c.count}`)
+          log.info(
+            {
+              bin: c.bin,
+              predicted: c.predicted.toFixed(3),
+              actual: c.actual.toFixed(3),
+              count: c.count,
+            },
+            `Calibration: ${c.bin}: predicted ${c.predicted.toFixed(3)}, actual ${c.actual.toFixed(3)}, n=${c.count}`,
+          )
         }
       }
     }
