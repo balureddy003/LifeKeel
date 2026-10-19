@@ -80,6 +80,10 @@ export interface MarketingPostDoc {
   media_url?: string
   external_id?: string
   external_url?: string
+  /** Which account actually dispatched — the integration id, credential
+   *  source and account label, recorded at publish time. Preview, post doc
+   *  and audit all name the same publisher (§14.7). */
+  published_via?: { integration_id: string; channel: string; source: string; account: string }
   metrics?: { likes?: number; reposts?: number; replies?: number }
   metrics_at?: Date
 }
@@ -218,7 +222,16 @@ async function publishPost(
       date: now,
       tenantId: post.tenant_id,
       ...(post.media_url ? { mediaUrl: post.media_url } : {}),
-    })) as { external_id?: string; url?: string } | undefined
+      // The post id is the dispatch's idempotency key — providers that
+      // honour one (Mastodon, Bluesky rkey) dedupe retries for free.
+      idempotencyKey: post.id,
+    })) as
+      | {
+          external_id?: string
+          url?: string
+          publisher?: { integration_id: string; channel: string; source: string; account: string }
+        }
+      | undefined
     await col.updateOne(
       { id: post.id },
       {
@@ -228,6 +241,7 @@ async function publishPost(
           publish_error: null,
           ...(result?.external_id ? { external_id: result.external_id } : {}),
           ...(result?.url ? { external_url: result.url } : {}),
+          ...(result?.publisher ? { published_via: result.publisher } : {}),
         },
       },
     )
@@ -1098,6 +1112,7 @@ export function registerMarketingPostRoutes(
         identifier: i.identifier,
         disabled: i.disabled === true,
         source: i.source,
+        ...(i.account ? { account: i.account } : {}),
       })),
     }
   })
@@ -1440,10 +1455,14 @@ export function registerMarketingPostRoutes(
       }
 
       await incrementTrustScope(db, tenant_id, trustScope(claimed.channel))
+      const post = await col.findOne({ id: claimed.id })
       getAuditLogger()?.fromRequest(req, 'marketing.post_approve', 'marketing_post', claimed.id, {
         channel: claimed.channel,
+        // The resolved publisher — which account this went out as — lands
+        // in audit so a disputed post can be traced to an account, not a
+        // channel label.
+        ...(post?.published_via ? { published_via: post.published_via } : {}),
       })
-      const post = await col.findOne({ id: claimed.id })
       return { post }
     },
   )

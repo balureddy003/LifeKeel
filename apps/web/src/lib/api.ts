@@ -3063,6 +3063,8 @@ export interface MarketingIntegration {
   identifier?: string
   disabled: boolean
   source?: 'env' | 'connection'
+  /** The account that would publish — handle, page name or URN. */
+  account?: string
 }
 
 export interface SocialConnection {
@@ -3434,9 +3436,7 @@ export interface OperatorTenantMember {
 
 /** Tenant detail + member list — powers the inline member expansion on the
  *  operator tenants page. */
-export function fetchOperatorTenant(
-  id: string,
-): Promise<{
+export function fetchOperatorTenant(id: string): Promise<{
   tenant: OperatorTenant
   members: OperatorTenantMember[]
   health: OperatorTenantHealth
@@ -4121,9 +4121,7 @@ export function fetchOperatorPromotions(
   return operatorRequest(`/operator/promotions${query ? `?q=${encodeURIComponent(query)}` : ''}`)
 }
 
-export function fetchPromotionRedemptions(
-  code: string,
-): Promise<{
+export function fetchPromotionRedemptions(code: string): Promise<{
   promotion: OperatorPromotion
   redemptions: Array<{ tenant_id: string; grant_credits: number; redeemed_at: string }>
 }> {

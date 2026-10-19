@@ -50,6 +50,25 @@ export interface ChannelInfo {
   identifier: string
   disabled: boolean
   source?: 'env' | 'connection'
+  /** The account that would publish — handle, page name, member URN.
+   *  Shown in previews and recorded on the post so "which account did this
+   *  go out as" is never ambiguous (§14.7). */
+  account?: string
+}
+
+/** Which account actually dispatched the post — recorded on the post doc
+ *  and in audit evidence. `source` is the credential store that supplied it. */
+export interface PublisherIdentity {
+  integration_id: string
+  channel: string
+  source: 'env' | 'connection'
+  account: string
+}
+
+export interface PublishResult {
+  external_id?: string
+  url?: string
+  publisher: PublisherIdentity
 }
 
 export interface CreatePostArgs {
@@ -61,6 +80,10 @@ export interface CreatePostArgs {
   tenantId?: string
   /** Attached image URL — required by Instagram, optional photo for Facebook. */
   mediaUrl?: string
+  /** Stable dedupe id for the dispatch — the marketing post id. Forwarded to
+   *  providers that honour one (Mastodon Idempotency-Key, Bluesky record
+   *  key) and makes gateway retries safe where the provider supports it. */
+  idempotencyKey?: string
 }
 
 export interface SocialPublisher {
@@ -71,16 +94,14 @@ export interface SocialPublisher {
 import type { Db } from 'mongodb'
 import { decryptEnveloped } from '../crypto/envelope.js'
 import { ConnectorActionExecutor } from '@lifekeel/workflows'
+import { providerFetch } from '../provider-gateway.js'
 
 interface ChannelHandler {
   info: ChannelInfo
-  publish(content: string): Promise<{ external_id?: string; url?: string }>
-}
-
-async function checked(res: Response, what: string): Promise<void> {
-  if (res.ok) return
-  const detail = (await res.text().catch(() => '')).slice(0, 300)
-  throw new Error(`${what} ${res.status}: ${detail}`)
+  publish(
+    content: string,
+    ctx: { idempotencyKey?: string },
+  ): Promise<Omit<PublishResult, 'publisher'>>
 }
 
 // ---------------------------------------------------------------------------
@@ -89,14 +110,28 @@ async function checked(res: Response, what: string): Promise<void> {
 
 function xHandler(token: string): ChannelHandler {
   return {
-    info: { id: 'x:default', name: 'X', identifier: 'x', disabled: false, source: 'env' },
-    async publish(content) {
-      const res = await fetch('https://api.x.com/2/tweets', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: content }),
-      })
-      await checked(res, 'x /2/tweets')
+    info: {
+      id: 'x:env',
+      name: 'X',
+      identifier: 'x',
+      disabled: false,
+      source: 'env',
+      account: 'env credential',
+    },
+    async publish(content, ctx) {
+      const res = await providerFetch(
+        'https://api.x.com/2/tweets',
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: content }),
+        },
+        {
+          label: 'x /2/tweets',
+          breakerKey: 'x:env',
+          ...(ctx.idempotencyKey ? { idempotencyKey: ctx.idempotencyKey } : {}),
+        },
+      )
       const data = (await res.json()) as { data?: { id?: string } }
       const id = data.data?.id
       return { external_id: id, url: id ? `https://x.com/i/web/status/${id}` : undefined }
@@ -111,35 +146,43 @@ function xHandler(token: string): ChannelHandler {
 function linkedinHandler(token: string, authorUrn: string): ChannelHandler {
   return {
     info: {
-      id: 'linkedin:default',
+      id: 'linkedin:env',
       name: 'LinkedIn',
       identifier: 'linkedin',
       disabled: false,
       source: 'env',
+      account: authorUrn,
     },
-    async publish(content) {
-      const res = await fetch('https://api.linkedin.com/rest/posts', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Linkedin-Version': '202501',
-          'X-Restli-Protocol-Version': '2.0.0',
-        },
-        body: JSON.stringify({
-          author: authorUrn,
-          commentary: content,
-          visibility: 'PUBLIC',
-          distribution: {
-            feedDistribution: 'MAIN_FEED',
-            targetEntities: [],
-            thirdPartyDistributionChannels: [],
+    async publish(content, ctx) {
+      const res = await providerFetch(
+        'https://api.linkedin.com/rest/posts',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Linkedin-Version': '202501',
+            'X-Restli-Protocol-Version': '2.0.0',
           },
-          lifecycleState: 'PUBLISHED',
-          isReshareDisabledByAuthor: false,
-        }),
-      })
-      await checked(res, 'linkedin /rest/posts')
+          body: JSON.stringify({
+            author: authorUrn,
+            commentary: content,
+            visibility: 'PUBLIC',
+            distribution: {
+              feedDistribution: 'MAIN_FEED',
+              targetEntities: [],
+              thirdPartyDistributionChannels: [],
+            },
+            lifecycleState: 'PUBLISHED',
+            isReshareDisabledByAuthor: false,
+          }),
+        },
+        {
+          label: 'linkedin /rest/posts',
+          breakerKey: 'linkedin:env',
+          ...(ctx.idempotencyKey ? { idempotencyKey: ctx.idempotencyKey } : {}),
+        },
+      )
       const id = res.headers.get('x-restli-id') ?? undefined
       return { external_id: id }
     },
@@ -154,40 +197,63 @@ function blueskyHandler(
   handle: string,
   appPassword: string,
   service = 'https://bsky.social',
+  source: 'env' | 'connection' = 'env',
 ): ChannelHandler {
   return {
     info: {
-      id: 'bluesky:default',
-      name: 'Bluesky',
+      id: `bluesky:${source}`,
+      name: `Bluesky (@${handle})`,
       identifier: 'bluesky',
       disabled: false,
-      source: 'env',
+      source,
+      account: `@${handle}`,
     },
-    async publish(content) {
-      const sessRes = await fetch(`${service}/xrpc/com.atproto.server.createSession`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: handle, password: appPassword }),
-      })
-      await checked(sessRes, 'bluesky createSession')
+    async publish(content, ctx) {
+      const sessRes = await providerFetch(
+        `${service}/xrpc/com.atproto.server.createSession`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: handle, password: appPassword }),
+        },
+        // Session creates are idempotent — a retried open just opens a
+        // second session, so timeouts are safe to retry here.
+        { label: 'bluesky createSession', breakerKey: `bluesky:${handle}`, timeoutRetriable: true },
+      )
       const sess = (await sessRes.json()) as { accessJwt?: string; did?: string }
       if (!sess.accessJwt || !sess.did)
         throw new Error('bluesky createSession: no session returned')
 
-      const postRes = await fetch(`${service}/xrpc/com.atproto.repo.createRecord`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${sess.accessJwt}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          repo: sess.did,
-          collection: 'app.bsky.feed.post',
-          record: {
-            $type: 'app.bsky.feed.post',
-            text: content,
-            createdAt: new Date().toISOString(),
+      const postRes = await providerFetch(
+        `${service}/xrpc/com.atproto.repo.createRecord`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${sess.accessJwt}`,
+            'Content-Type': 'application/json',
           },
-        }),
-      })
-      await checked(postRes, 'bluesky createRecord')
+          body: JSON.stringify({
+            repo: sess.did,
+            collection: 'app.bsky.feed.post',
+            // Deterministic record key = real dedupe: a retried write with
+            // the same rkey is refused by the repo instead of double-posting.
+            ...(ctx.idempotencyKey
+              ? { rkey: ctx.idempotencyKey.replace(/[^a-zA-Z0-9-]/g, '') }
+              : {}),
+            record: {
+              $type: 'app.bsky.feed.post',
+              text: content,
+              createdAt: new Date().toISOString(),
+            },
+          }),
+        },
+        {
+          label: 'bluesky createRecord',
+          breakerKey: `bluesky:${handle}`,
+          ...(ctx.idempotencyKey ? { idempotencyKey: ctx.idempotencyKey } : {}),
+          timeoutRetriable: Boolean(ctx.idempotencyKey),
+        },
+      )
       const rec = (await postRes.json()) as { uri?: string }
       const postId = rec.uri?.split('/').pop()
       return {
@@ -208,28 +274,41 @@ function threadsHandler(token: string, userId: string): ChannelHandler {
   const base = 'https://graph.threads.net/v1.0'
   return {
     info: {
-      id: 'threads:default',
+      id: 'threads:env',
       name: 'Threads',
       identifier: 'threads',
       disabled: false,
       source: 'env',
+      account: userId,
     },
     async publish(content) {
-      const container = await fetch(`${base}/${userId}/threads`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ media_type: 'TEXT', text: content }),
-      })
-      await checked(container, 'threads create container')
+      const container = await providerFetch(
+        `${base}/${userId}/threads`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ media_type: 'TEXT', text: content }),
+        },
+        // A retried container create only orphans a container — nothing is
+        // public until the publish step, so timeouts are safe to retry.
+        {
+          label: 'threads create container',
+          breakerKey: `threads:${userId}`,
+          timeoutRetriable: true,
+        },
+      )
       const creationId = ((await container.json()) as { id?: string }).id
       if (!creationId) throw new Error('threads create container: no id returned')
 
-      const pub = await fetch(`${base}/${userId}/threads_publish`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ creation_id: creationId }),
-      })
-      await checked(pub, 'threads publish container')
+      const pub = await providerFetch(
+        `${base}/${userId}/threads_publish`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ creation_id: creationId }),
+        },
+        { label: 'threads publish container', breakerKey: `threads:${userId}`, retries: 0 },
+      )
       const mediaId = ((await pub.json()) as { id?: string }).id
       return { external_id: mediaId }
     },
@@ -246,28 +325,39 @@ function instagramHandler(pageToken: string, igUserId: string, mediaUrl: string)
   const base = 'https://graph.facebook.com/v19.0'
   return {
     info: {
-      id: 'instagram:default',
+      id: 'instagram:connection',
       name: 'Instagram',
       identifier: 'instagram',
       disabled: false,
       source: 'connection',
+      account: igUserId,
     },
     async publish(content) {
-      const container = await fetch(`${base}/${igUserId}/media`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${pageToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image_url: mediaUrl, caption: content }),
-      })
-      await checked(container, 'instagram create media container')
+      const container = await providerFetch(
+        `${base}/${igUserId}/media`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${pageToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image_url: mediaUrl, caption: content }),
+        },
+        {
+          label: 'instagram create media container',
+          breakerKey: `instagram:${igUserId}`,
+          timeoutRetriable: true,
+        },
+      )
       const creationId = ((await container.json()) as { id?: string }).id
       if (!creationId) throw new Error('instagram create container: no id returned')
 
-      const pub = await fetch(`${base}/${igUserId}/media_publish`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${pageToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ creation_id: creationId }),
-      })
-      await checked(pub, 'instagram publish container')
+      const pub = await providerFetch(
+        `${base}/${igUserId}/media_publish`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${pageToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ creation_id: creationId }),
+        },
+        { label: 'instagram publish container', breakerKey: `instagram:${igUserId}`, retries: 0 },
+      )
       const mediaId = ((await pub.json()) as { id?: string }).id
       return { external_id: mediaId }
     },
@@ -281,21 +371,33 @@ function instagramHandler(pageToken: string, igUserId: string, mediaUrl: string)
 
 function mastodonHandler(instanceUrl: string, token: string): ChannelHandler {
   const base = instanceUrl.replace(/\/$/, '')
+  const host = new URL(base).host
   return {
     info: {
-      id: 'mastodon:default',
+      id: 'mastodon:env',
       name: 'Mastodon',
       identifier: 'mastodon',
       disabled: false,
       source: 'env',
+      account: host,
     },
-    async publish(content) {
-      const res = await fetch(`${base}/api/v1/statuses`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: content }),
-      })
-      await checked(res, 'mastodon /api/v1/statuses')
+    async publish(content, ctx) {
+      const res = await providerFetch(
+        `${base}/api/v1/statuses`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: content }),
+        },
+        // Mastodon honours Idempotency-Key natively — with the post id
+        // attached, even a timed-out publish is safe to retry.
+        {
+          label: 'mastodon /api/v1/statuses',
+          breakerKey: `mastodon:${host}`,
+          ...(ctx.idempotencyKey ? { idempotencyKey: ctx.idempotencyKey } : {}),
+          timeoutRetriable: Boolean(ctx.idempotencyKey),
+        },
+      )
       const data = (await res.json()) as { id?: string; url?: string }
       return { external_id: data.id, url: data.url }
     },
@@ -304,6 +406,28 @@ function mastodonHandler(instanceUrl: string, token: string): ChannelHandler {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Split `<channel>:<source>` integration ids. The composer lists ids like
+ * `x:env` (env credential) or `x:connection` (tenant-stored account); a
+ * post's integration_id binds dispatch to that source — publishing via a
+ * different account than the one previewed is exactly the ambiguity the
+ * old channel-keyed dispatch had. Bare ids (no `:source`, or a source we
+ * don't recognise — e.g. legacy Postiz ids) resolve tenant-first then env
+ * for backwards compatibility, but the chosen source is always recorded.
+ */
+export function parseIntegrationId(integrationId: string): {
+  channel: string | null
+  source: 'env' | 'connection' | 'any'
+} {
+  const idx = integrationId.lastIndexOf(':')
+  if (idx === -1) return { channel: null, source: 'any' }
+  const source = integrationId.slice(idx + 1)
+  if (source === 'connection') return { channel: integrationId.slice(0, idx), source: 'connection' }
+  if (source === 'env' || source === 'default')
+    return { channel: integrationId.slice(0, idx), source: 'env' }
+  return { channel: null, source: 'any' }
+}
+
 export class EnvSocialPublisher implements SocialPublisher {
   constructor(private readonly handlers: ReadonlyMap<string, ChannelHandler>) {}
 
@@ -311,10 +435,21 @@ export class EnvSocialPublisher implements SocialPublisher {
     return Promise.resolve([...this.handlers.values()].map((h) => h.info))
   }
 
-  async createPost(args: CreatePostArgs): Promise<unknown> {
+  async createPost(args: CreatePostArgs): Promise<PublishResult> {
     const handler = this.handlers.get(args.channel)
     if (!handler) throw new Error(`channel_not_configured:${args.channel}`)
-    return handler.publish(args.content)
+    const out = await handler.publish(args.content, {
+      ...(args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {}),
+    })
+    return {
+      ...out,
+      publisher: {
+        integration_id: handler.info.id,
+        channel: args.channel,
+        source: 'env',
+        account: handler.info.account ?? handler.info.name,
+      },
+    }
   }
 }
 
@@ -373,12 +508,15 @@ export async function verifyBlueskyCredentials(
   appPassword: string,
   service = 'https://bsky.social',
 ): Promise<{ did: string }> {
-  const res = await fetch(`${service}/xrpc/com.atproto.server.createSession`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ identifier: handle, password: appPassword }),
-  })
-  await checked(res, 'bluesky createSession')
+  const res = await providerFetch(
+    `${service}/xrpc/com.atproto.server.createSession`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: handle, password: appPassword }),
+    },
+    { label: 'bluesky createSession', breakerKey: `bluesky:${handle}`, timeoutRetriable: true },
+  )
   const sess = (await res.json()) as { did?: string }
   if (!sess.did) throw new Error('bluesky createSession: no did returned')
   return { did: sess.did }
@@ -388,7 +526,7 @@ async function handlerForConnection(db: Db, conn: SocialConnectionDoc): Promise<
   if (conn.channel === 'bluesky') {
     const appPassword = await decryptEnveloped(db, conn.credentials['app_password'])
     if (!appPassword) throw new Error('bluesky connection: no app password stored')
-    return blueskyHandler(conn.handle, appPassword, conn.service)
+    return blueskyHandler(conn.handle, appPassword, conn.service, 'connection')
   }
   throw new Error(`connection_unsupported:${conn.channel}`)
 }
@@ -479,6 +617,7 @@ export class DbSocialPublisher implements SocialPublisher {
       identifier: c.channel,
       disabled: c.status === 'error',
       source: 'connection' as const,
+      account: `@${c.handle}`,
     }))
     for (const cred of creds) {
       const channel = Object.entries(CONNECTOR_CHANNELS).find(
@@ -492,6 +631,7 @@ export class DbSocialPublisher implements SocialPublisher {
         identifier: channel,
         disabled: cred.needs_reauth === true,
         source: 'connection' as const,
+        account: this.accountLabel(channel, cred.extra),
       })
     }
     return [
@@ -505,9 +645,19 @@ export class DbSocialPublisher implements SocialPublisher {
   /** Publish through an OAuth-connected channel. Returns null when the
    *  channel has no connector credential so the caller falls through to
    *  social_connections/env handlers. */
+  /** Bare account label for preview/audit — the handle, page name or URN
+   *  the post will go out under, without the channel-name prefix. */
+  private accountLabel(channel: string, extra: Record<string, string> | undefined): string {
+    const display = extra?.['page_name'] ?? extra?.['name']
+    if (display) return display
+    const handle = extra?.['username'] ?? extra?.['ig_username']
+    if (handle) return handle.startsWith('@') ? handle : `@${handle}`
+    return connectorLabel(channel, extra)
+  }
+
   private async publishViaConnector(
     args: CreatePostArgs,
-  ): Promise<{ external_id?: string; url?: string } | null> {
+  ): Promise<{ external_id?: string; url?: string; account: string } | null> {
     if (!args.tenantId) return null
     const connectorId = CONNECTOR_CHANNELS[args.channel]
     if (!connectorId) return null
@@ -519,6 +669,7 @@ export class DbSocialPublisher implements SocialPublisher {
     if (cred.needs_reauth === true) {
       throw new Error(`${args.channel} token expired — reconnect on the Marketing page`)
     }
+    const account = this.accountLabel(args.channel, cred.extra)
 
     // X and Facebook fit the executor's generic action shape (single POST,
     // path params from cred.extra, flat body). The executor also owns token
@@ -530,7 +681,7 @@ export class DbSocialPublisher implements SocialPublisher {
       })
       if (!res.ok) throw new Error(res.error ?? `x publish failed: HTTP ${res.status}`)
       const id = (res.body as { data?: { id?: string } } | null)?.data?.id
-      return { external_id: id, url: id ? `https://x.com/i/web/status/${id}` : undefined }
+      return { external_id: id, url: id ? `https://x.com/i/web/status/${id}` : undefined, account }
     }
     if (args.channel === 'facebook') {
       if (!cred.extra?.['page_id']) {
@@ -549,7 +700,7 @@ export class DbSocialPublisher implements SocialPublisher {
       const id =
         (res.body as { id?: string; post_id?: string } | null)?.post_id ??
         (res.body as { id?: string } | null)?.id
-      return { external_id: id, url: id ? `https://facebook.com/${id}` : undefined }
+      return { external_id: id, url: id ? `https://facebook.com/${id}` : undefined, account }
     }
 
     // LinkedIn/Threads/Instagram: dedicated handlers — their contracts are
@@ -557,15 +708,16 @@ export class DbSocialPublisher implements SocialPublisher {
     // can't express. Token decrypt is explicit and stays inside this call.
     const token = cred.access_token ? await decryptEnveloped(this.db, cred.access_token) : undefined
     if (!token) throw new Error(`${args.channel}: stored credential has no access token`)
+    const ctx = { ...(args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {}) }
     if (args.channel === 'linkedin') {
       const urn = cred.extra?.['author_urn']
       if (!urn) throw new Error('linkedin: no member URN stored — reconnect LinkedIn')
-      return linkedinHandler(token, urn).publish(args.content)
+      return { ...(await linkedinHandler(token, urn).publish(args.content, ctx)), account }
     }
     if (args.channel === 'threads') {
       const userId = cred.extra?.['user_id']
       if (!userId) throw new Error('threads: no user id stored — reconnect Threads')
-      return threadsHandler(token, userId).publish(args.content)
+      return { ...(await threadsHandler(token, userId).publish(args.content, ctx)), account }
     }
     if (args.channel === 'instagram') {
       const igUserId = cred.extra?.['ig_user_id']
@@ -573,31 +725,71 @@ export class DbSocialPublisher implements SocialPublisher {
       if (!args.mediaUrl) {
         throw new Error('instagram: an image is required — set the media URL on the post')
       }
-      return instagramHandler(token, igUserId, args.mediaUrl).publish(args.content)
+      return {
+        ...(await instagramHandler(token, igUserId, args.mediaUrl).publish(args.content, ctx)),
+        account,
+      }
     }
     return null
   }
 
-  async createPost(args: CreatePostArgs): Promise<unknown> {
-    const connectorResult = await this.publishViaConnector(args)
-    if (connectorResult) return connectorResult
-    const conn = args.tenantId
-      ? await this.connections.findOne({ tenant_id: args.tenantId, channel: args.channel })
-      : null
-    if (conn) {
-      try {
-        const result = await (await handlerForConnection(this.db, conn)).publish(args.content)
-        await this.connections.updateOne(
-          { tenant_id: conn.tenant_id, channel: conn.channel },
-          { $set: { status: 'active', last_error: null, last_used_at: new Date() } },
-        )
-        return result
-      } catch (err) {
-        await this.connections.updateOne(
-          { tenant_id: conn.tenant_id, channel: conn.channel },
-          { $set: { status: 'error', last_error: String(err).slice(0, 300) } },
-        )
-        throw err
+  async createPost(args: CreatePostArgs): Promise<PublishResult> {
+    const wanted = parseIntegrationId(args.integrationId)
+    // The id's channel part must match the dispatch channel — an
+    // 'x:connection' post must never go out over a bluesky credential.
+    if (wanted.channel && wanted.channel !== args.channel) {
+      throw new Error(`channel_not_configured:${args.channel}`)
+    }
+    const ctx = { ...(args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {}) }
+
+    if (wanted.source !== 'env') {
+      const connectorResult = await this.publishViaConnector(args)
+      if (connectorResult) {
+        return {
+          external_id: connectorResult.external_id,
+          url: connectorResult.url,
+          publisher: {
+            integration_id: `${args.channel}:connection`,
+            channel: args.channel,
+            source: 'connection',
+            account: connectorResult.account,
+          },
+        }
+      }
+      const conn = args.tenantId
+        ? await this.connections.findOne({ tenant_id: args.tenantId, channel: args.channel })
+        : null
+      if (conn) {
+        try {
+          const result = await (
+            await handlerForConnection(this.db, conn)
+          ).publish(args.content, ctx)
+          await this.connections.updateOne(
+            { tenant_id: conn.tenant_id, channel: conn.channel },
+            { $set: { status: 'active', last_error: null, last_used_at: new Date() } },
+          )
+          return {
+            ...result,
+            publisher: {
+              integration_id: `${args.channel}:connection`,
+              channel: args.channel,
+              source: 'connection',
+              account: `@${conn.handle}`,
+            },
+          }
+        } catch (err) {
+          await this.connections.updateOne(
+            { tenant_id: conn.tenant_id, channel: conn.channel },
+            { $set: { status: 'error', last_error: String(err).slice(0, 300) } },
+          )
+          throw err
+        }
+      }
+      // An explicit ':connection' id never falls through to the env account —
+      // the operator approved THIS account, and silently posting as the
+      // platform instead is the ambiguity this binding exists to kill.
+      if (wanted.source === 'connection') {
+        throw new Error(`channel_not_configured:${args.channel}`)
       }
     }
     if (this.env) return this.env.createPost(args)

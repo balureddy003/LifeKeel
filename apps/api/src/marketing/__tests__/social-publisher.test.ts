@@ -3,7 +3,12 @@
  * stubbed; no real network in tests.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { EnvSocialPublisher, DbSocialPublisher, socialPublisherFromEnv, type SocialConnectionDoc } from '../social-publisher.js'
+import {
+  EnvSocialPublisher,
+  DbSocialPublisher,
+  socialPublisherFromEnv,
+  type SocialConnectionDoc,
+} from '../social-publisher.js'
 import { encryptIfNeeded, decryptIfNeeded } from '@lifekeel/platform'
 
 function jsonRes(body: unknown, init: { status?: number; headers?: Record<string, string> } = {}) {
@@ -19,7 +24,13 @@ describe('socialPublisherFromEnv', () => {
   })
 
   it('returns null when no channel credentials exist', () => {
-    for (const k of ['X_ACCESS_TOKEN', 'LINKEDIN_ACCESS_TOKEN', 'LINKEDIN_AUTHOR_URN', 'BSKY_HANDLE', 'BSKY_APP_PASSWORD']) {
+    for (const k of [
+      'X_ACCESS_TOKEN',
+      'LINKEDIN_ACCESS_TOKEN',
+      'LINKEDIN_AUTHOR_URN',
+      'BSKY_HANDLE',
+      'BSKY_APP_PASSWORD',
+    ]) {
       vi.stubEnv(k, '')
     }
     expect(socialPublisherFromEnv()).toBeNull()
@@ -34,7 +45,10 @@ describe('socialPublisherFromEnv', () => {
 
     vi.stubEnv('LINKEDIN_AUTHOR_URN', 'urn:li:person:abc')
     const both = socialPublisherFromEnv()
-    expect((await both!.listIntegrations()).map((i) => i.identifier).sort()).toEqual(['linkedin', 'x'])
+    expect((await both!.listIntegrations()).map((i) => i.identifier).sort()).toEqual([
+      'linkedin',
+      'x',
+    ])
   })
 })
 
@@ -48,7 +62,13 @@ describe('EnvSocialPublisher.createPost', () => {
     vi.stubEnv('X_ACCESS_TOKEN', 'xtok')
     const pub = socialPublisherFromEnv()!
     await expect(
-      pub.createPost({ integrationId: 'x', content: 'hi', channel: 'linkedin', type: 'now', date: new Date() }),
+      pub.createPost({
+        integrationId: 'x',
+        content: 'hi',
+        channel: 'linkedin',
+        type: 'now',
+        date: new Date(),
+      }),
     ).rejects.toThrow('channel_not_configured:linkedin')
   })
 
@@ -57,7 +77,13 @@ describe('EnvSocialPublisher.createPost', () => {
     const fetchMock = vi.fn(async () => jsonRes({ data: { id: 'tw-1' } }))
     vi.stubGlobal('fetch', fetchMock)
     const pub = socialPublisherFromEnv()!
-    const res = (await pub.createPost({ integrationId: 'x', content: 'hello keel', channel: 'x', type: 'now', date: new Date() })) as { external_id?: string; url?: string }
+    const res = (await pub.createPost({
+      integrationId: 'x',
+      content: 'hello keel',
+      channel: 'x',
+      type: 'now',
+      date: new Date(),
+    })) as { external_id?: string; url?: string }
 
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('https://api.x.com/2/tweets')
@@ -70,10 +96,18 @@ describe('EnvSocialPublisher.createPost', () => {
   it('posts to LinkedIn with the author URN and protocol headers', async () => {
     vi.stubEnv('LINKEDIN_ACCESS_TOKEN', 'litok')
     vi.stubEnv('LINKEDIN_AUTHOR_URN', 'urn:li:person:abc')
-    const fetchMock = vi.fn(async () => jsonRes({}, { headers: { 'x-restli-id': 'urn:li:share:1' } }))
+    const fetchMock = vi.fn(async () =>
+      jsonRes({}, { headers: { 'x-restli-id': 'urn:li:share:1' } }),
+    )
     vi.stubGlobal('fetch', fetchMock)
     const pub = socialPublisherFromEnv()!
-    await pub.createPost({ integrationId: 'x', content: 'hi linkedin', channel: 'linkedin', type: 'now', date: new Date() })
+    await pub.createPost({
+      integrationId: 'x',
+      content: 'hi linkedin',
+      channel: 'linkedin',
+      type: 'now',
+      date: new Date(),
+    })
 
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('https://api.linkedin.com/rest/posts')
@@ -96,7 +130,13 @@ describe('EnvSocialPublisher.createPost', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
     const pub = socialPublisherFromEnv()!
-    const res = (await pub.createPost({ integrationId: 'x', content: 'hi bsky', channel: 'bluesky', type: 'now', date: new Date() })) as { url?: string }
+    const res = (await pub.createPost({
+      integrationId: 'x',
+      content: 'hi bsky',
+      channel: 'bluesky',
+      type: 'now',
+      date: new Date(),
+    })) as { url?: string }
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
     const [postUrl, postInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit]
@@ -107,10 +147,19 @@ describe('EnvSocialPublisher.createPost', () => {
 
   it('surfaces non-2xx responses as errors with status and detail', async () => {
     vi.stubEnv('X_ACCESS_TOKEN', 'xtok')
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('unauthorized', { status: 401 })))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('unauthorized', { status: 401 })),
+    )
     const pub = socialPublisherFromEnv()!
     await expect(
-      pub.createPost({ integrationId: 'x', content: 'hi', channel: 'x', type: 'now', date: new Date() }),
+      pub.createPost({
+        integrationId: 'x',
+        content: 'hi',
+        channel: 'x',
+        type: 'now',
+        date: new Date(),
+      }),
     ).rejects.toThrow('x /2/tweets 401')
   })
 })
@@ -121,25 +170,37 @@ describe('DbSocialPublisher', () => {
     vi.restoreAllMocks()
   })
 
-  function makeDb(conns: Partial<SocialConnectionDoc>[] = [], creds: Record<string, unknown>[] = []) {
-    const docs = conns.map((c) => ({ status: 'active', credentials: {}, ...c }) as Record<string, unknown>)
+  function makeDb(
+    conns: Partial<SocialConnectionDoc>[] = [],
+    creds: Record<string, unknown>[] = [],
+  ) {
+    const docs = conns.map(
+      (c) => ({ status: 'active', credentials: {}, ...c }) as Record<string, unknown>,
+    )
     const credDocs = creds
     const col = {
-      findOne: vi.fn(async (f: Record<string, unknown>) =>
-        docs.find((d) => d['tenant_id'] === f['tenant_id'] && d['channel'] === f['channel']) ?? null,
+      findOne: vi.fn(
+        async (f: Record<string, unknown>) =>
+          docs.find((d) => d['tenant_id'] === f['tenant_id'] && d['channel'] === f['channel']) ??
+          null,
       ),
       find: vi.fn((f: Record<string, unknown>) => ({
         toArray: async () => docs.filter((d) => d['tenant_id'] === f['tenant_id']),
       })),
       updateOne: vi.fn(async (f: Record<string, unknown>, u: { $set: Record<string, unknown> }) => {
-        const doc = docs.find((d) => d['tenant_id'] === f['tenant_id'] && d['channel'] === f['channel'])
+        const doc = docs.find(
+          (d) => d['tenant_id'] === f['tenant_id'] && d['channel'] === f['channel'],
+        )
         if (doc) Object.assign(doc, u.$set)
         return { modifiedCount: doc ? 1 : 0 }
       }),
     }
     const credCol = {
-      findOne: vi.fn(async (f: Record<string, unknown>) =>
-        credDocs.find((d) => d['tenant_id'] === f['tenant_id'] && d['connector_id'] === f['connector_id']) ?? null,
+      findOne: vi.fn(
+        async (f: Record<string, unknown>) =>
+          credDocs.find(
+            (d) => d['tenant_id'] === f['tenant_id'] && d['connector_id'] === f['connector_id'],
+          ) ?? null,
       ),
       find: vi.fn((f: Record<string, unknown>) => ({
         toArray: async () =>
@@ -147,18 +208,21 @@ describe('DbSocialPublisher', () => {
             if (d['tenant_id'] !== f['tenant_id']) return false
             const cond = f['connector_id']
             if (cond && typeof cond === 'object' && '$in' in (cond as Record<string, unknown>)) {
-              return ((cond as { $in: unknown[] }).$in).includes(d['connector_id'])
+              return (cond as { $in: unknown[] }).$in.includes(d['connector_id'])
             }
             return d['connector_id'] === cond
           }),
       })),
       updateOne: vi.fn(async (f: Record<string, unknown>, u: { $set: Record<string, unknown> }) => {
-        const doc = credDocs.find((d) => d['tenant_id'] === f['tenant_id'] && d['connector_id'] === f['connector_id'])
+        const doc = credDocs.find(
+          (d) => d['tenant_id'] === f['tenant_id'] && d['connector_id'] === f['connector_id'],
+        )
         if (doc) {
           for (const [k, v] of Object.entries(u.$set)) {
             const parts = k.split('.')
             let target = doc
-            for (const p of parts.slice(0, -1)) target = (target[p] ??= {}) as Record<string, unknown>
+            for (const p of parts.slice(0, -1))
+              target = (target[p] ??= {}) as Record<string, unknown>
             target[parts[parts.length - 1]!] = v
           }
         }
@@ -166,7 +230,9 @@ describe('DbSocialPublisher', () => {
       }),
     }
     return {
-      db: { collection: (name: string) => (name === 'connector_credentials' ? credCol : col) } as never,
+      db: {
+        collection: (name: string) => (name === 'connector_credentials' ? credCol : col),
+      } as never,
       col,
       credCol,
       docs,
@@ -208,17 +274,32 @@ describe('DbSocialPublisher', () => {
     vi.stubGlobal('fetch', fetchMock)
     const pub = new DbSocialPublisher(db, null)
     const res = (await pub.createPost({
-      integrationId: 'x', content: 'from db conn', channel: 'bluesky', type: 'now', date: new Date(), tenantId: 't1',
+      integrationId: 'x',
+      content: 'from db conn',
+      channel: 'bluesky',
+      type: 'now',
+      date: new Date(),
+      tenantId: 't1',
     })) as { url?: string }
     expect(res.url).toBe('https://bsky.app/profile/keel.bsky.social/post/9z')
   })
 
   it('marks the connection error on publish failure and recovers it on success', async () => {
     const { db, docs } = makeDb([conn()])
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 500 })))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('nope', { status: 500 })),
+    )
     const pub = new DbSocialPublisher(db, null)
     await expect(
-      pub.createPost({ integrationId: 'x', content: 'hi', channel: 'bluesky', type: 'now', date: new Date(), tenantId: 't1' }),
+      pub.createPost({
+        integrationId: 'x',
+        content: 'hi',
+        channel: 'bluesky',
+        type: 'now',
+        date: new Date(),
+        tenantId: 't1',
+      }),
     ).rejects.toThrow('bluesky createSession 500')
     expect(docs[0]!['status']).toBe('error')
     expect(String(docs[0]!['last_error'])).toContain('500')
@@ -231,7 +312,12 @@ describe('DbSocialPublisher', () => {
     vi.stubGlobal('fetch', fetchMock)
     const pub = new DbSocialPublisher(db, socialPublisherFromEnv())
     const res = (await pub.createPost({
-      integrationId: 'x', content: 'via env', channel: 'x', type: 'now', date: new Date(), tenantId: 't1',
+      integrationId: 'x',
+      content: 'via env',
+      channel: 'x',
+      type: 'now',
+      date: new Date(),
+      tenantId: 't1',
     })) as { external_id?: string }
     expect(res.external_id).toBe('tw-9')
   })
@@ -254,7 +340,14 @@ describe('DbSocialPublisher', () => {
     const { db } = makeDb([])
     const pub = new DbSocialPublisher(db, null)
     await expect(
-      pub.createPost({ integrationId: 'x', content: 'hi', channel: 'x', type: 'now', date: new Date(), tenantId: 't1' }),
+      pub.createPost({
+        integrationId: 'x',
+        content: 'hi',
+        channel: 'x',
+        type: 'now',
+        date: new Date(),
+        tenantId: 't1',
+      }),
     ).rejects.toThrow('channel_not_configured:x')
   })
 
@@ -270,7 +363,12 @@ describe('DbSocialPublisher', () => {
     vi.stubGlobal('fetch', fetchMock)
     const pub = new DbSocialPublisher(db, null)
     const res = (await pub.createPost({
-      integrationId: 'x:connection', content: 'hello X', channel: 'x', type: 'now', date: new Date(), tenantId: 't1',
+      integrationId: 'x:connection',
+      content: 'hello X',
+      channel: 'x',
+      type: 'now',
+      date: new Date(),
+      tenantId: 't1',
     })) as { external_id?: string; url?: string }
     expect(res.external_id).toBe('tw-x1')
     expect(res.url).toBe('https://x.com/i/web/status/tw-x1')
@@ -279,7 +377,10 @@ describe('DbSocialPublisher', () => {
   it('refreshes an expired X token before publishing (Basic auth, rotated tokens persisted)', async () => {
     vi.stubEnv('X_CLIENT_ID', 'cid')
     vi.stubEnv('X_CLIENT_SECRET', 'csec')
-    const { db, credDocs } = makeDb([], [xCred({ token_expires_at: new Date(Date.now() - 60_000) })])
+    const { db, credDocs } = makeDb(
+      [],
+      [xCred({ token_expires_at: new Date(Date.now() - 60_000) })],
+    )
     const calls: string[] = []
     const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
       const url = String(input)
@@ -296,7 +397,12 @@ describe('DbSocialPublisher', () => {
     vi.stubGlobal('fetch', fetchMock)
     const pub = new DbSocialPublisher(db, null)
     const res = (await pub.createPost({
-      integrationId: 'x:connection', content: 'hi', channel: 'x', type: 'now', date: new Date(), tenantId: 't1',
+      integrationId: 'x:connection',
+      content: 'hi',
+      channel: 'x',
+      type: 'now',
+      date: new Date(),
+      tenantId: 't1',
     })) as { external_id?: string }
     expect(res.external_id).toBe('tw-r1')
     expect(calls[0]).toContain('oauth2/token')
@@ -308,26 +414,52 @@ describe('DbSocialPublisher', () => {
 
   it('surfaces the real X error detail instead of collapsing every 403 into a permissions hint', async () => {
     const { db } = makeDb([], [xCred()])
-    vi.stubGlobal('fetch', vi.fn(async () =>
-      jsonRes(
-        { title: 'Forbidden', detail: 'You are not allowed to create a Tweet with duplicate content.' },
-        { status: 403 },
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonRes(
+          {
+            title: 'Forbidden',
+            detail: 'You are not allowed to create a Tweet with duplicate content.',
+          },
+          { status: 403 },
+        ),
       ),
-    ))
+    )
     const pub = new DbSocialPublisher(db, null)
     await expect(
-      pub.createPost({ integrationId: 'x:connection', content: 'same text twice', channel: 'x', type: 'now', date: new Date(), tenantId: 't1' }),
+      pub.createPost({
+        integrationId: 'x:connection',
+        content: 'same text twice',
+        channel: 'x',
+        type: 'now',
+        date: new Date(),
+        tenantId: 't1',
+      }),
     ).rejects.toThrow('duplicate content')
   })
 
   it('permission-shaped X errors get the reconnect hint — tokens keep the scopes they were issued with', async () => {
     const { db } = makeDb([], [xCred()])
-    vi.stubGlobal('fetch', vi.fn(async () =>
-      jsonRes({ title: 'Forbidden', detail: 'You are not permitted to perform this action.' }, { status: 403 }),
-    ))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonRes(
+          { title: 'Forbidden', detail: 'You are not permitted to perform this action.' },
+          { status: 403 },
+        ),
+      ),
+    )
     const pub = new DbSocialPublisher(db, null)
     await expect(
-      pub.createPost({ integrationId: 'x:connection', content: 'hi', channel: 'x', type: 'now', date: new Date(), tenantId: 't1' }),
+      pub.createPost({
+        integrationId: 'x:connection',
+        content: 'hi',
+        channel: 'x',
+        type: 'now',
+        date: new Date(),
+        tenantId: 't1',
+      }),
     ).rejects.toThrow('disconnect and reconnect X')
   })
 
@@ -352,18 +484,28 @@ describe('DbSocialPublisher', () => {
   })
 
   it('publishes a Facebook page post via the page token + stored page_id', async () => {
-    const { db } = makeDb([], [oauthCred('facebook_pages', { page_id: 'pg-42', page_name: 'Keel HQ' })])
+    const { db } = makeDb(
+      [],
+      [oauthCred('facebook_pages', { page_id: 'pg-42', page_name: 'Keel HQ' })],
+    )
     const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
       const url = String(input)
       expect(url).toBe('https://graph.facebook.com/v19.0/pg-42/feed')
-      expect((init!.headers as Record<string, string>)['Authorization']).toBe('Bearer tok-facebook_pages')
+      expect((init!.headers as Record<string, string>)['Authorization']).toBe(
+        'Bearer tok-facebook_pages',
+      )
       expect(JSON.parse(String(init!.body))).toEqual({ message: 'hello fb' })
       return jsonRes({ id: 'pg-42_113' })
     })
     vi.stubGlobal('fetch', fetchMock)
     const pub = new DbSocialPublisher(db, null)
     const res = (await pub.createPost({
-      integrationId: 'facebook:connection', content: 'hello fb', channel: 'facebook', type: 'now', date: new Date(), tenantId: 't1',
+      integrationId: 'facebook:connection',
+      content: 'hello fb',
+      channel: 'facebook',
+      type: 'now',
+      date: new Date(),
+      tenantId: 't1',
     })) as { external_id?: string; url?: string }
     expect(res.external_id).toBe('pg-42_113')
     expect(res.url).toBe('https://facebook.com/pg-42_113')
@@ -373,13 +515,22 @@ describe('DbSocialPublisher', () => {
     const { db } = makeDb([], [oauthCred('facebook_pages', { page_id: 'pg-42' })])
     const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
       expect(String(input)).toBe('https://graph.facebook.com/v19.0/pg-42/photos')
-      expect(JSON.parse(String(init!.body))).toEqual({ caption: 'with pic', image_url: 'https://keel.example/pic.png' })
+      expect(JSON.parse(String(init!.body))).toEqual({
+        caption: 'with pic',
+        image_url: 'https://keel.example/pic.png',
+      })
       return jsonRes({ id: 'ph-9', post_id: 'pg-42_114' })
     })
     vi.stubGlobal('fetch', fetchMock)
     const pub = new DbSocialPublisher(db, null)
     const res = (await pub.createPost({
-      integrationId: 'facebook:connection', content: 'with pic', channel: 'facebook', type: 'now', date: new Date(), tenantId: 't1', mediaUrl: 'https://keel.example/pic.png',
+      integrationId: 'facebook:connection',
+      content: 'with pic',
+      channel: 'facebook',
+      type: 'now',
+      date: new Date(),
+      tenantId: 't1',
+      mediaUrl: 'https://keel.example/pic.png',
     })) as { external_id?: string }
     expect(res.external_id).toBe('pg-42_114')
   })
@@ -387,15 +538,23 @@ describe('DbSocialPublisher', () => {
   it('publishes a Threads post through the two-step container flow', async () => {
     const { db } = makeDb([], [oauthCred('threads', { user_id: 'th-1', username: '@lifekeel' })])
     const calls: { url: string; body: Record<string, unknown> }[] = []
-    vi.stubGlobal('fetch', vi.fn(async (input: unknown, init?: RequestInit) => {
-      const url = String(input)
-      calls.push({ url, body: JSON.parse(String(init!.body)) })
-      if (url.endsWith('/threads')) return jsonRes({ id: 'container-7' })
-      return jsonRes({ id: 'media-88' })
-    }))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown, init?: RequestInit) => {
+        const url = String(input)
+        calls.push({ url, body: JSON.parse(String(init!.body)) })
+        if (url.endsWith('/threads')) return jsonRes({ id: 'container-7' })
+        return jsonRes({ id: 'media-88' })
+      }),
+    )
     const pub = new DbSocialPublisher(db, null)
     const res = (await pub.createPost({
-      integrationId: 'threads:connection', content: 'hello threads', channel: 'threads', type: 'now', date: new Date(), tenantId: 't1',
+      integrationId: 'threads:connection',
+      content: 'hello threads',
+      channel: 'threads',
+      type: 'now',
+      date: new Date(),
+      tenantId: 't1',
     })) as { external_id?: string }
     expect(calls[0]!.url).toBe('https://graph.threads.net/v1.0/th-1/threads')
     expect(calls[0]!.body).toEqual({ media_type: 'TEXT', text: 'hello threads' })
@@ -405,7 +564,10 @@ describe('DbSocialPublisher', () => {
   })
 
   it('publishes to LinkedIn via the OAuth token and captured member URN', async () => {
-    const { db } = makeDb([], [oauthCred('linkedin', { author_urn: 'urn:li:person:oauth-sub', name: 'Balu' })])
+    const { db } = makeDb(
+      [],
+      [oauthCred('linkedin', { author_urn: 'urn:li:person:oauth-sub', name: 'Balu' })],
+    )
     const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
       expect(String(input)).toBe('https://api.linkedin.com/rest/posts')
       expect((init!.headers as Record<string, string>)['Authorization']).toBe('Bearer tok-linkedin')
@@ -416,13 +578,21 @@ describe('DbSocialPublisher', () => {
     vi.stubGlobal('fetch', fetchMock)
     const pub = new DbSocialPublisher(db, null)
     const res = (await pub.createPost({
-      integrationId: 'linkedin:connection', content: 'hi linkedin', channel: 'linkedin', type: 'now', date: new Date(), tenantId: 't1',
+      integrationId: 'linkedin:connection',
+      content: 'hi linkedin',
+      channel: 'linkedin',
+      type: 'now',
+      date: new Date(),
+      tenantId: 't1',
     })) as { external_id?: string }
     expect(res.external_id).toBe('urn:li:share:77')
   })
 
   it('rejects Instagram without an image, then publishes via container→publish', async () => {
-    const { db } = makeDb([], [oauthCred('instagram_business', { ig_user_id: 'ig-9', ig_username: '@keel' })])
+    const { db } = makeDb(
+      [],
+      [oauthCred('instagram_business', { ig_user_id: 'ig-9', ig_username: '@keel' })],
+    )
     const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
       const url = String(input)
       if (url.endsWith('/media')) return jsonRes({ id: 'container-3' })
@@ -431,25 +601,44 @@ describe('DbSocialPublisher', () => {
     vi.stubGlobal('fetch', fetchMock)
     const pub = new DbSocialPublisher(db, null)
     await expect(
-      pub.createPost({ integrationId: 'ig', content: 'no image', channel: 'instagram', type: 'now', date: new Date(), tenantId: 't1' }),
+      pub.createPost({
+        integrationId: 'ig',
+        content: 'no image',
+        channel: 'instagram',
+        type: 'now',
+        date: new Date(),
+        tenantId: 't1',
+      }),
     ).rejects.toThrow('image is required')
 
     const res = (await pub.createPost({
-      integrationId: 'ig', content: 'with image', channel: 'instagram', type: 'now', date: new Date(), tenantId: 't1', mediaUrl: 'https://keel.example/i.png',
+      integrationId: 'ig',
+      content: 'with image',
+      channel: 'instagram',
+      type: 'now',
+      date: new Date(),
+      tenantId: 't1',
+      mediaUrl: 'https://keel.example/i.png',
     })) as { external_id?: string }
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('https://graph.facebook.com/v19.0/ig-9/media')
-    expect(JSON.parse(String(init.body))).toEqual({ image_url: 'https://keel.example/i.png', caption: 'with image' })
+    expect(JSON.parse(String(init.body))).toEqual({
+      image_url: 'https://keel.example/i.png',
+      caption: 'with image',
+    })
     expect(res.external_id).toBe('media-55')
   })
 
   it('lists every OAuth-connected channel with its account label', async () => {
-    const { db } = makeDb([], [
-      oauthCred('facebook_pages', { page_id: 'pg-1', page_name: 'Keel HQ' }),
-      oauthCred('threads', { user_id: 'th-1', username: '@lifekeel' }),
-      oauthCred('linkedin', { author_urn: 'urn:li:person:x', name: 'Balu Reddy' }),
-      oauthCred('instagram_business', { ig_user_id: 'ig-1', ig_username: '@keel' }),
-    ])
+    const { db } = makeDb(
+      [],
+      [
+        oauthCred('facebook_pages', { page_id: 'pg-1', page_name: 'Keel HQ' }),
+        oauthCred('threads', { user_id: 'th-1', username: '@lifekeel' }),
+        oauthCred('linkedin', { author_urn: 'urn:li:person:x', name: 'Balu Reddy' }),
+        oauthCred('instagram_business', { ig_user_id: 'ig-1', ig_username: '@keel' }),
+      ],
+    )
     const pub = new DbSocialPublisher(db, null)
     const integrations = await pub.listIntegrations('t1')
     const byId = new Map(integrations.map((i) => [i.identifier, i.name]))
@@ -460,10 +649,221 @@ describe('DbSocialPublisher', () => {
   })
 
   it('surfaces needs_reauth as a reconnect error instead of a dead publish', async () => {
-    const { db } = makeDb([], [{ ...oauthCred('threads', { user_id: 'th-1' }), needs_reauth: true }])
+    const { db } = makeDb(
+      [],
+      [{ ...oauthCred('threads', { user_id: 'th-1' }), needs_reauth: true }],
+    )
     const pub = new DbSocialPublisher(db, null)
     await expect(
-      pub.createPost({ integrationId: 't', content: 'hi', channel: 'threads', type: 'now', date: new Date(), tenantId: 't1' }),
+      pub.createPost({
+        integrationId: 't',
+        content: 'hi',
+        channel: 'threads',
+        type: 'now',
+        date: new Date(),
+        tenantId: 't1',
+      }),
     ).rejects.toThrow('reconnect')
+  })
+})
+
+describe('B12 — publisher binding + gateway policy', () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs()
+    vi.restoreAllMocks()
+  })
+
+  function makeDb(
+    conns: Partial<SocialConnectionDoc>[] = [],
+    creds: Record<string, unknown>[] = [],
+  ) {
+    const docs = conns.map(
+      (c) => ({ status: 'active', credentials: {}, ...c }) as Record<string, unknown>,
+    )
+    const col = {
+      findOne: vi.fn(
+        async (f: Record<string, unknown>) =>
+          docs.find((d) => d['tenant_id'] === f['tenant_id'] && d['channel'] === f['channel']) ??
+          null,
+      ),
+      find: vi.fn((f: Record<string, unknown>) => ({
+        toArray: async () => docs.filter((d) => d['tenant_id'] === f['tenant_id']),
+      })),
+      updateOne: vi.fn(async (f: Record<string, unknown>, u: { $set: Record<string, unknown> }) => {
+        const doc = docs.find(
+          (d) => d['tenant_id'] === f['tenant_id'] && d['channel'] === f['channel'],
+        )
+        if (doc) Object.assign(doc, u.$set)
+        return { modifiedCount: doc ? 1 : 0 }
+      }),
+    }
+    const credCol = {
+      findOne: vi.fn(
+        async (f: Record<string, unknown>) =>
+          creds.find(
+            (d) => d['tenant_id'] === f['tenant_id'] && d['connector_id'] === f['connector_id'],
+          ) ?? null,
+      ),
+      find: vi.fn((f: Record<string, unknown>) => ({
+        toArray: async () => creds.filter((d) => d['tenant_id'] === f['tenant_id']),
+      })),
+      updateOne: vi.fn(async () => ({ modifiedCount: 0 })),
+    }
+    return {
+      db: {
+        collection: (name: string) => (name === 'connector_credentials' ? credCol : col),
+      } as never,
+    }
+  }
+
+  it('a :connection id never falls through to the env account', async () => {
+    // The old channel-keyed dispatch could silently post to the platform's
+    // env X account when the tenant connection was missing — a public post
+    // from the wrong account.
+    vi.stubEnv('X_ACCESS_TOKEN', 'xtok')
+    const fetchMock = vi.fn(async () => jsonRes({ data: { id: 'tw-wrong' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { db } = makeDb([])
+    const pub = new DbSocialPublisher(db, socialPublisherFromEnv())
+    await expect(
+      pub.createPost({
+        integrationId: 'x:connection',
+        content: 'hi',
+        channel: 'x',
+        type: 'now',
+        date: new Date(),
+        tenantId: 't1',
+      }),
+    ).rejects.toThrow('channel_not_configured:x')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('an :env id never dips into tenant-stored credentials', async () => {
+    const { db } = makeDb([
+      {
+        tenant_id: 't1',
+        channel: 'bluesky',
+        handle: 'keel.bsky.social',
+        credentials: { app_password: 'app-pass' },
+      },
+    ])
+    const { db: dbNoEnv } = makeDb([], [])
+    void dbNoEnv
+    const pub = new DbSocialPublisher(db, null)
+    await expect(
+      pub.createPost({
+        integrationId: 'bluesky:env',
+        content: 'hi',
+        channel: 'bluesky',
+        type: 'now',
+        date: new Date(),
+        tenantId: 't1',
+      }),
+    ).rejects.toThrow('channel_not_configured:bluesky')
+  })
+
+  it('a mismatched id channel cannot redirect the dispatch', async () => {
+    vi.stubEnv('BSKY_HANDLE', 'env.bsky.social')
+    vi.stubEnv('BSKY_APP_PASSWORD', 'env-pass')
+    const fetchMock = vi.fn(async () => jsonRes({ accessJwt: 'j', did: 'did:plc:1' }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { db } = makeDb([])
+    const pub = new DbSocialPublisher(db, socialPublisherFromEnv())
+    await expect(
+      pub.createPost({
+        integrationId: 'x:connection',
+        content: 'hi',
+        channel: 'bluesky',
+        type: 'now',
+        date: new Date(),
+        tenantId: 't1',
+      }),
+    ).rejects.toThrow('channel_not_configured:bluesky')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('the result names the resolved publisher — account and credential source', async () => {
+    vi.stubEnv('X_ACCESS_TOKEN', 'xtok')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonRes({ data: { id: 'tw-1' } })),
+    )
+    const pub = socialPublisherFromEnv()!
+    const res = (await pub.createPost({
+      integrationId: 'x:env',
+      content: 'hello',
+      channel: 'x',
+      type: 'now',
+      date: new Date(),
+    })) as { publisher?: { source: string; account: string; integration_id: string } }
+    expect(res.publisher).toEqual({
+      integration_id: 'x:env',
+      channel: 'x',
+      source: 'env',
+      account: 'env credential',
+    })
+  })
+
+  it('tenant-connection results name the tenant account', async () => {
+    const { db } = makeDb([
+      {
+        tenant_id: 't1',
+        channel: 'bluesky',
+        handle: 'keel.bsky.social',
+        credentials: { app_password: 'app-pass' },
+      },
+    ])
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown) => {
+        const url = String(input)
+        if (url.includes('createSession')) return jsonRes({ accessJwt: 'j', did: 'did:plc:1' })
+        return jsonRes({ uri: 'at://did:plc:1/app.bsky.feed.post/zz' })
+      }),
+    )
+    const pub = new DbSocialPublisher(db, null)
+    const res = (await pub.createPost({
+      integrationId: 'bluesky:connection',
+      content: 'hi',
+      channel: 'bluesky',
+      type: 'now',
+      date: new Date(),
+      tenantId: 't1',
+      idempotencyKey: 'post-9',
+    })) as { publisher?: { source: string; account: string } }
+    expect(res.publisher?.source).toBe('connection')
+    expect(res.publisher?.account).toBe('@keel.bsky.social')
+  })
+
+  it('bluesky dispatch carries a deterministic record key from the post id', async () => {
+    const { db } = makeDb([
+      {
+        tenant_id: 't1',
+        channel: 'bluesky',
+        handle: 'keel.bsky.social',
+        credentials: { app_password: 'app-pass' },
+      },
+    ])
+    const fetchMock = vi.fn(async (input: unknown) => {
+      const url = String(input)
+      if (url.includes('createSession')) return jsonRes({ accessJwt: 'j', did: 'did:plc:1' })
+      return jsonRes({ uri: 'at://did:plc:1/app.bsky.feed.post/zz' })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const pub = new DbSocialPublisher(db, null)
+    await pub.createPost({
+      integrationId: 'bluesky:connection',
+      content: 'hi',
+      channel: 'bluesky',
+      type: 'now',
+      date: new Date(),
+      tenantId: 't1',
+      idempotencyKey: 'post-9-abc',
+    })
+    const [, recordInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit]
+    const recordBody = JSON.parse(String(recordInit.body)) as { rkey?: string }
+    // The rkey IS the dedupe: a retried createRecord with the same key is
+    // refused by the repo instead of double-posting.
+    expect(recordBody.rkey).toBe('post-9-abc')
   })
 })

@@ -443,3 +443,27 @@ describe('architecture claims: service-role split (B7)', () => {
     expect(src.slice(0, open)).toContain('queueManager.connect()')
   })
 })
+
+describe('architecture claims: social provider gateway (B12)', () => {
+  it('channel adapters never call raw fetch — every call crosses the gateway', () => {
+    const src = readSrc('apps/api/src/marketing/social-publisher.ts')
+    // Direct fetch would bypass deadline/retry/breaker/idempotency.
+    expect(src).not.toMatch(/[^a-zA-Z.]fetch\(/)
+    expect(src).toContain('providerFetch(')
+  })
+
+  it('integration ids bind dispatch to a credential source — no silent env fallback', () => {
+    const src = readSrc('apps/api/src/marketing/social-publisher.ts')
+    expect(src).toContain('parseIntegrationId')
+    // An explicit :connection id must throw rather than post as the
+    // platform account.
+    expect(src).toMatch(/wanted\.source === 'connection'[\s\S]{0,400}channel_not_configured/)
+  })
+
+  it('published posts record which account dispatched them', () => {
+    const posts = readSrc('apps/api/src/routes/marketing-posts.ts')
+    expect(posts).toContain('published_via')
+    // The post id is the dispatch idempotency key.
+    expect(posts).toContain('idempotencyKey: post.id')
+  })
+})
