@@ -2,6 +2,8 @@
  * The story board. One entry per capability, grouped by the moment it helps with.
  * Adding a capability to the page means adding one line here and one claim in
  * claims.ts. The admission test is in docs/prd/209-landing-chart-story.md.
+ * Entries with `live: false` are the in-app roadmap's data: the public board renders
+ * only `live` ones, and no Live or Planned wording appears on the public site.
  */
 export type Moment = 'before' | 'during' | 'after'
 

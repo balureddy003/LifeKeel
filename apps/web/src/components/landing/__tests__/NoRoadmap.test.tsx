@@ -33,7 +33,7 @@ beforeAll(() => {
 afterEach(cleanup)
 
 const DIR = path.resolve(__dirname, '..')
-const ROADMAP = /\bplanned\b|\bon the way\b|\bcoming soon\b|\bwill (note|put|say)\b|\bintend to build\b/i
+const ROADMAP = /\bplanned\b|\bon the way\b|\bcoming soon\b|\bintend to build\b|\bnot (built|available) yet\b/i
 
 describe('no roadmap on the public site', () => {
   it.each([
