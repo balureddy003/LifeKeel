@@ -25,11 +25,7 @@ interface OnboardingDraft {
 }
 
 function saveOnboardingDraft(draft: OnboardingDraft): void {
-  try {
-    sessionStorage.setItem(ONBOARDING_DRAFT_KEY, JSON.stringify(draft))
-  } catch {
-    /* private mode — resume just won't happen */
-  }
+  try { sessionStorage.setItem(ONBOARDING_DRAFT_KEY, JSON.stringify(draft)) } catch { /* private mode — resume just won't happen */ }
 }
 
 function takeOnboardingDraft(): OnboardingDraft | null {
@@ -90,13 +86,8 @@ export async function attemptOnboardingSignup<T>(
     const signedUpUser = await signUp(name, email, password)
     return { ok: true, user: signedUpUser }
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : 'Something went wrong creating your account.'
-    return {
-      ok: false,
-      reason: message === 'Email already registered' ? 'collision' : 'other',
-      message,
-    }
+    const message = err instanceof Error ? err.message : 'Something went wrong creating your account.'
+    return { ok: false, reason: message === 'Email already registered' ? 'collision' : 'other', message }
   }
 }
 
@@ -107,10 +98,7 @@ export async function attemptOnboardingSignup<T>(
 // false. Returns the email to link via updateEmail(), or null when there's
 // nothing to do — no answer given, or it already matches the account.
 // Exported standalone for the same reason attemptOnboardingSignup is.
-export function onboardingRecoveryEmailToLink(
-  owner: { email: string } | null,
-  rawAnswer: string | undefined,
-): string | null {
+export function onboardingRecoveryEmailToLink(owner: { email: string } | null, rawAnswer: string | undefined): string | null {
   if (!owner) return null
   const trimmed = rawAnswer?.trim()
   if (!trimmed || trimmed === owner.email) return null
@@ -220,9 +208,7 @@ export function ConversationalOnboarding() {
       return
     }
     takeOnboardingDraft()
-    addAIMessage(
-      `Welcome back, ${draft.answers['name'] ?? 'friend'} — picking up right where we left off.`,
-    )
+    addAIMessage(`Welcome back, ${draft.answers['name'] ?? 'friend'} — picking up right where we left off.`)
     void finishOnboarding(draft.answers, draft.members)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, family, isLoading])
@@ -270,10 +256,7 @@ export function ConversationalOnboarding() {
   // focusable, instead of firing once too early and never again.
   const firstChoiceRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
-    if (
-      !submitting &&
-      (currentQuestion?.type === 'boolean' || currentQuestion?.type === 'choice')
-    ) {
+    if (!submitting && (currentQuestion?.type === 'boolean' || currentQuestion?.type === 'choice')) {
       firstChoiceRef.current?.focus()
     }
   }, [questionIndex, currentQuestion?.type, submitting])
@@ -336,23 +319,12 @@ export function ConversationalOnboarding() {
     } else if (currentQuestion.id === 'children' && answer === 'No') {
       addAIMessage('No problem! We can add children later if things change.')
     } else if (currentQuestion.id === 'children-names') {
-      const names = answer
-        .split(',')
-        .map((n) => n.trim())
-        .filter(Boolean)
-      newlyAdded = names.map((name, i) => ({
-        id: `child-${i}`,
-        emoji: '',
-        name,
-        role: 'Child',
-        completion: 0,
-      }))
+      const names = answer.split(',').map((n) => n.trim()).filter(Boolean)
+      newlyAdded = names.map((name, i) => ({ id: `child-${i}`, emoji: '', name, role: 'Child', completion: 0 }))
       setMembers((prev) => [...prev, ...newlyAdded])
-      addAIMessage(
-        `Added ${names.length} ${names.length === 1 ? 'child' : 'children'} to your graph!`,
-      )
+      addAIMessage(`Added ${names.length} ${names.length === 1 ? 'child' : 'children'} to your graph!`)
     } else {
-      addAIMessage("Got it! Let's continue.")
+      addAIMessage('Got it! Let\'s continue.')
     }
 
     // Skip follow-up questions if condition not met
@@ -380,10 +352,7 @@ export function ConversationalOnboarding() {
     }
   }
 
-  const finishOnboarding = async (
-    allAnswers: Record<string, string>,
-    allMembers: FamilyMemberDraft[],
-  ) => {
+  const finishOnboarding = async (allAnswers: Record<string, string>, allMembers: FamilyMemberDraft[]) => {
     const name = allAnswers.name || 'User'
 
     // If the person already has an account (came from Sign Up or Sign In),
@@ -403,9 +372,7 @@ export function ConversationalOnboarding() {
           // Keep the chat state — signing in resumes right here instead of
           // throwing away everything they just told us (item 27).
           saveOnboardingDraft({ answers: allAnswers, members: allMembers })
-          addAIMessage(
-            `Looks like ${email} already has an account with us — taking you to sign in. Your answers are saved; we'll pick up right where we left off.`,
-          )
+          addAIMessage(`Looks like ${email} already has an account with us — taking you to sign in. Your answers are saved; we'll pick up right where we left off.`)
           setTimeout(() => router.push('/login'), 2500)
         } else {
           addAIMessage(`Hmm, that didn't go through: ${outcome.message}`)
@@ -425,9 +392,7 @@ export function ConversationalOnboarding() {
         try {
           owner = await updateEmail(recoveryEmail)
         } catch {
-          addAIMessage(
-            `Couldn't save ${recoveryEmail} as your recovery email — you can add it later in Settings.`,
-          )
+          addAIMessage(`Couldn't save ${recoveryEmail} as your recovery email — you can add it later in Settings.`)
         }
       }
     }
@@ -536,8 +501,10 @@ export function ConversationalOnboarding() {
                 <PartyPopper size={32} className="text-family-400" />
               </motion.div>
               <h1 className="text-2xl font-bold mb-2">Setting up your chart…</h1>
-              <p className="text-sm text-ink-tertiary">Putting your family on the chart</p>
-              <motion.div className="mt-6 w-48 h-2 rounded-full bg-tint/5 overflow-hidden">
+              <p className="text-sm text-ink-tertiary">Your family profile is taking shape</p>
+              <motion.div
+                className="mt-6 w-48 h-2 rounded-full bg-tint/5 overflow-hidden"
+              >
                 <motion.div
                   className="h-full rounded-full bg-gradient-to-r from-family-400 to-family-500"
                   initial={{ width: 0 }}
@@ -557,9 +524,7 @@ export function ConversationalOnboarding() {
       {/* Progress bar */}
       <div className="px-4 pt-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-ink-tertiary font-semibold">
-            Putting your family on the chart
-          </span>
+          <span className="text-xs text-ink-tertiary font-semibold">Putting your family on the chart</span>
           <span className="text-xs text-family-400 font-bold">{Math.round(progress)}%</span>
         </div>
         <div className="h-2 rounded-full bg-tint/5 overflow-hidden">
@@ -580,12 +545,7 @@ export function ConversationalOnboarding() {
           reader announces each new question/confirmation as it arrives,
           instead of the conversation silently advancing underneath the
           user. */}
-      <div
-        ref={scrollRef}
-        role="log"
-        aria-label="Onboarding conversation with Keel"
-        className="flex-1 overflow-y-auto px-4 py-2 space-y-3 no-scrollbar"
-      >
+      <div ref={scrollRef} role="log" aria-label="Onboarding conversation with Keel" className="flex-1 overflow-y-auto px-4 py-2 space-y-3 no-scrollbar">
         {messages.map((msg) => (
           <motion.div
             key={msg.id}
