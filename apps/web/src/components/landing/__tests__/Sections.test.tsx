@@ -16,9 +16,8 @@ describe('CoverOnFile', () => {
   it('labels the table as a made-up household and names no insurer', () => {
     const { container } = render(<CoverOnFile />)
     expect(screen.getAllByText(/Sample household|Made-up figures/).length).toBeGreaterThan(1)
-    expect(container.querySelectorAll('tbody tr').length).toBe(5)
+    expect(container.querySelectorAll('tbody tr').length).toBe(4)
     expect(container.querySelectorAll('th[scope="col"]').length).toBe(3)
-    expect(screen.getByText('Planned check')).toBeTruthy()
   })
 })
 
@@ -26,8 +25,8 @@ describe('CoverOnFile accessibility', () => {
   it('keeps table roles when the phone layout turns rows into blocks, and the scroller is keyboard reachable', () => {
     const { container } = render(<CoverOnFile />)
     expect(container.querySelector('table')!.getAttribute('role')).toBe('table')
-    expect(container.querySelectorAll('tbody tr[role="row"]').length).toBe(5)
-    expect(container.querySelectorAll('th[role="rowheader"]').length).toBe(5)
+    expect(container.querySelectorAll('tbody tr[role="row"]').length).toBe(4)
+    expect(container.querySelectorAll('th[role="rowheader"]').length).toBe(4)
     const scroller = container.querySelector('.lk-scroll')!
     expect(scroller.getAttribute('tabindex')).toBe('0')
     expect(scroller.getAttribute('role')).toBe('region')

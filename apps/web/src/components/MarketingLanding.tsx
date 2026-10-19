@@ -26,7 +26,6 @@ import { Pricing } from './landing/Pricing'
 import { Faq } from './landing/Faq'
 import { SiteFooter } from './landing/SiteFooter'
 import { SiteHeader } from './landing/SiteHeader'
-import { MarkedRoute } from './landing/MarkedRoute'
 import { YearsTimelapse } from './landing/YearsTimelapse'
 import { StickyCta } from './landing/StickyCta'
 import { track } from '@/lib/growth-track'
@@ -49,9 +48,8 @@ export function MarketingLanding() {
         <SampleDay />
       </div>
 
-      {/* The marked route and the years: previews of what is planned and how the chart grows. */}
+      {/* How the same chart grows as life changes. */}
       <div className="landing">
-        <MarkedRoute />
         <YearsTimelapse />
       </div>
 

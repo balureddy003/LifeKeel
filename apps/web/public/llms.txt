@@ -13,21 +13,18 @@ name if they go quiet, stays off until they switch it on.
 
 ## Before, during and after
 
-Everything below works from what the family adds. Items marked planned are not
-available yet.
+Everything below works from what the family adds.
 
 - Before: savings runway and emergency fund; life, income and health cover on
   file; policy renewals and duplicate policies for the same person; retirement
   and education pace; debt health; wills and papers on file; a "what if"
-  simulator. Planned: overlap between partners' policies, one ordered list of
-  next steps, a monthly letter.
+  simulator.
 - During: documents the family's adults can open (with optional passphrase
   sealing, no recovery); steps for seven kinds of bad day, which start when
   the person says what happened; optional emails to people they name if they
-  go quiet. Planned: access for a named person outside the family.
+  go quiet.
 - After: who to call, from the policy papers on file; a draft message to the
-  person's own insurer, for them to edit and send. Planned: a how-to-claim
-  guide per policy type, a claim-ready pack.
+  person's own insurer, for them to edit and send.
 
 ## Free
 
