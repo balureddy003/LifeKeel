@@ -6,7 +6,8 @@
  */
 
 import type { Db } from 'mongodb'
-import { createLogger, getTenantCollection, decryptIfNeeded } from '@lifekeel/platform'
+import { createLogger, getTenantCollection } from '@lifekeel/platform'
+import { decryptEnveloped } from '../crypto/envelope.js'
 import {
   ProviderAuthError,
   resolveAccountInfoProvider,
@@ -45,7 +46,9 @@ export async function syncAccountInfo(
 
   const credential: AccountInfoCredential = {
     provider: providerId,
-    access_token: credDoc['access_token'] ? decryptIfNeeded(credDoc['access_token'] as string) : undefined,
+    access_token: credDoc['access_token']
+      ? await decryptEnveloped(db, credDoc['access_token'] as string)
+      : undefined,
   }
 
   let accounts: ExternalAccount[]
@@ -53,8 +56,11 @@ export async function syncAccountInfo(
     accounts = await provider.listAccounts(credential)
   } catch (err) {
     if (err instanceof ProviderAuthError) {
-      await getTenantCollection<Record<string, unknown>>(db, 'connector_credentials', tenantId)
-        .updateOne({ connector_id: 'open-banking' }, { $set: { needs_reauth: true } })
+      await getTenantCollection<Record<string, unknown>>(
+        db,
+        'connector_credentials',
+        tenantId,
+      ).updateOne({ connector_id: 'open-banking' }, { $set: { needs_reauth: true } })
       return { ok: false, needsReauth: true, error: err.message }
     }
     log.error({ err, tenantId }, 'Account-info sync failed')
@@ -87,11 +93,14 @@ export async function syncAccountInfo(
   // the read model never shows an account that no longer exists.
   await col.deleteMany({ provider: providerId, provider_account_id: { $nin: [...seen] } })
 
-  await getTenantCollection<Record<string, unknown>>(db, 'connector_credentials', tenantId)
-    .updateOne(
-      { connector_id: 'open-banking' },
-      { $set: { last_synced_at: now, needs_reauth: false } },
-    )
+  await getTenantCollection<Record<string, unknown>>(
+    db,
+    'connector_credentials',
+    tenantId,
+  ).updateOne(
+    { connector_id: 'open-banking' },
+    { $set: { last_synced_at: now, needs_reauth: false } },
+  )
 
   return { ok: true, accounts: accounts.length }
 }

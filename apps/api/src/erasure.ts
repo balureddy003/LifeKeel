@@ -103,6 +103,9 @@ export const DELETABLE_COLLECTIONS = [
   'skill_opt_history',
   'skill_rejection_memory',
   'workflow_approvals',
+  // Per-tenant envelope keys (B4) — wiping these is the crypto-shred: every
+  // dek:-format ciphertext for the tenant becomes permanently undecryptable.
+  'tenant_keys',
 ] as const
 
 // Tenant-tagged collections whose key is NOT a top-level `tenant_id`.

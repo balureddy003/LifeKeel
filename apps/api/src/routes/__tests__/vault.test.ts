@@ -29,7 +29,10 @@ vi.mock('mongodb', async (importOriginal) => {
     ...actual,
     GridFSBucket: class {
       openUploadStream(filename: string) {
-        const stream = new EventEmitter() as EventEmitter & { id: string; end: (buf: Buffer) => void }
+        const stream = new EventEmitter() as EventEmitter & {
+          id: string
+          end: (buf: Buffer) => void
+        }
         const id = `gridfs-${filename}-${Math.random()}`
         stream.id = id
         stream.end = (buf: Buffer) => {
@@ -40,9 +43,15 @@ vi.mock('mongodb', async (importOriginal) => {
       }
       openDownloadStream(id: string) {
         const bytes = storedFiles.get(id) ?? Buffer.alloc(0)
-        return { async *[Symbol.asyncIterator]() { yield bytes } }
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield bytes
+          },
+        }
       }
-      async delete() { return gridFsDeleteMock() }
+      async delete() {
+        return gridFsDeleteMock()
+      }
     },
   }
 })
@@ -59,11 +68,15 @@ let familyMembers: Array<{ id: string; role: string; status: string }> = [
 function makeDb() {
   const documents: Record<string, unknown>[] = []
   const documentsCol = {
-    insertOne: async (doc: Record<string, unknown>) => { documents.push(doc); return { insertedId: doc['id'] } },
+    insertOne: async (doc: Record<string, unknown>) => {
+      documents.push(doc)
+      return { insertedId: doc['id'] }
+    },
     findOne: async (filter: Record<string, unknown>) =>
       documents.find((d) => Object.entries(filter).every(([k, v]) => d[k] === v)) ?? null,
     find: (filter: Record<string, unknown> = {}) => {
-      const matched = () => documents.filter((d) => Object.entries(filter).every(([k, v]) => d[k] === v))
+      const matched = () =>
+        documents.filter((d) => Object.entries(filter).every(([k, v]) => d[k] === v))
       return {
         // The vault list route sorts/limits; the estate re-eval (PRD-121)
         // calls toArray() directly on the cursor.
@@ -83,6 +96,18 @@ function makeDb() {
   }
   const familyGroupsCol = { findOne: async () => ({ tenant_id: TENANT, members: familyMembers }) }
   const tenantsCol = { findOne: async () => ({ tenant_id: TENANT, plan: 'free' }) }
+  // Per-tenant DEK store (B4) — vault uploads now wrap bytes in a tenant
+  // DEK, so the fake db needs a real key bucket, not the catch-all.
+  const tenantKeys: Record<string, unknown>[] = []
+  const tenantKeysCol = {
+    findOne: async (filter: Record<string, unknown>) =>
+      tenantKeys.find((d) => Object.entries(filter).every(([k, v]) => d[k] === v)) ?? null,
+    insertOne: async (doc: Record<string, unknown>) => {
+      tenantKeys.push(doc)
+      return { insertedId: doc['key_id'] }
+    },
+    createIndex: async () => ({}),
+  }
   // PRD-121: the estate re-eval persists a family.estate signal here and
   // resolves stale insights via the scoped 'insights' collection — both
   // minimal, neither needs real behavior for these tests.
@@ -100,12 +125,17 @@ function makeDb() {
       if (name === 'family_groups') return familyGroupsCol
       if (name === 'signals') return signalsCol
       if (name === 'insights') return insightsCol
+      if (name === 'tenant_keys') return tenantKeysCol
       return tenantsCol
     },
   } as any
 }
 
-async function buildApp(userId: string, engine?: Engine, onInsights?: (insights: Insight[], tenantId: string) => Promise<void>) {
+async function buildApp(
+  userId: string,
+  engine?: Engine,
+  onInsights?: (insights: Insight[], tenantId: string) => Promise<void>,
+) {
   const app = Fastify()
   await app.register(multipart)
   app.addHook('onRequest', async (request) => {
@@ -120,7 +150,9 @@ async function buildApp(userId: string, engine?: Engine, onInsights?: (insights:
 function multipartPayload(filename: string, content: Buffer, mime = 'application/pdf') {
   const boundary = 'testboundary123'
   const body = Buffer.concat([
-    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mime}\r\n\r\n`),
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mime}\r\n\r\n`,
+    ),
     content,
     Buffer.from(`\r\n--${boundary}--\r\n`),
   ])
@@ -188,8 +220,10 @@ describe('Digital Estate Vault', () => {
     const app = await buildApp(ADULT_ID)
     const { body, boundary } = multipartPayload('will.pdf', Buffer.from('secret'))
     const uploadRes = await app.inject({
-      method: 'POST', url: '/vault/documents/upload',
-      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body,
+      method: 'POST',
+      url: '/vault/documents/upload',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      payload: body,
     })
     const { id } = uploadRes.json()
 
@@ -202,8 +236,10 @@ describe('Digital Estate Vault', () => {
     const app = await buildApp(ADULT_ID)
     const { body, boundary } = multipartPayload('poa.pdf', Buffer.from('power of attorney'))
     await app.inject({
-      method: 'POST', url: '/vault/documents/upload',
-      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body,
+      method: 'POST',
+      url: '/vault/documents/upload',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      payload: body,
     })
     const res = await app.inject({ method: 'GET', url: '/vault/documents' })
     expect(res.statusCode).toBe(200)
@@ -223,8 +259,10 @@ describe('Digital Estate Vault', () => {
     const app = await buildApp(ADULT_ID)
     const { body, boundary } = multipartPayload('will.pdf', Buffer.from('x'))
     const uploadRes = await app.inject({
-      method: 'POST', url: '/vault/documents/upload',
-      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body,
+      method: 'POST',
+      url: '/vault/documents/upload',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      payload: body,
     })
     const { id } = uploadRes.json()
     const delRes = await app.inject({ method: 'DELETE', url: `/vault/documents/${id}` })
@@ -237,8 +275,10 @@ describe('Digital Estate Vault', () => {
     const app = await buildApp(ADULT_ID)
     const { body, boundary } = multipartPayload('will.pdf', Buffer.from('x'))
     await app.inject({
-      method: 'POST', url: '/vault/documents/upload',
-      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body,
+      method: 'POST',
+      url: '/vault/documents/upload',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      payload: body,
     })
     const res = await app.inject({ method: 'GET', url: '/documents' })
     expect(res.json().documents).toHaveLength(0)
@@ -248,8 +288,10 @@ describe('Digital Estate Vault', () => {
     const app = await buildApp(ADULT_ID)
     const { body, boundary } = multipartPayload('will.pdf', Buffer.from('x'))
     const uploadRes = await app.inject({
-      method: 'POST', url: '/vault/documents/upload',
-      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body,
+      method: 'POST',
+      url: '/vault/documents/upload',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      payload: body,
     })
     const { id } = uploadRes.json()
     const res = await app.inject({ method: 'GET', url: `/documents/${id}/file` })
@@ -262,14 +304,18 @@ describe('Digital Estate Vault', () => {
     const app = await buildApp(ADULT_ID)
     const { body, boundary } = multipartPayload('will.pdf', Buffer.from('x'))
     const bad = await app.inject({
-      method: 'POST', url: '/vault/documents/upload?doc_type=bogus',
-      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body,
+      method: 'POST',
+      url: '/vault/documents/upload?doc_type=bogus',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      payload: body,
     })
     expect(bad.statusCode).toBe(400)
 
     const ok = await app.inject({
-      method: 'POST', url: '/vault/documents/upload?doc_type=will',
-      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body,
+      method: 'POST',
+      url: '/vault/documents/upload?doc_type=will',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      payload: body,
     })
     expect(ok.statusCode).toBe(201)
     expect(ok.json().docType).toBe('will')
@@ -285,17 +331,24 @@ describe('Digital Estate Vault', () => {
     const engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
     await engine.load()
     const delivered: Insight[] = []
-    const app = await buildApp(ADULT_ID, engine, async (insights) => { delivered.push(...insights) })
+    const app = await buildApp(ADULT_ID, engine, async (insights) => {
+      delivered.push(...insights)
+    })
     const { body, boundary } = multipartPayload('will.pdf', Buffer.from('x'))
     const res = await app.inject({
-      method: 'POST', url: '/vault/documents/upload?doc_type=will',
-      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body,
+      method: 'POST',
+      url: '/vault/documents/upload?doc_type=will',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      payload: body,
     })
     expect(res.statusCode).toBe(201)
     const estate = delivered.filter((i) => i.detector_id === 'family_estate_readiness')
     // PRD-137: the enriched detector also flags the test family's child
     // having no guardianship nomination on file.
-    expect(estate.map((i) => i.rule_id).sort()).toEqual(['estate_no_power_of_attorney', 'legacy_guardianship_gap'])
+    expect(estate.map((i) => i.rule_id).sort()).toEqual([
+      'estate_no_power_of_attorney',
+      'legacy_guardianship_gap',
+    ])
     await app.close()
   })
 
@@ -303,18 +356,26 @@ describe('Digital Estate Vault', () => {
     const engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
     await engine.load()
     const delivered: Insight[] = []
-    const app = await buildApp(ADULT_ID, engine, async (insights) => { delivered.push(...insights) })
+    const app = await buildApp(ADULT_ID, engine, async (insights) => {
+      delivered.push(...insights)
+    })
     const { body, boundary } = multipartPayload('will.pdf', Buffer.from('x'))
     const uploadRes = await app.inject({
-      method: 'POST', url: '/vault/documents/upload?doc_type=will',
-      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body,
+      method: 'POST',
+      url: '/vault/documents/upload?doc_type=will',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      payload: body,
     })
     const { id } = uploadRes.json()
     delivered.length = 0
     const delRes = await app.inject({ method: 'DELETE', url: `/vault/documents/${id}` })
     expect(delRes.statusCode).toBe(200)
     const estate = delivered.filter((i) => i.detector_id === 'family_estate_readiness')
-    expect(estate.map((i) => i.rule_id).sort()).toEqual(['estate_no_power_of_attorney', 'estate_no_will', 'legacy_guardianship_gap'])
+    expect(estate.map((i) => i.rule_id).sort()).toEqual([
+      'estate_no_power_of_attorney',
+      'estate_no_will',
+      'legacy_guardianship_gap',
+    ])
     await app.close()
   })
 
@@ -340,7 +401,10 @@ describe('Digital Estate Vault', () => {
 
     // Download unwraps the server layer and hands back the sealed
     // envelope byte-for-byte — the client unseals the rest.
-    const fileRes = await app.inject({ method: 'GET', url: `/vault/documents/${res.json().id}/file` })
+    const fileRes = await app.inject({
+      method: 'GET',
+      url: `/vault/documents/${res.json().id}/file`,
+    })
     expect(fileRes.statusCode).toBe(200)
     expect(Buffer.compare(fileRes.rawPayload, envelope)).toBe(0)
     await app.close()
@@ -348,7 +412,11 @@ describe('Digital Estate Vault', () => {
 
   it('rejects a sealed upload whose declared mime isn’t a document type', async () => {
     const app = await buildApp(ADULT_ID)
-    const { body, boundary } = multipartPayload('evil.exe', Buffer.from('x'), 'application/octet-stream')
+    const { body, boundary } = multipartPayload(
+      'evil.exe',
+      Buffer.from('x'),
+      'application/octet-stream',
+    )
     const res = await app.inject({
       method: 'POST',
       url: '/vault/documents/upload?sealed=1&mime=application/x-msdownload',

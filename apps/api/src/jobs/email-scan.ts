@@ -13,13 +13,9 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { decryptEnveloped, encryptForTenant } from '../crypto/envelope.js'
 import { GridFSBucket, type Db } from 'mongodb'
-import {
-  createLogger,
-  getTenantCollection,
-  encryptIfNeeded,
-  decryptIfNeeded,
-} from '@lifekeel/platform'
+import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import {
   fetchRecentEmails,
   searchPolicyEmails,
@@ -80,13 +76,13 @@ async function resolveOAuthAccessToken(
   db: Db,
   doc: EmailConnectorCredentialDoc,
 ): Promise<string | null> {
-  const accessToken = decryptIfNeeded(doc.extra?.access_token)
+  const accessToken = await decryptEnveloped(db, doc.extra?.access_token)
   const expiresAt = doc.extra?.token_expires_at ? new Date(doc.extra.token_expires_at) : null
   if (accessToken && expiresAt && expiresAt.getTime() - TOKEN_REFRESH_SKEW_MS > Date.now()) {
     return accessToken
   }
 
-  const refreshToken = decryptIfNeeded(doc.extra?.refresh_token)
+  const refreshToken = await decryptEnveloped(db, doc.extra?.refresh_token)
   const clientId = process.env['GOOGLE_CLIENT_ID']
   const clientSecret = process.env['GOOGLE_CLIENT_SECRET']
   if (!refreshToken || !clientId || !clientSecret) return null
@@ -102,7 +98,7 @@ async function resolveOAuthAccessToken(
     { connector_id: doc.connector_id },
     {
       $set: {
-        'extra.access_token': encryptIfNeeded(refreshed.accessToken),
+        'extra.access_token': await encryptForTenant(db, doc.tenant_id, refreshed.accessToken),
         'extra.token_expires_at': new Date(Date.now() + refreshed.expiresIn * 1000),
       },
     },
@@ -124,7 +120,7 @@ async function toImapCredentials(
     return { host, port, useTls: doc.extra?.use_tls ?? true, username: doc.username, accessToken }
   }
 
-  const password = decryptIfNeeded(doc.password)
+  const password = await decryptEnveloped(db, doc.password)
   if (!password) return null
   return { host, port, useTls: doc.extra?.use_tls ?? true, username: doc.username, password }
 }

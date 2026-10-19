@@ -18,9 +18,9 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import crypto from 'node:crypto'
-import { ConnectorActionExecutor } from '@lifekeel/workflows'
-import { connectorRegistry } from '@lifekeel/workflows'
-import { encryptIfNeeded, decryptIfNeeded, createLogger, getTenantCollection } from '@lifekeel/platform'
+import { ConnectorActionExecutor , connectorRegistry } from '@lifekeel/workflows'
+import { createLogger, getTenantCollection } from '@lifekeel/platform'
+import { encryptForTenant, decryptEnveloped } from '../crypto/envelope.js'
 
 const log = createLogger({ service: 'connector-credentials', version: '0.0.0' })
 import { ConnectorSyncEngine } from '@lifekeel/pipeline'
@@ -56,7 +56,13 @@ const FAMILY_CONNECTOR_ALLOWLIST = new Set([
 type ReturnTarget = 'studio' | 'lifekeel-web' | 'lifekeel-mobile' | 'family' | 'marketing'
 
 function isReturnTarget(value: unknown): value is ReturnTarget {
-  return value === 'studio' || value === 'lifekeel-web' || value === 'lifekeel-mobile' || value === 'family' || value === 'marketing'
+  return (
+    value === 'studio' ||
+    value === 'lifekeel-web' ||
+    value === 'lifekeel-mobile' ||
+    value === 'family' ||
+    value === 'marketing'
+  )
 }
 
 function signOAuthState(payload: Record<string, unknown>): string {
@@ -66,9 +72,12 @@ function signOAuthState(payload: Record<string, unknown>): string {
   return `${body}.${sig}`
 }
 
-function verifyOAuthState(
-  state: string,
-): { tenantId: string; connectorId: string; returnTo: ReturnTarget; codeVerifier?: string } {
+function verifyOAuthState(state: string): {
+  tenantId: string
+  connectorId: string
+  returnTo: ReturnTarget
+  codeVerifier?: string
+} {
   const [body, sig] = state.split('.')
   if (!body || !sig) throw new Error('Malformed OAuth state')
   const secret = process.env['JWT_SECRET'] ?? 'change-me-in-production'
@@ -84,7 +93,8 @@ function verifyOAuthState(
     codeVerifier?: string
     exp?: number
   }
-  if (!parsed.tenantId || !parsed.connectorId) throw new Error('OAuth state missing tenant or connector')
+  if (!parsed.tenantId || !parsed.connectorId)
+    throw new Error('OAuth state missing tenant or connector')
   if (parsed.exp && Date.now() > parsed.exp) throw new Error('OAuth state expired')
   return {
     tenantId: parsed.tenantId,
@@ -126,13 +136,17 @@ function frontendRedirect(returnTo: ReturnTarget, params: Record<string, string>
   if (returnTo === 'marketing') {
     // Operator marketing composer — X connect returns here so the
     // Channels card can show the connected/error state inline.
-    const url = new URL('/operator/marketing', process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002')
+    const url = new URL(
+      '/operator/marketing',
+      process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002',
+    )
     for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
     return url.toString()
   }
-  const base = returnTo === 'lifekeel-web'
-    ? (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3003')
-    : (process.env['STUDIO_URL'] ?? 'http://localhost:3000')
+  const base =
+    returnTo === 'lifekeel-web'
+      ? (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3003')
+      : (process.env['STUDIO_URL'] ?? 'http://localhost:3000')
   const url = new URL('/connectors', base)
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
   return url.toString()
@@ -158,7 +172,14 @@ function peekReturnTo(state: string | undefined): ReturnTarget {
 }
 
 // Google connectors that can use shared credentials
-const GOOGLE_CONNECTORS = ['google_calendar', 'gmail', 'google_drive', 'youtube', 'google_sheets', 'google_business']
+const GOOGLE_CONNECTORS = [
+  'google_calendar',
+  'gmail',
+  'google_drive',
+  'youtube',
+  'google_sheets',
+  'google_business',
+]
 
 // Meta app credentials cover Facebook Login, Instagram Graph, and Threads —
 // one Meta app can hold all three products. Threads also accepts its own
@@ -175,7 +196,8 @@ function getGoogleClientId(connectorId: string): string | undefined {
   // connect flows).
   if (connectorId === 'twitter_x') return process.env['X_CLIENT_ID']
   if (connectorId === 'linkedin') return process.env['LINKEDIN_CLIENT_ID']
-  if (connectorId === 'threads') return process.env['THREADS_CLIENT_ID'] ?? process.env['META_CLIENT_ID']
+  if (connectorId === 'threads')
+    return process.env['THREADS_CLIENT_ID'] ?? process.env['META_CLIENT_ID']
   if (META_CONNECTORS.includes(connectorId)) return process.env['META_CLIENT_ID']
 
   // Fall back to shared Google credentials for Google services
@@ -193,7 +215,8 @@ function getGoogleClientSecret(connectorId: string): string {
 
   if (connectorId === 'twitter_x') return process.env['X_CLIENT_SECRET'] ?? ''
   if (connectorId === 'linkedin') return process.env['LINKEDIN_CLIENT_SECRET'] ?? ''
-  if (connectorId === 'threads') return process.env['THREADS_CLIENT_SECRET'] ?? process.env['META_CLIENT_SECRET'] ?? ''
+  if (connectorId === 'threads')
+    return process.env['THREADS_CLIENT_SECRET'] ?? process.env['META_CLIENT_SECRET'] ?? ''
   if (META_CONNECTORS.includes(connectorId)) return process.env['META_CLIENT_SECRET'] ?? ''
 
   // Fall back to shared Google credentials for Google services
@@ -213,17 +236,18 @@ export function registerConnectorCredentialRoutes(
 ): void {
   const executor = new ConnectorActionExecutor(db)
   // Sync engine is optional — only wired when full pipeline deps are available
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const syncEngine = (connectorLoader && eventGenerator && engine)
-    ? new ConnectorSyncEngine(db as any, eventGenerator, engine)
-    : null
+   
+  const syncEngine =
+    connectorLoader && eventGenerator && engine
+      ? new ConnectorSyncEngine(db as any, eventGenerator, engine)
+      : null
 
   // GET /connectors/connected — list all connected connectors for tenant
   fastify.get('/connectors/connected', async (req) => {
     const tenantId = req.authContext.tenant_id
     const connected = await executor.listConnected(tenantId)
     return {
-      connected: connected.map(c => ({
+      connected: connected.map((c) => ({
         connector_id: c.connector_id,
         auth_type: c.auth_type,
         updated_at: c.updated_at,
@@ -257,7 +281,10 @@ export function registerConnectorCredentialRoutes(
       const name = actionDef?.name ?? syncDef?.name ?? req.params.id
       const connected = await executor.hasCredentials(tenantId, req.params.id)
       return connected
-        ? { success: true, message: `${name} has stored credentials (no readable resources to verify against).` }
+        ? {
+            success: true,
+            message: `${name} has stored credentials (no readable resources to verify against).`,
+          }
         : { success: false, error: 'No credentials stored for this connector yet.' }
     }
 
@@ -291,7 +318,9 @@ export function registerConnectorCredentialRoutes(
     const { auth_type, token_expires_at, ...rest } = req.body
 
     if (!FAMILY_CONNECTOR_ALLOWLIST.has(req.params.id)) {
-      return reply.status(403).send({ error: `Connector '${req.params.id}' is not available in this app` })
+      return reply
+        .status(403)
+        .send({ error: `Connector '${req.params.id}' is not available in this app` })
     }
 
     if (!auth_type) return reply.status(400).send({ error: 'auth_type required' })
@@ -306,7 +335,9 @@ export function registerConnectorCredentialRoutes(
       const tenant = await db.collection('tenants').findOne({ tenant_id: tenantId })
       const limit = tenant?.['quotas']?.['connectors_max'] as number | undefined
       if (limit !== undefined && limit !== -1) {
-        const count = await db.collection('connector_credentials').countDocuments({ tenant_id: tenantId })
+        const count = await db
+          .collection('connector_credentials')
+          .countDocuments({ tenant_id: tenantId })
         if (count >= limit) {
           return reply.status(429).send({
             error: 'Connector quota exceeded',
@@ -325,26 +356,49 @@ export function registerConnectorCredentialRoutes(
       connector_id: req.params.id,
       auth_type,
     }
-    if (rest.api_key)                cred['api_key']                = encryptIfNeeded(rest.api_key as string)
-    if (rest.access_token)           cred['access_token']           = encryptIfNeeded(rest.access_token as string)
-    if (rest.refresh_token)          cred['refresh_token']          = encryptIfNeeded(rest.refresh_token as string)
-    if (rest.password)               cred['password']               = encryptIfNeeded(rest.password as string)
-    if (rest.username)               cred['username']               = rest.username
+    if (rest.api_key) cred['api_key'] = await encryptForTenant(db, tenantId, rest.api_key as string)
+    if (rest.access_token)
+      cred['access_token'] = await encryptForTenant(db, tenantId, rest.access_token as string)
+    if (rest.refresh_token)
+      cred['refresh_token'] = await encryptForTenant(db, tenantId, rest.refresh_token as string)
+    if (rest.password)
+      cred['password'] = await encryptForTenant(db, tenantId, rest.password as string)
+    if (rest.username) cred['username'] = rest.username
     if (rest.extra) {
       // For oauth2_kite (Zerodha), the tenant's api_secret is sensitive —
       // encrypt it before storing. The api_key is not secret (it appears in
       // the login URL), so it stays in plaintext within extra.
       const extra = { ...rest.extra }
       if (auth_type === 'oauth2_kite' && extra.api_secret) {
-        extra.api_secret = encryptIfNeeded(extra.api_secret as string) as string
+        extra.api_secret = await encryptForTenant(db, tenantId, extra.api_secret as string)
       }
       cred['extra'] = extra
     }
-    if (token_expires_at)            cred['token_expires_at']       = new Date(token_expires_at)
-    if (rest.oauth1_consumer_key)    cred['oauth1_consumer_key']    = encryptIfNeeded(rest.oauth1_consumer_key as string)
-    if (rest.oauth1_consumer_secret) cred['oauth1_consumer_secret'] = encryptIfNeeded(rest.oauth1_consumer_secret as string)
-    if (rest.oauth1_access_token)    cred['oauth1_access_token']    = encryptIfNeeded(rest.oauth1_access_token as string)
-    if (rest.oauth1_token_secret)    cred['oauth1_token_secret']    = encryptIfNeeded(rest.oauth1_token_secret as string)
+    if (token_expires_at) cred['token_expires_at'] = new Date(token_expires_at)
+    if (rest.oauth1_consumer_key)
+      cred['oauth1_consumer_key'] = await encryptForTenant(
+        db,
+        tenantId,
+        rest.oauth1_consumer_key as string,
+      )
+    if (rest.oauth1_consumer_secret)
+      cred['oauth1_consumer_secret'] = await encryptForTenant(
+        db,
+        tenantId,
+        rest.oauth1_consumer_secret as string,
+      )
+    if (rest.oauth1_access_token)
+      cred['oauth1_access_token'] = await encryptForTenant(
+        db,
+        tenantId,
+        rest.oauth1_access_token as string,
+      )
+    if (rest.oauth1_token_secret)
+      cred['oauth1_token_secret'] = await encryptForTenant(
+        db,
+        tenantId,
+        rest.oauth1_token_secret as string,
+      )
     await executor.saveCredentials(tenantId, cred as Parameters<typeof executor.saveCredentials>[1])
 
     // ── Validate credentials with a real, read-only request before success ─
@@ -369,14 +423,17 @@ export function registerConnectorCredentialRoutes(
         }
 
         // Credentials verified — trigger backfill in background.
-        syncEngine.backfill(connector, tenantId).then(result => {
-          fastify.log.info(
-            { connector_id: req.params.id, tenant_id: tenantId, ...result },
-            'Backfill complete',
-          )
-        }).catch(err => {
-          fastify.log.error({ err, connector_id: req.params.id }, 'Backfill failed')
-        })
+        syncEngine
+          .backfill(connector, tenantId)
+          .then((result) => {
+            fastify.log.info(
+              { connector_id: req.params.id, tenant_id: tenantId, ...result },
+              'Backfill complete',
+            )
+          })
+          .catch((err) => {
+            fastify.log.error({ err, connector_id: req.params.id }, 'Backfill failed')
+          })
       }
     }
 
@@ -403,7 +460,8 @@ export function registerConnectorCredentialRoutes(
       return reply.status(403).send({
         ok: false,
         error: 'action_requires_approval',
-        message: 'This action has external effects and cannot be run directly. It needs an explicit human approval flow.',
+        message:
+          'This action has external effects and cannot be run directly. It needs an explicit human approval flow.',
       })
     }
     if (actionClass === 'unknown') {
@@ -443,7 +501,9 @@ export function registerConnectorCredentialRoutes(
     // Studio and the other frontends legitimately use connectors (like
     // twitter_x) this app never offers.
     if (returnTo === 'family' && !FAMILY_CONNECTOR_ALLOWLIST.has(req.params.id)) {
-      return reply.status(403).send({ error: `Connector '${req.params.id}' is not available in this app` })
+      return reply
+        .status(403)
+        .send({ error: `Connector '${req.params.id}' is not available in this app` })
     }
 
     // Kite Connect v3 — each tenant brings their own api_key (registered at
@@ -453,9 +513,10 @@ export function registerConnectorCredentialRoutes(
     // each user to register their own app.
     if (connDef.auth === 'oauth2_kite') {
       const tenantId = req.authContext.tenant_id
-      const storedCred = await executor['credentials'].findOne(
-        { tenant_id: tenantId, connector_id: req.params.id },
-      ) as { extra?: { api_key?: string } } | null
+      const storedCred = (await executor['credentials'].findOne({
+        tenant_id: tenantId,
+        connector_id: req.params.id,
+      })) as { extra?: { api_key?: string } } | null
       const apiKey = storedCred?.extra?.api_key
       if (!apiKey) {
         return reply.status(400).send({
@@ -480,12 +541,15 @@ export function registerConnectorCredentialRoutes(
       const envVar = GOOGLE_CONNECTORS.includes(req.params.id)
         ? 'GOOGLE_CLIENT_ID'
         : `LIFEKEEL_${req.params.id.toUpperCase()}_CLIENT_ID`
-      return reply.status(400).send({ error: `OAuth client not configured for ${req.params.id}. Set ${envVar} env var.` })
+      return reply
+        .status(400)
+        .send({ error: `OAuth client not configured for ${req.params.id}. Set ${envVar} env var.` })
     }
 
     const tenantId = req.authContext.tenant_id
-    const redirectUri = req.query.redirect_uri
-      ?? `${process.env['API_BASE_URL'] ?? 'http://localhost:3001'}/connectors/${req.params.id}/oauth/callback`
+    const redirectUri =
+      req.query.redirect_uri ??
+      `${process.env['API_BASE_URL'] ?? 'http://localhost:3001'}/connectors/${req.params.id}/oauth/callback`
 
     // Signed state binds the provider callback to this tenant+connector.
     const pkce = createPkcePair()
@@ -556,14 +620,22 @@ export function registerConnectorCredentialRoutes(
   // GET /connectors/:id/oauth/callback — exchange code for tokens
   fastify.get<{
     Params: { id: string }
-    Querystring: { code?: string; request_token?: string; state: string; error?: string; error_description?: string }
+    Querystring: {
+      code?: string
+      request_token?: string
+      state: string
+      error?: string
+      error_description?: string
+    }
   }>('/connectors/:id/oauth/callback', async (req, reply) => {
     if (req.query.error) {
-      return reply.redirect(frontendRedirect(peekReturnTo(req.query.state), {
-        connect: req.params.id,
-        error: req.query.error,
-        ...(req.query.error_description ? { detail: req.query.error_description } : {}),
-      }))
+      return reply.redirect(
+        frontendRedirect(peekReturnTo(req.query.state), {
+          connect: req.params.id,
+          error: req.query.error,
+          ...(req.query.error_description ? { detail: req.query.error_description } : {}),
+        }),
+      )
     }
 
     let tenantId: string
@@ -572,13 +644,23 @@ export function registerConnectorCredentialRoutes(
     try {
       const stateData = verifyOAuthState(req.query.state)
       if (stateData.connectorId !== req.params.id) {
-        return reply.redirect(frontendRedirect(stateData.returnTo, { connect: req.params.id, error: 'oauth_state_connector_mismatch' }))
+        return reply.redirect(
+          frontendRedirect(stateData.returnTo, {
+            connect: req.params.id,
+            error: 'oauth_state_connector_mismatch',
+          }),
+        )
       }
       tenantId = stateData.tenantId
       returnTo = stateData.returnTo
       codeVerifier = stateData.codeVerifier
     } catch {
-      return reply.redirect(frontendRedirect(peekReturnTo(req.query.state), { connect: req.params.id, error: 'invalid_oauth_state' }))
+      return reply.redirect(
+        frontendRedirect(peekReturnTo(req.query.state), {
+          connect: req.params.id,
+          error: 'invalid_oauth_state',
+        }),
+      )
     }
 
     // Defense-in-depth mirror of the same check on oauth/start — a
@@ -586,7 +668,9 @@ export function registerConnectorCredentialRoutes(
     // but a signed state from before this fix deploys stays valid for up
     // to its 10-minute expiry, so this closes that window too.
     if (returnTo === 'family' && !FAMILY_CONNECTOR_ALLOWLIST.has(req.params.id)) {
-      return reply.redirect(frontendRedirect(returnTo, { connect: req.params.id, error: 'connector_not_available' }))
+      return reply.redirect(
+        frontendRedirect(returnTo, { connect: req.params.id, error: 'connector_not_available' }),
+      )
     }
 
     // ── Kite Connect v3 — non-standard per-tenant token exchange ──────────
@@ -596,16 +680,20 @@ export function registerConnectorCredentialRoutes(
     // via POST /connectors/zerodha/credentials before the OAuth flow starts.
     // The api_secret is encrypted at rest; decrypt it here for the checksum.
     if (req.params.id === 'zerodha' && req.query.request_token) {
-      const storedCred = await executor['credentials'].findOne(
-        { tenant_id: tenantId, connector_id: req.params.id },
-      ) as { extra?: { api_key?: string; api_secret?: string } } | null
+      const storedCred = (await executor['credentials'].findOne({
+        tenant_id: tenantId,
+        connector_id: req.params.id,
+      })) as { extra?: { api_key?: string; api_secret?: string } } | null
       const apiKey = storedCred?.extra?.api_key ?? ''
-      const apiSecret = decryptIfNeeded(storedCred?.extra?.api_secret ?? '') ?? ''
+      const apiSecret = (await decryptEnveloped(db, storedCred?.extra?.api_secret ?? '')) ?? ''
       if (!apiKey || !apiSecret) {
-        return reply.redirect(frontendRedirect(returnTo, { connect: req.params.id, error: 'kite_credentials_missing' }))
+        return reply.redirect(
+          frontendRedirect(returnTo, { connect: req.params.id, error: 'kite_credentials_missing' }),
+        )
       }
       const requestToken = req.query.request_token
-      const checksum = crypto.createHash('sha256')
+      const checksum = crypto
+        .createHash('sha256')
         .update(apiKey + requestToken + apiSecret)
         .digest('hex')
 
@@ -623,7 +711,7 @@ export function registerConnectorCredentialRoutes(
           }).toString(),
         })
 
-        const data = await res.json() as {
+        const data = (await res.json()) as {
           status: string
           data?: { access_token?: string; user_id?: string }
           error_type?: string
@@ -633,7 +721,9 @@ export function registerConnectorCredentialRoutes(
         if (!res.ok || data.status !== 'success' || !data.data?.access_token) {
           const errorMessage = data.message || data.error_type || 'kite_token_exchange_failed'
           log.error({ status: res.status, data }, 'Kite token exchange failed')
-          return reply.redirect(frontendRedirect(returnTo, { connect: req.params.id, error: errorMessage }))
+          return reply.redirect(
+            frontendRedirect(returnTo, { connect: req.params.id, error: errorMessage }),
+          )
         }
 
         // Update the existing credential record with the access_token,
@@ -642,7 +732,7 @@ export function registerConnectorCredentialRoutes(
           tenant_id: tenantId,
           connector_id: req.params.id,
           auth_type: 'oauth2_kite',
-          access_token: encryptIfNeeded(data.data.access_token)!,
+          access_token: await encryptForTenant(db, tenantId, data.data.access_token),
           // Kite access tokens are session-scoped (valid until logout or
           // expiry); there is no refresh_token in the standard flow. The
           // user re-auths via /connectors/zerodha/oauth/start when the
@@ -655,20 +745,25 @@ export function registerConnectorCredentialRoutes(
         if (syncEngine && connectorLoader) {
           const connector = connectorLoader.get(req.params.id)
           if (connector) {
-            syncEngine.backfill(connector, tenantId).then(result => {
-              fastify.log.info(
-                { connector_id: req.params.id, tenant_id: tenantId, ...result },
-                'Backfill complete',
-              )
-            }).catch(err => {
-              fastify.log.error({ err, connector_id: req.params.id }, 'Backfill failed')
-            })
+            syncEngine
+              .backfill(connector, tenantId)
+              .then((result) => {
+                fastify.log.info(
+                  { connector_id: req.params.id, tenant_id: tenantId, ...result },
+                  'Backfill complete',
+                )
+              })
+              .catch((err) => {
+                fastify.log.error({ err, connector_id: req.params.id }, 'Backfill failed')
+              })
           }
         }
 
         return reply.redirect(frontendRedirect(returnTo, { connected: req.params.id }))
       } catch (err) {
-        return reply.redirect(frontendRedirect(returnTo, { connect: req.params.id, error: String(err) }))
+        return reply.redirect(
+          frontendRedirect(returnTo, { connect: req.params.id, error: String(err) }),
+        )
       }
     }
 
@@ -698,11 +793,15 @@ export function registerConnectorCredentialRoutes(
 
     const tokenUrl = tokenUrls[req.params.id]
     if (!tokenUrl) {
-      return reply.redirect(frontendRedirect(returnTo, { connect: req.params.id, error: 'oauth_not_configured' }))
+      return reply.redirect(
+        frontendRedirect(returnTo, { connect: req.params.id, error: 'oauth_not_configured' }),
+      )
     }
 
     if (!req.query.code) {
-      return reply.redirect(frontendRedirect(returnTo, { connect: req.params.id, error: 'missing_code' }))
+      return reply.redirect(
+        frontendRedirect(returnTo, { connect: req.params.id, error: 'missing_code' }),
+      )
     }
 
     try {
@@ -714,9 +813,12 @@ export function registerConnectorCredentialRoutes(
       })
       if (req.params.id === 'twitter_x' && codeVerifier) body.set('code_verifier', codeVerifier)
 
-      const headers: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' }
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      }
       if (req.params.id === 'twitter_x' && clientSecret) {
-        headers['Authorization'] = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`
+        headers['Authorization'] =
+          `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`
       } else if (clientSecret) {
         body.set('client_secret', clientSecret)
       }
@@ -727,39 +829,54 @@ export function registerConnectorCredentialRoutes(
         body: body.toString(),
       })
 
-      const data = await res.json() as {
+      const data = (await res.json()) as {
         access_token: string
         refresh_token?: string
         expires_in?: number
-        error?: string | {
-          message?: string
-          type?: string
-          code?: number
-        }
+        error?:
+          | string
+          | {
+              message?: string
+              type?: string
+              code?: number
+            }
         error_description?: string
       }
 
       if (!res.ok || data.error) {
         // Handle both flat error structure and nested error object (Facebook style)
-        const errorMessage = typeof data.error === 'object'
-          ? data.error.message || data.error_description || 'token_exchange_failed'
-          : data.error_description || data.error || 'token_exchange_failed'
-        log.error({ connector_id: req.params.id, status: res.status, data }, 'OAuth token exchange failed')
-        return reply.redirect(frontendRedirect(returnTo, { connect: req.params.id, error: errorMessage }))
+        const errorMessage =
+          typeof data.error === 'object'
+            ? data.error.message || data.error_description || 'token_exchange_failed'
+            : data.error_description || data.error || 'token_exchange_failed'
+        log.error(
+          { connector_id: req.params.id, status: res.status, data },
+          'OAuth token exchange failed',
+        )
+        return reply.redirect(
+          frontendRedirect(returnTo, { connect: req.params.id, error: errorMessage }),
+        )
       }
 
       await executor.saveCredentials(tenantId, {
         tenant_id: tenantId,
         connector_id: req.params.id,
         auth_type: 'oauth2',
-        access_token: encryptIfNeeded(data.access_token)!,
-        ...(data.refresh_token ? { refresh_token: encryptIfNeeded(data.refresh_token)! } : {}),
-        ...(data.expires_in ? { token_expires_at: new Date(Date.now() + data.expires_in * 1000) } : {}),
+        access_token: await encryptForTenant(db, tenantId, data.access_token),
+        ...(data.refresh_token
+          ? { refresh_token: await encryptForTenant(db, tenantId, data.refresh_token) }
+          : {}),
+        ...(data.expires_in
+          ? { token_expires_at: new Date(Date.now() + data.expires_in * 1000) }
+          : {}),
         token_type: 'Bearer',
       })
       // A fresh grant clears any earlier dead-refresh-token flag.
-      await getTenantCollection<Record<string, unknown>>(db, 'connector_credentials', tenantId)
-        .updateOne({ connector_id: req.params.id }, { $set: { needs_reauth: false } })
+      await getTenantCollection<Record<string, unknown>>(
+        db,
+        'connector_credentials',
+        tenantId,
+      ).updateOne({ connector_id: req.params.id }, { $set: { needs_reauth: false } })
 
       // X: resolve the account handle once so /marketing/connections can
       // show "X (@handle)" instead of a bare channel name. Best-effort —
@@ -771,11 +888,19 @@ export function registerConnectorCredentialRoutes(
           })
           const me = (await meRes.json()) as { data?: { id?: string; username?: string } }
           if (meRes.ok && me.data?.username) {
-            await getTenantCollection<Record<string, unknown>>(db, 'connector_credentials', tenantId)
-              .updateOne(
-                { connector_id: 'twitter_x' },
-                { $set: { 'extra.username': me.data.username, ...(me.data.id ? { 'extra.user_id': me.data.id } : {}) } },
-              )
+            await getTenantCollection<Record<string, unknown>>(
+              db,
+              'connector_credentials',
+              tenantId,
+            ).updateOne(
+              { connector_id: 'twitter_x' },
+              {
+                $set: {
+                  'extra.username': me.data.username,
+                  ...(me.data.id ? { 'extra.user_id': me.data.id } : {}),
+                },
+              },
+            )
           }
         } catch {
           // display nicety only
@@ -790,12 +915,16 @@ export function registerConnectorCredentialRoutes(
       // access_token — it's what publishing and engagement reads use. A user
       // with no managed page can't publish, so that's a hard error here
       // rather than a dead connection.
-      if (req.params.id === 'facebook_pages' || req.params.id === 'instagram_business' || req.params.id === 'instagram') {
+      if (
+        req.params.id === 'facebook_pages' ||
+        req.params.id === 'instagram_business' ||
+        req.params.id === 'instagram'
+      ) {
         try {
           const exchange = await fetch(
             `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token` +
-            `&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}` +
-            `&fb_exchange_token=${encodeURIComponent(data.access_token)}`,
+              `&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}` +
+              `&fb_exchange_token=${encodeURIComponent(data.access_token)}`,
           )
           const longLived = (await exchange.json()) as { access_token?: string }
           const userToken = longLived.access_token ?? data.access_token
@@ -803,10 +932,14 @@ export function registerConnectorCredentialRoutes(
           const accountsRes = await fetch(
             `https://graph.facebook.com/v19.0/me/accounts?fields=id,name,access_token&access_token=${encodeURIComponent(userToken)}`,
           )
-          const accounts = (await accountsRes.json()) as { data?: { id: string; name: string; access_token: string }[] }
+          const accounts = (await accountsRes.json()) as {
+            data?: { id: string; name: string; access_token: string }[]
+          }
           const page = accounts.data?.[0]
           if (!page?.id || !page.access_token) {
-            return reply.redirect(frontendRedirect(returnTo, { connect: req.params.id, error: 'no_facebook_page' }))
+            return reply.redirect(
+              frontendRedirect(returnTo, { connect: req.params.id, error: 'no_facebook_page' }),
+            )
           }
 
           const extra: Record<string, string> = { page_id: page.id, page_name: page.name }
@@ -820,7 +953,12 @@ export function registerConnectorCredentialRoutes(
             const ig = (await igRes.json()) as { instagram_business_account?: { id?: string } }
             const igId = ig.instagram_business_account?.id
             if (!igId) {
-              return reply.redirect(frontendRedirect(returnTo, { connect: req.params.id, error: 'no_instagram_business_account' }))
+              return reply.redirect(
+                frontendRedirect(returnTo, {
+                  connect: req.params.id,
+                  error: 'no_instagram_business_account',
+                }),
+              )
             }
             extra['ig_user_id'] = igId
             try {
@@ -836,14 +974,28 @@ export function registerConnectorCredentialRoutes(
 
           // Page tokens derived from a long-lived user token don't expire —
           // drop the short-lived expiry the generic save just wrote.
-          await getTenantCollection<Record<string, unknown>>(db, 'connector_credentials', tenantId)
-            .updateOne(
-              { connector_id: req.params.id },
-              { $set: { access_token: encryptIfNeeded(page.access_token)!, extra }, $unset: { token_expires_at: '' } },
-            )
+          await getTenantCollection<Record<string, unknown>>(
+            db,
+            'connector_credentials',
+            tenantId,
+          ).updateOne(
+            { connector_id: req.params.id },
+            {
+              $set: {
+                access_token: await encryptForTenant(db, tenantId, page.access_token),
+                extra,
+              },
+              $unset: { token_expires_at: '' },
+            },
+          )
         } catch (err) {
           log.error({ err, connector_id: req.params.id }, 'Meta page resolution failed')
-          return reply.redirect(frontendRedirect(returnTo, { connect: req.params.id, error: 'meta_page_resolution_failed' }))
+          return reply.redirect(
+            frontendRedirect(returnTo, {
+              connect: req.params.id,
+              error: 'meta_page_resolution_failed',
+            }),
+          )
         }
       }
 
@@ -855,30 +1007,44 @@ export function registerConnectorCredentialRoutes(
         try {
           const longLivedRes = await fetch(
             `https://graph.threads.net/access_token?grant_type=th_exchange_token` +
-            `&client_secret=${encodeURIComponent(clientSecret)}&access_token=${encodeURIComponent(data.access_token)}`,
+              `&client_secret=${encodeURIComponent(clientSecret)}&access_token=${encodeURIComponent(data.access_token)}`,
           )
-          const longLived = (await longLivedRes.json()) as { access_token?: string; expires_in?: number }
+          const longLived = (await longLivedRes.json()) as {
+            access_token?: string
+            expires_in?: number
+          }
           const token = longLived.access_token ?? data.access_token
 
-          const meRes = await fetch(`https://graph.threads.net/v1.0/me?fields=id,username&access_token=${encodeURIComponent(token)}`)
+          const meRes = await fetch(
+            `https://graph.threads.net/v1.0/me?fields=id,username&access_token=${encodeURIComponent(token)}`,
+          )
           const me = (await meRes.json()) as { id?: string; username?: string }
           if (!me.id) {
-            return reply.redirect(frontendRedirect(returnTo, { connect: 'threads', error: 'threads_me_failed' }))
-          }
-          await getTenantCollection<Record<string, unknown>>(db, 'connector_credentials', tenantId)
-            .updateOne(
-              { connector_id: 'threads' },
-              {
-                $set: {
-                  access_token: encryptIfNeeded(token)!,
-                  extra: { user_id: me.id, ...(me.username ? { username: `@${me.username}` } : {}) },
-                  ...(longLived.expires_in ? { token_expires_at: new Date(Date.now() + longLived.expires_in * 1000) } : {}),
-                },
-              },
+            return reply.redirect(
+              frontendRedirect(returnTo, { connect: 'threads', error: 'threads_me_failed' }),
             )
+          }
+          await getTenantCollection<Record<string, unknown>>(
+            db,
+            'connector_credentials',
+            tenantId,
+          ).updateOne(
+            { connector_id: 'threads' },
+            {
+              $set: {
+                access_token: await encryptForTenant(db, tenantId, token),
+                extra: { user_id: me.id, ...(me.username ? { username: `@${me.username}` } : {}) },
+                ...(longLived.expires_in
+                  ? { token_expires_at: new Date(Date.now() + longLived.expires_in * 1000) }
+                  : {}),
+              },
+            },
+          )
         } catch (err) {
           log.error({ err }, 'Threads token exchange failed')
-          return reply.redirect(frontendRedirect(returnTo, { connect: 'threads', error: 'threads_exchange_failed' }))
+          return reply.redirect(
+            frontendRedirect(returnTo, { connect: 'threads', error: 'threads_exchange_failed' }),
+          )
         }
       }
 
@@ -892,16 +1058,33 @@ export function registerConnectorCredentialRoutes(
           })
           const me = (await meRes.json()) as { sub?: string; name?: string }
           if (!me.sub) {
-            return reply.redirect(frontendRedirect(returnTo, { connect: 'linkedin', error: 'linkedin_userinfo_failed' }))
-          }
-          await getTenantCollection<Record<string, unknown>>(db, 'connector_credentials', tenantId)
-            .updateOne(
-              { connector_id: 'linkedin' },
-              { $set: { extra: { author_urn: `urn:li:person:${me.sub}`, ...(me.name ? { name: me.name } : {}) } } },
+            return reply.redirect(
+              frontendRedirect(returnTo, {
+                connect: 'linkedin',
+                error: 'linkedin_userinfo_failed',
+              }),
             )
+          }
+          await getTenantCollection<Record<string, unknown>>(
+            db,
+            'connector_credentials',
+            tenantId,
+          ).updateOne(
+            { connector_id: 'linkedin' },
+            {
+              $set: {
+                extra: {
+                  author_urn: `urn:li:person:${me.sub}`,
+                  ...(me.name ? { name: me.name } : {}),
+                },
+              },
+            },
+          )
         } catch (err) {
           log.error({ err }, 'LinkedIn userinfo failed')
-          return reply.redirect(frontendRedirect(returnTo, { connect: 'linkedin', error: 'linkedin_userinfo_failed' }))
+          return reply.redirect(
+            frontendRedirect(returnTo, { connect: 'linkedin', error: 'linkedin_userinfo_failed' }),
+          )
         }
       }
 
@@ -916,15 +1099,28 @@ export function registerConnectorCredentialRoutes(
       if (req.params.id === 'gmail' && returnTo === 'family') {
         const emailAddress = await fetchGmailAddress(data.access_token)
         if (!emailAddress) {
-          return reply.redirect(frontendRedirect(returnTo, { connect: req.params.id, error: 'Could not read the connected Gmail address' }))
+          return reply.redirect(
+            frontendRedirect(returnTo, {
+              connect: req.params.id,
+              error: 'Could not read the connected Gmail address',
+            }),
+          )
         }
 
-        const familyCreds = getTenantCollection<Record<string, unknown>>(db, 'connector_credentials', tenantId)
-        const existing = await familyCreds.findOne({ connector_id: 'email' }) as { extra?: { refresh_token?: string } } | null
+        const familyCreds = getTenantCollection<Record<string, unknown>>(
+          db,
+          'connector_credentials',
+          tenantId,
+        )
+        const existing = (await familyCreds.findOne({ connector_id: 'email' })) as {
+          extra?: { refresh_token?: string }
+        } | null
         // Google only reissues a refresh_token on the first consent for a
         // given scope — a reconnect often comes back without one, so keep
         // the previously stored one rather than overwriting it with nothing.
-        const refreshToken = data.refresh_token ? encryptIfNeeded(data.refresh_token) : existing?.extra?.refresh_token
+        const refreshToken = data.refresh_token
+          ? await encryptForTenant(db, tenantId, data.refresh_token)
+          : existing?.extra?.refresh_token
 
         const credentialDoc = {
           tenant_id: tenantId,
@@ -936,22 +1132,35 @@ export function registerConnectorCredentialRoutes(
             port: 993,
             use_tls: true,
             provider: 'gmail',
-            access_token: encryptIfNeeded(data.access_token),
+            access_token: await encryptForTenant(db, tenantId, data.access_token),
             ...(refreshToken ? { refresh_token: refreshToken } : {}),
-            ...(data.expires_in ? { token_expires_at: new Date(Date.now() + data.expires_in * 1000) } : {}),
+            ...(data.expires_in
+              ? { token_expires_at: new Date(Date.now() + data.expires_in * 1000) }
+              : {}),
           },
           updated_at: new Date(),
           needs_reauth: false,
         }
-        await familyCreds.updateOne({ connector_id: 'email' }, { $set: credentialDoc }, { upsert: true })
+        await familyCreds.updateOne(
+          { connector_id: 'email' },
+          { $set: credentialDoc },
+          { upsert: true },
+        )
 
-        log.info({ tenant_id: tenantId, email: emailAddress }, 'Gmail connected via OAuth for family email connector')
+        log.info(
+          { tenant_id: tenantId, email: emailAddress },
+          'Gmail connected via OAuth for family email connector',
+        )
 
-        scanTenantInbox(db, tenantId, credentialDoc as Parameters<typeof scanTenantInbox>[2]).catch((err) => {
-          log.error({ err, tenant_id: tenantId }, 'Initial email scan failed (OAuth connect)')
-        })
+        scanTenantInbox(db, tenantId, credentialDoc as Parameters<typeof scanTenantInbox>[2]).catch(
+          (err) => {
+            log.error({ err, tenant_id: tenantId }, 'Initial email scan failed (OAuth connect)')
+          },
+        )
 
-        return reply.redirect(frontendRedirect(returnTo, { connected: 'email', email: emailAddress }))
+        return reply.redirect(
+          frontendRedirect(returnTo, { connected: 'email', email: emailAddress }),
+        )
       }
 
       // ── Auto-trigger historical backfill in background ──────────────────
@@ -960,20 +1169,25 @@ export function registerConnectorCredentialRoutes(
       if (syncEngine && connectorLoader) {
         const connector = connectorLoader.get(req.params.id)
         if (connector) {
-          syncEngine.backfill(connector, tenantId).then(result => {
-            fastify.log.info(
-              { connector_id: req.params.id, tenant_id: tenantId, ...result },
-              'Backfill complete',
-            )
-          }).catch(err => {
-            fastify.log.error({ err, connector_id: req.params.id }, 'Backfill failed')
-          })
+          syncEngine
+            .backfill(connector, tenantId)
+            .then((result) => {
+              fastify.log.info(
+                { connector_id: req.params.id, tenant_id: tenantId, ...result },
+                'Backfill complete',
+              )
+            })
+            .catch((err) => {
+              fastify.log.error({ err, connector_id: req.params.id }, 'Backfill failed')
+            })
         }
       }
 
       return reply.redirect(frontendRedirect(returnTo, { connected: req.params.id }))
     } catch (err) {
-      return reply.redirect(frontendRedirect(returnTo, { connect: req.params.id, error: String(err) }))
+      return reply.redirect(
+        frontendRedirect(returnTo, { connect: req.params.id, error: String(err) }),
+      )
     }
   })
 
@@ -989,9 +1203,10 @@ export function registerConnectorCredentialRoutes(
     if (!connected) return reply.status(400).send({ error: 'Connector not connected' })
 
     // Fire and forget — returns immediately, runs in background
-    syncEngine.backfill(connector, tenantId)
-      .then(r => fastify.log.info({ ...r }, 'Manual backfill complete'))
-      .catch(err => fastify.log.error({ err }, 'Manual backfill failed'))
+    syncEngine
+      .backfill(connector, tenantId)
+      .then((r) => fastify.log.info({ ...r }, 'Manual backfill complete'))
+      .catch((err) => fastify.log.error({ err }, 'Manual backfill failed'))
 
     return reply.status(202).send({
       status: 'backfill_started',
@@ -1005,19 +1220,25 @@ export function registerConnectorCredentialRoutes(
   fastify.get<{ Params: { id: string } }>('/connectors/:id/sync/status', async (req) => {
     const tenantId = req.authContext.tenant_id
     const stateCol = db.collection('connector_sync_state')
-    const states = await stateCol.find({
-      tenant_id: tenantId,
-      connector_id: req.params.id,
-    }).toArray()
+    const states = await stateCol
+      .find({
+        tenant_id: tenantId,
+        connector_id: req.params.id,
+      })
+      .toArray()
     return {
       connector_id: req.params.id,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       resources: (states as any[]).map((s) => ({
         resource: s.resource as string,
         last_synced_at: s.last_synced_at as Date | null,
         backfill_complete: s.backfill_complete as boolean,
         total_records_synced: s.total_records_synced as number,
-        last_error: (s.last_error ?? null) as { status: number; status_text: string; at: Date } | null,
+        last_error: (s.last_error ?? null) as {
+          status: number
+          status_text: string
+          at: Date
+        } | null,
       })),
     }
   })
@@ -1035,10 +1256,17 @@ export function registerConnectorCredentialRoutes(
   })
 
   // DELETE /memory/:workflowId/:key — forget a specific memory
-  fastify.delete<{ Params: { workflowId: string; key: string } }>('/memory/:workflowId/:key', async (req) => {
-    const tenantId = req.authContext.tenant_id
-    const col = db.collection('agent_memory')
-    await col.deleteOne({ tenant_id: tenantId, workflow_id: req.params.workflowId, key: req.params.key })
-    return { ok: true }
-  })
+  fastify.delete<{ Params: { workflowId: string; key: string } }>(
+    '/memory/:workflowId/:key',
+    async (req) => {
+      const tenantId = req.authContext.tenant_id
+      const col = db.collection('agent_memory')
+      await col.deleteOne({
+        tenant_id: tenantId,
+        workflow_id: req.params.workflowId,
+        key: req.params.key,
+      })
+      return { ok: true }
+    },
+  )
 }
