@@ -18,6 +18,7 @@
 import type { Db } from 'mongodb'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { sendHeartbeatEmail } from '../auth-email.js'
+import { heartbeatUnsubUrl } from '../routes/heartbeat-unsubscribe.js'
 import { renderHeartbeat, type HeartbeatData } from '../feed/render-heartbeat.js'
 import type { FamilyGroupDoc } from '../routes/family-group.js'
 import type { DeliveryPreferences } from '../delivery/delivery-router.js'
@@ -111,6 +112,7 @@ export async function runFamilyHeartbeat(
 ): Promise<HeartbeatResult> {
   const now = opts.now ?? new Date()
   const appUrl = process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002'
+  const apiUrl = process.env['API_BASE_URL'] ?? 'http://localhost:3001'
 
   const families = await safe(
     db.collection<FamilyGroupDoc>('family_groups').find({}).toArray(),
@@ -255,7 +257,12 @@ export async function runFamilyHeartbeat(
                 .catch(() => null)
             : null
         if (already) continue
-        const delivery = await sendHeartbeatEmail(member.email, member.name, rendered)
+        const delivery = await sendHeartbeatEmail(
+          member.email,
+          member.name,
+          rendered,
+          heartbeatUnsubUrl(apiUrl, tenantId, member.id),
+        )
         if (!delivery.ok) {
           // Not recorded as sent: the idempotency row is what stops a retry.
           result.failed++
