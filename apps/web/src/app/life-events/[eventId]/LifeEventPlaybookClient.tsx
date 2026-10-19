@@ -346,7 +346,7 @@ export default function LifeEventPlaybookClient() {
                     }}
                     style={{ border: '2px solid' }}
                   >
-                    {done && <Check size={14} color="#08080c" />}
+                    {done && <Check size={14} color="rgb(var(--on-cta))" />}
                   </motion.div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">

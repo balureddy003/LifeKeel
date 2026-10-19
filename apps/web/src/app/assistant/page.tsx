@@ -199,7 +199,7 @@ export default function AssistantPage() {
   }, [])
 
   return (
-    <div className="flex flex-col h-[calc(100vh-80px)]">
+    <div className="flex flex-col h-[calc(100vh-80px)] overflow-x-hidden">
       <PageHeader title="Keel" subtitle="Ask me anything about your family" />
 
       {/* Live-verification finding: new messages appeared with no signal

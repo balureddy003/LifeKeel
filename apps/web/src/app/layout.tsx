@@ -96,7 +96,7 @@ export const viewport: Viewport = {
   // themeColor is a static export — it can't track data-theme, so it stays
   // the dark palette (the default, and what OS chrome hints show while the
   // inline script below is still resolving the stored preference).
-  themeColor: '#08080c',
+  themeColor: '#0a1822',
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',

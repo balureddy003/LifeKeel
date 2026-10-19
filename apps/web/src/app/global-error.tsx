@@ -46,8 +46,8 @@ export default function GlobalError({
           style={{
             width: '100%',
             maxWidth: '20rem',
-            background: '#6d5ef5',
-            color: '#fff',
+            background: '#d9a441',
+            color: '#14202a',
             fontWeight: 600,
             borderRadius: '1rem',
             padding: '1rem',

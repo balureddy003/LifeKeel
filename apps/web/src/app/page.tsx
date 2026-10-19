@@ -487,7 +487,7 @@ function UrgencyBanner() {
 // Rotating feature-discovery tip — one per visit, never repeated, dismissible.
 // Stored in localStorage so it persists across sessions.
 const FEATURE_TIPS = [
-  { text: 'Ask Keel anything about your family finances — tap the purple button.', href: '/assistant', cta: 'Try it' },
+  { text: 'Ask Keel anything about your family finances — tap the Ask Keel button.', href: '/assistant', cta: 'Try it' },
   { text: 'Swipe left on an inbox item to dismiss it — you can undo within 5 seconds.', href: '/inbox', cta: 'Open Inbox' },
   { text: 'Keel can scan your email for renewals and policy changes.', href: '/connect/email', cta: 'Connect email' },
   { text: 'Upload a will, insurance policy, or bank statement to get insights.', href: '/upload', cta: 'Upload' },
