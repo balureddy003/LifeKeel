@@ -24,3 +24,42 @@ Evidence: `operator/autopilot.ts:376-382`, `routes/marketing-posts.ts:145-150,11
 **Out of scope** — new social channels; engagement metrics; campaign engine.
 
 **Becomes** — PRD number once accepted: docs/prd/NNN-*.md
+
+---
+
+## Implementation record (2026-10)
+
+**Shipped — option A: auto-publish joins `NEVER_AUTONOMOUS`.** Operator-level
+decision: earned trust never buys an external, effectively-irreversible
+public action. The Tier-3 alternative (per-channel consent, exact preview,
+revocation, incident story) was rejected — social publishing fails the
+Tier-3 definition on two of three counts (it is not reversible, and the
+stakes are public). Removing the weaker system is smaller, matches the
+autopilot policy that already code-rejects `marketing.publish`/`social.post`,
+and keeps the trust ladder's meaning honest: a display of earned
+confidence, never a licence.
+
+**Changes:**
+
+- `routes/marketing-posts.ts` — `autoPublishEligible` and the `auto-trust`
+  claim/dispatch block deleted; every `POST /marketing/posts` lands 'draft'.
+  `incrementTrustScope` kept: the counter still increments on human approve
+  as an earned-confidence display — it unlocks nothing. `auto_published`
+  remains on the doc type for historical records.
+- `operator/autopilot.ts` — `NEVER_AUTONOMOUS` comment records that this is
+  now the single publish-policy door.
+- Web operator marketing page — the "at 5, Keel publishes new drafts here
+  itself" banner replaced with "every publish stays a human tap".
+- `trust-tier-gate.test.ts` — publishPost call-site count 3→2; new
+  no-disagreement tripwire fails if an auto-approval path returns or
+  `NEVER_AUTONOMOUS` drops the publish entries.
+- `marketing-posts.test.ts` — auto-publish test replaced with a
+  draft-at-full-trust assertion; scheduled-post tests now approve via the
+  human route.
+
+**Deliberately unchanged:** `daily_marketing_drafts_enabled` (draft
+generation is Tier 1, review-only — unaffected); `auto_execute_enabled` and
+`jobs/auto-execute-trusted.ts` (insight `log_only` scopes only — marketing
+scopes never matched an insight workflow so nothing else spent the
+counter); the `marketing.post_auto_publish` audit event vocabulary
+(historical records keep it).

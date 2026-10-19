@@ -22,7 +22,8 @@ const SRC = path.resolve(__dirname, '..')
 /** Files allowed to construct/use ActionExecutor, with the tier each represents. */
 const ALLOWED_CALLERS: Record<string, string> = {
   'routes/insights.ts': 'Tier 2 — POST /insights/:id/approve, human user_id',
-  'jobs/auto-execute-trusted.ts': 'Tier 3 — opt-in, off by default, log_only scopes that earned trust',
+  'jobs/auto-execute-trusted.ts':
+    'Tier 3 — opt-in, off by default, log_only scopes that earned trust',
 }
 
 function walk(dir: string): string[] {
@@ -33,12 +34,17 @@ function walk(dir: string): string[] {
   })
 }
 
-const files = walk(SRC).map((p) => ({ rel: path.relative(SRC, p), text: fs.readFileSync(p, 'utf8') }))
+const files = walk(SRC).map((p) => ({
+  rel: path.relative(SRC, p),
+  text: fs.readFileSync(p, 'utf8'),
+}))
 
 describe('trust-tier gate on ActionExecutor', () => {
   it('only allow-listed files import ActionExecutor', () => {
     const importers = files
-      .filter((f) => /import\s*\{[^}]*\bActionExecutor\b[^}]*\}\s*from\s*'[^']*action-executor/.test(f.text))
+      .filter((f) =>
+        /import\s*\{[^}]*\bActionExecutor\b[^}]*\}\s*from\s*'[^']*action-executor/.test(f.text),
+      )
       .map((f) => f.rel)
       .sort()
     expect(importers).toEqual(Object.keys(ALLOWED_CALLERS).sort())
@@ -49,7 +55,8 @@ describe('trust-tier gate on ActionExecutor', () => {
       const text = files.find((f) => f.rel === rel)!.text
       const calls = [...text.matchAll(/\.execute\(([\s\S]*?)\)\s*(?:\.catch|\n\s*:|\n\s*\)|;|$)/g)]
       expect(calls.length, `${rel} should call execute()`).toBeGreaterThan(0)
-      for (const c of calls) expect(c[1], `${rel}: execute() without approvedBy`).toMatch(/approvedBy/)
+      for (const c of calls)
+        expect(c[1], `${rel}: execute() without approvedBy`).toMatch(/approvedBy/)
     }
   })
 
@@ -65,27 +72,41 @@ describe('trust-tier gate on ActionExecutor', () => {
  * Public posting is the other outward-facing door: DbSocialPublisher.createPost
  * publishes to X/LinkedIn/etc. directly, bypassing ActionExecutor. Today every
  * path to it goes through publishPost() in routes/marketing-posts.ts, and every
- * post must reach state 'approved' (with approved_by) first: a human via
- * the approve route, or the explicit opt-in 'auto-trust' scope.
+ * post must reach state 'approved' (with approved_by) first — set only by the
+ * human approve route (intent 03 removed the 'auto-trust' path: earned trust
+ * never buys an external effect, matching autopilot's NEVER_AUTONOMOUS).
  */
 describe('trust-tier gate on social publishing', () => {
   const posts = files.find((f) => f.rel === 'routes/marketing-posts.ts')!.text
 
   it('only routes/marketing-posts.ts calls createPost()', () => {
-    const callers = files.filter((f) => f.rel !== 'marketing/social-publisher.ts' && /\.createPost\(/.test(f.text)).map((f) => f.rel)
+    const callers = files
+      .filter((f) => f.rel !== 'marketing/social-publisher.ts' && /\.createPost\(/.test(f.text))
+      .map((f) => f.rel)
     expect(callers).toEqual(['routes/marketing-posts.ts'])
   })
 
-  it('publishPost has exactly the three reviewed call sites (sweep, auto-trust, human approve)', () => {
+  it('publishPost has exactly the two reviewed call sites (cron sweep, human approve)', () => {
     const sites = [...posts.matchAll(/\bpublishPost\(/g)].length - 1 // minus the definition
-    expect(sites).toBe(3)
+    expect(sites).toBe(2)
   })
 
   it('every new approval (state approved + approved_at) records who approved', () => {
     // The pause-restore `$set: { state: 'approved' }` re-queues an already-approved post; not matched.
     const sets = [...posts.matchAll(/\$set:\s*\{\s*state:\s*'approved',\s*approved_at[^}]*\}/g)]
-    expect(sets.length).toBeGreaterThanOrEqual(2)
+    expect(sets.length).toBeGreaterThanOrEqual(1)
     for (const s of sets) expect(s[0]).toMatch(/approved_by/)
+  })
+
+  it('the two publish-policy systems cannot disagree (intent 03)', () => {
+    // The removed auto-trust path must not come back under another name —
+    // no approval recorded by anyone other than a real user id.
+    expect(posts).not.toMatch(/autoPublishEligible|'auto-trust'/)
+    // And autopilot must still name publishing as never-autonomous.
+    const autopilot = files.find((f) => f.rel === 'operator/autopilot.ts')!.text
+    const never = autopilot.match(/NEVER_AUTONOMOUS\s*=\s*\[([^\]]+)\]/)?.[1] ?? ''
+    expect(never).toContain("'marketing.publish'")
+    expect(never).toContain("'social.post'")
   })
 })
 
@@ -96,15 +117,20 @@ describe('trust-tier gate on social publishing', () => {
  */
 describe('trust-tier gate on ConnectorActionExecutor', () => {
   const ALLOWED_CONNECTOR_CALLERS: Record<string, string> = {
-    'actions/action-executor.ts': 'comments only; the real dispatch uses SendGrid/Twilio/CRM clients',
-    'marketing/social-publisher.ts': 'X/Facebook publishing; gated by approved state, see social publishing tests',
+    'actions/action-executor.ts':
+      'comments only; the real dispatch uses SendGrid/Twilio/CRM clients',
+    'marketing/social-publisher.ts':
+      'X/Facebook publishing; gated by approved state, see social publishing tests',
     'routes/marketing-posts.ts': 'publishPost after approval, plus read-only engagement lookups',
     'routes/connector-credentials.ts':
       'POST /connectors/:id/actions/:action; read-only, any non-GET registry action is refused via connectors/action-gate.ts (playbook G11)',
   }
 
   it('only allow-listed files reference ConnectorActionExecutor', () => {
-    const users = files.filter((f) => /\bConnectorActionExecutor\b/.test(f.text)).map((f) => f.rel).sort()
+    const users = files
+      .filter((f) => /\bConnectorActionExecutor\b/.test(f.text))
+      .map((f) => f.rel)
+      .sort()
     expect(users).toEqual(Object.keys(ALLOWED_CONNECTOR_CALLERS).sort())
   })
 })

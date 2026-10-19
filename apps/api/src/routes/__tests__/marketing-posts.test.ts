@@ -300,32 +300,14 @@ describe('/marketing/posts', () => {
     expect(postiz.createPost).not.toHaveBeenCalled()
   })
 
-  it('auto-publishes a new draft when the channel is trusted and the tenant opted in', async () => {
+  it('stays a draft at full trust and opted in — publishing always needs the approve route (intent 03)', async () => {
     const postiz = fakePostiz()
     const { app } = await buildApp({ postiz, settings: TRUSTED })
     const res = await app.inject({ method: 'POST', url: '/marketing/posts', payload: DRAFT })
     expect(res.statusCode).toBe(201)
     const post = res.json().post
-    expect(post.state).toBe('published')
-    expect(post.auto_published).toBe(true)
-    expect(postiz.createPost).toHaveBeenCalledWith(
-      expect.objectContaining({
-        integrationId: 'int-1',
-        content: DRAFT.content,
-        channel: 'x',
-        type: 'now',
-      }),
-    )
-  })
-
-  it('stays a draft at full trust when auto_execute_enabled is off', async () => {
-    const postiz = fakePostiz()
-    const { app } = await buildApp({
-      postiz,
-      settings: { ...TRUSTED, auto_execute_enabled: false },
-    })
-    const res = await app.inject({ method: 'POST', url: '/marketing/posts', payload: DRAFT })
-    expect(res.json().post.state).toBe('draft')
+    expect(post.state).toBe('draft')
+    expect(post.approved_by).toBeUndefined()
     expect(postiz.createPost).not.toHaveBeenCalled()
   })
 
@@ -355,9 +337,13 @@ describe('/marketing/posts', () => {
       url: '/marketing/posts',
       payload: { ...DRAFT, scheduled_at: future },
     })
-    // Channels can't hold a schedule — the post waits as 'approved' until
-    // the cron sweep dispatches it at due time.
-    expect(res.json().post.state).toBe('approved')
+    expect(res.json().post.state).toBe('draft')
+    expect(postiz.createPost).not.toHaveBeenCalled()
+
+    // Channels can't hold a schedule — approving a future-dated draft parks
+    // it 'approved' until the cron sweep dispatches it at due time.
+    await app.inject({ method: 'POST', url: `/marketing/posts/${posts[0]!['id']}/approve` })
+    expect(posts[0]!['state']).toBe('approved')
     expect(postiz.createPost).not.toHaveBeenCalled()
 
     // Due time arrives — the sweep dispatches.
@@ -423,6 +409,7 @@ describe('/marketing/posts', () => {
       url: '/marketing/posts',
       payload: { ...DRAFT, scheduled_at: future },
     })
+    await app.inject({ method: 'POST', url: `/marketing/posts/${posts[0]!['id']}/approve` })
     expect(posts[0]!['state']).toBe('approved')
 
     const res = await app.inject({
