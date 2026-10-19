@@ -207,17 +207,31 @@ jobs:
           echo "new=$NEW" >> "$GITHUB_OUTPUT"
           echo "Smoke testing $NEW at $TAG_URL/health/ready (no user traffic)"
           STATUS="000"
+          BODY=""
           for i in $(seq 1 18); do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$TAG_URL/health/ready" || echo "000")
+            BODY=$(curl -s -w '\n%{http_code}' "$TAG_URL/health/ready" || echo -e "\n000")
+            STATUS=$(echo "$BODY" | tail -1)
             [ "$STATUS" = "200" ] && break
             echo "Attempt $i: HTTP $STATUS, waiting..."
             sleep 5
           done
           if [ "$STATUS" != "200" ]; then
+            echo "$BODY" | head -n -1
             echo "::error::The new revision $NEW failed its smoke test (last status $STATUS). It never received traffic; production is unchanged."
             exit 1
           fi
-          echo "New revision $NEW is healthy"
+          # Migration gate: the canary must prove the ledger is current, not
+          # merely that the process is alive. /health/ready already 503s on
+          # pending migrations, but assert it explicitly so a readiness-body
+          # regression can't silently weaken the gate.
+          MIG_PENDING=$(echo "$BODY" | head -n -1 | jq -r '.dependencies.migration_pending // "missing"')
+          if [ "$MIG_PENDING" != "false" ]; then
+            echo "$BODY" | head -n -1
+            echo "::error::Revision $NEW reports migration_pending=$MIG_PENDING. Not shifting traffic."
+            exit 1
+          fi
+          MIG_VER=$(echo "$BODY" | head -n -1 | jq -r '.dependencies.migration_version // "unknown"')
+          echo "New revision $NEW is healthy (migration ledger at $MIG_VER)"
 
       # Step 4 of 4. Move all traffic to the verified revision, check production again, and put the previous
       # revision back automatically if it is not healthy. Revisions are pinned by name, so a later plain
@@ -236,14 +250,25 @@ jobs:
           SERVICE_URL=$(gcloud run services describe "$SERVICE" --region "$REGION" --project "$PROJECT" --format='value(status.url)')
           echo "Verifying production at $SERVICE_URL/health/ready"
           STATUS="000"
+          BODY=""
           for i in $(seq 1 12); do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL/health/ready" || echo "000")
+            BODY=$(curl -s -w '\n%{http_code}' "$SERVICE_URL/health/ready" || echo -e "\n000")
+            STATUS=$(echo "$BODY" | tail -1)
             [ "$STATUS" = "200" ] && break
             echo "Attempt $i: HTTP $STATUS, waiting..."
             sleep 5
           done
           if [ "$STATUS" != "200" ]; then
+            echo "$BODY" | head -n -1
             echo "::error::Production failed its health check after the shift (last status $STATUS). Reverting to $PREV."
+            gcloud run services update-traffic "$SERVICE" --region "$REGION" --project "$PROJECT" --to-revisions "$PREV=100"
+            echo "::error::Reverted to $PREV. Release $RELEASE_SHA is NOT live."
+            exit 1
+          fi
+          MIG_PENDING=$(echo "$BODY" | head -n -1 | jq -r '.dependencies.migration_pending // "missing"')
+          if [ "$MIG_PENDING" != "false" ]; then
+            echo "$BODY" | head -n -1
+            echo "::error::Production reports migration_pending=$MIG_PENDING after the shift. Reverting to $PREV."
             gcloud run services update-traffic "$SERVICE" --region "$REGION" --project "$PROJECT" --to-revisions "$PREV=100"
             echo "::error::Reverted to $PREV. Release $RELEASE_SHA is NOT live."
             exit 1
@@ -256,13 +281,25 @@ jobs:
         run: |
           SERVICE_URL="${{ steps.deploy.outputs.url }}"
           STATUS="000"
+          BODY=""
           for i in $(seq 1 18); do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL/health/ready" || echo "000")
+            BODY=$(curl -s -w '\n%{http_code}' "$SERVICE_URL/health/ready" || echo -e "\n000")
+            STATUS=$(echo "$BODY" | tail -1)
             [ "$STATUS" = "200" ] && break
             echo "Attempt $i: HTTP $STATUS, waiting..."
             sleep 5
           done
-          [ "$STATUS" = "200" ] || { echo "::error::First-deploy smoke test failed (last status $STATUS)."; exit 1; }
+          if [ "$STATUS" != "200" ]; then
+            echo "$BODY" | head -n -1
+            echo "::error::First-deploy smoke test failed (last status $STATUS)."
+            exit 1
+          fi
+          MIG_PENDING=$(echo "$BODY" | head -n -1 | jq -r '.dependencies.migration_pending // "missing"')
+          if [ "$MIG_PENDING" != "false" ]; then
+            echo "$BODY" | head -n -1
+            echo "::error::First deploy reports migration_pending=$MIG_PENDING."
+            exit 1
+          fi
 
       # Housekeeping: drop the canary tag whether the release succeeded or not (the revision itself is kept).
       - name: Remove the canary tag
