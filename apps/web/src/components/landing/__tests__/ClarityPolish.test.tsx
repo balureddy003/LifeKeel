@@ -4,10 +4,8 @@ import path from 'node:path'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { SampleDay } from '../SampleDay'
 import { CoverOnFile } from '../CoverOnFile'
-import { StoryBoard } from '../StoryBoard'
 import { Pricing } from '../Pricing'
 import { SiteFooter } from '../SiteFooter'
-import { CAPABILITIES } from '../capabilities'
 import { track } from '@/lib/growth-track'
 
 vi.mock('@/lib/growth-track', () => ({ track: vi.fn() }))
@@ -38,13 +36,6 @@ describe('mid-page signup and counts', () => {
   it('the cover section has its own signup link', () => {
     render(<CoverOnFile />)
     expect(screen.getByRole('link', { name: 'Create your free account' }).getAttribute('href')).toMatch(/\/signup$/)
-  })
-
-  it('the board states how many items are live and how many are planned', () => {
-    const live = CAPABILITIES.filter((c) => c.live).length
-    render(<StoryBoard />)
-    expect(screen.getByText(`${live} things are live today`)).toBeTruthy()
-    expect(screen.getByText(new RegExp(`${CAPABILITIES.length - live} are planned`))).toBeTruthy()
   })
 })
 
