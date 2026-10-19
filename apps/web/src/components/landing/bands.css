@@ -173,3 +173,52 @@
   .lk-sticky { display: block; }
 }
 @media print { .lk-sticky { display: none !important; } }
+
+/* security, plus spotlight, pricing, faq, footer */
+.lk-trio { margin: 36px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--ink); }
+.lk-trio li { padding: 24px 24px 24px 0; border-bottom: 1px solid var(--line); }
+.lk-trio li + li { padding-left: 24px; border-left: 1px solid var(--line); }
+.landing .lk-trio h3 { font: 600 18px var(--body); margin: 0; }
+.lk-trio p { margin: 6px 0 0; color: var(--muted); }
+.lk-cta-row { margin-top: 22px; max-width: 320px; }
+.lk-fields { margin: 16px 0 0; display: grid; gap: 8px; }
+.lk-fields div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.lk-fields dt { font: 500 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); align-self: center; }
+.lk-fields dd { margin: 0; font-weight: 600; min-width: 0; overflow-wrap: anywhere; text-align: right; }
+.lk-plans { margin-top: 36px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.lk-plan-card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 24px; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.lk-plan-card.plus { border-color: var(--field-line); box-shadow: inset 0 0 0 1px var(--field-line); }
+.lk-plan-card header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.landing .lk-plan-card h3 { font: 400 32px/1 var(--display); margin: 0; }
+.lk-price { font: 500 13px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.lk-plan-card ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.lk-plan-card li { padding-left: 22px; position: relative; font-size: 15px; }
+.lk-plan-card li::before { content: ''; position: absolute; left: 2px; top: 0.55em; width: 8px; height: 8px; border-radius: 50%; background: var(--ok-text); }
+.lk-btn-quiet { background: transparent; color: var(--ink); border-color: var(--field-line); }
+.lk-faq { margin-top: 28px; display: grid; gap: 8px; max-width: 820px; }
+.lk-faq details { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+.lk-faq summary { cursor: pointer; padding: 16px 18px; min-height: 52px; font-weight: 600; list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.lk-faq summary::-webkit-details-marker { display: none; }
+.lk-faq summary::after { content: '+'; font: 400 22px/1 var(--mono); color: var(--muted); flex: none; }
+.lk-faq details[open] summary::after { content: '\2212'; }
+.lk-faq details p { margin: 0; padding: 0 18px 18px; color: var(--muted); }
+.lk-footer { padding-block: 56px 48px; border-top: 1px solid var(--line); }
+.lk-foot-grid { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1.4fr; gap: 32px; }
+.landing .lk-foot-grid h3 { font: 500 12px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
+.lk-foot-brand { margin: 0 0 8px; font: 400 26px/1 var(--display); }
+.lk-foot-grid nav { display: grid; gap: 2px; align-content: start; }
+.lk-foot-grid nav a { color: var(--ink); text-decoration: none; min-height: 44px; display: flex; align-items: center; font-size: 15px; }
+.lk-foot-grid nav a:hover { text-decoration: underline; }
+.lk-news { display: grid; gap: 8px; }
+.lk-news-row { display: flex; gap: 8px; }
+.lk-news input { flex: 1 1 auto; min-width: 0; font: 400 16px var(--body); color: var(--ink); background: var(--surface); border: 1px solid var(--field-line); border-radius: 12px; padding: 12px 14px; min-height: 48px; }
+.lk-news button { font: 600 15px var(--body); background: var(--cta); color: var(--on-cta); border: 0; border-radius: 12px; padding: 0 18px; min-height: 48px; cursor: pointer; }
+.lk-news button[disabled] { opacity: 0.6; cursor: default; }
+.lk-legalline { margin-top: 36px; max-width: 80ch; }
+@media (max-width: 860px) {
+  .lk-trio { grid-template-columns: minmax(0, 1fr); }
+  .lk-trio li + li { padding-left: 0; border-left: 0; }
+  .lk-trio li { padding-right: 0; }
+  .lk-plans { grid-template-columns: minmax(0, 1fr); }
+  .lk-foot-grid { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+}

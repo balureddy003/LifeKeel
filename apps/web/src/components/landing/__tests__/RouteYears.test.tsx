@@ -113,3 +113,33 @@ describe('StickyCta', () => {
     })
   })
 })
+
+describe('StickyCta and the footer', () => {
+  it('hides once the footer is on screen, even if the close was never seen', () => {
+    stubMatchMedia(false)
+    const foot = document.createElement('footer')
+    foot.className = 'lk-footer'
+    document.body.appendChild(foot)
+    const cbs = new Map<Element, (es: { isIntersecting: boolean }[]) => void>()
+    window.IntersectionObserver = class {
+      private cb: (es: { isIntersecting: boolean }[]) => void
+      constructor(c: (es: { isIntersecting: boolean }[]) => void) {
+        this.cb = c
+      }
+      observe(el: Element) {
+        cbs.set(el, this.cb)
+      }
+      disconnect() {}
+    } as unknown as typeof IntersectionObserver
+    const hero = document.createElement('div')
+    hero.id = 'signup'
+    document.body.appendChild(hero)
+    const { container } = render(<StickyCta />)
+    act(() => cbs.get(hero)!([{ isIntersecting: false }]))
+    expect(container.firstElementChild!.className).toContain('on')
+    act(() => cbs.get(foot)!([{ isIntersecting: true }]))
+    expect(container.firstElementChild!.className).not.toContain(' on')
+    foot.remove()
+    hero.remove()
+  })
+})
