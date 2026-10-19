@@ -126,6 +126,13 @@ export const CLAIMS: Claim[] = [
     evidence: 'apps/web/src/app/privacy/page.tsx',
   },
   {
+    id: 'no-policy-picks',
+    text: 'Keel names no insurer, ranks no policy and gives no switching advice',
+    status: 'live',
+    page: true,
+    evidence: 'packages/engine/src/__tests__/advice-rule.test.ts',
+  },
+  {
     id: 'approval-first',
     text: 'Nothing leaves LifeKeel for you unless you approve it or switched it on',
     status: 'live',
@@ -164,6 +171,6 @@ export const CLAIMS: Claim[] = [
     id: 'always-on',
     text: 'Keel is always watching',
     status: 'blocked',
-    forbidden: ['always on', 'always watching', 'around the clock', '24/7'],
+    forbidden: ['always on', 'always-on', 'always watching', 'around the clock', '24/7'],
   },
 ]

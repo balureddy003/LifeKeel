@@ -341,8 +341,8 @@ export function MarketingLanding() {
           Less than a streaming service. More than a safety net.
         </h2>
         <p className="text-sm text-ink-tertiary text-center mb-7 sm:mb-10 max-w-sm mx-auto">
-          Continuous family protection monitoring starts free. The only paid tier adds AI document
-          reading. No hidden fees, no commission revenue, no surprise charges.
+          Checking what you have told Keel starts free. The only paid tier adds AI document reading.
+          No hidden fees, no commission revenue, no surprise charges.
         </p>
         <div className="grid gap-4 sm:grid-cols-2 items-start">
           <div className="glass rounded-2xl p-5 sm:p-6 flex flex-col">
@@ -505,8 +505,8 @@ export function MarketingLanding() {
               <span className="text-sm font-bold">LifeKeel</span>
             </div>
             <p className="text-footnote text-ink-tertiary leading-relaxed">
-              The always-on readiness system for your family. Know your numbers, have a plan, be
-              ready.
+              Your family's chart, kept current. Know what is on file, and where to start if
+              something happens.
             </p>
           </div>
           <div>
