@@ -1,5 +1,6 @@
 import type { FastifyRequest } from 'fastify'
 import type { Db } from 'mongodb'
+import { hashState } from './dual-control.js'
 
 export type OperatorAuditAction =
   | 'operator.user.suspend'
@@ -51,6 +52,8 @@ export type OperatorAuditAction =
   | 'operator.autopilot.approve'
   | 'operator.autopilot.reject'
   | 'operator.digest.send'
+  | 'operator.dual_control.request'
+  | 'operator.dual_control.confirm'
   | 'autopilot.action'
   | 'autopilot.propose'
 
@@ -65,6 +68,10 @@ export interface OperatorAuditEntry {
   target_id: string
   reason: string
   metadata?: Record<string, unknown>
+  /** sha256 of the target document before/after the mutation — evidence of
+   *  what the action changed without storing the record itself in the log. */
+  before_hash?: string
+  after_hash?: string
   request_id: string
   ip: string
   user_agent: string
@@ -89,6 +96,7 @@ export class OperatorAuditLogger {
     targetId: string,
     reason: string,
     metadata?: Record<string, unknown>,
+    state?: { before?: unknown; after?: unknown },
   ): Promise<void> {
     const operator = request.operatorContext
     if (!operator) throw new Error('Operator context missing')
@@ -101,6 +109,8 @@ export class OperatorAuditLogger {
       target_id: targetId,
       reason,
       ...(metadata ? { metadata } : {}),
+      ...(state?.before !== undefined ? { before_hash: hashState(state.before) } : {}),
+      ...(state?.after !== undefined ? { after_hash: hashState(state.after) } : {}),
       request_id: request.id,
       ip: request.ip,
       user_agent: request.headers['user-agent'] ?? '',

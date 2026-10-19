@@ -59,6 +59,7 @@ const EXEMPT_COLLECTIONS = new Set([
   // operator control plane
   'operator_alerts',
   'operator_digests',
+  'operator_dual_approvals',
   'platform_operators',
   'platform_config',
   'platform_config_history',

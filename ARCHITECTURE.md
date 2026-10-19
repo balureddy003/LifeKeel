@@ -1707,7 +1707,27 @@ The backend maps roles to explicit permissions such as `users.manage`,
 `marketing.manage`, `billing.manage`, and `operations.manage`; client navigation
 hiding is convenience only. `PLATFORM_OPERATOR_USER_IDS` is a break-glass path:
 it grants bootstrap `super_admin` only while no active database-managed super
-administrator exists, and explicit suspension overrides it.
+administrator exists, explicit suspension overrides it, and
+`PLATFORM_OPERATOR_BOOTSTRAP_UNTIL` (ISO timestamp) retires it — after the
+deadline the env path is dead even with zero DB super_admins, so a forgotten
+break-glass cannot outlive the incident that needed it.
+
+Two controls sit on top of the role check (see `operator/dual-control.ts`):
+
+- **Step-up (recent auth).** Routes marked `stepUp: true` — every destructive
+  or bulk mutation — require a session minted within
+  `OPERATOR_STEP_UP_WINDOW_SEC` (default 15 minutes). A stolen long-lived token
+  alone cannot suspend a tenant, erase a user, or fire a campaign; the operator
+  re-authenticates and retries. Stale sessions keep read access.
+- **Dual control (four-eyes).** The highest-blast-radius actions — user
+  erasure, credit adjustment, bulk campaign send, operator create/role grants,
+  whole-tenant suspension — need a *second* operator holding the same
+  permission to confirm via `POST /operator/dual-approvals/:id/confirm`.
+  Approvals are hash-bound to the exact action, target and payload (approving
+  "grant £10" cannot be spent on "grant £10,000"), expire after 30 minutes,
+  can never be self-confirmed, and are consumed atomically so they execute
+  once. The requester executes by retrying the action — a confirmed approval
+  matching the retry's payload hash is auto-spent.
 
 #### Implemented operator capabilities
 
@@ -1908,9 +1928,9 @@ change detector truth, family readiness, consent, or trust-tier policy.
 | ~~**P1**~~ resolved | ~~Campaign recipient claim is written with status `sent` before provider success~~ — same `claimSend`/`settleSend` path as lifecycle | ~~Observability briefly or permanently overstates successful send~~ | ~~`pending -> sent/failed/skipped` from the provider outcome~~ — shipped: claims start `pending`, workers settle from `sendEmail`'s result, redelivered jobs no-op on non-pending rows |
 | **P1** | Social adapters use direct `fetch` without a shared timeout/breaker/retry policy | Hung providers consume worker/API capacity; retries vary by channel | Provider gateway with deadline, retry budget, breaker, idempotency capability, and normalized errors |
 | **P1** | Environment-global and tenant-owned social credentials share a fallback path | Account ownership can be misunderstood; wrong account has public blast radius | Explicit publisher account ID/source in preview, post, audit and receipt; disable implicit fallback where ambiguous |
-| **P1** | High-impact operator operations generally require one privileged actor | Compromised operator can erase/export users, adjust credits, or fire a large campaign | Step-up MFA, recent-auth requirement, optional four-eyes approval for destructive/bulk actions, notification to affected owner |
-| **P1** | Break-glass bootstrap is environment based and process-local warnings are the primary signal | Emergency access may outlive the incident or be weakly reviewed | Expiring break-glass grants, alert/audit on every use, dual control, tested recovery and immediate rotation |
-| **P1** | Operator and product audit use separate concepts/surfaces | Forensics require stitching multiple collections and actors | Unified correlation IDs, actor type, before/after hash, reason, ticket, target tenant and immutable export |
+| ~~**P1**~~ resolved | ~~High-impact operator operations generally require one privileged actor~~ — `requireOperator(..., { stepUp: true })` demands a session minted inside `OPERATOR_STEP_UP_WINDOW_SEC` (default 15 min) on all 33 destructive/bulk routes, and the six highest-blast-radius actions (erase, credit adjust, campaign send, operator create/roles, tenant suspend) additionally require dual control: `checkDualApproval` writes a pending approval hash-bound to action+target+payload, a *different* operator holding the same permission confirms via `/operator/dual-approvals/:id/confirm`, and the confirmed approval is spent exactly once (auto-spent on the requester's identical retry or via `confirmation_id`) | ~~Compromised operator can erase/export users, adjust credits, or fire a large campaign~~ | ~~Step-up/recent-auth + four-eyes~~ — shipped. Affected-owner notification on operator actions remains open |
+| **P1** | Break-glass bootstrap is environment based; expiry now enforced | Emergency access may outlive the incident or be weakly reviewed | Partially shipped: `PLATFORM_OPERATOR_BOOTSTRAP_UNTIL` makes the env break-glass dead after a deadline even with zero DB super_admins; every bootstrap resolution and every expired-window denial is warn-logged. Remaining: rotation ceremony + tested recovery drill |
+| **P1** | Operator and product audit use separate collections | Forensics require stitching multiple collections and actors | Partially shipped: `/operator/audit?source=all` unions `operator_audit_log` and product `audit_log` in one feed (product rows match on `resource_id` or `tenant_id`), and destructive mutations record `before_hash`/`after_hash` state evidence. Remaining: unified correlation IDs + immutable export |
 | **P1** | Marketing copy enforcement relies heavily on operator responsibility and generation prompts | Advice-like or misleading public copy can escape | Deterministic advice/content guard on create/edit/approve/publish, preview of tracked links, sampled compliance review |
 | **P2** | Growth metrics depend on application events and partial provider engagement | Attribution can be incomplete or biased toward supported channels | Data-quality states, source freshness, reconciliation, funnel definitions and metric contracts |
 | **P2** | Operator routes remain in the public API deployment | Privileged control-plane attack surface shares family-facing edge | Separate hostname/audience, stronger identity-aware proxy, network policy, and eventually separate operator deployment if justified |

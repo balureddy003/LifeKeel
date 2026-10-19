@@ -105,6 +105,24 @@ export function onboardingRecoveryEmailToLink(owner: { email: string } | null, r
   return trimmed
 }
 
+// A signed-in user has already told us their name and email at signup, so the chat
+// starts after those two questions instead of asking again. Returns null when
+// there is nothing to skip (no account, or no usable name).
+export function onboardingSeedFromAccount(
+  account: { name?: string; email: string } | null,
+): { answers: Record<string, string>; members: FamilyMemberDraft[]; nextIndex: number } | null {
+  const name = account?.name?.trim()
+  if (!account || !name) return null
+  const skipped = new Set(['name', 'email'])
+  let nextIndex = 0
+  while (nextIndex < ONBOARDING_QUESTIONS.length && skipped.has(ONBOARDING_QUESTIONS[nextIndex]!.id)) nextIndex++
+  return {
+    answers: { name, email: account.email },
+    members: [{ id: 'self', emoji: '', name, role: 'You', completion: 0 }],
+    nextIndex,
+  }
+}
+
 function GrowingGraph({ members }: { members: FamilyMemberDraft[] }) {
   return (
     <div className="flex flex-col items-center gap-1 py-2">
@@ -225,6 +243,25 @@ export function ConversationalOnboarding() {
   // disabled-during-submit -> enabled cycle and the very first render
   // (submitting starts false), so autoFocus below is now redundant but
   // harmless to leave as a fallback for the instant before this effect runs.
+  // Skip the name and email questions for a signed-in user (see onboardingSeedFromAccount).
+  const seeded = useRef(false)
+  useEffect(() => {
+    if (seeded.current || isLoading || questionIndex !== 0 || Object.keys(answers).length > 0) return
+    const seed = onboardingSeedFromAccount(user)
+    if (!seed) return
+    seeded.current = true
+    const first = seed.answers['name']!
+    setAnswers(seed.answers)
+    setMembers(seed.members)
+    setQuestionIndex(seed.nextIndex)
+    setMessages((prev) => [
+      ...prev.filter((m) => m.id !== 'q-0'),
+      { id: 'ai-seed', role: 'ai', text: `Nice to meet you, ${first}! Let's start your family's chart.` },
+      { id: 'q-seed', role: 'ai', text: ONBOARDING_QUESTIONS[seed.nextIndex]!.question },
+    ])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, isLoading])
+
   useEffect(() => {
     if (!submitting) textInputRef.current?.focus()
   }, [submitting])
