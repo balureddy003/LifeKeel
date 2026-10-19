@@ -81,7 +81,7 @@ export default function VerifyEmailPage() {
       title={state === 'no-token' ? 'Invalid verification link' : 'Link expired or already used'}
       sub={
         state === 'no-token'
-          ? 'This link is missing its verification token. Sign in and we will send you a fresh one.'
+          ? 'This link is missing its verification token. Sign in and use the verification prompt to request a fresh link.'
           : 'Verification links expire after 24 hours and can only be used once.'
       }
     >
