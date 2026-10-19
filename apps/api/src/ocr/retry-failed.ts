@@ -1,5 +1,5 @@
 import { GridFSBucket, type Db, type ObjectId } from 'mongodb'
-import { createLogger, type DecisionFn } from '@lifekeel/platform'
+import { createLogger, type DecisionFn, type VisionFn } from '@lifekeel/platform'
 import { processDocument } from './extract.js'
 import { recordDocumentExtractionRetries } from '../routes/metrics.js'
 
@@ -17,7 +17,12 @@ const SWEEP_LIMIT = 5
  * processDocument). Run under a cron lock so replicas do not retry the same file.
  * Returns how many documents were attempted.
  */
-export async function retryFailedDocuments(db: Db, decide: DecisionFn, now = new Date()): Promise<number> {
+export async function retryFailedDocuments(
+  db: Db,
+  decideFor: (tenantId: string) => DecisionFn | undefined,
+  visionFor: (tenantId: string) => Promise<VisionFn | undefined>,
+  now = new Date(),
+): Promise<number> {
   const documents = db.collection('documents')
   const due = await documents
     .find({
@@ -37,15 +42,34 @@ export async function retryFailedDocuments(db: Db, decide: DecisionFn, now = new
     if (!tenantId) continue
     try {
       const chunks: Buffer[] = []
-      for await (const chunk of bucket.openDownloadStream(doc['file_id'] as ObjectId)) chunks.push(chunk as Buffer)
+      for await (const chunk of bucket.openDownloadStream(doc['file_id'] as ObjectId))
+        chunks.push(chunk as Buffer)
       attempted += 1
-      await processDocument(db, doc['id'] as string, tenantId, Buffer.concat(chunks), String(doc['mime_type'] ?? ''), String(doc['filename'] ?? 'document'), decide)
+      await processDocument(
+        db,
+        doc['id'] as string,
+        tenantId,
+        Buffer.concat(chunks),
+        String(doc['mime_type'] ?? ''),
+        String(doc['filename'] ?? 'document'),
+        decideFor(tenantId),
+        await visionFor(tenantId),
+      )
     } catch (err) {
       // Reading the stored file failed. Count it so a missing blob cannot be retried forever.
-      log.error({ err, documentId: doc['id'], tenantId }, 'Could not read stored document for retry')
+      log.error(
+        { err, documentId: doc['id'], tenantId },
+        'Could not read stored document for retry',
+      )
       await documents.updateOne(
         { _id: doc['_id'] },
-        { $inc: { retry_count: 1 }, $set: { processing_completed_at: new Date(), error_message: `Retry could not read file: ${(err as Error).message}` } },
+        {
+          $inc: { retry_count: 1 },
+          $set: {
+            processing_completed_at: new Date(),
+            error_message: `Retry could not read file: ${(err as Error).message}`,
+          },
+        },
       )
     }
   }

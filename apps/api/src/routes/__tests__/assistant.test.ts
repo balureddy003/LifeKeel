@@ -7,6 +7,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import Fastify from 'fastify'
 import { registerAssistantRoutes } from '../assistant.js'
+import { initTestGateway } from '../../__tests__/test-gateway.js'
+
+initTestGateway()
 
 const llmMock = vi.fn(async (_system: string, prompt: string) => `LLM saw: ${prompt}`)
 
@@ -55,13 +58,16 @@ let assetsFixture: Array<Record<string, unknown>> = []
 // scoped /assistant/ask path (PRD-122) queries db.collection('insights')
 // directly rather than the mocked getInsightsCollection.
 function getPath(doc: Record<string, unknown>, path: string): unknown {
-  return path.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], doc)
+  return path
+    .split('.')
+    .reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], doc)
 }
 function matchesFilter(doc: Record<string, unknown>, filter: Record<string, unknown>): boolean {
   return Object.entries(filter).every(([key, cond]) => {
-    if (key === '$or') return (cond as Record<string, unknown>[]).some((sub) => matchesFilter(doc, sub))
+    if (key === '$or')
+      return (cond as Record<string, unknown>[]).some((sub) => matchesFilter(doc, sub))
     if (cond && typeof cond === 'object' && '$in' in (cond as Record<string, unknown>)) {
-      return ((cond as { $in: unknown[] }).$in).includes(getPath(doc, key))
+      return (cond as { $in: unknown[] }).$in.includes(getPath(doc, key))
     }
     return getPath(doc, key) === cond
   })
@@ -123,11 +129,22 @@ describe('POST /assistant/ask', () => {
     assetsFixture = []
   })
 
-  it('returns a live, grounded answer referencing the tenant\'s real numbers', async () => {
+  it("returns a live, grounded answer referencing the tenant's real numbers", async () => {
     profileFixture = {
-      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 3600000, life_cover_minor: 0 },
+      household: {
+        employment_status: 'employed',
+        monthly_salary_minor: 400000,
+        annual_living_expenses_minor: 3600000,
+        life_cover_minor: 0,
+      },
     }
-    insightsFixture = [{ reasoning: 'No income protection policy is listed.', category: 'risk', detector_id: 'family_protection_gap' }]
+    insightsFixture = [
+      {
+        reasoning: 'No income protection policy is listed.',
+        category: 'risk',
+        detector_id: 'family_protection_gap',
+      },
+    ]
 
     const app = await buildApp(TENANT_A)
     const response = await app.inject({
@@ -148,7 +165,14 @@ describe('POST /assistant/ask', () => {
       household: {
         employment_status: 'retired',
         monthly_salary_minor: 0,
-        members: [{ member_id: 'm2', employment_status: 'employed', monthly_salary_minor: 250000, income_protection_monthly_minor: 0 }],
+        members: [
+          {
+            member_id: 'm2',
+            employment_status: 'employed',
+            monthly_salary_minor: 250000,
+            income_protection_monthly_minor: 0,
+          },
+        ],
       },
     }
     familyFixture = { members: [{ id: 'm2', name: 'Alex', role: 'parent' }] }
@@ -166,7 +190,7 @@ describe('POST /assistant/ask', () => {
     expect(body.content).toContain('2500.00') // monthly_salary_minor 250000 -> £2500.00
   })
 
-  it('does not present the retirement wizard\'s placeholder age/target as real data before the user sets a target income', async () => {
+  it("does not present the retirement wizard's placeholder age/target as real data before the user sets a target income", async () => {
     // Matches the shape the financial-profile wizard actually autosaves
     // before a user has ever reached the retirement step: current_age and
     // target_retirement_age hold their untouched form defaults (30/65),
@@ -177,7 +201,11 @@ describe('POST /assistant/ask', () => {
     // with no date of birth on file "Current age: 30" as if it were a
     // confirmed fact.
     profileFixture = {
-      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 250000 },
+      household: {
+        employment_status: 'employed',
+        monthly_salary_minor: 400000,
+        annual_living_expenses_minor: 250000,
+      },
       retirement: {
         current_age: 30,
         target_retirement_age: 65,
@@ -225,11 +253,19 @@ describe('POST /assistant/ask', () => {
   it('sends different context for two tenants with different profile data', async () => {
     profileFixture = { household: { monthly_salary_minor: 100000 } }
     const appA = await buildApp(TENANT_A)
-    const resA = await appA.inject({ method: 'POST', url: '/assistant/ask', payload: { query: 'What is my salary?' } })
+    const resA = await appA.inject({
+      method: 'POST',
+      url: '/assistant/ask',
+      payload: { query: 'What is my salary?' },
+    })
 
     profileFixture = { household: { monthly_salary_minor: 999900 } }
     const appB = await buildApp(TENANT_B)
-    const resB = await appB.inject({ method: 'POST', url: '/assistant/ask', payload: { query: 'What is my salary?' } })
+    const resB = await appB.inject({
+      method: 'POST',
+      url: '/assistant/ask',
+      payload: { query: 'What is my salary?' },
+    })
 
     expect(resA.json().content).not.toBe(resB.json().content)
     expect(resA.json().content).toContain('1000.00')
@@ -264,7 +300,7 @@ describe('POST /assistant/ask', () => {
     expect(response.statusCode).toBe(400)
   })
 
-  it('flags a Pending member\'s figures as provisional instead of presenting them as confirmed', async () => {
+  it("flags a Pending member's figures as provisional instead of presenting them as confirmed", async () => {
     profileFixture = {
       household: {
         monthly_salary_minor: 0,
@@ -286,26 +322,39 @@ describe('POST /assistant/ask', () => {
 
   it('does not flag an active (non-pending) member', async () => {
     profileFixture = {
-      household: { monthly_salary_minor: 0, members: [{ member_id: 'm2', monthly_salary_minor: 250000 }] },
+      household: {
+        monthly_salary_minor: 0,
+        members: [{ member_id: 'm2', monthly_salary_minor: 250000 }],
+      },
     }
     familyFixture = { members: [{ id: 'm2', name: 'Sam', role: 'parent', status: 'active' }] }
 
     const app = await buildApp(TENANT_A)
-    const response = await app.inject({ method: 'POST', url: '/assistant/ask', payload: { query: 'x' } })
+    const response = await app.inject({
+      method: 'POST',
+      url: '/assistant/ask',
+      payload: { query: 'x' },
+    })
     expect(response.json().content).toContain('Household member Sam:')
     expect(response.json().content).not.toContain('pending')
   })
 
   it('surfaces an unreviewed uploaded document so Keel can mention it', async () => {
-    unreviewedDocsFixture = [{ filename: 'travel-policy.pdf', category: 'insurance', uploaded_at: new Date('2026-01-01') }]
+    unreviewedDocsFixture = [
+      { filename: 'travel-policy.pdf', category: 'insurance', uploaded_at: new Date('2026-01-01') },
+    ]
     const app = await buildApp(TENANT_A)
-    const response = await app.inject({ method: 'POST', url: '/assistant/ask', payload: { query: 'anything unreviewed?' } })
+    const response = await app.inject({
+      method: 'POST',
+      url: '/assistant/ask',
+      payload: { query: 'anything unreviewed?' },
+    })
     expect(response.json().content).toContain('travel-policy.pdf')
     expect(response.json().content).toContain('not yet reviewed')
   })
 
   // PRD-122: member_id scopes the grounding to that member's twin.
-  it('member_id scopes the prompt to that member\'s twin — their figures and attributed insights, not the whole household', async () => {
+  it("member_id scopes the prompt to that member's twin — their figures and attributed insights, not the whole household", async () => {
     profileFixture = {
       household: {
         employment_status: 'employed',
@@ -314,12 +363,31 @@ describe('POST /assistant/ask', () => {
         mortgage_outstanding_minor: 0,
         life_cover_minor: 0,
         income_protection_monthly_minor: 0,
-        members: [{ member_id: 'm2', employment_status: 'employed', monthly_salary_minor: 250000, income_protection_monthly_minor: 0, monthly_pension_contribution_minor: 30000 }],
+        members: [
+          {
+            member_id: 'm2',
+            employment_status: 'employed',
+            monthly_salary_minor: 250000,
+            income_protection_monthly_minor: 0,
+            monthly_pension_contribution_minor: 30000,
+          },
+        ],
       },
-      emergency_fund: { emergency_savings_minor: 900000, monthly_expenses_minor: 300000, has_high_interest_debt: false },
+      emergency_fund: {
+        emergency_savings_minor: 900000,
+        monthly_expenses_minor: 300000,
+        has_high_interest_debt: false,
+      },
       // The scorer reads retirement/education_funds as schema-required —
       // a real stored doc always has them, so the fixture models that.
-      retirement: { current_age: 40, target_retirement_age: 65, pension_balance_minor: 0, monthly_contribution_minor: 0, target_retirement_income_minor: 3000000, expected_annual_growth_pct: 5 },
+      retirement: {
+        current_age: 40,
+        target_retirement_age: 65,
+        pension_balance_minor: 0,
+        monthly_contribution_minor: 0,
+        target_retirement_income_minor: 3000000,
+        expected_annual_growth_pct: 5,
+      },
       education_funds: [],
     }
     familyFixture = {
@@ -329,8 +397,21 @@ describe('POST /assistant/ask', () => {
       ],
     }
     insightsFixture = [
-      { tenant_id: TENANT_A, reasoning: 'Sam has no income protection policy.', category: 'risk', detector_id: 'family_protection_gap', state: 'identified', feature_snapshot: { member_id: 'm2' } },
-      { tenant_id: TENANT_A, reasoning: 'Household emergency fund covers only 3 months.', category: 'savings', detector_id: 'family_emergency_fund_adequacy', state: 'identified' },
+      {
+        tenant_id: TENANT_A,
+        reasoning: 'Sam has no income protection policy.',
+        category: 'risk',
+        detector_id: 'family_protection_gap',
+        state: 'identified',
+        feature_snapshot: { member_id: 'm2' },
+      },
+      {
+        tenant_id: TENANT_A,
+        reasoning: 'Household emergency fund covers only 3 months.',
+        category: 'savings',
+        detector_id: 'family_emergency_fund_adequacy',
+        state: 'identified',
+      },
     ]
 
     const app = await buildApp(TENANT_A)
@@ -352,7 +433,9 @@ describe('POST /assistant/ask', () => {
   })
 
   it('member_id 404s for a roster member that does not exist', async () => {
-    familyFixture = { members: [{ id: 'user-1', name: 'Organizer', role: 'organizer', status: 'active' }] }
+    familyFixture = {
+      members: [{ id: 'user-1', name: 'Organizer', role: 'organizer', status: 'active' }],
+    }
     const app = await buildApp(TENANT_A)
     const response = await app.inject({
       method: 'POST',
@@ -362,13 +445,22 @@ describe('POST /assistant/ask', () => {
     expect(response.statusCode).toBe(404)
   })
 
-  it('member scope flags a pending member\'s figures as provisional', async () => {
+  it("member scope flags a pending member's figures as provisional", async () => {
     profileFixture = {
       household: {
         members: [{ member_id: 'm2', employment_status: 'employed', monthly_salary_minor: 250000 }],
-        mortgage_outstanding_minor: 0, annual_living_expenses_minor: 0, life_cover_minor: 0,
+        mortgage_outstanding_minor: 0,
+        annual_living_expenses_minor: 0,
+        life_cover_minor: 0,
       },
-      retirement: { current_age: 40, target_retirement_age: 65, pension_balance_minor: 0, monthly_contribution_minor: 0, target_retirement_income_minor: 0, expected_annual_growth_pct: 5 },
+      retirement: {
+        current_age: 40,
+        target_retirement_age: 65,
+        pension_balance_minor: 0,
+        monthly_contribution_minor: 0,
+        target_retirement_income_minor: 0,
+        expected_annual_growth_pct: 5,
+      },
       education_funds: [],
     }
     familyFixture = {
@@ -404,14 +496,25 @@ describe('POST /assistant/simulate', () => {
     profileFixture = {
       household: { monthly_salary_minor: 500000 },
       emergency_fund: { emergency_savings_minor: 900000, monthly_expenses_minor: 300000 },
-      education_funds: [{ child_name: 'Nihaan', current_savings_minor: 200000, target_savings_minor: 2000000, years_remaining: 10 }],
+      education_funds: [
+        {
+          child_name: 'Nihaan',
+          current_savings_minor: 200000,
+          target_savings_minor: 2000000,
+          years_remaining: 10,
+        },
+      ],
     }
 
     const app = await buildApp(TENANT_A)
     const response = await app.inject({
       method: 'POST',
       url: '/assistant/simulate',
-      payload: { monthlyIncomeDeltaMinor: 200000, monthlyExtraSavingsMinor: 50000, targetChildName: 'Nihaan' },
+      payload: {
+        monthlyIncomeDeltaMinor: 200000,
+        monthlyExtraSavingsMinor: 50000,
+        targetChildName: 'Nihaan',
+      },
     })
 
     expect(response.statusCode).toBe(200)
@@ -433,8 +536,13 @@ describe('POST /assistant/simulate', () => {
   })
 
   it('falls back to the raw computed numbers (never a fabricated answer) when the LLM call fails', async () => {
-    profileFixture = { household: { monthly_salary_minor: 500000 }, emergency_fund: { emergency_savings_minor: 0, monthly_expenses_minor: 300000 } }
-    llmMock.mockImplementation(async () => { throw new Error('rate limited') })
+    profileFixture = {
+      household: { monthly_salary_minor: 500000 },
+      emergency_fund: { emergency_savings_minor: 0, monthly_expenses_minor: 300000 },
+    }
+    llmMock.mockImplementation(async () => {
+      throw new Error('rate limited')
+    })
 
     const app = await buildApp(TENANT_A)
     const response = await app.inject({
@@ -496,12 +604,19 @@ describe('POST /assistant/simulate — steps[] and member_id (G14/PRD-132)', () 
   })
 
   it('the raw-numbers fallback describes each step when the LLM fails', async () => {
-    llmMock.mockImplementation(async () => { throw new Error('down') })
+    llmMock.mockImplementation(async () => {
+      throw new Error('down')
+    })
     const app = await buildApp(TENANT_A)
     const response = await app.inject({
       method: 'POST',
       url: '/assistant/simulate',
-      payload: { steps: [{ atMonth: 0, monthlyIncomeDeltaMinor: -240000 }, { atMonth: 4, monthlyIncomeDeltaMinor: 192000 }] },
+      payload: {
+        steps: [
+          { atMonth: 0, monthlyIncomeDeltaMinor: -240000 },
+          { atMonth: 4, monthlyIncomeDeltaMinor: 192000 },
+        ],
+      },
     })
     const body = response.json()
     expect(body.isLive).toBe(false)
@@ -555,17 +670,28 @@ describe('legacy register grounding (PRD-137 §5)', () => {
     assetsFixture = []
     legacyDocsFixture = [
       {
-        id: 'd1', tenant_id: TENANT_A, type: 'will', subject_member_id: 'm1',
-        jurisdiction: 'England & Wales', signed_on: '2019-03-01', last_reviewed_on: '2019-03-01',
+        id: 'd1',
+        tenant_id: TENANT_A,
+        type: 'will',
+        subject_member_id: 'm1',
+        jurisdiction: 'England & Wales',
+        signed_on: '2019-03-01',
+        last_reviewed_on: '2019-03-01',
         roles: [{ role: 'executor', member_id: 'm2', verification: 'user_declared' }],
-        covers_asset_ids: [], verification: 'user_declared', visibility: 'adults',
+        covers_asset_ids: [],
+        verification: 'user_declared',
+        visibility: 'adults',
       },
     ]
   })
 
   it('adds the legacy map block to the context when records exist', async () => {
     const app = await buildApp(TENANT_A)
-    const res = await app.inject({ method: 'POST', url: '/assistant/ask', payload: { query: 'who is the executor?' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/assistant/ask',
+      payload: { query: 'who is the executor?' },
+    })
     expect(res.json().content).toContain('Family legacy map')
     expect(res.json().content).toContain('executor: Sam [user-declared]')
   })
@@ -573,7 +699,11 @@ describe('legacy register grounding (PRD-137 §5)', () => {
   it('omits the block when the register is empty', async () => {
     legacyDocsFixture = []
     const app = await buildApp(TENANT_A)
-    const res = await app.inject({ method: 'POST', url: '/assistant/ask', payload: { query: 'anything recorded?' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/assistant/ask',
+      payload: { query: 'anything recorded?' },
+    })
     expect(res.json().content).not.toContain('Family legacy map')
   })
 })

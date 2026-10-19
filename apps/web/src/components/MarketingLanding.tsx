@@ -891,7 +891,7 @@ export function MarketingLanding() {
             Per-member reasoning
           </div>
           <h2 className="text-title-md lg:text-title-lg font-bold mb-3 leading-tight">
-            Every family member gets their own digital twin.
+            Every family member gets their own view.
           </h2>
           <p className="text-sm text-ink-secondary leading-relaxed mb-4">
             Not just shared access to the same dashboard. Each person &mdash; earner, partner, child

@@ -595,7 +595,7 @@ function GettingStarted() {
       <GlassCard className="p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <div className="text-sm font-semibold text-ink-primary">Get your readiness score</div>
+            <div className="text-sm font-semibold text-ink-primary">Add what you have on file</div>
             <div className="text-xs text-ink-tertiary mt-0.5">{doneCount} of {steps.length} done</div>
           </div>
           <div className="flex items-center gap-1.5">

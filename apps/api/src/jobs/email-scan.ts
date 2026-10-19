@@ -14,11 +14,21 @@
 
 import { randomUUID } from 'node:crypto'
 import { GridFSBucket, type Db } from 'mongodb'
-import { createLogger, getTenantCollection, createLlmRouterFromEnv, encryptIfNeeded, decryptIfNeeded } from '@lifekeel/platform'
-import { fetchRecentEmails, searchPolicyEmails, type ImapCredentials } from '../email/imap-client.js'
+import {
+  createLogger,
+  getTenantCollection,
+  encryptIfNeeded,
+  decryptIfNeeded,
+} from '@lifekeel/platform'
+import {
+  fetchRecentEmails,
+  searchPolicyEmails,
+  type ImapCredentials,
+} from '../email/imap-client.js'
 import { refreshGoogleAccessToken } from '../email/gmail-oauth.js'
 import { classifyEmail } from '../email/classify.js'
 import { localDecisionFromEnv, emailEncoderFromEnv } from '../local-model.js'
+import { taskLlm, taskDecide } from '../ai/task-gateway.js'
 import { recordEmailClassifyFailure, recordEmailEncoderOutcome } from '../routes/metrics.js'
 import { acquireCronLock, releaseCronLock } from './cron-lock.js'
 import { processDocument } from '../ocr/extract.js'
@@ -27,7 +37,14 @@ import type { InboxItemDoc } from '../routes/family-inbox.js'
 
 const log = createLogger({ service: 'email-scan', version: '0.0.0' })
 
-const DOCUMENT_MIME_ALLOWLIST = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'])
+const DOCUMENT_MIME_ALLOWLIST = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+])
 
 type EmailConnectorCredentialDoc = Record<string, unknown> & {
   tenant_id: string
@@ -59,7 +76,10 @@ const TOKEN_REFRESH_SKEW_MS = 60_000
  * the next scan doesn't have to refresh again. Returns null (same as a
  * missing password) if there's no usable refresh_token — the connector
  * was connected but Google never issued one, or it's been revoked. */
-async function resolveOAuthAccessToken(db: Db, doc: EmailConnectorCredentialDoc): Promise<string | null> {
+async function resolveOAuthAccessToken(
+  db: Db,
+  doc: EmailConnectorCredentialDoc,
+): Promise<string | null> {
   const accessToken = decryptIfNeeded(doc.extra?.access_token)
   const expiresAt = doc.extra?.token_expires_at ? new Date(doc.extra.token_expires_at) : null
   if (accessToken && expiresAt && expiresAt.getTime() - TOKEN_REFRESH_SKEW_MS > Date.now()) {
@@ -74,7 +94,11 @@ async function resolveOAuthAccessToken(db: Db, doc: EmailConnectorCredentialDoc)
   const refreshed = await refreshGoogleAccessToken(refreshToken, clientId, clientSecret)
   if (!refreshed) return null
 
-  await getTenantCollection<EmailConnectorCredentialDoc>(db, 'connector_credentials', doc.tenant_id).updateOne(
+  await getTenantCollection<EmailConnectorCredentialDoc>(
+    db,
+    'connector_credentials',
+    doc.tenant_id,
+  ).updateOne(
     { connector_id: doc.connector_id },
     {
       $set: {
@@ -86,7 +110,10 @@ async function resolveOAuthAccessToken(db: Db, doc: EmailConnectorCredentialDoc)
   return refreshed.accessToken
 }
 
-async function toImapCredentials(db: Db, doc: EmailConnectorCredentialDoc): Promise<ImapCredentials | null> {
+async function toImapCredentials(
+  db: Db,
+  doc: EmailConnectorCredentialDoc,
+): Promise<ImapCredentials | null> {
   const host = doc.extra?.host
   const port = doc.extra?.port
   if (!host || !port || !doc.username) return null
@@ -121,11 +148,13 @@ const MAX_CLASSIFY_ATTEMPTS = 5
  * pill apart from a model outage (an outage must never use up the retries).
  */
 async function recordClassifyFailure(db: Db, tenantId: string, messageId: string): Promise<number> {
-  const doc = await db.collection('email_classify_failures').findOneAndUpdate(
-    { tenant_id: tenantId, email_message_id: messageId },
-    { $inc: { attempts: 1 }, $set: { last_failed_at: new Date() } },
-    { upsert: true, returnDocument: 'after' },
-  )
+  const doc = await db
+    .collection('email_classify_failures')
+    .findOneAndUpdate(
+      { tenant_id: tenantId, email_message_id: messageId },
+      { $inc: { attempts: 1 }, $set: { last_failed_at: new Date() } },
+      { upsert: true, returnDocument: 'after' },
+    )
   return (doc?.['attempts'] as number | undefined) ?? 1
 }
 
@@ -164,17 +193,25 @@ export async function scanTenantInbox(
   // newest hit but older than the cursor's next scan would be skipped.
   const lookBack = opts.lookBackDays !== undefined
   const { emails, highestUid } = lookBack
-    ? { emails: await searchPolicyEmails(creds, { sinceDays: opts.lookBackDays! }), highestUid: undefined }
+    ? {
+        emails: await searchPolicyEmails(creds, { sinceDays: opts.lookBackDays! }),
+        highestUid: undefined,
+      }
     : await fetchRecentEmails(creds, { sinceUid: credentialDoc.last_synced_uid, limit: 25 })
 
   const result: ScanResult = { scanned: emails.length, inboxItemsCreated: 0, documentsCreated: 0 }
   if (emails.length === 0) return result
 
-  const llm = createLlmRouterFromEnv()
-  // Self-hosted classifier when LOCAL_JUDGE_BASE_URL is set; the prefilter
-  // skips the model entirely for mail with no policy/protection terms.
-  const decide = localDecisionFromEnv('classifier')
-  const ocrDecide = localDecisionFromEnv('ocr')
+  // Governed paths (intent 01): the cloud text call and the self-hosted
+  // classifiers all resolve email.policy_relevance.v1 / document.extract.v1
+  // — model allowlist, input ceiling, deadline, breaker, guards.
+  const llm = taskLlm('email.policy_relevance.v1', tenantId)
+  const decide = taskDecide(
+    'email.policy_relevance.v1',
+    tenantId,
+    localDecisionFromEnv('classifier'),
+  )
+  const ocrDecide = taskDecide('document.extract.v1', tenantId, localDecisionFromEnv('ocr'))
   const encoderCfg = emailEncoderFromEnv()
   const encoder = encoderCfg ? { ...encoderCfg, onOutcome: recordEmailEncoderOutcome } : undefined
   const inboxItems = db.collection<InboxItemDoc>('inbox_items')
@@ -188,7 +225,10 @@ export async function scanTenantInbox(
   let consecutiveFailures = 0
 
   for (const email of emails) {
-    const existing = await inboxItems.findOne({ tenant_id: tenantId, email_message_id: email.messageId })
+    const existing = await inboxItems.findOne({
+      tenant_id: tenantId,
+      email_message_id: email.messageId,
+    })
     if (existing) continue
 
     const classification = await classifyEmail(llm, email, { decide, prefilter: true, encoder })
@@ -197,7 +237,10 @@ export async function scanTenantInbox(
       failedEmails.push({ uid: email.uid, messageId: email.messageId })
       consecutiveFailures += 1
       if (consecutiveFailures >= MAX_CONSECUTIVE_CLASSIFY_FAILURES) {
-        log.warn({ tenantId, consecutiveFailures }, 'Classifier failing repeatedly — stopping scan early; remaining mail is retried next scan')
+        log.warn(
+          { tenantId, consecutiveFailures },
+          'Classifier failing repeatedly — stopping scan early; remaining mail is retried next scan',
+        )
         break
       }
       continue
@@ -244,7 +287,12 @@ export async function scanTenantInbox(
 
       const documentId = randomUUID()
       const uploadStream = bucket.openUploadStream(attachment.filename, {
-        metadata: { tenant_id: tenantId, document_id: documentId, mime_type: attachment.contentType, uploaded_at: new Date() },
+        metadata: {
+          tenant_id: tenantId,
+          document_id: documentId,
+          mime_type: attachment.contentType,
+          uploaded_at: new Date(),
+        },
       })
       uploadStream.end(attachment.content)
       const fileId = uploadStream.id
@@ -270,7 +318,15 @@ export async function scanTenantInbox(
         // HTTP response waiting on this, and awaiting keeps attachments
         // processed one at a time rather than bursting many concurrent
         // vision calls at the OCR provider.
-        await processDocument(db, documentId, tenantId, attachment.content, attachment.contentType, attachment.filename, ocrDecide).catch((err) => {
+        await processDocument(
+          db,
+          documentId,
+          tenantId,
+          attachment.content,
+          attachment.contentType,
+          attachment.filename,
+          ocrDecide,
+        ).catch((err) => {
           log.error({ err, documentId, tenantId }, 'OCR processing of email attachment failed')
         })
       }
@@ -287,7 +343,10 @@ export async function scanTenantInbox(
     if (classifiedOk > 0) {
       const attempts = await recordClassifyFailure(db, tenantId, failed.messageId)
       if (attempts >= MAX_CLASSIFY_ATTEMPTS) {
-        log.error({ tenantId, messageId: failed.messageId, attempts }, 'Giving up classifying email after repeated failures')
+        log.error(
+          { tenantId, messageId: failed.messageId, attempts },
+          'Giving up classifying email after repeated failures',
+        )
         continue
       }
     }
@@ -296,12 +355,24 @@ export async function scanTenantInbox(
   if (stillRetrying.length > 0 && highestUid !== undefined) {
     cursor = Math.max(credentialDoc.last_synced_uid ?? 0, Math.min(...stillRetrying) - 1)
     result.classificationRetries = stillRetrying.length
-    log.warn({ tenantId, retrying: stillRetrying.length, cursor }, 'Holding email cursor so unclassified mail is retried')
+    log.warn(
+      { tenantId, retrying: stillRetrying.length, cursor },
+      'Holding email cursor so unclassified mail is retried',
+    )
   }
 
-  await getTenantCollection<EmailConnectorCredentialDoc>(db, 'connector_credentials', tenantId).updateOne(
+  await getTenantCollection<EmailConnectorCredentialDoc>(
+    db,
+    'connector_credentials',
+    tenantId,
+  ).updateOne(
     { connector_id: credentialDoc.connector_id },
-    { $set: { ...(cursor !== undefined ? { last_synced_uid: cursor } : {}), last_synced_at: new Date() } },
+    {
+      $set: {
+        ...(cursor !== undefined ? { last_synced_uid: cursor } : {}),
+        last_synced_at: new Date(),
+      },
+    },
   )
 
   log.info({ tenantId, ...result }, 'Email scan complete')
@@ -352,12 +423,19 @@ type Publish = (queue: string, payload: unknown) => Promise<void>
  * the last ENQUEUE_INTERVAL_MS, so a slow queue cannot accumulate duplicate jobs
  * for the same tenant. Returns how many jobs were enqueued.
  */
-export async function enqueueConnectedInboxScans(db: Db, publish: Publish, now = new Date()): Promise<number> {
+export async function enqueueConnectedInboxScans(
+  db: Db,
+  publish: Publish,
+  now = new Date(),
+): Promise<number> {
   const credentials = db.collection<EmailConnectorCredentialDoc>('connector_credentials')
   const due = await credentials
     .find({
       ...CONNECTED_EMAIL_FILTER,
-      $or: [{ scan_enqueued_at: { $exists: false } }, { scan_enqueued_at: { $lt: new Date(now.getTime() - ENQUEUE_INTERVAL_MS) } }],
+      $or: [
+        { scan_enqueued_at: { $exists: false } },
+        { scan_enqueued_at: { $lt: new Date(now.getTime() - ENQUEUE_INTERVAL_MS) } },
+      ],
     })
     .toArray()
 
@@ -365,7 +443,9 @@ export async function enqueueConnectedInboxScans(db: Db, publish: Publish, now =
   for (const doc of due) {
     try {
       await publish(EMAIL_SCAN_QUEUE, { tenant_id: doc.tenant_id })
-      await credentials.updateOne({ _id: (doc as { _id?: unknown })['_id'] } as never, { $set: { scan_enqueued_at: now } })
+      await credentials.updateOne({ _id: (doc as { _id?: unknown })['_id'] } as never, {
+        $set: { scan_enqueued_at: now },
+      })
       enqueued += 1
     } catch (err) {
       log.error({ err, tenantId: doc.tenant_id }, 'Could not enqueue email scan')
@@ -393,7 +473,9 @@ export async function runQueuedInboxScan(db: Db, payload: unknown): Promise<void
     return
   }
   try {
-    const doc = await db.collection<EmailConnectorCredentialDoc>('connector_credentials').findOne({ ...CONNECTED_EMAIL_FILTER, tenant_id: tenantId })
+    const doc = await db
+      .collection<EmailConnectorCredentialDoc>('connector_credentials')
+      .findOne({ ...CONNECTED_EMAIL_FILTER, tenant_id: tenantId })
     if (!doc) return // disconnected since it was enqueued
     await scanTenantInbox(db, tenantId, doc)
   } catch (err) {

@@ -398,7 +398,7 @@ export function ConversationalOnboarding() {
     }
 
     haptic('success')
-    addAIMessage('Your family graph is ready! Let me grow your Keel now.')
+    addAIMessage('Your family is on the chart. Setting things up now.')
     setFinished(true)
 
     await createFamily(`${owner.name}'s Family`, owner)
@@ -485,7 +485,7 @@ export function ConversationalOnboarding() {
                 </motion.svg>
               </motion.div>
               <h1 className="text-2xl font-bold mb-2">Your family is set up!</h1>
-              <p className="text-sm text-ink-tertiary">Now let&apos;s build your readiness score</p>
+              <p className="text-sm text-ink-tertiary">Next, add what you have on file</p>
             </motion.div>
           ) : (
             <motion.div
@@ -500,7 +500,7 @@ export function ConversationalOnboarding() {
               >
                 <PartyPopper size={32} className="text-family-400" />
               </motion.div>
-              <h1 className="text-2xl font-bold mb-2">Growing your Keel...</h1>
+              <h1 className="text-2xl font-bold mb-2">Setting up your chart…</h1>
               <p className="text-sm text-ink-tertiary">Your family profile is taking shape</p>
               <motion.div
                 className="mt-6 w-48 h-2 rounded-full bg-tint/5 overflow-hidden"
@@ -524,7 +524,7 @@ export function ConversationalOnboarding() {
       {/* Progress bar */}
       <div className="px-4 pt-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-ink-tertiary font-semibold">Building your digital twin</span>
+          <span className="text-xs text-ink-tertiary font-semibold">Putting your family on the chart</span>
           <span className="text-xs text-family-400 font-bold">{Math.round(progress)}%</span>
         </div>
         <div className="h-2 rounded-full bg-tint/5 overflow-hidden">

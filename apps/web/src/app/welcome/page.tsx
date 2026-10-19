@@ -8,32 +8,37 @@ import { haptic } from '@/lib/haptics'
 const SLIDES = [
   {
     icon: Map,
-    title: 'Your Family\'s Life Map',
-    subtitle: 'See everything connected — protection, wealth, goals, and your whole family in one living map.',
+    title: "Your Family's Life Map",
+    subtitle:
+      'See everything connected — protection, wealth, goals, and your whole family in one living map.',
     bg: 'from-family-500/20 to-transparent',
   },
   {
     icon: MessageSquare,
     title: 'Just Ask',
-    subtitle: 'Never search through menus. Ask "Where is my travel insurance?" and get an instant answer.',
+    subtitle:
+      'Never search through menus. Ask "Where is my travel insurance?" and get an instant answer.',
     bg: 'from-info/20 to-transparent',
   },
   {
     icon: ShieldQuestion,
-    title: 'Be Ready for Anything',
-    subtitle: 'What happens if you lose your job? A medical emergency? See your response plan before you need it.',
-    bg: 'from-danger/20 to-transparent',
+    title: 'Steps for a bad day',
+    subtitle:
+      'Tell Keel what happened and it lists the steps in order, with the policies and contacts you have on file filled in.',
+    bg: 'from-family-500/20 to-transparent',
   },
   {
     icon: Users,
     title: 'Built for Every Age',
-    subtitle: 'From your 8-year-old to your 70-year-old grandparent — the app adapts to each person.',
+    subtitle:
+      'From your 8-year-old to your 70-year-old grandparent — the app adapts to each person.',
     bg: 'from-success/20 to-transparent',
   },
   {
     icon: Lock,
     title: 'Your Data, Your Control',
-    subtitle: 'Nothing is sold. Nothing trains models. Encrypted at rest, exportable and deletable by you from Settings — because trust isn\'t a feature, it\'s the foundation.',
+    subtitle:
+      'Your details are never sold. They are encrypted at rest, and you can export or delete your account from Settings.',
     bg: 'from-family-500/20 to-transparent',
   },
 ]
@@ -84,7 +89,11 @@ export default function WelcomePage() {
           stealing focus — aria-live on a stable wrapper (not the
           remounting AnimatePresence child, so it's read as a mutation of
           existing content rather than a brand-new, unannounced element). */}
-      <div className="flex-1 flex flex-col items-center justify-center px-2" aria-live="polite" aria-atomic="true">
+      <div
+        className="flex-1 flex flex-col items-center justify-center px-2"
+        aria-live="polite"
+        aria-atomic="true"
+      >
         <AnimatePresence mode="wait">
           <motion.div
             key={slide}
@@ -126,7 +135,8 @@ export default function WelcomePage() {
             animate={{
               width: i === slide ? 24 : 8,
               height: 8,
-              backgroundColor: i === slide ? 'rgb(var(--family-accent))' : 'rgb(var(--tint) / 0.15)',
+              backgroundColor:
+                i === slide ? 'rgb(var(--family-accent))' : 'rgb(var(--tint) / 0.15)',
             }}
           />
         ))}

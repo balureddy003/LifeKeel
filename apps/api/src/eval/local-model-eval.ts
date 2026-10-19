@@ -74,7 +74,7 @@ export const MIN_EMAIL_RECALL = 7 / 8
 
 export async function runLocalModelEval(decide: DecisionFn, model: string): Promise<EvalReport> {
   // Judge: model alone, per case. A model error or an "uncertain" answer is not a pass.
-  const evaluator = createLocalJudgeEvaluator(decide)
+  const evaluator = createLocalJudgeEvaluator(() => decide)
   const decisions: Record<string, string> = {}
   for (const c of LABELLED_JUDGE_CASES) {
     try {

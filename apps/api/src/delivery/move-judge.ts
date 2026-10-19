@@ -5,7 +5,14 @@ import {
   type JudgeInput,
 } from '@lifekeel/engine'
 import type { Db } from 'mongodb'
-import { callStructured, LlmBudgetGuard, createGuardEventSink, type DecisionFn, type LlmFn, type LlmGovernanceOptions } from '@lifekeel/platform'
+import {
+  callStructured,
+  LlmBudgetGuard,
+  createGuardEventSink,
+  type DecisionFn,
+  type LlmFn,
+  type LlmGovernanceOptions,
+} from '@lifekeel/platform'
 import { createLocalJudgeEvaluator } from './local-judge.js'
 import { withShadow, type ShadowRecord } from './shadow-judge.js'
 import { recordShadowComparison } from '../routes/metrics.js'
@@ -38,21 +45,35 @@ export interface CreateMoveJudgeOptions {
  * inside our infrastructure and spends no tokens. With `opts.shadow` the cloud judge
  * decides and the local one is only measured.
  */
-export function createMoveJudge(llm: LlmFn, db: Db, localDecide?: DecisionFn, opts: CreateMoveJudgeOptions = {}): MoveJudge {
-  if (localDecide && !opts.shadow) return new MoveJudge(createLocalJudgeEvaluator(localDecide), { useGuard: true })
+export function createMoveJudge(
+  llmFor: (tenantId: string) => LlmFn,
+  db: Db,
+  decideFor?: (tenantId: string) => DecisionFn | undefined,
+  opts: CreateMoveJudgeOptions = {},
+): MoveJudge {
+  if (decideFor && !opts.shadow)
+    return new MoveJudge(createLocalJudgeEvaluator(decideFor), { useGuard: true })
 
-  const cloud = createCloudJudgeEvaluator(llm, db)
-  if (!localDecide) return new MoveJudge(cloud, { useGuard: true })
+  const cloud = createCloudJudgeEvaluator(llmFor, db)
+  if (!decideFor) return new MoveJudge(cloud, { useGuard: true })
 
   const record = async (r: ShadowRecord) => {
     recordShadowComparison('judge', r.outcome)
     // No insight text or figures: ids, decisions and outcome only.
-    await db.collection('judge_shadow_results').insertOne({ ...r, created_at: new Date(), expires_at: new Date(Date.now() + SHADOW_RETENTION_MS) })
+    await db
+      .collection('judge_shadow_results')
+      .insertOne({
+        ...r,
+        created_at: new Date(),
+        expires_at: new Date(Date.now() + SHADOW_RETENTION_MS),
+      })
   }
-  return new MoveJudge(withShadow(cloud, createLocalJudgeEvaluator(localDecide), { record }), { useGuard: true })
+  return new MoveJudge(withShadow(cloud, createLocalJudgeEvaluator(decideFor), { record }), {
+    useGuard: true,
+  })
 }
 
-function createCloudJudgeEvaluator(llm: LlmFn, db: Db): JudgeEvaluator {
+function createCloudJudgeEvaluator(llmFor: (tenantId: string) => LlmFn, db: Db): JudgeEvaluator {
   const budgetGuard = new LlmBudgetGuard(db)
   const guardEventSink = createGuardEventSink(db, 'move-judge')
 
@@ -62,7 +83,9 @@ function createCloudJudgeEvaluator(llm: LlmFn, db: Db): JudgeEvaluator {
       budgetGuard,
       guardEventSink,
     }
-    const result = await callStructured(llm, {
+    // Governed per-tenant fn: model allowlist, input ceiling, deadline and
+    // breaker come from the insight.delivery_judge.v1 policy (intent 01).
+    const result = await callStructured(llmFor(input.insight.tenant_id ?? 'unknown'), {
       schema: JudgeScoresSchema,
       system: SYSTEM,
       // The deterministic guard (useGuard below) settles clean and clearly unsafe

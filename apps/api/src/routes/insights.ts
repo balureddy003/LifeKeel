@@ -22,7 +22,7 @@ import type { Db } from 'mongodb'
 import type { Engine, FeatureHashScorer, TenantLevelScorer, RecentInsight } from '@lifekeel/engine'
 import type { ActionReceipt } from '@lifekeel/workflows'
 import { ApprovalSignalHealthMonitor, createLogger, FreeTierPolicy } from '@lifekeel/platform'
-import { familyDataLlmFromEnv } from '../local-model.js'
+import { taskLlm } from '../ai/task-gateway.js'
 import { getInsightsCollection, getReceiptsCollection } from '../db.js'
 import { getAuditLogger, type AuditAction } from '../audit/audit-log.js'
 import type { DeliveryRouter } from '../delivery/delivery-router.js'
@@ -106,9 +106,8 @@ export async function registerInsightRoutes(
   deliveryRouter?: DeliveryRouter,
 ): Promise<void> {
   const actionExecutor = db ? new ActionExecutor(db) : null
-  // Independent instance for insight.prepare (Tier 1 drafting) — same
-  // pattern as apps/api/src/routes/assistant.ts, no shared global needed.
-  const prepareLlmFn = familyDataLlmFromEnv()
+  // insight.prepare drafts under draft.outreach.v1 (intent 01) — governed
+  // per-tenant fn built inside the handler where tenant_id is known.
 
   interface DecisionContext {
     id: string
@@ -1463,7 +1462,7 @@ export async function registerInsightRoutes(
         const insight = await col.findOne({ id, tenant_id })
         if (!insight) return reply.status(404).send({ error: 'Insight not found' })
 
-        const content = await generateDraft(prepareLlmFn, {
+        const content = await generateDraft(taskLlm('draft.outreach.v1', tenant_id), {
           reasoning: insight.reasoning,
           category: insight.category,
           detector_id: insight.detector_id,

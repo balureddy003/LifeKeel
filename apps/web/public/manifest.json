@@ -1,7 +1,7 @@
 {
   "name": "LifeKeel",
   "short_name": "LifeKeel",
-  "description": "The autonomous digital twin for your family",
+  "description": "Your family's chart: what is on file, what is noticed, and the next step",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

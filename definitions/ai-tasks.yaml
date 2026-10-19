@@ -1,0 +1,224 @@
+# AI task-policy registry — ARCHITECTURE.md §8.4, PRD-142.
+#
+# Every hosted/local model call in production must run under a task listed
+# here. The gateway (packages/platform/src/task-gateway.ts) resolves the
+# policy by task_id and enforces it: model allowlist, input/output token
+# ceilings, deadline, per-task circuit breaker, symmetric input/output
+# guards, budget check and usage→cost-ledger recording. An unknown task_id
+# is a hard failure in production (fail closed) and a warn+default in dev.
+#
+# Fields are the enforceable subset of the full AiTaskPolicy interface.
+# Terms/retention/review fields stay documentation until the processor-
+# terms enforcement lands (they are still required so an entry cannot be
+# added without stating them).
+
+version: 1
+
+tasks:
+  assistant.answer.v1:
+    purpose: Ask Keel — answer a question from the family's own records
+    risk: user_visible
+    authority: language_only
+    data_boundary: lifekeel_infra
+    processor_terms_ref: anthropic/openai API terms — not used for training
+    provider_retention_class: service_transient
+    allowed_models: [tier:fast]
+    primary_model: tier:fast
+    preferred_execution: hosted_sync
+    deadline_ms: 30000
+    max_input_tokens: 8000
+    max_output_tokens: 1500
+    budget_class: interactive
+    guard_policy: family_pii
+
+  assistant.scenario_narration.v1:
+    purpose: Narrate a deterministic scenario-simulator result in plain English
+    risk: user_visible
+    authority: language_only
+    data_boundary: lifekeel_infra
+    processor_terms_ref: anthropic/openai API terms — not used for training
+    provider_retention_class: service_transient
+    allowed_models: [tier:fast]
+    primary_model: tier:fast
+    preferred_execution: hosted_sync
+    deadline_ms: 30000
+    max_input_tokens: 8000
+    max_output_tokens: 1500
+    budget_class: interactive
+    guard_policy: family_pii
+
+  document.classify.v1:
+    purpose: Classify an uploaded document (statement, letter, bill, other)
+    risk: internal
+    authority: candidate_for_review
+    data_boundary: lifekeel_infra
+    processor_terms_ref: self-hosted Ollama — data stays in LifeKeel infra
+    provider_retention_class: none
+    allowed_models: [tier:fast]
+    primary_model: tier:fast
+    preferred_execution: local_cpu
+    deadline_ms: 120000
+    max_input_tokens: 4000
+    max_output_tokens: 200
+    budget_class: batch
+    guard_policy: family_pii
+
+  document.extract.v1:
+    purpose: Extract structured fields from an uploaded document
+    risk: internal
+    authority: candidate_for_review
+    data_boundary: lifekeel_infra
+    processor_terms_ref: self-hosted Ollama or approved hosted fallback
+    provider_retention_class: none
+    allowed_models: [tier:balanced]
+    primary_model: tier:balanced
+    preferred_execution: local_cpu
+    deadline_ms: 120000
+    max_input_tokens: 8000
+    max_output_tokens: 2000
+    budget_class: batch
+    guard_policy: family_pii
+
+  document.profile_candidate.v1:
+    purpose: Suggest financial-profile fields from an extracted document
+    risk: internal
+    authority: candidate_for_review
+    data_boundary: lifekeel_infra
+    processor_terms_ref: self-hosted Ollama — data stays in LifeKeel infra
+    provider_retention_class: none
+    allowed_models: [tier:balanced]
+    primary_model: tier:balanced
+    preferred_execution: local_cpu
+    deadline_ms: 120000
+    max_input_tokens: 8000
+    max_output_tokens: 2000
+    budget_class: batch
+    guard_policy: family_pii
+
+  email.policy_relevance.v1:
+    purpose: Decide whether an inbox email relates to the family's protection
+    risk: internal
+    authority: candidate_for_review
+    data_boundary: lifekeel_infra
+    processor_terms_ref: self-hosted Ollama or approved hosted fallback
+    provider_retention_class: none
+    allowed_models: [tier:fast]
+    primary_model: tier:fast
+    preferred_execution: local_cpu
+    deadline_ms: 60000
+    max_input_tokens: 4000
+    max_output_tokens: 300
+    budget_class: batch
+    guard_policy: family_pii
+
+  email.policy_summary.v1:
+    purpose: Summarise a policy-relevant email for the inbox card
+    risk: user_visible
+    authority: language_only
+    data_boundary: lifekeel_infra
+    processor_terms_ref: self-hosted Ollama or approved hosted fallback
+    provider_retention_class: none
+    allowed_models: [tier:fast]
+    primary_model: tier:fast
+    preferred_execution: local_cpu
+    deadline_ms: 60000
+    max_input_tokens: 4000
+    max_output_tokens: 600
+    budget_class: batch
+    guard_policy: family_pii
+
+  insight.score_enrichment.v1:
+    purpose: LLM confidence score on a rules-engine insight candidate
+    risk: internal
+    authority: candidate_for_review
+    data_boundary: approved_hosted_provider
+    processor_terms_ref: anthropic/openai API terms — not used for training
+    provider_retention_class: service_transient
+    allowed_models: [tier:balanced]
+    primary_model: tier:balanced
+    preferred_execution: hosted_sync
+    deadline_ms: 30000
+    max_input_tokens: 6000
+    max_output_tokens: 300
+    budget_class: batch
+    guard_policy: family_pii
+
+  insight.delivery_judge.v1:
+    purpose: Local judge — should this insight be delivered or held
+    risk: workflow_affecting
+    authority: bounded_decision
+    data_boundary: lifekeel_infra
+    processor_terms_ref: self-hosted Ollama — data stays in LifeKeel infra
+    provider_retention_class: none
+    allowed_models: [tier:fast]
+    primary_model: tier:fast
+    preferred_execution: local_cpu
+    deadline_ms: 120000
+    max_input_tokens: 4000
+    max_output_tokens: 300
+    budget_class: batch
+    guard_policy: family_pii
+
+  draft.outreach.v1:
+    purpose: Draft outreach/prep-note text for a Tier-1 prepare action
+    risk: user_visible
+    authority: candidate_for_review
+    data_boundary: lifekeel_infra
+    processor_terms_ref: anthropic/openai API terms — not used for training
+    provider_retention_class: service_transient
+    allowed_models: [tier:fast]
+    primary_model: tier:fast
+    preferred_execution: hosted_sync
+    deadline_ms: 30000
+    max_input_tokens: 6000
+    max_output_tokens: 1200
+    budget_class: interactive
+    guard_policy: family_pii
+
+  draft.crisis_on_device.v1:
+    purpose: Crisis-mode draft generated on-device (PRD-113)
+    risk: user_visible
+    authority: candidate_for_review
+    data_boundary: device_only
+    processor_terms_ref: on-device WebLLM — no data leaves the device
+    provider_retention_class: none
+    allowed_models: [on_device]
+    primary_model: on_device
+    preferred_execution: on_device
+    deadline_ms: 60000
+    max_input_tokens: 4000
+    max_output_tokens: 1200
+    budget_class: interactive
+    guard_policy: family_pii
+
+  support.reply_draft.v1:
+    purpose: Draft a support reply from the tenant's own account context
+    risk: user_visible
+    authority: candidate_for_review
+    data_boundary: lifekeel_infra
+    processor_terms_ref: anthropic/openai API terms — not used for training
+    provider_retention_class: service_transient
+    allowed_models: [tier:fast]
+    primary_model: tier:fast
+    preferred_execution: hosted_sync
+    deadline_ms: 30000
+    max_input_tokens: 6000
+    max_output_tokens: 1500
+    budget_class: interactive
+    guard_policy: family_pii
+
+  marketing.social_draft.v1:
+    purpose: Draft a social post from a public source link (growth automation)
+    risk: external_effect
+    authority: candidate_for_review
+    data_boundary: approved_hosted_provider
+    processor_terms_ref: anthropic/openai API terms — not used for training
+    provider_retention_class: service_transient
+    allowed_models: [tier:fast]
+    primary_model: tier:fast
+    preferred_execution: hosted_sync
+    deadline_ms: 30000
+    max_input_tokens: 4000
+    max_output_tokens: 800
+    budget_class: batch
+    guard_policy: standard

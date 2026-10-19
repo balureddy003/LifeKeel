@@ -587,7 +587,7 @@ The cascade follows five rules:
 | Capability | Implementation state | Current use |
 |---|---|---|
 | Provider abstraction | Implemented | Anthropic, OpenAI/Azure, Groq, Ollama through `LlmFn` |
-| Reasoning tiers and tenant overrides | Implemented, routing policy incomplete | Fast/balanced/powerful model selection |
+| Reasoning tiers and tenant overrides | Implemented, task-gated | Fast/balanced/powerful selection bounded by each task's `allowed_models` |
 | Typed local decisions | Implemented | Ollama JSON-schema constrained output + Zod validation |
 | Structured cloud output | Implemented primitive | Prompted JSON, parse/retry, Zod, guard hooks |
 | Local embeddings | Implemented | CPU `bge-small-en-v1.5` intent-classifier tier |
@@ -596,19 +596,21 @@ The cascade follows five rules:
 | On-device generation | Implemented and bounded | Opt-in WebLLM crisis drafts with cloud fallback |
 | Exact response cache | Implemented, partially adopted | Tenant/task/system/prompt/model hash; scorer path |
 | Prompt version registry | Implemented primitive, limited adoption | Candidate/A-B/production/retired lifecycle and spans |
-| Model output guards | Implemented, asymmetric | Advice/provider/ungrounded-number checks on local family text |
-| Budget and cost ledger | Implemented primitives, incomplete wiring | Per-tenant/per-detector limits; usage recording seam |
-| Circuit breaker | Implemented primitive, not on provider path | State exposed in health/metrics |
+| Model output guards | Implemented | Advice/provider/ungrounded-number checks + symmetric input/output guards on cloud, local and vision paths via the task gateway |
+| Budget and cost ledger | Implemented | Per-tenant limits checked pre-call; every provider (incl. Azure/Ollama) records usage to CostLedger per task/tenant; atomic reservation still debt (§8.15) |
+| Circuit breaker | Implemented | Per-task key (`task:<id>`) wraps every governed provider call |
 | Shadow evaluation | Implemented | Local move-judge comparison and dangerous-permissive outcome |
 | Calibration/selective prediction | Implemented | Platt/isotonic metrics and conformal escalation in engine |
 | Detector and local-model evals | Implemented | Golden detector suites and bounded local-model gate |
 | Honest degraded mode | Implemented | `isLive: false`, rule-only scoring, human-review fallback |
 
-### 8.3 Target mandatory AI task gateway
+### 8.3 Mandatory AI task gateway
 
-Every production `LlmFn` and `DecisionFn` call should pass through one
-LifeKeel-owned gateway. It remains an in-process module until another language or
-independent deployment genuinely needs the same policy.
+Every production `LlmFn`, `DecisionFn` and vision call passes through one
+LifeKeel-owned gateway (`apps/api/src/ai/task-gateway.ts`, policies in
+`definitions/ai-tasks.yaml` — implemented per §8.15). It remains an in-process
+module until another language or independent deployment genuinely needs the
+same policy.
 
 ```mermaid
 sequenceDiagram
@@ -1251,33 +1253,56 @@ and task-specific small models after the task and label rubric are stable.
 | Provider batch APIs | **Trigger + privacy review** | Non-interactive calls materially affect spend and provider retention/deletion terms are approved |
 | GPU serving | **Trigger-based only** | Stable high-volume task clears full crossover |
 
-### 8.15 Current P0 AI architecture debt
+### 8.15 AI task gateway — enforced and remaining debt
 
-The primitives are ahead of their end-to-end wiring. Before claiming a complete
-AI control plane, LifeKeel must:
+Since intent 01 (PRD-142 implementation), every model call in `apps/api` runs
+through the AI task gateway (`apps/api/src/ai/task-gateway.ts` →
+`packages/platform/src/task-gateway.ts`), which resolves a task policy from
+`definitions/ai-tasks.yaml` and enforces it at call time:
 
-1. wire every model call to actual usage/cost/token recording;
-2. enforce task input/output token ceilings and atomic reservation/
-   reconciliation of budgets;
-3. enforce hosted-provider deadlines and collapse retries into one layer;
-4. wrap real provider calls in the existing breaker;
-5. apply family-facing input/output/grounding/advice guards symmetrically to
-   cloud, local, and fallback paths;
-6. replace keyword routing and prefix provider inference with task policy,
-   approved processor terms, retention mode, and exact allow-listed models;
-7. remove provider debug logging that can expose generated family content;
-8. inventory every AI-derived tenant artifact and include it in retention,
-   export, erasure, backup, and incident handling;
-9. replace the cross-tenant feature-hash eval with per-tenant,
-   synthetic/redacted, or explicitly governed aggregate evaluation;
-10. establish task-level eval and adversarial suites with synthetic/redacted
-    or explicitly consented fixtures;
-11. separate correctness labels from acceptance and engagement;
-12. strengthen signed-link approval before any model-adjacent action
-    expansion.
+- **unknown task_id fails closed** outside dev mode — production cannot reach
+  a provider without a registered policy;
+- model allowlist enforced per call (callers pass `tier:*` handles resolved
+  to the provider's configured model; anything outside `allowed_models` is a
+  `TaskPolicyError`);
+- input token ceilings enforced before provider contact; per-task deadline;
+- per-task circuit breaker (`task:<task_id>`) fails fast during provider
+  incidents — one transport retry layer inside the router, no nested retries;
+- symmetric input/output guards on cloud, local (`DecisionFn`) and vision
+  paths — the local path previously skipped guards entirely;
+- usage reported by every provider (including Azure and Ollama, which
+  previously recorded nothing) and attributed to `(task_id, tenant_id)` via
+  `llmCallContext` into the CostLedger;
+- per-tenant budget check before provider execution;
+- cloud vision extraction (previously a raw OpenAI SDK call outside the
+  router) runs through `governedVision`;
+- a `device_only` task has no server-side path by construction.
 
-Until these are complete, the deterministic engine and authenticated human gates
-remain the authoritative safety boundary.
+The `ai-task-gateway` fitness test is the tripwire: only allow-listed factory
+files may construct raw model clients, every `taskLlm/taskDecide/taskVision`
+literal must resolve in the registry, and `localDecisionFromEnv` may only be
+called inside a `taskDecide` wrapper.
+
+Remaining debt:
+
+1. **Atomic budget reservation/reconciliation** — the gateway runs the
+   pre-call budget check but does not yet reserve tokens against the ledger
+   and reconcile after actual usage; a burst of concurrent calls can still
+   overshoot the cap.
+2. **Processor terms/review-date enforcement** — `processor_terms_ref`,
+   `provider_retention_class` and review dates are recorded in the registry
+   and required at parse time, but expiry does not yet block the call;
+   subprocessor review stays a human/legal process until then.
+3. **Eval suites** — task-level eval and adversarial suites with
+   synthetic/redacted or consented fixtures remain to be built.
+4. **Correctness labels** — correctness labels are still entangled with
+   acceptance/engagement.
+5. **AI artifact inventory** — the erasure catalogue covers tenant artifacts
+   (intent 04); provider-side retention verification and incident-handling
+   propagation remain procedural.
+
+The deterministic engine and authenticated human gates remain the
+authoritative safety boundary for anything beyond language.
 
 ### 8.16 Primary AI architecture references
 
@@ -2839,7 +2864,7 @@ page needs a runbook, owner, severity, and safe mitigation.
 | **P1** | No approved SLO/error-budget and capacity model | Reliability priorities remain subjective | Journey SLIs, dashboards, burn alerts, quarterly capacity test |
 | **P1** | Queue visibility/recovery is not lease-aware | Active long jobs can be mistaken for stranded work | Visibility timeout/heartbeat or managed queue semantics with concurrency test |
 | **P1** | Domain ownership is not mechanically enforced | Modular monolith can decay into cross-import coupling | Dependency rules and domain repository interfaces in CI |
-| **P1** | No enforced AI task/model registry | Keyword routing, stale aliases, and unknown prices can change behavior without evidence | Exact task policies and pinned model allow-list gate every production call |
+| **P1** | AI task/model registry enforced at the gateway | `definitions/ai-tasks.yaml` policies gate every production call — unknown tasks fail closed, model allowlists/ceilings/deadlines/breaker/guards enforced per task (§8.15) | Remaining: atomic budget reservation, processor-terms review-date blocking, task eval suites |
 | **P1** | AI evaluation artifacts are fragmented, adversarial coverage is missing, and one detector-level eval mixes tenant production data | Prompt/model changes can regress injection, privacy, grounding, advice behavior, or privacy posture invisibly | Unified eval-run lineage plus synthetic/redacted or per-tenant task goldens and red-team CI for every promoted task |
 | **P1** | Local model/artifact supply chain is tag-based | Mutable weights, licenses, quantization and serving images are not reproducible | Digest-pinned artifacts, model cards, AI-BOM/SBOM, signatures and eval hashes |
 | **P1** | No unified event/task envelope and trace propagation | Failures are hard to reconstruct across jobs/providers | Correlation/causation/trace/task/model/guard versions on all asynchronous and AI paths |
