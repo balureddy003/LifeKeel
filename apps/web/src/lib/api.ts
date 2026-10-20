@@ -1211,8 +1211,102 @@ export async function fetchDocuments(): Promise<{
   })
 }
 
+/** One extracted value awaiting a person's decision (PRD-143). */
+export interface DocumentCandidate {
+  key: string
+  value: string
+  confidence: number
+  grounding:
+    'verbatim_unique' | 'verbatim_ambiguous' | 'keyword' | 'absence' | 'not_found' | 'image_only'
+  span: { start: number; end: number } | null
+  /** A short quote of the document around the value; null when there is no text to quote. */
+  snippet: string | null
+  needs_review: boolean
+  status: 'proposed' | 'confirmed' | 'edited' | 'rejected'
+  edited_value?: string
+}
+
+export interface DocumentClassification {
+  category: string
+  confidence: number
+  needs_confirmation: boolean
+  confirmed: boolean
+}
+
 export interface FamilyDocumentDetail extends FamilyDocument {
   rawText: string
+  classification?: DocumentClassification | null
+  documentDate?: string | null
+  /** clean | infected | error | not_performed */
+  scan?: string
+  candidates?: DocumentCandidate[]
+}
+
+export interface ReviewDecision {
+  key: string
+  action: 'confirm' | 'edit' | 'reject'
+  value?: string
+}
+
+/** What the person says this document is. Never changes anything until they do. */
+export async function confirmDocumentType(
+  id: string,
+  category: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const token = getAuthToken()
+    const res = await credFetch(
+      `${getApiBase()}/documents/${encodeURIComponent(id)}/confirm-type`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ category }),
+      },
+    )
+    if (res.ok) return { ok: true }
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? 'Could not save that' }
+  } catch (err) {
+    reportError(err, { action: 'confirmDocumentType', id })
+    return { ok: false, error: 'Network error — please try again' }
+  }
+}
+
+/** Confirm, edit or reject extracted values. All or nothing on the server. */
+export async function reviewDocumentFields(
+  id: string,
+  decisions: ReviewDecision[],
+): Promise<{ ok: true; candidates: DocumentCandidate[] } | { ok: false; error: string }> {
+  try {
+    const token = getAuthToken()
+    const res = await credFetch(`${getApiBase()}/documents/${encodeURIComponent(id)}/review`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ decisions }),
+    })
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: string
+      candidates?: DocumentCandidate[]
+      problems?: { key: string; reason: string }[]
+    }
+    if (res.ok && data.candidates) return { ok: true, candidates: data.candidates }
+    const invalid = data.problems?.some((p) => p.reason === 'invalid_value')
+    return {
+      ok: false,
+      error: invalid
+        ? 'That value does not look right for this field.'
+        : (data.error ?? 'Could not save that'),
+    }
+  } catch (err) {
+    reportError(err, { action: 'reviewDocumentFields', id })
+    return { ok: false, error: 'Network error — please try again' }
+  }
 }
 
 export async function fetchDocument(id: string): Promise<FamilyDocumentDetail | null> {
