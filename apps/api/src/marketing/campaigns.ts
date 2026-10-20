@@ -38,6 +38,7 @@ import {
 import { excludeMinorUsers } from '../family/family-permissions.js'
 import { recordSpend, spendCost } from '../spend-ledger.js'
 import { queueManager } from '../queue/QueueManager.js'
+import { checkCopy, describeViolations } from './copy-guard.js'
 
 const log = createLogger({ service: 'campaigns', version: '0.0.0' })
 const DAY = 24 * 60 * 60 * 1000
@@ -254,6 +255,11 @@ export async function queueCampaignSend(
   db: Db,
   campaign: CampaignDoc,
 ): Promise<{ targeted: number }> {
+  // Copy guard (PRD-210): subject and body must pass before anything is claimed or sent.
+  const copy = checkCopy(`${campaign.subject}\n${campaign.body_text}`, 'email')
+  if (!copy.ok) {
+    throw Object.assign(new Error(`copy_guard_failed: ${describeViolations(copy)}`), { statusCode: 422 })
+  }
   ensureCampaignIndexes(db)
   await ensureLifecycleIndexes(db) // the ledger's unique key index is the dedup lock
   if ((await getPlatformConfig(db)).marketing_paused) {

@@ -329,6 +329,26 @@ describe('/marketing/posts', () => {
     ).toBe(1)
   })
 
+  it('approve is refused with the violations when the copy fails the guard, and works once it is edited (PRD-210)', async () => {
+    const postiz = fakePostiz()
+    const { app, posts } = await buildApp({ postiz })
+    await app.inject({ method: 'POST', url: '/marketing/posts', payload: { ...DRAFT, content: 'You should switch to a cheaper insurer today.' } })
+    const id = posts[0]!['id'] as string
+    expect(posts[0]!['copy_check']).toMatchObject({ ok: false })
+
+    const refused = await app.inject({ method: 'POST', url: `/marketing/posts/${id}/approve` })
+    expect(refused.statusCode).toBe(422)
+    expect(refused.json().error).toBe('copy_guard_failed')
+    expect(refused.json().violations.length).toBeGreaterThan(0)
+    expect(postiz.createPost).not.toHaveBeenCalled()
+
+    const edit = await app.inject({ method: 'PATCH', url: `/marketing/posts/${id}`, payload: { content: "LifeKeel keeps your family's chart. Free to start." } })
+    expect(edit.statusCode).toBe(200)
+    expect(edit.json().post.copy_check.ok).toBe(true)
+    const ok = await app.inject({ method: 'POST', url: `/marketing/posts/${id}/approve` })
+    expect(ok.statusCode).toBe(200)
+  })
+
   it('stays approved without dispatching when scheduled_at is still future, then the sweep publishes it when due', async () => {
     const postiz = fakePostiz()
     const { app, db, posts } = await buildApp({ postiz, settings: TRUSTED })
@@ -743,14 +763,14 @@ describe('/marketing/posts/generate', () => {
     expect(post.content.length).toBeLessThanOrEqual(280)
   })
 
-  it('free-topic drafts carry a UTM link to the readiness check', async () => {
+  it('free-topic drafts carry a UTM link to signup', async () => {
     vi.stubEnv('LIFEKEEL_URL', 'https://keel.example')
     const { app } = await buildApp({
-      llm: async () => 'A family safety net starts with one question.',
+      llm: async () => 'A family chart starts with one question.',
     })
     const res = await app.inject({ method: 'POST', url: '/marketing/posts/generate', payload: GEN })
     const post = res.json().post
-    expect(post.content).toContain('https://keel.example/readiness?utm_source=x')
+    expect(post.content).toContain('https://keel.example/signup?utm_source=x')
     expect(post.content).toContain('utm_content=topic')
   })
 

@@ -231,6 +231,13 @@ describe('campaign send (durable per-recipient jobs)', () => {
     delete process.env['SENDGRID_API_KEY']
     await seedUser()
     await expect(queueCampaignSend(db, makeCampaign())).rejects.toThrow('SENDGRID_API_KEY')
+  })
+
+  it('refuses a campaign whose copy fails the marketing copy guard, before claiming anyone (PRD-210)', async () => {
+    await expect(
+      queueCampaignSend(db, makeCampaign({ body_text: 'You should switch to a cheaper insurer.' })),
+    ).rejects.toThrow('copy_guard_failed')
+    expect(await lifecycleSendsCol(db).countDocuments({ sequence: 'campaign' })).toBe(0)
     // The route rolls the campaign back to draft on throw; no ledger row may
     // exist either — an unconfigured run must not look like a delivered one.
     expect(await lifecycleSendsCol(db).countDocuments({})).toBe(0)
