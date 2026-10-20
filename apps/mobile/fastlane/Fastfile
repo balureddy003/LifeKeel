@@ -1,0 +1,51 @@
+# LifeKeel mobile release lanes. Run via `bundle exec fastlane beta` inside
+# apps/mobile — see docs/mobile-release.md for the one-time setup.
+
+platform :ios do
+  desc 'Build the Capacitor shell and upload to TestFlight'
+  lane :beta do
+    build_app(
+      scheme: 'App',
+      project: 'ios/App/App.xcodeproj', # Capacitor 8 uses SPM — no .xcworkspace
+      export_method: 'app-store',
+      output_directory: '.',
+      output_name: 'LifeKeel.ipa',
+      xcargs: [
+        # Auto-manage signing with the ASC API key — no match certs repo.
+        '-allowProvisioningUpdates',
+        # Push entitlement lives in a committed file; point the generated
+        # project at it without editing .pbxproj (see scripts/prepare-ios.sh).
+        "CODE_SIGN_ENTITLEMENTS='#{ENV['ENTITLEMENTS_PATH'] || 'App/App/App.entitlements'}'",
+        "DEVELOPMENT_TEAM='#{ENV['APPLE_TEAM_ID']}'",
+        "PRODUCT_BUNDLE_IDENTIFIER='uk.co.lifekeel.app'",
+        # iPhone only — avoids iPad screenshots/tablet QA for a server.url shell.
+        "TARGETED_DEVICE_FAMILY='1'",
+      ].join(' '),
+    )
+
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true,
+      notify_external_testers: false,
+    )
+  end
+end
+
+platform :android do
+  desc 'Build the Capacitor shell and upload to Play'
+  lane :beta do
+    gradle(
+      project_dir: 'android',
+      task: 'bundle',
+      build_type: 'Release',
+    )
+
+    upload_to_play_store(
+      track: ENV['ANDROID_TRACK'] || 'internal',
+      aab: 'android/app/build/outputs/bundle/release/app-release.aab',
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      release_status: 'draft', # internal track still requires a human publish the first time
+    )
+  end
+end

@@ -49,6 +49,9 @@ import {
 import { type LlmFn } from '@lifekeel/platform'
 import { encryptForTenant } from '../crypto/envelope.js'
 import { checkCopy, describeViolations, type CopyCheck } from '../marketing/copy-guard.js'
+import { utmQuery } from '../marketing/utm.js'
+import { readFunnel, type FunnelView } from '../marketing/funnel.js'
+import { isRollupReady } from '../jobs/metrics-rollup.js'
 import { taskLlm } from '../ai/task-gateway.js'
 import { ConnectorActionExecutor } from '@lifekeel/workflows'
 
@@ -419,11 +422,16 @@ export interface MarketingPerformanceRow {
  *  Channel rollups come from event meta.utm_source (captured since the
  *  UTM'd links shipped) and signup attribution. Aggregate counts only —
  *  no user-level data crosses this read. */
+/** How far back the per-post, channel and campaign tables look. */
+export const PERFORMANCE_WINDOW_DAYS = 90
+
 export async function marketingPerformance(db: Db): Promise<{
   posts: MarketingPerformanceRow[]
   channels: { channel: string; views: number; signups: number }[]
   campaigns: { campaign: string; views: number; signups: number; leads: number }[]
   totals: { views: number; cta_clicks: number; signups: number; leads: number }
+  /** Visit to first-insight funnel by source and pillar, from the daily rollups; null until they exist. */
+  funnel: FunnelView | null
   /** "What works" — trait-level engagement analysis over measured posts.
    *  Providers don't expose impressions, so engagement is normalized
    *  against the account's own median (x=1.0) rather than per-impression:
@@ -437,10 +445,25 @@ export async function marketingPerformance(db: Db): Promise<{
     top_post?: { channel: string; excerpt: string; engagement: number }
   }
 }> {
-  const events = await db.collection('growth_events').find({}).toArray()
-  const users = await db.collection('users').find({}).toArray()
-  const leads = await db.collection('leads').find({}).toArray()
-  const blogs = await db.collection('blog_posts').find({}).toArray()
+  // Bounded reads (PRD-210 phase 4): only the blog events, social-attributed signups and leads of
+  // the last PERFORMANCE_WINDOW_DAYS, with only the fields used. This used to load whole collections.
+  const since = new Date(Date.now() - PERFORMANCE_WINDOW_DAYS * 86_400_000)
+  const events = await db
+    .collection('growth_events')
+    .find(
+      { event: { $in: ['blog_view', 'blog_cta_click'] }, created_at: { $gte: since } },
+      { projection: { _id: 0, event: 1, path: 1, meta: 1 } },
+    )
+    .toArray()
+  const users = await db
+    .collection('users')
+    .find({ 'attribution.utm_medium': 'social', created_at: { $gte: since } }, { projection: { _id: 0, attribution: 1 } })
+    .toArray()
+  const leads = await db
+    .collection('leads')
+    .find({ 'attribution.utm_medium': 'social', created_at: { $gte: since } }, { projection: { _id: 0, attribution: 1 } })
+    .toArray()
+  const blogs = await db.collection('blog_posts').find({}, { projection: { _id: 0, slug: 1, title: 1 } }).toArray()
   const publishedPosts = await db
     .collection<MarketingPostDoc>('marketing_posts')
     .find(
@@ -612,7 +635,8 @@ export async function marketingPerformance(db: Db): Promise<{
         }
       : {}),
   }
-  return { posts, channels, campaigns, totals, insights }
+  const funnel = (await isRollupReady(db)) ? await readFunnel(db, 28) : null
+  return { posts, channels, campaigns, totals, funnel, insights }
 }
 
 /** Engagement sweep — poll channel APIs for like/repost/reply counts on
@@ -913,8 +937,12 @@ function siteLink(
   campaign = 'lifekeel_social',
 ): string {
   const base = (process.env['LIFEKEEL_URL'] ?? '').replace(/\/$/, '')
+  // Blog slugs and brief ids are lowercase tokens and pass through unchanged, so utm_content still
+  // equals the slug the per-post join looks for. A value outside the scheme falls back to a slug-safe
+  // form rather than dropping the link (and would not join; slugs are authored as lowercase kebab-case).
+  const safe = (v: string) => v.toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').replace(/^-+/, '').slice(0, 64) || 'x'
   return base
-    ? `${base}${path}?utm_source=${encodeURIComponent(channel)}&utm_medium=social&utm_campaign=${encodeURIComponent(campaign)}&utm_content=${encodeURIComponent(contentTag)}`
+    ? `${base}${path}?${utmQuery({ source: safe(channel), medium: 'social', campaign: safe(campaign), content: safe(contentTag) })}`
     : ''
 }
 

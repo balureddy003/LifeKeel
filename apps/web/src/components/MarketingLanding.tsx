@@ -28,14 +28,14 @@ import { SiteFooter } from './landing/SiteFooter'
 import { SiteHeader } from './landing/SiteHeader'
 import { YearsTimelapse } from './landing/YearsTimelapse'
 import { StickyCta } from './landing/StickyCta'
-import { track } from '@/lib/growth-track'
+import { currentUtm, track } from '@/lib/growth-track'
 
 export function MarketingLanding() {
   useEffect(() => {
     // A device with a stored session sees the app, not this page (the landing is hidden for it
     // while the session check runs), so it is not a landing view.
     if (document.documentElement.dataset.session === '1') return
-    track('landing_view')
+    track('landing_view', currentUtm())
   }, [])
 
   return (

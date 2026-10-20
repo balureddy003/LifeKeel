@@ -36,6 +36,7 @@ import sgMail from '@sendgrid/mail'
 import { createLogger } from '@lifekeel/platform'
 import { getPlatformConfig } from '../operator/platform-config.js'
 import { getGrowthEventsCollection } from '../db.js'
+import { utmQuery } from './utm.js'
 import { excludeMinorUsers } from '../family/family-permissions.js'
 import { recordSpend, spendCost } from '../spend-ledger.js'
 
@@ -268,7 +269,7 @@ export function leadWelcomeBody(firstName: string, appUrl: string, unsub: string
     <p>LifeKeel keeps your family's chart: what you hold on file across savings, cover and papers,
     what looks missing, and the steps if something happens. It is free to start, and nothing is
     sent or changed for you unless you approve it.</p>
-    ${cta(`${appUrl}/signup?utm_source=lifecycle&utm_medium=email&utm_campaign=lead_nurture&utm_content=welcome`, 'Start free')}
+    ${cta(`${appUrl}/signup?${utmQuery({ source: 'lifecycle', medium: 'email', campaign: 'lead_nurture', content: 'welcome' })}`, 'Start free')}
   `,
     unsub,
   )
@@ -284,7 +285,7 @@ export function leadEducationBody(firstName: string, appUrl: string, unsub: stri
     <p>LifeKeel shows these from the figures you enter, so you can see where things stand. It does
     not make product recommendations; for decisions, a licensed professional can look at your whole
     situation.</p>
-    ${cta(`${appUrl}/signup?utm_source=lifecycle&utm_medium=email&utm_campaign=lead_nurture&utm_content=day3`, 'Put your family on the chart')}
+    ${cta(`${appUrl}/signup?${utmQuery({ source: 'lifecycle', medium: 'email', campaign: 'lead_nurture', content: 'day3' })}`, 'Put your family on the chart')}
   `,
     unsub,
   )
@@ -296,7 +297,7 @@ export function leadLastCallBody(firstName: string, appUrl: string, unsub: strin
     <p>Hi ${firstName},</p>
     <p>One last note from us. If the timing is not right, no problem; if you would rather not hear
     from us again, the unsubscribe link below is one click.</p>
-    ${cta(`${appUrl}/signup?utm_source=lifecycle&utm_medium=email&utm_campaign=lead_nurture&utm_content=day7`, 'Start free')}
+    ${cta(`${appUrl}/signup?${utmQuery({ source: 'lifecycle', medium: 'email', campaign: 'lead_nurture', content: 'day7' })}`, 'Start free')}
   `,
     unsub,
   )
@@ -307,7 +308,7 @@ export function activationBody(firstName: string, appUrl: string): string {
     <p>Hi ${firstName},</p>
     <p>Your LifeKeel account is set up. The last step is your family profile, which takes a few
     minutes. Until it is filled in, there is nothing on your chart for LifeKeel to check.</p>
-    ${cta(`${appUrl}/family-setup?utm_source=lifecycle&utm_medium=email&utm_campaign=activation`, 'Finish family setup')}
+    ${cta(`${appUrl}/family-setup?${utmQuery({ source: 'lifecycle', medium: 'email', campaign: 'activation' })}`, 'Finish family setup')}
   `)
 }
 
@@ -317,7 +318,7 @@ export function upgradeBody(firstName: string, appUrl: string): string {
     <p>You have been using LifeKeel for a while. Keel Plus (£7.99 a month, cancel any time) adds two
     things the free plan does not: reading policy details from an uploaded document for you to
     confirm, and plain-language summaries of the financial email you connect.</p>
-    ${cta(`${appUrl}/upgrade?utm_source=lifecycle&utm_medium=email&utm_campaign=upgrade`, 'See Keel Plus')}
+    ${cta(`${appUrl}/upgrade?${utmQuery({ source: 'lifecycle', medium: 'email', campaign: 'upgrade' })}`, 'See Keel Plus')}
   `)
 }
 
@@ -327,7 +328,7 @@ export function trialEndingBody(firstName: string, endsAt: Date, appUrl: string)
     <p>Hi ${firstName},</p>
     <p>Your LifeKeel trial ends <strong>${date}</strong>. After that, document reading and email
     summaries pause. Everything already extracted stays where it is.</p>
-    ${cta(`${appUrl}/upgrade?utm_source=lifecycle&utm_medium=email&utm_campaign=trial&utm_content=ending`, 'See Keel Plus')}
+    ${cta(`${appUrl}/upgrade?${utmQuery({ source: 'lifecycle', medium: 'email', campaign: 'trial', content: 'ending' })}`, 'See Keel Plus')}
   `)
 }
 
@@ -336,7 +337,7 @@ export function trialExpiredBody(firstName: string, appUrl: string): string {
     <p>Hi ${firstName},</p>
     <p>Your LifeKeel trial has ended, so document reading and email summaries are paused. Your
     documents, insights and everything already found are untouched.</p>
-    ${cta(`${appUrl}/upgrade?utm_source=lifecycle&utm_medium=email&utm_campaign=trial&utm_content=expired`, 'See Keel Plus')}
+    ${cta(`${appUrl}/upgrade?${utmQuery({ source: 'lifecycle', medium: 'email', campaign: 'trial', content: 'expired' })}`, 'See Keel Plus')}
   `)
 }
 
@@ -345,7 +346,7 @@ export function winbackBody(firstName: string, appUrl: string): string {
     <p>Hi ${firstName},</p>
     <p>Your Keel Plus subscription has ended and your account is back on the free plan. Nothing was
     deleted: your family's profile, documents and every insight are still there.</p>
-    ${cta(`${appUrl}/upgrade?utm_source=lifecycle&utm_medium=email&utm_campaign=winback`, 'See your account')}
+    ${cta(`${appUrl}/upgrade?${utmQuery({ source: 'lifecycle', medium: 'email', campaign: 'winback' })}`, 'See your account')}
   `)
 }
 
