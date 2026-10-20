@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { GUIDES, guideQuizUrl } from './guides-data'
+import { GUIDES, guideSignupUrl } from './guides-data'
 
 // Static marketing content — a server component so the guides index is
 // real HTML in the static export, not client-injected like the blog
@@ -44,15 +44,15 @@ export default function GuidesIndex() {
 
         <div className="glass mt-8 rounded-2xl border border-tint/[0.08] p-5 text-center">
           <p className="text-sm text-ink-secondary">
-            Not sure where your household stands?
+            Want to see where your household stands?
           </p>
           <Link
-            href={guideQuizUrl('index')}
+            href={guideSignupUrl('index')}
             className="mt-3 inline-block rounded-xl bg-family-500 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-family-600"
           >
-            Take the free Family Readiness Check
+            Start free
           </Link>
-          <p className="mt-2 text-xs text-ink-tertiary">Six questions, no signup, about a minute.</p>
+          <p className="mt-2 text-xs text-ink-tertiary">Free to start, no credit card.</p>
         </div>
       </main>
     </div>

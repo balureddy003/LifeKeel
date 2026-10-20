@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { GUIDES, getGuide, guideQuizUrl, QUIZ_CTA } from '../guides-data'
+import { GUIDES, getGuide, guideSignupUrl, SIGNUP_CTA } from '../guides-data'
 import { GuideTracker } from './GuideTracker'
 
 const SITE_URL = 'https://lifekeel.co.uk'
@@ -100,12 +100,12 @@ export default async function GuidePage({ params }: { params: Promise<{ slug: st
         </section>
 
         <div className="glass mt-10 rounded-2xl border border-tint/[0.08] p-5 text-center">
-          <p className="text-sm text-ink-secondary">{QUIZ_CTA}</p>
+          <p className="text-sm text-ink-secondary">{SIGNUP_CTA}</p>
           <Link
-            href={guideQuizUrl(guide.slug)}
+            href={guideSignupUrl(guide.slug)}
             className="mt-3 inline-block rounded-xl bg-family-500 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-family-600"
           >
-            Check your family&apos;s readiness
+            Start free
           </Link>
         </div>
 

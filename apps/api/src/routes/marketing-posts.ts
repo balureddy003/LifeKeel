@@ -48,6 +48,7 @@ import {
 } from '../marketing/social-publisher.js'
 import { type LlmFn } from '@lifekeel/platform'
 import { encryptForTenant } from '../crypto/envelope.js'
+import { checkCopy, describeViolations, type CopyCheck } from '../marketing/copy-guard.js'
 import { taskLlm } from '../ai/task-gateway.js'
 import { ConnectorActionExecutor } from '@lifekeel/workflows'
 
@@ -71,6 +72,8 @@ export interface MarketingPostDoc {
   published_at?: Date
   publish_error?: string
   generated?: 'llm' | 'template'
+  /** Marketing copy guard result for the current content (PRD-210). A post that fails cannot be approved or published. */
+  copy_check?: CopyCheck
   /** UTM campaign tag — 'lifekeel_social' for ungrouped posts; named campaigns
    *  let the operator split performance by push. */
   campaign?: string
@@ -269,6 +272,15 @@ export async function publishDueMarketingPosts(
     .slice(0, 20)
   let dispatched = 0
   for (const post of due) {
+    // The rules can tighten after approval; copy that no longer passes is held, not sent.
+    const recheck = checkCopy(post.content, 'social')
+    if (!recheck.ok) {
+      await col.updateOne(
+        { id: post.id, state: 'approved' },
+        { $set: { state: 'publish_failed', publish_error: `copy_guard_failed: ${describeViolations(recheck)}`, copy_check: recheck } },
+      )
+      continue
+    }
     const claimed = await col.findOneAndUpdate(
       { id: post.id, state: 'approved' },
       { $set: { state: 'publishing' } },
@@ -345,7 +357,7 @@ export async function generateDailyMarketingDrafts(
       created_by: 'daily-generator',
       created_at: new Date(),
     }
-    await postsCol.insertOne(post)
+    await postsCol.insertOne({ ...post, copy_check: checkCopy(post.content, 'social') })
     queued += 1
   }
   return queued
@@ -387,7 +399,7 @@ export async function draftBlogPromoPost(
     created_by: createdBy,
     created_at: new Date(),
   }
-  await db.collection<MarketingPostDoc>('marketing_posts').insertOne(post)
+  await db.collection<MarketingPostDoc>('marketing_posts').insertOne({ ...post, copy_check: checkCopy(post.content, 'social') })
   return post
 }
 
@@ -866,30 +878,30 @@ function clampPost(text: string, limit: number, reserve = 0): string {
   return `${window.slice(0, cut > cap * 0.6 ? cut : cap - 1).trimEnd()}…`
 }
 
-const GENERATE_SYSTEM = `You write social posts for LifeKeel — a free tool that shows a family
-in two minutes how ready their finances are for the unexpected (illness,
-job loss, a death in the family), plus plain-English education on the
-gaps it finds.
+const GENERATE_SYSTEM = `You write social posts for LifeKeel — a free-to-start tool that keeps a
+family's chart: what they hold on file (savings, cover, papers), what looks missing, and the steps
+if something happens.
 
-Voice: sharp, warm, concrete — a thoughtful person sharing something
-genuinely useful, not a brand account broadcasting. Open with a hook:
-a hard question, a "what would happen if…", or a surprising everyday
-fact. Short lines. End by inviting the reader to try the free check.
+Voice: sharp, warm, concrete — a thoughtful person sharing something genuinely useful, not a brand
+account broadcasting. Open with a hook: a hard question, a "what would happen if…", or an everyday
+fact. Short lines. End by inviting the reader to start free, or to read the linked guide.
 
 Rules — these are non-negotiable:
-- Informational, educational tone only. Never personalized financial,
-  insurance, or investment advice. Never name, rank, or recommend a
-  specific provider, policy, or product. No savings promises, no
-  manufactured urgency or fear-baiting.
-- Only use facts and numbers that appear in the source material —
-  never invent statistics.
-- Plain text only — no markdown. At most two hashtags; at most one
-  emoji, never in the hook.
-- When a link is provided, include it verbatim on its own line at
-  the end.
-- When a WINNER/FLOP performance section is provided, use it as the
-  style bar: match the winners' hooks and structure, avoid whatever
-  the flops did — but never reuse their exact wording.
+- Informational, educational tone only. Never personalized financial, insurance, or investment
+  advice. Never name, rank, compare, or recommend a specific provider, policy, or product. Never
+  say "buy", "switch", "cheaper", "save money" or "optimise". No manufactured urgency or fear.
+- Only claim what is on this list, in plain words: savings runway from figures the person enters;
+  life, income and health cover on file against a rough household estimate; wills and papers on
+  file; steps for seven kinds of bad day; a plain how-to-claim guide for each kind of policy; no
+  commissions; details never sold; export or delete your data from Settings; free to start, no
+  credit card. Never say LifeKeel "monitors", "protects", is "always on", is a "digital twin", or
+  acts without approval. It never moves money or buys anything.
+- Do not mention a quiz, a score, or a "two-minute check": those no longer exist.
+- Only use facts and numbers that appear in the source material — never invent statistics.
+- Plain text only — no markdown. At most two hashtags; at most one emoji, never in the hook.
+- When a link is provided, include it verbatim on its own line at the end.
+- When a WINNER/FLOP performance section is provided, use it as the style bar: match the winners'
+  hooks and structure, avoid whatever the flops did — but never reuse their exact wording.
 - Return ONLY the post text, nothing else.`
 
 /** UTM'd site link — clicks land in users.attribution.utm_source so the
@@ -1289,7 +1301,7 @@ export function registerMarketingPostRoutes(
     // external effect (intent 03; 'marketing.publish'/'social.post' sit in
     // autopilot's NEVER_AUTONOMOUS). The trust counter still increments on
     // approve as an earned-confidence display, nothing more.
-    await col.insertOne(post)
+    await col.insertOne({ ...post, copy_check: checkCopy(post.content, 'social') })
 
     const saved = await col.findOne({ id: post.id })
     return reply.status(201).send({ post: saved })
@@ -1318,8 +1330,8 @@ export function registerMarketingPostRoutes(
       sourceBlock = src.sourceBlock
       link = src.link
     } else {
-      // Free-topic drafts still need a funnel — link the readiness check.
-      link = siteLink(channel, '/readiness', 'topic', camp)
+      // Free-topic drafts still need a funnel — link to signup.
+      link = siteLink(channel, '/signup', 'topic', camp)
       sourceBlock = `Topic: ${topic}${link ? `\nLink to include verbatim: ${link}` : ''}`
     }
 
@@ -1338,7 +1350,7 @@ export function registerMarketingPostRoutes(
           count ?? 3,
           learning,
         )
-        return { drafts }
+        return { drafts, checks: drafts.map((d) => checkCopy(d, 'social')) }
       } catch {
         // Same deterministic fallback as the persisted path.
         const { content } = await draftPostText(
@@ -1349,7 +1361,7 @@ export function registerMarketingPostRoutes(
           sourceBlock,
           link,
         )
-        return { drafts: [content] }
+        return { drafts: [content], checks: [checkCopy(content, 'social')] }
       }
     }
 
@@ -1375,7 +1387,7 @@ export function registerMarketingPostRoutes(
       created_by: user_id,
       created_at: now,
     }
-    await col.insertOne(post)
+    await col.insertOne({ ...post, copy_check: checkCopy(post.content, 'social') })
     getAuditLogger()?.fromRequest(req, 'marketing.post_generate', 'marketing_post', post.id, {
       channel,
       generated,
@@ -1416,6 +1428,10 @@ export function registerMarketingPostRoutes(
         { returnDocument: 'after' },
       )) as MarketingPostDoc | null
       if (!post) return reply.status(404).send({ error: 'Post not found or not editable' })
+      if (set['content'] !== undefined) {
+        post.copy_check = checkCopy(post.content, 'social')
+        await col.updateOne({ id: post.id }, { $set: { copy_check: post.copy_check } })
+      }
       getAuditLogger()?.fromRequest(req, 'marketing.post_update', 'marketing_post', post.id, {
         channel: post.channel,
         edited: [...Object.keys(set), ...Object.keys(unset)],
@@ -1431,6 +1447,16 @@ export function registerMarketingPostRoutes(
     { preHandler: manageGate },
     async (req, reply) => {
       const { tenant_id, user_id } = req.authContext
+      // Copy guard (PRD-210): checked against the content as it is now, so edits count. A failing
+      // post can be edited and approved again; it can never be approved as it stands.
+      const current = await col.findOne({ id: req.params.id, tenant_id, state: { $in: ['draft', 'publish_failed'] } })
+      if (current) {
+        const check = checkCopy(current.content, 'social')
+        if (!check.ok) {
+          await col.updateOne({ id: current.id }, { $set: { copy_check: check } })
+          return reply.status(422).send({ error: 'copy_guard_failed', violations: check.violations })
+        }
+      }
       const claimed = (await col.findOneAndUpdate(
         { id: req.params.id, tenant_id, state: { $in: ['draft', 'publish_failed'] } },
         { $set: { state: 'approved', approved_at: new Date(), approved_by: user_id } },

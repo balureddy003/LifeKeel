@@ -54,7 +54,6 @@ Everything below works from what the family adds.
 ## Pages
 
 - Product overview: https://lifekeel.co.uk/
-- Quick readiness check (six questions): https://lifekeel.co.uk/readiness
 - Blog (plain-language explainers): https://lifekeel.co.uk/blog
 - Guides (evergreen SEO guides): https://lifekeel.co.uk/guides
 - Terms: https://lifekeel.co.uk/terms

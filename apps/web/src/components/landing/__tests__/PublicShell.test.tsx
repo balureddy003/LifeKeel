@@ -44,8 +44,8 @@ describe('PublicShell', () => {
     expect(screen.queryByRole('link', { name: 'Get started' })).toBeNull()
   })
 
-  it('is applied to terms, privacy, support, blog, guides and readiness through their layouts', () => {
-    for (const route of ['terms', 'privacy', 'support', 'blog', 'guides', 'readiness']) {
+  it('is applied to terms, privacy, support, blog and guides through their layouts', () => {
+    for (const route of ['terms', 'privacy', 'support', 'blog', 'guides']) {
       const layout = fs.readFileSync(path.join(APP, route, 'layout.tsx'), 'utf8')
       expect(layout, route).toContain('<PublicShell>')
     }
@@ -53,7 +53,7 @@ describe('PublicShell', () => {
 
   it('AppShell lets those routes own their width instead of the phone-width wrapper', () => {
     const shell = fs.readFileSync(path.resolve(APP, '..', 'components', 'AppShell.tsx'), 'utf8')
-    for (const route of ['/terms', '/privacy', '/support', '/blog', '/guides', '/readiness']) {
+    for (const route of ['/terms', '/privacy', '/support', '/blog', '/guides']) {
       expect(shell, route).toContain(`'${route}'`)
     }
   })

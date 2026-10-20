@@ -2,7 +2,7 @@
  * Lifecycle email engine — the conversion layer between "captured" and
  * "customer". Three sequences, all consent-gated, deduped, and reversible:
  *
- *   lead_nurture   quiz/lead captures with consent.marketing → welcome →
+ *   lead_nurture   newsletter sign-ups with consent.marketing (the readiness quiz is retired) → welcome →
  *                  day-3 education → day-7 last call. Stops automatically
  *                  the moment the lead signs up (same email) or is
  *                  suppressed/unsubscribed.
@@ -246,122 +246,105 @@ async function claimedSendKeys(db: Db, filter: Record<string, unknown>): Promise
 }
 
 export function wrap(body: string, unsubLink?: string): string {
-  return `<div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;color:#1a1a2e;">
+  return `<div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;color:#0e2433;">
 ${body}
-<p style="color:#9a9ab0;font-size:11px;margin-top:32px;border-top:1px solid #eee;padding-top:12px;">
-LifeKeel — your family's chart, kept current.${unsubLink ? ` <a href="${unsubLink}" style="color:#9a9ab0;">Unsubscribe</a>` : ''}
+<p style="color:#6b8391;font-size:11px;margin-top:32px;border-top:1px solid #cfdce0;padding-top:12px;">
+LifeKeel — your family's chart, kept current. Informational only, not financial advice.${unsubLink ? ` <a href="${unsubLink}" style="color:#6b8391;">Unsubscribe</a>` : ''}
 </p></div>`
 }
 
+// Brass call to action with the dark label, as on the website (landing.css tokens).
 export const cta = (url: string, label: string) =>
-  `<a href="${url}" style="display:inline-block;padding:12px 22px;background:#6c5ce7;color:#fff;border-radius:10px;text-decoration:none;font-weight:600;margin:16px 0;">${label}</a>`
+  `<a href="${url}" style="display:inline-block;padding:12px 22px;background:#d9a441;color:#14202a;border-radius:10px;text-decoration:none;font-weight:600;margin:16px 0;">${label}</a>`
 
 // ── Email bodies (informational only — never advice/arranging) ──────────────
+// Exported so the copy test can run every body through the marketing copy guard.
 
-function leadWelcomeBody(
-  firstName: string,
-  scoreBand: string | undefined,
-  appUrl: string,
-  unsub: string,
-): string {
-  const band = scoreBand ? ` Your readiness check came back <strong>${scoreBand}</strong>.` : ''
+export function leadWelcomeBody(firstName: string, appUrl: string, unsub: string): string {
   return wrap(
     `
     <p>Hi ${firstName},</p>
-    <p>Thanks for checking your family's readiness with LifeKeel.${band}</p>
-    <p>Keel watches the signals families usually find out too late — coverage gaps,
-    savings drift, renewal deadlines — and tells you what's on file before it matters.
-    Your free account holds your result and starts your family's profile.</p>
-    ${cta(`${appUrl}/signup?utm_source=lifecycle&utm_medium=email&utm_campaign=lead_nurture&utm_content=welcome`, 'See your result')}
+    <p>Thanks for joining the LifeKeel newsletter.</p>
+    <p>LifeKeel keeps your family's chart: what you hold on file across savings, cover and papers,
+    what looks missing, and the steps if something happens. It is free to start, and nothing is
+    sent or changed for you unless you approve it.</p>
+    ${cta(`${appUrl}/signup?utm_source=lifecycle&utm_medium=email&utm_campaign=lead_nurture&utm_content=welcome`, 'Start free')}
   `,
     unsub,
   )
 }
 
-function leadEducationBody(firstName: string, appUrl: string, unsub: string): string {
+export function leadEducationBody(firstName: string, appUrl: string, unsub: string): string {
   return wrap(
     `
     <p>Hi ${firstName},</p>
-    <p>Most families have the same three blind spots: an emergency buffer that looks
-    fine until it isn't, a policy that renewed into a worse rate, and an education
-    fund that's quietly behind target.</p>
-    <p>Keel's detectors look for exactly these — on your numbers, not averages.
-    A few minutes of setup is all it takes.</p>
-    ${cta(`${appUrl}/signup?utm_source=lifecycle&utm_medium=email&utm_campaign=lead_nurture&utm_content=day3`, 'Set up your family profile')}
+    <p>Three things families often find out late: an emergency buffer that looks fine until income
+    stops, cover that is on file for one person but not another, and an education fund that has
+    fallen behind its target.</p>
+    <p>LifeKeel shows these from the figures you enter, so you can see where things stand. It does
+    not make product recommendations; for decisions, a licensed professional can look at your whole
+    situation.</p>
+    ${cta(`${appUrl}/signup?utm_source=lifecycle&utm_medium=email&utm_campaign=lead_nurture&utm_content=day3`, 'Put your family on the chart')}
   `,
     unsub,
   )
 }
 
-function leadLastCallBody(firstName: string, appUrl: string, unsub: string): string {
+export function leadLastCallBody(firstName: string, appUrl: string, unsub: string): string {
   return wrap(
     `
     <p>Hi ${firstName},</p>
-    <p>Last note from us — your readiness result is still saved. If the timing's
-    not right, no problem; if you'd rather not hear from us again, the unsubscribe
-    link below is one click.</p>
-    <p>Whenever you're ready, Keel is.</p>
-    ${cta(`${appUrl}/signup?utm_source=lifecycle&utm_medium=email&utm_campaign=lead_nurture&utm_content=day7`, 'Pick up where you left off')}
+    <p>One last note from us. If the timing is not right, no problem; if you would rather not hear
+    from us again, the unsubscribe link below is one click.</p>
+    ${cta(`${appUrl}/signup?utm_source=lifecycle&utm_medium=email&utm_campaign=lead_nurture&utm_content=day7`, 'Start free')}
   `,
     unsub,
   )
 }
 
-function activationBody(firstName: string, appUrl: string): string {
+export function activationBody(firstName: string, appUrl: string): string {
   return wrap(`
     <p>Hi ${firstName},</p>
-    <p>Your LifeKeel account is set up — the last step is your family profile
-    (about 2 minutes). That's what turns Keel's detectors on: until then it has
-    nothing to watch.</p>
+    <p>Your LifeKeel account is set up. The last step is your family profile, which takes a few
+    minutes. Until it is filled in, there is nothing on your chart for LifeKeel to check.</p>
     ${cta(`${appUrl}/family-setup?utm_source=lifecycle&utm_medium=email&utm_campaign=activation`, 'Finish family setup')}
   `)
 }
 
-function upgradeBody(firstName: string, appUrl: string): string {
+export function upgradeBody(firstName: string, appUrl: string): string {
   return wrap(`
     <p>Hi ${firstName},</p>
-    <p>You've been using LifeKeel to watch your family's finances — nice work.
-    Paid plans unlock the two things free can't do: AI extraction from uploaded
-    documents (policies, statements — no manual entry) and AI summaries of the
-    emails Keel scans.</p>
-    <p>If you're mid-document-pile, that's the upgrade worth it.</p>
-    ${cta(`${appUrl}/upgrade?utm_source=lifecycle&utm_medium=email&utm_campaign=upgrade`, 'See paid plans')}
+    <p>You have been using LifeKeel for a while. Keel Plus (£7.99 a month, cancel any time) adds two
+    things the free plan does not: reading policy details from an uploaded document for you to
+    confirm, and plain-language summaries of the financial email you connect.</p>
+    ${cta(`${appUrl}/upgrade?utm_source=lifecycle&utm_medium=email&utm_campaign=upgrade`, 'See Keel Plus')}
   `)
 }
 
-function trialEndingBody(firstName: string, endsAt: Date, appUrl: string): string {
-  const date = endsAt.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+export function trialEndingBody(firstName: string, endsAt: Date, appUrl: string): string {
+  const date = endsAt.toLocaleDateString('en-GB', { month: 'long', day: 'numeric' })
   return wrap(`
     <p>Hi ${firstName},</p>
-    <p>Your LifeKeel trial ends <strong>${date}</strong>. After that, AI document
-    extraction and inbox summaries pause — everything you've already extracted
-    stays exactly where it is.</p>
-    <p>If Keel's been pulling signal out of your family's paperwork, upgrading keeps
-    it running without a gap.</p>
-    ${cta(`${appUrl}/upgrade?utm_source=lifecycle&utm_medium=email&utm_campaign=trial&utm_content=ending`, 'Keep AI features on')}
+    <p>Your LifeKeel trial ends <strong>${date}</strong>. After that, document reading and email
+    summaries pause. Everything already extracted stays where it is.</p>
+    ${cta(`${appUrl}/upgrade?utm_source=lifecycle&utm_medium=email&utm_campaign=trial&utm_content=ending`, 'See Keel Plus')}
   `)
 }
 
-function trialExpiredBody(firstName: string, appUrl: string): string {
+export function trialExpiredBody(firstName: string, appUrl: string): string {
   return wrap(`
     <p>Hi ${firstName},</p>
-    <p>Your LifeKeel trial has ended — AI document extraction and inbox summaries
-    are paused. Your documents, insights, and everything Keel already found are
-    untouched.</p>
-    <p>Any time you want the AI back on, it's one upgrade away.</p>
-    ${cta(`${appUrl}/upgrade?utm_source=lifecycle&utm_medium=email&utm_campaign=trial&utm_content=expired`, 'Reactivate AI features')}
+    <p>Your LifeKeel trial has ended, so document reading and email summaries are paused. Your
+    documents, insights and everything already found are untouched.</p>
+    ${cta(`${appUrl}/upgrade?utm_source=lifecycle&utm_medium=email&utm_campaign=trial&utm_content=expired`, 'See Keel Plus')}
   `)
 }
 
-function winbackBody(firstName: string, appUrl: string): string {
+export function winbackBody(firstName: string, appUrl: string): string {
   return wrap(`
     <p>Hi ${firstName},</p>
-    <p>Your Keel Plus subscription has ended — your account moved back to the free
-    plan, and nothing was deleted: your family's profile, documents, and every
-    insight Keel already found are still there.</p>
-    <p>The free plan keeps working — your credit balance refills monthly, so Keel
-    keeps watching the basics. If it was the paid features you miss — AI document
-    extraction and inbox summaries — they're one step away.</p>
+    <p>Your Keel Plus subscription has ended and your account is back on the free plan. Nothing was
+    deleted: your family's profile, documents and every insight are still there.</p>
     ${cta(`${appUrl}/upgrade?utm_source=lifecycle&utm_medium=email&utm_campaign=winback`, 'See your account')}
   `)
 }
@@ -421,13 +404,13 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
         {
           step: 'welcome',
           minAge: 1 * HOUR,
-          subject: 'Your family readiness result',
-          html: leadWelcomeBody(firstName, lead['score_band'] as string | undefined, appUrl, unsub),
+          subject: 'Welcome to LifeKeel',
+          html: leadWelcomeBody(firstName, appUrl, unsub),
         },
         {
           step: 'day3',
           minAge: 3 * DAY,
-          subject: 'The 3 blind spots most families have',
+          subject: 'Three things families often find out late',
           html: leadEducationBody(firstName, appUrl, unsub),
         },
         {
@@ -715,7 +698,7 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
         step: 'nudge',
         recipient: u['id'] as string,
         email: u['email'] as string,
-        subject: 'What a paid plan unlocks',
+        subject: 'What Keel Plus adds',
         html: upgradeBody(String(u['name'] ?? 'there').split(' ')[0] || 'there', appUrl),
       })
     }

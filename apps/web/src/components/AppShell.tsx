@@ -441,7 +441,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/family-setup') ||
     pathname.startsWith('/reset-password') ||
     pathname.startsWith('/verify-email') ||
-    pathname.startsWith('/keep-result') ||
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/terms') ||
     pathname.startsWith('/privacy') ||
@@ -671,7 +670,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/family-setup') ||
     pathname.startsWith('/reset-password') ||
     pathname.startsWith('/verify-email') ||
-    pathname.startsWith('/keep-result') ||
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/terms') ||
     pathname.startsWith('/privacy') ||
@@ -730,7 +728,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     '/login',
     '/reset-password',
     '/verify-email',
-    '/keep-result',
     '/terms',
     '/privacy',
     '/support',

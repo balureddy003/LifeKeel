@@ -373,6 +373,8 @@ building disconnected marketing tooling.
     Tier 0 for drafts and plans; Tier 2 (always approved) for publishing and
     profile changes.
 
+**Quiz retired (2026-10-20).** PRD-125, 201, 203, 204 and 205 describe the public readiness quiz and its result-save, trust-block and share extras. The quiz, its API route and share card were removed; `/readiness` now redirects to signup. Those documents stay for history and are not on the build order.
+
 ## Suggested build order for 138–147 and 203–206
 
 Dependencies are in each PRD's "Builds on"; this is the order that follows from

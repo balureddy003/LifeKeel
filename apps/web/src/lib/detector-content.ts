@@ -1,6 +1,6 @@
 /**
  * PRD-202: rule_id -> blog slug, for "Learn more" links on real insight
- * cards and the public readiness quiz. Static lookup rather than a field
+ * cards. Static lookup rather than a field
  * on the detector YAML — Insight construction (packages/engine/src/detector.ts)
  * only copies explicitly-named fields from a fired rule, so a YAML field
  * would need engine/schema changes and still wouldn't apply to insights
