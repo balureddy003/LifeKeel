@@ -14,6 +14,13 @@
  *    derived state (ML scorer weights, credit ledgers, webhook logs) is not
  *    user data and is not included.
  *
+ *  - Deletion is resumable (PRD-146): the tenant is marked 'deleting' BEFORE the
+ *    wipe, so access dies at once and a wipe that fails halfway is retried by
+ *    the nightly erasure-replay instead of being forgotten. It finishes as
+ *    'deleted' only when a check afterwards finds nothing left, and the
+ *    response carries a receipt (counts by category, the check's result, the
+ *    backup window and processor statements; never content).
+ *
  *  - Delete is immediate, not request-and-fulfill. The confirmation is the
  *    user's own account email, typed — a stronger check than a checkbox
  *    since it's the one value a confused or coerced click is least likely
@@ -35,7 +42,20 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { getAuditLogger } from '../audit/audit-log.js'
-import { eraseTenantData } from '../erasure.js'
+import { eraseTenantDataReport } from '../erasure.js'
+import {
+  closeReceipt,
+  openReceipt,
+  publicReceipt,
+  saveReceipt,
+  type DeletionReceipt,
+} from '../deletion/receipt.js'
+
+/** What account deletion deliberately leaves, stated on the receipt. */
+export const ACCOUNT_DELETION_KEPT = [
+  'A record that this deletion happened, with counts and no content, is kept for 7 years: the audit trail and this receipt.',
+  'Billing records are kept as the financial record.',
+]
 
 // Fields stripped from the exported user record — auth material, not data
 // about the family.
@@ -119,16 +139,64 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
       return reply.status(400).send({ error: 'Type your account email to confirm deletion' })
     }
 
+    const receipt = openReceipt(tenant_id, 'account')
+
     // Audit the deletion BEFORE wiping — this entry is part of the retained
     // compliance record the header describes.
-    getAuditLogger()?.fromRequest(request, 'account.deleted', 'account', tenant_id, {})
+    getAuditLogger()?.fromRequest(request, 'account.deleted', 'account', tenant_id, {
+      receipt_id: receipt.id,
+    })
+
+    // Mark the tenant first. The auth middleware admits only 'active'/'trial',
+    // so every outstanding JWT 403s from this point, and if the wipe below
+    // fails the erasure-replay job still finds the tenant and finishes it.
+    await db.collection('tenants').updateOne(
+      { tenant_id },
+      {
+        $set: {
+          status: 'deleting',
+          deleting_at: new Date(),
+          deletion_receipt_id: receipt.id,
+          updated_at: new Date(),
+        },
+      },
+    )
+    await saveReceipt(db, receipt)
 
     // The wipe itself lives in erasure.ts so the account route, the daily
     // erasure-replay cron, and post-restore reconciliation run identical code.
-    await eraseTenantData(db, tenant_id)
+    let closed: DeletionReceipt
+    try {
+      const report = await eraseTenantDataReport(db, tenant_id)
+      closed = closeReceipt(receipt, { ...report, kept: ACCOUNT_DELETION_KEPT })
+    } catch (err) {
+      request.log.error({ err, tenant_id }, 'Account erasure interrupted; replay will resume it')
+      const interrupted: DeletionReceipt = {
+        ...receipt,
+        status: 'partial',
+        kept: [
+          'The deletion was interrupted. It is retried automatically and your access is already closed.',
+          ...ACCOUNT_DELETION_KEPT,
+        ],
+      }
+      await saveReceipt(db, interrupted)
+      return reply.status(202).send({
+        deleted: false,
+        in_progress: true,
+        receipt: publicReceipt(interrupted),
+      })
+    }
 
-    // Keep the tenants row but make it dead: the auth middleware admits only
-    // 'active'/'trial' tenants, so every outstanding JWT 403s from here on.
+    await saveReceipt(db, closed)
+    if (!closed.live_data_erased) {
+      // Something was still there after the wipe: stay 'deleting' so the replay retries.
+      return reply.status(202).send({
+        deleted: false,
+        in_progress: true,
+        receipt: publicReceipt(closed),
+      })
+    }
+
     await db
       .collection('tenants')
       .updateOne(
@@ -136,6 +204,23 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
         { $set: { status: 'deleted', deleted_at: new Date(), updated_at: new Date() } },
       )
 
-    return { deleted: true }
+    return { deleted: true, receipt: publicReceipt(closed) }
+  })
+
+  /**
+   * GET /account/deletion-receipts — receipts for the document and mailbox
+   * deletions this account has made, newest first. (An account's own deletion
+   * receipt is returned once, in the delete response, because the account no
+   * longer exists to ask.)
+   */
+  app.get('/account/deletion-receipts', async (request) => {
+    const { tenant_id } = request.authContext
+    const rows = (await db
+      .collection('deletion_receipts')
+      .find({ tenant_id, kind: { $in: ['document', 'mailbox'] } })
+      .sort({ requested_at: -1 })
+      .limit(50)
+      .toArray()) as unknown as DeletionReceipt[]
+    return { receipts: rows.map(publicReceipt) }
   })
 }

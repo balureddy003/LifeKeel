@@ -17,7 +17,9 @@
  */
 import type { Db } from 'mongodb'
 import { createLogger } from '@lifekeel/platform'
-import { eraseTenantData } from '../erasure.js'
+import { eraseTenantDataReport } from '../erasure.js'
+import { closeReceipt, loadReceipt, openReceipt, saveReceipt } from '../deletion/receipt.js'
+import { ACCOUNT_DELETION_KEPT } from '../routes/account.js'
 
 const log = createLogger({ service: 'erasure-replay', version: '0.0.0' })
 
@@ -26,18 +28,46 @@ const log = createLogger({ service: 'erasure-replay', version: '0.0.0' })
  * Idempotent: running it when nothing is tombstoned (the common case) is a
  * single indexed read.
  */
-export async function runErasureReplay(db: Db): Promise<{ tenants_replayed: number }> {
+export async function runErasureReplay(
+  db: Db,
+): Promise<{ tenants_replayed: number; tenants_resumed: number }> {
+  // 'deleting' = an account deletion that did not finish (PRD-146): resume it
+  // and complete its receipt. 'deleted' = the post-restore tombstone replay.
   const tombstoned = await db
     .collection('tenants')
-    .find({ status: 'deleted' }, { projection: { tenant_id: 1 } })
+    .find(
+      { status: { $in: ['deleting', 'deleted'] } },
+      { projection: { tenant_id: 1, status: 1, deletion_receipt_id: 1 } },
+    )
     .toArray()
 
   let replayed = 0
+  let resumed = 0
   for (const t of tombstoned) {
     const tenantId = String(t['tenant_id'])
     try {
-      await eraseTenantData(db, tenantId)
-      replayed++
+      const report = await eraseTenantDataReport(db, tenantId)
+      if (t['status'] === 'deleting') {
+        const existing = t['deletion_receipt_id']
+          ? await loadReceipt(db, String(t['deletion_receipt_id']))
+          : null
+        const closed = closeReceipt(existing ?? openReceipt(tenantId, 'account'), {
+          ...report,
+          kept: ACCOUNT_DELETION_KEPT,
+        })
+        await saveReceipt(db, closed)
+        if (closed.live_data_erased) {
+          await db
+            .collection('tenants')
+            .updateOne(
+              { tenant_id: tenantId },
+              { $set: { status: 'deleted', deleted_at: new Date(), updated_at: new Date() } },
+            )
+          resumed++
+        }
+      } else {
+        replayed++
+      }
     } catch (err) {
       // One tenant's replay failure must not skip the rest — log loudly and
       // continue; the next run retries.
@@ -48,7 +78,10 @@ export async function runErasureReplay(db: Db): Promise<{ tenants_replayed: numb
   if (replayed > 0) {
     log.info({ tenants_replayed: replayed }, 'Erasure replay re-wiped tombstoned tenants')
   }
-  return { tenants_replayed: replayed }
+  if (resumed > 0) {
+    log.info({ tenants_resumed: resumed }, 'Erasure replay finished interrupted deletions')
+  }
+  return { tenants_replayed: replayed, tenants_resumed: resumed }
 }
 
 // ── CLI entry point ──────────────────────────────────────────────────────────
