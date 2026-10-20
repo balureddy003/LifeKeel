@@ -27,11 +27,16 @@ export class RetentionWorker {
   }
 
   async run(): Promise<Record<string, number>> {
-    const tenants = await this.db.collection('tenants').find({ status: { $ne: 'erased' } }).toArray()
+    const tenants = await this.db
+      .collection('tenants')
+      .find({ status: { $ne: 'erased' } })
+      .toArray()
     const deleted: Record<string, number> = {}
     for (const tenant of tenants) {
       const tenantId = String(tenant['tenant_id'] ?? tenant['id'])
-      const retention = normalizeRetention(tenant['data_retention'] as Partial<DataRetention> | undefined)
+      const retention = normalizeRetention(
+        tenant['data_retention'] as Partial<DataRetention> | undefined,
+      )
       const classes = [
         ['signals', 'created_at', retention.events_days],
         ['insights', 'created_at', retention.insights_days],
@@ -54,8 +59,18 @@ function normalizeRetention(value: Partial<DataRetention> | undefined): DataRete
   return {
     events_days: clamp(value?.events_days, DEFAULT_RETENTION.events_days, 30, 365),
     insights_days: clamp(value?.insights_days, DEFAULT_RETENTION.insights_days, 30, 365),
-    workflow_runs_days: clamp(value?.workflow_runs_days, DEFAULT_RETENTION.workflow_runs_days, 30, 365),
-    agent_memory_days: clamp(value?.agent_memory_days, DEFAULT_RETENTION.agent_memory_days, 30, 730),
+    workflow_runs_days: clamp(
+      value?.workflow_runs_days,
+      DEFAULT_RETENTION.workflow_runs_days,
+      30,
+      365,
+    ),
+    agent_memory_days: clamp(
+      value?.agent_memory_days,
+      DEFAULT_RETENTION.agent_memory_days,
+      30,
+      730,
+    ),
   }
 }
 

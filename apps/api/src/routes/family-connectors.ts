@@ -239,12 +239,10 @@ export function registerFamilyConnectorRoutes(fastify: FastifyInstance, db: Db):
         .send({ error: 'Sandbox banking is not available in this environment' })
     }
     if (providerId === 'truelayer' && process.env['OPEN_BANKING_TOKENS'] !== '1') {
-      return reply
-        .status(503)
-        .send({
-          error:
-            'Bank connections need a regulated partner that is not onboarded yet — add accounts manually in your Financial Profile for now',
-        })
+      return reply.status(503).send({
+        error:
+          'Bank connections need a regulated partner that is not onboarded yet — add accounts manually in your Financial Profile for now',
+      })
     }
 
     const provider = resolveAccountInfoProvider(providerId)
