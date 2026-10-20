@@ -106,7 +106,6 @@ import { createLogger } from '@lifekeel/platform'
 const auditLog = createLogger({ service: 'audit', version: '0.0.0' })
 
 export class AuditLogger {
-   
   private col: any
   private enabled: boolean
 

@@ -20,7 +20,10 @@ function makeDb(documentsSeed: Record<string, unknown>[] = []) {
   const documentsCol = {
     findOne: async (filter: Record<string, unknown>) =>
       documents.find((d) => Object.entries(filter).every(([k, v]) => d[k] === v)) ?? null,
-    updateOne: async (filter: Record<string, unknown>, update: { $set?: Record<string, unknown> }) => {
+    updateOne: async (
+      filter: Record<string, unknown>,
+      update: { $set?: Record<string, unknown> },
+    ) => {
       const doc = documents.find((d) => Object.entries(filter).every(([k, v]) => d[k] === v))
       if (!doc) return { matchedCount: 0, modifiedCount: 0 }
       if (update.$set) Object.assign(doc, update.$set)
@@ -66,13 +69,21 @@ async function buildApp(db: any) {
   const app = Fastify()
   await app.register(multipart)
   app.addHook('onRequest', async (request) => {
-    ;(request as any).authContext = { tenant_id: request.headers['x-test-tenant'], user_id: 'user-1' }
+    ;(request as any).authContext = {
+      tenant_id: request.headers['x-test-tenant'],
+      user_id: 'user-1',
+    }
   })
   registerDocumentRoutes(app, db)
   return app
 }
 
-async function applyPolicy(app: any, tenantId: string, documentId: string, body: Record<string, unknown>) {
+async function applyPolicy(
+  app: any,
+  tenantId: string,
+  documentId: string,
+  body: Record<string, unknown>,
+) {
   const res = await app.inject({
     method: 'POST',
     url: `/documents/${documentId}/apply-policy`,
@@ -95,7 +106,9 @@ describe('POST /documents/:id/apply-policy', () => {
   let db: ReturnType<typeof makeDb>
 
   beforeEach(() => {
-    db = makeDb([{ id: 'doc-1', filename: 'aviva-life.pdf', category: 'insurance', tenant_id: 'family-1' }])
+    db = makeDb([
+      { id: 'doc-1', filename: 'aviva-life.pdf', category: 'insurance', tenant_id: 'family-1' },
+    ])
   })
 
   it('pushes a well-formed policy into a fresh (upserted) financial profile', async () => {
@@ -126,7 +139,11 @@ describe('POST /documents/:id/apply-policy', () => {
   })
 
   it('appends to an existing profile without clobbering other policies', async () => {
-    db._profiles.push({ policies: [{ type: 'car', provider: 'Admiral', coverage_amount_minor: 0, monthly_premium_minor: 8500 }] })
+    db._profiles.push({
+      policies: [
+        { type: 'car', provider: 'Admiral', coverage_amount_minor: 0, monthly_premium_minor: 8500 },
+      ],
+    })
     const app = await buildApp(db)
 
     const { status } = await applyPolicy(app, 'family-1', 'doc-1', {
@@ -138,7 +155,10 @@ describe('POST /documents/:id/apply-policy', () => {
 
     expect(status).toBe(200)
     expect(db._profiles[0].policies).toHaveLength(2)
-    expect(db._profiles[0].policies.map((p: any) => p.provider).sort()).toEqual(['Admiral', 'Aviva'])
+    expect(db._profiles[0].policies.map((p: any) => p.provider).sort()).toEqual([
+      'Admiral',
+      'Aviva',
+    ])
   })
 
   it('omits renewal_date and policy_number entirely when not provided, rather than storing empty strings', async () => {
@@ -185,14 +205,20 @@ describe('POST /documents/:id/apply-policy', () => {
 
   it('rejects a missing provider', async () => {
     const app = await buildApp(db)
-    const { status, body } = await applyPolicy(app, 'family-1', 'doc-1', { type: 'life', provider: '   ' })
+    const { status, body } = await applyPolicy(app, 'family-1', 'doc-1', {
+      type: 'life',
+      provider: '   ',
+    })
     expect(status).toBe(400)
     expect(body.error).toMatch(/provider/i)
   })
 
   it('404s for a document that does not exist for this tenant', async () => {
     const app = await buildApp(db)
-    const { status } = await applyPolicy(app, 'family-1', 'doc-missing', { type: 'life', provider: 'Aviva' })
+    const { status } = await applyPolicy(app, 'family-1', 'doc-missing', {
+      type: 'life',
+      provider: 'Aviva',
+    })
     expect(status).toBe(404)
   })
 })
@@ -212,11 +238,23 @@ describe('GET /documents/:id/profile-suggestions', () => {
     const { status, body } = await getSuggestions(app, 'family-1', 'doc-2')
 
     expect(status).toBe(200)
-    expect(body.policySuggestion).toMatchObject({ type: 'life', provider: 'Aviva', monthlyPremiumMinor: 2450 })
+    expect(body.policySuggestion).toMatchObject({
+      type: 'life',
+      provider: 'Aviva',
+      monthlyPremiumMinor: 2450,
+    })
   })
 
   it('returns null policySuggestion for a non-insurance document', async () => {
-    const db = makeDb([{ id: 'doc-3', filename: 'pension.pdf', category: 'pension', tenant_id: 'family-1', extracted_data: { provider: 'Aviva' } }])
+    const db = makeDb([
+      {
+        id: 'doc-3',
+        filename: 'pension.pdf',
+        category: 'pension',
+        tenant_id: 'family-1',
+        extracted_data: { provider: 'Aviva' },
+      },
+    ])
     const app = await buildApp(db)
     const { body } = await getSuggestions(app, 'family-1', 'doc-3')
     expect(body.policySuggestion).toBeNull()
