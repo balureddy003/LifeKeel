@@ -58,6 +58,8 @@ export type AuditAction =
   | 'billing.credit_pack_purchased'
   | 'account.exported'
   | 'account.deleted'
+  | 'document.deleted'
+  | 'mailbox.deleted'
   | 'family.join_requested'
   | 'family.join_approved'
   | 'family.join_denied'

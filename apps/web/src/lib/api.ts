@@ -1762,6 +1762,69 @@ export async function triggerConnectorBackfill(connectorId: string): Promise<boo
   }
 }
 
+/** PRD-146: counts and categories only; the API never sends content. */
+export interface DeletionReceipt {
+  id: string
+  kind: 'document' | 'mailbox' | 'account'
+  status: 'completed' | 'partial' | 'in_progress'
+  requested_at: string
+  completed_at: string | null
+  removed: { category: string; count: number }[]
+  kept: string[]
+  verification: { passed: boolean; residual: { category: string; count: number }[] } | null
+  live_data_erased: boolean
+  backups: { retention_days: number | null; statement: string }
+  processors: { id: string; name: string; stated_retention: string }[]
+}
+
+/** Held for one page after account deletion; see /account-deleted. */
+export const RECEIPT_STORAGE_KEY = 'lifekeel_deletion_receipt'
+
+/** Disconnect a mailbox and delete what was read from it. Null on any failure. */
+export async function disconnectMailboxAndDelete(
+  connectorId: string,
+): Promise<DeletionReceipt | null> {
+  try {
+    const token = getAuthToken()
+    const res = await credFetch(`${getApiBase()}/connectors/${connectorId}/disconnect`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ delete_data: true }),
+    })
+    if (!res.ok) return null
+    const data = (await res.json().catch(() => ({}))) as { receipt?: DeletionReceipt }
+    return data.receipt ?? null
+  } catch (err) {
+    reportError(err, { connectorId })
+    return null
+  }
+}
+
+/** Delete one uploaded document. The receipt lists what was removed. */
+export async function deleteFamilyDocument(
+  id: string,
+): Promise<{ ok: boolean; receipt?: DeletionReceipt; error?: string }> {
+  try {
+    const token = getAuthToken()
+    const res = await credFetch(`${getApiBase()}/documents/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    const data = (await res.json().catch(() => ({}))) as {
+      receipt?: DeletionReceipt
+      error?: string
+    }
+    if (!res.ok) return { ok: false, error: data.error ?? `Request failed (${res.status})` }
+    return { ok: true, ...(data.receipt ? { receipt: data.receipt } : {}) }
+  } catch (err) {
+    reportError(err, { action: 'deleteFamilyDocument', id })
+    return { ok: false, error: 'Network error — please try again' }
+  }
+}
+
 export async function disconnectConnector(connectorId: string): Promise<boolean> {
   try {
     const base = getApiBase()
@@ -2484,9 +2547,13 @@ export async function exportAccountData(): Promise<Record<string, unknown> | nul
 
 // confirmation must be the account's own email, typed — the server's check,
 // not just a client formality.
-export async function deleteAccount(
-  confirmation: string,
-): Promise<{ ok: boolean; error?: string | undefined }> {
+export async function deleteAccount(confirmation: string): Promise<{
+  ok: boolean
+  error?: string | undefined
+  receipt?: DeletionReceipt | undefined
+  /** True when the wipe has not finished; access is already closed and it completes by itself. */
+  inProgress?: boolean | undefined
+}> {
   try {
     const base = getApiBase()
     const token = getAuthToken()
@@ -2502,7 +2569,11 @@ export async function deleteAccount(
       const data = (await res.json().catch(() => ({}))) as { error?: string }
       return { ok: false, error: data.error ?? `Request failed (${res.status})` }
     }
-    return { ok: true }
+    const data = (await res.json().catch(() => ({}))) as {
+      receipt?: DeletionReceipt
+      in_progress?: boolean
+    }
+    return { ok: true, receipt: data.receipt, inProgress: data.in_progress === true }
   } catch (err) {
     reportError(err, { path: '/account/delete' })
     return { ok: false, error: 'Network error — please try again' }

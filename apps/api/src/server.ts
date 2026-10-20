@@ -174,6 +174,7 @@ import { registerFamilyFreshnessRoutes } from './routes/family-freshness.js'
 import { registerPerceivedProtectionRoutes } from './routes/perceived-protection.js'
 import { registerAiDisclosureRoutes } from './routes/ai-disclosure.js'
 import { registerOperatorRetentionRoutes } from './routes/operator-retention.js'
+import { registerOperatorDeletionRoutes } from './routes/operator-deletion.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
 import { registerSupportRoutes } from './routes/support.js'
 import { registerFamilyReadinessRoutes } from './routes/family-readiness.js'
@@ -2062,6 +2063,7 @@ if (workflowDb) {
   ensureAutopilotIndexes(workflowDb)
   await registerOperatorRoutes(app, workflowDb)
   registerOperatorRetentionRoutes(app, workflowDb)
+  registerOperatorDeletionRoutes(app, workflowDb)
   registerDetectorEvalRoutes(app, workflowDb, engine, detectorEvalDir(ROOT))
 }
 // Prometheus metrics — generic ops/observability, not vertical-specific.

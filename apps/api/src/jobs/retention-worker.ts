@@ -1,4 +1,5 @@
 import type { Db } from 'mongodb'
+import { recordJobRun } from './job-runs.js'
 
 export interface DataRetention {
   events_days: number
@@ -14,6 +15,13 @@ const DEFAULT_RETENTION: DataRetention = {
   agent_memory_days: 365,
 }
 
+/**
+ * Age-based sweep of DERIVED data only: signals, insights, workflow runs and
+ * agent memory. It never touches a family's documents, vault, profile or
+ * roster: those are deleted only when the family deletes them or their
+ * account (PRD-146 amendment 3, CLAUDE.md rule 1). Defaults are documented in
+ * docs/data-retention.md.
+ */
 export class RetentionWorker {
   constructor(private readonly db: Db) {}
 
@@ -51,6 +59,8 @@ export class RetentionWorker {
         deleted[collection] = (deleted[collection] ?? 0) + result.deletedCount
       }
     }
+    // Evidence that a sweep ran and what it removed (counts only; PRD-146).
+    await recordJobRun(this.db, 'retention', deleted)
     return deleted
   }
 }

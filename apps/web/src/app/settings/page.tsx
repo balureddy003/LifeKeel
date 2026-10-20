@@ -1,5 +1,6 @@
 'use client'
 
+import { ACCOUNT_DELETE_WARNING } from '@/lib/deletion-receipt-copy'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
@@ -52,6 +53,7 @@ import {
 import {
   exportAccountData,
   deleteAccount,
+  RECEIPT_STORAGE_KEY,
   fetchAccessRequests,
   approveAccessRequest,
   denyAccessRequest,
@@ -504,9 +506,16 @@ export default function SettingsPage() {
       )
       return
     }
-    // The account and its data are gone — local session cleanup then out.
+    // Access is closed (and the data gone, or finishing by itself). Keep the
+    // receipt for one page: the account can no longer be asked for it.
+    try {
+      if (result.receipt)
+        sessionStorage.setItem(RECEIPT_STORAGE_KEY, JSON.stringify(result.receipt))
+    } catch {
+      // storage blocked: the page says the receipt is unavailable
+    }
     signOut()
-    router.push('/welcome')
+    router.push('/account-deleted')
   }
 
   const resetAddMemberForm = () => {
@@ -1382,9 +1391,7 @@ export default function SettingsPage() {
           <div className="px-5 pb-6 pt-2">
             <div className="text-base font-bold text-ink-primary mb-2">Delete your account?</div>
             <p className="text-sm text-ink-secondary leading-relaxed mb-4">
-              This permanently removes your family's profile, documents, insights, goals, and
-              account sign-in. It can't be undone. The activity log is retained as a record of what
-              happened, per our data-retention policy.
+              {ACCOUNT_DELETE_WARNING}
             </p>
             <label className="block">
               <div className="text-xs text-ink-tertiary mb-1.5">
@@ -1427,7 +1434,7 @@ export default function SettingsPage() {
                 disabled={deleting || !deleteConfirm.trim()}
                 className="flex-1 bg-danger text-white font-semibold rounded-xl py-3 text-sm disabled:opacity-40 flex items-center justify-center gap-1.5"
               >
-                {deleting ? <Loader2 size={14} className="animate-spin" /> : 'Delete permanently'}
+                {deleting ? <Loader2 size={14} className="animate-spin" /> : 'Delete account'}
               </motion.button>
             </div>
           </div>

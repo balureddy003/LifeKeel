@@ -15,6 +15,8 @@
  * Security: all routes require JWT auth. tenant_id from JWT, never from body.
  */
 
+import { getAuditLogger } from '../audit/audit-log.js'
+import { closeReceipt, openReceipt, publicReceipt, saveReceipt } from '../deletion/receipt.js'
 import type { FastifyInstance } from 'fastify'
 import { GridFSBucket, type Db, type ObjectId } from 'mongodb'
 import { randomUUID } from 'node:crypto'
@@ -621,20 +623,57 @@ export function registerDocumentRoutes(
       return reply.status(404).send({ error: 'Document not found' })
     }
 
+    // PRD-146: the deletion returns a receipt (counts by category, no content).
+    const receipt = openReceipt(tenant_id, 'document')
+    getAuditLogger()?.fromRequest(req, 'document.deleted', 'document', req.params.id, {
+      receipt_id: receipt.id,
+    })
+
     // Delete file from GridFS
+    let fileRemoved = 0
     try {
       await bucket.delete(doc['file_id'] as ObjectId)
+      fileRemoved = 1
     } catch {
       // File may already be deleted — not critical
     }
 
-    // Delete metadata
+    // Delete metadata: this record also holds what was read from the document
+    // (extracted fields and its text), so they go with it.
     await documents.deleteOne({
       id: req.params.id,
     })
 
+    const hasReadData =
+      Object.keys((doc['extracted_data'] as Record<string, unknown> | undefined) ?? {}).length >
+        0 || Boolean(doc['raw_text'])
+    const residual: { category: string; count: number }[] = [
+      {
+        category: 'document record',
+        count: await db.collection('documents').countDocuments({ tenant_id, id: req.params.id }),
+      },
+      {
+        category: 'document file',
+        count: await db
+          .collection('documents.files')
+          .countDocuments({ _id: doc['file_id'] as ObjectId }),
+      },
+    ]
+    const closed = closeReceipt(receipt, {
+      removed: [
+        { category: 'document file', count: fileRemoved },
+        { category: 'document record', count: 1 },
+        { category: 'what was read from the document', count: hasReadData ? 1 : 0 },
+      ],
+      residual,
+      kept: [
+        'If you saved details from this document to your profile, they stay there until you change them.',
+      ],
+    })
+    await saveReceipt(db, closed)
+
     log.info({ documentId: req.params.id, tenant_id }, 'Document deleted')
 
-    return { success: true }
+    return { success: true, receipt: publicReceipt(closed) }
   })
 }

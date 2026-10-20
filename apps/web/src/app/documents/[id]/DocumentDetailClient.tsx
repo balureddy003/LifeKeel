@@ -18,12 +18,17 @@ import { useAuth } from '@/lib/auth-context'
 import { CATEGORY_ICONS, CATEGORY_LABELS } from '@/lib/document-categories'
 import { displayDocName } from '@/lib/doc-name'
 import { POLICY_TYPE_LABELS, POLICY_TYPES, PERSON_SCOPED_POLICY_TYPES } from '@/lib/policyTypes'
+import { useConfirm } from '@/components/ConfirmSheetProvider'
+import { DeletionReceiptCard } from '@/components/DeletionReceiptCard'
+import { DOCUMENT_DELETE_MESSAGE } from '@/lib/deletion-receipt-copy'
 import {
   fetchDocument,
   fetchProfileSuggestions,
   fetchDocumentFileUrl,
   applyDocumentToProfile,
   applyPolicySuggestion,
+  deleteFamilyDocument,
+  type DeletionReceipt,
   type FamilyDocumentDetail,
   type ProfileSuggestion,
   type DocumentPolicySuggestion,
@@ -120,6 +125,32 @@ export default function DocumentDetailClient() {
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
   }, [params.id])
+
+  const confirm = useConfirm()
+  const [deletion, setDeletion] = useState<DeletionReceipt | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const handleDelete = async () => {
+    const ok = await confirm({
+      title: 'Delete this document?',
+      message: DOCUMENT_DELETE_MESSAGE,
+      confirmLabel: 'Delete document',
+      destructive: true,
+    })
+    if (!ok) return
+    haptic('warning')
+    setDeleting(true)
+    setError(null)
+    const result = await deleteFamilyDocument(params.id)
+    setDeleting(false)
+    if (result.ok && result.receipt) {
+      haptic('success')
+      setDeletion(result.receipt)
+    } else {
+      haptic('warning')
+      setError(result.error ?? 'Could not delete this document')
+    }
+  }
 
   const handleApply = async () => {
     haptic('light')
@@ -219,6 +250,18 @@ export default function DocumentDetailClient() {
     )
   }
 
+  if (deletion) {
+    return (
+      <div className="px-5 pt-2 pb-10 space-y-4">
+        <PageHeader title="Document deleted" backHref="/upload" />
+        <DeletionReceiptCard receipt={deletion} />
+        <Link href="/upload" className="inline-block text-sm font-semibold text-family-400">
+          Back to documents
+        </Link>
+      </div>
+    )
+  }
+
   const Icon = CATEGORY_ICONS[doc.category] ?? FileQuestion
   const fields = Object.entries(doc.extractedData ?? {})
   const docName = displayDocName(doc)
@@ -243,6 +286,17 @@ export default function DocumentDetailClient() {
             </div>
           </div>
         </GlassCard>
+
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="text-xs font-semibold text-danger px-3 py-2 rounded-xl bg-danger/10 disabled:opacity-50"
+          >
+            {deleting ? 'Deleting…' : 'Delete document'}
+          </button>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
           {preview !== null && (
