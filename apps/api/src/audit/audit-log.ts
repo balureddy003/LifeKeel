@@ -59,6 +59,10 @@ export type AuditAction =
   | 'account.exported'
   | 'account.deleted'
   | 'document.deleted'
+  | 'document.intake'
+  | 'document.extracted'
+  | 'document.reviewed'
+  | 'document.committed'
   | 'mailbox.deleted'
   | 'family.join_requested'
   | 'family.join_approved'
@@ -111,7 +115,6 @@ import { createLogger } from '@lifekeel/platform'
 const auditLog = createLogger({ service: 'audit', version: '0.0.0' })
 
 export class AuditLogger {
-   
   private col: any
   private enabled: boolean
 

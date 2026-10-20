@@ -20,6 +20,7 @@ import { displayDocName } from '@/lib/doc-name'
 import { POLICY_TYPE_LABELS, POLICY_TYPES, PERSON_SCOPED_POLICY_TYPES } from '@/lib/policyTypes'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
 import { DeletionReceiptCard } from '@/components/DeletionReceiptCard'
+import { ExtractionReview } from '@/components/ExtractionReview'
 import { DOCUMENT_DELETE_MESSAGE } from '@/lib/deletion-receipt-copy'
 import {
   fetchDocument,
@@ -335,7 +336,13 @@ export default function DocumentDetailClient() {
             </GlassCard>
           )}
 
-          {fields.length > 0 && (
+          {(doc.candidates && doc.candidates.length > 0) ||
+          doc.classification ||
+          doc.status === 'error' ||
+          doc.scan === 'error' ? (
+            // PRD-143: values are reviewed against their source before they can be used.
+            <ExtractionReview doc={doc} onChange={setDoc} />
+          ) : fields.length > 0 ? (
             <GlassCard className="p-4">
               <div className="text-sm font-semibold text-ink-secondary mb-3">Extracted details</div>
               <div className="space-y-2.5">
@@ -347,7 +354,7 @@ export default function DocumentDetailClient() {
                 ))}
               </div>
             </GlassCard>
-          )}
+          ) : null}
         </div>
 
         <AnimatePresence mode="wait">

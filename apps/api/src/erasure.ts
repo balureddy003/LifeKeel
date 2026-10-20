@@ -23,6 +23,8 @@ export const DELETABLE_COLLECTIONS = [
   'family_groups',
   'family_financial_profile',
   'freshness_state', // PRD-145
+  'extraction_candidates', // PRD-143
+  'profile_provenance', // PRD-143
   'notification_ledger', // PRD-139
   'push_failures', // PRD-140
   'perceived_protection', // PRD-141

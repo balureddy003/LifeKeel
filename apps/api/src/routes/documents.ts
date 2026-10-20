@@ -23,6 +23,17 @@ import { randomUUID } from 'node:crypto'
 import type { Engine, Insight } from '@lifekeel/engine'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { processDocument } from '../ocr/extract.js'
+import { scanUpload } from '../extraction/scan.js'
+import { CATEGORIES } from '../extraction/schema.js'
+import {
+  applyReview,
+  auditStep,
+  loadCandidates,
+  saveCandidates,
+  type ExtractionCandidates,
+  type ReviewDecision,
+} from '../extraction/pipeline.js'
+import { extractorLabel, policyRef, saveProvenance } from '../extraction/provenance.js'
 import { localDecisionFromEnv } from '../local-model.js'
 import { taskDecide, taskVision } from '../ai/task-gateway.js'
 import {
@@ -141,6 +152,72 @@ export function registerDocumentRoutes(
   }
 
   // ── POST /documents/upload ──────────────────────────────────────────────
+  /**
+   * The gate every profile write from a document passes (PRD-143 items 1 and 4):
+   * the document's type must be trusted or confirmed, and the fields it would
+   * use must not be low-confidence and unreviewed. Returns the usable fields
+   * (a rejected field is never used; an edited one uses the edited value), or
+   * the error to send.
+   */
+  async function gate(
+    tenantId: string,
+    doc: Record<string, unknown>,
+    sourceKeys: string[] | null,
+    opts: { block?: boolean } = {},
+  ): Promise<
+    | { ok: true; fields: Record<string, string>; candidates: ExtractionCandidates | null }
+    | { ok: false; status: number; body: Record<string, unknown> }
+  > {
+    const block = opts.block !== false
+    const cls = doc['classification'] as
+      { needs_confirmation?: boolean; confirmed?: boolean } | undefined
+    if (block && cls?.needs_confirmation && !cls.confirmed) {
+      return {
+        ok: false,
+        status: 409,
+        body: { error: 'confirm_type', message: 'Confirm what this document is first.' },
+      }
+    }
+    const candidates = await loadCandidates(db, tenantId, String(doc['id']))
+    // Documents read before candidates existed fall back to their stored fields.
+    if (!candidates) {
+      return {
+        ok: true,
+        fields: (doc['extracted_data'] as Record<string, string>) ?? {},
+        candidates: null,
+      }
+    }
+    const usable: Record<string, string> = {}
+    const blocked: string[] = []
+    for (const f of candidates.fields) {
+      if (f.status === 'rejected') continue
+      if (
+        block &&
+        f.needs_review &&
+        f.status === 'proposed' &&
+        sourceKeys !== null &&
+        sourceKeys.includes(f.key)
+      ) {
+        blocked.push(f.key)
+        continue
+      }
+      usable[f.key] =
+        f.status === 'edited' && f.edited_value !== undefined ? f.edited_value : f.value
+    }
+    if (blocked.length > 0) {
+      return {
+        ok: false,
+        status: 409,
+        body: {
+          error: 'review_required',
+          fields: blocked,
+          message: 'Check these fields against the document first.',
+        },
+      }
+    }
+    return { ok: true, fields: usable, candidates }
+  }
+
   fastify.post('/documents/upload', async (req, reply) => {
     const { tenant_id } = req.authContext
     const data = await req.file()
@@ -166,10 +243,23 @@ export function registerDocumentRoutes(
     const filename = data.filename || `document-${documentId}`
     const mimeType = data.mimetype
 
-    log.info(
-      { documentId, filename, mimeType, size: fileBuffer.length, tenant_id },
-      'Uploading document',
-    )
+    // Never log the filename: it can carry names ("Dad's will.pdf").
+    log.info({ documentId, mimeType, size: fileBuffer.length, tenant_id }, 'Uploading document')
+
+    // Optional malware scan (PRD-143 item 1). With no scanner configured this
+    // says `not_performed`; it never reports a file clean that nothing looked at.
+    const scan = await scanUpload(fileBuffer)
+    auditStep(tenant_id, req.authContext.user_id ?? 'unknown', 'document.intake', documentId, {
+      size: fileBuffer.length,
+      mime: mimeType,
+      scan: scan.result,
+    })
+    if (scan.result === 'infected') {
+      log.warn({ documentId, tenant_id }, 'Upload refused by malware scan')
+      return reply
+        .status(422)
+        .send({ error: 'This file was blocked by a security scan and was not stored.' })
+    }
 
     try {
       // Store file in GridFS. KEEL-019: previously `.end(fileBuffer)` wasn't
@@ -205,6 +295,7 @@ export function registerDocumentRoutes(
           status: 'uploaded',
           uploaded_at: new Date(),
           file_id: fileId,
+          scan: { ...scan, at: new Date() },
         })
       } catch (metaErr) {
         // KEEL-019: the GridFS write above already succeeded — without this,
@@ -228,10 +319,13 @@ export function registerDocumentRoutes(
       // (GPT-4o vision, the actual cost driver) is gated to paid plans.
       const tenant = await getTenantCollection<DocumentRecord>(db, 'tenants', tenant_id).findOne()
       const plan = effectivePlan(tenant)
-      const aiExtractionEnabled = hasFeature('document_ai_extraction', plan)
+      // A scanner that is configured but did not answer leaves the file unscanned:
+      // it is kept, but not sent for extraction.
+      const aiExtractionEnabled =
+        hasFeature('document_ai_extraction', plan) && scan.result !== 'error'
 
       if (aiExtractionEnabled) {
-        log.info({ documentId, filename, tenant_id }, 'Document stored, starting OCR processing')
+        log.info({ documentId, tenant_id }, 'Document stored, starting OCR processing')
         // Trigger async OCR processing (non-blocking — errors handled in processDocument)
         void (async () => {
           await processDocument(
@@ -249,8 +343,8 @@ export function registerDocumentRoutes(
         })
       } else {
         log.info(
-          { documentId, filename, tenant_id, plan },
-          'Document stored — AI extraction requires a paid plan',
+          { documentId, tenant_id, plan, scan: scan.result },
+          'Document stored — AI extraction not run (paid plan required, or the scan did not complete)',
         )
         // They uploaded expecting extraction — the strongest upgrade-intent
         // signal. Feeds the lifecycle upgrade sequence's targeting.
@@ -275,7 +369,7 @@ export function registerDocumentRoutes(
         aiExtractionEnabled,
       })
     } catch (err) {
-      log.error({ err, documentId, filename }, 'Failed to store document')
+      log.error({ err, documentId }, 'Failed to store document')
       return reply.status(500).send({ error: 'Failed to store document' })
     }
   })
@@ -337,7 +431,12 @@ export function registerDocumentRoutes(
       status: doc['status'] ?? 'uploaded',
       uploadedAt: doc['uploaded_at']?.toISOString() ?? '',
       extractedData: doc['extracted_data'] ?? {},
-      rawText: doc['raw_text'] ?? '',
+      // The free-text summary is no longer stored (PRD-143); kept in the shape for older clients.
+      rawText: '',
+      classification: doc['classification'] ?? null,
+      documentDate: doc['document_date'] ?? null,
+      scan: (doc['scan'] as { result?: string } | undefined)?.result ?? 'not_performed',
+      candidates: (await loadCandidates(db, tenant_id, req.params.id))?.fields ?? [],
       processingStartedAt: doc['processing_started_at']?.toISOString() ?? null,
       processingCompletedAt: doc['processing_completed_at']?.toISOString() ?? null,
       errorMessage: doc['error_message'] ?? null,
@@ -382,7 +481,10 @@ export function registerDocumentRoutes(
         return reply.status(404).send({ error: 'Document not found' })
       }
       const category = (doc['category'] as string) ?? 'other'
-      const extractedData = (doc['extracted_data'] as Record<string, string>) ?? {}
+      // For display: what a person has not rejected, with edits applied. Whether
+      // it may be applied is decided by the apply routes.
+      const view = await gate(tenant_id, doc, null, { block: false })
+      const extractedData = view.ok ? view.fields : {}
       const suggestions = mapExtractedFieldsToProfileSuggestions(category, extractedData)
       const policySuggestion = mapExtractedFieldsToPolicySuggestion(category, extractedData)
       return { suggestions, policySuggestion }
@@ -422,6 +524,76 @@ export function registerDocumentRoutes(
     }
   })
 
+  // ── POST /documents/:id/confirm-type ────────────────────────────────────
+  // When the document's own words don't firmly support the type the model
+  // chose, nothing is applied until the user says what it is (PRD-143 item 1).
+  // The choice is recorded with who made it and when.
+  fastify.post<{ Params: { id: string }; Body: { category?: string } }>(
+    '/documents/:id/confirm-type',
+    async (req, reply) => {
+      const { tenant_id, user_id } = req.authContext
+      const category = req.body?.category
+      if (!category || !(CATEGORIES as readonly string[]).includes(category)) {
+        return reply.status(400).send({ error: 'Choose one of the document types' })
+      }
+      const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
+      const doc = await documents.findOne({ id: req.params.id })
+      if (!doc || doc['category'] === ESTATE_VAULT_CATEGORY) {
+        return reply.status(404).send({ error: 'Document not found' })
+      }
+      await documents.updateOne(
+        { id: req.params.id },
+        {
+          $set: {
+            category,
+            'classification.category': category,
+            'classification.confirmed': true,
+            'classification.confirmed_by': user_id,
+            'classification.confirmed_at': new Date(),
+          },
+        },
+      )
+      auditStep(tenant_id, user_id, 'document.reviewed', req.params.id, { step: 'type_confirmed' })
+      return { id: req.params.id, category, confirmed: true }
+    },
+  )
+
+  // ── POST /documents/:id/review ──────────────────────────────────────────
+  // The review step: confirm, edit or reject each extracted field. Only
+  // confirmed or edited values are ever used downstream. All or nothing: one
+  // invalid decision rejects the batch and changes nothing. Writes no
+  // profile data; that is a separate, explicit apply.
+  fastify.post<{ Params: { id: string }; Body: { decisions?: ReviewDecision[] } }>(
+    '/documents/:id/review',
+    async (req, reply) => {
+      const { tenant_id, user_id } = req.authContext
+      const decisions = req.body?.decisions
+      if (!Array.isArray(decisions) || decisions.length === 0 || decisions.length > 50) {
+        return reply.status(400).send({ error: 'Send between 1 and 50 decisions' })
+      }
+      const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
+      const doc = await documents.findOne({ id: req.params.id })
+      if (!doc || doc['category'] === ESTATE_VAULT_CATEGORY) {
+        return reply.status(404).send({ error: 'Document not found' })
+      }
+      const candidates = await loadCandidates(db, tenant_id, req.params.id)
+      if (!candidates)
+        return reply
+          .status(409)
+          .send({ error: 'Nothing has been extracted from this document yet' })
+      const result = applyReview(candidates, decisions, user_id)
+      if (!result.ok)
+        return reply.status(400).send({ error: 'Invalid review', problems: result.errors })
+      await saveCandidates(db, result.candidates)
+      auditStep(tenant_id, user_id, 'document.reviewed', req.params.id, {
+        confirmed: decisions.filter((d) => d.action === 'confirm').length,
+        edited: decisions.filter((d) => d.action === 'edit').length,
+        rejected: decisions.filter((d) => d.action === 'reject').length,
+      })
+      return { candidates: result.candidates.fields }
+    },
+  )
+
   // ── POST /documents/:id/apply-to-profile ────────────────────────────────
   // Applies one or more of the suggestions above to the tenant's Financial
   // Profile. A scoped $set on an explicit whitelist of dotted paths — never
@@ -439,9 +611,10 @@ export function registerDocumentRoutes(
         return reply.status(404).send({ error: 'Document not found' })
       }
 
+      const view = await gate(tenant_id, doc, null, { block: false })
       const suggestions = mapExtractedFieldsToProfileSuggestions(
         (doc['category'] as string) ?? 'other',
-        (doc['extracted_data'] as Record<string, string>) ?? {},
+        view.ok ? view.fields : {},
       )
       const requestedPaths = new Set(
         (req.body.paths ?? suggestions.map((s) => s.path)).filter(isApplicableProfilePath),
@@ -453,6 +626,34 @@ export function registerDocumentRoutes(
           .send({ error: 'No applicable profile suggestions for this document' })
       }
 
+      // PRD-143: the type must be trusted or confirmed, and no field this write
+      // uses may be low-confidence and unreviewed. Checked before anything is written.
+      const checked = await gate(
+        tenant_id,
+        doc,
+        toApply.map((s) => s.sourceField),
+      )
+      if (!checked.ok) return reply.status(checked.status).send(checked.body)
+
+      // Provenance: which document, who confirmed, when, how well grounded. The
+      // user chose these suggestions in the apply, so the source fields count as confirmed.
+      const confirmedAt = new Date()
+      await saveProvenance(
+        db,
+        tenant_id,
+        toApply.map((s) => {
+          const f = checked.candidates?.fields.find((x) => x.key === s.sourceField)
+          return {
+            ref: s.path,
+            document_id: req.params.id,
+            confirmed_by: req.authContext.user_id,
+            confirmed_at: confirmedAt,
+            confidence: f && f.status !== 'edited' ? f.confidence : null,
+            extractor: extractorLabel(checked.candidates),
+            schema_version: checked.candidates?.schema_version ?? 'legacy',
+          }
+        }),
+      )
       const profiles = getTenantCollection<Record<string, unknown>>(
         db,
         'family_financial_profile',
@@ -461,6 +662,27 @@ export function registerDocumentRoutes(
       const update: Record<string, unknown> = { updated_at: new Date() }
       for (const s of toApply) update[s.path] = s.valueMinor
       await profiles.updateOne({}, { $set: update }, { upsert: true })
+
+      if (checked.candidates) {
+        const used = new Set(toApply.map((s) => s.sourceField))
+        await saveCandidates(db, {
+          ...checked.candidates,
+          updated_at: confirmedAt,
+          fields: checked.candidates.fields.map((f) =>
+            used.has(f.key) && f.status === 'proposed'
+              ? {
+                  ...f,
+                  status: 'confirmed' as const,
+                  decided_by: req.authContext.user_id,
+                  decided_at: confirmedAt,
+                }
+              : f,
+          ),
+        })
+      }
+      auditStep(tenant_id, req.authContext.user_id, 'document.committed', req.params.id, {
+        paths: toApply.length,
+      })
 
       // The Inbox feed's "policy found" / "review this" recommendation for
       // this document exists to get the user here — once they've actually
@@ -541,6 +763,9 @@ export function registerDocumentRoutes(
       if (!doc) {
         return reply.status(404).send({ error: 'Document not found' })
       }
+      // The editable draft is itself the review, so only the type gate applies.
+      const checked = await gate(tenant_id, doc, [])
+      if (!checked.ok) return reply.status(checked.status).send(checked.body)
 
       const {
         type,
@@ -577,6 +802,24 @@ export function registerDocumentRoutes(
       if (contactPhone?.trim()) policy['contact_phone'] = contactPhone.trim()
       if (contactEmail?.trim()) policy['contact_email'] = contactEmail.trim()
       if (typeof memberId === 'string' && memberId.trim()) policy['member_id'] = memberId.trim()
+
+      // Provenance for the policy: the document, the person who submitted the
+      // reviewed draft, and the weakest grounding among the fields it was drafted from.
+      const grounded = (checked.candidates?.fields ?? []).filter((f) => f.status !== 'rejected')
+      await saveProvenance(db, tenant_id, [
+        {
+          ref: policyRef(type, provider, policyNumber),
+          document_id: req.params.id,
+          confirmed_by: req.authContext.user_id,
+          confirmed_at: new Date(),
+          confidence: grounded.length > 0 ? Math.min(...grounded.map((f) => f.confidence)) : null,
+          extractor: extractorLabel(checked.candidates),
+          schema_version: checked.candidates?.schema_version ?? 'legacy',
+        },
+      ])
+      auditStep(tenant_id, req.authContext.user_id, 'document.committed', req.params.id, {
+        policies: 1,
+      })
 
       const profiles = getTenantCollection<Record<string, unknown>>(
         db,
@@ -644,9 +887,17 @@ export function registerDocumentRoutes(
       id: req.params.id,
     })
 
+    // The extracted candidates (values, snippets, spans) go with the document.
+    const candidatesRemoved = (
+      await db
+        .collection('extraction_candidates')
+        .deleteMany({ tenant_id, document_id: req.params.id })
+    ).deletedCount
     const hasReadData =
       Object.keys((doc['extracted_data'] as Record<string, unknown> | undefined) ?? {}).length >
-        0 || Boolean(doc['raw_text'])
+        0 ||
+      Boolean(doc['raw_text']) ||
+      candidatesRemoved > 0
     const residual: { category: string; count: number }[] = [
       {
         category: 'document record',
@@ -664,10 +915,12 @@ export function registerDocumentRoutes(
         { category: 'document file', count: fileRemoved },
         { category: 'document record', count: 1 },
         { category: 'what was read from the document', count: hasReadData ? 1 : 0 },
+        { category: 'extracted fields', count: candidatesRemoved },
       ],
       residual,
       kept: [
         'If you saved details from this document to your profile, they stay there until you change them.',
+        'A note of which document a saved value came from stays with that value. It holds no content.',
       ],
     })
     await saveReceipt(db, closed)

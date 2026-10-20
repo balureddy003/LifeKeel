@@ -17,7 +17,7 @@ import {
  * the immutable artifact it resolves to is digest-pinned and verified at image
  * build (ai-bom.yaml, local-judge-model / infra/local-judge/Dockerfile).
  */
-const DEFAULT_LOCAL_MODEL = 'qwen2.5:7b'
+export const DEFAULT_LOCAL_MODEL = 'qwen2.5:7b'
 
 /**
  * Self-hosted model client, or undefined when LOCAL_JUDGE_BASE_URL is unset
