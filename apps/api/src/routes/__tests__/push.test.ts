@@ -118,7 +118,10 @@ describe('POST /push/unsubscribe', () => {
       payload: { endpoint: 'https://push.example.com/sub/abc' },
     })
     expect(res.statusCode).toBe(200)
-    expect(router.removePushSubscription).toHaveBeenCalledWith(TENANT, 'https://push.example.com/sub/abc')
+    expect(router.removePushSubscription).toHaveBeenCalledWith(
+      TENANT,
+      'https://push.example.com/sub/abc',
+    )
     expect(router.disableWebPushIfNoSubscriptions).toHaveBeenCalledWith(TENANT)
   })
 })
