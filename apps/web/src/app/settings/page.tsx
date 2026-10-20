@@ -12,7 +12,7 @@ import { haptic } from '@/lib/haptics'
 import { RegionSwitch } from '@/components/RegionSwitch'
 import { useAppStore } from '@/lib/store'
 import type { AppMode } from '@/lib/modes'
-import { ROLE_LABELS, type FamilyRole } from '@/lib/auth-types'
+import { ROLE_LABELS, memberStatusLabel, type FamilyRole } from '@/lib/auth-types'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
 import { NotificationsCard } from '@/components/NotificationsCard'
 import { MfaSettings } from '@/components/MfaSettings'
@@ -628,7 +628,7 @@ export default function SettingsPage() {
                     <span
                       className={`text-xs ${m.status === 'pending' ? 'text-warning' : 'text-success'}`}
                     >
-                      {m.status === 'pending' ? 'Pending' : 'Active'}
+                      {memberStatusLabel(m.status)}
                     </span>
                     {m.role !== 'organizer' && (
                       <button

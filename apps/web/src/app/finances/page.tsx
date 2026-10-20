@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Calculator, Landmark, Wallet, Vault, FileText, Upload, Plug } from 'lucide-react'
+import { Calculator, Landmark, Wallet, Vault, FileText, Plug } from 'lucide-react'
 import { PageHeader, ListSection, ListRow, PageTransition } from '@/components/Glass'
 import { useAppStore } from '@/lib/store'
 import { haptic } from '@/lib/haptics'
@@ -49,11 +49,8 @@ export default function FinancesPage() {
         <Link href="/vault" onClick={() => haptic('light')}>
           <ListRow icon={Vault} label="Family Vault" chevron />
         </Link>
-        <Link href="/documents" onClick={() => haptic('light')}>
-          <ListRow icon={FileText} label="Documents" chevron />
-        </Link>
         <Link href="/upload" onClick={() => haptic('light')}>
-          <ListRow icon={Upload} label="Upload a Document" chevron />
+          <ListRow icon={FileText} label="Documents" chevron />
         </Link>
       </ListSection>
 
