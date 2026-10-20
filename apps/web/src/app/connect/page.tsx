@@ -1,5 +1,7 @@
 'use client'
 
+import { DeletionReceiptCard } from '@/components/DeletionReceiptCard'
+import { MAILBOX_DELETE_MESSAGE, MAILBOX_DELETE_TITLE } from '@/lib/deletion-receipt-copy'
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
@@ -9,6 +11,8 @@ import { haptic } from '@/lib/haptics'
 import {
   fetchConnectorStatuses,
   disconnectConnector,
+  disconnectMailboxAndDelete,
+  type DeletionReceipt,
   fetchConnectorSyncStatus,
   triggerConnectorBackfill,
   fetchOpenBankingAccounts,
@@ -252,6 +256,25 @@ export default function ConnectPage() {
     setError(`${connectorId} isn't available to connect yet.`)
   }
 
+  const [receipt, setReceipt] = useState<DeletionReceipt | null>(null)
+
+  const handleMailboxDeleteDisconnect = async (connectorId: string) => {
+    haptic('warning')
+    setConnectingId(connectorId)
+    const r = await disconnectMailboxAndDelete(connectorId)
+    if (r) {
+      setConnectorConnected('email', false)
+      setConnectorConnected('gmail', false)
+      setReceipt(r)
+      haptic('success')
+    } else {
+      setError(
+        `${connectorId} is still connected — the disconnect didn't go through. Try again in a moment.`,
+      )
+    }
+    setConnectingId(null)
+  }
+
   const handleDisconnect = async (connectorId: string) => {
     haptic('warning')
     setConnectingId(connectorId)
@@ -273,6 +296,8 @@ export default function ConnectPage() {
   return (
     <div className="px-5 pt-2 space-y-4">
       <PageHeader title="Connect Services" backHref="/settings" />
+
+      {receipt && <DeletionReceiptCard receipt={receipt} />}
 
       {/* Privacy banner */}
       <GlassCard className="p-3.5 border-family-500/20 flex items-start gap-2">
@@ -384,6 +409,20 @@ export default function ConnectPage() {
                                     destructive: true,
                                   })
                                   if (!ok) return
+                                  if (connector.id === 'email' || connector.id === 'gmail') {
+                                    // PRD-146: a plain disconnect keeps what was read, so ask.
+                                    const wipe = await confirm({
+                                      title: MAILBOX_DELETE_TITLE,
+                                      message: MAILBOX_DELETE_MESSAGE,
+                                      confirmLabel: 'Delete what was read',
+                                      cancelLabel: 'Keep it',
+                                      destructive: true,
+                                    })
+                                    if (wipe) {
+                                      void handleMailboxDeleteDisconnect(connector.id)
+                                      return
+                                    }
+                                  }
                                   handleDisconnect(connector.id)
                                 }}
                                 disabled={isConnecting}
