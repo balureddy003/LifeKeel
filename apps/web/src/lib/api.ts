@@ -1009,6 +1009,39 @@ export function fetchRetentionMetrics(): Promise<RetentionMetrics> {
   return operatorRequest('/operator/retention')
 }
 
+// ── Who processes your documents (PRD-142) ──────────────────────────────
+
+export interface AiDisclosureProcessor {
+  id: string
+  name: string
+  hosting: 'self_hosted' | 'hosted'
+  status: 'run_by_lifekeel' | 'terms_under_review' | 'approved' | 'review_overdue'
+  region: string | null
+  retention: string[]
+  sub_processors: string[] | null
+  review_due: string | null
+  used_by_tasks: number
+}
+
+export interface AiDisclosureTask {
+  task_id: string
+  purpose: string
+  where: 'device' | 'lifekeel' | 'lifekeel_or_hosted' | 'hosted'
+  processors: string[]
+  retention_class: string
+}
+
+export interface AiDisclosure {
+  generated_at: string
+  processors: AiDisclosureProcessor[]
+  tasks: AiDisclosureTask[]
+}
+
+/** null when signed out or the registry is not loaded. */
+export async function fetchAiDisclosure(): Promise<AiDisclosure | null> {
+  return apiFetch<AiDisclosure | null>('/ai/processors', null)
+}
+
 // ── Freshness (PRD-145) ──────────────────────────────────────────────────
 
 export interface FreshnessCheck {

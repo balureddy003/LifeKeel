@@ -62,6 +62,7 @@ let featureHashEvictions: Counter | null = null
 let featureHashCacheHits: Counter | null = null
 let featureHashCacheMisses: Counter | null = null
 let localModelCalls: Counter | null = null
+let processorViolations: Counter | null = null
 let localModelLatency: Histogram | null = null
 let localModelQueueWait: Histogram | null = null
 let localModelCost: Counter | null = null
@@ -213,6 +214,14 @@ function initMetrics(registry: Registry): void {
     labelNames: ['purpose', 'outcome'],
     registers: [registry],
   })
+  // PRD-142: a model call whose processor is not approved for the task. Reason
+  // and mode only: no task ids or tenants as labels.
+  processorViolations = new Counter({
+    name: 'lifekeel_ai_processor_violations_total',
+    help: 'AI calls whose processor was not approved for the task, by reason and mode (warn | enforce)',
+    labelNames: ['reason', 'mode'],
+    registers: [registry],
+  })
   localModelLatency = new Histogram({
     name: 'lifekeel_local_model_latency_seconds',
     help: 'Time inside the self-hosted model call (excludes waiting for a concurrency slot)',
@@ -323,6 +332,12 @@ export function recordLlmCacheHitMiss(_tenantId: string, task: string, hit: bool
   } else {
     llmCacheMisses!.inc({ task })
   }
+}
+
+/** PRD-142: one model call the processor registry flagged (and refused, in enforce mode). */
+export function recordProcessorViolation(reason: string, mode: 'warn' | 'enforce'): void {
+  initMetrics(getRegistry())
+  processorViolations!.inc({ reason, mode })
 }
 
 /** Self-hosted model: record one decision (outcome, model time, and wait for a slot). */

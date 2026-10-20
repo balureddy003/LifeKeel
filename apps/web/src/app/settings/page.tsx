@@ -1048,6 +1048,23 @@ export default function SettingsPage() {
           </ListRow>
         </ListSection>
 
+        {/* PRD-142: who can receive documents and questions, and their review status. */}
+        <ListSection title="Privacy">
+          <ListRow
+            icon={ShieldCheck}
+            onClick={() => {
+              haptic('light')
+              router.push('/ai-processing')
+            }}
+            chevron
+          >
+            <div className="text-base font-medium">Who processes your documents</div>
+            <div className="text-xs text-ink-tertiary mt-0.5">
+              Where AI features run, and what each provider keeps
+            </div>
+          </ListRow>
+        </ListSection>
+
         {/* Connected Services */}
         <ListSection title="Connected Services">
           <ListRow

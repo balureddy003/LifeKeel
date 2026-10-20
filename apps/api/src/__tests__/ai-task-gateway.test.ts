@@ -16,12 +16,26 @@
  * Plus runtime checks that the loaded registry is complete and the
  * gateway's fail-closed/device-only semantics hold.
  */
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { load as loadYaml } from 'js-yaml'
-import { parseTaskRegistry, repoRoot, TaskPolicyError } from '@lifekeel/platform'
-import { initTaskGatewayForTests, taskLlm, taskDecide, taskDecideFor } from '../ai/task-gateway.js'
+import {
+  checkProcessorForTask,
+  parseProcessorRegistry,
+  parseTaskRegistry,
+  repoRoot,
+  TaskPolicyError,
+} from '@lifekeel/platform'
+import {
+  initTaskGatewayForTests,
+  processorEnforcementFromEnv,
+  resolveServingProcessor,
+  taskLlm,
+  taskDecide,
+  taskDecideFor,
+} from '../ai/task-gateway.js'
+import { buildAiDisclosure } from '../ai/disclosure.js'
 
 const SRC = path.resolve(__dirname, '..')
 
@@ -210,5 +224,187 @@ describe('AI task gateway — governed behaviour', () => {
       schema: { parse: (v: unknown) => v },
     } as never)
     expect(sawPrompt).not.toContain('Ignore previous instructions')
+  })
+})
+
+describe('AI processor registry (PRD-142)', () => {
+  const read = (f: string) =>
+    loadYaml(fs.readFileSync(path.join(repoRoot(), 'definitions', f), 'utf8'))
+  const tasks = () => parseTaskRegistry(read('ai-tasks.yaml'))
+  const processors = () => parseProcessorRegistry(read('ai-processors.yaml'))
+
+  it('the shipped registry loads and every task names only processors that exist', () => {
+    const p = processors()
+    for (const [id, t] of tasks()) {
+      for (const proc of t.allowed_processors ?? [])
+        expect(p.has(proc), `task '${id}' allows unknown processor '${proc}'`).toBe(true)
+    }
+  })
+
+  it('no hosted processor is claimed as reviewed until the owner supplies terms', () => {
+    // If this fails because you approved a processor: good, update the list here
+    // and make sure the entry carries real terms (the loader already insists).
+    const approved = [...processors().values()].filter((e) => e.status === 'approved')
+    expect(approved.map((e) => e.id)).toEqual([])
+    for (const e of processors().values()) {
+      if (e.hosting === 'hosted') expect(e.status).toBe('unreviewed')
+    }
+  })
+
+  it('a self-hosted-only task never lists a hosted processor, and groq is listed nowhere', () => {
+    const p = processors()
+    for (const [id, t] of tasks()) {
+      expect(t.allowed_processors ?? [], `${id} lists groq`).not.toContain('groq')
+      if (t.data_boundary === 'lifekeel_infra_required') {
+        for (const proc of t.allowed_processors ?? [])
+          expect(p.get(proc)!.hosting, `${id} lists hosted ${proc}`).toBe('self_hosted')
+      }
+    }
+  })
+
+  describe('which processor serves a task here', () => {
+    const KEYS = [
+      'ANTHROPIC_API_KEY',
+      'OPENAI_API_KEY',
+      'GROQ_API_KEY',
+      'AZURE_OPENAI_ENDPOINT',
+      'OLLAMA_BASE_URL',
+      'LOCAL_JUDGE_BASE_URL',
+      'LOCAL_TEXT_ENABLED',
+    ]
+    const saved: Record<string, string | undefined> = {}
+    beforeEach(() => {
+      for (const k of KEYS) {
+        saved[k] = process.env[k]
+        delete process.env[k]
+      }
+    })
+    afterEach(() => {
+      for (const k of KEYS) {
+        const v = saved[k]
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    })
+
+    it('device_only has no server-side processor; the required-local task is always self-hosted', () => {
+      expect(resolveServingProcessor(tasks().get('draft.crisis_on_device.v1')!)).toBeNull()
+      expect(resolveServingProcessor(tasks().get('assistant.youth_answer.v1')!)).toBe('ollama')
+    })
+
+    it('a lifekeel_infra task falls back to the hosted provider when the local model is off', () => {
+      process.env['OPENAI_API_KEY'] = 'k'
+      const t = tasks().get('assistant.answer.v1')!
+      expect(resolveServingProcessor(t)).toBe('openai')
+      process.env['LOCAL_JUDGE_BASE_URL'] = 'http://local'
+      process.env['LOCAL_TEXT_ENABLED'] = 'true'
+      expect(resolveServingProcessor(t)).toBe('ollama')
+    })
+
+    it('hosted tasks follow the router: anthropic by default, groq and azure when configured', () => {
+      const t = tasks().get('insight.score_enrichment.v1')!
+      expect(resolveServingProcessor(t)).toBe('anthropic') // nothing configured: router default
+      process.env['GROQ_API_KEY'] = 'k'
+      expect(resolveServingProcessor(t)).toBe('groq')
+      delete process.env['GROQ_API_KEY']
+      process.env['AZURE_OPENAI_ENDPOINT'] = 'https://x.openai.azure.com'
+      expect(resolveServingProcessor(t)).toBe('azure')
+    })
+
+    it('with the shipped registries, the hosted fallback for a self-hosted-only task is flagged, and the self-hosted path is clean', () => {
+      process.env['ANTHROPIC_API_KEY'] = 'k'
+      const reg = processors()
+      const classify = tasks().get('document.classify.v1')!
+      const hosted = checkProcessorForTask(
+        reg,
+        classify,
+        resolveServingProcessor(classify)!,
+        'tier:fast',
+        new Date(),
+      )
+      expect(hosted?.reason).toBe('processor_not_allowed_for_task')
+      const answer = tasks().get('assistant.answer.v1')!
+      expect(
+        checkProcessorForTask(
+          reg,
+          answer,
+          resolveServingProcessor(answer)!,
+          'tier:fast',
+          new Date(),
+        )?.reason,
+      ).toBe('processor_unreviewed')
+      process.env['LOCAL_JUDGE_BASE_URL'] = 'http://local'
+      process.env['LOCAL_TEXT_ENABLED'] = 'true'
+      for (const t of [classify, answer]) {
+        expect(
+          checkProcessorForTask(reg, t, resolveServingProcessor(t)!, 'tier:fast', new Date()),
+        ).toBeNull()
+      }
+    })
+  })
+
+  it('enforcement defaults to warn and never to something unrecognised', () => {
+    expect(processorEnforcementFromEnv(undefined)).toBe('warn')
+    expect(processorEnforcementFromEnv('')).toBe('warn')
+    expect(processorEnforcementFromEnv('banana')).toBe('warn')
+    expect(processorEnforcementFromEnv('off')).toBe('off')
+    expect(processorEnforcementFromEnv('enforce')).toBe('enforce')
+  })
+
+  it('the disclosure states review status as it is and exposes no contract details', () => {
+    const d = buildAiDisclosure(tasks(), processors(), new Date('2026-10-20T00:00:00Z'))
+    const byId = Object.fromEntries(d.processors.map((p) => [p.id, p]))
+    expect(byId['ollama']).toMatchObject({
+      status: 'run_by_lifekeel',
+      hosting: 'self_hosted',
+      retention: ['none'],
+    })
+    expect(byId['anthropic']).toMatchObject({
+      status: 'terms_under_review',
+      region: null,
+      sub_processors: null,
+      review_due: null,
+    })
+    expect(d.processors.every((p) => p.status !== 'approved')).toBe(true)
+    const where = Object.fromEntries(d.tasks.map((t) => [t.task_id, t.where]))
+    expect(where['draft.crisis_on_device.v1']).toBe('device')
+    expect(where['assistant.youth_answer.v1']).toBe('lifekeel')
+    expect(where['assistant.answer.v1']).toBe('lifekeel_or_hosted')
+    expect(where['marketing.social_draft.v1']).toBe('hosted')
+    expect(JSON.stringify(d)).not.toMatch(
+      /dpa_date|breach_notice|terms_ref|not_reviewed|LOCAL_JUDGE/,
+    )
+  })
+
+  it('an approved processor is shown as approved, and as overdue after its review date', () => {
+    const reg = parseProcessorRegistry({
+      processors: {
+        p: {
+          name: 'P',
+          hosting: 'hosted',
+          status: 'approved',
+          endpoint: 'https://p',
+          region: 'EU',
+          terms_ref: 't',
+          no_training_basis: 'b',
+          retention: { '*': 'zero_data_retention' },
+          sub_processors: ['none'],
+          transfer_mechanism: 'm',
+          dpa_date: '2026-01-01',
+          breach_notice_sla: '24h',
+          reviewed_at: '2026-01-02',
+          review_due: '2026-12-31',
+        },
+      },
+    })
+    const t = new Map([...tasks()].slice(0, 1))
+    expect(buildAiDisclosure(t, reg, new Date('2026-10-01')).processors[0]).toMatchObject({
+      status: 'approved',
+      region: 'EU',
+      review_due: '2026-12-31',
+    })
+    expect(buildAiDisclosure(t, reg, new Date('2027-02-01')).processors[0]!.status).toBe(
+      'review_overdue',
+    )
   })
 })

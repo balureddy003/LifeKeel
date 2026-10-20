@@ -34,6 +34,11 @@ import { getCircuitBreaker } from './llm-circuit-breaker.js'
 import { BudgetExhaustedError } from './structured-llm.js'
 import type { GuardEventSink } from './guard-event-sink.js'
 import type { LlmBudgetDecision } from './llm-budget.js'
+import {
+  checkProcessorForTask,
+  type ProcessorRegistry,
+  type ProcessorViolation,
+} from './ai-processors.js'
 
 const log = createLogger({ service: 'task-gateway', version: '0.0.0' })
 
@@ -67,6 +72,8 @@ export interface AiTaskPolicy {
   max_output_tokens: number
   budget_class?: string
   guard_policy?: string
+  /** Processor ids (definitions/ai-processors.yaml) that may serve this task. */
+  allowed_processors?: string[]
 }
 
 export type TaskRegistry = Map<string, AiTaskPolicy>
@@ -88,6 +95,18 @@ export class TaskPolicyError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'TaskPolicyError'
+  }
+}
+
+/**
+ * A call was refused because the processor that would serve it is not approved
+ * for this task (PRD-142). Typed and final: the gateway never falls back to a
+ * different provider.
+ */
+export class ProcessorPolicyError extends TaskPolicyError {
+  constructor(public readonly violation: ProcessorViolation) {
+    super(`Processor policy: ${violation.detail}`)
+    this.name = 'ProcessorPolicyError'
   }
 }
 
@@ -126,6 +145,16 @@ export function parseTaskRegistry(doc: unknown): TaskRegistry {
     const allowed = policy['allowed_models']
     if (!Array.isArray(allowed) || allowed.length === 0) {
       throw new TaskPolicyError(`Task '${taskId}' has an empty allowed_models list`)
+    }
+    const procs = policy['allowed_processors']
+    if (!Array.isArray(procs) || procs.some((x) => typeof x !== 'string' || x === '')) {
+      throw new TaskPolicyError(`Task '${taskId}' needs an allowed_processors list`)
+    }
+    // A device_only task has no server-side processor; every other task must name at least one.
+    if ((policy['data_boundary'] === 'device_only') !== (procs.length === 0)) {
+      throw new TaskPolicyError(
+        `Task '${taskId}': allowed_processors must be empty for device_only tasks and non-empty for all others`,
+      )
     }
     registry.set(taskId, { ...(policy as unknown as AiTaskPolicy), task_id: taskId })
   }
@@ -196,6 +225,19 @@ export interface TaskGatewayDeps {
   }
   /** Receives guard events (injection, PII redaction, forbidden output). */
   guardEventSink?: GuardEventSink
+  /**
+   * Processor approval (PRD-142). `off` skips it, `warn` reports a violation
+   * through `onProcessorViolation` and still serves the call, `enforce` refuses
+   * with ProcessorPolicyError. Absent means off.
+   */
+  processorGuard?: {
+    mode: 'off' | 'warn' | 'enforce'
+    registry: ProcessorRegistry
+    /** Which processor will serve a task here (mirrors the app's provider selection). */
+    resolveProcessor: (policy: AiTaskPolicy) => string | null
+    now?: () => Date
+    onProcessorViolation?: (v: ProcessorViolation, mode: 'warn' | 'enforce') => void
+  }
   /** Called after every governed call, success or failure, for telemetry. */
   onCall?: (event: {
     task_id: string
@@ -204,6 +246,38 @@ export interface TaskGatewayDeps {
     ok: boolean
     latency_ms: number
   }) => void
+}
+
+/**
+ * Apply the processor check before any provider is contacted. `processor`
+ * overrides the resolver for paths that know their provider (vision).
+ */
+function enforceProcessor(
+  deps: TaskGatewayDeps,
+  policy: AiTaskPolicy,
+  model: string,
+  processor?: string,
+): void {
+  const guard = deps.processorGuard
+  if (!guard || guard.mode === 'off') return
+  const id = processor ?? guard.resolveProcessor(policy)
+  // A null processor is a path with no model provider at all (device_only has no
+  // server path), so there is nothing to check.
+  if (!id) return
+  const violation = checkProcessorForTask(
+    guard.registry,
+    policy,
+    id,
+    model,
+    guard.now?.() ?? new Date(),
+  )
+  if (!violation) return
+  try {
+    guard.onProcessorViolation?.(violation, guard.mode)
+  } catch {
+    /* telemetry must never fail a call */
+  }
+  if (guard.mode === 'enforce') throw new ProcessorPolicyError(violation)
 }
 
 function isFailClosed(deps: TaskGatewayDeps): boolean {
@@ -264,6 +338,7 @@ export function governedLlm(
         `Task '${taskId}' input exceeds its ${policy.max_input_tokens}-token ceiling`,
       )
     }
+    enforceProcessor(deps, policy, resolvedModel)
 
     if (deps.budgetGuard) {
       const decision = await deps.budgetGuard.check(tenantId, opts.detectorId, policy)
@@ -333,6 +408,7 @@ export function governedVision(
   deps: TaskGatewayDeps,
   taskId: string,
   tenantId: string,
+  opts: { processor?: string } = {},
 ): VisionFn {
   const policy = resolveTaskPolicy(deps.registry, taskId, isFailClosed(deps))
   const breaker = getCircuitBreaker(`task:${taskId}`)
@@ -348,6 +424,7 @@ export function governedVision(
         `Task '${taskId}' input exceeds its ${policy.max_input_tokens}-token ceiling`,
       )
     }
+    enforceProcessor(deps, policy, policy.primary_model, opts.processor)
     const guarded = content.map((c) =>
       c.type === 'text' ? { ...c, text: inputGuard.guard(c.text).value } : c,
     ) as VisionContent
@@ -388,6 +465,7 @@ export function governedDecide(
   deps: TaskGatewayDeps,
   taskId: string,
   tenantId: string,
+  opts: { processor?: string } = {},
 ): DecisionFn {
   const policy = resolveTaskPolicy(deps.registry, taskId, isFailClosed(deps))
   const breaker = getCircuitBreaker(`task:${taskId}`)
@@ -399,6 +477,7 @@ export function governedDecide(
         `Task '${taskId}' input exceeds its ${policy.max_input_tokens}-token ceiling`,
       )
     }
+    enforceProcessor(deps, policy, policy.primary_model, opts.processor)
     const guardedPrompt = inputGuard.guard(req.prompt)
     const t0 = Date.now()
     let ok = false
