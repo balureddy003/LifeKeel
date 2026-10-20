@@ -10,6 +10,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import Fastify from 'fastify'
 import { registerFamilyConnectorRoutes } from '../routes/family-connectors.js'
+import { withTenantKeys } from './helpers/tenant-keys-fake.js'
 
 const testImapConnectionMock = vi.fn(async () => ({ success: true }))
 const scanTenantInboxMock = vi.fn(async () => ({ scanned: 3, inboxItemsCreated: 1, documentsCreated: 1 }))
@@ -31,7 +32,7 @@ function makeDb(existingCredential: Record<string, unknown> | null = null) {
     findOne: vi.fn(async () => existingCredential),
     find: vi.fn(() => ({ toArray: async () => (existingCredential ? [existingCredential] : []) })),
   }
-  return { collection: () => credCol, _credCol: credCol } as any
+  return { collection: withTenantKeys(() => credCol), _credCol: credCol } as any
 }
 
 async function buildApp(db: ReturnType<typeof makeDb>) {

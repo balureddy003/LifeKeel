@@ -15,6 +15,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import Fastify from 'fastify'
 import { registerConnectorCredentialRoutes } from '../routes/connector-credentials.js'
+import { withTenantKeys } from './helpers/tenant-keys-fake.js'
 
 const backfillMock = vi.fn(async () => [{ records_fetched: 3, insights_triggered: 1, resource: 'Account' }])
 const testConnectionMock = vi.fn(async () => ({ success: true, message: 'ok' }))
@@ -35,7 +36,7 @@ function makeDb() {
     find: vi.fn(() => ({ project: () => ({ toArray: async () => [] }), toArray: async () => [] })),
     deleteOne: vi.fn(async () => ({})),
   }
-  return { collection: () => credCol } as any
+  return { collection: withTenantKeys(() => credCol) } as any
 }
 
 const fakeConnectorLoader = {

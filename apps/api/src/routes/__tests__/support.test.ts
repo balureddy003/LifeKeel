@@ -12,7 +12,8 @@ let db: Db
 async function buildApp(userId = 'user-1', withOperator = false): Promise<FastifyInstance> {
   const app = Fastify()
   app.addHook('onRequest', async (request) => {
-    request.authContext = { user_id: userId, tenant_id: 'family-1', roles: ['admin'] }
+    // iat: operator reply/resolve/reopen require a recent sign-in (step-up, B10).
+    request.authContext = { user_id: userId, tenant_id: 'family-1', roles: ['admin'], iat: Math.floor(Date.now() / 1000) }
   })
   registerSupportRoutes(app, db)
   if (withOperator) await registerOperatorRoutes(app, db)
