@@ -841,6 +841,7 @@ export default function SettingsPage() {
                 </div>
                 <button
                   role="switch"
+                  aria-label="If I go quiet"
                   aria-checked={continuity.continuity.enabled}
                   disabled={continuityBusy}
                   onClick={async (e) => {
@@ -945,6 +946,7 @@ export default function SettingsPage() {
                   family”, “Maya finishes uni in 2027”. Please don’t include medical details.
                 </p>
                 <textarea
+                  aria-label="Household context"
                   rows={3}
                   maxLength={500}
                   placeholder="e.g. We’re a blended family; the flat in Leeds is Mum’s."
@@ -970,7 +972,11 @@ export default function SettingsPage() {
           <ListSection title="Refer a Friend">
             <ListRow
               icon={Gift}
-              label={referralCode ? `Your link: /signup?ref=${referralCode}` : 'Loading…'}
+              label={
+                referralCode
+                  ? `Your link: ${window.location.host}/signup?ref=${referralCode}`
+                  : 'Loading…'
+              }
               value={
                 referralCode ? (
                   <button
@@ -1141,6 +1147,7 @@ export default function SettingsPage() {
                 </div>
                 <button
                   role="switch"
+                  aria-label="Generate crisis drafts on this device"
                   aria-checked={onDeviceEnabled}
                   onClick={async (e) => {
                     e.stopPropagation()

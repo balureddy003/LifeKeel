@@ -29,10 +29,19 @@ import { fetchAIResponse, type AssistantAnswerStatus } from '@/lib/api'
 const CHAT_MARKDOWN_COMPONENTS: Components = {
   p: (props) => <p className="mb-2 last:mb-0" {...props} />,
   ul: (props) => <ul className="list-disc list-outside pl-4 mb-2 last:mb-0 space-y-1" {...props} />,
-  ol: (props) => <ol className="list-decimal list-outside pl-4 mb-2 last:mb-0 space-y-1" {...props} />,
+  ol: (props) => (
+    <ol className="list-decimal list-outside pl-4 mb-2 last:mb-0 space-y-1" {...props} />
+  ),
   li: (props) => <li {...props} />,
   strong: (props) => <strong className="font-semibold" {...props} />,
-  a: (props) => <a className="underline underline-offset-2" target="_blank" rel="noopener noreferrer" {...props} />,
+  a: (props) => (
+    <a
+      className="underline underline-offset-2"
+      target="_blank"
+      rel="noopener noreferrer"
+      {...props}
+    />
+  ),
   code: (props) => <code className="px-1 py-0.5 rounded bg-tint/10 text-xs" {...props} />,
   h1: (props) => <p className="font-semibold mb-1" {...props} />,
   h2: (props) => <p className="font-semibold mb-1" {...props} />,
@@ -59,7 +68,12 @@ interface ChatMessage {
   status?: AssistantAnswerStatus
 }
 
-function assistantMessage(query: string, content: string, status: AssistantAnswerStatus, id?: string): ChatMessage {
+function assistantMessage(
+  query: string,
+  content: string,
+  status: AssistantAnswerStatus,
+  id?: string,
+): ChatMessage {
   return {
     id: id ?? `ai-${Date.now()}`,
     role: 'assistant',
@@ -80,10 +94,16 @@ function assistantMessage(query: string, content: string, status: AssistantAnswe
 const CONTEXT_SUGGESTIONS: Record<string, string[]> = {
   '/inbox': ['Summarize my notifications', 'Any renewals coming up?'],
   '/family': ['How complete is our family profile?', 'Who still needs to fill in their details?'],
-  '/financial-profile': ['How does my profile compare to recommended coverage?', 'What gaps should I address first?'],
+  '/financial-profile': [
+    'How does my profile compare to recommended coverage?',
+    'What gaps should I address first?',
+  ],
   '/upload': ['What documents have I uploaded?', 'What documents should I upload next?'],
   '/events': ['What would happen if I lost my job today?', 'Am I covered for a medical emergency?'],
-  '/life-events': ['What would happen if I lost my job today?', 'Am I covered for a medical emergency?'],
+  '/life-events': [
+    'What would happen if I lost my job today?',
+    'Am I covered for a medical emergency?',
+  ],
   '/settings': ['What data does Keel have about my family?'],
 }
 
@@ -117,7 +137,8 @@ export default function AssistantPage() {
     {
       id: 'welcome',
       role: 'assistant',
-      content: "Hi! I'm Keel. I can summarize your family's financial profile — insurance, savings, goals, and scenarios. This is for informational purposes only. Just ask me anything.",
+      content:
+        "Hi! I'm Keel. I can summarize your family's financial profile — insurance, savings, goals, and scenarios. This is for informational purposes only. Just ask me anything.",
     },
   ])
   const [input, setInput] = useState('')
@@ -141,9 +162,19 @@ export default function AssistantPage() {
   useEffect(() => {
     if (!thinking) return
     setThinkingText('Keel is thinking...')
-    const t1 = setTimeout(() => setThinkingText('Checking your family’s financial profile...'), 5000)
-    const t2 = setTimeout(() => setThinkingText('Still working — this can take a little longer for detailed questions...'), 15000)
-    return () => { clearTimeout(t1); clearTimeout(t2) }
+    const t1 = setTimeout(
+      () => setThinkingText('Checking your family’s financial profile...'),
+      5000,
+    )
+    const t2 = setTimeout(
+      () =>
+        setThinkingText('Still working — this can take a little longer for detailed questions...'),
+      15000,
+    )
+    return () => {
+      clearTimeout(t1)
+      clearTimeout(t2)
+    }
   }, [thinking])
 
   const sendMessage = async (text: string) => {
@@ -179,7 +210,9 @@ export default function AssistantPage() {
     setThinking(true)
     try {
       const { content, status } = await fetchAIResponse(query)
-      setMessages((prev) => prev.map((m) => (m.id === id ? assistantMessage(query, content, status, id) : m)))
+      setMessages((prev) =>
+        prev.map((m) => (m.id === id ? assistantMessage(query, content, status, id) : m)),
+      )
     } finally {
       setThinking(false)
     }
@@ -208,7 +241,12 @@ export default function AssistantPage() {
           role="log" is the ARIA role built for exactly this (a chronological
           message transcript), implying a polite live-region announcement
           of each addition without needing separate aria-live plumbing. */}
-      <div ref={scrollRef} role="log" aria-label="Conversation with Keel" className="flex-1 overflow-y-auto px-5 py-2 space-y-3 no-scrollbar">
+      <div
+        ref={scrollRef}
+        role="log"
+        aria-label="Conversation with Keel"
+        className="flex-1 overflow-y-auto px-5 py-2 space-y-3 no-scrollbar"
+      >
         {messages.map((msg) => (
           <motion.div
             key={msg.id}
@@ -232,10 +270,13 @@ export default function AssistantPage() {
                 <GlassCard className="p-4">
                   <div className="flex items-center gap-2 mb-1.5">
                     <CloudOff size={15} className="text-warning flex-shrink-0" />
-                    <span className="text-sm font-semibold text-ink-primary">Keel&apos;s assistant is temporarily unavailable</span>
+                    <span className="text-sm font-semibold text-ink-primary">
+                      Keel&apos;s assistant is temporarily unavailable
+                    </span>
                   </div>
                   <p className="text-xs text-ink-tertiary leading-relaxed mb-2.5">
-                    That&apos;s a real outage, not a missing answer — nothing below is a sample. Try again in a moment.
+                    That&apos;s a real outage, not a missing answer — nothing below is a sample. Try
+                    again in a moment.
                   </p>
                   <button
                     onClick={() => void retryMessage(msg.id, msg.userQuery!)}
@@ -289,7 +330,10 @@ export default function AssistantPage() {
             <div className="text-xs text-ink-tertiary">Try asking:</div>
             {messages.length > 1 && (
               <button
-                onClick={() => { haptic('light'); setSuggestionsOpen(false) }}
+                onClick={() => {
+                  haptic('light')
+                  setSuggestionsOpen(false)
+                }}
                 className="text-xs font-semibold text-ink-tertiary"
               >
                 Hide
@@ -300,7 +344,10 @@ export default function AssistantPage() {
             {getContextSuggestions(pageContext).map((s, i) => (
               <motion.button
                 key={s}
-                onClick={() => { setSuggestionsOpen(false); void sendMessage(s) }}
+                onClick={() => {
+                  setSuggestionsOpen(false)
+                  void sendMessage(s)
+                }}
                 whileTap={{ scale: 0.95 }}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -315,7 +362,10 @@ export default function AssistantPage() {
       ) : (
         <div className="px-4 pt-1">
           <button
-            onClick={() => { haptic('light'); setSuggestionsOpen(true) }}
+            onClick={() => {
+              haptic('light')
+              setSuggestionsOpen(true)
+            }}
             className="text-xs font-semibold text-family-400"
           >
             Suggest questions
@@ -331,6 +381,7 @@ export default function AssistantPage() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && sendMessage(input)}
             placeholder="Ask about insurance, retirement, goals..."
+            aria-label="Ask Keel a question"
             className="glass-input flex-1 rounded-2xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none min-h-[52px] focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
           />
           <motion.button

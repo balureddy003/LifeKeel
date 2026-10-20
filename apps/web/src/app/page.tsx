@@ -837,6 +837,7 @@ function ChildDobPrompt() {
           </span>
           <input
             type="date"
+            aria-label={`${m.name.split(' ')[0]}'s birthday`}
             max={new Date().toISOString().slice(0, 10)}
             disabled={savingId === m.id}
             onChange={(e) => handleChange(m.id, e.target.value)}
