@@ -330,7 +330,7 @@ export default function AssistantPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && sendMessage(input)}
-            placeholder="Ask about insurance, retirement, goals..."
+            placeholder="Ask about insurance, retirement, goals..." aria-label="Ask Keel a question"
             className="glass-input flex-1 rounded-2xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none min-h-[52px] focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
           />
           <motion.button

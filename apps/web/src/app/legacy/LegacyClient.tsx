@@ -148,7 +148,7 @@ function DocSheet({
           </label>
         </div>
         <label className={`${labelCls} block`}>Jurisdiction
-          <input value={draft.jurisdiction} onChange={(e) => set({ jurisdiction: e.target.value })} placeholder="England & Wales" className={`${inputCls} mt-1`} />
+          <input value={draft.jurisdiction} onChange={(e) => set({ jurisdiction: e.target.value })} placeholder="England & Wales" aria-label="Jurisdiction" className={`${inputCls} mt-1`} />
         </label>
         <div className="grid grid-cols-2 gap-2">
           <label className={labelCls}>Signed on
@@ -159,7 +159,7 @@ function DocSheet({
           </label>
         </div>
         <label className={`${labelCls} block`}>Where the original lives
-          <input value={draft.original_location} onChange={(e) => set({ original_location: e.target.value })} placeholder="e.g. Solicitor X, Leeds" className={`${inputCls} mt-1`} />
+          <input value={draft.original_location} onChange={(e) => set({ original_location: e.target.value })} placeholder="e.g. Solicitor X, Leeds" aria-label="Where the original is kept" className={`${inputCls} mt-1`} />
         </label>
         <label className={`${labelCls} block`}>Linked vault document
           <select value={draft.vault_document_id} onChange={(e) => set({ vault_document_id: e.target.value })} className={`${selectCls} mt-1 w-full`}>
@@ -711,13 +711,13 @@ export default function LegacyClient() {
                 ))}
                 <GlassCard className="p-3.5 space-y-2">
                   <div className="flex gap-2">
-                    <input placeholder="Name" value={contactDraft.name} onChange={(e) => setContactDraft({ ...contactDraft, name: e.target.value })} className={inputCls} />
+                    <input placeholder="Name" aria-label="Name" value={contactDraft.name} onChange={(e) => setContactDraft({ ...contactDraft, name: e.target.value })} className={inputCls} />
                     <select value={contactDraft.kind} onChange={(e) => setContactDraft({ ...contactDraft, kind: e.target.value as LegacyContact['kind'] })} className={selectCls}>
                       {CONTACT_KINDS.map((k) => <option key={k} value={k}>{k.replace(/_/g, ' ')}</option>)}
                     </select>
                   </div>
                   <div className="flex gap-2">
-                    <input placeholder="Relationship (e.g. family solicitor)" value={contactDraft.relationship} onChange={(e) => setContactDraft({ ...contactDraft, relationship: e.target.value })} className={inputCls} />
+                    <input placeholder="Relationship (e.g. family solicitor)" aria-label="Relationship" value={contactDraft.relationship} onChange={(e) => setContactDraft({ ...contactDraft, relationship: e.target.value })} className={inputCls} />
                     <button onClick={() => void addContact()} disabled={!contactDraft.name.trim()} className="rounded-xl px-4 text-xs font-semibold text-white bg-family-500/80 disabled:opacity-50">Add</button>
                   </div>
                 </GlassCard>
@@ -825,7 +825,7 @@ export default function LegacyClient() {
              *  register records — notes attach to the other four kinds. */}
             {selectedNode.kind !== 'policy' && (
               <>
-                <textarea value={noteText} onChange={(e) => setNoteText(e.target.value)} rows={2} placeholder="Something only you know…" className={`${inputCls} mt-1`} />
+                <textarea value={noteText} onChange={(e) => setNoteText(e.target.value)} rows={2} placeholder="Something only you know…" aria-label="Note" className={`${inputCls} mt-1`} />
                 <span className="block text-[11px] text-ink-tertiary mt-1 mb-2">{MEDICAL_HELPER}</span>
                 <button onClick={() => void addNote()} disabled={!noteText.trim()} className="w-full rounded-xl py-2 text-xs font-semibold text-white bg-family-500/80 disabled:opacity-50">Add a note</button>
               </>
