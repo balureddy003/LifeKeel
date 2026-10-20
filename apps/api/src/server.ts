@@ -1654,18 +1654,13 @@ app.addHook('onRequest', async (request, reply) => {
 
     // Demo tenant guard: block access to sensitive operations for demo users.
     // The demo token carries `demo: true` — even though it has admin roles,
-    // this guard prevents the demo user from accessing connector credentials,
-    // live trading settings, or creating/confirming trades. This ensures the
-    // demo tenant is isolated from real broker data regardless of what's in
-    // the production database.
+    // this guard prevents the demo user from accessing connector credentials.
+    // This ensures the demo tenant is isolated from real connector secrets
+    // regardless of what's in the production database.
     if (ctx.demo) {
-      // Block POST to /portfolio/trades (create/confirm/cancel trades)
-      const isTradeWrite = request.method === 'POST' && request.url.startsWith('/portfolio/trades')
-      // Block all access to connector credentials (real broker keys)
+      // Block all access to connector credentials (real provider keys)
       const isConnectorCreds = request.url.startsWith('/connector-credentials')
-      // Block live trading opt-in toggle and status
-      const isLiveTradingSettings = request.url.startsWith('/portfolio/live-trading')
-      if (isTradeWrite || isConnectorCreds || isLiveTradingSettings) {
+      if (isConnectorCreds) {
         return reply.status(403).send({ error: 'Demo mode: this operation is not available' })
       }
     }
@@ -1778,9 +1773,9 @@ app.post('/auth/logout', async (_request, reply) => {
 /** GET /auth/demo-token — quick demo token for acme-corp (Studio settings page)
  *  SECURITY: disabled in production unless ALLOW_DEMO_TOKENS=1 is explicitly set.
  *  The demo token carries a `demo: true` claim that triggers a guard in the
- *  auth middleware (below) blocking access to connector credentials, live
- *  trading settings, and trade creation — so even if acme-corp has real
- *  broker connections in the database, a demo visitor cannot see or use them. */
+ *  auth middleware (above) blocking access to connector credentials — so even
+ *  if acme-corp has real provider connections in the database, a demo visitor
+ *  cannot see or use them. */
 app.get('/auth/demo-token', async (_request, reply) => {
   if (process.env['NODE_ENV'] === 'production' && !process.env['ALLOW_DEMO_TOKENS']) {
     return reply.status(403).send({ error: 'Demo tokens disabled in production' })
@@ -1839,12 +1834,12 @@ app.get('/', async (_request, reply) => {
   </div>
 
   <div class="card hidden" id="navCard">
-    <h2>Portfolio & Trading</h2>
-    <a class="btn" href="/portfolio/holdings" data-api>Holdings</a>
-    <a class="btn" href="/portfolio/recommendations" data-api>Recommendations</a>
-    <a class="btn" href="/portfolio/scores" data-api>Momentum Scores</a>
-    <a class="btn" href="/portfolio/trades" data-api>Trades</a>
-    <a class="btn" href="/portfolio/home-kpis" data-api>KPIs</a>
+    <h2>Family</h2>
+    <a class="btn" href="/insights" data-api>Insights</a>
+    <a class="btn" href="/family/readiness" data-api>Readiness</a>
+    <a class="btn" href="/family/financial-profile" data-api>Financial Profile</a>
+    <a class="btn" href="/insights/consolidated" data-api>Consolidated Insights</a>
+    <a class="btn" href="/inbox" data-api>Inbox</a>
   </div>
 
   <script>

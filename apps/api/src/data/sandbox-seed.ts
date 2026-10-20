@@ -1,14 +1,19 @@
 /**
  * Sandbox Seed Data
- * 
+ *
  * Sample data for sandbox mode to show users what LifeKeel looks like
  * before they connect real data sources.
- * 
+ *
  * Includes:
- * - 3 sample goals (invoice recovery, churn prevention, trial conversion)
- * - 20 sample insights with varied states
- * - 5 sample workflows with attribution data
+ * - 3 sample goals (emergency fund, retirement readiness, estate readiness)
+ * - 10 sample insights with varied states
+ * - 3 sample workflows with attribution data
  * - 3 sample verified moments with evidence
+ *
+ * Every detector_id/rule_id pair mirrors a real rule in detectors/family/*.yaml
+ * and every category matches what Detector.inferCategory() + category-table.yaml
+ * assign for that rule, so the demo reads as the real product rather than a
+ * different vertical's data.
  */
 
 export interface SandboxGoal {
@@ -29,8 +34,6 @@ export interface SandboxGoal {
   }>
   status: 'active' | 'achieved' | 'stalled'
   detector_ids: string[]
-  /** Which vertical this sample represents — see getSandboxData()'s filter. */
-  vertical: string
 }
 
 export interface SandboxInsight {
@@ -53,7 +56,6 @@ export interface SandboxInsight {
   }>
   created_at: string
   goal_id?: string
-  vertical: string
 }
 
 export interface SandboxWorkflow {
@@ -67,7 +69,6 @@ export interface SandboxWorkflow {
     causal_lift_days: number
   }
   created_at: string
-  vertical: string
 }
 
 export interface SandboxVerifiedMoment {
@@ -86,570 +87,336 @@ export interface SandboxVerifiedMoment {
   detector_id: string
   created_at: string
   verified: boolean
-  vertical: string
 }
+
+const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString()
+const daysAhead = (n: number) => new Date(Date.now() + n * 24 * 60 * 60 * 1000).toISOString()
 
 export const SANDBOX_GOALS: SandboxGoal[] = [
   {
-    id: 'goal_invoice_recovery',
-    name: 'Reduce Overdue Invoices',
-    description: 'Recover overdue invoices and improve cash flow',
-    timeline_days: 90,
-    start_date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-    target_date: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
-    kpis: [
-      {
-        metric: 'total_overdue_amount',
-        label: 'Total Overdue',
-        unit: 'GBP',
-        target: 70000,
-        current: 100000,
-        direction: 'decrease',
-        source: 'signals',
-      },
-    ],
-    status: 'active',
-    detector_ids: ['detector_overdue_invoice'],
-    vertical: 'smb-operations',
-  },
-  {
-    id: 'goal_churn_prevention',
-    name: 'Reduce Customer Churn',
-    description: 'Identify at-risk customers and prevent churn',
-    timeline_days: 180,
-    start_date: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
-    target_date: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString(),
-    kpis: [
-      {
-        metric: 'churn_rate',
-        label: 'Churn Rate',
-        unit: 'percent',
-        target: 0.05,
-        current: 0.12,
-        direction: 'decrease',
-        source: 'signals',
-      },
-    ],
-    status: 'active',
-    detector_ids: ['detector_churn_risk'],
-    vertical: 'smb-operations',
-  },
-  {
-    id: 'goal_trial_conversion',
-    name: 'Improve Trial Conversion',
-    description: 'Convert free trial users to paid customers',
-    timeline_days: 60,
-    start_date: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-    target_date: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString(),
-    kpis: [
-      {
-        metric: 'trial_conversion_rate',
-        label: 'Trial Conversion',
-        unit: 'percent',
-        target: 0.25,
-        current: 0.15,
-        direction: 'increase',
-        source: 'signals',
-      },
-    ],
-    status: 'active',
-    detector_ids: ['detector_trial_risk'],
-    vertical: 'smb-operations',
-  },
-  {
-    id: 'goal_compound_growth_demo',
-    name: 'Compound Portfolio Growth',
-    description: 'Aggressive compounding plan for a Trading 212 portfolio — Trading & Investment vertical sample.',
+    id: 'goal_emergency_fund',
+    name: 'Build a 6-Month Emergency Fund',
+    description: 'Grow emergency savings to cover six months of household expenses',
     timeline_days: 365,
-    start_date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
-    target_date: new Date(Date.now() + 275 * 24 * 60 * 60 * 1000).toISOString(),
+    start_date: daysAgo(120),
+    target_date: daysAhead(245),
     kpis: [
       {
-        metric: 'portfolio_value_minor',
-        label: 'Portfolio value',
-        unit: 'minor_currency',
-        target: 450000,
-        current: 312000,
-        direction: 'increase',
-        source: 'signals',
-      },
-      {
-        metric: 'max_drawdown_pct',
-        label: 'Maximum drawdown',
-        unit: 'percent',
-        target: 20,
-        current: 8.5,
-        direction: 'decrease',
-        source: 'signals',
-      },
-    ],
-    status: 'active',
-    detector_ids: ['trading_concentration_risk', 'trading_price_drop_alert', 'trading_rebalance_suggestion'],
-    vertical: 'trading-investment',
-  },
-  {
-    id: 'goal_property_yield_demo',
-    name: 'Grow Buy-to-Let Net Yield',
-    description: 'Lift portfolio net rental yield by closing per-property yield gaps and catching refinance windows — Property & Wealth vertical sample.',
-    timeline_days: 180,
-    start_date: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
-    target_date: new Date(Date.now() + 135 * 24 * 60 * 60 * 1000).toISOString(),
-    kpis: [
-      {
-        metric: 'portfolio_net_yield_pct',
-        label: 'Net Rental Yield',
-        unit: 'percent',
-        target: 6.5,
-        current: 5.1,
+        metric: 'months_of_cover',
+        label: 'Months of expenses covered',
+        unit: 'months',
+        target: 6,
+        current: 1.8,
         direction: 'increase',
         source: 'signals',
       },
     ],
     status: 'active',
-    detector_ids: ['property_yield_gap', 'property_price_drop', 'property_refinance_window'],
-    vertical: 'property-wealth',
+    detector_ids: ['family_emergency_fund_adequacy', 'family_emergency_trajectory'],
   },
   {
-    id: 'goal_social_growth_demo',
-    name: 'Grow presence on X',
-    description: 'Publish useful content consistently and improve reach and engagement — Audience & Brand Growth vertical sample.',
-    timeline_days: 90,
-    start_date: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
-    target_date: new Date(Date.now() + 70 * 24 * 60 * 60 * 1000).toISOString(),
+    id: 'goal_retirement_readiness',
+    name: 'Close the Retirement Gap',
+    description: 'Bring projected retirement income in line with the household target',
+    timeline_days: 730,
+    start_date: daysAgo(90),
+    target_date: daysAhead(640),
     kpis: [
       {
-        metric: 'twitter_followers',
-        label: 'X followers',
-        unit: 'followers',
+        metric: 'projected_income_vs_target_pct',
+        label: 'Projected income vs target',
+        unit: 'percent',
         target: 100,
         current: 62,
         direction: 'increase',
         source: 'signals',
       },
+    ],
+    status: 'active',
+    detector_ids: ['family_retirement_gap'],
+  },
+  {
+    id: 'goal_estate_readiness',
+    name: 'Get Estate Documents in Order',
+    description: 'Make sure the family\'s key estate documents exist and are findable in the vault',
+    timeline_days: 180,
+    start_date: daysAgo(30),
+    target_date: daysAhead(150),
+    kpis: [
       {
-        metric: 'twitter_engagement_rate',
-        label: 'X engagement rate',
-        unit: 'ratio',
-        target: 0.03,
-        current: 0.018,
-        direction: 'increase',
-        source: 'signals',
-      },
-      {
-        metric: 'twitter_impressions',
-        label: 'X impressions',
-        unit: 'impressions',
-        target: 10000,
-        current: 6200,
+        metric: 'estate_documents_on_file',
+        label: 'Estate documents on file',
+        unit: 'documents',
+        target: 5,
+        current: 2,
         direction: 'increase',
         source: 'signals',
       },
     ],
     status: 'active',
-    detector_ids: ['social_engagement_drop', 'social_post_performance_spike', 'social_goal_progress'],
-    vertical: 'audience-growth',
+    detector_ids: ['family_estate_readiness'],
   },
 ]
 
 export const SANDBOX_INSIGHTS: SandboxInsight[] = [
-  // Trading & Investment vertical samples — mirror the real detector/rule
-  // shapes used by concentration-risk, price-drop, and rebalance detectors
-  // (see detectors/trading/*.yaml) so this demo reads as the real product,
-  // not a different vertical's data shown in the wrong context. Ordered
-  // first so a Trading & Investment evaluator's first 3 "recommended
-  // positions" are actually trading content, not SMB-ops samples below.
   {
-    id: 'insight_trading_001',
-    detector_id: 'trading_concentration_risk',
-    rule_id: 'position_over_threshold',
-    state: 'identified',
-    confidence_breakdown: { or_score: 0.85, combined_score: 0.85 },
-    urgency: 'high',
-    category: 'trading',
-    reasoning: 'DEMO_TECH makes up 34% of the portfolio, above the 10% cap from your goal.',
-    actions: [{ type: 'rebalance_suggestion', status: 'pending' }],
-    created_at: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-    goal_id: 'goal_compound_growth_demo',
-    vertical: 'trading-investment',
-  },
-  {
-    id: 'insight_trading_002',
-    detector_id: 'trading_price_drop_alert',
-    rule_id: 'price_drop_below_avg',
-    state: 'identified',
-    confidence_breakdown: { or_score: 0.8, combined_score: 0.8 },
-    urgency: 'medium',
-    category: 'trading',
-    reasoning: 'DEMO_TECH is down 6.2% vs your average cost, a drop beyond the 5% rule threshold.',
-    actions: [{ type: 'review_position', status: 'pending' }],
-    created_at: new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString(),
-    goal_id: 'goal_compound_growth_demo',
-    vertical: 'trading-investment',
-  },
-  {
-    id: 'insight_trading_003',
-    detector_id: 'trading_rebalance_suggestion',
-    rule_id: 'excess_cash',
-    state: 'completed',
-    confidence_breakdown: { or_score: 0.78, combined_score: 0.78 },
-    urgency: 'low',
-    category: 'trading',
-    reasoning: 'Cash is 14.2% of the portfolio — above the 5% cap. Deploying excess cash may improve long-term returns.',
-    actions: [{ type: 'deploy_cash', status: 'completed' }],
-    created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    goal_id: 'goal_compound_growth_demo',
-    vertical: 'trading-investment',
-  },
-  {
-    id: 'insight_001',
-    detector_id: 'detector_overdue_invoice',
-    rule_id: 'rule_high_value',
-    state: 'completed',
-    confidence_breakdown: { or_score: 0.92, combined_score: 0.88 },
-    urgency: 'high',
-    category: 'revenue',
-    reasoning: 'Invoice £5,000 is 45 days overdue. High-value customer with good payment history.',
-    actions: [
-      { type: 'send_email', status: 'completed' },
-    ],
-    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    goal_id: 'goal_invoice_recovery',
-    vertical: 'smb-operations',
-  },
-  {
-    id: 'insight_002',
-    detector_id: 'detector_overdue_invoice',
-    rule_id: 'rule_medium_value',
-    state: 'identified',
-    confidence_breakdown: { or_score: 0.85, combined_score: 0.82 },
-    urgency: 'medium',
-    category: 'revenue',
-    reasoning: 'Invoice £1,200 is 21 days overdue. Send reminder email.',
-    actions: [
-      { type: 'send_email', status: 'pending' },
-    ],
-    created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    goal_id: 'goal_invoice_recovery',
-    vertical: 'smb-operations',
-  },
-  {
-    id: 'insight_003',
-    detector_id: 'detector_churn_risk',
-    rule_id: 'rule_usage_decline',
-    state: 'completed',
-    confidence_breakdown: { or_score: 0.78, combined_score: 0.75 },
-    urgency: 'high',
-    category: 'retention',
-    reasoning: 'Customer usage declined 40% in 30 days. Risk of churn.',
-    actions: [
-      { type: 'create_task', status: 'completed' },
-    ],
-    created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    goal_id: 'goal_churn_prevention',
-    vertical: 'smb-operations',
-  },
-  {
-    id: 'insight_004',
-    detector_id: 'detector_trial_risk',
-    rule_id: 'rule_trial_inactive',
-    state: 'dismissed',
-    confidence_breakdown: { or_score: 0.65, combined_score: 0.62 },
-    urgency: 'low',
-    category: 'growth',
-    reasoning: 'Trial user inactive for 7 days. Low urgency.',
-    actions: [
-      { type: 'send_email', status: 'completed' as const },
-    ],
-    created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    goal_id: 'goal_trial_conversion',
-    vertical: 'smb-operations',
-  },
-  // Add 16 more insights for variety
-  ...Array.from({ length: 16 }, (_, i) => ({
-    id: `insight_${String(i + 5).padStart(3, '0')}`,
-    detector_id: ['detector_overdue_invoice', 'detector_churn_risk', 'detector_trial_risk'][i % 3],
-    rule_id: `rule_${i}`,
-    state: ['identified', 'completed', 'dismissed'][i % 3] as 'identified' | 'completed' | 'dismissed',
-    confidence_breakdown: { or_score: 0.7 + Math.random() * 0.2, combined_score: 0.65 + Math.random() * 0.2 },
-    urgency: ['low', 'medium', 'high', 'critical'][i % 4] as 'low' | 'medium' | 'high' | 'critical',
-    category: ['revenue', 'retention', 'growth'][i % 3],
-    reasoning: `Sample insight ${i + 5} for sandbox demonstration.`,
-    actions: [{ type: 'send_email', status: 'pending' as const }],
-    created_at: new Date(Date.now() - (i + 1) * 24 * 60 * 60 * 1000).toISOString(),
-    goal_id: ['goal_invoice_recovery', 'goal_churn_prevention', 'goal_trial_conversion'][i % 3],
-    vertical: 'smb-operations',
-  })),
-  // Property & Wealth vertical samples — mirror the real detector/rule ids
-  // in detectors/property/*.yaml so this demo reads as the real product.
-  {
-    id: 'insight_property_001',
-    detector_id: 'property_yield_gap',
-    rule_id: 'yield_below_benchmark',
-    state: 'identified',
-    confidence_breakdown: { or_score: 0.79, combined_score: 0.79 },
-    urgency: 'medium',
-    category: 'property',
-    reasoning: '12 Elm Grove, Manchester nets 4.1% vs the Manchester benchmark of 5.6% — a 1.5pt gap on a £185,000 asset.',
-    actions: [{ type: 'review_rent', status: 'pending' }],
-    created_at: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
-    goal_id: 'goal_property_yield_demo',
-    vertical: 'property-wealth',
-  },
-  {
-    id: 'insight_property_002',
-    detector_id: 'property_yield_gap',
-    rule_id: 'extended_void',
+    id: 'insight_family_001',
+    detector_id: 'family_emergency_fund_adequacy',
+    rule_id: 'emergency_fund_below_3_months',
     state: 'identified',
     confidence_breakdown: { or_score: 0.88, combined_score: 0.88 },
     urgency: 'high',
-    category: 'property',
-    reasoning: '4 Castle Street, Leeds has been void for 52 days at £950/month of foregone rent.',
-    actions: [{ type: 'refresh_listing', status: 'pending' }],
-    created_at: new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString(),
-    goal_id: 'goal_property_yield_demo',
-    vertical: 'property-wealth',
+    category: 'risk',
+    reasoning:
+      'Your emergency savings of £3,200 cover approximately 1.8 months of expenses. A common guideline is 3–6 months. This is an informational estimate — consider reviewing with a qualified financial professional.',
+    actions: [
+      { type: 'review_monthly_budget', status: 'pending' },
+      { type: 'set_up_automatic_transfer', status: 'pending' },
+    ],
+    created_at: daysAgo(1),
+    goal_id: 'goal_emergency_fund',
   },
   {
-    id: 'insight_property_003',
-    detector_id: 'property_refinance_window',
-    rule_id: 'fix_ending_rate_drop',
+    id: 'insight_family_002',
+    detector_id: 'family_emergency_fund_adequacy',
+    rule_id: 'high_interest_debt_unaddressed',
+    state: 'identified',
+    confidence_breakdown: { or_score: 0.7, combined_score: 0.7 },
+    urgency: 'high',
+    category: 'experience',
+    reasoning:
+      'Your profile lists high-interest debt of £4,800 outstanding. At typical high-interest rates this could cost £720 to £1,200 per year in interest alone. This is an informational estimate — consider reviewing repayment options with a qualified financial professional.',
+    actions: [
+      { type: 'list_high_interest_debts', status: 'pending' },
+      { type: 'consult_financial_advisor', status: 'pending' },
+    ],
+    created_at: daysAgo(2),
+    goal_id: 'goal_emergency_fund',
+  },
+  {
+    id: 'insight_family_003',
+    detector_id: 'family_retirement_gap',
+    rule_id: 'retirement_behind_target_age',
+    state: 'identified',
+    confidence_breakdown: { or_score: 0.81, combined_score: 0.81 },
+    urgency: 'medium',
+    category: 'risk',
+    reasoning:
+      'On current contributions, projected retirement income covers roughly 62% of your household target — behind the pace implied by your target retirement age. This is an informational estimate — consider reviewing with a qualified financial professional.',
+    actions: [
+      { type: 'gather_pension_statements', status: 'pending' },
+      { type: 'review_contribution_level', status: 'pending' },
+    ],
+    created_at: daysAgo(4),
+    goal_id: 'goal_retirement_readiness',
+  },
+  {
+    id: 'insight_family_004',
+    detector_id: 'family_protection_gap',
+    rule_id: 'life_insurance_below_household_needs',
     state: 'identified',
     confidence_breakdown: { or_score: 0.84, combined_score: 0.84 },
-    urgency: 'medium',
-    category: 'property',
-    reasoning: '12 Elm Grove, Manchester mortgage fix ends in 68 days. Current rate 5.4% vs market 4.7% on a £142,000 balance — refinance headroom.',
-    actions: [{ type: 'compare_remortgage', status: 'pending' }],
-    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    goal_id: 'goal_property_yield_demo',
-    vertical: 'property-wealth',
+    urgency: 'high',
+    category: 'risk',
+    reasoning:
+      'Life insurance cover on file (£50,000) is well below the estimated household need based on the income and dependants in your profile. This is an informational estimate — compare quotes from multiple insurers or speak to a licensed professional.',
+    actions: [
+      { type: 'review_cover_amount', status: 'pending' },
+      { type: 'compare_quotes', status: 'pending' },
+    ],
+    created_at: daysAgo(6),
   },
-  // Audience & Brand Growth vertical samples — mirror the real detector/rule
-  // ids in detectors/social/*.yaml.
   {
-    id: 'insight_social_001',
-    detector_id: 'social_engagement_drop',
-    rule_id: 'engagement_cusum_down',
+    id: 'insight_family_005',
+    detector_id: 'family_estate_readiness',
+    rule_id: 'estate_no_will',
     state: 'identified',
-    confidence_breakdown: { or_score: 0.82, combined_score: 0.82 },
+    confidence_breakdown: { or_score: 0.9, combined_score: 0.9 },
     urgency: 'medium',
-    category: 'social',
-    reasoning: 'Your X engagement rate has been trending downward for several posts. Latest: 1.8% (Likes: 12, Comments: 2).',
-    actions: [{ type: 'review_content_mix', status: 'pending' }],
-    created_at: new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString(),
-    goal_id: 'goal_social_growth_demo',
-    vertical: 'audience-growth',
+    category: 'experience',
+    reasoning:
+      'No will is on file for this household. Without one, your wishes may not be followed and settling an estate can take longer for the people you leave behind. Consider speaking to a qualified legal professional.',
+    actions: [
+      { type: 'collect_estate_documents', status: 'pending' },
+      { type: 'schedule_review', status: 'pending' },
+    ],
+    created_at: daysAgo(9),
+    goal_id: 'goal_estate_readiness',
   },
   {
-    id: 'insight_social_002',
-    detector_id: 'social_post_performance_spike',
-    rule_id: 'engagement_spike_2sigma',
-    state: 'completed',
-    confidence_breakdown: { or_score: 0.88, combined_score: 0.88 },
+    id: 'insight_family_006',
+    detector_id: 'family_policy_review',
+    rule_id: 'policy_renewal_window',
+    state: 'identified',
+    confidence_breakdown: { or_score: 0.95, combined_score: 0.95 },
     urgency: 'low',
-    category: 'social',
-    reasoning: 'Your X post achieved 6.2% engagement rate — significantly above your typical range. Likes: 84 | Comments: 15 | Shares: 22 | Impressions: 3100.',
-    actions: [{ type: 'save_content_angle', status: 'completed' }],
-    created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    goal_id: 'goal_social_growth_demo',
-    vertical: 'audience-growth',
+    category: 'experience',
+    reasoning:
+      'The home insurance policy on file renews in 28 days — a review window is open to confirm the cover details are still accurate for the household.',
+    actions: [
+      { type: 'review_policy_details', status: 'pending' },
+      { type: 'update_policy_renewal_date', status: 'pending' },
+    ],
+    created_at: daysAgo(12),
   },
   {
-    id: 'insight_social_003',
-    detector_id: 'social_goal_progress',
-    rule_id: 'goal_behind_pace',
+    id: 'insight_family_007',
+    detector_id: 'family_education_shortfall',
+    rule_id: 'education_fund_behind_target',
     state: 'identified',
-    confidence_breakdown: { or_score: 0.75, combined_score: 0.75 },
+    confidence_breakdown: { or_score: 0.76, combined_score: 0.76 },
     urgency: 'medium',
-    category: 'social',
-    reasoning: 'X follower growth is behind pace to hit 100 followers by the goal deadline — 62 so far with 32 days left.',
-    actions: [{ type: 'adjust_posting_cadence', status: 'pending' }],
-    created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    goal_id: 'goal_social_growth_demo',
-    vertical: 'audience-growth',
+    category: 'risk',
+    reasoning:
+      'The education fund on file is behind the pace needed to reach its target by the stated date at the current monthly contribution. This is an informational estimate — consider reviewing with a qualified financial professional.',
+    actions: [
+      { type: 'review_monthly_contribution', status: 'pending' },
+      { type: 'update_target', status: 'pending' },
+    ],
+    created_at: daysAgo(15),
+  },
+  {
+    id: 'insight_family_008',
+    detector_id: 'family_debt_health',
+    rule_id: 'debt_to_income_above_guideline',
+    state: 'dismissed',
+    confidence_breakdown: { or_score: 0.73, combined_score: 0.73 },
+    urgency: 'medium',
+    category: 'experience',
+    reasoning:
+      'Household debt repayments appear to be above the guideline share of monthly income on file. This is an informational estimate — consider reviewing with a qualified financial professional.',
+    actions: [{ type: 'review_debt_schedule', status: 'pending' }],
+    created_at: daysAgo(20),
+  },
+  {
+    id: 'insight_family_009',
+    detector_id: 'family_emergency_trajectory',
+    rule_id: 'emergency_fund_stalled',
+    state: 'identified',
+    confidence_breakdown: { or_score: 0.79, combined_score: 0.79 },
+    urgency: 'low',
+    category: 'experience',
+    reasoning:
+      'Monthly contributions to the emergency fund appear to have paused for two months — the fund is no longer on pace for its goal.',
+    actions: [{ type: 'resume_monthly_transfer', status: 'pending' }],
+    created_at: daysAgo(25),
+    goal_id: 'goal_emergency_fund',
+  },
+  {
+    id: 'insight_family_010',
+    detector_id: 'family_emergency_fund_adequacy',
+    rule_id: 'emergency_fund_overfunded',
+    state: 'completed',
+    confidence_breakdown: { or_score: 0.72, combined_score: 0.72 },
+    urgency: 'low',
+    category: 'goal_progress',
+    reasoning:
+      'Emergency savings on file now cover more than the 6-month guideline. One option to consider is whether surplus cash above that level is working as hard as it could. This is an informational estimate — consider reviewing with a qualified financial professional.',
+    actions: [{ type: 'redirect_surplus_review', status: 'completed' }],
+    created_at: daysAgo(35),
+    goal_id: 'goal_emergency_fund',
   },
 ]
 
 export const SANDBOX_WORKFLOWS: SandboxWorkflow[] = [
   {
-    id: 'workflow_invoice_chase',
-    name: 'Invoice Recovery Chase',
-    description: 'Automatically chase overdue invoices with email reminders',
-    runs_count: 45,
+    id: 'workflow_policy_renewal_watch',
+    name: 'Policy Renewal Watch',
+    description: 'Watches policy renewal dates on file and drafts a reminder before each window opens',
+    runs_count: 14,
     attribution: {
-      total_value_minor_units: 4500000, // £4,500
-      conversion_rate: 0.35,
-      causal_lift_days: 12,
+      total_value_minor_units: 210000, // £2,100
+      conversion_rate: 0.31,
+      causal_lift_days: 9,
     },
-    created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-    vertical: 'smb-operations',
+    created_at: daysAgo(60),
   },
   {
-    id: 'workflow_churn_intervention',
-    name: 'Churn Risk Intervention',
-    description: 'Identify at-risk customers and send retention offers',
-    runs_count: 28,
+    id: 'workflow_document_expiry_monitor',
+    name: 'Document Expiry Monitor',
+    description: 'Flags vault documents nearing expiry and reminds the family to renew them',
+    runs_count: 22,
     attribution: {
-      total_value_minor_units: 12000000, // £12,000
-      conversion_rate: 0.42,
-      causal_lift_days: 8,
-    },
-    created_at: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
-    vertical: 'smb-operations',
-  },
-  {
-    id: 'workflow_trial_nurture',
-    name: 'Trial Nurture Sequence',
-    description: 'Send onboarding emails to trial users',
-    runs_count: 67,
-    attribution: {
-      total_value_minor_units: 8500000, // £8,500
-      conversion_rate: 0.28,
+      total_value_minor_units: 140000, // £1,400
+      conversion_rate: 0.45,
       causal_lift_days: 5,
     },
-    created_at: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
-    vertical: 'smb-operations',
+    created_at: daysAgo(75),
   },
   {
-    id: 'workflow_sla_monitor',
-    name: 'SLA Breach Monitor',
-    description: 'Monitor support tickets for SLA violations',
-    runs_count: 15,
+    id: 'workflow_monthly_family_review',
+    name: 'Monthly Financial Profile Review',
+    description: 'Re-checks the financial profile each month and surfaces new readiness gaps',
+    runs_count: 6,
     attribution: {
-      total_value_minor_units: 3200000, // £3,200
-      conversion_rate: 0.55,
-      causal_lift_days: 3,
+      total_value_minor_units: 380000, // £3,800
+      conversion_rate: 0.52,
+      causal_lift_days: 14,
     },
-    created_at: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
-    vertical: 'smb-operations',
-  },
-  {
-    id: 'workflow_payment_reminder',
-    name: 'Payment Reminder',
-    description: 'Send payment reminders for upcoming invoices',
-    runs_count: 52,
-    attribution: {
-      total_value_minor_units: 6800000, // £6,800
-      conversion_rate: 0.38,
-      causal_lift_days: 7,
-    },
-    created_at: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-    vertical: 'smb-operations',
-  },
-  {
-    id: 'workflow_trading_concentration_review',
-    name: 'Concentration Risk Review',
-    description: 'Flags over-concentrated positions against your goal\'s cap and drafts a rebalance note',
-    runs_count: 9,
-    attribution: {
-      total_value_minor_units: 920000, // £9,200
-      conversion_rate: 0.44,
-      causal_lift_days: 4,
-    },
-    created_at: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
-    vertical: 'trading-investment',
+    created_at: daysAgo(40),
   },
 ]
 
 export const SANDBOX_VERIFIED_MOMENTS: SandboxVerifiedMoment[] = [
   {
-    id: 'moment_001',
+    id: 'moment_family_001',
     tenant_id: 'sandbox_tenant',
-    name: 'Invoice Recovery Success',
-    description: 'Recovered £4,500 from overdue invoices in 30 days',
-    category: 'revenue',
+    name: 'Emergency Fund Milestone',
+    description: 'Emergency savings grew from 1.8 to 3.2 months of household expenses covered',
+    category: 'readiness',
     evidence: {
-      before_value: 100000,
-      after_value: 55000,
-      unit: 'GBP',
-      confidence: 0.92,
+      before_value: 1.8,
+      after_value: 3.2,
+      unit: 'months_of_cover',
+      confidence: 0.9,
     },
-    workflow_id: 'workflow_invoice_chase',
-    detector_id: 'detector_overdue_invoice',
-    created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    workflow_id: 'workflow_monthly_family_review',
+    detector_id: 'family_emergency_fund_adequacy',
+    created_at: daysAgo(10),
     verified: true,
-    vertical: 'smb-operations',
   },
   {
-    id: 'moment_002',
+    id: 'moment_family_002',
     tenant_id: 'sandbox_tenant',
-    name: 'Churn Prevention Success',
-    description: 'Prevented 3 high-value customers from churning',
-    category: 'retention',
+    name: 'Policy Reviewed Ahead of Renewal',
+    description: 'Home insurance cover was reviewed and confirmed 21 days before the renewal date',
+    category: 'readiness',
     evidence: {
-      before_value: 0.15,
-      after_value: 0.08,
-      unit: 'churn_rate',
-      confidence: 0.85,
+      before_value: 0,
+      after_value: 21,
+      unit: 'days_before_renewal',
+      confidence: 0.86,
     },
-    workflow_id: 'workflow_churn_intervention',
-    detector_id: 'detector_churn_risk',
-    created_at: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
+    workflow_id: 'workflow_policy_renewal_watch',
+    detector_id: 'family_policy_review',
+    created_at: daysAgo(18),
     verified: true,
-    vertical: 'smb-operations',
   },
   {
-    id: 'moment_003',
+    id: 'moment_family_003',
     tenant_id: 'sandbox_tenant',
-    name: 'Trial Conversion Boost',
-    description: 'Improved trial conversion by 40% with targeted emails',
-    category: 'growth',
+    name: 'Estate Pack Filed in the Vault',
+    description: 'Key estate documents on file grew from 2 to 5 — will, PoA, and insurance schedules now findable',
+    category: 'readiness',
     evidence: {
-      before_value: 0.15,
-      after_value: 0.21,
-      unit: 'conversion_rate',
-      confidence: 0.78,
+      before_value: 2,
+      after_value: 5,
+      unit: 'documents_on_file',
+      confidence: 0.93,
     },
-    workflow_id: 'workflow_trial_nurture',
-    detector_id: 'detector_trial_risk',
-    created_at: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString(),
+    workflow_id: 'workflow_document_expiry_monitor',
+    detector_id: 'family_estate_readiness',
+    created_at: daysAgo(7),
     verified: true,
-    vertical: 'smb-operations',
-  },
-  {
-    id: 'moment_trading_001',
-    tenant_id: 'sandbox_tenant',
-    name: 'Concentration Trimmed on Time',
-    description: 'Rebalanced DEMO_TECH from 34% to 9% of the portfolio before the next earnings window',
-    category: 'trading',
-    evidence: {
-      before_value: 34,
-      after_value: 9,
-      unit: 'portfolio_weight_pct',
-      confidence: 0.85,
-    },
-    workflow_id: 'workflow_trading_concentration_review',
-    detector_id: 'trading_concentration_risk',
-    created_at: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
-    verified: true,
-    vertical: 'trading-investment',
   },
 ]
 
 /**
- * Get sandbox data for a specific resource type, optionally scoped to the
- * tenant's active vertical. Every sample is tagged with the vertical it
- * represents; without a vertical (the common case today — see
- * useVerticalLabels.ts's own comment), this returns the full unfiltered mix,
- * identical to the previous behavior. Once a tenant has actually activated a
- * vertical, this stops every user seeing the same trading/SMB demo content
- * regardless of which vertical they picked.
- */
-function filterByVertical<T extends { vertical: string }>(entries: T[], vertical?: string): T[] {
-  return vertical ? entries.filter((entry) => entry.vertical === vertical) : entries
-}
-
-/**
  * Outward-facing shape of a sandbox insight — matches the real Insight
- * contract's `actions: string[]` (apps/studio/src/types/index.ts) that every
- * renderer in the app assumes. SandboxInsight above keeps the richer
- * `{type, status}` authoring shape for internal use; this is where it gets
- * flattened before ever reaching an API response.
- *
- * Gap: this mapping didn't exist until now — getSandboxData('insights', ...)
- * returned SandboxInsight objects with actions as {type,status}[] directly,
- * which every insight-detail renderer (InsightDetailDs.tsx, InsightDetail.tsx,
- * and others) crashed on with "Objects are not valid as a React child",
- * reachable from Home's own "Explore" button on a sandbox tenant.
+ * contract's `actions: string[]` that every renderer in the app assumes.
+ * SandboxInsight above keeps the richer `{type, status}` authoring shape for
+ * internal use; this is where it gets flattened before ever reaching an API
+ * response.
  */
 export type SandboxInsightApi = Omit<SandboxInsight, 'actions'> & { actions: string[] }
 
@@ -667,23 +434,22 @@ function toApiInsight(insight: SandboxInsight): SandboxInsightApi {
   }
 }
 
-export function getSandboxData(type: 'goals', vertical?: string): SandboxGoal[]
-export function getSandboxData(type: 'insights', vertical?: string): SandboxInsightApi[]
-export function getSandboxData(type: 'workflows', vertical?: string): SandboxWorkflow[]
-export function getSandboxData(type: 'verified_moments', vertical?: string): SandboxVerifiedMoment[]
+export function getSandboxData(type: 'goals'): SandboxGoal[]
+export function getSandboxData(type: 'insights'): SandboxInsightApi[]
+export function getSandboxData(type: 'workflows'): SandboxWorkflow[]
+export function getSandboxData(type: 'verified_moments'): SandboxVerifiedMoment[]
 export function getSandboxData(
   type: 'goals' | 'insights' | 'workflows' | 'verified_moments',
-  vertical?: string,
 ): SandboxGoal[] | SandboxInsightApi[] | SandboxWorkflow[] | SandboxVerifiedMoment[] {
   switch (type) {
     case 'goals':
-      return filterByVertical(SANDBOX_GOALS, vertical)
+      return SANDBOX_GOALS
     case 'insights':
-      return filterByVertical(SANDBOX_INSIGHTS, vertical).map(toApiInsight)
+      return SANDBOX_INSIGHTS.map(toApiInsight)
     case 'workflows':
-      return filterByVertical(SANDBOX_WORKFLOWS, vertical)
+      return SANDBOX_WORKFLOWS
     case 'verified_moments':
-      return filterByVertical(SANDBOX_VERIFIED_MOMENTS, vertical)
+      return SANDBOX_VERIFIED_MOMENTS
     default:
       return []
   }

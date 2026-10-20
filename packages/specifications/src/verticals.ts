@@ -50,8 +50,8 @@ export const VerticalThemeSchema = z.object({
 })
 
 export const VerticalSchema = z.object({
-  id: z.string(), // 'property-wealth', 'smb-operations'
-  name: z.string(), // 'Property & Wealth'
+  id: z.string(), // 'family'
+  name: z.string(), // 'Family'
   tagline: z.string().max(80),
   /** Lifecycle so we can ship verticals incrementally behind the same core. */
   status: z.enum(['alpha', 'beta', 'ga']).default('alpha'),
