@@ -3458,6 +3458,55 @@ export const checkChannelProfile = (channel: string) =>
 export const applyChannelProfile = (channel: string, expected_hash: string) =>
   marketingRequest<ChannelProfileView>(`/marketing/profiles/${channel}/apply`, 'POST', { expected_hash })
 
+// ── Weekly content plan (PRD-210, phase 3) ──────────────────────────────
+
+export interface PlanPostView {
+  id: string
+  channel: string
+  content: string
+  content_hash: string
+  state: MarketingPostState
+  scheduled_at: string | null
+  copy_check: { ok: boolean; violations: { rule: string; match: string }[] }
+}
+
+export interface PlanItemView {
+  id: string
+  week_key: string
+  slot: number
+  pillar: string
+  title: string
+  scheduled_at: string
+  status: 'planned' | 'skipped'
+  posts: PlanPostView[]
+}
+
+export interface PlanWeekView {
+  week_key: string
+  available_channels: string[]
+  items: PlanItemView[]
+}
+
+export async function fetchPlanWeek(week: string): Promise<PlanWeekView> {
+  return apiFetch<PlanWeekView>(`/marketing/plan?week=${encodeURIComponent(week)}`, {
+    week_key: week,
+    available_channels: [],
+    items: [],
+  })
+}
+
+export const generatePlanWeek = (week_start: string) =>
+  marketingRequest<PlanWeekView>('/marketing/plan/generate', 'POST', { week_start })
+
+export const approvePlanPosts = (items: { post_id: string; content_hash: string }[]) =>
+  marketingRequest<{ approved: number; refused: number; results: { post_id: string; ok: boolean; error?: string }[] }>(
+    '/marketing/plan/approve',
+    'POST',
+    { items },
+  )
+
+export const skipPlanItem = (id: string) => marketingRequest<{ ok: boolean }>(`/marketing/plan/items/${id}/skip`, 'POST')
+
 export async function disconnectSocialChannel(channel: string): Promise<void> {
   await marketingRequest<{ ok: boolean }>(`/marketing/connections/${channel}`, 'DELETE')
 }

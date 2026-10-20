@@ -49,6 +49,7 @@ import {
 import { PostPreview } from './_components/PostPreview'
 import { ProfilesPanel } from './_components/ProfilesPanel'
 import { PostCalendar } from './_components/PostCalendar'
+import { PlanPanel } from './_components/PlanPanel'
 import { FunnelPanel } from './_components/FunnelPanel'
 import { ReasonAction } from '../_components/ReasonAction'
 
@@ -108,7 +109,7 @@ function toLocalInput(iso: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-type Tab = 'compose' | 'queue' | 'calendar' | 'performance' | 'campaigns' | 'profiles'
+type Tab = 'compose' | 'queue' | 'plan' | 'calendar' | 'performance' | 'campaigns' | 'profiles'
 
 export default function MarketingPage() {
   const toast = useToast()
@@ -519,6 +520,7 @@ export default function MarketingPage() {
               [
                 ['compose', 'Compose'],
                 ['queue', `Queue${pendingCount ? ` (${pendingCount})` : ''}`],
+                ['plan', 'Plan'],
                 ['calendar', 'Calendar'],
                 ['performance', 'Performance'],
                 ['campaigns', 'Campaigns'],
@@ -972,6 +974,7 @@ export default function MarketingPage() {
           )}
 
           {/* Calendar */}
+          {tab === 'plan' && <PlanPanel />}
           {tab === 'calendar' && <PostCalendar posts={posts} />}
 
           {/* Performance */}
