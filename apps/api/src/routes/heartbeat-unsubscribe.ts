@@ -21,6 +21,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
+import { getGrowthEventsCollection } from '../db.js'
 
 export function heartbeatUnsubToken(tenantId: string, memberId: string): string {
   return createHmac('sha256', process.env['JWT_SECRET'] ?? 'dev-secret')
@@ -111,6 +112,16 @@ export async function registerHeartbeatUnsubscribeRoutes(
             { $set: { heartbeat_cadence: 'off' }, $setOnInsert: { tenant_id, enabled: true } },
             { upsert: true },
           )
+        // Counted for the notification-health metric (PRD-141): no identifier.
+        try {
+          await getGrowthEventsCollection(db).insertOne({
+            event: 'heartbeat_unsubscribed',
+            meta: null,
+            created_at: new Date(),
+          })
+        } catch {
+          // metrics only: never block the opt-out
+        }
         return reply
           .type('text/html')
           .send(

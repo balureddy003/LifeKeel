@@ -68,6 +68,8 @@ const EXEMPT_COLLECTIONS = new Set([
   'cron_locks',
   'migrations',
   'metrics_daily',
+  // scheduled-job run records (PRD-138/145): job name, time and counters only, no tenant data
+  'job_runs',
   'system_events',
   'infra_cost_snapshots',
   'judge_shadow_results',

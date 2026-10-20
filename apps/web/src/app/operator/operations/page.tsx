@@ -17,9 +17,12 @@ import {
   Send,
   Server,
 } from 'lucide-react'
+import { RetentionMetricsCard } from '@/components/RetentionMetricsCard'
 import { GlassCard } from '@/components/Glass'
 import {
   fetchOperatorOperations,
+  fetchRetentionMetrics,
+  type RetentionMetrics,
   fetchInfrastructure,
   recordCostSnapshot,
   retryReminder,
@@ -108,6 +111,7 @@ export default function OperationsPage() {
     never_autonomous: string[]
   } | null>(null)
   const [digest, setDigest] = useState<OperatorDigest | null>(null)
+  const [retention, setRetention] = useState<RetentionMetrics | null>(null)
   const [dualApprovals, setDualApprovals] = useState<DualApproval[]>([])
   const [error, setError] = useState<string | null>(null)
   const [costService, setCostService] = useState('')
@@ -147,6 +151,9 @@ export default function OperationsPage() {
     loadAutopilot()
     loadDigest()
     loadDualApprovals()
+    fetchRetentionMetrics()
+      .then(setRetention)
+      .catch(() => setRetention(null))
   }, [])
 
   if (error)
@@ -168,6 +175,8 @@ export default function OperationsPage() {
         Health of the process, datastore, queues, jobs, reminders, and connectors. Mutations are
         audited.
       </p>
+
+      {retention && <RetentionMetricsCard metrics={retention} />}
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <GlassCard className="p-4">
