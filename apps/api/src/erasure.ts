@@ -22,6 +22,8 @@ export const DELETABLE_COLLECTIONS = [
   'users',
   'family_groups',
   'family_financial_profile',
+  'readiness_quiz_snapshots', // PRD-203: saved quiz results
+  'family_readiness_history', // quiz saves now seed it before a profile exists
   'documents',
   'family_assets',
   'family_cashflow_entries',
