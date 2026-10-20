@@ -1204,10 +1204,20 @@ export async function fetchAIResponse(
     // never transit the network even though the assistant is LifeKeel-side.
     // The ephemeral restore map dies with this call; the response is
     // restored only for non-URL occurrences.
-    const { redactForCloudEgress } = await import('./onDeviceLlm')
-    const curtain = redactForCloudEgress(query, {
-      memberNames: opts?.memberName ? [opts.memberName] : [],
-    })
+    // Layer-B: when the user enabled on-device AI, an NER token classifier
+    // (on-device-ner.ts) also finds unanchored contextual PII — names,
+    // employers, places with no dictionary entry or regex anchor. It never
+    // widens egress: a disabled/absent/slow model yields zero entities and
+    // the deterministic curtain runs unchanged.
+    const { redactForCloudEgressAsync } = await import('./onDeviceLlm')
+    const { classifyEntities } = await import('./on-device-ner')
+    const curtain = await redactForCloudEgressAsync(
+      query,
+      {
+        memberNames: opts?.memberName ? [opts.memberName] : [],
+      },
+      { classify: classifyEntities },
+    )
     const safeQuery = curtain.redactedText
 
     const res = await credFetch(`${base}/assistant/ask`, {

@@ -805,10 +805,22 @@ assistant endpoint, restoring placeholders in the reply. It is a
 probabilistic control: deterministic Layer-B contextual recognizers
 (titled/relationship-anchored third-party names, numbered street
 addresses, dates of birth in prose, employer names) catch anchored
-contextual PII, but a bare unanchored name ("Sarah said…"), prose
-addresses, and free-text medical hints are still not caught — the
-blueprint's quantized NER token classifier (transformers.js, ~14 MB)
-remains the real Layer-B, gated on an eval harness like the draft task's.
+contextual PII, and — when the user has enabled on-device AI — a
+Layer-B NER token classifier (`on-device-ner.ts`: transformers.js
+`Xenova/bert-base-NER`, int8-quantized ONNX, WebGPU→WASM) feeds
+unanchored entity spans (persons, orgs, places) into the same curtain
+machinery via `redactForCloudEgressAsync`. The NER pass can only add
+redactions — a disabled/absent/slow model yields the deterministic
+curtain unchanged, dictionary entries keep precedence, spans below a
+0.75 confidence floor are dropped, and its gate (`NER_EVAL_CASES` /
+`runNerEvals` in on-device-evals.ts) requires ≥60% recall with zero
+forbidden hits on precision traps like month names. Two honest
+caveats: the ~110 MB int8 weights download once from huggingface.co
+(no content transits, but it is a device→HF call — vendoring onto
+LifeKeel infra is debt), and model quality is unverified on real
+devices until the eval run in intent 11 happens — the deterministic
+recognizers remain the shipped floor, free-text medical hints are
+still a quarantine signal rather than a redaction.
 
 **Special-category quarantine (Art. 9).** When the query carries
 health/medical hints — flagged by the client's curtain
@@ -866,10 +878,10 @@ payloads are from vendor docs), native-plugin version attestation,
 scanned-PDF rasterisation on-device (the doc screen reads the text layer
 but a no-text-layer scan still returns `unscreened` client-side —
 `@capacitor-mlkit/genai-prompt`'s `imagePath`+prompt call is the Android
-candidate), and the real Layer-B NER token classifier (transformers.js —
-the deterministic contextual recognizers are a high-precision stopgap,
-and the same classifier would sharpen the document screen beyond a
-letterhead vocabulary).
+candidate), the real-device NER eval run (harness + gate shipped; the
+model's recall/precision on this corpus is unverified until intent 11
+runs — TinyBERT's ~15 MB variant is the smaller alternative if quality
+holds), and weight vendoring so the classifier never contacts HF.
 
 See `docs/reviews/device-first-ai-foundation-2026-10.md` for the rationale
 and `docs/reviews/device-first-grounded-blueprint-2026-10.md` for the

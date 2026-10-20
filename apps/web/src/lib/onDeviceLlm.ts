@@ -343,6 +343,16 @@ export interface CurtainDictionary {
   providerNames?: string[]
 }
 
+/**
+ * An entity span produced by an external recognizer — e.g. the Layer-B NER
+ * classifier in on-device-ner.ts. Declared structurally (not imported) so
+ * this module never depends on the model layer.
+ */
+export interface CurtainEntity {
+  category: 'PERSON' | 'ORG' | 'LOC' | 'MISC'
+  text: string
+}
+
 const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi
 // Lookbehind-free phone candidate: a plausible run of 9-15 digits with
 // separators/country code. Digit-count + date-shape validated in callback.
@@ -462,6 +472,7 @@ function isInsideLinkContext(text: string, index: number): boolean {
 export function redactForCloudEgress(
   input: string,
   dictionary: CurtainDictionary = {},
+  extraEntities: CurtainEntity[] = [],
 ): RedactionCurtain {
   // Per-curtain nonce makes placeholders unguessable and prevents a hostile
   // cloud response (or prior curtain output in chat history) from colliding
@@ -510,6 +521,22 @@ export function redactForCloudEgress(
     if (prov && prov.trim().length >= 2) {
       dictEntries.push({ category: 'PROVIDER', value: prov.trim() })
     }
+  }
+  // Layer-B model spans (NER). They ride the same literal-match path as
+  // dictionary values — sorted longest-first, so a Family Twin name that
+  // overlaps an NER span wins (dict entries are pushed first and equal
+  // lengths keep insertion order under a stable sort... guard anyway by
+  // skipping an entity that is wholly contained in a dictionary value).
+  const dictValues = dictEntries.map((e) => e.value.toLowerCase())
+  for (const ent of extraEntities) {
+    const value = ent?.text?.trim()
+    if (!value || value.length < 2) continue
+    if (!['PERSON', 'ORG', 'LOC', 'MISC'].includes(ent.category)) continue
+    if (
+      dictValues.some((dv) => dv.includes(value.toLowerCase()) || value.toLowerCase().includes(dv))
+    )
+      continue
+    dictEntries.push({ category: ent.category, value })
   }
   dictEntries.sort((a, b) => b.value.length - a.value.length)
 
@@ -577,6 +604,33 @@ export function redactForCloudEgress(
   }
 }
 
+/**
+ * Curtain + optional Layer-B NER pass. `classify` is injected so this
+ * module stays free of the model layer — pass `classifyEntities` from
+ * on-device-ner.ts. A classifier that is disabled, absent, slow or
+ * throwing resolves to zero entities and the deterministic curtain runs
+ * unchanged; the NER pass never widens or weakens the curtain, it can only
+ * add redactions.
+ */
+export async function redactForCloudEgressAsync(
+  input: string,
+  dictionary: CurtainDictionary = {},
+  opts: {
+    classify?: (text: string) => Promise<CurtainEntity[]>
+    inferTimeoutMs?: number
+  } = {},
+): Promise<RedactionCurtain> {
+  let entities: CurtainEntity[] = []
+  if (opts.classify) {
+    entities =
+      (await withTimeout(
+        Promise.resolve(opts.classify(input)).catch(() => []),
+        opts.inferTimeoutMs ?? 5_000,
+      )) ?? []
+  }
+  return redactForCloudEgress(input, dictionary, entities)
+}
+
 // ── Runtime probing & execution (Capacitor OS -> Browser AI -> WebLLM) ────
 
 let engine: any = null
@@ -634,6 +688,13 @@ export function setOnDeviceEnabled(enabled: boolean): void {
         // unload is best-effort; GC will reclaim if it fails.
       }
     }
+    // The Layer-B NER pipeline shares the toggle — unload it too and
+    // evict its cached weights (lazy import keeps the module out of the
+    // disable path's bundle for users who never opted in).
+    void import('./on-device-ner.js').then((m) => {
+      m.unloadNerClassifier()
+      void m.clearNerModelCache()
+    })
     void clearOnDeviceModelData()
   }
 }
