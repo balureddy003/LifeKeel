@@ -355,7 +355,11 @@ describe('/marketing/posts', () => {
   it('approve is refused with the violations when the copy fails the guard, and works once it is edited (PRD-210)', async () => {
     const postiz = fakePostiz()
     const { app, posts } = await buildApp({ postiz })
-    await app.inject({ method: 'POST', url: '/marketing/posts', payload: { ...DRAFT, content: 'You should switch to a cheaper insurer today.' } })
+    await app.inject({
+      method: 'POST',
+      url: '/marketing/posts',
+      payload: { ...DRAFT, content: 'You should switch to a cheaper insurer today.' },
+    })
     const id = posts[0]!['id'] as string
     expect(posts[0]!['copy_check']).toMatchObject({ ok: false })
 
@@ -365,7 +369,11 @@ describe('/marketing/posts', () => {
     expect(refused.json().violations.length).toBeGreaterThan(0)
     expect(postiz.createPost).not.toHaveBeenCalled()
 
-    const edit = await app.inject({ method: 'PATCH', url: `/marketing/posts/${id}`, payload: { content: "LifeKeel keeps your family's chart. Free to start." } })
+    const edit = await app.inject({
+      method: 'PATCH',
+      url: `/marketing/posts/${id}`,
+      payload: { content: "LifeKeel keeps your family's chart. Free to start." },
+    })
     expect(edit.statusCode).toBe(200)
     expect(edit.json().post.copy_check.ok).toBe(true)
     const ok = await app.inject({ method: 'POST', url: `/marketing/posts/${id}/approve` })
@@ -1038,7 +1046,10 @@ describe('/marketing/performance', () => {
     )
     users.push(
       { created_at: old, attribution: { utm_source: 'x', utm_medium: 'social', utm_content: 'a' } },
-      { created_at: new Date(), attribution: { utm_source: 'x', utm_medium: 'social', utm_content: 'a' } },
+      {
+        created_at: new Date(),
+        attribution: { utm_source: 'x', utm_medium: 'social', utm_content: 'a' },
+      },
     )
     const body = (await app.inject({ method: 'GET', url: '/marketing/performance' })).json()
     expect(body.posts).toMatchObject([{ slug: 'a', views: 1, signups: 1 }])

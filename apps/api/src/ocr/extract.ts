@@ -278,6 +278,55 @@ export async function extractDocumentFieldsLocal(
 
 const PDF_TEXT_LIMIT = 12_000
 
+// ── Special-category pre-screen (Art. 9 / device-first blueprint §4) ────────
+//
+// Markers of a *personal clinical document* — a discharge letter, GP note,
+// prescription or NHS correspondence — as opposed to an insurance product
+// document that merely uses medical vocabulary. Deliberately excludes
+// condition/product words an insurer legitimately prints ("cancer",
+// "critical illness", "hospital cash", "diagnosis of a covered
+// condition"): flagging those would hold the protection documents this
+// feature exists to read. The twin of this thinking in text queries is
+// platform's containsSpecialCategoryContent — that screen is broad
+// (user disclosures); this one is narrow (document letterhead).
+const DOCUMENT_SPECIAL_CATEGORY_RE =
+  /\b(nhs\s?(number|no|trust)|\bpatients?\b|discharge\s+(summary|letter|notes)|outpatient|inpatient|gp\s+(surgery|practice)|general practitioner|prescription|repeat\s+prescription|consultant\b|clinic\b|clinical\b|medical\s+(record|history|certificate|report|centre|notes)|sick\s+note|fit\s+note|referral\s+letter|diagnosed\s+with|a&e\b|accident\s+and\s+emergency|antenatal|chemotherapy|radiotherapy|dialysis|biopsy|mental\s+health\s+act|sectioned)\b/i
+
+export type DocumentScreenOutcome = 'clear' | 'flagged' | 'unscreened'
+
+export interface DocumentScreen {
+  outcome: DocumentScreenOutcome
+  /** The marker that fired, for the audit log — never document content. */
+  marker?: string | undefined
+}
+
+/**
+ * Pull whatever text is cheaply readable inside our infra BEFORE any
+ * model call — PDF text layer, Tesseract for images — and screen it.
+ * 'unscreened' means nothing readable was produced (scanned PDF, missing
+ * engine, unsupported type): the caller marks the doc so the residual
+ * risk is visible rather than pretending it was checked.
+ */
+export async function screenDocumentForSpecialCategory(
+  fileBuffer: Buffer,
+  mimeType: string,
+): Promise<DocumentScreen> {
+  let text = ''
+  try {
+    if (mimeType === 'application/pdf') {
+      text = await extractPdfText(fileBuffer)
+    } else if (isOcrableImage(mimeType)) {
+      text = await ocrImageToText(fileBuffer, mimeType)
+    }
+  } catch {
+    text = ''
+  }
+  if (text.trim().length < 40) return { outcome: 'unscreened' }
+  const match = text.match(DOCUMENT_SPECIAL_CATEGORY_RE)
+  if (!match) return { outcome: 'clear' }
+  return { outcome: 'flagged', marker: match[0].toLowerCase().slice(0, 40) }
+}
+
 /** Text layer of a PDF (first pages), trimmed for the prompt; '' when there is none. */
 export async function extractPdfText(pdf: Buffer): Promise<string> {
   try {
@@ -379,6 +428,14 @@ export async function processDocument(
   decide?: DecisionFn,
   /** Governed cloud vision call; used only when no local model is configured. */
   vision?: VisionFn,
+  /**
+   * Outcome of the client's on-device screen (see
+   * apps/web/src/lib/on-device-doc-screen.ts). The device may have OCR'd
+   * pixels this pipeline cannot — so 'flagged' from the client is
+   * authoritative, while 'clear'/'unscreened' can never downgrade the
+   * server screen.
+   */
+  clientScreen?: DocumentScreenOutcome,
 ): Promise<void> {
   const docId = documentId || randomUUID()
   const documents = getTenantCollection<Record<string, unknown>>(db, 'documents', tenantId)
@@ -389,6 +446,47 @@ export async function processDocument(
       { id: docId },
       { $set: { status: 'processing', processing_started_at: new Date() } },
     )
+
+    // Special-category pre-screen before any model call: a flagged
+    // document may only be read by the local pipeline — the hosted vision
+    // path would put clinical-record content on a third-party processor.
+    // An 'unscreened' doc proceeds but carries the marker so the residual
+    // risk is auditable instead of invisible.
+    const screen = await screenDocumentForSpecialCategory(fileBuffer, mimeType)
+    const flagged = screen.outcome === 'flagged' || clientScreen === 'flagged'
+    if (flagged && !decide) {
+      await documents.updateOne(
+        { id: docId },
+        {
+          $set: {
+            status: 'stored',
+            special_category: 'flagged',
+            extraction_held_reason: 'special_category',
+            // Which side caught it — the client flag matters most when our
+            // own screen couldn't read the document at all.
+            ...(clientScreen ? { client_screen: clientScreen } : {}),
+            processing_completed_at: new Date(),
+          },
+        },
+      )
+      log.warn(
+        {
+          documentId: docId,
+          filename,
+          marker: screen.marker ?? 'client_flagged',
+          server_screen: screen.outcome,
+          client_screen: clientScreen,
+        },
+        'Document held — special-category markers found; hosted extraction is not permitted for this content. It can be reprocessed once the local model is configured.',
+      )
+      return
+    }
+    if (screen.outcome !== 'clear') {
+      log.info(
+        { documentId: docId, filename, outcome: screen.outcome, marker: screen.marker },
+        'Document special-category screen result',
+      )
+    }
 
     const started = Date.now()
     const result = decide
@@ -434,6 +532,8 @@ export async function processDocument(
           ...(documentDate ? { document_date: documentDate } : {}),
           extractor: candidates.extractor,
           schema_version: candidates.schema_version,
+          special_category: flagged ? 'flagged' : screen.outcome,
+          ...(clientScreen ? { client_screen: clientScreen } : {}),
           processing_completed_at: new Date(),
         },
         // The old free-text summary is no longer stored.

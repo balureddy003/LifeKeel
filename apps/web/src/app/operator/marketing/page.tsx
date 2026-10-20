@@ -895,12 +895,16 @@ export default function MarketingPage() {
                   {post.publish_error && (
                     <p className="text-xs text-danger mt-2 leading-snug">{post.publish_error}</p>
                   )}
-                  {post.copy_check && !post.copy_check.ok && (post.state === 'draft' || post.state === 'publish_failed') && (
-                    <p role="alert" className="text-xs text-danger mt-2 leading-snug">
-                      Fails the copy guard, so it cannot be approved until edited:{' '}
-                      {post.copy_check.violations.map((v) => `${v.rule} ("${v.match}")`).join('; ')}
-                    </p>
-                  )}
+                  {post.copy_check &&
+                    !post.copy_check.ok &&
+                    (post.state === 'draft' || post.state === 'publish_failed') && (
+                      <p role="alert" className="text-xs text-danger mt-2 leading-snug">
+                        Fails the copy guard, so it cannot be approved until edited:{' '}
+                        {post.copy_check.violations
+                          .map((v) => `${v.rule} ("${v.match}")`)
+                          .join('; ')}
+                      </p>
+                    )}
                   {(post.state === 'draft' || post.state === 'publish_failed') &&
                     editingId !== post.id && (
                       <div className="flex gap-2 mt-3">
@@ -981,7 +985,11 @@ export default function MarketingPage() {
           {tab === 'performance' && (
             <>
               {performance?.funnel && <FunnelPanel funnel={performance.funnel} />}
-              {performance && <p className="text-xs text-ink-tertiary mb-2">Posts, channels and campaigns below cover the last 90 days.</p>}
+              {performance && (
+                <p className="text-xs text-ink-tertiary mb-2">
+                  Posts, channels and campaigns below cover the last 90 days.
+                </p>
+              )}
               {performance &&
               (performance.totals.views > 0 ||
                 performance.totals.signups > 0 ||

@@ -42,27 +42,42 @@ async function rollupDay(db: Db, day: string): Promise<number> {
   const range = { $gte: dayStart(day), $lte: dayEnd(day) }
   const upserts: { metric: string; dim: string; count: number }[] = []
 
-  const events = await db.collection('growth_events').aggregate([
-    { $match: { created_at: range } },
-    { $group: { _id: '$event', count: { $sum: 1 } } },
-  ]).toArray()
-  for (const e of events) upserts.push({ metric: 'growth_event', dim: e['_id'] as string, count: e['count'] as number })
+  const events = await db
+    .collection('growth_events')
+    .aggregate([
+      { $match: { created_at: range } },
+      { $group: { _id: '$event', count: { $sum: 1 } } },
+    ])
+    .toArray()
+  for (const e of events)
+    upserts.push({ metric: 'growth_event', dim: e['_id'] as string, count: e['count'] as number })
 
-  const signups = await db.collection('users').aggregate([
-    { $match: { created_at: range } },
-    { $group: { _id: { $ifNull: ['$attribution.utm_source', 'direct'] }, count: { $sum: 1 } } },
-  ]).toArray()
-  for (const s of signups) upserts.push({ metric: 'signup', dim: s['_id'] as string, count: s['count'] as number })
+  const signups = await db
+    .collection('users')
+    .aggregate([
+      { $match: { created_at: range } },
+      { $group: { _id: { $ifNull: ['$attribution.utm_source', 'direct'] }, count: { $sum: 1 } } },
+    ])
+    .toArray()
+  for (const s of signups)
+    upserts.push({ metric: 'signup', dim: s['_id'] as string, count: s['count'] as number })
 
-  const leads = await db.collection('leads').aggregate([
-    { $match: { created_at: range } },
-    { $group: { _id: { $ifNull: ['$source', 'unknown'] }, count: { $sum: 1 } } },
-  ]).toArray()
-  for (const l of leads) upserts.push({ metric: 'lead', dim: l['_id'] as string, count: l['count'] as number })
+  const leads = await db
+    .collection('leads')
+    .aggregate([
+      { $match: { created_at: range } },
+      { $group: { _id: { $ifNull: ['$source', 'unknown'] }, count: { $sum: 1 } } },
+    ])
+    .toArray()
+  for (const l of leads)
+    upserts.push({ metric: 'lead', dim: l['_id'] as string, count: l['count'] as number })
 
-  for (const f of await eventFunnelRows(db, day, range)) upserts.push({ metric: f.metric, dim: f.dim, count: f.count })
+  for (const f of await eventFunnelRows(db, day, range))
+    upserts.push({ metric: f.metric, dim: f.dim, count: f.count })
 
-  const logins = await db.collection('login_events').countDocuments({ created_at: range, success: true })
+  const logins = await db
+    .collection('login_events')
+    .countDocuments({ created_at: range, success: true })
   if (logins > 0) upserts.push({ metric: 'login', dim: '', count: logins })
 
   const cases = await db.collection('support_cases').countDocuments({ created_at: range })
@@ -74,7 +89,9 @@ async function rollupDay(db: Db, day: string): Promise<number> {
     upserts.map((u) => ({
       updateOne: {
         filter: { _id: `${day}|${u.metric}|${u.dim}` },
-        update: { $set: { day, metric: u.metric, dim: u.dim, count: u.count, updated_at: new Date() } },
+        update: {
+          $set: { day, metric: u.metric, dim: u.dim, count: u.count, updated_at: new Date() },
+        },
         upsert: true,
       },
     })),
@@ -99,7 +116,9 @@ async function rollupCohorts(db: Db, now: Date, full: boolean): Promise<number> 
       rowsForDay.map((r) => ({
         updateOne: {
           filter: { _id: `${day}|funnel|${r.dim}` },
-          update: { $set: { day, metric: 'funnel', dim: r.dim, count: r.count, updated_at: new Date() } },
+          update: {
+            $set: { day, metric: 'funnel', dim: r.dim, count: r.count, updated_at: new Date() },
+          },
           upsert: true,
         },
       })),
@@ -111,7 +130,10 @@ async function rollupCohorts(db: Db, now: Date, full: boolean): Promise<number> 
 }
 
 /** Roll up today and yesterday, plus a one-time 90-day backfill. */
-export async function runMetricsRollup(db: Db, now = new Date()): Promise<{ rolled_days: number; rows: number }> {
+export async function runMetricsRollup(
+  db: Db,
+  now = new Date(),
+): Promise<{ rolled_days: number; rows: number }> {
   const coll = db.collection<MetricDoc>('metrics_daily')
   const meta = await coll.findOne({ _id: META_ID })
   const days: string[] = []
@@ -138,7 +160,9 @@ export async function runMetricsRollup(db: Db, now = new Date()): Promise<{ roll
 
 /** True once the backfill has populated history — reads can trust rollups. */
 export async function isRollupReady(db: Db): Promise<boolean> {
-  const meta = await db.collection<MetricDoc>('metrics_daily').findOne({ _id: META_ID }, { projection: { backfilled_at: 1 } })
+  const meta = await db
+    .collection<MetricDoc>('metrics_daily')
+    .findOne({ _id: META_ID }, { projection: { backfilled_at: 1 } })
   return Boolean(meta?.['backfilled_at'])
 }
 
@@ -146,9 +170,14 @@ export async function isRollupReady(db: Db): Promise<boolean> {
  * Read daily counts for a metric over the last `days` days.
  * Returns rows shaped { day, dim, count }.
  */
-export async function readDailyRollup(db: Db, metric: string, days: number): Promise<{ day: string; dim: string; count: number }[]> {
+export async function readDailyRollup(
+  db: Db,
+  metric: string,
+  days: number,
+): Promise<{ day: string; dim: string; count: number }[]> {
   const since = dayKey(new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000))
-  return db.collection<MetricDoc>('metrics_daily')
+  return db
+    .collection<MetricDoc>('metrics_daily')
     .find({ day: { $gte: since }, metric }, { projection: { _id: 0, day: 1, dim: 1, count: 1 } })
     .sort({ day: 1 })
     .toArray()

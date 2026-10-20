@@ -19,3 +19,4 @@ and CONTRIBUTING.md's loop. Each file here is a stub for one Stage A item in
 | `08-migration-deploy-gate.md` | A8 migration gate | — |
 | `09-childrens-data-posture.md` | A9 children's data | — |
 | `10-claim-drift-remediation.md` | A10 drift fixes | mostly fast-path PRs |
+| `11-device-runtime-verification-and-eval-harness.md` | Device-first §8.4a — weakest-runtime eval gate | — |

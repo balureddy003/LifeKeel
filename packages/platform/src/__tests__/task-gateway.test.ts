@@ -79,6 +79,25 @@ describe('parseTaskRegistry', () => {
     expect(() => parseTaskRegistry({ version: 1 })).toThrow(TaskPolicyError)
   })
 
+  it('rejects an invalid enum value — typos fail closed', () => {
+    const doc = structuredClone(validDoc) as { tasks: Record<string, Record<string, unknown>> }
+    doc.tasks['a.v1']!['data_boundary'] = 'devices_only'
+    expect(() => parseTaskRegistry(doc)).toThrow(/data_boundary/)
+  })
+
+  it('rejects an invalid preferred_execution', () => {
+    const doc = structuredClone(validDoc) as { tasks: Record<string, Record<string, unknown>> }
+    doc.tasks['a.v1']!['preferred_execution'] = 'on_dvice'
+    expect(() => parseTaskRegistry(doc)).toThrow(/preferred_execution/)
+  })
+
+  it('accepts on_device as a preferred_execution', () => {
+    const doc = structuredClone(validDoc) as { tasks: Record<string, Record<string, unknown>> }
+    doc.tasks['a.v1']!['preferred_execution'] = 'on_device'
+    const reg = parseTaskRegistry(doc)
+    expect(reg.get('a.v1')?.preferred_execution).toBe('on_device')
+  })
+
   it('rejects an entry missing a required field', () => {
     const doc = structuredClone(validDoc) as { tasks: Record<string, Record<string, unknown>> }
     delete doc.tasks['a.v1']!['processor_terms_ref']
@@ -191,6 +210,50 @@ describe('governedLlm', () => {
     const fn2 = governedLlm(base, d, 'test.task.v1', 't1')
     await expect(fn2('sys', 'p')).rejects.toThrow(/Circuit open/)
     expect(base).not.toHaveBeenCalled()
+  })
+
+  it('fires onDeviceEscalation per invocation of a on_device task', async () => {
+    const onDeviceEscalation = vi.fn()
+    const d = deps({
+      registry: registryOf(policy({ preferred_execution: 'on_device' })),
+      onDeviceEscalation,
+    })
+    const fn = governedLlm(ok, d, 'test.task.v1', 't1')
+    await fn('sys', 'p')
+    await fn('sys', 'p')
+    expect(onDeviceEscalation).toHaveBeenCalledTimes(2)
+    expect(onDeviceEscalation).toHaveBeenCalledWith('test.task.v1')
+  })
+
+  it('does not fire onDeviceEscalation for non-device-preferred tasks or at wrap time', async () => {
+    const onDeviceEscalation = vi.fn()
+    const d = deps({ onDeviceEscalation })
+    const fn = governedLlm(ok, d, 'test.task.v1', 't1')
+    expect(onDeviceEscalation).not.toHaveBeenCalled() // wrap ≠ invocation
+    await fn('sys', 'p')
+    expect(onDeviceEscalation).not.toHaveBeenCalled()
+  })
+
+  it('fires onDeviceEscalation even when the call is budget-denied', async () => {
+    const onDeviceEscalation = vi.fn()
+    const d = deps({
+      registry: registryOf(policy({ preferred_execution: 'on_device' })),
+      onDeviceEscalation,
+      budgetGuard: {
+        check: async () => ({
+          allowed: false,
+          spent_microdollars: 100,
+          limit_microdollars: 100,
+          threshold_reached: true,
+          reason: 'budget_exhausted',
+        }),
+      },
+    })
+    await expect(governedLlm(ok, d, 'test.task.v1', 't1')('sys', 'p')).rejects.toThrow(
+      BudgetExhaustedError,
+    )
+    // The device tier still didn't cover this call — it counts.
+    expect(onDeviceEscalation).toHaveBeenCalledWith('test.task.v1')
   })
 
   it('keys the breaker per task — one task open does not trip another', async () => {

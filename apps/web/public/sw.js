@@ -8,40 +8,16 @@
  *   - Push notifications for urgent family alerts
  */
 
-const CACHE_NAME = 'lifekeel-v4'
-const STATIC_CACHE = 'lifekeel-static-v4'
+const CACHE_NAME = 'lifekeel-v5'
+const STATIC_CACHE = 'lifekeel-static-v5'
 
-// Every top-level authenticated route is pre-cached so a deep link or
-// relaunch while offline still opens a real page instead of the browser's
-// offline error. Dynamic routes (/member/[id], /events/[eventId], …) can't
-// be listed here — they get cached on first visit via the navigation
-// stale-while-revalidate path below.
-const APP_SHELL = [
-  '/',
-  '/events',
-  '/life-events',
-  '/inbox',
-  '/family',
-  '/assistant',
-  '/settings',
-  '/financial-profile',
-  '/vault',
-  '/documents',
-  '/cashflow',
-  '/assets',
-  '/upgrade',
-  '/audit-log',
-  '/support',
-  '/readiness',
-  '/welcome',
-  '/login',
-  '/signup',
-  '/map',
-  '/upload',
-  '/connect',
-  '/manifest.json',
-  '/icon.svg',
-]
+// Public shell only (PRD-147). Authenticated routes are not precached: doing
+// so fetched ~20 pages the user may never open, on first load, over mobile
+// data. They are cached on first visit by the navigation
+// stale-while-revalidate path below, so a relaunch while offline still works
+// for the pages a person actually uses. Bumping the cache name makes the
+// activate step delete the old, larger cache.
+const APP_SHELL = ['/', '/login', '/signup', '/welcome', '/manifest.json', '/icon.svg']
 
 self.addEventListener('install', (e) => {
   e.waitUntil(

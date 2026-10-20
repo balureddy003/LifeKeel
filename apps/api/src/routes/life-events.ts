@@ -304,24 +304,37 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
   )
 
   /**
-   * PRD-113: audit-only. Fired (fire-and-forget) by the client after a
-   * successful on-device draft generation — no draft content or step
-   * body in the request, just the fact that on-device inference was
-   * used, so the feature's usage is observable the same way every other
-   * action is without compromising the privacy property it exists for.
+   * PRD-113: audit-only. Fired (fire-and-forget) by the client after an
+   * on-device draft attempt — no draft content or step body in the
+   * request, just a metadata-only outcome enum so the feature's coverage
+   * and abstention rates are observable the same way every other action
+   * is, without compromising the privacy property it exists for.
    */
-  app.post<{ Params: { id: string; stepId: string } }>(
-    '/family/life-events/:id/steps/:stepId/prepare-on-device',
-    async (req, reply) => {
-      getAuditLogger()?.fromRequest(
-        req,
-        'insight.prepare_on_device',
-        'life_event_step',
-        req.params.stepId,
-      )
-      return reply.send({ ok: true })
-    },
-  )
+  const ON_DEVICE_OUTCOMES = new Set([
+    'generated',
+    'template_fallback',
+    'abstained',
+    'guard_rejected',
+    'unavailable',
+    'error',
+  ])
+  app.post<{
+    Params: { id: string; stepId: string }
+    Body: { outcome?: string }
+  }>('/family/life-events/:id/steps/:stepId/prepare-on-device', async (req, reply) => {
+    const outcome = req.body?.outcome
+    getAuditLogger()?.fromRequest(
+      req,
+      'insight.prepare_on_device',
+      'life_event_step',
+      req.params.stepId,
+      {
+        outcome:
+          typeof outcome === 'string' && ON_DEVICE_OUTCOMES.has(outcome) ? outcome : 'generated', // legacy callers sent no body — treat as success
+      },
+    )
+    return reply.send({ ok: true })
+  })
 
   /**
    * Server-side checklist completion (remediation item 19). Body is an

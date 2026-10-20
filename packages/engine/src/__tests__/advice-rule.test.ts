@@ -69,6 +69,7 @@ function webCopyFiles(): string[] {
     'apps/web/src/lib/trust-copy.ts',
     'apps/web/src/app/trust/page.tsx',
     'apps/web/src/app/security/page.tsx',
+    'apps/web/src/lib/install-copy.ts',
     'apps/web/src/components/ExtractionReview.tsx',
     'apps/web/src/lib/deletion-receipt-copy.ts',
     'apps/web/src/components/DeletionReceiptCard.tsx',

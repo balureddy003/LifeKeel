@@ -185,7 +185,10 @@ tasks:
     allowed_models: [tier:fast]
     allowed_processors: [ollama, anthropic, openai, azure]
     primary_model: tier:fast
-    preferred_execution: hosted_sync
+    # Device-first: the feature prefers the on-device path
+    # (draft.crisis_on_device.v1); each server-side call is an authorized
+    # fallback and logs a device_escalation event for coverage metrics.
+    preferred_execution: on_device
     deadline_ms: 30000
     max_input_tokens: 6000
     max_output_tokens: 1200
@@ -242,6 +245,30 @@ tasks:
     max_output_tokens: 800
     budget_class: batch
     guard_policy: standard
+
+  assistant.answer.sensitive.v1:
+    # Special-category (Art. 9) quarantine path for /assistant/ask. The
+    # route switches to this task when the query carries health/medical
+    # hints (client medical_hint flag OR the server's own screen) — the
+    # call then fails closed unless the self-hosted model is deployed, so
+    # special-category text can never reach a hosted processor. Same
+    # grounding context as assistant.answer.v1; the only difference is the
+    # boundary.
+    purpose: Ask Keel — answer a query flagged as containing special-category (health) hints, self-hosted only
+    risk: user_visible
+    authority: language_only
+    data_boundary: lifekeel_infra_required
+    processor_terms_ref: none — self-hosted only, no processor
+    provider_retention_class: none
+    allowed_models: [tier:fast]
+    allowed_processors: [ollama]
+    primary_model: tier:fast
+    preferred_execution: local_cpu
+    deadline_ms: 30000
+    max_input_tokens: 8000
+    max_output_tokens: 1500
+    budget_class: interactive
+    guard_policy: family_pii
 
   assistant.youth_answer.v1:
     # Intent 09 — the only permitted task id for any future youth-facing

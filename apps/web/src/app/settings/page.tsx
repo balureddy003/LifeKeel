@@ -88,6 +88,7 @@ import {
   isOnDeviceEnabled,
   setOnDeviceEnabled as persistOnDeviceEnabled,
   enableOnDeviceModel,
+  detectOnDeviceProvider,
 } from '@/lib/onDeviceLlm'
 import type { LucideIcon } from 'lucide-react'
 
@@ -1196,7 +1197,9 @@ export default function SettingsPage() {
                   <div className="text-xs text-ink-tertiary mt-0.5">
                     {onDeviceDownloading
                       ? `Downloading… ${onDeviceProgress}%`
-                      : 'A one-time ~700MB download, then life-event drafts never leave this device'}
+                      : detectOnDeviceProvider() === 'webllm'
+                        ? 'A one-time ~700MB download, then life-event drafts never leave this device. Turning this off removes the downloaded model.'
+                        : "Uses this device's built-in AI — life-event drafts never leave this device."}
                   </div>
                 </div>
                 <button

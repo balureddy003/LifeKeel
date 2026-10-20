@@ -41,7 +41,14 @@ function shift(week: string, weeks: number): string {
 }
 
 const when = (iso: string) =>
-  new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC'
+  new Date(iso).toLocaleString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'UTC',
+  }) + ' UTC'
 
 export function PlanPanel() {
   const toast = useToast()
@@ -54,7 +61,14 @@ export function PlanPanel() {
     const d = await fetchPlanWeek(week)
     setData(d)
     // Everything that can be approved starts ticked; the reviewer unticks what they do not want.
-    setPicked(new Set(d.items.flatMap((i) => (i.status === 'planned' ? i.posts : [])).filter((p) => canApprove(p)).map((p) => p.id)))
+    setPicked(
+      new Set(
+        d.items
+          .flatMap((i) => (i.status === 'planned' ? i.posts : []))
+          .filter((p) => canApprove(p))
+          .map((p) => p.id),
+      ),
+    )
   }, [week])
 
   useEffect(() => {
@@ -75,17 +89,28 @@ export function PlanPanel() {
     }
   }
 
-  const allPosts = useMemo(() => (data?.items ?? []).filter((i) => i.status === 'planned').flatMap((i) => i.posts), [data])
+  const allPosts = useMemo(
+    () => (data?.items ?? []).filter((i) => i.status === 'planned').flatMap((i) => i.posts),
+    [data],
+  )
   const chosen = allPosts.filter((p) => picked.has(p.id))
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <button aria-label="Previous week" onClick={() => setWeek(shift(week, -1))} className="p-2 rounded-lg bg-tint/[0.04]">
+        <button
+          aria-label="Previous week"
+          onClick={() => setWeek(shift(week, -1))}
+          className="p-2 rounded-lg bg-tint/[0.04]"
+        >
           <ChevronLeft size={16} />
         </button>
         <div className="text-sm font-semibold text-ink-primary">Week of {week}</div>
-        <button aria-label="Next week" onClick={() => setWeek(shift(week, 1))} className="p-2 rounded-lg bg-tint/[0.04]">
+        <button
+          aria-label="Next week"
+          onClick={() => setWeek(shift(week, 1))}
+          className="p-2 rounded-lg bg-tint/[0.04]"
+        >
           <ChevronRight size={16} />
         </button>
       </div>
@@ -95,8 +120,9 @@ export function PlanPanel() {
       {data && data.items.length === 0 && (
         <GlassCard className="p-4">
           <p className="text-sm text-ink-secondary mb-3">
-            Nothing planned for this week. Generating drafts three posts, one for each of Monday, Wednesday and Friday, with a
-            draft per connected network ({data.available_channels.join(', ') || 'none connected yet'}). Nothing is published.
+            Nothing planned for this week. Generating drafts three posts, one for each of Monday,
+            Wednesday and Friday, with a draft per connected network (
+            {data.available_channels.join(', ') || 'none connected yet'}). Nothing is published.
           </p>
           <button
             onClick={() => run('generate', () => generatePlanWeek(week), 'Week drafted')}
@@ -127,7 +153,9 @@ export function PlanPanel() {
                 Skip
               </button>
             )}
-            {item.status === 'skipped' && <span className="text-xs text-ink-tertiary">Skipped</span>}
+            {item.status === 'skipped' && (
+              <span className="text-xs text-ink-tertiary">Skipped</span>
+            )}
           </div>
           {item.posts.map((p) => (
             <div key={p.id} className="border-t border-tint/[0.06] pt-2 mt-2">
@@ -149,10 +177,14 @@ export function PlanPanel() {
                   <span className="text-xs font-semibold text-ink-secondary">
                     {p.channel} · {p.state}
                   </span>
-                  <span className="block text-sm text-ink-primary whitespace-pre-wrap">{p.content}</span>
+                  <span className="block text-sm text-ink-primary whitespace-pre-wrap">
+                    {p.content}
+                  </span>
                   {!p.copy_check.ok && (
                     <span role="alert" className="block text-xs text-danger mt-1">
-                      Fails the copy guard: {p.copy_check.violations.map((v) => `${v.rule} ("${v.match}")`).join('; ')}. Edit it in the Queue tab.
+                      Fails the copy guard:{' '}
+                      {p.copy_check.violations.map((v) => `${v.rule} ("${v.match}")`).join('; ')}.
+                      Edit it in the Queue tab.
                     </span>
                   )}
                 </span>
@@ -165,16 +197,22 @@ export function PlanPanel() {
       {data && allPosts.length > 0 && (
         <GlassCard className="p-4">
           <p className="text-sm text-ink-secondary mb-3">
-            Approving schedules {chosen.length} of {allPosts.length} drafts to go out at their times. You are approving the text shown above.
-            To change a draft, edit it in the Queue tab, then come back and review again.
+            Approving schedules {chosen.length} of {allPosts.length} drafts to go out at their
+            times. You are approving the text shown above. To change a draft, edit it in the Queue
+            tab, then come back and review again.
           </p>
           <button
             onClick={() =>
               run(
                 'approve',
                 async () => {
-                  const r = await approvePlanPosts(chosen.map((p) => ({ post_id: p.id, content_hash: p.content_hash })))
-                  if (r.refused > 0) throw new Error(`${r.approved} approved, ${r.refused} refused: ${r.results.find((x) => !x.ok)?.error ?? ''}`)
+                  const r = await approvePlanPosts(
+                    chosen.map((p) => ({ post_id: p.id, content_hash: p.content_hash })),
+                  )
+                  if (r.refused > 0)
+                    throw new Error(
+                      `${r.approved} approved, ${r.refused} refused: ${r.results.find((x) => !x.ok)?.error ?? ''}`,
+                    )
                 },
                 `${chosen.length} scheduled`,
               )

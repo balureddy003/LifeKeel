@@ -32,7 +32,13 @@ export interface WeeklyDigestDoc {
     drafts_failing_copy_guard: number
     next_week_items_planned: number
     profile_drift_open: number
-    funnel_7d: { visit: number; cta_click: number; signup: number; profile: number; first_insight: number }
+    funnel_7d: {
+      visit: number
+      cta_click: number
+      signup: number
+      profile: number
+      first_insight: number
+    }
     top_source_by_signups?: { source: string; signups: number }
     top_pillar_by_signups?: { pillar: string; signups: number }
   }
@@ -134,8 +140,14 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
     `Funnel (7d): ${f.visit} visits · ${f.cta_click} clicks · ${f.signup} signups · ${f.profile} profiles · ${f.first_insight} first insights`,
     `Marketing queue: ${marketing.drafts_awaiting_review} drafts to review (${marketing.drafts_failing_copy_guard} fail the copy guard) · ${marketing.next_week_items_planned} items planned for next week · ${marketing.profile_drift_open} profile differences open`,
   )
-  if (marketing.top_source_by_signups) lines.push(`Best source: ${marketing.top_source_by_signups.source} → ${marketing.top_source_by_signups.signups} signups`)
-  if (marketing.top_pillar_by_signups) lines.push(`Best pillar: ${marketing.top_pillar_by_signups.pillar} → ${marketing.top_pillar_by_signups.signups} signups`)
+  if (marketing.top_source_by_signups)
+    lines.push(
+      `Best source: ${marketing.top_source_by_signups.source} → ${marketing.top_source_by_signups.signups} signups`,
+    )
+  if (marketing.top_pillar_by_signups)
+    lines.push(
+      `Best pillar: ${marketing.top_pillar_by_signups.pillar} → ${marketing.top_pillar_by_signups.signups} signups`,
+    )
   await sendOpsAlert({
     title: 'LifeKeel — weekly operator digest',
     message: lines.join('\n'),
@@ -152,11 +164,16 @@ const nextMondayKey = (from: Date): string => {
 }
 
 /** What the marketing engine needs from a person this week, from existing collections and the funnel rollups. */
-async function marketingSection(db: Db, now: Date): Promise<NonNullable<WeeklyDigestDoc['marketing']>> {
+async function marketingSection(
+  db: Db,
+  now: Date,
+): Promise<NonNullable<WeeklyDigestDoc['marketing']>> {
   const [drafts, failing, planned, drift, funnel] = await Promise.all([
     db.collection('marketing_posts').countDocuments({ state: 'draft' }),
     db.collection('marketing_posts').countDocuments({ state: 'draft', 'copy_check.ok': false }),
-    db.collection('content_items').countDocuments({ week_key: nextMondayKey(now), status: 'planned' }),
+    db
+      .collection('content_items')
+      .countDocuments({ week_key: nextMondayKey(now), status: 'planned' }),
     db.collection('channel_profiles').countDocuments({ 'drift.0': { $exists: true } }),
     readFunnel(db, 7, now),
   ])
@@ -175,7 +192,16 @@ async function marketingSection(db: Db, now: Date): Promise<NonNullable<WeeklyDi
       profile: step('profile'),
       first_insight: step('first_insight'),
     },
-    ...(topSource ? { top_source_by_signups: { source: topSource.key, signups: topSource.signup } } : {}),
-    ...(topPillar ? { top_pillar_by_signups: { pillar: topPillar.key.replace(/^pillar_/, ''), signups: topPillar.signup } } : {}),
+    ...(topSource
+      ? { top_source_by_signups: { source: topSource.key, signups: topSource.signup } }
+      : {}),
+    ...(topPillar
+      ? {
+          top_pillar_by_signups: {
+            pillar: topPillar.key.replace(/^pillar_/, ''),
+            signups: topPillar.signup,
+          },
+        }
+      : {}),
   }
 }

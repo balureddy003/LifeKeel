@@ -235,6 +235,24 @@ export function registerDocumentRoutes(
     // Read file into buffer (we need it for both GridFS and OCR)
     const fileBuffer = await data.toBuffer()
 
+    // On-device screen outcome from the client (see apps/web's
+    // on-device-doc-screen.ts). Whitelist-validated — anything else is
+    // ignored. 'flagged' is authoritative; the server still re-screens.
+    const rawClientScreen = (data.fields as Record<string, unknown> | undefined)?.['clientScreen']
+    const clientScreenValue =
+      rawClientScreen &&
+      typeof rawClientScreen === 'object' &&
+      'value' in rawClientScreen &&
+      typeof (rawClientScreen as { value: unknown }).value === 'string'
+        ? ((rawClientScreen as { value: string }).value as string)
+        : undefined
+    const clientScreen =
+      clientScreenValue === 'clear' ||
+      clientScreenValue === 'flagged' ||
+      clientScreenValue === 'unscreened'
+        ? clientScreenValue
+        : undefined
+
     if (fileBuffer.length > MAX_FILE_SIZE) {
       return reply.status(413).send({ error: 'File too large (max 50 MB)' })
     }
@@ -337,6 +355,7 @@ export function registerDocumentRoutes(
             filename,
             taskDecide('document.extract.v1', tenant_id, localDecisionFromEnv('ocr')),
             await taskVision('document.extract.v1', tenant_id),
+            clientScreen,
           )
         })().catch((err) => {
           log.error({ err, documentId }, 'OCR processing threw unhandled error')
@@ -440,6 +459,12 @@ export function registerDocumentRoutes(
       processingStartedAt: doc['processing_started_at']?.toISOString() ?? null,
       processingCompletedAt: doc['processing_completed_at']?.toISOString() ?? null,
       errorMessage: doc['error_message'] ?? null,
+      // Art. 9 screen outcome: 'flagged' docs were held from hosted
+      // extraction (special-category markers found), 'unscreened' means no
+      // readable text existed to check. Lets the UI say why a doc is
+      // 'stored' instead of silently looking like a failed read.
+      specialCategory: doc['special_category'] ?? null,
+      extractionHeldReason: doc['extraction_held_reason'] ?? null,
     }
   })
 

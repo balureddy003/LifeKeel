@@ -141,8 +141,8 @@ export class LlmInputGuard extends BaseGuard {
         this.event('pii_redaction', path, match, 'replaced_card')
         return '[CARD]'
       })
-    // eslint-disable-next-line no-control-regex
-    result = result.replace(/[\u0000-\u001f\u200b-\u200f\ufeff]/g, '')
+
+    result = result.replace(/[\u200B-\u200D\uFEFF]/g, '')
     return result.slice(0, 4_000)
   }
 }
@@ -169,4 +169,29 @@ export class LlmOutputGuard extends BaseGuard {
     }
     return { value, events: [...this.events] }
   }
+}
+
+// ── Special-category screen (Art. 9 quarantine signal) ────────────────────
+//
+// Twin of SPECIAL_CATEGORY_RE in apps/web/src/lib/onDeviceLlm.ts — kept
+// byte-identical in intent. The client uses it to flag `medical_hint` on
+// requests; the server re-screens independently so a crafted or stale
+// client can't smuggle special-category text past the boundary. If you
+// change one side, change the other.
+const SPECIAL_CATEGORY_RE =
+  /\b(hospital|diagnos\w+|prognosis|prescription|medication|therapy|therapist|cancer|tumou?r|chemotherapy|mental health|depression|anxiety disorder|pregnant|pregnancy|miscarriage|clinic(al)?|surgery|surgical|disability|disabled|dementia|alzheimer|diabetes|nhs|gp surgery|consultant)\b/i
+
+/**
+ * True when free text contains health/medical special-category hints that
+ * a deterministic PII curtain cannot remove. It is a screening signal —
+ * callers should treat `true` as "route to a stricter data boundary or
+ * quarantine", not "block unconditionally".
+ */
+export function containsSpecialCategoryContent(text: string): boolean {
+  const normalized = text
+    .normalize('NFKC')
+    // Zero-width chars — obfuscation that hides trigger words
+    // (e.g. "hosp‍ital") from a literal match.
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+  return SPECIAL_CATEGORY_RE.test(normalized)
 }

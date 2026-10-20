@@ -51,7 +51,11 @@ import { createLogger } from '@lifekeel/platform'
 import { deploymentConfig } from '../config/deployment.js'
 import { checkPlanSpendBudget } from '../spend-ledger.js'
 import { familyDataLlmFromEnv, localDecisionFromEnv } from '../local-model.js'
-import { recordLocalModelCall, recordProcessorViolation } from '../routes/metrics.js'
+import {
+  recordDeviceEscalation,
+  recordLocalModelCall,
+  recordProcessorViolation,
+} from '../routes/metrics.js'
 
 const log = createLogger({ service: 'task-gateway', version: '0.0.0' })
 
@@ -168,6 +172,16 @@ export function initTaskGateway(db: Db): void {
     guardEventSink: createGuardEventSink(db, 'task-gateway'),
     onCall: (e) => {
       if (!e.ok) recordLocalModelCall('task', false, e.latency_ms / 1000, 0, 0)
+    },
+    // Device-first metric: fired per actual server-side invocation of a
+    // on_device task — the device tier was unavailable or abstained.
+    // Counter label is task_id only; no content.
+    onDeviceEscalation: (taskId) => {
+      recordDeviceEscalation(taskId)
+      log.info(
+        { task_id: taskId, event: 'device_escalation' },
+        'on_device task executed server-side',
+      )
     },
   }
   log.info(

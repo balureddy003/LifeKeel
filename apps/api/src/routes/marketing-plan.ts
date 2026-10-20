@@ -37,7 +37,11 @@ export interface MarketingPlanOptions {
   now?: () => Date
 }
 
-export function registerMarketingPlanRoutes(app: FastifyInstance, db: Db, opts?: MarketingPlanOptions): void {
+export function registerMarketingPlanRoutes(
+  app: FastifyInstance,
+  db: Db,
+  opts?: MarketingPlanOptions,
+): void {
   const items = db.collection<ContentItemDoc>('content_items')
   const posts = db.collection<MarketingPostDoc>('marketing_posts')
   const connections = db.collection<SocialConnectionDoc>('social_connections')
@@ -55,7 +59,9 @@ export function registerMarketingPlanRoutes(app: FastifyInstance, db: Db, opts?:
   async function weekView(tenant_id: string, week: string) {
     const its = await items.find({ tenant_id, week_key: week }).sort({ slot: 1 }).toArray()
     const ids = its.map((i) => i.id)
-    const ps = ids.length ? await posts.find({ tenant_id, content_item_id: { $in: ids } }).toArray() : []
+    const ps = ids.length
+      ? await posts.find({ tenant_id, content_item_id: { $in: ids } }).toArray()
+      : []
     const active = await connections.find({ tenant_id, status: 'active' }).toArray()
     return {
       week_key: week,
@@ -77,39 +83,76 @@ export function registerMarketingPlanRoutes(app: FastifyInstance, db: Db, opts?:
     }
   }
 
-  app.get<{ Querystring: { week?: string } }>('/marketing/plan', { preHandler: readGate }, async (req, reply) => {
-    const week = req.query.week ?? nextMondayKey(now())
-    if (!isMonday(week)) return reply.status(400).send({ error: 'week_must_be_a_monday' })
-    return weekView(req.authContext.tenant_id, week)
-  })
+  app.get<{ Querystring: { week?: string } }>(
+    '/marketing/plan',
+    { preHandler: readGate },
+    async (req, reply) => {
+      const week = req.query.week ?? nextMondayKey(now())
+      if (!isMonday(week)) return reply.status(400).send({ error: 'week_must_be_a_monday' })
+      return weekView(req.authContext.tenant_id, week)
+    },
+  )
 
   app.post('/marketing/plan/generate', { preHandler: manageGate }, async (req, reply) => {
     const { tenant_id, user_id } = req.authContext
     const parsed = z
-      .object({ week_start: z.string(), channels: z.array(z.enum(CHANNELS as [string, ...string[]])).optional() })
+      .object({
+        week_start: z.string(),
+        channels: z.array(z.enum(CHANNELS as [string, ...string[]])).optional(),
+      })
       .safeParse(req.body)
-    if (!parsed.success || !isMonday(parsed.data.week_start)) return reply.status(400).send({ error: 'week_must_be_a_monday' })
-    if (new Date(`${parsed.data.week_start}T23:59:59Z`) < now()) return reply.status(400).send({ error: 'week_is_in_the_past' })
+    if (!parsed.success || !isMonday(parsed.data.week_start))
+      return reply.status(400).send({ error: 'week_must_be_a_monday' })
+    if (new Date(`${parsed.data.week_start}T23:59:59Z`) < now())
+      return reply.status(400).send({ error: 'week_is_in_the_past' })
 
     const channels =
-      parsed.data.channels ?? (await connections.find({ tenant_id, status: 'active' }).toArray()).map((c) => c.channel)
-    if (channels.length === 0) return reply.status(409).send({ error: 'no_channels', message: 'Connect a network, or name the networks to draft for.' })
+      parsed.data.channels ??
+      (await connections.find({ tenant_id, status: 'active' }).toArray()).map((c) => c.channel)
+    if (channels.length === 0)
+      return reply.status(409).send({
+        error: 'no_channels',
+        message: 'Connect a network, or name the networks to draft for.',
+      })
 
-    const result = await planWeek(db, tenant_id, parsed.data.week_start, channels, llmFor(tenant_id), user_id)
-    getAuditLogger()?.fromRequest(req, 'marketing.plan_generate', 'content_plan', parsed.data.week_start, { ...result, channels })
+    const result = await planWeek(
+      db,
+      tenant_id,
+      parsed.data.week_start,
+      channels,
+      llmFor(tenant_id),
+      user_id,
+    )
+    getAuditLogger()?.fromRequest(
+      req,
+      'marketing.plan_generate',
+      'content_plan',
+      parsed.data.week_start,
+      { ...result, channels },
+    )
     return { ...result, ...(await weekView(tenant_id, parsed.data.week_start)) }
   })
 
   app.post('/marketing/plan/approve', { preHandler: manageGate }, async (req, reply) => {
     const { tenant_id, user_id } = req.authContext
     const parsed = z
-      .object({ items: z.array(z.object({ post_id: z.string(), content_hash: z.string() })).min(1).max(100) })
+      .object({
+        items: z
+          .array(z.object({ post_id: z.string(), content_hash: z.string() }))
+          .min(1)
+          .max(100),
+      })
       .safeParse(req.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
+    if (!parsed.success)
+      return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
 
     const results: { post_id: string; ok: boolean; error?: string }[] = []
     for (const { post_id, content_hash: seen } of parsed.data.items) {
-      const post = await posts.findOne({ id: post_id, tenant_id, state: { $in: ['draft', 'publish_failed'] } })
+      const post = await posts.findOne({
+        id: post_id,
+        tenant_id,
+        state: { $in: ['draft', 'publish_failed'] },
+      })
       if (!post || !post.content_item_id) {
         results.push({ post_id, ok: false, error: 'not_a_plan_draft' })
         continue
@@ -120,7 +163,11 @@ export function registerMarketingPlanRoutes(app: FastifyInstance, db: Db, opts?:
       }
       const check = checkCopy(post.content, 'social')
       if (!check.ok) {
-        results.push({ post_id, ok: false, error: `copy_guard_failed: ${describeViolations(check)}` })
+        results.push({
+          post_id,
+          ok: false,
+          error: `copy_guard_failed: ${describeViolations(check)}`,
+        })
         continue
       }
       if (!post.scheduled_at || post.scheduled_at.getTime() <= now().getTime()) {
@@ -131,24 +178,43 @@ export function registerMarketingPlanRoutes(app: FastifyInstance, db: Db, opts?:
         { id: post_id, tenant_id, state: { $in: ['draft', 'publish_failed'] } },
         { $set: { state: 'approved', approved_by: user_id, approved_at: now() } },
       )
-      results.push(claimed.modifiedCount === 1 ? { post_id, ok: true } : { post_id, ok: false, error: 'already_decided' })
+      results.push(
+        claimed.modifiedCount === 1
+          ? { post_id, ok: true }
+          : { post_id, ok: false, error: 'already_decided' },
+      )
     }
     getAuditLogger()?.fromRequest(req, 'marketing.plan_approve', 'content_plan', 'batch', {
       approved: results.filter((r) => r.ok).map((r) => r.post_id),
       refused: results.filter((r) => !r.ok).length,
     })
-    return { results, approved: results.filter((r) => r.ok).length, refused: results.filter((r) => !r.ok).length }
+    return {
+      results,
+      approved: results.filter((r) => r.ok).length,
+      refused: results.filter((r) => !r.ok).length,
+    }
   })
 
-  app.post<{ Params: { id: string } }>('/marketing/plan/items/:id/skip', { preHandler: manageGate }, async (req, reply) => {
-    const { tenant_id, user_id } = req.authContext
-    const item = await items.findOneAndUpdate({ id: req.params.id, tenant_id }, { $set: { status: 'skipped' } })
-    if (!item) return reply.status(404).send({ error: 'Item not found' })
-    await posts.updateMany(
-      { tenant_id, content_item_id: req.params.id, state: { $in: ['draft', 'approved', 'publish_failed'] } },
-      { $set: { state: 'rejected', rejected_by: user_id, rejected_at: now() } },
-    )
-    getAuditLogger()?.fromRequest(req, 'marketing.plan_skip', 'content_item', req.params.id, {})
-    return { ok: true }
-  })
+  app.post<{ Params: { id: string } }>(
+    '/marketing/plan/items/:id/skip',
+    { preHandler: manageGate },
+    async (req, reply) => {
+      const { tenant_id, user_id } = req.authContext
+      const item = await items.findOneAndUpdate(
+        { id: req.params.id, tenant_id },
+        { $set: { status: 'skipped' } },
+      )
+      if (!item) return reply.status(404).send({ error: 'Item not found' })
+      await posts.updateMany(
+        {
+          tenant_id,
+          content_item_id: req.params.id,
+          state: { $in: ['draft', 'approved', 'publish_failed'] },
+        },
+        { $set: { state: 'rejected', rejected_by: user_id, rejected_at: now() } },
+      )
+      getAuditLogger()?.fromRequest(req, 'marketing.plan_skip', 'content_item', req.params.id, {})
+      return { ok: true }
+    },
+  )
 }

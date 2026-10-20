@@ -12,6 +12,7 @@ import {
   dismissLifeChangeNudge,
   fetchMyReferralCode,
   fetchReferralSummary,
+  uploadDocument,
   RESOLVED_INSIGHT_STATES,
 } from '../api'
 import { clearAllCaches } from '../fetch-cache'
@@ -250,13 +251,25 @@ describe('fetchInboxItems', () => {
 
 describe('fetchEmailConnectorStatus', () => {
   it('reads the email connector out of the connectors list', async () => {
-    mockFetchOnce({ connectors: [{ id: 'email', name: 'Email', category: 'email', connected: true, needsReauth: true }] })
-    expect(await fetchEmailConnectorStatus()).toEqual({ connected: true, needsReauth: true, failed: false })
+    mockFetchOnce({
+      connectors: [
+        { id: 'email', name: 'Email', category: 'email', connected: true, needsReauth: true },
+      ],
+    })
+    expect(await fetchEmailConnectorStatus()).toEqual({
+      connected: true,
+      needsReauth: true,
+      failed: false,
+    })
   })
 
   it('flags failed rather than reporting "not connected" on a server error', async () => {
     mockFetchOnce({}, false)
-    expect(await fetchEmailConnectorStatus()).toEqual({ connected: false, needsReauth: false, failed: true })
+    expect(await fetchEmailConnectorStatus()).toEqual({
+      connected: false,
+      needsReauth: false,
+      failed: true,
+    })
   })
 })
 
@@ -295,13 +308,75 @@ describe('fetchAIResponse', () => {
     expect(result.status).toBe('canned')
     expect(result.content.length).toBeGreaterThan(0)
   })
+
+  it('runs the PII curtain over the query before it leaves the device and restores the response', async () => {
+    const fn = mockFetchSequence({
+      body: { content: 'Done — we noted the reference you sent.', isLive: true },
+    })
+    const result = await fetchAIResponse(
+      'Please email sarah.jenkins@example.co.uk or call 07700 900123 about this',
+    )
+    const sentBody = JSON.parse((fn.mock.calls[0]?.[1] as RequestInit).body as string)
+    expect(sentBody.query).not.toContain('sarah.jenkins@example.co.uk')
+    expect(sentBody.query).not.toContain('07700 900123')
+    expect(sentBody.query).toMatch(/\[EMAIL_1_[a-z0-9]+\]/)
+    expect(sentBody.query).toMatch(/\[PHONE_1_[a-z0-9]+\]/)
+    expect(result.status).toBe('live')
+  })
+
+  it('flags medical_hint when the query carries special-category content', async () => {
+    const fn = mockFetchSequence({
+      body: {
+        content: 'This question touches health information…',
+        isLive: false,
+        quarantined: true,
+      },
+    })
+    const result = await fetchAIResponse("Is mum's hospital appointment covered?")
+    const sentBody = JSON.parse((fn.mock.calls[0]?.[1] as RequestInit).body as string)
+    expect(sentBody.medical_hint).toBe(true)
+    expect(result.status).toBe('canned')
+    expect(result.content).toContain('health information')
+  })
+
+  it('omits medical_hint for routine financial queries', async () => {
+    const fn = mockFetchSequence({ body: { content: 'Live answer.', isLive: true } })
+    await fetchAIResponse('What is my salary?')
+    const sentBody = JSON.parse((fn.mock.calls[0]?.[1] as RequestInit).body as string)
+    expect(sentBody.medical_hint).toBeUndefined()
+  })
+
+  it('restores redacted placeholders echoed back in the answer', async () => {
+    // The nonce differs per curtain, so the "server" echoes whatever
+    // placeholder the client actually sent.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+        const sentQuery = JSON.parse((init?.body as string) ?? '{}').query as string
+        const token = sentQuery.match(/\[EMAIL_1_[a-z0-9]+\]/)?.[0] ?? '[NONE]'
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ content: `Replying about ${token} now.`, isLive: true }),
+        })
+      }),
+    )
+    const result = await fetchAIResponse('Reach me at sarah.jenkins@example.co.uk')
+    expect(result.content).toBe('Replying about sarah.jenkins@example.co.uk now.')
+  })
 })
 
 describe('PRD-108: life events', () => {
   it('fetchLifeEvents returns the reported events list', async () => {
     mockFetchOnce({
       events: [
-        { id: '1', event_type: 'job_loss', affected_member_id: null, reported_at: '2026-01-01', playbook: { event_type: 'job_loss', title: 't', intro: 'i', steps: [] } },
+        {
+          id: '1',
+          event_type: 'job_loss',
+          affected_member_id: null,
+          reported_at: '2026-01-01',
+          playbook: { event_type: 'job_loss', title: 't', intro: 'i', steps: [] },
+        },
       ],
     })
     const events = await fetchLifeEvents()
@@ -321,7 +396,12 @@ describe('PRD-108: life events', () => {
       event_type: 'bereavement',
       affected_member_id: null,
       reported_at: '2026-01-01',
-      playbook: { event_type: 'bereavement', title: 't', intro: 'i', steps: [{ id: 'notify_insurers', title: 'Notify', body: 'Aviva', contact: true }] },
+      playbook: {
+        event_type: 'bereavement',
+        title: 't',
+        intro: 'i',
+        steps: [{ id: 'notify_insurers', title: 'Notify', body: 'Aviva', contact: true }],
+      },
     })
     const event = await reportLifeEvent('bereavement')
     expect(event?.id).toBe('evt-1')
@@ -365,6 +445,24 @@ describe('PRD-111: fetchLifeChangeNudge / dismissLifeChangeNudge', () => {
       expect.stringContaining('/family/life-events/nudge/dismiss'),
       expect.objectContaining({ method: 'POST' }),
     )
+  })
+})
+
+describe('uploadDocument on-device screen', () => {
+  it('sends the client screen outcome as a form field — and only the outcome', async () => {
+    const fn = mockFetchSequence({ body: { id: 'd1' } })
+    const file = new File([new Uint8Array(8)], 'letter.png', { type: 'image/png' })
+    await uploadDocument(file, 'flagged')
+    const form = (fn.mock.calls[0]?.[1] as RequestInit).body as FormData
+    expect(form.get('clientScreen')).toBe('flagged')
+    expect(form.get('file')).toBe(file)
+  })
+
+  it('omits the field when no screen ran', async () => {
+    const fn = mockFetchSequence({ body: { id: 'd1' } })
+    await uploadDocument(new File([new Uint8Array(8)], 'doc.pdf', { type: 'application/pdf' }))
+    const form = (fn.mock.calls[0]?.[1] as RequestInit).body as FormData
+    expect(form.get('clientScreen')).toBeNull()
   })
 })
 

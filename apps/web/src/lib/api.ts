@@ -1180,6 +1180,7 @@ export type AssistantAnswerStatus = 'live' | 'canned' | 'unavailable'
 export async function fetchAIResponse(
   query: string,
   memberId?: string,
+  opts?: { memberName?: string },
 ): Promise<{ content: string; status: AssistantAnswerStatus }> {
   // Read once up front: a dead-connection failure is honest "canned"
   // fallback territory (the offline banner is already telling the user),
@@ -1196,17 +1197,45 @@ export async function fetchAIResponse(
     // nothing to show but static dots — reads as a dead button. This caps
     // the wait so a slow provider degrades to the labeled local fallback
     // instead of hanging indefinitely.
+
+    // Device-first privacy: run the reversible PII curtain over the user's
+    // typed query before it leaves the device — structured identifiers
+    // (emails, phones, cards, postcodes, NI/NHS/IBAN) and the member's name
+    // never transit the network even though the assistant is LifeKeel-side.
+    // The ephemeral restore map dies with this call; the response is
+    // restored only for non-URL occurrences.
+    const { redactForCloudEgress } = await import('./onDeviceLlm')
+    const curtain = redactForCloudEgress(query, {
+      memberNames: opts?.memberName ? [opts.memberName] : [],
+    })
+    const safeQuery = curtain.redactedText
+
     const res = await credFetch(`${base}/assistant/ask`, {
       method: 'POST',
       headers,
       // PRD-122: memberId scopes the answer to one roster member's twin.
-      body: JSON.stringify(memberId ? { query, member_id: memberId } : { query }),
+      // medical_hint carries the curtain's special-category flag — the
+      // server routes the query to the lifekeel_infra_required sensitive
+      // task (self-hosted only, fails closed); it re-screens the query too,
+      // so this is a cooperative signal, not a trust boundary.
+      body: JSON.stringify({
+        query: safeQuery,
+        ...(memberId ? { member_id: memberId } : {}),
+        ...(curtain.hasSpecialCategoryHint ? { medical_hint: true } : {}),
+      }),
       signal: AbortSignal.timeout(30_000),
     })
     if (res.ok) {
-      const data = (await res.json()) as { content?: string; isLive?: boolean }
+      const data = (await res.json()) as {
+        content?: string
+        isLive?: boolean
+        quarantined?: boolean
+      }
       if (typeof data.content === 'string') {
-        return { content: data.content, status: data.isLive ? 'live' : 'canned' }
+        return {
+          content: curtain.restore(data.content),
+          status: data.isLive ? 'live' : 'canned',
+        }
       }
       reportError(new Error('assistant/ask returned no content'), { path: '/assistant/ask' })
     } else {
@@ -1243,11 +1272,18 @@ export interface FamilyDocument {
   extractedData?: Record<string, string>
 }
 
-export async function uploadDocument(file: File): Promise<FamilyDocument> {
+export async function uploadDocument(
+  file: File,
+  clientScreen?: 'clear' | 'flagged' | 'unscreened',
+): Promise<FamilyDocument> {
   const base = getApiBase()
   const token = getAuthToken()
   const formData = new FormData()
   formData.append('file', file)
+  // On-device screen outcome (see lib/on-device-doc-screen.ts). Only the
+  // outcome transits — never the marker or document content — and the
+  // server treats 'flagged' as authoritative while re-screening anyway.
+  if (clientScreen) formData.append('clientScreen', clientScreen)
 
   const headers: Record<string, string> = {}
   if (token) headers['Authorization'] = `Bearer ${token}`
@@ -3138,11 +3174,21 @@ export async function prepareLifeEventStepDraft(
   }
 }
 
-// PRD-113: fire-and-forget audit-only ping after a successful on-device
-// draft — no draft content or step body sent, just the fact it happened.
+// PRD-113 + device-first telemetry: fire-and-forget audit-only ping after
+// an on-device draft attempt — no draft content or step body sent, just a
+// metadata-only outcome enum so device coverage and abstention rates are
+// observable (guard rejection, unavailability, template fallback) without
+// compromising the privacy property the feature exists for.
 // Deliberately not awaited by the caller; a failure here shouldn't block
 // or affect the draft the family already has on screen.
-export function pingOnDeviceDraftUsed(eventId: string, stepId: string): void {
+export type OnDevicePingOutcome =
+  'generated' | 'template_fallback' | 'abstained' | 'guard_rejected' | 'unavailable' | 'error'
+
+export function pingOnDeviceDraftUsed(
+  eventId: string,
+  stepId: string,
+  outcome: OnDevicePingOutcome = 'generated',
+): void {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -3150,6 +3196,7 @@ export function pingOnDeviceDraftUsed(eventId: string, stepId: string): void {
   credFetch(`${base}/family/life-events/${eventId}/steps/${stepId}/prepare-on-device`, {
     method: 'POST',
     headers,
+    body: JSON.stringify({ outcome }),
   }).catch(() => {
     // Best-effort observability only — never surfaced to the user.
   })

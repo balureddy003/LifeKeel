@@ -71,6 +71,7 @@ let emailEncoderOutcomes: Counter | null = null
 let outputGuardBlocks: Counter | null = null
 let emailClassifyFailures: Counter | null = null
 let documentExtractionRetries: Counter | null = null
+let deviceEscalations: Counter | null = null
 
 function initMetrics(registry: Registry): void {
   if (evaluationsTotal) return // already initialised
@@ -270,6 +271,12 @@ function initMetrics(registry: Registry): void {
     help: 'Documents re-attempted by the OCR retry sweep',
     registers: [registry],
   })
+  deviceEscalations = new Counter({
+    name: 'lifekeel_device_escalations_total',
+    help: 'Server-side invocations of on_device tasks (device tier unavailable/abstained) — the device-vs-hosted coverage signal',
+    labelNames: ['task_id'],
+    registers: [registry],
+  })
 }
 
 /** M5: Record a credit consumption for Prometheus metrics. */
@@ -376,6 +383,12 @@ export function recordOutputGuardBlock(reason: string): void {
 export function recordEmailClassifyFailure(): void {
   initMetrics(getRegistry())
   emailClassifyFailures!.inc()
+}
+
+/** Device-first: a on_device task ran server-side this call. */
+export function recordDeviceEscalation(taskId: string): void {
+  initMetrics(getRegistry())
+  deviceEscalations!.inc({ task_id: taskId })
 }
 
 export function recordDocumentExtractionRetries(count: number): void {

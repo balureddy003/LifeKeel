@@ -52,7 +52,13 @@ export const KNOWN_EVENTS = new Set([
   'guide_view',
   // PRD-210: the signup page was opened; counts as a visit under the link's UTM tags.
   'signup_view',
+  // PRD-147: install hint shown, clicked, or completed; meta carries only the platform.
+  'pwa_install_shown',
+  'pwa_install_clicked',
+  'pwa_install_installed',
 ])
+
+const INSTALL_PLATFORMS = new Set(['prompt', 'ios', 'ios_in_app'])
 
 const DIGEST_VARIANTS = new Set(['all_clear', 'note', 'missed'])
 
@@ -62,6 +68,10 @@ function eventMeta(event: string, meta: unknown): Record<string, unknown> | null
   if (event === 'digest_click') {
     const v = (meta as { v?: unknown } | null)?.v
     return typeof v === 'string' && DIGEST_VARIANTS.has(v) ? { v } : null
+  }
+  if (event.startsWith('pwa_install_')) {
+    const p = (meta as { p?: unknown } | null)?.p
+    return typeof p === 'string' && INSTALL_PLATFORMS.has(p) ? { p } : null
   }
   return meta && typeof meta === 'object' ? (meta as Record<string, unknown>) : null
 }

@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { DecisionFn } from '@lifekeel/platform'
 import { isOcrableImage, LocalOcrError, ocrImageToText } from '../local-ocr.js'
-import { extractDocumentFieldsLocal, LocalExtractionError, processDocument } from '../extract.js'
+import {
+  extractDocumentFieldsLocal,
+  LocalExtractionError,
+  processDocument,
+  screenDocumentForSpecialCategory,
+} from '../extract.js'
 
 let dir: string
 let okBin: string
@@ -238,5 +243,236 @@ describe('processDocument with a failing local model', () => {
     expect(String(last.$set['error_message'])).toContain('Local model failed')
     expect(last.$inc['retry_count']).toBe(1)
     expect(updates.some((u) => (u as any).$set?.status === 'extracted')).toBe(false)
+  })
+})
+
+describe('special-category document screen (Art. 9 quarantine)', () => {
+  function makeDb(updates: Array<Record<string, unknown>>) {
+    return {
+      collection: () => ({
+        updateOne: vi.fn(async (_f: unknown, u: Record<string, unknown>) => {
+          updates.push(u)
+        }),
+        // PRD-143: extracted docs write review candidates via replaceOne.
+        replaceOne: vi.fn(async () => ({})),
+      }),
+    } as any
+  }
+
+  let medBin: string
+  let emptyBin: string
+  beforeAll(() => {
+    // Fake engine printing a clinical discharge letter.
+    medBin = path.join(dir, 'med.sh')
+    writeFileSync(
+      medBin,
+      '#!/bin/sh\ncat >/dev/null\nprintf "DISCHARGE SUMMARY\\nPatient: A N Other\\nNHS Number: 943 476 5919\\nWard: Cardiology\\n"\n',
+    )
+    chmodSync(medBin, 0o755)
+    emptyBin = path.join(dir, 'empty-scan.sh')
+    writeFileSync(emptyBin, '#!/bin/sh\ncat >/dev/null\n')
+    chmodSync(emptyBin, 0o755)
+  })
+
+  it('screens extracted text — clinical docs flag, insurance docs clear, unreadable is unscreened', async () => {
+    process.env['TESSERACT_BIN'] = medBin
+    try {
+      const flagged = await screenDocumentForSpecialCategory(png, 'image/png')
+      expect(flagged.outcome).toBe('flagged')
+      expect(flagged.marker).toMatch(/discharge|patient|nhs/i)
+    } finally {
+      delete process.env['TESSERACT_BIN']
+    }
+    process.env['TESSERACT_BIN'] = okBin
+    try {
+      // "Policy number / Sum assured" must NOT flag — medical vocabulary
+      // in insurance product documents is expected and permitted.
+      expect((await screenDocumentForSpecialCategory(png, 'image/png')).outcome).toBe('clear')
+    } finally {
+      delete process.env['TESSERACT_BIN']
+    }
+    process.env['TESSERACT_BIN'] = emptyBin
+    try {
+      expect((await screenDocumentForSpecialCategory(png, 'image/png')).outcome).toBe('unscreened')
+    } finally {
+      delete process.env['TESSERACT_BIN']
+    }
+  })
+
+  it('holds a flagged document from the hosted vision path — it is never sent', async () => {
+    process.env['TESSERACT_BIN'] = medBin
+    const updates: Array<Record<string, unknown>> = []
+    const vision = vi.fn(async () => '{}')
+    try {
+      await processDocument(
+        makeDb(updates),
+        'doc-1',
+        'tenant-1',
+        png,
+        'image/png',
+        'letter.png',
+        undefined, // no local decide — hosted vision was the only path
+        vision as never,
+      )
+    } finally {
+      delete process.env['TESSERACT_BIN']
+    }
+    expect(vision).not.toHaveBeenCalled()
+    const last = updates.at(-1) as { $set: Record<string, unknown> }
+    expect(last.$set['status']).toBe('stored')
+    expect(last.$set['special_category']).toBe('flagged')
+    expect(last.$set['extraction_held_reason']).toBe('special_category')
+  })
+
+  it('still reads a flagged document locally — that path never leaves our infra', async () => {
+    process.env['TESSERACT_BIN'] = medBin
+    const updates: Array<Record<string, unknown>> = []
+    const decide = decideWith({
+      ...allNull,
+      category: 'other',
+      policy_type: null,
+    })
+    try {
+      await processDocument(
+        makeDb(updates),
+        'doc-1',
+        'tenant-1',
+        png,
+        'image/png',
+        'letter.png',
+        decide,
+        vi.fn(async () => '{}') as never,
+      )
+    } finally {
+      delete process.env['TESSERACT_BIN']
+    }
+    const last = updates.at(-1) as { $set: Record<string, unknown> }
+    expect(last.$set['status']).toBe('extracted')
+    expect(last.$set['special_category']).toBe('flagged')
+  })
+
+  it('lets a clear document through hosted vision and records the screen outcome', async () => {
+    process.env['TESSERACT_BIN'] = okBin
+    const updates: Array<Record<string, unknown>> = []
+    const vision = vi.fn(async () => '{"category":"insurance","fields":{},"rawText":"policy"}')
+    try {
+      await processDocument(
+        makeDb(updates),
+        'doc-1',
+        'tenant-1',
+        png,
+        'image/png',
+        'policy.png',
+        undefined,
+        vision as never,
+      )
+    } finally {
+      delete process.env['TESSERACT_BIN']
+    }
+    expect(vision).toHaveBeenCalled()
+    const last = updates.at(-1) as { $set: Record<string, unknown> }
+    expect(last.$set['status']).toBe('extracted')
+    expect(last.$set['special_category']).toBe('clear')
+  })
+
+  it('holds a document the client flagged even when the server could not read it', async () => {
+    // The device OCR'd pixels this pipeline can't — a client 'flagged'
+    // verdict is authoritative even with a server 'unscreened' result.
+    process.env['TESSERACT_BIN'] = emptyBin
+    const updates: Array<Record<string, unknown>> = []
+    const vision = vi.fn(async () => '{}')
+    try {
+      await processDocument(
+        makeDb(updates),
+        'doc-1',
+        'tenant-1',
+        png,
+        'image/png',
+        'unreadable-scan.png',
+        undefined,
+        vision as never,
+        'flagged',
+      )
+    } finally {
+      delete process.env['TESSERACT_BIN']
+    }
+    expect(vision).not.toHaveBeenCalled()
+    const last = updates.at(-1) as { $set: Record<string, unknown> }
+    expect(last.$set['status']).toBe('stored')
+    expect(last.$set['special_category']).toBe('flagged')
+    expect(last.$set['client_screen']).toBe('flagged')
+  })
+
+  it('lets a client-flagged document proceed through the local pipeline', async () => {
+    process.env['TESSERACT_BIN'] = emptyBin
+    const updates: Array<Record<string, unknown>> = []
+    const decide = vi.fn(async () => ({ value: {}, model: 'local', latency_ms: 1 }))
+    try {
+      await processDocument(
+        makeDb(updates),
+        'doc-1',
+        'tenant-1',
+        png,
+        'image/png',
+        'unreadable-scan.png',
+        decide as unknown as DecisionFn,
+        undefined,
+        'flagged',
+      )
+    } finally {
+      delete process.env['TESSERACT_BIN']
+    }
+    // Local extraction hit its own "no text" result — but the point is it
+    // was never held and never touched a hosted path.
+    const last = updates.at(-1) as { $set: Record<string, unknown> }
+    expect(last.$set['status']).toBe('extracted')
+    expect(last.$set['special_category']).toBe('flagged')
+    expect(last.$set['client_screen']).toBe('flagged')
+  })
+
+  it('ignores a client clear that contradicts a server flag — flagged wins', async () => {
+    process.env['TESSERACT_BIN'] = medBin
+    const updates: Array<Record<string, unknown>> = []
+    const vision = vi.fn(async () => '{}')
+    try {
+      await processDocument(
+        makeDb(updates),
+        'doc-1',
+        'tenant-1',
+        png,
+        'image/png',
+        'letter.png',
+        undefined,
+        vision as never,
+        'clear',
+      )
+    } finally {
+      delete process.env['TESSERACT_BIN']
+    }
+    expect(vision).not.toHaveBeenCalled()
+    const last = updates.at(-1) as { $set: Record<string, unknown> }
+    expect(last.$set['special_category']).toBe('flagged')
+  })
+
+  it('marks unscreened documents that proceed instead of pretending they were checked', async () => {
+    process.env['TESSERACT_BIN'] = emptyBin
+    const updates: Array<Record<string, unknown>> = []
+    const vision = vi.fn(async () => '{"category":"other","fields":{},"rawText":"blank"}')
+    try {
+      await processDocument(
+        makeDb(updates),
+        'doc-1',
+        'tenant-1',
+        png,
+        'image/png',
+        'blank.png',
+        undefined,
+        vision as never,
+      )
+    } finally {
+      delete process.env['TESSERACT_BIN']
+    }
+    const last = updates.at(-1) as { $set: Record<string, unknown> }
+    expect(last.$set['special_category']).toBe('unscreened')
   })
 })

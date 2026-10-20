@@ -14,8 +14,12 @@ const funnel: FunnelView = {
     { step: 'profile', count: 10 },
     { step: 'first_insight', count: 5 },
   ],
-  by_source: [{ key: 'bluesky', visit: 120, cta_click: 30, signup: 12, profile: 6, first_insight: 3 }],
-  by_campaign: [{ key: 'pillar_hard_day', visit: 80, cta_click: 20, signup: 8, profile: 4, first_insight: 2 }],
+  by_source: [
+    { key: 'bluesky', visit: 120, cta_click: 30, signup: 12, profile: 6, first_insight: 3 },
+  ],
+  by_campaign: [
+    { key: 'pillar_hard_day', visit: 80, cta_click: 20, signup: 8, profile: 4, first_insight: 2 },
+  ],
 }
 
 describe('FunnelPanel', () => {
