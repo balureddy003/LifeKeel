@@ -35,6 +35,7 @@ import { TrustLadder, MemoryPrompts } from '@/components/Intelligence'
 import { HealthSummary } from '@/components/HealthSummary'
 import { ReadinessSparkline } from '@/components/ReadinessSparkline'
 import { ReadinessFeed } from '@/components/ReadinessFeed'
+import { PerceivedProtectionCard } from '@/components/PerceivedProtectionCard'
 import { InstallPrompt } from '@/components/InstallPrompt'
 import { useMode } from '@/lib/mode-context'
 import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@/lib/useFamilyData'
@@ -988,6 +989,9 @@ export default function HomePage() {
 
       {/* PRD-136: "What changed" — the feed narration of everything the
           daily checks found, straight below the score it explains. */}
+      {/* PRD-141: one optional question per quarter; renders nothing unless due. */}
+      <PerceivedProtectionCard />
+
       {hasLiveData && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}

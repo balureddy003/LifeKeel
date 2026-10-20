@@ -40,6 +40,7 @@ import { AuthShell } from '@/components/landing/AuthShell'
 import { MarketingLanding } from './MarketingLanding'
 import { NavRail } from './NavRail'
 import { haptic } from '@/lib/haptics'
+import { track } from '@/lib/growth-track'
 import { isNativeShell, biometricLockEnabled, verifyBiometric } from '@/lib/native'
 
 const NAV_ITEMS = [
@@ -300,6 +301,30 @@ function VerifyEmailBanner() {
       )}
     </AnimatePresence>
   )
+}
+
+/**
+ * PRD-141: a click from a Quiet Care digest lands with ?src=digest&v=<variant>.
+ * Record it once (variant only, no identifier) and strip the tag from the
+ * address bar. Clicks, not opens: the email carries no tracking pixel.
+ */
+export function DigestClickTracker() {
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const q = new URLSearchParams(window.location.search)
+    const v = q.get('v')
+    if (q.get('src') !== 'digest' || !v) return
+    track('digest_click', { v })
+    q.delete('src')
+    q.delete('v')
+    const rest = q.toString()
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`,
+    )
+  }, [])
+  return null
 }
 
 function PwaInit() {
@@ -771,6 +796,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       />
       <CommandPalette />
       <PwaInit />
+      <DigestClickTracker />
     </div>
   )
 }

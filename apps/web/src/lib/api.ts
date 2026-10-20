@@ -957,6 +957,77 @@ export async function fetchNotificationPrefs(): Promise<NotificationPrefsRespons
   return apiFetch<NotificationPrefsResponse | null>('/family/notifications', null)
 }
 
+// ── Perceived protection (PRD-141) ──────────────────────────────────────
+
+export async function fetchPerceivedProtectionDue(): Promise<{
+  quarter: string
+  due: boolean
+} | null> {
+  return apiFetch<{ quarter: string; due: boolean } | null>('/family/perceived-protection', null)
+}
+
+/** score 1 to 5, or null to skip this quarter. Resolves false on any failure. */
+export async function answerPerceivedProtection(score: number | null): Promise<boolean> {
+  const token = typeof window === 'undefined' ? null : localStorage.getItem('lifekeel_token')
+  try {
+    const res = await credFetch(`${getApiBase()}/family/perceived-protection`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(score === null ? { skipped: true } : { score }),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+// ── Operator: retention metrics (PRD-141) ───────────────────────────────
+
+export interface RetentionMetrics {
+  generated_at: string
+  min_cohort: number
+  definitions: Record<string, string>
+  digest_delivery: { scheduled: number; delivered: number; rate: number | null }
+  data_freshness: { mean_share_running: number | null; families: number | null }
+  digest_engagement: Record<string, { clicks_per_100: number | null }>
+  notification_health: {
+    unsubscribes_per_100_digests: number | null
+    digest_only_share: number | null
+    heartbeat_off_share: number | null
+  }
+  received_value_retention: Record<'month_3' | 'month_6', { retained_share: number | null }>
+  perceived_protection: { quarter: string; mean: number | null; responses: number | null }
+}
+
+export function fetchRetentionMetrics(): Promise<RetentionMetrics> {
+  return operatorRequest('/operator/retention')
+}
+
+// ── Freshness (PRD-145) ──────────────────────────────────────────────────
+
+export interface FreshnessCheck {
+  detector_id: string
+  label: string
+  state: 'running' | 'paused_missing' | 'paused_stale'
+  /** Field names only, e.g. "emergency_fund.monthly_expenses_minor". */
+  input: string[]
+  since: string
+}
+
+export interface FreshnessResponse {
+  checked_at: string | null
+  share_running: number | null
+  detectors: FreshnessCheck[]
+}
+
+/** null for children (403), signed-out visitors and any failure. */
+export async function fetchFreshness(): Promise<FreshnessResponse | null> {
+  return apiFetch<FreshnessResponse | null>('/family/freshness', null)
+}
+
 export async function updateNotificationPrefs(
   patch: NotificationPrefsPatch,
 ): Promise<NotificationPrefsResponse | null> {

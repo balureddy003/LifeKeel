@@ -280,7 +280,7 @@ export async function runFamilyHeartbeat(
       continue
     }
 
-    let rendered = renderHeartbeat(data)
+    let rendered: ReturnType<typeof renderHeartbeat> & { variant?: string } = renderHeartbeat(data)
     if (opts.cadence === 'monthly' && windowEnd) {
       const monthName = (d: Date) =>
         d.toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' })
@@ -288,15 +288,27 @@ export async function runFamilyHeartbeat(
       const topInsight = insights
         .filter((i) => OPEN_INSIGHT_STATES.includes(String(i['state'])))
         .sort((a, b) => Number(b['confidence'] ?? 0) - Number(a['confidence'] ?? 0))[0]
+      // PRD-145: one quiet line from the freshness record (amendment 1 collapses
+      // repeats to this). Before the first freshness run there is no record, so
+      // fall back to the profile-age flags the digest used before.
+      const freshness = await findAll(db, tenantId, 'freshness_state')
+      const pausedChecks = freshness.filter((r) => String(r['state']).startsWith('paused'))
       const paused: string[] = []
-      if (data.review_due)
+      if (pausedChecks.length > 0) {
+        const labels = pausedChecks.map((r) => String(r['label'] ?? r['detector_id']))
         paused.push(
-          'Your annual profile review is due, so checks use the figures from your last review.',
+          `${labels.length === 1 ? '1 check is' : `${labels.length} checks are`} paused because some details are missing or out of date: ${labels.join(', ')}. They are listed in the app.`,
         )
-      else if (data.profile_stale)
-        paused.push(
-          'Some details on file are over six months old, so checks that use them reflect older figures.',
-        )
+      } else if (freshness.length === 0) {
+        if (data.review_due)
+          paused.push(
+            'Your annual profile review is due, so checks use the figures from your last review.',
+          )
+        else if (data.profile_stale)
+          paused.push(
+            'Some details on file are over six months old, so checks that use them reflect older figures.',
+          )
+      }
       rendered = renderQuietCareDigest({
         period_label: windowStart.toLocaleDateString('en-GB', {
           month: 'long',
@@ -359,7 +371,13 @@ export async function runFamilyHeartbeat(
         }
         if (typeof sends.insertOne === 'function') {
           await sends
-            .insertOne({ member_id: member.id, window_start: windowStartIso, sent_at: now })
+            .insertOne({
+              member_id: member.id,
+              window_start: windowStartIso,
+              sent_at: now,
+              // Which digest variant went out, for click-through by variant (PRD-141).
+              ...(rendered.variant ? { variant: rendered.variant } : {}),
+            })
             .catch(() => {})
         }
         result.sent++

@@ -46,30 +46,6 @@ export const ConnectorResourceSchema = z.object({
   page_size_param: z.string().optional(),     // query param for page size (e.g. "pageSize")
   page_size: z.number().int().optional(),     // number of records per page (default: 100)
   response_shape: z.enum(['list', 'object']).default('list'), // whether the API returns an array or a single object
-  symbols_param: z.string().optional(),         // query param to expand per-symbol for market-data connectors
-  record_transform: z.enum([
-    'alpha_vantage_time_series_daily',
-    'alpha_vantage_overview',
-    'hf_data_daily_bars',
-    'finnhub_realtime_quote',
-    'finnhub_daily_candles',
-    'finnhub_company_profile',
-    'finnhub_news_sentiment',
-    'finnhub_financial_metrics',
-    'polygon_daily_aggs',
-    'polygon_ticker_details',
-    // Phase 2/3 free-data connectors
-    'cboe_vix_daily',
-    'fred_yield_curve',
-    'fred_credit_spread',
-    'fred_treasury_10y',
-    'google_trends_search_volume',
-  ]).optional(), // transform non-list response into records
-  // Gap #6: cadence controls how often a resource is polled. 'quarterly'
-  // resources are only synced once per quarter (90 days), suitable for
-  // fundamentals that don't change daily. 'weekly' is for slow-moving
-  // signals like attention/search volume. Default is every poll cycle.
-  cadence: z.enum(['daily', 'weekly', 'quarterly']).optional(),
 })
 
 export const ConnectorConfigSchema = z.object({
@@ -79,11 +55,11 @@ export const ConnectorConfigSchema = z.object({
   version: z.string().default('1.0.0'),
   description: z.string().optional(),
   status: z.enum(['planned', 'beta', 'ga']).default('planned'),
-  category: z.enum(['payments', 'accounting', 'ecommerce', 'crm', 'marketing', 'analytics', 'cloud_storage', 'finance', 'investment', 'property', 'social_media', 'generic']),
+  category: z.enum(['payments', 'accounting', 'ecommerce', 'crm', 'marketing', 'analytics', 'cloud_storage', 'finance', 'property', 'social_media', 'generic']),
   base_url: z.string(),
   live_base_url: z.string().optional(),
   auth: z.object({
-    type: z.enum(['oauth2', 'oauth2_kite', 'api_key', 'bearer', 'basic', 'http_basic', 'oauth2_aisp', 'partner_feed', 'multi_oauth', 'bot_token', 'none']),
+    type: z.enum(['oauth2', 'api_key', 'bearer', 'basic', 'http_basic', 'oauth2_aisp', 'partner_feed', 'multi_oauth', 'bot_token', 'none']),
     oauth: OAuthConfigSchema.optional(),
     header: z.string().optional(), // e.g. "Authorization"
     prefix: z.string().optional(), // e.g. "Bearer"
