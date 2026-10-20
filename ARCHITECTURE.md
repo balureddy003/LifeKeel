@@ -299,9 +299,6 @@ These are read at boot or request time and must ship with the API image:
 - `connectors/`: connector contracts, including open-banking and email shapes.
 - `definitions/`, `verticals/`, `category-table.yaml`: engine metadata.
 - Life-event playbook definitions consumed by the API renderer.
-- `scripts/fetch-yfinance.py` remains a runtime resource from the extracted
-  platform but is not evidence of a user-facing trading product.
-
 The repository intentionally removed the generic legacy workflow automation
 engine and 25 legacy workflow YAMLs. Do not infer their existence from the
 `@lifekeel/workflows` package name.

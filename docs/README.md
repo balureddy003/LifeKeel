@@ -46,6 +46,21 @@ Start with the row that matches what you are doing.
 | Intent | The short problem, "done", tier and advice check that starts a change (`docs/templates/intent.md`). |
 | Turbo | The task runner behind `pnpm typecheck/lint/test/build`; always run it from the repo root. |
 
+## Where gaps live
+
+Three registers track open problems, each with a different scope. File a
+new gap in the one whose scope it fits:
+
+| Register | Scope | Granularity |
+|---|---|---|
+| [ARCHITECTURE.md §16](../ARCHITECTURE.md#16-prioritized-architecture-gap-register) | Architecture and quality-attribute gaps (P0–P2) with mitigations and exit criteria | System-level |
+| [sdlc/status.md](sdlc/status.md#known-gaps-and-owners) | Process/tooling gaps in the SDLC itself (G1+) | Practice-level |
+| [intents/](intents/README.md) | Accepted remediation work not yet a PRD | Work items |
+
+Point-in-time findings live in [reviews/](reviews/README.md); anything that
+needs engineering graduates into an intent or a PRD rather than staying a
+review finding.
+
 ## Keeping these docs true
 
 The process docs are checked by a test, `packages/engine/src/__tests__/docs-links.test.ts`:
