@@ -55,7 +55,7 @@ function withDefaults(prefs: Partial<DeliveryPreferences> | null) {
     quiet_hours_end: prefs?.quiet_hours_end ?? null,
     digest_mode: prefs?.digest_mode ?? false,
     enabled: prefs?.enabled ?? true,
-    heartbeat_cadence: prefs?.heartbeat_cadence ?? 'weekly',
+    heartbeat_cadence: prefs?.heartbeat_cadence ?? 'monthly',
     heartbeat_quiet_weeks: prefs?.heartbeat_quiet_weeks ?? false,
     domains_muted: prefs?.domains_muted ?? [],
     member_scope: prefs?.member_scope ?? 'all',

@@ -20,10 +20,13 @@ import { GlassCard, GlassButton, PageHeader, ScoreRing } from '@/components/Glas
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
 import { trackConversion } from '@/lib/ad-track'
+import { KeepResult } from '@/components/readiness/KeepResult'
+import { UNMEASURED_NOTE } from '@/lib/result-save-copy'
 import {
   submitReadinessQuiz,
   captureLead,
   readinessShareUrl,
+  type ReadinessQuizAnswers,
   type ReadinessQuizResult,
 } from '@/lib/api'
 import { learnMoreHref } from '@/lib/detector-content'
@@ -304,6 +307,7 @@ export default function ReadinessQuizPage() {
   const [step, setStep] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<ReadinessQuizResult | null>(null)
+  const [answers, setAnswers] = useState<ReadinessQuizAnswers | null>(null)
 
   useEffect(() => {
     track('readiness_quiz_started')
@@ -326,14 +330,16 @@ export default function ReadinessQuizPage() {
   async function handleSubmit() {
     haptic('medium')
     setSubmitting(true)
-    const res = await submitReadinessQuiz({
+    const submitted: ReadinessQuizAnswers = {
       monthly_salary_minor: toMinor(form.monthlySalary),
       emergency_savings_minor: toMinor(form.emergencySavings),
       monthly_expenses_minor: toMinor(form.monthlyExpenses),
       mortgage_outstanding_minor: toMinor(form.mortgageOutstanding),
       life_cover_minor: toMinor(form.lifeCover),
       dependents: Number(form.dependents) || 0,
-    })
+    }
+    const res = await submitReadinessQuiz(submitted)
+    setAnswers(submitted)
     setResult(res)
     setSubmitting(false)
     // Backend has carried this event in its allowlist since PRD-201, but
@@ -471,9 +477,35 @@ export default function ReadinessQuizPage() {
                         <p className="text-xs text-ink-tertiary">{c.detail}</p>
                       </div>
                     ))}
+                  <p className="text-[11px] text-ink-tertiary pt-1">{UNMEASURED_NOTE}</p>
+                  {result.components.some((c) => c.score === null) && (
+                    <p className="text-xs text-ink-tertiary">
+                      Not measured by this quiz:{' '}
+                      {result.components
+                        .filter((c) => c.score === null)
+                        .map((c) => c.label)
+                        .join(', ')}
+                      .
+                    </p>
+                  )}
                 </GlassCard>
               )}
 
+              <button
+                type="button"
+                onClick={() => {
+                  haptic('light')
+                  track('readiness_quiz_corrected')
+                  setStep(0)
+                  setResult(null)
+                  window.scrollTo?.({ top: 0 })
+                }}
+                className="mt-3 text-sm font-semibold text-family-400 underline-offset-2 hover:underline"
+              >
+                Correct my answers
+              </button>
+
+              {answers && <KeepResult answers={answers} />}
               <ShareScore score={result.score} />
               <EmailCapture score={result.score} />
 

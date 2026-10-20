@@ -106,6 +106,18 @@ for evidence quality. Numeric defaults below are hypotheses to test, not benchma
    at a time at the top of the funnel (ask copy, trust-block placement, link plus code
    against link only), and watch the guardrails in PRD-204.
 
+## Status (first build)
+
+Built: consent-time pending record (answers kept 24h, link valid 30 min), link plus
+6-digit code, GET never consumes, uniform async response, per-address and per-IP caps,
+resend from the address alone after expiry, existing accounts appended to (MFA accounts
+get the snapshot but no session), versioned marketing consent stored apart from signup,
+snapshot erased with the account.
+
+Not built yet: the "next check" date (PRD-138 is not built, so the page does not promise
+one), the "what changed" view and PDF export (amendment 8), one-step snapshot deletion
+(amendment 6), SPF/DKIM/DMARC verification, and the Capacitor universal-link entry.
+
 ## Becomes
 
 docs/prd/203-passwordless-result-save.md

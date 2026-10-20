@@ -50,7 +50,9 @@ export function NotificationsCard({
         <Bell size={16} className="text-family-400 flex-shrink-0" />
         <span className="text-sm font-semibold text-ink-primary">Notifications</span>
         {!isOrganizer && (
-          <span className="ml-auto text-[11px] text-ink-tertiary">Only the organizer can change these</span>
+          <span className="ml-auto text-[11px] text-ink-tertiary">
+            Only the organizer can change these
+          </span>
         )}
       </div>
 
@@ -62,8 +64,22 @@ export function NotificationsCard({
               <span className="flex-1 text-xs text-ink-primary">{ch.replace(/_/g, ' ')}</span>
               {isOrganizer && (
                 <>
-                  <button aria-label={`Move ${ch} up`} onClick={() => moveChannel(ch, -1)} disabled={busy} className="text-ink-tertiary disabled:opacity-40">↑</button>
-                  <button aria-label={`Move ${ch} down`} onClick={() => moveChannel(ch, 1)} disabled={busy} className="text-ink-tertiary disabled:opacity-40">↓</button>
+                  <button
+                    aria-label={`Move ${ch} up`}
+                    onClick={() => moveChannel(ch, -1)}
+                    disabled={busy}
+                    className="text-ink-tertiary disabled:opacity-40"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    aria-label={`Move ${ch} down`}
+                    onClick={() => moveChannel(ch, 1)}
+                    disabled={busy}
+                    className="text-ink-tertiary disabled:opacity-40"
+                  >
+                    ↓
+                  </button>
                 </>
               )}
             </div>
@@ -76,30 +92,44 @@ export function NotificationsCard({
           Quiet from
           <select
             value={prefs.quiet_hours_start ?? ''}
-            onChange={(e) => onPatch({ quiet_hours_start: e.target.value === '' ? null : Number(e.target.value) })}
+            onChange={(e) =>
+              onPatch({ quiet_hours_start: e.target.value === '' ? null : Number(e.target.value) })
+            }
             disabled={disabled}
             className="mt-1 w-full rounded-lg bg-tint/[0.04] border border-tint/[0.08] px-2 py-1.5 text-xs text-ink-primary disabled:opacity-50"
           >
             <option value="">Off</option>
-            {HOURS.map((h) => <option key={h} value={h}>{h}:00</option>)}
+            {HOURS.map((h) => (
+              <option key={h} value={h}>
+                {h}:00
+              </option>
+            ))}
           </select>
         </label>
         <label className="text-xs text-ink-secondary">
           Quiet until
           <select
             value={prefs.quiet_hours_end ?? ''}
-            onChange={(e) => onPatch({ quiet_hours_end: e.target.value === '' ? null : Number(e.target.value) })}
+            onChange={(e) =>
+              onPatch({ quiet_hours_end: e.target.value === '' ? null : Number(e.target.value) })
+            }
             disabled={disabled}
             className="mt-1 w-full rounded-lg bg-tint/[0.04] border border-tint/[0.08] px-2 py-1.5 text-xs text-ink-primary disabled:opacity-50"
           >
             <option value="">Off</option>
-            {HOURS.map((h) => <option key={h} value={h}>{h}:00</option>)}
+            {HOURS.map((h) => (
+              <option key={h} value={h}>
+                {h}:00
+              </option>
+            ))}
           </select>
         </label>
       </div>
 
       <label className="flex items-center justify-between gap-3">
-        <span className="text-xs text-ink-secondary">Daily digest — batch low-priority items into one email</span>
+        <span className="text-xs text-ink-secondary">
+          Daily digest — batch low-priority items into one email
+        </span>
         <input
           type="checkbox"
           checked={prefs.digest_mode}
@@ -113,11 +143,17 @@ export function NotificationsCard({
         <span className="text-xs text-ink-secondary">Only notify me at this urgency or higher</span>
         <select
           value={prefs.min_urgency}
-          onChange={(e) => onPatch({ min_urgency: e.target.value as NotificationPrefs['min_urgency'] })}
+          onChange={(e) =>
+            onPatch({ min_urgency: e.target.value as NotificationPrefs['min_urgency'] })
+          }
           disabled={disabled}
           className="rounded-lg bg-tint/[0.04] border border-tint/[0.08] px-2 py-1.5 text-xs text-ink-primary disabled:opacity-50"
         >
-          {URGENCIES.map((u) => <option key={u} value={u}>{u}</option>)}
+          {URGENCIES.map((u) => (
+            <option key={u} value={u}>
+              {u}
+            </option>
+          ))}
         </select>
       </label>
 
@@ -140,8 +176,12 @@ export function NotificationsCard({
             </button>
           ))}
         </div>
+        <p className="mt-2 text-[11px] text-ink-tertiary leading-relaxed">
+          Monthly is the Quiet Care digest: it always arrives, even when nothing changed, so you can
+          tell a quiet month from a broken one. Weekly is a shorter &quot;what moved&quot; email.
+        </p>
         <label className="mt-2 flex items-center justify-between gap-3">
-          <span className="text-xs text-ink-secondary">Send even when nothing moved</span>
+          <span className="text-xs text-ink-secondary">Weekly: send even when nothing moved</span>
           <input
             type="checkbox"
             checked={prefs.heartbeat_quiet_weeks}
@@ -204,10 +244,14 @@ export function NotificationsCard({
       </div>
 
       <div>
-        <div className="text-xs font-medium text-ink-secondary mb-1">Always sent — these can&apos;t be silenced</div>
+        <div className="text-xs font-medium text-ink-secondary mb-1">
+          Always sent — these can&apos;t be silenced
+        </div>
         <ul className="space-y-1">
           {exemptCriticals.map((c) => (
-            <li key={c} className="text-[11px] text-ink-tertiary">{c.replace(/_/g, ' ')}</li>
+            <li key={c} className="text-[11px] text-ink-tertiary">
+              {c.replace(/_/g, ' ')}
+            </li>
           ))}
         </ul>
       </div>

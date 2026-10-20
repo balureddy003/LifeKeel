@@ -11,6 +11,8 @@ import {
   updateFamilyGroupMemberRole,
   updateFamilyGroupMemberDateOfBirth,
   acceptFamilyInvite as apiAcceptFamilyInvite,
+  verifyMagicLink as apiVerifyMagicLink,
+  type MagicLinkVerifyResult,
   type ApiFamilyGroup,
 } from './api'
 import { getApiBase } from './env'
@@ -33,6 +35,12 @@ interface AuthContextValue {
   verifyMfaCode: (code: string, mfaTokenOverride?: string) => Promise<void>
   /** PRD-123: accept a per-member invite — verifies the token, lands signed in. */
   acceptFamilyInvite: (token: string, password: string) => Promise<void>
+  /** PRD-203: redeem a "keep this result" link token or emailed code. Creates
+   *  the account if needed and lands signed in, unless the account has MFA
+   *  (then signed_in is false and the visitor signs in normally). */
+  signInWithMagicLink: (
+    input: { token: string } | { email: string; code: string },
+  ) => Promise<MagicLinkVerifyResult>
   updateEmail: (email: string) => Promise<User>
   updateProfile: (patch: { name?: string; email?: string }) => Promise<User>
   signInWithProvider: (provider: 'google') => Promise<void>
@@ -331,6 +339,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await finishSignIn(apiUser)
   }
 
+  const signInWithMagicLink = async (
+    input: { token: string } | { email: string; code: string },
+  ) => {
+    const result = await apiVerifyMagicLink(input)
+    if (result.signed_in && result.user) {
+      if (result.token) localStorage.setItem(TOKEN_KEY, result.token)
+      await finishSignIn(result.user)
+    }
+    return result
+  }
+
   // Accepting a per-member invite is both account creation/linking AND the
   // first sign-in — the accept route returns a session token, so this mirrors
   // signIn's persist path rather than routing the invitee back through login.
@@ -508,6 +527,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signIn,
         verifyMfaCode,
         acceptFamilyInvite,
+        signInWithMagicLink,
         updateEmail,
         updateProfile,
         signInWithProvider,
