@@ -10,7 +10,11 @@ export const dynamic = 'force-static'
 
 // Public, crawlable routes only — anything behind AuthGate (or a
 // transactional URL like reset-password) gets no sitemap entry.
-const PUBLIC_ROUTES: { path: string; changefreq: 'weekly' | 'monthly' | 'yearly'; priority: number }[] = [
+const PUBLIC_ROUTES: {
+  path: string
+  changefreq: 'weekly' | 'monthly' | 'yearly'
+  priority: number
+}[] = [
   { path: '/', changefreq: 'weekly', priority: 1.0 },
   { path: '/blog/', changefreq: 'weekly', priority: 0.7 },
   { path: '/guides/', changefreq: 'monthly', priority: 0.7 },

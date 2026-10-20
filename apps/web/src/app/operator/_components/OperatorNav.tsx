@@ -35,10 +35,30 @@ const links = [
   { href: '/operator/promotions', label: 'Promotions', icon: Tag, permission: 'promotions.read' },
   { href: '/operator/billing', label: 'Billing', icon: CreditCard, permission: 'billing.read' },
   { href: '/operator/content', label: 'Content', icon: FileText, permission: 'marketing.read' },
-  { href: '/operator/marketing', label: 'Marketing', icon: Megaphone, permission: 'marketing.read' },
-  { href: '/operator/operators', label: 'Operators', icon: ShieldCheck, permission: 'operators.manage' },
-  { href: '/operator/operations', label: 'Operations', icon: Activity, permission: 'operations.read' },
-  { href: '/operator/configuration', label: 'Configuration', icon: SlidersHorizontal, permission: 'configuration.read' },
+  {
+    href: '/operator/marketing',
+    label: 'Marketing',
+    icon: Megaphone,
+    permission: 'marketing.read',
+  },
+  {
+    href: '/operator/operators',
+    label: 'Operators',
+    icon: ShieldCheck,
+    permission: 'operators.manage',
+  },
+  {
+    href: '/operator/operations',
+    label: 'Operations',
+    icon: Activity,
+    permission: 'operations.read',
+  },
+  {
+    href: '/operator/configuration',
+    label: 'Configuration',
+    icon: SlidersHorizontal,
+    permission: 'configuration.read',
+  },
   { href: '/operator/audit', label: 'Audit', icon: ScrollText, permission: 'audit.read' },
   { href: '/operator/settings', label: 'Settings', icon: Settings, permission: undefined },
 ]
@@ -91,7 +111,9 @@ export function OperatorSidebar() {
   return (
     <aside className="hidden md:fixed md:inset-y-0 md:left-0 md:z-sticky md:flex md:w-56 md:flex-col border-r border-tint/[0.08] bg-navbg/80 backdrop-blur-xl">
       <div className="border-b border-tint/[0.08] px-5 py-4">
-        <Link href="/operator" className="font-semibold text-family-400">LifeKeel Operator</Link>
+        <Link href="/operator" className="font-semibold text-family-400">
+          LifeKeel Operator
+        </Link>
         <p className="mt-0.5 text-caption text-ink-tertiary">Platform console</p>
       </div>
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
@@ -116,7 +138,9 @@ export function OperatorSidebar() {
       <div className="border-t border-tint/[0.08] px-3 py-4 space-y-1">
         {user && (
           <div className="px-3 pb-2">
-            <p className="truncate text-sm font-medium text-ink-primary">{user.name || 'Operator'}</p>
+            <p className="truncate text-sm font-medium text-ink-primary">
+              {user.name || 'Operator'}
+            </p>
             <p className="truncate text-caption text-ink-tertiary">{user.email}</p>
           </div>
         )}
