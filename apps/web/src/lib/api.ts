@@ -3032,6 +3032,8 @@ export interface MarketingPost {
   publish_error?: string
   external_url?: string
   media_url?: string
+  /** Marketing copy guard result (PRD-210); a failing post cannot be approved. */
+  copy_check?: { ok: boolean; violations: { rule: string; match: string }[] }
   metrics?: { likes?: number; reposts?: number; replies?: number }
 }
 

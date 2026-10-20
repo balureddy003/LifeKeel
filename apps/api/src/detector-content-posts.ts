@@ -71,7 +71,7 @@ ${SIGNUP_CTA_COVERED}`,
 
 ## Why this gap is easy to miss
 
-If you're employed, it's tempting to assume your employer's sick pay has you covered. In practice, most employer sick-pay policies are generous for the first few weeks and then taper off fast — long before a serious illness or a slow recovery from injury actually resolves. Self-employed households often have even less of a safety net, since there's no employer policy to fall back on at all.
+If you're employed, it's tempting to assume your employer's sick pay has you covered. In practice, most employer sick-pay policies are generous for the first few weeks and then taper off fast — long before a serious illness or a slow recovery from injury actually resolves. Self-employed households often have even less to fall back on, since there's no employer policy at all.
 
 ## How Keel checks this for your family
 

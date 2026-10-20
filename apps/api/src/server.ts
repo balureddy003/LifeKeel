@@ -2061,6 +2061,14 @@ try {
     if (deploymentConfig.mode !== 'dev') throw new Error(msg)
     log.error({ failed: result.failed }, 'Database migration failed — starting anyway (dev)')
   }
+  // Keep seeded blog posts in step with their source (PRD-210). Never blocks boot.
+  try {
+    const { syncSeededContent } = await import('./content-sync.js')
+    const synced = await syncSeededContent(workflowDb)
+    log.info({ ...synced }, 'Seeded blog content synced')
+  } catch (err) {
+    log.error({ err }, 'Seeded blog content sync failed — continuing')
+  }
 } catch (err) {
   if (deploymentConfig.mode !== 'dev') throw err
   log.error({ err }, 'Database migration failed — starting anyway (dev)')
