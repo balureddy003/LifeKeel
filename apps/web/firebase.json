@@ -42,6 +42,10 @@
           ]
         },
         {
+          "source": "/keep-result{,/**}",
+          "headers": [{ "key": "Referrer-Policy", "value": "no-referrer" }]
+        },
+        {
           "source": "/_next/static/**",
           "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
         }
@@ -53,7 +57,7 @@
       "ignore": ["firebase.json", "**/.git", "**/node_modules/**"],
       "redirects": [
         {
-          "regex": "^(/(?:assistant|assets?|audit-log|auth|cashflow|connect|documents|events|family|family-setup|finances|financial-profile|health|inbox|insights|invite|legacy|life-events|login|map|marketing|member|operator|reset-password|settings|signup|upgrade|upload|vault|verify-email|welcome)(?:/.*)?)$",
+          "regex": "^(/(?:assistant|assets?|audit-log|auth|cashflow|connect|documents|events|family|family-setup|finances|financial-profile|health|inbox|insights|invite|legacy|life-events|login|map|marketing|member|operator|reset-password|settings|signup|upgrade|upload|vault|verify-email|keep-result|welcome)(?:/.*)?)$",
           "destination": "https://app.lifekeel.co.uk:1",
           "type": 302
         }
@@ -96,7 +100,7 @@
       "ignore": ["firebase.json", "**/.git", "**/node_modules/**"],
       "redirects": [
         {
-          "regex": "^(/(?:assistant|assets?|audit-log|auth|cashflow|connect|documents|events|family|family-setup|finances|financial-profile|health|inbox|insights|invite|legacy|life-events|login|map|marketing|member|operator|reset-password|settings|signup|upgrade|upload|vault|verify-email|welcome)(?:/.*)?)$",
+          "regex": "^(/(?:assistant|assets?|audit-log|auth|cashflow|connect|documents|events|family|family-setup|finances|financial-profile|health|inbox|insights|invite|legacy|life-events|login|map|marketing|member|operator|reset-password|settings|signup|upgrade|upload|vault|verify-email|keep-result|welcome)(?:/.*)?)$",
           "destination": "https://app.lifekeel.si:1",
           "type": 302
         }

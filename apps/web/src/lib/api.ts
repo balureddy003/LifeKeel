@@ -2940,6 +2940,79 @@ export async function submitReadinessQuiz(
   }
 }
 
+// ── Passwordless result save (PRD-203) ──────────────────────────────────
+
+/** Version of the marketing-consent wording shown on the reveal. Must match
+ *  MARKETING_CONSENT_VERSION in apps/api/src/routes/magic-link.ts when the
+ *  wording changes — the server records which version was shown. */
+export interface SavedSnapshot {
+  id: string
+  score: number | null
+  components: NonNullable<ReadinessQuizResult['components']>
+  saved_at: string
+}
+
+export interface MagicLinkVerifyResult {
+  signed_in: boolean
+  reason?: 'mfa_required'
+  token?: string
+  user?: {
+    id: string
+    email: string
+    name: string
+    tenant_id: string
+    email_verified?: boolean
+  }
+  snapshot: SavedSnapshot
+}
+
+/** Public. Always resolves the same way for a well-formed address, so the UI
+ *  can never tell whether the address already has an account. */
+export async function requestMagicLink(
+  email: string,
+  /** null re-sends an expired link for an address with a pending save. */
+  answers: ReadinessQuizAnswers | null,
+  marketingConsent?: boolean,
+): Promise<void> {
+  let res: Response
+  try {
+    res = await credFetch(`${getApiBase()}/auth/magic-link/request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        ...(answers ? { answers } : {}),
+        ...(marketingConsent === undefined ? {} : { marketing_consent: marketingConsent }),
+      }),
+    })
+  } catch {
+    throw new Error("Couldn't reach LifeKeel — check your connection and try again.")
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || "That didn't go through — try again in a moment.")
+  }
+}
+
+/** Link token, or the emailed 6-digit code for opening mail on another device. */
+export async function verifyMagicLink(
+  input: { token: string } | { email: string; code: string },
+): Promise<MagicLinkVerifyResult> {
+  let res: Response
+  try {
+    res = await credFetch(`${getApiBase()}/auth/magic-link/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    })
+  } catch {
+    throw new Error("Couldn't reach LifeKeel — check your connection and try again.")
+  }
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'This link or code is invalid or has expired.')
+  return data as MagicLinkVerifyResult
+}
+
 /** Per-score share card — points at the API route that serves per-score
  *  Open Graph tags to scrapers and redirects humans to the quiz. The
  *  score rides in the URL: the quiz persists nothing about the visitor,

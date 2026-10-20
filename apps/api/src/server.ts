@@ -172,6 +172,7 @@ import { runFamilyHeartbeat } from './jobs/family-heartbeat.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
 import { registerSupportRoutes } from './routes/support.js'
 import { registerReadinessQuizRoutes } from './routes/readiness-quiz.js'
+import { registerMagicLinkRoutes } from './routes/magic-link.js'
 import { registerFamilyReadinessRoutes } from './routes/family-readiness.js'
 import { registerFamilyScenarioRoutes } from './routes/family-scenarios.js'
 import { registerFamilyFeedRoutes } from './routes/family-feed.js'
@@ -1540,6 +1541,7 @@ app.addHook('onRequest', async (request, reply) => {
     '/auth/request-password-reset',
     '/auth/reset-password',
     '/auth/verify-email',
+    '/auth/magic-link/',
     '/auth/resend-verification',
     '/entitlements/plans',
     '/blog/posts',
@@ -2025,6 +2027,7 @@ if (workflowDb) {
   registerAssistantRoutes(app, workflowDb)
   registerSupportRoutes(app, workflowDb)
   registerReadinessQuizRoutes(app, workflowDb, engine)
+  await registerMagicLinkRoutes(app, workflowDb, auth)
   registerFamilyReadinessRoutes(app, workflowDb)
   registerFamilyScenarioRoutes(app, workflowDb)
   registerFamilyFeedRoutes(app, workflowDb)
