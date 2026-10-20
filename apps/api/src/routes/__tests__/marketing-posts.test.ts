@@ -14,6 +14,7 @@ import {
   pollMarketingEngagement,
 } from '../marketing-posts.js'
 import { AUTO_EXECUTE_TRUST_THRESHOLD } from '../../jobs/auto-execute-trusted.js'
+import { withTenantKeys } from '../../__tests__/helpers/tenant-keys-fake.js'
 
 const TENANT = 'tenant-1'
 const USER = 'user-1'
@@ -217,7 +218,7 @@ function makeDb() {
     growth_events: listCol(growthEvents),
   }
   return {
-    db: { collection: (name: string) => collections[name] } as any,
+    db: { collection: withTenantKeys((name: string) => collections[name]) } as any,
     posts,
     settingsDocs,
     systemEvents,

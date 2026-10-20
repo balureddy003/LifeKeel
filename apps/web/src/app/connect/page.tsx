@@ -6,10 +6,31 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { PageHeader, GlassCard, Skeleton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
-import { fetchConnectorStatuses, disconnectConnector, fetchConnectorSyncStatus, triggerConnectorBackfill, fetchOpenBankingAccounts, syncOpenBanking, type ConnectorStatus, type ConnectorSyncResource, type ExternalAccount } from '@/lib/api'
+import {
+  fetchConnectorStatuses,
+  disconnectConnector,
+  fetchConnectorSyncStatus,
+  triggerConnectorBackfill,
+  fetchOpenBankingAccounts,
+  syncOpenBanking,
+  type ConnectorStatus,
+  type ConnectorSyncResource,
+  type ExternalAccount,
+} from '@/lib/api'
 import { useAppStore } from '@/lib/store'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
-import { Mail, Landmark, Check, Loader2, Unlink, Shield, Lock, Clock, ChevronRight, RefreshCw } from 'lucide-react'
+import {
+  Mail,
+  Landmark,
+  Check,
+  Loader2,
+  Unlink,
+  Shield,
+  Lock,
+  Clock,
+  ChevronRight,
+  RefreshCw,
+} from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 const CONNECTOR_ICONS: Record<string, LucideIcon> = {
@@ -18,8 +39,10 @@ const CONNECTOR_ICONS: Record<string, LucideIcon> = {
 }
 
 const CONNECTOR_DESCRIPTIONS: Record<string, string> = {
-  email: 'Connect any email provider — Gmail, Outlook, Yahoo, iCloud, or a custom domain — to import financial documents automatically. Free on every plan. AI summaries in plain language are a paid upgrade.',
-  'open-banking': 'Read-only bank account connections — Keel can see account types and balances, never move money. Full bank consent flow arrives with our regulated partner.',
+  email:
+    'Connect any email provider — Gmail, Outlook, Yahoo, iCloud, or a custom domain — to import financial documents automatically. Free on every plan. AI summaries in plain language are a paid upgrade.',
+  'open-banking':
+    'Read-only bank account connections — Keel can see account types and balances, never move money. Full bank consent flow arrives with our regulated partner.',
 }
 
 const CONNECTOR_CATEGORIES: Record<string, { label: string; icon: LucideIcon }> = {
@@ -82,26 +105,41 @@ function ConnectorSyncPanel({ connectorId }: { connectorId: string }) {
   if (resources === null) return null
 
   const totalSynced = resources.reduce((sum, r) => sum + (r.total_records_synced ?? 0), 0)
-  const lastSync = resources.map((r) => r.last_synced_at).filter(Boolean).sort().at(-1) ?? null
+  const lastSync =
+    resources
+      .map((r) => r.last_synced_at)
+      .filter(Boolean)
+      .sort()
+      .at(-1) ?? null
   const inProgress = resources.some((r) => !r.backfill_complete)
-  const lastError = resources.map((r) => r.last_error).filter(Boolean).at(-1)
+  const lastError = resources
+    .map((r) => r.last_error)
+    .filter(Boolean)
+    .at(-1)
 
   return (
     <div className="mt-2 space-y-1.5">
       {resources.length === 0 ? (
-        <p className="text-xs text-ink-tertiary">Nothing synced yet — statements and renewals will appear here once the first sync completes.</p>
+        <p className="text-xs text-ink-tertiary">
+          Nothing synced yet — statements and renewals will appear here once the first sync
+          completes.
+        </p>
       ) : (
         <p className="text-xs text-ink-tertiary">
-          {inProgress ? 'Syncing… ' : ''}{totalSynced} record{totalSynced === 1 ? '' : 's'} synced · last sync {timeAgo(lastSync)}
+          {inProgress ? 'Syncing… ' : ''}
+          {totalSynced} record{totalSynced === 1 ? '' : 's'} synced · last sync {timeAgo(lastSync)}
         </p>
       )}
       {lastError && (
         <p role="status" aria-live="polite" className="text-xs text-danger">
-          Last sync didn't finish{lastError.status_text ? ` — ${lastError.status_text}` : ''} ({timeAgo(lastError.at)}). Already-synced data is unaffected.
+          Last sync didn't finish{lastError.status_text ? ` — ${lastError.status_text}` : ''} (
+          {timeAgo(lastError.at)}). Already-synced data is unaffected.
         </p>
       )}
       {failed && (
-        <p role="status" aria-live="polite" className="text-xs text-danger">The re-sync didn't start — try again in a moment.</p>
+        <p role="status" aria-live="polite" className="text-xs text-danger">
+          The re-sync didn't start — try again in a moment.
+        </p>
       )}
       <button
         type="button"
@@ -109,7 +147,11 @@ function ConnectorSyncPanel({ connectorId }: { connectorId: string }) {
         disabled={triggering || inProgress}
         className="flex items-center gap-1.5 text-xs font-semibold text-family-400 disabled:opacity-50"
       >
-        {triggering || inProgress ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+        {triggering || inProgress ? (
+          <Loader2 size={12} className="animate-spin" />
+        ) : (
+          <RefreshCw size={12} />
+        )}
         {inProgress ? 'Sync in progress' : 'Re-sync now'}
       </button>
     </div>
@@ -126,7 +168,9 @@ function OpenBankingPanel() {
   const load = useCallback(async () => {
     setAccounts(await fetchOpenBankingAccounts())
   }, [])
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    void load()
+  }, [load])
 
   const resync = async () => {
     haptic('light')
@@ -136,7 +180,14 @@ function OpenBankingPanel() {
     setSyncing(false)
   }
 
-  const typeLabel: Record<string, string> = { current: 'Current', savings: 'Savings', credit: 'Credit', mortgage: 'Mortgage', investment: 'Investment', other: 'Account' }
+  const typeLabel: Record<string, string> = {
+    current: 'Current',
+    savings: 'Savings',
+    credit: 'Credit',
+    mortgage: 'Mortgage',
+    investment: 'Investment',
+    other: 'Account',
+  }
 
   return (
     <div className="mt-2 space-y-1.5">
@@ -149,7 +200,8 @@ function OpenBankingPanel() {
           <div key={a.id} className="flex items-center justify-between text-xs">
             <span className="text-ink-secondary truncate">{a.name}</span>
             <span className="text-ink-tertiary whitespace-nowrap ml-2">
-              {typeLabel[a.type] ?? 'Account'}{a.provider === 'sandbox' ? ' · demo' : ''}
+              {typeLabel[a.type] ?? 'Account'}
+              {a.provider === 'sandbox' ? ' · demo' : ''}
             </span>
           </div>
         ))
@@ -208,7 +260,9 @@ export default function ConnectPage() {
       setConnectorConnected(connectorId, false)
       haptic('success')
     } else {
-      setError(`${connectorId} is still connected — the disconnect didn't go through. Try again in a moment.`)
+      setError(
+        `${connectorId} is still connected — the disconnect didn't go through. Try again in a moment.`,
+      )
     }
     setConnectingId(null)
   }
@@ -224,7 +278,8 @@ export default function ConnectPage() {
       <GlassCard className="p-3.5 border-family-500/20 flex items-start gap-2">
         <Shield size={16} className="text-family-400 flex-shrink-0 mt-0.5" />
         <p className="text-xs text-ink-secondary leading-relaxed">
-          We use bank-grade encryption and read-only access. We never store your passwords, and you can revoke access at any time.
+          Connections are read-only. Passwords and access tokens you enter are encrypted before they
+          are stored, and you can disconnect at any time.
         </p>
       </GlassCard>
 
@@ -262,107 +317,123 @@ export default function ConnectPage() {
       )}
 
       {/* Connector groups */}
-      {!loading && categoryKeys.map((catKey) => {
-        const cat = grouped[catKey]
-        if (!cat) return null
-        const CatIcon = cat.icon
-        const catConnectors = connectors.filter((c) => c.category === catKey)
-        if (catConnectors.length === 0) return null
+      {!loading &&
+        categoryKeys.map((catKey) => {
+          const cat = grouped[catKey]
+          if (!cat) return null
+          const CatIcon = cat.icon
+          const catConnectors = connectors.filter((c) => c.category === catKey)
+          if (catConnectors.length === 0) return null
 
-        return (
-          <div key={catKey} className="space-y-2">
-            <div className="flex items-center gap-2 px-1 text-sm font-semibold text-ink-secondary">
-              <CatIcon size={16} className="text-ink-tertiary" />
-              {cat.label}
+          return (
+            <div key={catKey} className="space-y-2">
+              <div className="flex items-center gap-2 px-1 text-sm font-semibold text-ink-secondary">
+                <CatIcon size={16} className="text-ink-tertiary" />
+                {cat.label}
+              </div>
+
+              {catConnectors.map((connector, i) => {
+                const Icon = CONNECTOR_ICONS[connector.id] ?? Shield
+                const isConnected =
+                  connectedConnectors.includes(connector.id) || connector.connected
+                const isConnecting = connectingId === connector.id
+
+                return (
+                  <motion.div
+                    key={connector.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.06 }}
+                  >
+                    <GlassCard className="p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-tint/[0.05] flex items-center justify-center flex-shrink-0">
+                          <Icon
+                            size={18}
+                            className={isConnected ? 'text-success' : 'text-ink-secondary'}
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold">{connector.name}</span>
+                            {isConnected && (
+                              <span className="flex items-center gap-1 text-xs text-success">
+                                <Check size={12} /> Connected
+                              </span>
+                            )}
+                            {!isConnected && connector.comingSoon && (
+                              <span className="flex items-center gap-1 text-xs text-ink-tertiary bg-tint/[0.05] px-2 py-0.5 rounded-full">
+                                <Clock size={11} /> Coming soon
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-ink-tertiary mt-1 leading-relaxed">
+                            {CONNECTOR_DESCRIPTIONS[connector.id] ??
+                              'Connect this service to enhance your family profile.'}
+                          </p>
+
+                          <div className="mt-3">
+                            {isConnected ? (
+                              <motion.button
+                                whileTap={{ scale: 0.96 }}
+                                onClick={async () => {
+                                  const ok = await confirm({
+                                    title: `Disconnect ${connector.name}?`,
+                                    message: `You'll need to reconnect it to keep using its data.`,
+                                    confirmLabel: 'Disconnect',
+                                    destructive: true,
+                                  })
+                                  if (!ok) return
+                                  handleDisconnect(connector.id)
+                                }}
+                                disabled={isConnecting}
+                                className="flex items-center gap-1.5 text-xs font-semibold text-danger px-3 py-2 rounded-xl bg-danger/10 disabled:opacity-50"
+                              >
+                                {isConnecting ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                  <Unlink size={14} />
+                                )}
+                                Disconnect
+                              </motion.button>
+                            ) : connector.comingSoon ? (
+                              <Link
+                                href="/financial-profile"
+                                onClick={() => haptic('light')}
+                                className="flex items-center gap-1 text-xs font-semibold text-family-400"
+                              >
+                                Add it manually instead <ChevronRight size={12} />
+                              </Link>
+                            ) : (
+                              <motion.button
+                                whileTap={{ scale: 0.96 }}
+                                onClick={() => handleConnect(connector.id)}
+                                disabled={isConnecting}
+                                className="flex items-center gap-1.5 text-xs font-semibold text-white px-4 py-2 rounded-xl bg-family-500/80 disabled:opacity-50"
+                              >
+                                {isConnecting ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                  <Lock size={14} />
+                                )}
+                                {isConnecting ? 'Connecting...' : 'Connect'}
+                              </motion.button>
+                            )}
+                          </div>
+
+                          {isConnected && connector.id === 'open-banking' && <OpenBankingPanel />}
+                          {isConnected && connector.id !== 'open-banking' && (
+                            <ConnectorSyncPanel connectorId={connector.id} />
+                          )}
+                        </div>
+                      </div>
+                    </GlassCard>
+                  </motion.div>
+                )
+              })}
             </div>
-
-            {catConnectors.map((connector, i) => {
-              const Icon = CONNECTOR_ICONS[connector.id] ?? Shield
-              const isConnected = connectedConnectors.includes(connector.id) || connector.connected
-              const isConnecting = connectingId === connector.id
-
-              return (
-                <motion.div
-                  key={connector.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.06 }}
-                >
-                  <GlassCard className="p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-tint/[0.05] flex items-center justify-center flex-shrink-0">
-                        <Icon size={18} className={isConnected ? 'text-success' : 'text-ink-secondary'} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold">{connector.name}</span>
-                          {isConnected && (
-                            <span className="flex items-center gap-1 text-xs text-success">
-                              <Check size={12} /> Connected
-                            </span>
-                          )}
-                          {!isConnected && connector.comingSoon && (
-                            <span className="flex items-center gap-1 text-xs text-ink-tertiary bg-tint/[0.05] px-2 py-0.5 rounded-full">
-                              <Clock size={11} /> Coming soon
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-ink-tertiary mt-1 leading-relaxed">
-                          {CONNECTOR_DESCRIPTIONS[connector.id] ?? 'Connect this service to enhance your family profile.'}
-                        </p>
-
-                        <div className="mt-3">
-                          {isConnected ? (
-                            <motion.button
-                              whileTap={{ scale: 0.96 }}
-                              onClick={async () => {
-                                const ok = await confirm({
-                                  title: `Disconnect ${connector.name}?`,
-                                  message: `You'll need to reconnect it to keep using its data.`,
-                                  confirmLabel: 'Disconnect',
-                                  destructive: true,
-                                })
-                                if (!ok) return
-                                handleDisconnect(connector.id)
-                              }}
-                              disabled={isConnecting}
-                              className="flex items-center gap-1.5 text-xs font-semibold text-danger px-3 py-2 rounded-xl bg-danger/10 disabled:opacity-50"
-                            >
-                              {isConnecting ? <Loader2 size={14} className="animate-spin" /> : <Unlink size={14} />}
-                              Disconnect
-                            </motion.button>
-                          ) : connector.comingSoon ? (
-                            <Link
-                              href="/financial-profile"
-                              onClick={() => haptic('light')}
-                              className="flex items-center gap-1 text-xs font-semibold text-family-400"
-                            >
-                              Add it manually instead <ChevronRight size={12} />
-                            </Link>
-                          ) : (
-                            <motion.button
-                              whileTap={{ scale: 0.96 }}
-                              onClick={() => handleConnect(connector.id)}
-                              disabled={isConnecting}
-                              className="flex items-center gap-1.5 text-xs font-semibold text-white px-4 py-2 rounded-xl bg-family-500/80 disabled:opacity-50"
-                            >
-                              {isConnecting ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />}
-                              {isConnecting ? 'Connecting...' : 'Connect'}
-                            </motion.button>
-                          )}
-                        </div>
-
-                        {isConnected && connector.id === 'open-banking' && <OpenBankingPanel />}
-                        {isConnected && connector.id !== 'open-banking' && <ConnectorSyncPanel connectorId={connector.id} />}
-                      </div>
-                    </div>
-                  </GlassCard>
-                </motion.div>
-              )
-            })}
-          </div>
-        )
-      })}
+          )
+        })}
     </div>
   )
 }

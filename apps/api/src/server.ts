@@ -2110,6 +2110,13 @@ process.on('uncaughtException', (error) => {
 
 declare module 'fastify' {
   interface FastifyRequest {
-    authContext: { tenant_id: string; user_id: string; roles: string[]; demo?: boolean }
+    authContext: {
+      tenant_id: string
+      user_id: string
+      roles: string[]
+      demo?: boolean
+      /** JWT issue time (seconds) — operator step-up compares against it. */
+      iat?: number
+    }
   }
 }

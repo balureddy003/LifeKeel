@@ -15,11 +15,28 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
-  BarChart3, Bell, CheckCircle2, TrendingUp, TrendingDown, Clock,
-  FileText, Eye, Siren, Sparkles, ChevronDown,
+  BarChart3,
+  Bell,
+  CheckCircle2,
+  TrendingUp,
+  TrendingDown,
+  Clock,
+  FileText,
+  Eye,
+  Siren,
+  Sparkles,
+  ChevronDown,
 } from 'lucide-react'
 import { GlassCard, Skeleton } from '@/components/Glass'
-import { fetchFeed, fetchFeedSummary, submitFeedback, type FeedEvent, type FeedFeedbackValue, type FeedSummary } from '@/lib/api'
+import { readableHypothesis } from '@/lib/insight-text'
+import {
+  fetchFeed,
+  fetchFeedSummary,
+  submitFeedback,
+  type FeedEvent,
+  type FeedFeedbackValue,
+  type FeedSummary,
+} from '@/lib/api'
 
 const TYPE_ICON: Record<FeedEvent['type'], typeof BarChart3> = {
   score_moved: BarChart3,
@@ -38,13 +55,20 @@ const TYPE_ICON: Record<FeedEvent['type'], typeof BarChart3> = {
 
 function linkFor(link: FeedEvent['links'][number]): string | null {
   switch (link.kind) {
-    case 'insight': return `/insights/${link.id}`
-    case 'component': return `/health/${link.id}`
-    case 'document': return '/documents'
-    case 'scenario': return '/events'
-    case 'member': return `/member/${link.id}`
-    case 'profile_field': return '/financial-profile'
-    default: return null
+    case 'insight':
+      return `/insights/${link.id}`
+    case 'component':
+      return `/health/${link.id}`
+    case 'document':
+      return '/documents'
+    case 'scenario':
+      return '/events'
+    case 'member':
+      return `/member/${link.id}`
+    case 'profile_field':
+      return '/financial-profile'
+    default:
+      return null
   }
 }
 
@@ -88,18 +112,23 @@ export function ReadinessFeed({ members = [], mode }: ReadinessFeedProps) {
         setEvents(evts)
         setSummary(sum)
       })
-      .catch(() => { if (!cancelled) setFailed(true) })
-    return () => { cancelled = true }
+      .catch(() => {
+        if (!cancelled) setFailed(true)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [mode])
 
   const memberName = (id: string) => members.find((m) => m.id === id)?.name?.split(' ')[0] ?? null
 
-  const summaryLine = summary && summary.total > 0
-    ? `${summary.total} ${summary.total === 1 ? 'thing' : 'things'} moved this week` +
-      (summary.composite_delta !== null && summary.composite_delta !== 0
-        ? ` · score ${summary.composite_delta > 0 ? '+' : ''}${summary.composite_delta}`
-        : '')
-    : null
+  const summaryLine =
+    summary && summary.total > 0
+      ? `${summary.total} ${summary.total === 1 ? 'thing' : 'things'} moved this week` +
+        (summary.composite_delta !== null && summary.composite_delta !== 0
+          ? ` · score ${summary.composite_delta > 0 ? '+' : ''}${summary.composite_delta}`
+          : '')
+      : null
 
   return (
     <div>
@@ -117,7 +146,9 @@ export function ReadinessFeed({ members = [], mode }: ReadinessFeedProps) {
         </GlassCard>
       ) : failed ? (
         <GlassCard className="p-4">
-          <p className="text-sm text-ink-tertiary">Couldn&apos;t load the latest changes — try again in a moment.</p>
+          <p className="text-sm text-ink-tertiary">
+            Couldn&apos;t load the latest changes — try again in a moment.
+          </p>
         </GlassCard>
       ) : events === null || events.length === 0 ? (
         <GlassCard className="p-4">
@@ -144,16 +175,27 @@ export function ReadinessFeed({ members = [], mode }: ReadinessFeedProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       {href ? (
-                        <Link href={href} className="text-sm font-medium text-ink-primary truncate active:opacity-70">
-                          {evt.title}
+                        <Link
+                          href={href}
+                          className="text-sm font-medium text-ink-primary truncate active:opacity-70"
+                        >
+                          {readableHypothesis(evt.title)}
                         </Link>
                       ) : (
-                        <span className="text-sm font-medium text-ink-primary truncate">{evt.title}</span>
+                        <span className="text-sm font-medium text-ink-primary truncate">
+                          {readableHypothesis(evt.title)}
+                        </span>
                       )}
-                      {evt.direction === 'up' && <TrendingUp size={13} className="text-success flex-shrink-0" />}
-                      {evt.direction === 'down' && <TrendingDown size={13} className="text-danger flex-shrink-0" />}
+                      {evt.direction === 'up' && (
+                        <TrendingUp size={13} className="text-success flex-shrink-0" />
+                      )}
+                      {evt.direction === 'down' && (
+                        <TrendingDown size={13} className="text-danger flex-shrink-0" />
+                      )}
                     </div>
-                    <p className="text-footnote text-ink-tertiary mt-0.5 leading-relaxed">{evt.summary}</p>
+                    <p className="text-footnote text-ink-tertiary mt-0.5 leading-relaxed">
+                      {evt.summary}
+                    </p>
                     {name && (
                       <span className="inline-block mt-1.5 text-footnote font-medium text-family-400 bg-family-500/10 rounded-full px-2 py-0.5">
                         {name}
@@ -162,13 +204,17 @@ export function ReadinessFeed({ members = [], mode }: ReadinessFeedProps) {
                     {evt.evidence.length > 0 && (
                       <details className="mt-1.5 group">
                         <summary className="flex items-center gap-1 text-footnote text-ink-tertiary cursor-pointer list-none">
-                          <ChevronDown size={11} className="transition-transform group-open:rotate-180" />
+                          <ChevronDown
+                            size={11}
+                            className="transition-transform group-open:rotate-180"
+                          />
                           Details
                         </summary>
                         <ul className="mt-1 space-y-0.5">
                           {evt.evidence.map((e, i) => (
                             <li key={i} className="text-footnote text-ink-tertiary">
-                              {e.label}{e.value ? `: ${e.value}` : ''}
+                              {e.label}
+                              {e.value ? `: ${e.value}` : ''}
                               {e.value_minor !== undefined ? ` ${e.value_minor}` : ''}
                             </li>
                           ))}
@@ -176,18 +222,24 @@ export function ReadinessFeed({ members = [], mode }: ReadinessFeedProps) {
                       </details>
                     )}
                     {evt.next_check_at && (
-                      <p className="text-footnote text-ink-tertiary/70 mt-1.5">Keel checks again tomorrow</p>
+                      <p className="text-footnote text-ink-tertiary/70 mt-1.5">
+                        Keel checks again tomorrow
+                      </p>
                     )}
                     {/* PRD-136 §3: per-user feedback — collapses to a
                         one-line ack after a response. Youth mode has no
                         muting (child accounts can't shape the feed). */}
-                    {mode !== 'youth' && (
-                      feedbackDone[evt.id] ? (
+                    {mode !== 'youth' &&
+                      (feedbackDone[evt.id] ? (
                         <p className="text-footnote text-ink-tertiary mt-2 pt-2 border-t border-tint/[0.06]">
                           {feedbackDone[evt.id] === 'muted' ? (
                             <>
                               Muted for 90 days ·{' '}
-                              <button type="button" onClick={() => void undoMute(evt)} className="text-family-400 font-medium">
+                              <button
+                                type="button"
+                                onClick={() => void undoMute(evt)}
+                                className="text-family-400 font-medium"
+                              >
                                 undo?
                               </button>
                             </>
@@ -216,8 +268,7 @@ export function ReadinessFeed({ members = [], mode }: ReadinessFeedProps) {
                             </button>
                           ))}
                         </div>
-                      )
-                    )}
+                      ))}
                   </div>
                 </div>
               </GlassCard>

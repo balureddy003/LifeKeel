@@ -3600,6 +3600,15 @@ export async function setOperatorAlertState(
   if (!res.ok) throw new Error((data.error as string) || 'Alert action failed')
 }
 
+/** Dual-control actions return 202 { approval_required } — the mutation has
+ *  NOT happened yet. Surface that instead of letting callers toast success. */
+function throwIfPendingApproval(data: unknown): void {
+  const body = data as { approval_required?: boolean; message?: string }
+  if (body?.approval_required) {
+    throw new Error(body.message ?? "Awaiting a second operator's confirmation")
+  }
+}
+
 async function operatorAction(path: string, reason: string): Promise<void> {
   const base = getApiBase()
   const token = getAuthToken()
@@ -3613,6 +3622,7 @@ async function operatorAction(path: string, reason: string): Promise<void> {
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error((data.error as string) || 'Operator action failed')
+  throwIfPendingApproval(data)
 }
 
 export const suspendOperatorUser = (id: string, reason: string) =>
@@ -3890,6 +3900,7 @@ export async function createOperator(
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error((data.error as string) || 'Could not add operator')
+  throwIfPendingApproval(data)
 }
 
 export function fetchOperators(): Promise<{
@@ -3897,6 +3908,43 @@ export function fetchOperators(): Promise<{
   bootstrap: OperatorRecord[]
 }> {
   return operatorRequest('/operator/operators')
+}
+
+// ── Operator: dual control (four-eyes) ──────────────────────────────────
+
+export interface DualApproval {
+  id: string
+  action: string
+  target_type: string
+  target_id: string
+  required_permission: string
+  reason: string
+  requested_by: string
+  status: 'pending' | 'confirmed' | 'consumed'
+  created_at: string
+  expires_at: string
+  confirmed_by?: string
+}
+
+export function fetchDualApprovals(
+  status: 'pending' | 'confirmed' | 'consumed' = 'pending',
+): Promise<{ approvals: DualApproval[] }> {
+  return operatorRequest(`/operator/dual-approvals?status=${status}`)
+}
+
+export async function confirmDualApproval(id: string, reason: string): Promise<void> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await credFetch(`${base}/operator/dual-approvals/${id}/confirm`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ reason }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Confirmation failed')
 }
 
 export function fetchOperatorAudit(
@@ -4260,6 +4308,7 @@ async function campaignWrite(path: string, body: Record<string, unknown>): Promi
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error((data.error as string) || 'Campaign request failed')
+  throwIfPendingApproval(data)
   return data
 }
 
@@ -4379,6 +4428,7 @@ export async function adjustTenantCredits(
   )
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error((data.error as string) || 'Adjustment failed')
+  throwIfPendingApproval(data)
   return (data as { credits_balance: number }).credits_balance
 }
 

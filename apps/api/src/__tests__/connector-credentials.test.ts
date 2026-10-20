@@ -15,8 +15,11 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import Fastify from 'fastify'
 import { registerConnectorCredentialRoutes } from '../routes/connector-credentials.js'
+import { withTenantKeys } from './helpers/tenant-keys-fake.js'
 
-const backfillMock = vi.fn(async () => [{ records_fetched: 3, insights_triggered: 1, resource: 'Account' }])
+const backfillMock = vi.fn(async () => [
+  { records_fetched: 3, insights_triggered: 1, resource: 'Account' },
+])
 const testConnectionMock = vi.fn(async () => ({ success: true, message: 'ok' }))
 
 vi.mock('@lifekeel/pipeline', () => ({
@@ -35,7 +38,7 @@ function makeDb() {
     find: vi.fn(() => ({ project: () => ({ toArray: async () => [] }), toArray: async () => [] })),
     deleteOne: vi.fn(async () => ({})),
   }
-  return { collection: () => credCol } as any
+  return { collection: withTenantKeys(() => credCol) } as any
 }
 
 const fakeConnectorLoader = {
@@ -78,7 +81,10 @@ describe('POST /connectors/:id/credentials', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(fakeConnectorLoader.get).toHaveBeenCalledWith('gmail')
     expect(testConnectionMock).toHaveBeenCalledTimes(1)
-    expect(testConnectionMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'gmail' }), TEST_TENANT)
+    expect(testConnectionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'gmail' }),
+      TEST_TENANT,
+    )
     expect(backfillMock).toHaveBeenCalledTimes(1)
     expect(backfillMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'gmail' }), TEST_TENANT)
   })
