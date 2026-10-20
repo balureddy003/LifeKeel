@@ -5,7 +5,7 @@ const ROWS = [
   {
     tag: 'Papers',
     lead: 'Documents in one place.',
-    body: "Wills, powers of attorney and policy papers your family's adults can open. Seal any file with a passphrase. There is no passphrase recovery, so keep it safe.",
+    body: "Wills, powers of attorney and policy papers your family's adults can open. Sealing a file with a passphrase is optional. If you choose it, there is no recovery, so keep the passphrase safe.",
   },
   {
     tag: 'Steps',
