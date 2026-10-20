@@ -1,11 +1,8 @@
 import type { Metadata } from 'next'
 import { PublicShell } from '@/components/landing/PublicShell'
 
-// Same pattern as readiness/layout.tsx — the blog index page is a client
-// component, so its title/OG/canonical live in this server-only layout.
-// Individual post pages can't prerender per-slug metadata (static export
-// placeholder, see blog/[slug]/page.tsx); BlogPostClient injects them
-// client-side once the post loads.
+// The index page's title/OG/canonical live in this server-only layout. Individual post pages
+// set their own metadata at build time (blog/[slug]/page.tsx, PRD-210 phase 1).
 export const metadata: Metadata = {
   title: 'From LifeKeel — plain-language readiness explainers',
   description:
