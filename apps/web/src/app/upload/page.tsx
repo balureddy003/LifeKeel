@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -27,11 +28,11 @@ function statusIcon(status: FamilyDocument['status']) {
   }
 }
 
-function statusLabel(status: FamilyDocument['status']) {
+function statusLabel(status: FamilyDocument['status'], extractedData?: Record<string, string>) {
   switch (status) {
     case 'uploaded': return 'Uploading...'
     case 'processing': return 'Processing...'
-    case 'extracted': return 'Extracted'
+    case 'extracted': return Object.keys(extractedData ?? {}).length > 0 ? 'Read, please check' : 'Saved, nothing read'
     case 'stored': return 'Saved'
     case 'error': return 'Failed'
   }
@@ -306,7 +307,7 @@ export default function UploadPage() {
                         <span className="text-xs flex items-center gap-1" style={{
                           color: doc.status === 'extracted' ? '#4ade80' : doc.status === 'error' ? '#f87171' : doc.status === 'stored' ? '#9ca3af' : '#fbbf24'
                         }}>
-                          {statusIcon(doc.status)} {statusLabel(doc.status)}
+                          {statusIcon(doc.status)} {statusLabel(doc.status, doc.extractedData)}
                         </span>
                       </div>
                     </div>
@@ -325,7 +326,7 @@ export default function UploadPage() {
       <div className="glass rounded-2xl p-4 flex items-start gap-2">
         <ShieldCheck size={16} className="text-ink-tertiary flex-shrink-0 mt-0.5" />
         <p className="text-xs text-ink-tertiary leading-relaxed">
-          Your documents are encrypted at rest and processed in a secure environment. We only extract key fields (provider, policy number, amounts, dates) — the original file is never shared with third parties.
+          To read a document, Keel sends it to an approved AI processor, as set out in the <Link href="/privacy" className="underline">Privacy notice</Link>. The key fields it finds (provider, policy number, amounts, dates) are shown for you to check.
         </p>
       </div>
     </div>

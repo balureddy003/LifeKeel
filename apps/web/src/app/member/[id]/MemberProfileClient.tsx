@@ -12,6 +12,7 @@ import { fetchMemberTwin, fetchMemberAgent, dismissMemberNudge, fetchAIResponse,
 import { useToast } from '@/components/Toast'
 import { calculateAge } from '@/lib/age'
 import { haptic } from '@/lib/haptics'
+import { readableHypothesis } from '@/lib/insight-text'
 
 // Minor units → "£1,234" / "£1,234/mo" display strings (Money redacts in
 // child-mode, so raw amounts never render unredacted).
@@ -401,7 +402,7 @@ export default function MemberProfileClient() {
               </div>
               {twin.financial.insights.map((i) => (
                 <p key={String(i.id)} className="text-xs text-ink-secondary leading-relaxed">
-                  {typeof i.hypothesis === 'string' ? i.hypothesis.replace(/_/g, ' ') : ''}
+                  {typeof i.hypothesis === 'string' ? readableHypothesis(i.hypothesis) : ''}
                 </p>
               ))}
             </div>
