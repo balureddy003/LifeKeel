@@ -224,7 +224,7 @@ export default function ConnectPage() {
       <GlassCard className="p-3.5 border-family-500/20 flex items-start gap-2">
         <Shield size={16} className="text-family-400 flex-shrink-0 mt-0.5" />
         <p className="text-xs text-ink-secondary leading-relaxed">
-          We use bank-grade encryption and read-only access. We never store your passwords, and you can revoke access at any time.
+          Connections are read-only. Passwords and access tokens you enter are encrypted before they are stored, and you can disconnect at any time.
         </p>
       </GlassCard>
 
