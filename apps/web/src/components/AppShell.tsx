@@ -432,9 +432,27 @@ function AskKeelButton({ context }: { context?: string }) {
   )
 }
 
+// Public content pages. They do not depend on who is signed in, so they render straight away
+// instead of waiting behind the auth check: the static HTML a search engine fetches then holds
+// the page's text, not a loading skeleton (PRD-210, phase 1).
+const PUBLIC_CONTENT_PREFIXES = ['/blog', '/guides', '/terms', '/privacy', '/support', '/readiness']
+
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, family } = useAuth()
   const pathname = usePathname()
+  const isPublicContent = PUBLIC_CONTENT_PREFIXES.some((p) => pathname.startsWith(p))
+
+  // "/" also renders the marketing page while the auth check runs, so it is in the static HTML.
+  // A device with a stored session gets the skeleton instead: the layout's inline script sets
+  // data-session before first paint, which hides the landing wrapper in CSS (no flash). The hint
+  // is cleared once the check says nobody is signed in, so a stale one cannot hide the page.
+  const [sessionHint, setSessionHint] = useState(false)
+  useEffect(() => {
+    setSessionHint(document.documentElement.dataset.session === '1')
+  }, [])
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) delete document.documentElement.dataset.session
+  }, [isLoading, isAuthenticated])
 
   // /operator is exempt too: the operator shell has its own OperatorGate
   // (a logged-in operator with no family group would otherwise hit the
@@ -456,7 +474,15 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/operator') ||
     pathname.startsWith('/invite')
 
-  if (isLoading) {
+  if (isLoading && pathname === '/' && !sessionHint) {
+    return (
+      <div className="lk-landing-gate">
+        <MarketingLanding />
+      </div>
+    )
+  }
+
+  if (isLoading && !isPublicContent && (pathname !== '/' || sessionHint)) {
     return (
       <div className="max-w-md md:max-w-xl lg:max-w-3xl xl:max-w-4xl mx-auto px-5 pt-6 pb-20 space-y-5">
         <div className="flex items-center justify-between">
@@ -487,7 +513,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   // real navigation (/welcome, /login, /terms, /privacy) as the rest of the
   // app rather than a disconnected standalone page with dead-end links.
   if (!isAuthenticated && pathname === '/') {
-    return <MarketingLanding />
+    // Same wrapper as the loading render above, so the page is not remounted when the check ends.
+    return (
+      <div className="lk-landing-gate">
+        <MarketingLanding />
+      </div>
+    )
   }
 
   if (!isAuthenticated && !isAuthRoute) {

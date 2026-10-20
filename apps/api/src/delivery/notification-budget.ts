@@ -55,6 +55,8 @@ export interface SendRequest {
   /** Insight id, or the detector+input for Tier C. Used for dedup and response lookup. */
   key?: string
   exempt?: Exemption
+  /** PRD-140: set when this send used the email floor after a push failed. */
+  fallback_from?: string
   now?: Date
 }
 
@@ -70,6 +72,7 @@ interface LedgerRow {
   key?: string
   outcome: 'sent' | 'exempt' | 'dropped'
   reason?: string
+  fallback_from?: string
   at: Date
 }
 
@@ -167,6 +170,7 @@ export async function recordSent(db: Db, req: SendRequest): Promise<void> {
     ...(req.key ? { key: req.key } : {}),
     outcome: req.exempt || req.tier === 'B' ? 'exempt' : 'sent',
     ...(req.exempt ? { reason: req.exempt } : {}),
+    ...(req.fallback_from ? { fallback_from: req.fallback_from } : {}),
     at: req.now ?? new Date(),
   })
 }

@@ -5,6 +5,7 @@
  * open, and whether the profile is going stale. Informational only —
  * it never recommends a product or action beyond "open the app".
  */
+import { buildDigestPushPayload } from '../delivery/push-payload.js'
 
 export interface HeartbeatData {
   /** 'week' | 'month' — matched to the tenant's heartbeat_cadence. */
@@ -36,7 +37,11 @@ export interface RenderedHeartbeat {
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }
 
 function plural(n: number, word: string, words?: string): string {
@@ -63,10 +68,14 @@ export function renderHeartbeat(d: HeartbeatData): RenderedHeartbeat {
     lines.push(`· Your readiness score moved ${d.score_delta > 0 ? '+' : ''}${d.score_delta}.`)
   }
   if (d.new_insights > 0 || d.open_insights > 0) {
-    lines.push(`· ${plural(d.open_insights, 'open item', 'open items')} on your family's readiness${d.new_insights > 0 ? ` (${d.new_insights} new this ${d.period})` : ''}${d.resolved_insights > 0 ? `, ${d.resolved_insights} resolved` : ''}.`)
+    lines.push(
+      `· ${plural(d.open_insights, 'open item', 'open items')} on your family's readiness${d.new_insights > 0 ? ` (${d.new_insights} new this ${d.period})` : ''}${d.resolved_insights > 0 ? `, ${d.resolved_insights} resolved` : ''}.`,
+    )
   }
   if (d.renewals.length > 0) {
-    lines.push(`· ${plural(d.renewals.length, 'policy', 'policies')} renewing within 30 days: ${d.renewals.map((r) => `${r.type.replace(/_/g, ' ')} on ${r.renewal_date}`).join(', ')}.`)
+    lines.push(
+      `· ${plural(d.renewals.length, 'policy', 'policies')} renewing within 30 days: ${d.renewals.map((r) => `${r.type.replace(/_/g, ' ')} on ${r.renewal_date}`).join(', ')}.`,
+    )
   }
   if (d.pending_steps > 0) {
     lines.push(`· ${plural(d.pending_steps, 'step', 'steps')} still open on your response plan.`)
@@ -77,7 +86,9 @@ export function renderHeartbeat(d: HeartbeatData): RenderedHeartbeat {
     lines.push(`· Some profile details are over six months old — worth a quick check.`)
   }
   if (lines.length === 0) {
-    lines.push(`Nothing moved this ${d.period} — Keel checked daily and everything looked the same.`)
+    lines.push(
+      `Nothing moved this ${d.period} — Keel checked daily and everything looked the same.`,
+    )
   }
   lines.push(`Open LifeKeel: ${d.app_url}`)
 
@@ -101,7 +112,8 @@ export function renderHeartbeat(d: HeartbeatData): RenderedHeartbeat {
     subject,
     text,
     html,
-    push_title: subject,
-    push_body: lines[0] ?? subject,
+    // Push-shaped payload (PRD-140): generic, no content. The heartbeat stays email-only.
+    push_title: 'LifeKeel',
+    push_body: buildDigestPushPayload('weekly_heartbeat', d.app_url).body,
   }
 }

@@ -16,6 +16,7 @@ import { ROLE_LABELS, memberStatusLabel, type FamilyRole } from '@/lib/auth-type
 import { useConfirm } from '@/components/ConfirmSheetProvider'
 import { NotificationsCard } from '@/components/NotificationsCard'
 import { FreshnessCard } from '@/components/FreshnessCard'
+import { ChannelsCard } from '@/components/ChannelsCard'
 import { MfaSettings } from '@/components/MfaSettings'
 import { useToast } from '@/components/Toast'
 import { isValidEmailFormat } from '@/components/ConversationalOnboarding'
@@ -1133,6 +1134,9 @@ export default function SettingsPage() {
             onDigestOffer={(accept) => void saveDigestOffer(accept)}
           />
         )}
+
+        {/* PRD-140: which channels work and why push may be unavailable here. */}
+        {notifPrefs && <ChannelsCard />}
 
         {/* PRD-145: which checks are paused and why — shown only when one is. */}
         {freshness && <FreshnessCard freshness={freshness} />}
