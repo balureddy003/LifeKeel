@@ -6,22 +6,91 @@
   "scope": "/",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"],
-  "background_color": "#08080c",
-  "theme_color": "#08080c",
+  "background_color": "#0a1822",
+  "theme_color": "#0a1822",
   "categories": ["utilities", "lifestyle", "finance"],
   "dir": "ltr",
   "lang": "en-US",
   "icons": [
-    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ],
   "shortcuts": [
-    { "name": "Dashboard", "url": "/" },
-    { "name": "AI Assistant", "url": "/assistant" },
-    { "name": "What If Scenarios", "url": "/events" }
+    {
+      "name": "Dashboard",
+      "url": "/"
+    },
+    {
+      "name": "AI Assistant",
+      "url": "/assistant"
+    },
+    {
+      "name": "What If Scenarios",
+      "url": "/events"
+    }
   ],
   "prefer_related_applications": false,
   "handle_links": "preferred",
-  "launch_handler": { "client_mode": "focus-existing" }
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
+  "id": "/",
+  "screenshots": [
+    {
+      "src": "/screenshots/home-narrow.png",
+      "sizes": "540x960",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Your family's chart"
+    },
+    {
+      "src": "/screenshots/readiness-narrow.png",
+      "sizes": "540x960",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Readiness check"
+    },
+    {
+      "src": "/screenshots/home-wide.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Your family's chart"
+    },
+    {
+      "src": "/screenshots/readiness-wide.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Readiness check"
+    }
+  ]
 }

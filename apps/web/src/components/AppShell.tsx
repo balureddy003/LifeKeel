@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { useNetworkStatus } from '@/lib/useNetworkStatus'
 import { useAuth } from '@/lib/auth-context'
+import { InstallHint } from '@/components/InstallHint'
 import { useMode } from '@/lib/mode-context'
 import { useAppStore } from '@/lib/store'
 import { MeshGradient, Skeleton, SkeletonCard } from './Glass'
@@ -835,6 +836,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       />
       <CommandPalette />
       <PwaInit />
+      <InstallHint />
       <DigestClickTracker />
     </div>
   )

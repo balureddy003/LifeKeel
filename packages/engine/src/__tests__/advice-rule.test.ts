@@ -66,6 +66,7 @@ function webCopyFiles(): string[] {
     'apps/web/src/components/PerceivedProtectionCard.tsx',
     'apps/web/src/components/FreshnessCard.tsx',
     'apps/web/src/lib/extraction-review-copy.ts',
+    'apps/web/src/lib/install-copy.ts',
     'apps/web/src/components/ExtractionReview.tsx',
     'apps/web/src/lib/deletion-receipt-copy.ts',
     'apps/web/src/components/DeletionReceiptCard.tsx',
