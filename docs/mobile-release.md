@@ -69,7 +69,26 @@ upload if the store upload step is skipped or fails.
 
 Both stores require a **human publish** the first time — internal track and
 TestFlight are automatic thereafter. Store metadata, screenshots, and privacy
-declarations are maintained in the consoles, not in this repo.
+declarations are maintained in the consoles — see
+[mobile-store-listing.md](mobile-store-listing.md) for drafted listing copy,
+privacy declarations, and the submission checklist.
+
+## Icons and launch screens
+
+`prepare-*.sh` writes brand assets into the regenerated projects via
+`scripts/apply-icons.mjs` (`sharp` — works on macOS and the Linux Android
+runner): the opaque 1024 App Store icon, every Android `mipmap-*` density +
+adaptive-icon foreground + `#0B3B5C` background, iOS `Splash.imageset`, and
+all `drawable-*/splash.png` sizes.
+
+Sources live in `apps/mobile/assets/` — `src/*.svg` (square-icon, mark-only,
+and splash compositions derived from `apps/web/public/icon.svg`) and the
+rendered `gen/*.png`. To regenerate after a brand change, edit the SVGs and
+run `node scripts/gen-assets.mjs`, then the prepare scripts.
+
+Already handled, so the store forms don't ask: `ITSAppUsesNonExemptEncryption=false`
+(export compliance), iPhone-only device family, and all required usage
+strings.
 
 ## Manual QA gate (from apps/mobile/README, not automated)
 
@@ -83,7 +102,9 @@ Simulator, device region **Slovenia** → the shell must land on
 - **No automatic releases on merge** — same reason as `deploy-web.yml`:
   human-gated on purpose.
 - **No screenshot/metadata automation** (`deliver`/`supply` metadata upload is
-  disabled) — one-time console work, not worth the brittleness.
+  disabled) — copy and checklist are drafted in
+  [mobile-store-listing.md](mobile-store-listing.md); the console work is
+  one-time, not worth the brittleness.
 - **No `match`/certs repo** — `-allowProvisioningUpdates` handles signing from
   the ASC API key.
 - **No EAS/Codemagic/etc.** — fastlane + runners are $0.

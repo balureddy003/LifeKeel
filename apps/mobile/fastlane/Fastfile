@@ -18,6 +18,8 @@ platform :ios do
         "CODE_SIGN_ENTITLEMENTS='#{ENV['ENTITLEMENTS_PATH'] || 'App/App/App.entitlements'}'",
         "DEVELOPMENT_TEAM='#{ENV['APPLE_TEAM_ID']}'",
         "PRODUCT_BUNDLE_IDENTIFIER='uk.co.lifekeel.app'",
+        # iPhone only — avoids iPad screenshots/tablet QA for a server.url shell.
+        "TARGETED_DEVICE_FAMILY='1'",
       ].join(' '),
     )
 
