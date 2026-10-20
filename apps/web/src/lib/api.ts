@@ -1042,6 +1042,21 @@ export async function fetchAiDisclosure(): Promise<AiDisclosure | null> {
   return apiFetch<AiDisclosure | null>('/ai/processors', null)
 }
 
+// ── Delivery channels (PRD-140) ─────────────────────────────────────────
+
+export interface ChannelState {
+  email: { available: boolean }
+  web_push: { devices: number; enabled: boolean }
+  mobile_push: { devices: number; enabled: boolean; platforms: string[] }
+  recent_failures: { web_push: number; mobile_push: number; last_at: string | null }
+  first_channel: 'mobile_push' | 'web_push' | 'email' | 'none'
+}
+
+/** null for children (403), signed-out visitors and any failure. */
+export async function fetchChannelState(): Promise<ChannelState | null> {
+  return apiFetch<ChannelState | null>('/family/channels', null)
+}
+
 // ── Freshness (PRD-145) ──────────────────────────────────────────────────
 
 export interface FreshnessCheck {
@@ -3181,7 +3196,7 @@ export async function fetchMarketingPosts(): Promise<MarketingPost[]> {
 
 async function marketingRequest<T>(
   path: string,
-  method: 'POST' | 'PATCH' | 'DELETE',
+  method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   body?: Record<string, unknown>,
 ): Promise<T> {
   const base = getApiBase()
@@ -3272,6 +3287,22 @@ export async function previewMarketingDrafts(input: {
   return data.drafts ?? []
 }
 
+export interface FunnelBreakdown {
+  key: string
+  visit: number
+  cta_click: number
+  signup: number
+  profile: number
+  first_insight: number
+}
+
+export interface FunnelView {
+  window_days: number
+  steps: { step: 'visit' | 'cta_click' | 'signup' | 'profile' | 'first_insight'; count: number }[]
+  by_source: FunnelBreakdown[]
+  by_campaign: FunnelBreakdown[]
+}
+
 export interface MarketingPerformance {
   posts: {
     slug: string
@@ -3284,6 +3315,8 @@ export interface MarketingPerformance {
   channels: { channel: string; views: number; cta_clicks: number; leads: number; signups: number }[]
   campaigns: { campaign: string; views: number; signups: number; leads: number }[]
   totals: { views: number; cta_clicks: number; signups: number; leads: number }
+  /** Visit to first-insight funnel from the daily rollups (PRD-210); null until they exist. */
+  funnel: FunnelView | null
   /** "What works" — engagement normalized against the account median
    *  (x=1.0); providers don't expose impressions so this is comparative,
    *  not an absolute rate. */
@@ -3317,6 +3350,42 @@ export async function connectBluesky(input: {
   )
   return data.connection
 }
+
+// ── Channel profiles (PRD-210, phase 2) ─────────────────────────────────
+
+export interface ChannelProfileView {
+  channel: string
+  desired: { display_name: string; handle: string; bio: string; link: string }
+  desired_hash: string
+  problems: string[]
+  bio_limit: number
+  checklist_items: string[]
+  checklist: Record<string, boolean>
+  actual: { display_name: string; bio: string; has_avatar: boolean; has_banner: boolean; checked_at: string } | null
+  drift: { field: string; desired: string; actual: string }[]
+  supports_check: boolean
+  supports_apply: boolean
+  saved: boolean
+  applied_at: string | null
+  dry_run?: boolean
+}
+
+export async function fetchChannelProfiles(): Promise<ChannelProfileView[]> {
+  const data = await apiFetch<{ profiles: ChannelProfileView[] }>('/marketing/profiles', { profiles: [] })
+  return data.profiles
+}
+
+export const saveChannelProfile = (channel: string, desired: ChannelProfileView['desired']) =>
+  marketingRequest<ChannelProfileView>(`/marketing/profiles/${channel}`, 'PUT', { ...desired })
+
+export const tickProfileStep = (channel: string, item: string, done: boolean) =>
+  marketingRequest<ChannelProfileView>(`/marketing/profiles/${channel}/checklist`, 'PUT', { item, done })
+
+export const checkChannelProfile = (channel: string) =>
+  marketingRequest<ChannelProfileView>(`/marketing/profiles/${channel}/check`, 'POST')
+
+export const applyChannelProfile = (channel: string, expected_hash: string) =>
+  marketingRequest<ChannelProfileView>(`/marketing/profiles/${channel}/apply`, 'POST', { expected_hash })
 
 export async function disconnectSocialChannel(channel: string): Promise<void> {
   await marketingRequest<{ ok: boolean }>(`/marketing/connections/${channel}`, 'DELETE')

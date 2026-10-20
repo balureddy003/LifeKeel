@@ -24,6 +24,7 @@ export const DELETABLE_COLLECTIONS = [
   'family_financial_profile',
   'freshness_state', // PRD-145
   'notification_ledger', // PRD-139
+  'push_failures', // PRD-140
   'perceived_protection', // PRD-141
   'value_events', // PRD-141
   'readiness_quiz_snapshots', // PRD-203: saved quiz results
@@ -71,6 +72,8 @@ export const DELETABLE_COLLECTIONS = [
   'mobile_push_tokens',
   // ── tenant-keyed growth/support surfaces ──
   'marketing_posts',
+  'content_items',
+  'channel_profiles',
   'social_connections',
   'support_cases',
   'referral_codes',

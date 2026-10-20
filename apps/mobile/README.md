@@ -47,6 +47,29 @@ the usual Xcode/Android settings noted below.
 - `USE_BIOMETRIC` permission is declared by the plugin.
 - Deep links: add `lifekeel.co.uk` App Links intent-filter when ready.
 
+## Push notifications (PRD-140) — what you need to provide
+
+The web app registers the device token (`subscribeNativePush` in `apps/web/src/lib/push.ts`)
+and the API sends through FCM (`apps/api/src/delivery/fcm-sender.ts`). **None of this has
+been tested on a real device or against a real Firebase project.** It does nothing until
+these are in place:
+
+1. **Firebase project** with Cloud Messaging enabled, and a service-account key
+   (Firebase console → Project settings → Service accounts). Set the whole JSON as
+   `FCM_SERVICE_ACCOUNT_JSON` on the API (Cloud Run secret). Without it the API never
+   selects the FCM sender.
+2. **Android:** add the app in Firebase and put `google-services.json` in the generated
+   `android/app/` after `pnpm add:android`.
+3. **iOS:** an APNs key (Apple developer account → Keys) uploaded to Firebase; the Push
+   Notifications capability and `aps-environment` entitlement in the generated Xcode
+   project; and the Firebase iOS SDK added to the shell (for example the
+   `FirebaseMessaging` pod), so the plugin returns an FCM token rather than a raw APNs
+   token. A raw APNs token cannot be used by the FCM sender.
+4. Test on a physical device. The iOS Simulator cannot receive remote push.
+
+A push shows on lock screens, so it carries only a generic title, a generic body and a
+deep link: never amounts, names or providers. On sign-out the app unregisters the token.
+
 ## How the web side talks to it
 
 `apps/web/src/lib/native.ts` detects `window.Capacitor?.isNativePlatform()`
@@ -74,3 +97,13 @@ user's region host (`apps/web/src/lib/region.ts`):
 **Not covered by automated tests:** that the Capacitor bridge and Preferences plugin
 are present on the `.si` page after the cross-origin redirect. Check it by hand in
 the iOS Simulator with the device region set to Slovenia before shipping a build.
+
+## Releasing to the stores
+
+`.github/workflows/release-mobile.yml` (dispatch-only, main-only) regenerates
+the gitignored projects via `scripts/prepare-*.sh` — which also apply the
+brand icons/splashes from `assets/` via `scripts/apply-icons.mjs` — then
+fastlane pushes the `.ipa` to TestFlight and the `.aab` to Play. One-time
+account/secret setup: [docs/mobile-release.md](../../docs/mobile-release.md).
+Listing copy, privacy declarations, and the submission checklist:
+[docs/mobile-store-listing.md](../../docs/mobile-store-listing.md).

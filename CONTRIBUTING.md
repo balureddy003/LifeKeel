@@ -105,6 +105,7 @@ flowchart LR
 | Weekly and on demand | CodeQL; container image builds | `security.yml`, `images.yml` |
 | Reviewing a PR | A person, optionally with their own coding agent (`/review-pr`) | [reviewing.md](docs/sdlc/reviewing.md) |
 | Deploy | CI-on-SHA check, then approval | `require-ci.yml`, the `deploy-*.yml` files |
+| Mobile store release | Manual dispatch, main-only; fastlane → TestFlight / Play | `release-mobile.yml`, [mobile-release.md](docs/mobile-release.md) |
 
 ## Working with Claude Code
 

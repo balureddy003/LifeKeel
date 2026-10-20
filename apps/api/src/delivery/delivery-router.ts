@@ -27,6 +27,7 @@ import {
   type DeliveryResult,
 } from './channels.js'
 import { RealWebPushSender, type WebPushSubscription } from './web-push-sender.js'
+import { CompositeMobilePushSender, FcmMobilePushSender } from './fcm-sender.js'
 import { recordDeliveryLatency } from '../routes/metrics.js'
 import { recordSpend, spendCost } from '../spend-ledger.js'
 import { decideSend, maybeOfferDigestOnly, recordSent } from './notification-budget.js'
@@ -110,7 +111,9 @@ export class DeliveryRouter {
   private webPush: WebPushChannel | undefined
   // Unlike WebPush, Expo's push API needs no per-tenant key/config — the
   // token itself routes the notification — so this is always wired.
-  private mobilePush = new MobilePushChannel(new RealMobilePushSender())
+  private mobilePush = new MobilePushChannel(
+    new CompositeMobilePushSender(new RealMobilePushSender(), new FcmMobilePushSender()),
+  )
 
   constructor(db: Db, moveJudge?: MoveJudge) {
     this.db = db
@@ -172,14 +175,23 @@ export class DeliveryRouter {
 
   // ─── Mobile (Expo) push token management ───────────────────────────────────
 
-  async saveMobilePushToken(tenantId: string, token: string): Promise<void> {
-    await this.db
-      .collection('mobile_push_tokens')
-      .updateOne(
-        { tenant_id: tenantId, token },
-        { $set: { tenant_id: tenantId, token, subscribed_at: new Date() } },
-        { upsert: true },
-      )
+  async saveMobilePushToken(
+    tenantId: string,
+    token: string,
+    platform?: 'ios' | 'android',
+  ): Promise<void> {
+    await this.db.collection('mobile_push_tokens').updateOne(
+      { tenant_id: tenantId, token },
+      {
+        $set: {
+          tenant_id: tenantId,
+          token,
+          ...(platform ? { platform } : {}),
+          subscribed_at: new Date(),
+        },
+      },
+      { upsert: true },
+    )
   }
 
   async removeMobilePushToken(tenantId: string, token: string): Promise<void> {
@@ -480,37 +492,83 @@ export class DeliveryRouter {
 
     const notification = this.buildNotification(insight, tenantId)
     let lastResult: DeliveryResult | null = null
+    let pushFailed = false
+
+    const delivered = async (result: DeliveryResult, fallbackFrom?: string) => {
+      await recordSent(budget, fallbackFrom ? { ...sendReq, fallback_from: fallbackFrom } : sendReq)
+      // Mark the insight delivered — the escalation worker's
+      // {state:'sent', delivered_at<=cutoff} filter needs this to know
+      // a notification went out and nobody acted. Only transitions from
+      // 'identified': a human approve/dismiss wins over delivery state,
+      // and an earlier delivered_at is never overwritten.
+      await this.db
+        .collection('insights')
+        .updateOne(
+          { id: notification.insight_id, tenant_id: tenantId, state: 'identified' },
+          { $set: { state: 'sent', delivered_at: new Date() } },
+        )
+      return result
+    }
+    const noteLatency = () => {
+      const createdAt = insight['created_at']
+      if (createdAt instanceof Date) {
+        recordDeliveryLatency(Math.max(0, (Date.now() - createdAt.getTime()) / 1000))
+      }
+    }
 
     for (const channel of prefs.channels) {
       const result = await this.sendOnChannel(channel, prefs, tenantId, notification)
       if (!result) continue // already delivered or channel not configured
 
       await this.recordReceipt(notification.insight_id, tenantId, result)
-      const createdAt = insight['created_at']
-      if (createdAt instanceof Date) {
-        recordDeliveryLatency(Math.max(0, (Date.now() - createdAt.getTime()) / 1000))
-      }
+      noteLatency()
       lastResult = result
 
-      if (result.success) {
-        await recordSent(budget, sendReq)
-        // Mark the insight delivered — the escalation worker's
-        // {state:'sent', delivered_at<=cutoff} filter needs this to know
-        // a notification went out and nobody acted. Only transitions from
-        // 'identified': a human approve/dismiss wins over delivery state,
-        // and an earlier delivered_at is never overwritten.
-        await this.db
-          .collection('insights')
-          .updateOne(
-            { id: notification.insight_id, tenant_id: tenantId, state: 'identified' },
-            { $set: { state: 'sent', delivered_at: new Date() } },
-          )
-        return result // stop at first success
-      }
+      if (result.success) return delivered(result) // stop at first success
+      if (channel === 'web_push' || channel === 'mobile_push') pushFailed = true
       // else fall through to next channel
     }
 
+    // PRD-140: email is the floor. A push that failed (expired subscription,
+    // revoked permission, dead device) must not mean a lost alert, so fall back
+    // to email when it was not already one of the tenant's channels. The
+    // fallback is recorded on the ledger entry.
+    if (pushFailed && prefs.email_to && !prefs.channels.includes('email')) {
+      const result = await this.sendOnChannel('email', prefs, tenantId, notification)
+      if (result) {
+        await this.recordReceipt(notification.insight_id, tenantId, result)
+        lastResult = result
+        if (result.success) return delivered(result, 'push')
+      }
+    }
+
     return lastResult
+  }
+
+  /**
+   * A push endpoint or token the provider says is gone: remove it, record the
+   * failure (counts and time only), and switch the channel off when it was the
+   * tenant's last device, so a dead device never silently swallows alerts.
+   */
+  private async dropDeadDevice(
+    tenantId: string,
+    channel: 'web_push' | 'mobile_push',
+    deviceId: string,
+  ): Promise<void> {
+    try {
+      if (channel === 'web_push') {
+        await this.removePushSubscription(tenantId, deviceId)
+        await this.disableWebPushIfNoSubscriptions(tenantId)
+      } else {
+        await this.removeMobilePushToken(tenantId, deviceId)
+        await this.disableMobilePushIfNoTokens(tenantId)
+      }
+      await this.db
+        .collection('push_failures')
+        .insertOne({ tenant_id: tenantId, channel, reason: 'device_gone', at: new Date() })
+    } catch {
+      // cleanup only: never changes whether the alert is delivered
+    }
   }
 
   /**
@@ -577,6 +635,7 @@ export class DeliveryRouter {
       for (const sub of subs) {
         pushResult = await this.webPush.send(sub, notification)
         if (pushResult.success) break // stop at first successful device
+        if (pushResult.permanent) await this.dropDeadDevice(tenantId, 'web_push', sub.endpoint)
       }
       return (
         pushResult ?? {
@@ -594,6 +653,7 @@ export class DeliveryRouter {
       for (const token of tokens) {
         pushResult = await this.mobilePush.send(token, notification)
         if (pushResult.success) break // stop at first successful device
+        if (pushResult.permanent) await this.dropDeadDevice(tenantId, 'mobile_push', token)
       }
       return (
         pushResult ?? {

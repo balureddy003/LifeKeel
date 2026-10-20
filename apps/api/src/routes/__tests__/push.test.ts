@@ -118,7 +118,10 @@ describe('POST /push/unsubscribe', () => {
       payload: { endpoint: 'https://push.example.com/sub/abc' },
     })
     expect(res.statusCode).toBe(200)
-    expect(router.removePushSubscription).toHaveBeenCalledWith(TENANT, 'https://push.example.com/sub/abc')
+    expect(router.removePushSubscription).toHaveBeenCalledWith(
+      TENANT,
+      'https://push.example.com/sub/abc',
+    )
     expect(router.disableWebPushIfNoSubscriptions).toHaveBeenCalledWith(TENANT)
   })
 })
@@ -146,8 +149,27 @@ describe('POST /push/mobile/subscribe', () => {
       payload: { token, tenant_id: 'someone-else' },
     })
     expect(res.statusCode).toBe(200)
-    expect(router.saveMobilePushToken).toHaveBeenCalledWith(TENANT, token)
+    expect(router.saveMobilePushToken).toHaveBeenCalledWith(TENANT, token, undefined)
     expect(router.enableMobilePush).toHaveBeenCalledWith(TENANT)
+  })
+
+  it('keeps a known platform and drops anything else (PRD-140)', async () => {
+    const router = makeRouter()
+    const app = await buildApp(router)
+    const token = 'a-valid-device-token-12345'
+    for (const [platform, expected] of [
+      ['ios', 'ios'],
+      ['android', 'android'],
+      ['windows-phone', undefined],
+    ] as const) {
+      router.saveMobilePushToken.mockClear()
+      await app.inject({
+        method: 'POST',
+        url: '/push/mobile/subscribe',
+        payload: { token, platform },
+      })
+      expect(router.saveMobilePushToken).toHaveBeenCalledWith(TENANT, token, expected)
+    }
   })
 })
 

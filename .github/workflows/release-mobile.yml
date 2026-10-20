@@ -1,0 +1,203 @@
+name: Release mobile
+
+# Manual trigger only — the same deploy model as deploy-web.yml: releases are
+# human-gated on purpose, never a side effect of a green CI run. Repo is public
+# so runner minutes are free; the jobs below stay dispatch-only anyway so an
+# accidental push can never burn a TestFlight/Play upload slot.
+#
+# One-time setup (accounts, App ID, secrets) is in docs/mobile-release.md —
+# every secret name used here is listed there.
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Which store build to produce'
+        type: choice
+        required: true
+        default: 'all'
+        options:
+          - all
+          - ios
+          - android
+      build_number:
+        description: 'CFBundleVersion / versionCode (defaults to run number)'
+        type: string
+        required: false
+      version_name:
+        description: 'CFBundleShortVersionString / versionName'
+        type: string
+        required: false
+        default: '0.1.0'
+      android_track:
+        description: 'Play Console track'
+        type: choice
+        required: false
+        default: 'internal'
+        options:
+          - internal
+          - alpha
+          - beta
+          - production
+
+# One release at a time; never cancel a store upload mid-flight.
+concurrency:
+  group: release-mobile
+  cancel-in-progress: false
+
+jobs:
+  # Same convention as deploy-web.yml: releases run from main only.
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Releases run from main only
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "::error::Run this workflow from main (got $REF). Choose 'Use workflow from: main'."
+            exit 1
+          fi
+
+  ios:
+    needs: guard
+    if: ${{ inputs.platform == 'ios' || inputs.platform == 'all' }}
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      BUILD_NUMBER: ${{ inputs.build_number || github.run_number }}
+      VERSION_NAME: ${{ inputs.version_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install workspace deps (mobile package only)
+        run: pnpm install --frozen-lockfile --filter @lifekeel/mobile
+
+      - name: Check secrets are configured
+        run: |
+          missing=0
+          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 APPLE_TEAM_ID; do
+            if [ -z "${!v:-}" ]; then echo "::error::Missing secret/env $v — see docs/mobile-release.md"; missing=1; fi
+          done
+          exit $missing
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Generate and prepare the iOS project
+        working-directory: apps/mobile
+        run: ./scripts/prepare-ios.sh
+
+      - name: Decode App Store Connect API key
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "${{ secrets.ASC_KEY_P8 }}" | base64 -d > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+          working-directory: apps/mobile
+
+      - name: Build and upload to TestFlight
+        working-directory: apps/mobile
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: bundle exec fastlane beta
+
+      - name: Upload the ipa as an artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifekeel-ios
+          path: apps/mobile/*.ipa
+          retention-days: 30
+
+  android:
+    needs: guard
+    if: ${{ inputs.platform == 'android' || inputs.platform == 'all' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BUILD_NUMBER: ${{ inputs.build_number || github.run_number }}
+      VERSION_NAME: ${{ inputs.version_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install workspace deps (mobile package only)
+        run: pnpm install --frozen-lockfile --filter @lifekeel/mobile
+
+      - name: Check secrets are configured
+        run: |
+          missing=0
+          for v in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD PLAY_SERVICE_ACCOUNT_JSON; do
+            if [ -z "${!v:-}" ]; then echo "::error::Missing secret $v — see docs/mobile-release.md"; missing=1; fi
+          done
+          exit $missing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+
+      - name: Decode keystore, Play service account, and google-services.json
+        working-directory: apps/mobile
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > /tmp/upload-keystore.jks
+          echo "${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}" | base64 -d > /tmp/play-service-account.json || \
+            echo "${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}" > /tmp/play-service-account.json
+          if [ -n "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
+            echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d > /tmp/google-services.json
+          fi
+
+      - name: Generate and prepare the Android project
+        working-directory: apps/mobile
+        env:
+          ANDROID_KEYSTORE_PATH: /tmp/upload-keystore.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          GOOGLE_SERVICES_PATH: /tmp/google-services.json
+        run: ./scripts/prepare-android.sh
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+          working-directory: apps/mobile
+
+      - name: Build and upload to Play
+        working-directory: apps/mobile
+        env:
+          PLAY_SERVICE_ACCOUNT_PATH: /tmp/play-service-account.json
+          ANDROID_TRACK: ${{ inputs.android_track }}
+        run: bundle exec fastlane beta
+
+      - name: Upload the aab as an artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifekeel-android
+          path: apps/mobile/android/app/build/outputs/bundle/release/*.aab
+          retention-days: 30

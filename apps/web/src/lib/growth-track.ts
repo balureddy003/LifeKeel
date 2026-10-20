@@ -43,3 +43,15 @@ export function track(event: string, meta?: Record<string, unknown>): void {
     // let tracking break the page it's tracking.
   }
 }
+
+/** The utm_* tags on the current URL, for events that start a visit (PRD-210 funnel). */
+export function currentUtm(): Record<string, string> | undefined {
+  if (typeof window === 'undefined') return undefined
+  const out: Record<string, string> = {}
+  const q = new URLSearchParams(window.location.search)
+  for (const k of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content'] as const) {
+    const v = q.get(k)
+    if (v) out[k] = v.slice(0, 100)
+  }
+  return Object.keys(out).length ? out : undefined
+}
