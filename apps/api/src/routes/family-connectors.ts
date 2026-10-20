@@ -23,6 +23,9 @@
  * echoed back in any response.
  */
 
+import { getAuditLogger } from '../audit/audit-log.js'
+import { deleteMailboxData, isMailboxConnector, MAILBOX_KEPT } from '../deletion/mailbox.js'
+import { closeReceipt, openReceipt, publicReceipt, saveReceipt } from '../deletion/receipt.js'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { z } from 'zod'
@@ -239,12 +242,10 @@ export function registerFamilyConnectorRoutes(fastify: FastifyInstance, db: Db):
         .send({ error: 'Sandbox banking is not available in this environment' })
     }
     if (providerId === 'truelayer' && process.env['OPEN_BANKING_TOKENS'] !== '1') {
-      return reply
-        .status(503)
-        .send({
-          error:
-            'Bank connections need a regulated partner that is not onboarded yet — add accounts manually in your Financial Profile for now',
-        })
+      return reply.status(503).send({
+        error:
+          'Bank connections need a regulated partner that is not onboarded yet — add accounts manually in your Financial Profile for now',
+      })
     }
 
     const provider = resolveAccountInfoProvider(providerId)
@@ -325,24 +326,50 @@ export function registerFamilyConnectorRoutes(fastify: FastifyInstance, db: Db):
   })
 
   // ── POST /connectors/:id/disconnect ─────────────────────────────────────
-  fastify.post<{ Params: { id: string } }>('/connectors/:id/disconnect', async (req, reply) => {
-    const { tenant_id } = req.authContext
-    const connectorId = req.params.id
+  // Body { delete_data: true } on a mailbox also deletes what was read from it
+  // (PRD-146) and returns a receipt. Without it the token is revoked and the
+  // inbox summaries and saved attachments are kept, which the response says.
+  fastify.post<{ Params: { id: string }; Body: { delete_data?: boolean } | undefined }>(
+    '/connectors/:id/disconnect',
+    async (req, reply) => {
+      const { tenant_id } = req.authContext
+      const connectorId = req.params.id
 
-    const result = (await getTenantCollection<Record<string, unknown>>(
-      db,
-      'connector_credentials',
-      tenant_id,
-    ).deleteOne({
-      connector_id: connectorId,
-    })) as { deletedCount?: number }
+      if (isMailboxConnector(connectorId) && req.body?.delete_data === true) {
+        // Allowed even when the mailbox is already disconnected: this is how a
+        // family removes what an earlier disconnect left behind.
+        const receipt = openReceipt(tenant_id, 'mailbox')
+        getAuditLogger()?.fromRequest(req, 'mailbox.deleted', 'connector', connectorId, {
+          receipt_id: receipt.id,
+        })
+        const result = await deleteMailboxData(db, tenant_id)
+        const closed = closeReceipt(receipt, { ...result, kept: MAILBOX_KEPT })
+        await saveReceipt(db, closed)
+        log.info(
+          { connectorId, tenant_id, status: closed.status },
+          'Mailbox disconnected with data deleted',
+        )
+        return { success: true, receipt: publicReceipt(closed) }
+      }
 
-    if (result.deletedCount === 0) {
-      return reply.status(404).send({ error: 'Connector was not connected' })
-    }
+      const result = (await getTenantCollection<Record<string, unknown>>(
+        db,
+        'connector_credentials',
+        tenant_id,
+      ).deleteOne({
+        connector_id: connectorId,
+      })) as { deletedCount?: number }
 
-    log.info({ connectorId, tenant_id }, 'Connector disconnected')
+      if (result.deletedCount === 0) {
+        return reply.status(404).send({ error: 'Connector was not connected' })
+      }
 
-    return { success: true }
-  })
+      log.info({ connectorId, tenant_id }, 'Connector disconnected')
+
+      // A mailbox disconnect without delete_data revokes access only.
+      return isMailboxConnector(connectorId)
+        ? { success: true, derived_data_kept: true }
+        : { success: true }
+    },
+  )
 }

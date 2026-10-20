@@ -146,11 +146,54 @@ export const CUSTOM_DELETES: ReadonlyArray<{
 ]
 
 /**
- * Wipe every tenant-tagged collection for `tenantId`. Safe to re-run —
- * deletes are idempotent, so this doubles as the post-restore replay for
- * tenants whose tombstone (status:'deleted') predates the backup.
+ * What a family would call each kind of data, for receipts. Collections not
+ * listed fall under "other family data". Names only; a receipt never carries
+ * content.
  */
-export async function eraseTenantData(db: Db, tenantId: string): Promise<void> {
+export const ERASURE_CATEGORY: Record<string, string> = {
+  users: 'account',
+  family_groups: 'family roster',
+  family_financial_profile: 'financial profile',
+  documents: 'documents and what was read from them',
+  'documents.files': 'documents and what was read from them',
+  inbox_items: 'inbox summaries',
+  insights: 'insights and alerts',
+  signals: 'insights and alerts',
+  events: 'insights and alerts',
+  readiness_events: 'insights and alerts',
+  connector_credentials: 'connected services',
+  connector_sync_state: 'connected services',
+  web_push_subscriptions: 'notification devices',
+  mobile_push_tokens: 'notification devices',
+  tenant_keys: 'encryption keys',
+  agent_memory: 'AI working data',
+  llm_cache: 'AI working data',
+  llm_spans: 'AI working data',
+  llm_usage: 'AI working data',
+  llm_guard_events: 'AI working data',
+}
+export const OTHER_CATEGORY = 'other family data'
+const categoryOf = (collection: string) => ERASURE_CATEGORY[collection] ?? OTHER_CATEGORY
+
+export interface ErasureReport {
+  removed: { category: string; count: number }[]
+  /** Rows still present after the wipe, by category; empty when the check passed. */
+  residual: { category: string; count: number }[]
+}
+
+const tally = (rows: { category: string; count: number }[]) => {
+  const by = new Map<string, number>()
+  for (const r of rows) by.set(r.category, (by.get(r.category) ?? 0) + r.count)
+  return [...by].filter(([, n]) => n > 0).map(([category, count]) => ({ category, count }))
+}
+
+/**
+ * Wipe every tenant-tagged collection for `tenantId` and report what went and
+ * what, if anything, is still there. Safe to re-run: deletes are idempotent,
+ * so this doubles as the resume path after a partial failure and the
+ * post-restore replay for tombstoned tenants.
+ */
+export async function eraseTenantDataReport(db: Db, tenantId: string): Promise<ErasureReport> {
   // Resolve the keys non-standard collections are wiped by BEFORE any
   // deletion runs: lifecycle_sends is keyed by recipient/email, so the
   // tenant's user ids and addresses are needed while users still exist.
@@ -164,6 +207,7 @@ export async function eraseTenantData(db: Db, tenantId: string): Promise<void> {
     userIds: memberUsers.map((u) => String(u['id'])),
     userEmails: memberUsers.map((u) => String(u['email'])),
   }
+  const removed: { category: string; count: number }[] = []
 
   // GridFS document blobs are keyed by metadata.tenant_id — delete them
   // before the metadata rows below so a partial failure leaves orphaned
@@ -178,16 +222,47 @@ export async function eraseTenantData(db: Db, tenantId: string): Promise<void> {
   for (const f of files) {
     try {
       await bucket.delete(f._id)
+      removed.push({ category: categoryOf('documents.files'), count: 1 })
     } catch {
       /* blob may already be gone */
     }
   }
 
   for (const d of CUSTOM_DELETES) {
-    await db.collection(d.collection).deleteMany(d.filter(deleteCtx))
+    const r = await db.collection(d.collection).deleteMany(d.filter(deleteCtx))
+    removed.push({ category: categoryOf(d.collection), count: r.deletedCount })
   }
 
   for (const name of DELETABLE_COLLECTIONS) {
-    await db.collection(name).deleteMany({ tenant_id: tenantId })
+    const r = await db.collection(name).deleteMany({ tenant_id: tenantId })
+    removed.push({ category: categoryOf(name), count: r.deletedCount })
   }
+
+  // Verify: count what is left in every place the wipe touched. A non-zero
+  // result is reported, never hidden; the replay job retries it.
+  const residual: { category: string; count: number }[] = []
+  residual.push({
+    category: categoryOf('documents.files'),
+    count: await db
+      .collection('documents.files')
+      .countDocuments({ 'metadata.tenant_id': tenantId }),
+  })
+  for (const d of CUSTOM_DELETES) {
+    residual.push({
+      category: categoryOf(d.collection),
+      count: await db.collection(d.collection).countDocuments(d.filter(deleteCtx)),
+    })
+  }
+  for (const name of DELETABLE_COLLECTIONS) {
+    residual.push({
+      category: categoryOf(name),
+      count: await db.collection(name).countDocuments({ tenant_id: tenantId }),
+    })
+  }
+  return { removed: tally(removed), residual: tally(residual) }
+}
+
+/** The wipe without the report, for callers that only need it done (replay of tombstones). */
+export async function eraseTenantData(db: Db, tenantId: string): Promise<void> {
+  await eraseTenantDataReport(db, tenantId)
 }

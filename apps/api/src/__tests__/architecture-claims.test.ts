@@ -55,6 +55,8 @@ const KNOWN_ERASURE_GAPS = new Set<string>([])
 const EXEMPT_COLLECTIONS = new Set([
   // audit + security trail (7-yr retention stated in account.ts header)
   'audit_log',
+  // PRD-146: proof that a deletion ran (counts by category, no content), kept 7 years like audit_log
+  'deletion_receipts',
   'operator_audit_log',
   'login_events',
   // operator control plane

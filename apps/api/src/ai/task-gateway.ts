@@ -26,6 +26,8 @@ import {
   LlmBudgetGuard,
   createGuardEventSink,
   createLlmRouterFromEnv,
+  detectActiveProvider,
+  parseProcessorRegistry,
   governedDecide,
   governedLlm,
   governedVision,
@@ -39,6 +41,8 @@ import {
   type DecisionFn,
   type LlmFn,
   type LlmTokenUsage,
+  type ProcessorRegistry,
+  type ProcessorViolation,
   type TaskGatewayDeps,
   type TaskRegistry,
   type VisionFn,
@@ -47,19 +51,96 @@ import { createLogger } from '@lifekeel/platform'
 import { deploymentConfig } from '../config/deployment.js'
 import { checkPlanSpendBudget } from '../spend-ledger.js'
 import { familyDataLlmFromEnv, localDecisionFromEnv } from '../local-model.js'
-import { recordLocalModelCall } from '../routes/metrics.js'
+import { recordLocalModelCall, recordProcessorViolation } from '../routes/metrics.js'
 
 const log = createLogger({ service: 'task-gateway', version: '0.0.0' })
 
 let deps: TaskGatewayDeps | null = null
 let registry: TaskRegistry = new Map()
+let processorRegistry: ProcessorRegistry = new Map()
 let usageLedger: CostLedger | null = null
 let llmBudgetGuard: LlmBudgetGuard
 
-/** Load + validate the registry and build the shared dependency set. */
+export type ProcessorEnforcement = 'off' | 'warn' | 'enforce'
+
+/**
+ * AI_PROCESSOR_ENFORCEMENT (PRD-142). Default `warn`: a call whose processor is
+ * not approved is logged and counted but still served, so deploying this does
+ * not break a live product whose hosted processors have not been reviewed yet.
+ * `enforce` refuses such calls; do not set it until the hosted processors this
+ * deployment uses are approved in definitions/ai-processors.yaml.
+ */
+export function processorEnforcementFromEnv(
+  raw: string | undefined = process.env['AI_PROCESSOR_ENFORCEMENT'],
+): ProcessorEnforcement {
+  if (raw === 'off' || raw === 'warn' || raw === 'enforce') return raw
+  if (raw) log.error({ value: raw }, "Invalid AI_PROCESSOR_ENFORCEMENT, using 'warn'")
+  return 'warn'
+}
+
+/** Map the router's provider name to a processor-registry id. */
+function processorForProvider(provider: string | null): string {
+  // createLlmRouterFromEnv defaults to anthropic when nothing is configured.
+  return provider === null || provider === 'auto' ? 'anthropic' : provider
+}
+
+const localTextConfigured = () =>
+  !!process.env['LOCAL_JUDGE_BASE_URL'] && process.env['LOCAL_TEXT_ENABLED'] === 'true'
+
+/**
+ * Which processor will serve a task in this deployment. Mirrors baseFor():
+ * a `lifekeel_infra` task runs on the self-hosted model only when it is on,
+ * and otherwise falls back to the hosted router. That fallback is exactly what
+ * the processor check exists to see.
+ */
+export function resolveServingProcessor(policy: AiTaskPolicy): string | null {
+  switch (policy.data_boundary) {
+    case 'device_only':
+      return null
+    case 'lifekeel_infra_required':
+      return 'ollama'
+    case 'lifekeel_infra':
+      return localTextConfigured() ? 'ollama' : processorForProvider(detectActiveProvider())
+    default:
+      return processorForProvider(detectActiveProvider())
+  }
+}
+
+function onProcessorViolation(v: ProcessorViolation, mode: 'warn' | 'enforce'): void {
+  recordProcessorViolation(v.reason, mode)
+  // Names and reasons only: never a prompt, completion or tenant.
+  log.warn(
+    { task_id: v.task_id, processor: v.processor, reason: v.reason, mode },
+    mode === 'enforce'
+      ? 'AI call refused by processor policy'
+      : 'AI call served despite processor policy',
+  )
+}
+
+/** The loaded processor registry, for the disclosure endpoint. */
+export function getProcessorRegistry(): ProcessorRegistry {
+  return processorRegistry
+}
+
+export function getTaskRegistry(): TaskRegistry {
+  return registry
+}
+
+/** Load + validate the registries and build the shared dependency set. */
 export function initTaskGateway(db: Db): void {
   const path = join(repoRoot(), 'definitions', 'ai-tasks.yaml')
   registry = parseTaskRegistry(loadYaml(readFileSync(path, 'utf8')))
+  processorRegistry = parseProcessorRegistry(
+    loadYaml(readFileSync(join(repoRoot(), 'definitions', 'ai-processors.yaml'), 'utf8')),
+  )
+  // Every processor a task names must exist, so a typo cannot silently block or allow a call.
+  for (const [taskId, policy] of registry) {
+    for (const id of policy.allowed_processors ?? []) {
+      if (!processorRegistry.has(id)) {
+        throw new Error(`Task '${taskId}' allows unknown processor '${id}'`)
+      }
+    }
+  }
   usageLedger = new CostLedger(db)
   llmBudgetGuard = new LlmBudgetGuard(db)
   deps = {
@@ -78,12 +159,26 @@ export function initTaskGateway(db: Db): void {
         return checkPlanSpendBudget(db, tenantId, policy)
       },
     },
+    processorGuard: {
+      mode: processorEnforcementFromEnv(),
+      registry: processorRegistry,
+      resolveProcessor: resolveServingProcessor,
+      onProcessorViolation,
+    },
     guardEventSink: createGuardEventSink(db, 'task-gateway'),
     onCall: (e) => {
       if (!e.ok) recordLocalModelCall('task', false, e.latency_ms / 1000, 0, 0)
     },
   }
-  log.info({ tasks: registry.size, fail_closed: deps.failClosed }, 'AI task registry loaded')
+  log.info(
+    {
+      tasks: registry.size,
+      processors: processorRegistry.size,
+      fail_closed: deps.failClosed,
+      processor_enforcement: deps.processorGuard?.mode,
+    },
+    'AI task registry loaded',
+  )
 }
 
 /** For tests and dev scripts that run without boot. */
@@ -198,7 +293,8 @@ export function taskDecide(
     throw new TaskPolicyError('Task gateway not initialised — call initTaskGateway(db) first')
   if (!raw) return undefined
   resolveTaskPolicy(registry, taskId, deps.failClosed ?? true) // resolve eagerly so unknown tasks fail here
-  return governedDecide(raw, deps, taskId, tenantId)
+  // A DecisionFn is the self-hosted decision model by construction.
+  return governedDecide(raw, deps, taskId, tenantId, { processor: 'ollama' })
 }
 
 export function taskDecideFor(
@@ -226,7 +322,7 @@ export async function taskVision(taskId: string, tenantId: string): Promise<Visi
   const { resolveVisionClient } = await import('../ocr/extract.js')
   const vision = await resolveVisionClient()
   if (!vision) return undefined
-  const { client, model } = vision
+  const { client, model, provider } = vision
   const base: VisionFn = async (content) => {
     const started = Date.now()
     const response = await client.chat.completions.create({
@@ -247,5 +343,5 @@ export async function taskVision(taskId: string, tenantId: string): Promise<Visi
     }
     return response.choices[0]?.message?.content ?? ''
   }
-  return governedVision(base, deps, taskId, tenantId)
+  return governedVision(base, deps, taskId, tenantId, { processor: provider })
 }

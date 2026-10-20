@@ -25,6 +25,7 @@ interface FakeCollection {
   findOne: ReturnType<typeof vi.fn>
   find: ReturnType<typeof vi.fn>
   deleteMany: ReturnType<typeof vi.fn>
+  countDocuments: ReturnType<typeof vi.fn>
   updateOne: ReturnType<typeof vi.fn>
 }
 
@@ -54,6 +55,16 @@ function makeCol(docs: Record<string, unknown>[]): FakeCollection {
       }),
       toArray: async () => docs.filter((d) => Object.entries(filter).every(([k, v]) => d[k] === v)),
     })),
+    // The post-deletion check (PRD-146) counts what is left, GridFS rows by metadata.tenant_id.
+    countDocuments: vi.fn(
+      async (filter: Record<string, unknown>) =>
+        docs.filter((d) => {
+          const meta = d['metadata'] as Record<string, unknown> | undefined
+          return Object.entries(filter).every(([k, v]) =>
+            k === 'metadata.tenant_id' ? meta?.['tenant_id'] === v : d[k] === v,
+          )
+        }).length,
+    ),
     deleteMany: vi.fn(async (filter: Record<string, unknown>) => {
       const before = docs.length
       for (let i = docs.length - 1; i >= 0; i--) {
@@ -119,6 +130,11 @@ function makeDb() {
     ]),
     support_cases: makeCol([{ tenant_id: TENANT, id: 'sc1' }]),
   }
+  // GridFS deletion can't be emulated by this fake (bucket.delete needs a real
+  // server), so the post-deletion check reports no blob left. The real blob
+  // removal and its verification are covered against MongoDB in
+  // deletion/__tests__/deletion.test.ts.
+  cols['documents.files']!.countDocuments = vi.fn(async () => 0)
   const db = {
     cols,
     collection: (name: string) => cols[name] ?? (cols[name] = makeCol([])),

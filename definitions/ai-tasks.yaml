@@ -7,6 +7,13 @@
 # guards, budget check and usage→cost-ledger recording. An unknown task_id
 # is a hard failure in production (fail closed) and a warn+default in dev.
 #
+# `allowed_processors` (PRD-142) names which entries in definitions/ai-processors.yaml
+# may serve a task. `ollama` is the self-hosted model; the rest are hosted and
+# are only usable once that processor is approved. A hosted fallback is listed
+# only where the task's own terms say one is acceptable; `[]` is for a
+# device_only task, which has no server-side processor at all. Groq is
+# deliberately not listed for any task.
+#
 # Fields are the enforceable subset of the full AiTaskPolicy interface.
 # Terms/retention/review fields stay documentation until the processor-
 # terms enforcement lands (they are still required so an entry cannot be
@@ -23,6 +30,7 @@ tasks:
     processor_terms_ref: anthropic/openai API terms — not used for training
     provider_retention_class: service_transient
     allowed_models: [tier:fast]
+    allowed_processors: [ollama, anthropic, openai, azure]
     primary_model: tier:fast
     preferred_execution: hosted_sync
     deadline_ms: 30000
@@ -39,6 +47,7 @@ tasks:
     processor_terms_ref: anthropic/openai API terms — not used for training
     provider_retention_class: service_transient
     allowed_models: [tier:fast]
+    allowed_processors: [ollama, anthropic, openai, azure]
     primary_model: tier:fast
     preferred_execution: hosted_sync
     deadline_ms: 30000
@@ -55,6 +64,7 @@ tasks:
     processor_terms_ref: self-hosted Ollama — data stays in LifeKeel infra
     provider_retention_class: none
     allowed_models: [tier:fast]
+    allowed_processors: [ollama]
     primary_model: tier:fast
     preferred_execution: local_cpu
     deadline_ms: 120000
@@ -71,6 +81,7 @@ tasks:
     processor_terms_ref: self-hosted Ollama or approved hosted fallback
     provider_retention_class: none
     allowed_models: [tier:balanced]
+    allowed_processors: [ollama, anthropic, openai, azure]
     primary_model: tier:balanced
     preferred_execution: local_cpu
     deadline_ms: 120000
@@ -87,6 +98,7 @@ tasks:
     processor_terms_ref: self-hosted Ollama — data stays in LifeKeel infra
     provider_retention_class: none
     allowed_models: [tier:balanced]
+    allowed_processors: [ollama]
     primary_model: tier:balanced
     preferred_execution: local_cpu
     deadline_ms: 120000
@@ -103,6 +115,7 @@ tasks:
     processor_terms_ref: self-hosted Ollama or approved hosted fallback
     provider_retention_class: none
     allowed_models: [tier:fast]
+    allowed_processors: [ollama, anthropic, openai, azure]
     primary_model: tier:fast
     preferred_execution: local_cpu
     deadline_ms: 60000
@@ -119,6 +132,7 @@ tasks:
     processor_terms_ref: self-hosted Ollama or approved hosted fallback
     provider_retention_class: none
     allowed_models: [tier:fast]
+    allowed_processors: [ollama, anthropic, openai, azure]
     primary_model: tier:fast
     preferred_execution: local_cpu
     deadline_ms: 60000
@@ -135,6 +149,7 @@ tasks:
     processor_terms_ref: anthropic/openai API terms — not used for training
     provider_retention_class: service_transient
     allowed_models: [tier:balanced]
+    allowed_processors: [anthropic, openai, azure]
     primary_model: tier:balanced
     preferred_execution: hosted_sync
     deadline_ms: 30000
@@ -151,6 +166,7 @@ tasks:
     processor_terms_ref: self-hosted Ollama — data stays in LifeKeel infra
     provider_retention_class: none
     allowed_models: [tier:fast]
+    allowed_processors: [ollama]
     primary_model: tier:fast
     preferred_execution: local_cpu
     deadline_ms: 120000
@@ -167,6 +183,7 @@ tasks:
     processor_terms_ref: anthropic/openai API terms — not used for training
     provider_retention_class: service_transient
     allowed_models: [tier:fast]
+    allowed_processors: [ollama, anthropic, openai, azure]
     primary_model: tier:fast
     preferred_execution: hosted_sync
     deadline_ms: 30000
@@ -183,6 +200,7 @@ tasks:
     processor_terms_ref: on-device WebLLM — no data leaves the device
     provider_retention_class: none
     allowed_models: [on_device]
+    allowed_processors: []
     primary_model: on_device
     preferred_execution: on_device
     deadline_ms: 60000
@@ -199,6 +217,7 @@ tasks:
     processor_terms_ref: anthropic/openai API terms — not used for training
     provider_retention_class: service_transient
     allowed_models: [tier:fast]
+    allowed_processors: [ollama, anthropic, openai, azure]
     primary_model: tier:fast
     preferred_execution: hosted_sync
     deadline_ms: 30000
@@ -215,6 +234,7 @@ tasks:
     processor_terms_ref: anthropic/openai API terms — not used for training
     provider_retention_class: service_transient
     allowed_models: [tier:fast]
+    allowed_processors: [anthropic, openai, azure]
     primary_model: tier:fast
     preferred_execution: hosted_sync
     deadline_ms: 30000
@@ -238,6 +258,7 @@ tasks:
     processor_terms_ref: none — self-hosted only, no processor
     provider_retention_class: none
     allowed_models: [tier:fast]
+    allowed_processors: [ollama]
     primary_model: tier:fast
     preferred_execution: local_cpu
     deadline_ms: 20000

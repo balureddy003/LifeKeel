@@ -135,6 +135,7 @@ export {
 } from './memory/LocalEmbeddingProvider.js'
 export type { LocalEmbeddingOptions } from './memory/LocalEmbeddingProvider.js'
 export { repoRoot } from './repo-root.js'
+export { detectActiveProvider } from './llm.js'
 export {
   parseTaskRegistry,
   resolveTaskPolicy,
@@ -143,8 +144,22 @@ export {
   governedVision,
   llmCallContext,
   TaskPolicyError,
+  ProcessorPolicyError,
   TaskDeadlineError,
 } from './task-gateway.js'
+export {
+  parseProcessorRegistry,
+  checkProcessorForTask,
+  ProcessorRegistryError,
+  NOT_REVIEWED,
+} from './ai-processors.js'
+export type {
+  ProcessorEntry,
+  ProcessorRegistry,
+  ProcessorViolation,
+  ProcessorViolationReason,
+  RetentionClass,
+} from './ai-processors.js'
 export type {
   AiTaskPolicy,
   TaskRegistry,
@@ -153,4 +168,3 @@ export type {
   VisionContent,
   VisionFn,
 } from './task-gateway.js'
-
