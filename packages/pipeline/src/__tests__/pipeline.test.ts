@@ -85,15 +85,15 @@ describe('connector definitions', () => {
     expect(() => ConnectorConfigSchema.parse(bad)).toThrow()
   })
 
-  it('accepts http_basic auth and finance/investment categories', () => {
+  it('accepts http_basic auth and finance categories', () => {
     const connector = {
-      id: 'trading-212-test',
-      name: 'Trading 212 Test',
-      provider: 'trading-212',
-      category: 'investment',
-      base_url: 'https://demo.trading212.com/api/v0',
+      id: 'xero-test',
+      name: 'Xero Test',
+      provider: 'xero',
+      category: 'finance',
+      base_url: 'https://api.xero.com/api.xro/2.0',
       auth: { type: 'http_basic' },
-      signal_types: ['portfolio.position'],
+      signal_types: ['invoice.overdue'],
     }
     expect(() => ConnectorConfigSchema.parse(connector)).not.toThrow()
   })

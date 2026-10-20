@@ -257,13 +257,52 @@ transform, so the path was unreachable as well as undocumented. Also
 removed: the `method: 'CLI'` schema value itself, so no future connector
 YAML can reintroduce a local-script execution path silently.
 
-Left in place (a deliberate scope line for this pass): the remaining
-market-data machinery — `alpha_vantage`/`hf_data`/`finnhub`/`polygon`/
-`cboe`/`fred`/`google_trends` record transforms, `symbols_param` and
-`resolveSymbolsFromPortfolio`, and the `investment`-category entries in
-`ConnectorRegistry`. Equally unreachable today, but pure-HTTP TypeScript
-with no external dependency or image cost; removing it means deleting its
-test coverage too and is worth its own reviewed pass.
+Left in place at the time (a deliberate scope line): the remaining
+market-data machinery — removed in the pass below.
+
+## Removed: the rest of the trading-vertical connector surface (2026-10-21)
+
+The follow-up to the yfinance pass — the entire remaining market-data and
+broker connector surface, all unreachable: none of the six connectors had a
+sync YAML under `connectors/`, the family connector allowlist never offered
+them, and nothing in `apps/api` or `packages/engine` consumes
+`market_price`/`company_fundamentals`/`portfolio_position` signals.
+
+Removed:
+- `ConnectorRegistry` `investment` entries: `trading-212`, `zerodha`,
+  `alpha-vantage`, `hf-data`, `finnhub`, `polygon` — including Trading
+  212/Zerodha write actions (`place_market_order`, `place_regular_order`,
+  `cancel_order`, pie management). This also drops the `investment`
+  `ConnectorCategory` and the `oauth2_kite` `AuthMethod`.
+- `packages/pipeline`: all 15 `record_transform` implementations
+  (`alpha_vantage_*`, `hf_data_*`, `finnhub_*`, `polygon_*`, `cboe_*`,
+  `fred_*`, `google_trends_*`), the `symbols_param`/`resolveSymbolsFromPortfolio`
+  fan-out, `{symbol}`/`{apikey}`/`{from}`/`{to}` path substitution, CBOE
+  CSV handling, resource `cadence` polling windows, the Trading 212
+  `enrichTradingSignal`/instrument-filter/stale-position branches, and the
+  `record_transform`/`symbols_param`/`cadence` schema fields.
+- `oauth2_kite` (Zerodha Kite Connect) end to end: the auth header builder,
+  the per-tenant api_key/api_secret login redirect and request_token→
+  checksum token exchange in `connector-credentials.ts`, and the
+  `api_secret` extra-field encryption branch.
+- `connector-health-alert.ts` Source 2: the `pending_trades` rejected-order
+  scan (nothing writes `pending_trades` since the trade executor was
+  removed; `erasure.ts` still lists the collection so legacy data is still
+  erased on request).
+- `packages/platform/onboarding-profile.ts` — kairos persona/KPI-cap
+  machinery (`investor` → `trading-investment`, portfolio concentration
+  caps) that no live code imported.
+- `insights/consolidation.ts`: the contradiction-detector fallback
+  vocabulary was `trading-investment` (sell/trim/buy) and the default table
+  listed four other dead verticals — collapsed to a `family` entry.
+- Tests: `trading-212-registry.test.ts` deleted; the executor/sync-engine
+  test files rewritten to mock a neutral connector fixture.
+
+Left in place deliberately: `migrate.ts`'s historical category-backfill
+migrations and `category-table.yaml`'s trading rule-id rows — they only
+process insight documents that already exist in deployed databases.
+`sandbox-seed.ts`'s kairos multi-vertical demo content is a separate known
+cleanup item.
 
 ## Known, deliberately deferred issues
 

@@ -28,46 +28,30 @@ export interface DetectorPrioritySettings {
   tier_priorities: Record<DetectorTier, number>
   /**
    * Per-vertical action verb sets for contradiction detection.
-   * When not set, defaults to the trading-investment vocabulary.
+   * When not set, defaults to the family vocabulary.
    * This makes the contradiction detector configurable per vertical
-   * rather than hardcoded to English trading verbs.
+   * rather than hardcoded to a fixed verb list.
    */
   contradiction_actions?: ContradictionActionSet
 }
 
 export interface ContradictionActionSet {
-  /** Actions that recommend reducing exposure (sell, trim, exit, etc.) */
+  /** Actions that recommend reducing something (spend, exposure, coverage gaps) */
   reduce: string[]
-  /** Actions that recommend increasing exposure (buy, add, enter, etc.) */
+  /** Actions that recommend increasing something (savings, contributions, cover) */
   increase: string[]
 }
 
 /** Default contradiction verb sets per vertical. */
 const DEFAULT_CONTRADICTION_ACTIONS: Record<string, ContradictionActionSet> = {
-  'trading-investment': {
-    reduce: ['sell', 'trim', 'reduce_exposure', 'hold', 'exit', 'close'],
-    increase: ['buy', 'add', 'deploy_cash', 'increase_exposure', 'enter'],
-  },
-  'smb-operations': {
-    reduce: ['pause_campaign', 'reduce_spend', 'cancel', 'downsize', 'defer'],
-    increase: ['launch_campaign', 'increase_spend', 'expand', 'hire', 'invest'],
-  },
-  'property-wealth': {
-    reduce: ['sell_property', 'reduce_rent', 'divest', 'refinance'],
-    increase: ['buy_property', 'increase_rent', 'acquire', 'renovate'],
-  },
-  'branding-marketing': {
-    reduce: ['pause_campaign', 'reduce_budget', 'stop_ad_spend', 'cut_frequency'],
-    increase: ['launch_campaign', 'increase_budget', 'boost_post', 'scale_ad_spend'],
-  },
-  'audience-growth': {
-    reduce: ['pause_channel', 'reduce_posting', 'stop_promotion'],
-    increase: ['boost_post', 'increase_posting', 'promote_content', 'launch_channel'],
+  family: {
+    reduce: ['reduce', 'cut', 'pause', 'defer', 'downsize'],
+    increase: ['increase', 'add', 'top_up', 'boost', 'accelerate'],
   },
 }
 
 /** Fallback when no vertical-specific set is configured. */
-const FALLBACK_ACTIONS: ContradictionActionSet = DEFAULT_CONTRADICTION_ACTIONS['trading-investment']!
+const FALLBACK_ACTIONS: ContradictionActionSet = DEFAULT_CONTRADICTION_ACTIONS['family']!
 
 export type DetectorTier = 'regulatory' | 'deterministic' | 'llm_scored'
 
@@ -101,7 +85,7 @@ export async function getDetectorPrioritySettings(
 ): Promise<DetectorPrioritySettings> {
   const doc = await db.collection('tenant_settings').findOne({ tenant_id: tenantId })
   const stored = doc?.['detector_priorities'] as Partial<DetectorPrioritySettings> | undefined
-  // Resolve contradiction action set: tenant override → vertical default → trading fallback
+  // Resolve contradiction action set: tenant override → vertical default → family fallback
   const verticalActions = verticalId ? DEFAULT_CONTRADICTION_ACTIONS[verticalId] : undefined
   const contradictionActions = stored?.contradiction_actions ?? verticalActions ?? FALLBACK_ACTIONS
   return {
@@ -151,9 +135,9 @@ function totalScore(insight: Insight, settings: DetectorPrioritySettings): numbe
  * factors or redundant same-direction signals.
  *
  * Uses the configurable contradiction action set from tenant settings,
- * which defaults to the vertical-appropriate vocabulary. This avoids
- * the hardcoded English trading-verb problem — each vertical has its
- * own reduce/increase vocabulary.
+ * which defaults to the vertical-appropriate vocabulary. Each vertical
+ * has its own reduce/increase vocabulary rather than a shared hardcoded
+ * verb list.
  */
 export function isContradictory(
   left: Insight,
