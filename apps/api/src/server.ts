@@ -173,6 +173,7 @@ import { runFreshnessCheck } from './jobs/freshness-check.js'
 import { registerFamilyFreshnessRoutes } from './routes/family-freshness.js'
 import { registerPerceivedProtectionRoutes } from './routes/perceived-protection.js'
 import { registerAiDisclosureRoutes } from './routes/ai-disclosure.js'
+import { registerTrustRoutes } from './routes/trust.js'
 import { registerFamilyChannelRoutes } from './routes/family-channels.js'
 import { registerOperatorRetentionRoutes } from './routes/operator-retention.js'
 import { registerOperatorDeletionRoutes } from './routes/operator-deletion.js'
@@ -1584,6 +1585,7 @@ app.addHook('onRequest', async (request, reply) => {
     '/documentation/uiOptions',
     '/documentation/static',
     '/growth/events',
+    '/trust',
     '/leads',
     '/users/unsubscribe',
     '/heartbeat/unsubscribe',
@@ -2050,6 +2052,7 @@ if (workflowDb) {
   registerFamilyFreshnessRoutes(app, workflowDb)
   registerPerceivedProtectionRoutes(app, workflowDb)
   registerAiDisclosureRoutes(app)
+  registerTrustRoutes(app, workflowDb)
   registerFamilyChannelRoutes(app, workflowDb)
   registerFamilyScenarioRoutes(app, workflowDb)
   registerFamilyFeedRoutes(app, workflowDb)

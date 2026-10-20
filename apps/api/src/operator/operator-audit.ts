@@ -56,6 +56,7 @@ export type OperatorAuditAction =
   | 'operator.dual_control.confirm'
   | 'autopilot.action'
   | 'autopilot.propose'
+  | 'operator.trust_evidence.update'
 
 export interface OperatorAuditEntry {
   operator_user_id: string

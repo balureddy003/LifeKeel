@@ -436,7 +436,16 @@ function AskKeelButton({ context }: { context?: string }) {
 // Public content pages. They do not depend on who is signed in, so they render straight away
 // instead of waiting behind the auth check: the static HTML a search engine fetches then holds
 // the page's text, not a loading skeleton (PRD-210, phase 1).
-const PUBLIC_CONTENT_PREFIXES = ['/blog', '/guides', '/terms', '/privacy', '/support', '/readiness']
+const PUBLIC_CONTENT_PREFIXES = [
+  '/blog',
+  '/guides',
+  '/terms',
+  '/privacy',
+  '/support',
+  '/readiness',
+  '/trust',
+  '/security',
+]
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, family } = useAuth()
@@ -469,6 +478,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/terms') ||
     pathname.startsWith('/privacy') ||
+    pathname.startsWith('/trust') ||
+    pathname.startsWith('/security') ||
     pathname.startsWith('/support') ||
     pathname.startsWith('/readiness') ||
     pathname.startsWith('/blog') ||
@@ -712,6 +723,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/terms') ||
     pathname.startsWith('/privacy') ||
+    pathname.startsWith('/trust') ||
+    pathname.startsWith('/security') ||
     pathname.startsWith('/support') ||
     pathname.startsWith('/readiness') ||
     pathname.startsWith('/blog') ||
@@ -770,6 +783,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     '/account-deleted',
     '/terms',
     '/privacy',
+    '/trust',
+    '/security',
     '/support',
     '/blog',
     '/guides',

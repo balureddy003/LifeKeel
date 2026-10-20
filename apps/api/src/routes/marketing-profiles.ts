@@ -171,12 +171,10 @@ export function registerMarketingProfileRoutes(
       const channel = req.params.channel
       if (!isProfileChannel(channel)) return reply.status(404).send({ error: 'unknown_channel' })
       if (!SUPPORTS_CHECK.has(channel))
-        return reply
-          .status(400)
-          .send({
-            error: 'manual_channel',
-            message: `${channel} cannot be read by the console; use the checklist`,
-          })
+        return reply.status(400).send({
+          error: 'manual_channel',
+          message: `${channel} cannot be read by the console; use the checklist`,
+        })
       const doc = await load(tenant_id, channel)
       const desired = doc?.desired ?? DEFAULT_PROFILES[channel]
       let actual: NonNullable<ProfileDoc['actual']>
@@ -221,12 +219,10 @@ export function registerMarketingProfileRoutes(
       const doc = await load(tenant_id, channel)
       const desired = doc?.desired ?? DEFAULT_PROFILES[channel]
       if (parsed.data.expected_hash !== desiredHash(desired))
-        return reply
-          .status(409)
-          .send({
-            error: 'profile_text_changed',
-            message: 'The text changed since you reviewed it. Review it again.',
-          })
+        return reply.status(409).send({
+          error: 'profile_text_changed',
+          message: 'The text changed since you reviewed it. Review it again.',
+        })
       const v = validateDesired(channel, desired)
       if (!v.ok) return reply.status(422).send({ error: 'copy_guard_failed', problems: v.problems })
       if ((await getPlatformConfig(db)).marketing_paused)

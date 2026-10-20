@@ -58,6 +58,8 @@ const EXEMPT_COLLECTIONS = new Set([
   // PRD-146: proof that a deletion ran (counts by category, no content), kept 7 years like audit_log
   'deletion_receipts',
   'operator_audit_log',
+  // PRD-208: platform-level evidence register (owner, renewal date); holds no family data
+  'trust_evidence',
   'login_events',
   // operator control plane
   'operator_alerts',

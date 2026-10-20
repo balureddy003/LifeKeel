@@ -191,15 +191,13 @@ describe('/marketing/profiles', () => {
       })
       expect(none.json().error).toBe('channel_not_connected')
 
-      await db
-        .collection('social_connections')
-        .insertOne({
-          tenant_id: 't1',
-          channel: 'bluesky',
-          handle: 'lifekeel.co.uk',
-          credentials: {},
-          status: 'active',
-        })
+      await db.collection('social_connections').insertOne({
+        tenant_id: 't1',
+        channel: 'bluesky',
+        handle: 'lifekeel.co.uk',
+        credentials: {},
+        status: 'active',
+      })
       await db.collection('platform_config').insertOne({ key: 'global', marketing_paused: true })
       invalidatePlatformConfigCache()
       const paused = await app.inject({
@@ -212,15 +210,13 @@ describe('/marketing/profiles', () => {
     })
 
     it('writes the approved text through the connection, once', async () => {
-      await db
-        .collection('social_connections')
-        .insertOne({
-          tenant_id: 't1',
-          channel: 'bluesky',
-          handle: 'lifekeel.co.uk',
-          credentials: {},
-          status: 'active',
-        })
+      await db.collection('social_connections').insertOne({
+        tenant_id: 't1',
+        channel: 'bluesky',
+        handle: 'lifekeel.co.uk',
+        credentials: {},
+        status: 'active',
+      })
       const app = await buildApp()
       const res = await app.inject({
         method: 'POST',

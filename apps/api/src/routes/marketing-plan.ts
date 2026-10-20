@@ -110,12 +110,10 @@ export function registerMarketingPlanRoutes(
       parsed.data.channels ??
       (await connections.find({ tenant_id, status: 'active' }).toArray()).map((c) => c.channel)
     if (channels.length === 0)
-      return reply
-        .status(409)
-        .send({
-          error: 'no_channels',
-          message: 'Connect a network, or name the networks to draft for.',
-        })
+      return reply.status(409).send({
+        error: 'no_channels',
+        message: 'Connect a network, or name the networks to draft for.',
+      })
 
     const result = await planWeek(
       db,

@@ -45,15 +45,13 @@ beforeAll(async () => {
 beforeEach(async () => {
   await db.dropDatabase()
   llmText = 'Where does your family stand? A look at what is on file. Free to start.'
-  await db
-    .collection('social_connections')
-    .insertOne({
-      tenant_id: 't1',
-      channel: 'bluesky',
-      handle: 'h',
-      credentials: {},
-      status: 'active',
-    })
+  await db.collection('social_connections').insertOne({
+    tenant_id: 't1',
+    channel: 'bluesky',
+    handle: 'h',
+    credentials: {},
+    status: 'active',
+  })
 })
 afterAll(async () => {
   await client.close()

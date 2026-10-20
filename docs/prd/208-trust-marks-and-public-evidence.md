@@ -70,6 +70,24 @@ statement the code cannot back.
 Budget and timing for the penetration test and Cyber Essentials Plus; who owns the page
 and the renewal calendar.
 
+## Status (first build)
+
+Built: a claims register (`definitions/trust-claims.yaml`) and an operator evidence register
+(`trust_evidence`: owner, verified date, renewal date). A claim is public only while it is marked
+publishable, has an owner, and its renewal date has not passed, so a lapsed claim disappears from
+`/trust` by itself; the operator console flags stale and unowned claims (`/operator/evidence`, audited
+changes). `/trust` shows the claims that qualify, the live processor table from the PRD-142 registry
+and the backup window from PRD-146. `/security` and `/.well-known/security.txt` are generated from
+`NEXT_PUBLIC_SECURITY_CONTACT` at build time and absent when it is not set.
+
+Deliberately not published, and listed as unevidenced in the register: the "not used for training"
+line (waits for the registry check to be enforced by code), a penetration test summary, a DPIA
+summary, processor agreements, and Cyber Essentials Plus. Nothing says "working towards".
+
+Needs the owner: a real security contact address; an owner and renewal date recorded for each claim
+before it appears; counsel on the registration position for the UK and Slovenia; everything in items
+4 to 7 that depends on evidence that does not exist yet (PRD-148 outcome counts are not built).
+
 ## Becomes
 
 docs/prd/208-trust-marks-and-public-evidence.md

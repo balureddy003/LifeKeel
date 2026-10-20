@@ -1,0 +1,64 @@
+# PRD-208 claims register: every statement the public trust page may make.
+#
+# A claim is published only while it is `publishable` AND the operator has
+# recorded an owner, a verification date and a renewal date that has not passed
+# (see apps/api/src/trust/claims.ts). A claim with no evidence is not softened
+# into "working towards"; it stays here as `publishable: false` with the reason,
+# and the page says nothing about it. Statements are descriptions, never advice,
+# and name no provider (CLAUDE.md rule 2; the advice-rule test scans this file).
+#
+# evidence.kind:
+#   page   a public page that shows the facts (link is shown)
+#   check  an automated check that fails if the statement stops being true
+#   commitment  a contract or business decision the owner attests to
+claims:
+  - id: no_commission
+    statement: LifeKeel takes no commission or referral fee from any provider.
+    evidence: { kind: commitment, how: 'Owner attestation, reviewed on the renewal date.' }
+    publishable: true
+
+  - id: processors_disclosed
+    statement: The companies that can process your documents are listed on this site, with what each says it keeps.
+    evidence:
+      {
+        kind: page,
+        href: /trust#processors,
+        how: 'Generated from the same registry the product enforces.',
+      }
+    publishable: true
+
+  - id: deletion_receipt
+    statement: When you delete your account you get a receipt that says what was erased and what may remain in backups.
+    evidence:
+      { kind: check, how: 'Automated tests cover the deletion flow and the receipt wording.' }
+    publishable: true
+
+  - id: vault_excludes_ocr
+    statement: Sealing a document in the vault means it is not read automatically, so sealed documents cannot be extracted.
+    evidence: { kind: check, how: 'Vault documents bypass reading; covered by automated tests.' }
+    publishable: true
+
+  - id: no_training
+    statement: Your content is not used to train AI models.
+    publishable: false
+    reason: Waits for the AI task and processor registry check to be enforced by code, not only described (PRD-142).
+
+  - id: pen_test
+    statement: An independent penetration test of upload, sign-in links, share links and mailbox connection.
+    publishable: false
+    reason: No test has been commissioned yet.
+
+  - id: dpia_summary
+    statement: A summary of the data protection impact assessment.
+    publishable: false
+    reason: The assessment has not been completed.
+
+  - id: processor_agreements
+    statement: Data processing agreements are in place with each processor.
+    publishable: false
+    reason: Every hosted processor is still marked as terms under review.
+
+  - id: cyber_essentials_plus
+    statement: Certified to Cyber Essentials Plus.
+    publishable: false
+    reason: Not held. Described as "designed to align with" at most, and only once someone confirms the design.

@@ -73,6 +73,7 @@ const COMPANY = [
   { href: '/support', label: 'Support' },
   { href: '/terms', label: 'Terms' },
   { href: '/privacy', label: 'Privacy' },
+  { href: '/trust', label: 'Trust' },
 ]
 
 export function SiteFooter({ home = true }: { home?: boolean }) {

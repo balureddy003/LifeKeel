@@ -141,7 +141,7 @@ export class LlmInputGuard extends BaseGuard {
         this.event('pii_redaction', path, match, 'replaced_card')
         return '[CARD]'
       })
-     
+
     result = result.replace(/[\u200B-\u200D\uFEFF]/g, '')
     return result.slice(0, 4_000)
   }
