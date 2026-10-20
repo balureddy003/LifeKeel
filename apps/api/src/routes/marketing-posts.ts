@@ -74,6 +74,9 @@ export interface MarketingPostDoc {
   generated?: 'llm' | 'template'
   /** Marketing copy guard result for the current content (PRD-210). A post that fails cannot be approved or published. */
   copy_check?: CopyCheck
+  /** Set when the post is one variant of a planned content item (PRD-210 phase 3). */
+  content_item_id?: string
+  pillar?: string
   /** UTM campaign tag — 'lifekeel_social' for ungrouped posts; named campaigns
    *  let the operator split performance by push. */
   campaign?: string
@@ -906,7 +909,7 @@ Rules — these are non-negotiable:
 
 /** UTM'd site link — clicks land in users.attribution.utm_source so the
  *  operator funnel can attribute signups back to the channel/post. */
-function siteLink(
+export function siteLink(
   channel: string,
   path: string,
   contentTag: string,
@@ -941,7 +944,7 @@ async function blogSourceBlock(
  *  Strictly tenant-scoped — nobody else's winners leak into a prompt.
  *  Returns '' when the sample is too thin for "learning" to mean anything,
  *  so a brand-new tenant generates exactly as before. */
-async function learningContextBlock(db: Db, tenantId: string, channel: string): Promise<string> {
+export async function learningContextBlock(db: Db, tenantId: string, channel: string): Promise<string> {
   const published = await db
     .collection<MarketingPostDoc>('marketing_posts')
     .find({ tenant_id: tenantId, state: 'published' })
@@ -1012,7 +1015,7 @@ async function learningContextBlock(db: Db, tenantId: string, channel: string): 
 
 /** LLM draft with deterministic fallback — shared by the generate route
  *  and the daily cron so both produce identical-quality output. */
-async function draftPostText(
+export async function draftPostText(
   llm: LlmFn,
   channel: string,
   sourceBlock: string,

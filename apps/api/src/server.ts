@@ -186,6 +186,7 @@ import { registerFamilyContinuityRoutes } from './routes/family-continuity.js'
 import { registerFamilyCashflowRoutes } from './routes/family-cashflow.js'
 import { registerFamilyAssetRoutes } from './routes/family-assets.js'
 import { registerFamilyLegacyRoutes } from './routes/family-legacy.js'
+import { registerMarketingPlanRoutes } from './routes/marketing-plan.js'
 import { registerLeadRoutes } from './routes/leads.js'
 import { registerHeartbeatUnsubscribeRoutes } from './routes/heartbeat-unsubscribe.js'
 import { registerSendgridWebhookRoutes } from './routes/webhooks-sendgrid.js'
@@ -467,6 +468,9 @@ try {
         try {
           await withCronLock(workflowDb, 'marketing-generate', async () => {
             await generateDailyMarketingDrafts(workflowDb, taskLlmFor('marketing.social_draft.v1'))
+            // PRD-210: keep next week's pillar plan drafted for the weekly review.
+            const { ensureWeeklyPlans } = await import('./marketing/content-plan.js')
+            await ensureWeeklyPlans(workflowDb, taskLlmFor('marketing.social_draft.v1'))
           })
         } catch (err) {
           log.error({ err }, 'Marketing draft generation failed')

@@ -48,6 +48,7 @@ import {
 } from '@/lib/api'
 import { PostPreview } from './_components/PostPreview'
 import { PostCalendar } from './_components/PostCalendar'
+import { PlanPanel } from './_components/PlanPanel'
 import { ReasonAction } from '../_components/ReasonAction'
 
 const STATE_STYLE: Record<MarketingPost['state'], string> = {
@@ -106,7 +107,7 @@ function toLocalInput(iso: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-type Tab = 'compose' | 'queue' | 'calendar' | 'performance' | 'campaigns'
+type Tab = 'compose' | 'queue' | 'plan' | 'calendar' | 'performance' | 'campaigns'
 
 export default function MarketingPage() {
   const toast = useToast()
@@ -517,6 +518,7 @@ export default function MarketingPage() {
               [
                 ['compose', 'Compose'],
                 ['queue', `Queue${pendingCount ? ` (${pendingCount})` : ''}`],
+                ['plan', 'Plan'],
                 ['calendar', 'Calendar'],
                 ['performance', 'Performance'],
                 ['campaigns', 'Campaigns'],
@@ -969,6 +971,7 @@ export default function MarketingPage() {
           )}
 
           {/* Calendar */}
+          {tab === 'plan' && <PlanPanel />}
           {tab === 'calendar' && <PostCalendar posts={posts} />}
 
           {/* Performance */}
