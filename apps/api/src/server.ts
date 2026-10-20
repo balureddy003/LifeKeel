@@ -186,6 +186,7 @@ import { registerFamilyContinuityRoutes } from './routes/family-continuity.js'
 import { registerFamilyCashflowRoutes } from './routes/family-cashflow.js'
 import { registerFamilyAssetRoutes } from './routes/family-assets.js'
 import { registerFamilyLegacyRoutes } from './routes/family-legacy.js'
+import { registerMarketingProfileRoutes } from './routes/marketing-profiles.js'
 import { registerLeadRoutes } from './routes/leads.js'
 import { registerHeartbeatUnsubscribeRoutes } from './routes/heartbeat-unsubscribe.js'
 import { registerSendgridWebhookRoutes } from './routes/webhooks-sendgrid.js'
@@ -2059,6 +2060,7 @@ if (workflowDb) {
   registerPushRoutes(app, workflowDb, deliveryRouter)
   registerReminderRoutes(app, workflowDb)
   registerMarketingPostRoutes(app, workflowDb)
+  registerMarketingProfileRoutes(app, workflowDb)
   ensureAutopilotIndexes(workflowDb)
   await registerOperatorRoutes(app, workflowDb)
   registerOperatorRetentionRoutes(app, workflowDb)

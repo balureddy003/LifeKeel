@@ -143,13 +143,13 @@ function trustScope(channel: string): string {
   return `marketing_social:${channel}`
 }
 
-interface AutomationSettings {
+export interface AutomationSettings {
   auto_execute_enabled?: boolean
   dry_run_mode?: boolean
   trust_level_by_workflow?: Record<string, number>
 }
 
-async function getAutomation(db: Db, tenantId: string): Promise<AutomationSettings> {
+export async function getAutomation(db: Db, tenantId: string): Promise<AutomationSettings> {
   const doc = await db.collection('tenant_settings').findOne({ tenant_id: tenantId })
   return (doc?.['automation'] as AutomationSettings | undefined) ?? {}
 }

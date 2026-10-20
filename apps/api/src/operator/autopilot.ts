@@ -426,6 +426,7 @@ export const NEVER_AUTONOMOUS = [
   'plan.change',
   'marketing.publish',
   'marketing.approve',
+  'marketing.profile_update',
   'social.post',
   'configuration.update',
   'connector.revoke',
