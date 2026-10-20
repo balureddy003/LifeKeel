@@ -4,6 +4,7 @@ import { MongoMemoryServer } from 'mongodb-memory-server'
 import { buildFunnelView, funnelDim, parseFunnelDim, readFunnel } from '../funnel.js'
 import { runMetricsRollup } from '../../jobs/metrics-rollup.js'
 import { runWeeklyDigest } from '../../operator/weekly-digest.js'
+import { marketingPerformance } from '../../routes/marketing-posts.js'
 
 let mongod: MongoMemoryServer
 let client: MongoClient
@@ -88,6 +89,32 @@ describe('funnel rollups', () => {
     const v = await readFunnel(db, 7, NOW)
     expect(v.steps.find((s) => s.step === 'first_insight')!.count).toBe(2)
     expect(v.steps.find((s) => s.step === 'signup')!.count).toBe(3)
+  })
+})
+
+describe('performance read', () => {
+  it('has no funnel before the rollups exist and carries it afterwards', async () => {
+    await seed()
+    expect((await marketingPerformance(db)).funnel).toBeNull()
+    await runMetricsRollup(db, new Date())
+    const after = await marketingPerformance(db)
+    expect(after.funnel).not.toBeNull()
+    expect(after.funnel!.window_days).toBe(28)
+  })
+})
+
+describe('visits from pages that start a visit', () => {
+  it('counts signup_view, guide_view and landing_view under their UTM tags', async () => {
+    const t = new Date('2026-10-20T08:00:00Z')
+    await db.collection('growth_events').insertMany([
+      { event: 'signup_view', created_at: t, meta: { utm_source: 'linkedin', utm_campaign: 'pillar_chart' } },
+      { event: 'guide_view', created_at: t, meta: { slug: 'g', utm_source: 'linkedin', utm_campaign: 'pillar_chart' } },
+      { event: 'landing_view', created_at: t, meta: { utm_source: 'free text !!', utm_campaign: 'x y' } },
+    ])
+    await runMetricsRollup(db, NOW)
+    const v = await readFunnel(db, 7, NOW)
+    expect(v.by_source.find((b) => b.key === 'linkedin')!.visit).toBe(2)
+    expect(v.by_source.find((b) => b.key === 'other')!.visit).toBe(1)
   })
 })
 

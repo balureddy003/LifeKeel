@@ -976,6 +976,7 @@ export default function MarketingPage() {
           {tab === 'performance' && (
             <>
               {performance?.funnel && <FunnelPanel funnel={performance.funnel} />}
+              {performance && <p className="text-xs text-ink-tertiary mb-2">Posts, channels and campaigns below cover the last 90 days.</p>}
               {performance &&
               (performance.totals.views > 0 ||
                 performance.totals.signups > 0 ||

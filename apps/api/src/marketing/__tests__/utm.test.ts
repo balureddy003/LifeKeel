@@ -18,6 +18,11 @@ describe('utm scheme', () => {
     expect(isValidUtm({ source: 'x y', medium: 'social', campaign: 'x' })).toBe(false)
     expect(() => utmQuery({ source: 'x', medium: 'ads' as never, campaign: 'y' })).toThrow(/outside the scheme/)
   })
+  it('keeps rollup keys bounded: free text, pipes and over-long values count as "other"', () => {
+    expect(attributionKey({ utm_source: 'Bluesky ', utm_campaign: 'Pillar_Chart' })).toEqual({ source: 'bluesky', campaign: 'pillar_chart' })
+    expect(attributionKey({ utm_source: 'a|b', utm_campaign: 'two words' })).toEqual({ source: 'other', campaign: 'other' })
+    expect(attributionKey({ utm_source: 'x'.repeat(200) })).toEqual({ source: 'other', campaign: 'none' })
+  })
   it('reads missing attribution as direct and none', () => {
     expect(attributionKey(undefined)).toEqual({ source: 'direct', campaign: 'none' })
     expect(attributionKey({ utm_source: 'x', utm_campaign: 'pillar_chart' })).toEqual({ source: 'x', campaign: 'pillar_chart' })

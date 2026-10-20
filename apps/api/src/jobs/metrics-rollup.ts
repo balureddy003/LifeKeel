@@ -17,6 +17,8 @@ import type { Db } from 'mongodb'
 
 import { COHORT_DAYS, cohortFunnelRows, eventFunnelRows } from '../marketing/funnel.js'
 
+const RECENT_COHORT_DAYS = 3
+
 const META_ID = 'meta'
 const BACKFILL_DAYS = 90
 
@@ -82,10 +84,13 @@ async function rollupDay(db: Db, day: string): Promise<number> {
 }
 
 /** The signup cohorts of the last 30 days, recomputed as they mature (PRD-210 funnel). */
-async function rollupCohorts(db: Db, now: Date): Promise<number> {
+async function rollupCohorts(db: Db, now: Date, full: boolean): Promise<number> {
   const coll = db.collection<MetricDoc>('metrics_daily')
   let written = 0
-  for (let i = 0; i < COHORT_DAYS; i++) {
+  // Recent cohorts change quickly, so every run refreshes the last few days; the whole 30-day window
+  // is recomputed once a day (the first run after midnight UTC) and on the first-ever run.
+  const span = full ? COHORT_DAYS : RECENT_COHORT_DAYS
+  for (let i = 0; i < span; i++) {
     const day = dayKey(new Date(now.getTime() - i * 24 * 60 * 60 * 1000))
     const rowsForDay = await cohortFunnelRows(db, day, { $gte: dayStart(day), $lte: dayEnd(day) })
     if (rowsForDay.length === 0) continue
@@ -121,7 +126,7 @@ export async function runMetricsRollup(db: Db, now = new Date()): Promise<{ roll
 
   let rows = 0
   for (const day of [...new Set(days)]) rows += await rollupDay(db, day)
-  rows += await rollupCohorts(db, now)
+  rows += await rollupCohorts(db, now, !meta?.['backfilled_at'] || now.getUTCHours() === 0)
 
   await coll.updateOne(
     { _id: META_ID },

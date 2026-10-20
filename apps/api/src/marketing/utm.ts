@@ -39,9 +39,15 @@ export function utmQuery(u: Utm): string {
   return p.toString()
 }
 
+/** A value is kept only if it is a plain lowercase token; anything else (free text from the public
+ *  events endpoint, a "|", an over-long string) is counted as "other", so rollup keys stay bounded. */
+function bucket(v: unknown, empty: string): string {
+  if (typeof v !== 'string' || v === '') return empty
+  const t = v.trim().toLowerCase()
+  return TOKEN.test(t) ? t : 'other'
+}
+
 /** The attribution a visit or signup is counted under; missing values read as direct / none. */
 export function attributionKey(a: Record<string, unknown> | null | undefined): { source: string; campaign: string } {
-  const s = typeof a?.['utm_source'] === 'string' && a['utm_source'] ? (a['utm_source'] as string) : 'direct'
-  const c = typeof a?.['utm_campaign'] === 'string' && a['utm_campaign'] ? (a['utm_campaign'] as string) : 'none'
-  return { source: s, campaign: c }
+  return { source: bucket(a?.['utm_source'], 'direct'), campaign: bucket(a?.['utm_campaign'], 'none') }
 }

@@ -24,6 +24,7 @@ export const EVENT_STEP: Record<string, FunnelStep> = {
   landing_view: 'visit',
   blog_view: 'visit',
   guide_view: 'visit',
+  signup_view: 'visit',
   landing_cta_click: 'cta_click',
   landing_get_started_click: 'cta_click',
   blog_cta_click: 'cta_click',

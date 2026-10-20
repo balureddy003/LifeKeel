@@ -937,8 +937,9 @@ function siteLink(
   campaign = 'lifekeel_social',
 ): string {
   const base = (process.env['LIFEKEEL_URL'] ?? '').replace(/\/$/, '')
-  // Blog slugs and brief ids are lowercase tokens; a value outside the UTM scheme falls back to a
-  // slug-safe form rather than dropping the link.
+  // Blog slugs and brief ids are lowercase tokens and pass through unchanged, so utm_content still
+  // equals the slug the per-post join looks for. A value outside the scheme falls back to a slug-safe
+  // form rather than dropping the link (and would not join; slugs are authored as lowercase kebab-case).
   const safe = (v: string) => v.toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').replace(/^-+/, '').slice(0, 64) || 'x'
   return base
     ? `${base}${path}?${utmQuery({ source: safe(channel), medium: 'social', campaign: safe(campaign), content: safe(contentTag) })}`
