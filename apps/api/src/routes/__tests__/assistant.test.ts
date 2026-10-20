@@ -300,6 +300,50 @@ describe('POST /assistant/ask', () => {
     expect(response.statusCode).toBe(400)
   })
 
+  // Special-category quarantine: a health-hinted query runs under
+  // assistant.answer.sensitive.v1 (lifekeel_infra_required) — with no
+  // self-hosted model configured it must fail closed, never reach llmMock.
+  it('quarantines a query carrying health hints — the call never reaches a model', async () => {
+    const app = await buildApp(TENANT_A)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/assistant/ask',
+      payload: { query: "Is mum's hospital stay covered by her policy?" },
+    })
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.quarantined).toBe(true)
+    expect(body.isLive).toBe(false)
+    expect(body.content).toMatch(/health information/i)
+    expect(llmMock).not.toHaveBeenCalled()
+  })
+
+  it('honours the client medical_hint flag even when the query text is innocuous', async () => {
+    const app = await buildApp(TENANT_A)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/assistant/ask',
+      payload: { query: 'what did the second letter say?', medical_hint: true },
+    })
+    const body = response.json()
+    expect(body.quarantined).toBe(true)
+    expect(llmMock).not.toHaveBeenCalled()
+  })
+
+  it('does not quarantine a routine financial query', async () => {
+    profileFixture = { household: { monthly_salary_minor: 400000 } }
+    const app = await buildApp(TENANT_A)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/assistant/ask',
+      payload: { query: 'What is my salary?' },
+    })
+    const body = response.json()
+    expect(body.quarantined).toBeUndefined()
+    expect(body.isLive).toBe(true)
+    expect(llmMock).toHaveBeenCalled()
+  })
+
   it("flags a Pending member's figures as provisional instead of presenting them as confirmed", async () => {
     profileFixture = {
       household: {

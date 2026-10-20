@@ -47,7 +47,7 @@ import { createLogger } from '@lifekeel/platform'
 import { deploymentConfig } from '../config/deployment.js'
 import { checkPlanSpendBudget } from '../spend-ledger.js'
 import { familyDataLlmFromEnv, localDecisionFromEnv } from '../local-model.js'
-import { recordLocalModelCall } from '../routes/metrics.js'
+import { recordDeviceEscalation, recordLocalModelCall } from '../routes/metrics.js'
 
 const log = createLogger({ service: 'task-gateway', version: '0.0.0' })
 
@@ -81,6 +81,16 @@ export function initTaskGateway(db: Db): void {
     guardEventSink: createGuardEventSink(db, 'task-gateway'),
     onCall: (e) => {
       if (!e.ok) recordLocalModelCall('task', false, e.latency_ms / 1000, 0, 0)
+    },
+    // Device-first metric: fired per actual server-side invocation of a
+    // device_preferred task — the device tier was unavailable or abstained.
+    // Counter label is task_id only; no content.
+    onDeviceEscalation: (taskId) => {
+      recordDeviceEscalation(taskId)
+      log.info(
+        { task_id: taskId, event: 'device_escalation' },
+        'device_preferred task executed server-side',
+      )
     },
   }
   log.info({ tasks: registry.size, fail_closed: deps.failClosed }, 'AI task registry loaded')
@@ -197,7 +207,7 @@ export function taskDecide(
   if (!deps)
     throw new TaskPolicyError('Task gateway not initialised — call initTaskGateway(db) first')
   if (!raw) return undefined
-  resolveTaskPolicy(registry, taskId, deps.failClosed ?? true) // resolve eagerly so unknown tasks fail here
+  taskPolicy(taskId) // resolve eagerly so unknown tasks fail here
   return governedDecide(raw, deps, taskId, tenantId)
 }
 

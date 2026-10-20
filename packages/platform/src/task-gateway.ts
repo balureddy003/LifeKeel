@@ -54,11 +54,17 @@ export interface AiTaskPolicy {
     'none' | 'service_transient' | 'zero_data_retention' | 'limited_abuse_log'
   allowed_models: string[]
   primary_model: string
+  /** `device_preferred` = the feature prefers on-device execution; each
+   *  server-side invocation is an *authorized fallback* and is logged as a
+   *  device_escalation metric so coverage can be measured. Distinct from
+   *  `on_device`, which (with `device_only` boundary) forbids any server
+   *  path at all. */
   preferred_execution?:
     | 'deterministic'
     | 'local_encoder'
     | 'local_cpu'
     | 'on_device'
+    | 'device_preferred'
     | 'hosted_sync'
     | 'hosted_batch'
     | 'self_hosted_accelerated'
@@ -70,6 +76,47 @@ export interface AiTaskPolicy {
 }
 
 export type TaskRegistry = Map<string, AiTaskPolicy>
+
+/** Closed enums — a typo'd value must fail load, not silently pass. */
+const ENUM_FIELDS: ReadonlyArray<{
+  field: keyof AiTaskPolicy
+  values: readonly string[]
+}> = [
+  {
+    field: 'data_boundary',
+    values: [
+      'device_only',
+      'lifekeel_infra',
+      'lifekeel_infra_required',
+      'approved_hosted_provider',
+    ],
+  },
+  {
+    field: 'preferred_execution',
+    values: [
+      'deterministic',
+      'local_encoder',
+      'local_cpu',
+      'on_device',
+      'device_preferred',
+      'hosted_sync',
+      'hosted_batch',
+      'self_hosted_accelerated',
+    ],
+  },
+  {
+    field: 'risk',
+    values: ['internal', 'user_visible', 'workflow_affecting', 'external_effect'],
+  },
+  {
+    field: 'authority',
+    values: ['language_only', 'candidate_for_review', 'bounded_decision'],
+  },
+  {
+    field: 'provider_retention_class',
+    values: ['none', 'service_transient', 'zero_data_retention', 'limited_abuse_log'],
+  },
+]
 
 /** Required fields — an entry missing any of these is rejected at load. */
 const REQUIRED_POLICY_FIELDS: ReadonlyArray<keyof AiTaskPolicy> = [
@@ -126,6 +173,14 @@ export function parseTaskRegistry(doc: unknown): TaskRegistry {
     const allowed = policy['allowed_models']
     if (!Array.isArray(allowed) || allowed.length === 0) {
       throw new TaskPolicyError(`Task '${taskId}' has an empty allowed_models list`)
+    }
+    for (const { field, values } of ENUM_FIELDS) {
+      const value = policy[field]
+      if (value !== undefined && !values.includes(value as string)) {
+        throw new TaskPolicyError(
+          `Task '${taskId}' has invalid ${field} '${String(value)}' — expected one of: ${values.join(', ')}`,
+        )
+      }
     }
     registry.set(taskId, { ...(policy as unknown as AiTaskPolicy), task_id: taskId })
   }
@@ -204,6 +259,15 @@ export interface TaskGatewayDeps {
     ok: boolean
     latency_ms: number
   }) => void
+  /**
+   * Fired at invocation time when a `device_preferred` task reaches the
+   * server path — i.e. the device tier was unavailable or abstained and
+   * this call is an authorized fallback. Emitted once per call attempt
+   * (not at policy resolution) so the device-vs-hosted coverage ratio is
+   * measured on real invocations, not wrapped functions. Task_id only —
+   * no content.
+   */
+  onDeviceEscalation?: (taskId: string) => void
 }
 
 function isFailClosed(deps: TaskGatewayDeps): boolean {
@@ -253,6 +317,13 @@ export function governedLlm(
   const outputGuard = new LlmOutputGuard({ tenantId })
 
   return async function governed(system: string, prompt: string, model?: string): Promise<string> {
+    if (policy.preferred_execution === 'device_preferred') {
+      try {
+        deps.onDeviceEscalation?.(taskId)
+      } catch {
+        /* metrics must never fail a call */
+      }
+    }
     const resolvedModel = model ?? policy.primary_model
     if (!policy.allowed_models.includes(resolvedModel)) {
       throw new TaskPolicyError(
@@ -340,6 +411,13 @@ export function governedVision(
   const outputGuard = new LlmOutputGuard({ tenantId })
 
   return async function vision(content: VisionContent): Promise<string> {
+    if (policy.preferred_execution === 'device_preferred') {
+      try {
+        deps.onDeviceEscalation?.(taskId)
+      } catch {
+        /* metrics must never fail a call */
+      }
+    }
     const textTokens = content
       .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
       .reduce((n, c) => n + estimateTokens(c.text), 0)

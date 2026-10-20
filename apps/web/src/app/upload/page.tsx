@@ -8,6 +8,7 @@ import { PageHeader, GlassCard, EmptyState } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { useToast } from '@/components/Toast'
 import { uploadDocument, fetchDocuments, type FamilyDocument } from '@/lib/api'
+import { screenDocumentBeforeUpload } from '@/lib/on-device-doc-screen'
 import { useAppStore } from '@/lib/store'
 import { displayDocName } from '@/lib/doc-name'
 import { CATEGORY_ICONS, CATEGORY_LABELS } from '@/lib/document-categories'
@@ -100,7 +101,10 @@ export default function UploadPage() {
   const uploadOne = useCallback(
     async (file: File): Promise<boolean> => {
       try {
-        const doc = await uploadDocument(file)
+        // On-device special-category screen — the result rides along so
+        // the server can hold clinical documents it can't read itself.
+        const screen = await screenDocumentBeforeUpload(file)
+        const doc = await uploadDocument(file, screen.outcome)
         setDocuments((prev) => [doc, ...prev])
         incrementDocumentCount()
         return true

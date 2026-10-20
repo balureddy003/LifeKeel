@@ -57,7 +57,7 @@ export type {
 export { createGuardEventSink } from './guard-event-sink.js'
 export type { GuardEventSink } from './guard-event-sink.js'
 export type { LlmTokenUsage, LlmUsageCallback } from './llm.js'
-export { LlmInputGuard, LlmOutputGuard } from './llm-guards.js'
+export { LlmInputGuard, LlmOutputGuard, containsSpecialCategoryContent } from './llm-guards.js'
 export type {
   GuardResult,
   LlmGuardEvent,
@@ -153,4 +153,3 @@ export type {
   VisionContent,
   VisionFn,
 } from './task-gateway.js'
-
