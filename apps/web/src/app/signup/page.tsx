@@ -9,7 +9,7 @@ import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 import { RegionSwitch } from '@/components/RegionSwitch'
 import { AuthShell } from '@/components/landing/AuthShell'
-import { track } from '@/lib/growth-track'
+import { currentUtm, track } from '@/lib/growth-track'
 import { trackConversion } from '@/lib/ad-track'
 import { fetchPublicStatus } from '@/lib/api'
 
@@ -30,6 +30,7 @@ export default function SignUpPage() {
   useEffect(() => {
     const ref = new URLSearchParams(window.location.search).get('ref')
     if (ref) setRefCode(ref)
+    track('signup_view', currentUtm())
     // Operator-controlled kill-switch: /status stays public so the page can
     // render a closed state instead of a raw 503 on submit. An unreachable
     // API resolves to "open" (fetchPublicStatus's fallback) — the backend
