@@ -3,7 +3,18 @@
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Heart, Wallet, Target, PiggyBank, FileLock2, HelpCircle, Bot, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  Heart,
+  Wallet,
+  Target,
+  PiggyBank,
+  FileLock2,
+  HelpCircle,
+  Bot,
+  AlertTriangle,
+  CheckCircle2,
+} from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { GlassCard, PageHeader, ScoreRing, Money } from '@/components/Glass'
 import { useFamilyHealthDomains, type HealthDomain } from '@/lib/useFamilyData'
@@ -14,7 +25,10 @@ import { readableHypothesis } from '@/lib/insight-text'
 // Domain accent colors come from the semantic vars (same hues) rather
 // than the pastel literals — they're used as label text and icon colors
 // here, which would fail WCAG AA on the light theme's background.
-const DOMAIN_META: Record<HealthDomain, { label: string; icon: LucideIcon; color: string; description: string }> = {
+const DOMAIN_META: Record<
+  HealthDomain,
+  { label: string; icon: LucideIcon; color: string; description: string }
+> = {
   protection: {
     label: 'Protection',
     icon: Heart,
@@ -48,9 +62,14 @@ const DOMAIN_META: Record<HealthDomain, { label: string; icon: LucideIcon; color
 }
 
 function isHealthDomain(value: string): value is HealthDomain {
-  return value === 'protection' || value === 'wealth' || value === 'goals' || value === 'savings' || value === 'estate'
+  return (
+    value === 'protection' ||
+    value === 'wealth' ||
+    value === 'goals' ||
+    value === 'savings' ||
+    value === 'estate'
+  )
 }
-
 
 // PRD-107: resolved insights (the condition no longer holds, auto-retracted
 // by a later evaluation) get their own quiet section rather than sitting
@@ -80,7 +99,10 @@ export default function HealthDomainClient() {
           <HelpCircle size={32} className="text-ink-tertiary" />
         </div>
         <p className="text-ink-secondary">Unknown health area</p>
-        <Link href="/" className="text-family-400 font-semibold mt-4 inline-block flex items-center gap-1 justify-center">
+        <Link
+          href="/"
+          className="text-family-400 font-semibold mt-4 inline-block flex items-center gap-1 justify-center"
+        >
           <ArrowLeft size={14} /> Back to Home
         </Link>
       </div>
@@ -90,16 +112,15 @@ export default function HealthDomainClient() {
   const meta = DOMAIN_META[params.domain]
   const domain = domains[params.domain]
   const Icon = meta.icon
-  const { open: openInsights, resolved: resolvedInsights } = splitInsightsByResolution(domain.insights)
+  const { open: openInsights, resolved: resolvedInsights } = splitInsightsByResolution(
+    domain.insights,
+  )
 
   return (
     <div className="px-5 pt-2 space-y-5">
       <PageHeader title={meta.label} backHref="/" subtitle={meta.description} />
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <GlassCard className="p-5">
           <div className="flex items-center gap-4">
             <ScoreRing score={loading ? 0 : domain.score} size={96} />
@@ -146,9 +167,13 @@ export default function HealthDomainClient() {
                 <div key={d.label} className="contents">
                   <dt className="text-xs text-ink-tertiary">{d.label}</dt>
                   <dd className="text-xs text-ink-secondary font-medium text-right">
-                    {d.value_minor !== undefined
-                      ? <Money value={`£${Math.round(d.value_minor / 100).toLocaleString('en-GB')}`} />
-                      : d.value}
+                    {d.value_minor !== undefined ? (
+                      <Money
+                        value={`£${Math.round(d.value_minor / 100).toLocaleString('en-GB')}`}
+                      />
+                    ) : (
+                      d.value
+                    )}
                   </dd>
                 </div>
               ))}
@@ -184,41 +209,55 @@ export default function HealthDomainClient() {
           </GlassCard>
         )}
 
-        {!loading && openInsights.map((insight, i) => (
-          <motion.div
-            key={insight.id}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: i * 0.08 }}
-          >
-            <GlassCard className="p-4 mb-2">
-              <div className="text-sm font-semibold text-ink-primary mb-1">{readableHypothesis(insight.hypothesis)}</div>
-              <p className="text-sm text-ink-secondary leading-relaxed mb-2">{insight.reasoning}</p>
-              {insight.actions.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {insight.actions.map((action) => (
-                    <span key={action} className="glass rounded-full px-3 py-1 text-xs text-ink-secondary">
-                      {action}
-                    </span>
-                  ))}
+        {!loading &&
+          openInsights.map((insight, i) => (
+            <motion.div
+              key={insight.id}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.08 }}
+            >
+              <GlassCard className="p-4 mb-2">
+                <div className="text-sm font-semibold text-ink-primary mb-1">
+                  {readableHypothesis(insight.hypothesis)}
                 </div>
-              )}
-              <div className="flex items-center gap-4 mt-2">
-                {learnMoreHref(insight.rule_id) && (
-                  <Link href={learnMoreHref(insight.rule_id)!} className="text-xs text-family-400 font-semibold inline-block">
-                    Learn more →
-                  </Link>
+                <p className="text-sm text-ink-secondary leading-relaxed mb-2">
+                  {insight.reasoning}
+                </p>
+                {insight.actions.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {insight.actions.map((action) => (
+                      <span
+                        key={action}
+                        className="glass rounded-full px-3 py-1 text-xs text-ink-secondary"
+                      >
+                        {action}
+                      </span>
+                    ))}
+                  </div>
                 )}
-                {/* Act-layer gate (remediation item 25): approving runs the
+                <div className="flex items-center gap-4 mt-2">
+                  {learnMoreHref(insight.rule_id) && (
+                    <Link
+                      href={learnMoreHref(insight.rule_id)!}
+                      className="text-xs text-family-400 font-semibold inline-block"
+                    >
+                      Learn more →
+                    </Link>
+                  )}
+                  {/* Act-layer gate (remediation item 25): approving runs the
                     insight's actions — the gate screen shows what each one
                     actually does before the human confirms. */}
-                <Link href={`/insights/${insight.id}`} className="text-xs text-family-400 font-semibold inline-block">
-                  Review & approve →
-                </Link>
-              </div>
-            </GlassCard>
-          </motion.div>
-        ))}
+                  <Link
+                    href={`/insights/${insight.id}`}
+                    className="text-xs text-family-400 font-semibold inline-block"
+                  >
+                    Review & approve →
+                  </Link>
+                </div>
+              </GlassCard>
+            </motion.div>
+          ))}
 
         {!loading && resolvedInsights.length > 0 && (
           <div className="mt-4">

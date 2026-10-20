@@ -7,7 +7,9 @@ describe('readableHypothesis', () => {
     expect(readableHypothesis('no_income_protection')).toBe('No income protection')
   })
   it('leaves real sentences alone', () => {
-    expect(readableHypothesis('No will on file in the Estate Vault')).toBe('No will on file in the Estate Vault')
+    expect(readableHypothesis('No will on file in the Estate Vault')).toBe(
+      'No will on file in the Estate Vault',
+    )
     expect(readableHypothesis('Protection')).toBe('Protection')
   })
 })
