@@ -1042,6 +1042,66 @@ export async function fetchAiDisclosure(): Promise<AiDisclosure | null> {
   return apiFetch<AiDisclosure | null>('/ai/processors', null)
 }
 
+// ── Trust page and evidence register (PRD-208) ───────────────────────────
+
+export interface TrustClaim {
+  id: string
+  statement: string
+  evidence?: { kind: 'page' | 'check' | 'commitment'; href?: string; how: string }
+  verified_at: string
+}
+export interface TrustData {
+  claims: TrustClaim[]
+  ai: AiDisclosure
+  backups: { retention_days: number | null; statement: string }
+}
+
+/** Public; null when the API is unreachable or the registries are not loaded. */
+export async function fetchTrust(): Promise<TrustData | null> {
+  return apiFetch<TrustData | null>('/trust', null)
+}
+
+export interface EvidenceClaim {
+  id: string
+  statement: string
+  publishable: boolean
+  reason?: string
+  state: 'published' | 'stale' | 'needs_owner' | 'not_evidenced'
+  owner: string | null
+  verified_at: string | null
+  renew_by: string | null
+}
+
+export async function fetchOperatorEvidence(): Promise<{
+  claims: EvidenceClaim[]
+  attention: number
+}> {
+  const token = getAuthToken()
+  const res = await credFetch(`${getApiBase()}/operator/evidence`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Could not load the evidence register')
+  return data as { claims: EvidenceClaim[]; attention: number }
+}
+
+export async function saveOperatorEvidence(
+  id: string,
+  body: { owner: string; verified_at: string; renew_by: string; reason: string },
+): Promise<void> {
+  const token = getAuthToken()
+  const res = await credFetch(`${getApiBase()}/operator/evidence/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Could not save the evidence record')
+}
+
 // ── Delivery channels (PRD-140) ─────────────────────────────────────────
 
 export interface ChannelState {

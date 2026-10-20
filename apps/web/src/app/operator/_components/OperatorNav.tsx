@@ -59,6 +59,7 @@ const links = [
     icon: SlidersHorizontal,
     permission: 'configuration.read',
   },
+  { href: '/operator/evidence', label: 'Evidence', icon: ShieldCheck, permission: 'overview.read' },
   { href: '/operator/audit', label: 'Audit', icon: ScrollText, permission: 'audit.read' },
   { href: '/operator/settings', label: 'Settings', icon: Settings, permission: undefined },
 ]

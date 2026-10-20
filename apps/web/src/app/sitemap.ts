@@ -22,6 +22,8 @@ const PUBLIC_ROUTES: {
   { path: '/support/', changefreq: 'monthly', priority: 0.4 },
   { path: '/login/', changefreq: 'monthly', priority: 0.3 },
   { path: '/privacy/', changefreq: 'yearly', priority: 0.2 },
+  { path: '/trust/', changefreq: 'monthly', priority: 0.4 },
+  { path: '/security/', changefreq: 'yearly', priority: 0.2 },
   { path: '/terms/', changefreq: 'yearly', priority: 0.2 },
 ]
 
