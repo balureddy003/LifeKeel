@@ -97,3 +97,10 @@ user's region host (`apps/web/src/lib/region.ts`):
 **Not covered by automated tests:** that the Capacitor bridge and Preferences plugin
 are present on the `.si` page after the cross-origin redirect. Check it by hand in
 the iOS Simulator with the device region set to Slovenia before shipping a build.
+
+## Releasing to the stores
+
+`.github/workflows/release-mobile.yml` (dispatch-only, main-only) regenerates
+the gitignored projects via `scripts/prepare-*.sh`, then fastlane pushes the
+`.ipa` to TestFlight and the `.aab` to Play. One-time account/secret setup:
+[docs/mobile-release.md](../../docs/mobile-release.md).

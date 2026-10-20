@@ -1,0 +1,13 @@
+app_identifier('uk.co.lifekeel.app')  # also the Android applicationId
+team_id(ENV['APPLE_TEAM_ID'])
+
+# App Store Connect API key (no 2FA, works headless in CI)
+app_store_connect_api_key(
+  key_id: ENV['ASC_KEY_ID'],
+  issuer_id: ENV['ASC_ISSUER_ID'],
+  key_filepath: File.expand_path("~/.appstoreconnect/private_keys/AuthKey_#{ENV['ASC_KEY_ID']}.p8"),
+  in_house: false,
+) if ENV['ASC_KEY_ID']
+
+# Play Console service account — written by the workflow to /tmp
+json_key_file(ENV['PLAY_SERVICE_ACCOUNT_PATH']) if ENV['PLAY_SERVICE_ACCOUNT_PATH']
