@@ -13,6 +13,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync, existsSync } from 'fs'
 import { join, resolve } from 'path'
+import { load as loadYaml } from 'js-yaml'
 
 const API_SRC = resolve(__dirname, '..')
 const REPO_ROOT = resolve(__dirname, '../../../..')
@@ -466,5 +467,53 @@ describe('architecture claims: social provider gateway (B12)', () => {
     expect(posts).toContain('published_via')
     // The post id is the dispatch idempotency key.
     expect(posts).toContain('idempotencyKey: post.id')
+  })
+})
+
+describe('architecture claims: AI bill of materials (B14)', () => {
+  it('ai-bom.yaml pins an immutable artifact for every model and base image', () => {
+    const bom = loadYaml(readFileSync(join(REPO_ROOT, 'ai-bom.yaml'), 'utf8')) as {
+      artifacts: {
+        id: string
+        kind: string
+        pin: { kind: string; value: string }
+        card?: string
+        data_boundary?: string
+      }[]
+    }
+    expect(bom.artifacts.length).toBeGreaterThanOrEqual(4)
+    for (const a of bom.artifacts) {
+      expect(['oci-manifest-digest', 'hf-revision', 'docker-content-digest']).toContain(a.pin.kind)
+      // Mutable references (tags, `main`) never satisfy a pin.
+      expect(a.pin.value).toMatch(/^sha256:[0-9a-f]{64}$|^[0-9a-f]{40}$/)
+      if (a.kind === 'model') {
+        expect(a.card).toBeTruthy()
+        expect(existsSync(join(REPO_ROOT, a.card!))).toBe(true)
+        expect(a.data_boundary).toBeTruthy()
+      }
+    }
+  })
+
+  it('the code and Dockerfile pins match the BOM — no drift between them', () => {
+    const bom = loadYaml(readFileSync(join(REPO_ROOT, 'ai-bom.yaml'), 'utf8')) as {
+      artifacts: { id: string; pin: { value: string } }[]
+    }
+    const pin = (id: string) => bom.artifacts.find((a) => a.id === id)?.pin.value ?? ''
+
+    const embed = readSrc('packages/platform/src/memory/LocalEmbeddingProvider.ts')
+    expect(embed).toContain(`DEFAULT_LOCAL_EMBEDDING_REVISION = '${pin('local-embedding-model')}'`)
+    // The revision is actually passed to the loader, not just declared.
+    expect(embed).toContain('revision: this.revision')
+
+    const judge = readFileSync(join(REPO_ROOT, 'infra/local-judge/Dockerfile'), 'utf8')
+    expect(judge).toContain(`MODEL_DIGEST=${pin('local-judge-model').replace('sha256:', '')}`)
+    expect(judge).toContain(`ollama/ollama:0.35.0@${pin('local-judge-base-image')}`)
+
+    const encoder = readFileSync(join(REPO_ROOT, 'infra/encoder-service/Dockerfile'), 'utf8')
+    expect(encoder).toContain(`ENCODER_MODEL_REVISION=${pin('encoder-model')}`)
+    expect(encoder).toContain(`python:3.11-slim@${pin('encoder-base-image')}`)
+
+    const server = readFileSync(join(REPO_ROOT, 'infra/encoder-service/server.py'), 'utf8')
+    expect(server).toContain('revision=MODEL_REVISION')
   })
 })
