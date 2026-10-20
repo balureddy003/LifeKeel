@@ -93,10 +93,14 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  // themeColor is a static export — it can't track data-theme, so it stays
-  // the dark palette (the default, and what OS chrome hints show while the
-  // inline script below is still resolving the stored preference).
-  themeColor: '#0a1822',
+  // themeColor is a static export, so it can't track data-theme; it follows the
+  // OS colour scheme instead, with the app's own surface colour for each theme
+  // (dark is the default, and what shows while the inline script below resolves
+  // the stored preference).
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#eef3f4' },
+    { media: '(prefers-color-scheme: dark)', color: '#0a1822' },
+  ],
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
