@@ -78,6 +78,21 @@ function runwayLine(result: ScenarioResult): string {
     : `savings would cover about ${result.projectedRunwayMonths} months of spending`
 }
 
+/**
+ * Months today's savings would last if the whole shortfall started now, worked back from a
+ * horizon result: today's savings are the savings at the change minus what the current surplus
+ * adds over the wait. Null when that cannot be recovered cleanly (the fund was floored at zero,
+ * or income already covers spending).
+ */
+export function runwayIfStoppedNow(r: ScenarioResult, incomeLostMinor: number): { savingsMinor: number; months: number } | null {
+  if (r.monthsUntilChange <= 0) return null
+  const savingsMinor = r.savingsAtChangeMinor - r.currentMonthlySurplusMinor * r.monthsUntilChange
+  const expensesMinor = r.currentMonthlyIncomeMinor - r.currentMonthlySurplusMinor
+  const shortfall = expensesMinor - (r.currentMonthlyIncomeMinor - incomeLostMinor)
+  if (savingsMinor <= 0 || shortfall <= 0) return null
+  return { savingsMinor, months: Math.round((savingsMinor / shortfall) * 10) / 10 }
+}
+
 const SCENARIO_TEMPLATES: Record<string, ScenarioTemplate> = {
   'job-loss': {
     title: 'If it happened later',
@@ -103,9 +118,13 @@ const SCENARIO_TEMPLATES: Record<string, ScenarioTemplate> = {
     },
     narrate: (r, { horizonMonths, earner }) => {
       const who = earner?.memberId ? `${earner.name}'s income alone` : 'your household income'
-      return horizonMonths > 0
-        ? `If ${who} stopped in ${horizonMonths} months, savings would reach about ${gbp(r.savingsAtChangeMinor)} by then — ${runwayLine(r)}.`
-        : `If ${who} stopped now, ${runwayLine(r)}.`
+      if (horizonMonths <= 0) return `If ${who} stopped now, ${runwayLine(r)}.`
+      const incomeLost = r.currentMonthlyIncomeMinor - r.projectedMonthlyIncomeMinor
+      const today = runwayIfStoppedNow(r, incomeLost)
+      return (
+        (today ? `Today: if ${who} stopped now, your ${gbp(today.savingsMinor)} of savings would cover about ${today.months} months of spending. ` : '') +
+        `In ${horizonMonths} months, if you keep saving at today's pace: savings would reach about ${gbp(r.savingsAtChangeMinor)}, and then ${runwayLine(r)}.`
+      )
     },
   },
   bereavement: {
