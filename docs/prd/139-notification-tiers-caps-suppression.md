@@ -85,6 +85,32 @@ for evidence quality. Numeric defaults below are hypotheses to test, not benchma
 7. **Consent and legal basis per channel** (see PRD-140) and the cap logic apply to
    service messages only; marketing is out of scope.
 
+## Status (first build)
+
+Built: one decision point (`delivery/notification-budget.ts`) with a `notification_ledger`
+of tier, kind, outcome, reason, key and time (no content). Tier A at most 1 per 14 days;
+Tier C at most 2 per quarter and never the same input twice in one; 2 non-digest messages
+per month across A, C and D; Tier D never sent outbound. Critical alerts, dated
+obligations (renewal reminders), safety messages and organizer-released alerts are
+exempt and logged; the digest is exempt and counted. `DeliveryRouter.deliver()` asks the
+budget, and a held-back alert goes to the digest queue with the drop recorded. The
+heartbeat and Quiet Care digest are counted as Tier B.
+
+Demotion is ask-first and click-based (amendments 3 and 4): after two consecutive
+unanswered A/C alerts (no signed-in click, no approve/dismiss within 7 days) a pending
+"digest only?" offer appears in Settings and as one line in the next digest. Yes sets
+digest mode; no is remembered for 90 days; nothing changes silently. Alert links carry
+`?src=alert&i=<insight>`. Held-back counts by reason appear in the operator retention card.
+
+Budget scope is per tenant, not per member (amendment 5), because delivery preferences and
+channels are tenant-level today.
+
+Not built: Tier C sending (rules and tests exist; copy and push payload belong with PRD-140),
+timezone-aware quiet hours, a per-member budget, "informational content never uses push",
+telling people about digest-only during onboarding, and counting the directly-sent
+continuity, checklist and vault reminder emails. The numbers are hypotheses and the
+ledger exists to read back what each drops.
+
 ## Becomes
 
 docs/prd/139-notification-tiers-caps-suppression.md

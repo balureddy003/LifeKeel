@@ -67,6 +67,17 @@ export function RetentionMetricsCard({ metrics: m }: { metrics: RetentionMetrics
           note={d['digest_engagement'] ?? ''}
         />
         <Row
+          label="Messages held back by the budget"
+          value={
+            m.notification_budget.dropped_by_reason === null
+              ? null
+              : Object.entries(m.notification_budget.dropped_by_reason)
+                  .map(([reason, n]) => `${reason.replace(/_/g, ' ')}: ${n}`)
+                  .join(', ') || 'none'
+          }
+          note={d['notification_budget'] ?? ''}
+        />
+        <Row
           label="Unsubscribes per 100 digests"
           value={
             m.notification_health.unsubscribes_per_100_digests === null

@@ -304,19 +304,24 @@ function VerifyEmailBanner() {
 }
 
 /**
- * PRD-141: a click from a Quiet Care digest lands with ?src=digest&v=<variant>.
- * Record it once (variant only, no identifier) and strip the tag from the
- * address bar. Clicks, not opens: the email carries no tracking pixel.
+ * PRD-141/139: a click from a Quiet Care digest lands with ?src=digest&v=<variant>;
+ * a click from an alert with ?src=alert&i=<insight id>. Record it once and strip
+ * the tag from the address bar. Clicks, not opens: no email carries a tracking
+ * pixel. The alert click is what counts as a response to an alert.
  */
 export function DigestClickTracker() {
   useEffect(() => {
     if (typeof window === 'undefined') return
     const q = new URLSearchParams(window.location.search)
+    const src = q.get('src')
     const v = q.get('v')
-    if (q.get('src') !== 'digest' || !v) return
-    track('digest_click', { v })
+    const i = q.get('i')
+    if (src === 'digest' && v) track('digest_click', { v })
+    else if (src === 'alert' && i) track('alert_click', { i })
+    else return
     q.delete('src')
     q.delete('v')
+    q.delete('i')
     const rest = q.toString()
     window.history.replaceState(
       null,

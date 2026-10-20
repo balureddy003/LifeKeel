@@ -63,6 +63,7 @@ import {
   updateFamilyContext,
   fetchNotificationPrefs,
   fetchFreshness,
+  answerDigestOffer,
   type FreshnessResponse,
   updateNotificationPrefs,
   type AccessRequest,
@@ -223,6 +224,20 @@ export default function SettingsPage() {
     } else {
       haptic('warning')
       toast({ message: "Couldn't save notification settings — try again", variant: 'error' })
+    }
+  }
+
+  const saveDigestOffer = async (accept: boolean) => {
+    if (notifBusy || !isOrganizer) return
+    setNotifBusy(true)
+    const saved = await answerDigestOffer(accept)
+    setNotifBusy(false)
+    if (saved) {
+      setNotifPrefs(saved)
+      haptic('success')
+    } else {
+      haptic('warning')
+      toast({ message: "Couldn't save that — try again", variant: 'error' })
     }
   }
 
@@ -1115,6 +1130,7 @@ export default function SettingsPage() {
             isOrganizer={isOrganizer ?? false}
             busy={notifBusy}
             onPatch={(patch) => void saveNotifPrefs(patch)}
+            onDigestOffer={(accept) => void saveDigestOffer(accept)}
           />
         )}
 

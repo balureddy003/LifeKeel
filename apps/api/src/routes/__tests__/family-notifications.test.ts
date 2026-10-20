@@ -24,11 +24,16 @@ function makeDb(prefs: Record<string, unknown> | null = null) {
     findOne: async () => store[0] ?? null,
     updateOne: async (
       _filter: Record<string, unknown>,
-      update: { $set?: Record<string, unknown>; $setOnInsert?: Record<string, unknown> },
+      update: {
+        $set?: Record<string, unknown>
+        $unset?: Record<string, unknown>
+        $setOnInsert?: Record<string, unknown>
+      },
       opts?: { upsert?: boolean },
     ) => {
       if (store[0]) {
         Object.assign(store[0], update.$set)
+        for (const k of Object.keys(update.$unset ?? {})) delete store[0][k]
         return { modifiedCount: 1 }
       }
       if (opts?.upsert) {
@@ -138,5 +143,73 @@ describe('PATCH /family/notifications', () => {
       payload: { digest_mode: true },
     })
     expect(store[0]).toMatchObject({ heartbeat_cadence: 'monthly', digest_mode: true })
+  })
+})
+
+describe('digest-only offer (PRD-139)', () => {
+  const offered = { tenant_id: TENANT, enabled: true, digest_offer: { offered_at: new Date() } }
+  const get = async (app: Awaited<ReturnType<typeof build>>) =>
+    (await app.inject({ method: 'GET', url: '/family/notifications' })).json().preferences
+
+  it('GET reports whether an offer is pending', async () => {
+    expect((await get(await build(makeDb().db))).digest_offer_pending).toBe(false)
+    expect((await get(await build(makeDb(offered).db))).digest_offer_pending).toBe(true)
+  })
+
+  it('accepting turns digest mode on and clears the offer', async () => {
+    const { db, store } = makeDb({ ...offered })
+    const res = await (
+      await build(db)
+    ).inject({
+      method: 'POST',
+      url: '/family/notifications/digest-offer',
+      payload: { accept: true },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(store[0]).toMatchObject({ digest_mode: true })
+    expect(store[0]).not.toHaveProperty('digest_offer')
+    expect(res.json().preferences.digest_offer_pending).toBe(false)
+  })
+
+  it('declining changes nothing about delivery, clears the offer and remembers the no', async () => {
+    const { db, store } = makeDb({ ...offered, digest_mode: false })
+    await (
+      await build(db)
+    ).inject({
+      method: 'POST',
+      url: '/family/notifications/digest-offer',
+      payload: { accept: false },
+    })
+    expect(store[0]!['digest_mode']).toBe(false)
+    expect(store[0]).not.toHaveProperty('digest_offer')
+    expect(store[0]!['digest_offer_declined_at']).toBeInstanceOf(Date)
+  })
+
+  it('only the organizer can answer, and the body must be valid', async () => {
+    const { db } = makeDb({ ...offered })
+    const post = (userId: string, payload: unknown) =>
+      build(db, userId).then((app) =>
+        app.inject({
+          method: 'POST',
+          url: '/family/notifications/digest-offer',
+          payload: payload as object,
+        }),
+      )
+    expect((await post('u2', { accept: true })).statusCode).toBe(403)
+    expect((await post('u_kid', { accept: true })).statusCode).toBe(403)
+    expect((await post('u1', { accept: 'yes' })).statusCode).toBe(400)
+  })
+
+  it('choosing digest-only through settings also answers a pending offer', async () => {
+    const { db, store } = makeDb({ ...offered })
+    await (
+      await build(db)
+    ).inject({
+      method: 'PATCH',
+      url: '/family/notifications',
+      payload: { digest_mode: true },
+    })
+    expect(store[0]).toMatchObject({ digest_mode: true })
+    expect(store[0]).not.toHaveProperty('digest_offer')
   })
 })

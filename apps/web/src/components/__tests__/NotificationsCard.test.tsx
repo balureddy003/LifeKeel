@@ -24,6 +24,7 @@ const prefs: NotificationPrefs = {
   heartbeat_quiet_weeks: false,
   domains_muted: [],
   member_scope: 'all',
+  digest_offer_pending: false,
 }
 
 const exempt = ['renewal_within_7_days', 'continuity_check_in', 'emergency_vault_awareness']
@@ -31,14 +32,22 @@ const exempt = ['renewal_within_7_days', 'continuity_check_in', 'emergency_vault
 describe('NotificationsCard', () => {
   it('renders read-only for a non-organizer: controls disabled, no reorder buttons', () => {
     render(
-      <NotificationsCard prefs={prefs} exemptCriticals={exempt} isOrganizer={false} busy={false} onPatch={() => {}} />,
+      <NotificationsCard
+        prefs={prefs}
+        exemptCriticals={exempt}
+        isOrganizer={false}
+        busy={false}
+        onPatch={() => {}}
+      />,
     )
     expect(screen.getByText('Only the organizer can change these')).toBeTruthy()
     // No up/down reorder affordances.
     expect(screen.queryByLabelText(/Move .* (up|down)/)).toBeNull()
     // Every control disabled.
-    for (const el of screen.getAllByRole('button')) expect((el as HTMLButtonElement).disabled).toBe(true)
-    for (const el of screen.getAllByRole('checkbox')) expect((el as HTMLInputElement).disabled).toBe(true)
+    for (const el of screen.getAllByRole('button'))
+      expect((el as HTMLButtonElement).disabled).toBe(true)
+    for (const el of screen.getAllByRole('checkbox'))
+      expect((el as HTMLInputElement).disabled).toBe(true)
     // Exempt criticals always visible.
     expect(screen.getByText('renewal within 7 days')).toBeTruthy()
   })
@@ -46,7 +55,13 @@ describe('NotificationsCard', () => {
   it('organizer can change cadence and reorder channels', () => {
     const onPatch = vi.fn()
     render(
-      <NotificationsCard prefs={prefs} exemptCriticals={exempt} isOrganizer busy={false} onPatch={onPatch} />,
+      <NotificationsCard
+        prefs={prefs}
+        exemptCriticals={exempt}
+        isOrganizer
+        busy={false}
+        onPatch={onPatch}
+      />,
     )
     fireEvent.click(screen.getByText('Monthly'))
     expect(onPatch).toHaveBeenCalledWith({ heartbeat_cadence: 'monthly' })
@@ -54,5 +69,57 @@ describe('NotificationsCard', () => {
     expect(onPatch).toHaveBeenCalledWith({ channels: ['email', 'web_push'] })
     fireEvent.click(screen.getByText('estate'))
     expect(onPatch).toHaveBeenCalledWith({ domains_muted: ['estate'] })
+  })
+})
+
+describe('digest-only offer (PRD-139)', () => {
+  it('shows nothing when no offer is pending', () => {
+    render(
+      <NotificationsCard
+        prefs={prefs}
+        exemptCriticals={exempt}
+        isOrganizer
+        busy={false}
+        onPatch={() => {}}
+        onDigestOffer={() => {}}
+      />,
+    )
+    expect(screen.queryByRole('region', { name: 'Digest only offer' })).toBeNull()
+  })
+
+  it('lets the organizer say yes or no, and tells them reminders still arrive', () => {
+    const onDigestOffer = vi.fn()
+    render(
+      <NotificationsCard
+        prefs={{ ...prefs, digest_offer_pending: true }}
+        exemptCriticals={exempt}
+        isOrganizer
+        busy={false}
+        onPatch={() => {}}
+        onDigestOffer={onDigestOffer}
+      />,
+    )
+    expect(
+      screen.getByText(/Important reminders and safety messages still arrive either way/),
+    ).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Use digest only' }))
+    expect(onDigestOffer).toHaveBeenLastCalledWith(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Keep alerts' }))
+    expect(onDigestOffer).toHaveBeenLastCalledWith(false)
+  })
+
+  it('shows another adult the offer without the buttons', () => {
+    render(
+      <NotificationsCard
+        prefs={{ ...prefs, digest_offer_pending: true }}
+        exemptCriticals={exempt}
+        isOrganizer={false}
+        busy={false}
+        onPatch={() => {}}
+        onDigestOffer={() => {}}
+      />,
+    )
+    expect(screen.getByText('The organizer can answer this.')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Use digest only' })).toBeNull()
   })
 })

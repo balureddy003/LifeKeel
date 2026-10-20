@@ -29,6 +29,7 @@ import {
 import { RealWebPushSender, type WebPushSubscription } from './web-push-sender.js'
 import { recordDeliveryLatency } from '../routes/metrics.js'
 import { recordSpend, spendCost } from '../spend-ledger.js'
+import { decideSend, maybeOfferDigestOnly, recordSent } from './notification-budget.js'
 
 type Db = { collection: (name: string) => any }
 
@@ -404,7 +405,9 @@ export class DeliveryRouter {
       // Deep-links to the insight detail screen in apps/web (/insights/[id]
       // → InsightGateClient) — not Studio's old /?insight= shape, which
       // nothing in the family app handles.
-      action_url: `${this.webBaseUrl}/insights/${insightId}`,
+      // ?src=alert lets a signed-in click count as a response (PRD-139): clicks,
+      // not opens, drive the digest-only offer.
+      action_url: `${this.webBaseUrl}/insights/${insightId}?src=alert&i=${insightId}`,
       approve_url: `${this.apiBaseUrl}/a/${this.signActionToken(insightId, tenantId, 'approve')}`,
       dismiss_url: `${this.apiBaseUrl}/a/${this.signActionToken(insightId, tenantId, 'dismiss')}`,
       why_url: `${this.apiBaseUrl}/why/${this.signEvidenceToken(insightId, tenantId)}`,
@@ -451,6 +454,30 @@ export class DeliveryRouter {
 
     if (!opts?.skipJudge && !(await this.passesMoveJudge(insight, tenantId))) return null
 
+    // PRD-139: one place decides whether this family may be messaged again.
+    // Critical alerts are exempt (never capped, never demoted); everything else
+    // is a Tier A change alert. A dropped alert goes to the digest queue, so it
+    // is delayed into the digest rather than lost, and the drop is recorded.
+    const insightId = String(insight['id'] ?? '')
+    const budget = this.db as unknown as import('mongodb').Db
+    await maybeOfferDigestOnly(budget, tenantId).catch(() => {})
+    const sendReq = {
+      tenantId,
+      tier: 'A' as const,
+      kind: 'insight_alert',
+      key: insightId,
+      ...(insightUrgency === 'critical'
+        ? { exempt: 'critical' as const }
+        : opts?.skipJudge
+          ? { exempt: 'human_release' as const }
+          : {}),
+    }
+    const decision = await decideSend(budget, sendReq)
+    if (!decision.allow) {
+      await this.queueForDigest(insight, tenantId)
+      return null
+    }
+
     const notification = this.buildNotification(insight, tenantId)
     let lastResult: DeliveryResult | null = null
 
@@ -466,6 +493,7 @@ export class DeliveryRouter {
       lastResult = result
 
       if (result.success) {
+        await recordSent(budget, sendReq)
         // Mark the insight delivered — the escalation worker's
         // {state:'sent', delivered_at<=cutoff} filter needs this to know
         // a notification went out and nobody acted. Only transitions from
@@ -625,7 +653,17 @@ export class DeliveryRouter {
       if (!result) continue
       attempted = true
       await this.recordReceipt(reminder.id, tenantId, result)
-      if (result.success) return 'sent'
+      if (result.success) {
+        // A dated obligation: exempt from the cap and from demotion, but logged.
+        await recordSent(this.db as unknown as import('mongodb').Db, {
+          tenantId,
+          tier: 'A',
+          kind: 'renewal_reminder',
+          key: reminder.id,
+          exempt: 'dated_obligation',
+        })
+        return 'sent'
+      }
     }
     return attempted ? 'failed' : 'no_channel'
   }

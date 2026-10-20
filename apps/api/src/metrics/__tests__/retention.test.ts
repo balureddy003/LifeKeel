@@ -42,6 +42,7 @@ describe('computeRetentionMetrics', () => {
       'data_freshness',
       'digest_delivery',
       'digest_engagement',
+      'notification_budget',
       'notification_health',
       'perceived_protection',
       'received_value_retention',
@@ -168,5 +169,29 @@ describe('computeRetentionMetrics', () => {
       .insertOne({ tenant_id: 't', user_id: 'last', quarter: q, score: 5 })
     m = await computeRetentionMetrics(db, NOW)
     expect(m.perceived_protection).toEqual({ quarter: q, mean: 4.1, responses: MIN_COHORT })
+  })
+
+  it('reports what the notification budget held back, hidden until enough families are affected', async () => {
+    const drop = (tenant_id: string, reason: string) => ({
+      tenant_id,
+      tier: 'A',
+      kind: 'insight_alert',
+      outcome: 'dropped',
+      reason,
+      at: new Date('2026-10-05'),
+    })
+    await db
+      .collection('notification_ledger')
+      .insertMany(many(MIN_COHORT - 1, (i) => drop(`t${i}`, 'tier_a_cap')))
+    expect(
+      (await computeRetentionMetrics(db, NOW)).notification_budget.dropped_by_reason,
+    ).toBeNull()
+    await db
+      .collection('notification_ledger')
+      .insertMany([drop('last', 'monthly_budget'), drop('last', 'tier_a_cap')])
+    expect((await computeRetentionMetrics(db, NOW)).notification_budget.dropped_by_reason).toEqual({
+      tier_a_cap: MIN_COHORT,
+      monthly_budget: 1,
+    })
   })
 })

@@ -31,6 +31,7 @@ import { heartbeatUnsubUrl } from '../routes/heartbeat-unsubscribe.js'
 import { renderHeartbeat, type HeartbeatData } from '../feed/render-heartbeat.js'
 import { renderQuietCareDigest } from '../feed/render-quiet-care.js'
 import { lastJobRun, recordJobRun } from './job-runs.js'
+import { maybeOfferDigestOnly, recordSent } from '../delivery/notification-budget.js'
 import { SWEEP_JOB } from './stale-profile-evaluation.js'
 import type { FamilyGroupDoc } from '../routes/family-group.js'
 import type { DeliveryPreferences } from '../delivery/delivery-router.js'
@@ -280,6 +281,12 @@ export async function runFamilyHeartbeat(
       continue
     }
 
+    // PRD-139: if recent alerts went unanswered, the digest carries one line offering
+    // digest-only. It is an offer; nothing is switched here.
+    const digestOffer =
+      opts.cadence === 'monthly'
+        ? await maybeOfferDigestOnly(db, tenantId, now).catch(() => false)
+        : false
     let rendered: ReturnType<typeof renderHeartbeat> & { variant?: string } = renderHeartbeat(data)
     if (opts.cadence === 'monthly' && windowEnd) {
       const monthName = (d: Date) =>
@@ -334,6 +341,7 @@ export async function runFamilyHeartbeat(
             }
           : null,
         paused,
+        digest_offer: digestOffer,
         next_check: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 8)),
         app_url: appUrl,
       })
@@ -381,6 +389,13 @@ export async function runFamilyHeartbeat(
             .catch(() => {})
         }
         result.sent++
+        // Counted by the budget as Tier B: exempt, logged (PRD-139 amendment 6).
+        await recordSent(db, {
+          tenantId,
+          tier: 'B',
+          kind: opts.cadence === 'monthly' ? 'quiet_care_digest' : 'weekly_heartbeat',
+          now,
+        })
       } catch (err) {
         result.failed++
         log.warn(
