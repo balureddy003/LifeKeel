@@ -1,0 +1,57 @@
+{
+  "_generated_from": "apps/web/src/components/landing/claims.ts (blocked claims). Do not edit by hand.",
+  "blocked_phrases": [
+    {
+      "claim": "no-training",
+      "phrase": "not used for training"
+    },
+    {
+      "claim": "no-training",
+      "phrase": "never used to train"
+    },
+    {
+      "claim": "no-training",
+      "phrase": "nothing trains"
+    },
+    {
+      "claim": "no-training",
+      "phrase": "to train models"
+    },
+    {
+      "claim": "no-training",
+      "phrase": "to train ai"
+    },
+    {
+      "claim": "sign-in-link",
+      "phrase": "no password"
+    },
+    {
+      "claim": "sign-in-link",
+      "phrase": "email link"
+    },
+    {
+      "claim": "sign-in-link",
+      "phrase": "magic link"
+    },
+    {
+      "claim": "always-on",
+      "phrase": "always on"
+    },
+    {
+      "claim": "always-on",
+      "phrase": "always-on"
+    },
+    {
+      "claim": "always-on",
+      "phrase": "always watching"
+    },
+    {
+      "claim": "always-on",
+      "phrase": "around the clock"
+    },
+    {
+      "claim": "always-on",
+      "phrase": "24/7"
+    }
+  ]
+}
