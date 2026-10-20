@@ -1,10 +1,10 @@
 import { connectorRegistry } from '@lifekeel/workflows'
 
 /**
- * POST /connectors/:id/actions/:action authenticates the tenant but has no human approval, live-trading
- * opt-in or cap check, so it is read-only: only an action the registry defines with method GET may run.
- * Everything else (emails, SMS, refunds, public posts, broker orders, 76 actions across 32 connectors at
- * the time of writing) is a write with external effect and needs an approval flow (CLAUDE.md rule 1).
+ * POST /connectors/:id/actions/:action authenticates the tenant but has no human approval
+ * flow, so it is read-only: only an action the registry defines with method GET may run.
+ * Everything else (emails, SMS, refunds, public posts, and any other action
+ * with an external effect) is a write and needs an approval flow (CLAUDE.md rule 1).
  *
  * Deny-by-default on purpose. A per-connector deny list misses new write actions, and the executor
  * silently aliases some ids (twitter_x create_tweet -> createPosts), so matching on the id the caller

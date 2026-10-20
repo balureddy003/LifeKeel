@@ -90,7 +90,7 @@ function getGoogleClientSecret(connectorId: string): string {
 export interface ConnectorCredential {
   tenant_id: string
   connector_id: string
-  auth_type: 'oauth2' | 'oauth2_kite' | 'oauth1a' | 'api_key' | 'basic' | 'http_basic' | 'none'
+  auth_type: 'oauth2' | 'oauth1a' | 'api_key' | 'basic' | 'http_basic' | 'none'
   // OAuth2
   access_token?: string
   refresh_token?: string
@@ -161,8 +161,6 @@ export class ConnectorActionExecutor {
     params: Record<string, unknown>,
     /**
      * Extra HTTP headers to add to the request (e.g. an idempotency key).
-     * Used by broker-execution.ts to send X-LifeKeel-Trade-Id for audit trail
-     * — see TRADING_ENGINE_GAPS.md gap #22.
      */
     extraHeaders?: Record<string, string>,
   ): Promise<ActionResult> {
@@ -205,9 +203,9 @@ export class ConnectorActionExecutor {
     }
 
     // 4. Build URL — substitute {path_params} and extra fields.
-    // ConnectorRegistry may declare a live_base_url (e.g. Trading 212). When
-    // the stored credential opts into live mode via extra.live_mode='true',
-    // use live_base_url instead of the sandbox/demo base_url. This matches the
+    // ConnectorRegistry may declare a live_base_url. When the stored
+    // credential opts into live mode via extra.live_mode='true', use
+    // live_base_url instead of the sandbox/demo base_url. This matches the
     // sync engine's behavior (connector-sync-engine.ts) and prevents live
     // credentials from being sent to the demo endpoint (which rejects them
     // with HTTP 401).
@@ -230,12 +228,8 @@ export class ConnectorActionExecutor {
     const requestBody = this.buildRequestBody(connectorId, resolvedActionId, bodyParams)
 
     // 7. Execute HTTP call
-    // Gap #20 (TRADING_ENGINE_GAPS.md): no request timeout anywhere in the
-    // fetch chain — a hung broker call leaves a trade claimed at
-    // status: 'executing' for an unbounded time. A 30s AbortController
-    // deadline bounds the orphan window for every connector action,
-    // including the broker path (which creates its own executor in
-    // broker-execution.ts, bypassing ConnectorSandbox's timeout).
+    // A hung connector call must not block for an unbounded time — a 30s
+    // AbortController deadline bounds every connector action's fetch.
     const timeoutMs = 30_000
     try {
       const init: RequestInit = {
@@ -384,17 +378,6 @@ export class ConnectorActionExecutor {
     if (cred.auth_type === 'oauth2' && cred.access_token) {
       const tokenType = cred.token_type ?? 'Bearer'
       return { Authorization: `${tokenType} ${decryptIfNeeded(cred.access_token)}` }
-    }
-
-    // Kite Connect v3 — requests are signed as `token api_key:access_token`
-    // with X-Kite-Version: 3. The api_key is stored in extra.api_key.
-    if (cred.auth_type === 'oauth2_kite' && cred.access_token) {
-      const apiKey = cred.extra?.api_key ?? ''
-      const accessToken = decryptIfNeeded(cred.access_token) ?? ''
-      return {
-        Authorization: `token ${apiKey}:${accessToken}`,
-        'X-Kite-Version': '3',
-      }
     }
 
     if (cred.auth_type === 'api_key' && cred.api_key) {

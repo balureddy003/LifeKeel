@@ -153,17 +153,4 @@ export type {
   VisionContent,
   VisionFn,
 } from './task-gateway.js'
-export {
-  PERSONA_VERTICALS,
-  RISK_TIER_PRESETS,
-  STRATEGY_DEFAULTS,
-  isPersona,
-  isRiskTier,
-} from './onboarding-profile.js'
-export type {
-  Persona,
-  RiskTier,
-  RiskTierPreset,
-  StrategyPreset,
-  GoalKpiPreset,
-} from './onboarding-profile.js'
+

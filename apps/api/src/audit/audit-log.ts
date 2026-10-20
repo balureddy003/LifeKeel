@@ -132,14 +132,13 @@ export class AuditLogger {
 
   /**
    * Write a structured audit event with retry — for financial actions where
-   * dropping the audit record is not acceptable (gap #27,
-   * TRADING_ENGINE_GAPS.md).
+   * dropping the audit record is not acceptable.
    *
    * Unlike `log` (fire-and-forget), this method awaits the insert and retries
    * up to 3 times with exponential backoff (100ms, 200ms, 400ms). If all
-   * retries fail, logs to stderr — the caller's trade has already been
-   * persisted to pending_trades through a separate path, so the financial
-   * record survives even if the audit record doesn't.
+   * retries fail, logs to stderr — the caller's underlying record has already
+   * been persisted through a separate path, so it survives even if the audit
+   * record doesn't.
    */
   async logWithRetry(entry: AuditEntry, maxRetries = 3): Promise<void> {
     if (!this.enabled) return
