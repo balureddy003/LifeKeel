@@ -691,7 +691,7 @@ export function setOnDeviceEnabled(enabled: boolean): void {
     // The Layer-B NER pipeline shares the toggle — unload it too and
     // evict its cached weights (lazy import keeps the module out of the
     // disable path's bundle for users who never opted in).
-    void import('./on-device-ner.js').then((m) => {
+    void import('./on-device-ner').then((m) => {
       m.unloadNerClassifier()
       void m.clearNerModelCache()
     })
