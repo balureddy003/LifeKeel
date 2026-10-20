@@ -18,10 +18,14 @@ describe('runwayIfStoppedNow', () => {
     expect(runwayIfStoppedNow(base, 400_000)).toEqual({ savingsMinor: 1_000_000, months: 3.3 })
   })
   it('has nothing to say for an immediate change or when income still covers spending', () => {
-    expect(runwayIfStoppedNow({ ...base, monthsUntilChange: 0 } as ScenarioResult, 400_000)).toBeNull()
+    expect(
+      runwayIfStoppedNow({ ...base, monthsUntilChange: 0 } as ScenarioResult, 400_000),
+    ).toBeNull()
     expect(runwayIfStoppedNow(base, 0)).toBeNull()
   })
   it('gives up when the fund was floored at zero and today cannot be recovered', () => {
-    expect(runwayIfStoppedNow({ ...base, savingsAtChangeMinor: 0 } as ScenarioResult, 400_000)).toBeNull()
+    expect(
+      runwayIfStoppedNow({ ...base, savingsAtChangeMinor: 0 } as ScenarioResult, 400_000),
+    ).toBeNull()
   })
 })

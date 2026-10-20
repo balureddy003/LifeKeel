@@ -36,24 +36,31 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
     fetchFinancialProfile().then((profile) => {
       if (!cancelled) setPolicies(profile?.policies ?? [])
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  const selected = members.length === 0
-    ? null
-    : members.find((m) => m.id === selectedId)
-      ?? members.find((m) => m.role === 'organizer')
-      ?? members[0]!
+  const selected =
+    members.length === 0
+      ? null
+      : (members.find((m) => m.id === selectedId) ??
+        members.find((m) => m.role === 'organizer') ??
+        members[0]!)
 
   const sections = useMemo(() => {
     if (!selected) return []
-    return getMemberSections({
-      id: selected.id,
-      name: selected.name,
-      role: selected.role,
-      emoji: selected.emoji,
-      relation: selected.role === 'organizer' ? 'owner' : selected.role === 'parent' ? 'spouse' : 'child',
-    }, policies)
+    return getMemberSections(
+      {
+        id: selected.id,
+        name: selected.name,
+        role: selected.role,
+        emoji: selected.emoji,
+        relation:
+          selected.role === 'organizer' ? 'owner' : selected.role === 'parent' ? 'spouse' : 'child',
+      },
+      policies,
+    )
   }, [selected, policies])
 
   if (members.length === 0 || !selected) {
@@ -84,7 +91,10 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
           return (
             <button
               key={m.id}
-              onClick={() => { setSelectedId(m.id); haptic('light') }}
+              onClick={() => {
+                setSelectedId(m.id)
+                haptic('light')
+              }}
               aria-pressed={active}
               title={m.name}
               className={`flex-1 min-w-0 rounded-2xl px-2 py-3 text-center border transition-colors ${
@@ -115,8 +125,12 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
                   just below already uses (selected.name.split(' ')[0]);
                   the full name is still one tap away on the member's own
                   page, and available as a hover title here. */}
-              <div className="text-xs font-semibold text-ink-primary truncate">{m.name.split(' ')[0]}</div>
-              <div className={`text-caption truncate ${m.status === 'pending' ? 'text-warning font-medium' : 'text-ink-tertiary'}`}>
+              <div className="text-xs font-semibold text-ink-primary truncate">
+                {m.name.split(' ')[0]}
+              </div>
+              <div
+                className={`text-caption truncate ${m.status === 'pending' ? 'text-warning font-medium' : 'text-ink-tertiary'}`}
+              >
                 {m.status === 'pending' ? memberStatusLabel(m.status) : ROLE_LABELS[m.role]}
               </div>
             </button>
@@ -139,7 +153,8 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
               {selected.name.split(' ')[0]} hasn&apos;t joined yet
             </div>
             <div className="text-caption text-ink-tertiary">
-              Send an invite or finish their profile — their data counts toward the family score either way.
+              Send an invite or finish their profile — their data counts toward the family score
+              either way.
             </div>
           </div>
           <ChevronRight size={14} className="text-warning flex-shrink-0" />
@@ -166,16 +181,27 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
             return (
               <div
                 key={s.id}
-                onClick={dest ? () => { haptic('light'); router.push(dest) } : undefined}
+                onClick={
+                  dest
+                    ? () => {
+                        haptic('light')
+                        router.push(dest)
+                      }
+                    : undefined
+                }
                 role={dest ? 'button' : undefined}
                 tabIndex={dest ? 0 : undefined}
-                onKeyDown={dest ? (e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    if (e.key === ' ') e.preventDefault()
-                    haptic('light')
-                    router.push(dest)
-                  }
-                } : undefined}
+                onKeyDown={
+                  dest
+                    ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          if (e.key === ' ') e.preventDefault()
+                          haptic('light')
+                          router.push(dest)
+                        }
+                      }
+                    : undefined
+                }
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 bg-tint/[0.03] ${dest ? 'active:opacity-70 cursor-pointer' : ''}`}
               >
                 <div

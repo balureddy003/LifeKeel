@@ -6,7 +6,13 @@ import { Sparkles, CheckCircle2, Loader2, AlertCircle, ScanLine } from 'lucide-r
 import { PageHeader, GlassCard, GlassButton, Skeleton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
-import { fetchBillingSubscription, openBillingPortal, redeemPromoCode, startLifeKeelPlusCheckout, type BillingSubscription } from '@/lib/api'
+import {
+  fetchBillingSubscription,
+  openBillingPortal,
+  redeemPromoCode,
+  startLifeKeelPlusCheckout,
+  type BillingSubscription,
+} from '@/lib/api'
 
 const BENEFITS = [
   'AI reads your documents and pulls out the provider, policy number, amounts, and dates automatically',
@@ -45,7 +51,10 @@ function ExtractionPreview() {
           <div className="h-1.5 w-4/5 rounded-full bg-tint/10" />
           <motion.div
             className="absolute left-0 right-0 h-10 pointer-events-none"
-            style={{ background: 'linear-gradient(180deg, transparent, rgb(var(--family-accent) / 0.4), transparent)' }}
+            style={{
+              background:
+                'linear-gradient(180deg, transparent, rgb(var(--family-accent) / 0.4), transparent)',
+            }}
             initial={{ top: '-25%' }}
             animate={{ top: '115%' }}
             transition={{ duration: 1.8, repeat: Infinity, repeatDelay: 1.4, ease: 'easeInOut' }}
@@ -70,7 +79,8 @@ function ExtractionPreview() {
         </div>
       </div>
       <p className="text-xs text-ink-tertiary mt-3 leading-relaxed">
-        Illustrative example — upload a real document and Keel Plus extracts the details automatically.
+        Illustrative example — upload a real document and Keel Plus extracts the details
+        automatically.
       </p>
     </GlassCard>
   )
@@ -110,7 +120,10 @@ export default function UpgradePage() {
     // Stripe's webhook can lag the checkout redirect by several seconds —
     // after a ?success=true return, keep polling briefly rather than
     // leaving "refresh if it doesn't update" on a page that never does.
-    if (!success) return () => { cancelled = true }
+    if (!success)
+      return () => {
+        cancelled = true
+      }
     const startedAt = Date.now()
     const interval = setInterval(async () => {
       if (Date.now() - startedAt > 30_000) {
@@ -124,7 +137,10 @@ export default function UpgradePage() {
         clearInterval(interval)
       }
     }, 3000)
-    return () => { cancelled = true; clearInterval(interval) }
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
   }, [])
 
   const handleUpgrade = async () => {
@@ -137,7 +153,11 @@ export default function UpgradePage() {
       window.location.href = url
     } catch (err) {
       haptic('warning')
-      setError(err instanceof Error ? err.message : "Checkout didn't start — you haven't been charged anything. Try again in a moment.")
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Checkout didn't start — you haven't been charged anything. Try again in a moment.",
+      )
       setCheckingOut(false)
     }
   }
@@ -151,7 +171,11 @@ export default function UpgradePage() {
       window.location.href = url
     } catch (err) {
       haptic('warning')
-      setError(err instanceof Error ? err.message : "Couldn't open subscription management. Try again in a moment.")
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Couldn't open subscription management. Try again in a moment.",
+      )
       setOpeningPortal(false)
     }
   }
@@ -172,7 +196,9 @@ export default function UpgradePage() {
       setPromoCode('')
     } catch (err) {
       haptic('warning')
-      setPromoError(err instanceof Error ? err.message : "Couldn't redeem that code. Check it and try again.")
+      setPromoError(
+        err instanceof Error ? err.message : "Couldn't redeem that code. Check it and try again.",
+      )
     } finally {
       setRedeeming(false)
     }
@@ -181,7 +207,11 @@ export default function UpgradePage() {
   if (loading) {
     return (
       <div className="px-5 pt-2 pb-10 space-y-5">
-        <PageHeader title="Keel Plus" backHref="/settings" subtitle="AI that does the reading for you" />
+        <PageHeader
+          title="Keel Plus"
+          backHref="/settings"
+          subtitle="AI that does the reading for you"
+        />
         <GlassCard className="p-5">
           <Skeleton className="h-4 w-28 mb-3" />
           {[0, 1, 2].map((i) => (
@@ -201,12 +231,19 @@ export default function UpgradePage() {
 
   return (
     <div className="px-5 pt-2 pb-10 space-y-5">
-      <PageHeader title="Keel Plus" backHref="/settings" subtitle="AI that does the reading for you" />
+      <PageHeader
+        title="Keel Plus"
+        backHref="/settings"
+        subtitle="AI that does the reading for you"
+      />
 
       {banner === 'success' && !isPlus && (
         <GlassCard className="p-4 border-success/20 flex items-start gap-3">
           <CheckCircle2 size={20} className="text-success flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-ink-secondary">Payment received — activating Keel Plus. This usually takes a few seconds and updates here automatically.</p>
+          <p className="text-sm text-ink-secondary">
+            Payment received — activating Keel Plus. This usually takes a few seconds and updates
+            here automatically.
+          </p>
         </GlassCard>
       )}
       {banner === 'canceled' && (
@@ -223,7 +260,9 @@ export default function UpgradePage() {
               <CheckCircle2 size={28} className="text-success" />
             </div>
             <h2 className="text-lg font-bold mb-1">You're on Keel Plus</h2>
-            <p className="text-sm text-ink-tertiary">AI document extraction and inbox summaries are active on your account.</p>
+            <p className="text-sm text-ink-tertiary">
+              AI document extraction and inbox summaries are active on your account.
+            </p>
             {sub?.subscription?.current_period_end && (
               <p className="text-xs text-ink-tertiary mt-2">
                 {sub.subscription.cancel_at_period_end
@@ -233,7 +272,11 @@ export default function UpgradePage() {
             )}
           </GlassCard>
 
-          {error && <p role="status" aria-live="polite" className="text-sm text-danger text-center mt-4">{error}</p>}
+          {error && (
+            <p role="status" aria-live="polite" className="text-sm text-danger text-center mt-4">
+              {error}
+            </p>
+          )}
 
           <GlassButton onClick={handleManage} disabled={openingPortal} className="mt-4">
             {openingPortal ? <Loader2 size={18} className="animate-spin" /> : 'Manage subscription'}
@@ -250,7 +293,10 @@ export default function UpgradePage() {
             </div>
             <ul className="space-y-2.5">
               {BENEFITS.map((b) => (
-                <li key={b} className="flex items-start gap-2 text-sm text-ink-secondary leading-relaxed">
+                <li
+                  key={b}
+                  className="flex items-start gap-2 text-sm text-ink-secondary leading-relaxed"
+                >
                   <CheckCircle2 size={16} className="text-family-400 flex-shrink-0 mt-0.5" />
                   {b}
                 </li>
@@ -265,7 +311,11 @@ export default function UpgradePage() {
             <p className="text-xs text-ink-tertiary mt-1">Cancel anytime</p>
           </GlassCard>
 
-          {error && <p role="status" aria-live="polite" className="text-sm text-danger text-center">{error}</p>}
+          {error && (
+            <p role="status" aria-live="polite" className="text-sm text-danger text-center">
+              {error}
+            </p>
+          )}
 
           <GlassButton onClick={handleUpgrade} disabled={checkingOut}>
             {checkingOut ? <Loader2 size={18} className="animate-spin" /> : 'Upgrade to Keel Plus'}
@@ -274,7 +324,9 @@ export default function UpgradePage() {
       )}
 
       <GlassCard className="p-5">
-        <label htmlFor="promo-code" className="text-sm font-semibold text-ink-secondary">Have a promo code?</label>
+        <label htmlFor="promo-code" className="text-sm font-semibold text-ink-secondary">
+          Have a promo code?
+        </label>
         <div className="flex gap-2 mt-2">
           <input
             id="promo-code"
@@ -286,16 +338,29 @@ export default function UpgradePage() {
             autoCapitalize="characters"
             className="flex-1 min-w-0 rounded-xl bg-tint/[0.04] border border-tint/[0.08] px-3 py-2 text-sm text-ink-primary placeholder:text-ink-tertiary focus:outline-none focus:border-family-500/40"
           />
-          <GlassButton onClick={handleRedeem} disabled={redeeming || promoCode.trim().length === 0} className="px-4 py-2 text-sm w-auto">
+          <GlassButton
+            onClick={handleRedeem}
+            disabled={redeeming || promoCode.trim().length === 0}
+            className="px-4 py-2 text-sm w-auto"
+          >
             {redeeming ? <Loader2 size={16} className="animate-spin" /> : 'Apply'}
           </GlassButton>
         </div>
-        {promoMessage && <p role="status" className="text-sm text-success mt-2">{promoMessage}</p>}
-        {promoError && <p role="status" className="text-sm text-danger mt-2">{promoError}</p>}
+        {promoMessage && (
+          <p role="status" className="text-sm text-success mt-2">
+            {promoMessage}
+          </p>
+        )}
+        {promoError && (
+          <p role="status" className="text-sm text-danger mt-2">
+            {promoError}
+          </p>
+        )}
       </GlassCard>
 
       <p className="text-xs text-ink-tertiary text-center leading-relaxed">
-        Uploading and storing documents is always free. This upgrade covers the AI reading step only.
+        Uploading and storing documents is always free. This upgrade covers the AI reading step
+        only.
       </p>
     </div>
   )

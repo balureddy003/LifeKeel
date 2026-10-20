@@ -60,7 +60,10 @@ interface ScenarioTemplate {
   horizons?: number[]
   /** Education-fund target picker. */
   child?: boolean
-  build: (sel: Selections, ctx: { totalIncomeMinor: number }) => { inputs: ScenarioInputs; name: string } | null
+  build: (
+    sel: Selections,
+    ctx: { totalIncomeMinor: number },
+  ) => { inputs: ScenarioInputs; name: string } | null
   /** One honest sentence for the preview result. */
   narrate: (result: ScenarioResult, sel: Selections) => string
 }
@@ -84,7 +87,10 @@ function runwayLine(result: ScenarioResult): string {
  * adds over the wait. Null when that cannot be recovered cleanly (the fund was floored at zero,
  * or income already covers spending).
  */
-export function runwayIfStoppedNow(r: ScenarioResult, incomeLostMinor: number): { savingsMinor: number; months: number } | null {
+export function runwayIfStoppedNow(
+  r: ScenarioResult,
+  incomeLostMinor: number,
+): { savingsMinor: number; months: number } | null {
   if (r.monthsUntilChange <= 0) return null
   const savingsMinor = r.savingsAtChangeMinor - r.currentMonthlySurplusMinor * r.monthsUntilChange
   const expensesMinor = r.currentMonthlyIncomeMinor - r.currentMonthlySurplusMinor
@@ -122,7 +128,9 @@ const SCENARIO_TEMPLATES: Record<string, ScenarioTemplate> = {
       const incomeLost = r.currentMonthlyIncomeMinor - r.projectedMonthlyIncomeMinor
       const today = runwayIfStoppedNow(r, incomeLost)
       return (
-        (today ? `Today: if ${who} stopped now, your ${gbp(today.savingsMinor)} of savings would cover about ${today.months} months of spending. ` : '') +
+        (today
+          ? `Today: if ${who} stopped now, your ${gbp(today.savingsMinor)} of savings would cover about ${today.months} months of spending. `
+          : '') +
         `In ${horizonMonths} months, if you keep saving at today's pace: savings would reach about ${gbp(r.savingsAtChangeMinor)}, and then ${runwayLine(r)}.`
       )
     },
@@ -133,7 +141,9 @@ const SCENARIO_TEMPLATES: Record<string, ScenarioTemplate> = {
     build: ({ earner }) =>
       earner
         ? {
-            inputs: { steps: [{ atMonth: 0, monthlyIncomeDeltaMinor: -earner.monthlySalaryMinor }] },
+            inputs: {
+              steps: [{ atMonth: 0, monthlyIncomeDeltaMinor: -earner.monthlySalaryMinor }],
+            },
             name: `If ${earner.name}'s income stopped`,
           }
         : null,
@@ -226,13 +236,21 @@ export function eventHasScenario(eventId: string): boolean {
   return eventId in SCENARIO_TEMPLATES
 }
 
-function chipRow<T>(options: readonly T[], selected: T, label: (v: T) => string, onPick: (v: T) => void) {
+function chipRow<T>(
+  options: readonly T[],
+  selected: T,
+  label: (v: T) => string,
+  onPick: (v: T) => void,
+) {
   return (
     <div className="flex flex-wrap gap-2">
       {options.map((v) => (
         <button
           key={String(v)}
-          onClick={() => { haptic('light'); onPick(v) }}
+          onClick={() => {
+            haptic('light')
+            onPick(v)
+          }}
           aria-pressed={selected === v}
           className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
             selected === v
@@ -273,27 +291,48 @@ export default function EventScenarioCard({ eventId }: { eventId: string }) {
       // G7: job-loss offers a household aggregate chip before the earners —
       // memberId null, labelled for what it is. Other earner templates
       // keep memberId purely as a roster link.
-      const total = p.household.monthly_salary_minor + (p.household.members ?? []).reduce((s, m) => s + m.monthly_salary_minor, 0)
-      if (eventId === 'job-loss' && (p.household.members ?? []).some((m) => m.monthly_salary_minor > 0) && total > 0) {
+      const total =
+        p.household.monthly_salary_minor +
+        (p.household.members ?? []).reduce((s, m) => s + m.monthly_salary_minor, 0)
+      if (
+        eventId === 'job-loss' &&
+        (p.household.members ?? []).some((m) => m.monthly_salary_minor > 0) &&
+        total > 0
+      ) {
         list.push({ memberId: null, name: 'Whole household', monthlySalaryMinor: total })
       }
       if (p.household.monthly_salary_minor > 0) {
-        list.push({ memberId: organizerMember?.id ?? null, name: organizerName, monthlySalaryMinor: p.household.monthly_salary_minor })
+        list.push({
+          memberId: organizerMember?.id ?? null,
+          name: organizerName,
+          monthlySalaryMinor: p.household.monthly_salary_minor,
+        })
       }
       for (const m of p.household.members ?? []) {
         if (m.monthly_salary_minor > 0) {
-          list.push({ memberId: m.member_id, name: byId.get(m.member_id)?.name ?? 'Family member', monthlySalaryMinor: m.monthly_salary_minor })
+          list.push({
+            memberId: m.member_id,
+            name: byId.get(m.member_id)?.name ?? 'Family member',
+            monthlySalaryMinor: m.monthly_salary_minor,
+          })
         }
       }
       setEarners(list)
-      setChildren((p.education_funds ?? []).map((f) => f.child_name).filter((n): n is string => Boolean(n)))
+      setChildren(
+        (p.education_funds ?? []).map((f) => f.child_name).filter((n): n is string => Boolean(n)),
+      )
     })
-    void fetchFamilyScenarios().then((s) => { if (!cancelled) setSaved(s) })
-    return () => { cancelled = true }
+    void fetchFamilyScenarios().then((s) => {
+      if (!cancelled) setSaved(s)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const totalIncomeMinor = profile
-    ? profile.household.monthly_salary_minor + (profile.household.members ?? []).reduce((s, m) => s + m.monthly_salary_minor, 0)
+    ? profile.household.monthly_salary_minor +
+      (profile.household.members ?? []).reduce((s, m) => s + m.monthly_salary_minor, 0)
     : 0
 
   const sel: Selections = {
@@ -305,7 +344,10 @@ export default function EventScenarioCard({ eventId }: { eventId: string }) {
   const built = template?.build(sel, { totalIncomeMinor }) ?? null
 
   useEffect(() => {
-    if (!built) { setResult(null); return }
+    if (!built) {
+      setResult(null)
+      return
+    }
     let cancelled = false
     setLoading(true)
     setJustSaved(false)
@@ -314,7 +356,9 @@ export default function EventScenarioCard({ eventId }: { eventId: string }) {
       setResult(r?.result ?? null)
       setLoading(false)
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [earnerIdx, amountIdx, horizon, childIdx, earners.length, children.length, totalIncomeMinor])
 
@@ -347,25 +391,49 @@ export default function EventScenarioCard({ eventId }: { eventId: string }) {
         {template.earners && earners.length > 1 && (
           <div>
             <div className="text-xs text-ink-tertiary mb-1.5">Whose income?</div>
-            {chipRow(earners.map((_, i) => i), earnerIdx, (i) => earners[i]?.name ?? '', setEarnerIdx)}
+            {chipRow(
+              earners.map((_, i) => i),
+              earnerIdx,
+              (i) => earners[i]?.name ?? '',
+              setEarnerIdx,
+            )}
           </div>
         )}
         {template.amounts && (
           <div>
-            <div className="text-xs text-ink-tertiary mb-1.5">{eventId === 'university' ? 'Monthly amount' : 'Rough monthly cost'}</div>
-            {chipRow(template.amounts.map((_, i) => i), amountIdx, (i) => gbp(template.amounts![i]!), setAmountIdx)}
+            <div className="text-xs text-ink-tertiary mb-1.5">
+              {eventId === 'university' ? 'Monthly amount' : 'Rough monthly cost'}
+            </div>
+            {chipRow(
+              template.amounts.map((_, i) => i),
+              amountIdx,
+              (i) => gbp(template.amounts![i]!),
+              setAmountIdx,
+            )}
           </div>
         )}
         {template.child && (
           <div>
             <div className="text-xs text-ink-tertiary mb-1.5">Whose fund?</div>
-            {chipRow(children.map((_, i) => i), childIdx, (i) => children[i] ?? '', setChildIdx)}
+            {chipRow(
+              children.map((_, i) => i),
+              childIdx,
+              (i) => children[i] ?? '',
+              setChildIdx,
+            )}
           </div>
         )}
         {template.horizons && (
           <div>
-            {template.horizons === HORIZONS && <div className="text-xs text-ink-tertiary mb-1.5">When?</div>}
-            {chipRow([...template.horizons], horizon, (m) => (m === 0 ? 'Now' : `${m} mo`), setHorizon)}
+            {template.horizons === HORIZONS && (
+              <div className="text-xs text-ink-tertiary mb-1.5">When?</div>
+            )}
+            {chipRow(
+              [...template.horizons],
+              horizon,
+              (m) => (m === 0 ? 'Now' : `${m} mo`),
+              setHorizon,
+            )}
           </div>
         )}
       </div>
@@ -375,13 +443,21 @@ export default function EventScenarioCard({ eventId }: { eventId: string }) {
           <Loader2 size={16} className="animate-spin text-ink-tertiary mt-2" />
         ) : result ? (
           <div className="space-y-2">
-            <MoneyText text={template.narrate(result, sel)} className="text-sm text-ink-secondary leading-relaxed" />
+            <MoneyText
+              text={template.narrate(result, sel)}
+              className="text-sm text-ink-secondary leading-relaxed"
+            />
             {result.timeline && result.timeline.length > 1 && (
-              <ScenarioTimeline timeline={result.timeline} fundDepletedAtMonth={result.fundDepletedAtMonth} />
+              <ScenarioTimeline
+                timeline={result.timeline}
+                fundDepletedAtMonth={result.fundDepletedAtMonth}
+              />
             )}
           </div>
         ) : (
-          <p className="text-sm text-ink-tertiary">Couldn’t project this right now — try again in a moment.</p>
+          <p className="text-sm text-ink-tertiary">
+            Couldn’t project this right now — try again in a moment.
+          </p>
         )}
       </div>
 

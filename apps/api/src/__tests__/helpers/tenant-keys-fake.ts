@@ -10,7 +10,8 @@ export function makeTenantKeysFake() {
     Object.entries(filter).every(([k, v]) => doc[k] === v)
   return {
     docs,
-    findOne: async (filter: Record<string, unknown>) => docs.find((d) => matches(d, filter)) ?? null,
+    findOne: async (filter: Record<string, unknown>) =>
+      docs.find((d) => matches(d, filter)) ?? null,
     insertOne: async (doc: Record<string, unknown>) => {
       docs.push(doc)
       return { acknowledged: true }
@@ -20,7 +21,9 @@ export function makeTenantKeysFake() {
 }
 
 /** Route `tenant_keys` to the fake and every other collection to `other`. */
-export function withTenantKeys<T>(other: (name: string) => T): (name: string) => T | ReturnType<typeof makeTenantKeysFake> {
+export function withTenantKeys<T>(
+  other: (name: string) => T,
+): (name: string) => T | ReturnType<typeof makeTenantKeysFake> {
   const keys = makeTenantKeysFake()
   return (name: string) => (name === 'tenant_keys' ? keys : other(name))
 }

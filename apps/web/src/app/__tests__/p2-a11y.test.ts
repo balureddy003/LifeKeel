@@ -19,11 +19,14 @@ describe('page titles', () => {
       .filter((e) => e.isDirectory() && !NO_TITLE_NEEDED.has(e.name))
       .filter((e) => {
         const dir = path.join(APP, e.name)
-        const hasPage = fs.existsSync(path.join(dir, 'page.tsx')) || fs.readdirSync(dir).some((c) => c.startsWith('['))
+        const hasPage =
+          fs.existsSync(path.join(dir, 'page.tsx')) ||
+          fs.readdirSync(dir).some((c) => c.startsWith('['))
         if (!hasPage) return false
         const layout = path.join(dir, 'layout.tsx')
         const page = path.join(dir, 'page.tsx')
-        const titled = (f: string) => fs.existsSync(f) && /title\s*[:=]/.test(fs.readFileSync(f, 'utf8'))
+        const titled = (f: string) =>
+          fs.existsSync(f) && /title\s*[:=]/.test(fs.readFileSync(f, 'utf8'))
         return !(titled(layout) || titled(page))
       })
       .map((e) => e.name)

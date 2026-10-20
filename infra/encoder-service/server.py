@@ -19,6 +19,9 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MODEL_ID = os.environ.get("ENCODER_MODEL", "fastino/GLiNER2.5-Decide")
+# HF commit pin (ai-bom.yaml, encoder-model). Set by the Dockerfile; when
+# unset the loader resolves `main`, which is mutable — log loudly.
+MODEL_REVISION = os.environ.get("ENCODER_MODEL_REVISION")
 MAX_BODY_BYTES = 64 * 1024
 MAX_FIELD_CHARS = 4000
 
@@ -47,7 +50,9 @@ def load_model():
     """Loaded lazily so the request logic is testable without torch installed."""
     global _model
     from gliner2 import GLiNER2  # imported here on purpose
-    _model = GLiNER2.from_pretrained(MODEL_ID)
+    if not MODEL_REVISION:
+        print("WARNING: ENCODER_MODEL_REVISION unset — loading mutable `main`", flush=True)
+    _model = GLiNER2.from_pretrained(MODEL_ID, revision=MODEL_REVISION)
     _model.classify_text("warmup", {"kind": LABELS})
     _ready.set()
 

@@ -110,7 +110,6 @@ function toMinor(whole: string): number {
   return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : 0
 }
 
-
 function Field({
   label,
   value,
@@ -513,9 +512,9 @@ export default function ReadinessQuizPage() {
                   This was a snapshot. Your chart goes further.
                 </p>
                 <p className="text-sm text-ink-secondary leading-relaxed mb-3">
-                  The quiz looked at two areas from six answers. A full account lets you add what you
-                  have on file, shows what is there and where it looks light, and lists the steps to
-                  take on a bad day.
+                  The quiz looked at two areas from six answers. A full account lets you add what
+                  you have on file, shows what is there and where it looks light, and lists the
+                  steps to take on a bad day.
                 </p>
                 <ul className="text-xs text-ink-tertiary leading-relaxed space-y-1.5 mb-3">
                   <li>• Cover, savings, wills and papers in one place</li>
