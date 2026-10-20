@@ -390,3 +390,7 @@ h1, h2 {
    heading sets its own responsive size, so breakpoint utilities still win. */
 h1.text-title-md:not([class*=':text-']), h1.text-title-lg:not([class*=':text-']),
 h1.text-2xl:not([class*=':text-']), h1.text-xl:not([class*=':text-']) { font-size: 1.9rem; line-height: 1.1; }
+
+/* A device with a stored session sees the app, not the public landing, while the session check runs
+   (data-session is set before first paint by the inline script in layout.tsx). */
+html[data-session] .lk-landing-gate { visibility: hidden; }

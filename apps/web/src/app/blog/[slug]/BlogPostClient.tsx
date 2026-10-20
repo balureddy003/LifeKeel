@@ -25,11 +25,11 @@ function isDiagramBlock(className: string | undefined, text: string): boolean {
 const SITE_URL = 'https://lifekeel.co.uk'
 
 /**
- * Static export means every /blog/<slug> serves the same placeholder HTML,
- * so per-post <title>/description/canonical/OG can't be prerendered — the
- * crawler-facing fix is injecting them here once the post loads (Google
- * executes JS for rendering; social-scraper unfurls stay on the root
- * metadata, a hard constraint of the static export). Everything we touch
+ * Posts that existed at build time are prerendered with their own tags (page.tsx). A post
+ * published since then is served through the placeholder page, whose HTML cannot carry
+ * per-post <title>/description/canonical/OG, so they are injected here once the post
+ * loads (Google executes JS for rendering; social unfurls stay on the root metadata until
+ * the next deploy prerenders the post). Everything we touch
  * is snapshotted and restored on unmount so navigating away leaves the
  * root layout's site-wide tags intact.
  */
@@ -56,6 +56,8 @@ function applyPostSeo(post: BlogPost, slug: string): () => void {
   }
 
   upsertMeta('name', 'description', description)
+  // The placeholder page is built noindex; a post served through it is a real page, so say so.
+  upsertMeta('name', 'robots', 'index, follow')
   upsertMeta('property', 'og:title', post.title)
   upsertMeta('property', 'og:description', description)
   upsertMeta('property', 'og:url', url)
@@ -128,10 +130,17 @@ const MARKDOWN_COMPONENTS = {
   a: (props: React.ComponentProps<'a'>) => <a className="text-family-400 font-medium" {...props} />,
 }
 
-export default function BlogPostClient() {
+export default function BlogPostClient({
+  initialPost = null,
+  initialSlug = null,
+}: {
+  /** Set when the post was prerendered at build: its text and tags are already in the HTML. */
+  initialPost?: BlogPost | null
+  initialSlug?: string | null
+}) {
   const params = useParams<{ slug: string }>()
-  const [post, setPost] = useState<BlogPost | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [post, setPost] = useState<BlogPost | null>(initialPost)
+  const [loading, setLoading] = useState(initialPost === null)
   // Landing UTM is captured once on mount; the CTA click echoes it so
   // channel-level conversion (view → CTA) is attributable per source.
   const utmRef = useRef<Record<string, string>>({})
@@ -151,6 +160,9 @@ export default function BlogPostClient() {
     utmRef.current = utm
     track('blog_view', Object.keys(utm).length ? utm : undefined)
     let seoCleanup: (() => void) | null = null
+    // Prerendered posts already carry their own metadata and structured data; only the
+    // placeholder route (a post newer than the last build) needs the client-side fetch and tags.
+    if (initialPost && initialSlug === params.slug) return
     fetchBlogPost(params.slug).then((p) => {
       if (cancelled) return
       if (p) seoCleanup = applyPostSeo(p, params.slug)

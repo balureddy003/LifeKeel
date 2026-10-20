@@ -68,6 +68,9 @@ jobs:
       # First-load JS budget for the landing page (PRD-209). Reads the build that just ran; no second build.
       - name: Landing size budget
         run: node scripts/check-landing-size.mjs --next apps/web/.next
+      # Public pages must have their text in the prerendered HTML, not a loading skeleton (PRD-210).
+      - name: Public pages are prerendered with their text
+        run: node scripts/check-public-html.mjs --next apps/web/.next
       # Boots the built API like a deploy would (every optional deploy variable set to EMPTY, as an unset
       # repo variable is) and requires /health/ready. Unit tests never start the server, so this is what
       # catches a bad deploy-time environment. See scripts/boot-smoke.sh.
