@@ -59,7 +59,14 @@ function makeDb(documentsSeed: Record<string, unknown>[] = []) {
   }
 
   return {
-    collection: (name: string) => (name === 'documents' ? documentsCol : profilesCol),
+    collection: (name: string) =>
+      name === 'documents'
+        ? documentsCol
+        : name === 'extraction_candidates'
+          ? { findOne: async () => null }
+          : name === 'profile_provenance'
+            ? { replaceOne: async () => ({ matchedCount: 0 }) }
+            : profilesCol,
     _profiles: profiles,
     _documents: documents,
   } as any

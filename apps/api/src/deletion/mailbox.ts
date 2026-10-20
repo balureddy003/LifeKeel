@@ -40,8 +40,12 @@ export async function deleteMailboxData(
   const docs = (await db
     .collection('documents')
     .find({ tenant_id: tenantId, source: 'email' })
-    .project({ _id: 1, file_id: 1 })
-    .toArray()) as unknown as { _id: unknown; file_id?: import('mongodb').ObjectId }[]
+    .project({ _id: 1, id: 1, file_id: 1 })
+    .toArray()) as unknown as { _id: unknown; id?: string; file_id?: import('mongodb').ObjectId }[]
+  // What was extracted from those attachments (values, snippets) goes with them.
+  const candidates = await db
+    .collection('extraction_candidates')
+    .deleteMany({ tenant_id: tenantId, document_id: { $in: docs.map((d) => String(d.id)) } })
   const bucket = new GridFSBucket(db, { bucketName: 'documents' })
   let blobs = 0
   for (const d of docs) {
@@ -58,6 +62,7 @@ export async function deleteMailboxData(
     .deleteMany({ tenant_id: tenantId, source: 'email' })
   removed.push({ category: 'documents saved from attachments', count: docResult.deletedCount })
   removed.push({ category: 'attachment files', count: blobs })
+  removed.push({ category: 'extracted fields', count: candidates.deletedCount })
 
   const inbox = await db
     .collection('inbox_items')

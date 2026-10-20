@@ -152,6 +152,8 @@ function makeDb(
     collection: (name: string) => {
       if (name === 'documents') return documentsCol
       if (name === 'insights') return insightsCol
+      if (name === 'extraction_candidates') return { findOne: async () => null }
+      if (name === 'profile_provenance') return { replaceOne: async () => ({ matchedCount: 0 }) }
       return profilesCol
     },
     _profiles: profiles,

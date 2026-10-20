@@ -98,6 +98,46 @@ for evidence quality. Numeric defaults below are hypotheses to test, not benchma
    OCR, so paid extraction and the strongest privacy feature cannot be combined.
 5. **Pen test** of the upload path before launch.
 
+## Status (first build: server pipeline; review UI follows in the next PR)
+
+Built (API): `extraction/schema.ts` pins the v1 field set to what a detector or crisis playbook
+reads (insurance, pension, mortgage, income; `has_beneficiary` is a yes/no, `document_date` feeds
+staleness) with a length cap per field and no free-text field, so the schema cannot carry a summary,
+medical text or a person's name (amendment 2; a test pins the key list). The old stored free-text
+`summary` and the `beneficiary` name are gone.
+
+**Grounding instead of model confidence.** Each value is looked up in the document's own text: found
+once = grounded with a source span and snippet (0.95), found several times = ambiguous (0.75), not
+found = flagged low (0.2). A photo read by hosted vision has no text, so nothing is verifiable and
+every field is held (0.5, no span). Classification confidence comes from the document's words, not
+the model; below 0.8 the user is asked what the document is (`POST /documents/:id/confirm-type`).
+Thresholds are hypotheses.
+
+**Confirm before commit, enforced by the server.** Extraction writes candidates
+(`extraction_candidates`) and nothing to the profile. `POST /documents/:id/review` confirms, edits or
+rejects fields, all or nothing. `apply-to-profile` refuses (409) until the type is confirmed and
+refuses any low-confidence field the person has not reviewed; a rejected field is never used and an
+edit applies its edited value. Every profile write records provenance (`profile_provenance`: document,
+who confirmed, when, confidence, extractor, schema version; no values). Invalid hosted output is a
+failed extraction (status `error`, nothing partial), never repaired; the old behaviour swallowed it
+as an empty "extracted" result.
+
+Also: metadata-only audit steps (`document.intake|extracted|reviewed|committed`: counts and
+durations, no values or snippets); filenames are no longer logged; an optional env-gated ClamAV scan
+(`CLAMD_HOST`) that records `clean`, `infected` (upload refused), `error` (kept, not extracted) or
+`not_performed`, and never claims a scan that did not happen; candidates are erased with a document,
+mailbox or account. Tenant isolation is tested against real MongoDB.
+
+Not built: the review screen (next PR); a golden dataset under `detector-evals/` with per-field
+precision targets (needs real documents and targets set by the owner); wiring `document_date` into
+the PRD-145 freshness check; a different category after confirm-type does not re-extract.
+
+**Launch gates that are not code (amendments 1, 4 and 5):** a DPIA, a ROPA entry and an Art. 6 /
+Art. 9 decision (counsel); a pen test of the upload path; and a published trust statement that says
+opt-in vault sealing (PRD-134) excludes OCR, so paid extraction and the strongest privacy feature
+cannot be combined. The hosted vision path runs through the PRD-142 gateway, where every hosted
+processor is still `unreviewed`.
+
 ## Becomes
 
 docs/prd/143-reviewed-extraction-pipeline.md
