@@ -125,6 +125,13 @@ describe('advice rule (CLAUDE.md second rule)', () => {
     expect(violations).toEqual([])
   })
 
+  it('the Quiet Care digest copy reads as information, never a recommendation or promotion (PRD-138)', () => {
+    const file = 'apps/api/src/feed/render-quiet-care.ts'
+    const text = fs.readFileSync(path.join(ROOT, file), 'utf8')
+    expect(findViolations(file, text)).toEqual([])
+    expect(text).not.toMatch(/\b(upgrade|keel plus|discount|subscribe|free trial)\b/i)
+  })
+
   it('landing copy avoids shopping-around, savings and unsupported-claim wording', () => {
     const files = landingFiles()
     expect(files.length).toBeGreaterThan(1)
