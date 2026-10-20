@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Home as HomeIcon, User, ChevronRight, Maximize2 } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
 import { useAuth } from '@/lib/auth-context'
-import { ROLE_LABELS } from '@/lib/auth-types'
+import { ROLE_LABELS, memberStatusLabel } from '@/lib/auth-types'
 import { getMemberSections, CATEGORY_COLOR } from '@/lib/familySections'
 import { fetchFinancialProfile, type FinancialProfilePolicy } from '@/lib/api'
 
@@ -117,7 +117,7 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
                   page, and available as a hover title here. */}
               <div className="text-xs font-semibold text-ink-primary truncate">{m.name.split(' ')[0]}</div>
               <div className={`text-caption truncate ${m.status === 'pending' ? 'text-warning font-medium' : 'text-ink-tertiary'}`}>
-                {m.status === 'pending' ? 'Pending' : ROLE_LABELS[m.role]}
+                {m.status === 'pending' ? memberStatusLabel(m.status) : ROLE_LABELS[m.role]}
               </div>
             </button>
           )

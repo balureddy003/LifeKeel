@@ -236,7 +236,7 @@ function InviteFamilyBanner() {
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-sm font-semibold text-ink-primary truncate">Add your partner or a caregiver</div>
-            <div className="text-xs text-ink-tertiary">Same plan, whole family &middot; invite code {family.inviteCode}</div>
+            <div className="text-xs text-ink-tertiary">Invite code {family.inviteCode}</div>
           </div>
           <button
             onClick={() => { haptic('light'); router.push('/settings?add=1') }}
@@ -740,7 +740,8 @@ export default function HomePage() {
         }
       />
 
-      <InviteFamilyBanner />
+      {/* After the first result, not before: while the first setup card is on screen, a second ask competes with it. */}
+      {hasLiveData && <InviteFamilyBanner />}
       <SinceLastVisit
         score={readinessScore}
         hasLiveData={hasLiveData}
@@ -887,13 +888,16 @@ export default function HomePage() {
         {/* lg+ two-column pair — same pairing rule as the score/life-event
             grid above (both always render together inside IfAdvanced). */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25 }}
-          >
-            <TrustLadder />
-          </motion.div>
+          {/* The ladder repeats the steps in the getting-started card, so it waits until that is gone. */}
+          {hasLiveData && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25 }}
+            >
+              <TrustLadder />
+            </motion.div>
+          )}
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}

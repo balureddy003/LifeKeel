@@ -55,3 +55,8 @@ export const ROLE_EMOJI: Record<FamilyRole, string> = {
   adult: '👤',
   child: '🧒',
 }
+
+/** What to show for a member's status. "Pending" alone read as an unsent invite on members who were simply added in setup. */
+export function memberStatusLabel(status: 'pending' | 'active' | string): string {
+  return status === 'pending' ? 'Not joined yet' : 'Active'
+}

@@ -13,7 +13,7 @@ import { Plus, Trash2, TrendingDown, TrendingUp, Wallet, Loader2 } from 'lucide-
 import { PageHeader, GlassCard, Money, ListSection, ListRow } from '@/components/Glass'
 import { useToast } from '@/components/Toast'
 import { haptic } from '@/lib/haptics'
-import { fetchFamilyCashflow, addCashflowEntry, deleteCashflowEntry, type CashflowSummary } from '@/lib/api'
+import { fetchFamilyCashflow, addCashflowEntry, deleteCashflowEntry, fetchFinancialProfile, type CashflowSummary } from '@/lib/api'
 
 function gbp(minor: number): string {
   return `£${Math.round(minor / 100).toLocaleString('en-GB')}`
@@ -30,9 +30,27 @@ export default function CashflowPage() {
   const [amount, setAmount] = useState('')
   const [recurrence, setRecurrence] = useState('monthly')
   const [busy, setBusy] = useState(false)
+  // Salary already entered in the financial profile, offered as a ledger entry when the ledger has no income yet.
+  const [profileSalaryMinor, setProfileSalaryMinor] = useState(0)
 
   const reload = () => fetchFamilyCashflow().then((d) => { setData(d); setLoaded(true) })
-  useEffect(() => { void reload() }, [])
+  useEffect(() => {
+    void reload()
+    fetchFinancialProfile()
+      .then((p) => setProfileSalaryMinor(p?.household.monthly_salary_minor ?? 0))
+      .catch(() => {})
+  }, [])
+
+  const hasIncomeEntry = data?.entries.some((e) => e.kind === 'income') ?? false
+  const addProfileSalary = async () => {
+    haptic('light')
+    setBusy(true)
+    const ok = await addCashflowEntry({ kind: 'income', label: 'Salary (from your profile)', amount_minor: profileSalaryMinor, recurrence: 'monthly' })
+    setBusy(false)
+    if (!ok) { haptic('warning'); toast({ message: "Couldn't save that entry — try again", variant: 'error' }); return }
+    haptic('success')
+    await reload()
+  }
 
   const add = async () => {
     const pounds = Number(amount)
@@ -186,6 +204,17 @@ export default function CashflowPage() {
         )}
       </ListSection>
 
+      {loaded && profileSalaryMinor > 0 && !hasIncomeEntry && (
+        <GlassCard className="p-4 flex items-center gap-3">
+          <p className="flex-1 text-sm text-ink-secondary">
+            Your financial profile lists <Money value={gbp(profileSalaryMinor)} /> a month of income. Add it here so this page includes it.
+          </p>
+          <button onClick={addProfileSalary} disabled={busy} className="text-xs font-semibold text-family-400 px-3 py-2 rounded-lg bg-family-500/10 flex-shrink-0 disabled:opacity-50">
+            Add as income
+          </button>
+        </GlassCard>
+      )}
+
       <GlassCard className="p-4 space-y-3">
         <div className="flex gap-2">
           {(['expense', 'income'] as const).map((k) => (
@@ -244,7 +273,7 @@ export default function CashflowPage() {
       </GlassCard>
 
       <p className="text-xs text-ink-tertiary text-center px-4">
-        Entries you add here are what your scenarios and runway figures reason about — until a live bank connection lands, this ledger is the source.
+        Entries you add here feed Keel's monthly picture and runway checks, until a live bank connection lands. What-If scenarios use the figures in your financial profile.
       </p>
     </div>
   )
