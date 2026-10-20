@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { LlmInputGuard, LlmOutputGuard } from '../llm-guards.js'
+import { LlmInputGuard, LlmOutputGuard, containsSpecialCategoryContent } from '../llm-guards.js'
 import { callStructured } from '../structured-llm.js'
 
 describe('LLM guardrails', () => {
@@ -14,11 +14,13 @@ describe('LLM guardrails', () => {
     expect(result.value.customer_name).toMatch(/^\[CONTACT_REF:/)
     expect(result.value.description).toBe('[FIELD REDACTED: POLICY]')
     expect(result.value.email).toMatch(/^\[CONTACT_REF:/)
-    expect(result.events.map(event => event.type)).toContain('prompt_injection')
+    expect(result.events.map((event) => event.type)).toContain('prompt_injection')
   })
 
   it('redacts PII and secrets from output', () => {
-    const result = new LlmOutputGuard().guard('Contact ada@example.com using Bearer secret-token-value immediately.')
+    const result = new LlmOutputGuard().guard(
+      'Contact ada@example.com using Bearer secret-token-value immediately.',
+    )
     expect(result.value).not.toContain('ada@example.com')
     expect(result.value).not.toContain('secret-token-value')
   })
@@ -36,5 +38,12 @@ describe('LLM guardrails', () => {
 
     expect(result.data.message).toContain('[EMAIL]')
     expect(result.guardEvents.length).toBeGreaterThan(0)
+  })
+
+  it('screens special-category (health) hints, including zero-width obfuscation', () => {
+    expect(containsSpecialCategoryContent("mum's hospital appointment")).toBe(true)
+    // Zero-width joiner inside the trigger word must not evade the screen.
+    expect(containsSpecialCategoryContent('hosp\u200Dital stay')).toBe(true)
+    expect(containsSpecialCategoryContent('check the policy renewal date')).toBe(false)
   })
 })

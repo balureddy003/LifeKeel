@@ -38,13 +38,18 @@ export default function SignUpPage() {
     fetchPublicStatus().then((s) => setSignupsOpen(s.signups_enabled))
   }, [])
 
-  const [fieldErrors, setFieldErrors] = useState<{ name?: string; email?: string; password?: string }>({})
+  const [fieldErrors, setFieldErrors] = useState<{
+    name?: string
+    email?: string
+    password?: string
+  }>({})
 
   const validate = () => {
     const e: { name?: string; email?: string; password?: string } = {}
     if (!name.trim()) e.name = 'Enter your name.'
     if (!email.trim()) e.email = 'Enter your email address.'
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) e.email = 'That email address looks incomplete.'
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim()))
+      e.email = 'That email address looks incomplete.'
     if (password.length < 8) e.password = 'Use at least 8 characters.'
     setFieldErrors(e)
     const first = (['name', 'email', 'password'] as const).find((k) => e[k])

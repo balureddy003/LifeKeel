@@ -129,7 +129,7 @@ export default function MemberProfileClient() {
     haptic('light')
     setAsking(true)
     try {
-      setAnswer(await fetchAIResponse(q, member.id))
+      setAnswer(await fetchAIResponse(q, member.id, { memberName: member.name }))
       setAskInput('')
     } finally {
       setAsking(false)

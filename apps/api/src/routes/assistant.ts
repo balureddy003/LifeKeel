@@ -18,7 +18,7 @@
 import { z } from 'zod'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { getTenantCollection } from '@lifekeel/platform'
+import { containsSpecialCategoryContent, getTenantCollection } from '@lifekeel/platform'
 import { taskLlm } from '../ai/task-gateway.js'
 import { getInsightsCollection, getSignalsCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
@@ -40,6 +40,11 @@ const AskSchema = z.object({
   // on that member's twin (their earner slice, attributed policies/funds/
   // insights, member readiness) instead of the whole household.
   member_id: z.string().max(100).optional(),
+  // Device-first quarantine: the client's PII curtain flags when the typed
+  // query carries special-category (health) hints. The server also screens
+  // the query itself — this flag is a cooperative early signal, not the
+  // enforcement point, so a client that omits it can't widen the boundary.
+  medical_hint: z.boolean().optional(),
 })
 
 const SimulateSchema = z.object({
@@ -77,6 +82,14 @@ Rules:
 
 const FALLBACK_CONTENT =
   "Based on the information you've entered, here is a summary from your family's data. This is for informational purposes only — please consult a qualified professional before making financial decisions. Would you like to see the specific numbers from your family's profile?"
+
+// Returned when a query carries special-category hints but the
+// self-hosted model isn't deployed — the assistant.answer.sensitive.v1
+// task boundary (lifekeel_infra_required) fails closed, so the honest
+// answer is that this question class is temporarily unavailable, never a
+// silent hop to a hosted processor.
+const QUARANTINED_CONTENT =
+  "This question touches health information, which Keel only processes on LifeKeel-operated infrastructure — never on a hosted AI provider. That secure path isn't available right now, so I can't answer this one yet. For anything that doesn't involve health details, I'm happy to help."
 
 interface FinancialProfileDoc extends Record<string, unknown> {
   household?: {
@@ -564,7 +577,15 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
         return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
       }
       const { tenant_id, user_id } = req.authContext
-      const { query, member_id } = parsed.data
+      const { query, member_id, medical_hint } = parsed.data
+
+      // Special-category quarantine (Art. 9 / device-first blueprint §4):
+      // health-hinted queries run under assistant.answer.sensitive.v1 —
+      // a lifekeel_infra_required task that fails closed unless the
+      // self-hosted model is deployed. The server screens the query itself;
+      // the client's medical_hint flag only narrows, never widens.
+      const quarantined = medical_hint === true || containsSpecialCategoryContent(query)
+      const taskId = quarantined ? 'assistant.answer.sensitive.v1' : 'assistant.answer.v1'
 
       const { profileDoc, familyDoc, insightDocs, unreviewedDocs, lifeEventContexts, legacyText } =
         await loadAssistantData(db, tenant_id, user_id)
@@ -591,19 +612,25 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
       const prompt = `Family data:\n${context}\n\nQuestion: ${query}`
 
       try {
-        const content = await taskLlm('assistant.answer.v1', tenant_id)(SYSTEM_PROMPT, prompt)
+        const content = await taskLlm(taskId, tenant_id)(SYSTEM_PROMPT, prompt)
         getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
           is_live: true,
+          quarantined,
           ...(member_id ? { member_id } : {}),
         })
-        return reply.send({ content, isLive: true })
+        return reply.send({ content, isLive: true, ...(quarantined ? { quarantined } : {}) })
       } catch (err) {
         req.log.warn({ err }, 'Assistant LLM call failed — falling back')
         getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
           is_live: false,
+          quarantined,
           ...(member_id ? { member_id } : {}),
         })
-        return reply.send({ content: FALLBACK_CONTENT, isLive: false })
+        return reply.send({
+          content: quarantined ? QUARANTINED_CONTENT : FALLBACK_CONTENT,
+          isLive: false,
+          ...(quarantined ? { quarantined } : {}),
+        })
       }
     },
   )

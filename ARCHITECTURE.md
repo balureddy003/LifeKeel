@@ -548,36 +548,52 @@ framework.
 flowchart TB
   Task[Named, versioned AI task]
   Policy[Task policy\nauthority, privacy, model, budget, deadline]
-  Rules{Can deterministic code\nor a template solve it?}
+  Rules{Task class:\ndeterministic, label, decision,\nlanguage, or device-eligible?}
   Deterministic[Deterministic result]
+  Device[On-device SLM\nOS-native / built-in / WebGPU]
   Encoder[Local encoder / embedding classifier]
   Decision[Bounded decision model / judge]
-  Generator[Hosted, local, or on-device generator]
+  Generator[Hosted cloud generator]
   Validate[Schema + grounding + policy guards]
+  DeviceGuard[Client guard:\nadvice/provider/numeral/length]
   Select{Accepted, abstain,\nor escalate?}
   Result[User-visible result or candidate]
+  Template[Deterministic\ntemplate fallback]
   Human[Human review / professional escalation]
 
   Task --> Policy --> Rules
-  Rules -->|yes| Deterministic --> Result
+  Rules -->|yes, exact| Deterministic --> Result
+  Rules -->|device-eligible + opted-in| Device --> DeviceGuard
   Rules -->|stable classification| Encoder --> Select
   Rules -->|bounded dynamic decision| Decision --> Select
-  Rules -->|language or multimodal extraction| Generator --> Validate --> Select
+  Rules -->|hosted task / authorized fallback| Generator --> Validate --> Select
+  DeviceGuard -->|accepted| Result
+  DeviceGuard -->|rejected / unavailable| Template --> Result
   Select -->|accepted| Result
   Select -->|uncertain or unsafe| Human
 ```
 
-The cascade follows five rules:
+The cascade follows five selection principles — they are per-task-class
+routes, not a total ordering (device locality is an orthogonal execution/
+privacy dimension, not a capability rung above encoders):
 
 1. deterministic code is cheaper, safer, and authoritative where the task is
    expressible exactly;
-2. small encoders/classifiers serve stable, bounded labels;
-3. typed decision models serve dynamic bounded choices with calibrated
+2. for explicitly approved device-eligible language tasks, prefer on-device
+   generation when the user has opted in and a runtime is present — zero
+   per-token cost and no family-data egress (currently applies only to
+   crisis contact-step drafts);
+3. small encoders/classifiers serve stable, bounded labels;
+4. typed decision models serve dynamic bounded choices with calibrated
    distributions;
-4. generators produce language or extraction candidates, never permissions or
-   financial truth;
-5. uncertainty, policy failure, or insufficient evidence causes abstention,
-   fallback, or human review.
+5. hosted generators serve registered hosted tasks and explicitly
+   authorized fallback flows, producing language or extraction candidates —
+   never permissions or financial truth.
+
+Any uncertainty, policy failure, or insufficient evidence causes abstention,
+deterministic template fallback, or human review — never a battery-draining
+on-device retry loop. Widening which tasks are device-eligible is the target
+architecture, not a property of today's task set.
 
 ### 8.2 Implemented AI capabilities
 
@@ -590,7 +606,8 @@ The cascade follows five rules:
 | Local embeddings | Implemented | CPU `bge-small-en-v1.5` intent-classifier tier |
 | Encoder shadow/gate | Implemented | GLiNER-style email relevance pre-classifier |
 | Local judge/classifier/OCR | Implemented and optional | Guarded CPU Ollama service with IAM and measured capacity |
-| On-device generation | Implemented and bounded | Opt-in WebLLM crisis drafts with cloud fallback |
+| On-device generation | Implemented and bounded | Opt-in crisis-contact drafting via multi-provider probe (Capacitor native plugin, Chrome `LanguageModel`, WebLLM + schema-constrained output); client output checks + verified deterministic template fallback. Opted-in users never egress on failure; non-opted-in users keep the hosted path |
+| Reversible PII curtain | Implemented primitive | `redactForCloudEgress`/`restore` shipped and tested (nonce placeholders, URL-safe restore, UK PII recognizers); no production client-context egress path consumes it yet — mandatory wiring pending |
 | Exact response cache | Implemented, partially adopted | Tenant/task/system/prompt/model hash; scorer path |
 | Prompt version registry | Implemented primitive, limited adoption | Candidate/A-B/production/retired lifecycle and spans |
 | Model output guards | Implemented | Advice/provider/ungrounded-number checks + symmetric input/output guards on cloud, local and vision paths via the task gateway |
@@ -723,6 +740,140 @@ Initial tasks:
 Keyword reasoning-tier estimation remains only a development fallback/hint. A
 production task selects from exact allow-listed model versions that passed its
 eval suite.
+
+### 8.4a On-Device and Small-Model-First Runtime
+
+On-device inference is a **target first-class execution tier** — today one
+task (`draft.crisis_on_device.v1`) uses it; widening is the direction, not
+current state. The client runtime (`apps/web/src/lib/onDeviceLlm.ts`) probes
+three providers in order of lowest download overhead:
+
+| Tier | Provider | Status | Download cost |
+|---|---|---|---|
+| 5a | `capacitor_native` | Implemented adapter — `@capgo/capacitor-llm` is bundled in `apps/mobile` (Apple Intelligence on iOS 26+, Gemini Nano/LiteRT on Android; session API adapted through `createChat`/`sendMessage`/`textFromAi` events), with the experimental `@capacitor/local-llm` one-shot `prompt()` contract also detected. Readiness-gated (`getReadiness` must report `ready` — an undownloaded model is skipped, never downloaded inside a click). Adapter logic is unit-tested against a fake plugin; **not yet verified on a physical device** | 0 MB — OS-resident |
+| 5b | `browser_builtin` | Implemented adapter — Chrome/Edge `self.LanguageModel` Prompt API (`initialPrompts` + `responseConstraint`); requires `availability() === 'available'` — never triggers a model download inside a click | OS-managed, ~0 MB app |
+| 5c | `webllm` | Implemented — `@mlc-ai/web-llm` on WebGPU (`Llama-3.2-1B-Instruct-q4f16_1-MLC`), memoized init, unload + cache purge on disable | One-time ~700 MB in Cache Storage |
+
+On-device outputs pass a **client-side subset** of output safety checks —
+`verifyOnDeviceOutput` enforces bounded length (20–1200 chars), CLAUDE.md
+Rule 2 advice/switching/action/secret patterns, whole-word named-provider
+grounding (every provider mention in output must appear in the family's
+own source), and numeral-presence grounding (output numeric tokens,
+including magnitude suffixes like "200k" and spelled-out magnitudes, must
+appear in the source). This is **not equivalent to the server task
+gateway**: the client has no input screening, budget, deadline,
+circuit-breaker, or usage-ledger telemetry; numeral presence is not
+semantic grounding ("30 days" still authorizes "£30"). Structured output
+is *requested* per-provider (WebLLM `response_format` schema, Chrome
+`responseConstraint`) and parsing fails closed — it is not guaranteed
+across all tiers; the native tier requests plain text.
+
+Failure semantics honor the opt-in: opted-in users get a **verified
+deterministic template** (`buildDeterministicStepDraft`) on any device
+failure — never a silent hosted call, keeping the settings promise
+("drafts never leave this device") true. Non-opted-in users keep the
+hosted `draft.outreach.v1` path, which runs the full server gateway.
+Calls are bounded by `max_tokens` and 30s timeouts so a hung model cannot
+pin the UI; disable unloads the engine and purges cached weights.
+
+**Policy & telemetry.** `preferred_execution: on_device` is a
+registered policy value meaning "the feature prefers device; each
+server-side call is an authorized fallback" — the gateway emits an
+`onDeviceEscalation` dep hook per actual invocation (not at policy
+resolution), which the API counts as `lifekeel_device_escalations_total{task_id}`
+plus a log line, so coverage is measurable on real calls. On the
+device side, every draft attempt pings a metadata-only outcome
+(`generated | template_fallback | abstained | guard_rejected |
+unavailable | error`) to `prepare-on-device`; no content transits. The
+native tier is constrained to an allowlist of Capacitor bridge keys —
+unvetted plugin objects are ignored even if they duck-type the expected
+API. Plugin selection rationale: `@capgo/capacitor-llm` (MPL-2.0, actively
+maintained, both OS model backends plus a custom `.litertlm` path for
+devices without Nano/Apple Intelligence) over `@capacitor/local-llm`
+(ionic-team, still "experimental — no support") and the paid Capawesome
+Insiders LLM plugin; `@capacitor-mlkit/genai-prompt` (Apache-2.0,
+Android-only) remains a candidate for on-device document screening via
+its `imagePath`+prompt multimodal call rather than a primary tier.
+
+A **reversible PII curtain** (`redactForCloudEgress`/`restore`) is shipped
+and wired: nonce-suffixed placeholders, URL-aware restore (never restores
+inside link targets, never restores cards — last-4 only), and UK
+recognizers (emails, phones, postcodes, Luhn cards, sort codes, IBANs,
+NI/NHS numbers). First production consumer: `fetchAIResponse` curtains
+the typed query (plus the scoped member's name) before it transits to the
+assistant endpoint, restoring placeholders in the reply. It is a
+probabilistic control: deterministic Layer-B contextual recognizers
+(titled/relationship-anchored third-party names, numbered street
+addresses, dates of birth in prose, employer names) catch anchored
+contextual PII, but a bare unanchored name ("Sarah said…"), prose
+addresses, and free-text medical hints are still not caught — the
+blueprint's quantized NER token classifier (transformers.js, ~14 MB)
+remains the real Layer-B, gated on an eval harness like the draft task's.
+
+**Special-category quarantine (Art. 9).** When the query carries
+health/medical hints — flagged by the client's curtain
+(`medical_hint: true`) OR the server's own screen in `llm-guards.ts`
+(defense in depth; the client flag narrows, never widens) —
+`/assistant/ask` routes to `assistant.answer.sensitive.v1`, a
+`lifekeel_infra_required` task that fails closed unless the self-hosted
+model is deployed. A flagged query can therefore never reach a hosted
+processor: it either gets a live self-hosted answer or an honest
+"secure path unavailable" response marked `quarantined: true`.
+
+**Document uploads get the same screen** in `processDocument` — the one
+funnel for uploads, email attachments, reprocess, and the retry sweep.
+Before any model call, cheap in-infra text (PDF text layer, Tesseract)
+is screened for *clinical-document* markers (discharge summary, NHS
+number, prescription, "diagnosed with") — a deliberately narrower set
+than the query screen, because insurance product documents legitimately
+contain medical vocabulary ("critical illness", "diagnosis of a covered
+condition") and flagging those would hold the very documents the feature
+exists to read. A flagged doc proceeds only through the local pipeline;
+with no local model it is held as `stored` + `special_category: 'flagged'`
++ `extraction_held_reason`, surfaced on `GET /documents/:id` — never sent
+to hosted vision.
+
+Uploads also carry a **client-side screen outcome**
+(`lib/on-device-doc-screen.ts`, runs before `/documents/upload`:
+tesseract.js OCR for images, `unpdf` for the PDF text layer — all local,
+no document bytes transit). The multipart `clientScreen` field is
+whitelist-validated; a client `flagged` is authoritative (the device may
+have read pixels the server can't, e.g. an image its Tesseract rejects),
+while `clear`/`unscreened` can never downgrade the server result. Docs
+with no readable text on either side proceed marked
+`special_category: 'unscreened'` so the residual risk is auditable rather
+than invisible — scanned-PDF rasterisation on-device is the remaining
+coverage gap.
+
+**Eval gate (`on-device-evals.ts`).** A task may ship on-device only if
+its eval passes. Shipped in CI: the *floor* check (the deterministic
+template must be guard-clean on 100% of golden step-body cases — else the
+offline path is unsafe by construction) and the *recall* check (an
+adversarial corpus of simulated SLM failure modes — advice verbs,
+foreign providers, hallucinated figures, truncated JSON, action claims —
+must be 100% rejected, with a negative-control case that must be accepted
+so a blanket-reject guard can't fake recall). `runDeviceDraftEvals` is
+runtime-agnostic: the same verdict runs against `generateDraftOnDevice`
+in a real browser/device harness (Playwright/WebGPU) — that weakest-
+runtime run is the remaining step before extending device tasks beyond
+drafts.
+
+Still debt: the weakest-runtime eval run above (gate + plumbing shipped;
+harness spec at `docs/intents/11-device-runtime-verification-and-eval-harness.md`),
+physical-device verification of the native tier (adapter is unit-tested
+but has never run on a real iPhone/Pixel; `getReadiness` values and event
+payloads are from vendor docs), native-plugin version attestation,
+scanned-PDF rasterisation on-device (the doc screen reads the text layer
+but a no-text-layer scan still returns `unscreened` client-side —
+`@capacitor-mlkit/genai-prompt`'s `imagePath`+prompt call is the Android
+candidate), and the real Layer-B NER token classifier (transformers.js —
+the deterministic contextual recognizers are a high-precision stopgap,
+and the same classifier would sharpen the document screen beyond a
+letterhead vocabulary).
+
+See `docs/reviews/device-first-ai-foundation-2026-10.md` for the rationale
+and `docs/reviews/device-first-grounded-blueprint-2026-10.md` for the
+implementation research grounding each tier.
 
 ### 8.5 Model and artifact registry
 

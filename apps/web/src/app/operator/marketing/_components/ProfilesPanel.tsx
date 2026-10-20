@@ -65,8 +65,9 @@ export function ProfilesPanel() {
   return (
     <div className="space-y-3">
       <p className="text-sm text-ink-secondary leading-relaxed">
-        The text each profile should carry. Edit it here, then paste it into the network, or, where the
-        network allows, check what is live and approve an update. Nothing here creates an account.
+        The text each profile should carry. Edit it here, then paste it into the network, or, where
+        the network allows, check what is live and approve an update. Nothing here creates an
+        account.
       </p>
       {profiles.map((p) => (
         <ProfileCard key={p.channel} profile={p} onChange={replace} toast={toast} />
@@ -197,7 +198,9 @@ function ProfileCard({
         </button>
         {profile.supports_check && (
           <button
-            onClick={() => run('check', () => checkChannelProfile(profile.channel), 'Checked the live profile')}
+            onClick={() =>
+              run('check', () => checkChannelProfile(profile.channel), 'Checked the live profile')
+            }
             disabled={busy !== null}
             className="rounded-xl px-3 py-2 text-xs font-semibold bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary disabled:opacity-40"
           >
@@ -218,50 +221,62 @@ function ProfileCard({
               <ul className="space-y-1">
                 {profile.drift.map((d) => (
                   <li key={d.field} className="text-ink-secondary">
-                    <span className="font-semibold">{DRIFT_LABEL[d.field] ?? d.field}:</span> live shows “{d.actual}”, wanted “{d.desired}”
+                    <span className="font-semibold">{DRIFT_LABEL[d.field] ?? d.field}:</span> live
+                    shows “{d.actual}”, wanted “{d.desired}”
                   </li>
                 ))}
               </ul>
-              {profile.supports_apply && profile.drift.some((d) => d.field === 'display_name' || d.field === 'bio') && (
-                <div className="mt-2">
-                  {!confirming ? (
-                    <button
-                      onClick={() => setConfirming(true)}
-                      disabled={profile.problems.length > 0 || dirty}
-                      className="rounded-xl px-3 py-2 text-xs font-semibold bg-family-500/15 border border-family-500/25 text-family-400 disabled:opacity-40"
-                    >
-                      Update the live profile…
-                    </button>
-                  ) : (
-                    <div className="rounded-xl border border-tint/[0.1] p-3">
-                      <p className="text-xs text-ink-secondary mb-2">
-                        This changes the public profile on {name} to exactly:
-                      </p>
-                      <p className="text-sm text-ink-primary mb-1 font-semibold">{profile.desired.display_name}</p>
-                      <p className="text-sm text-ink-primary whitespace-pre-wrap mb-3">{profile.desired.bio}</p>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() =>
-                            run('apply', () => applyChannelProfile(profile.channel, profile.desired_hash), 'Profile updated').finally(() =>
-                              setConfirming(false),
-                            )
-                          }
-                          disabled={busy !== null}
-                          className="flex-1 rounded-xl px-3 py-2 text-xs font-semibold bg-family-500 text-white"
-                        >
-                          {busy === 'apply' ? <Loader2 size={14} className="animate-spin mx-auto" /> : 'Approve and update'}
-                        </button>
-                        <button
-                          onClick={() => setConfirming(false)}
-                          className="rounded-xl px-3 py-2 text-xs font-semibold bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary"
-                        >
-                          Cancel
-                        </button>
+              {profile.supports_apply &&
+                profile.drift.some((d) => d.field === 'display_name' || d.field === 'bio') && (
+                  <div className="mt-2">
+                    {!confirming ? (
+                      <button
+                        onClick={() => setConfirming(true)}
+                        disabled={profile.problems.length > 0 || dirty}
+                        className="rounded-xl px-3 py-2 text-xs font-semibold bg-family-500/15 border border-family-500/25 text-family-400 disabled:opacity-40"
+                      >
+                        Update the live profile…
+                      </button>
+                    ) : (
+                      <div className="rounded-xl border border-tint/[0.1] p-3">
+                        <p className="text-xs text-ink-secondary mb-2">
+                          This changes the public profile on {name} to exactly:
+                        </p>
+                        <p className="text-sm text-ink-primary mb-1 font-semibold">
+                          {profile.desired.display_name}
+                        </p>
+                        <p className="text-sm text-ink-primary whitespace-pre-wrap mb-3">
+                          {profile.desired.bio}
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() =>
+                              run(
+                                'apply',
+                                () => applyChannelProfile(profile.channel, profile.desired_hash),
+                                'Profile updated',
+                              ).finally(() => setConfirming(false))
+                            }
+                            disabled={busy !== null}
+                            className="flex-1 rounded-xl px-3 py-2 text-xs font-semibold bg-family-500 text-white"
+                          >
+                            {busy === 'apply' ? (
+                              <Loader2 size={14} className="animate-spin mx-auto" />
+                            ) : (
+                              'Approve and update'
+                            )}
+                          </button>
+                          <button
+                            onClick={() => setConfirming(false)}
+                            className="rounded-xl px-3 py-2 text-xs font-semibold bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                    )}
+                  </div>
+                )}
             </div>
           )}
         </div>
@@ -275,7 +290,11 @@ function ProfileCard({
               <input
                 type="checkbox"
                 checked={Boolean(profile.checklist[item])}
-                onChange={(e) => run(`tick:${item}`, () => tickProfileStep(profile.channel, item, e.target.checked))}
+                onChange={(e) =>
+                  run(`tick:${item}`, () =>
+                    tickProfileStep(profile.channel, item, e.target.checked),
+                  )
+                }
               />
               {STEP_LABEL[item] ?? item}
             </label>

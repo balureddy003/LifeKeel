@@ -95,3 +95,50 @@ extraction → profile bridge) had already shipped before the pass — see
    the code claims re-checked by hand, an evidence-quality statement, the
    decisions left for the product owner, and stale claims in the market
    documents. Produced 2026-10-18.
+11. [market-strategy-and-vision-2026-2029.md](market-strategy-and-vision-2026-2029.md) —
+   recommended market position and two-year strategy, with a conditional 2029
+   horizon: target customer, family handover proposition, competitive evidence,
+   pricing/channel experiments, architecture priorities and measurable decision
+   gates. Corrects earlier claims about competitor gaps, Open Finance access,
+   Product Hunt evidence and patentability. Strategy for review, not an approved
+   implementation plan. Produced 2026-10-20.
+12. [proprietary-mechanisms-and-future-architecture-2026-10.md](proprietary-mechanisms-and-future-architecture-2026-10.md) —
+   the ownable-mechanism review: seven named candidate algorithms/patterns
+   (LifeGraph evidence DAG, Disclosure Lattice, Proof-of-Handover, Drift
+   Sentinels, Earned-Scope Contracts, Readiness Calculus, Receipt Chain) scored
+   for defensibility, rule fit, prior-art risk and effort, with the exact
+   ARCHITECTURE.md changes a follow-up PR would make. Produced 2026-10-20.
+13. [llm-usage-patterns-low-cost-and-private-2026-10.md](llm-usage-patterns-low-cost-and-private-2026-10.md) —
+   eight named patterns for cheaper, non-training LLM usage (LLM-as-Compiler,
+   Compiled Context, Constrained Narration, classification-before-generation,
+   synthetic-first distillation, construction-level privacy, batch economics,
+   cost-per-correct-result metric), extending the open-model strategy doc.
+   Produced 2026-10-20.
+14. [mechanism-foundations-research-2026-10.md](mechanism-foundations-research-2026-10.md) —
+   scientific lineage and prior-art analysis for every proposed mechanism:
+   TMS/DCLabels/CUSUM/conformal/LOA-trust/UCAN/PROV foundations, deployed
+   neighbors, and the defensible deltas — including a critical find that a
+   TDCommons defensive publication forecloses the receipt-chain patent, and a
+   system-level composition claim (LifeGraph + lattice + earned scope) as the
+   strongest filing candidate. Produced 2026-10-20.
+15. [cascade-framework-2026-10.md](cascade-framework-2026-10.md) — packages the
+   governed-inference discipline into a named, reusable framework ("Cascade"):
+   five contracts (task policy, context compiler, escalation ladder, validation
+   gates, promotion/economics loop), what's built vs. missing, internal reuse
+   paths, and the publish-vs-protect boundary for telling the world how to use
+   LLMs at least cost. Produced 2026-10-20.
+16. [device-first-ai-foundation-2026-10.md](device-first-ai-foundation-2026-10.md) —
+   the device-first posture proposal: verified 2026 on-device landscape (Apple
+   Foundation Models, Chrome built-in AI/Gemini Nano, WebLLM), reordered ladder
+   with device as default executor, on-device-minimization-as-a-service pattern,
+   task-eligibility matrix, accuracy-engineering program, and honest limits
+   (device SLMs are *not* more accurate — scope-narrowing is the unlock).
+   Produced 2026-10-20.
+17. [device-first-grounded-blueprint-2026-10.md](device-first-grounded-blueprint-2026-10.md) —
+   deep engineering blueprint grounding the device-first patterns in 2025–2026
+   research and LifeKeel's codebase: 3-tier native/browser/WebGPU runtime probe
+   (Apple Foundation Models, Android AICore Gemini Nano, Chrome Prompt API,
+   WebLLM + XGrammar), isomorphic client guards closing the `onDeviceLlm.ts`
+   validation gap, reversible on-device PII redaction ("Curtain Protocol"),
+   on-device Art. 9 medical text quarantine, and a 4-slice build plan.
+   Produced 2026-10-20.

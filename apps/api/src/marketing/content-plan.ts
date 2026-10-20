@@ -31,30 +31,102 @@ export interface Brief {
 }
 
 export const BRIEFS: Brief[] = [
-  { id: 'chart-1', pillar: 'chart', title: 'The chart', path: '/signup',
-    facts: "LifeKeel keeps a family's chart: what you hold on file across savings, cover and papers, what looks missing, and the steps if something happens. Free to start, no credit card." },
-  { id: 'chart-2', pillar: 'chart', title: 'One home for the picture', path: '/signup',
-    facts: "Savings, cover and papers usually live in different places. LifeKeel puts what you tell it in one place and shows what is on file and what is missing. A roster covers the whole family." },
-  { id: 'hard-day-1', pillar: 'hard_day', title: 'A hard day', path: '/signup',
-    facts: "If something happens, the first problem is finding the papers. LifeKeel has steps for seven kinds of bad day, built from what you have already entered." },
-  { id: 'hard-day-2', pillar: 'hard_day', title: 'If you go quiet', path: '/signup',
-    facts: "You can name people LifeKeel emails if you go quiet. Nothing is sent unless you switched it on or approve it." },
-  { id: 'cover-1', pillar: 'cover_on_file', title: 'Cover on file', path: '/signup',
-    facts: "LifeKeel shows the life, income and health cover you have on file against a rough household estimate, and where the picture looks light. It makes no product recommendations." },
-  { id: 'cover-2', pillar: 'cover_on_file', title: 'Renewals and duplicates', path: '/signup',
-    facts: "From the policies you enter, LifeKeel lists upcoming renewals and spots duplicate policies for the same person. It names no insurer and ranks no policy." },
-  { id: 'cover-3', pillar: 'cover_on_file', title: 'How to claim', path: '/signup',
-    facts: "A plain how-to-claim guide for each kind of policy, so the steps are written down before anyone needs them." },
-  { id: 'runway-1', pillar: 'chart', title: 'Savings runway', path: '/signup',
-    facts: "LifeKeel works out how many months your savings would last from the figures you enter, today and at a date you choose. Informational only." },
-  { id: 'data-1', pillar: 'your_data', title: 'Your data', path: '/signup',
-    facts: "Your details are never sold. You can export your data or delete your account yourself from Settings." },
-  { id: 'data-2', pillar: 'your_data', title: 'What LifeKeel will not do', path: '/signup',
-    facts: "LifeKeel never moves money or buys anything for you, takes no commissions, and names no insurer. Nothing leaves LifeKeel for you unless you approve it." },
-  { id: 'guides-1', pillar: 'guides', title: 'The guides', path: '/guides',
-    facts: "LifeKeel's guides explain, in plain words, the checks a family should know about, from emergency funds to education savings. Informational only, not financial advice." },
-  { id: 'plus-1', pillar: 'guides', title: 'Keel Plus', path: '/signup',
-    facts: "Free to start, no credit card. Keel Plus is £7.99 a month and can be cancelled; it reads policy details from an uploaded policy for you to confirm." },
+  {
+    id: 'chart-1',
+    pillar: 'chart',
+    title: 'The chart',
+    path: '/signup',
+    facts:
+      "LifeKeel keeps a family's chart: what you hold on file across savings, cover and papers, what looks missing, and the steps if something happens. Free to start, no credit card.",
+  },
+  {
+    id: 'chart-2',
+    pillar: 'chart',
+    title: 'One home for the picture',
+    path: '/signup',
+    facts:
+      'Savings, cover and papers usually live in different places. LifeKeel puts what you tell it in one place and shows what is on file and what is missing. A roster covers the whole family.',
+  },
+  {
+    id: 'hard-day-1',
+    pillar: 'hard_day',
+    title: 'A hard day',
+    path: '/signup',
+    facts:
+      'If something happens, the first problem is finding the papers. LifeKeel has steps for seven kinds of bad day, built from what you have already entered.',
+  },
+  {
+    id: 'hard-day-2',
+    pillar: 'hard_day',
+    title: 'If you go quiet',
+    path: '/signup',
+    facts:
+      'You can name people LifeKeel emails if you go quiet. Nothing is sent unless you switched it on or approve it.',
+  },
+  {
+    id: 'cover-1',
+    pillar: 'cover_on_file',
+    title: 'Cover on file',
+    path: '/signup',
+    facts:
+      'LifeKeel shows the life, income and health cover you have on file against a rough household estimate, and where the picture looks light. It makes no product recommendations.',
+  },
+  {
+    id: 'cover-2',
+    pillar: 'cover_on_file',
+    title: 'Renewals and duplicates',
+    path: '/signup',
+    facts:
+      'From the policies you enter, LifeKeel lists upcoming renewals and spots duplicate policies for the same person. It names no insurer and ranks no policy.',
+  },
+  {
+    id: 'cover-3',
+    pillar: 'cover_on_file',
+    title: 'How to claim',
+    path: '/signup',
+    facts:
+      'A plain how-to-claim guide for each kind of policy, so the steps are written down before anyone needs them.',
+  },
+  {
+    id: 'runway-1',
+    pillar: 'chart',
+    title: 'Savings runway',
+    path: '/signup',
+    facts:
+      'LifeKeel works out how many months your savings would last from the figures you enter, today and at a date you choose. Informational only.',
+  },
+  {
+    id: 'data-1',
+    pillar: 'your_data',
+    title: 'Your data',
+    path: '/signup',
+    facts:
+      'Your details are never sold. You can export your data or delete your account yourself from Settings.',
+  },
+  {
+    id: 'data-2',
+    pillar: 'your_data',
+    title: 'What LifeKeel will not do',
+    path: '/signup',
+    facts:
+      'LifeKeel never moves money or buys anything for you, takes no commissions, and names no insurer. Nothing leaves LifeKeel for you unless you approve it.',
+  },
+  {
+    id: 'guides-1',
+    pillar: 'guides',
+    title: 'The guides',
+    path: '/guides',
+    facts:
+      "LifeKeel's guides explain, in plain words, the checks a family should know about, from emergency funds to education savings. Informational only, not financial advice.",
+  },
+  {
+    id: 'plus-1',
+    pillar: 'guides',
+    title: 'Keel Plus',
+    path: '/signup',
+    facts:
+      'Free to start, no credit card. Keel Plus is £7.99 a month and can be cancelled; it reads policy details from an uploaded policy for you to confirm.',
+  },
 ]
 
 /** Monday, Wednesday and Friday at 09:00 UTC. */
@@ -203,16 +275,26 @@ export async function ensureNextWeekPlanned(
 
 /** Daily cron: for each opted-in tenant (the same flag as the daily blog drafts) with an active
  *  connection, make sure next week has a plan. Drafts only. Returns posts drafted. */
-export async function ensureWeeklyPlans(db: Db, llmFor: (tenantId: string) => LlmFn, now = new Date()): Promise<number> {
+export async function ensureWeeklyPlans(
+  db: Db,
+  llmFor: (tenantId: string) => LlmFn,
+  now = new Date(),
+): Promise<number> {
   const optedIn = (await db.collection('tenant_settings').find({}).toArray()).filter(
-    (d) => (d['automation'] as Record<string, unknown> | undefined)?.['daily_marketing_drafts_enabled'] === true,
+    (d) =>
+      (d['automation'] as Record<string, unknown> | undefined)?.[
+        'daily_marketing_drafts_enabled'
+      ] === true,
   )
   let drafted = 0
   for (const s of optedIn) {
     const tenantId = s['tenant_id'] as string
-    const channels = (await db.collection('social_connections').find({ tenant_id: tenantId, status: 'active' }).toArray()).map(
-      (c) => c['channel'] as string,
-    )
+    const channels = (
+      await db
+        .collection('social_connections')
+        .find({ tenant_id: tenantId, status: 'active' })
+        .toArray()
+    ).map((c) => c['channel'] as string)
     drafted += await ensureNextWeekPlanned(db, tenantId, channels, llmFor(tenantId), now)
   }
   return drafted

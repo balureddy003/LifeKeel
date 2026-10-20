@@ -34,7 +34,11 @@ export function isValidUtm(u: Utm): boolean {
 /** The query string, without the leading "?". Throws on a value outside the scheme. */
 export function utmQuery(u: Utm): string {
   if (!isValidUtm(u)) throw new Error(`utm outside the scheme: ${JSON.stringify(u)}`)
-  const p = new URLSearchParams({ utm_source: u.source, utm_medium: u.medium, utm_campaign: u.campaign })
+  const p = new URLSearchParams({
+    utm_source: u.source,
+    utm_medium: u.medium,
+    utm_campaign: u.campaign,
+  })
   if (u.content) p.set('utm_content', u.content)
   return p.toString()
 }
@@ -48,6 +52,12 @@ function bucket(v: unknown, empty: string): string {
 }
 
 /** The attribution a visit or signup is counted under; missing values read as direct / none. */
-export function attributionKey(a: Record<string, unknown> | null | undefined): { source: string; campaign: string } {
-  return { source: bucket(a?.['utm_source'], 'direct'), campaign: bucket(a?.['utm_campaign'], 'none') }
+export function attributionKey(a: Record<string, unknown> | null | undefined): {
+  source: string
+  campaign: string
+} {
+  return {
+    source: bucket(a?.['utm_source'], 'direct'),
+    campaign: bucket(a?.['utm_campaign'], 'none'),
+  }
 }

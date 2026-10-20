@@ -14,7 +14,14 @@ import { decryptEnveloped } from '../crypto/envelope.js'
 import type { SocialConnectionDoc } from './social-publisher.js'
 import { checkCopy, type CopyCheck } from './copy-guard.js'
 
-export const PROFILE_CHANNELS = ['linkedin', 'bluesky', 'instagram', 'facebook', 'threads', 'x'] as const
+export const PROFILE_CHANNELS = [
+  'linkedin',
+  'bluesky',
+  'instagram',
+  'facebook',
+  'threads',
+  'x',
+] as const
 export type ProfileChannel = (typeof PROFILE_CHANNELS)[number]
 
 export interface DesiredProfile {
@@ -31,7 +38,13 @@ export interface ProfileDoc {
   desired: DesiredProfile
   /** Manual setup steps the person ticks off. */
   checklist: Record<string, boolean>
-  actual?: { display_name: string; bio: string; has_avatar: boolean; has_banner: boolean; checked_at: Date }
+  actual?: {
+    display_name: string
+    bio: string
+    has_avatar: boolean
+    has_banner: boolean
+    checked_at: Date
+  }
   drift: ProfileDrift[]
   applied_at?: Date
   applied_by?: string
@@ -59,7 +72,14 @@ export const BIO_LIMIT: Record<ProfileChannel, number> = {
 export const SUPPORTS_CHECK: ReadonlySet<ProfileChannel> = new Set(['bluesky'])
 export const SUPPORTS_APPLY: ReadonlySet<ProfileChannel> = new Set(['bluesky'])
 
-const COMMON_STEPS = ['account_created', 'two_factor_app', 'avatar_set', 'banner_set', 'bio_set', 'link_set']
+const COMMON_STEPS = [
+  'account_created',
+  'two_factor_app',
+  'avatar_set',
+  'banner_set',
+  'bio_set',
+  'link_set',
+]
 export const CHECKLIST_ITEMS: Record<ProfileChannel, string[]> = {
   linkedin: [...COMMON_STEPS, 'two_admins', 'website_verified'],
   bluesky: [...COMMON_STEPS, 'domain_handle'],
@@ -70,7 +90,8 @@ export const CHECKLIST_ITEMS: Record<ProfileChannel, string[]> = {
 }
 
 const SITE = 'https://lifekeel.co.uk'
-const link = (network: string) => `${SITE}/?utm_source=${network}&utm_medium=social&utm_campaign=profile`
+const link = (network: string) =>
+  `${SITE}/?utm_source=${network}&utm_medium=social&utm_campaign=profile`
 
 /** Starting text, from docs/marketing/social-presence-kit.md. Edited in the console after that. */
 export const DEFAULT_PROFILES: Record<ProfileChannel, DesiredProfile> = {
@@ -117,10 +138,14 @@ export function isProfileChannel(v: string): v is ProfileChannel {
 }
 
 /** Problems with the desired text: over the network's limit, or failing the copy guard. */
-export function validateDesired(channel: ProfileChannel, d: DesiredProfile): { ok: boolean; problems: string[]; copy: CopyCheck } {
+export function validateDesired(
+  channel: ProfileChannel,
+  d: DesiredProfile,
+): { ok: boolean; problems: string[]; copy: CopyCheck } {
   const problems: string[] = []
   if (!d.display_name.trim()) problems.push('display name is empty')
-  if (d.bio.length > BIO_LIMIT[channel]) problems.push(`bio is ${d.bio.length} characters; ${channel} allows ${BIO_LIMIT[channel]}`)
+  if (d.bio.length > BIO_LIMIT[channel])
+    problems.push(`bio is ${d.bio.length} characters; ${channel} allows ${BIO_LIMIT[channel]}`)
   const copy = checkCopy(`${d.display_name}\n${d.bio}`, 'social')
   for (const v of copy.violations) problems.push(`copy guard: ${v.rule} ("${v.match}")`)
   return { ok: problems.length === 0, problems, copy }
@@ -130,31 +155,46 @@ const norm = (s: string) => s.replace(/\s+/g, ' ').trim()
 
 /** What differs between the desired text and what the network shows. Avatar and banner are
  *  presence-only: the console cannot compare pictures, only notice a missing one. */
-export function computeDrift(desired: DesiredProfile, actual: NonNullable<ProfileDoc['actual']>): ProfileDrift[] {
+export function computeDrift(
+  desired: DesiredProfile,
+  actual: NonNullable<ProfileDoc['actual']>,
+): ProfileDrift[] {
   const out: ProfileDrift[] = []
   if (norm(desired.display_name) !== norm(actual.display_name))
     out.push({ field: 'display_name', desired: desired.display_name, actual: actual.display_name })
-  if (norm(desired.bio) !== norm(actual.bio)) out.push({ field: 'bio', desired: desired.bio, actual: actual.bio })
-  if (!actual.has_avatar) out.push({ field: 'avatar', desired: 'a profile picture', actual: 'none' })
+  if (norm(desired.bio) !== norm(actual.bio))
+    out.push({ field: 'bio', desired: desired.bio, actual: actual.bio })
+  if (!actual.has_avatar)
+    out.push({ field: 'avatar', desired: 'a profile picture', actual: 'none' })
   if (!actual.has_banner) out.push({ field: 'banner', desired: 'a banner image', actual: 'none' })
   return out
 }
 
 /** A hash of the exact text an approver is shown; apply refuses if the text changed since. */
 export function desiredHash(d: DesiredProfile): string {
-  return createHash('sha256').update(JSON.stringify([d.display_name, d.bio])).digest('hex').slice(0, 16)
+  return createHash('sha256')
+    .update(JSON.stringify([d.display_name, d.bio]))
+    .digest('hex')
+    .slice(0, 16)
 }
 
 const BSKY_PUBLIC = 'https://public.api.bsky.app'
 
 /** Read a Bluesky profile without credentials. Throws if the account is not found. */
-export async function readBlueskyProfile(handle: string): Promise<NonNullable<ProfileDoc['actual']>> {
+export async function readBlueskyProfile(
+  handle: string,
+): Promise<NonNullable<ProfileDoc['actual']>> {
   const res = await providerFetch(
     `${BSKY_PUBLIC}/xrpc/app.bsky.actor.getProfile?actor=${encodeURIComponent(handle)}`,
     { method: 'GET' },
     { label: 'bluesky getProfile', breakerKey: 'bluesky:public' },
   )
-  const p = (await res.json()) as { displayName?: string; description?: string; avatar?: string; banner?: string }
+  const p = (await res.json()) as {
+    displayName?: string
+    description?: string
+    avatar?: string
+    banner?: string
+  }
   return {
     display_name: p.displayName ?? '',
     bio: p.description ?? '',
@@ -166,7 +206,11 @@ export async function readBlueskyProfile(handle: string): Promise<NonNullable<Pr
 
 /** Write display name and bio to Bluesky, keeping the avatar and banner already on the record.
  *  Only called from the approve route. */
-export async function applyBlueskyProfile(db: Db, conn: SocialConnectionDoc, d: DesiredProfile): Promise<void> {
+export async function applyBlueskyProfile(
+  db: Db,
+  conn: SocialConnectionDoc,
+  d: DesiredProfile,
+): Promise<void> {
   const service = conn.service ?? 'https://bsky.social'
   const appPassword = await decryptEnveloped(db, conn.credentials['app_password'])
   if (!appPassword) throw new Error('bluesky connection: no app password stored')
@@ -177,7 +221,11 @@ export async function applyBlueskyProfile(db: Db, conn: SocialConnectionDoc, d: 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ identifier: conn.handle, password: appPassword }),
     },
-    { label: 'bluesky createSession', breakerKey: `bluesky:${conn.handle}`, timeoutRetriable: true },
+    {
+      label: 'bluesky createSession',
+      breakerKey: `bluesky:${conn.handle}`,
+      timeoutRetriable: true,
+    },
   )
   const sess = (await sessRes.json()) as { accessJwt?: string; did?: string }
   if (!sess.accessJwt || !sess.did) throw new Error('bluesky createSession: no session returned')
@@ -208,7 +256,12 @@ export async function applyBlueskyProfile(db: Db, conn: SocialConnectionDoc, d: 
         collection: 'app.bsky.actor.profile',
         rkey: 'self',
         ...(swapRecord ? { swapRecord } : {}),
-        record: { ...existing, $type: 'app.bsky.actor.profile', displayName: d.display_name, description: d.bio },
+        record: {
+          ...existing,
+          $type: 'app.bsky.actor.profile',
+          displayName: d.display_name,
+          description: d.bio,
+        },
       }),
     },
     { label: 'bluesky putRecord', breakerKey: `bluesky:${conn.handle}` },

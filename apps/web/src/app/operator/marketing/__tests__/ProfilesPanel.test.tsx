@@ -19,17 +19,33 @@ const base = {
 const bluesky: ChannelProfileView = {
   ...base,
   channel: 'bluesky',
-  desired: { display_name: 'LifeKeel', handle: 'lifekeel.co.uk', bio: 'The wanted bio', link: 'https://lifekeel.co.uk/?utm_source=bluesky' },
+  desired: {
+    display_name: 'LifeKeel',
+    handle: 'lifekeel.co.uk',
+    bio: 'The wanted bio',
+    link: 'https://lifekeel.co.uk/?utm_source=bluesky',
+  },
   desired_hash: 'abc123',
   supports_check: true,
   supports_apply: true,
-  actual: { display_name: 'LifeKeel', bio: 'An old bio', has_avatar: true, has_banner: true, checked_at: '2026-10-20T00:00:00Z' },
+  actual: {
+    display_name: 'LifeKeel',
+    bio: 'An old bio',
+    has_avatar: true,
+    has_banner: true,
+    checked_at: '2026-10-20T00:00:00Z',
+  },
   drift: [{ field: 'bio', desired: 'The wanted bio', actual: 'An old bio' }],
 }
 const instagram: ChannelProfileView = {
   ...base,
   channel: 'instagram',
-  desired: { display_name: 'LifeKeel', handle: 'lifekeel', bio: 'An Instagram bio', link: 'https://lifekeel.co.uk/?utm_source=instagram' },
+  desired: {
+    display_name: 'LifeKeel',
+    handle: 'lifekeel',
+    bio: 'An Instagram bio',
+    link: 'https://lifekeel.co.uk/?utm_source=instagram',
+  },
   desired_hash: 'def456',
   supports_check: false,
   supports_apply: false,

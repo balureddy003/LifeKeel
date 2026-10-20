@@ -283,7 +283,13 @@ export async function publishDueMarketingPosts(
     if (!recheck.ok) {
       await col.updateOne(
         { id: post.id, state: 'approved' },
-        { $set: { state: 'publish_failed', publish_error: `copy_guard_failed: ${describeViolations(recheck)}`, copy_check: recheck } },
+        {
+          $set: {
+            state: 'publish_failed',
+            publish_error: `copy_guard_failed: ${describeViolations(recheck)}`,
+            copy_check: recheck,
+          },
+        },
       )
       continue
     }
@@ -405,7 +411,9 @@ export async function draftBlogPromoPost(
     created_by: createdBy,
     created_at: new Date(),
   }
-  await db.collection<MarketingPostDoc>('marketing_posts').insertOne({ ...post, copy_check: checkCopy(post.content, 'social') })
+  await db
+    .collection<MarketingPostDoc>('marketing_posts')
+    .insertOne({ ...post, copy_check: checkCopy(post.content, 'social') })
   return post
 }
 
@@ -460,13 +468,22 @@ export async function marketingPerformance(db: Db): Promise<{
     .toArray()
   const users = await db
     .collection('users')
-    .find({ 'attribution.utm_medium': 'social', created_at: { $gte: since } }, { projection: { _id: 0, attribution: 1 } })
+    .find(
+      { 'attribution.utm_medium': 'social', created_at: { $gte: since } },
+      { projection: { _id: 0, attribution: 1 } },
+    )
     .toArray()
   const leads = await db
     .collection('leads')
-    .find({ 'attribution.utm_medium': 'social', created_at: { $gte: since } }, { projection: { _id: 0, attribution: 1 } })
+    .find(
+      { 'attribution.utm_medium': 'social', created_at: { $gte: since } },
+      { projection: { _id: 0, attribution: 1 } },
+    )
     .toArray()
-  const blogs = await db.collection('blog_posts').find({}, { projection: { _id: 0, slug: 1, title: 1 } }).toArray()
+  const blogs = await db
+    .collection('blog_posts')
+    .find({}, { projection: { _id: 0, slug: 1, title: 1 } })
+    .toArray()
   const publishedPosts = await db
     .collection<MarketingPostDoc>('marketing_posts')
     .find(
@@ -943,7 +960,12 @@ export function siteLink(
   // Blog slugs and brief ids are lowercase tokens and pass through unchanged, so utm_content still
   // equals the slug the per-post join looks for. A value outside the scheme falls back to a slug-safe
   // form rather than dropping the link (and would not join; slugs are authored as lowercase kebab-case).
-  const safe = (v: string) => v.toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').replace(/^-+/, '').slice(0, 64) || 'x'
+  const safe = (v: string) =>
+    v
+      .toLowerCase()
+      .replace(/[^a-z0-9_.-]+/g, '-')
+      .replace(/^-+/, '')
+      .slice(0, 64) || 'x'
   return base
     ? `${base}${path}?${utmQuery({ source: safe(channel), medium: 'social', campaign: safe(campaign), content: safe(contentTag) })}`
     : ''
@@ -972,7 +994,11 @@ async function blogSourceBlock(
  *  Strictly tenant-scoped — nobody else's winners leak into a prompt.
  *  Returns '' when the sample is too thin for "learning" to mean anything,
  *  so a brand-new tenant generates exactly as before. */
-export async function learningContextBlock(db: Db, tenantId: string, channel: string): Promise<string> {
+export async function learningContextBlock(
+  db: Db,
+  tenantId: string,
+  channel: string,
+): Promise<string> {
   const published = await db
     .collection<MarketingPostDoc>('marketing_posts')
     .find({ tenant_id: tenantId, state: 'published' })
@@ -1480,12 +1506,18 @@ export function registerMarketingPostRoutes(
       const { tenant_id, user_id } = req.authContext
       // Copy guard (PRD-210): checked against the content as it is now, so edits count. A failing
       // post can be edited and approved again; it can never be approved as it stands.
-      const current = await col.findOne({ id: req.params.id, tenant_id, state: { $in: ['draft', 'publish_failed'] } })
+      const current = await col.findOne({
+        id: req.params.id,
+        tenant_id,
+        state: { $in: ['draft', 'publish_failed'] },
+      })
       if (current) {
         const check = checkCopy(current.content, 'social')
         if (!check.ok) {
           await col.updateOne({ id: current.id }, { $set: { copy_check: check } })
-          return reply.status(422).send({ error: 'copy_guard_failed', violations: check.violations })
+          return reply
+            .status(422)
+            .send({ error: 'copy_guard_failed', violations: check.violations })
         }
       }
       const claimed = (await col.findOneAndUpdate(
