@@ -36,7 +36,7 @@ WORKDIR /app
 # Native build tools are required for better-sqlite3 even in the prod stage
 # because we re-install dependencies here (pnpm --prod) rather than copying
 # the builder's node_modules wholesale.
-RUN apk add --no-cache python3 make g++ py3-setuptools py3-pip
+RUN apk add --no-cache python3 make g++ py3-setuptools
 
 # Tesseract for local document OCR (apps/api/src/ocr/local-ocr.ts). Used only when
 # LOCAL_JUDGE_BASE_URL is set, so uploaded documents are read in-process instead of
@@ -47,16 +47,6 @@ RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-eng
 # via sharp/librsvg; Alpine ships zero fonts, so digits would render blank
 # without these.
 RUN apk add --no-cache fontconfig ttf-dejavu
-
-# Install yfinance + pandas for the yfinance market-data connector
-# (scripts/fetch-yfinance.py). Required by the momentum engine to fetch
-# 252-day price history for portfolio tickers. No API key needed — yfinance
-# uses Yahoo Finance's public endpoints.
-#
-# tzdata is required because Alpine's Python 3.12 ships without the IANA
-# timezone database. yfinance calls pandas .tz_localize('America/New_York')
-# which raises ZoneInfoNotFoundError without tzdata installed.
-RUN pip3 install --no-cache-dir --break-system-packages yfinance pandas tzdata
 
 RUN corepack enable && corepack prepare pnpm@8.15.5 --activate
 
@@ -75,11 +65,6 @@ COPY --from=builder /app/connectors ./connectors
 COPY --from=builder /app/playbooks ./playbooks
 COPY --from=builder /app/detector-evals ./detector-evals
 COPY --from=builder /app/verticals ./verticals
-
-# Copy the yfinance Python bridge so the yfinance connector can invoke it
-# via execFile. The connector sync engine calls `scripts/fetch-yfinance.py`
-# for the DailyHistory and Fundamentals resources.
-COPY --from=builder /app/scripts ./scripts
 
 # Install only production dependencies (workspace packages are resolved from the
 # copied package.json files and their pre-built dist directories).

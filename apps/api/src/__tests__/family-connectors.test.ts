@@ -13,7 +13,11 @@ import { registerFamilyConnectorRoutes } from '../routes/family-connectors.js'
 import { withTenantKeys } from './helpers/tenant-keys-fake.js'
 
 const testImapConnectionMock = vi.fn(async () => ({ success: true }))
-const scanTenantInboxMock = vi.fn(async () => ({ scanned: 3, inboxItemsCreated: 1, documentsCreated: 1 }))
+const scanTenantInboxMock = vi.fn(async () => ({
+  scanned: 3,
+  inboxItemsCreated: 1,
+  documentsCreated: 1,
+}))
 
 vi.mock('../email/imap-client.js', () => ({
   testImapConnection: (...args: unknown[]) => testImapConnectionMock(...args),
@@ -62,7 +66,12 @@ describe('POST /connectors/email/credentials', () => {
 
     expect(response.statusCode).toBe(200)
     expect(testImapConnectionMock).toHaveBeenCalledWith(
-      expect.objectContaining({ host: 'imap.gmail.com', port: 993, useTls: true, username: 'me@gmail.com' }),
+      expect.objectContaining({
+        host: 'imap.gmail.com',
+        port: 993,
+        useTls: true,
+        username: 'me@gmail.com',
+      }),
     )
   })
 
@@ -72,7 +81,12 @@ describe('POST /connectors/email/credentials', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/connectors/email/credentials',
-      payload: { host: 'mail.mycompany.example', port: 993, username: 'me@mycompany.example', password: 'secret' },
+      payload: {
+        host: 'mail.mycompany.example',
+        port: 993,
+        username: 'me@mycompany.example',
+        password: 'secret',
+      },
     })
 
     expect(response.statusCode).toBe(200)
@@ -116,7 +130,11 @@ describe('POST /connectors/email/credentials', () => {
     await app.inject({
       method: 'POST',
       url: '/connectors/email/credentials',
-      payload: { provider: 'gmail', username: 'me@gmail.com', password: 'super-secret-app-password' },
+      payload: {
+        provider: 'gmail',
+        username: 'me@gmail.com',
+        password: 'super-secret-app-password',
+      },
     })
 
     const [, update] = db._credCol.updateOne.mock.calls[0]
@@ -134,7 +152,11 @@ describe('POST /connectors/email/credentials', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(scanTenantInboxMock).toHaveBeenCalledTimes(1)
-    expect(scanTenantInboxMock).toHaveBeenCalledWith(db, TEST_TENANT, expect.objectContaining({ connector_id: 'email' }))
+    expect(scanTenantInboxMock).toHaveBeenCalledWith(
+      db,
+      TEST_TENANT,
+      expect.objectContaining({ connector_id: 'email' }),
+    )
   })
 })
 
@@ -156,7 +178,11 @@ describe('POST /connectors/email/scan', () => {
     const app = await buildApp(db)
     const response = await app.inject({ method: 'POST', url: '/connectors/email/scan' })
     expect(response.statusCode).toBe(200)
-    expect(JSON.parse(response.body)).toEqual({ scanned: 3, inboxItemsCreated: 1, documentsCreated: 1 })
+    expect(JSON.parse(response.body)).toEqual({
+      scanned: 3,
+      inboxItemsCreated: 1,
+      documentsCreated: 1,
+    })
   })
 })
 

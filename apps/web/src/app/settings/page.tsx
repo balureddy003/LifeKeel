@@ -972,7 +972,11 @@ export default function SettingsPage() {
           <ListSection title="Refer a Friend">
             <ListRow
               icon={Gift}
-              label={referralCode ? `Your link: ${window.location.host}/signup?ref=${referralCode}` : 'Loading…'}
+              label={
+                referralCode
+                  ? `Your link: ${window.location.host}/signup?ref=${referralCode}`
+                  : 'Loading…'
+              }
               value={
                 referralCode ? (
                   <button

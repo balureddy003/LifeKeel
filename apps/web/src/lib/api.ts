@@ -3000,6 +3000,8 @@ export interface MarketingIntegration {
   identifier?: string
   disabled: boolean
   source?: 'env' | 'connection'
+  /** The account that would publish — handle, page name or URN. */
+  account?: string
 }
 
 export interface SocialConnection {

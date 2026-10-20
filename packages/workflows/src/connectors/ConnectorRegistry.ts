@@ -1165,24 +1165,6 @@ export const CONNECTORS: ConnectorDef[] = [
   },
 
   {
-    id: 'yfinance',
-    name: 'Yahoo Finance (yfinance)',
-    category: 'investment',
-    description: 'Free 20+ year daily price history and fundamentals via the yfinance Python library. No API key required. Best for backtesting across multiple market regimes.',
-    icon: '📈',
-    color: '#5F01D1',
-    auth: 'none',
-    base_url: 'https://query1.finance.yahoo.com',
-    docs_url: 'https://github.com/ranaroussi/yfinance',
-    tags: ['market-data', 'stocks', 'etfs', 'prices', 'investment', 'backfill', 'free', 'fundamentals'],
-    actions: [],
-    triggers: [
-      { id: 'daily_price', label: 'Daily price', event_type: 'market_price', description: 'Daily OHLCV price record (20+ year history) for a configured symbol', webhook_event: 'yfinance.daily.price' },
-      { id: 'fundamentals', label: 'Fundamentals', event_type: 'company_fundamentals', description: 'Income statement, balance sheet, and key ratios for a configured symbol', webhook_event: 'yfinance.fundamentals' },
-    ],
-  },
-
-  {
     id: 'hf-data',
     name: 'HF Data Library',
     category: 'investment',
@@ -1203,7 +1185,7 @@ export const CONNECTORS: ConnectorDef[] = [
     id: 'finnhub',
     name: 'Finnhub',
     category: 'investment',
-    description: 'Real-time stock quotes and company fundamentals. Free tier: 60 calls/min. Historical candles require paid plan — use yfinance for history.',
+    description: 'Real-time stock quotes and company fundamentals. Free tier: 60 calls/min. Historical candles require a paid plan.',
     icon: '🦈',
     color: '#0EA5E9',
     auth: 'api_key',

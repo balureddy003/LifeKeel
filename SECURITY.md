@@ -11,12 +11,15 @@ or contact the repo owner directly rather than filing publicly.
   trimmed on the same day to what LifeKeel actually calls plus the marketing
   surfaces (blog, case studies, growth events) that support self-serve
   growth. See "Trimmed from the full copy" below for exactly what was
-  removed. Currently NOT deployed — `apps/web` still points at the shared
+  removed. (Note: the "13 route modules" figure below is the 2026-09-12
+  post-trim count — the API has since grown product routes and registers
+  ~40 route modules today; see `apps/api/src/server.ts`.)
+  Currently NOT deployed — `apps/web` still points at the shared
   kairos-ai backend (see `apps/web/.env.example`) until this one is
   provisioned (own MongoDB, own GCP secrets — see root `.env.example` and
   `.github/workflows/deploy-api.yml`) and cut over.
 - `detectors/`, `connectors/`, `definitions/`, `verticals/`, `detector-evals/`,
-  `category-table.yaml`, `scripts/fetch-yfinance.py` — runtime resource files
+  `category-table.yaml` — runtime resource files
   `apps/api` reads via `path.join(ROOT, ...)`. Required for the API to boot
   with real detector/connector/vertical data. Originally copied wholesale
   alongside `apps/api`; the non-family verticals' YAML (`detectors/trading/`,
@@ -238,6 +241,29 @@ executor was left wired into a currently-shipped route instead.
   (`gmail`, `email`, `open-banking`, `google_drive`, `dropbox`, `onedrive`)
   before doing anything else — matching `verticals/family/vertical.yaml`'s
   `optional_connectors` list plus what `apps/web/src` actually sends.
+
+## Removed: the yfinance market-data connector path (2026-10-20)
+
+The last piece of the trading vertical still shipping in the image:
+`scripts/fetch-yfinance.py` (a Python bridge exec'd by the connector sync
+engine for `method: CLI` resources), the two `yfinance_*` record transforms
+and `execFile` path in `packages/pipeline`, the `yfinance` entry in
+`ConnectorRegistry`, and the image's `yfinance`/`pandas`/`tzdata` pip
+install — which the Dockerfile described as "required by the momentum
+engine" even though that engine was removed on 2026-09-12. No shipped
+connector YAML (`connectors/*.yaml` — gmail, email, open-banking,
+google_drive, dropbox, onedrive) declares `method: CLI` or a `yfinance_*`
+transform, so the path was unreachable as well as undocumented. Also
+removed: the `method: 'CLI'` schema value itself, so no future connector
+YAML can reintroduce a local-script execution path silently.
+
+Left in place (a deliberate scope line for this pass): the remaining
+market-data machinery — `alpha_vantage`/`hf_data`/`finnhub`/`polygon`/
+`cboe`/`fred`/`google_trends` record transforms, `symbols_param` and
+`resolveSymbolsFromPortfolio`, and the `investment`-category entries in
+`ConnectorRegistry`. Equally unreachable today, but pure-HTTP TypeScript
+with no external dependency or image cost; removing it means deleting its
+test coverage too and is worth its own reviewed pass.
 
 ## Known, deliberately deferred issues
 

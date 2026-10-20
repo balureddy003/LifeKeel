@@ -70,3 +70,10 @@ for evidence quality. Numeric defaults below are hypotheses to test, not benchma
 ## Becomes
 
 docs/prd/204-reveal-trust-block-and-answer-correction.md
+
+## Status (first build)
+
+Built with PRD-203: trust block under the email field (`lib/result-save-copy.ts`), "Correct
+my answers" (reopens the fields prefilled, rescoring replaces the result with no reload),
+and an explicit "not measured by this quiz" list. The edit-after-reveal rate is recorded as
+the `readiness_quiz_corrected` growth event.

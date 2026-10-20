@@ -1,6 +1,6 @@
 # PRD-203: Passwordless "hold this result" save — turn the score into something owned
 
-> **Retired 2026-10-20.** The public readiness quiz (`/readiness`, `POST /readiness-quiz`, the share card) was removed by decision; signup is the front door ([PRD-209](209-landing-chart-story.md)). This document is kept for history and is not being built.
+> **Retired 2026-10-20.** The public readiness quiz (`/readiness`, `POST /readiness-quiz`, the share card) was removed by decision; signup is the front door ([PRD-209](209-landing-chart-story.md)). This document is kept for history and is not being built. The implementation that had merged (magic-link routes, the keep-result page and the result-save email) was removed with the quiz.
 
 ## Problem
 
@@ -107,6 +107,18 @@ for evidence quality. Numeric defaults below are hypotheses to test, not benchma
 9. **Measurement.** Do not plan a one-week baseline at small volume. Test one change
    at a time at the top of the funnel (ask copy, trust-block placement, link plus code
    against link only), and watch the guardrails in PRD-204.
+
+## Status (first build)
+
+Built: consent-time pending record (answers kept 24h, link valid 30 min), link plus
+6-digit code, GET never consumes, uniform async response, per-address and per-IP caps,
+resend from the address alone after expiry, existing accounts appended to (MFA accounts
+get the snapshot but no session), versioned marketing consent stored apart from signup,
+snapshot erased with the account.
+
+Not built yet: the "next check" date (PRD-138 is not built, so the page does not promise
+one), the "what changed" view and PDF export (amendment 8), one-step snapshot deletion
+(amendment 6), SPF/DKIM/DMARC verification, and the Capacitor universal-link entry.
 
 ## Becomes
 

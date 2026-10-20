@@ -34,7 +34,7 @@ export const OAuthConfigSchema = z.object({
 export const ConnectorResourceSchema = z.object({
   name: z.string(),
   path: z.string().optional(),
-  method: z.enum(['GET', 'POST', 'CLI']).default('GET'),
+  method: z.enum(['GET', 'POST']).default('GET'),
   pagination: z.object({
     type: z.enum(['cursor', 'page', 'offset', 'link']),
     param: z.string().optional(),
@@ -50,8 +50,6 @@ export const ConnectorResourceSchema = z.object({
   record_transform: z.enum([
     'alpha_vantage_time_series_daily',
     'alpha_vantage_overview',
-    'yfinance_daily_history',
-    'yfinance_fundamentals',
     'hf_data_daily_bars',
     'finnhub_realtime_quote',
     'finnhub_daily_candles',

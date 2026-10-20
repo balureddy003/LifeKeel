@@ -7,7 +7,11 @@ import { EmergencyNumberText } from '@/components/EmergencyNumberText'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/components/Toast'
 import {
-  askSupport, createSupportCase, fetchMySupportCases, fetchMySupportCase, replyToMyCase,
+  askSupport,
+  createSupportCase,
+  fetchMySupportCases,
+  fetchMySupportCase,
+  replyToMyCase,
   type SupportCase,
 } from '@/lib/api'
 
@@ -66,7 +70,11 @@ function AskKeel({ onCaseCreated }: { onCaseCreated: (c: SupportCase) => void })
     setSubmitting(true)
     setError(null)
     try {
-      const created = await createSupportCase(subject.trim(), message.trim(), turns.map((t) => ({ question: t.question, answer: t.answer })))
+      const created = await createSupportCase(
+        subject.trim(),
+        message.trim(),
+        turns.map((t) => ({ question: t.question, answer: t.answer })),
+      )
       toast({ message: 'Case opened — the team will reply here', variant: 'success' })
       onCaseCreated(created.case)
       setEscalating(false)
@@ -87,15 +95,22 @@ function AskKeel({ onCaseCreated }: { onCaseCreated: (c: SupportCase) => void })
         <span className="text-sm font-semibold text-ink-primary">Ask Keel first</span>
       </div>
       <p className="text-xs text-ink-tertiary mb-3 leading-relaxed">
-        Most questions are answered instantly. If Keel can&apos;t resolve it, escalate to a human — the conversation is carried over so you never re-explain.
+        Most questions are answered instantly. If Keel can&apos;t resolve it, escalate to a human —
+        the conversation is carried over so you never re-explain.
       </p>
 
       {turns.map((turn, i) => (
         <div key={i} className="mb-3 space-y-2">
-          <p className="ml-auto w-fit max-w-[85%] rounded-xl bg-family-500/15 px-3 py-2 text-xs text-ink-primary">{turn.question}</p>
+          <p className="ml-auto w-fit max-w-[85%] rounded-xl bg-family-500/15 px-3 py-2 text-xs text-ink-primary">
+            {turn.question}
+          </p>
           <div className="w-fit max-w-[90%] rounded-xl bg-tint/[0.06] px-3 py-2">
             <p className="text-xs leading-relaxed text-ink-secondary">{turn.answer}</p>
-            {!turn.isLive && <p className="mt-1 text-[10px] text-ink-tertiary">offline answer — may be incomplete</p>}
+            {!turn.isLive && (
+              <p className="mt-1 text-[10px] text-ink-tertiary">
+                offline answer — may be incomplete
+              </p>
+            )}
           </div>
         </div>
       ))}
@@ -104,8 +119,16 @@ function AskKeel({ onCaseCreated }: { onCaseCreated: (c: SupportCase) => void })
       {turns.length > 0 && !escalating && (
         <div className="mb-3 flex items-center gap-2">
           <span className="text-xs text-ink-tertiary">Did that help?</span>
-          <button onClick={() => setTurns([])} className="rounded-full border border-success/25 px-3 py-1 text-xs text-success">Yes, solved</button>
-          <button onClick={() => setEscalating(true)} className="rounded-full border border-tint/[0.1] px-3 py-1 text-xs text-ink-secondary">
+          <button
+            onClick={() => setTurns([])}
+            className="rounded-full border border-success/25 px-3 py-1 text-xs text-success"
+          >
+            Yes, solved
+          </button>
+          <button
+            onClick={() => setEscalating(true)}
+            className="rounded-full border border-tint/[0.1] px-3 py-1 text-xs text-ink-secondary"
+          >
             Still need a human
           </button>
         </div>
@@ -116,7 +139,8 @@ function AskKeel({ onCaseCreated }: { onCaseCreated: (c: SupportCase) => void })
           <input
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
-            placeholder="Subject — what's this about?" aria-label="Subject"
+            placeholder="Subject — what's this about?"
+            aria-label="Subject"
             className="glass-input w-full rounded-lg px-3 py-2 text-sm"
             required
             minLength={3}
@@ -124,16 +148,26 @@ function AskKeel({ onCaseCreated }: { onCaseCreated: (c: SupportCase) => void })
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder="Describe what you need — include anything Keel missed." aria-label="Describe what you need"
+            placeholder="Describe what you need — include anything Keel missed."
+            aria-label="Describe what you need"
             rows={3}
             className="glass-input w-full rounded-lg px-3 py-2 text-sm"
             required
           />
           <div className="flex gap-2">
-            <button disabled={submitting || subject.trim().length < 3 || !message.trim()} className="rounded-lg bg-family-500 px-4 py-2 text-xs font-semibold text-white disabled:opacity-40">
+            <button
+              disabled={submitting || subject.trim().length < 3 || !message.trim()}
+              className="rounded-lg bg-family-500 px-4 py-2 text-xs font-semibold text-white disabled:opacity-40"
+            >
               {submitting ? 'Opening…' : 'Open a support case'}
             </button>
-            <button type="button" onClick={() => setEscalating(false)} className="rounded-lg border border-tint/[0.08] px-3 py-2 text-xs text-ink-tertiary">Back</button>
+            <button
+              type="button"
+              onClick={() => setEscalating(false)}
+              className="rounded-lg border border-tint/[0.08] px-3 py-2 text-xs text-ink-tertiary"
+            >
+              Back
+            </button>
           </div>
         </form>
       ) : (
@@ -141,10 +175,15 @@ function AskKeel({ onCaseCreated }: { onCaseCreated: (c: SupportCase) => void })
           <input
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="How do I…? / Why does…?" aria-label="Ask a question"
+            placeholder="How do I…? / Why does…?"
+            aria-label="Ask a question"
             className="glass-input min-w-0 flex-1 rounded-xl px-4 py-2.5 text-sm"
           />
-          <button disabled={asking || !question.trim()} className="rounded-xl bg-family-500 px-4 text-white disabled:opacity-40" aria-label="Ask Keel">
+          <button
+            disabled={asking || !question.trim()}
+            className="rounded-xl bg-family-500 px-4 text-white disabled:opacity-40"
+            aria-label="Ask Keel"
+          >
             <Send size={16} />
           </button>
         </form>
@@ -169,7 +208,9 @@ function CaseCard({ c, onUpdated }: { c: SupportCase; onUpdated: (c: SupportCase
 
   useEffect(() => {
     if (!expanded) return
-    fetchMySupportCase(c.id).then((r) => setDetail(r.case)).catch(() => setDetail(c))
+    fetchMySupportCase(c.id)
+      .then((r) => setDetail(r.case))
+      .catch(() => setDetail(c))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expanded, c.id])
 
@@ -194,30 +235,48 @@ function CaseCard({ c, onUpdated }: { c: SupportCase; onUpdated: (c: SupportCase
   const shown = detail ?? c
   return (
     <div className="rounded-2xl border border-tint/[0.08] p-4">
-      <button onClick={() => setExpanded(!expanded)} className="flex w-full items-start justify-between gap-2 text-left">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-start justify-between gap-2 text-left"
+      >
         <div className="min-w-0">
           <div className="text-sm font-medium text-ink-primary truncate">{c.subject}</div>
           <div className="text-xs text-ink-tertiary">
-            {new Date(c.updated_at).toLocaleDateString()} · {c.messages.length} message{c.messages.length === 1 ? '' : 's'}
+            {new Date(c.updated_at).toLocaleDateString()} · {c.messages.length} message
+            {c.messages.length === 1 ? '' : 's'}
             {c.ai_triaged ? ' · started with Keel' : ''}
           </div>
         </div>
-        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${CASE_STATUS_STYLES[c.status]}`}>{c.status}</span>
+        <span
+          className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${CASE_STATUS_STYLES[c.status]}`}
+        >
+          {c.status}
+        </span>
       </button>
 
       {expanded && (
         <div className="mt-3 space-y-2 border-t border-tint/[0.06] pt-3">
           {shown.messages.map((m) => (
-            <div key={m.id} className={`w-fit max-w-[90%] rounded-xl px-3 py-2 ${m.author === 'user' ? 'ml-auto bg-family-500/15' : 'bg-tint/[0.06]'}`}>
+            <div
+              key={m.id}
+              className={`w-fit max-w-[90%] rounded-xl px-3 py-2 ${m.author === 'user' ? 'ml-auto bg-family-500/15' : 'bg-tint/[0.06]'}`}
+            >
               <p className="text-xs leading-relaxed text-ink-secondary">{m.text}</p>
               <p className="mt-1 text-[10px] text-ink-tertiary">
-                {m.author === 'keel' ? 'Keel · AI' : m.author === 'operator' ? `${m.author_name ?? 'Operator'} · support team` : 'You'}
-                {' · '}{new Date(m.created_at).toLocaleString()}
+                {m.author === 'keel'
+                  ? 'Keel · AI'
+                  : m.author === 'operator'
+                    ? `${m.author_name ?? 'Operator'} · support team`
+                    : 'You'}
+                {' · '}
+                {new Date(m.created_at).toLocaleString()}
               </p>
             </div>
           ))}
           {shown.status === 'resolved' && (
-            <p className="text-[11px] text-ink-tertiary">Resolved — send a reply to reopen if you still need help.</p>
+            <p className="text-[11px] text-ink-tertiary">
+              Resolved — send a reply to reopen if you still need help.
+            </p>
           )}
           <div className="flex gap-2 pt-1">
             <input
@@ -226,7 +285,11 @@ function CaseCard({ c, onUpdated }: { c: SupportCase; onUpdated: (c: SupportCase
               placeholder={shown.status === 'resolved' ? 'Reply to reopen…' : 'Reply…'}
               className="glass-input min-w-0 flex-1 rounded-lg px-3 py-2 text-xs"
             />
-            <button onClick={send} disabled={sending || !reply.trim()} className="rounded-lg bg-family-500/15 px-3 text-xs font-semibold text-family-400 disabled:opacity-40">
+            <button
+              onClick={send}
+              disabled={sending || !reply.trim()}
+              className="rounded-lg bg-family-500/15 px-3 text-xs font-semibold text-family-400 disabled:opacity-40"
+            >
               Send
             </button>
           </div>
@@ -248,7 +311,9 @@ export default function SupportPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => { if (user) load() }, [user, load])
+  useEffect(() => {
+    if (user) load()
+  }, [user, load])
 
   return (
     <div className="px-5 pt-2 pb-12">
@@ -266,7 +331,13 @@ export default function SupportPage() {
               ) : (
                 <div className="space-y-2">
                   {cases.map((c) => (
-                    <CaseCard key={c.id} c={c} onUpdated={(updated) => setCases((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))} />
+                    <CaseCard
+                      key={c.id}
+                      c={c}
+                      onUpdated={(updated) =>
+                        setCases((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
+                      }
+                    />
                   ))}
                 </div>
               )}
@@ -277,7 +348,8 @@ export default function SupportPage() {
         <div className="rounded-2xl border border-tint/[0.08] bg-tint/[0.03] p-4 mb-6 flex items-start gap-2.5">
           <MessageCircle size={16} className="text-family-400 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-ink-secondary leading-relaxed">
-            Sign in to chat with Keel and open a support case — the conversation stays in-app so you never re-explain.
+            Sign in to chat with Keel and open a support case — the conversation stays in-app so you
+            never re-explain.
           </p>
         </div>
       )}
@@ -294,27 +366,32 @@ export default function SupportPage() {
 
       <H2>Account or billing questions</H2>
       <P>
-        For anything about your account, an Keel Plus subscription, or a charge you don&apos;t recognize, open a
-        case above — it lands in the operator inbox with your account context attached.
+        For anything about your account, an Keel Plus subscription, or a charge you don&apos;t
+        recognize, open a case above — it lands in the operator inbox with your account context
+        attached.
       </P>
 
       <H2>Reporting a security issue</H2>
       <P>
-        If you&apos;ve found a security vulnerability, please open a case marked &quot;security&quot; or contact us
-        directly rather than filing a public issue — we&apos;ll acknowledge the report and follow up on next steps.
+        If you&apos;ve found a security vulnerability, please open a case marked
+        &quot;security&quot; or contact us directly rather than filing a public issue — we&apos;ll
+        acknowledge the report and follow up on next steps.
       </P>
 
       <H2>Data and privacy requests</H2>
       <P>
         To delete your account and associated data, or to exercise any other right described in the{' '}
-        <a href="/privacy" className="text-family-400 font-medium">Privacy Policy</a>, open a case marked
-        &quot;privacy&quot; — erasure requests are handled by an operator with an audited workflow.
+        <a href="/privacy" className="text-family-400 font-medium">
+          Privacy Policy
+        </a>
+        , open a case marked &quot;privacy&quot; — erasure requests are handled by an operator with
+        an audited workflow.
       </P>
 
       <H2>In a real emergency</H2>
       <P>
-        LifeKeel is not emergency services and can&apos;t dispatch help. If you&apos;re in immediate danger, call{' '}
-        <EmergencyNumberText /> first.
+        LifeKeel is not emergency services and can&apos;t dispatch help. If you&apos;re in immediate
+        danger, call <EmergencyNumberText /> first.
       </P>
     </div>
   )

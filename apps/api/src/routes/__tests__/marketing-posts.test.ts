@@ -187,6 +187,18 @@ function makeDb() {
       toArray: async () => connectorCredentials.filter((d) => matchesFilter(d, filter)),
     }),
   }
+  const tenantKeys: Record<string, unknown>[] = []
+  const tenantKeysCol = {
+    findOne: vi.fn(
+      async (filter: Record<string, unknown>) =>
+        tenantKeys.find((d) => matchesFilter(d, filter)) ?? null,
+    ),
+    insertOne: vi.fn(async (doc: Record<string, unknown>) => {
+      tenantKeys.push(doc)
+      return { acknowledged: true }
+    }),
+    createIndex: vi.fn(async () => ({})),
+  }
   const listCol = (docs: Record<string, unknown>[]) => ({
     find: (filter: Record<string, unknown>) => ({
       toArray: async () => docs.filter((d) => matchesFilter(d, filter)),
@@ -199,6 +211,7 @@ function makeDb() {
     platform_config: configCol,
     social_connections: connectionsCol,
     connector_credentials: credsCol,
+    tenant_keys: tenantKeysCol,
     blog_posts: blogCol,
     users: listCol(users),
     leads: listCol(leads),

@@ -32,8 +32,6 @@
  * refreshAccessToken() is called once and the request is retried.
  */
 
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
 import type { ConnectorConfig } from './schemas.js'
 import type { EventGenerator } from './event-generator.js'
 import type { Engine, Insight } from '@lifekeel/engine'
@@ -41,9 +39,6 @@ import { safeFetch } from './safe-fetch.js'
 import { createLogger, decryptIfNeeded } from '@lifekeel/platform'
 
 const log = createLogger({ service: 'connector-sync', version: '0.0.0' })
-
-/** Promisified execFile for CLI-based connector resources (e.g. yfinance). */
-const execAsync = promisify(execFile)
 
 // Injected MongoDB types (pipeline pkg has no direct mongodb dep)
  
@@ -139,60 +134,6 @@ export function transformAlphaVantageOverview(
     asset_type: String(body['AssetType'] ?? ''),
     market_capitalization: Number(body['MarketCapitalization'] ?? 0) || undefined,
     name: String(body['Name'] ?? ''),
-  }]
-}
-
-// ── yfinance transforms ────────────────────────────────────────────────────
-// The yfinance Python bridge (scripts/fetch-yfinance.py) emits JSON in a
-// normalized shape: { ticker, history: [{date, open, high, low, close,
-// volume, dividends, splits}, ...] } for price history, and { ticker,
-// income_statement: {...}, balance_sheet: {...}, ratios: {...} } for
-// fundamentals. These transforms map that into the same record format the
-// Alpha Vantage transforms produce, so the downstream signal pipeline
-// (buildMarketDataFromSignals, computeQualityScore) works unchanged.
-
-/** Transform yfinance daily history JSON into market_price records. */
-export function transformYfinanceDailyHistory(
-  body: Record<string, unknown>,
-  symbol: string,
-): Record<string, unknown>[] {
-  const history = body['history'] as Record<string, unknown>[] | undefined
-  if (!Array.isArray(history)) return []
-  const ticker = String(body['ticker'] ?? symbol)
-  return history.map((row) => ({
-    ticker,
-    date: String(row['date'] ?? ''),
-    open: Number(row['open'] ?? 0),
-    high: Number(row['high'] ?? 0),
-    low: Number(row['low'] ?? 0),
-    close: Number(row['close'] ?? 0),
-    volume: Number(row['volume'] ?? 0),
-    dividends: Number(row['dividends'] ?? 0),
-    splits: Number(row['splits'] ?? 0),
-  })).filter((r) => r.date !== '')
-}
-
-/** Transform yfinance fundamentals JSON into a company_fundamentals record. */
-export function transformYfinanceFundamentals(
-  body: Record<string, unknown>,
-  symbol: string,
-): Record<string, unknown>[] {
-  const ratios = body['ratios'] as Record<string, unknown> | undefined
-  if (!ratios || typeof ratios !== 'object') return []
-  const grossProfitTTM = Number(ratios['gross_profit_ttm'] ?? 0)
-  const totalRevenueTTM = Number(ratios['total_revenue_ttm'] ?? 0)
-  const grossProfitability = (totalRevenueTTM > 0 && grossProfitTTM > 0)
-    ? grossProfitTTM / totalRevenueTTM
-    : undefined
-  return [{
-    ticker: String(body['ticker'] ?? symbol),
-    gross_profit_ttm: grossProfitTTM || undefined,
-    total_revenue_ttm: totalRevenueTTM || undefined,
-    gross_profitability: grossProfitability,
-    sector: String(ratios['sector'] ?? ''),
-    industry: String(ratios['industry'] ?? ''),
-    market_capitalization: Number(ratios['market_cap'] ?? 0) || undefined,
-    name: String(body['name'] ?? ratios['name'] ?? ''),
   }]
 }
 
@@ -772,7 +713,7 @@ export class ConnectorSyncEngine {
   /** Resolve tickers from the tenant's most recent portfolio_position signals.
    *
    * Trading 212 stores positions with suffixed tickers like "LIME_US_EQ" or
-   * "DPW_US_EQ". Market-data providers (Finnhub, Polygon, yfinance, Alpha
+   * "DPW_US_EQ". Market-data providers (Finnhub, Polygon, Alpha
    * Vantage) expect the raw ticker — "LIME", "DPW" — so we strip the
    * underscore-delimited exchange suffix. Cash positions ("CASH") are
    * excluded since they have no market price.
@@ -836,7 +777,7 @@ export class ConnectorSyncEngine {
 
     // Auto-resolve symbols from the tenant's portfolio positions when the
     // connector declares a symbols_param but the user hasn't configured
-    // extra.symbols. This unblocks market-data connectors (yfinance, finnhub,
+    // extra.symbols. This unblocks market-data connectors (finnhub,
     // polygon, hf-data, alpha-vantage) without requiring the user to manually
     // enter tickers in the Studio UI. Strips the _US_EQ / _GB_EQ suffix that
     // Trading 212 uses, since market-data providers expect raw tickers (e.g.
@@ -896,33 +837,6 @@ export class ConnectorSyncEngine {
     let cursor: string | null = null
     let nextUrl: string | null = null
     let hasMore = true
-
-    // CLI resources (e.g. yfinance) invoke a local Python bridge instead of
-    // making HTTP requests. The bridge writes JSON to stdout, which we parse
-    // and pass through the same record_transform pipeline as HTTP responses.
-    // This keeps the connector YAML declarative while supporting providers
-    // that have no official REST API. fetchAllPages already iterates over
-    // symbols, so we handle one symbol per call here.
-    if (resource.method === 'CLI') {
-      const scriptPath = resource.path || 'scripts/fetch-yfinance.py'
-      try {
-        const { stdout } = await execAsync(scriptPath, [
-          '--resource', resource.name,
-          '--symbol', symbol,
-          ...(options.dateFrom ? ['--from', options.dateFrom.toISOString().substring(0, 10)] : []),
-        ])
-        const body = JSON.parse(stdout) as Record<string, unknown>
-        const transform = resource.record_transform
-        if (transform === 'yfinance_daily_history') {
-          allRecords.push(...transformYfinanceDailyHistory(body, symbol))
-        } else if (transform === 'yfinance_fundamentals') {
-          allRecords.push(...transformYfinanceFundamentals(body, symbol))
-        }
-      } catch (err) {
-        this.lastFetchError = { status: 0, statusText: `CLI fetch failed: ${(err as Error).message}` }
-      }
-      return allRecords
-    }
 
     while (hasMore && page <= maxPages) {
       let url: URL
@@ -1000,7 +914,7 @@ export class ConnectorSyncEngine {
         // this data source's universe (e.g. HF Data Library covers 1,391 US
         // large/mid-cap stocks — OTC tickers like DPW return 404). Skip the
         // ticker gracefully instead of failing the whole sync — other symbols
-        // may still succeed, and other connectors (yfinance) cover the gap.
+        // may still succeed.
         if (res.status === 404 && resource.symbols_param && symbol) {
           hasMore = false
           break
@@ -1033,22 +947,6 @@ export class ConnectorSyncEngine {
       // into a company_fundamentals record.
       if (resource.record_transform === 'alpha_vantage_overview') {
         const records = transformAlphaVantageOverview(body, symbol)
-        allRecords.push(...records)
-        hasMore = false
-        continue
-      }
-
-      // yfinance: JSON emitted by the Python bridge (scripts/fetch-yfinance.py).
-      // The bridge normalizes yfinance's pandas DataFrames into plain JSON
-      // arrays before the sync engine sees them.
-      if (resource.record_transform === 'yfinance_daily_history') {
-        const records = transformYfinanceDailyHistory(body, symbol)
-        allRecords.push(...records)
-        hasMore = false
-        continue
-      }
-      if (resource.record_transform === 'yfinance_fundamentals') {
-        const records = transformYfinanceFundamentals(body, symbol)
         allRecords.push(...records)
         hasMore = false
         continue

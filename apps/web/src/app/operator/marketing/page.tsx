@@ -283,7 +283,7 @@ export default function MarketingPage() {
 
   const selected = (integrations ?? []).find((i) => i.id === integrationId)
   const channel = selected?.identifier ?? 'other'
-  const selectedAccount = selected?.name ?? 'LifeKeel'
+  const selectedAccount = selected?.account ?? selected?.name ?? 'LifeKeel'
   const trustLevel = automation?.trust_level_by_workflow?.[trustScope(channel)] ?? 0
   const limit = channelLimit(channel)
   const overLimit = content.length > limit

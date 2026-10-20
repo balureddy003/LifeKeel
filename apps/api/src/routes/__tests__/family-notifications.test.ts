@@ -62,7 +62,7 @@ describe('GET /family/notifications', () => {
     const res = await (await build(db)).inject({ method: 'GET', url: '/family/notifications' })
     expect(res.statusCode).toBe(200)
     expect(res.json().preferences).toMatchObject({
-      heartbeat_cadence: 'weekly',
+      heartbeat_cadence: 'monthly',
       heartbeat_quiet_weeks: false,
       domains_muted: [],
       member_scope: 'all',
@@ -75,7 +75,9 @@ describe('GET /family/notifications', () => {
 
   it('403s a child', async () => {
     const { db } = makeDb()
-    const res = await (await build(db, 'u_kid')).inject({ method: 'GET', url: '/family/notifications' })
+    const res = await (
+      await build(db, 'u_kid')
+    ).inject({ method: 'GET', url: '/family/notifications' })
     expect(res.statusCode).toBe(403)
   })
 })
@@ -83,7 +85,9 @@ describe('GET /family/notifications', () => {
 describe('PATCH /family/notifications', () => {
   it('403s a non-organizer adult', async () => {
     const { db } = makeDb()
-    const res = await (await build(db, 'u2')).inject({
+    const res = await (
+      await build(db, 'u2')
+    ).inject({
       method: 'PATCH',
       url: '/family/notifications',
       payload: { heartbeat_cadence: 'monthly' },
@@ -93,7 +97,9 @@ describe('PATCH /family/notifications', () => {
 
   it('400s on an invalid value', async () => {
     const { db } = makeDb()
-    const res = await (await build(db)).inject({
+    const res = await (
+      await build(db)
+    ).inject({
       method: 'PATCH',
       url: '/family/notifications',
       payload: { heartbeat_cadence: 'hourly' },
@@ -126,7 +132,11 @@ describe('PATCH /family/notifications', () => {
     expect(store[0]).toMatchObject({ tenant_id: TENANT, heartbeat_cadence: 'monthly' })
 
     // Second patch merges without wiping the first.
-    await app.inject({ method: 'PATCH', url: '/family/notifications', payload: { digest_mode: true } })
+    await app.inject({
+      method: 'PATCH',
+      url: '/family/notifications',
+      payload: { digest_mode: true },
+    })
     expect(store[0]).toMatchObject({ heartbeat_cadence: 'monthly', digest_mode: true })
   })
 })
