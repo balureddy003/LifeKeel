@@ -3163,7 +3163,7 @@ export async function fetchMarketingPosts(): Promise<MarketingPost[]> {
 
 async function marketingRequest<T>(
   path: string,
-  method: 'POST' | 'PATCH' | 'DELETE',
+  method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   body?: Record<string, unknown>,
 ): Promise<T> {
   const base = getApiBase()
@@ -3317,6 +3317,42 @@ export async function connectBluesky(input: {
   )
   return data.connection
 }
+
+// ── Channel profiles (PRD-210, phase 2) ─────────────────────────────────
+
+export interface ChannelProfileView {
+  channel: string
+  desired: { display_name: string; handle: string; bio: string; link: string }
+  desired_hash: string
+  problems: string[]
+  bio_limit: number
+  checklist_items: string[]
+  checklist: Record<string, boolean>
+  actual: { display_name: string; bio: string; has_avatar: boolean; has_banner: boolean; checked_at: string } | null
+  drift: { field: string; desired: string; actual: string }[]
+  supports_check: boolean
+  supports_apply: boolean
+  saved: boolean
+  applied_at: string | null
+  dry_run?: boolean
+}
+
+export async function fetchChannelProfiles(): Promise<ChannelProfileView[]> {
+  const data = await apiFetch<{ profiles: ChannelProfileView[] }>('/marketing/profiles', { profiles: [] })
+  return data.profiles
+}
+
+export const saveChannelProfile = (channel: string, desired: ChannelProfileView['desired']) =>
+  marketingRequest<ChannelProfileView>(`/marketing/profiles/${channel}`, 'PUT', { ...desired })
+
+export const tickProfileStep = (channel: string, item: string, done: boolean) =>
+  marketingRequest<ChannelProfileView>(`/marketing/profiles/${channel}/checklist`, 'PUT', { item, done })
+
+export const checkChannelProfile = (channel: string) =>
+  marketingRequest<ChannelProfileView>(`/marketing/profiles/${channel}/check`, 'POST')
+
+export const applyChannelProfile = (channel: string, expected_hash: string) =>
+  marketingRequest<ChannelProfileView>(`/marketing/profiles/${channel}/apply`, 'POST', { expected_hash })
 
 // ── Weekly content plan (PRD-210, phase 3) ──────────────────────────────
 

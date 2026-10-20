@@ -88,6 +88,8 @@ export type AuditAction =
   | 'marketing.plan_generate'
   | 'marketing.plan_approve'
   | 'marketing.plan_skip'
+  | 'marketing.profile_edit'
+  | 'marketing.profile_apply'
   | 'legacy.document.read'
 
 export interface AuditEntry {
