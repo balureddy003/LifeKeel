@@ -20,7 +20,7 @@ vi.mock('@/lib/auth-context', () => ({
 }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }), usePathname: () => '/' }))
 vi.mock('@/lib/api', () => ({ fetchPublicStatus: async () => ({ signups_enabled: true }), captureLead: vi.fn() }))
-vi.mock('@/lib/growth-track', () => ({ track: vi.fn() }))
+vi.mock('@/lib/growth-track', () => ({ track: vi.fn(), currentUtm: () => undefined }))
 vi.mock('@/lib/ad-track', () => ({ trackConversion: vi.fn() }))
 vi.mock('@/lib/haptics', () => ({ haptic: vi.fn() }))
 vi.mock('@/components/RegionSwitch', () => ({ RegionSwitch: () => null }))

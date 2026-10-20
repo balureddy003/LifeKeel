@@ -4,7 +4,7 @@ import path from 'node:path'
 import { render, screen, cleanup } from '@testing-library/react'
 import { PublicShell } from '../PublicShell'
 
-vi.mock('@/lib/growth-track', () => ({ track: vi.fn() }))
+vi.mock('@/lib/growth-track', () => ({ track: vi.fn(), currentUtm: () => undefined }))
 vi.mock('@/lib/haptics', () => ({ haptic: vi.fn() }))
 const auth = { isAuthenticated: false }
 vi.mock('@/lib/auth-context', () => ({ useAuth: () => auth }))

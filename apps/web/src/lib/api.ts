@@ -3254,6 +3254,22 @@ export async function previewMarketingDrafts(input: {
   return data.drafts ?? []
 }
 
+export interface FunnelBreakdown {
+  key: string
+  visit: number
+  cta_click: number
+  signup: number
+  profile: number
+  first_insight: number
+}
+
+export interface FunnelView {
+  window_days: number
+  steps: { step: 'visit' | 'cta_click' | 'signup' | 'profile' | 'first_insight'; count: number }[]
+  by_source: FunnelBreakdown[]
+  by_campaign: FunnelBreakdown[]
+}
+
 export interface MarketingPerformance {
   posts: {
     slug: string
@@ -3266,6 +3282,8 @@ export interface MarketingPerformance {
   channels: { channel: string; views: number; cta_clicks: number; leads: number; signups: number }[]
   campaigns: { campaign: string; views: number; signups: number; leads: number }[]
   totals: { views: number; cta_clicks: number; signups: number; leads: number }
+  /** Visit to first-insight funnel from the daily rollups (PRD-210); null until they exist. */
+  funnel: FunnelView | null
   /** "What works" — engagement normalized against the account median
    *  (x=1.0); providers don't expose impressions so this is comparative,
    *  not an absolute rate. */

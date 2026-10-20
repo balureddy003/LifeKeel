@@ -18,7 +18,7 @@ import { Pricing } from '../Pricing'
 import { Faq } from '../Faq'
 import { FAQ } from '../faq-data'
 
-vi.mock('@/lib/growth-track', () => ({ track: vi.fn() }))
+vi.mock('@/lib/growth-track', () => ({ track: vi.fn(), currentUtm: () => undefined }))
 vi.mock('@/lib/haptics', () => ({ haptic: vi.fn() }))
 
 beforeAll(() => {

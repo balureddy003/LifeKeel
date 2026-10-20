@@ -19,12 +19,20 @@ import { withTenantKeys } from '../../__tests__/helpers/tenant-keys-fake.js'
 const TENANT = 'tenant-1'
 const USER = 'user-1'
 
+const dig = (doc: Record<string, unknown>, key: string): unknown =>
+  key.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], doc)
+
 function matchesFilter(doc: Record<string, unknown>, filter: Record<string, unknown>): boolean {
   return Object.entries(filter).every(([key, cond]) => {
+    const value = dig(doc, key)
     if (cond && typeof cond === 'object' && '$in' in (cond as Record<string, unknown>)) {
-      return (cond as { $in: unknown[] }).$in.includes(doc[key])
+      return (cond as { $in: unknown[] }).$in.includes(value)
     }
-    return doc[key] === cond
+    if (cond && typeof cond === 'object' && '$gte' in (cond as Record<string, unknown>)) {
+      // Fixtures without a timestamp count as recent; the window itself has its own test.
+      return value === undefined || (value as Date) >= (cond as { $gte: Date }).$gte
+    }
+    return value === cond
   })
 }
 
@@ -216,6 +224,8 @@ function makeDb() {
     users: listCol(users),
     leads: listCol(leads),
     growth_events: listCol(growthEvents),
+    // The performance read asks whether the funnel rollups exist; none do in this fake.
+    metrics_daily: { findOne: async () => null, find: () => ({ toArray: async () => [] }) },
   }
   return {
     db: { collection: withTenantKeys((name: string) => collections[name]) } as any,
@@ -1019,6 +1029,21 @@ describe('/marketing/performance', () => {
     expect(campaigns.find((c) => c.campaign === 'ads')).toBeUndefined()
   })
 
+  it('only counts the last PERFORMANCE_WINDOW_DAYS and only the social-attributed users and leads', async () => {
+    const { app, growthEvents, users } = await buildApp()
+    const old = new Date(Date.now() - 200 * 86_400_000)
+    growthEvents.push(
+      { event: 'blog_view', path: '/blog/a', created_at: old },
+      { event: 'blog_view', path: '/blog/a', created_at: new Date() },
+    )
+    users.push(
+      { created_at: old, attribution: { utm_source: 'x', utm_medium: 'social', utm_content: 'a' } },
+      { created_at: new Date(), attribution: { utm_source: 'x', utm_medium: 'social', utm_content: 'a' } },
+    )
+    const body = (await app.inject({ method: 'GET', url: '/marketing/performance' })).json()
+    expect(body.posts).toMatchObject([{ slug: 'a', views: 1, signups: 1 }])
+  })
+
   it('returns an empty rollup when nothing has been promoted yet', async () => {
     const { app } = await buildApp()
     const res = await app.inject({ method: 'GET', url: '/marketing/performance' })
@@ -1028,6 +1053,7 @@ describe('/marketing/performance', () => {
       channels: [],
       campaigns: [],
       totals: { views: 0, cta_clicks: 0, signups: 0, leads: 0 },
+      funnel: null,
       insights: { measured_posts: 0, unmeasured_channels: [], rows: [] },
     })
   })

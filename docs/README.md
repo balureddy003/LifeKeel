@@ -14,7 +14,9 @@ Start with the row that matches what you are doing.
 | [Reviewing a PR](sdlc/reviewing.md) | You are reviewing someone's PR (a person, with your own coding agent). There is no AI review in CI. |
 | [Troubleshooting](sdlc/troubleshooting.md) | A check is red, a hook blocked you, a merge went wrong. Symptom to fix. |
 | [Running checks locally](local-testing.md) | You need Mongo/Redis, the boot smoke test, image builds, or local models. |
+| [Debugging locally](local-debugging.md) | You want breakpoints, a populated demo app, simctl, or DB/Redis inspection. |
 | [Mobile store releases](mobile-release.md) | You are shipping the Capacitor shell to TestFlight/Play — one-time setup, secrets, trigger. |
+| [Mobile store listing](mobile-store-listing.md) | You are filling the App Store / Play Console forms — drafted copy, privacy declarations, checklist. |
 | [.devin/AGENTS.md](../.devin/AGENTS.md) | You run a non-Claude agent. Mechanical facts and commands. |
 
 ## Product (what we build and why)
