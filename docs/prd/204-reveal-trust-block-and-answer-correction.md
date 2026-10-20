@@ -1,5 +1,7 @@
 # PRD-204: Trust block and "Correct my answers" on the reveal page
 
+> **Retired 2026-10-20.** The public readiness quiz (`/readiness`, `POST /readiness-quiz`, the share card) was removed by decision; signup is the front door ([PRD-209](209-landing-chart-story.md)). This document is kept for history and is not being built.
+
 ## Problem
 
 Two barriers sit between the score and an account: (a) financial-adjacent sites are

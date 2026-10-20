@@ -1192,7 +1192,7 @@ const LINK_SOURCE_PRESETS = [
   'bio',
 ]
 const LINK_MEDIUM_PRESETS = ['social', 'newsletter', 'referral', 'bio', 'paid']
-const LINK_PATH_PRESETS = ['/', '/readiness', '/signup']
+const LINK_PATH_PRESETS = ['/', '/guides', '/signup']
 
 function LinkBuilder({
   blogs,
@@ -1204,7 +1204,7 @@ function LinkBuilder({
   onToast: (t: { message: string }) => void
 }) {
   const [base, setBase] = useState('')
-  const [path, setPath] = useState('/readiness')
+  const [path, setPath] = useState('/guides')
   const [source, setSource] = useState('x')
   const [medium, setMedium] = useState('social')
   const [camp, setCamp] = useState(DEFAULT_CAMPAIGN)

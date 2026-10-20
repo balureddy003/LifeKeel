@@ -198,13 +198,13 @@ export default function BlogPostClient() {
         </p>
       </GlassCard>
       <GlassCard className="p-4 mt-3 flex items-center justify-between gap-3">
-        <p className="text-sm text-ink-primary font-medium">How covered is your family, really?</p>
+        <p className="text-sm text-ink-primary font-medium">See where your family stands</p>
         <Link
-          href="/readiness"
+          href="/signup"
           onClick={() => track('blog_cta_click', Object.keys(utmRef.current).length ? utmRef.current : undefined)}
           className="shrink-0 text-sm font-semibold text-family-400"
         >
-          Take the 2-min check →
+          Start free →
         </Link>
       </GlassCard>
     </div>

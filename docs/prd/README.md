@@ -366,6 +366,8 @@ building disconnected marketing tooling.
    supersedes the quiz-based parts of 201, 203, 204 and 205 for the landing
    page; those are deferred, not deleted. Tier 0.
 
+**Quiz retired (2026-10-20).** PRD-125, 201, 203, 204 and 205 describe the public readiness quiz and its result-save, trust-block and share extras. The quiz, its API route and share card were removed; `/readiness` now redirects to signup. Those documents stay for history and are not on the build order.
+
 ## Suggested build order for 138–147 and 203–206
 
 Dependencies are in each PRD's "Builds on"; this is the order that follows from

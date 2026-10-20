@@ -171,7 +171,6 @@ import { runContinuityCheck, ensureContinuityIndexes } from './jobs/continuity-c
 import { runFamilyHeartbeat } from './jobs/family-heartbeat.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
 import { registerSupportRoutes } from './routes/support.js'
-import { registerReadinessQuizRoutes } from './routes/readiness-quiz.js'
 import { registerFamilyReadinessRoutes } from './routes/family-readiness.js'
 import { registerFamilyScenarioRoutes } from './routes/family-scenarios.js'
 import { registerFamilyFeedRoutes } from './routes/family-feed.js'
@@ -184,7 +183,6 @@ import { registerFamilyAssetRoutes } from './routes/family-assets.js'
 import { registerFamilyLegacyRoutes } from './routes/family-legacy.js'
 import { registerLeadRoutes } from './routes/leads.js'
 import { registerHeartbeatUnsubscribeRoutes } from './routes/heartbeat-unsubscribe.js'
-import { registerShareRoutes } from './routes/share.js'
 import { registerSendgridWebhookRoutes } from './routes/webhooks-sendgrid.js'
 import { sendOpsAlert } from './operator/ops-alerts.js'
 import { registerFamilySignalSchemas } from './family/family-signal-schemas.js'
@@ -1555,11 +1553,9 @@ app.addHook('onRequest', async (request, reply) => {
     '/documentation/uiOptions',
     '/documentation/static',
     '/growth/events',
-    '/readiness-quiz',
     '/leads',
     '/users/unsubscribe',
     '/heartbeat/unsubscribe',
-    '/share/',
     '/family/join',
     '/family/invite/',
   ]
@@ -2024,7 +2020,6 @@ if (workflowDb) {
   registerFamilyInboxRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerAssistantRoutes(app, workflowDb)
   registerSupportRoutes(app, workflowDb)
-  registerReadinessQuizRoutes(app, workflowDb, engine)
   registerFamilyReadinessRoutes(app, workflowDb)
   registerFamilyScenarioRoutes(app, workflowDb)
   registerFamilyFeedRoutes(app, workflowDb)
@@ -2036,7 +2031,6 @@ if (workflowDb) {
   registerFamilyLegacyRoutes(app, workflowDb, engine, insightsDeliveryHook)
   await registerLeadRoutes(app, workflowDb)
   await registerHeartbeatUnsubscribeRoutes(app, workflowDb)
-  await registerShareRoutes(app)
   registerSendgridWebhookRoutes(app, workflowDb)
   await registerFamilyFinancialProfileRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerLifeEventRoutes(app, workflowDb)

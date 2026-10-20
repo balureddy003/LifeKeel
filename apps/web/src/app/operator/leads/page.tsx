@@ -160,7 +160,7 @@ export default function OperatorLeadsPage() {
     <div>
       <h1 className="text-2xl font-semibold">Leads</h1>
       <p className="mt-1 text-sm text-ink-tertiary">
-        Opted-in contacts from the readiness quiz and landing pages. Suppressed leads are never contacted.
+        Opted-in contacts from landing and content pages (the readiness quiz was retired; older leads may still carry that source). Suppressed leads are never contacted.
       </p>
 
       <div className="mt-4 flex flex-wrap gap-2">

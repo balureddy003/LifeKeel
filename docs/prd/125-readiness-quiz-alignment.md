@@ -1,5 +1,7 @@
 # PRD-125: readiness-quiz alignment with the composite score
 
+> **Retired 2026-10-20.** The public readiness quiz (`/readiness`, `POST /readiness-quiz`, the share card) was removed by decision; signup is the front door ([PRD-209](209-landing-chart-story.md)). This document is kept for history and is not being built.
+
 ## Problem
 
 The public `/readiness-quiz` lead magnet computed its own number —

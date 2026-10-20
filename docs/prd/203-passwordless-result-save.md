@@ -1,5 +1,7 @@
 # PRD-203: Passwordless "hold this result" save — turn the score into something owned
 
+> **Retired 2026-10-20.** The public readiness quiz (`/readiness`, `POST /readiness-quiz`, the share card) was removed by decision; signup is the front door ([PRD-209](209-landing-chart-story.md)). This document is kept for history and is not being built.
+
 ## Problem
 
 PRD-201/125 give a cold visitor a real readiness score with no signup. The reveal
