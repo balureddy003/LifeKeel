@@ -42,13 +42,13 @@ describe('createCredentialExpiryInsights', () => {
   function makeDb({ existingInsight = false, noCreds = false, staleError = false } = {}) {
     const connectorCreds = noCreds
       ? []
-      : [{ tenant_id: 'tenant-1', connector_id: 'trading-212', name: 'Trading 212' }]
+      : [{ tenant_id: 'tenant-1', connector_id: 'gmail', name: 'Gmail' }]
     const insights: Array<Record<string, unknown>> = existingInsight
       ? [{
           tenant_id: 'tenant-1',
           detector_id: 'system_connector_health',
           rule_id: 'expired_credentials',
-          entity_key: 'trading-212',
+          entity_key: 'gmail',
           state: 'identified',
           created_at: new Date(Date.now() - 1 * 60 * 60 * 1000),
         }]
@@ -57,14 +57,14 @@ describe('createCredentialExpiryInsights', () => {
     // against `insights` — "an alert already exists" means a marker doc
     // was already claimed for this tenant+connector within the window.
     const dedupSeed = existingInsight
-      ? [{ tenant_id: 'tenant-1', connector_id: 'trading-212', alerted_at: new Date(Date.now() - 1 * 60 * 60 * 1000) }]
+      ? [{ tenant_id: 'tenant-1', connector_id: 'gmail', alerted_at: new Date(Date.now() - 1 * 60 * 60 * 1000) }]
       : []
     const errorAt = staleError
       ? new Date(Date.now() - 60 * 60 * 1000)
       : new Date()
     const syncStates = [{
       tenant_id: 'tenant-1',
-      connector_id: 'trading-212',
+      connector_id: 'gmail',
       last_error: { status: 401, status_text: 'Unauthorized', at: errorAt },
     }]
 
@@ -81,10 +81,6 @@ describe('createCredentialExpiryInsights', () => {
               },
             }),
           }
-        }
-        if (name === 'pending_trades') {
-          // No rejected trades by default — existing tests only test sync path.
-          return { find: () => ({ toArray: async () => [] }) }
         }
         if (name === 'connector_credentials') {
           return {
@@ -135,48 +131,27 @@ describe('createCredentialExpiryInsights', () => {
     expect(result.skipped).toBe(0)
   })
 
-  it('creates an insight when auto-placed trades are rejected with HTTP 401', async () => {
-    // Trading 212 API key is bad → every auto-trade is rejected with 401.
-    // These failures land in pending_trades, not connector_sync_state, so
-    // without scanning trades the tenant is never notified.
-    const rejectedTrades = [{
-      tenant_id: 'tenant-1',
-      status: 'rejected',
-      receipt: { reason: 'Broker rejected the order: HTTP 401' },
-      updated_at: new Date(),
-    }]
+  it('tags the insight with the failing connector id', async () => {
     const insights: Array<Record<string, unknown>> = []
-
     const db = {
       collection: (name: string) => {
         if (name === 'connector_sync_state') {
-          return { find: () => ({ toArray: async () => [] }) }
-        }
-        if (name === 'pending_trades') {
           return {
-            find: (query?: Record<string, unknown>) => ({
-              toArray: async () => {
-                if (!query) return rejectedTrades
-                const cutoff = (query['updated_at'] as { $gte?: Date })?.$gte
-                if (!cutoff) return rejectedTrades
-                return rejectedTrades.filter(t => (t.updated_at as Date) >= cutoff)
-              },
+            find: () => ({
+              toArray: async () => [{
+                tenant_id: 'tenant-1',
+                connector_id: 'gmail',
+                last_error: { status: 401, status_text: 'Unauthorized', at: new Date() },
+              }],
             }),
           }
         }
         if (name === 'connector_credentials') {
-          return { findOne: async () => ({ tenant_id: 'tenant-1', connector_id: 'trading-212', name: 'Trading 212' }) }
+          return { findOne: async () => ({ tenant_id: 'tenant-1', connector_id: 'gmail', name: 'Gmail' }) }
         }
         if (name === 'insights') {
           return {
-            findOne: async (q: Record<string, unknown>) => {
-              return insights.find(i =>
-                i['tenant_id'] === q['tenant_id'] &&
-                i['detector_id'] === q['detector_id'] &&
-                i['entity_key'] === q['entity_key'] &&
-                i['state'] === q['state'],
-              ) ?? null
-            },
+            findOne: async () => null,
             insertOne: async (doc: Record<string, unknown>) => {
               insights.push(doc)
               return { insertedId: 'id' }
@@ -190,62 +165,7 @@ describe('createCredentialExpiryInsights', () => {
 
     const result = await createCredentialExpiryInsights({ db, lookbackMs: 10 * 60 * 1000 })
     expect(result.created).toBe(1)
-    expect(result.skipped).toBe(0)
-    expect(insights[0]['entity_key']).toBe('trading-212')
-    expect((insights[0]['feature_snapshot'] as Record<string, unknown>)['source']).toBe('trade_execution')
-  })
-
-  it('dedupes across both sync and trade execution sources for the same connector', async () => {
-    // Both sync state and pending_trades have 401s for trading-212 — only one
-    // insight should be created.
-    const syncStates = [{
-      tenant_id: 'tenant-1',
-      connector_id: 'trading-212',
-      last_error: { status: 401, status_text: 'Unauthorized', at: new Date() },
-    }]
-    const rejectedTrades = [{
-      tenant_id: 'tenant-1',
-      status: 'rejected',
-      receipt: { reason: 'Broker rejected the order: HTTP 401' },
-      updated_at: new Date(),
-    }]
-    const insights: Array<Record<string, unknown>> = []
-
-    const db = {
-      collection: (name: string) => {
-        if (name === 'connector_sync_state') {
-          return { find: () => ({ toArray: async () => syncStates }) }
-        }
-        if (name === 'pending_trades') {
-          return { find: () => ({ toArray: async () => rejectedTrades }) }
-        }
-        if (name === 'connector_credentials') {
-          return { findOne: async () => ({ name: 'Trading 212' }) }
-        }
-        if (name === 'insights') {
-          return {
-            findOne: async (q: Record<string, unknown>) => {
-              // Dedup-aware: check newly-inserted insights too.
-              return insights.find(i =>
-                i['tenant_id'] === q['tenant_id'] &&
-                i['detector_id'] === q['detector_id'] &&
-                i['entity_key'] === q['entity_key'] &&
-                i['state'] === q['state'],
-              ) ?? null
-            },
-            insertOne: async (doc: Record<string, unknown>) => {
-              insights.push(doc)
-              return { insertedId: 'id' }
-            },
-          }
-        }
-        if (name === 'connector_health_dedup') return makeDedupCol()
-        throw new Error(`Unexpected collection: ${name}`)
-      },
-    } as any
-
-    const result = await createCredentialExpiryInsights({ db, lookbackMs: 10 * 60 * 1000 })
-    expect(result.created).toBe(1) // sync source creates it, trade source dedupes
-    expect(result.skipped).toBe(1)
+    expect(insights[0]['entity_key']).toBe('gmail')
+    expect((insights[0]['feature_snapshot'] as Record<string, unknown>)['connector_id']).toBe('gmail')
   })
 })

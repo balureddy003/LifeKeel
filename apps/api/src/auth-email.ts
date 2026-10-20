@@ -57,45 +57,6 @@ export async function sendEmailVerificationEmail(
   }
 }
 
-// PRD-203: the "keep this result" link + code. The score is deliberately not in
-// the body (it would sit in mail previews and server-side mailbox scanners),
-// and the link host comes from LIFEKEEL_URL, never from the request. Only `to`
-// is logged: the link and code prove mailbox ownership.
-export async function sendResultSaveEmail(
-  to: string,
-  continueUrl: string,
-  code: string,
-  ttlMinutes: number,
-): Promise<boolean> {
-  const apiKey = process.env['SENDGRID_API_KEY']
-  if (!apiKey) {
-    log.warn({ to }, 'No SENDGRID_API_KEY — skipping result-save email')
-    return false
-  }
-  sgMail.setApiKey(apiKey)
-  try {
-    await sgMail.send({
-      to,
-      from: { email: getFromEmail(), name: 'LifeKeel' },
-      subject: 'Keep your LifeKeel readiness result',
-      text: `You asked LifeKeel to keep your readiness result.\n\nContinue here (expires in ${ttlMinutes} minutes):\n${continueUrl}\n\nOr, if you opened this email on a different device, enter this code: ${code}\n\nIf you didn't ask for this, ignore this email — nothing will be saved.`,
-      html: `
-        <p>You asked LifeKeel to keep your readiness result.</p>
-        <p><a href="${continueUrl}" style="display:inline-block;padding:12px 20px;background:#7c6ef0;color:#fff;border-radius:10px;text-decoration:none;font-weight:600;">Continue</a></p>
-        <p>This link expires in ${ttlMinutes} minutes. If you opened this email on a different device, enter this code instead:</p>
-        <p style="font-size:24px;letter-spacing:4px;font-weight:700;">${code}</p>
-        <p style="color:#888;font-size:13px;">If you didn't ask for this, ignore this email — nothing will be saved.</p>
-      `,
-      trackingSettings: { clickTracking: { enable: false } },
-    })
-    log.info({ to }, 'Result-save email sent')
-    return true
-  } catch (err) {
-    log.error({ to, err }, 'Failed to send result-save email')
-    return false
-  }
-}
-
 export async function sendPasswordResetEmail(
   to: string,
   name: string,

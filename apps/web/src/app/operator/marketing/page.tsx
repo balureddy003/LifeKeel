@@ -890,12 +890,18 @@ export default function MarketingPage() {
                   {post.publish_error && (
                     <p className="text-xs text-danger mt-2 leading-snug">{post.publish_error}</p>
                   )}
+                  {post.copy_check && !post.copy_check.ok && (post.state === 'draft' || post.state === 'publish_failed') && (
+                    <p role="alert" className="text-xs text-danger mt-2 leading-snug">
+                      Fails the copy guard, so it cannot be approved until edited:{' '}
+                      {post.copy_check.violations.map((v) => `${v.rule} ("${v.match}")`).join('; ')}
+                    </p>
+                  )}
                   {(post.state === 'draft' || post.state === 'publish_failed') &&
                     editingId !== post.id && (
                       <div className="flex gap-2 mt-3">
                         <button
                           onClick={() => decide(post.id, 'approve')}
-                          disabled={busy === post.id}
+                          disabled={busy === post.id || post.copy_check?.ok === false}
                           className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold bg-family-500/15 border border-family-500/25 text-family-400 disabled:opacity-40"
                         >
                           {busy === post.id ? (
@@ -1192,7 +1198,7 @@ const LINK_SOURCE_PRESETS = [
   'bio',
 ]
 const LINK_MEDIUM_PRESETS = ['social', 'newsletter', 'referral', 'bio', 'paid']
-const LINK_PATH_PRESETS = ['/', '/readiness', '/signup']
+const LINK_PATH_PRESETS = ['/', '/guides', '/signup']
 
 function LinkBuilder({
   blogs,
@@ -1204,7 +1210,7 @@ function LinkBuilder({
   onToast: (t: { message: string }) => void
 }) {
   const [base, setBase] = useState('')
-  const [path, setPath] = useState('/readiness')
+  const [path, setPath] = useState('/guides')
   const [source, setSource] = useState('x')
   const [medium, setMedium] = useState('social')
   const [camp, setCamp] = useState(DEFAULT_CAMPAIGN)

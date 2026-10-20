@@ -931,6 +931,8 @@ export interface NotificationPrefs {
   heartbeat_quiet_weeks: boolean
   domains_muted: string[]
   member_scope: 'all' | 'mine'
+  /** PRD-139: true while "switch to digest only?" is on offer and unanswered. */
+  digest_offer_pending: boolean
 }
 
 export interface NotificationPrefsResponse {
@@ -955,6 +957,89 @@ export type NotificationPrefsPatch = Partial<
 
 export async function fetchNotificationPrefs(): Promise<NotificationPrefsResponse | null> {
   return apiFetch<NotificationPrefsResponse | null>('/family/notifications', null)
+}
+
+// ── Perceived protection (PRD-141) ──────────────────────────────────────
+
+export async function fetchPerceivedProtectionDue(): Promise<{
+  quarter: string
+  due: boolean
+} | null> {
+  return apiFetch<{ quarter: string; due: boolean } | null>('/family/perceived-protection', null)
+}
+
+/** score 1 to 5, or null to skip this quarter. Resolves false on any failure. */
+export async function answerPerceivedProtection(score: number | null): Promise<boolean> {
+  const token = typeof window === 'undefined' ? null : localStorage.getItem('lifekeel_token')
+  try {
+    const res = await credFetch(`${getApiBase()}/family/perceived-protection`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(score === null ? { skipped: true } : { score }),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+// ── Operator: retention metrics (PRD-141) ───────────────────────────────
+
+export interface RetentionMetrics {
+  generated_at: string
+  min_cohort: number
+  definitions: Record<string, string>
+  digest_delivery: { scheduled: number; delivered: number; rate: number | null }
+  data_freshness: { mean_share_running: number | null; families: number | null }
+  digest_engagement: Record<string, { clicks_per_100: number | null }>
+  notification_budget: { dropped_by_reason: Record<string, number> | null }
+  notification_health: {
+    unsubscribes_per_100_digests: number | null
+    digest_only_share: number | null
+    heartbeat_off_share: number | null
+  }
+  received_value_retention: Record<'month_3' | 'month_6', { retained_share: number | null }>
+  perceived_protection: { quarter: string; mean: number | null; responses: number | null }
+}
+
+export function fetchRetentionMetrics(): Promise<RetentionMetrics> {
+  return operatorRequest('/operator/retention')
+}
+
+// ── Freshness (PRD-145) ──────────────────────────────────────────────────
+
+export interface FreshnessCheck {
+  detector_id: string
+  label: string
+  state: 'running' | 'paused_missing' | 'paused_stale'
+  /** Field names only, e.g. "emergency_fund.monthly_expenses_minor". */
+  input: string[]
+  since: string
+}
+
+export interface FreshnessResponse {
+  checked_at: string | null
+  share_running: number | null
+  detectors: FreshnessCheck[]
+}
+
+/** null for children (403), signed-out visitors and any failure. */
+export async function fetchFreshness(): Promise<FreshnessResponse | null> {
+  return apiFetch<FreshnessResponse | null>('/family/freshness', null)
+}
+
+/** The organizer's answer to the digest-only offer. null on any failure. */
+export async function answerDigestOffer(
+  accept: boolean,
+): Promise<NotificationPrefsResponse | null> {
+  return scenarioRequest<NotificationPrefsResponse | null>(
+    '/family/notifications/digest-offer',
+    { method: 'POST', body: JSON.stringify({ accept }) },
+    null,
+  )
 }
 
 export async function updateNotificationPrefs(
@@ -2886,142 +2971,6 @@ export async function resendVerificationEmail(email?: string): Promise<void> {
   return authPostRequest('/auth/resend-verification', email ? { email } : {})
 }
 
-// ── Public readiness quiz (PRD-201) ─────────────────────────────────────
-
-export interface ReadinessQuizAnswers {
-  monthly_salary_minor: number
-  emergency_savings_minor: number
-  monthly_expenses_minor: number
-  mortgage_outstanding_minor: number
-  life_cover_minor: number
-  dependents: number
-}
-
-export interface ReadinessQuizInsight {
-  hypothesis: string
-  reasoning: string
-  category: string
-  rule_id: string
-  estimated_impact_low: number
-  estimated_impact_high: number
-}
-
-export interface ReadinessQuizResult {
-  score: number | null
-  /** PRD-125: the same composite components /family/readiness computes —
-   *  only the ones the quiz collects are scored; the rest read null. */
-  components?: Array<{
-    key: string
-    label: string
-    score: number | null
-    weight: number
-    detail: string
-  }>
-  insights: ReadinessQuizInsight[]
-  error?: string
-}
-
-/** Public, unauthenticated — no token, nothing tied to an identity. */
-export async function submitReadinessQuiz(
-  answers: ReadinessQuizAnswers,
-): Promise<ReadinessQuizResult> {
-  const res = await credFetch(`${getApiBase()}/readiness-quiz`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(answers),
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) return { score: null, insights: [], error: data.error || 'Request failed' }
-  return {
-    score: data.score ?? null,
-    components: data.components ?? [],
-    insights: data.insights ?? [],
-    error: data.error,
-  }
-}
-
-// ── Passwordless result save (PRD-203) ──────────────────────────────────
-
-/** Version of the marketing-consent wording shown on the reveal. Must match
- *  MARKETING_CONSENT_VERSION in apps/api/src/routes/magic-link.ts when the
- *  wording changes — the server records which version was shown. */
-export interface SavedSnapshot {
-  id: string
-  score: number | null
-  components: NonNullable<ReadinessQuizResult['components']>
-  saved_at: string
-}
-
-export interface MagicLinkVerifyResult {
-  signed_in: boolean
-  reason?: 'mfa_required'
-  token?: string
-  user?: {
-    id: string
-    email: string
-    name: string
-    tenant_id: string
-    email_verified?: boolean
-  }
-  snapshot: SavedSnapshot
-}
-
-/** Public. Always resolves the same way for a well-formed address, so the UI
- *  can never tell whether the address already has an account. */
-export async function requestMagicLink(
-  email: string,
-  /** null re-sends an expired link for an address with a pending save. */
-  answers: ReadinessQuizAnswers | null,
-  marketingConsent?: boolean,
-): Promise<void> {
-  let res: Response
-  try {
-    res = await credFetch(`${getApiBase()}/auth/magic-link/request`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email,
-        ...(answers ? { answers } : {}),
-        ...(marketingConsent === undefined ? {} : { marketing_consent: marketingConsent }),
-      }),
-    })
-  } catch {
-    throw new Error("Couldn't reach LifeKeel — check your connection and try again.")
-  }
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.error || "That didn't go through — try again in a moment.")
-  }
-}
-
-/** Link token, or the emailed 6-digit code for opening mail on another device. */
-export async function verifyMagicLink(
-  input: { token: string } | { email: string; code: string },
-): Promise<MagicLinkVerifyResult> {
-  let res: Response
-  try {
-    res = await credFetch(`${getApiBase()}/auth/magic-link/verify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
-    })
-  } catch {
-    throw new Error("Couldn't reach LifeKeel — check your connection and try again.")
-  }
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || 'This link or code is invalid or has expired.')
-  return data as MagicLinkVerifyResult
-}
-
-/** Per-score share card — points at the API route that serves per-score
- *  Open Graph tags to scrapers and redirects humans to the quiz. The
- *  score rides in the URL: the quiz persists nothing about the visitor,
- *  so a share can only carry what the sharer typed themselves. */
-export function readinessShareUrl(score: number | null): string {
-  const base = getApiBase()
-  return score !== null ? `${base}/share/readiness?s=${score}` : `${base}/share/readiness`
-}
-
 // ── Blog / detector-driven content (PRD-202) ────────────────────────────
 
 export interface BlogPostSummary {
@@ -3170,6 +3119,8 @@ export interface MarketingPost {
   publish_error?: string
   external_url?: string
   media_url?: string
+  /** Marketing copy guard result (PRD-210); a failing post cannot be approved. */
+  copy_check?: { ok: boolean; violations: { rule: string; match: string }[] }
   metrics?: { likes?: number; reposts?: number; replies?: number }
 }
 

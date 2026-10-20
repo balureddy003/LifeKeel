@@ -87,6 +87,7 @@ interface Seed {
   profile?: Record<string, unknown> | null
   signals?: Record<string, unknown>[]
   sends?: Record<string, unknown>[]
+  freshness?: Record<string, unknown>[]
 }
 
 function makeDb(seed: Seed) {
@@ -110,6 +111,7 @@ function makeDb(seed: Seed) {
     insights: seed.insights ?? [],
     family_financial_profile: seed.profile ? [{ tenant_id: TENANT, ...seed.profile }] : [],
     signals: (seed.signals ?? []).map((s) => ({ tenant_id: TENANT, ...s })),
+    freshness_state: (seed.freshness ?? []).map((f) => ({ tenant_id: TENANT, ...f })),
     heartbeat_sends: (seed.sends ?? []).map((s) => ({ tenant_id: TENANT, ...s })),
   }
   return {
@@ -406,5 +408,75 @@ describe('runFamilyHeartbeat', () => {
     await runFamilyHeartbeat(db, { cadence: 'weekly', now: NOW })
     const run = stores['job_runs']!.find((r) => r['job'] === 'family-heartbeat-weekly')!
     expect(run).toMatchObject({ sent: 1, failed: 1, scheduled: 2 })
+  })
+
+  it('collapses paused checks from the freshness record into one quiet line', async () => {
+    const { db } = makeDb({
+      prefs: { heartbeat_cadence: 'monthly' },
+      sweepRanAt: MARCH_SWEEP,
+      freshness: [
+        { detector_id: 'family_retirement_gap', label: 'Retirement', state: 'paused_missing' },
+        {
+          detector_id: 'family_emergency_fund_adequacy',
+          label: 'Emergency fund',
+          state: 'paused_stale',
+        },
+        { detector_id: 'family_protection_gap', label: 'Protection', state: 'running' },
+      ],
+    })
+    await runFamilyHeartbeat(db, { cadence: 'monthly', now: new Date('2026-03-01T08:00:00Z') })
+    const text = (sendMock.mock.calls.at(-1)![2] as { text: string }).text
+    expect(text).toContain(
+      '2 checks are paused because some details are missing or out of date: Retirement, Emergency fund.',
+    )
+    expect(text.match(/paused because/g)).toHaveLength(1)
+    expect(text).not.toContain('Protection,')
+  })
+
+  it('says nothing is paused when every check in the freshness record is running', async () => {
+    const { db } = makeDb({
+      prefs: { heartbeat_cadence: 'monthly' },
+      sweepRanAt: MARCH_SWEEP,
+      freshness: [{ detector_id: 'family_protection_gap', label: 'Protection', state: 'running' }],
+    })
+    await runFamilyHeartbeat(db, { cadence: 'monthly', now: new Date('2026-03-01T08:00:00Z') })
+    expect((sendMock.mock.calls.at(-1)![2] as { text: string }).text).not.toContain('Paused')
+  })
+
+  it('counts each confirmed digest as exempt Tier B in the notification ledger (PRD-139)', async () => {
+    const { db, stores } = makeDb({
+      prefs: { heartbeat_cadence: 'monthly' },
+      sweepRanAt: MARCH_SWEEP,
+    })
+    await runFamilyHeartbeat(db, { cadence: 'monthly', now: new Date('2026-03-01T08:00:00Z') })
+    const rows = stores['notification_ledger']!
+    expect(rows).toHaveLength(2)
+    expect(
+      rows.every(
+        (r) => r['tier'] === 'B' && r['outcome'] === 'exempt' && r['kind'] === 'quiet_care_digest',
+      ),
+    ).toBe(true)
+    expect(JSON.stringify(rows)).not.toContain('@x.test')
+  })
+
+  it('a failed send is not counted in the ledger', async () => {
+    const { db, stores } = makeDb({
+      prefs: { heartbeat_cadence: 'monthly' },
+      sweepRanAt: MARCH_SWEEP,
+    })
+    sendMock.mockResolvedValue({ ok: false, reason: 'send_failed' })
+    await runFamilyHeartbeat(db, { cadence: 'monthly', now: new Date('2026-03-01T08:00:00Z') })
+    expect(stores['notification_ledger'] ?? []).toHaveLength(0)
+  })
+
+  it('adds the digest-only offer line when an offer is pending', async () => {
+    const { db } = makeDb({
+      prefs: { heartbeat_cadence: 'monthly', digest_offer: { offered_at: new Date('2026-02-20') } },
+      sweepRanAt: MARCH_SWEEP,
+    })
+    await runFamilyHeartbeat(db, { cadence: 'monthly', now: new Date('2026-03-01T08:00:00Z') })
+    expect((sendMock.mock.calls.at(-1)![2] as { text: string }).text).toContain(
+      "You haven't opened the last two alerts.",
+    )
   })
 })

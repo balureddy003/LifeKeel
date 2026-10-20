@@ -15,11 +15,9 @@ import { getSandboxData } from '../data/sandbox-seed.js'
 interface SandboxContext {
   enabled: boolean
   tenant_id: string
-  /** Scopes sandbox samples to the tenant's actual active vertical — see getSandboxData()'s filter. */
-  active_vertical?: string
 }
 
-// Sandbox insight ids (e.g. insight_trading_001) are fabricated samples with
+// Sandbox insight ids (e.g. insight_family_001) are fabricated samples with
 // no row in the real `insights` collection, so POST /insights/:id/approve
 // and /dismiss — which look the row up by id before updating it — always
 // 404 for them. GET /insights is also fully sandbox-intercepted (see below),
@@ -69,7 +67,6 @@ async function getSandboxContext(db: Db, tenantId: string): Promise<SandboxConte
   return {
     enabled: settings?.sandbox_mode ?? false,
     tenant_id: tenantId,
-    active_vertical: settings?.active_vertical as string | undefined,
   }
 }
 
@@ -106,7 +103,7 @@ export async function sandboxMiddleware(
   // up — and every other goal sub-route (kpis, autonomy, archive) already
   // operates on these same real documents unintercepted, so this is the
   // only place that needed to change.
-  const seedGoals = getSandboxData('goals', context.active_vertical)
+  const seedGoals = getSandboxData('goals')
   if (url.startsWith('/goals') && req.method === 'GET') {
     const realDocs = await db.collection('goals')
       .find({ tenant_id: tenantId, status: { $ne: 'archived' } })
@@ -122,7 +119,6 @@ export async function sandboxMiddleware(
       kpis: g['kpis'] as typeof seedGoals[number]['kpis'],
       status: (g['status'] === 'active' || g['status'] === 'achieved' ? g['status'] : 'stalled') as typeof seedGoals[number]['status'],
       detector_ids: (g['detector_ids'] as string[]) ?? [],
-      vertical: context.active_vertical ?? 'smb-operations',
     }))
     const goals = [...realGoals, ...seedGoals]
 
@@ -151,7 +147,7 @@ export async function sandboxMiddleware(
     return reply.send({ goals })
   }
 
-  // Insight approve/dismiss — sandbox insight ids (insight_trading_001, etc.)
+  // Insight approve/dismiss — sandbox insight ids (insight_family_001, etc.)
   // have no row in the real `insights` collection, so the real routes' own
   // findOneAndUpdate-by-id 404s every time. Since GET /insights below is
   // fully sandbox-intercepted anyway (a real DB write here wouldn't even be
@@ -161,7 +157,7 @@ export async function sandboxMiddleware(
   const insightActionMatch = url.match(/^\/insights\/([^/]+)\/(approve|dismiss)(\?.*)?$/)
   if (insightActionMatch && req.method === 'POST') {
     const [, insightId, action] = insightActionMatch as [string, string, 'approve' | 'dismiss']
-    const insights = getSandboxData('insights', context.active_vertical)
+    const insights = getSandboxData('insights')
     if (!insights.some(i => i.id === insightId)) {
       return reply.status(404).send({ error: 'Insight not found or already actioned' })
     }
@@ -179,7 +175,7 @@ export async function sandboxMiddleware(
   const actionPreviewMatch = url.match(/^\/insights\/([^/]+)\/action-preview(\?.*)?$/)
   if (actionPreviewMatch && req.method === 'GET') {
     const insightId = actionPreviewMatch[1]
-    const insights = getSandboxData('insights', context.active_vertical)
+    const insights = getSandboxData('insights')
     const insight = insights.find(i => i.id === insightId)
     if (!insight) return reply.status(404).send({ error: 'Insight not found' })
     const { previewActions } = await import('../actions/action-executor.js')
@@ -200,7 +196,7 @@ export async function sandboxMiddleware(
   // actually in the Pulse feed below it.
   if (url.startsWith('/insights') && req.method === 'GET') {
     const overrides = getInsightOverrides(tenantId)
-    let insights = getSandboxData('insights', context.active_vertical)
+    let insights = getSandboxData('insights')
       .map(i => (overrides.has(i.id) ? { ...i, state: overrides.get(i.id)! } : i))
     const stateParam = (req.query as Record<string, unknown>)?.['state']
     if (typeof stateParam === 'string') {
@@ -228,8 +224,8 @@ export async function sandboxMiddleware(
   // attribution) is only a lightweight stats summary, not a full trigger/
   // nodes/edges graph — synthesizing a WorkflowDef straight from it used to
   // omit `trigger` entirely, which crashed workflowToYaml() on
-  // `wf.trigger.detector`. Sandbox workflow ids (e.g. workflow_trading_
-  // concentration_review) are fictional demo ids with no backing YAML
+  // `wf.trigger.detector`. Sandbox workflow ids (e.g. workflow_policy_
+  // renewal_watch) are fictional demo ids with no backing YAML
   // definition in the real WorkflowLoader, so a bare pass-through 404s for
   // every playbook in the demo catalogue — the fix is to build a minimal,
   // honest single-node WorkflowDef from the same description already shown
@@ -238,7 +234,7 @@ export async function sandboxMiddleware(
   // id, so it's excluded and falls through (sandbox has no seeded run data).
   const workflowDetailMatch = url.match(/^\/workflows\/([^/?]+)(\?.*)?$/)
   if (workflowDetailMatch && workflowDetailMatch[1] !== 'runs' && req.method === 'GET') {
-    const workflows = getSandboxData('workflows', context.active_vertical)
+    const workflows = getSandboxData('workflows')
     const sw = workflows.find(w => w.id === workflowDetailMatch[1])
     if (sw) {
       return reply.send({
@@ -261,7 +257,7 @@ export async function sandboxMiddleware(
   }
 
   if ((url === '/workflows' || url.startsWith('/workflows?')) && req.method === 'GET') {
-    const workflows = getSandboxData('workflows', context.active_vertical)
+    const workflows = getSandboxData('workflows')
     // The real list route (routes/workflows.ts) always adds `version` and
     // `node_count` on top of the loader's definitions; SandboxWorkflow never
     // had them (it's just id/name/description/runs_count/attribution), so
@@ -276,13 +272,13 @@ export async function sandboxMiddleware(
   // Frontend's AttributionPage reads `summary.workflows` directly (typed as
   // WorkflowAttribution[]) and crashes with "Cannot read properties of
   // undefined (reading 'map')" if it's missing — this used to return the raw
-  // SandboxWorkflow[] shape (id/name/description/runs_count/attribution/
-  // vertical) as a top-level sibling key instead of nesting the mapped
+  // SandboxWorkflow[] shape (id/name/description/runs_count/attribution)
+  // as a top-level sibling key instead of nesting the mapped
   // WorkflowAttribution[] inside `summary`, and omitted summary's other
   // required fields (converted/dismissed/expired/pending/conversion_rate/
   // avg_value_per_conversion_minor_units/period_days) entirely.
   if (url.startsWith('/attribution') && req.method === 'GET') {
-    const sandboxWorkflows = getSandboxData('workflows', context.active_vertical)
+    const sandboxWorkflows = getSandboxData('workflows')
     const workflowAttributions = sandboxWorkflows.map(w => ({
       workflow_id: w.id,
       workflow_name: w.name,
@@ -330,7 +326,7 @@ export async function sandboxMiddleware(
   
   // Verified Moments
   if (url.startsWith('/verified-moments') && req.method === 'GET') {
-    const moments = getSandboxData('verified_moments', context.active_vertical)
+    const moments = getSandboxData('verified_moments')
     return reply.send({ verified_moments: moments })
   }
 
@@ -339,7 +335,7 @@ export async function sandboxMiddleware(
   // for real from the sandbox insights rather than hardcoded, so it's an
   // honest reflection of the sample data instead of another fabricated number.
   if (url.match(/^\/analytics\/trust-metrics(\?.*)?$/) && req.method === 'GET') {
-    const insights = getSandboxData('insights', context.active_vertical)
+    const insights = getSandboxData('insights')
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000
     const recent = insights.filter(i => new Date(i.created_at).getTime() >= thirtyDaysAgo)
 

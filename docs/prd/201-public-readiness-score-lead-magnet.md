@@ -1,5 +1,7 @@
 # PRD-201: Public Family Readiness Score — the detector engine as a growth loop
 
+> **Retired 2026-10-20.** The public readiness quiz (`/readiness`, `POST /readiness-quiz`, the share card) was removed by decision; signup is the front door ([PRD-209](209-landing-chart-story.md)). This document is kept for history and is not being built.
+
 > **Partly superseded (October 2026 market review):** the result specification
 > is superseded by PRD-125 (component breakdown) and the account step by PRD-203. The
 > US FEMA statistic in the Problem section should be replaced with a UK source once

@@ -24,11 +24,11 @@ export interface DetectorContentPost {
   rule_id: string
 }
 
-const QUIZ_CTA_COVERED = `## See your own number
-[Take the free 60-second readiness check](/readiness) — it runs this exact calculation on your numbers, with no signup required.`
+const SIGNUP_CTA_COVERED = `## See your own number
+[Start free](/signup) — put your family's figures on the chart and Keel runs this exact check on what you enter.`
 
-const QUIZ_CTA_UNCOVERED = `## See what Keel finds for your family
-[Take the free 60-second readiness check](/readiness) checks two of Keel's six signals — protection and emergency-fund coverage — free and with no signup. A full profile covers this and more, including retirement and education funding.`
+const SIGNUP_CTA_UNCOVERED = `## See what Keel finds for your family
+[Start free](/signup) — a profile of what you hold on file lets Keel check protection, emergency-fund coverage, retirement and education funding, and show where anything looks light.`
 
 export const DETECTOR_CONTENT_POSTS: DetectorContentPost[] = [
   {
@@ -57,7 +57,7 @@ Every time you update your financial profile, LifeKeel runs this exact compariso
 
 This is an estimate, not advice — everyone's situation is different, and a licensed insurance professional can help you weigh it against your family's specific circumstances.
 
-${QUIZ_CTA_COVERED}`,
+${SIGNUP_CTA_COVERED}`,
   },
   {
     slug: 'income-protection-insurance-explained',
@@ -71,7 +71,7 @@ ${QUIZ_CTA_COVERED}`,
 
 ## Why this gap is easy to miss
 
-If you're employed, it's tempting to assume your employer's sick pay has you covered. In practice, most employer sick-pay policies are generous for the first few weeks and then taper off fast — long before a serious illness or a slow recovery from injury actually resolves. Self-employed households often have even less of a safety net, since there's no employer policy to fall back on at all.
+If you're employed, it's tempting to assume your employer's sick pay has you covered. In practice, most employer sick-pay policies are generous for the first few weeks and then taper off fast — long before a serious illness or a slow recovery from injury actually resolves. Self-employed households often have even less to fall back on, since there's no employer policy at all.
 
 ## How Keel checks this for your family
 
@@ -79,7 +79,7 @@ LifeKeel's protection-gap detector looks for two things: does your household hav
 
 This is informational, not advice — a licensed insurance professional can help you find a policy that actually fits your situation and budget.
 
-${QUIZ_CTA_COVERED}`,
+${SIGNUP_CTA_COVERED}`,
   },
   {
     slug: 'emergency-fund-three-months-rule',
@@ -103,7 +103,7 @@ LifeKeel's emergency-fund detector compares your listed emergency savings agains
 
 This is an estimate, not advice — a qualified financial professional can help you decide where in the 3-6 month range makes sense for your household.
 
-${QUIZ_CTA_COVERED}`,
+${SIGNUP_CTA_COVERED}`,
   },
   {
     slug: 'havent-started-retirement-savings',
@@ -125,7 +125,7 @@ LifeKeel's retirement detector looks at whether any pension or retirement saving
 
 This is informational only, not a recommendation — a qualified financial professional can help you find a retirement savings option that fits your country's tax rules and your own budget.
 
-${QUIZ_CTA_UNCOVERED}`,
+${SIGNUP_CTA_UNCOVERED}`,
   },
   {
     slug: 'education-fund-behind-target',
@@ -147,7 +147,7 @@ LifeKeel's education-shortfall detector flags a fund when current savings are be
 
 This is an estimate, not advice — a qualified financial professional can help you weigh contribution increases, savings vehicles, and timeline adjustments specific to your situation.
 
-${QUIZ_CTA_UNCOVERED}`,
+${SIGNUP_CTA_UNCOVERED}`,
   },
   {
     slug: 'education-fund-not-started',
@@ -169,6 +169,6 @@ LifeKeel's education-shortfall detector flags a fund with zero savings on file w
 
 This is informational only, not advice — a qualified financial professional can help you choose a savings vehicle that fits your country's tax rules.
 
-${QUIZ_CTA_UNCOVERED}`,
+${SIGNUP_CTA_UNCOVERED}`,
   },
 ]

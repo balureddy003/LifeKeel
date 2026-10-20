@@ -15,7 +15,7 @@ apps/api      Fastify backend. package name: @lifekeel/api
 packages/*    Shared libraries apps/api depends on (see each package's
               own README.md and package.json "description" for its role).
 detectors/, connectors/, definitions/, verticals/, detector-evals/,
-category-table.yaml, scripts/fetch-yfinance.py
+category-table.yaml
               Runtime resource files apps/api reads via path.join(ROOT, ...)
               at request/boot time — not just config, load-bearing.
 ```

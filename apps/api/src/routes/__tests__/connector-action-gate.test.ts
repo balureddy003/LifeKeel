@@ -53,15 +53,15 @@ describe('connector action gate (read-only route)', () => {
 
   it('still lets an exact registry GET action reach the executor', async () => {
     const f = await app()
-    const res = await post(f, 'trading-212', 'get_cash')
+    const res = await post(f, 'xero', 'get_invoices')
     expect(res.statusCode).not.toBe(403)
     expect(res.statusCode).not.toBe(404)
   })
 
   it('classifies read, write and unknown', () => {
-    expect(classifyConnectorAction('trading-212', 'get_cash')).toBe('read')
-    expect(classifyConnectorAction('trading-212', 'place_market_order')).toBe('write')
-    expect(classifyConnectorAction('trading-212', 'nope')).toBe('unknown')
-    expect(classifyConnectorAction('nope', 'get_cash')).toBe('unknown')
+    expect(classifyConnectorAction('xero', 'get_invoices')).toBe('read')
+    expect(classifyConnectorAction('xero', 'create_invoice')).toBe('write')
+    expect(classifyConnectorAction('xero', 'nope')).toBe('unknown')
+    expect(classifyConnectorAction('nope', 'get_invoices')).toBe('unknown')
   })
 })

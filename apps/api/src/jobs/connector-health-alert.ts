@@ -1,16 +1,8 @@
 /**
  * Connector health alerting.
  *
- * Scans two sources for recent credential failures (401/403):
- *
- *   1. `connector_sync_state.last_error` — background data sync failures.
- *   2. `pending_trades.receipt.reason` — broker trade execution failures.
- *
- * The second source is critical for the trading-investment vertical: a bad
- * Trading 212 API key will reject every auto-placed order with HTTP 401, but
- * those failures land in `pending_trades`, not in sync state. Without scanning
- * both, a tenant with auto-trading enabled would silently accumulate rejected
- * trades and never be notified that their broker credentials are broken.
+ * Scans `connector_sync_state.last_error` for recent credential failures
+ * (401/403) during background data syncs.
  *
  * Creates a user-facing insight so tenants are notified when an API key expires
  * or is revoked. The generated insight uses a synthetic detector/rule ID so it
@@ -38,7 +30,6 @@ export async function createCredentialExpiryInsights(
 ): Promise<{ created: number; skipped: number }> {
   const { db, tenantId, lookbackMs = 30 * 60 * 1000, now = new Date() } = opts
   const stateCol = db.collection('connector_sync_state')
-  const tradesCol = db.collection('pending_trades')
   const credCol = db.collection('connector_credentials')
   const insightsCol = db.collection('insights')
   const dedupCol = db.collection('connector_health_dedup')
@@ -46,7 +37,7 @@ export async function createCredentialExpiryInsights(
 
   const cutoff = new Date(now.getTime() - lookbackMs)
 
-  // ── Source 1: sync state 401/403 failures ──────────────────────────────
+  // ── Sync state 401/403 failures ───────────────────────────────────────
   const syncQuery: Record<string, unknown> = {
     'last_error.status': { $in: [401, 403] },
     'last_error.at': { $gte: cutoff },
@@ -55,29 +46,11 @@ export async function createCredentialExpiryInsights(
 
   const failingSync = await stateCol.find(syncQuery).toArray()
 
-  // ── Source 2: broker trade execution 401/403 failures ──────────────────
-  // A bad broker API key rejects every order with HTTP 401, but those failures
-  // land in pending_trades.receipt.reason, not in sync state. Without this
-  // scan, auto-trading tenants silently accumulate rejected trades.
-  const tradeQuery: Record<string, unknown> = {
-    status: 'rejected',
-    'receipt.reason': /HTTP 40[13]/,
-    updated_at: { $gte: cutoff },
-  }
-  if (tenantId) tradeQuery['tenant_id'] = tenantId
-
-  const rejectedTrades = await tradesCol.find(tradeQuery).toArray()
-
-  // Build a unified list of (tenant, connector, errorStatus, errorText) tuples.
-  // Trading 212 is the only broker connector for now, so rejected trades map to
-  // 'trading-212'. When more brokers are added, the trade doc should carry an
-  // explicit connector_id — until then this fallback is correct.
   type Failure = {
     tenantId: string
     connectorId: string
     status: number
     statusText: string
-    source: 'sync' | 'trade_execution'
   }
 
   const failures: Failure[] = []
@@ -87,16 +60,6 @@ export async function createCredentialExpiryInsights(
       connectorId: s['connector_id'] as string,
       status: s['last_error']?.['status'] as number,
       statusText: (s['last_error']?.['status_text'] as string) ?? '',
-      source: 'sync',
-    })
-  }
-  for (const t of rejectedTrades) {
-    failures.push({
-      tenantId: t['tenant_id'] as string,
-      connectorId: 'trading-212',
-      status: /HTTP 401/.test(t['receipt']?.['reason'] ?? '') ? 401 : 403,
-      statusText: 'Unauthorized',
-      source: 'trade_execution',
     })
   }
 
@@ -144,10 +107,7 @@ export async function createCredentialExpiryInsights(
       continue
     }
 
-    const { status: errorStatus, statusText: errorText, source } = failure
-    const sourceLabel = source === 'trade_execution'
-      ? 'Auto-placed trade'
-      : 'The last sync'
+    const { status: errorStatus, statusText: errorText } = failure
 
     const insight: Insight = {
       id: randomUUID(),
@@ -157,13 +117,13 @@ export async function createCredentialExpiryInsights(
       urgency: 'high',
       estimated_impact_low: 0,
       estimated_impact_high: 0,
-      reasoning: `${sourceLabel} for ${connectorName} failed with HTTP ${errorStatus}${errorText ? ` (${errorText})` : ''}. This usually means the API key expired, was revoked, or lacks the required permissions. Auto-trading and data sync are paused until the credentials are updated. Go to Connectors → ${connectorName} to reconnect.`,
+      reasoning: `The last sync for ${connectorName} failed with HTTP ${errorStatus}${errorText ? ` (${errorText})` : ''}. This usually means the API key expired, was revoked, or lacks the required permissions. Data sync is paused until the credentials are updated. Go to Connectors → ${connectorName} to reconnect.`,
       actions: ['Go to Connectors and reconnect the integration'],
       confidence_breakdown: {
         or_score: 0.95,
         combined_score: 0.95,
         model_version: 'system@1',
-        evidence_refs: [source === 'trade_execution' ? 'pending_trades:receipt.reason' : 'connector_sync_state:last_error'],
+        evidence_refs: ['connector_sync_state:last_error'],
       },
       detector_id: DETECTOR_ID,
       rule_id: RULE_ID,
@@ -174,7 +134,6 @@ export async function createCredentialExpiryInsights(
       feature_snapshot: {
         connector_id: connectorId,
         status: errorStatus,
-        source,
       },
     }
 

@@ -65,20 +65,20 @@ describe('classifyDetectorTier', () => {
 })
 
 describe('isContradictory', () => {
-  it('detects sell vs buy contradiction', () => {
-    const left = makeInsight({ id: '1', actions: ['sell'] })
-    const right = makeInsight({ id: '2', actions: ['buy'] })
+  it('detects reduce vs increase contradiction', () => {
+    const left = makeInsight({ id: '1', actions: ['reduce'] })
+    const right = makeInsight({ id: '2', actions: ['increase'] })
     expect(isContradictory(left, right)).toBe(true)
   })
 
-  it('detects trim vs add contradiction', () => {
-    const left = makeInsight({ id: '1', actions: ['trim'] })
+  it('detects cut vs add contradiction', () => {
+    const left = makeInsight({ id: '1', actions: ['cut'] })
     const right = makeInsight({ id: '2', actions: ['add'] })
     expect(isContradictory(left, right)).toBe(true)
   })
 
   it('does not flag same-direction insights', () => {
-    const left = makeInsight({ id: '1', actions: ['buy'] })
+    const left = makeInsight({ id: '1', actions: ['increase'] })
     const right = makeInsight({ id: '2', actions: ['add'] })
     expect(isContradictory(left, right)).toBe(false)
   })
@@ -131,18 +131,18 @@ describe('consolidateInsights', () => {
 
   it('flags contradictions in the group', () => {
     const insights = [
-      makeInsight({ id: '1', entity_key: 'E1', detector_id: 'det-buy', actions: ['buy'], category: 'compliance' }),
-      makeInsight({ id: '2', entity_key: 'E1', detector_id: 'det-sell', actions: ['sell'], category: 'revenue' }),
+      makeInsight({ id: '1', entity_key: 'E1', detector_id: 'det-increase', actions: ['increase'], category: 'compliance' }),
+      makeInsight({ id: '2', entity_key: 'E1', detector_id: 'det-reduce', actions: ['reduce'], category: 'revenue' }),
     ]
     const groups = consolidateInsights(insights, defaultSettings)
     const group = groups.find(g => g.entity_key === 'E1')
     expect(group!.has_conflict).toBe(true)
-    expect(group!.conflicting_detector_ids).toContain('det-sell')
+    expect(group!.conflicting_detector_ids).toContain('det-reduce')
   })
 
   it('does not flag conflicts for same-direction insights', () => {
     const insights = [
-      makeInsight({ id: '1', entity_key: 'E1', detector_id: 'det-a', actions: ['buy'] }),
+      makeInsight({ id: '1', entity_key: 'E1', detector_id: 'det-a', actions: ['increase'] }),
       makeInsight({ id: '2', entity_key: 'E1', detector_id: 'det-b', actions: ['add'] }),
     ]
     const groups = consolidateInsights(insights, defaultSettings)
@@ -195,10 +195,10 @@ describe('configurable contradiction detection', () => {
     expect(isContradictory(left, right, smbActions)).toBe(true)
   })
 
-  it('does not flag SMB actions as contradictory using trading verbs', () => {
+  it('does not flag actions outside the default verb set as contradictory', () => {
     const left = makeInsight({ id: '1', actions: ['pause_campaign'] })
     const right = makeInsight({ id: '2', actions: ['launch_campaign'] })
-    // Without passing SMB action set, these don't match trading verbs
+    // Without passing a custom action set, these don't match the default verbs
     expect(isContradictory(left, right)).toBe(false)
   })
 
@@ -221,10 +221,10 @@ describe('configurable contradiction detection', () => {
     expect(group!.conflicting_detector_ids).toContain('det-b')
   })
 
-  it('falls back to trading verbs when no contradiction_actions configured', () => {
+  it('falls back to the family verb set when no contradiction_actions configured', () => {
     const insights = [
-      makeInsight({ id: '1', entity_key: 'E1', detector_id: 'det-a', actions: ['sell'], category: 'compliance' }),
-      makeInsight({ id: '2', entity_key: 'E1', detector_id: 'det-b', actions: ['buy'], category: 'revenue' }),
+      makeInsight({ id: '1', entity_key: 'E1', detector_id: 'det-a', actions: ['reduce'], category: 'compliance' }),
+      makeInsight({ id: '2', entity_key: 'E1', detector_id: 'det-b', actions: ['increase'], category: 'revenue' }),
     ]
     const groups = consolidateInsights(insights, defaultSettings)
     const group = groups.find(g => g.entity_key === 'E1')

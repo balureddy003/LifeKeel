@@ -169,10 +169,12 @@ import { runStaleProfileEvaluationSweep } from './jobs/stale-profile-evaluation.
 import { ensureMemberNudgeIndexes } from './member-nudges.js'
 import { runContinuityCheck, ensureContinuityIndexes } from './jobs/continuity-check.js'
 import { runFamilyHeartbeat } from './jobs/family-heartbeat.js'
+import { runFreshnessCheck } from './jobs/freshness-check.js'
+import { registerFamilyFreshnessRoutes } from './routes/family-freshness.js'
+import { registerPerceivedProtectionRoutes } from './routes/perceived-protection.js'
+import { registerOperatorRetentionRoutes } from './routes/operator-retention.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
 import { registerSupportRoutes } from './routes/support.js'
-import { registerReadinessQuizRoutes } from './routes/readiness-quiz.js'
-import { registerMagicLinkRoutes } from './routes/magic-link.js'
 import { registerFamilyReadinessRoutes } from './routes/family-readiness.js'
 import { registerFamilyScenarioRoutes } from './routes/family-scenarios.js'
 import { registerFamilyFeedRoutes } from './routes/family-feed.js'
@@ -185,7 +187,6 @@ import { registerFamilyAssetRoutes } from './routes/family-assets.js'
 import { registerFamilyLegacyRoutes } from './routes/family-legacy.js'
 import { registerLeadRoutes } from './routes/leads.js'
 import { registerHeartbeatUnsubscribeRoutes } from './routes/heartbeat-unsubscribe.js'
-import { registerShareRoutes } from './routes/share.js'
 import { registerSendgridWebhookRoutes } from './routes/webhooks-sendgrid.js'
 import { sendOpsAlert } from './operator/ops-alerts.js'
 import { registerFamilySignalSchemas } from './family/family-signal-schemas.js'
@@ -1017,6 +1018,25 @@ try {
     )
     log.info({}, 'Stale profile evaluation cron started')
 
+    // PRD-145: freshness check, daily at 06:45 — after the 06:30 profile sweep, so
+    // it reads settled profiles. Deterministic; sends nothing itself.
+    cron.schedule(
+      '45 6 * * *',
+      async () => {
+        try {
+          await withCronLock(workflowDb, 'freshness-check', async () => {
+            const summary = await runFreshnessCheck(workflowDb)
+            if (summary.failed > 0)
+              log.warn({ ...summary }, 'Freshness check completed with failures')
+          })
+        } catch (err) {
+          log.error({ err }, 'Freshness check failed')
+        }
+      },
+      { missedExecutionTolerance: 3_600_000, noOverlap: true },
+    )
+    log.info({}, 'Freshness check cron started')
+
     // PRD-136: nightly scenario watchlist recompute — emits scenario_moved
     // feed events when a watched scenario's runway/depletion month moves by
     // ≥0.5 months. Runs after the 06:30 stale-profile sweep so projections
@@ -1541,7 +1561,6 @@ app.addHook('onRequest', async (request, reply) => {
     '/auth/request-password-reset',
     '/auth/reset-password',
     '/auth/verify-email',
-    '/auth/magic-link/',
     '/auth/resend-verification',
     '/entitlements/plans',
     '/blog/posts',
@@ -1557,11 +1576,9 @@ app.addHook('onRequest', async (request, reply) => {
     '/documentation/uiOptions',
     '/documentation/static',
     '/growth/events',
-    '/readiness-quiz',
     '/leads',
     '/users/unsubscribe',
     '/heartbeat/unsubscribe',
-    '/share/',
     '/family/join',
     '/family/invite/',
   ]
@@ -1654,18 +1671,13 @@ app.addHook('onRequest', async (request, reply) => {
 
     // Demo tenant guard: block access to sensitive operations for demo users.
     // The demo token carries `demo: true` — even though it has admin roles,
-    // this guard prevents the demo user from accessing connector credentials,
-    // live trading settings, or creating/confirming trades. This ensures the
-    // demo tenant is isolated from real broker data regardless of what's in
-    // the production database.
+    // this guard prevents the demo user from accessing connector credentials.
+    // This ensures the demo tenant is isolated from real connector secrets
+    // regardless of what's in the production database.
     if (ctx.demo) {
-      // Block POST to /portfolio/trades (create/confirm/cancel trades)
-      const isTradeWrite = request.method === 'POST' && request.url.startsWith('/portfolio/trades')
-      // Block all access to connector credentials (real broker keys)
+      // Block all access to connector credentials (real provider keys)
       const isConnectorCreds = request.url.startsWith('/connector-credentials')
-      // Block live trading opt-in toggle and status
-      const isLiveTradingSettings = request.url.startsWith('/portfolio/live-trading')
-      if (isTradeWrite || isConnectorCreds || isLiveTradingSettings) {
+      if (isConnectorCreds) {
         return reply.status(403).send({ error: 'Demo mode: this operation is not available' })
       }
     }
@@ -1778,9 +1790,9 @@ app.post('/auth/logout', async (_request, reply) => {
 /** GET /auth/demo-token — quick demo token for acme-corp (Studio settings page)
  *  SECURITY: disabled in production unless ALLOW_DEMO_TOKENS=1 is explicitly set.
  *  The demo token carries a `demo: true` claim that triggers a guard in the
- *  auth middleware (below) blocking access to connector credentials, live
- *  trading settings, and trade creation — so even if acme-corp has real
- *  broker connections in the database, a demo visitor cannot see or use them. */
+ *  auth middleware (above) blocking access to connector credentials — so even
+ *  if acme-corp has real provider connections in the database, a demo visitor
+ *  cannot see or use them. */
 app.get('/auth/demo-token', async (_request, reply) => {
   if (process.env['NODE_ENV'] === 'production' && !process.env['ALLOW_DEMO_TOKENS']) {
     return reply.status(403).send({ error: 'Demo tokens disabled in production' })
@@ -1839,12 +1851,12 @@ app.get('/', async (_request, reply) => {
   </div>
 
   <div class="card hidden" id="navCard">
-    <h2>Portfolio & Trading</h2>
-    <a class="btn" href="/portfolio/holdings" data-api>Holdings</a>
-    <a class="btn" href="/portfolio/recommendations" data-api>Recommendations</a>
-    <a class="btn" href="/portfolio/scores" data-api>Momentum Scores</a>
-    <a class="btn" href="/portfolio/trades" data-api>Trades</a>
-    <a class="btn" href="/portfolio/home-kpis" data-api>KPIs</a>
+    <h2>Family</h2>
+    <a class="btn" href="/insights" data-api>Insights</a>
+    <a class="btn" href="/family/readiness" data-api>Readiness</a>
+    <a class="btn" href="/family/financial-profile" data-api>Financial Profile</a>
+    <a class="btn" href="/insights/consolidated" data-api>Consolidated Insights</a>
+    <a class="btn" href="/inbox" data-api>Inbox</a>
   </div>
 
   <script>
@@ -2026,9 +2038,9 @@ if (workflowDb) {
   registerFamilyInboxRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerAssistantRoutes(app, workflowDb)
   registerSupportRoutes(app, workflowDb)
-  registerReadinessQuizRoutes(app, workflowDb, engine)
-  await registerMagicLinkRoutes(app, workflowDb, auth)
   registerFamilyReadinessRoutes(app, workflowDb)
+  registerFamilyFreshnessRoutes(app, workflowDb)
+  registerPerceivedProtectionRoutes(app, workflowDb)
   registerFamilyScenarioRoutes(app, workflowDb)
   registerFamilyFeedRoutes(app, workflowDb)
   registerFamilyNotificationRoutes(app, workflowDb)
@@ -2039,7 +2051,6 @@ if (workflowDb) {
   registerFamilyLegacyRoutes(app, workflowDb, engine, insightsDeliveryHook)
   await registerLeadRoutes(app, workflowDb)
   await registerHeartbeatUnsubscribeRoutes(app, workflowDb)
-  await registerShareRoutes(app)
   registerSendgridWebhookRoutes(app, workflowDb)
   await registerFamilyFinancialProfileRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerLifeEventRoutes(app, workflowDb)
@@ -2048,6 +2059,7 @@ if (workflowDb) {
   registerMarketingPostRoutes(app, workflowDb)
   ensureAutopilotIndexes(workflowDb)
   await registerOperatorRoutes(app, workflowDb)
+  registerOperatorRetentionRoutes(app, workflowDb)
   registerDetectorEvalRoutes(app, workflowDb, engine, detectorEvalDir(ROOT))
 }
 // Prometheus metrics — generic ops/observability, not vertical-specific.
@@ -2069,6 +2081,14 @@ try {
     const msg = `Migrations failed: ${result.failed.join(', ')}`
     if (deploymentConfig.mode !== 'dev') throw new Error(msg)
     log.error({ failed: result.failed }, 'Database migration failed — starting anyway (dev)')
+  }
+  // Keep seeded blog posts in step with their source (PRD-210). Never blocks boot.
+  try {
+    const { syncSeededContent } = await import('./content-sync.js')
+    const synced = await syncSeededContent(workflowDb)
+    log.info({ ...synced }, 'Seeded blog content synced')
+  } catch (err) {
+    log.error({ err }, 'Seeded blog content sync failed — continuing')
   }
 } catch (err) {
   if (deploymentConfig.mode !== 'dev') throw err

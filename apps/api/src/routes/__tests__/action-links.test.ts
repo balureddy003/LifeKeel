@@ -120,6 +120,9 @@ afterEach(async () => {
     'move_judge_verdicts',
     'family_groups',
     'audit_log',
+    // PRD-139: the budget is per tenant, so a send in one test must not cap the next.
+    'notification_ledger',
+    'digest_queue',
   ]) {
     await db.collection(name).deleteMany({})
   }

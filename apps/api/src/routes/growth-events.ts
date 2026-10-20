@@ -42,10 +42,27 @@ export const KNOWN_EVENTS = new Set([
   'readiness_share_click',
   // PRD-204: the visitor reopened the answers after seeing the score (no values sent).
   'readiness_quiz_corrected',
+  // PRD-141: a click from a Quiet Care digest; meta carries only the variant.
+  'digest_click',
+  // PRD-139: a click from an alert; counts as a response. The insight id is never
+  // stored in this anonymous collection, only in the tenant-keyed value event.
+  'alert_click',
   'blog_view',
   'blog_cta_click',
   'guide_view',
 ])
+
+const DIGEST_VARIANTS = new Set(['all_clear', 'note', 'missed'])
+
+/** digest_click keeps only a known variant; every other event keeps its meta as before. */
+function eventMeta(event: string, meta: unknown): Record<string, unknown> | null {
+  if (event === 'alert_click') return null
+  if (event === 'digest_click') {
+    const v = (meta as { v?: unknown } | null)?.v
+    return typeof v === 'string' && DIGEST_VARIANTS.has(v) ? { v } : null
+  }
+  return meta && typeof meta === 'object' ? (meta as Record<string, unknown>) : null
+}
 
 export async function registerGrowthEventRoutes(app: FastifyInstance, db: Db): Promise<void> {
   /** POST /growth/events — record one funnel event. */
@@ -66,9 +83,31 @@ export async function registerGrowthEventRoutes(app: FastifyInstance, db: Db): P
       event,
       path: typeof body.path === 'string' ? body.path.slice(0, 200) : null,
       anon_id: typeof body.anon_id === 'string' ? body.anon_id.slice(0, 100) : null,
-      meta: body.meta && typeof body.meta === 'object' ? body.meta : null,
+      meta: eventMeta(event, body.meta),
       created_at: new Date(),
     })
+
+    // A digest click while signed in is also "received value" for that family
+    // (PRD-141). Tenant-keyed, so it is erased with the account.
+    const tenantId = (request as { authContext?: { tenant_id?: string } }).authContext?.tenant_id
+    const alertId = (body.meta as { i?: unknown } | undefined)?.i
+    if (
+      event === 'alert_click' &&
+      tenantId &&
+      typeof alertId === 'string' &&
+      alertId.length <= 64
+    ) {
+      await db
+        .collection('value_events')
+        .insertOne({ tenant_id: tenantId, kind: 'alert_click', key: alertId, at: new Date() })
+        .catch(() => {})
+    }
+    if (event === 'digest_click' && tenantId) {
+      await db
+        .collection('value_events')
+        .insertOne({ tenant_id: tenantId, kind: 'digest_click', at: new Date() })
+        .catch(() => {})
+    }
 
     return reply.status(204).send()
   })

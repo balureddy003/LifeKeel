@@ -61,6 +61,23 @@ for evidence quality. Numeric defaults below are hypotheses to test, not benchma
    mention, collapse the paused state to a single quiet line in the digest and keep it
    visible in the app.
 
+## Status (first build)
+
+Built: a code-side input registry for all 9 family detectors (`freshness/inputs.ts`; a
+test fails if a detector has no entry), a deterministic daily job at 06:45
+(`jobs/freshness-check.ts`) writing `freshness_state` (names and states only, `since`
+kept across a pause, `resolved_at` and `last_pause_ms` on recovery), `GET /family/freshness`,
+a "checks paused" card in Settings, and the Quiet Care digest's single quiet paused
+line read from this record. Erased with the account.
+
+Age is the profile's `reviewed_at`, else `updated_at`, because the profile has no
+per-field timestamps and PRD-143 document dates do not exist yet. Age limits (180 days
+for savings checks, 365 for the rest) are hypotheses.
+
+Not built: the Tier C message from a paused check. It needs PRD-139's budget and
+suppression rules, so nothing is sent from this job. `policy-renewal-reminders.ts` is
+unchanged.
+
 ## Becomes
 
 docs/prd/145-freshness-and-completeness-signals.md

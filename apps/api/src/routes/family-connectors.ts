@@ -41,12 +41,9 @@ import { syncAccountInfo, type ExternalAccountDoc } from '../open-banking/sync.j
 
 const log = createLogger({ service: 'family-connectors', version: '0.0.0' })
 
-// Trading212/Zerodha deliberately excluded — not offered in the family app.
-// Both are wired end-to-end at the platform level (connector-credentials.ts)
-// but their sync definitions (connectors/trading-212.yaml, zerodha.yaml) are
-// status: planned (Trading212's API is beta and personal-single-tenant-scoped;
-// Zerodha needs per-tenant Kite app registration plus a static egress IP for
-// order placement) — a trading-vertical concern, not a family net-worth one.
+// Only the connectors the family app actually offers. The inherited
+// trading-vertical connectors (Trading 212, Zerodha, market-data feeds)
+// were removed from the shared registry — see SECURITY.md.
 const FAMILY_CONNECTORS = [
   { id: 'email', name: 'Email', category: 'email', comingSoon: false },
   // PRD-133: read-only account-info plumbing is real — sandbox provider in

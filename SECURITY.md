@@ -11,12 +11,15 @@ or contact the repo owner directly rather than filing publicly.
   trimmed on the same day to what LifeKeel actually calls plus the marketing
   surfaces (blog, case studies, growth events) that support self-serve
   growth. See "Trimmed from the full copy" below for exactly what was
-  removed. Currently NOT deployed — `apps/web` still points at the shared
+  removed. (Note: the "13 route modules" figure below is the 2026-09-12
+  post-trim count — the API has since grown product routes and registers
+  ~40 route modules today; see `apps/api/src/server.ts`.)
+  Currently NOT deployed — `apps/web` still points at the shared
   kairos-ai backend (see `apps/web/.env.example`) until this one is
   provisioned (own MongoDB, own GCP secrets — see root `.env.example` and
   `.github/workflows/deploy-api.yml`) and cut over.
 - `detectors/`, `connectors/`, `definitions/`, `verticals/`, `detector-evals/`,
-  `category-table.yaml`, `scripts/fetch-yfinance.py` — runtime resource files
+  `category-table.yaml` — runtime resource files
   `apps/api` reads via `path.join(ROOT, ...)`. Required for the API to boot
   with real detector/connector/vertical data. Originally copied wholesale
   alongside `apps/api`; the non-family verticals' YAML (`detectors/trading/`,
@@ -238,6 +241,84 @@ executor was left wired into a currently-shipped route instead.
   (`gmail`, `email`, `open-banking`, `google_drive`, `dropbox`, `onedrive`)
   before doing anything else — matching `verticals/family/vertical.yaml`'s
   `optional_connectors` list plus what `apps/web/src` actually sends.
+
+## Removed: the yfinance market-data connector path (2026-10-20)
+
+The last piece of the trading vertical still shipping in the image:
+`scripts/fetch-yfinance.py` (a Python bridge exec'd by the connector sync
+engine for `method: CLI` resources), the two `yfinance_*` record transforms
+and `execFile` path in `packages/pipeline`, the `yfinance` entry in
+`ConnectorRegistry`, and the image's `yfinance`/`pandas`/`tzdata` pip
+install — which the Dockerfile described as "required by the momentum
+engine" even though that engine was removed on 2026-09-12. No shipped
+connector YAML (`connectors/*.yaml` — gmail, email, open-banking,
+google_drive, dropbox, onedrive) declares `method: CLI` or a `yfinance_*`
+transform, so the path was unreachable as well as undocumented. Also
+removed: the `method: 'CLI'` schema value itself, so no future connector
+YAML can reintroduce a local-script execution path silently.
+
+Left in place at the time (a deliberate scope line): the remaining
+market-data machinery — removed in the pass below.
+
+## Removed: the rest of the trading-vertical connector surface (2026-10-21)
+
+The follow-up to the yfinance pass — the entire remaining market-data and
+broker connector surface, all unreachable: none of the six connectors had a
+sync YAML under `connectors/`, the family connector allowlist never offered
+them, and nothing in `apps/api` or `packages/engine` consumes
+`market_price`/`company_fundamentals`/`portfolio_position` signals.
+
+Removed:
+- `ConnectorRegistry` `investment` entries: `trading-212`, `zerodha`,
+  `alpha-vantage`, `hf-data`, `finnhub`, `polygon` — including Trading
+  212/Zerodha write actions (`place_market_order`, `place_regular_order`,
+  `cancel_order`, pie management). This also drops the `investment`
+  `ConnectorCategory` and the `oauth2_kite` `AuthMethod`.
+- `packages/pipeline`: all 15 `record_transform` implementations
+  (`alpha_vantage_*`, `hf_data_*`, `finnhub_*`, `polygon_*`, `cboe_*`,
+  `fred_*`, `google_trends_*`), the `symbols_param`/`resolveSymbolsFromPortfolio`
+  fan-out, `{symbol}`/`{apikey}`/`{from}`/`{to}` path substitution, CBOE
+  CSV handling, resource `cadence` polling windows, the Trading 212
+  `enrichTradingSignal`/instrument-filter/stale-position branches, and the
+  `record_transform`/`symbols_param`/`cadence` schema fields.
+- `oauth2_kite` (Zerodha Kite Connect) end to end: the auth header builder,
+  the per-tenant api_key/api_secret login redirect and request_token→
+  checksum token exchange in `connector-credentials.ts`, and the
+  `api_secret` extra-field encryption branch.
+- `connector-health-alert.ts` Source 2: the `pending_trades` rejected-order
+  scan (nothing writes `pending_trades` since the trade executor was
+  removed; `erasure.ts` still lists the collection so legacy data is still
+  erased on request).
+- `packages/platform/onboarding-profile.ts` — kairos persona/KPI-cap
+  machinery (`investor` → `trading-investment`, portfolio concentration
+  caps) that no live code imported.
+- `insights/consolidation.ts`: the contradiction-detector fallback
+  vocabulary was `trading-investment` (sell/trim/buy) and the default table
+  listed four other dead verticals — collapsed to a `family` entry.
+- Tests: `trading-212-registry.test.ts` deleted; the executor/sync-engine
+  test files rewritten to mock a neutral connector fixture.
+
+Left in place deliberately: `migrate.ts`'s historical category-backfill
+migrations and `category-table.yaml`'s trading rule-id rows — the
+migrations read the table at boot and only process insight documents that
+already exist in deployed databases.
+
+## Reseeded: sandbox demo content is now family data (2026-10-21)
+
+`sandbox-seed.ts` shipped kairos-era multi-vertical demo content — SMB
+invoice chasing, Trading 212 portfolios, buy-to-let yields, X follower
+growth — referencing `detectors/trading|property|social/*.yaml` that no
+longer exist, and the `?sandbox=1`/`demo` path served it to every family
+"Try the demo" visitor with no `active_vertical` set. Rewritten: 3 goals,
+10 insights, 3 workflows, 3 verified moments, all mirroring real
+`detectors/family/*.yaml` detector/rule ids and the categories
+`inferCategory()` + `category-table.yaml` actually assign. The per-sample
+`vertical` field and `filterByVertical`/`active_vertical` machinery were
+single-vertical dead generality and went with it. Also removed: the demo
+guard's checks for the `/portfolio/trades` and `/portfolio/live-trading`
+routes (removed earlier), and the Studio landing page's "Portfolio &
+Trading" nav card linking to those same nonexistent routes (now links to
+family endpoints).
 
 ## Known, deliberately deferred issues
 

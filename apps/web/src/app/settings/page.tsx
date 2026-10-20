@@ -15,6 +15,7 @@ import type { AppMode } from '@/lib/modes'
 import { ROLE_LABELS, memberStatusLabel, type FamilyRole } from '@/lib/auth-types'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
 import { NotificationsCard } from '@/components/NotificationsCard'
+import { FreshnessCard } from '@/components/FreshnessCard'
 import { MfaSettings } from '@/components/MfaSettings'
 import { useToast } from '@/components/Toast'
 import { isValidEmailFormat } from '@/components/ConversationalOnboarding'
@@ -61,6 +62,9 @@ import {
   updateFamilyContinuity,
   updateFamilyContext,
   fetchNotificationPrefs,
+  fetchFreshness,
+  answerDigestOffer,
+  type FreshnessResponse,
   updateNotificationPrefs,
   type AccessRequest,
   type FamilyContinuity,
@@ -201,10 +205,12 @@ export default function SettingsPage() {
   // prefs. Any adult reads them (children get a 403 → card hidden); only
   // the organizer edits. Each change saves immediately.
   const [notifPrefs, setNotifPrefs] = useState<NotificationPrefsResponse | null>(null)
+  const [freshness, setFreshness] = useState<FreshnessResponse | null>(null)
   const [notifBusy, setNotifBusy] = useState(false)
 
   useEffect(() => {
     fetchNotificationPrefs().then(setNotifPrefs)
+    fetchFreshness().then(setFreshness)
   }, [])
 
   const saveNotifPrefs = async (patch: NotificationPrefsPatch) => {
@@ -218,6 +224,20 @@ export default function SettingsPage() {
     } else {
       haptic('warning')
       toast({ message: "Couldn't save notification settings — try again", variant: 'error' })
+    }
+  }
+
+  const saveDigestOffer = async (accept: boolean) => {
+    if (notifBusy || !isOrganizer) return
+    setNotifBusy(true)
+    const saved = await answerDigestOffer(accept)
+    setNotifBusy(false)
+    if (saved) {
+      setNotifPrefs(saved)
+      haptic('success')
+    } else {
+      haptic('warning')
+      toast({ message: "Couldn't save that — try again", variant: 'error' })
     }
   }
 
@@ -1110,8 +1130,12 @@ export default function SettingsPage() {
             isOrganizer={isOrganizer ?? false}
             busy={notifBusy}
             onPatch={(patch) => void saveNotifPrefs(patch)}
+            onDigestOffer={(accept) => void saveDigestOffer(accept)}
           />
         )}
+
+        {/* PRD-145: which checks are paused and why — shown only when one is. */}
+        {freshness && <FreshnessCard freshness={freshness} />}
 
         {/* Keel Plus */}
         <ListSection title="Plan">

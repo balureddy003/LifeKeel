@@ -20,7 +20,7 @@ import type { Db } from 'mongodb'
 import crypto from 'node:crypto'
 import { ConnectorActionExecutor , connectorRegistry } from '@lifekeel/workflows'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
-import { encryptForTenant, decryptEnveloped } from '../crypto/envelope.js'
+import { encryptForTenant } from '../crypto/envelope.js'
 
 const log = createLogger({ service: 'connector-credentials', version: '0.0.0' })
 import { ConnectorSyncEngine } from '@lifekeel/pipeline'
@@ -297,7 +297,7 @@ export function registerConnectorCredentialRoutes(
   fastify.post<{
     Params: { id: string }
     Body: {
-      auth_type: 'oauth2' | 'oauth2_kite' | 'oauth1a' | 'api_key' | 'basic'
+      auth_type: 'oauth2' | 'oauth1a' | 'api_key' | 'basic'
       api_key?: string
       api_key_header?: string
       api_key_prefix?: string
@@ -364,16 +364,7 @@ export function registerConnectorCredentialRoutes(
     if (rest.password)
       cred['password'] = await encryptForTenant(db, tenantId, rest.password as string)
     if (rest.username) cred['username'] = rest.username
-    if (rest.extra) {
-      // For oauth2_kite (Zerodha), the tenant's api_secret is sensitive —
-      // encrypt it before storing. The api_key is not secret (it appears in
-      // the login URL), so it stays in plaintext within extra.
-      const extra = { ...rest.extra }
-      if (auth_type === 'oauth2_kite' && extra.api_secret) {
-        extra.api_secret = await encryptForTenant(db, tenantId, extra.api_secret as string)
-      }
-      cred['extra'] = extra
-    }
+    if (rest.extra) cred['extra'] = rest.extra
     if (token_expires_at) cred['token_expires_at'] = new Date(token_expires_at)
     if (rest.oauth1_consumer_key)
       cred['oauth1_consumer_key'] = await encryptForTenant(
@@ -486,7 +477,7 @@ export function registerConnectorCredentialRoutes(
   }>('/connectors/:id/oauth/start', async (req, reply) => {
     const connDef = connectorRegistry.get(req.params.id)
     if (!connDef) return reply.status(404).send({ error: 'Connector not found' })
-    if (connDef.auth !== 'oauth2' && connDef.auth !== 'oauth2_kite') {
+    if (connDef.auth !== 'oauth2') {
       return reply.status(400).send({ error: 'Connector does not use OAuth2' })
     }
     // Which frontend to send the user back to once the callback completes —
@@ -504,36 +495,6 @@ export function registerConnectorCredentialRoutes(
       return reply
         .status(403)
         .send({ error: `Connector '${req.params.id}' is not available in this app` })
-    }
-
-    // Kite Connect v3 — each tenant brings their own api_key (registered at
-    // developers.kite.trade). The api_key is stored in extra.api_key via
-    // POST /connectors/zerodha/credentials before starting the OAuth flow.
-    // Unlike standard OAuth2 where the app has one client_id, Kite requires
-    // each user to register their own app.
-    if (connDef.auth === 'oauth2_kite') {
-      const tenantId = req.authContext.tenant_id
-      const storedCred = (await executor['credentials'].findOne({
-        tenant_id: tenantId,
-        connector_id: req.params.id,
-      })) as { extra?: { api_key?: string } } | null
-      const apiKey = storedCred?.extra?.api_key
-      if (!apiKey) {
-        return reply.status(400).send({
-          error: `Kite api_key not found. Save your Kite Connect api_key and api_secret first via POST /connectors/${req.params.id}/credentials.`,
-        })
-      }
-      const state = signOAuthState({
-        tenantId,
-        connectorId: req.params.id,
-        returnTo,
-        exp: Date.now() + 10 * 60 * 1000,
-      })
-      const loginUrl = `https://kite.zerodha.com/connect/login?v=3&api_key=${encodeURIComponent(apiKey)}&state=${encodeURIComponent(state)}`
-      if (req.query.mode === 'json' || req.headers.accept?.includes('application/json')) {
-        return { auth_url: loginUrl, connector_id: req.params.id }
-      }
-      return reply.redirect(loginUrl)
     }
 
     const clientId = getGoogleClientId(req.params.id)
@@ -622,7 +583,6 @@ export function registerConnectorCredentialRoutes(
     Params: { id: string }
     Querystring: {
       code?: string
-      request_token?: string
       state: string
       error?: string
       error_description?: string
@@ -671,100 +631,6 @@ export function registerConnectorCredentialRoutes(
       return reply.redirect(
         frontendRedirect(returnTo, { connect: req.params.id, error: 'connector_not_available' }),
       )
-    }
-
-    // ── Kite Connect v3 — non-standard per-tenant token exchange ──────────
-    // Kite redirects back with `request_token` (not `code`) and expects a
-    // checksum = SHA-256(api_key + request_token + api_secret) posted to
-    // /session/token. Both api_key and api_secret are per-tenant — stored
-    // via POST /connectors/zerodha/credentials before the OAuth flow starts.
-    // The api_secret is encrypted at rest; decrypt it here for the checksum.
-    if (req.params.id === 'zerodha' && req.query.request_token) {
-      const storedCred = (await executor['credentials'].findOne({
-        tenant_id: tenantId,
-        connector_id: req.params.id,
-      })) as { extra?: { api_key?: string; api_secret?: string } } | null
-      const apiKey = storedCred?.extra?.api_key ?? ''
-      const apiSecret = (await decryptEnveloped(db, storedCred?.extra?.api_secret ?? '')) ?? ''
-      if (!apiKey || !apiSecret) {
-        return reply.redirect(
-          frontendRedirect(returnTo, { connect: req.params.id, error: 'kite_credentials_missing' }),
-        )
-      }
-      const requestToken = req.query.request_token
-      const checksum = crypto
-        .createHash('sha256')
-        .update(apiKey + requestToken + apiSecret)
-        .digest('hex')
-
-      try {
-        const res = await fetch('https://api.kite.trade/session/token', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'X-Kite-Version': '3',
-          },
-          body: new URLSearchParams({
-            api_key: apiKey,
-            request_token: requestToken,
-            checksum,
-          }).toString(),
-        })
-
-        const data = (await res.json()) as {
-          status: string
-          data?: { access_token?: string; user_id?: string }
-          error_type?: string
-          message?: string
-        }
-
-        if (!res.ok || data.status !== 'success' || !data.data?.access_token) {
-          const errorMessage = data.message || data.error_type || 'kite_token_exchange_failed'
-          log.error({ status: res.status, data }, 'Kite token exchange failed')
-          return reply.redirect(
-            frontendRedirect(returnTo, { connect: req.params.id, error: errorMessage }),
-          )
-        }
-
-        // Update the existing credential record with the access_token,
-        // preserving the already-stored extra.api_key and extra.api_secret.
-        await executor.saveCredentials(tenantId, {
-          tenant_id: tenantId,
-          connector_id: req.params.id,
-          auth_type: 'oauth2_kite',
-          access_token: await encryptForTenant(db, tenantId, data.data.access_token),
-          // Kite access tokens are session-scoped (valid until logout or
-          // expiry); there is no refresh_token in the standard flow. The
-          // user re-auths via /connectors/zerodha/oauth/start when the
-          // session lapses.
-          token_type: 'token',
-          extra: { api_key: apiKey, api_secret: storedCred!.extra!.api_secret! },
-        })
-
-        // ── Auto-trigger historical backfill in background ────────────────
-        if (syncEngine && connectorLoader) {
-          const connector = connectorLoader.get(req.params.id)
-          if (connector) {
-            syncEngine
-              .backfill(connector, tenantId)
-              .then((result) => {
-                fastify.log.info(
-                  { connector_id: req.params.id, tenant_id: tenantId, ...result },
-                  'Backfill complete',
-                )
-              })
-              .catch((err) => {
-                fastify.log.error({ err, connector_id: req.params.id }, 'Backfill failed')
-              })
-          }
-        }
-
-        return reply.redirect(frontendRedirect(returnTo, { connected: req.params.id }))
-      } catch (err) {
-        return reply.redirect(
-          frontendRedirect(returnTo, { connect: req.params.id, error: String(err) }),
-        )
-      }
     }
 
     const clientId = getGoogleClientId(req.params.id) ?? ''

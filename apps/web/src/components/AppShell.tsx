@@ -40,6 +40,7 @@ import { AuthShell } from '@/components/landing/AuthShell'
 import { MarketingLanding } from './MarketingLanding'
 import { NavRail } from './NavRail'
 import { haptic } from '@/lib/haptics'
+import { track } from '@/lib/growth-track'
 import { isNativeShell, biometricLockEnabled, verifyBiometric } from '@/lib/native'
 
 const NAV_ITEMS = [
@@ -302,6 +303,35 @@ function VerifyEmailBanner() {
   )
 }
 
+/**
+ * PRD-141/139: a click from a Quiet Care digest lands with ?src=digest&v=<variant>;
+ * a click from an alert with ?src=alert&i=<insight id>. Record it once and strip
+ * the tag from the address bar. Clicks, not opens: no email carries a tracking
+ * pixel. The alert click is what counts as a response to an alert.
+ */
+export function DigestClickTracker() {
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const q = new URLSearchParams(window.location.search)
+    const src = q.get('src')
+    const v = q.get('v')
+    const i = q.get('i')
+    if (src === 'digest' && v) track('digest_click', { v })
+    else if (src === 'alert' && i) track('alert_click', { i })
+    else return
+    q.delete('src')
+    q.delete('v')
+    q.delete('i')
+    const rest = q.toString()
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`,
+    )
+  }, [])
+  return null
+}
+
 function PwaInit() {
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
@@ -416,7 +446,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/family-setup') ||
     pathname.startsWith('/reset-password') ||
     pathname.startsWith('/verify-email') ||
-    pathname.startsWith('/keep-result') ||
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/terms') ||
     pathname.startsWith('/privacy') ||
@@ -646,7 +675,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/family-setup') ||
     pathname.startsWith('/reset-password') ||
     pathname.startsWith('/verify-email') ||
-    pathname.startsWith('/keep-result') ||
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/terms') ||
     pathname.startsWith('/privacy') ||
@@ -705,7 +733,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     '/login',
     '/reset-password',
     '/verify-email',
-    '/keep-result',
     '/terms',
     '/privacy',
     '/support',
@@ -774,6 +801,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       />
       <CommandPalette />
       <PwaInit />
+      <DigestClickTracker />
     </div>
   )
 }

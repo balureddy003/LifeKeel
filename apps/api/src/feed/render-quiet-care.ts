@@ -13,6 +13,15 @@
  */
 import type { RenderedHeartbeat } from './render-heartbeat.js'
 
+export type DigestVariant = 'all_clear' | 'note' | 'missed'
+
+/** Appends the click-tracking tag (PRD-141): variant only, no identifier. */
+function tag(url: string, variant: DigestVariant): string {
+  const [path, hash] = url.split('#')
+  const sep = path!.includes('?') ? '&' : '?'
+  return `${path}${sep}src=digest&v=${variant}${hash ? `#${hash}` : ''}`
+}
+
 export interface QuietCareData {
   /** e.g. "September 2026" — the month reported on. */
   period_label: string
@@ -30,6 +39,8 @@ export interface QuietCareData {
   worth_a_look: { text: string; href: string } | null
   /** Plain-language notes for checks running on older figures. */
   paused: string[]
+  /** True when recent alerts went unanswered and digest-only is on offer (PRD-139). */
+  digest_offer?: boolean
   next_check: Date
   app_url: string
 }
@@ -73,10 +84,19 @@ function changedLines(d: QuietCareData): string[] {
   return lines
 }
 
-export function renderQuietCareDigest(d: QuietCareData): RenderedHeartbeat {
-  const settingsUrl = `${d.app_url}/settings#notifications`
+export function renderQuietCareDigest(
+  d: QuietCareData,
+): RenderedHeartbeat & { variant: DigestVariant } {
+  const variant: DigestVariant =
+    d.check.status === 'missed' ? 'missed' : d.worth_a_look ? 'note' : 'all_clear'
+  const settingsUrl = tag(`${d.app_url}/settings#notifications`, variant)
+  const appHome = tag(d.app_url, variant)
+  const lookHref = d.worth_a_look ? tag(d.worth_a_look.href, variant) : ''
   const next = `Next digest: ${formatDay(d.next_check)}.`
   const cadence = 'You get this once a month. You can change how often, or turn it off.'
+  const offer = d.digest_offer
+    ? "You haven't opened the last two alerts. You can choose digest only in settings; nothing changes unless you do."
+    : ''
 
   let subject: string
   let headline: string
@@ -134,8 +154,9 @@ export function renderQuietCareDigest(d: QuietCareData): RenderedHeartbeat {
     ...sections.map((s) => `${s.title}\n${s.lines.map((l) => `· ${l}`).join('\n')}`),
     next,
     cadence,
-    d.worth_a_look && d.check.status === 'ran' ? `Details: ${d.worth_a_look.href}` : '',
-    `Open LifeKeel: ${d.app_url}`,
+    offer,
+    d.worth_a_look && d.check.status === 'ran' ? `Details: ${lookHref}` : '',
+    `Open LifeKeel: ${appHome}`,
     `Why you got this · Manage notifications → ${settingsUrl}`,
   ]
     .filter(Boolean)
@@ -154,11 +175,12 @@ export function renderQuietCareDigest(d: QuietCareData): RenderedHeartbeat {
       .join('')}
     ${
       d.worth_a_look && d.check.status === 'ran'
-        ? `<p><a href="${escapeHtml(d.worth_a_look.href)}">See the details</a></p>`
+        ? `<p><a href="${escapeHtml(lookHref)}">See the details</a></p>`
         : ''
     }
     <p style="margin-top:16px;">${escapeHtml(next)}</p>
-    <p><a href="${escapeHtml(d.app_url)}" style="display:inline-block;padding:12px 20px;background:#7c6ef0;color:#fff;border-radius:10px;text-decoration:none;font-weight:600;">Open LifeKeel</a></p>
+    <p><a href="${escapeHtml(appHome)}" style="display:inline-block;padding:12px 20px;background:#7c6ef0;color:#fff;border-radius:10px;text-decoration:none;font-weight:600;">Open LifeKeel</a></p>
+    ${offer ? `<p>${escapeHtml(offer)}</p>` : ''}
     <p style="color:#888;font-size:13px;">${escapeHtml(cadence)} <a href="${escapeHtml(settingsUrl)}" style="color:#888;">Why you got this · Manage notifications</a></p>
   `
 
@@ -168,5 +190,6 @@ export function renderQuietCareDigest(d: QuietCareData): RenderedHeartbeat {
     html,
     push_title: subject,
     push_body: headline,
+    variant,
   }
 }

@@ -36,7 +36,7 @@ export interface Guide {
   faq: GuideFaq[]
 }
 
-const QUIZ_CTA = 'Take the free Family Readiness Check — six questions, no signup, and see which of these areas Keel would flag for your household.'
+const SIGNUP_CTA = 'Put your family on the chart — free to start, no credit card — and see which of these areas look light for your household.'
 
 export const GUIDES: Guide[] = [
   {
@@ -572,16 +572,16 @@ export function getGuide(slug: string): Guide | undefined {
   return GUIDES.find((g) => g.slug === slug)
 }
 
-/** CTA link into the readiness quiz, UTM'd per-guide so utm_content joins
- *  the lead/signup funnel back to the exact page that sent them. */
-export function guideQuizUrl(slug: string): string {
+/** CTA link to signup, UTM'd per-guide so utm_content joins
+ *  the signup funnel back to the exact page that sent them. */
+export function guideSignupUrl(slug: string): string {
   const params = new URLSearchParams({
     utm_source: 'guides',
     utm_medium: 'content',
     utm_campaign: 'guides',
     utm_content: slug,
   })
-  return `/readiness?${params.toString()}`
+  return `/signup?${params.toString()}`
 }
 
-export { QUIZ_CTA }
+export { SIGNUP_CTA }
