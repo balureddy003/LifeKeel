@@ -116,7 +116,7 @@ function AskKeel({ onCaseCreated }: { onCaseCreated: (c: SupportCase) => void })
           <input
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
-            placeholder="Subject — what's this about?"
+            placeholder="Subject — what's this about?" aria-label="Subject"
             className="glass-input w-full rounded-lg px-3 py-2 text-sm"
             required
             minLength={3}
@@ -124,7 +124,7 @@ function AskKeel({ onCaseCreated }: { onCaseCreated: (c: SupportCase) => void })
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder="Describe what you need — include anything Keel missed."
+            placeholder="Describe what you need — include anything Keel missed." aria-label="Describe what you need"
             rows={3}
             className="glass-input w-full rounded-lg px-3 py-2 text-sm"
             required
@@ -141,7 +141,7 @@ function AskKeel({ onCaseCreated }: { onCaseCreated: (c: SupportCase) => void })
           <input
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="How do I…? / Why does…?"
+            placeholder="How do I…? / Why does…?" aria-label="Ask a question"
             className="glass-input min-w-0 flex-1 rounded-xl px-4 py-2.5 text-sm"
           />
           <button disabled={asking || !question.trim()} className="rounded-xl bg-family-500 px-4 text-white disabled:opacity-40" aria-label="Ask Keel">

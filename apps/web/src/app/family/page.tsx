@@ -127,7 +127,9 @@ export default function FamilyPage() {
                             : 'text-ink-tertiary bg-tint/[0.04] border-tint/[0.06]'
                         }`}
                       >
+                        {chip.onFile && <span aria-hidden="true">✓ </span>}
                         {chip.label}
+                        <span className="sr-only">{chip.onFile ? ' — on file' : ' — not on file'}</span>
                       </span>
                     ))}
                     {m.chips.length === 0 && (

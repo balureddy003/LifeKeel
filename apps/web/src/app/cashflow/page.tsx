@@ -231,6 +231,7 @@ export default function CashflowPage() {
         <input
           type="text"
           placeholder={kind === 'expense' ? 'e.g. Rent, childcare, groceries' : 'e.g. Salary, rental income'}
+          aria-label="What it is"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 transition-all"
@@ -242,7 +243,7 @@ export default function CashflowPage() {
               type="number"
               inputMode="decimal"
               min="0"
-              placeholder="0"
+              placeholder="0" aria-label="Amount in pounds"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && add()}

@@ -11,7 +11,6 @@ import { fetchBillingSubscription, openBillingPortal, redeemPromoCode, startLife
 const BENEFITS = [
   'AI reads your documents and pulls out the provider, policy number, amounts, and dates automatically',
   'AI-summarized inbox — financial emails read and explained in plain language',
-  'Priority support',
 ]
 
 const EXTRACTED_FIELDS = [
@@ -21,7 +20,7 @@ const EXTRACTED_FIELDS = [
   // shortening this illustrative (not real user data) example to match
   // keeps the same single-line rhythm across all four, instead of this
   // one alone needing to wrap.
-  { label: 'Provider', value: 'Allstate' },
+  { label: 'Provider', value: 'Example Insurer Ltd' },
   { label: 'Policy Number', value: 'HO-88213-A' },
   { label: 'Amount', value: '£1,240/yr' },
   { label: 'Renews', value: 'Jun 14, 2027' },

@@ -561,7 +561,7 @@ export function ConversationalOnboarding() {
       {/* Progress bar */}
       <div className="px-4 pt-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-ink-tertiary font-semibold">Putting your family on the chart</span>
+          <h1 className="text-xs text-ink-tertiary font-semibold font-sans">Putting your family on the chart</h1>
           <span className="text-xs text-family-400 font-bold">{Math.round(progress)}%</span>
         </div>
         <div className="h-2 rounded-full bg-tint/5 overflow-hidden">
