@@ -957,6 +957,28 @@ export async function fetchNotificationPrefs(): Promise<NotificationPrefsRespons
   return apiFetch<NotificationPrefsResponse | null>('/family/notifications', null)
 }
 
+// ── Freshness (PRD-145) ──────────────────────────────────────────────────
+
+export interface FreshnessCheck {
+  detector_id: string
+  label: string
+  state: 'running' | 'paused_missing' | 'paused_stale'
+  /** Field names only, e.g. "emergency_fund.monthly_expenses_minor". */
+  input: string[]
+  since: string
+}
+
+export interface FreshnessResponse {
+  checked_at: string | null
+  share_running: number | null
+  detectors: FreshnessCheck[]
+}
+
+/** null for children (403), signed-out visitors and any failure. */
+export async function fetchFreshness(): Promise<FreshnessResponse | null> {
+  return apiFetch<FreshnessResponse | null>('/family/freshness', null)
+}
+
 export async function updateNotificationPrefs(
   patch: NotificationPrefsPatch,
 ): Promise<NotificationPrefsResponse | null> {
