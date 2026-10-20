@@ -83,6 +83,36 @@ for evidence quality. Numeric defaults below are hypotheses to test, not benchma
 4. **Provider retention differs per model** and zero-retention needs per-organisation
    approval; record the actual terms per task, never a blanket statement.
 
+## Status
+
+**Much of this was already built** under intent 01 (task registry `definitions/ai-tasks.yaml`,
+`packages/platform/src/task-gateway.ts`, the `ai-task-gateway` fitness test). This change adds what
+was missing.
+
+Built now: the processor registry (`definitions/ai-processors.yaml`, parsed by
+`packages/platform/src/ai-processors.ts`) with every field from item 2 and amendment 1, a loader that
+refuses a blank field and a placeholder on an approved entry; per-task `allowed_processors`; a
+gateway check that refuses with a typed `ProcessorPolicyError` (unknown processor, not allowed for
+the task, unreviewed, review lapsed, retention beyond what the task tolerates) with no fallback;
+`AI_PROCESSOR_ENFORCEMENT` = off | warn | enforce, default **warn**; a violation counter; the
+read-only "Who processes your documents" screen (amendment 3); and `CLAUDE.md` and `ARCHITECTURE.md`
+updated to say what is enforced and what is not.
+
+**Every hosted processor is `unreviewed`** (the open question stands: no signed terms supplied), so
+`enforce` would refuse every hosted call today. To approve one the owner supplies DPA date, terms
+reference, no-training basis, retention per model, sub-processors, transfer mechanism, breach-notice
+SLA and region, then sets `status: approved` with real dates.
+
+Found while doing this: a `lifekeel_infra` task (Ask Keel, support and outreach drafts, document and
+email tasks) falls back to the hosted router when `LOCAL_TEXT_ENABLED` is off, so family content can go
+to a hosted provider under a label that says it stays in our infrastructure. The check now flags it;
+whether to make those tasks fail closed (as `lifekeel_infra_required` does) is a product decision.
+
+Not built: the Gmail Limited Use exclusion from `feature_hash_eval` and other cross-tenant scorers
+(insights carry no provenance saying they derive from Gmail; needed before PRD-144), an explicit
+consent flow for third-party AI (Apple 5.1.2(i); the screen is disclosure only), atomic budget
+reservation, and verification of any provider's actual terms (human and legal).
+
 ## Becomes
 
 docs/prd/142-ai-task-provider-registry.md

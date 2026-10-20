@@ -107,8 +107,17 @@ scorer warm-start can use it.
   constructs a raw model client outside the allow-listed factories, if a
   `taskLlm/taskDecide/taskVision` call names an unregistered task, or if a raw
   `localDecisionFromEnv` escapes its `taskDecide` wrapper. Unknown task_ids
-  fail closed outside dev. Processor-terms *review* stays procedural — see
-  ARCHITECTURE.md §8.15 for what's enforced vs still debt.
+  fail closed outside dev. The processor registry
+  (`definitions/ai-processors.yaml`, per-task `allowed_processors`) is checked
+  before every call, but in `AI_PROCESSOR_ENFORCEMENT=warn` (the default) a
+  violation is logged and counted, not blocked: every hosted processor ships
+  `unreviewed` because no terms have been supplied, so `enforce` would refuse
+  every hosted call today. A `lifekeel_infra` task still falls back to a hosted
+  provider when `LOCAL_TEXT_ENABLED` is off; the check flags it, it does not
+  stop it. Provider no-training and retention terms, Gmail Limited Use
+  exclusion from cross-tenant scorers, and a consent flow for third-party AI
+  remain procedural. Do not claim rule 3 is technically enforced by code
+  alone; see ARCHITECTURE.md §8.15 for the full list.
 
 Detail on what each check catches (and cannot):
 [docs/ai-native-sdlc-playbook.md](docs/ai-native-sdlc-playbook.md#8-rules-to-enforcement).

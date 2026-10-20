@@ -58,6 +58,12 @@ export type AuditAction =
   | 'billing.credit_pack_purchased'
   | 'account.exported'
   | 'account.deleted'
+  | 'document.deleted'
+  | 'document.intake'
+  | 'document.extracted'
+  | 'document.reviewed'
+  | 'document.committed'
+  | 'mailbox.deleted'
   | 'family.join_requested'
   | 'family.join_approved'
   | 'family.join_denied'
@@ -85,6 +91,11 @@ export type AuditAction =
   | 'marketing.connection_disconnect'
   | 'marketing.post_generate'
   | 'marketing.post_update'
+  | 'marketing.plan_generate'
+  | 'marketing.plan_approve'
+  | 'marketing.plan_skip'
+  | 'marketing.profile_edit'
+  | 'marketing.profile_apply'
   | 'legacy.document.read'
 
 export interface AuditEntry {
@@ -104,7 +115,6 @@ import { createLogger } from '@lifekeel/platform'
 const auditLog = createLogger({ service: 'audit', version: '0.0.0' })
 
 export class AuditLogger {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private col: any
   private enabled: boolean
 
@@ -126,7 +136,10 @@ export class AuditLogger {
     if (!this.enabled) return
     this.col.insertOne(entry).catch(() => {
       // Audit log write failures must never crash the API — log to stderr only
-      auditLog.error({ action: entry.action, resource_id: entry.resource_id }, 'Failed to write audit log entry')
+      auditLog.error(
+        { action: entry.action, resource_id: entry.resource_id },
+        'Failed to write audit log entry',
+      )
     })
   }
 
@@ -171,7 +184,7 @@ export class AuditLogger {
     const auth = request.authContext as { tenant_id: string; user_id: string } | undefined
     this.log({
       tenant_id: auth?.tenant_id ?? 'unknown',
-      user_id:   auth?.user_id   ?? 'unknown',
+      user_id: auth?.user_id ?? 'unknown',
       action,
       resource_type: resourceType,
       resource_id: resourceId,

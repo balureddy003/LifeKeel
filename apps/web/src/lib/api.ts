@@ -1009,6 +1009,39 @@ export function fetchRetentionMetrics(): Promise<RetentionMetrics> {
   return operatorRequest('/operator/retention')
 }
 
+// ── Who processes your documents (PRD-142) ──────────────────────────────
+
+export interface AiDisclosureProcessor {
+  id: string
+  name: string
+  hosting: 'self_hosted' | 'hosted'
+  status: 'run_by_lifekeel' | 'terms_under_review' | 'approved' | 'review_overdue'
+  region: string | null
+  retention: string[]
+  sub_processors: string[] | null
+  review_due: string | null
+  used_by_tasks: number
+}
+
+export interface AiDisclosureTask {
+  task_id: string
+  purpose: string
+  where: 'device' | 'lifekeel' | 'lifekeel_or_hosted' | 'hosted'
+  processors: string[]
+  retention_class: string
+}
+
+export interface AiDisclosure {
+  generated_at: string
+  processors: AiDisclosureProcessor[]
+  tasks: AiDisclosureTask[]
+}
+
+/** null when signed out or the registry is not loaded. */
+export async function fetchAiDisclosure(): Promise<AiDisclosure | null> {
+  return apiFetch<AiDisclosure | null>('/ai/processors', null)
+}
+
 // ── Delivery channels (PRD-140) ─────────────────────────────────────────
 
 export interface ChannelState {
@@ -1214,8 +1247,102 @@ export async function fetchDocuments(): Promise<{
   })
 }
 
+/** One extracted value awaiting a person's decision (PRD-143). */
+export interface DocumentCandidate {
+  key: string
+  value: string
+  confidence: number
+  grounding:
+    'verbatim_unique' | 'verbatim_ambiguous' | 'keyword' | 'absence' | 'not_found' | 'image_only'
+  span: { start: number; end: number } | null
+  /** A short quote of the document around the value; null when there is no text to quote. */
+  snippet: string | null
+  needs_review: boolean
+  status: 'proposed' | 'confirmed' | 'edited' | 'rejected'
+  edited_value?: string
+}
+
+export interface DocumentClassification {
+  category: string
+  confidence: number
+  needs_confirmation: boolean
+  confirmed: boolean
+}
+
 export interface FamilyDocumentDetail extends FamilyDocument {
   rawText: string
+  classification?: DocumentClassification | null
+  documentDate?: string | null
+  /** clean | infected | error | not_performed */
+  scan?: string
+  candidates?: DocumentCandidate[]
+}
+
+export interface ReviewDecision {
+  key: string
+  action: 'confirm' | 'edit' | 'reject'
+  value?: string
+}
+
+/** What the person says this document is. Never changes anything until they do. */
+export async function confirmDocumentType(
+  id: string,
+  category: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const token = getAuthToken()
+    const res = await credFetch(
+      `${getApiBase()}/documents/${encodeURIComponent(id)}/confirm-type`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ category }),
+      },
+    )
+    if (res.ok) return { ok: true }
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? 'Could not save that' }
+  } catch (err) {
+    reportError(err, { action: 'confirmDocumentType', id })
+    return { ok: false, error: 'Network error — please try again' }
+  }
+}
+
+/** Confirm, edit or reject extracted values. All or nothing on the server. */
+export async function reviewDocumentFields(
+  id: string,
+  decisions: ReviewDecision[],
+): Promise<{ ok: true; candidates: DocumentCandidate[] } | { ok: false; error: string }> {
+  try {
+    const token = getAuthToken()
+    const res = await credFetch(`${getApiBase()}/documents/${encodeURIComponent(id)}/review`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ decisions }),
+    })
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: string
+      candidates?: DocumentCandidate[]
+      problems?: { key: string; reason: string }[]
+    }
+    if (res.ok && data.candidates) return { ok: true, candidates: data.candidates }
+    const invalid = data.problems?.some((p) => p.reason === 'invalid_value')
+    return {
+      ok: false,
+      error: invalid
+        ? 'That value does not look right for this field.'
+        : (data.error ?? 'Could not save that'),
+    }
+  } catch (err) {
+    reportError(err, { action: 'reviewDocumentFields', id })
+    return { ok: false, error: 'Network error — please try again' }
+  }
 }
 
 export async function fetchDocument(id: string): Promise<FamilyDocumentDetail | null> {
@@ -1777,6 +1904,69 @@ export async function triggerConnectorBackfill(connectorId: string): Promise<boo
   } catch (err) {
     reportError(err, { connectorId })
     return false
+  }
+}
+
+/** PRD-146: counts and categories only; the API never sends content. */
+export interface DeletionReceipt {
+  id: string
+  kind: 'document' | 'mailbox' | 'account'
+  status: 'completed' | 'partial' | 'in_progress'
+  requested_at: string
+  completed_at: string | null
+  removed: { category: string; count: number }[]
+  kept: string[]
+  verification: { passed: boolean; residual: { category: string; count: number }[] } | null
+  live_data_erased: boolean
+  backups: { retention_days: number | null; statement: string }
+  processors: { id: string; name: string; stated_retention: string }[]
+}
+
+/** Held for one page after account deletion; see /account-deleted. */
+export const RECEIPT_STORAGE_KEY = 'lifekeel_deletion_receipt'
+
+/** Disconnect a mailbox and delete what was read from it. Null on any failure. */
+export async function disconnectMailboxAndDelete(
+  connectorId: string,
+): Promise<DeletionReceipt | null> {
+  try {
+    const token = getAuthToken()
+    const res = await credFetch(`${getApiBase()}/connectors/${connectorId}/disconnect`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ delete_data: true }),
+    })
+    if (!res.ok) return null
+    const data = (await res.json().catch(() => ({}))) as { receipt?: DeletionReceipt }
+    return data.receipt ?? null
+  } catch (err) {
+    reportError(err, { connectorId })
+    return null
+  }
+}
+
+/** Delete one uploaded document. The receipt lists what was removed. */
+export async function deleteFamilyDocument(
+  id: string,
+): Promise<{ ok: boolean; receipt?: DeletionReceipt; error?: string }> {
+  try {
+    const token = getAuthToken()
+    const res = await credFetch(`${getApiBase()}/documents/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    const data = (await res.json().catch(() => ({}))) as {
+      receipt?: DeletionReceipt
+      error?: string
+    }
+    if (!res.ok) return { ok: false, error: data.error ?? `Request failed (${res.status})` }
+    return { ok: true, ...(data.receipt ? { receipt: data.receipt } : {}) }
+  } catch (err) {
+    reportError(err, { action: 'deleteFamilyDocument', id })
+    return { ok: false, error: 'Network error — please try again' }
   }
 }
 
@@ -2502,9 +2692,13 @@ export async function exportAccountData(): Promise<Record<string, unknown> | nul
 
 // confirmation must be the account's own email, typed — the server's check,
 // not just a client formality.
-export async function deleteAccount(
-  confirmation: string,
-): Promise<{ ok: boolean; error?: string | undefined }> {
+export async function deleteAccount(confirmation: string): Promise<{
+  ok: boolean
+  error?: string | undefined
+  receipt?: DeletionReceipt | undefined
+  /** True when the wipe has not finished; access is already closed and it completes by itself. */
+  inProgress?: boolean | undefined
+}> {
   try {
     const base = getApiBase()
     const token = getAuthToken()
@@ -2520,7 +2714,11 @@ export async function deleteAccount(
       const data = (await res.json().catch(() => ({}))) as { error?: string }
       return { ok: false, error: data.error ?? `Request failed (${res.status})` }
     }
-    return { ok: true }
+    const data = (await res.json().catch(() => ({}))) as {
+      receipt?: DeletionReceipt
+      in_progress?: boolean
+    }
+    return { ok: true, receipt: data.receipt, inProgress: data.in_progress === true }
   } catch (err) {
     reportError(err, { path: '/account/delete' })
     return { ok: false, error: 'Network error — please try again' }
@@ -3210,7 +3408,7 @@ export async function fetchMarketingPosts(): Promise<MarketingPost[]> {
 
 async function marketingRequest<T>(
   path: string,
-  method: 'POST' | 'PATCH' | 'DELETE',
+  method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   body?: Record<string, unknown>,
 ): Promise<T> {
   const base = getApiBase()
@@ -3301,6 +3499,22 @@ export async function previewMarketingDrafts(input: {
   return data.drafts ?? []
 }
 
+export interface FunnelBreakdown {
+  key: string
+  visit: number
+  cta_click: number
+  signup: number
+  profile: number
+  first_insight: number
+}
+
+export interface FunnelView {
+  window_days: number
+  steps: { step: 'visit' | 'cta_click' | 'signup' | 'profile' | 'first_insight'; count: number }[]
+  by_source: FunnelBreakdown[]
+  by_campaign: FunnelBreakdown[]
+}
+
 export interface MarketingPerformance {
   posts: {
     slug: string
@@ -3313,6 +3527,8 @@ export interface MarketingPerformance {
   channels: { channel: string; views: number; cta_clicks: number; leads: number; signups: number }[]
   campaigns: { campaign: string; views: number; signups: number; leads: number }[]
   totals: { views: number; cta_clicks: number; signups: number; leads: number }
+  /** Visit to first-insight funnel from the daily rollups (PRD-210); null until they exist. */
+  funnel: FunnelView | null
   /** "What works" — engagement normalized against the account median
    *  (x=1.0); providers don't expose impressions so this is comparative,
    *  not an absolute rate. */
@@ -3346,6 +3562,105 @@ export async function connectBluesky(input: {
   )
   return data.connection
 }
+
+// ── Channel profiles (PRD-210, phase 2) ─────────────────────────────────
+
+export interface ChannelProfileView {
+  channel: string
+  desired: { display_name: string; handle: string; bio: string; link: string }
+  desired_hash: string
+  problems: string[]
+  bio_limit: number
+  checklist_items: string[]
+  checklist: Record<string, boolean>
+  actual: {
+    display_name: string
+    bio: string
+    has_avatar: boolean
+    has_banner: boolean
+    checked_at: string
+  } | null
+  drift: { field: string; desired: string; actual: string }[]
+  supports_check: boolean
+  supports_apply: boolean
+  saved: boolean
+  applied_at: string | null
+  dry_run?: boolean
+}
+
+export async function fetchChannelProfiles(): Promise<ChannelProfileView[]> {
+  const data = await apiFetch<{ profiles: ChannelProfileView[] }>('/marketing/profiles', {
+    profiles: [],
+  })
+  return data.profiles
+}
+
+export const saveChannelProfile = (channel: string, desired: ChannelProfileView['desired']) =>
+  marketingRequest<ChannelProfileView>(`/marketing/profiles/${channel}`, 'PUT', { ...desired })
+
+export const tickProfileStep = (channel: string, item: string, done: boolean) =>
+  marketingRequest<ChannelProfileView>(`/marketing/profiles/${channel}/checklist`, 'PUT', {
+    item,
+    done,
+  })
+
+export const checkChannelProfile = (channel: string) =>
+  marketingRequest<ChannelProfileView>(`/marketing/profiles/${channel}/check`, 'POST')
+
+export const applyChannelProfile = (channel: string, expected_hash: string) =>
+  marketingRequest<ChannelProfileView>(`/marketing/profiles/${channel}/apply`, 'POST', {
+    expected_hash,
+  })
+
+// ── Weekly content plan (PRD-210, phase 3) ──────────────────────────────
+
+export interface PlanPostView {
+  id: string
+  channel: string
+  content: string
+  content_hash: string
+  state: MarketingPostState
+  scheduled_at: string | null
+  copy_check: { ok: boolean; violations: { rule: string; match: string }[] }
+}
+
+export interface PlanItemView {
+  id: string
+  week_key: string
+  slot: number
+  pillar: string
+  title: string
+  scheduled_at: string
+  status: 'planned' | 'skipped'
+  posts: PlanPostView[]
+}
+
+export interface PlanWeekView {
+  week_key: string
+  available_channels: string[]
+  items: PlanItemView[]
+}
+
+export async function fetchPlanWeek(week: string): Promise<PlanWeekView> {
+  return apiFetch<PlanWeekView>(`/marketing/plan?week=${encodeURIComponent(week)}`, {
+    week_key: week,
+    available_channels: [],
+    items: [],
+  })
+}
+
+export const generatePlanWeek = (week_start: string) =>
+  marketingRequest<PlanWeekView>('/marketing/plan/generate', 'POST', { week_start })
+
+export const approvePlanPosts = (items: { post_id: string; content_hash: string }[]) =>
+  marketingRequest<{
+    approved: number
+    refused: number
+    results: { post_id: string; ok: boolean; error?: string }[]
+  }>('/marketing/plan/approve', 'POST', { items })
+
+export const skipPlanItem = (id: string) =>
+  marketingRequest<{ ok: boolean }>(`/marketing/plan/items/${id}/skip`, 'POST')
 
 export async function disconnectSocialChannel(channel: string): Promise<void> {
   await marketingRequest<{ ok: boolean }>(`/marketing/connections/${channel}`, 'DELETE')

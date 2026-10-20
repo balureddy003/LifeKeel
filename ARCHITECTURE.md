@@ -776,7 +776,7 @@ hosted `draft.outreach.v1` path, which runs the full server gateway.
 Calls are bounded by `max_tokens` and 30s timeouts so a hung model cannot
 pin the UI; disable unloads the engine and purges cached weights.
 
-**Policy & telemetry.** `preferred_execution: device_preferred` is a
+**Policy & telemetry.** `preferred_execution: on_device` is a
 registered policy value meaning "the feature prefers device; each
 server-side call is an authorized fallback" — the gateway emits an
 `onDeviceEscalation` dep hook per actual invocation (not at policy
@@ -1431,7 +1431,10 @@ through the AI task gateway (`apps/api/src/ai/task-gateway.ts` →
 - per-tenant budget check before provider execution;
 - cloud vision extraction (previously a raw OpenAI SDK call outside the
   router) runs through `governedVision`;
-- a `device_only` task has no server-side path by construction.
+- a `device_only` task has no server-side path by construction;
+- the serving processor is checked against the task's `allowed_processors` and the
+  processor registry's approval, review date and retention before any provider is
+  contacted (see debt item 2 for the default `warn` mode).
 
 The `ai-task-gateway` fitness test is the tripwire: only allow-listed factory
 files may construct raw model clients, every `taskLlm/taskDecide/taskVision`
@@ -1444,10 +1447,25 @@ Remaining debt:
    pre-call budget check but does not yet reserve tokens against the ledger
    and reconcile after actual usage; a burst of concurrent calls can still
    overshoot the cap.
-2. **Processor terms/review-date enforcement** — `processor_terms_ref`,
-   `provider_retention_class` and review dates are recorded in the registry
-   and required at parse time, but expiry does not yet block the call;
-   subprocessor review stays a human/legal process until then.
+2. **Processor terms/review-date enforcement** — wired (PRD-142):
+   `definitions/ai-processors.yaml` records endpoint, region, terms, no-training
+   basis, per-model retention, sub-processors, transfer mechanism, DPA date,
+   breach-notice SLA and a review date per processor; the loader refuses a
+   blank field and refuses a placeholder on an approved entry. Each task names
+   `allowed_processors`, and before any provider is contacted the gateway
+   checks that the processor serving the call is allowed, approved, within its
+   review date and within the retention the task tolerates
+   (`ProcessorPolicyError`, never a fallback to another provider).
+   `AI_PROCESSOR_ENFORCEMENT` is `off | warn | enforce`, default `warn`: it
+   logs and counts (`lifekeel_ai_processor_violations_total`) and still serves
+   the call. **Every hosted processor is `unreviewed` today** (no signed terms
+   have been supplied), so `enforce` would refuse every hosted call; flip it
+   only after the processors a deployment uses are approved. A
+   `lifekeel_infra` task still falls back to hosted when the local model is
+   off; the check flags that fallback, it does not stop it in `warn`.
+   Subprocessor and terms review stays a human/legal process. A read-only
+   "Who processes your documents" screen (`/ai-processing`, `GET /ai/processors`)
+   renders both registries, including "not reviewed" where that is the truth.
 3. **Eval suites** — task-level eval and adversarial suites with
    synthetic/redacted or consented fixtures remain to be built.
 4. **Correctness labels** — correctness labels are still entangled with

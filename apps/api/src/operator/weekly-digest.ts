@@ -8,6 +8,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Db } from 'mongodb'
 import { sendOpsAlert } from '../operator/ops-alerts.js'
+import { readFunnel } from '../marketing/funnel.js'
 
 export interface WeeklyDigestDoc {
   id: string
@@ -25,6 +26,22 @@ export interface WeeklyDigestDoc {
   upgrade_intent_7d: number
   /** Top promoted blog post by attributed signups this week, if any. */
   top_content?: { slug: string; signups: number }
+  /** PRD-210: the marketing engine's week, so nobody has to open the console to know what needs them. */
+  marketing?: {
+    drafts_awaiting_review: number
+    drafts_failing_copy_guard: number
+    next_week_items_planned: number
+    profile_drift_open: number
+    funnel_7d: {
+      visit: number
+      cta_click: number
+      signup: number
+      profile: number
+      first_insight: number
+    }
+    top_source_by_signups?: { source: string; signups: number }
+    top_pillar_by_signups?: { pillar: string; signups: number }
+  }
   created_at: Date
 }
 
@@ -74,6 +91,8 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
       .toArray(),
   ])
 
+  const marketing = await marketingSection(db, now)
+
   const slugCounts = new Map<string, number>()
   for (const u of weekSignups) {
     const slug = (u['attribution'] as Record<string, string> | undefined)?.['utm_content']
@@ -95,6 +114,7 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
     lifecycle_sent_7d: lifecycleSent,
     upgrade_intent_7d: upgradeIntent,
     ...(top ? { top_content: { slug: top[0], signups: top[1] } } : {}),
+    marketing,
     created_at: now,
   }
   // Spread — insertOne stamps _id on the object it's given; keep the
@@ -115,6 +135,19 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
     `Marketing: ${marketingPublished} posts published · ${lifecycleSent} lifecycle emails · ${upgradeIntent} upgrade-intent hits`,
   ]
   if (top) lines.push(`Top content: ${top[0]} → ${top[1]} signups`)
+  const f = marketing.funnel_7d
+  lines.push(
+    `Funnel (7d): ${f.visit} visits · ${f.cta_click} clicks · ${f.signup} signups · ${f.profile} profiles · ${f.first_insight} first insights`,
+    `Marketing queue: ${marketing.drafts_awaiting_review} drafts to review (${marketing.drafts_failing_copy_guard} fail the copy guard) · ${marketing.next_week_items_planned} items planned for next week · ${marketing.profile_drift_open} profile differences open`,
+  )
+  if (marketing.top_source_by_signups)
+    lines.push(
+      `Best source: ${marketing.top_source_by_signups.source} → ${marketing.top_source_by_signups.signups} signups`,
+    )
+  if (marketing.top_pillar_by_signups)
+    lines.push(
+      `Best pillar: ${marketing.top_pillar_by_signups.pillar} → ${marketing.top_pillar_by_signups.signups} signups`,
+    )
   await sendOpsAlert({
     title: 'LifeKeel — weekly operator digest',
     message: lines.join('\n'),
@@ -122,4 +155,53 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
     fingerprint: `weekly-digest-${now.toISOString().slice(0, 10)}`,
   })
   return digest
+}
+
+const nextMondayKey = (from: Date): string => {
+  const d = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()))
+  d.setUTCDate(d.getUTCDate() + ((8 - d.getUTCDay()) % 7 || 7))
+  return d.toISOString().slice(0, 10)
+}
+
+/** What the marketing engine needs from a person this week, from existing collections and the funnel rollups. */
+async function marketingSection(
+  db: Db,
+  now: Date,
+): Promise<NonNullable<WeeklyDigestDoc['marketing']>> {
+  const [drafts, failing, planned, drift, funnel] = await Promise.all([
+    db.collection('marketing_posts').countDocuments({ state: 'draft' }),
+    db.collection('marketing_posts').countDocuments({ state: 'draft', 'copy_check.ok': false }),
+    db
+      .collection('content_items')
+      .countDocuments({ week_key: nextMondayKey(now), status: 'planned' }),
+    db.collection('channel_profiles').countDocuments({ 'drift.0': { $exists: true } }),
+    readFunnel(db, 7, now),
+  ])
+  const step = (k: string) => funnel.steps.find((x) => x.step === k)?.count ?? 0
+  const topSource = funnel.by_source.find((b) => b.signup > 0 && b.key !== 'direct')
+  const topPillar = funnel.by_campaign.find((b) => b.signup > 0 && b.key.startsWith('pillar_'))
+  return {
+    drafts_awaiting_review: drafts,
+    drafts_failing_copy_guard: failing,
+    next_week_items_planned: planned,
+    profile_drift_open: drift,
+    funnel_7d: {
+      visit: step('visit'),
+      cta_click: step('cta_click'),
+      signup: step('signup'),
+      profile: step('profile'),
+      first_insight: step('first_insight'),
+    },
+    ...(topSource
+      ? { top_source_by_signups: { source: topSource.key, signups: topSource.signup } }
+      : {}),
+    ...(topPillar
+      ? {
+          top_pillar_by_signups: {
+            pillar: topPillar.key.replace(/^pillar_/, ''),
+            signups: topPillar.signup,
+          },
+        }
+      : {}),
+  }
 }

@@ -13,6 +13,8 @@ import {
   type TaskRegistry,
 } from '../task-gateway.js'
 import { BudgetExhaustedError } from '../structured-llm.js'
+import { ProcessorPolicyError } from '../task-gateway.js'
+import { parseProcessorRegistry, type ProcessorViolation } from '../ai-processors.js'
 import { getAllCircuitBreakers } from '../llm-circuit-breaker.js'
 import type { LlmFn } from '../llm.js'
 import type { DecisionFn } from '../local-decision.js'
@@ -54,6 +56,7 @@ describe('parseTaskRegistry', () => {
         processor_terms_ref: 'terms',
         provider_retention_class: 'none',
         allowed_models: ['tier:fast'],
+        allowed_processors: ['anthropic'],
         primary_model: 'tier:fast',
         deadline_ms: 1000,
         max_input_tokens: 100,
@@ -88,17 +91,29 @@ describe('parseTaskRegistry', () => {
     expect(() => parseTaskRegistry(doc)).toThrow(/preferred_execution/)
   })
 
-  it('accepts device_preferred as a preferred_execution', () => {
+  it('accepts on_device as a preferred_execution', () => {
     const doc = structuredClone(validDoc) as { tasks: Record<string, Record<string, unknown>> }
-    doc.tasks['a.v1']!['preferred_execution'] = 'device_preferred'
+    doc.tasks['a.v1']!['preferred_execution'] = 'on_device'
     const reg = parseTaskRegistry(doc)
-    expect(reg.get('a.v1')?.preferred_execution).toBe('device_preferred')
+    expect(reg.get('a.v1')?.preferred_execution).toBe('on_device')
   })
 
   it('rejects an entry missing a required field', () => {
     const doc = structuredClone(validDoc) as { tasks: Record<string, Record<string, unknown>> }
     delete doc.tasks['a.v1']!['processor_terms_ref']
     expect(() => parseTaskRegistry(doc)).toThrow(/processor_terms_ref/)
+  })
+
+  it('requires allowed_processors, non-empty except for device_only tasks', () => {
+    const doc = structuredClone(validDoc) as { tasks: Record<string, Record<string, unknown>> }
+    delete doc.tasks['a.v1']!['allowed_processors']
+    expect(() => parseTaskRegistry(doc)).toThrow(/allowed_processors/)
+    doc.tasks['a.v1']!['allowed_processors'] = []
+    expect(() => parseTaskRegistry(doc)).toThrow(/empty for device_only/)
+    doc.tasks['a.v1']!['data_boundary'] = 'device_only'
+    expect(parseTaskRegistry(doc).get('a.v1')?.allowed_processors).toEqual([])
+    doc.tasks['a.v1']!['allowed_processors'] = ['ollama']
+    expect(() => parseTaskRegistry(doc)).toThrow(/empty for device_only/)
   })
 
   it('rejects an empty allowed_models list', () => {
@@ -197,10 +212,10 @@ describe('governedLlm', () => {
     expect(base).not.toHaveBeenCalled()
   })
 
-  it('fires onDeviceEscalation per invocation of a device_preferred task', async () => {
+  it('fires onDeviceEscalation per invocation of a on_device task', async () => {
     const onDeviceEscalation = vi.fn()
     const d = deps({
-      registry: registryOf(policy({ preferred_execution: 'device_preferred' })),
+      registry: registryOf(policy({ preferred_execution: 'on_device' })),
       onDeviceEscalation,
     })
     const fn = governedLlm(ok, d, 'test.task.v1', 't1')
@@ -222,7 +237,7 @@ describe('governedLlm', () => {
   it('fires onDeviceEscalation even when the call is budget-denied', async () => {
     const onDeviceEscalation = vi.fn()
     const d = deps({
-      registry: registryOf(policy({ preferred_execution: 'device_preferred' })),
+      registry: registryOf(policy({ preferred_execution: 'on_device' })),
       onDeviceEscalation,
       budgetGuard: {
         check: async () => ({
@@ -385,5 +400,160 @@ describe('governedVision', () => {
       ]),
     ).rejects.toThrow(/token ceiling/)
     expect(base).not.toHaveBeenCalled()
+  })
+})
+
+describe('processor guard (PRD-142)', () => {
+  const entry = (over: Record<string, unknown> = {}) => ({
+    name: 'P',
+    hosting: 'hosted',
+    status: 'unreviewed',
+    endpoint: 'https://p.test',
+    region: 'not_reviewed',
+    terms_ref: 'not_reviewed',
+    no_training_basis: 'not_reviewed',
+    retention: { '*': 'limited_abuse_log' },
+    sub_processors: ['not_reviewed'],
+    transfer_mechanism: 'not_reviewed',
+    dpa_date: 'not_reviewed',
+    breach_notice_sla: 'not_reviewed',
+    reviewed_at: 'not_reviewed',
+    review_due: 'not_reviewed',
+    ...over,
+  })
+  const processors = parseProcessorRegistry({
+    processors: {
+      anthropic: entry(),
+      ollama: entry({
+        hosting: 'self_hosted',
+        status: 'self_hosted',
+        retention: { '*': 'none' },
+        sub_processors: ['none'],
+      }),
+    },
+  })
+  const task = policy({ allowed_processors: ['anthropic', 'ollama'] })
+
+  const guarded = (
+    mode: 'off' | 'warn' | 'enforce',
+    resolve: (p: AiTaskPolicy) => string | null,
+    seen: Array<[ProcessorViolation, string]> = [],
+  ) =>
+    deps({
+      registry: registryOf(task),
+      processorGuard: {
+        mode,
+        registry: processors,
+        resolveProcessor: resolve,
+        onProcessorViolation: (v, m) => void seen.push([v, m]),
+      },
+    })
+
+  it('enforce refuses an unreviewed processor before any provider is contacted, with a typed error and no fallback', async () => {
+    const base = vi.fn(async () => 'x')
+    const seen: Array<[ProcessorViolation, string]> = []
+    const llm = governedLlm(
+      base,
+      guarded('enforce', () => 'anthropic', seen),
+      'test.task.v1',
+      't1',
+    )
+    const err = await llm('s', 'p').catch((e) => e)
+    expect(err).toBeInstanceOf(ProcessorPolicyError)
+    expect(err).toBeInstanceOf(TaskPolicyError)
+    expect(err.violation.reason).toBe('processor_unreviewed')
+    expect(base).not.toHaveBeenCalled()
+    expect(seen[0]![1]).toBe('enforce')
+  })
+
+  it('warn reports the violation but still serves the call', async () => {
+    const base = vi.fn(async () => 'ok')
+    const seen: Array<[ProcessorViolation, string]> = []
+    const llm = governedLlm(
+      base,
+      guarded('warn', () => 'anthropic', seen),
+      'test.task.v1',
+      't1',
+    )
+    expect(await llm('s', 'p')).toBe('ok')
+    expect(seen).toHaveLength(1)
+    expect(seen[0]![0].reason).toBe('processor_unreviewed')
+    expect(seen[0]![1]).toBe('warn')
+  })
+
+  it('off, or no guard at all, skips the check', async () => {
+    const seen: Array<[ProcessorViolation, string]> = []
+    const base = vi.fn(async () => 'ok')
+    await governedLlm(
+      base,
+      guarded('off', () => 'anthropic', seen),
+      'test.task.v1',
+      't1',
+    )('s', 'p')
+    await governedLlm(base, deps({ registry: registryOf(task) }), 'test.task.v1', 't1')('s', 'p')
+    expect(seen).toHaveLength(0)
+    expect(base).toHaveBeenCalledTimes(2)
+  })
+
+  it('a self-hosted processor passes even in enforce mode', async () => {
+    const llm = governedLlm(
+      async () => 'ok',
+      guarded('enforce', () => 'ollama'),
+      'test.task.v1',
+      't1',
+    )
+    expect(await llm('s', 'p')).toBe('ok')
+  })
+
+  it('a path with no processor (device_only) is not checked', async () => {
+    const llm = governedLlm(
+      async () => 'ok',
+      guarded('enforce', () => null),
+      'test.task.v1',
+      't1',
+    )
+    expect(await llm('s', 'p')).toBe('ok')
+  })
+
+  it('a processor outside the task allow-list is refused in enforce mode', async () => {
+    const narrow = deps({
+      registry: registryOf(policy({ allowed_processors: ['ollama'] })),
+      processorGuard: {
+        mode: 'enforce',
+        registry: processors,
+        resolveProcessor: () => 'anthropic',
+      },
+    })
+    const err = await governedLlm(
+      async () => 'ok',
+      narrow,
+      'test.task.v1',
+      't1',
+    )('s', 'p').catch((e) => e)
+    expect(err.violation.reason).toBe('processor_not_allowed_for_task')
+  })
+
+  it('vision uses the processor it was given, and decisions can be pinned to the self-hosted model', async () => {
+    const vision = governedVision(
+      async () => 'ok',
+      guarded('enforce', () => 'ollama'),
+      'test.task.v1',
+      't1',
+      {
+        processor: 'anthropic',
+      },
+    )
+    await expect(vision([{ type: 'text', text: 'x' }])).rejects.toBeInstanceOf(ProcessorPolicyError)
+
+    const decide = governedDecide(
+      (async () => ({ ok: true, value: 1 })) as never,
+      guarded('enforce', () => 'anthropic'),
+      'test.task.v1',
+      't1',
+      { processor: 'ollama' },
+    )
+    await expect(
+      decide({ system: 's', prompt: 'p', schema: {} as never } as never),
+    ).resolves.toBeTruthy()
   })
 })

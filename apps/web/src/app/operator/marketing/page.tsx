@@ -47,7 +47,10 @@ import {
   type CampaignFilter,
 } from '@/lib/api'
 import { PostPreview } from './_components/PostPreview'
+import { ProfilesPanel } from './_components/ProfilesPanel'
 import { PostCalendar } from './_components/PostCalendar'
+import { PlanPanel } from './_components/PlanPanel'
+import { FunnelPanel } from './_components/FunnelPanel'
 import { ReasonAction } from '../_components/ReasonAction'
 
 const STATE_STYLE: Record<MarketingPost['state'], string> = {
@@ -106,7 +109,7 @@ function toLocalInput(iso: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-type Tab = 'compose' | 'queue' | 'calendar' | 'performance' | 'campaigns'
+type Tab = 'compose' | 'queue' | 'plan' | 'calendar' | 'performance' | 'campaigns' | 'profiles'
 
 export default function MarketingPage() {
   const toast = useToast()
@@ -517,9 +520,11 @@ export default function MarketingPage() {
               [
                 ['compose', 'Compose'],
                 ['queue', `Queue${pendingCount ? ` (${pendingCount})` : ''}`],
+                ['plan', 'Plan'],
                 ['calendar', 'Calendar'],
                 ['performance', 'Performance'],
                 ['campaigns', 'Campaigns'],
+                ['profiles', 'Profiles'],
               ] as [Tab, string][]
             ).map(([key, label]) => (
               <button
@@ -890,12 +895,16 @@ export default function MarketingPage() {
                   {post.publish_error && (
                     <p className="text-xs text-danger mt-2 leading-snug">{post.publish_error}</p>
                   )}
-                  {post.copy_check && !post.copy_check.ok && (post.state === 'draft' || post.state === 'publish_failed') && (
-                    <p role="alert" className="text-xs text-danger mt-2 leading-snug">
-                      Fails the copy guard, so it cannot be approved until edited:{' '}
-                      {post.copy_check.violations.map((v) => `${v.rule} ("${v.match}")`).join('; ')}
-                    </p>
-                  )}
+                  {post.copy_check &&
+                    !post.copy_check.ok &&
+                    (post.state === 'draft' || post.state === 'publish_failed') && (
+                      <p role="alert" className="text-xs text-danger mt-2 leading-snug">
+                        Fails the copy guard, so it cannot be approved until edited:{' '}
+                        {post.copy_check.violations
+                          .map((v) => `${v.rule} ("${v.match}")`)
+                          .join('; ')}
+                      </p>
+                    )}
                   {(post.state === 'draft' || post.state === 'publish_failed') &&
                     editingId !== post.id && (
                       <div className="flex gap-2 mt-3">
@@ -969,11 +978,18 @@ export default function MarketingPage() {
           )}
 
           {/* Calendar */}
+          {tab === 'plan' && <PlanPanel />}
           {tab === 'calendar' && <PostCalendar posts={posts} />}
 
           {/* Performance */}
           {tab === 'performance' && (
             <>
+              {performance?.funnel && <FunnelPanel funnel={performance.funnel} />}
+              {performance && (
+                <p className="text-xs text-ink-tertiary mb-2">
+                  Posts, channels and campaigns below cover the last 90 days.
+                </p>
+              )}
               {performance &&
               (performance.totals.views > 0 ||
                 performance.totals.signups > 0 ||
@@ -1172,6 +1188,7 @@ export default function MarketingPage() {
 
           {/* Campaigns — one-shot targeted email to filtered cohorts */}
           {tab === 'campaigns' && <CampaignsPanel />}
+          {tab === 'profiles' && <ProfilesPanel />}
         </>
       )}
     </div>

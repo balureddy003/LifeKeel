@@ -172,8 +172,10 @@ import { runFamilyHeartbeat } from './jobs/family-heartbeat.js'
 import { runFreshnessCheck } from './jobs/freshness-check.js'
 import { registerFamilyFreshnessRoutes } from './routes/family-freshness.js'
 import { registerPerceivedProtectionRoutes } from './routes/perceived-protection.js'
+import { registerAiDisclosureRoutes } from './routes/ai-disclosure.js'
 import { registerFamilyChannelRoutes } from './routes/family-channels.js'
 import { registerOperatorRetentionRoutes } from './routes/operator-retention.js'
+import { registerOperatorDeletionRoutes } from './routes/operator-deletion.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
 import { registerSupportRoutes } from './routes/support.js'
 import { registerFamilyReadinessRoutes } from './routes/family-readiness.js'
@@ -186,6 +188,8 @@ import { registerFamilyContinuityRoutes } from './routes/family-continuity.js'
 import { registerFamilyCashflowRoutes } from './routes/family-cashflow.js'
 import { registerFamilyAssetRoutes } from './routes/family-assets.js'
 import { registerFamilyLegacyRoutes } from './routes/family-legacy.js'
+import { registerMarketingPlanRoutes } from './routes/marketing-plan.js'
+import { registerMarketingProfileRoutes } from './routes/marketing-profiles.js'
 import { registerLeadRoutes } from './routes/leads.js'
 import { registerHeartbeatUnsubscribeRoutes } from './routes/heartbeat-unsubscribe.js'
 import { registerSendgridWebhookRoutes } from './routes/webhooks-sendgrid.js'
@@ -467,6 +471,9 @@ try {
         try {
           await withCronLock(workflowDb, 'marketing-generate', async () => {
             await generateDailyMarketingDrafts(workflowDb, taskLlmFor('marketing.social_draft.v1'))
+            // PRD-210: keep next week's pillar plan drafted for the weekly review.
+            const { ensureWeeklyPlans } = await import('./marketing/content-plan.js')
+            await ensureWeeklyPlans(workflowDb, taskLlmFor('marketing.social_draft.v1'))
           })
         } catch (err) {
           log.error({ err }, 'Marketing draft generation failed')
@@ -2042,6 +2049,7 @@ if (workflowDb) {
   registerFamilyReadinessRoutes(app, workflowDb)
   registerFamilyFreshnessRoutes(app, workflowDb)
   registerPerceivedProtectionRoutes(app, workflowDb)
+  registerAiDisclosureRoutes(app)
   registerFamilyChannelRoutes(app, workflowDb)
   registerFamilyScenarioRoutes(app, workflowDb)
   registerFamilyFeedRoutes(app, workflowDb)
@@ -2059,9 +2067,12 @@ if (workflowDb) {
   registerPushRoutes(app, workflowDb, deliveryRouter)
   registerReminderRoutes(app, workflowDb)
   registerMarketingPostRoutes(app, workflowDb)
+  registerMarketingProfileRoutes(app, workflowDb)
+  registerMarketingPlanRoutes(app, workflowDb)
   ensureAutopilotIndexes(workflowDb)
   await registerOperatorRoutes(app, workflowDb)
   registerOperatorRetentionRoutes(app, workflowDb)
+  registerOperatorDeletionRoutes(app, workflowDb)
   registerDetectorEvalRoutes(app, workflowDb, engine, detectorEvalDir(ROOT))
 }
 // Prometheus metrics — generic ops/observability, not vertical-specific.

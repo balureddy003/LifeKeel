@@ -65,6 +65,12 @@ function webCopyFiles(): string[] {
     // PRD-141/145/203: new user-facing copy outside the landing page.
     'apps/web/src/components/PerceivedProtectionCard.tsx',
     'apps/web/src/components/FreshnessCard.tsx',
+    'apps/web/src/lib/extraction-review-copy.ts',
+    'apps/web/src/components/ExtractionReview.tsx',
+    'apps/web/src/lib/deletion-receipt-copy.ts',
+    'apps/web/src/components/DeletionReceiptCard.tsx',
+    'apps/web/src/lib/ai-disclosure-copy.ts',
+    'apps/web/src/app/ai-processing/page.tsx',
     'apps/web/src/components/ChannelsCard.tsx',
     'apps/web/src/lib/channel-explain.ts',
     'apps/api/src/delivery/push-payload.ts',

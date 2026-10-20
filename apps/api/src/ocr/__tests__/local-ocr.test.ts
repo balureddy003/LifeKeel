@@ -65,21 +65,18 @@ describe('ocrImageToText', () => {
 
 const allNull = {
   provider: null,
+  policy_type: null,
   policy_number: null,
-  account_number: null,
+  coverage_amount: null,
   premium: null,
   renewal_date: null,
-  maturity_date: null,
-  due_date: null,
-  coverage_amount: null,
-  balance: null,
-  interest_rate: null,
-  beneficiary: null,
-  period: null,
-  net_pay: null,
-  gross_pay: null,
+  has_beneficiary: null,
   claims_phone: null,
   claims_email: null,
+  balance: null,
+  net_pay: null,
+  gross_pay: null,
+  document_date: null,
 }
 const decideWith = (
   value: unknown,
@@ -105,7 +102,6 @@ describe('extractDocumentFieldsLocal', () => {
             ...allNull,
             category: 'insurance',
             policy_type: 'life',
-            summary: 'Life policy',
             provider: ' BrightLife ',
             coverage_amount: '250,000 GBP',
             premium: '   ',
@@ -113,11 +109,14 @@ describe('extractDocumentFieldsLocal', () => {
           calls,
         ),
       )
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         category: 'insurance',
         fields: { provider: 'BrightLife', coverage_amount: '250,000 GBP', policy_type: 'life' },
-        rawText: 'Life policy',
+        // No free-text summary is kept (PRD-143): it could carry health or third-party details.
+        rawText: '',
+        extractor: { kind: 'local' },
       })
+      expect(result.text).toContain('Policy number: BL-1')
       // OCR text reached the model inside the untrusted-data wrapper.
       expect(calls[0]!.prompt).toContain('<document_text>')
       expect(calls[0]!.prompt).toContain('Policy number: BL-1')
@@ -136,7 +135,7 @@ describe('extractDocumentFieldsLocal', () => {
         png,
         'image/png',
         'a.png',
-        decideWith({ ...allNull, category: 'other', summary: 's' }, calls),
+        decideWith({ ...allNull, category: 'other' }, calls),
       )
       const schema = calls[0]!.jsonSchema as {
         properties: Record<string, unknown>
@@ -175,7 +174,7 @@ describe('extractDocumentFieldsLocal', () => {
       pdf,
       'application/pdf',
       'doc.pdf',
-      decideWith({ ...allNull, category: 'insurance', policy_type: null, summary: 'pdf' }, calls),
+      decideWith({ ...allNull, category: 'insurance', policy_type: null }, calls),
     )
     expect(result.category).toBe('insurance')
     expect(calls).toHaveLength(1)
@@ -254,6 +253,8 @@ describe('special-category document screen (Art. 9 quarantine)', () => {
         updateOne: vi.fn(async (_f: unknown, u: Record<string, unknown>) => {
           updates.push(u)
         }),
+        // PRD-143: extracted docs write review candidates via replaceOne.
+        replaceOne: vi.fn(async () => ({})),
       }),
     } as any
   }
@@ -330,7 +331,6 @@ describe('special-category document screen (Art. 9 quarantine)', () => {
       ...allNull,
       category: 'other',
       policy_type: null,
-      summary: 'Letter',
     })
     try {
       await processDocument(

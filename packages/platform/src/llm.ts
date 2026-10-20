@@ -760,7 +760,8 @@ export function createLlmRouterFromEnv(cfg: LlmConfig = {}): LlmFn {
   return createLlmRouter({ ...cfg, provider: cfg.provider ?? provider ?? 'anthropic' })
 }
 
-function detectActiveProvider(): LlmProvider | null {
+/** The provider createLlmRouterFromEnv would pick right now, from the environment. */
+export function detectActiveProvider(): LlmProvider | null {
   if (process.env['ANTHROPIC_API_KEY']) return 'anthropic'
   if (process.env['OPENAI_API_KEY']) return 'openai'
   if (process.env['GROQ_API_KEY']) return 'groq'

@@ -1,0 +1,110 @@
+# AI processor registry — PRD-142, ARCHITECTURE.md §8.4, CLAUDE.md rule 3.
+#
+# Who may receive a family's content when a model call runs. The task registry
+# (definitions/ai-tasks.yaml) says which processors a task may use
+# (`allowed_processors`); this file says whether each one is approved.
+#
+# STATUS TODAY: every hosted processor is `unreviewed`. No signed terms, DPA or
+# retention evidence has been supplied, so nothing here may claim otherwise.
+# Unknown facts are the explicit value `not_reviewed`, never an invented one.
+# Retention for an unreviewed processor is the most conservative class
+# (limited_abuse_log) because that is what must be assumed until reviewed.
+#
+# To approve a processor the owner supplies the real terms and sets
+# `status: approved` with every field filled and real YYYY-MM-DD dates: the
+# loader (packages/platform/src/ai-processors.ts) refuses `not_reviewed` on an
+# approved entry. Retention is per model handle (`*` = any model not listed).
+# A lapsed `review_due` blocks the processor again.
+#
+# Enforcement is AI_PROCESSOR_ENFORCEMENT = off | warn | enforce (default
+# warn: violations are logged and counted but the call is served). Do not set
+# `enforce` until the hosted processors this deployment actually uses are
+# approved, or every hosted call will be refused.
+
+version: 1
+
+processors:
+  ollama:
+    name: LifeKeel self-hosted model (Ollama)
+    hosting: self_hosted
+    status: self_hosted
+    endpoint: LOCAL_JUDGE_BASE_URL (LifeKeel-operated infrastructure)
+    region: LifeKeel-operated infrastructure
+    terms_ref: none — no third-party processor
+    no_training_basis: no third party receives content; the model is used for inference only
+    retention:
+      '*': none
+    sub_processors: [none]
+    transfer_mechanism: none — content stays in LifeKeel infrastructure
+    dpa_date: not_applicable
+    breach_notice_sla: not_applicable
+    reviewed_at: not_applicable
+    review_due: not_applicable
+
+  anthropic:
+    name: Anthropic API
+    hosting: hosted
+    status: unreviewed
+    endpoint: https://api.anthropic.com
+    region: not_reviewed
+    terms_ref: not_reviewed
+    no_training_basis: not_reviewed
+    retention:
+      '*': limited_abuse_log
+    sub_processors: [not_reviewed]
+    transfer_mechanism: not_reviewed
+    dpa_date: not_reviewed
+    breach_notice_sla: not_reviewed
+    reviewed_at: not_reviewed
+    review_due: not_reviewed
+
+  openai:
+    name: OpenAI API
+    hosting: hosted
+    status: unreviewed
+    endpoint: https://api.openai.com
+    region: not_reviewed
+    terms_ref: not_reviewed
+    no_training_basis: not_reviewed
+    retention:
+      '*': limited_abuse_log
+    sub_processors: [not_reviewed]
+    transfer_mechanism: not_reviewed
+    dpa_date: not_reviewed
+    breach_notice_sla: not_reviewed
+    reviewed_at: not_reviewed
+    review_due: not_reviewed
+
+  azure:
+    name: Azure OpenAI Service
+    hosting: hosted
+    status: unreviewed
+    endpoint: the resource named by AZURE_OPENAI_ENDPOINT
+    region: not_reviewed
+    terms_ref: not_reviewed
+    no_training_basis: not_reviewed
+    retention:
+      '*': limited_abuse_log
+    sub_processors: [not_reviewed]
+    transfer_mechanism: not_reviewed
+    dpa_date: not_reviewed
+    breach_notice_sla: not_reviewed
+    reviewed_at: not_reviewed
+    review_due: not_reviewed
+
+  groq:
+    name: Groq API
+    hosting: hosted
+    status: unreviewed
+    endpoint: https://api.groq.com
+    region: not_reviewed
+    terms_ref: not_reviewed
+    no_training_basis: not_reviewed
+    retention:
+      '*': limited_abuse_log
+    sub_processors: [not_reviewed]
+    transfer_mechanism: not_reviewed
+    dpa_date: not_reviewed
+    breach_notice_sla: not_reviewed
+    reviewed_at: not_reviewed
+    review_due: not_reviewed

@@ -50,6 +50,8 @@ export const KNOWN_EVENTS = new Set([
   'blog_view',
   'blog_cta_click',
   'guide_view',
+  // PRD-210: the signup page was opened; counts as a visit under the link's UTM tags.
+  'signup_view',
 ])
 
 const DIGEST_VARIANTS = new Set(['all_clear', 'note', 'missed'])

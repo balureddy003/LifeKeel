@@ -28,6 +28,14 @@ set_plist_string NSFaceIDUsageDescription "Unlock LifeKeel to see your family da
 set_plist_string CFBundleShortVersionString "${VERSION_NAME:-0.1.0}"
 set_plist_string CFBundleVersion "${BUILD_NUMBER:-1}"
 
+# Export-compliance pre-answer — standard HTTPS/TLS only, so App Store Connect
+# stops asking the encryption question on every build.
+$PB -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST" 2>/dev/null \
+  || $PB -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST"
+
+# Brand icons + launch screen into the generated asset catalogue.
+node scripts/apply-icons.mjs ios
+
 # Push entitlement — the Fastfile points CODE_SIGN_ENTITLEMENTS at this file,
 # which avoids editing the generated .pbxproj. The App ID must have Push
 # enabled (one-time portal step, or Xcode automatic signing adds it).

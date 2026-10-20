@@ -49,6 +49,9 @@ import {
 import { type LlmFn } from '@lifekeel/platform'
 import { encryptForTenant } from '../crypto/envelope.js'
 import { checkCopy, describeViolations, type CopyCheck } from '../marketing/copy-guard.js'
+import { utmQuery } from '../marketing/utm.js'
+import { readFunnel, type FunnelView } from '../marketing/funnel.js'
+import { isRollupReady } from '../jobs/metrics-rollup.js'
 import { taskLlm } from '../ai/task-gateway.js'
 import { ConnectorActionExecutor } from '@lifekeel/workflows'
 
@@ -74,6 +77,9 @@ export interface MarketingPostDoc {
   generated?: 'llm' | 'template'
   /** Marketing copy guard result for the current content (PRD-210). A post that fails cannot be approved or published. */
   copy_check?: CopyCheck
+  /** Set when the post is one variant of a planned content item (PRD-210 phase 3). */
+  content_item_id?: string
+  pillar?: string
   /** UTM campaign tag — 'lifekeel_social' for ungrouped posts; named campaigns
    *  let the operator split performance by push. */
   campaign?: string
@@ -140,13 +146,13 @@ function trustScope(channel: string): string {
   return `marketing_social:${channel}`
 }
 
-interface AutomationSettings {
+export interface AutomationSettings {
   auto_execute_enabled?: boolean
   dry_run_mode?: boolean
   trust_level_by_workflow?: Record<string, number>
 }
 
-async function getAutomation(db: Db, tenantId: string): Promise<AutomationSettings> {
+export async function getAutomation(db: Db, tenantId: string): Promise<AutomationSettings> {
   const doc = await db.collection('tenant_settings').findOne({ tenant_id: tenantId })
   return (doc?.['automation'] as AutomationSettings | undefined) ?? {}
 }
@@ -277,7 +283,13 @@ export async function publishDueMarketingPosts(
     if (!recheck.ok) {
       await col.updateOne(
         { id: post.id, state: 'approved' },
-        { $set: { state: 'publish_failed', publish_error: `copy_guard_failed: ${describeViolations(recheck)}`, copy_check: recheck } },
+        {
+          $set: {
+            state: 'publish_failed',
+            publish_error: `copy_guard_failed: ${describeViolations(recheck)}`,
+            copy_check: recheck,
+          },
+        },
       )
       continue
     }
@@ -399,7 +411,9 @@ export async function draftBlogPromoPost(
     created_by: createdBy,
     created_at: new Date(),
   }
-  await db.collection<MarketingPostDoc>('marketing_posts').insertOne({ ...post, copy_check: checkCopy(post.content, 'social') })
+  await db
+    .collection<MarketingPostDoc>('marketing_posts')
+    .insertOne({ ...post, copy_check: checkCopy(post.content, 'social') })
   return post
 }
 
@@ -419,11 +433,16 @@ export interface MarketingPerformanceRow {
  *  Channel rollups come from event meta.utm_source (captured since the
  *  UTM'd links shipped) and signup attribution. Aggregate counts only —
  *  no user-level data crosses this read. */
+/** How far back the per-post, channel and campaign tables look. */
+export const PERFORMANCE_WINDOW_DAYS = 90
+
 export async function marketingPerformance(db: Db): Promise<{
   posts: MarketingPerformanceRow[]
   channels: { channel: string; views: number; signups: number }[]
   campaigns: { campaign: string; views: number; signups: number; leads: number }[]
   totals: { views: number; cta_clicks: number; signups: number; leads: number }
+  /** Visit to first-insight funnel by source and pillar, from the daily rollups; null until they exist. */
+  funnel: FunnelView | null
   /** "What works" — trait-level engagement analysis over measured posts.
    *  Providers don't expose impressions, so engagement is normalized
    *  against the account's own median (x=1.0) rather than per-impression:
@@ -437,10 +456,34 @@ export async function marketingPerformance(db: Db): Promise<{
     top_post?: { channel: string; excerpt: string; engagement: number }
   }
 }> {
-  const events = await db.collection('growth_events').find({}).toArray()
-  const users = await db.collection('users').find({}).toArray()
-  const leads = await db.collection('leads').find({}).toArray()
-  const blogs = await db.collection('blog_posts').find({}).toArray()
+  // Bounded reads (PRD-210 phase 4): only the blog events, social-attributed signups and leads of
+  // the last PERFORMANCE_WINDOW_DAYS, with only the fields used. This used to load whole collections.
+  const since = new Date(Date.now() - PERFORMANCE_WINDOW_DAYS * 86_400_000)
+  const events = await db
+    .collection('growth_events')
+    .find(
+      { event: { $in: ['blog_view', 'blog_cta_click'] }, created_at: { $gte: since } },
+      { projection: { _id: 0, event: 1, path: 1, meta: 1 } },
+    )
+    .toArray()
+  const users = await db
+    .collection('users')
+    .find(
+      { 'attribution.utm_medium': 'social', created_at: { $gte: since } },
+      { projection: { _id: 0, attribution: 1 } },
+    )
+    .toArray()
+  const leads = await db
+    .collection('leads')
+    .find(
+      { 'attribution.utm_medium': 'social', created_at: { $gte: since } },
+      { projection: { _id: 0, attribution: 1 } },
+    )
+    .toArray()
+  const blogs = await db
+    .collection('blog_posts')
+    .find({}, { projection: { _id: 0, slug: 1, title: 1 } })
+    .toArray()
   const publishedPosts = await db
     .collection<MarketingPostDoc>('marketing_posts')
     .find(
@@ -612,7 +655,8 @@ export async function marketingPerformance(db: Db): Promise<{
         }
       : {}),
   }
-  return { posts, channels, campaigns, totals, insights }
+  const funnel = (await isRollupReady(db)) ? await readFunnel(db, 28) : null
+  return { posts, channels, campaigns, totals, funnel, insights }
 }
 
 /** Engagement sweep — poll channel APIs for like/repost/reply counts on
@@ -906,15 +950,24 @@ Rules — these are non-negotiable:
 
 /** UTM'd site link — clicks land in users.attribution.utm_source so the
  *  operator funnel can attribute signups back to the channel/post. */
-function siteLink(
+export function siteLink(
   channel: string,
   path: string,
   contentTag: string,
   campaign = 'lifekeel_social',
 ): string {
   const base = (process.env['LIFEKEEL_URL'] ?? '').replace(/\/$/, '')
+  // Blog slugs and brief ids are lowercase tokens and pass through unchanged, so utm_content still
+  // equals the slug the per-post join looks for. A value outside the scheme falls back to a slug-safe
+  // form rather than dropping the link (and would not join; slugs are authored as lowercase kebab-case).
+  const safe = (v: string) =>
+    v
+      .toLowerCase()
+      .replace(/[^a-z0-9_.-]+/g, '-')
+      .replace(/^-+/, '')
+      .slice(0, 64) || 'x'
   return base
-    ? `${base}${path}?utm_source=${encodeURIComponent(channel)}&utm_medium=social&utm_campaign=${encodeURIComponent(campaign)}&utm_content=${encodeURIComponent(contentTag)}`
+    ? `${base}${path}?${utmQuery({ source: safe(channel), medium: 'social', campaign: safe(campaign), content: safe(contentTag) })}`
     : ''
 }
 
@@ -941,7 +994,11 @@ async function blogSourceBlock(
  *  Strictly tenant-scoped — nobody else's winners leak into a prompt.
  *  Returns '' when the sample is too thin for "learning" to mean anything,
  *  so a brand-new tenant generates exactly as before. */
-async function learningContextBlock(db: Db, tenantId: string, channel: string): Promise<string> {
+export async function learningContextBlock(
+  db: Db,
+  tenantId: string,
+  channel: string,
+): Promise<string> {
   const published = await db
     .collection<MarketingPostDoc>('marketing_posts')
     .find({ tenant_id: tenantId, state: 'published' })
@@ -1012,7 +1069,7 @@ async function learningContextBlock(db: Db, tenantId: string, channel: string): 
 
 /** LLM draft with deterministic fallback — shared by the generate route
  *  and the daily cron so both produce identical-quality output. */
-async function draftPostText(
+export async function draftPostText(
   llm: LlmFn,
   channel: string,
   sourceBlock: string,
@@ -1449,12 +1506,18 @@ export function registerMarketingPostRoutes(
       const { tenant_id, user_id } = req.authContext
       // Copy guard (PRD-210): checked against the content as it is now, so edits count. A failing
       // post can be edited and approved again; it can never be approved as it stands.
-      const current = await col.findOne({ id: req.params.id, tenant_id, state: { $in: ['draft', 'publish_failed'] } })
+      const current = await col.findOne({
+        id: req.params.id,
+        tenant_id,
+        state: { $in: ['draft', 'publish_failed'] },
+      })
       if (current) {
         const check = checkCopy(current.content, 'social')
         if (!check.ok) {
           await col.updateOne({ id: current.id }, { $set: { copy_check: check } })
-          return reply.status(422).send({ error: 'copy_guard_failed', violations: check.violations })
+          return reply
+            .status(422)
+            .send({ error: 'copy_guard_failed', violations: check.violations })
         }
       }
       const claimed = (await col.findOneAndUpdate(
