@@ -62,6 +62,7 @@ COPY --from=builder /app/packages ./packages
 # verticals are empty — the entire signal-generation half of the product stops.
 COPY --from=builder /app/detectors ./detectors
 COPY --from=builder /app/connectors ./connectors
+COPY --from=builder /app/definitions ./definitions
 COPY --from=builder /app/playbooks ./playbooks
 COPY --from=builder /app/detector-evals ./detector-evals
 COPY --from=builder /app/verticals ./verticals
