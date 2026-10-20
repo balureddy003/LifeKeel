@@ -311,3 +311,146 @@ export async function runFloorEvals(
     minComplete: 1.0,
   })
 }
+
+// ── Layer-B NER evals ────────────────────────────────────────────────────
+//
+// The curtain is a probabilistic control — the NER eval measures how much
+// a candidate model narrows the residual leak *without* mangling prose.
+// Two hard gates: recall on mustRedact spans, and zero false hits on
+// mustNotRedact spans (a model that tags "April" as a person swallows
+// dates and can't ship no matter its recall).
+
+export interface NerEvalCase {
+  id: string
+  input: string
+  /** Spans a correct classifier must surface (entity text contains the
+   *  span, case-insensitive). */
+  mustRedact: string[]
+  /** Spans that must NOT be covered by any entity — precision traps. */
+  mustNotRedact?: string[]
+}
+
+export const NER_EVAL_CASES: NerEvalCase[] = [
+  {
+    id: 'bare-name',
+    input: 'Sarah says the boiler needs replacing before winter.',
+    mustRedact: ['Sarah'],
+  },
+  {
+    id: 'unanchored-third-party',
+    input:
+      'My neighbour Priya Sharma offered to watch the children while we attend the probate appointment.',
+    mustRedact: ['Priya Sharma'],
+  },
+  {
+    id: 'org-no-anchor',
+    input: 'The severance letter from Rolls-Royce arrived yesterday.',
+    mustRedact: ['Rolls-Royce'],
+  },
+  {
+    id: 'unanchored-place',
+    input: 'We might move to Harrogate to be closer to family.',
+    mustRedact: ['Harrogate'],
+  },
+  {
+    id: 'two-people',
+    input: 'Tom and Rachel offered to drive us to the appointment.',
+    mustRedact: ['Tom', 'Rachel'],
+  },
+  {
+    id: 'address-in-prose',
+    input: "The flat on Boundary Lane is still in Dad's name.",
+    mustRedact: ['Boundary Lane'],
+  },
+  {
+    id: 'month-precision-trap',
+    input: 'Our council tax band review is due in April and the water bill moved in May.',
+    mustRedact: [],
+    mustNotRedact: ['April', 'May'],
+  },
+  {
+    id: 'product-terms-are-not-people',
+    input: 'Check whether the Premium Bonds prize and the Help to Buy ISA bonus were paid.',
+    mustRedact: [],
+    mustNotRedact: ['Premium Bonds'],
+  },
+  {
+    id: 'titled-plus-month',
+    input: 'Dr Okafor said the next review is in March.',
+    mustRedact: ['Okafor'],
+    mustNotRedact: ['March'],
+  },
+  {
+    id: 'no-entities',
+    input: 'The standing order goes out on the first of each month.',
+    mustRedact: [],
+    mustNotRedact: ['first'],
+  },
+]
+
+export interface NerEvalResult {
+  id: string
+  hit: string[]
+  missed: string[]
+  forbiddenHits: string[]
+}
+
+export interface NerEvalVerdict {
+  /** Total mustRedact expectations across cases. */
+  expected: number
+  /** Expectations covered by some entity span. */
+  recalled: number
+  /** mustNotRedact spans covered by an entity — each is a precision failure. */
+  forbiddenHits: string[]
+  /** recalled / expected (1 when there are no expectations). */
+  recall: number
+  /** pass = recall ≥ minRecall AND zero forbidden hits. */
+  pass: boolean
+  results: NerEvalResult[]
+}
+
+function covered(entities: { text: string }[], span: string): boolean {
+  const needle = span.toLowerCase()
+  return entities.some((e) => {
+    const hay = e.text.trim().toLowerCase()
+    return hay.includes(needle) || needle.includes(hay)
+  })
+}
+
+/**
+ * NER gate — runtime-agnostic like runDeviceDraftEvals: pass a real
+ * classifier (classifyEntities) inside a device harness, or a mock in
+ * vitest. Defaults: ≥60% recall of expected spans, zero forbidden hits.
+ * The deterministic Layer-A/B recognizers are deliberately NOT in scope —
+ * this measures the model's marginal contribution on cases they miss.
+ */
+export async function runNerEvals(
+  cases: NerEvalCase[],
+  classify: (text: string) => Promise<{ text: string }[]>,
+  opts: { minRecall?: number } = {},
+): Promise<NerEvalVerdict> {
+  const { minRecall = 0.6 } = opts
+  const results: NerEvalResult[] = []
+  let expected = 0
+  let recalled = 0
+  const allForbidden: string[] = []
+  for (const c of cases) {
+    const entities = await classify(c.input)
+    const hit = c.mustRedact.filter((s) => covered(entities, s))
+    const missed = c.mustRedact.filter((s) => !covered(entities, s))
+    const forbiddenHits = (c.mustNotRedact ?? []).filter((s) => covered(entities, s))
+    expected += c.mustRedact.length
+    recalled += hit.length
+    for (const f of forbiddenHits) allForbidden.push(`${c.id}: '${f}'`)
+    results.push({ id: c.id, hit, missed, forbiddenHits })
+  }
+  const recall = expected === 0 ? 1 : recalled / expected
+  return {
+    expected,
+    recalled,
+    forbiddenHits: allForbidden,
+    recall,
+    pass: recall >= minRecall && allForbidden.length === 0,
+    results,
+  }
+}
