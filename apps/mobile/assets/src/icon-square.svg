@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <!-- Opaque square variant of apps/web/public/icon.svg — Apple applies the
+       squircle mask itself, so store icons must be full-bleed and opaque. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="192" y2="192" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0b3b5c"/>
+      <stop offset="1" stop-color="#0e7490"/>
+    </linearGradient>
+    <linearGradient id="twin" x1="96" y1="112" x2="96" y2="162" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7dd3fc" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#7dd3fc" stop-opacity="0.25"/>
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" fill="url(#bg)"/>
+  <path d="M96 30 L96 160" stroke="#ffffff" stroke-width="7" stroke-linecap="round" opacity="0.9"/>
+  <path d="M96 34 C122 48 130 66 126 84 L96 84 Z" fill="#ffffff" opacity="0.95"/>
+  <path d="M96 112 L126 112 C130 130 122 148 96 162 Z" fill="url(#twin)"/>
+  <rect x="80" y="156" width="32" height="12" rx="6" fill="#7dd3fc"/>
+  <path d="M26 98 Q38 92 50 98 T74 98" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" opacity="0.5"/>
+  <path d="M118 98 Q130 92 142 98 T166 98" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" opacity="0.5"/>
+</svg>

@@ -18,6 +18,9 @@ if [ -n "${GOOGLE_SERVICES_PATH:-}" ] && [ -f "${GOOGLE_SERVICES_PATH}" ]; then
   echo "google-services.json installed"
 fi
 
+# Brand icons + splashes into the generated res/ tree.
+node scripts/apply-icons.mjs android
+
 # Release signing — appended block merges into the generated build.gradle
 # (Gradle merges repeated android/buildTypes blocks), so the gitignored
 # project stays fully regenerable. Guarded so re-runs don't stack blocks.

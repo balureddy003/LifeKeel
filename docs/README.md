@@ -16,6 +16,7 @@ Start with the row that matches what you are doing.
 | [Running checks locally](local-testing.md) | You need Mongo/Redis, the boot smoke test, image builds, or local models. |
 | [Debugging locally](local-debugging.md) | You want breakpoints, a populated demo app, simctl, or DB/Redis inspection. |
 | [Mobile store releases](mobile-release.md) | You are shipping the Capacitor shell to TestFlight/Play — one-time setup, secrets, trigger. |
+| [Mobile store listing](mobile-store-listing.md) | You are filling the App Store / Play Console forms — drafted copy, privacy declarations, checklist. |
 | [.devin/AGENTS.md](../.devin/AGENTS.md) | You run a non-Claude agent. Mechanical facts and commands. |
 
 ## Product (what we build and why)
