@@ -1009,6 +1009,21 @@ export function fetchRetentionMetrics(): Promise<RetentionMetrics> {
   return operatorRequest('/operator/retention')
 }
 
+// ── Delivery channels (PRD-140) ─────────────────────────────────────────
+
+export interface ChannelState {
+  email: { available: boolean }
+  web_push: { devices: number; enabled: boolean }
+  mobile_push: { devices: number; enabled: boolean; platforms: string[] }
+  recent_failures: { web_push: number; mobile_push: number; last_at: string | null }
+  first_channel: 'mobile_push' | 'web_push' | 'email' | 'none'
+}
+
+/** null for children (403), signed-out visitors and any failure. */
+export async function fetchChannelState(): Promise<ChannelState | null> {
+  return apiFetch<ChannelState | null>('/family/channels', null)
+}
+
 // ── Freshness (PRD-145) ──────────────────────────────────────────────────
 
 export interface FreshnessCheck {

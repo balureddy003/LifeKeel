@@ -16,6 +16,7 @@ import {
 import { getApiBase } from './env'
 import { credFetch } from './http'
 import { purgeClientData } from './session-purge'
+import { unregisterAllPush } from './push'
 import { getAttribution } from './attribution'
 
 interface AuthContextValue {
@@ -367,13 +368,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut = () => {
+    // PRD-140: stop this device receiving the signed-out user's alerts. Started
+    // first because it reads the session token the wipe below removes, and it
+    // needs the session cookie, so the server logout waits for it (at most 3s).
+    const pushCleanup = unregisterAllPush().catch(() => {})
     persist(null, null)
     // Also wipe caches, the offline queue and other per-user device data so
     // the next person on a shared device can't read it.
     void purgeClientData()
     // Clear the httpOnly session cookie server-side — fire-and-forget; the
     // local wipe above already signed the user out on this device.
-    credFetch(`${getApiBase()}/auth/logout`, { method: 'POST' }).catch(() => {})
+    void Promise.race([pushCleanup, new Promise((r) => setTimeout(r, 3000))]).then(() =>
+      credFetch(`${getApiBase()}/auth/logout`, { method: 'POST' }).catch(() => {}),
+    )
   }
 
   const createFamily = async (name: string, forUser?: User) => {

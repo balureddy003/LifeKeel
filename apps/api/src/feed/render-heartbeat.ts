@@ -5,6 +5,7 @@
  * open, and whether the profile is going stale. Informational only —
  * it never recommends a product or action beyond "open the app".
  */
+import { buildDigestPushPayload } from '../delivery/push-payload.js'
 
 export interface HeartbeatData {
   /** 'week' | 'month' — matched to the tenant's heartbeat_cadence. */
@@ -111,7 +112,8 @@ export function renderHeartbeat(d: HeartbeatData): RenderedHeartbeat {
     subject,
     text,
     html,
-    push_title: subject,
-    push_body: lines[0] ?? subject,
+    // Push-shaped payload (PRD-140): generic, no content. The heartbeat stays email-only.
+    push_title: 'LifeKeel',
+    push_body: buildDigestPushPayload('weekly_heartbeat', d.app_url).body,
   }
 }

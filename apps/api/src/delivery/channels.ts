@@ -16,6 +16,7 @@
 import twilio from 'twilio'
 import sgMail from '@sendgrid/mail'
 import { formatMoney } from '@lifekeel/platform'
+import { buildAlertPushPayload } from './push-payload.js'
 
 // ── Shared types ───────────────────────────────────────────────────────────────
 
@@ -41,7 +42,18 @@ export interface DeliveryResult {
   success: boolean
   external_id?: string // Twilio SID or SendGrid message ID
   error?: string
+  /** PRD-140: the device is gone or revoked (expired subscription, unregistered
+   *  token). The router removes it and records the failure instead of retrying. */
+  permanent?: boolean
   delivered_at: Date
+}
+
+/** Thrown by a push sender when the device will never accept another message. */
+export class PermanentPushFailure extends Error {}
+
+const isPermanentWebPush = (e: unknown) => {
+  const status = (e as { statusCode?: number } | null)?.statusCode
+  return status === 404 || status === 410
 }
 
 class SlackChannel {
@@ -90,17 +102,17 @@ export class WebPushChannel {
     notification: InsightNotification,
   ): Promise<DeliveryResult> {
     try {
-      await this.sender.send(
-        subscription,
-        JSON.stringify({
-          title: notification.hypothesis,
-          body: buildSmsMessage(notification),
-          url: notification.action_url,
-        }),
-      )
+      // Generic payload only (PRD-140): a push shows on lock screens.
+      await this.sender.send(subscription, JSON.stringify(buildAlertPushPayload(notification)))
       return { channel: 'web_push', success: true, delivered_at: new Date() }
     } catch (error) {
-      return { channel: 'web_push', success: false, error: String(error), delivered_at: new Date() }
+      return {
+        channel: 'web_push',
+        success: false,
+        error: String(error),
+        ...(isPermanentWebPush(error) ? { permanent: true } : {}),
+        delivered_at: new Date(),
+      }
     }
   }
 }
@@ -112,11 +124,14 @@ export class WebPushChannel {
 // to the right device via Expo's relay to APNs/FCM. See
 // https://docs.expo.dev/push-notifications/sending-notifications/
 
+export interface MobilePushPayload {
+  title: string
+  body: string
+  data?: Record<string, unknown>
+}
+
 export interface MobilePushSender {
-  send(
-    token: string,
-    payload: { title: string; body: string; data?: Record<string, unknown> },
-  ): Promise<{ id?: string }>
+  send(token: string, payload: MobilePushPayload): Promise<{ id?: string }>
 }
 
 export class RealMobilePushSender implements MobilePushSender {
@@ -137,8 +152,12 @@ export class RealMobilePushSender implements MobilePushSender {
     })
     if (!res.ok) throw new Error(`Expo push API returned ${res.status}`)
     const json = (await res.json()) as { data?: { status: string; id?: string; message?: string } }
-    if (json.data?.status === 'error')
+    if (json.data?.status === 'error') {
+      const detail = (json.data as { details?: { error?: string } }).details?.error
+      if (detail === 'DeviceNotRegistered')
+        throw new PermanentPushFailure('Expo token no longer registered')
       throw new Error(json.data.message ?? 'Expo push API rejected the notification')
+    }
     return { id: json.data?.id }
   }
 }
@@ -147,10 +166,11 @@ export class MobilePushChannel {
   constructor(private readonly sender: MobilePushSender) {}
   async send(token: string, notification: InsightNotification): Promise<DeliveryResult> {
     try {
+      const generic = buildAlertPushPayload(notification)
       const result = await this.sender.send(token, {
-        title: notification.hypothesis,
-        body: buildSmsMessage(notification),
-        data: { url: notification.action_url },
+        title: generic.title,
+        body: generic.body,
+        data: { url: generic.url },
       })
       return {
         channel: 'mobile_push',
@@ -163,6 +183,7 @@ export class MobilePushChannel {
         channel: 'mobile_push',
         success: false,
         error: String(error),
+        ...(error instanceof PermanentPushFailure ? { permanent: true } : {}),
         delivered_at: new Date(),
       }
     }

@@ -77,6 +77,28 @@ for evidence quality. Numeric defaults below are hypotheses to test, not benchma
    secondary guides, with no Apple primary source found; re-verify before relying on
    it.
 
+## Status (first build)
+
+Built: generic push payloads for web and mobile (fixed title, body by urgency, deep link
+only; the previous payload carried the hypothesis, impact range and confidence), push-shaped
+digest and heartbeat payloads (email-only; PRD-139 says informational content never uses
+push); an expired or revoked device (404/410, unregistered token) is removed, recorded in
+`push_failures` and the channel switched off when it was the last device; a Tier A alert whose
+push failed falls back to email when email was not already a channel, recorded on the ledger
+entry; `GET /family/channels` and a "How alerts reach you" card in Settings (iPhone Home Screen
+hint, unsupported browser, removed device, native on/off); `registerNativePush` flow
+(permission, token, register, remember for sign-out); an FCM HTTP v1 sender gated on
+`FCM_SERVICE_ACCOUNT_JSON`, with the Expo relay kept for Expo tokens; sign-out now unregisters
+the web subscription and native token before the local wipe (it did not before, so a shared
+device kept receiving the previous user's alerts).
+
+**Not verified on a real device or Firebase project.** The FCM sender and native registration
+are covered by unit tests with mocked fetch and a mocked Capacitor plugin only. The credentials
+and native project steps you need to provide are listed in `apps/mobile/README.md`.
+
+Not built: a per-member channel choice (subscriptions are per tenant, as in PRD-139), SMS and
+WhatsApp changes, a Tier C message, and channel-state alerts to the operator.
+
 ## Becomes
 
 docs/prd/140-notification-channel-fallback.md

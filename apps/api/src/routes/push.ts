@@ -90,17 +90,21 @@ export function registerPushRoutes(
   // native client (or Expo app) registers its push token here once it has OS
   // notification permission.
   fastify.post<{
-    Body: { token?: string }
+    Body: { token?: string; platform?: string }
   }>('/push/mobile/subscribe', async (req, reply) => {
     const { tenant_id } = req.authContext
-    const { token } = req.body ?? {}
+    const { token, platform } = req.body ?? {}
     if (!token || typeof token !== 'string' || token.length < 10 || token.length > 512) {
       return reply.code(400).send({ error: 'token must be a valid push token string' })
     }
     if (!deliveryRouter) {
       return reply.code(503).send({ error: 'Push notifications are not configured on this server' })
     }
-    await deliveryRouter.saveMobilePushToken(tenant_id, token)
+    await deliveryRouter.saveMobilePushToken(
+      tenant_id,
+      token,
+      platform === 'ios' || platform === 'android' ? platform : undefined,
+    )
     await deliveryRouter.enableMobilePush(tenant_id)
     log.info({ tenant_id }, 'Mobile push token saved')
     return { ok: true }
