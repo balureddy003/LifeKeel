@@ -141,3 +141,34 @@ describe('digest_click event', () => {
     ).toEqual([{ tenant_id: T, kind: 'digest_click' }])
   })
 })
+
+describe('alert_click event (PRD-139)', () => {
+  const click = (app: Awaited<ReturnType<typeof appFor>>, meta: unknown) =>
+    app.inject({
+      method: 'POST',
+      url: '/growth/events',
+      payload: { event: 'alert_click', anon_id: 'a', meta },
+    })
+
+  it('records a response against the tenant only when signed in, and never stores the insight id in growth events', async () => {
+    await click(await appFor(null), { i: 'ins-1' })
+    expect(await db.collection('value_events').countDocuments()).toBe(0)
+    await click(await appFor('u1'), { i: 'ins-1' })
+    expect(
+      await db
+        .collection('value_events')
+        .find({}, { projection: { _id: 0, at: 0 } })
+        .toArray(),
+    ).toEqual([{ tenant_id: T, kind: 'alert_click', key: 'ins-1' }])
+    const events = await db.collection('growth_events').find({ event: 'alert_click' }).toArray()
+    expect(events).toHaveLength(2)
+    expect(JSON.stringify(events)).not.toContain('ins-1')
+  })
+
+  it('ignores a missing or oversized id', async () => {
+    const app = await appFor('u1')
+    await click(app, {})
+    await click(app, { i: 'x'.repeat(65) })
+    expect(await db.collection('value_events').countDocuments()).toBe(0)
+  })
+})

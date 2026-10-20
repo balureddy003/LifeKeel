@@ -24,12 +24,15 @@ export function NotificationsCard({
   isOrganizer,
   busy,
   onPatch,
+  onDigestOffer,
 }: {
   prefs: NotificationPrefs
   exemptCriticals: string[]
   isOrganizer: boolean
   busy: boolean
   onPatch: (patch: NotificationPrefsPatch) => void
+  /** The organizer's answer to the digest-only offer (PRD-139). */
+  onDigestOffer?: (accept: boolean) => void
 }) {
   const disabled = !isOrganizer || busy
 
@@ -55,6 +58,43 @@ export function NotificationsCard({
           </span>
         )}
       </div>
+
+      {/* PRD-139: an offer, never a silent change. Shown only while it is pending. */}
+      {prefs.digest_offer_pending && (
+        <div
+          role="region"
+          aria-label="Digest only offer"
+          className="rounded-xl bg-family-500/10 border border-family-500/20 p-3"
+        >
+          <p className="text-xs text-ink-primary leading-relaxed">
+            You haven&apos;t opened the last two alerts. Want digest only instead? You would get one
+            summary email a month instead. Important reminders and safety messages still arrive
+            either way.
+          </p>
+          {isOrganizer && onDigestOffer ? (
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onDigestOffer(true)}
+                className="flex-1 rounded-lg bg-family-500/20 border border-family-500/30 py-1.5 text-xs font-semibold text-family-300 disabled:opacity-50"
+              >
+                Use digest only
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onDigestOffer(false)}
+                className="flex-1 rounded-lg bg-tint/[0.04] border border-tint/[0.08] py-1.5 text-xs text-ink-secondary disabled:opacity-50"
+              >
+                Keep alerts
+              </button>
+            </div>
+          ) : (
+            <p className="mt-1.5 text-[11px] text-ink-tertiary">The organizer can answer this.</p>
+          )}
+        </div>
+      )}
 
       <div>
         <div className="text-xs font-medium text-ink-secondary mb-1.5">Delivery order</div>

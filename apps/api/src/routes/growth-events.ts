@@ -44,6 +44,9 @@ export const KNOWN_EVENTS = new Set([
   'readiness_quiz_corrected',
   // PRD-141: a click from a Quiet Care digest; meta carries only the variant.
   'digest_click',
+  // PRD-139: a click from an alert; counts as a response. The insight id is never
+  // stored in this anonymous collection, only in the tenant-keyed value event.
+  'alert_click',
   'blog_view',
   'blog_cta_click',
   'guide_view',
@@ -53,6 +56,7 @@ const DIGEST_VARIANTS = new Set(['all_clear', 'note', 'missed'])
 
 /** digest_click keeps only a known variant; every other event keeps its meta as before. */
 function eventMeta(event: string, meta: unknown): Record<string, unknown> | null {
+  if (event === 'alert_click') return null
   if (event === 'digest_click') {
     const v = (meta as { v?: unknown } | null)?.v
     return typeof v === 'string' && DIGEST_VARIANTS.has(v) ? { v } : null
@@ -86,6 +90,18 @@ export async function registerGrowthEventRoutes(app: FastifyInstance, db: Db): P
     // A digest click while signed in is also "received value" for that family
     // (PRD-141). Tenant-keyed, so it is erased with the account.
     const tenantId = (request as { authContext?: { tenant_id?: string } }).authContext?.tenant_id
+    const alertId = (body.meta as { i?: unknown } | undefined)?.i
+    if (
+      event === 'alert_click' &&
+      tenantId &&
+      typeof alertId === 'string' &&
+      alertId.length <= 64
+    ) {
+      await db
+        .collection('value_events')
+        .insertOne({ tenant_id: tenantId, kind: 'alert_click', key: alertId, at: new Date() })
+        .catch(() => {})
+    }
     if (event === 'digest_click' && tenantId) {
       await db
         .collection('value_events')

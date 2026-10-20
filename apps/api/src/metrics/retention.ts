@@ -13,6 +13,7 @@
  */
 import type { Db } from 'mongodb'
 import { freshnessShare, type FreshnessState } from '../freshness/inputs.js'
+import { droppedByReason } from '../delivery/notification-budget.js'
 
 /** Smallest cohort a metric may be shown for. A hypothesis; raise it for sensitive cuts. */
 export const MIN_COHORT = 10
@@ -24,6 +25,8 @@ export const METRIC_DEFINITIONS = {
     'Mean, across families, of the share of applicable checks running on current inputs (PRD-145). Families with no applicable check are excluded.',
   digest_engagement:
     'Digest clicks per 100 digests sent over the last 90 days, split by variant (all_clear, note, missed). Clicks, not opens: no tracking pixel is used. One digest can produce more than one click.',
+  notification_budget:
+    'Messages the notification budget held back in the last 90 days, by reason (alert cap, monthly budget, repeat). Held-back alerts go to the digest. Shown only when at least 10 families were affected.',
   notification_health:
     'Heartbeat unsubscribes in the last 90 days per 100 digests sent, plus the share of families on digest-only delivery and the share with the heartbeat off.',
   received_value_retention:
@@ -48,6 +51,7 @@ export interface RetentionMetrics {
   digest_delivery: { scheduled: number; delivered: number; rate: number | null }
   data_freshness: { mean_share_running: number | null; families: number | null }
   digest_engagement: Record<string, { clicks_per_100: number | null }>
+  notification_budget: { dropped_by_reason: Record<string, number> | null }
   notification_health: {
     unsubscribes_per_100_digests: number | null
     digest_only_share: number | null
@@ -145,6 +149,7 @@ export async function computeRetentionMetrics(db: Db, now = new Date()): Promise
     .project({ score: 1 })
     .toArray()) as unknown as { score: number }[]
 
+  const dropped = await droppedByReason(db, since).catch(() => ({ by_reason: {}, families: 0 }))
   const [m3, m6] = await Promise.all([monthCohort(db, now, 3), monthCohort(db, now, 6)])
   const retained = (c: { size: number; retained: number }) => ({
     retained_share: shown(c.size, Math.round((c.retained / c.size) * 1000) / 1000),
@@ -167,6 +172,7 @@ export async function computeRetentionMetrics(db: Db, now = new Date()): Promise
       families: shown(shares.length, shares.length),
     },
     digest_engagement: engagement,
+    notification_budget: { dropped_by_reason: shown(dropped.families, dropped.by_reason) },
     notification_health: {
       unsubscribes_per_100_digests: shown(sentAll, Math.round((unsubs / sentAll) * 1000) / 10),
       digest_only_share: shown(

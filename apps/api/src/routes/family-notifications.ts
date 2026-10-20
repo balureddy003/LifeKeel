@@ -59,6 +59,8 @@ function withDefaults(prefs: Partial<DeliveryPreferences> | null) {
     heartbeat_quiet_weeks: prefs?.heartbeat_quiet_weeks ?? false,
     domains_muted: prefs?.domains_muted ?? [],
     member_scope: prefs?.member_scope ?? 'all',
+    // PRD-139: true while "switch to digest only?" is on offer and unanswered.
+    digest_offer_pending: Boolean((prefs as { digest_offer?: unknown } | null)?.digest_offer),
   }
 }
 
@@ -74,6 +76,25 @@ export function registerFamilyNotificationRoutes(app: FastifyInstance, db: Db): 
     }
     const prefs = (await prefsCol().findOne({ tenant_id })) as DeliveryPreferences | null
     return { preferences: withDefaults(prefs), exempt_criticals: [...EXEMPT_CRITICALS] }
+  })
+
+  /** POST /family/notifications/digest-offer — the organizer's answer to "switch to digest only?". */
+  app.post('/family/notifications/digest-offer', async (req, reply) => {
+    const { tenant_id, user_id } = req.authContext
+    if (!(await isFamilyOrganizer(db, tenant_id, user_id))) {
+      return reply.status(403).send({ error: 'Only the organizer can answer this.' })
+    }
+    const body = z.object({ accept: z.boolean() }).safeParse(req.body)
+    if (!body.success) return reply.status(400).send({ error: 'accept must be true or false' })
+    await prefsCol().updateOne(
+      { tenant_id },
+      body.data.accept
+        ? { $set: { digest_mode: true }, $unset: { digest_offer: '' } }
+        : { $set: { digest_offer_declined_at: new Date() }, $unset: { digest_offer: '' } },
+      { upsert: true },
+    )
+    const saved = (await prefsCol().findOne({ tenant_id })) as DeliveryPreferences | null
+    return { preferences: withDefaults(saved), exempt_criticals: [...EXEMPT_CRITICALS] }
   })
 
   app.patch('/family/notifications', async (req, reply) => {
@@ -102,7 +123,12 @@ export function registerFamilyNotificationRoutes(app: FastifyInstance, db: Db): 
       return reply.status(400).send({ error: 'Nothing to update' })
     await prefsCol().updateOne(
       { tenant_id },
-      { $set, $setOnInsert: { tenant_id, enabled: true } },
+      {
+        $set,
+        // Choosing digest-only directly answers any pending offer.
+        ...($set['digest_mode'] === true ? { $unset: { digest_offer: '' } } : {}),
+        $setOnInsert: { tenant_id, enabled: true },
+      },
       { upsert: true },
     )
     const saved = (await prefsCol().findOne({ tenant_id })) as DeliveryPreferences | null

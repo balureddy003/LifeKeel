@@ -37,6 +37,21 @@ describe('DigestClickTracker', () => {
     expect(window.location.hash).toBe('#notifications')
   })
 
+  it('records an alert click with the insight id and strips the tag (PRD-139)', () => {
+    window.history.replaceState(null, '', '/insights/abc?src=alert&i=abc')
+    render(<DigestClickTracker />)
+    expect(track).toHaveBeenCalledTimes(1)
+    expect(track).toHaveBeenCalledWith('alert_click', { i: 'abc' })
+    expect(window.location.search).toBe('')
+    expect(window.location.pathname).toBe('/insights/abc')
+  })
+
+  it('ignores an alert tag with no insight id', () => {
+    window.history.replaceState(null, '', '/?src=alert')
+    render(<DigestClickTracker />)
+    expect(track).not.toHaveBeenCalled()
+  })
+
   it('ignores other traffic', () => {
     window.history.replaceState(null, '', '/?src=newsletter&v=a')
     render(<DigestClickTracker />)
@@ -85,6 +100,7 @@ const hidden: RetentionMetrics = {
     note: { clicks_per_100: null },
     missed: { clicks_per_100: null },
   },
+  notification_budget: { dropped_by_reason: { tier_a_cap: 12, monthly_budget: 3 } },
   notification_health: {
     unsubscribes_per_100_digests: null,
     digest_only_share: null,
@@ -105,5 +121,6 @@ describe('RetentionMetricsCard', () => {
     expect(screen.getAllByText('Not enough families yet').length).toBeGreaterThanOrEqual(4)
     expect(screen.getByText('Scheduled versus delivered definition text.')).toBeTruthy()
     expect(screen.getByText(/Anything under 10 families is hidden/)).toBeTruthy()
+    expect(screen.getByText('tier a cap: 12, monthly budget: 3')).toBeTruthy()
   })
 })

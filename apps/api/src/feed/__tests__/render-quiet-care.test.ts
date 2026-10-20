@@ -138,4 +138,12 @@ describe('renderQuietCareDigest', () => {
     expect(missed.text).toContain('v=missed')
     expect(clear.text).not.toMatch(/user|tenant|email=/i)
   })
+
+  it('carries one offer line, and only when digest-only is on offer (PRD-139)', () => {
+    expect(renderQuietCareDigest(base).text).not.toContain('digest only')
+    const r = renderQuietCareDigest({ ...base, digest_offer: true })
+    expect(r.text).toContain("You haven't opened the last two alerts.")
+    expect(r.text).toContain('nothing changes unless you do')
+    expect(r.html).toContain('choose digest only')
+  })
 })

@@ -442,4 +442,41 @@ describe('runFamilyHeartbeat', () => {
     await runFamilyHeartbeat(db, { cadence: 'monthly', now: new Date('2026-03-01T08:00:00Z') })
     expect((sendMock.mock.calls.at(-1)![2] as { text: string }).text).not.toContain('Paused')
   })
+
+  it('counts each confirmed digest as exempt Tier B in the notification ledger (PRD-139)', async () => {
+    const { db, stores } = makeDb({
+      prefs: { heartbeat_cadence: 'monthly' },
+      sweepRanAt: MARCH_SWEEP,
+    })
+    await runFamilyHeartbeat(db, { cadence: 'monthly', now: new Date('2026-03-01T08:00:00Z') })
+    const rows = stores['notification_ledger']!
+    expect(rows).toHaveLength(2)
+    expect(
+      rows.every(
+        (r) => r['tier'] === 'B' && r['outcome'] === 'exempt' && r['kind'] === 'quiet_care_digest',
+      ),
+    ).toBe(true)
+    expect(JSON.stringify(rows)).not.toContain('@x.test')
+  })
+
+  it('a failed send is not counted in the ledger', async () => {
+    const { db, stores } = makeDb({
+      prefs: { heartbeat_cadence: 'monthly' },
+      sweepRanAt: MARCH_SWEEP,
+    })
+    sendMock.mockResolvedValue({ ok: false, reason: 'send_failed' })
+    await runFamilyHeartbeat(db, { cadence: 'monthly', now: new Date('2026-03-01T08:00:00Z') })
+    expect(stores['notification_ledger'] ?? []).toHaveLength(0)
+  })
+
+  it('adds the digest-only offer line when an offer is pending', async () => {
+    const { db } = makeDb({
+      prefs: { heartbeat_cadence: 'monthly', digest_offer: { offered_at: new Date('2026-02-20') } },
+      sweepRanAt: MARCH_SWEEP,
+    })
+    await runFamilyHeartbeat(db, { cadence: 'monthly', now: new Date('2026-03-01T08:00:00Z') })
+    expect((sendMock.mock.calls.at(-1)![2] as { text: string }).text).toContain(
+      "You haven't opened the last two alerts.",
+    )
+  })
 })

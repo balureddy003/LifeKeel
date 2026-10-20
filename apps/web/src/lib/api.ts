@@ -931,6 +931,8 @@ export interface NotificationPrefs {
   heartbeat_quiet_weeks: boolean
   domains_muted: string[]
   member_scope: 'all' | 'mine'
+  /** PRD-139: true while "switch to digest only?" is on offer and unanswered. */
+  digest_offer_pending: boolean
 }
 
 export interface NotificationPrefsResponse {
@@ -993,6 +995,7 @@ export interface RetentionMetrics {
   digest_delivery: { scheduled: number; delivered: number; rate: number | null }
   data_freshness: { mean_share_running: number | null; families: number | null }
   digest_engagement: Record<string, { clicks_per_100: number | null }>
+  notification_budget: { dropped_by_reason: Record<string, number> | null }
   notification_health: {
     unsubscribes_per_100_digests: number | null
     digest_only_share: number | null
@@ -1026,6 +1029,17 @@ export interface FreshnessResponse {
 /** null for children (403), signed-out visitors and any failure. */
 export async function fetchFreshness(): Promise<FreshnessResponse | null> {
   return apiFetch<FreshnessResponse | null>('/family/freshness', null)
+}
+
+/** The organizer's answer to the digest-only offer. null on any failure. */
+export async function answerDigestOffer(
+  accept: boolean,
+): Promise<NotificationPrefsResponse | null> {
+  return scenarioRequest<NotificationPrefsResponse | null>(
+    '/family/notifications/digest-offer',
+    { method: 'POST', body: JSON.stringify({ accept }) },
+    null,
+  )
 }
 
 export async function updateNotificationPrefs(

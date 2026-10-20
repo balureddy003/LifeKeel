@@ -39,6 +39,8 @@ export interface QuietCareData {
   worth_a_look: { text: string; href: string } | null
   /** Plain-language notes for checks running on older figures. */
   paused: string[]
+  /** True when recent alerts went unanswered and digest-only is on offer (PRD-139). */
+  digest_offer?: boolean
   next_check: Date
   app_url: string
 }
@@ -92,6 +94,9 @@ export function renderQuietCareDigest(
   const lookHref = d.worth_a_look ? tag(d.worth_a_look.href, variant) : ''
   const next = `Next digest: ${formatDay(d.next_check)}.`
   const cadence = 'You get this once a month. You can change how often, or turn it off.'
+  const offer = d.digest_offer
+    ? "You haven't opened the last two alerts. You can choose digest only in settings; nothing changes unless you do."
+    : ''
 
   let subject: string
   let headline: string
@@ -149,6 +154,7 @@ export function renderQuietCareDigest(
     ...sections.map((s) => `${s.title}\n${s.lines.map((l) => `· ${l}`).join('\n')}`),
     next,
     cadence,
+    offer,
     d.worth_a_look && d.check.status === 'ran' ? `Details: ${lookHref}` : '',
     `Open LifeKeel: ${appHome}`,
     `Why you got this · Manage notifications → ${settingsUrl}`,
@@ -174,6 +180,7 @@ export function renderQuietCareDigest(
     }
     <p style="margin-top:16px;">${escapeHtml(next)}</p>
     <p><a href="${escapeHtml(appHome)}" style="display:inline-block;padding:12px 20px;background:#7c6ef0;color:#fff;border-radius:10px;text-decoration:none;font-weight:600;">Open LifeKeel</a></p>
+    ${offer ? `<p>${escapeHtml(offer)}</p>` : ''}
     <p style="color:#888;font-size:13px;">${escapeHtml(cadence)} <a href="${escapeHtml(settingsUrl)}" style="color:#888;">Why you got this · Manage notifications</a></p>
   `
 
