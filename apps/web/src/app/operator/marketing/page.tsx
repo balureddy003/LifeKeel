@@ -47,6 +47,7 @@ import {
   type CampaignFilter,
 } from '@/lib/api'
 import { PostPreview } from './_components/PostPreview'
+import { ProfilesPanel } from './_components/ProfilesPanel'
 import { PostCalendar } from './_components/PostCalendar'
 import { ReasonAction } from '../_components/ReasonAction'
 
@@ -106,7 +107,7 @@ function toLocalInput(iso: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-type Tab = 'compose' | 'queue' | 'calendar' | 'performance' | 'campaigns'
+type Tab = 'compose' | 'queue' | 'calendar' | 'performance' | 'campaigns' | 'profiles'
 
 export default function MarketingPage() {
   const toast = useToast()
@@ -520,6 +521,7 @@ export default function MarketingPage() {
                 ['calendar', 'Calendar'],
                 ['performance', 'Performance'],
                 ['campaigns', 'Campaigns'],
+                ['profiles', 'Profiles'],
               ] as [Tab, string][]
             ).map(([key, label]) => (
               <button
@@ -1172,6 +1174,7 @@ export default function MarketingPage() {
 
           {/* Campaigns — one-shot targeted email to filtered cohorts */}
           {tab === 'campaigns' && <CampaignsPanel />}
+          {tab === 'profiles' && <ProfilesPanel />}
         </>
       )}
     </div>

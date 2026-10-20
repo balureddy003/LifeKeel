@@ -85,6 +85,8 @@ export type AuditAction =
   | 'marketing.connection_disconnect'
   | 'marketing.post_generate'
   | 'marketing.post_update'
+  | 'marketing.profile_edit'
+  | 'marketing.profile_apply'
   | 'legacy.document.read'
 
 export interface AuditEntry {

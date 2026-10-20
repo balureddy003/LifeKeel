@@ -72,6 +72,7 @@ export const DELETABLE_COLLECTIONS = [
   'mobile_push_tokens',
   // ── tenant-keyed growth/support surfaces ──
   'marketing_posts',
+  'channel_profiles',
   'social_connections',
   'support_cases',
   'referral_codes',
