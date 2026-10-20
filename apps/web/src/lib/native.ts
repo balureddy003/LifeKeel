@@ -37,6 +37,14 @@ interface CapacitorPlugins {
     get: (opts: { key: string }) => Promise<{ value: string | null }>
     set: (opts: { key: string; value: string }) => Promise<void>
   }
+  PushNotifications?: {
+    requestPermissions: () => Promise<{ receive: string }>
+    register: () => Promise<void>
+    addListener: (
+      event: 'registration' | 'registrationError',
+      cb: (data: { value?: string; error?: string }) => void,
+    ) => Promise<{ remove: () => Promise<void> }>
+  }
 }
 
 declare global {
@@ -147,5 +155,60 @@ export async function saveRegion(region: Region): Promise<void> {
     await prefs.set({ key: REGION_PREF_KEY, value: region })
   } catch {
     // Not persisted: the locale guess runs again next launch.
+  }
+}
+
+// ── Native push (PRD-140) ────────────────────────────────────────────────
+// NOT VERIFIED ON A REAL DEVICE: needs the push capability and entitlement in
+// the generated Xcode project, a Firebase iOS SDK, and a google-services.json
+// on Android (see apps/mobile/README.md). Without them the plugin reports no
+// permission or never returns a token and this resolves null.
+//
+// The device token is kept in the native Preferences plugin so sign-out can
+// unregister it. It is a credential for the signed-in user's alerts, so it is
+// cleared on unregister.
+const PUSH_TOKEN_KEY = 'lifekeel_push_token'
+
+/** Ask for permission and resolve with the device's push token, or null. */
+export async function requestNativePushToken(timeoutMs = 10_000): Promise<string | null> {
+  const push = isNativeShell() ? window.Capacitor?.Plugins?.PushNotifications : undefined
+  if (!push) return null
+  try {
+    const perm = await push.requestPermissions()
+    if (perm.receive !== 'granted') return null
+    return await new Promise<string | null>((resolve) => {
+      const timer = setTimeout(() => resolve(null), timeoutMs)
+      const done = (v: string | null) => {
+        clearTimeout(timer)
+        resolve(v)
+      }
+      void push.addListener('registration', (d) => done(d.value ?? null))
+      void push.addListener('registrationError', () => done(null))
+      push.register().catch(() => done(null))
+    })
+  } catch {
+    return null
+  }
+}
+
+export async function getStoredPushToken(): Promise<string | null> {
+  const prefs = isNativeShell() ? window.Capacitor?.Plugins?.Preferences : undefined
+  if (!prefs) return null
+  try {
+    const { value } = await prefs.get({ key: PUSH_TOKEN_KEY })
+    return value || null
+  } catch {
+    return null
+  }
+}
+
+/** Pass null to forget the token (an empty value reads back as none). */
+export async function storePushToken(token: string | null): Promise<void> {
+  const prefs = isNativeShell() ? window.Capacitor?.Plugins?.Preferences : undefined
+  if (!prefs) return
+  try {
+    await prefs.set({ key: PUSH_TOKEN_KEY, value: token ?? '' })
+  } catch {
+    // best effort
   }
 }

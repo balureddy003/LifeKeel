@@ -172,6 +172,7 @@ import { runFamilyHeartbeat } from './jobs/family-heartbeat.js'
 import { runFreshnessCheck } from './jobs/freshness-check.js'
 import { registerFamilyFreshnessRoutes } from './routes/family-freshness.js'
 import { registerPerceivedProtectionRoutes } from './routes/perceived-protection.js'
+import { registerFamilyChannelRoutes } from './routes/family-channels.js'
 import { registerOperatorRetentionRoutes } from './routes/operator-retention.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
 import { registerSupportRoutes } from './routes/support.js'
@@ -2041,6 +2042,7 @@ if (workflowDb) {
   registerFamilyReadinessRoutes(app, workflowDb)
   registerFamilyFreshnessRoutes(app, workflowDb)
   registerPerceivedProtectionRoutes(app, workflowDb)
+  registerFamilyChannelRoutes(app, workflowDb)
   registerFamilyScenarioRoutes(app, workflowDb)
   registerFamilyFeedRoutes(app, workflowDb)
   registerFamilyNotificationRoutes(app, workflowDb)

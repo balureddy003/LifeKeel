@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { AuthProvider, useAuth } from '../auth-context'
 import * as sessionPurge from '../session-purge'
+import * as push from '../push'
 
 function jsonResponse(body: unknown, ok = true) {
   return Promise.resolve({ ok, status: ok ? 200 : 500, json: () => Promise.resolve(body) })
@@ -221,6 +222,38 @@ describe('AuthProvider.signOut', () => {
     })
 
     expect(purge).toHaveBeenCalledTimes(1)
+  })
+
+  it('unregisters push before the local wipe and before the server logout (PRD-140)', async () => {
+    let release!: () => void
+    const unregister = vi
+      .spyOn(push, 'unregisterAllPush')
+      .mockReturnValue(new Promise<void>((r) => (release = r)))
+    const purge = vi.spyOn(sessionPurge, 'purgeClientData').mockResolvedValue()
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith('/auth/me'))
+        return jsonResponse({ user_id: 'u3', email: 'x@y.com', name: 'X' })
+      if (url.endsWith('/family')) return jsonResponse({ family: null })
+      return jsonResponse({})
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    localStorage.setItem('lifekeel_token', 'existing-token')
+
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => {
+      result.current.signOut()
+    })
+
+    expect(unregister).toHaveBeenCalledTimes(1)
+    expect(unregister.mock.invocationCallOrder[0]!).toBeLessThan(purge.mock.invocationCallOrder[0]!)
+    const logouts = () =>
+      fetchMock.mock.calls.filter((c: unknown[]) => (c[0] as string).endsWith('/auth/logout'))
+    expect(logouts()).toHaveLength(0) // the session cookie must outlive the unregister call
+    await act(async () => {
+      release()
+    })
+    await waitFor(() => expect(logouts()).toHaveLength(1))
   })
 
   it('purges device data when the server rejects a previously signed-in session', async () => {

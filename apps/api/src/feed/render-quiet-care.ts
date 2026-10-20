@@ -12,6 +12,7 @@
  * worth a look reuses detector copy that already passes the advice rule.
  */
 import type { RenderedHeartbeat } from './render-heartbeat.js'
+import { buildDigestPushPayload } from '../delivery/push-payload.js'
 
 export type DigestVariant = 'all_clear' | 'note' | 'missed'
 
@@ -188,8 +189,12 @@ export function renderQuietCareDigest(
     subject,
     text: textBody,
     html,
-    push_title: subject,
-    push_body: headline,
+    // Push-shaped payload (PRD-140): generic, no content. The digest stays email-only.
+    push_title: 'LifeKeel',
+    push_body: buildDigestPushPayload(
+      d.check.status === 'missed' ? 'quiet_care_digest_missed' : 'quiet_care_digest',
+      d.app_url,
+    ).body,
     variant,
   }
 }
