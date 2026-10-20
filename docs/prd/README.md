@@ -365,6 +365,13 @@ building disconnected marketing tooling.
    sea hero, a Live/Planned capability board, and a claims registry. It
    supersedes the quiz-based parts of 201, 203, 204 and 205 for the landing
    page; those are deferred, not deleted. Tier 0.
+10. [210-marketing-engine-redefined.md](210-marketing-engine-redefined.md) —
+    **proposed.** The marketing engine as one system: a shared claims registry
+    and copy guard for every producer, content items with a weekly-approved
+    calendar, managed channel profiles with drift checks, static blog pages for
+    search, and one funnel. Human approval for anything public is unchanged.
+    Tier 0 for drafts and plans; Tier 2 (always approved) for publishing and
+    profile changes.
 
 ## Suggested build order for 138–147 and 203–206
 
@@ -400,6 +407,8 @@ them. It is a recommendation, not a commitment.
    land). The quiz-based result-save PRDs named in the steps above (203, 204, 205)
    are deferred by this decision, and an email sign-in link PRD replaces them when
    it is written.
+10. **Marketing engine:** PRD-210. Phase 0 (copy guard, stale quiz wording, content sync) first and alone; it
+    depends only on PRD-209's claims registry.
 
 ## Deliberately not written as PRDs yet
 
