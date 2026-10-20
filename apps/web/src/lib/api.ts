@@ -3432,7 +3432,13 @@ export interface ChannelProfileView {
   bio_limit: number
   checklist_items: string[]
   checklist: Record<string, boolean>
-  actual: { display_name: string; bio: string; has_avatar: boolean; has_banner: boolean; checked_at: string } | null
+  actual: {
+    display_name: string
+    bio: string
+    has_avatar: boolean
+    has_banner: boolean
+    checked_at: string
+  } | null
   drift: { field: string; desired: string; actual: string }[]
   supports_check: boolean
   supports_apply: boolean
@@ -3442,7 +3448,9 @@ export interface ChannelProfileView {
 }
 
 export async function fetchChannelProfiles(): Promise<ChannelProfileView[]> {
-  const data = await apiFetch<{ profiles: ChannelProfileView[] }>('/marketing/profiles', { profiles: [] })
+  const data = await apiFetch<{ profiles: ChannelProfileView[] }>('/marketing/profiles', {
+    profiles: [],
+  })
   return data.profiles
 }
 
@@ -3450,13 +3458,18 @@ export const saveChannelProfile = (channel: string, desired: ChannelProfileView[
   marketingRequest<ChannelProfileView>(`/marketing/profiles/${channel}`, 'PUT', { ...desired })
 
 export const tickProfileStep = (channel: string, item: string, done: boolean) =>
-  marketingRequest<ChannelProfileView>(`/marketing/profiles/${channel}/checklist`, 'PUT', { item, done })
+  marketingRequest<ChannelProfileView>(`/marketing/profiles/${channel}/checklist`, 'PUT', {
+    item,
+    done,
+  })
 
 export const checkChannelProfile = (channel: string) =>
   marketingRequest<ChannelProfileView>(`/marketing/profiles/${channel}/check`, 'POST')
 
 export const applyChannelProfile = (channel: string, expected_hash: string) =>
-  marketingRequest<ChannelProfileView>(`/marketing/profiles/${channel}/apply`, 'POST', { expected_hash })
+  marketingRequest<ChannelProfileView>(`/marketing/profiles/${channel}/apply`, 'POST', {
+    expected_hash,
+  })
 
 // ── Weekly content plan (PRD-210, phase 3) ──────────────────────────────
 
@@ -3499,13 +3512,14 @@ export const generatePlanWeek = (week_start: string) =>
   marketingRequest<PlanWeekView>('/marketing/plan/generate', 'POST', { week_start })
 
 export const approvePlanPosts = (items: { post_id: string; content_hash: string }[]) =>
-  marketingRequest<{ approved: number; refused: number; results: { post_id: string; ok: boolean; error?: string }[] }>(
-    '/marketing/plan/approve',
-    'POST',
-    { items },
-  )
+  marketingRequest<{
+    approved: number
+    refused: number
+    results: { post_id: string; ok: boolean; error?: string }[]
+  }>('/marketing/plan/approve', 'POST', { items })
 
-export const skipPlanItem = (id: string) => marketingRequest<{ ok: boolean }>(`/marketing/plan/items/${id}/skip`, 'POST')
+export const skipPlanItem = (id: string) =>
+  marketingRequest<{ ok: boolean }>(`/marketing/plan/items/${id}/skip`, 'POST')
 
 export async function disconnectSocialChannel(channel: string): Promise<void> {
   await marketingRequest<{ ok: boolean }>(`/marketing/connections/${channel}`, 'DELETE')
