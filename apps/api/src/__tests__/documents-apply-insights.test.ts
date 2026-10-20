@@ -39,7 +39,7 @@ function daysFromNow(days: number): string {
 function matchesFilter(doc: Record<string, unknown>, filter: Record<string, unknown>): boolean {
   return Object.entries(filter).every(([key, cond]) => {
     if (cond && typeof cond === 'object' && '$in' in (cond as Record<string, unknown>)) {
-      return ((cond as { $in: unknown[] }).$in).includes(doc[key])
+      return (cond as { $in: unknown[] }).$in.includes(doc[key])
     }
     return doc[key] === cond
   })
@@ -78,7 +78,10 @@ const BASE_PROFILE = {
   updated_at: new Date(),
 }
 
-function makeDb(documentsSeed: Record<string, unknown>[] = [], profileSeed: Record<string, unknown> | null = null) {
+function makeDb(
+  documentsSeed: Record<string, unknown>[] = [],
+  profileSeed: Record<string, unknown> | null = null,
+) {
   const documents: Record<string, unknown>[] = [...documentsSeed]
   const profiles: Record<string, unknown>[] = profileSeed ? [{ ...profileSeed }] : []
 
@@ -90,7 +93,10 @@ function makeDb(documentsSeed: Record<string, unknown>[] = [], profileSeed: Reco
     find: (filter: Record<string, unknown>) => ({
       toArray: async () => documents.filter((d) => matchesFilter(d, filter)),
     }),
-    updateOne: async (filter: Record<string, unknown>, update: { $set?: Record<string, unknown> }) => {
+    updateOne: async (
+      filter: Record<string, unknown>,
+      update: { $set?: Record<string, unknown> },
+    ) => {
       const doc = documents.find((d) => Object.entries(filter).every(([k, v]) => d[k] === v))
       if (!doc) return { matchedCount: 0, modifiedCount: 0 }
       if (update.$set) Object.assign(doc, update.$set)
@@ -128,16 +134,18 @@ function makeDb(documentsSeed: Record<string, unknown>[] = [], profileSeed: Reco
     find: (filter: Record<string, unknown>) => ({
       toArray: async () => insightDocs.filter((d) => matchesFilter(d, filter)),
     }),
-    updateMany: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
-      let modifiedCount = 0
-      for (const doc of insightDocs) {
-        if (matchesFilter(doc, filter)) {
-          Object.assign(doc, update.$set)
-          modifiedCount++
+    updateMany: vi.fn(
+      async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
+        let modifiedCount = 0
+        for (const doc of insightDocs) {
+          if (matchesFilter(doc, filter)) {
+            Object.assign(doc, update.$set)
+            modifiedCount++
+          }
         }
-      }
-      return { modifiedCount }
-    }),
+        return { modifiedCount }
+      },
+    ),
   }
 
   return {
@@ -215,7 +223,9 @@ describe('POST /documents/:id/apply-policy — in-request insight regeneration',
   })
 
   it('generates nothing when the apply creates only a skeleton profile (no wizard submission yet)', async () => {
-    const db = makeDb([{ id: 'doc-1', filename: 'aviva.pdf', category: 'insurance', tenant_id: TENANT }])
+    const db = makeDb([
+      { id: 'doc-1', filename: 'aviva.pdf', category: 'insurance', tenant_id: TENANT },
+    ])
     const { app, insights } = await buildApp(db, engine)
 
     const { status, body } = await applyPolicy(app, 'doc-1', {
