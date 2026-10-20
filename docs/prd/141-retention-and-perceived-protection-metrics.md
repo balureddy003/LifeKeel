@@ -70,6 +70,30 @@ for evidence quality. Numeric defaults below are hypotheses to test, not benchma
 5. **Dependency:** billing is dormant (PRD-006), so paying-user metrics need cutover
    first; until then measure free-tier retention only.
 
+## Status (first build) and metric definitions
+
+The owner-written definitions live in `apps/api/src/metrics/retention.ts`
+(`METRIC_DEFINITIONS`) so they are returned with every number and cannot drift; the
+operator card prints each under its figure. In short:
+
+- **Digests delivered:** scheduled (attempted) versus delivered (confirmed) over 90 days, from `job_runs`.
+- **Data freshness:** mean over families of the share of applicable checks running on current inputs (PRD-145).
+- **Digest engagement:** clicks per 100 digests sent, by variant (all clear, has a note, couldn't check). Clicks, not opens; no pixel.
+- **Notification health:** heartbeat unsubscribes per 100 digests, plus digest-only and heartbeat-off shares.
+- **Received-value retention:** free-tier families created 3 and 6 calendar months ago, still active, that received value in the last 30 days (signed-in digest click, confirmed profile review, resolved gap). Descriptive only.
+- **Perceived protection:** current-quarter mean of the optional 1 to 5 answer; skips excluded.
+
+Every figure is aggregated and returns null below a cohort of 10 families (a hypothesis),
+shown as "Not enough families yet". Operator view: `GET /operator/retention` and a card on
+the Operations page. Instrumentation added: `digest_click` growth event (variant only;
+also a tenant-keyed `value_events` row when signed in), `heartbeat_unsubscribed`, a
+`variant` on each `heartbeat_sends` row, and the quarterly question endpoint and home card.
+
+Not built: the randomised holdout (it withholds the digest from real families, so it needs
+its own decision), paying-user retention (waits for billing cutover, PRD-006), baseline
+period tracking (the 8 to 12 week baseline starts when this deploys), and
+uninstall rate (no source exists).
+
 ## Becomes
 
 docs/prd/141-retention-and-perceived-protection-metrics.md

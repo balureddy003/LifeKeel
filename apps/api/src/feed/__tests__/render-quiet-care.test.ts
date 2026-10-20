@@ -82,7 +82,7 @@ describe('renderQuietCareDigest', () => {
     })
     expect(r.subject).toBe("Your family's September 2026: 1 thing worth a look")
     expect(r.text.match(/Worth a look/g)).toHaveLength(1)
-    expect(r.html).toContain('href="https://app.example.test/insights/9"')
+    expect(r.html).toContain('href="https://app.example.test/insights/9?src=digest&amp;v=note"')
   })
 
   it('the failure variant never claims all clear and says when it last ran', () => {
@@ -105,7 +105,9 @@ describe('renderQuietCareDigest', () => {
   it('shows the cadence and a manage link, and carries no promotion', () => {
     const r = renderQuietCareDigest(base)
     expect(r.text).toContain('once a month')
-    expect(r.text).toContain('https://app.example.test/settings#notifications')
+    expect(r.text).toContain(
+      'https://app.example.test/settings?src=digest&v=all_clear#notifications',
+    )
     expect(allCopy(r)).not.toMatch(/\b(upgrade|keel plus|discount|offer|subscribe|free trial)\b/i)
   })
 
@@ -120,5 +122,20 @@ describe('renderQuietCareDigest', () => {
 
   it('keeps the greeting placeholder the heartbeat email wrapper personalises', () => {
     expect(renderQuietCareDigest(base).html).toContain('<p>Hi,</p>')
+  })
+
+  it('tags every link with the variant, and reports the variant, for click-through by variant (PRD-141)', () => {
+    const clear = renderQuietCareDigest(base)
+    expect(clear.variant).toBe('all_clear')
+    expect(clear.html).toContain('href="https://app.example.test?src=digest&amp;v=all_clear"')
+    const note = renderQuietCareDigest({
+      ...base,
+      worth_a_look: { text: 'x', href: 'https://app.example.test/insights/1' },
+    })
+    expect(note.variant).toBe('note')
+    const missed = renderQuietCareDigest({ ...base, check: { status: 'missed', last_check: null } })
+    expect(missed.variant).toBe('missed')
+    expect(missed.text).toContain('v=missed')
+    expect(clear.text).not.toMatch(/user|tenant|email=/i)
   })
 })

@@ -169,6 +169,10 @@ import { runStaleProfileEvaluationSweep } from './jobs/stale-profile-evaluation.
 import { ensureMemberNudgeIndexes } from './member-nudges.js'
 import { runContinuityCheck, ensureContinuityIndexes } from './jobs/continuity-check.js'
 import { runFamilyHeartbeat } from './jobs/family-heartbeat.js'
+import { runFreshnessCheck } from './jobs/freshness-check.js'
+import { registerFamilyFreshnessRoutes } from './routes/family-freshness.js'
+import { registerPerceivedProtectionRoutes } from './routes/perceived-protection.js'
+import { registerOperatorRetentionRoutes } from './routes/operator-retention.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
 import { registerSupportRoutes } from './routes/support.js'
 import { registerReadinessQuizRoutes } from './routes/readiness-quiz.js'
@@ -1016,6 +1020,25 @@ try {
       { missedExecutionTolerance: 3_600_000, noOverlap: true },
     )
     log.info({}, 'Stale profile evaluation cron started')
+
+    // PRD-145: freshness check, daily at 06:45 — after the 06:30 profile sweep, so
+    // it reads settled profiles. Deterministic; sends nothing itself.
+    cron.schedule(
+      '45 6 * * *',
+      async () => {
+        try {
+          await withCronLock(workflowDb, 'freshness-check', async () => {
+            const summary = await runFreshnessCheck(workflowDb)
+            if (summary.failed > 0)
+              log.warn({ ...summary }, 'Freshness check completed with failures')
+          })
+        } catch (err) {
+          log.error({ err }, 'Freshness check failed')
+        }
+      },
+      { missedExecutionTolerance: 3_600_000, noOverlap: true },
+    )
+    log.info({}, 'Freshness check cron started')
 
     // PRD-136: nightly scenario watchlist recompute — emits scenario_moved
     // feed events when a watched scenario's runway/depletion month moves by
@@ -2029,6 +2052,8 @@ if (workflowDb) {
   registerReadinessQuizRoutes(app, workflowDb, engine)
   await registerMagicLinkRoutes(app, workflowDb, auth)
   registerFamilyReadinessRoutes(app, workflowDb)
+  registerFamilyFreshnessRoutes(app, workflowDb)
+  registerPerceivedProtectionRoutes(app, workflowDb)
   registerFamilyScenarioRoutes(app, workflowDb)
   registerFamilyFeedRoutes(app, workflowDb)
   registerFamilyNotificationRoutes(app, workflowDb)
@@ -2048,6 +2073,7 @@ if (workflowDb) {
   registerMarketingPostRoutes(app, workflowDb)
   ensureAutopilotIndexes(workflowDb)
   await registerOperatorRoutes(app, workflowDb)
+  registerOperatorRetentionRoutes(app, workflowDb)
   registerDetectorEvalRoutes(app, workflowDb, engine, detectorEvalDir(ROOT))
 }
 // Prometheus metrics — generic ops/observability, not vertical-specific.
