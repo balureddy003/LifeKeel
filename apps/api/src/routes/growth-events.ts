@@ -40,6 +40,8 @@ export const KNOWN_EVENTS = new Set([
   'readiness_quiz_started',
   'readiness_quiz_completed',
   'readiness_share_click',
+  // PRD-204: the visitor reopened the answers after seeing the score (no values sent).
+  'readiness_quiz_corrected',
   'blog_view',
   'blog_cta_click',
   'guide_view',
@@ -48,7 +50,12 @@ export const KNOWN_EVENTS = new Set([
 export async function registerGrowthEventRoutes(app: FastifyInstance, db: Db): Promise<void> {
   /** POST /growth/events — record one funnel event. */
   app.post('/growth/events', async (request, reply) => {
-    const body = request.body as { event?: string; path?: string; anon_id?: string; meta?: Record<string, unknown> }
+    const body = request.body as {
+      event?: string
+      path?: string
+      anon_id?: string
+      meta?: Record<string, unknown>
+    }
     const event = typeof body?.event === 'string' ? body.event : ''
     if (!KNOWN_EVENTS.has(event)) {
       return reply.status(400).send({ error: 'Unknown event' })
@@ -74,12 +81,21 @@ export async function registerGrowthEventRoutes(app: FastifyInstance, db: Db): P
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
     const col = getGrowthEventsCollection(db)
 
-    const counts = await col.aggregate([
-      { $match: { created_at: { $gte: since } } },
-      { $group: { _id: '$event', count: { $sum: 1 }, unique_anon: { $addToSet: '$anon_id' } } },
-      { $project: { event: '$_id', count: 1, unique_anon_count: { $size: '$unique_anon' }, _id: 0 } },
-      { $sort: { count: -1 } },
-    ]).toArray()
+    const counts = await col
+      .aggregate([
+        { $match: { created_at: { $gte: since } } },
+        { $group: { _id: '$event', count: { $sum: 1 }, unique_anon: { $addToSet: '$anon_id' } } },
+        {
+          $project: {
+            event: '$_id',
+            count: 1,
+            unique_anon_count: { $size: '$unique_anon' },
+            _id: 0,
+          },
+        },
+        { $sort: { count: -1 } },
+      ])
+      .toArray()
 
     return reply.send({ since: since.toISOString(), events: counts })
   })

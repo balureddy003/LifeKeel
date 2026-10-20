@@ -48,6 +48,7 @@ import type { Engine, Insight } from '@lifekeel/engine'
 import { createLogger } from '@lifekeel/platform'
 import { getFamilyFinancialProfileCollection } from '../db.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
+import { recordJobRun } from './job-runs.js'
 import {
   FinancialProfileSchema,
   evaluateProfileAndGenerateInsights,
@@ -55,6 +56,9 @@ import {
 } from '../routes/family-financial-profile.js'
 
 const log = createLogger({ service: 'stale-profile-evaluation', version: '0.0.0' })
+
+/** job_runs key the Quiet Care digest looks up. */
+export const SWEEP_JOB = 'stale-profile-evaluation'
 
 export interface StaleProfileSweepSummary {
   candidates: number
@@ -78,7 +82,8 @@ export interface StaleProfileSweepSummary {
 export function isSubstantivelyComplete(profile: FinancialProfile): boolean {
   return (
     profile.household.monthly_salary_minor > 0 &&
-    (profile.emergency_fund.emergency_savings_minor > 0 || profile.emergency_fund.monthly_expenses_minor > 0) &&
+    (profile.emergency_fund.emergency_savings_minor > 0 ||
+      profile.emergency_fund.monthly_expenses_minor > 0) &&
     profile.retirement.current_age > 0 &&
     profile.retirement.target_retirement_age > 0
   )
@@ -92,7 +97,12 @@ export async function runStaleProfileEvaluationSweep(
 ): Promise<StaleProfileSweepSummary> {
   const now = opts.now ?? new Date()
   const limit = opts.limit ?? 500
-  const summary: StaleProfileSweepSummary = { candidates: 0, evaluated: 0, skippedIncomplete: 0, failed: 0 }
+  const summary: StaleProfileSweepSummary = {
+    candidates: 0,
+    evaluated: 0,
+    skippedIncomplete: 0,
+    failed: 0,
+  }
   const col = getFamilyFinancialProfileCollection(db)
 
   // Never evaluated, or edited since the last evaluation. $expr is the
@@ -112,7 +122,14 @@ export async function runStaleProfileEvaluationSweep(
     summary.candidates++
     const tenantId = doc['tenant_id'] as string
     try {
-      const { tenant_id: _t, updated_at: _u, insights_evaluated_at: _e, version: _v, _id: _i, ...rest } = doc
+      const {
+        tenant_id: _t,
+        updated_at: _u,
+        insights_evaluated_at: _e,
+        version: _v,
+        _id: _i,
+        ...rest
+      } = doc
       const parsed = FinancialProfileSchema.safeParse(rest)
       if (!parsed.success || !isSubstantivelyComplete(parsed.data)) {
         // Mid-wizard or genuinely invalid — not an error, just not ready
@@ -129,14 +146,23 @@ export async function runStaleProfileEvaluationSweep(
       // insight collection → null → no event rather than a wrong one.
       const openCount = async (): Promise<number | null> => {
         try {
-          const docs = (await db.collection('insights').find({ tenant_id: tenantId }).toArray()) as Record<string, unknown>[]
+          const docs = (await db
+            .collection('insights')
+            .find({ tenant_id: tenantId })
+            .toArray()) as Record<string, unknown>[]
           return docs.filter((d) => d['state'] !== 'resolved').length
         } catch {
           return null
         }
       }
       const openBefore = await openCount()
-      await evaluateProfileAndGenerateInsights(parsed.data, tenantId, engine, db, onInsightsGenerated)
+      await evaluateProfileAndGenerateInsights(
+        parsed.data,
+        tenantId,
+        engine,
+        db,
+        onInsightsGenerated,
+      )
       const openAfter = await openCount()
       if (openBefore !== null && openAfter === openBefore) {
         try {
@@ -150,7 +176,8 @@ export async function runStaleProfileEvaluationSweep(
             member_id: null,
             domain: null,
             title: 'Daily check ran — nothing changed',
-            summary: 'Keel re-ran the readiness checks against the saved profile and found nothing new.',
+            summary:
+              'Keel re-ran the readiness checks against the saved profile and found nothing new.',
             evidence: [],
             links: [],
             next_check_at: nextCheck,
@@ -171,5 +198,8 @@ export async function runStaleProfileEvaluationSweep(
   if (summary.evaluated > 0 || summary.failed > 0) {
     log.info({ ...summary }, 'Stale profile evaluation sweep')
   }
+  // Written on every completed run, including one with nothing to evaluate: the
+  // Quiet Care digest reads this as evidence that the daily check happened.
+  await recordJobRun(db, SWEEP_JOB, { ...summary }, now)
   return summary
 }

@@ -72,6 +72,8 @@ export interface User {
   // enable so a half-finished enrollment can't lock the account; recovery
   // codes are stored as SHA-256 hashes only, consumed on use.
   mfa_enabled?: boolean | undefined
+  /** PRD-203: set only when the visitor ticked the (unticked-by-default) box. */
+  marketing_consent?: { given: true; text_version: string; at: Date } | undefined
   mfa_secret?: string | undefined
   mfa_pending_secret?: string | undefined
   mfa_recovery_hashes?: string[] | undefined
@@ -155,7 +157,7 @@ const MAX_FAILED_LOGIN_ATTEMPTS = 5
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000 // 15 minutes
 const EMAIL_VERIFICATION_ENABLED = process.env['EMAIL_VERIFICATION_ENABLED'] === 'true'
 
-function slugify(s: string) {
+export function slugify(s: string) {
   return (
     s
       .toLowerCase()

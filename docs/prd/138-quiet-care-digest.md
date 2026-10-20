@@ -97,6 +97,23 @@ for evidence quality. Numeric defaults below are hypotheses to test, not benchma
 9. **Sender authentication:** SPF, DKIM, DMARC; decide whether tracking pixels fit the
    metadata-first policy (prefer click-based measurement).
 
+## Status (first build)
+
+Built: run records (`job_runs`) written by the daily sweep and by each heartbeat run
+(scheduled versus delivered); `renderQuietCareDigest` with the fixed section order,
+specifics first (real last-check date, real renewal), a real "No changes this month"
+line, at most one item worth a look, a paused-checks line only when a check is
+running on older figures, next digest date, cadence line and manage link; monthly
+cadence always sends; the "we couldn't check" variant when no sweep ran in the last 48
+hours (an error is logged first); monthly is now the default for tenants with no stored
+cadence. No promotional element.
+
+Not built: family-local send time (no timezone field exists; sends stay at 08:00 UTC),
+the day-7 welcome digest, Slovenian localisation, the bereavement pause, cadence tests,
+bounce handling, and a paging channel for operators (the alert is an error log today).
+If no sweep run was ever recorded (first deploy), nothing is sent and the window is
+retried by the next run.
+
 ## Becomes
 
 docs/prd/138-quiet-care-digest.md

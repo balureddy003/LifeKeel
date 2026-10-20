@@ -16,6 +16,7 @@ import { renderPlaybook } from '../../life-events/render-playbook.js'
 const TENANT = 't1'
 const NOW = new Date('2026-02-09T08:00:00Z') // a Monday
 const DAY = 86_400_000
+const MARCH_SWEEP = new Date('2026-03-01T06:30:00Z')
 
 function matches(doc: Record<string, unknown>, filter: Record<string, unknown>): boolean {
   return Object.entries(filter).every(([k, v]) => {
@@ -76,7 +77,10 @@ function makeFamily() {
 }
 
 interface Seed {
+  /** Defaults to weekly; pass null for a tenant that never chose a cadence. */
   prefs?: Record<string, unknown> | null
+  /** When the daily sweep last completed; defaults to 2h before NOW, null = never recorded. */
+  sweepRanAt?: Date | null
   events?: Record<string, unknown>[]
   history?: Record<string, unknown>[]
   insights?: Record<string, unknown>[]
@@ -88,7 +92,19 @@ interface Seed {
 function makeDb(seed: Seed) {
   const stores: Record<string, Record<string, unknown>[]> = {
     family_groups: [makeFamily() as unknown as Record<string, unknown>],
-    delivery_preferences: seed.prefs ? [{ tenant_id: TENANT, ...seed.prefs }] : [],
+    delivery_preferences:
+      seed.prefs === null
+        ? []
+        : [{ tenant_id: TENANT, heartbeat_cadence: 'weekly', ...seed.prefs }],
+    job_runs:
+      seed.sweepRanAt === null
+        ? []
+        : [
+            {
+              job: 'stale-profile-evaluation',
+              ran_at: seed.sweepRanAt ?? new Date(NOW.getTime() - 2 * 3_600_000),
+            },
+          ],
     readiness_events: (seed.events ?? []).map((e) => ({ tenant_id: TENANT, ...e })),
     family_readiness_history: (seed.history ?? []).map((h) => ({ tenant_id: TENANT, ...h })),
     insights: seed.insights ?? [],
@@ -280,11 +296,18 @@ describe('runFamilyHeartbeat', () => {
     expect(r.sent).toBe(2)
     expect(stores['heartbeat_sends']!.every((s) => s['window_start'] === '2026-02-01')).toBe(true)
 
-    // An event created only in the new month is outside the window → quiet.
-    const { db: db2 } = makeDb({ prefs: { heartbeat_cadence: 'monthly' }, events: [inMarch] })
+    // An event created only in the new month is outside the window, but the
+    // digest still sends: a quiet month is the reassurance it exists to give.
+    const { db: db2 } = makeDb({
+      prefs: { heartbeat_cadence: 'monthly' },
+      events: [inMarch],
+      sweepRanAt: MARCH_SWEEP,
+    })
     const r2 = await runFamilyHeartbeat(db2, { cadence: 'monthly', now: firstRun })
-    expect(r2.sent).toBe(0)
-    expect(r2.skipped_quiet).toBe(1)
+    expect(r2.sent).toBe(2)
+    expect(r2.skipped_quiet).toBe(0)
+    const body = sendMock.mock.calls.at(-1)![2] as { text: string }
+    expect(body.text).toContain('No changes this month.')
   })
 
   it('monthly in January reaches back to December of the previous year', async () => {
@@ -294,5 +317,94 @@ describe('runFamilyHeartbeat', () => {
     const r = await runFamilyHeartbeat(db, { cadence: 'monthly', now: jan })
     expect(r.sent).toBe(2)
     expect(stores['heartbeat_sends']![0]!['window_start']).toBe('2026-12-01')
+  })
+
+  it('a tenant with no stored cadence gets the monthly digest, not the weekly email', async () => {
+    const { db } = makeDb({ prefs: null, events: [scoreMoved()] })
+    const weekly = await runFamilyHeartbeat(db, { cadence: 'weekly', now: NOW })
+    expect(weekly.sent).toBe(0)
+    expect(weekly.skipped_off).toBe(1)
+    const monthly = await runFamilyHeartbeat(db, {
+      cadence: 'monthly',
+      now: new Date('2026-03-01T08:00:00Z'),
+    })
+    expect(monthly.sent).toBe(2)
+  })
+
+  it('monthly digest names the real last-check date and cites a real run record', async () => {
+    const ranAt = new Date('2026-03-01T06:30:00Z')
+    const { db } = makeDb({ prefs: { heartbeat_cadence: 'monthly' }, sweepRanAt: ranAt })
+    await runFamilyHeartbeat(db, { cadence: 'monthly', now: new Date('2026-03-01T08:00:00Z') })
+    const rendered = sendMock.mock.calls.at(-1)![2] as { subject: string; text: string }
+    expect(rendered.subject).toBe("Your family's February 2026: all clear")
+    expect(rendered.text).toContain('The daily check last ran on 1 March.')
+    expect(rendered.text).toContain('covers 1–28 February')
+  })
+
+  it('sends the could-not-check variant when the sweep has not run recently, never all clear', async () => {
+    const { db } = makeDb({
+      prefs: { heartbeat_cadence: 'monthly' },
+      sweepRanAt: new Date('2026-02-20T06:30:00Z'),
+    })
+    const r = await runFamilyHeartbeat(db, {
+      cadence: 'monthly',
+      now: new Date('2026-03-01T08:00:00Z'),
+    })
+    expect(r.sent).toBe(2)
+    const rendered = sendMock.mock.calls.at(-1)![2] as { subject: string; text: string }
+    expect(rendered.subject).toBe("We couldn't run this month's checks")
+    expect(rendered.text).not.toMatch(/all clear/i)
+    expect(rendered.text).toContain('20 February')
+  })
+
+  it('sends nothing, and leaves the window retryable, when no sweep run was ever recorded', async () => {
+    const { db, stores } = makeDb({ prefs: { heartbeat_cadence: 'monthly' }, sweepRanAt: null })
+    const r = await runFamilyHeartbeat(db, {
+      cadence: 'monthly',
+      now: new Date('2026-03-01T08:00:00Z'),
+    })
+    expect(r.sent).toBe(0)
+    expect(r.failed).toBe(2)
+    expect(sendMock).not.toHaveBeenCalled()
+    expect(stores['heartbeat_sends']).toHaveLength(0)
+  })
+
+  it('surfaces one open item as the single thing worth a look, linking to it', async () => {
+    const { db } = makeDb({
+      prefs: { heartbeat_cadence: 'monthly' },
+      sweepRanAt: MARCH_SWEEP,
+      insights: [
+        {
+          tenant_id: TENANT,
+          id: 'i-low',
+          state: 'identified',
+          confidence: 0.4,
+          hypothesis: 'Lower item',
+        },
+        {
+          tenant_id: TENANT,
+          id: 'i-top',
+          state: 'identified',
+          confidence: 0.9,
+          hypothesis: 'Top item',
+        },
+      ],
+    })
+    await runFamilyHeartbeat(db, { cadence: 'monthly', now: new Date('2026-03-01T08:00:00Z') })
+    const rendered = sendMock.mock.calls.at(-1)![2] as { subject: string; text: string }
+    expect(rendered.subject).toBe("Your family's February 2026: 1 thing worth a look")
+    expect(rendered.text).toContain('Top item')
+    expect(rendered.text).not.toContain('Lower item')
+    expect(rendered.text).toContain('/insights/i-top')
+  })
+
+  it('records scheduled-versus-delivered for each run', async () => {
+    const { db, stores } = makeDb({ events: [scoreMoved()] })
+    sendMock
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: false, reason: 'send_failed' })
+    await runFamilyHeartbeat(db, { cadence: 'weekly', now: NOW })
+    const run = stores['job_runs']!.find((r) => r['job'] === 'family-heartbeat-weekly')!
+    expect(run).toMatchObject({ sent: 1, failed: 1, scheduled: 2 })
   })
 })

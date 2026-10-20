@@ -11,7 +11,10 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Engine, type Insight } from '@lifekeel/engine'
-import { runStaleProfileEvaluationSweep, isSubstantivelyComplete } from '../stale-profile-evaluation.js'
+import {
+  runStaleProfileEvaluationSweep,
+  isSubstantivelyComplete,
+} from '../stale-profile-evaluation.js'
 import type { FinancialProfile } from '../../routes/family-financial-profile.js'
 
 vi.mock('../../signals.js', () => ({
@@ -122,16 +125,19 @@ function makeProfileCollection(docs: Record<string, unknown>[]) {
         toArray: async () => docs.filter((d) => matchesFilter(d, filter)).slice(0, n),
       }),
     }),
-    updateOne: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
-      const doc = docs.find((d) => matchesFilter(d, filter))
-      if (!doc) return { matchedCount: 0 }
-      Object.assign(doc, update.$set)
-      return { matchedCount: 1 }
-    }),
+    updateOne: vi.fn(
+      async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
+        const doc = docs.find((d) => matchesFilter(d, filter))
+        if (!doc) return { matchedCount: 0 }
+        Object.assign(doc, update.$set)
+        return { matchedCount: 1 }
+      },
+    ),
   }
 }
 
 let profileDocs: Record<string, unknown>[]
+let jobRuns: Record<string, unknown>[]
 let insightDocs: Record<string, unknown>[]
 
 function makeDb() {
@@ -140,6 +146,12 @@ function makeDb() {
     updateMany: vi.fn(async () => ({ modifiedCount: 0 })),
   }
   const events: Record<string, unknown>[] = []
+  const jobRunsCol = {
+    insertOne: async (doc: Record<string, unknown>) => {
+      jobRuns.push(doc)
+      return { insertedId: 'r' }
+    },
+  }
   const readinessEventsCol = {
     updateOne: async (
       filter: Record<string, unknown>,
@@ -156,12 +168,19 @@ function makeDb() {
   const profileCol = makeProfileCollection(profileDocs)
   return {
     collection: (name: string) =>
-      name === 'family_financial_profile' ? profileCol
-        : name === 'insights' ? insightsCol
-        : name === 'family_groups' ? familyGroupsCol
-        : name === 'documents' ? documentsCol
-        : name === 'readiness_events' ? readinessEventsCol
-        : profileCol,
+      name === 'family_financial_profile'
+        ? profileCol
+        : name === 'insights'
+          ? insightsCol
+          : name === 'family_groups'
+            ? familyGroupsCol
+            : name === 'documents'
+              ? documentsCol
+              : name === 'readiness_events'
+                ? readinessEventsCol
+                : name === 'job_runs'
+                  ? jobRunsCol
+                  : profileCol,
     _events: events,
   } as never
 }
@@ -176,12 +195,15 @@ beforeEach(() => {
   onInsightsGenerated = vi.fn(async (_insights: Insight[], _tenantId: string) => {})
   profileDocs = []
   insightDocs = []
+  jobRuns = []
 })
 
 describe('isSubstantivelyComplete', () => {
   it('requires real signal from household, emergency fund, and retirement', () => {
     expect(isSubstantivelyComplete(makeCompleteProfile() as unknown as FinancialProfile)).toBe(true)
-    expect(isSubstantivelyComplete(makeAbandonedProfile() as unknown as FinancialProfile)).toBe(false)
+    expect(isSubstantivelyComplete(makeAbandonedProfile() as unknown as FinancialProfile)).toBe(
+      false,
+    )
   })
 })
 
@@ -199,12 +221,14 @@ describe('runStaleProfileEvaluationSweep', () => {
   })
 
   it('leaves an already-current profile untouched', async () => {
-    profileDocs = [{
-      tenant_id: TENANT_A,
-      ...makeCompleteProfile(),
-      updated_at: daysAgo(5),
-      insights_evaluated_at: daysAgo(1),
-    }]
+    profileDocs = [
+      {
+        tenant_id: TENANT_A,
+        ...makeCompleteProfile(),
+        updated_at: daysAgo(5),
+        insights_evaluated_at: daysAgo(1),
+      },
+    ]
     const summary = await runStaleProfileEvaluationSweep(makeDb(), engine, onInsightsGenerated)
 
     expect(summary).toMatchObject({ candidates: 0, evaluated: 0 })
@@ -212,12 +236,14 @@ describe('runStaleProfileEvaluationSweep', () => {
   })
 
   it('re-evaluates a profile edited since its last evaluation', async () => {
-    profileDocs = [{
-      tenant_id: TENANT_A,
-      ...makeCompleteProfile(),
-      updated_at: daysAgo(1),
-      insights_evaluated_at: daysAgo(5),
-    }]
+    profileDocs = [
+      {
+        tenant_id: TENANT_A,
+        ...makeCompleteProfile(),
+        updated_at: daysAgo(1),
+        insights_evaluated_at: daysAgo(5),
+      },
+    ]
     const summary = await runStaleProfileEvaluationSweep(makeDb(), engine, onInsightsGenerated)
 
     expect(summary).toMatchObject({ candidates: 1, evaluated: 1 })
@@ -257,7 +283,9 @@ describe('runStaleProfileEvaluationSweep', () => {
     expect(summary.evaluated).toBe(1)
     // The failing tenant's stamp is never written (its try block throws
     // before the updateOne) — only the successful one is.
-    const stampedTenants = profileDocs.filter((d) => d['insights_evaluated_at'] !== undefined).map((d) => d['tenant_id'])
+    const stampedTenants = profileDocs
+      .filter((d) => d['insights_evaluated_at'] !== undefined)
+      .map((d) => d['tenant_id'])
     expect(stampedTenants).toEqual([TENANT_B])
   })
 
@@ -283,7 +311,11 @@ describe('runStaleProfileEvaluationSweep', () => {
 
     const quiet = (db as unknown as { _events: Record<string, unknown>[] })._events
     expect(quiet).toHaveLength(1)
-    expect(quiet[0]).toMatchObject({ type: 'sweep_quiet', severity: 'info', title: 'Daily check ran — nothing changed' })
+    expect(quiet[0]).toMatchObject({
+      type: 'sweep_quiet',
+      severity: 'info',
+      title: 'Daily check ran — nothing changed',
+    })
     expect(quiet[0]!['dedupe_key']).toMatch(/^sweep_quiet:tenant-stale-sweep-a:\d{4}-\d{2}-\d{2}$/)
     expect(quiet[0]!['next_check_at']).toBeInstanceOf(Date)
   })
@@ -300,5 +332,19 @@ describe('runStaleProfileEvaluationSweep', () => {
 
     const events = (db as unknown as { _events: Record<string, unknown>[] })._events
     expect(events.some((e) => e['type'] === 'sweep_quiet')).toBe(false)
+  })
+
+  it("records a run (the digest's evidence that the daily check happened) even with nothing to evaluate", async () => {
+    const now = new Date('2026-10-14T06:30:00Z')
+    await runStaleProfileEvaluationSweep(makeDb(), engine, onInsightsGenerated, { now })
+    expect(jobRuns).toEqual([
+      expect.objectContaining({
+        job: 'stale-profile-evaluation',
+        ran_at: now,
+        candidates: 0,
+        evaluated: 0,
+        failed: 0,
+      }),
+    ])
   })
 })
