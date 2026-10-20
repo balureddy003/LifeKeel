@@ -15,6 +15,8 @@ import type { Db } from 'mongodb'
  * back to raw aggregation until the backfill marker is set.
  */
 
+import { COHORT_DAYS, cohortFunnelRows, eventFunnelRows } from '../marketing/funnel.js'
+
 const META_ID = 'meta'
 const BACKFILL_DAYS = 90
 
@@ -56,6 +58,8 @@ async function rollupDay(db: Db, day: string): Promise<number> {
   ]).toArray()
   for (const l of leads) upserts.push({ metric: 'lead', dim: l['_id'] as string, count: l['count'] as number })
 
+  for (const f of await eventFunnelRows(db, day, range)) upserts.push({ metric: f.metric, dim: f.dim, count: f.count })
+
   const logins = await db.collection('login_events').countDocuments({ created_at: range, success: true })
   if (logins > 0) upserts.push({ metric: 'login', dim: '', count: logins })
 
@@ -77,6 +81,30 @@ async function rollupDay(db: Db, day: string): Promise<number> {
   return upserts.length
 }
 
+/** The signup cohorts of the last 30 days, recomputed as they mature (PRD-210 funnel). */
+async function rollupCohorts(db: Db, now: Date): Promise<number> {
+  const coll = db.collection<MetricDoc>('metrics_daily')
+  let written = 0
+  for (let i = 0; i < COHORT_DAYS; i++) {
+    const day = dayKey(new Date(now.getTime() - i * 24 * 60 * 60 * 1000))
+    const rowsForDay = await cohortFunnelRows(db, day, { $gte: dayStart(day), $lte: dayEnd(day) })
+    if (rowsForDay.length === 0) continue
+    // The visit and click rows share the day key; replace only this day's cohort steps.
+    await coll.bulkWrite(
+      rowsForDay.map((r) => ({
+        updateOne: {
+          filter: { _id: `${day}|funnel|${r.dim}` },
+          update: { $set: { day, metric: 'funnel', dim: r.dim, count: r.count, updated_at: new Date() } },
+          upsert: true,
+        },
+      })),
+      { ordered: false },
+    )
+    written += rowsForDay.length
+  }
+  return written
+}
+
 /** Roll up today and yesterday, plus a one-time 90-day backfill. */
 export async function runMetricsRollup(db: Db, now = new Date()): Promise<{ rolled_days: number; rows: number }> {
   const coll = db.collection<MetricDoc>('metrics_daily')
@@ -93,6 +121,7 @@ export async function runMetricsRollup(db: Db, now = new Date()): Promise<{ roll
 
   let rows = 0
   for (const day of [...new Set(days)]) rows += await rollupDay(db, day)
+  rows += await rollupCohorts(db, now)
 
   await coll.updateOne(
     { _id: META_ID },

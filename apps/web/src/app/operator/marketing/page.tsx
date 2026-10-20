@@ -48,6 +48,7 @@ import {
 } from '@/lib/api'
 import { PostPreview } from './_components/PostPreview'
 import { PostCalendar } from './_components/PostCalendar'
+import { FunnelPanel } from './_components/FunnelPanel'
 import { ReasonAction } from '../_components/ReasonAction'
 
 const STATE_STYLE: Record<MarketingPost['state'], string> = {
@@ -974,6 +975,7 @@ export default function MarketingPage() {
           {/* Performance */}
           {tab === 'performance' && (
             <>
+              {performance?.funnel && <FunnelPanel funnel={performance.funnel} />}
               {performance &&
               (performance.totals.views > 0 ||
                 performance.totals.signups > 0 ||
