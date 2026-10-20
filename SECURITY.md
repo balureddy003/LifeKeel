@@ -299,10 +299,26 @@ Removed:
   test files rewritten to mock a neutral connector fixture.
 
 Left in place deliberately: `migrate.ts`'s historical category-backfill
-migrations and `category-table.yaml`'s trading rule-id rows — they only
-process insight documents that already exist in deployed databases.
-`sandbox-seed.ts`'s kairos multi-vertical demo content is a separate known
-cleanup item.
+migrations and `category-table.yaml`'s trading rule-id rows — the
+migrations read the table at boot and only process insight documents that
+already exist in deployed databases.
+
+## Reseeded: sandbox demo content is now family data (2026-10-21)
+
+`sandbox-seed.ts` shipped kairos-era multi-vertical demo content — SMB
+invoice chasing, Trading 212 portfolios, buy-to-let yields, X follower
+growth — referencing `detectors/trading|property|social/*.yaml` that no
+longer exist, and the `?sandbox=1`/`demo` path served it to every family
+"Try the demo" visitor with no `active_vertical` set. Rewritten: 3 goals,
+10 insights, 3 workflows, 3 verified moments, all mirroring real
+`detectors/family/*.yaml` detector/rule ids and the categories
+`inferCategory()` + `category-table.yaml` actually assign. The per-sample
+`vertical` field and `filterByVertical`/`active_vertical` machinery were
+single-vertical dead generality and went with it. Also removed: the demo
+guard's checks for the `/portfolio/trades` and `/portfolio/live-trading`
+routes (removed earlier), and the Studio landing page's "Portfolio &
+Trading" nav card linking to those same nonexistent routes (now links to
+family endpoints).
 
 ## Known, deliberately deferred issues
 
