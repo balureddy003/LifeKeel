@@ -62,6 +62,10 @@ function walk(dir: string): string[] {
 function webCopyFiles(): string[] {
   return [
     'apps/web/src/components/MarketingLanding.tsx',
+    // PRD-141/145/203: new user-facing copy outside the landing page.
+    'apps/web/src/components/PerceivedProtectionCard.tsx',
+    'apps/web/src/components/FreshnessCard.tsx',
+    'apps/web/src/lib/result-save-copy.ts',
     'apps/web/src/app/guides/guides-data.ts',
     ...walk('apps/web/src/app/blog'),
     ...landingFiles(),

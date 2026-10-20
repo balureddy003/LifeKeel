@@ -280,7 +280,7 @@ export async function runFamilyHeartbeat(
       continue
     }
 
-    let rendered = renderHeartbeat(data)
+    let rendered: ReturnType<typeof renderHeartbeat> & { variant?: string } = renderHeartbeat(data)
     if (opts.cadence === 'monthly' && windowEnd) {
       const monthName = (d: Date) =>
         d.toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' })
@@ -371,7 +371,13 @@ export async function runFamilyHeartbeat(
         }
         if (typeof sends.insertOne === 'function') {
           await sends
-            .insertOne({ member_id: member.id, window_start: windowStartIso, sent_at: now })
+            .insertOne({
+              member_id: member.id,
+              window_start: windowStartIso,
+              sent_at: now,
+              // Which digest variant went out, for click-through by variant (PRD-141).
+              ...(rendered.variant ? { variant: rendered.variant } : {}),
+            })
             .catch(() => {})
         }
         result.sent++
