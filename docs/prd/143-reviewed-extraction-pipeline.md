@@ -128,7 +128,14 @@ durations, no values or snippets); filenames are no longer logged; an optional e
 `not_performed`, and never claims a scan that did not happen; candidates are erased with a document,
 mailbox or account. Tenant isolation is tested against real MongoDB.
 
-Not built: the review screen (next PR); a golden dataset under `detector-evals/` with per-field
+Part 2 (this PR) adds the review screen on the document page: every value next to a quote of the
+document with the value picked out, an honest note per value (found, appears more than once, not found
+in the text, read from an image), confirm, edit and reject, a "What is this document?" question when the
+type is uncertain, the document's age with a note that old figures may have changed, and manual entry
+when nothing could be read. It says plainly that a read can be wrong and that only confirmed values are
+saved (amendment 3).
+
+Not built:  a golden dataset under `detector-evals/` with per-field
 precision targets (needs real documents and targets set by the owner); wiring `document_date` into
 the PRD-145 freshness check; a different category after confirm-type does not re-extract.
 

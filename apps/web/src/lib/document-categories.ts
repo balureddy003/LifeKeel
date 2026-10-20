@@ -4,6 +4,7 @@ import type { LucideIcon } from 'lucide-react'
 export const CATEGORY_ICONS: Record<string, LucideIcon> = {
   insurance: ShieldCheck,
   pension: Landmark,
+  income: Receipt,
   mortgage: Home,
   investment: TrendingUp,
   tax: Receipt,
@@ -14,6 +15,7 @@ export const CATEGORY_ICONS: Record<string, LucideIcon> = {
 export const CATEGORY_LABELS: Record<string, string> = {
   insurance: 'Insurance',
   pension: 'Pension',
+  income: 'Income',
   mortgage: 'Mortgage',
   investment: 'Investment',
   tax: 'Tax',
