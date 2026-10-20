@@ -129,7 +129,7 @@ pipeline; engagement is read back and fed into prompts as a comparative signal.
 | 5 | The sitemap still lists `/readiness` until the quiz retirement merges | `sitemap.ts` |
 | 6 | Performance view scans whole collections (events, users, leads, blogs) although `metrics_daily` exists | `marketingPerformance` |
 | 7 | No model of the profiles themselves; nothing detects drift | no collection or route |
-| 8 | No calendar or content plan; the daily draft job only promotes unpromoted blog posts, so it exhausts | `generateDailyMarketingDrafts` |
+| 8 | The Calendar tab only displays scheduled posts; there is no content plan, and the daily draft job only promotes unpromoted blog posts, so it exhausts | `generateDailyMarketingDrafts` |
 | 9 | Channel credentials are mixed: global env tokens for some, per-tenant connection for Bluesky; the LinkedIn token lasts about 60 days without refresh, so publishes then land in `publish_failed` | `social-publisher.ts` header |
 | 10 | Instagram needs an image and there is no media pipeline beyond a `media_url` string | `social-publisher.ts` |
 | 11 | Lifecycle nurture is defined around quiz captures | `lifecycle-emails.ts` header |

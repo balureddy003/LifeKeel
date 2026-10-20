@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import BlogPostClient from './BlogPostClient'
-import { BLOG_SITE_URL, blogPostJsonLd, fetchBlogPostAtBuild, fetchBlogPostsAtBuild } from '@/lib/blog-build'
+import { BLOG_SITE_URL, blogPostJsonLd, fetchBlogPostAtBuild, fetchBlogPostsAtBuild, jsonLdScript } from '@/lib/blog-build'
 
 // Every published post is prerendered at build, with its own title, description, canonical URL and
 // Article structured data in the HTML (PRD-210, phase 1). Firebase Hosting serves an exported file
@@ -42,9 +42,9 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   return (
     <div>
       {post && (
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(blogPostJsonLd(post, slug)) }} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(blogPostJsonLd(post, slug)) }} />
       )}
-      <BlogPostClient initialPost={post} initialSlug={post ? slug : null} />
+      <BlogPostClient key={slug} initialPost={post} initialSlug={post ? slug : null} />
     </div>
   )
 }

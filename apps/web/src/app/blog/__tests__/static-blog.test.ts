@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { blogPostJsonLd } from '@/lib/blog-build'
+import { blogPostJsonLd, jsonLdScript } from '@/lib/blog-build'
 import type { BlogPost } from '@/lib/api'
 
 const BLOG = path.resolve(__dirname, '..')
@@ -44,5 +44,21 @@ describe('blog pages are static', () => {
   })
   it('a post served through the placeholder page is marked indexable by the client', () => {
     expect(read('[slug]', 'BlogPostClient.tsx')).toContain("'robots', 'index, follow'")
+  })
+})
+
+describe('jsonLdScript', () => {
+  it('cannot be broken out of with a closing script tag in a field', () => {
+    const out = jsonLdScript({ headline: 'x</script><script>alert(1)</script>' })
+    expect(out).not.toContain('<')
+    expect(JSON.parse(out).headline).toBe('x</script><script>alert(1)</script>')
+  })
+})
+
+describe('app shell keeps public pages out of the loading gate', () => {
+  it('lists the public content routes and skips the skeleton for them', () => {
+    const shell = fs.readFileSync(path.resolve(BLOG, '..', '..', 'components', 'AppShell.tsx'), 'utf8')
+    expect(shell).toMatch(/PUBLIC_CONTENT_PREFIXES = \['\/blog', '\/guides', '\/terms', '\/privacy', '\/support', '\/readiness'\]/)
+    expect(shell).toContain('isLoading && !isPublicContent')
   })
 })

@@ -29,14 +29,16 @@ import { SiteHeader } from './landing/SiteHeader'
 import { YearsTimelapse } from './landing/YearsTimelapse'
 import { StickyCta } from './landing/StickyCta'
 import { track } from '@/lib/growth-track'
+import { useAuth } from '@/lib/auth-context'
 
 export function MarketingLanding() {
+  const { isLoading } = useAuth()
   useEffect(() => {
-    // A device with a stored session sees the app, not this page (the landing is hidden for it
-    // while the session check runs), so it is not a landing view.
-    if (document.documentElement.dataset.session === '1') return
+    // Count a view only once the session check has finished and this page is still the one shown:
+    // a signed-in visitor is switched to the app in that same commit, so this never runs for them.
+    if (isLoading) return
     track('landing_view')
-  }, [])
+  }, [isLoading])
 
   return (
     <div className="min-h-screen">

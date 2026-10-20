@@ -20,7 +20,7 @@ Use a new one for this purpose so it can be revoked without touching anything el
 
 ## 2. Connect it in the console
 
-Operator > Marketing > Channels > Bluesky: enter the handle (for example `lifekeel.co.uk`) and the app
+Operator > Marketing, the channels panel above the Compose / Queue / Calendar / Performance / Campaigns tabs, Bluesky section: enter the handle (for example `lifekeel.co.uk`) and the app
 password. The console checks them with the network and stores the password encrypted. The channel then shows the
 account that would publish.
 
