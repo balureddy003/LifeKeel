@@ -133,7 +133,7 @@ jobs:
             --image "$JUDGE_IMAGE:${{ github.sha }}" \
             --region "$GCP_REGION" \
             --port 11434 \
-            --cpu 4 --memory 8Gi \
+            --cpu 4 --memory 16Gi \
             --no-cpu-throttling \
             --concurrency 1 \
             --timeout 300 \
