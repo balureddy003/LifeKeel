@@ -18,7 +18,11 @@
 import { z } from 'zod'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { containsSpecialCategoryContent, getTenantCollection } from '@lifekeel/platform'
+import {
+  containsSpecialCategoryContent,
+  detectEmergency,
+  getTenantCollection,
+} from '@lifekeel/platform'
 import { taskLlm } from '../ai/task-gateway.js'
 import { getInsightsCollection, getSignalsCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
@@ -90,6 +94,19 @@ const FALLBACK_CONTENT =
 // silent hop to a hosted processor.
 const QUARANTINED_CONTENT =
   "This question touches health information, which Keel only processes on LifeKeel-operated infrastructure — never on a hosted AI provider. That secure path isn't available right now, so I can't answer this one yet. For anything that doesn't involve health details, I'm happy to help."
+
+// Deterministic safety replies (D-fix: a "chest pain"-type message used
+// to get the generic fallback). Fixed text, not model output — an
+// in-progress emergency gets the same answer whether or not any AI
+// provider is configured, and is never grounded on the family's finances.
+const EMERGENCY_CONTENT = {
+  medical:
+    "If this is happening right now, call emergency services — 999 in the UK, 911 in the US, 112 in the EU, or your local emergency number. Don't wait.\n\n" +
+    "Keel is a finance app — it can't help with a medical emergency. Once everyone is safe, I can help with what comes after: health cover on file, your emergency fund, or who's listed as a contact.",
+  self_harm:
+    "If you or someone you're with might be in danger right now, call emergency services — 999 in the UK, or your local emergency number. You can also talk to Samaritans any time on 116 123 — free in the UK and Ireland, 24/7.\n\n" +
+    "Keel is a finance app, not a crisis line — but once you're safe, I'm here for the practical side whenever you need it.",
+} as const
 
 interface FinancialProfileDoc extends Record<string, unknown> {
   household?: {
@@ -578,6 +595,22 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
       }
       const { tenant_id, user_id } = req.authContext
       const { query, member_id, medical_hint } = parsed.data
+
+      // Emergency short-circuit, before any profile load or model call:
+      // an in-progress emergency gets the deterministic safety reply even
+      // when Ask Keel's model path is entirely down.
+      const emergency = detectEmergency(query)
+      if (emergency) {
+        getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
+          is_live: false,
+          emergency,
+        })
+        return reply.send({
+          content: EMERGENCY_CONTENT[emergency],
+          isLive: false,
+          emergency: true,
+        })
+      }
 
       // Special-category quarantine (Art. 9 / device-first blueprint §4):
       // health-hinted queries run under assistant.answer.sensitive.v1 —

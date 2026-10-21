@@ -107,7 +107,9 @@ export function useFamilyReadinessScore() {
       }
     }
     load()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   return { score, hasLiveData, loading }
@@ -123,7 +125,9 @@ function domainWasChecked(domain: HealthDomain, p: FinancialProfile | null): boo
     case 'protection':
       return true
     case 'savings':
-      return p.emergency_fund.monthly_expenses_minor > 0 || p.household.annual_living_expenses_minor > 0
+      return (
+        p.emergency_fund.monthly_expenses_minor > 0 || p.household.annual_living_expenses_minor > 0
+      )
     case 'wealth':
       return p.retirement.target_retirement_income_minor > TARGET_SET_MINOR
     case 'goals':
@@ -255,10 +259,15 @@ export function useFamilyHealthDomains() {
     fetchFamilyReadiness().then((r) => {
       if (!cancelled) setReadiness(r)
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  const serverByDomain = new Map<HealthDomain, NonNullable<typeof readiness>['components'][number]>()
+  const serverByDomain = new Map<
+    HealthDomain,
+    NonNullable<typeof readiness>['components'][number]
+  >()
   for (const c of readiness?.components ?? []) {
     serverByDomain.set(COMPONENT_TO_DOMAIN[c.key], c)
   }
@@ -300,9 +309,10 @@ export function useFamilyHealthDomains() {
       // Zero insights is only "healthy" if the detector had inputs to
       // judge — with no target entered its check is skipped, and a 100%
       // ring for a check that never ran is the same false comfort.
-      domains[domain] = hasProfile && domainWasChecked(domain, profile)
-        ? { score: 100, hasLiveData: true, insights: [] }
-        : { score: DOMAIN_FALLBACK_SCORE[domain], hasLiveData: false, insights: [] }
+      domains[domain] =
+        hasProfile && domainWasChecked(domain, profile)
+          ? { score: 100, hasLiveData: true, insights: [] }
+          : { score: DOMAIN_FALLBACK_SCORE[domain], hasLiveData: false, insights: [] }
       continue
     }
 
@@ -367,10 +377,19 @@ export function useFamilyTimeline() {
 // member passed away" (life insurance, not income protection) had that
 // order been different, exactly like the Assistant bug did for "job".
 const EVENT_DETECTOR_MAP: Record<string, { detectorId: string; preferredRuleId?: string }> = {
-  bereavement: { detectorId: 'family_protection_gap', preferredRuleId: 'life_insurance_below_household_needs' },
+  bereavement: {
+    detectorId: 'family_protection_gap',
+    preferredRuleId: 'life_insurance_below_household_needs',
+  },
   medical: { detectorId: 'family_protection_gap', preferredRuleId: 'no_income_protection' },
-  'job-loss': { detectorId: 'family_emergency_fund_adequacy', preferredRuleId: 'emergency_fund_below_3_months' },
-  university: { detectorId: 'family_education_shortfall', preferredRuleId: 'education_fund_behind_target' },
+  'job-loss': {
+    detectorId: 'family_emergency_fund_adequacy',
+    preferredRuleId: 'emergency_fund_below_3_months',
+  },
+  university: {
+    detectorId: 'family_education_shortfall',
+    preferredRuleId: 'education_fund_behind_target',
+  },
   retirement: { detectorId: 'family_retirement_gap' },
 }
 
@@ -393,6 +412,9 @@ export function useEventReadiness(
 
   useEffect(() => {
     let cancelled = false
+    // '' while the static-exported page is still resolving the real URL
+    // segment (useRouteParam pre-mount) — nothing to fetch yet.
+    if (!eventId) return
 
     // event-readiness.ts on the API side — the fallback used below when
     // EVENT_DETECTOR_MAP has no mapping (car/property/travel today) or the
@@ -428,10 +450,13 @@ export function useEventReadiness(
       try {
         const insights = await fetchFamilyInsights()
         const candidates = insights.filter((i) => i.detector_id === mapping.detectorId)
-        const matching = candidates.find((i) => i.rule_id === mapping.preferredRuleId) ?? candidates[0]
+        const matching =
+          candidates.find((i) => i.rule_id === mapping.preferredRuleId) ?? candidates[0]
         if (cancelled) return
         if (matching && (matching.reasoning || matching.hypothesis)) {
-          setStability(matching.confidence > 0 ? Math.round(matching.confidence * 100) : fallbackStability)
+          setStability(
+            matching.confidence > 0 ? Math.round(matching.confidence * 100) : fallbackStability,
+          )
           setExplanation(matching.reasoning || matching.hypothesis || fallbackExplanation)
           setHasLiveData(true)
           setInsightId(matching.id)
@@ -449,7 +474,9 @@ export function useEventReadiness(
       }
     }
     load()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [eventId, fallbackStability, fallbackExplanation])
 
   return { stability, explanation, hasLiveData, insightId, ruleId, loading }

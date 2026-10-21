@@ -55,13 +55,19 @@ async function blogPostEntries(): Promise<MetadataRoute.Sitemap> {
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  // No per-page revision tracking exists for the static/guide pages — the
+  // honest timestamp is the build itself (the served HTML literally
+  // changes only when a deploy regenerates it).
+  const builtAt = new Date()
   const staticEntries: MetadataRoute.Sitemap = PUBLIC_ROUTES.map((r) => ({
     url: `${SITE_URL}${r.path}`,
+    lastModified: builtAt,
     changeFrequency: r.changefreq,
     priority: r.priority,
   }))
   const guideEntries: MetadataRoute.Sitemap = GUIDES.map((g) => ({
     url: `${SITE_URL}/guides/${g.slug}/`,
+    lastModified: builtAt,
     changeFrequency: 'yearly' as const,
     priority: 0.8,
   }))

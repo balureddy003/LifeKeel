@@ -272,6 +272,50 @@ describe('POST /assistant/ask', () => {
     expect(resB.json().content).toContain('9999.00')
   })
 
+  it('returns deterministic emergency guidance for an acute-medical query — without calling the model', async () => {
+    const app = await buildApp(TENANT_A)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/assistant/ask',
+      payload: { query: 'my husband is having chest pain' },
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.emergency).toBe(true)
+    expect(body.isLive).toBe(false)
+    expect(body.content).toContain('999')
+    expect(llmMock).not.toHaveBeenCalled()
+  })
+
+  it('returns the self-harm safety reply for a suicidal query', async () => {
+    const app = await buildApp(TENANT_A)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/assistant/ask',
+      payload: { query: 'I want to die' },
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.emergency).toBe(true)
+    expect(body.content).toContain('116 123')
+    expect(llmMock).not.toHaveBeenCalled()
+  })
+
+  it('does not emergency-flag a normal coverage question about medical emergencies', async () => {
+    const app = await buildApp(TENANT_A)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/assistant/ask',
+      payload: { query: 'Am I covered for a medical emergency?' },
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json().emergency).toBeUndefined()
+    expect(llmMock).toHaveBeenCalled()
+  })
+
   it('degrades gracefully (200, isLive false) when the LLM call fails', async () => {
     llmMock.mockImplementation(async () => {
       throw new Error('ANTHROPIC_API_KEY not set')

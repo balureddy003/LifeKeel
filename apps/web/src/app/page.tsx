@@ -54,6 +54,7 @@ import {
 import { elderlyHomeCopy } from '@/lib/elderlyHomeCopy'
 import { childHomeCopy } from '@/lib/childHomeCopy'
 import { simpleHomeCopy } from '@/lib/simpleHomeCopy'
+import { firstVisitSubline } from '@/lib/firstVisitCopy'
 
 function ChildHome() {
   const { user } = useAuth()
@@ -393,7 +394,9 @@ function SinceLastVisit({
 
   // No previous visit or no delta — show a calm time-of-day greeting
   // instead of silence.  Apple-style: acknowledge the human, don't
-  // manufacture urgency.
+  // manufacture urgency.  The "stable" claim itself is gated on real
+  // signals in firstVisitCopy — a first visit at readiness 0 (profile
+  // evaluated, everything a gap) used to claim stability anyway (UAT P8).
   if (!previous) {
     return (
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
@@ -405,7 +408,9 @@ function SinceLastVisit({
             <div className="text-sm font-semibold text-ink-primary">
               {timeOfDayGreeting(firstName)}
             </div>
-            <div className="text-xs text-ink-tertiary">Everything looks stable.</div>
+            <div className="text-xs text-ink-tertiary">
+              {firstVisitSubline({ score, openInsightCount })}
+            </div>
           </div>
         </GlassCard>
       </motion.div>

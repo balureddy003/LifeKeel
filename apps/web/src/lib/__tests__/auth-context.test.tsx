@@ -282,4 +282,28 @@ describe('AuthProvider.signOut', () => {
 
     expect(purge).not.toHaveBeenCalled()
   })
+
+  it('keeps the session on a transient server error — only a real 401/403 signs out (UAT P9)', async () => {
+    // A rate-limit 5xx used to fall into the same branch as a rejected
+    // session and wipe lifekeel_token — the ChannelsCard loop tripping
+    // the 100/min cap signed the user out mid-session.
+    const purge = vi.spyOn(sessionPurge, 'purgeClientData').mockResolvedValue()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status: 503, json: () => Promise.resolve({}) }),
+    )
+    localStorage.setItem('lifekeel_token', 'still-valid-token')
+    localStorage.setItem(
+      'family-auth',
+      JSON.stringify({ user: { id: 'u1', email: 'a@b.com', name: 'A' }, family: null }),
+    )
+
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(purge).not.toHaveBeenCalled()
+    expect(localStorage.getItem('lifekeel_token')).toBe('still-valid-token')
+    expect(result.current.user?.email).toBe('a@b.com')
+    expect(result.current.isAuthenticated).toBe(true)
+  })
 })

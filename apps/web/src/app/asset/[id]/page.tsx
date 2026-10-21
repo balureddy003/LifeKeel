@@ -2,8 +2,8 @@ import AssetProfileClient from './AssetProfileClient'
 
 // Static export (Firebase Hosting): every /asset/** URL is rewritten to this
 // one pre-rendered "placeholder" page (see apps/family/firebase.json).
-// AssetProfileClient reads the real id from useParams() on the client,
-// against the actual browser URL, not this build-time placeholder.
+// AssetProfileClient resolves the real id from the browser URL via
+// useRouteParam — useParams() would return this build-time 'placeholder'.
 export function generateStaticParams() {
   return [{ id: 'placeholder' }]
 }

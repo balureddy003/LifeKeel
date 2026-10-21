@@ -2,16 +2,32 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { useParams } from 'next/navigation'
+import { useRouteParam } from '@/lib/useRouteParam'
 import Link from 'next/link'
-import { AlertTriangle, ArrowLeft, Bot, Check, CheckCircle2, Copy, HelpCircle, Loader2, Mail, PenLine } from 'lucide-react'
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Bot,
+  Check,
+  CheckCircle2,
+  Copy,
+  HelpCircle,
+  Loader2,
+  Mail,
+  PenLine,
+} from 'lucide-react'
 import { LIFE_EVENTS } from '@/lib/life-data'
 import { GlassCard, GlassButton, PageHeader, PageTransition } from '@/components/Glass'
 import { DraftProvenanceNote } from '@/components/DraftProvenance'
 import { haptic } from '@/lib/haptics'
 import { useEventReadiness } from '@/lib/useFamilyData'
 import { useAuth } from '@/lib/auth-context'
-import { prepareInsightDraft, fetchFinancialProfile, type FinancialProfilePolicy, type PolicyType } from '@/lib/api'
+import {
+  prepareInsightDraft,
+  fetchFinancialProfile,
+  type FinancialProfilePolicy,
+  type PolicyType,
+} from '@/lib/api'
 import { learnMoreHref } from '@/lib/detector-content'
 import EventScenarioCard, { eventHasScenario } from './ScenarioCard'
 
@@ -88,10 +104,14 @@ const EVENT_STABILITY: Record<string, number> = {
 }
 
 const EVENT_AI_EXPLANATION: Record<string, string> = {
-  bereavement: "This is a sample scenario, not based on your data yet. Families in this situation typically lean on life insurance, employer survivor benefits, and any survivor pension to stay afloat. Connect your policies and documents so we can show your actual coverage instead of this example.",
-  medical: "This is a sample scenario, not based on your data yet. Most health insurance plans cover emergencies after a deductible, up to an annual out-of-pocket maximum, with an HSA sometimes available for extra costs. Connect your insurance documents so we can show your actual coverage instead of this example.",
-  'job-loss': "This is a sample scenario, not based on your data yet. Families typically lean on emergency savings and any income protection insurance to bridge a job loss. Connect your accounts and documents so we can show your actual runway instead of this example.",
-  retirement: "This is a sample scenario, not based on your data yet. Retirement readiness usually comes down to pension progress, employer match, and monthly contributions. Connect your pension and investment accounts so we can show your actual progress instead of this example.",
+  bereavement:
+    'This is a sample scenario, not based on your data yet. Families in this situation typically lean on life insurance, employer survivor benefits, and any survivor pension to stay afloat. Connect your policies and documents so we can show your actual coverage instead of this example.',
+  medical:
+    'This is a sample scenario, not based on your data yet. Most health insurance plans cover emergencies after a deductible, up to an annual out-of-pocket maximum, with an HSA sometimes available for extra costs. Connect your insurance documents so we can show your actual coverage instead of this example.',
+  'job-loss':
+    'This is a sample scenario, not based on your data yet. Families typically lean on emergency savings and any income protection insurance to bridge a job loss. Connect your accounts and documents so we can show your actual runway instead of this example.',
+  retirement:
+    'This is a sample scenario, not based on your data yet. Retirement readiness usually comes down to pension progress, employer match, and monthly contributions. Connect your pension and investment accounts so we can show your actual progress instead of this example.',
 }
 
 // Checklist completion has no backend endpoint — persist client-side so
@@ -100,7 +120,8 @@ const EVENT_AI_EXPLANATION: Record<string, string> = {
 // state into another's, and by event so action ids (which repeat across
 // events, e.g. '1'-'5') don't bleed into each other.
 function checklistStorageKey(eventId: string): string {
-  const tenant = typeof window !== 'undefined' ? localStorage.getItem('lifekeel_tenant') ?? 'anon' : 'anon'
+  const tenant =
+    typeof window !== 'undefined' ? (localStorage.getItem('lifekeel_tenant') ?? 'anon') : 'anon'
   return `lifekeel:event-checklist:${tenant}:${eventId}`
 }
 
@@ -133,10 +154,10 @@ export function personalizeAction(action: Action, policies: FinancialProfilePoli
 }
 
 export default function EventDetailClient() {
-  const params = useParams<{ eventId: string }>()
-  const event = LIFE_EVENTS.find((e) => e.id === params.eventId)
+  const eventId = useRouteParam('/events')
+  const event = eventId ? LIFE_EVENTS.find((e) => e.id === eventId) : undefined
   const [actions, setActions] = useState<Action[]>(
-    EVENT_ACTIONS[event?.id ?? 'default'] ?? EVENT_ACTIONS.default!
+    EVENT_ACTIONS[event?.id ?? 'default'] ?? EVENT_ACTIONS.default!,
   )
   const [policies, setPolicies] = useState<FinancialProfilePolicy[]>([])
 
@@ -144,10 +165,11 @@ export default function EventDetailClient() {
   // so server-rendered and first-client-render output match — avoids a
   // hydration mismatch, at the cost of a brief unchecked-then-checked flash.
   useEffect(() => {
-    const done = loadDoneIds(params.eventId)
+    if (!eventId) return
+    const done = loadDoneIds(eventId)
     if (done.size === 0) return
     setActions((prev) => prev.map((a) => ({ ...a, done: done.has(a.id) })))
-  }, [params.eventId])
+  }, [eventId])
 
   useEffect(() => {
     let cancelled = false
@@ -155,23 +177,32 @@ export default function EventDetailClient() {
       if (cancelled) return
       setPolicies(profile?.policies ?? [])
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const toggleAction = (id: string) => {
     haptic('light')
     setActions((prev) => {
       const next = prev.map((a) => (a.id === id ? { ...a, done: !a.done } : a))
-      saveDoneIds(params.eventId, new Set(next.filter((a) => a.done).map((a) => a.id)))
+      if (eventId) {
+        saveDoneIds(eventId, new Set(next.filter((a) => a.done).map((a) => a.id)))
+      }
       return next
     })
   }
 
   const fallbackStability = event ? (EVENT_STABILITY[event.id] ?? 80) : 80
   const fallbackExplanation = event
-    ? (EVENT_AI_EXPLANATION[event.id] ?? "This is a sample scenario, not based on your data yet. Connect your accounts and documents to see a personalized readiness assessment for this situation.")
+    ? (EVENT_AI_EXPLANATION[event.id] ??
+      'This is a sample scenario, not based on your data yet. Connect your accounts and documents to see a personalized readiness assessment for this situation.')
     : 'This event could not be found.'
-  const { stability, explanation, hasLiveData, insightId, ruleId } = useEventReadiness(params.eventId, fallbackStability, fallbackExplanation)
+  const { stability, explanation, hasLiveData, insightId, ruleId } = useEventReadiness(
+    eventId ?? '',
+    fallbackStability,
+    fallbackExplanation,
+  )
 
   // Tier 1 "prepare, don't send" (PRD-103) — draftText is editable once
   // generated; the only exits are copy-to-clipboard and a mailto: link,
@@ -201,7 +232,10 @@ export default function EventDetailClient() {
     const draft = await prepareInsightDraft(insightId)
     setDraftText(draft?.content ?? null)
     setDraftFacts(draft?.provenance?.facts)
-    if (!draft) setDraftError("Keel couldn't write that draft just now — nothing was lost, try again in a moment.")
+    if (!draft)
+      setDraftError(
+        "Keel couldn't write that draft just now — nothing was lost, try again in a moment.",
+      )
     setDrafting(false)
   }
 
@@ -218,6 +252,18 @@ export default function EventDetailClient() {
     }
   }
 
+  // eventId stays undefined until the real URL segment is resolved
+  // post-mount (static export — see useRouteParam); show a shimmer rather
+  // than a false "Event not found" for that first render.
+  if (eventId === undefined) {
+    return (
+      <div className="px-5 pt-8 space-y-3">
+        <div className="shimmer h-24 rounded-2xl" />
+        <div className="shimmer h-24 rounded-2xl" />
+      </div>
+    )
+  }
+
   if (!event) {
     return (
       <div className="px-4 pt-8 text-center">
@@ -225,7 +271,10 @@ export default function EventDetailClient() {
           <HelpCircle size={32} className="text-ink-tertiary" />
         </div>
         <p className="text-ink-secondary">Event not found</p>
-        <Link href="/events" className="text-family-400 font-semibold mt-4 inline-block flex items-center gap-1 justify-center">
+        <Link
+          href="/events"
+          className="text-family-400 font-semibold mt-4 inline-block flex items-center gap-1 justify-center"
+        >
           <ArrowLeft size={14} /> Back to events
         </Link>
       </div>
@@ -236,212 +285,234 @@ export default function EventDetailClient() {
 
   return (
     <PageTransition>
-    <div className="px-5 pt-2 space-y-5">
-      <PageHeader
-        title={event.label}
-        backHref="/events"
-        subtitle="Here's your family's response plan"
-      />
+      <div className="px-5 pt-2 space-y-5">
+        <PageHeader
+          title={event.label}
+          backHref="/events"
+          subtitle="Here's your family's response plan"
+        />
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-      >
-        <GlassCard className="p-5">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-semibold text-ink-secondary">Family Readiness</span>
-            <span className="text-2xl font-bold" style={{ color: stability >= 80 ? '#4ade80' : '#fbbf24' }}>
-              {stability}%
-            </span>
-          </div>
-          <div className="h-3 rounded-full bg-tint/5 overflow-hidden">
-            <motion.div
-              className="h-full rounded-full"
-              style={{
-                backgroundColor: stability >= 80 ? '#4ade80' : '#fbbf24',
-                boxShadow: `0 0 12px ${stability >= 80 ? '#4ade80' : '#fbbf24'}80`,
-              }}
-              initial={{ width: 0 }}
-              animate={{ width: `${stability}%` }}
-              transition={{ duration: 1, ease: 'easeOut' }}
-            />
-          </div>
-          <p className="text-xs text-ink-tertiary mt-2">
-            {stability >= 80
-              ? "Your family would remain financially stable in this situation."
-              : "Your family would be okay, but there are some gaps to address."}
-          </p>
-          {hasLiveData ? (
-            <div className="flex items-center gap-1.5 text-xs text-success mt-2">
-              <CheckCircle2 size={12} />
-              <span>Based on your family's data</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 text-xs text-warning mt-2">
-              <AlertTriangle size={12} />
-              <span>Sample scenario — connect your data for a real one</span>
-            </div>
-          )}
-        </GlassCard>
-      </motion.div>
-
-      {/* PRD-115/132: the "what if" card — job-loss plus every event with
-          a defensible template (bereavement, disability, medical,
-          new-child, university); renders nothing when the profile lacks
-          the inputs the template needs. */}
-      {eventHasScenario(event.id) && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
+          transition={{ delay: 0.1 }}
         >
-          <EventScenarioCard eventId={event.id} />
-        </motion.div>
-      )}
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-      >
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-semibold text-ink-secondary">Actions to Take</span>
-          <span className="text-xs text-ink-tertiary">{completedCount}/{actions.length} done</span>
-        </div>
-        <div className="space-y-2">
-          {actions.map((action, i) => (
-            <motion.button
-              key={action.id}
-              onClick={() => toggleAction(action.id)}
-              aria-pressed={action.done}
-              whileTap={{ scale: 0.97 }}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.25 + i * 0.06 }}
-              className="w-full glass rounded-2xl p-4 flex items-center gap-3"
-            >
-              <motion.div
-                className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-                animate={{
-                  backgroundColor: action.done ? '#4ade80' : 'rgb(var(--tint) / 0.05)',
-                  borderColor: action.done ? '#4ade80' : 'rgb(var(--tint) / 0.1)',
-                }}
-                style={{ border: '2px solid' }}
+          <GlassCard className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-semibold text-ink-secondary">Family Readiness</span>
+              <span
+                className="text-2xl font-bold"
+                style={{ color: stability >= 80 ? '#4ade80' : '#fbbf24' }}
               >
-                {action.done && <Check size={14} color="rgb(var(--on-cta))" />}
-              </motion.div>
-              <span className={`text-sm text-left flex-1 ${action.done ? 'text-ink-tertiary line-through' : 'text-ink-primary'}`}>
-                {personalizeAction(action, policies)}
+                {stability}%
               </span>
-            </motion.button>
-          ))}
-        </div>
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-      >
-        <GlassCard className="p-5 border-family-500/20">
-          <div className="flex items-center gap-2 mb-2">
-            <Bot size={18} className="text-family-400" />
-            <span className="text-sm font-semibold text-family-400">AI Explains</span>
-          </div>
-          <p className="text-sm text-ink-secondary leading-relaxed">{explanation}</p>
-          {learnMoreHref(ruleId) && (
-            <Link href={learnMoreHref(ruleId)!} className="text-xs text-family-400 font-semibold mt-2 inline-block">
-              Learn more →
-            </Link>
-          )}
-        </GlassCard>
-      </motion.div>
-
-      {hasLiveData && insightId && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.45 }}
-        >
-          <GlassCard className="p-5 border-family-500/20">
-            <div className="flex items-center gap-2 mb-2">
-              <PenLine size={18} className="text-family-400" />
-              <span className="text-sm font-semibold text-family-400">Draft a message</span>
             </div>
-            {!draftText ? (
-              <>
-                <p className="text-sm text-ink-tertiary leading-relaxed mb-3">
-                  Keel can draft an email based on this — you review and send it yourself. Keel never sends anything on your behalf.
-                </p>
-                <GlassButton variant="secondary" onClick={handleDraft} disabled={drafting}>
-                  {drafting ? <Loader2 size={18} className="animate-spin" /> : <PenLine size={18} />}
-                  <span>{drafting ? 'Drafting…' : 'Draft this for me'}</span>
-                </GlassButton>
-                {draftError && (
-                  <p role="status" aria-live="polite" className="text-sm text-ink-tertiary leading-relaxed mt-3">{draftError}</p>
-                )}
-              </>
+            <div className="h-3 rounded-full bg-tint/5 overflow-hidden">
+              <motion.div
+                className="h-full rounded-full"
+                style={{
+                  backgroundColor: stability >= 80 ? '#4ade80' : '#fbbf24',
+                  boxShadow: `0 0 12px ${stability >= 80 ? '#4ade80' : '#fbbf24'}80`,
+                }}
+                initial={{ width: 0 }}
+                animate={{ width: `${stability}%` }}
+                transition={{ duration: 1, ease: 'easeOut' }}
+              />
+            </div>
+            <p className="text-xs text-ink-tertiary mt-2">
+              {stability >= 80
+                ? 'Your family would remain financially stable in this situation.'
+                : 'Your family would be okay, but there are some gaps to address.'}
+            </p>
+            {hasLiveData ? (
+              <div className="flex items-center gap-1.5 text-xs text-success mt-2">
+                <CheckCircle2 size={12} />
+                <span>Based on your family's data</span>
+              </div>
             ) : (
-              <div className="space-y-3">
-                <textarea
-                  ref={draftTextareaRef}
-                  value={draftText}
-                  onChange={(e) => setDraftText(e.target.value)}
-                  rows={6}
-                  className="glass-input w-full rounded-xl px-4 py-3 text-sm text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-                />
-                <p className="text-xs text-ink-tertiary">
-                  This is a draft only — copy it or open it in your own email client. Keel never sends it for you.
-                </p>
-                <DraftProvenanceNote facts={draftFacts} />
-                <div className="flex gap-2">
-                  <GlassButton variant="secondary" onClick={handleCopy}>
-                    <Copy size={16} />
-                    <span>{copied ? 'Copied' : 'Copy'}</span>
-                  </GlassButton>
-                  <a
-                    href={`mailto:?body=${encodeURIComponent(draftText)}`}
-                    onClick={() => haptic('light')}
-                    className="flex-1"
-                  >
-                    <GlassButton variant="secondary">
-                      <Mail size={16} />
-                      <span>Open in email</span>
-                    </GlassButton>
-                  </a>
-                </div>
+              <div className="flex items-center gap-1.5 text-xs text-warning mt-2">
+                <AlertTriangle size={12} />
+                <span>Sample scenario — connect your data for a real one</span>
               </div>
             )}
           </GlassCard>
         </motion.div>
-      )}
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-      >
-        {/* Workstream A bonus: used to link to a blank chat with no idea
+        {/* PRD-115/132: the "what if" card — job-loss plus every event with
+          a defensible template (bereavement, disability, medical,
+          new-child, university); renders nothing when the profile lacks
+          the inputs the template needs. */}
+        {eventHasScenario(event.id) && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+          >
+            <EventScenarioCard eventId={event.id} />
+          </motion.div>
+        )}
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-semibold text-ink-secondary">Actions to Take</span>
+            <span className="text-xs text-ink-tertiary">
+              {completedCount}/{actions.length} done
+            </span>
+          </div>
+          <div className="space-y-2">
+            {actions.map((action, i) => (
+              <motion.button
+                key={action.id}
+                onClick={() => toggleAction(action.id)}
+                aria-pressed={action.done}
+                whileTap={{ scale: 0.97 }}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.25 + i * 0.06 }}
+                className="w-full glass rounded-2xl p-4 flex items-center gap-3"
+              >
+                <motion.div
+                  className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                  animate={{
+                    backgroundColor: action.done ? '#4ade80' : 'rgb(var(--tint) / 0.05)',
+                    borderColor: action.done ? '#4ade80' : 'rgb(var(--tint) / 0.1)',
+                  }}
+                  style={{ border: '2px solid' }}
+                >
+                  {action.done && <Check size={14} color="rgb(var(--on-cta))" />}
+                </motion.div>
+                <span
+                  className={`text-sm text-left flex-1 ${action.done ? 'text-ink-tertiary line-through' : 'text-ink-primary'}`}
+                >
+                  {personalizeAction(action, policies)}
+                </span>
+              </motion.button>
+            ))}
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+        >
+          <GlassCard className="p-5 border-family-500/20">
+            <div className="flex items-center gap-2 mb-2">
+              <Bot size={18} className="text-family-400" />
+              <span className="text-sm font-semibold text-family-400">AI Explains</span>
+            </div>
+            <p className="text-sm text-ink-secondary leading-relaxed">{explanation}</p>
+            {learnMoreHref(ruleId) && (
+              <Link
+                href={learnMoreHref(ruleId)!}
+                className="text-xs text-family-400 font-semibold mt-2 inline-block"
+              >
+                Learn more →
+              </Link>
+            )}
+          </GlassCard>
+        </motion.div>
+
+        {hasLiveData && insightId && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.45 }}
+          >
+            <GlassCard className="p-5 border-family-500/20">
+              <div className="flex items-center gap-2 mb-2">
+                <PenLine size={18} className="text-family-400" />
+                <span className="text-sm font-semibold text-family-400">Draft a message</span>
+              </div>
+              {!draftText ? (
+                <>
+                  <p className="text-sm text-ink-tertiary leading-relaxed mb-3">
+                    Keel can draft an email based on this — you review and send it yourself. Keel
+                    never sends anything on your behalf.
+                  </p>
+                  <GlassButton variant="secondary" onClick={handleDraft} disabled={drafting}>
+                    {drafting ? (
+                      <Loader2 size={18} className="animate-spin" />
+                    ) : (
+                      <PenLine size={18} />
+                    )}
+                    <span>{drafting ? 'Drafting…' : 'Draft this for me'}</span>
+                  </GlassButton>
+                  {draftError && (
+                    <p
+                      role="status"
+                      aria-live="polite"
+                      className="text-sm text-ink-tertiary leading-relaxed mt-3"
+                    >
+                      {draftError}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <div className="space-y-3">
+                  <textarea
+                    ref={draftTextareaRef}
+                    value={draftText}
+                    onChange={(e) => setDraftText(e.target.value)}
+                    rows={6}
+                    className="glass-input w-full rounded-xl px-4 py-3 text-sm text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                  />
+                  <p className="text-xs text-ink-tertiary">
+                    This is a draft only — copy it or open it in your own email client. Keel never
+                    sends it for you.
+                  </p>
+                  <DraftProvenanceNote facts={draftFacts} />
+                  <div className="flex gap-2">
+                    <GlassButton variant="secondary" onClick={handleCopy}>
+                      <Copy size={16} />
+                      <span>{copied ? 'Copied' : 'Copy'}</span>
+                    </GlassButton>
+                    <a
+                      href={`mailto:?body=${encodeURIComponent(draftText)}`}
+                      onClick={() => haptic('light')}
+                      className="flex-1"
+                    >
+                      <GlassButton variant="secondary">
+                        <Mail size={16} />
+                        <span>Open in email</span>
+                      </GlassButton>
+                    </a>
+                  </div>
+                </div>
+              )}
+            </GlassCard>
+          </motion.div>
+        )}
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+        >
+          {/* Workstream A bonus: used to link to a blank chat with no idea
             what the user was just looking at. Now hands Keel the specific
             scenario by name so its first answer is grounded in this event
             instead of starting from zero — Keel still computes the actual
             numbers itself from the live profile, this just points it at
             the right question. */}
-        <Link
-          href={`/assistant?context=/events&prompt=${encodeURIComponent(
-            `What would happen to my family financially if "${event.label}" happened, and what should we prepare?`,
-          )}`}
-          onClick={() => haptic('light')}
-          className="block"
-        >
-          <GlassButton variant="secondary">
-            <Bot size={18} />
-            <span>Ask AI About This</span>
-          </GlassButton>
-        </Link>
-      </motion.div>
-    </div>
+          <Link
+            href={`/assistant?context=/events&prompt=${encodeURIComponent(
+              `What would happen to my family financially if "${event.label}" happened, and what should we prepare?`,
+            )}`}
+            onClick={() => haptic('light')}
+            className="block"
+          >
+            <GlassButton variant="secondary">
+              <Bot size={18} />
+              <span>Ask AI About This</span>
+            </GlassButton>
+          </Link>
+        </motion.div>
+      </div>
     </PageTransition>
   )
 }

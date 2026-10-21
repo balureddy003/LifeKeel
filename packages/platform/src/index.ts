@@ -58,6 +58,8 @@ export { createGuardEventSink } from './guard-event-sink.js'
 export type { GuardEventSink } from './guard-event-sink.js'
 export type { LlmTokenUsage, LlmUsageCallback } from './llm.js'
 export { LlmInputGuard, LlmOutputGuard, containsSpecialCategoryContent } from './llm-guards.js'
+export { detectEmergency } from './emergency.js'
+export type { EmergencyKind } from './emergency.js'
 export type {
   GuardResult,
   LlmGuardEvent,

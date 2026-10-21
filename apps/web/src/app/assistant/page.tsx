@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Components } from 'react-markdown'
 import { Bot, Send, CloudOff, RotateCcw } from 'lucide-react'
+import { LifeSafetyNotice } from '@/components/LifeSafetyNotice'
 import { AI_SUGGESTIONS } from '@/lib/life-data'
 import { AIAnswerCard } from '@/components/AIAnswer'
 import { PageHeader, CURRENCY_PATTERN, GlassCard } from '@/components/Glass'
@@ -266,7 +267,12 @@ export default function AssistantPage() {
                   <Bot size={12} /> Keel
                 </div>
               )}
-              {msg.status === 'unavailable' && msg.userQuery ? (
+              {msg.status === 'emergency' ? (
+                <div>
+                  <LifeSafetyNotice compact />
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap mt-2">{msg.content}</p>
+                </div>
+              ) : msg.status === 'unavailable' && msg.userQuery ? (
                 <GlassCard className="p-4">
                   <div className="flex items-center gap-2 mb-1.5">
                     <CloudOff size={15} className="text-warning flex-shrink-0" />

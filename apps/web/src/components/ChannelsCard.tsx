@@ -16,14 +16,20 @@ import { isIOS, isStandalone } from '@/lib/platform'
 import { isNativeShell } from '@/lib/native'
 import { isPushSupported, subscribeNativePush } from '@/lib/push'
 
+// Module-level default — an inline arrow in the signature gets a new
+// identity on every render, which made the mount effect below re-run in
+// a loop and flood GET /family/channels (~360 requests from one open
+// Settings tab; UAT P9).
+const readDeviceFacts = (): ClientFacts => ({
+  nativeShell: isNativeShell(),
+  ios: isIOS(),
+  standalone: isStandalone(),
+  pushSupported: isPushSupported(),
+})
+
 export function ChannelsCard({
   loadState = fetchChannelState,
-  readFacts = (): ClientFacts => ({
-    nativeShell: isNativeShell(),
-    ios: isIOS(),
-    standalone: isStandalone(),
-    pushSupported: isPushSupported(),
-  }),
+  readFacts = readDeviceFacts,
 }: {
   loadState?: () => Promise<ChannelState | null>
   readFacts?: () => ClientFacts

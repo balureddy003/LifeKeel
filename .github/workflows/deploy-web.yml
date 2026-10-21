@@ -58,6 +58,10 @@ jobs:
       NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || secrets.NEXT_PUBLIC_API_URL }}
       NEXT_PUBLIC_SENTRY_DSN: ${{ vars.NEXT_PUBLIC_SENTRY_DSN || secrets.NEXT_PUBLIC_SENTRY_DSN }}
       FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID || 'dyocense-502208' }}
+      # RFC 9116 security.txt contact — override via repo Variable; the
+      # build skips the file entirely when this is empty, so keep the
+      # conventional inbox set unless a better endpoint exists.
+      NEXT_PUBLIC_SECURITY_CONTACT: ${{ vars.NEXT_PUBLIC_SECURITY_CONTACT || 'security@lifekeel.co.uk' }}
     steps:
       - name: Check NEXT_PUBLIC_API_URL
         run: |

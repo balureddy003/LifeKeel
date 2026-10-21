@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 const subscribeNativePush = vi.fn()
 vi.mock('@/lib/push', () => ({
   subscribeNativePush: () => subscribeNativePush(),
   isPushSupported: () => true,
 }))
+vi.mock('@/lib/native', () => ({ isNativeShell: () => false }))
+vi.mock('@/lib/platform', () => ({ isIOS: () => false, isStandalone: () => false }))
 vi.mock('@/lib/haptics', () => ({ haptic: vi.fn() }))
 
 import { ChannelsCard } from '../ChannelsCard'
@@ -26,6 +28,20 @@ afterEach(() => {
 })
 
 describe('ChannelsCard', () => {
+  it('fetches channel state once, not in a render loop (UAT P9)', async () => {
+    // No readFacts prop — exercises the default, which used to be a new
+    // arrow function on every render: the effect re-ran each time,
+    // each run calling loadState → GET /family/channels in a loop.
+    const load = vi.fn(async () => base)
+    render(<ChannelsCard loadState={load} />)
+    expect(await screen.findByText('How alerts reach you')).toBeTruthy()
+    // Any loop would already have fired several more calls by now.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50))
+    })
+    expect(load).toHaveBeenCalledTimes(1)
+  })
+
   it('renders nothing when the API gives no state (children, signed out)', async () => {
     const load = vi.fn(async () => null)
     const { container } = render(<ChannelsCard loadState={load} readFacts={() => facts} />)

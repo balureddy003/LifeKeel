@@ -10,7 +10,9 @@ import type { DomainHealth } from '@/lib/useFamilyData'
 const useFamilyHealthDomains = vi.fn()
 
 vi.mock('next/navigation', () => ({
-  useParams: () => ({ domain: 'estate' }),
+  // HealthDomainClient resolves its domain from the URL path (useRouteParam)
+  // rather than useParams — the static export bakes 'placeholder' into params.
+  usePathname: () => '/health/estate',
 }))
 vi.mock('@/lib/useFamilyData', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/useFamilyData')>()

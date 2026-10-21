@@ -1516,11 +1516,18 @@ await app.register(rateLimit, {
     const auth = (req as unknown as { authContext?: { tenant_id: string } }).authContext
     return auth?.tenant_id ?? req.ip
   },
-  errorResponseBuilder: (_req, context) => ({
-    error: 'Too many requests',
-    message: `Rate limit exceeded — max ${context.max} requests/minute per tenant`,
-    retry_after_ms: context.ttl,
-  }),
+  // The plugin *throws* whatever this builder returns — the built-in
+  // default produces an Error with .statusCode, and ours must too: a
+  // plain object landed in the global error handler as an unclassified
+  // 500 (plus a critical ops alert per request) instead of a 429 (D2).
+  errorResponseBuilder: (_req, context) => {
+    const err = new Error(
+      `Rate limit exceeded — max ${context.max} requests/minute per tenant; retry in ${context.after}`,
+    ) as Error & { statusCode?: number; retry_after_ms?: number }
+    err.statusCode = context.statusCode
+    err.retry_after_ms = context.ttl
+    return err
+  },
   // Health and auth endpoints are exempt
   allowList: (req) =>
     req.url === '/health' || req.url === '/engine/health' || req.url.startsWith('/documentation'),

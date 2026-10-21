@@ -15,6 +15,7 @@ import { captureAttribution, getAttribution } from './attribution'
 import { fetchOrQueue } from './offline-queue'
 import { cachedFetch, invalidateCache } from './fetch-cache'
 import { reportError } from './observability'
+import { detectEmergency, EMERGENCY_REPLY } from './emergency-detection'
 
 export interface FamilyInsight {
   id: string
@@ -1175,13 +1176,22 @@ export async function updateNotificationPrefs(
  *                   live answer OR a routine sample — it gets its own
  *                   "temporarily unavailable" surface with a retry.
  */
-export type AssistantAnswerStatus = 'live' | 'canned' | 'unavailable'
+export type AssistantAnswerStatus = 'live' | 'canned' | 'unavailable' | 'emergency'
 
 export async function fetchAIResponse(
   query: string,
   memberId?: string,
   opts?: { memberName?: string },
 ): Promise<{ content: string; status: AssistantAnswerStatus }> {
+  // Deterministic emergency short-circuit — before any network call, so
+  // a "chest pain"-type message gets safety guidance instantly, offline
+  // or while the assistant is down, and the text never leaves the
+  // device. The API screens the same query independently.
+  const emergency = detectEmergency(query)
+  if (emergency) {
+    return { content: EMERGENCY_REPLY[emergency], status: 'emergency' }
+  }
+
   // Read once up front: a dead-connection failure is honest "canned"
   // fallback territory (the offline banner is already telling the user),
   // while an online failure means the assistant itself is broken.
@@ -1240,11 +1250,12 @@ export async function fetchAIResponse(
         content?: string
         isLive?: boolean
         quarantined?: boolean
+        emergency?: boolean
       }
       if (typeof data.content === 'string') {
         return {
           content: curtain.restore(data.content),
-          status: data.isLive ? 'live' : 'canned',
+          status: data.emergency === true ? 'emergency' : data.isLive ? 'live' : 'canned',
         }
       }
       reportError(new Error('assistant/ask returned no content'), { path: '/assistant/ask' })

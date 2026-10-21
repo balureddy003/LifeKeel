@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useParams } from 'next/navigation'
+import { useRouteParam } from '@/lib/useRouteParam'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Loader2, AlertCircle, CheckCircle2, Sparkles, FileQuestion } from 'lucide-react'
@@ -77,7 +77,7 @@ function toPolicyDraft(s: DocumentPolicySuggestion): PolicyDraft {
 }
 
 export default function DocumentDetailClient() {
-  const params = useParams<{ id: string }>()
+  const docId = useRouteParam('/documents')
   const { family } = useAuth()
   const [doc, setDoc] = useState<FamilyDocumentDetail | null | undefined>(undefined)
   const [suggestions, setSuggestions] = useState<ProfileSuggestion[]>([])
@@ -95,11 +95,12 @@ export default function DocumentDetailClient() {
   )
 
   const load = useCallback(async () => {
-    const [d, s] = await Promise.all([fetchDocument(params.id), fetchProfileSuggestions(params.id)])
+    if (!docId) return
+    const [d, s] = await Promise.all([fetchDocument(docId), fetchProfileSuggestions(docId)])
     setDoc(d)
     setSuggestions(s.suggestions)
     setPolicyDraft(s.policySuggestion ? toPolicyDraft(s.policySuggestion) : null)
-  }, [params.id])
+  }, [docId])
 
   useEffect(() => {
     load()
@@ -113,7 +114,8 @@ export default function DocumentDetailClient() {
     let cancelled = false
     let objectUrl: string | null = null
     setPreview(undefined)
-    fetchDocumentFileUrl(params.id).then((p) => {
+    if (!docId) return
+    fetchDocumentFileUrl(docId).then((p) => {
       if (cancelled) {
         if (p) URL.revokeObjectURL(p.url)
         return
@@ -125,7 +127,7 @@ export default function DocumentDetailClient() {
       cancelled = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [params.id])
+  }, [docId])
 
   const confirm = useConfirm()
   const [deletion, setDeletion] = useState<DeletionReceipt | null>(null)
@@ -142,7 +144,8 @@ export default function DocumentDetailClient() {
     haptic('warning')
     setDeleting(true)
     setError(null)
-    const result = await deleteFamilyDocument(params.id)
+    if (!docId) return
+    const result = await deleteFamilyDocument(docId)
     setDeleting(false)
     if (result.ok && result.receipt) {
       haptic('success')
@@ -154,11 +157,12 @@ export default function DocumentDetailClient() {
   }
 
   const handleApply = async () => {
+    if (!docId) return
     haptic('light')
     setApplying(true)
     setError(null)
     try {
-      const result = await applyDocumentToProfile(params.id)
+      const result = await applyDocumentToProfile(docId)
       haptic('success')
       setApplied(result.applied.map((a) => a.label))
       setAppliedInsights(result.insightsGenerated)
@@ -175,12 +179,12 @@ export default function DocumentDetailClient() {
   }
 
   const handleApplyPolicy = async () => {
-    if (!policyDraft) return
+    if (!policyDraft || !docId) return
     haptic('light')
     setPolicyApplying(true)
     setPolicyError(null)
     try {
-      const result = await applyPolicySuggestion(params.id, {
+      const result = await applyPolicySuggestion(docId, {
         type: policyDraft.type,
         provider: policyDraft.provider.trim(),
         coverageAmountMinor: Math.round((Number(policyDraft.coverageAmount) || 0) * 100),

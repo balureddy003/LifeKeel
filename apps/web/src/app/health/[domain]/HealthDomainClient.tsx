@@ -1,6 +1,6 @@
 'use client'
 
-import { useParams } from 'next/navigation'
+import { useRouteParam } from '@/lib/useRouteParam'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import {
@@ -89,10 +89,22 @@ export function splitInsightsByResolution(insights: FamilyInsight[]): {
 }
 
 export default function HealthDomainClient() {
-  const params = useParams<{ domain: string }>()
+  const domainId = useRouteParam('/health')
   const { domains, loading } = useFamilyHealthDomains()
 
-  if (!isHealthDomain(params.domain)) {
+  // domainId stays undefined until the real URL segment is resolved
+  // post-mount (static export — see useRouteParam); show a shimmer rather
+  // than a false "Unknown health area" for that first render.
+  if (domainId === undefined) {
+    return (
+      <div className="px-5 pt-8 space-y-3">
+        <div className="shimmer h-24 rounded-2xl" />
+        <div className="shimmer h-24 rounded-2xl" />
+      </div>
+    )
+  }
+
+  if (!isHealthDomain(domainId)) {
     return (
       <div className="px-4 pt-8 text-center">
         <div className="w-16 h-16 rounded-3xl bg-tint/[0.03] border border-tint/[0.08] flex items-center justify-center mb-4 mx-auto">
@@ -109,8 +121,8 @@ export default function HealthDomainClient() {
     )
   }
 
-  const meta = DOMAIN_META[params.domain]
-  const domain = domains[params.domain]
+  const meta = DOMAIN_META[domainId]
+  const domain = domains[domainId]
   const Icon = meta.icon
   const { open: openInsights, resolved: resolvedInsights } = splitInsightsByResolution(
     domain.insights,
