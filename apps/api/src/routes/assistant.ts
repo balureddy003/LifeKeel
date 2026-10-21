@@ -502,7 +502,7 @@ async function loadAssistantData(db: Db, tenant_id: string, user_id: string) {
 // toScenarioProfileInput moved to ../scenarios/profile-input.ts for
 // PRD-115 — the saved-scenario routes reuse the same mapping.
 
-function formatScenarioResult(result: ScenarioResult): string {
+export function formatScenarioResult(result: ScenarioResult): string {
   const lines = [
     `Current total household monthly income: £${toMajor(result.currentMonthlyIncomeMinor)}.`,
     `Projected monthly income under this scenario: £${toMajor(result.projectedMonthlyIncomeMinor)}.`,
