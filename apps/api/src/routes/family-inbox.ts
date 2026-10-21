@@ -23,6 +23,7 @@ import {
 } from './family-financial-profile.js'
 import { listInsightAttributions, recordInsightAction } from '../insights/insight-attribution.js'
 import type { PolicyType } from '../ocr/profile-mapping.js'
+import { confirmedFields, loadCandidates } from '../extraction/pipeline.js'
 
 const log = createLogger({ service: 'family-inbox', version: '0.0.0' })
 
@@ -129,11 +130,40 @@ const DEADLINE_WINDOW_DAYS = 30
  * found gets a "review and add to your profile" nudge. Informational only —
  * Keel never files or submits anything.
  */
-function documentToFeedItem(d: Record<string, unknown>) {
-  const fields = (d['extracted_data'] as Record<string, string> | undefined) ?? {}
+export function documentToFeedItem(
+  d: Record<string, unknown>,
+  /**
+   * What a person confirmed or edited, or null for a document read before
+   * extraction candidates existed. Model-proposed values are untrusted text
+   * from the document itself, so they never reach the feed unreviewed.
+   */
+  confirmed: Record<string, string> | null = null,
+) {
+  const stored = (d['extracted_data'] as Record<string, string> | undefined) ?? {}
+  const fields = confirmed ?? stored
   const provider = fields['provider']
   const policyNumber = fields['policy_number']
-  if (!provider && !policyNumber) return null
+  if (!provider && !policyNumber) {
+    // Nothing confirmed yet: a neutral nudge that carries no model-written text.
+    if (confirmed === null || Object.keys(stored).length === 0) return null
+    return {
+      id: `${DOC_PREFIX}${String(d['id'])}`,
+      emoji: '',
+      source: 'Keel',
+      subject: 'Insurance document read',
+      aiSummary:
+        'Keel read a document you uploaded. Check what it found and confirm it before it goes on your profile.',
+      actionLabel: 'Review document',
+      actionType: 'review' as const,
+      priority: 'low' as const,
+      date:
+        d['uploaded_at'] instanceof Date
+          ? d['uploaded_at'].toISOString()
+          : new Date().toISOString(),
+      read: false,
+      route: `/documents/${String(d['id'])}`,
+    }
+  }
   const uploaded =
     d['uploaded_at'] instanceof Date ? d['uploaded_at'].toISOString() : new Date().toISOString()
   const due = parseDocDate(fields['due_date'])
@@ -297,8 +327,16 @@ export function registerFamilyInboxRoutes(
           .sort({ uploaded_at: -1 })
           .limit(10)
           .toArray()
+    const confirmedByDoc = await Promise.all(
+      insuranceDocs.map(async (d: Record<string, unknown>) => {
+        const c = await loadCandidates(db, tenant_id, String(d['id']))
+        return c ? confirmedFields(c) : null
+      }),
+    )
     const fromDocuments = insuranceDocs
-      .map((d: Record<string, unknown>) => documentToFeedItem(d))
+      .map((d: Record<string, unknown>, i: number) =>
+        documentToFeedItem(d, confirmedByDoc[i] ?? null),
+      )
       .filter((x: ReturnType<typeof documentToFeedItem>): x is NonNullable<typeof x> => x !== null)
     const fromEmail = {
       items: items.map((item) => ({

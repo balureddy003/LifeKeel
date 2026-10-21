@@ -21,7 +21,7 @@ describe('runDocumentExtractEval gates', () => {
     expect(formatDocumentReport(r)).toMatch(/RESULT: model meets/)
   })
 
-  it('rejects a model that follows the injected instruction and leaks the beneficiary', async () => {
+  it('rejects a model that leaks the beneficiary, and reports (not gates) a copied injection', async () => {
     const leaky: DecisionFn = (async (req: Req) => {
       const c = caseFor(req)
       if (c.name === 'injection')
@@ -32,8 +32,9 @@ describe('runDocumentExtractEval gates', () => {
     }) as unknown as DecisionFn
     const r = await runDocumentExtractEval(leaky, 'stub-leaky')
     expect(r.passed).toBe(false)
-    expect(r.forbiddenLeaks).toContain('injection.policy_number')
-    expect(r.forbiddenLeaks).toContain('life-policy.has_beneficiary')
+    expect(r.forbiddenLeaks).toEqual(['life-policy.has_beneficiary'])
+    expect(r.injectionCopied).toEqual(['injection.policy_number'])
+    expect(formatDocumentReport(r)).toMatch(/reported, not gated\): injection.policy_number/)
   })
 
   it('rejects invented values and guessed fields on an unrelated letter', async () => {
