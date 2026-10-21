@@ -70,8 +70,10 @@ export function formatSupportReport(r: SupportReplyReport): string {
 }
 
 async function main(): Promise<void> {
-  const { createLlmRouterFromEnv } = await import('@lifekeel/platform')
-  const report = await runSupportReplyEval(createLlmRouterFromEnv() as TextLlm)
+  const { evalTextLlm } = await import('./text-llm.js')
+  const { llm, model } = await evalTextLlm()
+  console.log(`Model: ${model}`)
+  const report = await runSupportReplyEval(llm)
   console.log(formatSupportReport(report))
   process.exit(report.passed ? 0 : 1)
 }

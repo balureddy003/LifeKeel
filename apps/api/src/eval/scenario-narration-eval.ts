@@ -76,8 +76,10 @@ export function formatNarrationReport(r: NarrationReport): string {
 }
 
 async function main(): Promise<void> {
-  const { createLlmRouterFromEnv } = await import('@lifekeel/platform')
-  const report = await runNarrationEval(createLlmRouterFromEnv() as TextLlm)
+  const { evalTextLlm } = await import('./text-llm.js')
+  const { llm, model } = await evalTextLlm()
+  console.log(`Model: ${model}`)
+  const report = await runNarrationEval(llm)
   console.log(formatNarrationReport(report))
   process.exit(report.passed ? 0 : 1)
 }
