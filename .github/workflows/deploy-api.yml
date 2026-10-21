@@ -224,7 +224,7 @@ jobs:
           # merely that the process is alive. /health/ready already 503s on
           # pending migrations, but assert it explicitly so a readiness-body
           # regression can't silently weaken the gate.
-          MIG_PENDING=$(echo "$BODY" | head -n -1 | jq -r '.dependencies.migration_pending // "missing"')
+          MIG_PENDING=$(echo "$BODY" | head -n -1 | jq -r 'if .dependencies.migration_pending == null then "missing" else .dependencies.migration_pending end')
           if [ "$MIG_PENDING" != "false" ]; then
             echo "$BODY" | head -n -1
             echo "::error::Revision $NEW reports migration_pending=$MIG_PENDING. Not shifting traffic."
@@ -265,7 +265,7 @@ jobs:
             echo "::error::Reverted to $PREV. Release $RELEASE_SHA is NOT live."
             exit 1
           fi
-          MIG_PENDING=$(echo "$BODY" | head -n -1 | jq -r '.dependencies.migration_pending // "missing"')
+          MIG_PENDING=$(echo "$BODY" | head -n -1 | jq -r 'if .dependencies.migration_pending == null then "missing" else .dependencies.migration_pending end')
           if [ "$MIG_PENDING" != "false" ]; then
             echo "$BODY" | head -n -1
             echo "::error::Production reports migration_pending=$MIG_PENDING after the shift. Reverting to $PREV."
@@ -294,7 +294,7 @@ jobs:
             echo "::error::First-deploy smoke test failed (last status $STATUS)."
             exit 1
           fi
-          MIG_PENDING=$(echo "$BODY" | head -n -1 | jq -r '.dependencies.migration_pending // "missing"')
+          MIG_PENDING=$(echo "$BODY" | head -n -1 | jq -r 'if .dependencies.migration_pending == null then "missing" else .dependencies.migration_pending end')
           if [ "$MIG_PENDING" != "false" ]; then
             echo "$BODY" | head -n -1
             echo "::error::First deploy reports migration_pending=$MIG_PENDING."
