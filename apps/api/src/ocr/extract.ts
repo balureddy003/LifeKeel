@@ -256,6 +256,18 @@ export async function extractDocumentFieldsLocal(
     throw new LocalExtractionError(`OCR engine failed: ${(err as Error).message}`, err)
   }
 
+  return extractFieldsFromText(text, decide)
+}
+
+/**
+ * The model half of local extraction, split out so it can be evaluated on
+ * labelled document text without a PDF or an OCR engine. A model failure throws
+ * LocalExtractionError, same as extractDocumentFieldsLocal.
+ */
+export async function extractFieldsFromText(
+  text: string,
+  decide: DecisionFn,
+): Promise<ExtractionResult> {
   try {
     log.info({ provider: 'local' }, 'Starting local OCR extraction')
     const { value } = await decide({
