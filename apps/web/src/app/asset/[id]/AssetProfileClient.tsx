@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
+import { useRouteParam } from '@/lib/useRouteParam'
 import Link from 'next/link'
 import { ArrowLeft, HelpCircle, House, Landmark, ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -18,15 +19,19 @@ function money(minor: number): string {
 }
 
 export default function AssetProfileClient() {
-  const params = useParams<{ id: string }>()
+  const assetId = useRouteParam('/asset')
   const router = useRouter()
-  const meta = ASSET_META[params.id]
+  const meta = assetId ? ASSET_META[assetId] : undefined
   const [profile, setProfile] = useState<FinancialProfile | null | undefined>(undefined)
 
   useEffect(() => {
     let cancelled = false
-    fetchFinancialProfile().then((p) => { if (!cancelled) setProfile(p) })
-    return () => { cancelled = true }
+    fetchFinancialProfile().then((p) => {
+      if (!cancelled) setProfile(p)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   // 'investments' was removed as a distinct asset (see assets-data.ts) — it
@@ -34,10 +39,22 @@ export default function AssetProfileClient() {
   // different label. A redirect (not a 404) so a stale bookmark or old
   // in-app link still lands somewhere real instead of a dead end.
   useEffect(() => {
-    if (params.id === 'investments') router.replace('/asset/pension')
-  }, [params.id, router])
+    if (assetId === 'investments') router.replace('/asset/pension')
+  }, [assetId, router])
 
-  if (params.id === 'investments') return null
+  if (assetId === 'investments') return null
+
+  // assetId stays undefined until the real URL segment is resolved
+  // post-mount (static export — see useRouteParam); show a shimmer rather
+  // than a false "Asset not found" for that first render.
+  if (assetId === undefined) {
+    return (
+      <div className="px-5 pt-8 space-y-3">
+        <div className="shimmer h-24 rounded-2xl" />
+        <div className="shimmer h-24 rounded-2xl" />
+      </div>
+    )
+  }
 
   if (!meta) {
     return (
@@ -71,9 +88,9 @@ export default function AssetProfileClient() {
             <Skeleton className="h-3 w-2/3" />
           </div>
         </div>
-      ) : params.id === 'home' ? (
+      ) : assetId === 'home' ? (
         <HomeDetail profile={profile} icon={Icon} />
-      ) : params.id === 'pension' ? (
+      ) : assetId === 'pension' ? (
         <RetirementDetail profile={profile} icon={Icon} />
       ) : null}
     </div>
@@ -92,9 +109,17 @@ function NoDataPrompt({ text }: { text: string }) {
   )
 }
 
-function HomeDetail({ profile, icon: Icon }: { profile: FinancialProfile | null; icon: LucideIcon }) {
+function HomeDetail({
+  profile,
+  icon: Icon,
+}: {
+  profile: FinancialProfile | null
+  icon: LucideIcon
+}) {
   if (!profile) {
-    return <NoDataPrompt text="Add your mortgage details in your Financial Profile to see them here." />
+    return (
+      <NoDataPrompt text="Add your mortgage details in your Financial Profile to see them here." />
+    )
   }
   return (
     <div className="card">
@@ -102,18 +127,29 @@ function HomeDetail({ profile, icon: Icon }: { profile: FinancialProfile | null;
         <Icon size={18} className="text-ink-secondary" />
         <span className="text-sm font-semibold text-ink-secondary">Mortgage Outstanding</span>
       </div>
-      <Money value={money(profile.household.mortgage_outstanding_minor)} className="text-2xl font-bold text-family-400" />
+      <Money
+        value={money(profile.household.mortgage_outstanding_minor)}
+        className="text-2xl font-bold text-family-400"
+      />
       <p className="text-xs text-ink-tertiary mt-3 pt-3 border-t border-haze/20">
-        We don&apos;t track your home&apos;s market value or ownership split yet — only what you&apos;ve
-        entered in your Financial Profile.
+        We don&apos;t track your home&apos;s market value or ownership split yet — only what
+        you&apos;ve entered in your Financial Profile.
       </p>
     </div>
   )
 }
 
-function RetirementDetail({ profile, icon: Icon }: { profile: FinancialProfile | null; icon: LucideIcon }) {
+function RetirementDetail({
+  profile,
+  icon: Icon,
+}: {
+  profile: FinancialProfile | null
+  icon: LucideIcon
+}) {
   if (!profile) {
-    return <NoDataPrompt text="Add your pension balance and contributions in your Financial Profile to see them here." />
+    return (
+      <NoDataPrompt text="Add your pension balance and contributions in your Financial Profile to see them here." />
+    )
   }
   return (
     <div className="card">
@@ -121,16 +157,24 @@ function RetirementDetail({ profile, icon: Icon }: { profile: FinancialProfile |
         <Icon size={18} className="text-ink-secondary" />
         <span className="text-sm font-semibold text-ink-secondary">Pension Balance</span>
       </div>
-      <Money value={money(profile.retirement.pension_balance_minor)} className="text-2xl font-bold text-family-400" />
+      <Money
+        value={money(profile.retirement.pension_balance_minor)}
+        className="text-2xl font-bold text-family-400"
+      />
 
       <div className="mt-4 pt-4 border-t border-haze/20 grid grid-cols-2 gap-4">
         <div>
           <div className="text-xs text-ink-tertiary mb-1">Monthly Contribution</div>
-          <Money value={money(profile.retirement.monthly_contribution_minor)} className="text-lg font-semibold text-ink-primary" />
+          <Money
+            value={money(profile.retirement.monthly_contribution_minor)}
+            className="text-lg font-semibold text-ink-primary"
+          />
         </div>
         <div>
           <div className="text-xs text-ink-tertiary mb-1">Target Retirement Age</div>
-          <span className="text-lg font-semibold text-ink-primary">{profile.retirement.target_retirement_age}</span>
+          <span className="text-lg font-semibold text-ink-primary">
+            {profile.retirement.target_retirement_age}
+          </span>
         </div>
       </div>
       <p className="text-xs text-ink-tertiary mt-3 pt-3 border-t border-haze/20">

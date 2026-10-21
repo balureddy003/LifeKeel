@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { useParams } from 'next/navigation'
+import { useRouteParam } from '@/lib/useRouteParam'
 import Link from 'next/link'
 import {
   ArrowLeft,
@@ -253,45 +253,47 @@ function StepDraft({ eventId, step }: { eventId: string; step: LifeEventPlaybook
 }
 
 export default function LifeEventPlaybookClient() {
-  const params = useParams<{ eventId: string }>()
+  const eventId = useRouteParam('/life-events')
   const [event, setEvent] = useState<LifeEvent | null | undefined>(undefined)
   const [doneIds, setDoneIds] = useState<Set<string>>(new Set())
   const [syncError, setSyncError] = useState(false)
   const [queuedOffline, setQueuedOffline] = useState(false)
 
   useEffect(() => {
+    if (!eventId) return
     let cancelled = false
     fetchLifeEvents().then((events) => {
       if (cancelled) return
-      const found = events.find((e) => e.id === params.eventId) ?? null
+      const found = events.find((e) => e.id === eventId) ?? null
       setEvent(found)
       if (found) {
         // Server is authoritative — overrides the localStorage snapshot
         // used for instant paint below.
         const serverIds = new Set(found.completed_step_ids ?? [])
         setDoneIds(serverIds)
-        saveDoneIds(params.eventId, serverIds)
+        saveDoneIds(eventId, serverIds)
       }
     })
     return () => {
       cancelled = true
     }
-  }, [params.eventId])
+  }, [eventId])
 
   useEffect(() => {
-    setDoneIds(loadDoneIds(params.eventId))
-  }, [params.eventId])
+    if (eventId) setDoneIds(loadDoneIds(eventId))
+  }, [eventId])
 
   const toggleStep = (stepId: string) => {
+    if (!event) return
     haptic('light')
     const next = new Set(doneIds)
     const done = !next.has(stepId)
     if (done) next.add(stepId)
     else next.delete(stepId)
     setDoneIds(next)
-    saveDoneIds(params.eventId, next)
+    saveDoneIds(event.id, next)
     setSyncError(false)
-    setLifeEventStepDone(params.eventId, stepId, done).then((serverIds) => {
+    setLifeEventStepDone(event.id, stepId, done).then((serverIds) => {
       if (serverIds === 'queued') {
         // Offline — the toggle stays and the mutation replays on reconnect.
         // Marked as pending rather than an error: nothing failed.

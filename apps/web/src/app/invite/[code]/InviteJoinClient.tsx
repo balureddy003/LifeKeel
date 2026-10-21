@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
+import { useRouteParam } from '@/lib/useRouteParam'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { Users, Check, X, Clock, Mail } from 'lucide-react'
@@ -22,9 +23,18 @@ import { haptic } from '@/lib/haptics'
 const isMemberInviteToken = (code: string) => /^[0-9a-f]{48}$/i.test(code)
 
 export default function InviteJoinClient() {
-  const params = useParams<{ code: string }>()
-  if (isMemberInviteToken(params.code)) return <AcceptMemberInvite token={params.code} />
-  return <RequestJoin code={params.code} />
+  // code stays undefined until the real URL segment is resolved post-mount
+  // (static export — see useRouteParam).
+  const code = useRouteParam('/invite')
+  if (code === undefined) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-sm text-ink-tertiary">
+        Checking your invite…
+      </div>
+    )
+  }
+  if (isMemberInviteToken(code)) return <AcceptMemberInvite token={code} />
+  return <RequestJoin code={code} />
 }
 
 // ── PRD-123: accept a per-member invite ────────────────────────────────────
@@ -38,7 +48,9 @@ function AcceptMemberInvite({ token }: { token: string }) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchFamilyInvite(token).then(setInfo).catch((err) => setLookupError(err instanceof Error ? err.message : 'Invalid invite'))
+    fetchFamilyInvite(token)
+      .then(setInfo)
+      .catch((err) => setLookupError(err instanceof Error ? err.message : 'Invalid invite'))
   }, [token])
 
   const handleAccept = async () => {
@@ -74,7 +86,11 @@ function AcceptMemberInvite({ token }: { token: string }) {
   }
 
   if (!info) {
-    return <div className="min-h-screen flex items-center justify-center text-sm text-ink-tertiary">Checking your invite…</div>
+    return (
+      <div className="min-h-screen flex items-center justify-center text-sm text-ink-tertiary">
+        Checking your invite…
+      </div>
+    )
   }
 
   return (
@@ -85,8 +101,9 @@ function AcceptMemberInvite({ token }: { token: string }) {
         </div>
         <h1 className="text-2xl font-bold">You're invited, {info.memberName}</h1>
         <p className="text-sm text-ink-tertiary mt-1">
-          {info.familyName} set you up on LifeKeel. Set a password to finish joining — you'll be signed in
-          right away. If you already have an Keel account for this family, use that password to link it instead.
+          {info.familyName} set you up on LifeKeel. Set a password to finish joining — you'll be
+          signed in right away. If you already have an Keel account for this family, use that
+          password to link it instead.
         </p>
       </div>
 
@@ -109,13 +126,17 @@ function AcceptMemberInvite({ token }: { token: string }) {
             className={`flex items-center gap-1.5 mt-1.5 px-1 text-xs ${password.length >= 8 ? 'text-success' : 'text-ink-tertiary'}`}
           >
             {password.length >= 8 ? <Check size={12} /> : <X size={12} />}
-            {password.length >= 8 ? 'Password length looks good' : `${8 - password.length} more character${8 - password.length === 1 ? '' : 's'} needed`}
+            {password.length >= 8
+              ? 'Password length looks good'
+              : `${8 - password.length} more character${8 - password.length === 1 ? '' : 's'} needed`}
           </div>
         )}
       </div>
 
       {error && (
-        <p role="status" aria-live="polite" className="text-sm text-danger text-center mb-4">{error}</p>
+        <p role="status" aria-live="polite" className="text-sm text-danger text-center mb-4">
+          {error}
+        </p>
       )}
 
       <motion.button
@@ -128,7 +149,10 @@ function AcceptMemberInvite({ token }: { token: string }) {
       </motion.button>
 
       <p className="text-xs text-ink-tertiary text-center mt-4">
-        Not you? <Link href="/login" className="text-family-400 font-semibold">Sign in</Link>
+        Not you?{' '}
+        <Link href="/login" className="text-family-400 font-semibold">
+          Sign in
+        </Link>
       </p>
     </div>
   )
@@ -159,7 +183,9 @@ function RequestJoin({ code }: { code: string }) {
       setSubmitted(result)
     } catch (err) {
       haptic('warning')
-      setError(err instanceof Error ? err.message : "Couldn't submit your request. Please try again.")
+      setError(
+        err instanceof Error ? err.message : "Couldn't submit your request. Please try again.",
+      )
     } finally {
       setLoading(false)
     }
@@ -174,8 +200,8 @@ function RequestJoin({ code }: { code: string }) {
           </div>
           <h1 className="text-2xl font-bold mb-2">Waiting for approval</h1>
           <p className="text-sm text-ink-secondary leading-relaxed max-w-xs mx-auto">
-            We've let {submitted.familyName} know you'd like to join. Once they approve your request, sign in
-            with the email and password you just set.
+            We've let {submitted.familyName} know you'd like to join. Once they approve your
+            request, sign in with the email and password you just set.
           </p>
           <Link href="/login" className="inline-block mt-6 text-sm font-semibold text-family-400">
             Go to sign in
@@ -225,7 +251,9 @@ function RequestJoin({ code }: { code: string }) {
           />
         </label>
         <div>
-          <label htmlFor="invite-password" className="block text-xs text-ink-tertiary mb-1.5 px-1">Password (min. 8 characters)</label>
+          <label htmlFor="invite-password" className="block text-xs text-ink-tertiary mb-1.5 px-1">
+            Password (min. 8 characters)
+          </label>
           <PasswordInput
             id="invite-password"
             placeholder="Password (min. 8 characters)"
@@ -241,14 +269,18 @@ function RequestJoin({ code }: { code: string }) {
               className={`flex items-center gap-1.5 mt-1.5 px-1 text-xs ${password.length >= 8 ? 'text-success' : 'text-ink-tertiary'}`}
             >
               {password.length >= 8 ? <Check size={12} /> : <X size={12} />}
-              {password.length >= 8 ? 'Password length looks good' : `${8 - password.length} more character${8 - password.length === 1 ? '' : 's'} needed`}
+              {password.length >= 8
+                ? 'Password length looks good'
+                : `${8 - password.length} more character${8 - password.length === 1 ? '' : 's'} needed`}
             </div>
           )}
         </div>
       </div>
 
       {error && (
-        <p role="status" aria-live="polite" className="text-sm text-danger text-center mb-4">{error}</p>
+        <p role="status" aria-live="polite" className="text-sm text-danger text-center mb-4">
+          {error}
+        </p>
       )}
 
       <motion.button
@@ -262,7 +294,9 @@ function RequestJoin({ code }: { code: string }) {
 
       <p className="text-xs text-ink-tertiary text-center mt-4">
         Already have an account?{' '}
-        <Link href="/login" className="text-family-400 font-semibold">Sign in</Link>
+        <Link href="/login" className="text-family-400 font-semibold">
+          Sign in
+        </Link>
       </p>
     </div>
   )

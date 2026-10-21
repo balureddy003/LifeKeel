@@ -270,6 +270,15 @@ describe('architecture claims: session, login, and signed-link hardening', () =>
     expect(src).toMatch(/post[\s\S]{0,100}'\/auth\/login'[\s\S]{0,300}rateLimit\s*:/)
   })
 
+  it('the global rate-limit error builder returns an Error carrying statusCode', () => {
+    // @fastify/rate-limit throws the builder's return value — a plain
+    // object has no .statusCode, so the global error handler turned
+    // every throttled request into an unclassified 500 + ops alert (D2).
+    const src = readSrc('apps/api/src/server.ts')
+    expect(src).toMatch(/errorResponseBuilder[\s\S]{0,500}new Error\(/)
+    expect(src).toMatch(/errorResponseBuilder[\s\S]{0,500}statusCode\s*=\s*context\.statusCode/)
+  })
+
   it('delivery signing has no weak secret fallback — missing secret fails closed', () => {
     const src = readSrc('apps/api/src/delivery/delivery-router.ts')
     expect(src).not.toContain('change-me')

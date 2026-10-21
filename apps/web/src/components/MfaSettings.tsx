@@ -16,10 +16,25 @@ import { useToast } from '@/components/Toast'
 import { credFetch } from '@/lib/http'
 import { getApiBase } from '@/lib/env'
 import { haptic } from '@/lib/haptics'
-import { isNativeShell, isBiometricAvailable, biometricLockEnabled, setBiometricLockEnabled } from '@/lib/native'
+import {
+  isNativeShell,
+  isBiometricAvailable,
+  biometricLockEnabled,
+  setBiometricLockEnabled,
+} from '@/lib/native'
 import { ShieldCheck, Copy, Fingerprint } from 'lucide-react'
 
 type Stage = 'idle' | 'setup' | 'recovery' | 'disabling'
+
+// Every authed API call in the app sends the stored Bearer token as a
+// fallback for browsers that block the cross-site session cookie (Safari
+// ITP, third-party-cookie blocking — see lib/http.ts). These calls used to
+// be cookie-only, so in production /auth/mfa/* came back 401 for exactly
+// the users whose cookies didn't flow.
+function authHeaders(base: Record<string, string> = {}): Record<string, string> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('lifekeel_token') : null
+  return token ? { ...base, Authorization: `Bearer ${token}` } : base
+}
 
 /** Face ID / device-biometric app lock — native shell only; the row is
  *  hidden entirely in a browser where there's no biometric API to gate on. */
@@ -61,6 +76,7 @@ export function BiometricLockRow() {
 export function MfaSettings() {
   const toast = useToast()
   const [enabled, setEnabled] = useState<boolean | null>(null)
+  const [statusFailed, setStatusFailed] = useState(false)
   const [recoveryCount, setRecoveryCount] = useState(0)
   const [stage, setStage] = useState<Stage>('idle')
   const [secret, setSecret] = useState('')
@@ -72,23 +88,34 @@ export function MfaSettings() {
 
   const refreshStatus = async () => {
     try {
-      const res = await credFetch(`${getApiBase()}/auth/mfa/status`)
-      if (!res.ok) return
+      const res = await credFetch(`${getApiBase()}/auth/mfa/status`, {
+        headers: authHeaders(),
+      })
+      if (!res.ok) {
+        setStatusFailed(true)
+        return
+      }
       const data = await res.json()
       setEnabled(data.enabled === true)
       setRecoveryCount(data.recovery_codes_remaining ?? 0)
     } catch {
       // leave enabled=null — the row shows "Unavailable" rather than guessing
+      setStatusFailed(true)
     }
   }
 
-  useEffect(() => { refreshStatus() }, [])
+  useEffect(() => {
+    refreshStatus()
+  }, [])
 
   const startSetup = async () => {
     setBusy(true)
     setError(null)
     try {
-      const res = await credFetch(`${getApiBase()}/auth/mfa/setup`, { method: 'POST' })
+      const res = await credFetch(`${getApiBase()}/auth/mfa/setup`, {
+        method: 'POST',
+        headers: authHeaders(),
+      })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Could not start setup.')
       setSecret(data.secret)
@@ -107,7 +134,7 @@ export function MfaSettings() {
     try {
       const res = await credFetch(`${getApiBase()}/auth/mfa/enable`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ code }),
       })
       const data = await res.json().catch(() => ({}))
@@ -128,7 +155,7 @@ export function MfaSettings() {
     try {
       const res = await credFetch(`${getApiBase()}/auth/mfa/disable`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ password }),
       })
       const data = await res.json().catch(() => ({}))
@@ -158,13 +185,15 @@ export function MfaSettings() {
         <ListRow
           icon={ShieldCheck}
           onClick={() => {
-            if (enabled === false) { setError(null); startSetup() }
-            else if (enabled === true) { setError(null); setStage('disabling') }
+            if (enabled === false) {
+              setError(null)
+              startSetup()
+            } else if (enabled === true) {
+              setError(null)
+              setStage('disabling')
+            }
           }}
-          value={
-            enabled === null ? '…' :
-            enabled ? 'On' : 'Off'
-          }
+          value={enabled === null ? (statusFailed ? 'Unavailable' : '…') : enabled ? 'On' : 'Off'}
         >
           <div className="text-left">
             <div className="text-base font-medium">Two-factor authentication</div>
@@ -178,7 +207,11 @@ export function MfaSettings() {
         <BiometricLockRow />
       </ListSection>
 
-      <BottomSheet open={stage !== 'idle'} onClose={() => !busy && setStage('idle')} label="Two-factor authentication">
+      <BottomSheet
+        open={stage !== 'idle'}
+        onClose={() => !busy && setStage('idle')}
+        label="Two-factor authentication"
+      >
         {stage === 'setup' && (
           <div className="space-y-4 pb-4">
             <div>
@@ -189,9 +222,14 @@ export function MfaSettings() {
               </p>
             </div>
             <div className="glass rounded-2xl p-4 flex items-center justify-between gap-3">
-              <code className="text-sm font-mono tracking-widest break-all select-all">{secret}</code>
+              <code className="text-sm font-mono tracking-widest break-all select-all">
+                {secret}
+              </code>
               <button
-                onClick={() => { navigator.clipboard?.writeText(secret).catch(() => {}); toast({ message: 'Copied' }) }}
+                onClick={() => {
+                  navigator.clipboard?.writeText(secret).catch(() => {})
+                  toast({ message: 'Copied' })
+                }}
                 className="text-ink-tertiary flex-shrink-0 p-2"
                 aria-label="Copy setup key"
               >
@@ -199,7 +237,9 @@ export function MfaSettings() {
               </button>
             </div>
             <label htmlFor="mfa-setup-code" className="block">
-              <div className="text-xs text-ink-tertiary mb-1.5 px-1">Then enter the 6-digit code it shows</div>
+              <div className="text-xs text-ink-tertiary mb-1.5 px-1">
+                Then enter the 6-digit code it shows
+              </div>
               <input
                 id="mfa-setup-code"
                 type="text"
@@ -211,7 +251,11 @@ export function MfaSettings() {
                 className="glass-input w-full rounded-2xl px-4 py-3.5 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 text-center tracking-widest"
               />
             </label>
-            {error && <p role="status" className="text-sm text-danger text-center">{error}</p>}
+            {error && (
+              <p role="status" className="text-sm text-danger text-center">
+                {error}
+              </p>
+            )}
             <button
               onClick={confirmEnable}
               disabled={code.trim().length < 6 || busy}
@@ -233,11 +277,16 @@ export function MfaSettings() {
             </div>
             <div className="glass rounded-2xl p-4 grid grid-cols-2 gap-2">
               {recoveryCodes.map((c) => (
-                <code key={c} className="text-sm font-mono tracking-wider text-center">{c}</code>
+                <code key={c} className="text-sm font-mono tracking-wider text-center">
+                  {c}
+                </code>
               ))}
             </div>
             <button
-              onClick={() => { navigator.clipboard?.writeText(recoveryCodes.join('\n')).catch(() => {}); toast({ message: 'Copied' }) }}
+              onClick={() => {
+                navigator.clipboard?.writeText(recoveryCodes.join('\n')).catch(() => {})
+                toast({ message: 'Copied' })
+              }}
               className="w-full glass rounded-2xl py-3 text-sm font-semibold flex items-center justify-center gap-2"
             >
               <Copy size={15} /> Copy all
@@ -266,7 +315,11 @@ export function MfaSettings() {
               onChange={setPassword}
               autoComplete="current-password"
             />
-            {error && <p role="status" className="text-sm text-danger text-center">{error}</p>}
+            {error && (
+              <p role="status" className="text-sm text-danger text-center">
+                {error}
+              </p>
+            )}
             <button
               onClick={confirmDisable}
               disabled={!password || busy}

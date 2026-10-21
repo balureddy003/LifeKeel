@@ -16,8 +16,8 @@
         { "source": "/life-events/**", "destination": "/life-events/placeholder/index.html" },
         { "source": "/health/**", "destination": "/health/placeholder/index.html" },
         { "source": "/blog/**", "destination": "/blog/placeholder/index.html" },
-        { "source": "/operator/users/**", "destination": "/operator/users/placeholder/index.html" },
-        { "source": "**", "destination": "/index.html" }
+        { "source": "/invite/**", "destination": "/invite/placeholder/index.html" },
+        { "source": "/operator/users/**", "destination": "/operator/users/placeholder/index.html" }
       ],
       "headers": [
         {
@@ -60,7 +60,7 @@
       ],
       "rewrites": [
         { "source": "/api/**", "run": { "serviceId": "lifekeel-api", "region": "us-central1" } },
-        { "source": "**", "destination": "/index.html" }
+        { "source": "/blog/**", "destination": "/blog/placeholder/index.html" }
       ],
       "headers": [
         {
@@ -103,7 +103,7 @@
       ],
       "rewrites": [
         { "source": "/api/**", "run": { "serviceId": "lifekeel-api", "region": "us-central1" } },
-        { "source": "**", "destination": "/index.html" }
+        { "source": "/blog/**", "destination": "/blog/placeholder/index.html" }
       ],
       "headers": [
         {

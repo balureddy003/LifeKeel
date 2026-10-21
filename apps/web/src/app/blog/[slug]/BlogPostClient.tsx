@@ -1,7 +1,7 @@
 'use client'
 
 import { isValidElement, useEffect, useRef, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useRouteParam } from '@/lib/useRouteParam'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import { HelpCircle } from 'lucide-react'
@@ -12,7 +12,8 @@ import { track } from '@/lib/growth-track'
 
 // Diagram fences can arrive as ```mermaid, ```flowchart, or a bare ```
 // block whose first line is a diagram keyword — all render as mermaid.
-const DIAGRAM_START = /^(flowchart|graph|sequenceDiagram|stateDiagram|stateDiagram-v2|erDiagram|classDiagram|gantt|pie|journey|mindmap|timeline|gitGraph|C4Context|block-beta|quadrantChart|sankey|xychart|kanban)\b/
+const DIAGRAM_START =
+  /^(flowchart|graph|sequenceDiagram|stateDiagram|stateDiagram-v2|erDiagram|classDiagram|gantt|pie|journey|mindmap|timeline|gitGraph|C4Context|block-beta|quadrantChart|sankey|xychart|kanban)\b/
 
 function isDiagramBlock(className: string | undefined, text: string): boolean {
   const lang = /language-(\w+)/.exec(className ?? '')?.[1]
@@ -119,14 +120,26 @@ const MARKDOWN_COMPONENTS = {
   },
   // A diagram renders a <div> — invalid inside <pre>, so unwrap it there.
   pre: (props: React.ComponentProps<'pre'>) => {
-    if (isValidElement(props.children) && props.children.type === MermaidDiagram) return <>{props.children}</>
+    if (isValidElement(props.children) && props.children.type === MermaidDiagram)
+      return <>{props.children}</>
     return <pre {...props} />
   },
-  h2: (props: React.ComponentProps<'h2'>) => <h2 className="text-lg font-semibold text-ink-primary mt-6 mb-2" {...props} />,
-  p: (props: React.ComponentProps<'p'>) => <p className="text-sm text-ink-secondary leading-relaxed mb-3" {...props} />,
-  ul: (props: React.ComponentProps<'ul'>) => <ul className="list-disc list-outside pl-5 text-sm text-ink-secondary leading-relaxed mb-3 space-y-1" {...props} />,
+  h2: (props: React.ComponentProps<'h2'>) => (
+    <h2 className="text-lg font-semibold text-ink-primary mt-6 mb-2" {...props} />
+  ),
+  p: (props: React.ComponentProps<'p'>) => (
+    <p className="text-sm text-ink-secondary leading-relaxed mb-3" {...props} />
+  ),
+  ul: (props: React.ComponentProps<'ul'>) => (
+    <ul
+      className="list-disc list-outside pl-5 text-sm text-ink-secondary leading-relaxed mb-3 space-y-1"
+      {...props}
+    />
+  ),
   li: (props: React.ComponentProps<'li'>) => <li {...props} />,
-  strong: (props: React.ComponentProps<'strong'>) => <strong className="text-ink-primary font-semibold" {...props} />,
+  strong: (props: React.ComponentProps<'strong'>) => (
+    <strong className="text-ink-primary font-semibold" {...props} />
+  ),
   a: (props: React.ComponentProps<'a'>) => <a className="text-family-400 font-medium" {...props} />,
 }
 
@@ -138,7 +151,7 @@ export default function BlogPostClient({
   initialPost?: BlogPost | null
   initialSlug?: string | null
 }) {
-  const params = useParams<{ slug: string }>()
+  const slug = useRouteParam('/blog')
   const [post, setPost] = useState<BlogPost | null>(initialPost)
   const [loading, setLoading] = useState(initialPost === null)
   // Landing UTM is captured once on mount; the CTA click echoes it so
@@ -147,6 +160,10 @@ export default function BlogPostClient({
 
   useEffect(() => {
     let cancelled = false
+    // slug stays undefined until the real URL segment resolves post-mount
+    // (static export — see useRouteParam). Return before the track() call
+    // so a post view is only ever counted once, against the real slug.
+    if (!slug) return
     // The first-touch attribution capture point for social landings —
     // generated posts deep-link here with utm_* params; track() persists
     // them before any later signup reads getAttribution(). The params are
@@ -162,10 +179,10 @@ export default function BlogPostClient({
     let seoCleanup: (() => void) | null = null
     // Prerendered posts already carry their own metadata and structured data; only the
     // placeholder route (a post newer than the last build) needs the client-side fetch and tags.
-    if (initialPost && initialSlug === params.slug) return
-    fetchBlogPost(params.slug).then((p) => {
+    if (initialPost && initialSlug === slug) return
+    fetchBlogPost(slug).then((p) => {
       if (cancelled) return
-      if (p) seoCleanup = applyPostSeo(p, params.slug)
+      if (p) seoCleanup = applyPostSeo(p, slug)
       setPost(p)
       setLoading(false)
     })
@@ -173,7 +190,7 @@ export default function BlogPostClient({
       cancelled = true
       seoCleanup?.()
     }
-  }, [params.slug])
+  }, [slug])
 
   if (loading) {
     return (
@@ -192,7 +209,9 @@ export default function BlogPostClient({
           <HelpCircle size={32} className="text-ink-tertiary" />
         </div>
         <h1 className="text-lg font-semibold text-ink-primary mb-1">Post not found</h1>
-        <Link href="/blog" className="text-sm text-family-400 font-semibold">Back to all posts</Link>
+        <Link href="/blog" className="text-sm text-family-400 font-semibold">
+          Back to all posts
+        </Link>
       </div>
     )
   }
@@ -200,7 +219,9 @@ export default function BlogPostClient({
   return (
     <div className="px-5 pt-2 pb-12">
       <PageHeader title={post.title} backHref="/blog" action={<></>} />
-      <span className="text-footnote font-semibold uppercase tracking-wide text-family-400">{post.category}</span>
+      <span className="text-footnote font-semibold uppercase tracking-wide text-family-400">
+        {post.category}
+      </span>
       <div className="mt-3">
         <ReactMarkdown components={MARKDOWN_COMPONENTS}>{post.content}</ReactMarkdown>
       </div>
@@ -213,7 +234,9 @@ export default function BlogPostClient({
         <p className="text-sm text-ink-primary font-medium">See where your family stands</p>
         <Link
           href="/signup"
-          onClick={() => track('blog_cta_click', Object.keys(utmRef.current).length ? utmRef.current : undefined)}
+          onClick={() =>
+            track('blog_cta_click', Object.keys(utmRef.current).length ? utmRef.current : undefined)
+          }
           className="shrink-0 text-sm font-semibold text-family-400"
         >
           Start free →

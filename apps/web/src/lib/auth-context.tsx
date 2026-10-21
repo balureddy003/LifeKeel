@@ -149,11 +149,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // leave that user's data behind. Anonymous visitors (no prior
           // session) skip the purge — nothing personal to remove.
           const hadSession = Boolean(token || localStorage.getItem(STORAGE_KEY))
-          if (hadSession && (res.status === 401 || res.status === 403)) {
-            void purgeClientData()
-          } else {
+          if (res.status === 401 || res.status === 403) {
+            if (hadSession) void purgeClientData()
             localStorage.removeItem(TOKEN_KEY)
             localStorage.removeItem(STORAGE_KEY)
+            setIsLoading(false)
+            return
+          }
+          // Any other failure (5xx, rate limit, proxy error) is transient,
+          // not an auth verdict — treat it like the network-failure catch
+          // below and keep the session rather than signing the user out.
+          // UAT P9: the channels loop pushed /auth/me over the API's
+          // 100/min cap and the resulting 5xx wiped the stored token.
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY)
+            if (raw) {
+              const data = JSON.parse(raw)
+              setUser(data.user)
+              setFamily(data.family)
+            }
+          } catch {
+            // ignore
           }
           setIsLoading(false)
           return

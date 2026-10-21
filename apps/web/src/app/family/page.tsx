@@ -11,77 +11,7 @@ import { ROLE_LABELS } from '@/lib/auth-types'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 import { fetchFinancialProfile, type FinancialProfile } from '@/lib/api'
-import { PERSON_SCOPED_POLICY_TYPES } from '@/lib/policyTypes'
-
-interface MemberChip {
-  label: string
-  onFile: boolean
-}
-
-/**
- * Per-member "what's on file" chips — replaced the old 0%/100% completion
- * bar, which reduced "has any data at all" into a number that implied far
- * more completeness than it could honestly claim (a member with only a
- * salary entered still showed 100%). Chips name the actual signals:
- * Income / Protection / Pension for earners, Education for children, each
- * either "on file" or "not yet" — an honest empty state when it isn't.
- */
-function chipsFor(
-  memberId: string,
-  role: string,
-  name: string,
-  profile: FinancialProfile | null,
-): MemberChip[] {
-  if (!profile) return []
-  const policies = profile.policies ?? []
-  const covered = policies.some(
-    (p) => !PERSON_SCOPED_POLICY_TYPES.has(p.type) || !p.member_id || p.member_id === memberId,
-  )
-
-  if (role === 'child') {
-    const fund = profile.education_funds.some(
-      (f) => f.member_id === memberId || f.child_name.toLowerCase() === name.toLowerCase(),
-    )
-    return [
-      { label: 'Education fund', onFile: fund },
-      { label: 'Covered by policies', onFile: covered },
-    ]
-  }
-
-  const earner =
-    role === 'organizer'
-      ? {
-          income:
-            profile.household.monthly_salary_minor > 0 ||
-            profile.household.employment_status !== 'unemployed',
-          protection:
-            profile.household.life_cover_minor > 0 ||
-            profile.household.income_protection_monthly_minor > 0 ||
-            covered,
-          pension:
-            (profile.retirement.pension_balance_minor ?? 0) > 0 ||
-            (profile.retirement.monthly_contribution_minor ?? 0) > 0,
-        }
-      : (() => {
-          const entry = profile.household.members.find((m) => m.member_id === memberId)
-          return {
-            income:
-              !!entry &&
-              (entry.monthly_salary_minor > 0 || entry.employment_status !== 'unemployed'),
-            protection: (!!entry && entry.income_protection_monthly_minor > 0) || covered,
-            pension:
-              !!entry &&
-              ((entry.pension_balance_minor ?? 0) > 0 ||
-                (entry.monthly_pension_contribution_minor ?? 0) > 0),
-          }
-        })()
-
-  return [
-    { label: 'Income', onFile: earner.income },
-    { label: 'Protection', onFile: earner.protection },
-    { label: 'Pension', onFile: earner.pension },
-  ]
-}
+import { chipsFor } from '@/lib/memberChips'
 
 export default function FamilyPage() {
   const { family } = useAuth()

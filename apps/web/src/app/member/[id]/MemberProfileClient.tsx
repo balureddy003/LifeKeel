@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useRouteParam } from '@/lib/useRouteParam'
 import Link from 'next/link'
 import {
   ArrowLeft,
@@ -47,7 +47,7 @@ function gbpPerMonth(minor: number): string {
 }
 
 export default function MemberProfileClient() {
-  const params = useParams<{ id: string }>()
+  const memberId = useRouteParam('/member')
   const { family, updateMemberDateOfBirth } = useAuth()
   const { config: modeConfig } = useMode()
   const toast = useToast()
@@ -63,7 +63,7 @@ export default function MemberProfileClient() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
   const [inviteSent, setInviteSent] = useState<{ emailed: boolean; inviteUrl: string } | null>(null)
-  const member = family?.members.find((m) => m.id === params.id)
+  const member = family?.members.find((m) => m.id === memberId)
 
   // PRD-124: a minor's page can render in "kid view" — the API then returns
   // a redacted youth twin (no amounts, no earner/policies/insights). The
@@ -75,21 +75,22 @@ export default function MemberProfileClient() {
   // PRD-117: the member twin — their earner slice, attributed policies,
   // education funds, and open insights, all server-assembled on read.
   useEffect(() => {
+    if (!memberId) return
     let cancelled = false
-    fetchMemberTwin(params.id, kidViewActive ? 'youth' : undefined).then((t) => {
+    fetchMemberTwin(memberId, kidViewActive ? 'youth' : undefined).then((t) => {
       if (!cancelled) setTwin(t)
     })
     // The agent surface is adult-facing — a child's agent speaks to the
     // family, so it loads in grown-up view only.
     if (!kidViewActive) {
-      fetchMemberAgent(params.id).then((a) => {
+      fetchMemberAgent(memberId).then((a) => {
         if (!cancelled) setAgent(a)
       })
     }
     return () => {
       cancelled = true
     }
-  }, [params.id, kidViewActive])
+  }, [memberId, kidViewActive])
 
   // PRD-123: the pending member gets a per-person email invite — accepting
   // it activates THIS roster entry (not a duplicate). If SendGrid isn't
@@ -150,6 +151,18 @@ export default function MemberProfileClient() {
     } finally {
       setSavingDob(false)
     }
+  }
+
+  // memberId stays undefined until the real URL segment is resolved
+  // post-mount (static export — see useRouteParam); show a shimmer rather
+  // than a false "not found" for that first render.
+  if (memberId === undefined) {
+    return (
+      <div className="px-5 pt-8 space-y-3">
+        <div className="shimmer h-24 rounded-2xl" />
+        <div className="shimmer h-24 rounded-2xl" />
+      </div>
+    )
   }
 
   if (!member) {

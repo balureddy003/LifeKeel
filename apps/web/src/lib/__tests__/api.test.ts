@@ -309,6 +309,24 @@ describe('fetchAIResponse', () => {
     expect(result.content.length).toBeGreaterThan(0)
   })
 
+  it('short-circuits an acute-emergency query with safety guidance — no network call at all', async () => {
+    const fn = vi.fn()
+    vi.stubGlobal('fetch', fn)
+    const result = await fetchAIResponse('my husband is having chest pain')
+    expect(result.status).toBe('emergency')
+    expect(result.content).toContain('999')
+    expect(fn).not.toHaveBeenCalled()
+  })
+
+  it('maps a server-side emergency flag to the emergency status', async () => {
+    mockFetchOnce({ content: 'If this is happening right now…', isLive: false, emergency: true })
+    // Uses a query the client-side screen doesn't itself flag (the server
+    // screen is the backstop — e.g. a phrase a stale client misses).
+    const result = await fetchAIResponse('something urgent happened')
+    expect(result.status).toBe('emergency')
+    expect(result.content).toContain('happening right now')
+  })
+
   it('runs the PII curtain over the query before it leaves the device and restores the response', async () => {
     const fn = mockFetchSequence({
       body: { content: 'Done — we noted the reference you sent.', isLive: true },
