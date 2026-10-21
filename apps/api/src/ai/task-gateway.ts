@@ -68,18 +68,34 @@ let llmBudgetGuard: LlmBudgetGuard
 export type ProcessorEnforcement = 'off' | 'warn' | 'enforce'
 
 /**
- * AI_PROCESSOR_ENFORCEMENT (PRD-142). Default `warn`: a call whose processor is
- * not approved is logged and counted but still served, so deploying this does
- * not break a live product whose hosted processors have not been reviewed yet.
- * `enforce` refuses such calls; do not set it until the hosted processors this
- * deployment uses are approved in definitions/ai-processors.yaml.
+ * AI_PROCESSOR_ENFORCEMENT (PRD-142). Local-first default: outside `dev` an
+ * unapproved processor is refused (`enforce`); in `dev` it is logged and
+ * counted but served (`warn`) so local work needs no reviewed processors.
+ * Set `warn` explicitly to run a non-dev deployment without approvals.
  */
 export function processorEnforcementFromEnv(
   raw: string | undefined = process.env['AI_PROCESSOR_ENFORCEMENT'],
+  mode: string = deploymentConfig.mode,
 ): ProcessorEnforcement {
+  const fallback: ProcessorEnforcement = mode === 'dev' ? 'warn' : 'enforce'
   if (raw === 'off' || raw === 'warn' || raw === 'enforce') return raw
-  if (raw) log.error({ value: raw }, "Invalid AI_PROCESSOR_ENFORCEMENT, using 'warn'")
-  return 'warn'
+  if (raw) log.error({ value: raw }, `Invalid AI_PROCESSOR_ENFORCEMENT, using '${fallback}'`)
+  return fallback
+}
+
+/**
+ * Whether a `lifekeel_infra` task may fall back to a hosted provider when the
+ * self-hosted model is off. Local-first: denied outside `dev`, so family
+ * content never silently leaves LifeKeel infra. `AI_HOSTED_FALLBACK=allow`
+ * re-enables it deliberately.
+ */
+export function hostedFallbackAllowed(
+  raw: string | undefined = process.env['AI_HOSTED_FALLBACK'],
+  mode: string = deploymentConfig.mode,
+): boolean {
+  if (raw === 'allow') return true
+  if (raw === 'deny') return false
+  return mode === 'dev'
 }
 
 /** Map the router's provider name to a processor-registry id. */
@@ -273,7 +289,15 @@ function baseFor(policy: AiTaskPolicy): LlmFn {
     }
     return familyLlm()
   }
-  return policy.data_boundary === 'lifekeel_infra' ? familyLlm() : cloudLlm()
+  if (policy.data_boundary === 'lifekeel_infra') {
+    if (!localTextConfigured() && !hostedFallbackAllowed()) {
+      throw new TaskPolicyError(
+        `Task '${policy.task_id}' needs the self-hosted model and hosted fallback is denied (LOCAL_TEXT_ENABLED is not on; AI_HOSTED_FALLBACK=allow overrides)`,
+      )
+    }
+    return familyLlm()
+  }
+  return cloudLlm()
 }
 
 // ── Public factories ──────────────────────────────────────────────────────

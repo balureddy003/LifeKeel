@@ -30,6 +30,7 @@ import {
 import {
   initTaskGatewayForTests,
   processorEnforcementFromEnv,
+  hostedFallbackAllowed,
   resolveServingProcessor,
   taskLlm,
   taskDecide,
@@ -129,6 +130,26 @@ describe('AI task gateway — no bypass paths', () => {
       'assistant.youth_answer.v1',
     ]) {
       expect(registry.has(id), `§8.4 task '${id}' missing`).toBe(true)
+    }
+  })
+
+  it('family-content tasks that a local model can serve allow only the self-hosted processor', () => {
+    const registry = parseTaskRegistry(
+      loadYaml(fs.readFileSync(path.join(repoRoot(), 'definitions', 'ai-tasks.yaml'), 'utf8')),
+    )
+    for (const id of [
+      'assistant.scenario_narration.v1',
+      'document.classify.v1',
+      'document.extract.v1',
+      'document.profile_candidate.v1',
+      'email.policy_relevance.v1',
+      'email.policy_summary.v1',
+      'insight.delivery_judge.v1',
+      'support.reply_draft.v1',
+    ]) {
+      const t = registry.get(id)!
+      expect(t.allowed_processors, id).toEqual(['ollama'])
+      expect(t.provider_retention_class, id).toBe('none')
     }
   })
 
@@ -343,12 +364,45 @@ describe('AI processor registry (PRD-142)', () => {
     })
   })
 
-  it('enforcement defaults to warn and never to something unrecognised', () => {
-    expect(processorEnforcementFromEnv(undefined)).toBe('warn')
-    expect(processorEnforcementFromEnv('')).toBe('warn')
-    expect(processorEnforcementFromEnv('banana')).toBe('warn')
-    expect(processorEnforcementFromEnv('off')).toBe('off')
-    expect(processorEnforcementFromEnv('enforce')).toBe('enforce')
+  it('enforcement is local-first: enforce outside dev, warn in dev, never unrecognised', () => {
+    expect(processorEnforcementFromEnv(undefined, 'dev')).toBe('warn')
+    expect(processorEnforcementFromEnv(undefined, 'cloud')).toBe('enforce')
+    expect(processorEnforcementFromEnv('', 'cloud')).toBe('enforce')
+    expect(processorEnforcementFromEnv('banana', 'cloud')).toBe('enforce')
+    expect(processorEnforcementFromEnv('off', 'cloud')).toBe('off')
+    expect(processorEnforcementFromEnv('warn', 'cloud')).toBe('warn')
+    expect(processorEnforcementFromEnv('enforce', 'dev')).toBe('enforce')
+  })
+
+  it('hosted fallback for lifekeel_infra tasks is denied outside dev unless allowed', () => {
+    expect(hostedFallbackAllowed(undefined, 'dev')).toBe(true)
+    expect(hostedFallbackAllowed(undefined, 'cloud')).toBe(false)
+    expect(hostedFallbackAllowed(undefined, 'airgap')).toBe(false)
+    expect(hostedFallbackAllowed('allow', 'cloud')).toBe(true)
+    expect(hostedFallbackAllowed('deny', 'dev')).toBe(false)
+  })
+
+  it('a lifekeel_infra task refuses to build a hosted client when fallback is denied', () => {
+    const saved = {
+      base: process.env['LOCAL_JUDGE_BASE_URL'],
+      text: process.env['LOCAL_TEXT_ENABLED'],
+      fb: process.env['AI_HOSTED_FALLBACK'],
+    }
+    try {
+      delete process.env['LOCAL_JUDGE_BASE_URL']
+      delete process.env['LOCAL_TEXT_ENABLED']
+      process.env['AI_HOSTED_FALLBACK'] = 'deny'
+      expect(() => taskLlm('assistant.answer.v1', 'tenant-1')).toThrow(/hosted fallback is denied/)
+    } finally {
+      for (const [k, v] of [
+        ['LOCAL_JUDGE_BASE_URL', saved.base],
+        ['LOCAL_TEXT_ENABLED', saved.text],
+        ['AI_HOSTED_FALLBACK', saved.fb],
+      ] as const) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    }
   })
 
   it('the disclosure states review status as it is and exposes no contract details', () => {
