@@ -394,16 +394,23 @@ const EVENT_DETECTOR_MAP: Record<string, { detectorId: string; preferredRuleId?:
 }
 
 /**
- * Fetches event-specific readiness data from the API. Falls back to the
- * provided hardcoded stability score and explanation when the API has
- * no insights for the given event.
+ * Fetches event-specific readiness data from the API.
+ *
+ * The displayed number always comes from the event-readiness route (a
+ * deterministic formula over the real profile). A mapped detector's
+ * insight only supplies the explanation text — `confidence` there is
+ * "how sure the detector is that the gap exists", NOT a readiness
+ * score: UAT D5/D6 showed a 0.85-confidence 'education fund not
+ * started' gap rendering as "Family Readiness 85% — would remain
+ * financially stable". `stability` is null when no real number exists,
+ * so callers must not render the hardcoded sample as a score.
  */
 export function useEventReadiness(
   eventId: string,
   fallbackStability: number,
   fallbackExplanation: string,
 ) {
-  const [stability, setStability] = useState(fallbackStability)
+  const [stability, setStability] = useState<number | null>(null)
   const [explanation, setExplanation] = useState(fallbackExplanation)
   const [hasLiveData, setHasLiveData] = useState(false)
   const [insightId, setInsightId] = useState<string | null>(null)
@@ -416,68 +423,66 @@ export function useEventReadiness(
     // segment (useRouteParam pre-mount) — nothing to fetch yet.
     if (!eventId) return
 
-    // event-readiness.ts on the API side — the fallback used below when
-    // EVENT_DETECTOR_MAP has no mapping (car/property/travel today) or the
-    // mapped detector hasn't produced a matching insight yet. Never backed
-    // by an Insight document, so insightId/ruleId always stay null on this
-    // path — the "Draft a message"/"Learn more" affordances that need one
-    // simply don't render for these event types, same as before.
-    async function loadFromEventReadiness() {
+    async function load() {
+      setLoading(true)
+      const mapping = EVENT_DETECTOR_MAP[eventId]
+
+      // The insight is text-only evidence — never the score.
+      let insightText: string | null = null
+      let found: FamilyInsight | null = null
+      if (mapping) {
+        try {
+          const insights = await fetchFamilyInsights()
+          const candidates = insights.filter(
+            (i) =>
+              i.detector_id === mapping.detectorId && !RESOLVED_INSIGHT_STATES.includes(i.state),
+          )
+          const matching =
+            candidates.find((i) => i.rule_id === mapping.preferredRuleId) ?? candidates[0]
+          if (matching && (matching.reasoning || matching.hypothesis)) {
+            insightText = matching.reasoning || matching.hypothesis
+            found = matching
+          }
+        } catch {
+          // Insights unreachable — the readiness route below is the one
+          // that decides whether a real number exists anyway.
+        }
+      }
+      if (cancelled) return
+
       const result = await fetchEventReadinessApi(eventId)
       if (cancelled) return
       if ('stability' in result && result.hasLiveData) {
         setStability(result.stability)
-        setExplanation(result.explanation)
+        setExplanation(insightText ?? result.explanation)
         setHasLiveData(true)
       } else {
-        setStability(fallbackStability)
-        setExplanation(fallbackExplanation)
+        setStability(null)
+        setExplanation(insightText ?? fallbackExplanation)
         setHasLiveData(false)
       }
-      setInsightId(null)
-      setRuleId(null)
+      setInsightId(found?.id ?? null)
+      setRuleId(found?.rule_id ?? null)
       setLoading(false)
-    }
-
-    async function load() {
-      setLoading(true)
-      const mapping = EVENT_DETECTOR_MAP[eventId]
-      if (!mapping) {
-        await loadFromEventReadiness()
-        return
-      }
-
-      try {
-        const insights = await fetchFamilyInsights()
-        const candidates = insights.filter((i) => i.detector_id === mapping.detectorId)
-        const matching =
-          candidates.find((i) => i.rule_id === mapping.preferredRuleId) ?? candidates[0]
-        if (cancelled) return
-        if (matching && (matching.reasoning || matching.hypothesis)) {
-          setStability(
-            matching.confidence > 0 ? Math.round(matching.confidence * 100) : fallbackStability,
-          )
-          setExplanation(matching.reasoning || matching.hypothesis || fallbackExplanation)
-          setHasLiveData(true)
-          setInsightId(matching.id)
-          setRuleId(matching.rule_id)
-          setLoading(false)
-        } else {
-          // Mapped detector exists but hasn't flagged anything yet — fall
-          // back to the real-data computation rather than going straight
-          // to the static sample, so a clean-but-complete profile still
-          // shows a real number instead of a permanent "Sample scenario".
-          await loadFromEventReadiness()
-        }
-      } catch {
-        if (!cancelled) await loadFromEventReadiness()
-      }
     }
     load()
     return () => {
       cancelled = true
     }
-  }, [eventId, fallbackStability, fallbackExplanation])
+    // fallbackStability/fallbackExplanation are read once on mount by design —
+    // they're static per event id (EVENT_STABILITY/EVENT_AI_EXPLANATION).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId])
 
-  return { stability, explanation, hasLiveData, insightId, ruleId, loading }
+  // live = the card shows something grounded in real data (a real score,
+  // or a real insight's text even when no formula exists for the number).
+  return {
+    stability,
+    explanation,
+    hasLiveData,
+    live: hasLiveData || insightId !== null,
+    insightId,
+    ruleId,
+    loading,
+  }
 }

@@ -189,7 +189,7 @@ describe('Digital Estate Vault', () => {
 
   it('a child cannot upload to the vault', async () => {
     const app = await buildApp(CHILD_ID)
-    const { body, boundary } = multipartPayload('will.pdf', Buffer.from('x'))
+    const { body, boundary } = multipartPayload('will.pdf', Buffer.from('%PDF-1.4 test doc'))
     const res = await app.inject({
       method: 'POST',
       url: '/vault/documents/upload',
@@ -201,7 +201,7 @@ describe('Digital Estate Vault', () => {
 
   it('an adult downloads the exact original bytes back (round-trip through real encryption)', async () => {
     const app = await buildApp(ADULT_ID)
-    const plaintext = Buffer.from('a real will, in bytes')
+    const plaintext = Buffer.from('%PDF-1.4 a real will, in bytes')
     const { body, boundary } = multipartPayload('will.pdf', plaintext)
     const uploadRes = await app.inject({
       method: 'POST',
@@ -218,7 +218,7 @@ describe('Digital Estate Vault', () => {
 
   it('a child cannot download a vault file', async () => {
     const app = await buildApp(ADULT_ID)
-    const { body, boundary } = multipartPayload('will.pdf', Buffer.from('secret'))
+    const { body, boundary } = multipartPayload('will.pdf', Buffer.from('%PDF-1.4 secret'))
     const uploadRes = await app.inject({
       method: 'POST',
       url: '/vault/documents/upload',
@@ -234,7 +234,10 @@ describe('Digital Estate Vault', () => {
 
   it('lists vault documents for an adult without exposing decrypted content', async () => {
     const app = await buildApp(ADULT_ID)
-    const { body, boundary } = multipartPayload('poa.pdf', Buffer.from('power of attorney'))
+    const { body, boundary } = multipartPayload(
+      'poa.pdf',
+      Buffer.from('%PDF-1.4 power of attorney'),
+    )
     await app.inject({
       method: 'POST',
       url: '/vault/documents/upload',
@@ -257,7 +260,7 @@ describe('Digital Estate Vault', () => {
 
   it('an adult can delete their own uploaded vault document', async () => {
     const app = await buildApp(ADULT_ID)
-    const { body, boundary } = multipartPayload('will.pdf', Buffer.from('x'))
+    const { body, boundary } = multipartPayload('will.pdf', Buffer.from('%PDF-1.4 test doc'))
     const uploadRes = await app.inject({
       method: 'POST',
       url: '/vault/documents/upload',
@@ -273,7 +276,7 @@ describe('Digital Estate Vault', () => {
 
   it('a vault document never appears in the general /documents list', async () => {
     const app = await buildApp(ADULT_ID)
-    const { body, boundary } = multipartPayload('will.pdf', Buffer.from('x'))
+    const { body, boundary } = multipartPayload('will.pdf', Buffer.from('%PDF-1.4 test doc'))
     await app.inject({
       method: 'POST',
       url: '/vault/documents/upload',
@@ -286,7 +289,7 @@ describe('Digital Estate Vault', () => {
 
   it('the general GET /documents/:id/file 404s for a vault document id (isolation)', async () => {
     const app = await buildApp(ADULT_ID)
-    const { body, boundary } = multipartPayload('will.pdf', Buffer.from('x'))
+    const { body, boundary } = multipartPayload('will.pdf', Buffer.from('%PDF-1.4 test doc'))
     const uploadRes = await app.inject({
       method: 'POST',
       url: '/vault/documents/upload',
@@ -302,7 +305,7 @@ describe('Digital Estate Vault', () => {
   // counts — user-declared on upload, stored, and returned in listings.
   it('stores and returns a declared doc_type, and rejects an invalid one', async () => {
     const app = await buildApp(ADULT_ID)
-    const { body, boundary } = multipartPayload('will.pdf', Buffer.from('x'))
+    const { body, boundary } = multipartPayload('will.pdf', Buffer.from('%PDF-1.4 test doc'))
     const bad = await app.inject({
       method: 'POST',
       url: '/vault/documents/upload?doc_type=bogus',
@@ -334,7 +337,7 @@ describe('Digital Estate Vault', () => {
     const app = await buildApp(ADULT_ID, engine, async (insights) => {
       delivered.push(...insights)
     })
-    const { body, boundary } = multipartPayload('will.pdf', Buffer.from('x'))
+    const { body, boundary } = multipartPayload('will.pdf', Buffer.from('%PDF-1.4 test doc'))
     const res = await app.inject({
       method: 'POST',
       url: '/vault/documents/upload?doc_type=will',
@@ -359,7 +362,7 @@ describe('Digital Estate Vault', () => {
     const app = await buildApp(ADULT_ID, engine, async (insights) => {
       delivered.push(...insights)
     })
-    const { body, boundary } = multipartPayload('will.pdf', Buffer.from('x'))
+    const { body, boundary } = multipartPayload('will.pdf', Buffer.from('%PDF-1.4 test doc'))
     const uploadRes = await app.inject({
       method: 'POST',
       url: '/vault/documents/upload?doc_type=will',
@@ -414,7 +417,7 @@ describe('Digital Estate Vault', () => {
     const app = await buildApp(ADULT_ID)
     const { body, boundary } = multipartPayload(
       'evil.exe',
-      Buffer.from('x'),
+      Buffer.from('%PDF-1.4 test doc'),
       'application/octet-stream',
     )
     const res = await app.inject({

@@ -8,10 +8,10 @@
  * showed the same number regardless of what was actually on file.
  *
  * Deliberately does not attempt every /events id:
- * - university/retirement already have a real detector
- *   (family_education_shortfall/family_retirement_gap) that the frontend
- *   consults directly via EVENT_DETECTOR_MAP — this module isn't called
- *   for those, so there's no second, competing readiness number.
+ * - university/retirement reuse the same quantities their detectors
+ *   weigh (education_funds current-vs-target; projectRetirement's
+ *   achievable-vs-target income) — added for UAT D5/D6 so the frontend
+ *   never substitutes an insight's gap-confidence for a readiness score.
  * - new-child/marriage have no defensible readiness formula anywhere in
  *   this codebase. Forcing a number for those would fabricate the kind
  *   of precision this app works hard everywhere else to avoid — they
@@ -24,7 +24,7 @@
  */
 import { formatMoney } from '@lifekeel/platform'
 import type { FinancialProfile } from '../routes/family-financial-profile.js'
-import { educationFundingGapMinor } from '../routes/family-financial-profile.js'
+import { educationFundingGapMinor, projectRetirement } from '../routes/family-financial-profile.js'
 
 export interface EventReadinessResult {
   stability: number
@@ -63,12 +63,17 @@ function jobLossReadiness(profile: FinancialProfile): EventReadinessResult {
 // question detectors/family/protection-gap.yaml's
 // life_insurance_below_household_needs rule already answers.
 function lifeCoverReadiness(profile: FinancialProfile): EventReadinessResult {
-  const { mortgage_outstanding_minor, life_cover_minor, annual_living_expenses_minor } = profile.household
-  const need = mortgage_outstanding_minor + educationFundingGapMinor(profile.education_funds) + annual_living_expenses_minor * 5
+  const { mortgage_outstanding_minor, life_cover_minor, annual_living_expenses_minor } =
+    profile.household
+  const need =
+    mortgage_outstanding_minor +
+    educationFundingGapMinor(profile.education_funds) +
+    annual_living_expenses_minor * 5
   if (need <= 0) {
     return {
       stability: 95,
-      explanation: "Based on your real data, your household has no mortgage, education savings gap, or living expenses on file to replace — there's no meaningful life-cover need to flag right now.",
+      explanation:
+        "Based on your real data, your household has no mortgage, education savings gap, or living expenses on file to replace — there's no meaningful life-cover need to flag right now.",
       hasLiveData: true,
     }
   }
@@ -86,7 +91,8 @@ function policyPresenceReadiness(
 ): EventReadinessResult {
   const policy = profile.policies.find((p) => p.type === type)
   if (!policy) return NO_DATA
-  const coverage = policy.coverage_amount_minor > 0 ? ` (${formatMoney(policy.coverage_amount_minor)} cover)` : ''
+  const coverage =
+    policy.coverage_amount_minor > 0 ? ` (${formatMoney(policy.coverage_amount_minor)} cover)` : ''
   return {
     stability: 92,
     explanation: `Based on your real data, you have ${label} insurance with ${policy.provider} on file${coverage}.`,
@@ -94,7 +100,42 @@ function policyPresenceReadiness(
   }
 }
 
-export function computeEventReadiness(eventId: string, profile: FinancialProfile): EventReadinessResult {
+// University: aggregate coverage of every education fund's target —
+// the same quantities family_education_shortfall weighs per fund.
+function universityReadiness(profile: FinancialProfile): EventReadinessResult {
+  const funds = profile.education_funds.filter((f) => f.target_savings_minor > 0)
+  if (funds.length === 0) return NO_DATA
+  const saved = funds.reduce((s, f) => s + f.current_savings_minor, 0)
+  const target = funds.reduce((s, f) => s + f.target_savings_minor, 0)
+  const names = funds.map((f) => f.child_name).join(' and ')
+  return {
+    stability: clampScore((saved / target) * 100),
+    explanation: `Based on your real data, ${names}'s education funds hold ${formatMoney(saved)} against a combined target of ${formatMoney(target)}.`,
+    hasLiveData: true,
+  }
+}
+
+// Retirement: the exact projection readiness/score.ts already uses —
+// achievable retirement income vs the target income.
+function retirementReadiness(profile: FinancialProfile): EventReadinessResult {
+  const r = profile.retirement
+  if (r.target_retirement_income_minor <= 0) return NO_DATA
+  const p = projectRetirement(r)
+  const pct = (p.achievable_retirement_income_minor / r.target_retirement_income_minor) * 100
+  return {
+    stability: clampScore(pct),
+    explanation:
+      r.current_age >= r.target_retirement_age
+        ? `Based on your real data, the pension balance of ${formatMoney(r.pension_balance_minor)} supports about ${formatMoney(p.achievable_retirement_income_minor)}/yr against a ${formatMoney(r.target_retirement_income_minor)}/yr target.`
+        : `Based on your real data, current contributions project to about ${formatMoney(p.achievable_retirement_income_minor)}/yr against a ${formatMoney(r.target_retirement_income_minor)}/yr target — on pace to retire around age ${p.projected_retirement_age}.`,
+    hasLiveData: true,
+  }
+}
+
+export function computeEventReadiness(
+  eventId: string,
+  profile: FinancialProfile,
+): EventReadinessResult {
   switch (eventId) {
     case 'job-loss':
       return jobLossReadiness(profile)
@@ -107,6 +148,10 @@ export function computeEventReadiness(eventId: string, profile: FinancialProfile
       return policyPresenceReadiness(profile, 'home', 'home')
     case 'travel':
       return policyPresenceReadiness(profile, 'travel', 'travel')
+    case 'university':
+      return universityReadiness(profile)
+    case 'retirement':
+      return retirementReadiness(profile)
     default:
       return NO_DATA
   }
