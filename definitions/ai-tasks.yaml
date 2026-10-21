@@ -44,12 +44,12 @@ tasks:
     risk: user_visible
     authority: language_only
     data_boundary: lifekeel_infra
-    processor_terms_ref: anthropic/openai API terms — not used for training
-    provider_retention_class: service_transient
+    processor_terms_ref: self-hosted Ollama — data stays in LifeKeel infra
+    provider_retention_class: none
     allowed_models: [tier:fast]
-    allowed_processors: [ollama, anthropic, openai, azure]
+    allowed_processors: [ollama]
     primary_model: tier:fast
-    preferred_execution: hosted_sync
+    preferred_execution: local_cpu
     deadline_ms: 30000
     max_input_tokens: 8000
     max_output_tokens: 1500
@@ -78,10 +78,10 @@ tasks:
     risk: internal
     authority: candidate_for_review
     data_boundary: lifekeel_infra
-    processor_terms_ref: self-hosted Ollama or approved hosted fallback
+    processor_terms_ref: self-hosted Ollama — data stays in LifeKeel infra
     provider_retention_class: none
     allowed_models: [tier:balanced]
-    allowed_processors: [ollama, anthropic, openai, azure]
+    allowed_processors: [ollama]
     primary_model: tier:balanced
     preferred_execution: local_cpu
     deadline_ms: 120000
@@ -112,10 +112,10 @@ tasks:
     risk: internal
     authority: candidate_for_review
     data_boundary: lifekeel_infra
-    processor_terms_ref: self-hosted Ollama or approved hosted fallback
+    processor_terms_ref: self-hosted Ollama — data stays in LifeKeel infra
     provider_retention_class: none
     allowed_models: [tier:fast]
-    allowed_processors: [ollama, anthropic, openai, azure]
+    allowed_processors: [ollama]
     primary_model: tier:fast
     preferred_execution: local_cpu
     deadline_ms: 60000
@@ -129,10 +129,10 @@ tasks:
     risk: user_visible
     authority: language_only
     data_boundary: lifekeel_infra
-    processor_terms_ref: self-hosted Ollama or approved hosted fallback
+    processor_terms_ref: self-hosted Ollama — data stays in LifeKeel infra
     provider_retention_class: none
     allowed_models: [tier:fast]
-    allowed_processors: [ollama, anthropic, openai, azure]
+    allowed_processors: [ollama]
     primary_model: tier:fast
     preferred_execution: local_cpu
     deadline_ms: 60000
@@ -217,12 +217,12 @@ tasks:
     risk: user_visible
     authority: candidate_for_review
     data_boundary: lifekeel_infra
-    processor_terms_ref: anthropic/openai API terms — not used for training
-    provider_retention_class: service_transient
+    processor_terms_ref: self-hosted Ollama — data stays in LifeKeel infra
+    provider_retention_class: none
     allowed_models: [tier:fast]
-    allowed_processors: [ollama, anthropic, openai, azure]
+    allowed_processors: [ollama]
     primary_model: tier:fast
-    preferred_execution: hosted_sync
+    preferred_execution: local_cpu
     deadline_ms: 30000
     max_input_tokens: 6000
     max_output_tokens: 1500
