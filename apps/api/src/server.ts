@@ -1612,7 +1612,38 @@ app.addHook('onRequest', async (request, reply) => {
     const opportunistic = bearer ?? readSessionCookie(request)
     if (opportunistic) {
       try {
-        request.authContext = await auth.verify(opportunistic)
+        const ctx = await auth.verify(opportunistic)
+        // The open route may still consume authContext (dual-mode
+        // behaviour), so a cryptographically valid token must clear the
+        // same liveness bar as the gated path — an MFA-pending token, a
+        // suspended user, a revoked session, or a deleted/suspended
+        // tenant must not mint a live context here (UAT D4: a deleted
+        // account's JWT verified fine and was treated as signed in).
+        if (ctx.mfa_pending) throw new Error('mfa_pending token on open route')
+        if (workflowDb) {
+          const user = await workflowDb
+            .collection('users')
+            .findOne(
+              { tenant_id: ctx.tenant_id, id: ctx.user_id },
+              { projection: { status: 1, sessions_revoked_at: 1 } },
+            )
+          if (user?.['status'] === 'suspended') throw new Error('user suspended')
+          const revokedAt = user?.['sessions_revoked_at'] as Date | undefined
+          if (
+            revokedAt &&
+            ctx.iat !== undefined &&
+            ctx.iat <= Math.floor(revokedAt.getTime() / 1000)
+          )
+            throw new Error('session revoked')
+          if (deploymentConfig.mode !== 'dev') {
+            const tenant = await workflowDb.collection('tenants').findOne({
+              $or: [{ tenant_id: ctx.tenant_id }, { id: ctx.tenant_id }],
+              status: { $in: ['active', 'trial'] },
+            })
+            if (!tenant) throw new Error('tenant not active')
+          }
+        }
+        request.authContext = ctx
       } catch {
         /* stay on the public path */
       }

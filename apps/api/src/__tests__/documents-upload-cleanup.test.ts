@@ -22,14 +22,21 @@ vi.mock('mongodb', async (importOriginal) => {
     ...actual,
     GridFSBucket: class {
       openUploadStream(filename: string) {
-        const stream = new EventEmitter() as EventEmitter & { id: string; end: (buf: Buffer) => void }
+        const stream = new EventEmitter() as EventEmitter & {
+          id: string
+          end: (buf: Buffer) => void
+        }
         stream.id = `gridfs-${filename}-${Math.random()}`
         // Mirrors the real GridFSBucketWriteStream: 'finish' fires
         // asynchronously, after end() is called — not synchronously.
-        stream.end = () => { queueMicrotask(() => stream.emit('finish')) }
+        stream.end = () => {
+          queueMicrotask(() => stream.emit('finish'))
+        }
         return stream
       }
-      async delete(...args: unknown[]) { return gridFsDeleteMock(...args) }
+      async delete(...args: unknown[]) {
+        return gridFsDeleteMock(...args)
+      }
     },
   }
 })
@@ -68,7 +75,9 @@ async function buildApp() {
 function multipartPayload(filename: string, content: Buffer) {
   const boundary = 'testboundary123'
   const body = Buffer.concat([
-    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: image/png\r\n\r\n`),
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: image/png\r\n\r\n`,
+    ),
     content,
     Buffer.from(`\r\n--${boundary}--\r\n`),
   ])
@@ -83,7 +92,10 @@ describe('KEEL-019: document upload GridFS/metadata consistency', () => {
 
   it('a normal upload succeeds (the awaited-finish change does not break the happy path)', async () => {
     const app = await buildApp()
-    const { body, boundary } = multipartPayload('doc.png', Buffer.from('fake-bytes'))
+    const { body, boundary } = multipartPayload(
+      'doc.png',
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...Buffer.alloc(16)]),
+    )
     const res = await app.inject({
       method: 'POST',
       url: '/documents/upload',
@@ -97,7 +109,10 @@ describe('KEEL-019: document upload GridFS/metadata consistency', () => {
   it('a metadata-insert failure after a successful GridFS write cleans up the orphaned blob', async () => {
     failMetadataInsert = true
     const app = await buildApp()
-    const { body, boundary } = multipartPayload('doc.png', Buffer.from('fake-bytes'))
+    const { body, boundary } = multipartPayload(
+      'doc.png',
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...Buffer.alloc(16)]),
+    )
     const res = await app.inject({
       method: 'POST',
       url: '/documents/upload',

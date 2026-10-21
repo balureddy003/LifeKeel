@@ -287,12 +287,33 @@ export async function registerAuthUserRoutes(
       // land in) and no admin-approval step, so an unclaimed collision must be
       // rejected outright rather than silently admitting a second, unrelated
       // admin into an existing tenant.
-      const tenant_id = workspace ? slugify(workspace) : slugify(email.split('@')[0]!)
+      let tenant_id = workspace ? slugify(workspace) : slugify(email.split('@')[0]!)
       const existingTenant = await db.collection('tenants').findOne({ tenant_id })
-      if (existingTenant) {
+      if (existingTenant && existingTenant['status'] !== 'deleted') {
         return reply
           .status(409)
           .send({ error: 'That workspace name is already taken. Choose another.' })
+      }
+      if (existingTenant) {
+        // A deleted tenant's row is kept for the audit trail (its slug
+        // stays taken), so the same email can't reclaim it — mint a
+        // suffixed slug instead of a permanent 409 (UAT D16). 'deleting'
+        // still blocks: the wipe may be mid-flight.
+        let free = false
+        for (let i = 2; i <= 10; i++) {
+          const candidate = `${tenant_id}-${i}`
+          const clash = await db.collection('tenants').findOne({ tenant_id: candidate })
+          if (!clash) {
+            tenant_id = candidate
+            free = true
+            break
+          }
+        }
+        if (!free) {
+          return reply
+            .status(409)
+            .send({ error: 'That workspace name is already taken. Choose another.' })
+        }
       }
 
       // Now that the signup is valid, consume the invite code.
@@ -346,10 +367,11 @@ export async function registerAuthUserRoutes(
         )
       }
 
-      // Create the tenant record — existingTenant was already confirmed null
-      // above, so this always creates a fresh tenant here (the tenants.tenant_id
-      // unique index is the last-resort guard against the narrow race of two
-      // concurrent signups claiming the same slug at the same instant).
+      // Create the tenant record — tenant_id is a slug no live tenant holds
+      // (either free outright or minted with a suffix past a 'deleted'
+      // tombstone, whose slug stays reserved). The tenants.tenant_id unique
+      // index is the last-resort guard against the narrow race of two
+      // concurrent signups claiming the same slug at the same instant.
       const billing = createInitialBilling({
         currency: getCurrencyForCountry(country),
         inviteGrantCredits: invite.grant_credits,

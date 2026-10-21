@@ -24,6 +24,7 @@ import type { Engine, Insight } from '@lifekeel/engine'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { processDocument } from '../ocr/extract.js'
 import { scanUpload } from '../extraction/scan.js'
+import { signatureMatchesMime } from '../extraction/file-signature.js'
 import { CATEGORIES } from '../extraction/schema.js'
 import {
   applyReview,
@@ -255,6 +256,16 @@ export function registerDocumentRoutes(
 
     if (fileBuffer.length > MAX_FILE_SIZE) {
       return reply.status(413).send({ error: 'File too large (max 50 MB)' })
+    }
+
+    // The declared MIME type is client-supplied — check the bytes match
+    // it before storing (UAT D3: an executable renamed .pdf sailed
+    // through the allowlist).
+    if (!signatureMatchesMime(fileBuffer, data.mimetype)) {
+      return reply.status(422).send({
+        error:
+          "The file's contents don't match its type. Allowed: images (JPEG, PNG, WebP, HEIC) and PDF.",
+      })
     }
 
     const documentId = randomUUID()

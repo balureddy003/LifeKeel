@@ -42,6 +42,7 @@ import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { encryptBufferForTenant, decryptBufferEnveloped } from '../crypto/envelope.js'
 import { isFamilyAdult } from '../family/family-permissions.js'
 import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE, ESTATE_VAULT_CATEGORY } from './documents.js'
+import { signatureMatchesMime } from '../extraction/file-signature.js'
 import { evaluateEstate } from '../legacy/evaluate-estate.js'
 
 const log = createLogger({ service: 'vault', version: '0.0.0' })
@@ -134,6 +135,15 @@ export function registerVaultRoutes(
       const fileBuffer = await data.toBuffer()
       if (fileBuffer.length > MAX_FILE_SIZE) {
         return reply.status(413).send({ error: 'File too large (max 50 MB)' })
+      }
+      // Unsealed uploads get the same magic-byte check as /documents —
+      // the declared type is client-supplied. Sealed blobs are client-
+      // encrypted by design, so there are no readable bytes to sniff.
+      if (!sealed && !signatureMatchesMime(fileBuffer, data.mimetype)) {
+        return reply.status(422).send({
+          error:
+            "The file's contents don't match its type. Allowed: images (JPEG, PNG, WebP, HEIC) and PDF.",
+        })
       }
 
       const documentId = randomUUID()

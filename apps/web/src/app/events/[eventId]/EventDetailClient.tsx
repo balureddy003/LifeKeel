@@ -198,7 +198,7 @@ export default function EventDetailClient() {
     ? (EVENT_AI_EXPLANATION[event.id] ??
       'This is a sample scenario, not based on your data yet. Connect your accounts and documents to see a personalized readiness assessment for this situation.')
     : 'This event could not be found.'
-  const { stability, explanation, hasLiveData, insightId, ruleId } = useEventReadiness(
+  const { stability, explanation, live, insightId, ruleId } = useEventReadiness(
     eventId ?? '',
     fallbackStability,
     fallbackExplanation,
@@ -299,32 +299,40 @@ export default function EventDetailClient() {
         >
           <GlassCard className="p-5">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-semibold text-ink-secondary">Family Readiness</span>
-              <span
-                className="text-2xl font-bold"
-                style={{ color: stability >= 80 ? '#4ade80' : '#fbbf24' }}
-              >
-                {stability}%
+              <span className="text-sm font-semibold text-ink-secondary">
+                Readiness for this event
               </span>
+              {stability !== null && (
+                <span
+                  className="text-2xl font-bold"
+                  style={{ color: stability >= 80 ? '#4ade80' : '#fbbf24' }}
+                >
+                  {stability}%
+                </span>
+              )}
             </div>
-            <div className="h-3 rounded-full bg-tint/5 overflow-hidden">
-              <motion.div
-                className="h-full rounded-full"
-                style={{
-                  backgroundColor: stability >= 80 ? '#4ade80' : '#fbbf24',
-                  boxShadow: `0 0 12px ${stability >= 80 ? '#4ade80' : '#fbbf24'}80`,
-                }}
-                initial={{ width: 0 }}
-                animate={{ width: `${stability}%` }}
-                transition={{ duration: 1, ease: 'easeOut' }}
-              />
-            </div>
-            <p className="text-xs text-ink-tertiary mt-2">
-              {stability >= 80
-                ? 'Your family would remain financially stable in this situation.'
-                : 'Your family would be okay, but there are some gaps to address.'}
-            </p>
-            {hasLiveData ? (
+            {stability !== null && (
+              <>
+                <div className="h-3 rounded-full bg-tint/5 overflow-hidden">
+                  <motion.div
+                    className="h-full rounded-full"
+                    style={{
+                      backgroundColor: stability >= 80 ? '#4ade80' : '#fbbf24',
+                      boxShadow: `0 0 12px ${stability >= 80 ? '#4ade80' : '#fbbf24'}80`,
+                    }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${stability}%` }}
+                    transition={{ duration: 1, ease: 'easeOut' }}
+                  />
+                </div>
+                <p className="text-xs text-ink-tertiary mt-2">
+                  {stability >= 80
+                    ? 'On the numbers on file, this looks well covered.'
+                    : 'On the numbers on file, there are gaps to address.'}
+                </p>
+              </>
+            )}
+            {live ? (
               <div className="flex items-center gap-1.5 text-xs text-success mt-2">
                 <CheckCircle2 size={12} />
                 <span>Based on your family's data</span>
@@ -417,7 +425,7 @@ export default function EventDetailClient() {
           </GlassCard>
         </motion.div>
 
-        {hasLiveData && insightId && (
+        {insightId && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

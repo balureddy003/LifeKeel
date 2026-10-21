@@ -279,6 +279,24 @@ describe('architecture claims: session, login, and signed-link hardening', () =>
     expect(src).toMatch(/errorResponseBuilder[\s\S]{0,500}statusCode\s*=\s*context\.statusCode/)
   })
 
+  it('opportunistic bearer auth on open routes clears the same liveness bar as the gated path', () => {
+    // Open routes verify a presented token opportunistically so dual-mode
+    // handlers can use authContext — but that path used to run NO liveness
+    // checks, so a deleted account's still-valid JWT minted a live context
+    // (UAT D4). It must apply the gated path's checks: mfa_pending, user
+    // suspension, sessions_revoked_at vs iat, tenant active/trial.
+    const src = readSrc('apps/api/src/server.ts')
+    const opportunistic = src.match(
+      /const opportunistic = [\s\S]{0,2500}?request\.authContext = ctx/,
+    )
+    expect(opportunistic).not.toBeNull()
+    const block = opportunistic![0]
+    expect(block).toContain('ctx.mfa_pending')
+    expect(block).toContain('sessions_revoked_at')
+    expect(block).toContain("'suspended'")
+    expect(block).toContain("status: { $in: ['active', 'trial'] }")
+  })
+
   it('delivery signing has no weak secret fallback — missing secret fails closed', () => {
     const src = readSrc('apps/api/src/delivery/delivery-router.ts')
     expect(src).not.toContain('change-me')
