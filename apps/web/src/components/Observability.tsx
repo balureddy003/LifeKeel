@@ -37,17 +37,19 @@ function showManualReloadFallback(): void {
   el.setAttribute(
     'style',
     'position:fixed;inset:0;z-index:2147483647;display:flex;flex-direction:column;' +
-    'align-items:center;justify-content:center;text-align:center;padding:24px;' +
-    'background:#fff;font-family:system-ui,-apple-system,sans-serif;',
+      'align-items:center;justify-content:center;text-align:center;padding:24px;' +
+      'background:#d3b8f5;color:#302440;font-family:system-ui,-apple-system,sans-serif;',
   )
   el.innerHTML =
     '<h1 style="font-size:22px;font-weight:700;margin-bottom:8px;">Something went wrong</h1>' +
-    '<p style="color:#6b7280;max-width:320px;margin-bottom:24px;">' +
+    '<p style="color:#473157;max-width:320px;margin-bottom:24px;">' +
     'This page couldn’t load. Your data is safe — try reloading.</p>' +
-    '<button id="lifekeel-chunk-fallback-btn" style="width:100%;max-width:320px;background:#d9a441;' +
-    'color:#14202a;font-weight:600;border:none;border-radius:16px;padding:16px;font-size:16px;">Reload</button>'
+    '<button id="lifekeel-chunk-fallback-btn" style="width:100%;max-width:320px;background:#ffda87;' +
+    'color:#302440;font-weight:600;border:none;border-radius:16px;padding:16px;font-size:16px;">Reload</button>'
   document.body.appendChild(el)
-  document.getElementById('lifekeel-chunk-fallback-btn')?.addEventListener('click', () => location.reload())
+  document
+    .getElementById('lifekeel-chunk-fallback-btn')
+    ?.addEventListener('click', () => location.reload())
 }
 
 function recoverFromChunkLoadError(reason: unknown): void {

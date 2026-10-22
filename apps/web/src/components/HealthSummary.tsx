@@ -82,7 +82,11 @@ function ActivityRing({
   if (!href) return content
 
   return (
-    <Link href={href} onClick={() => haptic('light')} aria-label={isSample ? `Set up ${label}` : `View ${label} details`}>
+    <Link
+      href={href}
+      onClick={() => haptic('light')}
+      aria-label={isSample ? `Set up ${label}` : `View ${label} details`}
+    >
       {content}
     </Link>
   )
@@ -93,12 +97,45 @@ function ActivityRing({
 // theme-aware twin used for the percentage text and icon: the pastel
 // literals are decorative on dark but fail WCAG AA as text on the light
 // background, so they come from the semantic vars instead (same hues).
-const DOMAIN_META: Record<HealthDomain, { color: string; textColor: string; label: string; icon: LucideIcon; setupHref: string }> = {
-  protection: { color: '#f87171', textColor: 'rgb(var(--danger))', label: 'Protection', icon: Heart, setupHref: '/financial-profile' },
-  wealth: { color: '#fbbf24', textColor: 'rgb(var(--warning))', label: 'Wealth', icon: Wallet, setupHref: '/financial-profile' },
-  goals: { color: '#4ade80', textColor: 'rgb(var(--success))', label: 'Goals', icon: Target, setupHref: '/financial-profile' },
-  savings: { color: '#60a5fa', textColor: 'rgb(var(--info))', label: 'Savings', icon: PiggyBank, setupHref: '/financial-profile' },
-  estate: { color: '#b07a14', textColor: 'rgb(var(--family-400))', label: 'Estate', icon: FileLock2, setupHref: '/vault' },
+const DOMAIN_META: Record<
+  HealthDomain,
+  { color: string; textColor: string; label: string; icon: LucideIcon; setupHref: string }
+> = {
+  protection: {
+    color: '#ffafa3',
+    textColor: 'rgb(var(--danger))',
+    label: 'Protection',
+    icon: Heart,
+    setupHref: '/financial-profile',
+  },
+  wealth: {
+    color: '#ffda87',
+    textColor: 'rgb(var(--warning))',
+    label: 'Wealth',
+    icon: Wallet,
+    setupHref: '/financial-profile',
+  },
+  goals: {
+    color: '#92e1d7',
+    textColor: 'rgb(var(--success))',
+    label: 'Goals',
+    icon: Target,
+    setupHref: '/financial-profile',
+  },
+  savings: {
+    color: '#d3b8f5',
+    textColor: 'rgb(var(--info))',
+    label: 'Savings',
+    icon: PiggyBank,
+    setupHref: '/financial-profile',
+  },
+  estate: {
+    color: '#8763aa',
+    textColor: 'rgb(var(--family-400))',
+    label: 'Estate',
+    icon: FileLock2,
+    setupHref: '/vault',
+  },
 }
 
 export function HealthSummary() {
@@ -111,10 +148,18 @@ export function HealthSummary() {
     setAnalysing(true)
     try {
       const n = await evaluateSavedProfile()
-      toast({ message: n > 0 ? `Found ${n} thing${n === 1 ? '' : 's'} worth a look` : 'Analysis done — no gaps found' })
+      toast({
+        message:
+          n > 0
+            ? `Found ${n} thing${n === 1 ? '' : 's'} worth a look`
+            : 'Analysis done — no gaps found',
+      })
       window.location.reload()
     } catch (e) {
-      toast({ message: e instanceof Error ? e.message : 'Could not analyse your profile', variant: 'error' })
+      toast({
+        message: e instanceof Error ? e.message : 'Could not analyse your profile',
+        variant: 'error',
+      })
       setAnalysing(false)
     }
   }
@@ -139,7 +184,8 @@ export function HealthSummary() {
       <GlassCard className="p-5">
         <div className="text-sm font-semibold text-ink-secondary">Family Health</div>
         <div className="text-xs text-ink-tertiary mt-1">
-          Your health across protection, wealth and goals appears once your financial profile is finished.
+          Your health across protection, wealth and goals appears once your financial profile is
+          finished.
         </div>
         <div className="mt-3 flex items-center gap-4">
           <button
@@ -149,7 +195,10 @@ export function HealthSummary() {
           >
             {analysing ? 'Analysing…' : 'Analyse what I’ve entered'}
           </button>
-          <Link href="/financial-profile" className="text-sm font-semibold text-family-400 active:opacity-70">
+          <Link
+            href="/financial-profile"
+            className="text-sm font-semibold text-family-400 active:opacity-70"
+          >
             Edit profile
           </Link>
         </div>
@@ -164,10 +213,14 @@ export function HealthSummary() {
           <div className="text-sm font-semibold text-ink-secondary">Family Health</div>
           <div className="text-xs text-ink-tertiary mt-0.5">
             Across protection, wealth & goals
-            {anySample && <span className="text-warning"> — a dash means that area isn't set up yet</span>}
+            {anySample && (
+              <span className="text-warning"> — a dash means that area isn't set up yet</span>
+            )}
           </div>
         </div>
-        <div className="text-3xl font-bold text-success flex-shrink-0 leading-none">{overallScore}</div>
+        <div className="text-3xl font-bold text-success flex-shrink-0 leading-none">
+          {overallScore}
+        </div>
       </div>
 
       {/* Activity rings — 4 × the old 80px size (320px) overran a 375px
@@ -194,7 +247,6 @@ export function HealthSummary() {
           />
         ))}
       </div>
-
     </GlassCard>
   )
 }

@@ -2,83 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Theme tokens. Colors that take Tailwind alpha modifiers (bg-x/10,
-   border-y/[0.05]) are stored as space-separated RGB triplets and consumed
-   via `rgb(var(--x) / <alpha>)` — a hex var can't take an opacity suffix.
-   :root holds the dark theme (the established default, so it also covers
-   no-JS/first-paint); [data-theme='light'] overrides. The `tint` var is the
-   key move: dark theme's "white at low opacity" surfaces become "black at
-   low opacity" in light theme, so a bg-tint/5 card reads correctly in both
-   without the component knowing which theme is active. */
+/* Buffer-inspired neutrals, green actions and pastel feature accents. */
 :root {
   color-scheme: dark;
-  /* LifeKeel palette (shared with the landing page: components/landing/landing.css). The app's
-     colour utilities read these variables, so changing them re-themes every screen. Values are
-     RGB triplets so Tailwind alpha modifiers keep working. */
-
-  /* Surface overlay colour: white at low opacity on the dark sea. */
-  --tint: 255 255 255;
-
-  --surface-0: 10 24 34;
-  --surface-1: 16 36 47;
-  --surface-2: 20 44 58;
-  --surface-3: 26 54 70;
-
-  --ink-1: 232 238 242;
-  --ink-2: 190 205 214;
-  --ink-3: 147 169 182;
-
-  --haze: 34 64 79;
-  --haze-light: 44 78 95;
-
-  --nav-bg: 10 24 34;
-
-  /* Brass: the accent and the call to action. 400 is text and icons, 500 is the fill. */
-  /* JS-land twin: FAMILY_ACCENT in lib/familySections.ts (hex-alpha colour maths); keep in sync. */
-  --family-accent: 226 180 92;
-  --family-400: 226 180 92;
-  --family-500: 226 180 92;
-  --family-600: 205 158 70;
-  --family-700: 176 130 50;
-  /* Text on a brass fill. */
-  --on-cta: 26 18 3;
-
-  --success: 111 194 160;
-  --warning: 226 180 92;
-  --danger: 241 154 124;
-  --info: 125 211 252;
+  --palette-lilac: #d3b8f5; --palette-mint: #92e1d7;
+  --palette-coral: #ffafa3; --palette-yellow: #ffda87; --palette-ink: #21332e;
+  --tint: 246 246 236;
+  --surface-0: 23 35 31; --surface-1: 33 51 44; --surface-2: 42 62 53; --surface-3: 51 72 62;
+  --ink-1: 246 246 236; --ink-2: 202 215 205; --ink-3: 184 202 189;
+  --haze: 82 103 90; --haze-light: 105 128 114; --nav-bg: 33 51 44;
+  --family-accent: 169 233 149; --family-400: 169 233 149;
+  --family-500: 169 233 149; --family-600: 191 241 174; --family-700: 146 225 215;
+  --on-cta: 33 51 46;
+  --success: 146 225 215; --warning: 255 218 135; --danger: 255 175 163; --info: 211 184 245;
 }
-
 [data-theme='light'] {
   color-scheme: light;
-
-  --tint: 14 36 51;
-
-  --surface-0: 238 243 244;
-  --surface-1: 255 255 255;
-  --surface-2: 247 250 250;
-  --surface-3: 230 238 240;
-
-  --ink-1: 14 36 51;
-  --ink-2: 47 74 92;
-  --ink-3: 66 89 106;
-
-  --haze: 207 220 224;
-  --haze-light: 220 230 233;
-
-  --nav-bg: 238 243 244;
-
-  --family-accent: 166 115 15;
-  --family-400: 122 82 6;
-  --family-500: 217 164 65;
-  --family-600: 190 138 40;
-  --family-700: 166 115 15;
-  --on-cta: 20 32 42;
-
-  --success: 23 102 74;
-  --warning: 154 91 6;
-  --danger: 156 58 34;
-  --info: 29 106 130;
+  --tint: 33 51 46;
+  --surface-0: 253 252 249; --surface-1: 255 255 255; --surface-2: 241 243 233; --surface-3: 231 237 224;
+  --ink-1: 33 51 46; --ink-2: 75 94 84; --ink-3: 82 97 91;
+  --haze: 196 207 195; --haze-light: 222 223 215; --nav-bg: 253 252 249;
+  --family-accent: 41 73 54; --family-400: 41 73 54;
+  --family-500: 169 233 149; --family-600: 191 241 174; --family-700: 146 225 215;
+  --on-cta: 33 51 46;
+  --success: 31 89 80; --warning: 108 71 20; --danger: 119 49 44; --info: 91 57 120;
 }
 
 * {
@@ -134,28 +81,28 @@ button.flat, a.flat, .no-min-h {
 }
 
 .glass {
-  background: rgb(var(--tint) / 0.04);
+  background: rgb(var(--surface-1));
   backdrop-filter: blur(28px) saturate(140%);
   -webkit-backdrop-filter: blur(28px) saturate(140%);
   border: 1px solid rgb(var(--tint) / 0.06);
 }
 
 .glass-strong {
-  background: rgb(var(--tint) / 0.05);
+  background: rgb(var(--surface-2));
   backdrop-filter: blur(40px) saturate(160%);
   -webkit-backdrop-filter: blur(40px) saturate(160%);
   border: 1px solid rgb(var(--tint) / 0.09);
 }
 
 .glass-nav {
-  background: rgb(var(--nav-bg) / 0.78);
+  background: rgb(var(--nav-bg));
   backdrop-filter: blur(24px) saturate(120%);
   -webkit-backdrop-filter: blur(24px) saturate(120%);
   border-top: 1px solid rgb(var(--tint) / 0.05);
 }
 
 .glass-input {
-  background: rgb(var(--tint) / 0.04);
+  background: rgb(var(--surface-1));
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgb(var(--tint) / 0.06);
@@ -214,7 +161,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 }
 
 .card {
-  background: rgb(var(--tint) / 0.03);
+  background: rgb(var(--surface-1));
   border: 1px solid rgb(var(--tint) / 0.06);
   border-radius: 1.25rem;
   padding: 1rem;
@@ -223,7 +170,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 }
 
 .btn-primary {
-  /* The brass call to action, with the dark on-cta label (about 8:1 in light, 11:1 in dark). */
+  /* Pastel fills use a dark label in both themes. */
   background: rgb(var(--family-500));
   color: rgb(var(--on-cta));
   font-weight: 600;
@@ -246,7 +193,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 }
 
 .btn-secondary {
-  background: rgb(var(--tint) / 0.04);
+  background: rgb(var(--surface-1));
   border: 1px solid rgb(var(--tint) / 0.06);
   color: rgb(var(--ink-1));
   font-weight: 600;
@@ -394,3 +341,36 @@ h1.text-2xl:not([class*=':text-']), h1.text-xl:not([class*=':text-']) { font-siz
 /* A device with a stored session sees the app, not the public landing, while the session check runs
    (data-session is set before first paint by the inline script in layout.tsx). */
 html[data-session] .lk-landing-gate { visibility: hidden; }
+
+@media screen {
+  :where(input, textarea, select) { accent-color: rgb(var(--family-500)); }
+  [class*='bg-black/'] { background-color: rgb(23 35 31 / .75); }
+  .bg-danger.text-white, .bg-danger .text-white, .bg-success.text-white,
+  .bg-warning.text-white, .bg-info.text-white { color: var(--palette-ink); }
+  .bg-danger { background-color: var(--palette-coral); }
+  .bg-success { background-color: var(--palette-mint); }
+  .bg-warning { background-color: var(--palette-yellow); }
+  .bg-info { background-color: var(--palette-lilac); }
+  .bg-danger, .bg-success, .bg-warning, .bg-info { --ink-1: 33 51 46; --ink-2: 75 94 84; --ink-3: 82 97 91; color: var(--palette-ink); }
+  h1, h2 { font-family: var(--font-body), system-ui, sans-serif; font-weight: 550; letter-spacing: -.04em; }
+  .btn-primary, .btn-secondary { border-radius: 999px; box-shadow: none; }
+  .btn-secondary { background: transparent; border: 1px solid rgb(var(--haze)); color: rgb(var(--ink-1)); }
+  .glass, .glass-strong, .glass-input, .card { backdrop-filter: none; -webkit-backdrop-filter: none; border-color: rgb(var(--haze-light)); }
+  .glass-input { background: rgb(var(--surface-1)); }
+  :where(button,input,textarea,select):focus-visible { outline: 2px solid rgb(var(--family-400)); outline-offset: 3px; }
+}
+
+@media screen {
+  button.bg-family-500, a.bg-family-500, button[class*='bg-family-500/'] { border-radius: 999px; font-weight: 600; box-shadow: none; }
+}
+
+@media screen {
+  label { font-size: 16px; line-height: 1.5; }
+  label.text-xs, label.text-sm, label.text-footnote, label.text-caption { font-size: 16px; }
+  .text-xs, .text-footnote { font-size: 15px; line-height: 1.5; }
+  .text-sm { font-size: 16px; line-height: 1.5; }
+}
+
+@media screen {
+  .text-\[10px\], .text-\[11px\] { font-size: 16px; }
+}

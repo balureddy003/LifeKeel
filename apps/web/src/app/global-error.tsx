@@ -31,14 +31,14 @@ export default function GlobalError({
           padding: '24px',
           textAlign: 'center',
           fontFamily: 'system-ui, sans-serif',
-          background: '#08080c',
-          color: '#f5f5f7',
+          background: '#d3b8f5',
+          color: '#302440',
         }}
       >
         <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.5rem' }}>
           Something went wrong
         </h1>
-        <p style={{ color: '#9a9aa5', marginBottom: '2rem', maxWidth: '20rem' }}>
+        <p style={{ color: '#473157', marginBottom: '2rem', maxWidth: '20rem' }}>
           LifeKeel hit an unexpected error loading the app. Your data is safe — reload to try again.
         </p>
         <button
@@ -46,8 +46,8 @@ export default function GlobalError({
           style={{
             width: '100%',
             maxWidth: '20rem',
-            background: '#d9a441',
-            color: '#14202a',
+            background: '#ffda87',
+            color: '#302440',
             fontWeight: 600,
             borderRadius: '1rem',
             padding: '1rem',

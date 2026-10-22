@@ -1,6 +1,13 @@
 'use client'
 
-import { motion, MotionStyle, useMotionValue, useTransform, useSpring, useReducedMotion } from 'framer-motion'
+import {
+  motion,
+  MotionStyle,
+  useMotionValue,
+  useTransform,
+  useSpring,
+  useReducedMotion,
+} from 'framer-motion'
 import { useRef, ReactNode } from 'react'
 import { ChevronRight, ArrowLeft, Bot, type LucideIcon } from 'lucide-react'
 import Link from 'next/link'
@@ -16,7 +23,8 @@ const springConfig = { type: 'spring' as const, stiffness: 400, damping: 30 }
 // banner, and ~25 others). Route those layout tokens to the inner wrapper;
 // everything else (sizing, borders, padding, flex-1 as a flex *item*) stays
 // on the outer element.
-const LAYOUT_TOKEN = /^(flex|inline-flex|flex-col|flex-row|flex-wrap|items-\S+|justify-\S+|gap-\S+)$/
+const LAYOUT_TOKEN =
+  /^(flex|inline-flex|flex-col|flex-row|flex-wrap|items-\S+|justify-\S+|gap-\S+)$/
 function splitLayoutClasses(className: string): { outer: string; inner: string } {
   const outer: string[] = []
   const inner: string[] = []
@@ -75,14 +83,16 @@ export function GlassCard({
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
       onClick={handleClick}
-      whileTap={interactive ? { scale: 0.97 } : undefined as never}
-      style={{
-        ...(interactive ? { rotateX, rotateY, scale } : {}),
-        transformStyle: 'preserve-3d',
-        transformPerspective: 800,
-        ...style,
-      } as MotionStyle}
-      className={`relative rounded-3xl border border-tint/[0.05] bg-tint/[0.03] backdrop-blur-2xl overflow-hidden ${outer}`}
+      whileTap={interactive ? { scale: 0.97 } : (undefined as never)}
+      style={
+        {
+          ...(interactive ? { rotateX, rotateY, scale } : {}),
+          transformStyle: 'preserve-3d',
+          transformPerspective: 800,
+          ...style,
+        } as MotionStyle
+      }
+      className={`relative rounded-2xl border border-haze-light bg-surface-1 overflow-hidden ${outer}`}
     >
       <div className="absolute inset-0 bg-gradient-to-b from-tint/[0.03] to-transparent pointer-events-none rounded-3xl" />
       <div className={`relative z-raised ${inner}`}>{children}</div>
@@ -103,10 +113,11 @@ export function GlassButton({
   className?: string
   disabled?: boolean
 }) {
-  const baseClass = 'relative w-full flex items-center justify-center gap-2 rounded-2xl font-semibold text-base min-h-[56px] overflow-hidden transition-all active:opacity-90'
+  const baseClass =
+    'relative w-full flex items-center justify-center gap-2 rounded-full font-semibold text-base min-h-[56px] overflow-hidden transition-all active:opacity-90'
   const variantClass = {
     primary: 'bg-family-500 text-white shadow-md shadow-family-500/15',
-    secondary: 'border border-tint/[0.06] bg-tint/[0.04] backdrop-blur-xl text-ink-primary',
+    secondary: 'border border-haze bg-surface-1 text-ink-primary',
     ghost: 'text-ink-secondary',
   }
 
@@ -123,7 +134,7 @@ export function GlassButton({
     >
       {variant === 'primary' && (
         <motion.div
-          className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+          className="absolute inset-0 bg-gradient-to-r from-transparent via-family-500/20 to-transparent"
           initial={{ x: '-100%' }}
           whileHover={{ x: '100%' }}
           transition={{ duration: 0.6 }}
@@ -206,7 +217,7 @@ export function ScoreRing({ score, size = 140 }: { score: number; size?: number 
   const radius = (size - 20) / 2
   const circumference = 2 * Math.PI * radius
   const offset = circumference - (score / 100) * circumference
-  const color = score >= 80 ? '#4ade80' : score >= 60 ? '#fbbf24' : '#f87171'
+  const color = score >= 80 ? '#92e1d7' : score >= 60 ? '#ffda87' : '#ffafa3'
   // The ring/glow keep the literal (it feeds `${color}80` alpha math);
   // the score NUMBER is text, so it goes through the semantic vars —
   // the pastel literals would fail AA on the light background.
@@ -225,9 +236,19 @@ export function ScoreRing({ score, size = 140 }: { score: number; size?: number 
   const showCaption = size >= 100
 
   return (
-    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+    <div
+      className="relative flex items-center justify-center"
+      style={{ width: size, height: size }}
+    >
       <svg className="absolute inset-0 -rotate-90" viewBox={`0 0 ${size} ${size}`}>
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgb(var(--tint) / 0.05)" strokeWidth="10" />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="rgb(var(--tint) / 0.05)"
+          strokeWidth="10"
+        />
         <motion.circle
           cx={size / 2}
           cy={size / 2}
@@ -290,16 +311,17 @@ export function PageHeader({
   backHref?: string
   action?: ReactNode
 }) {
-  const assistantAction = title !== 'Keel' ? (
-    <Link
-      href="/assistant"
-      onClick={() => haptic('light')}
-      className="w-10 h-10 rounded-full bg-family-500/10 border border-family-500/20 flex items-center justify-center active:opacity-70 transition-opacity"
-      aria-label="Assistant"
-    >
-      <Bot size={20} className="text-family-400" />
-    </Link>
-  ) : null
+  const assistantAction =
+    title !== 'Keel' ? (
+      <Link
+        href="/assistant"
+        onClick={() => haptic('light')}
+        className="w-10 h-10 rounded-full bg-family-500/10 border border-family-500/20 flex items-center justify-center active:opacity-70 transition-opacity"
+        aria-label="Assistant"
+      >
+        <Bot size={20} className="text-family-400" />
+      </Link>
+    ) : null
 
   return (
     // -mx-5 bleeds the sticky bar to the page edges — this is a contract:
@@ -315,7 +337,11 @@ export function PageHeader({
     // content scrolling underneath.
     <header className="sticky top-0 z-sticky safe-area-top bg-navbg/55 backdrop-blur-xl -mx-5 px-5 py-2 [mask-image:linear-gradient(to_bottom,#000_80%,transparent),linear-gradient(to_right,transparent,#000_6%,#000_94%,transparent)] [mask-composite:intersect] [-webkit-mask-image:linear-gradient(to_bottom,#000_80%,transparent),linear-gradient(to_right,transparent,#000_6%,#000_94%,transparent)] [-webkit-mask-composite:source-in]">
       {backHref && (
-        <Link href={backHref} onClick={() => haptic('light')} className="inline-flex items-center gap-1 h-8 text-ink-tertiary active:opacity-60">
+        <Link
+          href={backHref}
+          onClick={() => haptic('light')}
+          className="inline-flex items-center gap-1 h-8 text-ink-tertiary active:opacity-60"
+        >
           <ArrowLeft size={20} strokeWidth={2} />
           <span className="text-base font-medium">Back</span>
         </Link>
@@ -325,7 +351,7 @@ export function PageHeader({
           own row above it. */}
       <div className="flex items-center justify-between gap-3 min-h-10">
         <div className="min-w-0">
-      {/* User-reported findings, all addressed here once since every page
+          {/* User-reported findings, all addressed here once since every page
           shares this header:
           1. text-title-lg (1.8rem on this app's 17px root, ~30.6px) read
              as too large on a real mobile screen — originally stepped down
@@ -346,10 +372,10 @@ export function PageHeader({
              a text-xl (~21px) title, h-10 action row and py-2/pt-1/pb-1
              spacing (~100px) — the semibold gradient title keeps its
              hierarchy without the slab of empty space around it. */}
-      <h1 className="text-xl leading-tight font-semibold tracking-tight pt-1 pb-1 bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">
-        {title}
-      </h1>
-      {subtitle && <p className="text-sm text-ink-tertiary pb-1">{subtitle}</p>}
+          <h1 className="text-xl leading-tight font-semibold tracking-tight pt-1 pb-1 bg-gradient-to-r from-family-400 to-family-500 bg-clip-text text-transparent">
+            {title}
+          </h1>
+          {subtitle && <p className="text-sm text-ink-tertiary pb-1">{subtitle}</p>}
         </div>
         <div className="flex items-center shrink-0">{action ?? assistantAction}</div>
       </div>
@@ -357,17 +383,17 @@ export function PageHeader({
   )
 }
 
-export function ListSection({
-  title,
-  children,
-}: {
-  title?: string
-  children: ReactNode
-}) {
+export function ListSection({ title, children }: { title?: string; children: ReactNode }) {
   return (
     <div className="space-y-2">
-      {title && <div className="px-1.5 text-sm font-semibold text-ink-tertiary uppercase tracking-wide">{title}</div>}
-      <div className="rounded-2xl overflow-hidden border border-tint/[0.05] bg-tint/[0.03]">{children}</div>
+      {title && (
+        <div className="px-1.5 text-sm font-semibold text-ink-tertiary uppercase tracking-wide">
+          {title}
+        </div>
+      )}
+      <div className="rounded-2xl overflow-hidden border border-tint/[0.05] bg-tint/[0.03]">
+        {children}
+      </div>
     </div>
   )
 }
@@ -533,7 +559,10 @@ export function EmptyState({
       <p className="text-sm text-ink-tertiary leading-relaxed max-w-[260px] mb-4">{description}</p>
       {actionLabel && onAction && (
         <button
-          onClick={() => { haptic('light'); onAction() }}
+          onClick={() => {
+            haptic('light')
+            onAction()
+          }}
           className="rounded-full px-5 py-2.5 text-sm font-semibold text-white bg-family-500/80 active:opacity-80 transition-opacity"
         >
           {actionLabel}

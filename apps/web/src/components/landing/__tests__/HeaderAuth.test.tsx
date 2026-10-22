@@ -24,6 +24,20 @@ describe('Brand', () => {
 })
 
 describe('SiteHeader', () => {
+  it('switches and persists the public theme preference', () => {
+    localStorage.clear()
+    document.documentElement.dataset.theme = 'light'
+    render(<SiteHeader />)
+    const toggle = screen.getByRole('button', { name: 'Toggle light and dark theme' })
+    fireEvent.click(toggle)
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(localStorage.getItem('lifekeel-theme')).toBe('dark')
+    fireEvent.click(toggle)
+    expect(document.documentElement.dataset.theme).toBe('light')
+    expect(localStorage.getItem('lifekeel-theme')).toBe('light')
+    localStorage.clear()
+  })
+
   it('links the sections, signs in and starts on the app host, and reports the clicks', () => {
     render(<SiteHeader />)
     expect(screen.getByRole('link', { name: 'Pricing' }).getAttribute('href')).toBe('#pricing')

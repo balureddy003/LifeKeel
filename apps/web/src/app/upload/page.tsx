@@ -410,12 +410,12 @@ export default function UploadPage() {
                           style={{
                             color:
                               doc.status === 'extracted' || doc.status === 'applied'
-                                ? '#4ade80'
+                                ? '#92e1d7'
                                 : ['error', 'infected', 'rejected', 'failed'].includes(doc.status)
-                                  ? '#f87171'
+                                  ? '#ffafa3'
                                   : doc.status === 'stored'
-                                    ? '#9ca3af'
-                                    : '#fbbf24',
+                                    ? '#8763aa'
+                                    : '#ffda87',
                           }}
                         >
                           {statusIcon(doc.status)} {statusLabel(doc.status, doc.extractedData)}

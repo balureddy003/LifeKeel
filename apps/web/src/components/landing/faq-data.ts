@@ -42,6 +42,6 @@ export const FAQ: FaqItem[] = [
   {
     claim: 'delete-account',
     q: 'What happens to my data if I delete my account?',
-    a: "You can delete your account yourself from Settings. Your family profile, documents, insights, and sign-in are deleted immediately and can't be recovered. Billing records and a minimal audit log are kept only as required.",
+    a: 'You can request account deletion from Settings. See the privacy notice for how deletion is handled and which records must be retained.',
   },
 ]

@@ -387,22 +387,24 @@ function EmergencyButton() {
       whileTap={{ scale: 0.95 }}
       className="fixed bottom-40 right-4 z-fab h-12 pl-3 pr-4 rounded-full flex items-center gap-1.5"
       style={{
-        background: 'linear-gradient(135deg, #f87171, #dc2626)',
-        border: '1px solid rgba(255,255,255,0.2)',
+        background: 'linear-gradient(135deg, #ffafa3, #ffafa3)',
+        border: '1px solid rgba(211,184,245,0.5)',
         // Dark elevation shadow (not just the red glow) so this reads as a
         // layer floating above the page, not as part of whatever row it
         // happens to be scrolled over.
-        boxShadow: '0 12px 24px -6px rgba(0,0,0,0.55), 0 8px 20px rgba(248,113,113,0.3)',
+        boxShadow: '0 12px 24px -6px rgba(48,36,64,0.4), 0 8px 20px rgba(255,175,163,0.3)',
       }}
       aria-label="Emergency"
     >
       <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 2, repeat: Infinity }}>
-        <Siren size={18} color="#fff" />
+        <Siren size={18} color="#302440" />
       </motion.div>
-      <span className="text-xs font-bold text-white tracking-wide">SOS</span>
+      <span className="text-xs font-bold tracking-wide" style={{ color: '#302440' }}>
+        SOS
+      </span>
       <motion.div
         className="absolute inset-0 rounded-full"
-        style={{ border: '2px solid rgba(248,113,113,0.4)' }}
+        style={{ border: '2px solid rgba(255,175,163,0.4)' }}
         animate={{ scale: [1, 1.25], opacity: [0.6, 0] }}
         transition={{ duration: 2, repeat: Infinity }}
       />
@@ -437,7 +439,7 @@ function AskKeelButton({ context }: { context?: string }) {
       style={{
         background: 'rgb(var(--family-500))',
         border: '1px solid rgb(var(--tint) / 0.15)',
-        boxShadow: '0 12px 24px -6px rgba(0,0,0,0.35)',
+        boxShadow: '0 12px 24px -6px rgba(48,36,64,0.3)',
       }}
       aria-label="Ask Keel"
     >
@@ -863,8 +865,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     '/reset-password',
     '/verify-email',
     '/account-deleted',
+    '/invite',
+    '/auth/callback',
     '/terms',
     '/privacy',
+    '/cookies',
+    '/legal',
     '/trust',
     '/security',
     '/cookies',

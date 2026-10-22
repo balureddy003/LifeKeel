@@ -1,8 +1,10 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, within } from '@testing-library/react'
 import { PublicShell } from '../PublicShell'
+
+vi.mock('next/navigation', () => ({ usePathname: () => '/cookies' }))
 
 vi.mock('@/lib/growth-track', () => ({ track: vi.fn(), currentUtm: () => undefined }))
 vi.mock('@/lib/haptics', () => ({ haptic: vi.fn() }))
@@ -18,6 +20,23 @@ afterEach(() => {
 const APP = path.resolve(__dirname, '..', '..', '..', 'app')
 
 describe('PublicShell', () => {
+  it('connects every legal page and identifies the current cookie page', () => {
+    render(
+      <PublicShell>
+        <h1>Cookies</h1>
+      </PublicShell>,
+    )
+    const nav = screen.getByRole('navigation', { name: 'Legal and trust' })
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .map((link) => link.getAttribute('href')),
+    ).toEqual(['/legal', '/terms', '/privacy', '/cookies', '/security', '/trust'])
+    expect(within(nav).getByRole('link', { name: 'Cookies' }).getAttribute('aria-current')).toBe(
+      'page',
+    )
+  })
+
   it('wraps the page in the landing header and footer, and section links go back to /', () => {
     render(
       <PublicShell>
@@ -45,7 +64,7 @@ describe('PublicShell', () => {
   })
 
   it('is applied to terms, privacy, support, blog and guides through their layouts', () => {
-    for (const route of ['terms', 'privacy', 'support', 'blog', 'guides']) {
+    for (const route of ['terms', 'privacy', 'cookies', 'legal', 'support', 'blog', 'guides']) {
       const layout = fs.readFileSync(path.join(APP, route, 'layout.tsx'), 'utf8')
       expect(layout, route).toContain('<PublicShell>')
     }
@@ -53,7 +72,15 @@ describe('PublicShell', () => {
 
   it('AppShell lets those routes own their width instead of the phone-width wrapper', () => {
     const shell = fs.readFileSync(path.resolve(APP, '..', 'components', 'AppShell.tsx'), 'utf8')
-    for (const route of ['/terms', '/privacy', '/support', '/blog', '/guides']) {
+    for (const route of [
+      '/terms',
+      '/privacy',
+      '/cookies',
+      '/legal',
+      '/support',
+      '/blog',
+      '/guides',
+    ]) {
       expect(shell, route).toContain(`'${route}'`)
     }
   })
