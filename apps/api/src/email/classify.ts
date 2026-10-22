@@ -220,7 +220,15 @@ function toClassification(parsed: RawClassification): EmailClassification {
   }
 }
 
+/**
+ * Where an email stopped in the cascade. `model_call` is the only stage that
+ * costs inference; the others settled it for free.
+ */
+export type EmailFunnelStage = 'rule_hit' | 'prefilter_skip' | 'encoder_skip' | 'model_call'
+
 export interface ClassifyEmailOptions {
+  /** Called once per email with the stage that settled it. Never affects the result. */
+  onStage?: (stage: EmailFunnelStage) => void
   /**
    * Run the classification on a self-hosted model instead of `llm`. Email text
    * then never leaves our infrastructure, and there is no cloud fallback: a
@@ -262,10 +270,23 @@ export async function classifyEmail(
 ): Promise<EmailClassification> {
   // Rules first: a will / lasting power of attorney review reminder is always
   // surfaced, whatever the prefilter, encoder or model would have said.
+  const stage = (s: EmailFunnelStage) => {
+    try {
+      opts.onStage?.(s)
+    } catch {
+      /* metrics must never affect classification */
+    }
+  }
   const ruled = willOrPowerOfAttorneyReminder(email)
-  if (ruled) return ruled
+  if (ruled) {
+    stage('rule_hit')
+    return ruled
+  }
 
-  if (opts.prefilter && !mightBePolicyRelated(email)) return NOT_FINANCIAL
+  if (opts.prefilter && !mightBePolicyRelated(email)) {
+    stage('prefilter_skip')
+    return NOT_FINANCIAL
+  }
 
   const enc = opts.encoder
   const report = (o: EncoderOutcome) => {
@@ -281,15 +302,18 @@ export async function classifyEmail(
       const verdict = await enc.classify(email)
       if (!verdict.relevant) {
         report('gated_skip')
+        stage('encoder_skip')
         return NOT_FINANCIAL
       }
       report('gated_pass')
     } catch {
       report('error_fell_back') // fail open to the LLM: an encoder outage must not drop mail
     }
+    stage('model_call')
     return classifyWithModel(llm, email, opts)
   }
 
+  stage('model_call')
   const classification = await classifyWithModel(llm, email, opts)
   if (enc?.mode === 'shadow' && !classification.failed) {
     // Compared after the LLM has decided, and never awaited by the caller's decision path.

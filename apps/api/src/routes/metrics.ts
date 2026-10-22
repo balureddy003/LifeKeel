@@ -68,6 +68,7 @@ let localModelQueueWait: Histogram | null = null
 let localModelCost: Counter | null = null
 let shadowComparisons: Counter | null = null
 let emailEncoderOutcomes: Counter | null = null
+let emailFunnel: Counter | null = null
 let outputGuardBlocks: Counter | null = null
 let emailClassifyFailures: Counter | null = null
 let documentExtractionRetries: Counter | null = null
@@ -243,6 +244,12 @@ function initMetrics(registry: Registry): void {
     labelNames: ['outcome'],
     registers: [registry],
   })
+  emailFunnel = new Counter({
+    name: 'lifekeel_email_funnel_total',
+    help: 'Where each scanned email stopped in the classification cascade: rule_hit | prefilter_skip | encoder_skip | model_call. model_call / total is the share that cost a model call.',
+    labelNames: ['stage'],
+    registers: [registry],
+  })
   shadowComparisons = new Counter({
     name: 'lifekeel_shadow_comparisons_total',
     help: 'Candidate-vs-authoritative comparisons by purpose and outcome (agree | shadow_more_permissive | shadow_stricter | shadow_error | dropped)',
@@ -366,6 +373,12 @@ export function recordLocalModelCall(
 export function recordEmailEncoderOutcome(outcome: string): void {
   initMetrics(getRegistry())
   emailEncoderOutcomes!.inc({ outcome })
+}
+
+/** Email cascade: record the stage that settled (or sent to the model) one email. */
+export function recordEmailFunnelStage(stage: string): void {
+  initMetrics(getRegistry())
+  emailFunnel!.inc({ stage })
 }
 
 /** Shadow mode: record one comparison of a candidate against the authoritative evaluator. */
