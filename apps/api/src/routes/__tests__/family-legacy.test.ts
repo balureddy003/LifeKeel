@@ -42,7 +42,9 @@ function resolveKey(doc: Record<string, unknown>, key: string): unknown {
     // 'roles.member_id' must match when ANY array element matches —
     // resolve the remaining path inside each element.
     if (Array.isArray(cur)) {
-      return cur.map((item) => resolveKey(item as Record<string, unknown>, parts.slice(i + 1).join('.')))
+      return cur.map((item) =>
+        resolveKey(item as Record<string, unknown>, parts.slice(i + 1).join('.')),
+      )
     }
   }
   return cur
@@ -52,12 +54,22 @@ function matches(doc: Record<string, unknown>, filter: Record<string, unknown>):
   return Object.entries(filter).every(([k, v]) => {
     const val = resolveKey(doc, k)
     if (Array.isArray(val)) return val.includes(v)
+    if (v !== null && typeof v === 'object' && '$in' in (v as Record<string, unknown>)) {
+      return ((v as Record<string, unknown[]>)['$in'] ?? []).includes(val)
+    }
     return val === v
   })
 }
 
-function applyUpdate(doc: Record<string, unknown>, update: Record<string, unknown>, inserting: boolean) {
-  const set = { ...(inserting ? (update['$setOnInsert'] as Record<string, unknown> | undefined) : {}), ...(update['$set'] as Record<string, unknown> | undefined) }
+function applyUpdate(
+  doc: Record<string, unknown>,
+  update: Record<string, unknown>,
+  inserting: boolean,
+) {
+  const set = {
+    ...(inserting ? (update['$setOnInsert'] as Record<string, unknown> | undefined) : {}),
+    ...(update['$set'] as Record<string, unknown> | undefined),
+  }
   for (const [k, v] of Object.entries(set)) {
     if (k.includes('.')) {
       // $set on a dotted path — only 'data.x' style used by the group route.
@@ -68,9 +80,12 @@ function applyUpdate(doc: Record<string, unknown>, update: Record<string, unknow
       doc[k] = v
     }
   }
-  for (const key of Object.keys((update['$unset'] as Record<string, unknown> | undefined) ?? {})) delete doc[key]
+  for (const key of Object.keys((update['$unset'] as Record<string, unknown> | undefined) ?? {}))
+    delete doc[key]
   if (update['$pull']) {
-    for (const [k, cond] of Object.entries(update['$pull'] as Record<string, Record<string, unknown>>)) {
+    for (const [k, cond] of Object.entries(
+      update['$pull'] as Record<string, Record<string, unknown>>,
+    )) {
       doc[k] = (doc[k] as Record<string, unknown>[]).filter((item) => !matches(item, cond))
     }
   }
@@ -78,14 +93,30 @@ function applyUpdate(doc: Record<string, unknown>, update: Record<string, unknow
 
 function col(store: Record<string, unknown>[]) {
   return {
-    findOne: async (filter: Record<string, unknown> = {}) => store.find((d) => matches(d, filter)) ?? null,
-    find: (filter: Record<string, unknown> = {}) => ({
-      toArray: async () => store.filter((d) => matches(d, filter)),
-    }),
-    insertOne: async (doc: Record<string, unknown>) => { store.push(doc); return { insertedId: doc['id'] } },
-    updateOne: async (filter: Record<string, unknown>, update: Record<string, unknown>, opts?: { upsert?: boolean }) => {
+    findOne: async (filter: Record<string, unknown> = {}) =>
+      store.find((d) => matches(d, filter)) ?? null,
+    find: (filter: Record<string, unknown> = {}) => {
+      const cursor = {
+        toArray: async () => store.filter((d) => matches(d, filter)),
+        sort: () => cursor,
+        limit: () => cursor,
+      }
+      return cursor
+    },
+    insertOne: async (doc: Record<string, unknown>) => {
+      store.push(doc)
+      return { insertedId: doc['id'] }
+    },
+    updateOne: async (
+      filter: Record<string, unknown>,
+      update: Record<string, unknown>,
+      opts?: { upsert?: boolean },
+    ) => {
       const doc = store.find((d) => matches(d, filter))
-      if (doc) { applyUpdate(doc, update, false); return { modifiedCount: 1 } }
+      if (doc) {
+        applyUpdate(doc, update, false)
+        return { modifiedCount: 1 }
+      }
       if (opts?.upsert) {
         const fresh: Record<string, unknown> = {}
         applyUpdate(fresh, update, true)
@@ -111,11 +142,15 @@ let notes: Record<string, unknown>[]
 let vaultDocs: Record<string, unknown>[]
 let assets: Record<string, unknown>[]
 let auditEntries: Record<string, unknown>[]
+let rehearsalRecords: Record<string, unknown>[]
+let insightsStore: Record<string, unknown>[]
 
 function makeDb() {
   const familyGroups = {
     findOne: async (filter: Record<string, unknown> = {}) =>
-      matches(family as unknown as Record<string, unknown>, { tenant_id: TENANT, ...filter }) ? family : null,
+      matches(family as unknown as Record<string, unknown>, { tenant_id: TENANT, ...filter })
+        ? family
+        : null,
     findOneAndUpdate: async (_filter: Record<string, unknown>, update: Record<string, unknown>) => {
       applyUpdate(family as unknown as Record<string, unknown>, update, false)
       return family
@@ -129,10 +164,12 @@ function makeDb() {
     documents: col(vaultDocs),
     family_assets: col(assets),
     audit_log: col(auditEntries),
+    rehearsal_records: col(rehearsalRecords),
+    insights: col(insightsStore),
   }
   return {
     collection: (name: string) =>
-      name === 'family_groups' ? familyGroups : stores[name] ?? col([]),
+      name === 'family_groups' ? familyGroups : (stores[name] ?? col([])),
   } as never
 }
 
@@ -167,6 +204,8 @@ beforeEach(() => {
   vaultDocs = []
   assets = []
   auditEntries = []
+  rehearsalRecords = []
+  insightsStore = []
 })
 
 describe('access control', () => {
@@ -181,7 +220,11 @@ describe('access control', () => {
 describe('documents CRUD + reference validation', () => {
   it('round-trips create → list → patch → delete', async () => {
     const { app } = await build()
-    const created = await app.inject({ method: 'POST', url: '/family/legacy/documents', payload: willDoc() })
+    const created = await app.inject({
+      method: 'POST',
+      url: '/family/legacy/documents',
+      payload: willDoc(),
+    })
     expect(created.statusCode).toBe(201)
     const id = created.json().document.id
 
@@ -189,7 +232,11 @@ describe('documents CRUD + reference validation', () => {
     expect(list.json().documents).toHaveLength(1)
     expect(list.json().documents[0].tenant_id).toBeUndefined()
 
-    const patched = await app.inject({ method: 'PATCH', url: `/family/legacy/documents/${id}`, payload: { original_location: 'Solicitor X, Leeds' } })
+    const patched = await app.inject({
+      method: 'PATCH',
+      url: `/family/legacy/documents/${id}`,
+      payload: { original_location: 'Solicitor X, Leeds' },
+    })
     expect(patched.json().document.original_location).toBe('Solicitor X, Leeds')
 
     const del = await app.inject({ method: 'DELETE', url: `/family/legacy/documents/${id}` })
@@ -200,31 +247,61 @@ describe('documents CRUD + reference validation', () => {
 
   it('400s on an unknown member_id in roles or subject', async () => {
     const { app } = await build()
-    const badRole = await app.inject({ method: 'POST', url: '/family/legacy/documents', payload: willDoc({ roles: [{ role: 'executor', member_id: 'ghost', verification: 'user_declared' }] }) })
+    const badRole = await app.inject({
+      method: 'POST',
+      url: '/family/legacy/documents',
+      payload: willDoc({
+        roles: [{ role: 'executor', member_id: 'ghost', verification: 'user_declared' }],
+      }),
+    })
     expect(badRole.statusCode).toBe(400)
-    const badSubject = await app.inject({ method: 'POST', url: '/family/legacy/documents', payload: willDoc({ subject_member_id: 'ghost' }) })
+    const badSubject = await app.inject({
+      method: 'POST',
+      url: '/family/legacy/documents',
+      payload: willDoc({ subject_member_id: 'ghost' }),
+    })
     expect(badSubject.statusCode).toBe(400)
     await app.close()
   })
 
   it('400s on an unknown contact_id, accepts a real one', async () => {
     const { app } = await build()
-    const bad = await app.inject({ method: 'POST', url: '/family/legacy/documents', payload: willDoc({ roles: [{ role: 'executor', contact_id: 'nope', verification: 'user_declared' }] }) })
+    const bad = await app.inject({
+      method: 'POST',
+      url: '/family/legacy/documents',
+      payload: willDoc({
+        roles: [{ role: 'executor', contact_id: 'nope', verification: 'user_declared' }],
+      }),
+    })
     expect(bad.statusCode).toBe(400)
 
     contacts.push({ id: 'c1', tenant_id: TENANT, name: 'Solicitor Sam', kind: 'solicitor' })
-    const ok = await app.inject({ method: 'POST', url: '/family/legacy/documents', payload: willDoc({ roles: [{ role: 'executor', contact_id: 'c1', verification: 'user_declared' }] }) })
+    const ok = await app.inject({
+      method: 'POST',
+      url: '/family/legacy/documents',
+      payload: willDoc({
+        roles: [{ role: 'executor', contact_id: 'c1', verification: 'user_declared' }],
+      }),
+    })
     expect(ok.statusCode).toBe(201)
     await app.close()
   })
 
   it('400s on an unknown vault_document_id; a real one forces verification=document_linked', async () => {
     const { app } = await build()
-    const bad = await app.inject({ method: 'POST', url: '/family/legacy/documents', payload: willDoc({ vault_document_id: 'nope' }) })
+    const bad = await app.inject({
+      method: 'POST',
+      url: '/family/legacy/documents',
+      payload: willDoc({ vault_document_id: 'nope' }),
+    })
     expect(bad.statusCode).toBe(400)
 
     vaultDocs.push({ id: 'v1', tenant_id: TENANT, category: 'estate_vault' })
-    const res = await app.inject({ method: 'POST', url: '/family/legacy/documents', payload: willDoc({ vault_document_id: 'v1', verification: 'user_declared' }) })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/legacy/documents',
+      payload: willDoc({ vault_document_id: 'v1', verification: 'user_declared' }),
+    })
     expect(res.statusCode).toBe(201)
     expect(res.json().document.verification).toBe('document_linked')
     await app.close()
@@ -232,7 +309,11 @@ describe('documents CRUD + reference validation', () => {
 
   it('rejects a role naming neither a member nor a contact', async () => {
     const { app } = await build()
-    const res = await app.inject({ method: 'POST', url: '/family/legacy/documents', payload: willDoc({ roles: [{ role: 'executor', verification: 'unverified' }] }) })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/legacy/documents',
+      payload: willDoc({ roles: [{ role: 'executor', verification: 'unverified' }] }),
+    })
     expect(res.statusCode).toBe(400)
     await app.close()
   })
@@ -241,22 +322,38 @@ describe('documents CRUD + reference validation', () => {
 describe('visibility (§7)', () => {
   it('hides visibility=organizer documents from a non-organizer adult', async () => {
     const { app } = await build()
-    await app.inject({ method: 'POST', url: '/family/legacy/documents', payload: willDoc({ visibility: 'organizer' }) })
-    const list = await (await build(ADULT)).app.inject({ method: 'GET', url: '/family/legacy/documents' })
+    await app.inject({
+      method: 'POST',
+      url: '/family/legacy/documents',
+      payload: willDoc({ visibility: 'organizer' }),
+    })
+    const list = await (
+      await build(ADULT)
+    ).app.inject({ method: 'GET', url: '/family/legacy/documents' })
     expect(list.json().documents).toHaveLength(0)
     await app.close()
   })
 
   it('visibility=named_roles is visible to a named member (with audit), hidden from another adult', async () => {
     const { app } = await build()
-    await app.inject({ method: 'POST', url: '/family/legacy/documents', payload: willDoc({ visibility: 'named_roles' }) })
+    await app.inject({
+      method: 'POST',
+      url: '/family/legacy/documents',
+      payload: willDoc({ visibility: 'named_roles' }),
+    })
 
-    const named = await (await build(ADULT)).app.inject({ method: 'GET', url: '/family/legacy/documents' })
+    const named = await (
+      await build(ADULT)
+    ).app.inject({ method: 'GET', url: '/family/legacy/documents' })
     expect(named.json().documents).toHaveLength(1)
     // The named executor is neither subject nor organizer — the read is audited.
-    expect(auditEntries.some((e) => e['action'] === 'legacy.document.read' && e['user_id'] === ADULT)).toBe(true)
+    expect(
+      auditEntries.some((e) => e['action'] === 'legacy.document.read' && e['user_id'] === ADULT),
+    ).toBe(true)
 
-    const other = await (await build(OTHER_ADULT)).app.inject({ method: 'GET', url: '/family/legacy/documents' })
+    const other = await (
+      await build(OTHER_ADULT)
+    ).app.inject({ method: 'GET', url: '/family/legacy/documents' })
     expect(other.json().documents).toHaveLength(0)
     await app.close()
   })
@@ -264,8 +361,14 @@ describe('visibility (§7)', () => {
   it('the subject reads their own named_roles document without an audit entry', async () => {
     const { app } = await build()
     // Subject is the organizer here — make the adult the subject instead.
-    await app.inject({ method: 'POST', url: '/family/legacy/documents', payload: willDoc({ subject_member_id: 'm-adult', visibility: 'named_roles' }) })
-    const res = await (await build(ADULT)).app.inject({ method: 'GET', url: '/family/legacy/documents' })
+    await app.inject({
+      method: 'POST',
+      url: '/family/legacy/documents',
+      payload: willDoc({ subject_member_id: 'm-adult', visibility: 'named_roles' }),
+    })
+    const res = await (
+      await build(ADULT)
+    ).app.inject({ method: 'GET', url: '/family/legacy/documents' })
     expect(res.json().documents).toHaveLength(1)
     expect(auditEntries.some((e) => e['action'] === 'legacy.document.read')).toBe(false)
     await app.close()
@@ -275,20 +378,34 @@ describe('visibility (§7)', () => {
 describe('contacts and notes', () => {
   it('round-trips a contact', async () => {
     const { app } = await build()
-    const created = await app.inject({ method: 'POST', url: '/family/legacy/contacts', payload: { name: 'Sam', relationship: 'solicitor', kind: 'solicitor' } })
+    const created = await app.inject({
+      method: 'POST',
+      url: '/family/legacy/contacts',
+      payload: { name: 'Sam', relationship: 'solicitor', kind: 'solicitor' },
+    })
     expect(created.statusCode).toBe(201)
     const list = await app.inject({ method: 'GET', url: '/family/legacy/contacts' })
     expect(list.json().contacts).toHaveLength(1)
-    const del = await app.inject({ method: 'DELETE', url: `/family/legacy/contacts/${created.json().contact.id}` })
+    const del = await app.inject({
+      method: 'DELETE',
+      url: `/family/legacy/contacts/${created.json().contact.id}`,
+    })
     expect(del.statusCode).toBe(204)
     await app.close()
   })
 
   it('creates a note stamped family_understanding and authored by the caller', async () => {
     const { app } = await build()
-    const res = await app.inject({ method: 'POST', url: '/family/legacy/notes', payload: { node: { kind: 'member', id: 'm-org' }, text: 'Will is in the study drawer' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/legacy/notes',
+      payload: { node: { kind: 'member', id: 'm-org' }, text: 'Will is in the study drawer' },
+    })
     expect(res.statusCode).toBe(201)
-    expect(res.json().note).toMatchObject({ verification: 'family_understanding', author_user_id: ORGANIZER })
+    expect(res.json().note).toMatchObject({
+      verification: 'family_understanding',
+      author_user_id: ORGANIZER,
+    })
     await app.close()
   })
 })
@@ -300,7 +417,9 @@ describe('member deletion cascade', () => {
 
     const del = await app.inject({ method: 'DELETE', url: '/family/members/m-adult' })
     expect(del.statusCode).toBe(200)
-    expect(legacyDocs[0]!['roles']).toEqual([{ role: 'executor', member_id: 'm-adult', verification: 'unverified' }])
+    expect(legacyDocs[0]!['roles']).toEqual([
+      { role: 'executor', member_id: 'm-adult', verification: 'unverified' },
+    ])
     await app.close()
   })
 })
@@ -308,9 +427,15 @@ describe('member deletion cascade', () => {
 describe('GET /family/legacy/rehearsal (§6)', () => {
   it('400s without as, and for a child or unknown member', async () => {
     const { app } = await build()
-    expect((await app.inject({ method: 'GET', url: '/family/legacy/rehearsal' })).statusCode).toBe(400)
-    expect((await app.inject({ method: 'GET', url: '/family/legacy/rehearsal?as=m-kid' })).statusCode).toBe(400)
-    expect((await app.inject({ method: 'GET', url: '/family/legacy/rehearsal?as=ghost' })).statusCode).toBe(400)
+    expect((await app.inject({ method: 'GET', url: '/family/legacy/rehearsal' })).statusCode).toBe(
+      400,
+    )
+    expect(
+      (await app.inject({ method: 'GET', url: '/family/legacy/rehearsal?as=m-kid' })).statusCode,
+    ).toBe(400)
+    expect(
+      (await app.inject({ method: 'GET', url: '/family/legacy/rehearsal?as=ghost' })).statusCode,
+    ).toBe(400)
     await app.close()
   })
 
@@ -333,13 +458,28 @@ describe('GET /family/legacy/rehearsal (§6)', () => {
     await app.inject({
       method: 'POST',
       url: '/family/legacy/documents',
-      payload: willDoc({ visibility: 'adults', original_location: 'Study drawer', roles: [{ role: 'executor', member_id: 'm-adult', verification: 'user_declared' }] }),
+      payload: willDoc({
+        visibility: 'adults',
+        original_location: 'Study drawer',
+        roles: [{ role: 'executor', member_id: 'm-adult', verification: 'user_declared' }],
+      }),
     })
     // A property whose recorded_owners is empty and has no note.
     assets.push({
-      id: 'a-prop', tenant_id: TENANT, kind: 'property', name: 'Cottage',
-      value_minor: 30_000_000, created_at: new Date(), updated_at: new Date(),
-      legacy: { ownership_basis: 'inherited', jurisdiction: 'England & Wales', recorded_owners: [], claimed_owners: [], verification: 'user_declared' },
+      id: 'a-prop',
+      tenant_id: TENANT,
+      kind: 'property',
+      name: 'Cottage',
+      value_minor: 30_000_000,
+      created_at: new Date(),
+      updated_at: new Date(),
+      legacy: {
+        ownership_basis: 'inherited',
+        jurisdiction: 'England & Wales',
+        recorded_owners: [],
+        claimed_owners: [],
+        verification: 'user_declared',
+      },
     })
 
     const res = await app.inject({ method: 'GET', url: '/family/legacy/rehearsal?as=m-adult' })
@@ -352,7 +492,10 @@ describe('GET /family/legacy/rehearsal (§6)', () => {
     expect(body.hidden_documents).toHaveLength(1)
     expect(body.hidden_documents[0]).toMatchObject({ type: 'will', reason: 'organizer only' })
     expect(body.only_one_person_knows).toHaveLength(2)
-    expect(body.only_one_person_knows.map((o: { kind: string }) => o.kind).sort()).toEqual(['asset', 'document'])
+    expect(body.only_one_person_knows.map((o: { kind: string }) => o.kind).sort()).toEqual([
+      'asset',
+      'document',
+    ])
     expect(body.properties_without_title).toEqual([{ id: 'a-prop', name: 'Cottage' }])
     // m-adult is named executor on the visible will.
     expect(body.named_roles).toEqual([
@@ -387,23 +530,177 @@ describe('GET /family/legacy/rehearsal (§6)', () => {
   })
 })
 
+describe('POST /family/legacy/rehearsal + GET /family/legacy/rehearsals (PRD-214 M3)', () => {
+  it('400s without as / for a child or unknown member; 403s a child caller', async () => {
+    const { app } = await build()
+    expect(
+      (await app.inject({ method: 'POST', url: '/family/legacy/rehearsal', payload: {} }))
+        .statusCode,
+    ).toBe(400)
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/family/legacy/rehearsal',
+          payload: { as: 'm-kid' },
+        })
+      ).statusCode,
+    ).toBe(400)
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/family/legacy/rehearsal',
+          payload: { as: 'ghost' },
+        })
+      ).statusCode,
+    ).toBe(400)
+    await app.close()
+
+    const childApp = await build(CHILD)
+    const res = await childApp.app.inject({
+      method: 'POST',
+      url: '/family/legacy/rehearsal',
+      payload: { as: 'm-adult' },
+    })
+    expect(res.statusCode).toBe(403)
+    expect(
+      (await childApp.app.inject({ method: 'GET', url: '/family/legacy/rehearsals' })).statusCode,
+    ).toBe(403)
+    await childApp.app.close()
+  })
+
+  it('records a dated rehearsal and files gap insights — deduped on repeat', async () => {
+    const { app } = await build()
+    // Organizer-only will with no location → hidden + no_location + only_known gaps.
+    await app.inject({
+      method: 'POST',
+      url: '/family/legacy/documents',
+      payload: willDoc({ visibility: 'organizer', subject_member_id: 'm-org' }),
+    })
+    // Property with no title evidence.
+    assets.push({
+      id: 'a-prop',
+      tenant_id: TENANT,
+      kind: 'property',
+      name: 'Cottage',
+      value_minor: 30_000_000,
+      created_at: new Date(),
+      updated_at: new Date(),
+      legacy: {
+        ownership_basis: 'inherited',
+        jurisdiction: 'England & Wales',
+        recorded_owners: [],
+        claimed_owners: [],
+        verification: 'user_declared',
+      },
+    })
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/legacy/rehearsal',
+      payload: { as: 'm-adult' },
+    })
+    expect(res.statusCode).toBe(200)
+    const { record, view } = res.json()
+    expect(record.as_member_id).toBe('m-adult')
+    expect(record.as_member_name).toBe('Adult')
+    expect(record.completed_at).toBeTruthy()
+    expect(record.gap_counts.hidden_documents).toBe(1)
+    expect(record.gap_counts.properties_without_title).toBe(1)
+    expect(view.findability_pct).toBe(record.findability_pct)
+
+    // documents_without_location only covers *visible* docs — the hidden will
+    // shows up via only_one_person_knows instead. Expected: no_title + 2 × only_known.
+    expect(record.gap_insights_created).toBe(3)
+    expect(insightsStore).toHaveLength(3)
+    for (const ins of insightsStore) {
+      expect(ins['detector_id']).toBe('family_estate_readiness')
+      expect(ins['rule_id']).toBe('continuity_rehearsal_gap')
+      expect(ins['state']).toBe('identified')
+      expect(ins['tenant_id']).toBe(TENANT)
+    }
+
+    // Repeat run: same open gaps are not re-filed.
+    const res2 = await app.inject({
+      method: 'POST',
+      url: '/family/legacy/rehearsal',
+      payload: { as: 'm-adult' },
+    })
+    expect(res2.statusCode).toBe(200)
+    expect(res2.json().record.gap_insights_created).toBe(0)
+
+    // Audit + history.
+    expect(auditEntries.some((a) => a['action'] === 'family.rehearsal_completed')).toBe(true)
+    const list = await app.inject({ method: 'GET', url: '/family/legacy/rehearsals' })
+    expect(list.statusCode).toBe(200)
+    expect(list.json().records).toHaveLength(2)
+    await app.close()
+  })
+
+  it('a clean register completes a rehearsal with zero gap insights', async () => {
+    const { app } = await build()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/legacy/rehearsal',
+      payload: { as: 'm-adult' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().record.gap_insights_created).toBe(0)
+    expect(insightsStore).toHaveLength(0)
+    expect(rehearsalRecords).toHaveLength(1)
+    await app.close()
+  })
+})
+
 describe('PATCH /family/assets/:id/legacy', () => {
   it('400s on a non-property asset; attaches on property', async () => {
     const { app } = await build()
-    assets.push({ id: 'a1', tenant_id: TENANT, kind: 'vehicle', name: 'Car', value_minor: 500_000, created_at: new Date(), updated_at: new Date() })
-    assets.push({ id: 'a2', tenant_id: TENANT, kind: 'property', name: 'Flat', value_minor: 20_000_000, created_at: new Date(), updated_at: new Date() })
+    assets.push({
+      id: 'a1',
+      tenant_id: TENANT,
+      kind: 'vehicle',
+      name: 'Car',
+      value_minor: 500_000,
+      created_at: new Date(),
+      updated_at: new Date(),
+    })
+    assets.push({
+      id: 'a2',
+      tenant_id: TENANT,
+      kind: 'property',
+      name: 'Flat',
+      value_minor: 20_000_000,
+      created_at: new Date(),
+      updated_at: new Date(),
+    })
 
     const legacy = {
       ownership_basis: 'inherited',
       jurisdiction: 'England & Wales',
-      recorded_owners: [{ role: 'beneficiary', member_id: 'm-org', share_pct: 100, verification: 'document_linked' }],
+      recorded_owners: [
+        {
+          role: 'beneficiary',
+          member_id: 'm-org',
+          share_pct: 100,
+          verification: 'document_linked',
+        },
+      ],
       claimed_owners: [],
       verification: 'user_declared',
     }
-    const wrong = await app.inject({ method: 'PATCH', url: '/family/assets/a1/legacy', payload: legacy })
+    const wrong = await app.inject({
+      method: 'PATCH',
+      url: '/family/assets/a1/legacy',
+      payload: legacy,
+    })
     expect(wrong.statusCode).toBe(400)
 
-    const ok = await app.inject({ method: 'PATCH', url: '/family/assets/a2/legacy', payload: legacy })
+    const ok = await app.inject({
+      method: 'PATCH',
+      url: '/family/assets/a2/legacy',
+      payload: legacy,
+    })
     expect(ok.statusCode).toBe(200)
     expect(ok.json().asset.legacy.ownership_basis).toBe('inherited')
 

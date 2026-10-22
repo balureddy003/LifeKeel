@@ -886,6 +886,48 @@ export async function fetchLegacyRehearsal(memberId: string): Promise<LegacyRehe
   )
 }
 
+/** PRD-214 M3: a dated record left behind when a rehearsal is completed,
+ *  plus the deterministic insights filed from the gaps it found. */
+export interface RehearsalRecord {
+  id: string
+  as_member_id: string
+  as_member_name: string
+  findability_pct: number
+  gap_counts: {
+    hidden_documents: number
+    documents_without_location: number
+    properties_without_title: number
+    only_one_person_knows: number
+  }
+  gap_insights_created: number
+  completed_at: string
+}
+
+export async function completeLegacyRehearsal(
+  memberId: string,
+): Promise<{ record: RehearsalRecord; view: LegacyRehearsal } | null> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  try {
+    const res = await credFetch(`${base}/family/legacy/rehearsal`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ as: memberId }),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as { record: RehearsalRecord; view: LegacyRehearsal }
+  } catch (err) {
+    reportError(err, { path: '/family/legacy/rehearsal' })
+    return null
+  }
+}
+
+export async function fetchLegacyRehearsals(): Promise<{ records: RehearsalRecord[] } | null> {
+  return apiFetch<{ records: RehearsalRecord[] } | null>('/family/legacy/rehearsals', null)
+}
+
 /** PRD-137 §5: the register as nodes+edges for the Family map tab. No
  *  amounts — ids, labels and verification only. */
 export interface LegacyGraphNode {

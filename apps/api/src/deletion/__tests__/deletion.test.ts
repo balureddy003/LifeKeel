@@ -75,7 +75,9 @@ async function seedEverything(tenant: string) {
   await db.collection('lifecycle_sends').insertOne({ recipient: uid, email: `${tenant}@x.test` })
   // R19: email- and user-keyed records outside the tenant key.
   await db.collection('leads').insertOne({ email: `${tenant}@x.test`, consent_marketing: true })
-  await db.collection('login_events').insertOne({ user_id: uid, email: `${tenant}@x.test`, ip: '203.0.113.9' })
+  await db
+    .collection('login_events')
+    .insertOne({ user_id: uid, email: `${tenant}@x.test`, ip: '203.0.113.9' })
   await blob(tenant)
 }
 const countFor = async (tenant: string) => {
@@ -88,36 +90,40 @@ const countFor = async (tenant: string) => {
 
 describe('erasure leaves nothing and touches no one else', () => {
   // Seeds ~95 collections for two tenants against a real server; slow under a parallel run.
-  it('removes a row from every listed collection, the blob and the custom-keyed rows, with a clean check', { timeout: 30_000 }, async () => {
-    await seedEverything(A)
-    await seedEverything(B)
-    const before = await countFor(B)
-    const report = await eraseTenantDataReport(db, A)
+  it(
+    'removes a row from every listed collection, the blob and the custom-keyed rows, with a clean check',
+    { timeout: 30_000 },
+    async () => {
+      await seedEverything(A)
+      await seedEverything(B)
+      const before = await countFor(B)
+      const report = await eraseTenantDataReport(db, A)
 
-    expect(report.residual).toEqual([])
-    expect(await countFor(A)).toBe(0)
-    expect(await db.collection('growth_events').countDocuments({ 'meta.tenant_id': A })).toBe(0)
-    expect(await db.collection('referrals').countDocuments({ referrer_tenant_id: A })).toBe(0)
-    expect(await db.collection('lifecycle_sends').countDocuments({ recipient: `u-${A}` })).toBe(0)
-    expect(await db.collection('leads').countDocuments({ email: `${A}@x.test` })).toBe(0)
-    expect(await db.collection('login_events').countDocuments({ user_id: `u-${A}` })).toBe(0)
-    expect(await db.collection('leads').countDocuments({ email: `${B}@x.test` })).toBe(1)
+      expect(report.residual).toEqual([])
+      expect(await countFor(A)).toBe(0)
+      expect(await db.collection('growth_events').countDocuments({ 'meta.tenant_id': A })).toBe(0)
+      expect(await db.collection('referrals').countDocuments({ referrer_tenant_id: A })).toBe(0)
+      expect(await db.collection('lifecycle_sends').countDocuments({ recipient: `u-${A}` })).toBe(0)
+      expect(await db.collection('leads').countDocuments({ email: `${A}@x.test` })).toBe(0)
+      expect(await db.collection('login_events').countDocuments({ user_id: `u-${A}` })).toBe(0)
+      expect(await db.collection('leads').countDocuments({ email: `${B}@x.test` })).toBe(1)
 
-    // Tenant B is exactly as it was, in every collection.
-    expect(await countFor(B)).toBe(before)
-    expect(await db.collection('growth_events').countDocuments({ 'meta.tenant_id': B })).toBe(1)
-    expect(await db.collection('lifecycle_sends').countDocuments({ recipient: `u-${B}` })).toBe(1)
+      // Tenant B is exactly as it was, in every collection.
+      expect(await countFor(B)).toBe(before)
+      expect(await db.collection('growth_events').countDocuments({ 'meta.tenant_id': B })).toBe(1)
+      expect(await db.collection('lifecycle_sends').countDocuments({ recipient: `u-${B}` })).toBe(1)
 
-    const total = report.removed.reduce((n, r) => n + r.count, 0)
-    expect(total).toBeGreaterThanOrEqual(DELETABLE_COLLECTIONS.length + CUSTOM_DELETES.length)
-    expect(report.removed.map((r) => r.category)).toEqual(
-      expect.arrayContaining([
-        'account',
-        'documents and what was read from them',
-        'notification devices',
-      ]),
-    )
-  })
+      const total = report.removed.reduce((n, r) => n + r.count, 0)
+      expect(total).toBeGreaterThanOrEqual(DELETABLE_COLLECTIONS.length + CUSTOM_DELETES.length)
+      expect(report.removed.map((r) => r.category)).toEqual(
+        expect.arrayContaining([
+          'account',
+          'documents and what was read from them',
+          'notification devices',
+        ]),
+      )
+    },
+  )
 
   it('is safe to run again and then reports nothing removed', async () => {
     await seedEverything(A)
@@ -165,11 +171,15 @@ describe('POST /account/delete', () => {
     expect(receipt.backups).toMatchObject({ retention_days: 35 })
     expect(receipt.backups.statement).toMatch(/up to 35 days/)
     expect(receipt.processors.length).toBeGreaterThan(0)
-    expect(
-      receipt.processors.every((p: { stated_retention: string }) =>
-        /Not confirmed/.test(p.stated_retention),
-      ),
-    ).toBe(true)
+    // azure is the one approved processor (PRD-211) — its retention terms are
+    // stated for real; every other hosted processor stays "Not confirmed".
+    for (const p of receipt.processors as { id: string; stated_retention: string }[]) {
+      if (p.id === 'azure') {
+        expect(p.stated_retention).toMatch(/abuse monitoring/)
+      } else {
+        expect(p.stated_retention).toMatch(/Not confirmed/)
+      }
+    }
     expect(receipt.kept.join(' ')).toMatch(/7 years/)
     expect(receipt).not.toHaveProperty('tenant_id')
 

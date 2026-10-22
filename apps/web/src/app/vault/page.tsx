@@ -13,15 +13,28 @@ import {
   deleteVaultDocument,
   fetchFamilyGroup,
   fetchLegacyRehearsal,
+  completeLegacyRehearsal,
+  fetchLegacyRehearsals,
   VAULT_DOC_TYPES,
   VAULT_DOC_TYPE_LABELS,
   type ApiFamilyMember,
   type LegacyRehearsal,
+  type RehearsalRecord,
   type VaultDocument,
   type VaultDocType,
 } from '@/lib/api'
 import { displayDocName } from '@/lib/doc-name'
-import { Camera, Upload, FileLock2, Loader2, AlertCircle, Lock, Trash2, X, Users } from 'lucide-react'
+import {
+  Camera,
+  Upload,
+  FileLock2,
+  Loader2,
+  AlertCircle,
+  Lock,
+  Trash2,
+  X,
+  Users,
+} from 'lucide-react'
 
 export default function VaultPage() {
   const toast = useToast()
@@ -33,7 +46,12 @@ export default function VaultPage() {
   const [forbidden, setForbidden] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [preview, setPreview] = useState<{ id: string; url: string; mimeType: string; filename: string } | null>(null)
+  const [preview, setPreview] = useState<{
+    id: string
+    url: string
+    mimeType: string
+    filename: string
+  } | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   // What kind of document the next upload is — feeds the estate component
   // of the readiness score (a "will" counts toward estate completion,
@@ -55,6 +73,10 @@ export default function VaultPage() {
   const [rehearsalAs, setRehearsalAs] = useState('')
   const [rehearsal, setRehearsal] = useState<LegacyRehearsal | null>(null)
   const [rehearsalLoading, setRehearsalLoading] = useState(false)
+  // PRD-214 M3: completing a rehearsal leaves a dated record and files the
+  // gaps it found as insights.
+  const [rehearsalHistory, setRehearsalHistory] = useState<RehearsalRecord[]>([])
+  const [rehearsalCompleting, setRehearsalCompleting] = useState(false)
 
   const load = useCallback(async () => {
     const { documents: docs, forbidden: f } = await fetchVaultDocuments()
@@ -66,12 +88,11 @@ export default function VaultPage() {
   useEffect(() => {
     load()
     void fetchFamilyGroup().then((g) => {
-      const adults = (g?.members ?? []).filter(
-        (m) => m.status === 'active' && m.role !== 'child',
-      )
+      const adults = (g?.members ?? []).filter((m) => m.status === 'active' && m.role !== 'child')
       setRehearsalAdults(adults)
       setRehearsalAs((prev) => prev || adults[0]?.id || '')
     })
+    void fetchLegacyRehearsals().then((r) => setRehearsalHistory(r?.records ?? []))
   }, [load])
 
   const runRehearsal = useCallback(async () => {
@@ -81,6 +102,26 @@ export default function VaultPage() {
     setRehearsalLoading(false)
   }, [rehearsalAs])
 
+  const completeRehearsal = useCallback(async () => {
+    if (!rehearsalAs) return
+    setRehearsalCompleting(true)
+    const result = await completeLegacyRehearsal(rehearsalAs)
+    if (result) {
+      setRehearsal(result.view)
+      setRehearsalHistory((prev) => [result.record, ...prev])
+      haptic('success')
+      toast({
+        message:
+          result.record.gap_insights_created > 0
+            ? `Rehearsal recorded — ${result.record.gap_insights_created} gap ${result.record.gap_insights_created === 1 ? 'insight' : 'insights'} filed`
+            : 'Rehearsal recorded — no gaps found',
+      })
+    } else {
+      toast({ message: 'Could not record the rehearsal', variant: 'error' })
+    }
+    setRehearsalCompleting(false)
+  }, [rehearsalAs, toast])
+
   // Revoke the preview's object URL when it's closed or replaced — same
   // cleanup DocumentDetailClient.tsx's split-view preview already does.
   useEffect(() => {
@@ -89,56 +130,70 @@ export default function VaultPage() {
     }
   }, [preview])
 
-  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-    if (sealUpload && (!sealPass || sealPass !== sealPassConfirm)) {
-      setError('Enter the passphrase twice to seal this document — it can’t be recovered if forgotten.')
-      return
-    }
-    setUploading(true)
-    setError(null)
-    haptic('light')
-    try {
-      const doc = await uploadVaultDocument(file, docType, sealUpload ? sealPass : undefined)
-      setDocuments((prev) => [doc, ...prev])
-      haptic('success')
-      toast({ message: sealUpload ? 'Sealed and added to your vault' : 'Added to your vault' })
-    } catch (err) {
-      haptic('warning')
-      setError(err instanceof Error ? err.message : 'Could not upload that document')
-    } finally {
-      setUploading(false)
-    }
-  }, [toast, docType, sealUpload, sealPass, sealPassConfirm])
+  const handleFileSelect = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      e.target.value = ''
+      if (!file) return
+      if (sealUpload && (!sealPass || sealPass !== sealPassConfirm)) {
+        setError(
+          'Enter the passphrase twice to seal this document — it can’t be recovered if forgotten.',
+        )
+        return
+      }
+      setUploading(true)
+      setError(null)
+      haptic('light')
+      try {
+        const doc = await uploadVaultDocument(file, docType, sealUpload ? sealPass : undefined)
+        setDocuments((prev) => [doc, ...prev])
+        haptic('success')
+        toast({ message: sealUpload ? 'Sealed and added to your vault' : 'Added to your vault' })
+      } catch (err) {
+        haptic('warning')
+        setError(err instanceof Error ? err.message : 'Could not upload that document')
+      } finally {
+        setUploading(false)
+      }
+    },
+    [toast, docType, sealUpload, sealPass, sealPassConfirm],
+  )
 
-  const openPreview = useCallback(async (doc: VaultDocument, passphrase?: string) => {
-    haptic('light')
-    const file = await fetchVaultDocumentFileUrl(doc.id, passphrase ? { passphrase, mimeType: doc.mimeType } : undefined)
-    if (file === 'wrong-passphrase') {
-      setUnsealError('That passphrase doesn’t open this document')
-      return
-    }
-    if (!file) {
-      toast({ message: "Couldn't open that document", variant: 'error' })
-      return
-    }
-    setUnsealPrompt(null)
-    setUnsealPass('')
-    setUnsealError(null)
-    setPreview({ id: doc.id, url: file.url, mimeType: file.mimeType, filename: doc.filename })
-  }, [toast])
-
-  const handleDocOpen = useCallback((doc: VaultDocument) => {
-    if (doc.sealed) {
-      setUnsealPrompt(doc)
-      setUnsealError(null)
+  const openPreview = useCallback(
+    async (doc: VaultDocument, passphrase?: string) => {
+      haptic('light')
+      const file = await fetchVaultDocumentFileUrl(
+        doc.id,
+        passphrase ? { passphrase, mimeType: doc.mimeType } : undefined,
+      )
+      if (file === 'wrong-passphrase') {
+        setUnsealError('That passphrase doesn’t open this document')
+        return
+      }
+      if (!file) {
+        toast({ message: "Couldn't open that document", variant: 'error' })
+        return
+      }
+      setUnsealPrompt(null)
       setUnsealPass('')
-      return
-    }
-    void openPreview(doc)
-  }, [openPreview])
+      setUnsealError(null)
+      setPreview({ id: doc.id, url: file.url, mimeType: file.mimeType, filename: doc.filename })
+    },
+    [toast],
+  )
+
+  const handleDocOpen = useCallback(
+    (doc: VaultDocument) => {
+      if (doc.sealed) {
+        setUnsealPrompt(doc)
+        setUnsealError(null)
+        setUnsealPass('')
+        return
+      }
+      void openPreview(doc)
+    },
+    [openPreview],
+  )
 
   const handleUnseal = useCallback(async () => {
     if (!unsealPrompt || !unsealPass) return
@@ -147,25 +202,28 @@ export default function VaultPage() {
     setUnsealing(false)
   }, [unsealPrompt, unsealPass, openPreview])
 
-  const handleDelete = useCallback(async (doc: VaultDocument) => {
-    const ok = await confirm({
-      title: `Delete "${displayDocName(doc)}"?`,
-      message: 'This removes it from the vault permanently. This can\'t be undone.',
-      confirmLabel: 'Delete',
-      destructive: true,
-    })
-    if (!ok) return
-    haptic('warning')
-    setDeletingId(doc.id)
-    const success = await deleteVaultDocument(doc.id)
-    setDeletingId(null)
-    if (success) {
-      setDocuments((prev) => prev.filter((d) => d.id !== doc.id))
-      if (preview?.id === doc.id) setPreview(null)
-    } else {
-      toast({ message: "Couldn't delete that document", variant: 'error' })
-    }
-  }, [confirm, preview, toast])
+  const handleDelete = useCallback(
+    async (doc: VaultDocument) => {
+      const ok = await confirm({
+        title: `Delete "${displayDocName(doc)}"?`,
+        message: "This removes it from the vault permanently. This can't be undone.",
+        confirmLabel: 'Delete',
+        destructive: true,
+      })
+      if (!ok) return
+      haptic('warning')
+      setDeletingId(doc.id)
+      const success = await deleteVaultDocument(doc.id)
+      setDeletingId(null)
+      if (success) {
+        setDocuments((prev) => prev.filter((d) => d.id !== doc.id))
+        if (preview?.id === doc.id) setPreview(null)
+      } else {
+        toast({ message: "Couldn't delete that document", variant: 'error' })
+      }
+    },
+    [confirm, preview, toast],
+  )
 
   return (
     <div className="px-5 pt-2 pb-10 space-y-4">
@@ -174,9 +232,9 @@ export default function VaultPage() {
       <div className="glass rounded-2xl p-4 flex items-start gap-2">
         <Lock size={16} className="text-family-400 flex-shrink-0 mt-0.5" />
         <p className="text-xs text-ink-tertiary leading-relaxed">
-          For wills, power of attorney, and similar documents. Encrypted at rest and visible only to adult
-          family members — Keel never opens, shares, or releases these to anyone automatically. A human always
-          has to sign in and choose to view one.
+          For wills, power of attorney, and similar documents. Encrypted at rest and visible only to
+          adult family members — Keel never opens, shares, or releases these to anyone
+          automatically. A human always has to sign in and choose to view one.
         </p>
       </div>
 
@@ -203,7 +261,9 @@ export default function VaultPage() {
               className="rounded-lg bg-tint/[0.04] border border-tint/[0.08] px-2 py-1 text-xs text-ink-secondary"
             >
               {VAULT_DOC_TYPES.map((t) => (
-                <option key={t} value={t}>{VAULT_DOC_TYPE_LABELS[t]}</option>
+                <option key={t} value={t}>
+                  {VAULT_DOC_TYPE_LABELS[t]}
+                </option>
               ))}
             </select>
           </label>
@@ -213,7 +273,11 @@ export default function VaultPage() {
               <input
                 type="checkbox"
                 checked={sealUpload}
-                onChange={(e) => { setSealUpload(e.target.checked); setSealPass(''); setSealPassConfirm('') }}
+                onChange={(e) => {
+                  setSealUpload(e.target.checked)
+                  setSealPass('')
+                  setSealPassConfirm('')
+                }}
                 className="accent-family-500"
               />
               Seal with a passphrase — even Keel can’t read it
@@ -239,7 +303,9 @@ export default function VaultPage() {
                   />
                 </div>
                 <p className="text-[11px] text-ink-tertiary leading-relaxed">
-                  The passphrase never leaves this device and can’t be recovered — share it with the family members who should be able to open this. Document name and type stay visible to Keel.
+                  The passphrase never leaves this device and can’t be recovered — share it with the
+                  family members who should be able to open this. Document name and type stay
+                  visible to Keel.
                 </p>
               </div>
             )}
@@ -266,8 +332,21 @@ export default function VaultPage() {
             </motion.button>
           </div>
 
-          <input ref={fileInputRef} type="file" accept="image/*,application/pdf" onChange={handleFileSelect} className="hidden" />
-          <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileSelect} className="hidden" />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
 
           {uploading && (
             <div className="flex items-center gap-2 text-sm text-ink-tertiary">
@@ -292,18 +371,24 @@ export default function VaultPage() {
               <span className="text-sm font-semibold">Could someone else find this?</span>
             </div>
             <p className="text-xs text-ink-tertiary leading-relaxed">
-              Pick an adult to rehearse what they could actually locate if they had to step in tomorrow — documents they'd see, gaps in locations, roles naming them.
+              Pick an adult to rehearse what they could actually locate if they had to step in
+              tomorrow — documents they'd see, gaps in locations, roles naming them.
             </p>
             <div className="flex items-center gap-2">
               <select
                 value={rehearsalAs}
-                onChange={(e) => { setRehearsalAs(e.target.value); setRehearsal(null) }}
+                onChange={(e) => {
+                  setRehearsalAs(e.target.value)
+                  setRehearsal(null)
+                }}
                 className="glass-input flex-1 rounded-xl px-3 py-2 text-sm text-ink-primary"
                 aria-label="Rehearse as"
               >
                 {rehearsalAdults.length === 0 && <option value="">No adults on the roster</option>}
                 {rehearsalAdults.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
                 ))}
               </select>
               <button
@@ -322,23 +407,39 @@ export default function VaultPage() {
                   {rehearsal.as.name} could find {rehearsal.findability_pct}% of what's recorded.
                 </p>
                 {rehearsal.hidden_documents.map((d) => (
-                  <a key={d.id} href="/vault" className="block rounded-xl bg-tint/[0.04] px-3 py-2 active:opacity-70">
+                  <a
+                    key={d.id}
+                    href="/vault"
+                    className="block rounded-xl bg-tint/[0.04] px-3 py-2 active:opacity-70"
+                  >
                     <span className="font-medium">{d.type.replace(/_/g, ' ')}</span>
                     {d.subject_name ? ` for ${d.subject_name}` : ''} — {d.reason}
                   </a>
                 ))}
                 {rehearsal.documents_without_location.map((d) => (
-                  <a key={d.id} href="/vault" className="block rounded-xl bg-tint/[0.04] px-3 py-2 active:opacity-70">
+                  <a
+                    key={d.id}
+                    href="/vault"
+                    className="block rounded-xl bg-tint/[0.04] px-3 py-2 active:opacity-70"
+                  >
                     {d.type.replace(/_/g, ' ')} — no original location recorded
                   </a>
                 ))}
                 {rehearsal.properties_without_title.map((p) => (
-                  <a key={p.id} href="/assets" className="block rounded-xl bg-tint/[0.04] px-3 py-2 active:opacity-70">
+                  <a
+                    key={p.id}
+                    href="/assets"
+                    className="block rounded-xl bg-tint/[0.04] px-3 py-2 active:opacity-70"
+                  >
                     {p.name} — no title evidence recorded
                   </a>
                 ))}
                 {rehearsal.only_one_person_knows.map((o) => (
-                  <a key={`${o.kind}-${o.id}`} href={o.kind === 'asset' ? '/assets' : '/vault'} className="block rounded-xl bg-tint/[0.04] px-3 py-2 active:opacity-70">
+                  <a
+                    key={`${o.kind}-${o.id}`}
+                    href={o.kind === 'asset' ? '/assets' : '/vault'}
+                    className="block rounded-xl bg-tint/[0.04] px-3 py-2 active:opacity-70"
+                  >
                     {o.label} — only one person knows about this
                   </a>
                 ))}
@@ -346,8 +447,41 @@ export default function VaultPage() {
                   rehearsal.documents_without_location.length === 0 &&
                   rehearsal.properties_without_title.length === 0 &&
                   rehearsal.only_one_person_knows.length === 0 && (
-                  <p className="text-ink-tertiary">No gaps — everything recorded is findable by {rehearsal.as.name}.</p>
-                )}
+                    <p className="text-ink-tertiary">
+                      No gaps — everything recorded is findable by {rehearsal.as.name}.
+                    </p>
+                  )}
+                <button
+                  type="button"
+                  onClick={() => void completeRehearsal()}
+                  disabled={rehearsalCompleting}
+                  className="w-full rounded-xl px-3 py-2 text-sm font-semibold text-family-400 border border-family-500/30 disabled:opacity-50 flex items-center justify-center gap-1.5"
+                >
+                  {rehearsalCompleting && <Loader2 size={14} className="animate-spin" />}
+                  Complete rehearsal — record it and file the gaps
+                </button>
+              </div>
+            )}
+            {rehearsalHistory.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-footnote text-ink-tertiary">Past rehearsals</p>
+                {rehearsalHistory.slice(0, 5).map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex items-center justify-between rounded-xl bg-tint/[0.04] px-3 py-2 text-xs text-ink-secondary"
+                  >
+                    <span>
+                      {r.as_member_name} — {r.findability_pct}% findable
+                    </span>
+                    <span className="text-ink-tertiary">
+                      {new Date(r.completed_at).toLocaleDateString(undefined, {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
           </GlassCard>
@@ -367,14 +501,23 @@ export default function VaultPage() {
               </GlassCard>
             ) : (
               documents.map((doc, i) => (
-                <motion.div key={doc.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
+                <motion.div
+                  key={doc.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                >
                   <GlassCard className="p-4 flex items-center gap-3">
                     <button
                       onClick={() => handleDocOpen(doc)}
                       className="flex items-center gap-3 flex-1 min-w-0 text-left active:opacity-70"
                     >
                       <div className="w-10 h-10 rounded-2xl bg-tint/[0.05] flex items-center justify-center flex-shrink-0">
-                        {doc.sealed ? <Lock size={18} className="text-family-400" /> : <FileLock2 size={18} className="text-ink-secondary" />}
+                        {doc.sealed ? (
+                          <Lock size={18} className="text-family-400" />
+                        ) : (
+                          <FileLock2 size={18} className="text-ink-secondary" />
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold truncate">{displayDocName(doc)}</div>
@@ -399,7 +542,11 @@ export default function VaultPage() {
                       aria-label={`Delete ${displayDocName(doc)}`}
                       className="w-8 h-8 rounded-full flex items-center justify-center text-danger flex-shrink-0 disabled:opacity-50"
                     >
-                      {deletingId === doc.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                      {deletingId === doc.id ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Trash2 size={16} />
+                      )}
                     </button>
                   </GlassCard>
                 </motion.div>
@@ -430,7 +577,10 @@ export default function VaultPage() {
                 <Lock size={16} className="text-family-400" />
                 <span className="text-sm font-semibold">Sealed document</span>
               </div>
-              <p className="text-xs text-ink-tertiary">"{displayDocName({ filename: unsealPrompt.filename })}" is encrypted with a passphrase only your family knows. Keel can’t open it for you.</p>
+              <p className="text-xs text-ink-tertiary">
+                "{displayDocName({ filename: unsealPrompt.filename })}" is encrypted with a
+                passphrase only your family knows. Keel can’t open it for you.
+              </p>
               <input
                 type="password"
                 autoFocus
@@ -440,7 +590,11 @@ export default function VaultPage() {
                 onKeyDown={(e) => e.key === 'Enter' && void handleUnseal()}
                 className="glass-input w-full rounded-xl px-3 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40"
               />
-              {unsealError && <p role="status" aria-live="polite" className="text-xs text-danger">{unsealError}</p>}
+              {unsealError && (
+                <p role="status" aria-live="polite" className="text-xs text-danger">
+                  {unsealError}
+                </p>
+              )}
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -481,18 +635,34 @@ export default function VaultPage() {
               className="glass rounded-2xl p-3 max-w-lg w-full max-h-[85vh] flex flex-col"
             >
               <div className="flex items-center justify-between mb-2 px-1">
-                <div className="text-sm font-semibold truncate">{displayDocName({ filename: preview.filename })}</div>
-                <button onClick={() => setPreview(null)} aria-label="Close" className="w-7 h-7 rounded-full flex items-center justify-center text-ink-tertiary flex-shrink-0">
+                <div className="text-sm font-semibold truncate">
+                  {displayDocName({ filename: preview.filename })}
+                </div>
+                <button
+                  onClick={() => setPreview(null)}
+                  aria-label="Close"
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-ink-tertiary flex-shrink-0"
+                >
                   <X size={16} />
                 </button>
               </div>
               {preview.mimeType.startsWith('image/') ? (
                 // eslint-disable-next-line @next/next/no-img-element -- a local blob: URL, not an optimizable remote image
-                <img src={preview.url} alt={preview.filename} className="w-full rounded-xl object-contain flex-1 min-h-0" />
+                <img
+                  src={preview.url}
+                  alt={preview.filename}
+                  className="w-full rounded-xl object-contain flex-1 min-h-0"
+                />
               ) : preview.mimeType === 'application/pdf' ? (
-                <iframe src={preview.url} title={preview.filename} className="w-full flex-1 min-h-[60vh] rounded-xl border border-tint/[0.06]" />
+                <iframe
+                  src={preview.url}
+                  title={preview.filename}
+                  className="w-full flex-1 min-h-[60vh] rounded-xl border border-tint/[0.06]"
+                />
               ) : (
-                <div className="text-sm text-ink-tertiary p-6 text-center">No inline preview for this file type.</div>
+                <div className="text-sm text-ink-tertiary p-6 text-center">
+                  No inline preview for this file type.
+                </div>
               )}
             </motion.div>
           </motion.div>
