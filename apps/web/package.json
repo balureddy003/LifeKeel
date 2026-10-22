@@ -7,10 +7,8 @@
   "scripts": {
     "dev": "next dev --port 3002",
     "debug": "NODE_OPTIONS=--inspect=9230 next dev --port 3002",
-    "prebuild": "node scripts/make-security-txt.mjs",
-    "build": "next build",
-    "prebuild:export": "node scripts/make-security-txt.mjs",
-    "build:export": "FIREBASE_STATIC_EXPORT=1 next build",
+    "build": "node scripts/make-security-txt.mjs && next build",
+    "build:export": "node scripts/make-security-txt.mjs && FIREBASE_STATIC_EXPORT=1 next build",
     "start": "next start --port 3002",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
