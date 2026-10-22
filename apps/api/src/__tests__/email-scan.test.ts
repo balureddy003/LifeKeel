@@ -254,7 +254,7 @@ describe('scanTenantInbox', () => {
             {
               filename: 'policy.pdf',
               contentType: 'application/pdf',
-              content: Buffer.from('fake pdf'),
+              content: Buffer.from('%PDF-1.4 fake pdf'),
             },
           ],
         }),

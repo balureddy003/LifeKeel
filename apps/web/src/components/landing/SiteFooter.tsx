@@ -49,6 +49,8 @@ function Newsletter() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@example.com"
+          maxLength={320}
+          aria-describedby="lk-news-consent"
         />
         <button type="submit" disabled={state === 'busy'}>
           {state === 'busy' ? '...' : 'Join'}
@@ -59,6 +61,10 @@ function Newsletter() {
           {state === 'empty' ? 'Enter your email address.' : 'Could not subscribe. Try again.'}
         </p>
       )}
+      <p id="lk-news-consent" className="lk-fine">
+        By joining, you agree to receive emails from LifeKeel. Unsubscribe anytime. Read our{' '}
+        <Link href="/privacy">privacy policy</Link>.
+      </p>
     </form>
   )
 }
@@ -73,6 +79,7 @@ const COMPANY = [
   { href: '/support', label: 'Support' },
   { href: '/terms', label: 'Terms' },
   { href: '/privacy', label: 'Privacy' },
+  { href: '/cookies', label: 'Cookies' },
   { href: '/trust', label: 'Trust' },
 ]
 

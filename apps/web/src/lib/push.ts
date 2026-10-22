@@ -20,10 +20,11 @@ import {
   requestNativePushToken,
   storePushToken,
 } from './native'
+import { getSessionToken } from '@/lib/session-token'
 
 function getToken(): string | null {
   try {
-    return localStorage.getItem('lifekeel_token')
+    return getSessionToken()
   } catch {
     return null
   }

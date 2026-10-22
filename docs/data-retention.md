@@ -55,12 +55,24 @@ Each run is recorded in `job_runs` (counts only). The sweep never deletes docume
 
 ## Other fixed windows
 
-| Data | Kept | Where |
-|---|---|---|
-| Audit log | 7 years (TTL) | `audit/audit-log.ts` |
-| Deletion receipts | 7 years (TTL) | `deletion/receipt.ts` |
-| Billing records | as the financial record | `routes/account.ts` header |
-| Saved quiz answers awaiting an email link | 24 hours | `routes/magic-link.ts` |
+| Data | Kept | Reason | Where |
+|---|---|---|---|
+| Audit log | 7 years (TTL) | project policy: evidence of approvals and deletions; not a universal legal requirement, review per action class | `audit/audit-log.ts` |
+| Deletion receipts | 7 years (TTL) | answering a later "was I deleted?" request | `deletion/receipt.ts` |
+| Credit ledger and Stripe identifiers of a deleted household | 7 years after deletion, then swept | UK company record-keeping (6 years after the financial year end) | `jobs/retention-worker.ts` |
+| Sign-in history (`login_events`) | 30 days (TTL); removed at once on account deletion | security investigation | `db.ts`, `erasure.ts` |
+| Signed-out session tokens (`revoked_sessions`) | 31 days (TTL), hashes only | longest session lifetime | `auth/session-revocation.ts` |
+| Parked OAuth grants (`oauth_pending_grants`) | 10 minutes (TTL), encrypted | completing a connection | `routes/connector-credentials.ts` |
+| Marketing leads | 2 years after last activity; removed at once on account deletion | consented marketing; stale consent isn't relied on | `jobs/retention-worker.ts`, `erasure.ts` |
+| Lifecycle email ledger | 2 years | stops a sequence being sent twice | `jobs/retention-worker.ts` |
+| Growth events | 13 months | product analytics, aggregate | `jobs/retention-worker.ts` |
+| Stripe webhook event ids | 400 days once completed | idempotency across Stripe's retry window, plus a year for reconciliation | `jobs/retention-worker.ts` |
+| Invitation send counter | 7 days | daily invitation limit | `jobs/retention-worker.ts` |
+| Saved quiz answers awaiting an email link | 24 hours | completing the link | `routes/magic-link.ts` |
+
+Still open (tracked in `docs/reviews/SECURITY_AND_COMPLIANCE.md`, R23): an inactivity
+window for households that stop using LifeKeel, retention for AI evaluation captures and
+queue collections, and the processor-side windows, which depend on contract terms.
 
 ## Not covered here
 

@@ -11,9 +11,15 @@ export class SafeHttpClient {
   }
 }
 
-async function assertPublicHost(hostname: string): Promise<void> {
-  const normalized = hostname.toLowerCase().replace(/\.$/, '')
-  if (normalized === 'localhost' || normalized.endsWith('.localhost') || normalized.endsWith('.local')) {
+/**
+ * Resolves `hostname` and returns one address only if every resolved
+ * address is public. Callers that open raw sockets (IMAP) connect to the
+ * returned address, so a second DNS answer can't rebind them to an internal
+ * host between this check and the connection.
+ */
+export async function resolvePublicAddress(hostname: string): Promise<string> {
+  const normalized = hostname.toLowerCase().replace(/\.$/, '').replace(/^\[|\]$/g, '')
+  if (normalized === 'localhost' || normalized.endsWith('.localhost') || normalized.endsWith('.local') || normalized.endsWith('.internal')) {
     throw new Error(`Blocked private host: ${hostname}`)
   }
   const addresses = isIP(normalized)
@@ -22,18 +28,35 @@ async function assertPublicHost(hostname: string): Promise<void> {
   if (addresses.length === 0 || addresses.some(({ address }) => isPrivateAddress(address))) {
     throw new Error(`Blocked private address for host: ${hostname}`)
   }
+  return addresses[0]!.address
 }
 
-function isPrivateAddress(address: string): boolean {
-  const value = address.toLowerCase()
-  if (value === '::1' || value === '0.0.0.0' || value === '::') return true
-  if (value.startsWith('fc') || value.startsWith('fd') || value.startsWith('fe80:')) return true
+async function assertPublicHost(hostname: string): Promise<void> {
+  await resolvePublicAddress(hostname)
+}
+
+/** Loopback, private, link-local, CGNAT, benchmark, multicast and reserved ranges, IPv4 and IPv6. */
+export function isPrivateAddress(address: string): boolean {
+  let value = address.toLowerCase()
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(value)
+  if (mapped) value = mapped[1]!
+  if (value.includes(':')) {
+    return value === '::1' || value === '::'
+      || value.startsWith('fc') || value.startsWith('fd')
+      || value.startsWith('fe8') || value.startsWith('fe9') || value.startsWith('fea') || value.startsWith('feb')
+      || value.startsWith('ff') || value.startsWith('64:ff9b:') || value.startsWith('2001:db8')
+  }
   const parts = value.split('.').map(Number)
-  if (parts.length !== 4 || parts.some(part => !Number.isFinite(part))) return false
-  return parts[0] === 10
-    || parts[0] === 127
-    || (parts[0] === 169 && parts[1] === 254)
-    || (parts[0] === 172 && parts[1]! >= 16 && parts[1]! <= 31)
-    || (parts[0] === 192 && parts[1] === 168)
-    || (parts[0] === 100 && parts[1]! >= 64 && parts[1]! <= 127)
+  if (parts.length !== 4 || parts.some(part => !Number.isInteger(part) || part < 0 || part > 255)) return true
+  const [a, b] = parts as [number, number, number, number]
+  return a === 0
+    || a === 10
+    || a === 127
+    || (a === 169 && b === 254)
+    || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 168)
+    || (a === 192 && b === 0)
+    || (a === 100 && b >= 64 && b <= 127)
+    || (a === 198 && (b === 18 || b === 19))
+    || a >= 224
 }

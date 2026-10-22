@@ -41,7 +41,12 @@ import { randomUUID } from 'node:crypto'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { encryptBufferForTenant, decryptBufferEnveloped } from '../crypto/envelope.js'
 import { isFamilyAdult } from '../family/family-permissions.js'
-import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE, ESTATE_VAULT_CATEGORY } from './documents.js'
+import {
+  ALLOWED_MIME_TYPES,
+  MAX_FILE_SIZE,
+  ESTATE_VAULT_CATEGORY,
+  checkUploadBudget,
+} from './documents.js'
 import { signatureMatchesMime } from '../extraction/file-signature.js'
 import { evaluateEstate } from '../legacy/evaluate-estate.js'
 
@@ -136,6 +141,8 @@ export function registerVaultRoutes(
       if (fileBuffer.length > MAX_FILE_SIZE) {
         return reply.status(413).send({ error: 'File too large (max 50 MB)' })
       }
+      const budget = await checkUploadBudget(db, tenant_id, fileBuffer.length)
+      if (budget) return reply.status(budget.status).send({ error: budget.error })
       // Unsealed uploads get the same magic-byte check as /documents —
       // the declared type is client-supplied. Sealed blobs are client-
       // encrypted by design, so there are no readable bytes to sniff.

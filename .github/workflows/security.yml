@@ -23,9 +23,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
           cache: pnpm
@@ -47,10 +47,10 @@ jobs:
       # with "Resource not accessible by integration".
       pull-requests: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v3
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -63,18 +63,30 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: github/codeql-action/init@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           languages: javascript-typescript
       # Code scanning is not enabled on this repo, so uploading results fails the job.
       # Keep the SARIF as a workflow artifact instead. To get alerts in the Security tab,
       # enable code scanning in repo settings, then remove `upload: never` and the artifact step.
-      - uses: github/codeql-action/analyze@v4
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           upload: never
           output: codeql-results
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: codeql-sarif
           path: codeql-results
+      # R30: high-confidence findings are actionable, not just archived.
+      # Fails on any result whose rule has security-severity >= 7.0 (high
+      # or critical); the SARIF artifact above names them.
+      - name: Fail on high or critical CodeQL findings
+        if: always()
+        run: |
+          high=$(jq '[.runs[] as $r | $r.results[]? as $res
+            | ($r.tool.driver.rules[]? | select(.id == $res.ruleId)
+               | (.properties["security-severity"] // "0") | tonumber)
+            | select(. >= 7)] | length' codeql-results/*.sarif | awk '{s+=$1} END {print s+0}')
+          echo "High/critical CodeQL findings: $high"
+          [ "$high" -eq 0 ]

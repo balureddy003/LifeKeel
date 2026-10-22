@@ -60,7 +60,8 @@ const EXEMPT_COLLECTIONS = new Set([
   'operator_audit_log',
   // PRD-208: platform-level evidence register (owner, renewal date); holds no family data
   'trust_evidence',
-  'login_events',
+  // R06: hashes of signed-out session tokens only, 31-day TTL, no identity
+  'revoked_sessions',
   // operator control plane
   'operator_alerts',
   'operator_digests',
@@ -68,6 +69,9 @@ const EXEMPT_COLLECTIONS = new Set([
   'platform_operators',
   'platform_config',
   'platform_config_history',
+  // PRD-217/212 AI-health telemetry: task, model, outcome, latency and per-day route counts; no tenant id or content
+  'ai_task_calls',
+  'assistant_answer_routes',
   // infra state (not family data)
   'cron_locks',
   'migrations',
@@ -82,14 +86,13 @@ const EXEMPT_COLLECTIONS = new Set([
   'credit_ledger',
   'outcome_charges',
   'stripe_webhook_events',
-  // commercial plane (pre-signup/operator-scoped; lead emails handled by
-  // the lead-suppression path, not account deletion)
+  // commercial plane (pre-signup/operator-scoped). Leads matching a deleted
+  // account's email are removed by CUSTOM_DELETES (R19).
   'campaigns',
   'case_studies',
   'blog_posts',
   'groups',
   'invite_codes',
-  'leads',
   'promo_codes',
   'promo_rate_limits',
   'promo_redemptions',
@@ -376,12 +379,16 @@ describe('architecture claims: erasure survives backup restore', () => {
     expect(readSrc('apps/api/src/erasure.ts')).toContain('export async function eraseTenantData')
   })
 
-  it('restore.sh preserves tombstones across a --drop restore', () => {
+  it('restore.sh keeps erased accounts erased across a --drop restore (R15)', () => {
     const src = readSrc('scripts/ops/restore.sh')
     // Without this, a stale backup un-deletes accounts: the restored
     // tenants row carries status:'active' and replay finds nothing.
-    expect(src).toContain("status: 'deleted'")
-    expect(src).toContain('tombstoned tenant_ids')
+    // In-progress deletions count too, and a fresh target needs the journal.
+    expect(src).toContain("['deleting', 'deleted']")
+    expect(src).toContain('ERASURE_JOURNAL_FILE')
+    expect(src).toContain("status: 'deleting'")
+    expect(src).toContain('maintenance_mode')
+    expect(src).toContain('erasure-replay.ts')
   })
 })
 

@@ -138,7 +138,7 @@ describe('KEEL-009: HTTP-level cross-tenant isolation', () => {
 
       const app = Fastify()
       app.addHook('onRequest', async (request: any) => {
-        request.authContext = { tenant_id: request.headers['x-test-tenant'], user_id: 'user-1' }
+        request.authContext = { tenant_id: request.headers['x-test-tenant'], user_id: 'user-1', roles: ['admin'] }
       })
       await registerFamilyFinancialProfileRoutes(app, db, engine)
 

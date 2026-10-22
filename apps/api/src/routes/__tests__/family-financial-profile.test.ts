@@ -87,27 +87,22 @@ function makeDb() {
     // the matched-and-updated document directly (not wrapped in `.value`),
     // or null when the filter (e.g. a version match) doesn't match anything
     // existing, which is exactly the conflict case the route now checks for.
-    findOneAndUpdate: vi.fn(
-      async (
-        filter: Record<string, unknown>,
-        update: { $set: Record<string, unknown>; $inc?: Record<string, number> },
-      ) => {
-        if ('version' in filter && (stored?.['version'] ?? 0) !== filter['version']) return null
-        const currentVersion = (stored?.['version'] as number | undefined) ?? 0
-        stored = {
-          ...(stored ?? {}),
-          ...update.$set,
-          version: currentVersion + (update.$inc?.['version'] ?? 0),
-        }
-        return stored
-      },
-    ),
-    updateOne: vi.fn(
-      async (_filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
-        stored = { ...(stored ?? {}), ...update.$set }
-        return { matchedCount: stored ? 1 : 0 }
-      },
-    ),
+    findOneAndUpdate: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown>; $inc?: Record<string, number> }) => {
+      if ('version' in filter && (stored?.['version'] ?? 0) !== filter['version']) return null
+      const currentVersion = (stored?.['version'] as number | undefined) ?? 0
+      stored = { ...(stored ?? {}), ...update.$set, version: currentVersion + (update.$inc?.['version'] ?? 0) }
+      return stored
+    }),
+    updateOne: vi.fn(async (_filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
+      stored = { ...(stored ?? {}), ...update.$set }
+      return { matchedCount: stored ? 1 : 0 }
+    }),
+    // R27: first creation is an insert; a second insert is the unique-index conflict.
+    insertOne: vi.fn(async (doc: Record<string, unknown>) => {
+      if (stored) throw Object.assign(new Error('E11000 duplicate key'), { code: 11000 })
+      stored = { ...doc }
+      return { insertedId: 'p1' }
+    }),
     createIndex: vi.fn(async () => ({})),
   }
   // PRD-107: a minimal in-memory stand-in for the real 'insights' collection
@@ -225,9 +220,20 @@ async function buildApp(
 }> {
   const app = Fastify()
   app.addHook('onRequest', async (request) => {
-    ;(request as any).authContext = { tenant_id: TENANT, user_id: 'user-1' }
+    ;(request as any).authContext = { tenant_id: TENANT, user_id: 'user-1', roles: ['admin'] }
   })
   const db = makeDb()
+  // Most tests save several times in a row the way the wizard does; the
+  // wizard sends back the version each response returned. Fill it in here
+  // unless a test sends one itself or opts out with x-raw-version (R27).
+  app.addHook('preValidation', async (request) => {
+    if (request.method !== 'POST' || request.url !== '/family/financial-profile') return
+    if (request.headers['x-raw-version']) return
+    const body = request.body as Record<string, unknown> | undefined
+    if (!body || body['version'] !== undefined) return
+    const current = await db.collection('family_financial_profile').findOne({})
+    if (current) body['version'] = (current['version'] as number | undefined) ?? 0
+  })
   const insights: Insight[] = []
   await registerFamilyFinancialProfileRoutes(app, db, engine, async (generated) => {
     insights.push(...generated)
@@ -1080,6 +1086,33 @@ describe('KEEL-006: optimistic concurrency on POST /family/financial-profile', (
     // The stale write's field never landed.
     const get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
     expect(get.json().profile.household.monthly_salary_minor).not.toBe(1)
+  })
+
+  it('R27: a save with no version against an existing profile is a 409, not an overwrite', async () => {
+    const { app } = await buildApp(engine)
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: BASE_PROFILE })
+    const blind = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      headers: { 'x-raw-version': '1' },
+      payload: { ...BASE_PROFILE, household: { ...BASE_PROFILE.household, monthly_salary_minor: 1 } },
+    })
+    expect(blind.statusCode).toBe(409)
+    expect(blind.json().version).toBe(1)
+    const get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    expect(get.json().profile.household.monthly_salary_minor).not.toBe(1)
+  })
+
+  it('R04: a viewer cannot change the household profile', async () => {
+    const app = Fastify()
+    app.addHook('onRequest', async (request) => {
+      ;(request as any).authContext = { tenant_id: TENANT, user_id: 'viewer-1', roles: ['viewer'] }
+    })
+    await registerFamilyFinancialProfileRoutes(app, makeDb(), engine, async () => {})
+    const res = await app.inject({ method: 'POST', url: '/family/financial-profile', payload: BASE_PROFILE })
+    expect(res.statusCode).toBe(403)
+    const evaluate = await app.inject({ method: 'POST', url: '/family/financial-profile/evaluate' })
+    expect(evaluate.statusCode).toBe(403)
   })
 })
 

@@ -101,8 +101,10 @@ Production must reject consumer/free AI endpoints, personal API keys, unapproved
 regions/models, provider-side memory or file stores for family data, and any
 route whose policy is missing. It must also propagate tenant deletion to LLM
 cache, spans, guard events, eval captures, scorer/model versions, queues, and
-provider-side retained records. The current account-deletion list does not yet
-cover every one of those AI-derived artifacts.
+provider-side retained records. `apps/api/src/erasure.ts` now covers the
+AI-derived collections LifeKeel stores (LLM cache, spans, guard events, usage,
+scorer and calibration state); provider-side retained records remain outside
+its reach and are a contract matter.
 
 ### Safe user-facing wording
 

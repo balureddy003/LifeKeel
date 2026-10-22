@@ -84,7 +84,14 @@ async function main() {
 
   const mongod = await MongoMemoryServer.create()
   const uri = mongod.getUri()
-  const env = { ...process.env, MONGODB_URL: uri, MONGODB_DB: DB }
+  // Local drill: plaintext archive, and the drill runs the replay itself below.
+  const env = {
+    ...process.env,
+    MONGODB_URL: uri,
+    MONGODB_DB: DB,
+    ALLOW_UNENCRYPTED_BACKUP: '1',
+    SKIP_AUTO_REPLAY: '1',
+  }
   const run = (script: string, args: string[]) =>
     execFileSync('bash', [join(OPS, script), ...args], { env, encoding: 'utf-8' })
 
@@ -128,7 +135,10 @@ async function main() {
 
   const checks: Array<[string, boolean]> = [
     ['stale restore resurrected deleted-tenant docs', resurrected > 0],
-    ['tombstone survived the --drop restore', tombstone?.status === 'deleted'],
+    [
+      'erasure marker survived the --drop restore',
+      tombstone?.status === 'deleted' || tombstone?.status === 'deleting',
+    ],
     ['replay re-wiped the resurrected tenant', deadAfter === 0],
     ['live tenant survived the restore', liveAfter === liveSeeded],
   ]

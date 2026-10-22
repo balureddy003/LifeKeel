@@ -1,6 +1,7 @@
 import { getApiBase } from './env'
 import { credFetch } from './http'
 import { invalidateCache } from './fetch-cache'
+import { getSessionToken } from '@/lib/session-token'
 
 /**
  * Runs the detectors against the profile already on file (POST
@@ -9,7 +10,7 @@ import { invalidateCache } from './fetch-cache'
  * generated; rejects with a user-presentable message otherwise.
  */
 export async function evaluateSavedProfile(): Promise<number> {
-  const token = typeof window === 'undefined' ? null : localStorage.getItem('lifekeel_token')
+  const token = typeof window === 'undefined' ? null : getSessionToken()
   const res = await credFetch(`${getApiBase()}/family/financial-profile/evaluate`, {
     method: 'POST',
     headers: token ? { Authorization: `Bearer ${token}` } : {},

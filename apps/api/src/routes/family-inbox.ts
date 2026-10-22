@@ -24,6 +24,7 @@ import {
 import { listInsightAttributions, recordInsightAction } from '../insights/insight-attribution.js'
 import type { PolicyType } from '../ocr/profile-mapping.js'
 import { confirmedFields, loadCandidates } from '../extraction/pipeline.js'
+import { isHouseholdEditor } from '../family/family-permissions.js'
 
 const log = createLogger({ service: 'family-inbox', version: '0.0.0' })
 
@@ -379,6 +380,8 @@ export function registerFamilyInboxRoutes(
   fastify.post<{ Params: { id: string }; Body: ApplyPolicyBody }>(
     '/inbox/:id/apply-policy',
     async (req, reply) => {
+      if (!(await isHouseholdEditor(db, req.authContext.tenant_id, req.authContext.user_id, req.authContext.roles)))
+        return reply.status(403).send({ error: 'Only household editors can change shared records' })
       const { tenant_id } = req.authContext
       const item = await col.findOne({ id: req.params.id, tenant_id })
       if (!item) {

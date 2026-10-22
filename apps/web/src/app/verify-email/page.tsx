@@ -7,6 +7,7 @@ import { verifyEmail, resendVerificationEmail } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 import { AuthShell } from '@/components/landing/AuthShell'
+import { readLinkToken } from '@/lib/link-token'
 
 type VerifyState = 'checking' | 'verifying' | 'verified' | 'invalid' | 'no-token'
 
@@ -28,7 +29,7 @@ export default function VerifyEmailPage() {
   useEffect(() => {
     if (started.current) return
     started.current = true
-    const token = new URLSearchParams(window.location.search).get('token')
+    const token = readLinkToken()
     if (!token) {
       setState('no-token')
       return

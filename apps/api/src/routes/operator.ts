@@ -17,6 +17,7 @@ import {
   type DualApprovalDoc,
 } from '../operator/dual-control.js'
 import { sendPasswordResetEmail } from '../auth-email.js'
+import { hashAuthToken } from './auth-users.js'
 import { recordLedgerEntry, getLedgerHistory } from '../billing/credit-ledger.js'
 import { queueManager } from '../queue/QueueManager.js'
 import { WEBHOOK_INGEST_QUEUE } from '../queue/WebhookQueue.js'
@@ -779,17 +780,18 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         { id: request.params.id },
         {
           $set: {
-            password_reset_token: token,
+            password_reset_token_hash: hashAuthToken(token),
             password_reset_expires: new Date(Date.now() + 60 * 60 * 1000),
             updated_at: new Date(),
           },
+          $unset: { password_reset_token: '' },
         },
       )
       const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
       await sendPasswordResetEmail(
         user['email'] as string,
         user['name'] as string,
-        `${appUrl}/reset-password/confirm?token=${token}`,
+        `${appUrl}/reset-password/confirm#token=${token}`,
       )
       await audit.log(
         request,

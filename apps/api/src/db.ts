@@ -58,6 +58,15 @@ export async function getDb(): Promise<Db> {
   await loginEvents.createIndex({ created_at: 1 }, { expireAfterSeconds: 30 * 86400 }).catch(safeIndex)
   await loginEvents.createIndex({ user_id: 1, created_at: -1 }).catch(safeIndex)
   await loginEvents.createIndex({ ip: 1, created_at: -1 }).catch(safeIndex)
+  // Backs the per-email throttle in /auth/login (R42).
+  await loginEvents.createIndex({ email: 1, created_at: -1 }).catch(safeIndex)
+
+  // Signed-out session tokens (R06), kept until the longest session could expire.
+  await db
+    .collection('revoked_sessions')
+    .createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 })
+    .catch(safeIndex)
+  await db.collection('revoked_sessions').createIndex({ token_hash: 1 }, { unique: true }).catch(safeIndex)
 
   // Initialize detector versions collection
   initDetectorVersionsCollection(db)

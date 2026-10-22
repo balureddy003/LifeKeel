@@ -38,6 +38,7 @@ import type { FamilyGroupDoc } from './family-group.js'
 import { monthlyEquivalentMinor, type CashflowEntryDoc } from './family-cashflow.js'
 import { buildEstateSignal } from '../legacy/estate-signal.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
+import { isHouseholdEditor } from '../family/family-permissions.js'
 
 const FAMILY_DETECTOR_IDS = [
   'family_protection_gap',
@@ -1000,7 +1001,9 @@ export async function registerFamilyFinancialProfileRoutes(
   onInsightsGenerated?: (insights: Insight[], tenantId: string) => Promise<void>,
 ): Promise<void> {
   const rawProfiles = getFamilyFinancialProfileCollection(db)
-  rawProfiles.createIndex({ tenant_id: 1 }, { unique: true }).catch(() => {})
+  // One profile per household is a correctness requirement (R27): boot
+  // fails rather than run without it.
+  await rawProfiles.createIndex({ tenant_id: 1 }, { unique: true })
 
   const profileFor = (tenantId: string) =>
     getTenantCollection<
@@ -1038,6 +1041,8 @@ export async function registerFamilyFinancialProfileRoutes(
   // so they don't have to re-enter anything to see their gaps. Tier 0:
   // informational insights only, nothing is sent or executed anywhere.
   app.post('/family/financial-profile/evaluate', async (req, reply) => {
+    if (!(await isHouseholdEditor(db, req.authContext.tenant_id, req.authContext.user_id, req.authContext.roles)))
+      return reply.status(403).send({ error: 'Only household editors can change shared records' })
     const { tenant_id } = req.authContext
     const doc = await profileFor(tenant_id).findOne({})
     if (!doc) return reply.status(404).send({ error: 'No financial profile on file yet' })
@@ -1196,6 +1201,8 @@ export async function registerFamilyFinancialProfileRoutes(
   app.post<{ Body: { action?: 'confirm' | 'later' } }>(
     '/family/financial-profile/review',
     async (req, reply) => {
+      if (!(await isHouseholdEditor(db, req.authContext.tenant_id, req.authContext.user_id, req.authContext.roles)))
+        return reply.status(403).send({ error: 'Only household editors can change shared records' })
       const { tenant_id } = req.authContext
       const doc = await profileFor(tenant_id).findOne({})
       if (!doc) return reply.status(404).send({ error: 'No financial profile on file yet' })
@@ -1233,6 +1240,8 @@ export async function registerFamilyFinancialProfileRoutes(
   app.post<{ Body: FinancialProfile & { generate_insights?: boolean; version?: number } }>(
     '/family/financial-profile',
     async (req, reply) => {
+      if (!(await isHouseholdEditor(db, req.authContext.tenant_id, req.authContext.user_id, req.authContext.roles)))
+        return reply.status(403).send({ error: 'Only household editors can change shared records' })
       const { generate_insights, version: clientVersion, ...body } = req.body
       const parsed = FinancialProfileSchema.safeParse(body)
       if (!parsed.success) {
@@ -1257,30 +1266,45 @@ export async function registerFamilyFinancialProfileRoutes(
       // matches nothing and the caller gets a 409 instead of silently
       // clobbering someone else's edits. A client on its first-ever save
       // (no version yet) omits it and always succeeds.
-      const filter = clientVersion !== undefined ? { version: clientVersion } : {}
-      const result = await profileFor(tenant_id).findOneAndUpdate(
-        filter,
-        {
-          $set: {
-            ...profile,
-            updated_at: new Date(),
-            // Marks that detectors have actually run against this profile.
-            // Without it the client can't tell "evaluated, no gaps" from
-            // "saved by autosave, never evaluated" — both have zero
-            // insights, and the latter must not read as a perfect score.
-            ...(generate_insights ? { insights_evaluated_at: new Date() } : {}),
-          },
-          $inc: { version: 1 },
-        },
-        { upsert: true, returnDocument: 'after' },
-      )
-      if (clientVersion !== undefined && !result) {
-        return reply
-          .status(409)
-          .send({ error: 'This profile was updated elsewhere — reload and try again.' })
+      // R27: first creation and versioned update are separate operations.
+      // An existing profile can only be changed by a caller holding its
+      // current version (GET returns 0 for rows that predate versioning);
+      // a stale or missing version is a 409, never a silent overwrite and
+      // never an upsert that collides with the unique tenant index.
+      const fields = {
+        ...profile,
+        updated_at: new Date(),
+        // Marks that detectors have actually run against this profile.
+        // Without it the client can't tell "evaluated, no gaps" from
+        // "saved by autosave, never evaluated" — both have zero
+        // insights, and the latter must not read as a perfect score.
+        ...(generate_insights ? { insights_evaluated_at: new Date() } : {}),
       }
-      const newVersion =
-        (result as unknown as { version?: number } | null)?.version ?? (clientVersion ?? 0) + 1
+      const conflict = (current: number) =>
+        reply.status(409).send({
+          error: 'This profile was updated elsewhere — reload and try again.',
+          version: current,
+        })
+      let newVersion: number
+      if (previousDoc) {
+        const current = previousDoc.version ?? 0
+        if (clientVersion !== current) return conflict(current)
+        const result = await profileFor(tenant_id).findOneAndUpdate(
+          previousDoc.version === undefined ? { version: { $exists: false } } : { version: current },
+          { $set: fields, $inc: { version: 1 } },
+          { returnDocument: 'after' },
+        )
+        if (!result) return conflict(current)
+        newVersion = (result as unknown as { version: number }).version
+      } else {
+        try {
+          await profileFor(tenant_id).insertOne({ ...fields, version: 1 } as never)
+        } catch (err) {
+          if ((err as { code?: number }).code === 11000) return conflict(1)
+          throw err
+        }
+        newVersion = 1
+      }
 
       // The multi-step form autosaves after every step (Continue), not just
       // the final "Save & Generate Insights" — evaluating detectors on every

@@ -1,18 +1,11 @@
 {
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/hooks/advice-check.sh"
-          }
-        ]
-      }
-    ]
-  },
   "permissions": {
+    "allow": [
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "ClaudeInChromeDomain(localhost:3002)",
+      "mcp__claude-in-chrome__tabs_create_mcp",
+      "ClaudeInChromeDomain(localhost:8025)"
+    ],
     "deny": [
       "Read(./.env)",
       "Read(./.env.local)",
@@ -26,6 +19,19 @@
       "Read(./**/.next/**)",
       "Read(./**/.turbo/**)",
       "Read(./pnpm-lock.yaml)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/hooks/advice-check.sh"
+          }
+        ]
+      }
     ]
   }
 }

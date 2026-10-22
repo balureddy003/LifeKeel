@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import Fastify, { type FastifyInstance } from 'fastify'
 import { MongoClient, type Db } from 'mongodb'
 import { MongoMemoryServer } from 'mongodb-memory-server'
+import sgMail from '@sendgrid/mail'
 
 // Campaign sends hit the real lifecycle sendEmail — keep the provider mocked
 // and the key present so ledger rows can settle to 'sent'.
@@ -10,6 +11,7 @@ vi.mock('@sendgrid/mail', () => ({
 }))
 
 import { registerOperatorRoutes } from '../operator.js'
+import { hashAuthToken } from '../auth-users.js'
 
 let mongod: MongoMemoryServer
 let client: MongoClient
@@ -319,7 +321,11 @@ describe('/operator control plane', () => {
     })
     expect(response.statusCode).toBe(200)
     const user = await db.collection('users').findOne({ id: 'user-2' })
-    expect(typeof user?.['password_reset_token']).toBe('string')
+    expect(user?.['password_reset_token']).toBeUndefined()
+    const sent = JSON.stringify(vi.mocked(sgMail.send).mock.calls.at(-1)?.[0])
+    const token = /reset-password\/confirm#token=([0-9a-f]{64})/.exec(sent)?.[1]
+    expect(token).toBeDefined()
+    expect(user?.['password_reset_token_hash']).toBe(hashAuthToken(token!))
     expect((user?.['password_reset_expires'] as Date).getTime()).toBeGreaterThan(Date.now())
     await app.close()
   })

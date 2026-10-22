@@ -10,9 +10,10 @@
  *    the family product writes that is about the family: profile, roster,
  *    documents metadata (not file bytes — originals are downloadable
  *    individually via /documents/:id/file until deletion), insights, goals,
- *    life-event signals, action receipts, and the audit trail. Internal
- *    derived state (ML scorer weights, credit ledgers, webhook logs) is not
- *    user data and is not included.
+ *    life-event signals, action receipts, the audit trail, and every other
+ *    household record in the erasure catalogue, including derived
+ *    inferences. Secrets, device tokens and numeric model weights are left
+ *    out (see EXPORT_EXCLUDED).
  *
  *  - Deletion is resumable (PRD-146): the tenant is marked 'deleting' BEFORE the
  *    wipe, so access dies at once and a wipe that fails halfway is retried by
@@ -42,7 +43,13 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { getAuditLogger } from '../audit/audit-log.js'
-import { eraseTenantDataReport } from '../erasure.js'
+import { DELETABLE_COLLECTIONS, eraseTenantDataReport } from '../erasure.js'
+import { isHouseholdEditor } from '../family/family-permissions.js'
+import {
+  cancelSubscriptionForDeletedTenant,
+  markCancellationPending,
+} from '../billing/cancel-on-delete.js'
+import { Readable } from 'node:stream'
 import {
   closeReceipt,
   openReceipt,
@@ -54,73 +61,178 @@ import {
 /** What account deletion deliberately leaves, stated on the receipt. */
 export const ACCOUNT_DELETION_KEPT = [
   'A record that this deletion happened, with counts and no content, is kept for 7 years: the audit trail and this receipt.',
-  'Billing records are kept as the financial record.',
+  'Your subscription is cancelled. Invoices and payment records are kept for the period tax law requires; they hold no family content.',
 ]
 
-// Fields stripped from the exported user record — auth material, not data
-// about the family.
-const USER_EXPORT_OMIT = new Set([
-  'password_hash',
-  'salt',
-  'password_reset_token',
-  'password_reset_expires',
-  'email_verification_token',
-  'email_verification_expires',
-  'failed_login_attempts',
-  'locked_until',
+// The exported user record is an allowlist (R05): anything not named here,
+// including password material, MFA secrets and recovery-code hashes, stays out.
+const USER_EXPORT_FIELDS = [
+  'id',
+  'email',
+  'name',
+  'tenant_id',
+  'roles',
+  'status',
+  'avatar_color',
+  'created_at',
+  'updated_at',
+  'last_seen_at',
+  'email_verified',
+  'external_provider',
+  'mfa_enabled',
+  'marketing_consent',
+  'attribution',
+] as const
+
+function pickUser(user: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(USER_EXPORT_FIELDS.filter((k) => k in user).map((k) => [k, user[k]]))
+}
+
+/**
+ * Collections in the erasure catalogue that are not exported: key material,
+ * credentials and device tokens (secrets, not data about the family), and
+ * model state that is numeric weights rather than readable information.
+ * Everything else the family product stores about the household is.
+ */
+const EXPORT_EXCLUDED = new Set<string>([
+  'users',
+  'tenant_keys',
+  'connector_credentials',
+  'web_push_subscriptions',
+  'mobile_push_tokens',
+  'llm_cache',
+  'feature_hash_models',
+  'feature_hash_model_versions',
+  'tenant_level_models',
+  'calibration_params',
+  'calibration_jobs',
+  'calibration_alerts',
+  'calibration_ece_history',
+  'adaptive_thresholds',
+  'adwin_states',
+  'cusum_states',
+  'exp_smoother_states',
+  'change_point_state',
+  'novelty_sketches',
+  'intent_centroids',
 ])
+
+/** Bounds memory per collection (R18); the bundle says when a cap was hit. */
+const EXPORT_MAX_DOCS_PER_COLLECTION = 10_000
+
+/** Secret-looking fields are removed from every exported record, at any depth. */
+const SECRET_FIELD = /(password|secret|token|salt|_hash$|hashes$|api_key|private_key|dek)/i
+
+function stripSecrets(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripSecrets)
+  if (value && typeof value === 'object' && !(value instanceof Date)) {
+    if ('_bsontype' in (value as Record<string, unknown>)) return String(value)
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([k]) => !SECRET_FIELD.test(k))
+        .map(([k, v]) => [k, stripSecrets(v)]),
+    )
+  }
+  return value
+}
 
 export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
   /**
    * GET /account/export — the tenant's own data as a JSON bundle.
    * Read-only; nothing here mutates.
+   *
+   * Household editors (the organizer and other non-viewer adults) get the
+   * household's records. Anyone else gets their own account and roster
+   * entry only: a viewer can read shared pages in the app, but a portable
+   * copy of every family member's data is the household's to take (R05).
+   * Collections are read one at a time with a cap and streamed out, so a
+   * large household can't exhaust API memory (R18).
    */
   app.get('/account/export', async (request, reply) => {
-    const { tenant_id, user_id } = request.authContext
+    const { tenant_id, user_id, roles } = request.authContext
+    const editor = await isHouseholdEditor(db, tenant_id, user_id, roles)
 
-    const [user, family, profile, documents, insights, goals, signals, receipts, audit, reminders] =
-      await Promise.all([
-        db.collection('users').findOne({ tenant_id, id: user_id }),
-        db.collection('family_groups').findOne({ tenant_id }),
-        db.collection('family_financial_profile').findOne({ tenant_id }),
-        db.collection('documents').find({ tenant_id }).toArray(),
-        db.collection('insights').find({ tenant_id }).toArray(),
-        db.collection('goals').find({ tenant_id }).toArray(),
-        db.collection('signals').find({ tenant_id }).toArray(),
-        db.collection('action_receipts').find({ tenant_id }).toArray(),
-        db.collection('audit_log').find({ tenant_id }).toArray(),
-        db.collection('reminders').find({ tenant_id }).toArray(),
-      ])
+    try {
+      await getAuditLogger()?.fromRequestCritical(request, 'account.exported', 'account', tenant_id, {
+        scope: editor ? 'household' : 'self',
+      })
+    } catch {
+      return reply.status(503).send({ error: 'Export is unavailable right now. Please try again shortly.' })
+    }
 
-    getAuditLogger()?.fromRequest(request, 'account.exported', 'account', tenant_id, {})
+    const user = await db.collection('users').findOne({ tenant_id, id: user_id })
+    const family = await db.collection('family_groups').findOne({ tenant_id })
+    const ownMember = (family?.['members'] as Array<Record<string, unknown>> | undefined)?.find(
+      (m) => m['id'] === user_id || m['user_id'] === user_id,
+    )
 
-    const sanitizedUser = user
-      ? Object.fromEntries(Object.entries(user).filter(([k]) => !USER_EXPORT_OMIT.has(k)))
-      : null
+    async function* bundle(): AsyncGenerator<string> {
+      const field = (key: string, value: unknown, first = false) =>
+        `${first ? '' : ','}${JSON.stringify(key)}:${JSON.stringify(stripSecrets(value) ?? null)}`
+      yield '{'
+      yield field('exported_at', new Date().toISOString(), true)
+      yield field('tenant_id', tenant_id)
+      yield field('scope', editor ? 'household' : 'self')
+      yield field('user', user ? pickUser(user) : null)
+      if (!editor) {
+        yield field('family_member', ownMember ?? null)
+        yield '}'
+        return
+      }
 
-    // File bytes stay out of the JSON bundle — the documents' own download
-    // endpoint serves originals until the account is deleted.
-    const documentMeta = documents.map((d) => {
-      const { file_id: _fileId, ...rest } = d as Record<string, unknown>
-      return rest
-    })
+      const read = async (name: string, filter: Record<string, unknown> = { tenant_id }) => {
+        const docs = await db
+          .collection(name)
+          .find(filter, { limit: EXPORT_MAX_DOCS_PER_COLLECTION })
+          .toArray()
+        return docs
+      }
+      const truncated: string[] = []
+      const capped = (name: string, docs: unknown[]) => {
+        if (docs.length >= EXPORT_MAX_DOCS_PER_COLLECTION) truncated.push(name)
+        return docs
+      }
+
+      const householdUsers = await read('users')
+      yield field('household_users', householdUsers.map((u) => pickUser(u)))
+      yield field('family_group', family ?? null)
+      yield field('financial_profile', await db.collection('family_financial_profile').findOne({ tenant_id }))
+
+      // File bytes stay out of the JSON bundle — the documents' own download
+      // endpoint serves originals until the account is deleted.
+      const documents = await read('documents')
+      yield field(
+        'documents',
+        capped('documents', documents).map((d) => {
+          const { file_id: _fileId, ...rest } = d as Record<string, unknown>
+          return rest
+        }),
+      )
+      for (const name of ['insights', 'goals', 'signals', 'action_receipts', 'reminders', 'audit_log']) {
+        yield field(name, capped(name, await read(name)))
+      }
+
+      // The rest of the catalogue, including derived inferences about the
+      // family (they are personal data even where portability doesn't apply).
+      const listed = new Set(['family_groups', 'family_financial_profile', 'documents', 'insights', 'goals', 'signals', 'action_receipts', 'reminders'])
+      yield ',"other_records":{'
+      let first = true
+      for (const name of DELETABLE_COLLECTIONS) {
+        if (EXPORT_EXCLUDED.has(name) || listed.has(name)) continue
+        const docs = await read(name)
+        if (docs.length === 0) continue
+        yield field(name, capped(name, docs), first)
+        first = false
+      }
+      yield '}'
+      yield field('truncated_collections', truncated)
+      yield '}'
+    }
 
     return reply
+      .type('application/json; charset=utf-8')
       .header('Content-Disposition', `attachment; filename="lifekeel-export-${tenant_id}.json"`)
-      .send({
-        exported_at: new Date().toISOString(),
-        tenant_id,
-        user: sanitizedUser,
-        family_group: family ?? null,
-        financial_profile: profile ?? null,
-        documents: documentMeta,
-        insights,
-        goals,
-        signals,
-        action_receipts: receipts,
-        reminders,
-        audit_log: audit,
-      })
+      .send(Readable.from(bundle()))
   })
 
   /**
@@ -135,17 +247,31 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
     if (!user) return reply.status(404).send({ error: 'User not found' })
 
     const expected = String(user['email'] ?? '').toLowerCase()
-    if (!confirmation || confirmation.trim().toLowerCase() !== expected) {
+    if (typeof confirmation !== 'string' || confirmation.trim().toLowerCase() !== expected) {
       return reply.status(400).send({ error: 'Type your account email to confirm deletion' })
+    }
+
+    // Deleting the household erases every member's data, so it is the
+    // household editors' decision, not any signed-in member's.
+    if (!(await isHouseholdEditor(db, tenant_id, user_id, request.authContext.roles))) {
+      return reply.status(403).send({
+        error:
+          'Only the household organizer can delete the household. Ask them to remove you from the family, which ends your access.',
+      })
     }
 
     const receipt = openReceipt(tenant_id, 'account')
 
     // Audit the deletion BEFORE wiping — this entry is part of the retained
     // compliance record the header describes.
-    getAuditLogger()?.fromRequest(request, 'account.deleted', 'account', tenant_id, {
-      receipt_id: receipt.id,
-    })
+    // R33: no deletion without its record — if the audit write fails, stop here.
+    try {
+      await getAuditLogger()?.fromRequestCritical(request, 'account.deleted', 'account', tenant_id, {
+        receipt_id: receipt.id,
+      })
+    } catch {
+      return reply.status(503).send({ error: 'Deletion could not start. Please try again shortly.' })
+    }
 
     // Mark the tenant first. The auth middleware admits only 'active'/'trial',
     // so every outstanding JWT 403s from this point, and if the wipe below
@@ -162,6 +288,13 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
       },
     )
     await saveReceipt(db, receipt)
+
+    // Stop billing (R09). The pending flag is durable, so a Stripe failure
+    // here is retried by the nightly erasure replay rather than lost.
+    await markCancellationPending(db, tenant_id)
+    await cancelSubscriptionForDeletedTenant(db, tenant_id).catch((err) =>
+      request.log.error({ err, tenant_id }, 'Subscription cancellation deferred to replay'),
+    )
 
     // The wipe itself lives in erasure.ts so the account route, the daily
     // erasure-replay cron, and post-restore reconciliation run identical code.

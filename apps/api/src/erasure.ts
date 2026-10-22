@@ -38,6 +38,8 @@ export const DELETABLE_COLLECTIONS = [
   'family_continuity_state',
   'family_join_requests',
   'family_member_invites',
+  'family_invite_sends', // R43 daily invitation counter
+  'oauth_pending_grants', // R37 parked connector grants (encrypted, 10-minute TTL)
   'family_life_change_nudge_state',
   'feed_mutes',
   'legacy_contacts',
@@ -145,6 +147,14 @@ export const CUSTOM_DELETES: ReadonlyArray<{
     collection: 'lifecycle_sends',
     filter: (c) => ({ $or: [{ recipient: { $in: c.userIds } }, { email: { $in: c.userEmails } }] }),
   },
+  // R19: a lead captured before signup is keyed by email only, not tenant.
+  { collection: 'leads', filter: (c) => ({ email: { $in: c.userEmails } }) },
+  // R19: sign-in telemetry links user id, email and IP for 30 days; an
+  // erased account's rows go now rather than at TTL.
+  {
+    collection: 'login_events',
+    filter: (c) => ({ $or: [{ user_id: { $in: c.userIds } }, { email: { $in: c.userEmails } }] }),
+  },
 ]
 
 /**
@@ -173,6 +183,8 @@ export const ERASURE_CATEGORY: Record<string, string> = {
   llm_spans: 'AI working data',
   llm_usage: 'AI working data',
   llm_guard_events: 'AI working data',
+  leads: 'marketing contact record',
+  login_events: 'sign-in history',
 }
 export const OTHER_CATEGORY = 'other family data'
 const categoryOf = (collection: string) => ERASURE_CATEGORY[collection] ?? OTHER_CATEGORY
@@ -207,7 +219,12 @@ export async function eraseTenantDataReport(db: Db, tenantId: string): Promise<E
   const deleteCtx = {
     tenantId,
     userIds: memberUsers.map((u) => String(u['id'])),
-    userEmails: memberUsers.map((u) => String(u['email'])),
+    // Both spellings: users are stored lowercased, older lead rows may not be.
+    userEmails: [
+      ...new Set(
+        memberUsers.flatMap((u) => [String(u['email']), String(u['email']).toLowerCase()]),
+      ),
+    ],
   }
   const removed: { category: string; count: number }[] = []
 

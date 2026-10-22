@@ -9,7 +9,7 @@ name: Gmail
 provider: google
 version: 0.1.0
 status: planned
-description: Google Gmail — send transactional email and read inbound messages
+description: Google Gmail — read inbound messages (read-only)
 category: generic
 base_url: https://gmail.googleapis.com/gmail/v1
 
@@ -18,15 +18,16 @@ auth:
   oauth:
     authorization_url: https://accounts.google.com/o/oauth2/v2/auth
     token_url: https://oauth2.googleapis.com/token
+    # Read-only on purpose: LifeKeel reads policy mail, it never sends or
+    # deletes on the family's behalf (see apps/api/src/email/gmail-api.ts).
     scopes:
-      - https://www.googleapis.com/auth/gmail.send
       - https://www.googleapis.com/auth/gmail.readonly
 
 resources:
   - name: messages
     path: /users/{userId}/messages
-    method: POST
-    description: Send an email message
+    method: GET
+    description: List inbox messages
   - name: message
     path: /users/{userId}/messages/{id}
     method: GET
