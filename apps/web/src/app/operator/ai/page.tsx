@@ -1,9 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Bot, Cpu, ShieldAlert, Zap } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
-import { fetchOperatorAiHealth, type OperatorAiHealth } from '@/lib/api'
+import { useToast } from '@/components/Toast'
+import {
+  fetchOperatorAiHealth,
+  setOperatorAiTaskState,
+  type OperatorAiHealth,
+  type OperatorAiTaskHealth,
+} from '@/lib/api'
+import { ReasonAction } from '../_components/ReasonAction'
 
 function ms(v: number | null): string {
   if (v === null) return '—'
@@ -33,14 +40,27 @@ const BREAKER_TONE: Record<string, string> = {
 }
 
 export default function OperatorAiPage() {
+  const toast = useToast()
   const [health, setHealth] = useState<OperatorAiHealth | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const load = useCallback(
+    () =>
+      fetchOperatorAiHealth()
+        .then(setHealth)
+        .catch((err) => setError(err instanceof Error ? err.message : 'Could not load AI health')),
+    [],
+  )
+
   useEffect(() => {
-    fetchOperatorAiHealth()
-      .then(setHealth)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Could not load AI health'))
-  }, [])
+    void load()
+  }, [load])
+
+  async function toggleTask(t: OperatorAiTaskHealth, reason: string) {
+    await setOperatorAiTaskState(t.task_id, t.disabled, reason)
+    toast({ message: `${t.task_id} ${t.disabled ? 're-enabled' : 'disabled → honest fallback'}` })
+    await load()
+  }
 
   if (error)
     return (
@@ -64,7 +84,7 @@ export default function OperatorAiPage() {
         here.
       </p>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+      <div className="mt-6 grid gap-4 lg:grid-cols-4">
         <GlassCard className="p-5">
           <div className="flex items-center gap-2 text-sm font-medium text-ink-secondary">
             <Zap size={15} /> Ask Keel routes
@@ -91,6 +111,21 @@ export default function OperatorAiPage() {
               </span>
             ))}
           </div>
+        </GlassCard>
+
+        <GlassCard className="p-5">
+          <div className="flex items-center gap-2 text-sm font-medium text-ink-secondary">
+            <Cpu size={15} /> Self-hosted queue
+          </div>
+          <p className="mt-3 text-3xl font-semibold">
+            {health.local_model.queue_wait_mean_s === null
+              ? '—'
+              : `${health.local_model.queue_wait_mean_s.toFixed(1)}s`}
+          </p>
+          <p className="mt-1 text-xs text-ink-tertiary">
+            Mean wait for a local-model slot across {health.local_model.calls} calls this process
+            lifetime — sustained growth means the model service is undersized.
+          </p>
         </GlassCard>
 
         <GlassCard className="p-5 lg:col-span-2">
@@ -138,13 +173,29 @@ export default function OperatorAiPage() {
                 <th className="pb-2 pr-4 font-medium text-right">Fail %</th>
                 <th className="pb-2 pr-4 font-medium text-right">p50</th>
                 <th className="pb-2 pr-4 font-medium text-right">p95</th>
-                <th className="pb-2 font-medium text-right">Cost</th>
+                <th className="pb-2 pr-4 font-medium text-right">Cost</th>
+                <th className="pb-2 font-medium text-right">Switch</th>
               </tr>
             </thead>
             <tbody>
               {health.tasks.map((t) => (
-                <tr key={t.task_id} className="border-b border-tint/[0.04]">
-                  <td className="py-2 pr-4 font-mono text-xs">{t.task_id}</td>
+                <tr
+                  key={t.task_id}
+                  className={`border-b border-tint/[0.04] ${t.disabled ? 'opacity-60' : ''}`}
+                >
+                  <td className="py-2 pr-4 font-mono text-xs">
+                    {t.task_id}
+                    {t.disabled && (
+                      <span className="ml-2 rounded-full border border-warning/25 bg-warning/10 px-2 py-0.5 font-sans text-[10px] font-medium text-warning">
+                        disabled
+                      </span>
+                    )}
+                    {t.disabled_refusals > 0 && (
+                      <span className="block font-sans text-[10px] text-ink-tertiary">
+                        {t.disabled_refusals} calls refused while off
+                      </span>
+                    )}
+                  </td>
                   <td className="py-2 pr-4 text-xs text-ink-tertiary">{t.data_boundary}</td>
                   <td className="py-2 pr-4 text-xs">{t.serving_processor ?? 'device'}</td>
                   <td className={`py-2 pr-4 text-xs ${BREAKER_TONE[t.breaker_state] ?? ''}`}>
@@ -158,7 +209,22 @@ export default function OperatorAiPage() {
                   </td>
                   <td className="py-2 pr-4 text-right text-xs">{ms(t.p50_ms)}</td>
                   <td className="py-2 pr-4 text-right text-xs">{ms(t.p95_ms)}</td>
-                  <td className="py-2 text-right text-xs">{cost(t.cost_microdollars)}</td>
+                  <td className="py-2 pr-4 text-right text-xs">{cost(t.cost_microdollars)}</td>
+                  <td className="py-2 text-right align-top">
+                    <ReasonAction
+                      label={t.disabled ? 'Enable' : 'Disable'}
+                      destructive={!t.disabled}
+                      description={
+                        (t.disabled
+                          ? 'Restores the task — governed calls reach the provider again.'
+                          : 'Refuses every call to this task before a provider is contacted — the caller’s existing failure path serves its honest fallback, never a silent swap.') +
+                        (t.data_boundary === 'lifekeel_infra_required'
+                          ? ' This task’s data may not leave LifeKeel infrastructure — a second operator must confirm.'
+                          : '')
+                      }
+                      onConfirm={(reason) => toggleTask(t, reason)}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>

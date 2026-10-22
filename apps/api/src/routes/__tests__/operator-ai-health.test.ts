@@ -4,7 +4,9 @@ import { MongoClient, type Db } from 'mongodb'
 import { MongoMemoryServer } from 'mongodb-memory-server'
 
 import { registerOperatorRoutes } from '../operator.js'
-import { initTaskGateway } from '../../ai/task-gateway.js'
+import { initTaskGateway, taskLlm } from '../../ai/task-gateway.js'
+import { invalidatePlatformConfigCache } from '../../operator/platform-config.js'
+import { TaskDisabledError } from '@lifekeel/platform'
 
 let mongod: MongoMemoryServer
 let client: MongoClient
@@ -37,6 +39,8 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await db.dropDatabase()
+  // getPlatformConfig caches 10s process-wide — the drop leaves stale flags.
+  invalidatePlatformConfigCache()
   await db.collection('users').insertOne({
     id: 'operator-1',
     tenant_id: 'operator-tenant',
@@ -174,6 +178,48 @@ describe('GET /operator/ai-health (PRD-217)', () => {
     await app.close()
   })
 
+  it('excludes disabled-refusals from failures and reports them separately', async () => {
+    const now = new Date()
+    await db.collection('ai_task_calls').insertMany([
+      {
+        task_id: 'assistant.answer.v1',
+        model: 'm',
+        ok: false,
+        latency_ms: 0,
+        outcome: 'disabled',
+        processor: 'ollama',
+        created_at: now,
+      },
+      {
+        task_id: 'assistant.answer.v1',
+        model: 'm',
+        ok: false,
+        latency_ms: 100,
+        outcome: null,
+        processor: 'ollama',
+        created_at: now,
+      },
+      {
+        task_id: 'assistant.answer.v1',
+        model: 'm',
+        ok: true,
+        latency_ms: 100,
+        processor: 'ollama',
+        created_at: now,
+      },
+    ])
+    const app = await buildApp()
+    const res = await app.inject({ method: 'GET', url: '/operator/ai-health' })
+    const task = (res.json().tasks as Record<string, unknown>[]).find(
+      (t) => t['task_id'] === 'assistant.answer.v1',
+    )!
+    expect(task['calls']).toBe(3)
+    expect(task['failures']).toBe(1)
+    expect(task['disabled_refusals']).toBe(1)
+    expect(task['failure_rate']).toBeCloseTo(1 / 3)
+    await app.close()
+  })
+
   it('honours the days window — old calls are out of scope', async () => {
     const old = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000)
     await db.collection('ai_task_calls').insertOne({
@@ -190,6 +236,140 @@ describe('GET /operator/ai-health (PRD-217)', () => {
       (t) => t['task_id'] === 'assistant.answer.v1',
     )!
     expect(task['calls']).toBe(0)
+    await app.close()
+  })
+})
+
+describe('POST /operator/ai-tasks/:taskId/state (PRD-217)', () => {
+  const disabledTasks = async () =>
+    (
+      (await db.collection('platform_config').findOne({ key: 'global' })) as {
+        ai_disabled_tasks?: string[]
+      } | null
+    )?.ai_disabled_tasks ?? []
+
+  it('disables a task — audited, and the gateway refuses calls with TaskDisabledError', async () => {
+    const app = await buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/operator/ai-tasks/assistant.answer.v1/state',
+      payload: { enabled: false, reason: 'provider incident — force fallback' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(await disabledTasks()).toContain('assistant.answer.v1')
+
+    const audit = await db
+      .collection('operator_audit_log')
+      .findOne({ action: 'operator.ai_task.disable' })
+    expect(audit).toMatchObject({ target_id: 'assistant.answer.v1' })
+
+    const health = await app.inject({ method: 'GET', url: '/operator/ai-health' })
+    const task = (health.json().tasks as Record<string, unknown>[]).find(
+      (t) => t['task_id'] === 'assistant.answer.v1',
+    )!
+    expect(task['disabled']).toBe(true)
+    expect(health.json().disabled_tasks).toContain('assistant.answer.v1')
+
+    // End-to-end: a governed call is refused before any provider contact.
+    await expect(taskLlm('assistant.answer.v1', 'tenant-x')('s', 'p')).rejects.toBeInstanceOf(
+      TaskDisabledError,
+    )
+    // The onCall telemetry row is fire-and-forget — poll briefly for it.
+    let refusal = null
+    for (let i = 0; i < 20 && !refusal; i++) {
+      refusal = await db
+        .collection('ai_task_calls')
+        .findOne({ task_id: 'assistant.answer.v1', outcome: 'disabled' })
+      if (!refusal) await new Promise((r) => setTimeout(r, 25))
+    }
+    expect(refusal).toBeTruthy()
+    await app.close()
+  })
+
+  it('re-enables a disabled task', async () => {
+    const app = await buildApp()
+    await app.inject({
+      method: 'POST',
+      url: '/operator/ai-tasks/assistant.answer.v1/state',
+      payload: { enabled: false, reason: 'incident' },
+    })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/operator/ai-tasks/assistant.answer.v1/state',
+      payload: { enabled: true, reason: 'provider recovered' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(await disabledTasks()).not.toContain('assistant.answer.v1')
+    await app.close()
+  })
+
+  it('rejects unknown tasks and no-op writes', async () => {
+    const app = await buildApp()
+    const unknown = await app.inject({
+      method: 'POST',
+      url: '/operator/ai-tasks/nope.v9/state',
+      payload: { enabled: false, reason: 'test unknown' },
+    })
+    expect(unknown.statusCode).toBe(404)
+    const noop = await app.inject({
+      method: 'POST',
+      url: '/operator/ai-tasks/assistant.answer.v1/state',
+      payload: { enabled: true, reason: 'already on' },
+    })
+    expect(noop.statusCode).toBe(409)
+    const badReason = await app.inject({
+      method: 'POST',
+      url: '/operator/ai-tasks/assistant.answer.v1/state',
+      payload: { enabled: false, reason: 'x' },
+    })
+    expect(badReason.statusCode).toBe(400)
+    await app.close()
+  })
+
+  it('lifekeel_infra_required tasks need a second operator — pending → confirm → execute', async () => {
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-2', status: 'active', roles: ['operations'] })
+    const requester = await buildApp('operator-1')
+    const pending = await requester.inject({
+      method: 'POST',
+      url: '/operator/ai-tasks/assistant.answer.sensitive.v1/state',
+      payload: { enabled: false, reason: 'quarantine task — needs eyes' },
+    })
+    expect(pending.statusCode).toBe(202)
+    expect(pending.json().approval_required).toBe(true)
+    const approvalId = pending.json().approval_id as string
+    // The mutation has NOT happened yet.
+    expect(await disabledTasks()).toEqual([])
+
+    const confirmer = await buildApp('operator-2')
+    const confirm = await confirmer.inject({
+      method: 'POST',
+      url: `/operator/dual-approvals/${approvalId}/confirm`,
+      payload: { reason: 'looks right' },
+    })
+    expect(confirm.statusCode).toBe(200)
+
+    // Requester retries — their confirmed approval is spent automatically.
+    const retried = await requester.inject({
+      method: 'POST',
+      url: '/operator/ai-tasks/assistant.answer.sensitive.v1/state',
+      payload: { enabled: false, reason: 'quarantine task — needs eyes' },
+    })
+    expect(retried.statusCode).toBe(200)
+    expect(await disabledTasks()).toContain('assistant.answer.sensitive.v1')
+    await requester.close()
+    await confirmer.close()
+  })
+
+  it('denies operators without operations.manage', async () => {
+    const app = await buildApp('user-2')
+    const res = await app.inject({
+      method: 'POST',
+      url: '/operator/ai-tasks/assistant.answer.v1/state',
+      payload: { enabled: false, reason: 'should not work' },
+    })
+    expect(res.statusCode).toBe(403)
     await app.close()
   })
 })

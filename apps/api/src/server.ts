@@ -158,6 +158,7 @@ import {
   pollMarketingEngagement,
 } from './routes/marketing-posts.js'
 import { runMetricsRollup } from './jobs/metrics-rollup.js'
+import { runAiHealthAlert } from './jobs/ai-health-alert.js'
 import { runWeeklyDigest } from './operator/weekly-digest.js'
 import { runLifecycleSweep } from './marketing/lifecycle-emails.js'
 import { runAutopilotSweep, ensureAutopilotIndexes } from './operator/autopilot.js'
@@ -522,6 +523,25 @@ try {
       { missedExecutionTolerance: 1_800_000 },
     )
     log.info({}, 'Metrics rollup cron started')
+
+    // AI task failure-share check every 10 minutes (PRD-217) — the October
+    // outage fell back on every call for days before a manual probe found
+    // it; this pages ops within minutes of a task-level collapse.
+    cron.schedule(
+      '*/10 * * * *',
+      async () => {
+        try {
+          await withCronLock(workflowDb, 'ai-health-alert', async () => {
+            const result = await runAiHealthAlert(workflowDb)
+            if (result.alerted.length > 0) log.warn({ ...result }, 'AI task failure alert fired')
+          })
+        } catch (err) {
+          log.error({ err }, 'AI health alert cron failed')
+        }
+      },
+      { missedExecutionTolerance: 60_000 },
+    )
+    log.info({}, 'AI health alert cron started')
 
     // Autopilot sweep — hourly. Evaluates only enabled, off-cooldown Tier 0/1
     // rules; each act writes an autopilot_actions ledger row (dedup-keyed so a
@@ -1427,7 +1447,8 @@ const app = Fastify({
   // Client IP for rate limits and login telemetry (R24): trust exactly the
   // proxy hops in front of us (Cloud Run: 1), never arbitrary
   // X-Forwarded-For values a client sends.
-  trustProxy: trustedProxyHops > 0 ? (_address: string, hop: number) => hop < trustedProxyHops : false,
+  trustProxy:
+    trustedProxyHops > 0 ? (_address: string, hop: number) => hop < trustedProxyHops : false,
   rewriteUrl: rewriteVersionedUrl,
   // Signed delivery action tokens (/a/:token) exceed the 100-char default.
   routerOptions: { maxParamLength: 512 },
@@ -1674,7 +1695,8 @@ app.addHook('onRequest', async (request, reply) => {
             )
           if (!user && !ctx.demo && deploymentConfig.mode !== 'dev') throw new Error('no such user')
           if (user?.['status'] === 'suspended') throw new Error('user suspended')
-          if (INACTIVE_USER_STATUSES.has(user?.['status'] as string)) throw new Error('user inactive')
+          if (INACTIVE_USER_STATUSES.has(user?.['status'] as string))
+            throw new Error('user inactive')
           const revokedAt = user?.['sessions_revoked_at'] as Date | undefined
           if (
             revokedAt &&

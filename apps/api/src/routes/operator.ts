@@ -56,6 +56,7 @@ import {
 } from '../marketing/campaigns.js'
 import { lifecycleSendsCol } from '../marketing/lifecycle-emails.js'
 import { platformUnitEconomics } from '../spend-ledger.js'
+import { localModelQueueSummary } from './metrics.js'
 import { formatMicroDollars, getAllCircuitBreakers } from '@lifekeel/platform'
 import type { SupportCaseDoc, SupportMessage } from './support.js'
 
@@ -3464,7 +3465,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
       const sinceDay = since.toISOString().slice(0, 10)
 
-      const [callRows, costRows, answerRows, guardRows] = await Promise.all([
+      const [callRows, costRows, answerRows, guardRows, config] = await Promise.all([
         db
           .collection('ai_task_calls')
           .aggregate([
@@ -3473,7 +3474,21 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
               $group: {
                 _id: '$task_id',
                 calls: { $sum: 1 },
-                failures: { $sum: { $cond: ['$ok', 0, 1] } },
+                // Calls refused by the operator switch are not provider
+                // failures — they get their own count so a deliberately-off
+                // task doesn't read as an outage.
+                failures: {
+                  $sum: {
+                    $cond: [
+                      { $and: [{ $eq: ['$ok', false] }, { $ne: ['$outcome', 'disabled'] }] },
+                      1,
+                      0,
+                    ],
+                  },
+                },
+                disabled_refusals: {
+                  $sum: { $cond: [{ $eq: ['$outcome', 'disabled'] }, 1, 0] },
+                },
                 latencies: { $push: '$latency_ms' },
                 processors: { $addToSet: '$processor' },
               },
@@ -3508,6 +3523,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
             { $group: { _id: { type: '$type', action: '$action' }, count: { $sum: 1 } } },
           ])
           .toArray(),
+        getPlatformConfig(db),
       ])
 
       const callsByTask = new Map(callRows.map((r) => [r['_id'] as string, r]))
@@ -3520,6 +3536,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         const stats = callsByTask.get(policy.task_id)
         const calls = (stats?.['calls'] as number | undefined) ?? 0
         const failures = (stats?.['failures'] as number | undefined) ?? 0
+        const disabledRefusals = (stats?.['disabled_refusals'] as number | undefined) ?? 0
         const latencies = ((stats?.['latencies'] as number[] | undefined) ?? [])
           .slice()
           .sort((a, b) => a - b)
@@ -3532,8 +3549,10 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
           primary_model: policy.primary_model,
           serving_processor: resolveServingProcessor(policy),
           breaker_state: breakers.get(breakerKey)?.getState() ?? 'closed',
+          disabled: config.ai_disabled_tasks.includes(policy.task_id),
           calls,
           failures,
+          disabled_refusals: disabledRefusals,
           failure_rate: calls > 0 ? Math.round((failures / calls) * 1000) / 1000 : 0,
           p50_ms: percentile(latencies, 50),
           p95_ms: percentile(latencies, 95),
@@ -3574,7 +3593,89 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
           action: (r['_id'] as { action: string }).action,
           count: r['count'],
         })),
+        disabled_tasks: config.ai_disabled_tasks,
+        local_model: localModelQueueSummary(),
       }
+    },
+  )
+
+  // ── AI task runtime switch (PRD-217) ───────────────────────────────────
+  // Disable → the gateway refuses the task with TaskDisabledError before any
+  // provider is contacted; the caller's existing failure path serves its
+  // honest fallback (never a silent swap to another processor). Enable
+  // restores it. Both directions are reasoned + audited; tasks whose data
+  // must stay on LifeKeel infra (lifekeel_infra_required) additionally need
+  // a second operator's confirmation — the same four-eyes gate as tenant
+  // suspension.
+
+  const AiTaskStateSchema = z.object({
+    enabled: z.boolean(),
+    reason: z.string().min(5).max(500),
+    confirmation_id: z.string().optional(),
+  })
+
+  app.post<{ Params: { taskId: string } }>(
+    '/operator/ai-tasks/:taskId/state',
+    { preHandler: requireOperator(db, 'operations.manage', { stepUp: true }) },
+    async (request, reply) => {
+      const parsed = AiTaskStateSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid body', issues: parsed.error.issues })
+      const { enabled, reason } = parsed.data
+      const policy = getTaskRegistry().get(request.params.taskId)
+      if (!policy) return reply.status(404).send({ error: 'Unknown AI task' })
+
+      const before = await getPlatformConfig(db)
+      const currentlyDisabled = before.ai_disabled_tasks.includes(policy.task_id)
+      if (currentlyDisabled === !enabled)
+        return reply
+          .status(409)
+          .send({ error: `Task is already ${enabled ? 'enabled' : 'disabled'}` })
+
+      const action = enabled ? 'operator.ai_task.enable' : 'operator.ai_task.disable'
+      // Disabling OR re-enabling a quarantine-boundary task changes what a
+      // family's most sensitive asks can reach — four-eyes either way.
+      if (policy.data_boundary === 'lifekeel_infra_required') {
+        const gate = await checkDualApproval(db, audit, request, {
+          action,
+          targetType: 'ai_task',
+          targetId: policy.task_id,
+          payload: { enabled },
+          permission: 'operations.manage',
+          reason,
+        })
+        if (gate.kind !== 'proceed') return reply.status(gate.status).send(gate.body)
+      }
+
+      if (enabled) {
+        await configCol.updateOne(
+          { key: CONFIG_DOC_KEY },
+          {
+            $pullAll: { ai_disabled_tasks: [policy.task_id] },
+            $set: { updated_by: request.operatorContext?.user_id, updated_at: new Date() },
+          },
+        )
+      } else {
+        await configCol.updateOne(
+          { key: CONFIG_DOC_KEY },
+          {
+            $addToSet: { ai_disabled_tasks: policy.task_id },
+            $set: { updated_by: request.operatorContext?.user_id, updated_at: new Date() },
+          },
+          { upsert: true },
+        )
+      }
+      await configHistory.insertOne({
+        changes: { ai_disabled_tasks: enabled ? 'remove' : 'add' },
+        task_id: policy.task_id,
+        before: before.ai_disabled_tasks,
+        changed_by: request.operatorContext?.user_id,
+        reason,
+        created_at: new Date(),
+      })
+      invalidatePlatformConfigCache()
+      await audit.log(request, action, 'ai_task', policy.task_id, reason)
+      return { ok: true, task_id: policy.task_id, enabled }
     },
   )
 
@@ -3674,7 +3775,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   // configuration.read; every write is reasoned, audited, and kept in
   // platform_config_history.
 
-  const configCol = db.collection('platform_config')
+  const configCol = db.collection<{ key: string } & Partial<PlatformConfig>>('platform_config')
   const configHistory = db.collection('platform_config_history')
 
   app.get(
@@ -3734,9 +3835,12 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
           changes.maintenance_window === undefined
             ? before.maintenance_window
             : changes.maintenance_window,
+        // Never set via the generic config write — only the audited
+        // /operator/ai-tasks/:taskId/state route touches it (PRD-217).
+        ai_disabled_tasks: before.ai_disabled_tasks,
       }
-      const changedKeys = (Object.keys(changes) as (keyof PlatformConfig)[]).filter(
-        (k) => changes[k] !== before[k],
+      const changedKeys = (Object.keys(changes) as (keyof typeof changes)[]).filter(
+        (k) => changes[k] !== before[k as keyof PlatformConfig],
       )
       if (changedKeys.length === 0) return reply.status(400).send({ error: 'No effective changes' })
 

@@ -149,6 +149,7 @@ export {
   TaskPolicyError,
   ProcessorPolicyError,
   TaskDeadlineError,
+  TaskDisabledError,
 } from './task-gateway.js'
 export {
   parseProcessorRegistry,

@@ -376,6 +376,29 @@ export function recordLocalModelCall(
   localModelQueueWait!.observe({ purpose }, queueWaitSeconds)
 }
 
+/**
+ * PRD-217: in-process self-hosted model queue stats for the operator AI
+ * surface — the mean wait for a concurrency slot across all purposes,
+ * computed from the queue-wait histogram's sum/count. A mean is honest:
+ * the histogram buckets don't support a trustworthy tail read-back.
+ */
+export function localModelQueueSummary(): {
+  calls: number
+  queue_wait_mean_s: number | null
+} {
+  initMetrics(getRegistry())
+  const metric = getRegistry().getSingleMetric('lifekeel_local_model_queue_wait_seconds')
+  const values =
+    (metric?.get() as { values?: { metricName?: string; value: number }[] } | undefined)?.values ??
+    []
+  const sumFor = (suffix: string) =>
+    values
+      .filter((v) => v.metricName === `lifekeel_local_model_queue_wait_seconds_${suffix}`)
+      .reduce((s, v) => s + v.value, 0)
+  const calls = sumFor('count')
+  return { calls, queue_wait_mean_s: calls > 0 ? sumFor('sum') / calls : null }
+}
+
 /** Email encoder: record what it did for one email (see email/classify.ts EncoderOutcome). */
 export function recordEmailEncoderOutcome(outcome: string): void {
   initMetrics(getRegistry())

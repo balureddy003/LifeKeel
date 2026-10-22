@@ -26,6 +26,18 @@ export interface WeeklyDigestDoc {
   upgrade_intent_7d: number
   /** Top promoted blog post by attributed signups this week, if any. */
   top_content?: { slug: string; signups: number }
+  /** PRD-217: the AI gateway's week — the October outage was invisible
+   *  because nobody saw call/fallback numbers without probing prod. */
+  ai?: {
+    calls_7d: number
+    failures_7d: number
+    /** Share of asks that needed a model call (rest answered verified). */
+    generation_escape_rate: number | null
+    disabled_tasks: number
+    top_guard_reason: string | null
+    spend_usd_7d: number
+    spend_usd_prev_7d: number
+  }
   /** PRD-210: the marketing engine's week, so nobody has to open the console to know what needs them. */
   marketing?: {
     drafts_awaiting_review: number
@@ -91,7 +103,10 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
       .toArray(),
   ])
 
-  const marketing = await marketingSection(db, now)
+  const [marketing, ai] = await Promise.all([
+    marketingSection(db, now),
+    aiSection(db, weekAgo, twoWeeksAgo),
+  ])
 
   const slugCounts = new Map<string, number>()
   for (const u of weekSignups) {
@@ -115,6 +130,7 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
     upgrade_intent_7d: upgradeIntent,
     ...(top ? { top_content: { slug: top[0], signups: top[1] } } : {}),
     marketing,
+    ai,
     created_at: now,
   }
   // Spread — insertOne stamps _id on the object it's given; keep the
@@ -148,6 +164,21 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
     lines.push(
       `Best pillar: ${marketing.top_pillar_by_signups.pillar} → ${marketing.top_pillar_by_signups.signups} signups`,
     )
+  const spendDelta =
+    ai.spend_usd_prev_7d === 0
+      ? ai.spend_usd_7d > 0
+        ? 'new'
+        : 'flat'
+      : `${ai.spend_usd_7d >= ai.spend_usd_prev_7d ? '+' : ''}${Math.round(((ai.spend_usd_7d - ai.spend_usd_prev_7d) / ai.spend_usd_prev_7d) * 100)}% WoW`
+  const escapeText =
+    ai.generation_escape_rate === null
+      ? 'no asks yet'
+      : `${Math.round(ai.generation_escape_rate * 100)}% of asks reached generation`
+  lines.push(
+    `AI: ${ai.calls_7d} calls · ${ai.calls_7d > 0 ? Math.round((ai.failures_7d / ai.calls_7d) * 100) : 0}% failed · ${escapeText} · $${ai.spend_usd_7d.toFixed(2)} spend (${spendDelta})` +
+      `${ai.disabled_tasks > 0 ? ` · ${ai.disabled_tasks} task${ai.disabled_tasks === 1 ? '' : 's'} disabled` : ''}` +
+      `${ai.top_guard_reason ? ` · top guard: ${ai.top_guard_reason}` : ''}`,
+  )
   await sendOpsAlert({
     title: 'LifeKeel — weekly operator digest',
     message: lines.join('\n'),
@@ -155,6 +186,89 @@ export async function runWeeklyDigest(db: Db): Promise<WeeklyDigestDoc> {
     fingerprint: `weekly-digest-${now.toISOString().slice(0, 10)}`,
   })
   return digest
+}
+
+/** PRD-217 AI section — the same numbers the /operator/ai page shows, one paragraph. */
+async function aiSection(
+  db: Db,
+  weekAgo: Date,
+  twoWeeksAgo: Date,
+): Promise<NonNullable<WeeklyDigestDoc['ai']>> {
+  const sinceDay = weekAgo.toISOString().slice(0, 10)
+  const [callRows, config, guardRows, spendRows, answerRows] = await Promise.all([
+    db
+      .collection('ai_task_calls')
+      .aggregate([
+        { $match: { created_at: { $gte: weekAgo } } },
+        {
+          $group: {
+            _id: null,
+            calls: { $sum: 1 },
+            failures: {
+              $sum: {
+                $cond: [
+                  { $and: [{ $eq: ['$ok', false] }, { $ne: ['$outcome', 'disabled'] }] },
+                  1,
+                  0,
+                ],
+              },
+            },
+          },
+        },
+      ])
+      .toArray(),
+    db.collection('platform_config').findOne({ key: 'global' }),
+    db
+      .collection('llm_guard_events')
+      .aggregate([
+        { $match: { persisted_at: { $gte: weekAgo } } },
+        { $group: { _id: '$type', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 1 },
+      ])
+      .toArray(),
+    db
+      .collection('llm_usage')
+      .aggregate([
+        { $match: { created_at: { $gte: twoWeeksAgo } } },
+        {
+          $group: {
+            _id: { $cond: [{ $gte: ['$created_at', weekAgo] }, 'this', 'prev'] },
+            cost: { $sum: '$cost_microdollars' },
+          },
+        },
+      ])
+      .toArray(),
+    db
+      .collection('assistant_answer_routes')
+      .aggregate([
+        { $match: { day: { $gte: sinceDay } } },
+        { $group: { _id: '$route', count: { $sum: '$count' } } },
+      ])
+      .toArray(),
+  ])
+  const spend = (k: string) =>
+    (spendRows.find((r) => r['_id'] === k)?.['cost'] as number | undefined) ?? 0
+  const routes = Object.fromEntries(answerRows.map((r) => [r['_id'], r['count']])) as Record<
+    string,
+    number
+  >
+  const total = Object.values(routes).reduce((s, n) => s + n, 0)
+  const disabled = Array.isArray(config?.['ai_disabled_tasks'])
+    ? (config['ai_disabled_tasks'] as unknown[]).length
+    : 0
+  return {
+    calls_7d: (callRows[0]?.['calls'] as number | undefined) ?? 0,
+    failures_7d: (callRows[0]?.['failures'] as number | undefined) ?? 0,
+    generation_escape_rate:
+      total > 0
+        ? Math.round((((routes['generated'] as number | undefined) ?? 0) / total) * 1000) / 1000
+        : null,
+    disabled_tasks: disabled,
+    top_guard_reason: (guardRows[0]?.['_id'] as string | undefined) ?? null,
+    spend_usd_7d: spend('this') / 1_000_000,
+    spend_usd_prev_7d: spend('prev') / 1_000_000,
+  }
 }
 
 const nextMondayKey = (from: Date): string => {
