@@ -39,8 +39,8 @@
 .lk-m-during .lk-mood { background: linear-gradient(90deg, var(--dusk-a), var(--dusk-b)); }
 .lk-m-after .lk-mood { background: linear-gradient(90deg, var(--sky-b), var(--cta)); }
 .landing .lk-moment h3 { font: 400 32px/1 var(--display); }
-.lk-moment header p { margin: 6px 0 0; color: var(--muted); font-size: 15px; }
-.lk-moment ul { list-style: none; margin: 0; padding: 4px 20px 18px; display: grid; }
+.landing .lk-moment header p { margin: 6px 0 0; color: var(--muted); font-size: 15px; }
+.landing .lk-band .lk-moment ul { list-style: none; margin: 0; padding: 4px 20px 18px; display: grid; }
 .lk-moment li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); font-size: 15px; }
 .lk-moment li:first-child { border-top: 0; }
 .lk-moment li svg { width: 18px; height: 26px; color: var(--ok-text); }
@@ -179,7 +179,7 @@
 .lk-faq summary::-webkit-details-marker { display: none; }
 .lk-faq summary::after { content: '+'; font: 400 22px/1 var(--mono); color: var(--muted); flex: none; }
 .lk-faq details[open] summary::after { content: '\2212'; }
-.lk-faq details p { margin: 0; padding: 0 18px 18px; color: var(--muted); }
+.landing .lk-faq details p { margin: 0; padding: 0 18px 18px; color: var(--muted); }
 .lk-footer { padding-block: 40px 48px; }
 .lk-foot-grid { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1.4fr; gap: 32px; }
 .landing .lk-foot-grid .lk-foot-h { font: 500 12px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }

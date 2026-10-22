@@ -25,6 +25,7 @@ import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import type { FamilyGroupDoc } from '../routes/family-group.js'
 import { memberMatchesUser } from '../family/family-permissions.js'
 import type { LifeEventType } from './render-playbook.js'
+import { appUrl, escapeHtml, p, renderEmail } from '../email/layout.js'
 
 const log = createLogger({ service: 'vault-reminder', version: '0.0.0' })
 
@@ -39,7 +40,7 @@ function getFromEmail(): string {
   return process.env['SENDGRID_FROM_EMAIL'] ?? 'accounts@lifekeel.co.uk'
 }
 
-async function sendVaultReminderEmail(
+export async function sendVaultReminderEmail(
   to: string,
   recipientName: string,
   reporterName: string,
@@ -60,13 +61,25 @@ async function sendVaultReminderEmail(
       to,
       from: { email: getFromEmail(), name: 'LifeKeel' },
       subject: "Your family's Digital Estate Vault",
-      text: `Hi ${firstName},\n\n${reporterName} reported: ${playbookTitle}.\n\nYour family's Digital Estate Vault has ${docCount} ${docWord} on file. Sign in any time to view them.\n\nOak never opens, shares, or releases these on its own — a family member always has to sign in and choose to view one.`,
-      html: `
-        <p>Hi ${firstName},</p>
-        <p>${reporterName} reported: <strong>${playbookTitle}</strong>.</p>
-        <p>Your family's Digital Estate Vault has ${docCount} ${docWord} on file. Sign in any time to view them.</p>
-        <p style="color:#888;font-size:13px;">Keel never opens, shares, or releases these on its own — a family member always has to sign in and choose to view one.</p>
-      `,
+      text: `Hi ${firstName},\n\n${reporterName} reported: ${playbookTitle}.\n\nYour family's Digital Estate Vault has ${docCount} ${docWord} on file. Sign in any time to view them.\n\nKeel never opens, shares, or releases these on its own — a family member always has to sign in and choose to view one.\n${appUrl()}/vault`,
+      html: renderEmail({
+        preheader: `Your family's Digital Estate Vault has ${docCount} ${docWord} on file.`,
+        eyebrow: 'Digital Estate Vault',
+        title: "Your family's vault is here when you need it",
+        bodyHtml:
+          p(`Hi ${escapeHtml(firstName)},`) +
+          p(
+            `${escapeHtml(reporterName)} reported: <strong>${escapeHtml(playbookTitle)}</strong>.`,
+          ) +
+          p(
+            `Your family's Digital Estate Vault has ${docCount} ${docWord} on file. Sign in any time to view them.`,
+          ),
+        cta: { url: `${appUrl()}/vault`, label: 'Open the vault' },
+        note: 'Keel never opens, shares, or releases these on its own — a family member always has to sign in and choose to view one.',
+        footer: {
+          reason: 'You got this because a life event was reported for your family on LifeKeel.',
+        },
+      }),
     })
     log.info({ to }, 'Vault reminder email sent')
   } catch (err) {
