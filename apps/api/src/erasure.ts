@@ -37,6 +37,7 @@ export const DELETABLE_COLLECTIONS = [
   'family_scenarios',
   'family_continuity_state',
   'rehearsal_records', // PRD-214 M3 — dated continuity rehearsals
+  'life_change_calibration', // PRD-213 M4 — shadow-only drift-sentinel rows
   'family_join_requests',
   'family_member_invites',
   'family_invite_sends', // R43 daily invitation counter

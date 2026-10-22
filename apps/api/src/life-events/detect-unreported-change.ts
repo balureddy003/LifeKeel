@@ -18,6 +18,7 @@ import type { Db } from 'mongodb'
 import type { FastifyRequest } from 'fastify'
 import { getSignalsCollection, getLifeChangeNudgeStateCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
+import { evaluateCandidateLifeChanges, recordCalibrationCandidates } from './calibration.js'
 
 export interface EarnerSnapshot {
   member_id?: string
@@ -56,7 +57,10 @@ export function detectUnreportedLifeChange(
       : previous.earners.find((e) => !e.member_id)
     if (!prevEarner) continue
 
-    if (STILL_EARNING.has(prevEarner.employment_status) && !STILL_EARNING.has(nextEarner.employment_status)) {
+    if (
+      STILL_EARNING.has(prevEarner.employment_status) &&
+      !STILL_EARNING.has(nextEarner.employment_status)
+    ) {
       return 'employment_status_change'
     }
     if (prevEarner.monthly_salary_minor > 0 && nextEarner.monthly_salary_minor === 0) {
@@ -64,7 +68,10 @@ export function detectUnreportedLifeChange(
     }
   }
 
-  if (previous.emergency_savings_minor > 0 && next.emergency_savings_minor <= previous.emergency_savings_minor * 0.6) {
+  if (
+    previous.emergency_savings_minor > 0 &&
+    next.emergency_savings_minor <= previous.emergency_savings_minor * 0.6
+  ) {
     return 'emergency_fund_drained'
   }
 
@@ -86,10 +93,16 @@ export async function maybeFlagUnreportedLifeChange(
   next: ProfileChangeSnapshot,
   db: Db,
 ): Promise<void> {
+  const { tenant_id } = req.authContext
+
+  // PRD-213 M4: candidate signals run shadow-only alongside the shipped
+  // detector and are recorded for precision measurement — they can never
+  // nudge. Runs even when the real detector fires or a report already
+  // exists: the calibration evidence is independent of nudge state.
+  await recordCalibrationCandidates(db, tenant_id, evaluateCandidateLifeChanges(previous, next))
+
   const reason = detectUnreportedLifeChange(previous, next)
   if (!reason) return
-
-  const { tenant_id } = req.authContext
   const signals = await getSignalsCollection()
   const cutoff = new Date(Date.now() - RECENT_LIFE_EVENT_WINDOW_DAYS * 24 * 60 * 60 * 1000)
   const alreadyReported = await signals.findOne({
@@ -104,5 +117,7 @@ export async function maybeFlagUnreportedLifeChange(
     { $set: { active: true, reason, triggered_at: new Date() } },
     { upsert: true },
   )
-  getAuditLogger()?.fromRequest(req, 'life_event.nudge_shown', 'life_event_nudge', tenant_id, { reason })
+  getAuditLogger()?.fromRequest(req, 'life_event.nudge_shown', 'life_event_nudge', tenant_id, {
+    reason,
+  })
 }

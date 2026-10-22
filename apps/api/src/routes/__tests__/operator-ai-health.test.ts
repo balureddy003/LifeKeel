@@ -160,6 +160,40 @@ describe('GET /operator/ai-health (PRD-217)', () => {
           updated_at: now,
         },
       ])
+    await db.collection('judge_shadow_results').insertMany([
+      {
+        outcome: 'agree',
+        tenant_id: 'family-1',
+        insight_id: 'i1',
+        detector_id: 'd',
+        primary_decision: 'pass',
+        created_at: now,
+      },
+      {
+        outcome: 'agree',
+        tenant_id: 'family-1',
+        insight_id: 'i2',
+        detector_id: 'd',
+        primary_decision: 'pass',
+        created_at: now,
+      },
+      {
+        outcome: 'shadow_stricter',
+        tenant_id: 'family-1',
+        insight_id: 'i3',
+        detector_id: 'd',
+        primary_decision: 'pass',
+        created_at: now,
+      },
+      {
+        outcome: 'agree',
+        tenant_id: 'family-1',
+        insight_id: 'i4',
+        detector_id: 'd',
+        primary_decision: 'pass',
+        created_at: new Date(now.getTime() - 40 * 24 * 3_600_000),
+      },
+    ])
 
     const app = await buildApp()
     const res = await app.inject({ method: 'GET', url: '/operator/ai-health' })
@@ -216,9 +250,39 @@ describe('GET /operator/ai-health (PRD-217)', () => {
       }),
     )
 
+    // PRD-213: delivery-judge shadow evidence — the windowed outcome counts
+    // and the shadow_more_permissive flag that gates any authority change.
+    const shadow = body.judge_shadow as {
+      outcomes: Record<string, number>
+      shadow_more_permissive: number
+    }
+    expect(shadow.outcomes['agree']).toBe(2)
+    expect(shadow.outcomes['shadow_stricter']).toBe(1)
+    expect(shadow.shadow_more_permissive).toBe(0)
+
     // Metadata-only contract: nothing shaped like a prompt or completion
     // may appear anywhere in the payload.
     expect(JSON.stringify(body)).not.toMatch(/"prompt"|"completion"|"content"/)
+    await app.close()
+  })
+
+  it('flags shadow_more_permissive when the local judge would have let one through', async () => {
+    await db.collection('judge_shadow_results').insertOne({
+      outcome: 'shadow_more_permissive',
+      tenant_id: 'family-1',
+      insight_id: 'i9',
+      detector_id: 'd',
+      primary_decision: 'block',
+      shadow_decision: 'pass',
+      created_at: new Date(),
+    })
+    const app = await buildApp()
+    const res = await app.inject({ method: 'GET', url: '/operator/ai-health' })
+    const shadow = res.json().judge_shadow as {
+      outcomes: Record<string, number>
+      shadow_more_permissive: number
+    }
+    expect(shadow.shadow_more_permissive).toBe(1)
     await app.close()
   })
 
@@ -280,6 +344,68 @@ describe('GET /operator/ai-health (PRD-217)', () => {
       (t) => t['task_id'] === 'assistant.answer.v1',
     )!
     expect(task['calls']).toBe(0)
+    await app.close()
+  })
+})
+
+describe('GET /operator/life-change-calibration (PRD-213 M4)', () => {
+  it('rejects a caller with no operator record, and 400s without tenant', async () => {
+    const app = await buildApp('user-2')
+    expect(
+      (await app.inject({ method: 'GET', url: '/operator/life-change-calibration?tenant=t1' }))
+        .statusCode,
+    ).toBe(403)
+    await app.close()
+
+    const ok = await buildApp()
+    expect(
+      (await ok.inject({ method: 'GET', url: '/operator/life-change-calibration' })).statusCode,
+    ).toBe(400)
+    await ok.close()
+  })
+
+  it('returns per-reason fired/matched/abstained evidence for the tenant', async () => {
+    const day = 24 * 3_600_000
+    const now = Date.now()
+    await db.collection('life_change_calibration').insertMany([
+      {
+        tenant_id: 'fam-t',
+        reason: 'salary_drop_major',
+        verdict: 'fire',
+        fired_at: new Date(now - 10 * day),
+      },
+      {
+        tenant_id: 'fam-t',
+        reason: 'salary_drop_major',
+        verdict: 'abstain',
+        fired_at: new Date(now - 10 * day),
+      },
+      {
+        tenant_id: 'other-t',
+        reason: 'salary_drop_major',
+        verdict: 'fire',
+        fired_at: new Date(now - 10 * day),
+      },
+    ])
+    await db.collection('signals').insertOne({
+      tenant_id: 'fam-t',
+      signal_type: 'family.life_event',
+      created_at: new Date(now - 9 * day),
+    })
+
+    const app = await buildApp()
+    const res = await app.inject({
+      method: 'GET',
+      url: '/operator/life-change-calibration?tenant=fam-t',
+    })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.tenant_id).toBe('fam-t')
+    const row = (body.reasons as Record<string, unknown>[]).find(
+      (r) => r['reason'] === 'salary_drop_major',
+    )!
+    // Only fam-t rows; the event matched both (fired before it, within 30d).
+    expect(row).toMatchObject({ fired: 1, fired_matched: 1, abstained: 1, abstained_matched: 1 })
     await app.close()
   })
 })

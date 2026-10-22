@@ -56,6 +56,7 @@ import {
 } from '../marketing/campaigns.js'
 import { lifecycleSendsCol } from '../marketing/lifecycle-emails.js'
 import { platformUnitEconomics } from '../spend-ledger.js'
+import { calibrationSummary, CALIBRATION_MATCH_WINDOW_DAYS } from '../life-events/calibration.js'
 import { localModelQueueSummary } from './metrics.js'
 import { formatMicroDollars, getAllCircuitBreakers } from '@lifekeel/platform'
 import type { SupportCaseDoc, SupportMessage } from './support.js'
@@ -3453,6 +3454,9 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   db.collection('ai_cascade_funnel')
     .createIndex({ day: 1 })
     .catch(() => {})
+  db.collection('life_change_calibration')
+    .createIndex({ tenant_id: 1, fired_at: -1 })
+    .catch(() => {})
 
   function percentile(sorted: number[], p: number): number | null {
     if (sorted.length === 0) return null
@@ -3468,75 +3472,88 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
       const sinceDay = since.toISOString().slice(0, 10)
 
-      const [callRows, costRows, answerRows, guardRows, funnelRows, config] = await Promise.all([
-        db
-          .collection('ai_task_calls')
-          .aggregate([
-            { $match: { created_at: { $gte: since } } },
-            {
-              $group: {
-                _id: '$task_id',
-                calls: { $sum: 1 },
-                // Calls refused by the operator switch are not provider
-                // failures — they get their own count so a deliberately-off
-                // task doesn't read as an outage.
-                failures: {
-                  $sum: {
-                    $cond: [
-                      { $and: [{ $eq: ['$ok', false] }, { $ne: ['$outcome', 'disabled'] }] },
-                      1,
-                      0,
-                    ],
+      const [callRows, costRows, answerRows, guardRows, funnelRows, shadowRows, config] =
+        await Promise.all([
+          db
+            .collection('ai_task_calls')
+            .aggregate([
+              { $match: { created_at: { $gte: since } } },
+              {
+                $group: {
+                  _id: '$task_id',
+                  calls: { $sum: 1 },
+                  // Calls refused by the operator switch are not provider
+                  // failures — they get their own count so a deliberately-off
+                  // task doesn't read as an outage.
+                  failures: {
+                    $sum: {
+                      $cond: [
+                        { $and: [{ $eq: ['$ok', false] }, { $ne: ['$outcome', 'disabled'] }] },
+                        1,
+                        0,
+                      ],
+                    },
                   },
+                  disabled_refusals: {
+                    $sum: { $cond: [{ $eq: ['$outcome', 'disabled'] }, 1, 0] },
+                  },
+                  latencies: { $push: '$latency_ms' },
+                  processors: { $addToSet: '$processor' },
                 },
-                disabled_refusals: {
-                  $sum: { $cond: [{ $eq: ['$outcome', 'disabled'] }, 1, 0] },
+              },
+            ])
+            .toArray(),
+          db
+            .collection('llm_usage')
+            .aggregate([
+              { $match: { created_at: { $gte: since } } },
+              {
+                $group: {
+                  _id: '$workflow_id',
+                  cost_microdollars: { $sum: '$cost_microdollars' },
+                  billed_calls: { $sum: 1 },
                 },
-                latencies: { $push: '$latency_ms' },
-                processors: { $addToSet: '$processor' },
               },
-            },
-          ])
-          .toArray(),
-        db
-          .collection('llm_usage')
-          .aggregate([
-            { $match: { created_at: { $gte: since } } },
-            {
-              $group: {
-                _id: '$workflow_id',
-                cost_microdollars: { $sum: '$cost_microdollars' },
-                billed_calls: { $sum: 1 },
+            ])
+            .toArray(),
+          db
+            .collection('assistant_answer_routes')
+            .aggregate([
+              { $match: { day: { $gte: sinceDay } } },
+              { $group: { _id: '$route', count: { $sum: '$count' } } },
+            ])
+            .toArray(),
+          db
+            .collection('llm_guard_events')
+            .aggregate([
+              { $match: { persisted_at: { $gte: since } } },
+              // Event type + action only — never field_path or content hashes.
+              { $group: { _id: { type: '$type', action: '$action' }, count: { $sum: 1 } } },
+            ])
+            .toArray(),
+          db
+            .collection('ai_cascade_funnel')
+            .aggregate([
+              { $match: { day: { $gte: sinceDay } } },
+              {
+                $group: {
+                  _id: { task_id: '$task_id', stage: '$stage' },
+                  count: { $sum: '$count' },
+                },
               },
-            },
-          ])
-          .toArray(),
-        db
-          .collection('assistant_answer_routes')
-          .aggregate([
-            { $match: { day: { $gte: sinceDay } } },
-            { $group: { _id: '$route', count: { $sum: '$count' } } },
-          ])
-          .toArray(),
-        db
-          .collection('llm_guard_events')
-          .aggregate([
-            { $match: { persisted_at: { $gte: since } } },
-            // Event type + action only — never field_path or content hashes.
-            { $group: { _id: { type: '$type', action: '$action' }, count: { $sum: 1 } } },
-          ])
-          .toArray(),
-        db
-          .collection('ai_cascade_funnel')
-          .aggregate([
-            { $match: { day: { $gte: sinceDay } } },
-            {
-              $group: { _id: { task_id: '$task_id', stage: '$stage' }, count: { $sum: '$count' } },
-            },
-          ])
-          .toArray(),
-        getPlatformConfig(db),
-      ])
+            ])
+            .toArray(),
+          // PRD-213: delivery-judge shadow evidence — outcome counts only,
+          // never insight content (rows carry ids + decisions only already).
+          db
+            .collection('judge_shadow_results')
+            .aggregate([
+              { $match: { created_at: { $gte: since } } },
+              { $group: { _id: '$outcome', count: { $sum: 1 } } },
+            ])
+            .toArray(),
+          getPlatformConfig(db),
+        ])
 
       const callsByTask = new Map(callRows.map((r) => [r['_id'] as string, r]))
       const costByTask = new Map(costRows.map((r) => [r['_id'] as string, r]))
@@ -3613,8 +3630,43 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
           stage: (r['_id'] as { stage: string }).stage,
           count: r['count'],
         })),
+        // PRD-213: the local judge earns authority only when
+        // shadow_more_permissive holds at zero for the window.
+        judge_shadow: {
+          outcomes: Object.fromEntries(
+            shadowRows.map((r) => [r['_id'] as string, r['count'] as number]),
+          ),
+          shadow_more_permissive:
+            (shadowRows.find((r) => r['_id'] === 'shadow_more_permissive')?.['count'] as
+              number | undefined) ?? 0,
+        },
         disabled_tasks: config.ai_disabled_tasks,
         local_model: localModelQueueSummary(),
+      }
+    },
+  )
+
+  // ── Drift-sentinel calibration (PRD-213 M4) ─────────────────────────────
+  // The widening gate's evidence surface: how the shadow-only candidate
+  // signals are performing per tenant — fired→matched is the precision
+  // proxy, abstained→matched the abstention band's miss rate. Reason codes
+  // only; never profile values (the nudge may not name its guess, and this
+  // surface must not leak it either).
+
+  app.get<{ Querystring: { tenant?: string; days?: string } }>(
+    '/operator/life-change-calibration',
+    { preHandler: requireOperator(db, 'tenants.read') },
+    async (request, reply) => {
+      const tenantId = request.query.tenant
+      if (!tenantId) {
+        return reply.status(400).send({ error: 'tenant=<tenant_id> is required' })
+      }
+      const days = Math.min(365, Math.max(1, Number(request.query.days) || 90))
+      return {
+        tenant_id: tenantId,
+        window_days: days,
+        match_window_days: CALIBRATION_MATCH_WINDOW_DAYS,
+        reasons: await calibrationSummary(db, tenantId, days),
       }
     },
   )
