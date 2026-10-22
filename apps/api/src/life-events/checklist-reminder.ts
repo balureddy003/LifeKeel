@@ -26,6 +26,7 @@ import { memberMatchesUser } from '../family/family-permissions.js'
 import { renderPlaybook, type LifeEventType } from './render-playbook.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 import type { FinancialProfile } from '../routes/family-financial-profile.js'
+import { appUrl, escapeHtml, p, renderEmail } from '../email/layout.js'
 
 const log = createLogger({ service: 'checklist-reminder', version: '0.0.0' })
 
@@ -62,7 +63,7 @@ function getFromEmail(): string {
   return process.env['SENDGRID_FROM_EMAIL'] ?? 'accounts@lifekeel.co.uk'
 }
 
-async function sendChecklistReminderEmail(
+export async function sendChecklistReminderEmail(
   to: string,
   recipientName: string,
   playbookTitle: string,
@@ -83,11 +84,19 @@ async function sendChecklistReminderEmail(
       from: { email: getFromEmail(), name: 'LifeKeel' },
       subject: `Your ${playbookTitle} checklist`,
       text: `Hi ${firstName},\n\nA few days ago you reported: ${playbookTitle}. ${remainingCount} ${stepWord} on that response plan are still unchecked.\n\nSign in any time to pick back up — no rush, this is just a reminder it's still there.`,
-      html: `
-        <p>Hi ${firstName},</p>
-        <p>A few days ago you reported: <strong>${playbookTitle}</strong>. ${remainingCount} ${stepWord} on that response plan are still unchecked.</p>
-        <p style="color:#888;font-size:13px;">Sign in any time to pick back up — no rush, this is just a reminder it's still there.</p>
-      `,
+      html: renderEmail({
+        preheader: `${remainingCount} ${stepWord} on your response plan are still unchecked.`,
+        eyebrow: 'Response plan',
+        title: `Your ${playbookTitle} checklist`,
+        bodyHtml:
+          p(`Hi ${escapeHtml(firstName)},`) +
+          p(
+            `A few days ago you reported: <strong>${escapeHtml(playbookTitle)}</strong>. ${remainingCount} ${stepWord} on that response plan are still unchecked.`,
+          ),
+        cta: { url: `${appUrl()}/life-events`, label: 'Open your checklist' },
+        note: "Sign in any time to pick back up — no rush, this is just a reminder it's still there.",
+        footer: { reason: 'You got this because you reported a life event on LifeKeel.' },
+      }),
     })
     log.info({ to }, 'Checklist reminder email sent')
   } catch (err) {

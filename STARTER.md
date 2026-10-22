@@ -113,6 +113,25 @@ links.
   `EMAIL_VERIFICATION_ENABLED`: accounts are then auto-verified and email is
   skipped with a log warning.
 
+### Email templates
+
+Every email uses one branded layout, `apps/api/src/email/layout.ts`
+(`renderEmail`): sky hero with the logo, a white body card, a brass button,
+and a footer with Support, Privacy, Terms and, when relevant, Manage
+notifications and Unsubscribe. Colours come from the website's light theme
+(`apps/web/src/components/landing/landing.css`); fonts name the site's faces
+first with system fallbacks, and nothing is loaded from a font server.
+
+To see all of them at once, with sample data:
+
+```bash
+pnpm --filter @lifekeel/api email:preview   # sends 20 emails to Mailpit
+```
+
+The logo is loaded from `${LIFEKEEL_URL}/icon-192.png`, so keep the web app
+running while previewing. In `bodyHtml`, pass any user-supplied value through
+`escapeHtml`; the layout escapes everything else.
+
 ## Stop and reset
 
 ```bash

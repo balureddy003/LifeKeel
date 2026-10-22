@@ -39,6 +39,7 @@ import { excludeMinorUsers } from '../family/family-permissions.js'
 import { recordSpend, spendCost } from '../spend-ledger.js'
 import { queueManager } from '../queue/QueueManager.js'
 import { checkCopy, describeViolations } from './copy-guard.js'
+import { escapeHtml } from '../email/layout.js'
 
 const log = createLogger({ service: 'campaigns', version: '0.0.0' })
 const DAY = 24 * 60 * 60 * 1000
@@ -216,7 +217,7 @@ function renderBody(campaign: CampaignDoc, r: Recipient, appUrl: string): string
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
-    .replaceAll('{{first_name}}', r.firstName)
+    .replaceAll('{{first_name}}', escapeHtml(r.firstName))
   const paras = escaped
     .split(/\n{2,}/)
     .map((p) => `<p>${p.replaceAll('\n', '<br>')}</p>`)
@@ -227,7 +228,7 @@ function renderBody(campaign: CampaignDoc, r: Recipient, appUrl: string): string
       : userUnsubUrl(appUrl, r.id)
   const ctaHtml =
     campaign.cta_url && campaign.cta_label ? cta(campaign.cta_url, campaign.cta_label) : ''
-  return wrap(`${paras}\n${ctaHtml}`, unsub)
+  return wrap(`${paras}\n${ctaHtml}`, unsub, campaign.subject)
 }
 
 // ── Durable per-recipient send (B11) ──────────────────────────────────────
@@ -258,7 +259,9 @@ export async function queueCampaignSend(
   // Copy guard (PRD-210): subject and body must pass before anything is claimed or sent.
   const copy = checkCopy(`${campaign.subject}\n${campaign.body_text}`, 'email')
   if (!copy.ok) {
-    throw Object.assign(new Error(`copy_guard_failed: ${describeViolations(copy)}`), { statusCode: 422 })
+    throw Object.assign(new Error(`copy_guard_failed: ${describeViolations(copy)}`), {
+      statusCode: 422,
+    })
   }
   ensureCampaignIndexes(db)
   await ensureLifecycleIndexes(db) // the ledger's unique key index is the dedup lock
