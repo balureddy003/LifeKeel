@@ -25,7 +25,7 @@
  * tripwire test enforces.
  */
 
-import { AsyncLocalStorage } from 'node:async_hooks'
+import { llmCallContext } from './call-context.js'
 import { createLogger } from './logger.js'
 import type { LlmFn } from './llm.js'
 import type { DecisionFn, LocalDecisionRequest, LocalDecisionResult } from './local-decision.js'
@@ -247,18 +247,7 @@ export function resolveTaskPolicy(
 
 // ── Per-call context ──────────────────────────────────────────────────────
 
-export interface LlmCallContext {
-  task_id: string
-  tenant_id: string
-}
-
-/**
- * Carries (task, tenant) from governedLlm into the router's onUsage
- * callback, so the CostLedger record is attributed to the task that caused
- * it — not just the tenant. AsyncLocalStorage keeps it correct under
- * concurrent calls sharing one router.
- */
-export const llmCallContext = new AsyncLocalStorage<LlmCallContext>()
+export { llmCallContext, type LlmCallContext } from './call-context.js'
 
 // ── Gateway dependencies ──────────────────────────────────────────────────
 
@@ -350,17 +339,28 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4)
 }
 
+/**
+ * Run `fn` under the task deadline. When the deadline passes the call's signal
+ * is aborted before the error is thrown, so a model client that honours the
+ * signal (llm.ts, local-decision.ts) cancels the upstream request instead of
+ * letting it run on for minutes after the caller has given up.
+ */
 async function withDeadline<T>(
   taskId: string,
   deadlineMs: number,
-  fn: () => Promise<T>,
+  fn: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
+  const controller = new AbortController()
   try {
     return await Promise.race([
-      fn(),
+      fn(controller.signal),
       new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new TaskDeadlineError(taskId, deadlineMs)), deadlineMs)
+        timer = setTimeout(() => {
+          const err = new TaskDeadlineError(taskId, deadlineMs)
+          controller.abort(err)
+          reject(err)
+        }, deadlineMs)
       }),
     ])
   } finally {
@@ -425,8 +425,8 @@ export function governedLlm(
       // callOnce: the provider-level retry inside the router stays the
       // single transport retry layer; the breaker only counts outcomes.
       const raw = await breaker.callOnce(() =>
-        withDeadline(taskId, policy.deadline_ms, () =>
-          llmCallContext.run({ task_id: taskId, tenant_id: tenantId }, () =>
+        withDeadline(taskId, policy.deadline_ms, (signal) =>
+          llmCallContext.run({ task_id: taskId, tenant_id: tenantId, signal }, () =>
             base(system, guardedPrompt.value, resolvedModel),
           ),
         ),
@@ -507,8 +507,8 @@ export function governedVision(
     let ok = false
     try {
       const raw = await breaker.callOnce(() =>
-        withDeadline(taskId, policy.deadline_ms, () =>
-          llmCallContext.run({ task_id: taskId, tenant_id: tenantId }, () => base(guarded)),
+        withDeadline(taskId, policy.deadline_ms, (signal) =>
+          llmCallContext.run({ task_id: taskId, tenant_id: tenantId, signal }, () => base(guarded)),
         ),
       )
       ok = true
@@ -558,8 +558,8 @@ export function governedDecide(
     let ok = false
     try {
       const result = await breaker.callOnce(() =>
-        withDeadline(taskId, policy.deadline_ms, () =>
-          llmCallContext.run({ task_id: taskId, tenant_id: tenantId }, () =>
+        withDeadline(taskId, policy.deadline_ms, (signal) =>
+          llmCallContext.run({ task_id: taskId, tenant_id: tenantId, signal }, () =>
             base({ ...req, prompt: guardedPrompt.value }),
           ),
         ),

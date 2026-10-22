@@ -300,7 +300,9 @@ describe('governedLlm', () => {
       return 'ok'
     }
     await governedLlm(base, deps(), 'test.task.v1', 't-tenant')('s', 'p')
-    expect(ctx).toEqual({ task_id: 'test.task.v1', tenant_id: 't-tenant' })
+    expect(ctx).toMatchObject({ task_id: 'test.task.v1', tenant_id: 't-tenant' })
+    // The deadline signal rides along (see deadline-abort.test.ts), unaborted for a call in time.
+    expect((ctx as { signal?: AbortSignal }).signal?.aborted).toBe(false)
   })
 
   it('reports call outcomes through onCall', async () => {

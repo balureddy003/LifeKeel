@@ -1,5 +1,6 @@
 import type { z } from 'zod'
 import { ollamaNumCtx } from './ollama-options.js'
+import { currentDeadlineSignal } from './call-context.js'
 
 /**
  * Typed decisions from a small open-source model served in our own
@@ -138,14 +139,23 @@ export function createLocalDecisionFn(cfg: LocalDecisionConfig): DecisionFn {
     started: number,
   ): Promise<LocalDecisionResult<T>> {
     let lastError: unknown
+    // The task deadline's signal (see call-context.ts): when it fires, cancel the request to the
+    // model and stop retrying, so the server is not left working on an answer nobody awaits.
+    const deadline = currentDeadlineSignal()
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      if (deadline?.aborted) {
+        lastError = new Error('cancelled at the task deadline')
+        break
+      }
       try {
         const extraHeaders = cfg.getHeaders ? await cfg.getHeaders() : {}
         const res = await doFetch(`${baseUrl}/api/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...extraHeaders },
-          signal: AbortSignal.timeout(timeoutMs),
+          signal: deadline
+            ? AbortSignal.any([AbortSignal.timeout(timeoutMs), deadline])
+            : AbortSignal.timeout(timeoutMs),
           body: JSON.stringify({
             model: cfg.model,
             stream: false,
