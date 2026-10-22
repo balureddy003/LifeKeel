@@ -6,42 +6,16 @@ import {
 import { LABELLED_EMAILS } from '../../email/__fixtures__/labelled-emails.js'
 import {
   formatRelevanceReport,
-  parseVerdict,
-  relevanceUserMessage,
   runRelevanceOnlyEval,
+  toFetchedEmail,
   type AskFn,
   type AskResult,
 } from '../relevance-only-eval.js'
 
-const result = (verdict: AskResult['verdict'], ms = 2000): AskResult => ({
-  verdict,
-  raw: verdict,
-  ms,
-  promptTokens: 520,
-  evalTokens: 1,
-})
+const result = (verdict: AskResult['verdict'], ms = 2000): AskResult => ({ verdict, ms })
 
 /** Answers every email exactly as labelled. */
 const correct: AskFn = async (e) => result(e.isFinancial ? 'yes' : 'no')
-
-describe('parseVerdict', () => {
-  it.each([
-    ['YES', 'yes'],
-    ['No', 'no'],
-    ['  "yes".', 'yes'],
-    ['No, this is a receipt', 'no'],
-    ['Yes\n', 'yes'],
-  ])('reads %j as %s', (raw, want) => {
-    expect(parseVerdict(raw)).toBe(want)
-  })
-
-  it.each(['', 'maybe', 'Not sure', 'yesterday', 'nope', 'The answer is yes'])(
-    'treats %j as unparseable, not as a verdict',
-    (raw) => {
-      expect(parseVerdict(raw)).toBe('unparseable')
-    },
-  )
-})
 
 describe('the relevance prompt', () => {
   it('reuses the classifier rules and the untrusted-content warning, but not the field list or JSON', () => {
@@ -55,9 +29,11 @@ describe('the relevance prompt', () => {
     )
   })
 
-  it('frames the email in the same tags as the classifier', () => {
-    const msg = relevanceUserMessage(LABELLED_EMAILS[0]!)
-    expect(msg).toMatch(/^<email_from>.*<\/email_from>\n<email_subject>/)
+  it('builds the fetched-email shape the production call takes', () => {
+    const f = toFetchedEmail(LABELLED_EMAILS[0]!)
+    expect(f.subject).toBe(LABELLED_EMAILS[0]!.subject)
+    expect(f.date).toBeInstanceOf(Date)
+    expect(f.attachments).toEqual([])
   })
 })
 
@@ -87,13 +63,13 @@ describe('runRelevanceOnlyEval', () => {
     expect(r.missed).not.toContain('will-reminder')
   })
 
-  it('counts an unparseable reply against the model instead of guessing a verdict', async () => {
-    const r = await runRelevanceOnlyEval(async () => result('unparseable'), 'stub-vague')
+  it('counts a failed call against the model instead of guessing a verdict', async () => {
+    const r = await runRelevanceOnlyEval(async () => result('error'), 'stub-down')
     expect(r.passed).toBe(false)
-    expect(r.unparseable.length).toBe(r.modelCalls)
+    expect(r.errors.length).toBe(r.modelCalls)
   })
 
-  it('reports latency percentiles and median tokens', async () => {
+  it('reports latency percentiles', async () => {
     let i = 0
     const r = await runRelevanceOnlyEval(
       async (e) => ({ ...(await correct(e)), ms: ++i * 1000 }),
@@ -101,6 +77,5 @@ describe('runRelevanceOnlyEval', () => {
     )
     expect(r.latencyMs.p50).toBeGreaterThan(0)
     expect(r.latencyMs.max).toBe(r.modelCalls * 1000)
-    expect(r.tokens).toEqual({ prompt: 520, output: 1 })
   })
 })

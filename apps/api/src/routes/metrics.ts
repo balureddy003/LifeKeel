@@ -246,7 +246,7 @@ function initMetrics(registry: Registry): void {
   })
   emailFunnel = new Counter({
     name: 'lifekeel_email_funnel_total',
-    help: 'Where each scanned email stopped in the classification cascade: rule_hit | prefilter_skip | encoder_skip | model_call. model_call / total is the share that cost a model call.',
+    help: 'Where each scanned email stopped in the classification cascade: rule_hit | prefilter_skip | encoder_skip | relevance_no | model_call. relevance_no (EMAIL_TWO_STEP only) was settled by the cheap one-word call; model_call paid for the full classification.',
     labelNames: ['stage'],
     registers: [registry],
   })

@@ -26,7 +26,8 @@ dotenv.config({ path: envPath })
 // An empty value (e.g. an unset deploy variable passed as KEY=) must behave as unset everywhere:
 // code reads process.env['X'] ?? default, and '' is not nullish. See env-helpers.ts.
 const droppedEmpty = dropEmptyEnv()
-if (droppedEmpty.length > 0) log.info({ vars: droppedEmpty.join(',') }, 'Treating empty environment variables as unset')
+if (droppedEmpty.length > 0)
+  log.info({ vars: droppedEmpty.join(',') }, 'Treating empty environment variables as unset')
 
 // ── Config schema ─────────────────────────────────────────────────────────────
 //
@@ -75,6 +76,7 @@ const ConfigSchema = z.object({
   // Email policy-relevance encoder (infra/encoder-service). Mode off/unset = not used.
   EMAIL_ENCODER_URL: z.string().optional(),
   EMAIL_ENCODER_MODE: optionalEnum(['off', 'shadow', 'gate']),
+  EMAIL_TWO_STEP: optionalFlag(),
   LOCAL_MODEL_MAX_CONCURRENT: z.string().optional(),
   // Keep the cloud judge authoritative and measure the local one behind it (shadow mode).
   JUDGE_SHADOW: optionalFlag(),
@@ -110,9 +112,7 @@ export type Config = z.infer<typeof ConfigSchema>
 const parsed = ConfigSchema.safeParse(process.env)
 
 if (!parsed.success) {
-  const errors = parsed.error.issues
-    .map(i => `  ${i.path.join('.')}: ${i.message}`)
-    .join('\n')
+  const errors = parsed.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`).join('\n')
   log.error({ errors }, 'FATAL: Invalid environment configuration')
   process.exit(1)
 }
@@ -121,8 +121,13 @@ export const config = parsed.data
 
 // In production, enforce required vars that are optional in dev
 if (config.NODE_ENV === 'production') {
-  const requiredInProd: Array<keyof Config> = ['MONGODB_URL', 'JWT_SECRET', 'REDIS_URL', 'SETTINGS_ENCRYPTION_KEY']
-  const missing = requiredInProd.filter(k => !config[k])
+  const requiredInProd: Array<keyof Config> = [
+    'MONGODB_URL',
+    'JWT_SECRET',
+    'REDIS_URL',
+    'SETTINGS_ENCRYPTION_KEY',
+  ]
+  const missing = requiredInProd.filter((k) => !config[k])
   if (missing.length > 0) {
     log.error({ missing: missing.join(', ') }, 'FATAL: Missing required env vars in production')
     process.exit(1)

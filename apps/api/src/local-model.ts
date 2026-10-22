@@ -236,6 +236,15 @@ export function familyDataLlmFromEnv(opts: { onUsage?: LlmUsageCallback } = {}):
 }
 
 /**
+ * Two-step email classification (a one-word relevance call, then the full classification only for
+ * relevant mail). Needs the self-hosted model: the cheap call is a constrained local decision, and
+ * on the cloud path the single call is already fast. Off unless EMAIL_TWO_STEP=true.
+ */
+export function emailTwoStepFromEnv(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env['EMAIL_TWO_STEP'] === 'true' && !!env['LOCAL_JUDGE_BASE_URL']
+}
+
+/**
  * The email encoder (infra/encoder-service), or undefined when EMAIL_ENCODER_URL is unset or the mode is
  * off. EMAIL_ENCODER_MODE: 'shadow' measures it against the LLM with no effect on results; 'gate' lets it
  * skip the LLM for emails it judges irrelevant. Run shadow first and move to gate only when

@@ -1,6 +1,7 @@
 import { pathToFileURL } from 'node:url'
-import { ollamaNumCtx } from '@lifekeel/platform'
-import { EMAIL_RELEVANCE_SYSTEM_PROMPT } from '../email/classify.js'
+import { createLocalDecisionFn } from '@lifekeel/platform'
+import { askRelevance } from '../email/classify.js'
+import type { FetchedEmail } from '../email/imap-client.js'
 import { LABELLED_EMAILS, type LabelledEmail } from '../email/__fixtures__/labelled-emails.js'
 import { willOrPowerOfAttorneyReminder } from '../email/rules.js'
 import { MIN_EMAIL_RECALL, evalAuthHeaders, type GateResult } from './local-model-eval.js'
@@ -20,29 +21,27 @@ import { mayRun, percentile } from './judge-load-test.js'
  * Against a non-local URL it needs LOAD_TEST_CONFIRM=yes: every call is instance time.
  */
 
-export type Verdict = 'yes' | 'no' | 'unparseable'
+export type Verdict = 'yes' | 'no' | 'error'
 
 export interface AskResult {
   verdict: Verdict
-  raw: string
   ms: number
-  promptTokens: number | null
-  evalTokens: number | null
+  error?: string
 }
 
 export type AskFn = (email: LabelledEmail) => Promise<AskResult>
 
-/** The first word of the reply, tolerant of quotes, punctuation and case. */
-export function parseVerdict(raw: string): Verdict {
-  const m = raw.trim().match(/^\W*(yes|no)\b/i)
-  return m ? (m[1]!.toLowerCase() as Verdict) : 'unparseable'
-}
-
-/** The user message the relevance call sends: the same tag framing the classifier uses. */
-export function relevanceUserMessage(
-  e: Pick<LabelledEmail, 'from' | 'subject' | 'textSnippet'>,
-): string {
-  return `<email_from>${e.from}</email_from>\n<email_subject>${e.subject}</email_subject>\n\n<email_body>\n${e.textSnippet}\n</email_body>`
+/** The fetched-email shape the production call takes, from a labelled fixture. */
+export function toFetchedEmail(e: LabelledEmail): FetchedEmail {
+  return {
+    uid: 1,
+    messageId: e.name,
+    from: e.from,
+    subject: e.subject,
+    date: new Date('2026-10-01'),
+    textSnippet: e.textSnippet,
+    attachments: [],
+  }
 }
 
 export interface RelevanceReport {
@@ -52,11 +51,10 @@ export interface RelevanceReport {
   modelCalls: number
   falsePositives: string[]
   missed: string[]
-  unparseable: string[]
+  errors: string[]
   recall: number
   positives: number
   latencyMs: { p50: number; p95: number; max: number }
-  tokens: { prompt: number; output: number }
   gates: GateResult[]
   passed: boolean
 }
@@ -65,10 +63,8 @@ export async function runRelevanceOnlyEval(ask: AskFn, model: string): Promise<R
   const settledByRule: string[] = []
   const falsePositives: string[] = []
   const missed: string[] = []
-  const unparseable: string[] = []
+  const errors: string[] = []
   const times: number[] = []
-  const promptTokens: number[] = []
-  const evalTokens: number[] = []
   let truePositives = 0
 
   for (const e of LABELLED_EMAILS) {
@@ -79,10 +75,8 @@ export async function runRelevanceOnlyEval(ask: AskFn, model: string): Promise<R
     } else {
       const r = await ask(e)
       times.push(r.ms)
-      if (r.promptTokens !== null) promptTokens.push(r.promptTokens)
-      if (r.evalTokens !== null) evalTokens.push(r.evalTokens)
-      if (r.verdict === 'unparseable') {
-        unparseable.push(e.name)
+      if (r.verdict === 'error') {
+        errors.push(e.name)
         continue
       }
       relevant = r.verdict === 'yes'
@@ -94,7 +88,6 @@ export async function runRelevanceOnlyEval(ask: AskFn, model: string): Promise<R
 
   const positives = LABELLED_EMAILS.filter((e) => e.isFinancial).length
   const recall = positives === 0 ? 1 : truePositives / positives
-  const median = (a: number[]) => (a.length ? percentile(a, 50) : 0)
   const gates: GateResult[] = [
     {
       name: 'relevance-only: no false positives (incl. the prompt-injection email)',
@@ -107,9 +100,9 @@ export async function runRelevanceOnlyEval(ask: AskFn, model: string): Promise<R
       detail: `${truePositives}/${positives}${missed.length ? ` (missed: ${missed.join(', ')})` : ''}`,
     },
     {
-      name: 'relevance-only: every reply is a clear yes or no',
-      passed: unparseable.length === 0,
-      detail: unparseable.length ? unparseable.join(', ') : 'all parsed',
+      name: 'relevance-only: the model answered every email',
+      passed: errors.length === 0,
+      detail: errors.length ? errors.join(', ') : 'all answered',
     },
   ]
   return {
@@ -119,7 +112,7 @@ export async function runRelevanceOnlyEval(ask: AskFn, model: string): Promise<R
     modelCalls: times.length,
     falsePositives,
     missed,
-    unparseable,
+    errors,
     recall,
     positives,
     latencyMs: {
@@ -127,7 +120,6 @@ export async function runRelevanceOnlyEval(ask: AskFn, model: string): Promise<R
       p95: times.length ? percentile(times, 95) : 0,
       max: times.length ? Math.max(...times) : 0,
     },
-    tokens: { prompt: median(promptTokens), output: median(evalTokens) },
     gates,
     passed: gates.every((g) => g.passed),
   }
@@ -141,7 +133,6 @@ export function formatRelevanceReport(r: RelevanceReport): string {
     '',
     `Settled by the will/LPA rule (no model call): ${r.settledByRule.length ? r.settledByRule.join(', ') : 'none'}`,
     `Model calls: ${r.modelCalls}   latency p50 ${s(r.latencyMs.p50)}  p95 ${s(r.latencyMs.p95)}  max ${s(r.latencyMs.max)}`,
-    `Median tokens per call: prompt ${r.tokens.prompt}, output ${r.tokens.output}`,
     '',
     r.passed ? 'RESULT: relevance-only meets the gates' : 'RESULT: relevance-only FAILS the gates',
   )
@@ -161,45 +152,24 @@ async function main(): Promise<void> {
   }
   const model = process.env['LOCAL_JUDGE_MODEL'] || 'qwen2.5:7b'
   const getHeaders = await evalAuthHeaders(baseUrl)
-  const timeoutMs = Number(process.env['LOAD_TEST_TIMEOUT_MS']) || 300_000
+  // The same client the scan job builds for the classifier (one call at a time, 200-token cap),
+  // so this measures the production call, constrained "yes" | "no" decoding included.
+  const decide = createLocalDecisionFn({
+    baseUrl,
+    model,
+    timeoutMs: Number(process.env['LOAD_TEST_TIMEOUT_MS']) || 300_000,
+    maxConcurrent: 1,
+    maxTokens: 200,
+    ...(getHeaders ? { getHeaders } : {}),
+  })
 
   const ask: AskFn = async (e) => {
     const started = Date.now()
-    const res = await fetch(`${baseUrl}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(getHeaders ? await getHeaders() : {}) },
-      signal: AbortSignal.timeout(timeoutMs),
-      body: JSON.stringify({
-        model,
-        stream: false,
-        options: { temperature: 0, seed: 0, num_predict: 4, num_ctx: ollamaNumCtx() },
-        messages: [
-          { role: 'system', content: EMAIL_RELEVANCE_SYSTEM_PROMPT },
-          { role: 'user', content: relevanceUserMessage(e) },
-        ],
-      }),
-    })
-    const ms = Date.now() - started
-    if (!res.ok)
-      return {
-        verdict: 'unparseable',
-        raw: `HTTP ${res.status}`,
-        ms,
-        promptTokens: null,
-        evalTokens: null,
-      }
-    const d = (await res.json()) as {
-      message?: { content?: string }
-      prompt_eval_count?: number
-      eval_count?: number
-    }
-    const raw = d.message?.content ?? ''
-    return {
-      verdict: parseVerdict(raw),
-      raw,
-      ms,
-      promptTokens: d.prompt_eval_count ?? null,
-      evalTokens: d.eval_count ?? null,
+    try {
+      const verdict = await askRelevance(decide, toFetchedEmail(e))
+      return { verdict, ms: Date.now() - started }
+    } catch (err) {
+      return { verdict: 'error', ms: Date.now() - started, error: String(err).slice(0, 120) }
     }
   }
 

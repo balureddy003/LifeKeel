@@ -248,10 +248,13 @@ function toClassification(parsed: RawClassification): EmailClassification {
 }
 
 /**
- * Where an email stopped in the cascade. `model_call` is the only stage that
- * costs inference; the others settled it for free.
+ * Where an email stopped in the cascade. `rule_hit`, `prefilter_skip` and `encoder_skip`
+ * settled it for free. `relevance_no` (two-step mode only) settled it with the cheap
+ * one-word call. `model_call` sent it to the full classification (in two-step mode, after
+ * a relevance 'yes'), so it is the only stage that pays for the long answer.
  */
-export type EmailFunnelStage = 'rule_hit' | 'prefilter_skip' | 'encoder_skip' | 'model_call'
+export type EmailFunnelStage =
+  'rule_hit' | 'prefilter_skip' | 'encoder_skip' | 'relevance_no' | 'model_call'
 
 export interface ClassifyEmailOptions {
   /** Called once per email with the stage that settled it. Never affects the result. */
@@ -262,6 +265,16 @@ export interface ClassifyEmailOptions {
    * local failure classifies as not-financial, same as an LLM error today.
    */
   decide?: DecisionFn
+  /**
+   * Two-step mode (needs `decide`): first a one-word relevance call, then the full
+   * classification only for mail it calls relevant. Writing the answer costs ~80% of a CPU
+   * classification (~2.9 tokens/s), and most mail that reaches the model is not relevant, so
+   * the cheap call settles those. Off by default; EMAIL_TWO_STEP=true in the scan job.
+   * Ignored without `decide` (the cloud path is fast and keeps its single call).
+   */
+  twoStep?: boolean
+  /** Model for the full classification in two-step mode (its own task policy); defaults to `decide`. */
+  decideDetail?: DecisionFn
   /** Skip the model for mail with no policy/protection terms (see prefilter.ts). */
   prefilter?: boolean
   /**
@@ -336,12 +349,10 @@ export async function classifyEmail(
     } catch {
       report('error_fell_back') // fail open to the LLM: an encoder outage must not drop mail
     }
-    stage('model_call')
-    return classifyWithModel(llm, email, opts)
+    return classifyViaModel(llm, email, opts, stage)
   }
 
-  stage('model_call')
-  const classification = await classifyWithModel(llm, email, opts)
+  const classification = await classifyViaModel(llm, email, opts, stage)
   if (enc?.mode === 'shadow' && !classification.failed) {
     // Compared after the LLM has decided, and never awaited by the caller's decision path.
     void enc.classify(email).then(
@@ -359,17 +370,70 @@ export async function classifyEmail(
   return classification
 }
 
+/**
+ * The user message both model calls send. KEEL-016: previously string-concatenated directly
+ * with no delimiter and no "this is data, not instructions" framing — an inbound email's
+ * sender/subject/body is fully attacker-controlled. Explicit tags here, paired with the
+ * instruction in the system prompt, are the standard delimiter + explicit-framing mitigation
+ * for prompt injection.
+ */
+export function emailUserPrompt(email: FetchedEmail): string {
+  return `<email_from>${email.from}</email_from>\n<email_subject>${email.subject}</email_subject>\nDate: ${email.date.toISOString()}\n\n<email_body>\n${email.textSnippet}\n</email_body>`
+}
+
+const RelevanceVerdictSchema = z.enum(['yes', 'no'])
+const RELEVANCE_JSON_SCHEMA = { type: 'string', enum: ['yes', 'no'] } as const
+
+/**
+ * The cheap first step of two-step mode: is this email about a policy or protection the family
+ * holds? Decoding is constrained to "yes" | "no", so the model writes ~3 tokens and the reply
+ * can never be unparseable. Throws when the model call fails (the caller treats that as a failed
+ * classification so the mail is retried, never as "not relevant").
+ */
+export async function askRelevance(decide: DecisionFn, email: FetchedEmail): Promise<'yes' | 'no'> {
+  const { value } = await decide({
+    system: EMAIL_RELEVANCE_SYSTEM_PROMPT,
+    prompt: emailUserPrompt(email),
+    schema: RelevanceVerdictSchema,
+    jsonSchema: RELEVANCE_JSON_SCHEMA as unknown as Record<string, unknown>,
+  })
+  return value
+}
+
+/**
+ * Sends the email to the model and records the stage. In two-step mode a relevance 'no' settles
+ * it cheaply; a 'yes' (or any single-step run) goes on to the full classification.
+ */
+async function classifyViaModel(
+  llm: LlmFn,
+  email: FetchedEmail,
+  opts: ClassifyEmailOptions,
+  stage: (s: EmailFunnelStage) => void,
+): Promise<EmailClassification> {
+  if (opts.twoStep && opts.decide) {
+    let verdict: 'yes' | 'no'
+    try {
+      verdict = await askRelevance(opts.decide, email)
+    } catch {
+      return FAILED // retried on the next scan, exactly like a failed full classification
+    }
+    if (verdict === 'no') {
+      stage('relevance_no')
+      return NOT_FINANCIAL
+    }
+    stage('model_call')
+    return classifyWithModel(llm, email, { ...opts, decide: opts.decideDetail ?? opts.decide })
+  }
+  stage('model_call')
+  return classifyWithModel(llm, email, opts)
+}
+
 async function classifyWithModel(
   llm: LlmFn,
   email: FetchedEmail,
   opts: ClassifyEmailOptions,
 ): Promise<EmailClassification> {
-  // KEEL-016: previously string-concatenated directly with no delimiter and
-  // no "this is data, not instructions" framing — an inbound email's
-  // sender/subject/body is fully attacker-controlled. Explicit tags here,
-  // paired with the instruction in SYSTEM_PROMPT above, are the standard
-  // delimiter + explicit-framing mitigation for prompt injection.
-  const prompt = `<email_from>${email.from}</email_from>\n<email_subject>${email.subject}</email_subject>\nDate: ${email.date.toISOString()}\n\n<email_body>\n${email.textSnippet}\n</email_body>`
+  const prompt = emailUserPrompt(email)
 
   try {
     if (opts.decide) {

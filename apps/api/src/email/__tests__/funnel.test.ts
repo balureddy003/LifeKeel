@@ -32,6 +32,7 @@ describe('email cascade funnel', () => {
       rule_hit: 0,
       prefilter_skip: 0,
       encoder_skip: 0,
+      relevance_no: 0,
       model_call: 0,
     }
     for (const e of LABELLED_EMAILS) {
