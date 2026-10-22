@@ -69,6 +69,9 @@ const EXEMPT_COLLECTIONS = new Set([
   'platform_operators',
   'platform_config',
   'platform_config_history',
+  // PRD-217/212 AI-health telemetry: task, model, outcome, latency and per-day route counts; no tenant id or content
+  'ai_task_calls',
+  'assistant_answer_routes',
   // infra state (not family data)
   'cron_locks',
   'migrations',
