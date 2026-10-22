@@ -113,10 +113,11 @@ scorer warm-start can use it.
   processor is refused) and hosted fallback for `lifekeel_infra` tasks is
   denied; in `dev` the default is `warn`. A non-dev downgrade (`warn`, `off`,
   `AI_HOSTED_FALLBACK=allow`) only takes effect with a recorded
-  `AI_POLICY_EXCEPTION` reference and is logged at boot. Every hosted
-  processor still ships `unreviewed` because no terms have been supplied, so
-  hosted features are unavailable in a non-dev deployment until one is
-  approved. Provider no-training and retention terms, Gmail Limited Use
+  `AI_POLICY_EXCEPTION` reference and is logged at boot. Azure OpenAI is the
+  approved hosted processor (2026-10-22, default abuse-monitoring retention —
+  `limited_abuse_log`, tolerated on non-sensitive tasks only); anthropic,
+  openai and groq stay `unreviewed` and are refused in a non-dev deployment.
+  Provider no-training and retention terms, Gmail Limited Use
   exclusion from cross-tenant scorers, and a consent flow for third-party AI
   remain procedural. Do not claim rule 3 is technically enforced by code
   alone; see ARCHITECTURE.md §8.15 for the full list.

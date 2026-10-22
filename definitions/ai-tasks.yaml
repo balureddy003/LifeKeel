@@ -27,8 +27,11 @@ tasks:
     risk: user_visible
     authority: language_only
     data_boundary: lifekeel_infra
-    processor_terms_ref: anthropic/openai API terms — not used for training
-    provider_retention_class: service_transient
+    # Azure (approved 2026-10-22) is on default abuse-monitoring terms —
+    # limited_abuse_log tolerated for this non-sensitive task until modified
+    # abuse monitoring is approved on the subscription.
+    processor_terms_ref: anthropic/openai API terms, Microsoft Products and Services DPA — not used for training
+    provider_retention_class: limited_abuse_log
     allowed_models: [tier:fast]
     allowed_processors: [ollama, anthropic, openai, azure]
     primary_model: tier:fast
@@ -171,8 +174,11 @@ tasks:
     risk: internal
     authority: candidate_for_review
     data_boundary: approved_hosted_provider
-    processor_terms_ref: anthropic/openai API terms — not used for training
-    provider_retention_class: service_transient
+    # Azure (approved 2026-10-22) is on default abuse-monitoring terms —
+    # limited_abuse_log tolerated for this non-sensitive task until modified
+    # abuse monitoring is approved on the subscription.
+    processor_terms_ref: anthropic/openai API terms, Microsoft Products and Services DPA — not used for training
+    provider_retention_class: limited_abuse_log
     allowed_models: [tier:balanced]
     allowed_processors: [anthropic, openai, azure]
     primary_model: tier:balanced
@@ -205,8 +211,11 @@ tasks:
     risk: user_visible
     authority: candidate_for_review
     data_boundary: lifekeel_infra
-    processor_terms_ref: anthropic/openai API terms — not used for training
-    provider_retention_class: service_transient
+    # Azure (approved 2026-10-22) is on default abuse-monitoring terms —
+    # limited_abuse_log tolerated for this non-sensitive task until modified
+    # abuse monitoring is approved on the subscription.
+    processor_terms_ref: anthropic/openai API terms, Microsoft Products and Services DPA — not used for training
+    provider_retention_class: limited_abuse_log
     allowed_models: [tier:fast]
     allowed_processors: [ollama, anthropic, openai, azure]
     primary_model: tier:fast
@@ -259,8 +268,11 @@ tasks:
     risk: external_effect
     authority: candidate_for_review
     data_boundary: approved_hosted_provider
-    processor_terms_ref: anthropic/openai API terms — not used for training
-    provider_retention_class: service_transient
+    # Azure (approved 2026-10-22) is on default abuse-monitoring terms —
+    # limited_abuse_log tolerated for this non-sensitive task until modified
+    # abuse monitoring is approved on the subscription.
+    processor_terms_ref: anthropic/openai API terms, Microsoft Products and Services DPA — not used for training
+    provider_retention_class: limited_abuse_log
     allowed_models: [tier:fast]
     allowed_processors: [anthropic, openai, azure]
     primary_model: tier:fast

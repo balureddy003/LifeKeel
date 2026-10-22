@@ -4,11 +4,11 @@
 # (definitions/ai-tasks.yaml) says which processors a task may use
 # (`allowed_processors`); this file says whether each one is approved.
 #
-# STATUS TODAY: every hosted processor is `unreviewed`. No signed terms, DPA or
-# retention evidence has been supplied, so nothing here may claim otherwise.
-# Unknown facts are the explicit value `not_reviewed`, never an invented one.
-# Retention for an unreviewed processor is the most conservative class
-# (limited_abuse_log) because that is what must be assumed until reviewed.
+# STATUS TODAY: `azure` is approved (owner decision, 2026-10-22); anthropic,
+# openai and groq remain `unreviewed`. Unknown facts are the explicit value
+# `not_reviewed`, never an invented one. Retention for an unreviewed processor
+# is the most conservative class (limited_abuse_log) because that is what must
+# be assumed until reviewed.
 #
 # To approve a processor the owner supplies the real terms and sets
 # `status: approved` with every field filled and real YYYY-MM-DD dates: the
@@ -78,21 +78,32 @@ processors:
     review_due: not_reviewed
 
   azure:
+    # Approved 2026-10-22 (owner decision): Azure OpenAI is the chosen hosted
+    # processor. Honest gaps recorded inline — the resource is not deployed
+    # yet, so `region` is filled at provisioning, and the default abuse-
+    # monitoring retention applies until Microsoft approves modified abuse
+    # monitoring on the subscription.
     name: Azure OpenAI Service
     hosting: hosted
-    status: unreviewed
+    status: approved
     endpoint: the resource named by AZURE_OPENAI_ENDPOINT
-    region: not_reviewed
-    terms_ref: not_reviewed
-    no_training_basis: not_reviewed
+    region: deployment-selected — the Azure region of the resource named by AZURE_OPENAI_ENDPOINT (not yet deployed)
+    terms_ref: Microsoft Products and Services Data Protection Addendum + Azure OpenAI Service data, privacy and security documentation
+    no_training_basis: Azure OpenAI product terms — prompts and completions are not used to train, retrain or improve models and are not shared with OpenAI
     retention:
+      # Default Azure terms: prompts/completions may be held up to 30 days for
+      # abuse monitoring until modified abuse monitoring (zero retention) is
+      # approved on the subscription.
       '*': limited_abuse_log
-    sub_processors: [not_reviewed]
-    transfer_mechanism: not_reviewed
-    dpa_date: not_reviewed
-    breach_notice_sla: not_reviewed
-    reviewed_at: not_reviewed
-    review_due: not_reviewed
+    sub_processors:
+      [
+        Microsoft Corporation — Azure platform sub-processors per the Microsoft Products and Services DPA,
+      ]
+    transfer_mechanism: Microsoft Standard Contractual Clauses / EU Data Boundary per the Microsoft Products and Services DPA
+    dpa_date: '2026-10-22'
+    breach_notice_sla: notification without undue delay per the Microsoft Products and Services DPA
+    reviewed_at: '2026-10-22'
+    review_due: '2027-10-22'
 
   groq:
     name: Groq API
