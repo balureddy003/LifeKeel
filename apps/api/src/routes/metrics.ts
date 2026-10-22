@@ -73,6 +73,7 @@ let outputGuardBlocks: Counter | null = null
 let emailClassifyFailures: Counter | null = null
 let documentExtractionRetries: Counter | null = null
 let deviceEscalations: Counter | null = null
+let assistantAnswerRoutes: Counter | null = null
 
 function initMetrics(registry: Registry): void {
   if (evaluationsTotal) return // already initialised
@@ -284,6 +285,12 @@ function initMetrics(registry: Registry): void {
     labelNames: ['task_id'],
     registers: [registry],
   })
+  assistantAnswerRoutes = new Counter({
+    name: 'lifekeel_assistant_answer_route_total',
+    help: 'How each /assistant/ask was answered — the generation-escape-rate signal (verified/clarified = deterministic, generated/fallback = model path)',
+    labelNames: ['route'],
+    registers: [registry],
+  })
 }
 
 /** M5: Record a credit consumption for Prometheus metrics. */
@@ -402,6 +409,18 @@ export function recordEmailClassifyFailure(): void {
 export function recordDeviceEscalation(taskId: string): void {
   initMetrics(getRegistry())
   deviceEscalations!.inc({ task_id: taskId })
+}
+
+/**
+ * PRD-212: how /assistant/ask answered one question. The generation-escape
+ * rate is `generated / sum(all routes)`.
+ */
+export type AssistantAnswerRoute =
+  'emergency' | 'verified' | 'clarified' | 'generated' | 'fallback' | 'quarantined'
+
+export function recordAssistantAnswerRoute(route: AssistantAnswerRoute): void {
+  initMetrics(getRegistry())
+  assistantAnswerRoutes!.inc({ route })
 }
 
 export function recordDocumentExtractionRetries(count: number): void {

@@ -24,9 +24,15 @@ import {
   getTenantCollection,
 } from '@lifekeel/platform'
 import { taskLlm } from '../ai/task-gateway.js'
+import { formatScenarioResult } from '../scenarios/format.js'
 import { getInsightsCollection, getSignalsCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
-import { type ScenarioResult, type ScenarioTimelinePoint } from '../scenarios/calculate.js'
+import { recordAssistantAnswerRoute } from './metrics.js'
+import {
+  classifyVerifiedIntent,
+  renderVerifiedAnswer,
+  VERIFIED_OP_LABELS,
+} from '../assistant/verified-answer.js'
 import { projectScenario } from '../scenarios/project.js'
 import { ScenarioStepSchema } from './family-scenarios.js'
 import { isUnsetTarget } from './family-financial-profile.js'
@@ -502,79 +508,10 @@ async function loadAssistantData(db: Db, tenant_id: string, user_id: string) {
 // toScenarioProfileInput moved to ../scenarios/profile-input.ts for
 // PRD-115 — the saved-scenario routes reuse the same mapping.
 
-export function formatScenarioResult(result: ScenarioResult): string {
-  const lines = [
-    `Current total household monthly income: £${toMajor(result.currentMonthlyIncomeMinor)}.`,
-    `Projected monthly income under this scenario: £${toMajor(result.projectedMonthlyIncomeMinor)}.`,
-    `Current monthly surplus (income minus expenses): £${toMajor(result.currentMonthlySurplusMinor)}.`,
-    `Projected monthly surplus under this scenario: £${toMajor(result.projectedMonthlySurplusMinor)}.`,
-    result.currentRunwayMonths === null
-      ? 'Current emergency-fund runway: not applicable — income currently covers expenses.'
-      : `Current emergency-fund runway: ${result.currentRunwayMonths} months.`,
-    result.projectedRunwayMonths === null
-      ? 'Projected emergency-fund runway under this scenario: not applicable — income would cover expenses.'
-      : `Projected emergency-fund runway under this scenario: ${result.projectedRunwayMonths} months.`,
-    // PRD-115: say when the change lands so the LLM narrates "in 6 months
-    // you'd have X" instead of implying today's balance carries it.
-    result.monthsUntilChange > 0
-      ? `Timing: this change takes effect in ${result.monthsUntilChange} months — by then the emergency fund would have reached £${toMajor(result.savingsAtChangeMinor)}, and the projected runway above is measured from that balance.`
-      : 'Timing: this change takes effect immediately.',
-  ]
-  if (result.educationFundProjection) {
-    const p = result.educationFundProjection
-    lines.push(
-      p.projectedMonthsToTarget === null
-        ? `${p.childName}'s education fund: no new monthly saving directed at it in this scenario, so no projection.`
-        : `${p.childName}'s education fund at this new saving rate: reaches its target in ${p.projectedMonthsToTarget} months, ` +
-            `versus ${p.yearsRemaining * 12} months remaining — ${p.onTrack ? 'on track' : 'not on track'} at this pace.`,
-    )
-  }
-  if (result.timeline && result.timeline.length > 0) {
-    lines.push('This is a multi-step scenario — the regime changes over time:')
-    lines.push(formatTimeline(result))
-  }
-  return lines.join('\n')
-}
-
-/**
- * PRD-132/G14: describe each regime boundary in the raw-numbers fallback
- * ("months 1–3: income −£2,400/mo, runway 4.1 mo; from month 4: …") — the
- * same narration the LLM prompt hands it, since the fallback IS this text.
- */
-function formatTimeline(result: ScenarioResult): string {
-  const timeline = result.timeline!
-  const segments: string[] = []
-  let prevIncome = result.currentMonthlyIncomeMinor
-  let prevExpenses =
-    result.currentMonthlySurplusMinor !== undefined
-      ? result.currentMonthlyIncomeMinor - result.currentMonthlySurplusMinor
-      : 0
-  timeline.forEach((t: ScenarioTimelinePoint, i: number) => {
-    const next = timeline[i + 1]
-    const start = t.atMonth === 0 ? 1 : t.atMonth
-    const range =
-      next && next.atMonth - 1 >= start
-        ? `months ${start}–${next.atMonth - 1}`
-        : t.atMonth === 0
-          ? 'from now'
-          : `from month ${t.atMonth}`
-    const dIncome = t.monthlyIncomeMinor - prevIncome
-    const dExpenses = t.monthlyExpensesMinor - prevExpenses
-    const changes: string[] = []
-    if (dIncome !== 0)
-      changes.push(`income ${dIncome < 0 ? '−' : '+'}£${toMajor(Math.abs(dIncome))}/mo`)
-    if (dExpenses !== 0)
-      changes.push(`expenses ${dExpenses < 0 ? '−' : '+'}£${toMajor(Math.abs(dExpenses))}/mo`)
-    const runway = t.runwayMonths === null ? 'self-funding' : `runway ${t.runwayMonths} mo`
-    segments.push(`${range}: ${changes.length > 0 ? changes.join(', ') + ', ' : ''}${runway}`)
-    prevIncome = t.monthlyIncomeMinor
-    prevExpenses = t.monthlyExpensesMinor
-  })
-  if (result.fundDepletedAtMonth !== null) {
-    segments.push(`the emergency fund runs out in month ${result.fundDepletedAtMonth}`)
-  }
-  return segments.join('; ')
-}
+// formatScenarioResult moved to ../scenarios/format.ts so the verified-answer
+// resolver (PRD-212) can reuse it without a circular import — re-exported
+// here for existing importers (scenario narration eval).
+export { formatScenarioResult }
 
 export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
   // Governed per request: assistant.answer.v1 / assistant.scenario_narration.v1
@@ -601,6 +538,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
       // when Ask Keel's model path is entirely down.
       const emergency = detectEmergency(query)
       if (emergency) {
+        recordAssistantAnswerRoute('emergency')
         getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
           is_live: false,
           emergency,
@@ -623,11 +561,78 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
       const { profileDoc, familyDoc, insightDocs, unreviewedDocs, lifeEventContexts, legacyText } =
         await loadAssistantData(db, tenant_id, user_id)
 
+      let twin: MemberTwinResult | null = null
+      if (member_id) {
+        twin = await getMemberTwin(db, tenant_id, member_id, user_id)
+        if (!twin) return reply.status(404).send({ error: 'Family member not found' })
+      }
+
+      // PRD-212 verified tier: a factual question resolved to an approved
+      // read operation is answered by computation, not a model call —
+      // faster, auditable, and every figure carries provenance. Quarantined
+      // asks skip this path entirely: the sensitive task boundary is
+      // unchanged and no health-hinted text ever reaches these templates.
+      if (!quarantined) {
+        const intent = classifyVerifiedIntent(query)
+        if (intent?.kind === 'clarify') {
+          recordAssistantAnswerRoute('clarified')
+          getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
+            is_live: true,
+            verified: true,
+            clarify: intent.options,
+          })
+          const labels = intent.options.map((op) => VERIFIED_OP_LABELS[op])
+          return reply.send({
+            content: `I can answer that from your data — which did you mean: **${labels.join('** or **')}**?`,
+            isLive: true,
+            verified: true,
+            clarify: labels,
+          })
+        }
+        if (intent?.kind === 'operation') {
+          // The renderers compute from real profile sections — a sparse or
+          // unusual profile can still throw. A verified tier that 500s an ask
+          // is worse than generation, so a render failure degrades honestly.
+          const answer = (() => {
+            try {
+              return renderVerifiedAnswer(intent.operation, {
+                profile: profileDoc,
+                family: familyDoc,
+                memberId: member_id,
+                twin,
+              })
+            } catch (err) {
+              req.log.warn(
+                { err, operation: intent.operation },
+                'Verified render failed — degrading to generation',
+              )
+              return null
+            }
+          })()
+          if (answer) {
+            recordAssistantAnswerRoute('verified')
+            getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
+              is_live: true,
+              verified: true,
+              operation: answer.operation,
+              ...(member_id ? { member_id } : {}),
+            })
+            return reply.send({
+              content: answer.content,
+              isLive: true,
+              verified: true,
+              operation: answer.operation,
+              provenance: answer.provenance,
+            })
+          }
+          // Renderer declined or the presence check rejected its own output —
+          // fall through to generation rather than ship a number we can't vouch for.
+        }
+      }
+
       let context: string
       if (member_id) {
-        const twin = await getMemberTwin(db, tenant_id, member_id, user_id)
-        if (!twin) return reply.status(404).send({ error: 'Family member not found' })
-        context = buildMemberContext(twin, profileDoc)
+        context = buildMemberContext(twin!, profileDoc)
       } else {
         context = buildContext(
           profileDoc,
@@ -646,6 +651,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
 
       try {
         const content = await taskLlm(taskId, tenant_id)(SYSTEM_PROMPT, prompt)
+        recordAssistantAnswerRoute('generated')
         getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
           is_live: true,
           quarantined,
@@ -654,6 +660,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
         return reply.send({ content, isLive: true, ...(quarantined ? { quarantined } : {}) })
       } catch (err) {
         req.log.warn({ err }, 'Assistant LLM call failed — falling back')
+        recordAssistantAnswerRoute(quarantined ? 'quarantined' : 'fallback')
         getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
           is_live: false,
           quarantined,
