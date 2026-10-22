@@ -7,8 +7,7 @@ import { AuthProvider } from '@/lib/auth-context'
 import { ModeProvider } from '@/lib/mode-context'
 import { AppShell } from '@/components/AppShell'
 import { Observability } from '@/components/Observability'
-import { GoogleAnalytics } from '@/components/GoogleAnalytics'
-import { AdPixels } from '@/components/AdPixels'
+import { MarketingTags } from '@/components/MarketingTags'
 import { ConfirmSheetProvider } from '@/components/ConfirmSheetProvider'
 import { ToastProvider } from '@/components/Toast'
 import { NativeRegionGate } from '@/components/NativeRegionGate'
@@ -98,8 +97,8 @@ export const viewport: Viewport = {
   // (dark is the default, and what shows while the inline script below resolves
   // the stored preference).
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#eef3f4' },
-    { media: '(prefers-color-scheme: dark)', color: '#0a1822' },
+    { media: '(prefers-color-scheme: light)', color: '#fdfcf9' },
+    { media: '(prefers-color-scheme: dark)', color: '#17231f' },
   ],
   width: 'device-width',
   initialScale: 1,
@@ -175,8 +174,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           mismatch here is theirs, not a render bug. */}
       <body suppressHydrationWarning>
         <Observability />
-        <GoogleAnalytics />
-        <AdPixels />
         {/* Live-verification finding: the global CSS prefers-reduced-motion
             rule only zeroes out native CSS animations/transitions — it
             can't touch Framer Motion's own animation engine, which drives
@@ -186,6 +183,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             preference itself, the one app-wide fix for all of them. */}
         <MotionConfig reducedMotion="user">
           <AuthProvider>
+            <MarketingTags />
             <ModeProvider>
               <ConfirmSheetProvider>
                 <ToastProvider>

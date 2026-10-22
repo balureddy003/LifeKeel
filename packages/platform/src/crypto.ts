@@ -22,8 +22,11 @@ function getCurrentVersion(): number {
 function getKey(version = getCurrentVersion()): Buffer {
   const raw = defaultKeyRegistry.getKey(version) ?? ''
   if (raw.length !== KEY_HEX_LENGTH) {
-    // In dev/test, use a deterministic fallback key (NOT for production)
-    if (process.env['NODE_ENV'] !== 'production') {
+    // Local dev/test only: a deterministic key so tests can round-trip.
+    // Any other NODE_ENV ('staging', 'qa', …) must supply a real key, or
+    // everything it encrypts would be readable with a key published here.
+    const nodeEnv = process.env['NODE_ENV']
+    if (!nodeEnv || nodeEnv === 'development' || nodeEnv === 'test') {
       return Buffer.from('0'.repeat(KEY_HEX_LENGTH), 'hex')
     }
     throw new Error(

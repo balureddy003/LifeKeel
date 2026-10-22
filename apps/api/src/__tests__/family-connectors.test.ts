@@ -19,7 +19,8 @@ const scanTenantInboxMock = vi.fn(async () => ({
   documentsCreated: 1,
 }))
 
-vi.mock('../email/imap-client.js', () => ({
+vi.mock('../email/imap-client.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../email/imap-client.js')>()),
   testImapConnection: (...args: unknown[]) => testImapConnectionMock(...args),
 }))
 

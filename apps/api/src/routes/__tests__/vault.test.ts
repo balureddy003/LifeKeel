@@ -119,8 +119,14 @@ function makeDb() {
     find: () => ({ toArray: async () => [] }),
     updateMany: async () => ({ modifiedCount: 0 }),
   }
+  // Storage and daily-upload budget reads (R25): an empty household.
+  const filesCol = {
+    aggregate: () => ({ toArray: async () => [] }),
+    countDocuments: async () => 0,
+  }
   return {
     collection: (name: string) => {
+      if (name === 'documents.files') return filesCol
       if (name === 'documents') return documentsCol
       if (name === 'family_groups') return familyGroupsCol
       if (name === 'signals') return signalsCol

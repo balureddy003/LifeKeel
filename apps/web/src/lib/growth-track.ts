@@ -9,6 +9,7 @@
 import { getApiBase } from './env'
 import { credFetch } from './http'
 import { captureAttribution } from './attribution'
+import { getSessionToken } from '@/lib/session-token'
 
 const ANON_ID_KEY = 'lifekeel_anon_id'
 
@@ -28,7 +29,7 @@ export function track(event: string, meta?: Record<string, unknown>): void {
   // later signup or lead-capture reads them.
   captureAttribution()
   try {
-    const token = localStorage.getItem('lifekeel_token')
+    const token = getSessionToken()
     credFetch(`${getApiBase()}/growth/events`, {
       method: 'POST',
       headers: {

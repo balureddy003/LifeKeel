@@ -27,7 +27,9 @@ const config: CapacitorConfig = {
       'api.lifekeel.co.uk',
       'app.lifekeel.si',
       'api.lifekeel.si',
-      '*.run.app',
+      // Only the API host this build talks to, never every Cloud Run
+      // service (R34). Set when the API isn't on an api.lifekeel.* domain.
+      ...(process.env['LIFEKEEL_API_HOST'] ? [process.env['LIFEKEEL_API_HOST']] : []),
     ],
   },
   ios: {

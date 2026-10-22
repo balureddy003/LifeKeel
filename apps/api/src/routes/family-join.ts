@@ -32,7 +32,7 @@
 
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
-import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import {
   getFamilyGroupsCollection,
@@ -48,7 +48,7 @@ import {
   type User,
 } from './auth-users.js'
 import { sendFamilyInviteEmail } from '../auth-email.js'
-import { memberMatchesUser } from '../family/family-permissions.js'
+import { isMinorMember, memberMatchesUser } from '../family/family-permissions.js'
 import { generateInviteCode, type FamilyGroupDoc, type FamilyMemberDoc } from './family-group.js'
 import type { AuthService } from '@lifekeel/platform'
 import { setSessionCookie } from '../auth/session-cookie.js'
@@ -75,10 +75,26 @@ interface FamilyMemberInviteDoc extends Record<string, unknown> {
   tenant_id: string
   member_id: string
   email: string
+  /** SHA-256 of the emailed token (R39). Invites created before this change hold the raw token. */
   token: string
   expires_at: Date
   created_at: Date
 }
+
+function inviteTokenHash(token: string): string {
+  return createHash('sha256').update(token).digest('hex')
+}
+
+/** Matches an invite by hashed token, or by raw token for invites still in flight from before hashing. */
+function inviteTokenFilter(token: unknown): { token: { $in: string[] } } | null {
+  if (typeof token !== 'string') return null
+  const raw = token.trim()
+  if (!/^[a-f0-9]{16,128}$/i.test(raw)) return null
+  return { token: { $in: [inviteTokenHash(raw), raw] } }
+}
+
+/** Invitation emails per household per day (R43): each is a real message to an address the organizer chose. */
+const MAX_INVITES_PER_DAY = 20
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -406,8 +422,9 @@ export function registerFamilyJoinRoutes(
       // own credential-bearing login through this flow at all. Checked
       // before status so a pending child reads as "can't have a sign-in"
       // rather than "already active".
-      if (member.role === 'child')
-        return reply.status(400).send({ error: 'Child members cannot have their own sign-in' })
+      // Role or date of birth (R08): an adult-labelled member who is under 18 is still a minor.
+      if (isMinorMember(member))
+        return reply.status(400).send({ error: 'Members under 18 cannot have their own sign-in' })
       if (member.status !== 'pending')
         return reply.status(409).send({ error: 'This member is already active' })
 
@@ -424,6 +441,16 @@ export function registerFamilyJoinRoutes(
         return reply.status(409).send({ error: 'This email is registered to a different account' })
       }
 
+      const sentToday = await db.collection('family_invite_sends').countDocuments({
+        tenant_id,
+        created_at: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      })
+      if (sentToday >= MAX_INVITES_PER_DAY) {
+        return reply
+          .status(429)
+          .send({ error: 'Daily invitation limit reached for this household. Try again tomorrow.' })
+      }
+
       // One outstanding invite per member — re-inviting rotates the token
       // rather than leaving multiple live claims on the same roster entry.
       await invites.deleteMany({ tenant_id, member_id: member.id })
@@ -433,11 +460,12 @@ export function registerFamilyJoinRoutes(
         tenant_id,
         member_id: member.id,
         email,
-        token,
+        token: inviteTokenHash(token),
         expires_at: new Date(Date.now() + INVITE_TTL_MS),
         created_at: new Date(),
       }
       await invites.insertOne(invite)
+      await db.collection('family_invite_sends').insertOne({ tenant_id, created_at: new Date() })
 
       if (!member.email) {
         await groupsFor(tenant_id).updateOne(
@@ -476,9 +504,8 @@ export function registerFamilyJoinRoutes(
     '/family/invite/:token',
     { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
     async (req, reply) => {
-      const invite = (await invites.findOne({
-        token: req.params.token,
-      })) as FamilyMemberInviteDoc | null
+      const filter = inviteTokenFilter(req.params.token)
+      const invite = filter ? ((await invites.findOne(filter)) as FamilyMemberInviteDoc | null) : null
       if (!invite || invite.expires_at.getTime() < Date.now()) {
         return reply.status(404).send({ error: 'This invite link is invalid or has expired' })
       }
@@ -508,13 +535,12 @@ export function registerFamilyJoinRoutes(
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const { token, password } = req.body ?? {}
-      if (!token?.trim()) return reply.status(400).send({ error: 'Invite token required' })
-      if (!password || password.length < 8)
+      const filter = inviteTokenFilter(token)
+      if (!filter) return reply.status(400).send({ error: 'Invite token required' })
+      if (typeof password !== 'string' || password.length < 8 || password.length > 1024)
         return reply.status(400).send({ error: 'Password must be at least 8 characters' })
 
-      const invite = (await invites.findOne({
-        token: token.trim(),
-      })) as FamilyMemberInviteDoc | null
+      const invite = (await invites.findOne(filter)) as FamilyMemberInviteDoc | null
       if (!invite || invite.expires_at.getTime() < Date.now()) {
         return reply.status(400).send({ error: 'This invite link is invalid or has expired' })
       }
@@ -525,6 +551,12 @@ export function registerFamilyJoinRoutes(
       // Already-activated or removed entries reject — a token can't
       // resurrect access after the roster changed.
       if (!family || !member || member.status !== 'pending' || member.user_id) {
+        return reply.status(400).send({ error: 'This invite link is invalid or has expired' })
+      }
+      // Re-checked at acceptance, not only at issue (R08): the member's
+      // role or date of birth may have changed since the email went out.
+      if (isMinorMember(member)) {
+        await invites.deleteOne({ id: invite.id })
         return reply.status(400).send({ error: 'This invite link is invalid or has expired' })
       }
 
@@ -547,6 +579,14 @@ export function registerFamilyJoinRoutes(
           return reply.status(401).send({ error: 'Incorrect password for the existing account' })
         }
         userId = existingUser.id as string
+        // A member removed earlier and invited back (R03): the organizer's
+        // new invite is what restores access.
+        if (existingUser.status === 'removed') {
+          await users.updateOne(
+            { id: userId },
+            { $set: { status: 'active', roles: ['viewer'], updated_at: new Date() } },
+          )
+        }
       } else {
         const salt = randomBytes(16).toString('hex')
         const newUser: User = {

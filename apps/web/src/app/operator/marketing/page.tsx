@@ -45,6 +45,7 @@ import {
   resumeCampaignSend,
   type OperatorCampaign,
   type CampaignFilter,
+  resolveOAuthReturnParams,
 } from '@/lib/api'
 import { PostPreview } from './_components/PostPreview'
 import { ProfilesPanel } from './_components/ProfilesPanel'
@@ -166,7 +167,11 @@ export default function MarketingPage() {
   // ?connected=twitter_x on success or ?connect=twitter_x&error=… on
   // failure. Toast the outcome, refresh the channel list, strip the params.
   useEffect(() => {
-    const q = new URLSearchParams(window.location.search)
+    void resolveOAuthReturnParams().then(showOAuthOutcome)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function showOAuthOutcome(q: URLSearchParams) {
     const connected = q.get('connected')
     const err = q.get('error')
     if (!connected && !err && !q.get('connect')) return
@@ -188,8 +193,7 @@ export default function MarketingPage() {
       })
     }
     window.history.replaceState({}, '', '/operator/marketing')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }
 
   async function refreshChannels() {
     const [ints, conns] = await Promise.all([

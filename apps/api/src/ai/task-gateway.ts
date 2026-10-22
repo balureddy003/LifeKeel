@@ -68,17 +68,44 @@ let llmBudgetGuard: LlmBudgetGuard
 export type ProcessorEnforcement = 'off' | 'warn' | 'enforce'
 
 /**
+ * A deliberate, reviewed exception to the AI data-use defaults, named by a
+ * reference such as a ticket id (R14). Outside `dev`, weakening processor
+ * enforcement or allowing hosted fallback without one is ignored and logged,
+ * so a stray environment variable can't quietly send family content to an
+ * unapproved processor.
+ */
+export function aiPolicyException(
+  raw: string | undefined = process.env['AI_POLICY_EXCEPTION'],
+): string | null {
+  const value = raw?.trim()
+  return value ? value.slice(0, 120) : null
+}
+
+/**
  * AI_PROCESSOR_ENFORCEMENT (PRD-142). Local-first default: outside `dev` an
  * unapproved processor is refused (`enforce`); in `dev` it is logged and
  * counted but served (`warn`) so local work needs no reviewed processors.
- * Set `warn` explicitly to run a non-dev deployment without approvals.
+ * Outside `dev`, `warn` or `off` takes effect only with AI_POLICY_EXCEPTION.
  */
 export function processorEnforcementFromEnv(
   raw: string | undefined = process.env['AI_PROCESSOR_ENFORCEMENT'],
   mode: string = deploymentConfig.mode,
+  exception: string | null = aiPolicyException(),
 ): ProcessorEnforcement {
   const fallback: ProcessorEnforcement = mode === 'dev' ? 'warn' : 'enforce'
-  if (raw === 'off' || raw === 'warn' || raw === 'enforce') return raw
+  if (raw === 'off' || raw === 'warn' || raw === 'enforce') {
+    if (mode !== 'dev' && raw !== 'enforce') {
+      if (!exception) {
+        log.error(
+          { value: raw },
+          'AI_PROCESSOR_ENFORCEMENT downgrade ignored outside dev without AI_POLICY_EXCEPTION; enforcing',
+        )
+        return 'enforce'
+      }
+      log.warn({ value: raw, exception }, 'AI processor enforcement downgraded under a recorded exception')
+    }
+    return raw
+  }
   if (raw) log.error({ value: raw }, `Invalid AI_PROCESSOR_ENFORCEMENT, using '${fallback}'`)
   return fallback
 }
@@ -87,14 +114,15 @@ export function processorEnforcementFromEnv(
  * Whether a `lifekeel_infra` task may fall back to a hosted provider when the
  * self-hosted model is off. Local-first: denied outside `dev`, so family
  * content never silently leaves LifeKeel infra. `AI_HOSTED_FALLBACK=allow`
- * re-enables it deliberately.
+ * re-enables it deliberately, and outside `dev` only with AI_POLICY_EXCEPTION.
  */
 export function hostedFallbackAllowed(
   raw: string | undefined = process.env['AI_HOSTED_FALLBACK'],
   mode: string = deploymentConfig.mode,
+  exception: string | null = aiPolicyException(),
 ): boolean {
-  if (raw === 'allow') return true
   if (raw === 'deny') return false
+  if (raw === 'allow') return mode === 'dev' || exception !== null
   return mode === 'dev'
 }
 

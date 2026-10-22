@@ -20,6 +20,7 @@ import { createLogger } from '@lifekeel/platform'
 import { eraseTenantDataReport } from '../erasure.js'
 import { closeReceipt, loadReceipt, openReceipt, saveReceipt } from '../deletion/receipt.js'
 import { ACCOUNT_DELETION_KEPT } from '../routes/account.js'
+import { cancelSubscriptionForDeletedTenant } from '../billing/cancel-on-delete.js'
 
 const log = createLogger({ service: 'erasure-replay', version: '0.0.0' })
 
@@ -46,6 +47,8 @@ export async function runErasureReplay(
   for (const t of tombstoned) {
     const tenantId = String(t['tenant_id'])
     try {
+      // Billing first (R09): a deleted household must never be charged again.
+      await cancelSubscriptionForDeletedTenant(db, tenantId)
       const report = await eraseTenantDataReport(db, tenantId)
       if (t['status'] === 'deleting') {
         const existing = t['deletion_receipt_id']

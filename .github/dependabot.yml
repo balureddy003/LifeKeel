@@ -29,3 +29,9 @@ updates:
       actions:
         patterns:
           - "*"
+  # R31: digest-pinned base images (apps/api/Dockerfile, infra/*) get update PRs.
+  - package-ecosystem: "docker"
+    directory: "/apps/api"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 1

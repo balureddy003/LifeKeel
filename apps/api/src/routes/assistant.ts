@@ -43,6 +43,7 @@ import {
   memberMatchesUser,
 } from '../family/family-permissions.js'
 import { buildLegacyGraph, renderLegacyGraphForAssistant } from '../legacy/graph.js'
+import { withoutHealthDetail } from '../privacy/special-category.js'
 
 const AskSchema = z.object({
   query: z.string().min(1).max(2000),
@@ -310,7 +311,9 @@ function buildContext(
   // for questions the structured profile can't express ("Mum lives alone
   // in Leeds"). User-authored, not a verified fact.
   if (family?.context_note) {
-    parts.push(`Household context, in the organizer's own words: "${family.context_note}"`)
+    parts.push(
+      `Household context, in the organizer's own words: "${withoutHealthDetail(String(family.context_note))}"`,
+    )
   }
 
   // G6: recent life events the family reported, in the reporter's own
@@ -325,7 +328,7 @@ function buildContext(
       : 'the family'
     parts.push(
       `Life event reported ${when} (${ev.data.event_type?.replace(/_/g, ' ') ?? 'event'}, affecting ${who}), ` +
-        `in the reporter's own words: "${ev.data.context}"`,
+        `in the reporter's own words: "${withoutHealthDetail(ev.data.context)}"`,
     )
   }
 

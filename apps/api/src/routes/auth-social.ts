@@ -21,14 +21,12 @@ import crypto from 'node:crypto'
 import { AuthService, createLogger } from '@lifekeel/platform'
 import { getPlatformConfig } from '../operator/platform-config.js'
 import { setSessionCookie } from '../auth/session-cookie.js'
+import { signState, verifyState } from '../auth/signing-key.js'
 
 const log = createLogger({ service: 'auth-social', version: '0.0.0' })
 
 function signOAuthState(payload: Record<string, unknown>): string {
-  const body = Buffer.from(JSON.stringify(payload)).toString('base64url')
-  const secret = process.env['JWT_SECRET'] ?? 'change-me-in-production'
-  const sig = crypto.createHmac('sha256', secret).update(body).digest('base64url')
-  return `${body}.${sig}`
+  return signState('social-oauth-state', payload)
 }
 
 function verifyOAuthState(state: string): {
@@ -37,22 +35,13 @@ function verifyOAuthState(state: string): {
   app?: string
   appHost?: string
 } {
-  const [body, sig] = state.split('.')
-  if (!body || !sig) throw new Error('Malformed OAuth state')
-  const secret = process.env['JWT_SECRET'] ?? 'change-me-in-production'
-  const expected = crypto.createHmac('sha256', secret).update(body).digest('base64url')
-  if (sig.length !== expected.length) throw new Error('Invalid OAuth state signature')
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
-    throw new Error('Invalid OAuth state signature')
-  }
-  const parsed = JSON.parse(Buffer.from(body, 'base64url').toString()) as {
+  const parsed = verifyState('social-oauth-state', state) as {
     provider?: string
     exp?: number
     app?: string
     app_host?: string
   }
   if (!parsed.provider) throw new Error('OAuth state missing provider')
-  if (parsed.exp && Date.now() > parsed.exp) throw new Error('OAuth state expired')
   return { provider: parsed.provider, exp: parsed.exp, app: parsed.app, appHost: parsed.app_host }
 }
 

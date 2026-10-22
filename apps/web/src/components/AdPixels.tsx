@@ -2,6 +2,8 @@
 
 import Script from 'next/script'
 
+// Rendered only by MarketingTags, after consent and on public pages (R36).
+// disablePushState stops the pixel reporting in-app navigation.
 // Meta Pixel + LinkedIn Insight Tag — the paid-ads measurement layer.
 // Same contract as GoogleAnalytics: env-gated at build time, renders
 // nothing without IDs, so an unconfigured build stays tracker-free.
@@ -21,7 +23,7 @@ n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
 n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
 t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
 document,'script','https://connect.facebook.net/en_US/fbevents.js');
-fbq('init','${META_PIXEL_ID}');fbq('track','PageView');`}
+fbq.disablePushState=true;fbq('init','${META_PIXEL_ID}');fbq('track','PageView');`}
         </Script>
       )}
       {META_PIXEL_ID && (

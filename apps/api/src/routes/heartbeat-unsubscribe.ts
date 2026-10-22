@@ -18,15 +18,13 @@
  * it in settings. Only the heartbeat is affected — critical alerts and
  * account mail are untouched. Tier 0 bookkeeping.
  */
-import { createHmac, timingSafeEqual } from 'node:crypto'
+import { hmacFor, verifyLinkHmac } from '../auth/signing-key.js'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { getGrowthEventsCollection } from '../db.js'
 
 export function heartbeatUnsubToken(tenantId: string, memberId: string): string {
-  return createHmac('sha256', process.env['JWT_SECRET'] ?? 'dev-secret')
-    .update(`unsub-heartbeat:${tenantId}:${memberId}`)
-    .digest('base64url')
+  return hmacFor('heartbeat-unsubscribe', `unsub-heartbeat:${tenantId}:${memberId}`)
 }
 
 export function verifyHeartbeatUnsubToken(
@@ -34,9 +32,7 @@ export function verifyHeartbeatUnsubToken(
   memberId: string,
   token: string,
 ): boolean {
-  const expected = Buffer.from(heartbeatUnsubToken(tenantId, memberId))
-  const given = Buffer.from(token)
-  return expected.length === given.length && timingSafeEqual(expected, given)
+  return verifyLinkHmac('heartbeat-unsubscribe', `unsub-heartbeat:${tenantId}:${memberId}`, token)
 }
 
 export function heartbeatUnsubUrl(apiBase: string, tenantId: string, memberId: string): string {

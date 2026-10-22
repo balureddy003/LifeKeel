@@ -48,7 +48,7 @@ const baseProfile = {
 async function build(db: never) {
   const app = Fastify()
   app.addHook('onRequest', async (req) => {
-    ;(req as never as { authContext: unknown }).authContext = { tenant_id: 't1', user_id: 'u1' }
+    ;(req as never as { authContext: unknown }).authContext = { tenant_id: 't1', user_id: 'u1', roles: ['admin'] }
   })
   // The review endpoints never reach the engine — a stub stands in.
   await registerFamilyFinancialProfileRoutes(app, db, {} as never)

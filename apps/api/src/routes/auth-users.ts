@@ -10,7 +10,7 @@
  */
 
 import type { FastifyInstance, FastifyRequest } from 'fastify'
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { AuthService, getCurrencyForCountry, getLocaleForCountry } from '@lifekeel/platform'
 import { getDb, getLoginEventsCollection } from '../db.js'
 import { checkInviteCode, consumeInviteCode } from '../invite-codes.js'
@@ -24,9 +24,12 @@ import {
   generateTotpSecret,
   generateRecoveryCodes,
   hashRecoveryCode,
+  matchTotpStep,
   otpauthUrl,
-  verifyTotp,
 } from '../auth/totp.js'
+import { decryptEnveloped, encryptForTenant } from '../crypto/envelope.js'
+import { sessionsRevokedAt } from '../auth/session-revocation.js'
+import { displayNameError } from '../validation/display-name.js'
 
 // Pragmatic (not full RFC 5322) format check for signup specifically —
 // unlike login/reset-request, which only ever do a lookup and return a
@@ -49,7 +52,8 @@ export interface User {
   created_at: Date
   avatar_color: string
   roles: string[]
-  status: 'active' | 'suspended' | 'erased' | undefined
+  /** 'removed': taken off the household roster by the organizer (R03). */
+  status: 'active' | 'suspended' | 'erased' | 'removed' | undefined
   failed_login_attempts: number | undefined
   locked_until: Date | undefined
   external_id: string | undefined
@@ -59,6 +63,11 @@ export interface User {
   email_verification_expires: Date | undefined
   password_reset_token: string | undefined
   password_reset_expires: Date | undefined
+  /** SHA-256 of the emailed tokens (R39) — the raw values are never stored. */
+  email_verification_token_hash?: string | undefined
+  password_reset_token_hash?: string | undefined
+  /** Every session token issued at or before this instant is rejected (R06). */
+  sessions_revoked_at?: Date | undefined
   updated_at: Date | undefined
   // PRD-130: last authenticated request, throttled to one write per hour
   // per user in the auth middleware. Feeds the continuity check-in — a
@@ -74,9 +83,14 @@ export interface User {
   mfa_enabled?: boolean | undefined
   /** PRD-203: set only when the visitor ticked the (unticked-by-default) box. */
   marketing_consent?: { given: true; text_version: string; at: Date } | undefined
+  /** Tenant-envelope encrypted (R40); older rows may still hold plaintext, which decryptEnveloped passes through. */
   mfa_secret?: string | undefined
   mfa_pending_secret?: string | undefined
   mfa_recovery_hashes?: string[] | undefined
+  /** Last accepted TOTP time step — a code is never accepted twice (R40). */
+  mfa_last_step?: number | undefined
+  mfa_failed_attempts?: number | undefined
+  mfa_locked_until?: Date | undefined
 }
 
 // `ref` (PRD-112, friend referral) is deliberately separate from
@@ -153,8 +167,6 @@ export const AVATAR_COLORS = [
 ]
 
 // Security configuration
-const MAX_FAILED_LOGIN_ATTEMPTS = 5
-const LOCKOUT_DURATION_MS = 15 * 60 * 1000 // 15 minutes
 const EMAIL_VERIFICATION_ENABLED = process.env['EMAIL_VERIFICATION_ENABLED'] === 'true'
 
 export function slugify(s: string) {
@@ -174,12 +186,42 @@ function generateEmailVerificationToken(): string {
   return randomBytes(32).toString('hex')
 }
 
+/** Recovery and verification tokens are stored and looked up by this hash only (R39). */
+export function hashAuthToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex')
+}
+
+/**
+ * JSON bodies are untyped at runtime. A value used in a MongoDB filter must
+ * be a plain bounded string, or `{ "$ne": null }` would match any user (R01).
+ */
+function str(value: unknown, max = 512): string | null {
+  return typeof value === 'string' && value.length > 0 && value.length <= max ? value : null
+}
+
+function passwordMatches(user: Pick<User, 'salt' | 'password_hash'>, password: string): boolean {
+  if (!user.salt || !user.password_hash) return false
+  const expected = Buffer.from(hashPassword(password, user.salt), 'hex')
+  const actual = Buffer.from(user.password_hash, 'hex')
+  return expected.length === actual.length && timingSafeEqual(expected, actual)
+}
+
+/** Per email+IP and per email, over this window (R42). */
+const LOGIN_THROTTLE_WINDOW_MS = 15 * 60 * 1000
+const MAX_FAILURES_PER_EMAIL_AND_IP = 5
+const MAX_FAILURES_PER_EMAIL = 50
+const MFA_MAX_FAILURES = 5
+const MFA_LOCK_MS = 15 * 60 * 1000
+const GENERIC_LOGIN_ERROR = 'Invalid email or password'
+const THROTTLED_LOGIN_ERROR = 'Too many sign-in attempts. Wait a few minutes or reset your password.'
+
 /** The link in the verification email — goes to the web /verify-email
  *  page, which POSTs the token back to /auth/verify-email. Never logged:
- *  possession of this URL proves mailbox ownership. */
+ *  possession of this URL proves mailbox ownership. The token rides in the
+ *  fragment, which browsers never send to servers, analytics or Referer (R39). */
 function verificationUrl(token: string): string {
   const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
-  return `${appUrl}/verify-email?token=${token}`
+  return `${appUrl}/verify-email#token=${token}`
 }
 
 export async function getUsersCollection() {
@@ -187,10 +229,8 @@ export async function getUsersCollection() {
   const col = db.collection<User>('users')
   await col.createIndex({ email: 1 }, { unique: true })
   await col.createIndex({ external_id: 1, external_provider: 1 }, { sparse: true })
-  await col.createIndex(
-    { email_verification_token: 1 },
-    { sparse: true, expireAfterSeconds: 86400 },
-  ) // 24h TTL
+  await col.createIndex({ email_verification_token_hash: 1 }, { sparse: true })
+  await col.createIndex({ password_reset_token_hash: 1 }, { sparse: true })
   return col
 }
 
@@ -247,11 +287,18 @@ export async function registerAuthUserRoutes(
         attribution,
       } = request.body
 
-      if (!email || !EMAIL_FORMAT_RE.test(email.trim()))
+      if (!str(email, 320) || !EMAIL_FORMAT_RE.test(email.trim()))
         return reply.status(400).send({ error: 'Valid email required' })
-      if (!password || password.length < 8)
+      if (!str(password, 1024) || password.length < 8)
         return reply.status(400).send({ error: 'Password must be at least 8 characters' })
-      if (!name?.trim()) return reply.status(400).send({ error: 'Name required' })
+      const nameError = displayNameError(name)
+      if (nameError) return reply.status(400).send({ error: nameError })
+      if (workspace !== undefined) {
+        const workspaceError = displayNameError(workspace, 'Workspace name')
+        if (workspaceError) return reply.status(400).send({ error: workspaceError })
+      }
+      if (external_id !== undefined && !str(external_id, 256))
+        return reply.status(400).send({ error: 'Invalid external_id' })
 
       const db = await getDb()
 
@@ -350,8 +397,11 @@ export async function registerAuthUserRoutes(
       }
 
       // Generate email verification token if enabled
-      if (EMAIL_VERIFICATION_ENABLED) {
-        user.email_verification_token = generateEmailVerificationToken()
+      const verificationToken = EMAIL_VERIFICATION_ENABLED
+        ? generateEmailVerificationToken()
+        : undefined
+      if (verificationToken) {
+        user.email_verification_token_hash = hashAuthToken(verificationToken)
         user.email_verification_expires = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
       }
 
@@ -359,12 +409,8 @@ export async function registerAuthUserRoutes(
 
       // Send only after the account exists — a failed insert must not
       // leave a recipient holding a token that can never verify.
-      if (EMAIL_VERIFICATION_ENABLED && user.email_verification_token) {
-        await sendEmailVerificationEmail(
-          user.email,
-          user.name,
-          verificationUrl(user.email_verification_token),
-        )
+      if (verificationToken) {
+        await sendEmailVerificationEmail(user.email, user.name, verificationUrl(verificationToken))
       }
 
       // Create the tenant record — tenant_id is a slug no live tenant holds
@@ -440,33 +486,58 @@ export async function registerAuthUserRoutes(
     '/auth/login',
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (request, reply) => {
-      const { email, password, rememberMe } = request.body
+      const { rememberMe } = request.body
+      const email = str(request.body.email, 320)
+      const password = str(request.body.password, 1024)
 
       if (!email || !password)
         return reply.status(400).send({ error: 'Email and password required' })
 
       const col = await getUsersCollection()
       const emailKey = email.toLowerCase()
+
+      // Throttle by email+IP, with a much higher per-email ceiling for
+      // distributed guessing (R42). Unknown emails go through the same
+      // counts, so the response never reveals whether an account exists,
+      // and one person can no longer lock someone else out from their own IP.
+      const since = new Date(Date.now() - LOGIN_THROTTLE_WINDOW_MS)
+      const loginEvents = getLoginEventsCollection(await getDb())
+      const [ipFailures, emailFailures] = await Promise.all([
+        loginEvents.countDocuments({ email: emailKey, ip: request.ip, success: false, created_at: { $gte: since } }),
+        loginEvents.countDocuments({ email: emailKey, success: false, created_at: { $gte: since } }),
+      ])
+      if (ipFailures >= MAX_FAILURES_PER_EMAIL_AND_IP || emailFailures >= MAX_FAILURES_PER_EMAIL) {
+        recordLoginEvent(request, { email: emailKey, success: false, reason: 'throttled' })
+        return reply.status(429).send({ error: THROTTLED_LOGIN_ERROR })
+      }
+
       const user = await col.findOne({ email: emailKey })
 
-      if (!user) {
-        // Timing-safe: still hash even on miss to prevent user enumeration
+      if (!user || user.status === 'erased' || user.status === 'removed') {
+        // Timing-safe: still hash even on miss to prevent user enumeration.
+        // Erased accounts and members removed from their household read the same.
         scryptSync(password, randomBytes(16).toString('hex'), 32)
-        recordLoginEvent(request, { email: emailKey, success: false, reason: 'unknown_email' })
-        return reply.status(401).send({ error: 'Invalid email or password' })
-      }
-      // Erased accounts are tombstones — no credentials remain, and the
-      // response mustn't distinguish them from an unknown email.
-      if (user.status === 'erased') {
         recordLoginEvent(request, {
           email: emailKey,
           success: false,
-          reason: 'erased',
+          reason: user ? (user.status ?? 'inactive') : 'unknown_email',
+          ...(user ? { user_id: user.id, tenant_id: user.tenant_id } : {}),
+        })
+        return reply.status(401).send({ error: GENERIC_LOGIN_ERROR })
+      }
+
+      if (!passwordMatches(user, password)) {
+        recordLoginEvent(request, {
+          email: emailKey,
+          success: false,
+          reason: 'bad_password',
           user_id: user.id,
           tenant_id: user.tenant_id,
         })
-        return reply.status(401).send({ error: 'Invalid email or password' })
+        return reply.status(401).send({ error: GENERIC_LOGIN_ERROR })
       }
+
+      // Suspension is only revealed to someone who knows the password.
       if (user.status === 'suspended') {
         recordLoginEvent(request, {
           email: emailKey,
@@ -478,61 +549,6 @@ export async function registerAuthUserRoutes(
         return reply.status(403).send({ error: 'User suspended' })
       }
 
-      // Check if account is locked
-      if (user.locked_until && user.locked_until > new Date()) {
-        const remainingMinutes = Math.ceil((user.locked_until.getTime() - Date.now()) / 60000)
-        recordLoginEvent(request, {
-          email: emailKey,
-          success: false,
-          reason: 'locked',
-          user_id: user.id,
-          tenant_id: user.tenant_id,
-        })
-        return reply.status(429).send({
-          error: 'Account locked due to too many failed login attempts',
-          retry_after_minutes: remainingMinutes,
-        })
-      }
-
-      const expected = Buffer.from(hashPassword(password, user.salt), 'hex')
-      const actual = Buffer.from(user.password_hash, 'hex')
-
-      if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
-        // Increment failed login attempts
-        const failedAttempts = (user.failed_login_attempts || 0) + 1
-        recordLoginEvent(request, {
-          email: emailKey,
-          success: false,
-          reason: 'bad_password',
-          user_id: user.id,
-          tenant_id: user.tenant_id,
-        })
-        const updateData: Partial<User> = { failed_login_attempts: failedAttempts }
-
-        // Lock account if max attempts reached
-        if (failedAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
-          updateData.locked_until = new Date(Date.now() + LOCKOUT_DURATION_MS)
-        }
-
-        await col.updateOne({ email: emailKey }, { $set: updateData })
-
-        if (failedAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
-          return reply.status(429).send({
-            error: 'Account locked due to too many failed login attempts',
-            retry_after_minutes: LOCKOUT_DURATION_MS / 60000,
-          })
-        }
-
-        return reply.status(401).send({ error: 'Invalid email or password' })
-      }
-
-      // Reset failed login attempts on successful login
-      await col.updateOne(
-        { email: emailKey },
-        {
-          $set: { failed_login_attempts: 0, locked_until: undefined },
-        },
-      )
       recordLoginEvent(request, {
         email: emailKey,
         success: true,
@@ -625,97 +641,75 @@ export async function registerAuthUserRoutes(
   })
 
   /** POST /auth/verify-email — verify email with token */
-  app.post<{ Body: { token: string } }>('/auth/verify-email', async (request, reply) => {
-    const { token } = request.body
+  app.post<{ Body: { token?: unknown } }>('/auth/verify-email', async (request, reply) => {
+    const token = str(request.body?.token, 256)
 
     if (!token) return reply.status(400).send({ error: 'Verification token required' })
 
+    // Hash lookup, mandatory expiry and consumption in one atomic step (R01, R39).
     const col = await getUsersCollection()
-    const user = await col.findOne({ email_verification_token: token })
-
-    if (!user) return reply.status(400).send({ error: 'Invalid or expired verification token' })
-
-    if (user.email_verification_expires && user.email_verification_expires < new Date()) {
-      return reply.status(400).send({ error: 'Verification token expired' })
-    }
-
-    await col.updateOne(
-      { email_verification_token: token },
+    const user = await col.findOneAndUpdate(
       {
-        $set: {
-          email_verified: true,
-          email_verification_token: undefined,
-          email_verification_expires: undefined,
+        email_verification_token_hash: hashAuthToken(token),
+        email_verification_expires: { $gt: new Date() },
+      },
+      {
+        $set: { email_verified: true },
+        $unset: {
+          email_verification_token_hash: '',
+          email_verification_token: '',
+          email_verification_expires: '',
         },
       },
     )
+
+    if (!user) return reply.status(400).send({ error: 'Invalid or expired verification token' })
 
     return reply.send({ verified: true })
   })
 
   /** POST /auth/resend-verification — resend verification email (public endpoint) */
-  app.post<{ Body: { email?: string } }>('/auth/resend-verification', async (request, reply) => {
-    const { email } = request.body
-    const col = await getUsersCollection()
+  app.post<{ Body: { email?: unknown } }>(
+    '/auth/resend-verification',
+    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const col = await getUsersCollection()
 
-    // If authenticated, use user_id from context
-    if (request.authContext) {
-      const { user_id } = request.authContext
-      const user = await col.findOne({ id: user_id })
-
-      if (!user) return reply.status(404).send({ error: 'User not found' })
-
-      if (user.email_verified) return reply.status(400).send({ error: 'Email already verified' })
-
-      const newToken = generateEmailVerificationToken()
-      const expires = new Date(Date.now() + 24 * 60 * 60 * 1000)
-
-      await col.updateOne(
-        { id: user_id },
-        {
-          $set: {
-            email_verification_token: newToken,
-            email_verification_expires: expires,
+      const issue = async (user: User): Promise<void> => {
+        const newToken = generateEmailVerificationToken()
+        await col.updateOne(
+          { id: user.id },
+          {
+            $set: {
+              email_verification_token_hash: hashAuthToken(newToken),
+              email_verification_expires: new Date(Date.now() + 24 * 60 * 60 * 1000),
+            },
+            $unset: { email_verification_token: '' },
           },
-        },
-      )
+        )
+        await sendEmailVerificationEmail(user.email, user.name, verificationUrl(newToken))
+      }
 
-      await sendEmailVerificationEmail(user.email, user.name, verificationUrl(newToken))
+      // If authenticated, use user_id from context
+      if (request.authContext) {
+        const user = await col.findOne({ id: request.authContext.user_id })
+        if (!user) return reply.status(404).send({ error: 'User not found' })
+        if (user.email_verified) return reply.status(400).send({ error: 'Email already verified' })
+        await issue(user)
+        return reply.send({ sent: true })
+      }
 
+      // Unauthenticated: the same answer whether or not the address has an
+      // account, or is already verified (R42).
+      const email = str(request.body?.email, 320)
+      if (!email?.includes('@')) {
+        return reply.status(400).send({ error: 'Valid email required' })
+      }
+      const user = await col.findOne({ email: email.toLowerCase() })
+      if (user && !user.email_verified && user.status !== 'erased') await issue(user)
       return reply.send({ sent: true })
-    }
-
-    // If not authenticated, require email in body
-    if (!email?.includes('@')) {
-      return reply.status(400).send({ error: 'Valid email required' })
-    }
-
-    const user = await col.findOne({ email: email.toLowerCase() })
-
-    if (!user) {
-      // Return success to prevent email enumeration
-      return reply.send({ sent: true })
-    }
-
-    if (user.email_verified) return reply.status(400).send({ error: 'Email already verified' })
-
-    const newToken = generateEmailVerificationToken()
-    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000)
-
-    await col.updateOne(
-      { email: email.toLowerCase() },
-      {
-        $set: {
-          email_verification_token: newToken,
-          email_verification_expires: expires,
-        },
-      },
-    )
-
-    await sendEmailVerificationEmail(user.email, user.name, verificationUrl(newToken))
-
-    return reply.send({ sent: true })
-  })
+    },
+  )
 
   /** PUT /auth/profile — update user profile */
   app.put<{ Body: UpdateProfileBody }>('/auth/profile', async (request, reply) => {
@@ -728,15 +722,25 @@ export async function registerAuthUserRoutes(
     if (!user) return reply.status(404).send({ error: 'User not found' })
 
     const updateData: Partial<User> = {}
-    if (name) updateData.name = name.trim()
-    if (avatar_color) updateData.avatar_color = avatar_color
+    if (name !== undefined) {
+      const nameError = displayNameError(name)
+      if (nameError) return reply.status(400).send({ error: nameError })
+      updateData.name = name.trim()
+    }
+    if (avatar_color) {
+      if (!str(avatar_color, 16) || !AVATAR_COLORS.includes(avatar_color))
+        return reply.status(400).send({ error: 'Invalid avatar colour' })
+      updateData.avatar_color = avatar_color
+    }
 
+    let newVerificationToken: string | undefined
     if (email && email !== user.email) {
-      if (!EMAIL_FORMAT_RE.test(email.trim()))
+      if (!str(email, 320) || !EMAIL_FORMAT_RE.test(email.trim()))
         return reply.status(400).send({ error: 'Valid email required' })
 
-      // Check if new email is already taken
-      const existing = await col.findOne({ email: email.toLowerCase(), tenant_id })
+      // Emails are globally unique (see the unique index above), so check
+      // every tenant, not just this one.
+      const existing = await col.findOne({ email: email.toLowerCase() })
       if (existing) return reply.status(409).send({ error: 'Email already in use' })
 
       updateData.email = email.toLowerCase()
@@ -744,7 +748,8 @@ export async function registerAuthUserRoutes(
 
       // Generate new verification token
       if (EMAIL_VERIFICATION_ENABLED) {
-        updateData.email_verification_token = generateEmailVerificationToken()
+        newVerificationToken = generateEmailVerificationToken()
+        updateData.email_verification_token_hash = hashAuthToken(newVerificationToken)
         updateData.email_verification_expires = new Date(Date.now() + 24 * 60 * 60 * 1000)
       }
     }
@@ -758,12 +763,12 @@ export async function registerAuthUserRoutes(
     // New address must prove ownership — the link goes to the new inbox,
     // never the old one. Send only after the update lands so a failure
     // can't strand a token.
-    if (updateData.email && updateData.email_verification_token) {
+    if (updateData.email && newVerificationToken) {
       const displayName = updateData.name ?? user.name
       await sendEmailVerificationEmail(
         updateData.email,
         displayName,
-        verificationUrl(updateData.email_verification_token),
+        verificationUrl(newVerificationToken),
       )
     }
 
@@ -782,52 +787,63 @@ export async function registerAuthUserRoutes(
   })
 
   /** POST /auth/change-password — change user password */
-  app.post<{ Body: ChangePasswordBody }>('/auth/change-password', async (request, reply) => {
-    const { user_id, tenant_id } = request.authContext
-    const { current_password, new_password } = request.body
+  app.post<{ Body: ChangePasswordBody }>(
+    '/auth/change-password',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const { user_id, tenant_id } = request.authContext
+      const current_password = str(request.body?.current_password, 1024)
+      const new_password = str(request.body?.new_password, 1024)
 
-    if (!current_password || !new_password) {
-      return reply.status(400).send({ error: 'Current and new password required' })
-    }
+      if (!current_password || !new_password) {
+        return reply.status(400).send({ error: 'Current and new password required' })
+      }
 
-    if (new_password.length < 8) {
-      return reply.status(400).send({ error: 'New password must be at least 8 characters' })
-    }
+      if (new_password.length < 8) {
+        return reply.status(400).send({ error: 'New password must be at least 8 characters' })
+      }
 
-    const col = await getUsersCollection()
-    const user = await col.findOne({ id: user_id, tenant_id })
+      const col = await getUsersCollection()
+      const user = await col.findOne({ id: user_id, tenant_id })
 
-    if (!user) return reply.status(404).send({ error: 'User not found' })
+      if (!user) return reply.status(404).send({ error: 'User not found' })
 
-    // Verify current password
-    const expected = Buffer.from(hashPassword(current_password, user.salt), 'hex')
-    const actual = Buffer.from(user.password_hash, 'hex')
+      if (!passwordMatches(user, current_password)) {
+        return reply.status(401).send({ error: 'Current password is incorrect' })
+      }
 
-    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
-      return reply.status(401).send({ error: 'Current password is incorrect' })
-    }
+      const newSalt = randomBytes(16).toString('hex')
 
-    // Generate new salt and hash
-    const newSalt = randomBytes(16).toString('hex')
-    const newPasswordHash = hashPassword(new_password, newSalt)
-
-    await col.updateOne(
-      { id: user_id, tenant_id },
-      {
-        $set: {
-          password_hash: newPasswordHash,
-          salt: newSalt,
-          updated_at: new Date(),
+      // Every other session ends (R06); this one continues on a fresh token.
+      await col.updateOne(
+        { id: user_id, tenant_id },
+        {
+          $set: {
+            password_hash: hashPassword(new_password, newSalt),
+            salt: newSalt,
+            updated_at: new Date(),
+            sessions_revoked_at: sessionsRevokedAt(true),
+          },
         },
-      },
-    )
+      )
+      const token = await auth.sign({
+        sub: user.id,
+        tenant_id: user.tenant_id,
+        roles: user.roles ?? ['viewer'],
+      })
+      setSessionCookie(reply, token, 7 * 24 * 60 * 60)
 
-    return reply.send({ success: true })
-  })
+      return reply.send({ success: true, token })
+    },
+  )
 
   /** POST /auth/request-password-reset — request password reset (public endpoint) */
-  app.post<{ Body: RequestResetBody }>('/auth/request-password-reset', async (request, reply) => {
-    const { email, app: originApp } = request.body
+  app.post<{ Body: RequestResetBody }>(
+    '/auth/request-password-reset',
+    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+    const { app: originApp } = request.body
+    const email = str(request.body.email, 320)
 
     if (!email?.includes('@')) {
       return reply.status(400).send({ error: 'Valid email required' })
@@ -838,17 +854,18 @@ export async function registerAuthUserRoutes(
 
     // Always return success to prevent email enumeration
     // Only send email if user exists
-    if (user) {
+    if (user && user.status !== 'erased') {
       const resetToken = generateEmailVerificationToken()
       const expires = new Date(Date.now() + 1 * 60 * 60 * 1000) // 1 hour expiry
 
       await col.updateOne(
-        { email: email.toLowerCase() },
+        { id: user.id },
         {
           $set: {
-            password_reset_token: resetToken,
+            password_reset_token_hash: hashAuthToken(resetToken),
             password_reset_expires: expires,
           },
+          $unset: { password_reset_token: '' },
         },
       )
 
@@ -860,61 +877,71 @@ export async function registerAuthUserRoutes(
       // prior behavior) until Studio has a matching confirm page.
       if (originApp === 'family') {
         const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
-        const resetUrl = `${appUrl}/reset-password/confirm?token=${resetToken}`
+        const resetUrl = `${appUrl}/reset-password/confirm#token=${resetToken}`
         await sendPasswordResetEmail(user.email, user.name, resetUrl)
       } else if (originApp === 'lifekeel') {
         const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3003').replace(/\/$/, '')
-        const resetUrl = `${appUrl}/reset-password/confirm?token=${resetToken}`
+        const resetUrl = `${appUrl}/reset-password/confirm#token=${resetToken}`
         await sendPasswordResetEmail(user.email, user.name, resetUrl)
       }
     }
 
     return reply.send({ sent: true })
-  })
+    },
+  )
 
   /** POST /auth/reset-password — reset password with token (public endpoint) */
-  app.post<{ Body: ResetPasswordBody }>('/auth/reset-password', async (request, reply) => {
-    const { token, new_password } = request.body
+  app.post<{ Body: ResetPasswordBody }>(
+    '/auth/reset-password',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const token = str(request.body?.token, 256)
+      const new_password = str(request.body?.new_password, 1024)
 
-    if (!token || !new_password) {
-      return reply.status(400).send({ error: 'Token and new password required' })
-    }
+      if (!token || !new_password) {
+        return reply.status(400).send({ error: 'Token and new password required' })
+      }
 
-    if (new_password.length < 8) {
-      return reply.status(400).send({ error: 'Password must be at least 8 characters' })
-    }
+      if (new_password.length < 8) {
+        return reply.status(400).send({ error: 'Password must be at least 8 characters' })
+      }
 
-    const col = await getUsersCollection()
-    const user = await col.findOne({ password_reset_token: token })
+      const newSalt = randomBytes(16).toString('hex')
 
-    if (!user) {
-      return reply.status(400).send({ error: 'Invalid or expired reset token' })
-    }
-
-    if (user.password_reset_expires && user.password_reset_expires < new Date()) {
-      return reply.status(400).send({ error: 'Reset token has expired' })
-    }
-
-    // Generate new salt and hash
-    const newSalt = randomBytes(16).toString('hex')
-    const newPasswordHash = hashPassword(new_password, newSalt)
-
-    await col.updateOne(
-      { password_reset_token: token },
-      {
-        $set: {
-          password_hash: newPasswordHash,
-          salt: newSalt,
-          password_reset_token: undefined,
-          password_reset_expires: undefined,
-          failed_login_attempts: 0,
-          locked_until: undefined,
+      // One atomic step: match the token's hash with an unexpired deadline,
+      // set the password, consume the token and end every existing session
+      // (R01, R06, R39). A second use of the same link matches nothing.
+      const col = await getUsersCollection()
+      const user = await col.findOneAndUpdate(
+        {
+          password_reset_token_hash: hashAuthToken(token),
+          password_reset_expires: { $gt: new Date() },
+          status: { $ne: 'erased' },
         },
-      },
-    )
+        {
+          $set: {
+            password_hash: hashPassword(new_password, newSalt),
+            salt: newSalt,
+            updated_at: new Date(),
+            sessions_revoked_at: sessionsRevokedAt(false),
+          },
+          $unset: {
+            password_reset_token_hash: '',
+            password_reset_token: '',
+            password_reset_expires: '',
+            failed_login_attempts: '',
+            locked_until: '',
+          },
+        },
+      )
 
-    return reply.send({ success: true })
-  })
+      if (!user) {
+        return reply.status(400).send({ error: 'Invalid or expired reset token' })
+      }
+
+      return reply.send({ success: true })
+    },
+  )
 
   // ─── TOTP MFA (RFC 6238) ────────────────────────────────────────────────
   // Enroll: setup (issues pending secret) → enable (first code proves the
@@ -938,77 +965,164 @@ export async function registerAuthUserRoutes(
     })
   })
 
-  /** POST /auth/mfa/setup — issue a pending secret + otpauth:// URI for QR/manual entry. */
-  app.post('/auth/mfa/setup', async (request, reply) => {
-    const { user_id } = request.authContext
+  /**
+   * Accepts a code for `secret` only if its time step is newer than the
+   * last accepted one, recorded atomically so two requests can't both
+   * spend the same code (R40).
+   */
+  const consumeTotp = async (user: User, secret: string, code: unknown): Promise<boolean> => {
+    const step = matchTotpStep(secret, code)
+    if (step === null) return false
     const col = await getUsersCollection()
-    const user = await col.findOne({ id: user_id })
-    if (!user) return reply.status(404).send({ error: 'User not found' })
-    const secret = generateTotpSecret()
-    await col.updateOne({ id: user_id }, { $set: { mfa_pending_secret: secret } })
-    return reply.send({ secret, otpauth_url: otpauthUrl(secret, user.email) })
-  })
+    const res = await col.updateOne(
+      {
+        id: user.id,
+        $or: [{ mfa_last_step: { $exists: false } }, { mfa_last_step: { $lt: step } }],
+      },
+      { $set: { mfa_last_step: step } },
+    )
+    return res.modifiedCount === 1
+  }
+
+  /** Single-use recovery code, consumed atomically. */
+  const consumeRecoveryCode = async (user: User, code: unknown): Promise<boolean> => {
+    const value = str(code, 64)
+    if (!value) return false
+    const col = await getUsersCollection()
+    const hash = hashRecoveryCode(value)
+    const res = await col.updateOne(
+      { id: user.id, mfa_recovery_hashes: hash },
+      { $pull: { mfa_recovery_hashes: hash } },
+    )
+    return res.modifiedCount === 1
+  }
+
+  /** POST /auth/mfa/setup — issue a pending secret + otpauth:// URI for QR/manual entry.
+   *  Needs the password, and the current factor when one is already on, so
+   *  a stolen session can neither enrol nor swap in its own authenticator (R02). */
+  app.post<{ Body: { password?: unknown; code?: unknown } }>(
+    '/auth/mfa/setup',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const { user_id } = request.authContext
+      const col = await getUsersCollection()
+      const user = await col.findOne({ id: user_id })
+      if (!user) return reply.status(404).send({ error: 'User not found' })
+      const password = str(request.body?.password, 1024)
+      if (!password || !passwordMatches(user, password)) {
+        return reply.status(401).send({ error: 'Password required to change two-factor settings' })
+      }
+      if (user.mfa_enabled) {
+        const current = await decryptEnveloped(await getDb(), user.mfa_secret)
+        const ok =
+          (current && (await consumeTotp(user, current, request.body?.code))) ||
+          (await consumeRecoveryCode(user, request.body?.code))
+        if (!ok) {
+          return reply
+            .status(401)
+            .send({ error: 'Enter a code from your current authenticator to replace it' })
+        }
+      }
+      const secret = generateTotpSecret()
+      const db = await getDb()
+      await col.updateOne(
+        { id: user_id },
+        { $set: { mfa_pending_secret: await encryptForTenant(db, user.tenant_id, secret) } },
+      )
+      return reply.send({ secret, otpauth_url: otpauthUrl(secret, user.email) })
+    },
+  )
 
   /** POST /auth/mfa/enable — first valid code confirms enrollment; returns
-   *  the one-time recovery codes (hashes only are stored). */
-  app.post<{ Body: { code: string } }>('/auth/mfa/enable', async (request, reply) => {
-    const { user_id } = request.authContext
-    const { code } = request.body ?? {}
-    if (!code) return reply.status(400).send({ error: 'Code required' })
-    const col = await getUsersCollection()
-    const user = await col.findOne({ id: user_id })
-    if (!user?.mfa_pending_secret) return reply.status(400).send({ error: 'Run setup first' })
-    if (!verifyTotp(user.mfa_pending_secret, code)) {
-      return reply
-        .status(400)
-        .send({ error: 'That code did not match — check your authenticator app and try again' })
-    }
-    const { codes, hashes } = generateRecoveryCodes()
-    await col.updateOne(
-      { id: user_id },
-      {
-        $set: {
-          mfa_enabled: true,
-          mfa_secret: user.mfa_pending_secret,
-          mfa_recovery_hashes: hashes,
+   *  the one-time recovery codes (hashes only are stored). Replacing an
+   *  existing factor ends every other session (R02). */
+  app.post<{ Body: { code?: unknown } }>(
+    '/auth/mfa/enable',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const { user_id } = request.authContext
+      const code = request.body?.code
+      if (!code) return reply.status(400).send({ error: 'Code required' })
+      const col = await getUsersCollection()
+      const user = await col.findOne({ id: user_id })
+      if (!user?.mfa_pending_secret) return reply.status(400).send({ error: 'Run setup first' })
+      const pending = await decryptEnveloped(await getDb(), user.mfa_pending_secret)
+      const step = pending ? matchTotpStep(pending, code) : null
+      if (step === null) {
+        return reply
+          .status(400)
+          .send({ error: 'That code did not match — check your authenticator app and try again' })
+      }
+      const replacing = user.mfa_enabled === true
+      const { codes, hashes } = generateRecoveryCodes()
+      await col.updateOne(
+        { id: user_id },
+        {
+          $set: {
+            mfa_enabled: true,
+            mfa_secret: user.mfa_pending_secret,
+            mfa_recovery_hashes: hashes,
+            mfa_last_step: step,
+            mfa_failed_attempts: 0,
+            ...(replacing ? { sessions_revoked_at: sessionsRevokedAt(true) } : {}),
+          },
+          $unset: { mfa_pending_secret: '', mfa_locked_until: '' },
         },
-        $unset: { mfa_pending_secret: '' },
-      },
-    )
-    return reply.send({ recovery_codes: codes })
-  })
+      )
+      if (!replacing) return reply.send({ recovery_codes: codes })
+      const token = await auth.sign({
+        sub: user.id,
+        tenant_id: user.tenant_id,
+        roles: user.roles ?? ['viewer'],
+      })
+      setSessionCookie(reply, token, 7 * 24 * 60 * 60)
+      return reply.send({ recovery_codes: codes, token })
+    },
+  )
 
   /** POST /auth/mfa/disable — requires the account password, so a stolen
    *  session alone can't quietly strip the second factor. */
-  app.post<{ Body: { password: string } }>('/auth/mfa/disable', async (request, reply) => {
-    const { user_id } = request.authContext
-    const { password } = request.body ?? {}
-    if (!password) return reply.status(400).send({ error: 'Password required' })
-    const col = await getUsersCollection()
-    const user = await col.findOne({ id: user_id })
-    if (!user) return reply.status(404).send({ error: 'User not found' })
-    const expected = Buffer.from(hashPassword(password, user.salt), 'hex')
-    const actual = Buffer.from(user.password_hash, 'hex')
-    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
-      return reply.status(401).send({ error: 'Incorrect password' })
-    }
-    await col.updateOne(
-      { id: user_id },
-      {
-        $set: { mfa_enabled: false },
-        $unset: { mfa_secret: '', mfa_pending_secret: '', mfa_recovery_hashes: '' },
-      },
-    )
-    return reply.send({ ok: true })
-  })
+  app.post<{ Body: { password?: unknown } }>(
+    '/auth/mfa/disable',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const { user_id } = request.authContext
+      const password = str(request.body?.password, 1024)
+      if (!password) return reply.status(400).send({ error: 'Password required' })
+      const col = await getUsersCollection()
+      const user = await col.findOne({ id: user_id })
+      if (!user) return reply.status(404).send({ error: 'User not found' })
+      if (!passwordMatches(user, password)) {
+        return reply.status(401).send({ error: 'Incorrect password' })
+      }
+      await col.updateOne(
+        { id: user_id },
+        {
+          $set: { mfa_enabled: false },
+          $unset: {
+            mfa_secret: '',
+            mfa_pending_secret: '',
+            mfa_recovery_hashes: '',
+            mfa_last_step: '',
+            mfa_failed_attempts: '',
+            mfa_locked_until: '',
+          },
+        },
+      )
+      return reply.send({ ok: true })
+    },
+  )
 
   /** POST /auth/mfa/verify — second step of login. Accepts a TOTP code or a
    *  recovery code (single-use: its hash is consumed on success). Issues the
-   *  real session token + httpOnly cookie on success. */
-  app.post<{ Body: { mfa_token: string; code: string } }>(
+   *  real session token + httpOnly cookie on success. Five wrong codes lock
+   *  the second step for 15 minutes, whatever IP they come from (R40). */
+  app.post<{ Body: { mfa_token?: unknown; code?: unknown } }>(
     '/auth/mfa/verify',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (request, reply) => {
-      const { mfa_token, code } = request.body ?? {}
+      const mfa_token = str(request.body?.mfa_token, 4096)
+      const code = str(request.body?.code, 64)
       if (!mfa_token || !code)
         return reply.status(400).send({ error: 'mfa_token and code required' })
 
@@ -1025,11 +1139,17 @@ export async function registerAuthUserRoutes(
       if (!user?.mfa_enabled || !user.mfa_secret) {
         return reply.status(400).send({ error: 'MFA is not enabled for this account' })
       }
+      if (user.mfa_locked_until && user.mfa_locked_until > new Date()) {
+        return reply
+          .status(429)
+          .send({ error: 'Too many incorrect codes. Sign in again in 15 minutes.' })
+      }
 
-      const totpOk = verifyTotp(user.mfa_secret, code)
-      const recoveryHash = hashRecoveryCode(code)
-      const isRecovery = !totpOk && (user.mfa_recovery_hashes ?? []).includes(recoveryHash)
-      if (!totpOk && !isRecovery) {
+      const secret = await decryptEnveloped(await getDb(), user.mfa_secret)
+      const ok =
+        (secret !== undefined && (await consumeTotp(user, secret, code))) ||
+        (await consumeRecoveryCode(user, code))
+      if (!ok) {
         recordLoginEvent(request, {
           email: user.email,
           success: false,
@@ -1037,14 +1157,32 @@ export async function registerAuthUserRoutes(
           user_id: user.id,
           tenant_id: user.tenant_id,
         })
+        const after = await col.findOneAndUpdate(
+          { id: user.id },
+          { $inc: { mfa_failed_attempts: 1 } },
+          { returnDocument: 'after' },
+        )
+        if ((after?.mfa_failed_attempts ?? 0) >= MFA_MAX_FAILURES) {
+          await col.updateOne(
+            { id: user.id },
+            {
+              $set: { mfa_locked_until: new Date(Date.now() + MFA_LOCK_MS), mfa_failed_attempts: 0 },
+            },
+          )
+          return reply
+            .status(429)
+            .send({ error: 'Too many incorrect codes. Sign in again in 15 minutes.' })
+        }
         return reply
           .status(401)
           .send({ error: 'Incorrect code — try again or use a recovery code' })
       }
-      if (isRecovery) {
-        // Single-use — pull the spent hash so it can't be replayed.
-        await col.updateOne({ id: user.id }, { $pull: { mfa_recovery_hashes: recoveryHash } })
-      }
+      // Rows enrolled before secrets were encrypted get encrypted on first use.
+      const encryptedSecret =
+        secret && !user.mfa_secret.startsWith('dek:')
+          ? { mfa_secret: await encryptForTenant(await getDb(), user.tenant_id, secret) }
+          : {}
+      await col.updateOne({ id: user.id }, { $set: { mfa_failed_attempts: 0, ...encryptedSecret } })
       recordLoginEvent(request, {
         email: user.email,
         success: true,

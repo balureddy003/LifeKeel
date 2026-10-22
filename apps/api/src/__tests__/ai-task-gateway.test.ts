@@ -370,16 +370,23 @@ describe('AI processor registry (PRD-142)', () => {
     expect(processorEnforcementFromEnv(undefined, 'cloud')).toBe('enforce')
     expect(processorEnforcementFromEnv('', 'cloud')).toBe('enforce')
     expect(processorEnforcementFromEnv('banana', 'cloud')).toBe('enforce')
-    expect(processorEnforcementFromEnv('off', 'cloud')).toBe('off')
-    expect(processorEnforcementFromEnv('warn', 'cloud')).toBe('warn')
     expect(processorEnforcementFromEnv('enforce', 'dev')).toBe('enforce')
+  })
+
+  it('a downgrade outside dev needs a recorded AI_POLICY_EXCEPTION (R14)', () => {
+    expect(processorEnforcementFromEnv('off', 'cloud', null)).toBe('enforce')
+    expect(processorEnforcementFromEnv('warn', 'cloud', null)).toBe('enforce')
+    expect(processorEnforcementFromEnv('off', 'cloud', 'SEC-123')).toBe('off')
+    expect(processorEnforcementFromEnv('warn', 'cloud', 'SEC-123')).toBe('warn')
+    expect(processorEnforcementFromEnv('warn', 'dev', null)).toBe('warn')
   })
 
   it('hosted fallback for lifekeel_infra tasks is denied outside dev unless allowed', () => {
     expect(hostedFallbackAllowed(undefined, 'dev')).toBe(true)
     expect(hostedFallbackAllowed(undefined, 'cloud')).toBe(false)
     expect(hostedFallbackAllowed(undefined, 'airgap')).toBe(false)
-    expect(hostedFallbackAllowed('allow', 'cloud')).toBe(true)
+    expect(hostedFallbackAllowed('allow', 'cloud', null)).toBe(false)
+    expect(hostedFallbackAllowed('allow', 'cloud', 'SEC-123')).toBe(true)
     expect(hostedFallbackAllowed('deny', 'dev')).toBe(false)
   })
 

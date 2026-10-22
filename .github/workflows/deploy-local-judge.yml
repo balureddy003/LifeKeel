@@ -77,7 +77,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.verify-ci.outputs.sha }}
 
@@ -94,23 +94,36 @@ jobs:
             *:0.5b|*:1b|*:1.5b|*:1.1b) echo "::error::Models below 3b approved unsafe copy in testing (see infra/local-judge/README.md)."; exit 1 ;;
           esac
 
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v3
+      - name: Authenticate to Google Cloud (workload identity)
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
+        # R31: keyless workload identity federation when the repo Variables
+        # GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_DEPLOY_SERVICE_ACCOUNT are set; the long-lived
+        # JSON key is only a fallback until they are, then delete the secret.
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - name: Authenticate to Google Cloud (service-account key fallback)
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER == '' }}
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - name: Warn when deploying with a long-lived key
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER == '' }}
+        run: echo "::warning::Deploy authenticated with a long-lived service-account key. Configure GCP_WORKLOAD_IDENTITY_PROVIDER and remove the key."
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGISTRY_HOST }} --quiet
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Build and push the model image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: infra/local-judge
           file: infra/local-judge/Dockerfile
@@ -150,9 +163,9 @@ jobs:
             --member "serviceAccount:$API_RUNTIME_SA" \
             --role roles/run.invoker
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         if: ${{ github.event.inputs.run_eval == 'true' }}
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         if: ${{ github.event.inputs.run_eval == 'true' }}
         with:
           node-version: 22
