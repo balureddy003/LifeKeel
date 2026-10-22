@@ -11,9 +11,19 @@ FROM ollama/ollama:0.35.0@sha256:2a6e883b917fc543389599dae79918f5cac9e1438890506
 # local-judge-model).
 ARG MODEL=qwen2.5:7b
 ARG MODEL_DIGEST=845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e
+# Pinned so behaviour does not depend on the Ollama version's own defaults:
+#  - OLLAMA_NUM_PARALLEL=1: Cloud Run runs --concurrency 1, and extra parallel slots
+#    only reserve extra KV-cache memory (this service has already hit its memory limit once).
+#  - OLLAMA_MAX_LOADED_MODELS=1: one model is baked in; never keep a second resident.
+#  - OLLAMA_CONTEXT_LENGTH=10240: the registry allows 8000 input + 1500 output tokens, and
+#    Ollama silently drops whatever exceeds its context (4096 by default on the version
+#    measured). The API also sends num_ctx per request (packages/platform ollama-options.ts).
 ENV OLLAMA_MODELS=/models \
     OLLAMA_HOST=0.0.0.0:11434 \
-    OLLAMA_KEEP_ALIVE=-1
+    OLLAMA_KEEP_ALIVE=-1 \
+    OLLAMA_NUM_PARALLEL=1 \
+    OLLAMA_MAX_LOADED_MODELS=1 \
+    OLLAMA_CONTEXT_LENGTH=10240
 
 # Start a temporary server, pull the model into /models, stop it. Written to FAIL the build if the server
 # never starts or the pull fails: an earlier version ended in `|| true` and would have produced an image
