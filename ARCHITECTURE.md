@@ -210,6 +210,28 @@ flowchart TB
 | **Action layer** | Exact action preview; human-approved email/WhatsApp/CRM/log actions; receipts and audit; opt-in scheduled reminders; auto-execution restricted to trusted `log_only` scopes | No money movement, claims filing, product switching, legal filing, medical action, or autonomous document release |
 | **Action Network** | Email/Gmail/IMAP; read-only account-info connector interface, sandbox flow, and gated TrueLayer-compatible path; delivery providers; Stripe; social publishing for operator-reviewed marketing | Open Banking OAuth and scheduled production sync depend on AISP onboarding; insurer, hospital, employer, and airline partner APIs are not general integrations |
 
+### Strategic direction (decided 2026-10): the verified twin
+
+LifeKeel is positioned as **the family's verified financial twin — it knows, it
+notices, and it proves it**. Three pillars, in priority order:
+
+1. **Know** — the twin: structured, versioned, permission-scoped understanding
+   of the family's finances, documents, and life events.
+2. **Notice** — proactive detection: detectors and drift sentinels surface what
+   changed before being asked. Insight cards and drill-downs are the product
+   surface; free-form chat is an escape hatch, not the front door.
+3. **Prove** — every statement carries provenance: numbers are computed, never
+   generated; sensitive domains are answered only inside LifeKeel
+   infrastructure, visibly.
+
+The generation layer is a commodity input: the smallest model that passes each
+task's eval, behind the gateway, swappable at any time. The durable moat is the
+deterministic family model, the trust mechanics, and the provenance story —
+not inference quality. This direction supersedes any read of the roadmap that
+implies competing on general chat quality. Delivery: PRD-211 through PRD-216
+(phased in `docs/prd/README.md`); the model-serving decision it rests on is
+recorded in [decision-local-interactive-closed-2026-10.md](docs/reviews/decision-local-interactive-closed-2026-10.md).
+
 ### Family and member shape
 
 ```mermaid
@@ -887,6 +909,40 @@ See `docs/reviews/device-first-ai-foundation-2026-10.md` for the rationale
 and `docs/reviews/device-first-grounded-blueprint-2026-10.md` for the
 implementation research grounding each tier.
 
+### 8.4b Generation split and the verified-answer tier (decided 2026-10)
+
+Measured production evidence (50s p50 for a local 7B interactive answer at
+~3 tok/s on CPU, versus a 30s task deadline) closed the question of serving
+interactive generation from the CPU-local model. The split is now fixed:
+
+- **General interactive generation** (`assistant.answer.v1`, drafts, support)
+  runs on a small hosted processor behind the gateway (or on-device where the
+  user has opted in), once that processor's terms review lands (PRD-211).
+  Competing on general chat quality is explicitly not the strategy.
+- **Quarantined generation** (`assistant.answer.sensitive.v1`,
+  `assistant.youth_answer.v1` — `lifekeel_infra_required`) stays local and
+  visibly badged. Latency is accepted and surfaced as proof of the boundary
+  ("this answer was computed entirely on LifeKeel's servers"); it never
+  crosses to a hosted processor.
+- **Batch/generation-free work** (email classification, extraction, judge,
+  OCR) stays local and is progressively de-generated: encoder/extractor +
+  templates first, generative model only for unresolved cases (PRD-215).
+
+The inverse is added to the cascade for the assistant path: a **verified
+answer** tier (`assistant.answer_verified.v1`, PRD-212) resolves factual
+queries to approved deterministic read operations, computes in code, and
+renders a provenance-bound template — zero model calls. Generation escapes
+are reserved for what the resolver cannot answer; the per-task
+**generation-escape rate** is managed as a cost and accuracy KPI, alertable
+like spend. Generation never introduces numbers: the ungrounded-number guard
+moves from rejecting to *requiring* sourced figures on this path.
+
+Serving discipline is architectural, not optimization: task deadlines must
+cancel the underlying inference (model-side cancellation, not just a client
+`Promise.race`, which leaves orphaned generations running), admission to a
+serving queue is bounded by whether work can finish before its deadline, and
+background tasks are bulkheaded away from interactive capacity.
+
 ### 8.5 Model and artifact registry
 
 A lightweight reviewed registry is needed now; a full MLOps product is not.
@@ -1363,7 +1419,11 @@ Self-host only a stable task when:
 
 If a GPU path is justified, vLLM/SGLang/TGI-class serving behind the existing
 ports and queue-depth/time-to-first-token autoscaling are appropriate. Do not
-operate a standing large model because its weights are open.
+operate a standing large model because its weights are open. Note the 2026-10
+decision (§8.4b): CPU-local serving of *interactive* generation failed its
+measured latency gate and is not on the table; self-hosting discussions apply
+to batch and quarantined tasks, and to GPU-class serving only at a real
+cost crossover.
 
 ### 8.13 AI governance and promotion gates
 

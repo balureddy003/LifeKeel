@@ -373,6 +373,50 @@ building disconnected marketing tooling.
     Tier 0 for drafts and plans; Tier 2 (always approved) for publishing and
     profile changes.
 
+## 21x — verified-twin strategic phases (decided 2026-10-22)
+
+The phased execution of ARCHITECTURE.md's §2 "Strategic direction: the
+verified twin" and §8.4b, after the local-interactive serving experiment
+failed its measured latency gate (see
+[decision-local-interactive-closed-2026-10.md](../reviews/decision-local-interactive-closed-2026-10.md)).
+Each phase is independently shippable; dependencies are in "Builds on".
+
+1. [211-ask-keel-hosted-processor.md](211-ask-keel-hosted-processor.md) —
+   **Phase 0.** Restore Ask Keel: one hosted processor through terms review,
+   deadline cancellation fixed, live compliance probes. Tier 0.
+2. [212-verified-answer-resolver.md](212-verified-answer-resolver.md) —
+   **Phase 1.** Factual questions resolve to authorized deterministic
+   operations and provenance-bound rendering — zero model calls; the
+   generation-escape rate becomes a managed KPI. Tier 0.
+3. [213-own-the-noticing.md](213-own-the-noticing.md) — **Phase 2.**
+   Detector coverage depth (LLM-as-compiler drafting allowed, review-gated),
+   calibrated drift sentinels, delivery-judge authority evidence. Tier 0.
+4. [214-trust-artifacts-as-product.md](214-trust-artifacts-as-product.md) —
+   **Phase 3.** Receipt Chain (M7), first Earned-Scope Contract (M5), and
+   Proof-of-Handover rehearsal (M3) as visible product surfaces. Tier 1–2
+   surfaces over unchanged gate machinery.
+5. [215-efficiency-hardening.md](215-efficiency-hardening.md) — **Phase 4.**
+   Email de-generation (encoder/extractor + templates via shadow gate),
+   bulkheads and bounded admission, escalation-rate and cost-per-accepted-
+   result telemetry. Tier 0.
+6. [216-ip-workstream.md](216-ip-workstream.md) — **non-engineering.**
+   Provisional filings for M1, verified-answer composition, and M5;
+   defensive publication for the cascade/tier-gate/caching patterns.
+   Counsel-led, deliberately cheap.
+7. [217-operator-ai-observability.md](217-operator-ai-observability.md) —
+   **cross-phase.** The operator console has no AI-gateway visibility — the
+   October outage was invisible until probed manually. `/operator/ai` health
+   cards per task (latency, outcome mix, serving processor, breaker),
+   processor registry status, cost per task/family, cascade and
+   guard-reject visibility, a narrow audited task-disable control, digest
+   and alerting integration. Tier 0 reads; Tier 2 discipline on the control.
+
+Sequencing note: 211 → 212 is the critical path to a live, efficient
+assistant; 213 and 215 can run in parallel with 212; 214 needs no dependency
+beyond the existing Act machinery; 216 runs outside the engineering cadence;
+217 should land alongside 211 — shipping a live hosted path without the
+observability that would have caught this outage repeats the same mistake.
+
 **Quiz retired (2026-10-20).** PRD-125, 201, 203, 204 and 205 describe the public readiness quiz and its result-save, trust-block and share extras. The quiz, its API route and share card were removed; `/readiness` now redirects to signup. Those documents stay for history and are not on the build order.
 
 ## Suggested build order for 138–147 and 203–206

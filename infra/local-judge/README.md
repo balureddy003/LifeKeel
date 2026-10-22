@@ -128,11 +128,17 @@ What this showed:
   answers that passed was read by hand, not scored, and was not compared with
   the cloud model. Treat this as a go/no-go smoke test, not a quality evaluation.
 
-Recommendation: keep the judge, email, and OCR on the local model (background,
-latency irrelevant) and leave `LOCAL_TEXT_ENABLED` off until a larger
-side-by-side against the cloud model shows acceptable quality and you accept the
-latency. Marketing posts and the operator console carry no family data and stay
-on the cloud router.
+Recommendation (superseded by the 2026-10 decision): keep the judge, email,
+and OCR on the local model (background, latency irrelevant). **The CPU-local
+interactive experiment is closed**: a production-shaped Ask Keel prompt
+measured 50s p50 (p95 58.7s, max 69.1s at concurrency 1) against the 30s
+`assistant.answer.v1` deadline — every question timed out and fell back.
+General interactive generation moves to a hosted processor behind the gateway
+(ARCHITECTURE.md §8.4b,
+`docs/reviews/decision-local-interactive-closed-2026-10.md`); the local model
+keeps the quarantined (`lifekeel_infra_required`) and batch paths. Marketing
+posts and the operator console carry no family data and stay on the cloud
+router.
 
 ## Capacity and scaling (measured)
 
