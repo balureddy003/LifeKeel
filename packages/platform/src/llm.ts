@@ -20,6 +20,7 @@
 
 import { createLogger } from './logger.js'
 import { ollamaNumCtx } from './ollama-options.js'
+import { currentDeadlineSignal } from './call-context.js'
 
 const log = createLogger({ service: 'llm', version: '0.0.0' })
 
@@ -547,7 +548,12 @@ async function callOllama(
       { role: 'user', content: prompt },
     ],
   }
+  // The task deadline's signal (see call-context.ts). When it fires, the request to the
+  // model is cancelled so the server is not left working on an answer nobody awaits.
+  const deadline = currentDeadlineSignal()
+  const cancelled = () => new Error('Ollama call cancelled at the task deadline')
   return withRetry(async () => {
+    if (deadline?.aborted) throw cancelled()
     const t0 = Date.now()
     let res: Response
     try {
@@ -556,9 +562,13 @@ async function callOllama(
         headers: { 'Content-Type': 'application/json', ...(getHeaders ? await getHeaders() : {}) },
         body: JSON.stringify(body),
         // CPU-served models are slow but must not hang a request forever.
-        signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
+        signal: deadline
+          ? AbortSignal.any([AbortSignal.timeout(OLLAMA_TIMEOUT_MS), deadline])
+          : AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
       })
     } catch (err) {
+      // Not retryable: the message must not match withRetry's /timeout|network/ patterns.
+      if (deadline?.aborted) throw cancelled()
       // withRetry retries anything whose message contains "timeout"; a call that
       // already burned the whole budget must fail fast, not retry 3x (~12 min).
       if ((err as Error).name === 'TimeoutError')
