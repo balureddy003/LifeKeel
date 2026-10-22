@@ -4446,6 +4446,52 @@ export function fetchOperatorOperations(): Promise<OperatorOperations> {
   return operatorRequest('/operator/operations')
 }
 
+// ── Operator: AI gateway health (PRD-217) ────────────────────────────────
+// Metadata-only: task ids, models, outcomes, latencies, costs and registry
+// status. Prompt and completion content never reaches this surface.
+
+export interface OperatorAiTaskHealth {
+  task_id: string
+  data_boundary: string
+  budget_class?: string | undefined
+  deadline_ms: number
+  primary_model: string
+  serving_processor: string | null
+  breaker_state: 'closed' | 'open' | 'half-open'
+  calls: number
+  failures: number
+  failure_rate: number
+  p50_ms: number | null
+  p95_ms: number | null
+  cost_microdollars: number
+}
+
+export interface OperatorAiProcessor {
+  id: string
+  name: string
+  hosting: 'self_hosted' | 'hosted'
+  status: 'approved' | 'unreviewed' | 'self_hosted'
+  reviewed_at: string
+  review_due: string
+  review_lapsed: boolean
+}
+
+export interface OperatorAiHealth {
+  generated_at: string
+  window_days: number
+  tasks: OperatorAiTaskHealth[]
+  processors: OperatorAiProcessor[]
+  assistant_answer_mix: Record<string, number> & {
+    total: number
+    generation_escape_rate: number | null
+  }
+  guard_events: Array<{ type: string; action: string; count: number }>
+}
+
+export function fetchOperatorAiHealth(days = 7): Promise<OperatorAiHealth> {
+  return operatorRequest(`/operator/ai-health?days=${days}`)
+}
+
 // ── Operator: autopilot ───────────────────────────────────────────────────
 
 export interface AutopilotRule {

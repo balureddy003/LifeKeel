@@ -13,6 +13,7 @@ import {
   Megaphone,
   ShieldCheck,
   Activity,
+  Bot,
   SlidersHorizontal,
   ScrollText,
   LifeBuoy,
@@ -51,6 +52,12 @@ const links = [
     href: '/operator/operations',
     label: 'Operations',
     icon: Activity,
+    permission: 'operations.read',
+  },
+  {
+    href: '/operator/ai',
+    label: 'AI Health',
+    icon: Bot,
     permission: 'operations.read',
   },
   {
