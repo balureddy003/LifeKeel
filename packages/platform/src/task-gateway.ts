@@ -27,7 +27,7 @@
 
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { createLogger } from './logger.js'
-import type { LlmFn } from './llm.js'
+import type { LlmCallOptions, LlmFn } from './llm.js'
 import type { DecisionFn, LocalDecisionRequest, LocalDecisionResult } from './local-decision.js'
 import { LlmInputGuard, LlmOutputGuard, type LlmGuardEvent } from './llm-guards.js'
 import { getCircuitBreaker } from './llm-circuit-breaker.js'
@@ -353,14 +353,21 @@ function estimateTokens(text: string): number {
 async function withDeadline<T>(
   taskId: string,
   deadlineMs: number,
-  fn: () => Promise<T>,
+  fn: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
+  const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     return await Promise.race([
-      fn(),
+      fn(controller.signal),
       new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new TaskDeadlineError(taskId, deadlineMs)), deadlineMs)
+        timer = setTimeout(() => {
+          // A racing-out deadline that leaves the provider running creates
+          // orphaned generations and backlog (the October Ask Keel outage).
+          // Abort so the transport actually stops.
+          controller.abort()
+          reject(new TaskDeadlineError(taskId, deadlineMs))
+        }, deadlineMs)
       }),
     ])
   } finally {
@@ -425,9 +432,9 @@ export function governedLlm(
       // callOnce: the provider-level retry inside the router stays the
       // single transport retry layer; the breaker only counts outcomes.
       const raw = await breaker.callOnce(() =>
-        withDeadline(taskId, policy.deadline_ms, () =>
+        withDeadline(taskId, policy.deadline_ms, (signal) =>
           llmCallContext.run({ task_id: taskId, tenant_id: tenantId }, () =>
-            base(system, guardedPrompt.value, resolvedModel),
+            base(system, guardedPrompt.value, resolvedModel, { signal }),
           ),
         ),
       )
@@ -463,7 +470,7 @@ export function governedLlm(
 export type VisionContent = Array<
   { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string; detail: 'high' } }
 >
-export type VisionFn = (content: VisionContent) => Promise<string>
+export type VisionFn = (content: VisionContent, opts?: LlmCallOptions) => Promise<string>
 
 /**
  * Wrap a VisionFn in the same policy as text calls: input guard on the
@@ -507,8 +514,10 @@ export function governedVision(
     let ok = false
     try {
       const raw = await breaker.callOnce(() =>
-        withDeadline(taskId, policy.deadline_ms, () =>
-          llmCallContext.run({ task_id: taskId, tenant_id: tenantId }, () => base(guarded)),
+        withDeadline(taskId, policy.deadline_ms, (signal) =>
+          llmCallContext.run({ task_id: taskId, tenant_id: tenantId }, () =>
+            base(guarded, { signal }),
+          ),
         ),
       )
       ok = true
@@ -558,9 +567,9 @@ export function governedDecide(
     let ok = false
     try {
       const result = await breaker.callOnce(() =>
-        withDeadline(taskId, policy.deadline_ms, () =>
+        withDeadline(taskId, policy.deadline_ms, (signal) =>
           llmCallContext.run({ task_id: taskId, tenant_id: tenantId }, () =>
-            base({ ...req, prompt: guardedPrompt.value }),
+            base({ ...req, prompt: guardedPrompt.value }, { signal }),
           ),
         ),
       )

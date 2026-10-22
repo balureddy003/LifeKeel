@@ -177,8 +177,8 @@ export function ungroundedNumbers(output: string, source: string): string[] {
  * the assistant is told never to make.
  */
 export function withOutputGuard(llm: LlmFn): LlmFn {
-  return async (system, prompt, model) => {
-    const text = await llm(system, prompt, model)
+  return async (system, prompt, model, opts) => {
+    const text = await llm(system, prompt, model, opts)
     const reasons: string[] = scanText(text, { generated: true })
     const volunteered = volunteeredProviders(text, `${system}\n${prompt}`)
     if (volunteered.length > 0) reasons.push(`provider_steering(${volunteered.join(',')})`)

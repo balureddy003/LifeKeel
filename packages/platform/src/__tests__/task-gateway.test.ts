@@ -151,7 +151,9 @@ describe('governedLlm', () => {
     const base = vi.fn(ok)
     const fn = governedLlm(base, deps(), 'test.task.v1', 't1')
     expect(await fn('sys', 'prompt')).toBe('answer')
-    expect(base).toHaveBeenCalledWith('sys', 'prompt', 'tier:fast')
+    expect(base).toHaveBeenCalledWith('sys', 'prompt', 'tier:fast', {
+      signal: expect.any(AbortSignal),
+    })
   })
 
   it('rejects a model outside the task allowlist', async () => {
@@ -178,6 +180,19 @@ describe('governedLlm', () => {
     await expect(governedLlm(slow, d, 'test.task.v1', 't1')('sys', 'p')).rejects.toThrow(
       TaskDeadlineError,
     )
+  })
+
+  it('aborts the provider signal when the deadline fires — no orphaned generation', async () => {
+    let seen: AbortSignal | undefined
+    const slow: LlmFn = (_s, _p, _m, opts) => {
+      seen = opts?.signal
+      return new Promise((r) => setTimeout(() => r('late'), 500))
+    }
+    const d = deps({ registry: registryOf(policy({ deadline_ms: 20 })) })
+    await expect(governedLlm(slow, d, 'test.task.v1', 't1')('sys', 'p')).rejects.toThrow(
+      TaskDeadlineError,
+    )
+    expect(seen?.aborted).toBe(true)
   })
 
   it('checks the budget guard before calling the provider', async () => {
@@ -368,6 +383,19 @@ describe('governedDecide', () => {
       /Circuit open/,
     )
     expect(base).not.toHaveBeenCalled()
+  })
+
+  it('aborts the decision signal when the deadline fires', async () => {
+    let seen: AbortSignal | undefined
+    const slow: DecisionFn = async (_r, opts) => {
+      seen = opts?.signal
+      return new Promise(() => {}) as never // never resolves
+    }
+    const d = deps({ registry: registryOf(policy({ deadline_ms: 20 })) })
+    await expect(governedDecide(slow, d, 'test.task.v1', 't1')(req() as never)).rejects.toThrow(
+      TaskDeadlineError,
+    )
+    expect(seen?.aborted).toBe(true)
   })
 })
 
