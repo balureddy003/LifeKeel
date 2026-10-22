@@ -19,6 +19,7 @@
  */
 
 import { createLogger } from './logger.js'
+import { ollamaNumCtx } from './ollama-options.js'
 
 const log = createLogger({ service: 'llm', version: '0.0.0' })
 
@@ -540,7 +541,7 @@ async function callOllama(
   const body = {
     model,
     stream: false,
-    options: { num_predict: maxTokens, temperature },
+    options: { num_predict: maxTokens, temperature, num_ctx: ollamaNumCtx() },
     messages: [
       { role: 'system', content: system },
       { role: 'user', content: prompt },

@@ -1,4 +1,5 @@
 import type { z } from 'zod'
+import { ollamaNumCtx } from './ollama-options.js'
 
 /**
  * Typed decisions from a small open-source model served in our own
@@ -53,13 +54,17 @@ class Semaphore {
   constructor(private readonly limit: number) {}
 
   async acquire(): Promise<void> {
-    if (this.active < this.limit) { this.active += 1; return }
-    await new Promise<void>(resolve => this.waiters.push(resolve))
+    if (this.active < this.limit) {
+      this.active += 1
+      return
+    }
+    await new Promise<void>((resolve) => this.waiters.push(resolve))
   }
 
   release(): void {
     const next = this.waiters.shift()
-    if (next) next() // hand the slot straight to the next waiter
+    if (next)
+      next() // hand the slot straight to the next waiter
     else this.active -= 1
   }
 }
@@ -82,7 +87,10 @@ export interface LocalDecisionResult<T> {
 export type DecisionFn = <T>(req: LocalDecisionRequest<T>) => Promise<LocalDecisionResult<T>>
 
 export class LocalDecisionError extends Error {
-  constructor(message: string, readonly cause_?: unknown) {
+  constructor(
+    message: string,
+    readonly cause_?: unknown,
+  ) {
     super(message)
     this.name = 'LocalDecisionError'
   }
@@ -98,7 +106,8 @@ export function createLocalDecisionFn(cfg: LocalDecisionConfig): DecisionFn {
   const timeoutMs = cfg.timeoutMs ?? 60_000
   const maxTokens = cfg.maxTokens ?? 256
   const doFetch = cfg.fetchImpl ?? fetch
-  const gate = cfg.maxConcurrent && cfg.maxConcurrent > 0 ? new Semaphore(cfg.maxConcurrent) : undefined
+  const gate =
+    cfg.maxConcurrent && cfg.maxConcurrent > 0 ? new Semaphore(cfg.maxConcurrent) : undefined
 
   return async function decide<T>(req: LocalDecisionRequest<T>): Promise<LocalDecisionResult<T>> {
     const queuedAt = Date.now()
@@ -111,11 +120,23 @@ export function createLocalDecisionFn(cfg: LocalDecisionConfig): DecisionFn {
       return result
     } finally {
       gate?.release()
-      try { cfg.onCall?.({ model: cfg.model, ok, queued_ms: started - queuedAt, latency_ms: Date.now() - started }) } catch { /* metrics must never fail a call */ }
+      try {
+        cfg.onCall?.({
+          model: cfg.model,
+          ok,
+          queued_ms: started - queuedAt,
+          latency_ms: Date.now() - started,
+        })
+      } catch {
+        /* metrics must never fail a call */
+      }
     }
   }
 
-  async function callModel<T>(req: LocalDecisionRequest<T>, started: number): Promise<LocalDecisionResult<T>> {
+  async function callModel<T>(
+    req: LocalDecisionRequest<T>,
+    started: number,
+  ): Promise<LocalDecisionResult<T>> {
     let lastError: unknown
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -131,7 +152,7 @@ export function createLocalDecisionFn(cfg: LocalDecisionConfig): DecisionFn {
             format: req.jsonSchema,
             // temperature 0 + fixed seed: the same input gives the same decision,
             // which keeps verdict caching and audits meaningful.
-            options: { temperature: 0, seed: 0, num_predict: maxTokens },
+            options: { temperature: 0, seed: 0, num_predict: maxTokens, num_ctx: ollamaNumCtx() },
             messages: [
               { role: 'system', content: req.system },
               { role: 'user', content: req.prompt },
@@ -139,7 +160,7 @@ export function createLocalDecisionFn(cfg: LocalDecisionConfig): DecisionFn {
           }),
         })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const data = await res.json() as { message?: { content?: string } }
+        const data = (await res.json()) as { message?: { content?: string } }
         const parsed = req.schema.parse(JSON.parse(data.message?.content ?? ''))
         return { value: parsed, model: cfg.model, latency_ms: Date.now() - started }
       } catch (err) {
