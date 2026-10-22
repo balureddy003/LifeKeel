@@ -86,6 +86,7 @@ function makeDb() {
     // direct toArray() (no sort chain).
     collection: (name: string) => ({
       findOne: vi.fn(async () => (name === 'family_groups' ? familyFixture : profileFixture)),
+      updateOne: vi.fn(async () => ({ upsertedCount: 0 })),
       find: (filter: Record<string, unknown> = {}) => {
         const docs = () => {
           if (name === 'documents') return unreviewedDocsFixture

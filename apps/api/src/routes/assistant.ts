@@ -27,7 +27,7 @@ import { taskLlm } from '../ai/task-gateway.js'
 import { formatScenarioResult } from '../scenarios/format.js'
 import { getInsightsCollection, getSignalsCollection } from '../db.js'
 import { getAuditLogger } from '../audit/audit-log.js'
-import { recordAssistantAnswerRoute } from './metrics.js'
+import { recordAssistantAnswerRoute, type AssistantAnswerRoute } from './metrics.js'
 import {
   classifyVerifiedIntent,
   renderVerifiedAnswer,
@@ -513,6 +513,28 @@ async function loadAssistantData(db: Db, tenant_id: string, user_id: string) {
 // here for existing importers (scenario narration eval).
 export { formatScenarioResult }
 
+// PRD-217: every /assistant/ask outcome rolls up daily so the operator
+// AI-health surface can compute the generation-escape rate without a
+// Prometheus scrape. Route, day, count only — no content.
+function recordRoute(db: Db, route: AssistantAnswerRoute): void {
+  recordAssistantAnswerRoute(route)
+  const day = new Date().toISOString().slice(0, 10)
+  try {
+    void db
+      .collection<{ _id: string; day: string; route: string; count: number; updated_at: Date }>(
+        'assistant_answer_routes',
+      )
+      .updateOne(
+        { _id: `${day}|${route}` },
+        { $inc: { count: 1 }, $set: { day, route, updated_at: new Date() } },
+        { upsert: true },
+      )
+      .catch(() => {})
+  } catch {
+    /* telemetry must never fail an ask */
+  }
+}
+
 export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
   // Governed per request: assistant.answer.v1 / assistant.scenario_narration.v1
   // (intent 01) — model allowlist, input ceiling, deadline, breaker, guards.
@@ -538,7 +560,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
       // when Ask Keel's model path is entirely down.
       const emergency = detectEmergency(query)
       if (emergency) {
-        recordAssistantAnswerRoute('emergency')
+        recordRoute(db, 'emergency')
         getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
           is_live: false,
           emergency,
@@ -575,7 +597,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
       if (!quarantined) {
         const intent = classifyVerifiedIntent(query)
         if (intent?.kind === 'clarify') {
-          recordAssistantAnswerRoute('clarified')
+          recordRoute(db, 'clarified')
           getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
             is_live: true,
             verified: true,
@@ -610,7 +632,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
             }
           })()
           if (answer) {
-            recordAssistantAnswerRoute('verified')
+            recordRoute(db, 'verified')
             getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
               is_live: true,
               verified: true,
@@ -651,7 +673,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
 
       try {
         const content = await taskLlm(taskId, tenant_id)(SYSTEM_PROMPT, prompt)
-        recordAssistantAnswerRoute('generated')
+        recordRoute(db, 'generated')
         getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
           is_live: true,
           quarantined,
@@ -660,7 +682,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
         return reply.send({ content, isLive: true, ...(quarantined ? { quarantined } : {}) })
       } catch (err) {
         req.log.warn({ err }, 'Assistant LLM call failed — falling back')
-        recordAssistantAnswerRoute(quarantined ? 'quarantined' : 'fallback')
+        recordRoute(db, quarantined ? 'quarantined' : 'fallback')
         getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
           is_live: false,
           quarantined,

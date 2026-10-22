@@ -188,6 +188,26 @@ export function initTaskGateway(db: Db): void {
     guardEventSink: createGuardEventSink(db, 'task-gateway'),
     onCall: (e) => {
       if (!e.ok) recordLocalModelCall('task', false, e.latency_ms / 1000, 0, 0)
+      // PRD-217: one metadata row per governed call — /operator/ai-health
+      // aggregates these into per-task outcome mix and latency percentiles.
+      // Task/model/outcome/latency only — prompt and completion content
+      // never lands here.
+      const policy = registry.get(e.task_id)
+      try {
+        void db
+          .collection('ai_task_calls')
+          .insertOne({
+            task_id: e.task_id,
+            model: e.model,
+            ok: e.ok,
+            latency_ms: e.latency_ms,
+            processor: policy ? resolveServingProcessor(policy) : null,
+            created_at: new Date(),
+          })
+          .catch(() => {})
+      } catch {
+        /* telemetry must never fail a call */
+      }
     },
     // Device-first metric: fired per actual server-side invocation of a
     // on_device task — the device tier was unavailable or abstained.
