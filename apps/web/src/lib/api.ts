@@ -4632,10 +4632,17 @@ export interface OperatorAiTaskHealth {
   /** Calls refused by the disabled switch — demand against an off task,
    *  counted separately from real failures. */
   disabled_refusals: number
+  /** PRD-215 P8: ok calls (not failures or disabled refusals). */
+  accepted_calls: number
+  /** Calls whose output the guard rejected — subtracted from accepted. */
+  guard_rejected_calls: number
+  correct_calls: number
   failure_rate: number
   p50_ms: number | null
   p95_ms: number | null
   cost_microdollars: number
+  /** PRD-215 P8: cost ÷ correct calls; null when nothing was accepted. */
+  cost_per_correct_microdollars: number | null
 }
 
 export interface OperatorAiProcessor {

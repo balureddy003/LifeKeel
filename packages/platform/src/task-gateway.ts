@@ -493,11 +493,15 @@ export function governedLlm(
       ok = true
       const guardedOutput = outputGuard.guard(raw)
       const events = [...guardedPrompt.events, ...guardedOutput.events]
-      if (events.length > 0) void deps.guardEventSink?.(events).catch(() => {})
+      if (events.length > 0) {
+        void deps.guardEventSink?.(events, { task_id: taskId }).catch(() => {})
+      }
       return guardedOutput.value
     } catch (err) {
       const events: LlmGuardEvent[] = [...guardedPrompt.events]
-      if (events.length > 0) void deps.guardEventSink?.(events).catch(() => {})
+      if (events.length > 0) {
+        void deps.guardEventSink?.(events, { task_id: taskId }).catch(() => {})
+      }
       throw err
     } finally {
       try {
@@ -629,12 +633,12 @@ export function governedDecide(
       )
       ok = true
       if (guardedPrompt.events.length > 0) {
-        void deps.guardEventSink?.(guardedPrompt.events).catch(() => {})
+        void deps.guardEventSink?.(guardedPrompt.events, { task_id: taskId }).catch(() => {})
       }
       return result
     } catch (err) {
       if (guardedPrompt.events.length > 0) {
-        void deps.guardEventSink?.(guardedPrompt.events).catch(() => {})
+        void deps.guardEventSink?.(guardedPrompt.events, { task_id: taskId }).catch(() => {})
       }
       throw err
     } finally {

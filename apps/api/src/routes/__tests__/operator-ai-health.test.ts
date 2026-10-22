@@ -133,6 +133,43 @@ describe('GET /operator/ai-health (PRD-217)', () => {
       timestamp: now,
       persisted_at: now,
     })
+    // PRD-215 P8: two forbidden_output events on ONE flagged call (dedupe by
+    // call_id) on assistant.answer.v1, plus an untagged event that must not
+    // attribute to any task.
+    await db.collection('llm_guard_events').insertMany([
+      {
+        tenant_id: 'family-1',
+        call_id: 'call-flagged-1',
+        task_id: 'assistant.answer.v1',
+        type: 'forbidden_output',
+        field_path: 'output',
+        original_hash: 'x',
+        action: 'flagged',
+        timestamp: now,
+        persisted_at: now,
+      },
+      {
+        tenant_id: 'family-1',
+        call_id: 'call-flagged-1',
+        task_id: 'assistant.answer.v1',
+        type: 'forbidden_output',
+        field_path: 'output.2',
+        original_hash: 'y',
+        action: 'flagged',
+        timestamp: now,
+        persisted_at: now,
+      },
+      {
+        tenant_id: 'family-1',
+        call_id: 'call-legacy', // no task_id — pre-PRD-215 event shape
+        type: 'forbidden_output',
+        field_path: 'output',
+        original_hash: 'z',
+        action: 'flagged',
+        timestamp: now,
+        persisted_at: now,
+      },
+    ])
     await db
       .collection<{
         _id: string
@@ -206,6 +243,13 @@ describe('GET /operator/ai-health (PRD-217)', () => {
     expect(task).toBeDefined()
     expect(task['calls']).toBe(3)
     expect(task['failures']).toBe(1)
+    // PRD-215 P8: 2 ok calls, minus the 1 output-guard-flagged call = 1
+    // correct result; the two events on it dedupe via call_id; spend 150 →
+    // cost_per_correct 150. The untagged legacy event attributes nowhere.
+    expect(task['accepted_calls']).toBe(2)
+    expect(task['guard_rejected_calls']).toBe(1)
+    expect(task['correct_calls']).toBe(1)
+    expect(task['cost_per_correct_microdollars']).toBe(150)
     expect(task['p50_ms']).toBe(300)
     expect(task['p95_ms']).toBe(30_000)
     expect(task['cost_microdollars']).toBe(150)

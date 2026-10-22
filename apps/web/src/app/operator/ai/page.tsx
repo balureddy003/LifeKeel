@@ -174,6 +174,7 @@ export default function OperatorAiPage() {
                 <th className="pb-2 pr-4 font-medium text-right">p50</th>
                 <th className="pb-2 pr-4 font-medium text-right">p95</th>
                 <th className="pb-2 pr-4 font-medium text-right">Cost</th>
+                <th className="pb-2 pr-4 font-medium text-right">$/correct</th>
                 <th className="pb-2 font-medium text-right">Switch</th>
               </tr>
             </thead>
@@ -210,6 +211,14 @@ export default function OperatorAiPage() {
                   <td className="py-2 pr-4 text-right text-xs">{ms(t.p50_ms)}</td>
                   <td className="py-2 pr-4 text-right text-xs">{ms(t.p95_ms)}</td>
                   <td className="py-2 pr-4 text-right text-xs">{cost(t.cost_microdollars)}</td>
+                  <td
+                    className="py-2 pr-4 text-right text-xs"
+                    title={`${t.correct_calls} correct of ${t.accepted_calls} accepted (${t.guard_rejected_calls} guard-rejected)`}
+                  >
+                    {t.cost_per_correct_microdollars === null
+                      ? '—'
+                      : cost(t.cost_per_correct_microdollars)}
+                  </td>
                   <td className="py-2 text-right align-top">
                     <ReasonAction
                       label={t.disabled ? 'Enable' : 'Disable'}

@@ -3472,91 +3472,118 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
       const sinceDay = since.toISOString().slice(0, 10)
 
-      const [callRows, costRows, answerRows, guardRows, funnelRows, shadowRows, config] =
-        await Promise.all([
-          db
-            .collection('ai_task_calls')
-            .aggregate([
-              { $match: { created_at: { $gte: since } } },
-              {
-                $group: {
-                  _id: '$task_id',
-                  calls: { $sum: 1 },
-                  // Calls refused by the operator switch are not provider
-                  // failures — they get their own count so a deliberately-off
-                  // task doesn't read as an outage.
-                  failures: {
-                    $sum: {
-                      $cond: [
-                        { $and: [{ $eq: ['$ok', false] }, { $ne: ['$outcome', 'disabled'] }] },
-                        1,
-                        0,
-                      ],
-                    },
+      const [
+        callRows,
+        costRows,
+        answerRows,
+        guardRows,
+        guardTaskRows,
+        funnelRows,
+        shadowRows,
+        config,
+      ] = await Promise.all([
+        db
+          .collection('ai_task_calls')
+          .aggregate([
+            { $match: { created_at: { $gte: since } } },
+            {
+              $group: {
+                _id: '$task_id',
+                calls: { $sum: 1 },
+                // Calls refused by the operator switch are not provider
+                // failures — they get their own count so a deliberately-off
+                // task doesn't read as an outage.
+                failures: {
+                  $sum: {
+                    $cond: [
+                      { $and: [{ $eq: ['$ok', false] }, { $ne: ['$outcome', 'disabled'] }] },
+                      1,
+                      0,
+                    ],
                   },
-                  disabled_refusals: {
-                    $sum: { $cond: [{ $eq: ['$outcome', 'disabled'] }, 1, 0] },
-                  },
-                  latencies: { $push: '$latency_ms' },
-                  processors: { $addToSet: '$processor' },
                 },
-              },
-            ])
-            .toArray(),
-          db
-            .collection('llm_usage')
-            .aggregate([
-              { $match: { created_at: { $gte: since } } },
-              {
-                $group: {
-                  _id: '$workflow_id',
-                  cost_microdollars: { $sum: '$cost_microdollars' },
-                  billed_calls: { $sum: 1 },
+                disabled_refusals: {
+                  $sum: { $cond: [{ $eq: ['$outcome', 'disabled'] }, 1, 0] },
                 },
+                latencies: { $push: '$latency_ms' },
+                processors: { $addToSet: '$processor' },
               },
-            ])
-            .toArray(),
-          db
-            .collection('assistant_answer_routes')
-            .aggregate([
-              { $match: { day: { $gte: sinceDay } } },
-              { $group: { _id: '$route', count: { $sum: '$count' } } },
-            ])
-            .toArray(),
-          db
-            .collection('llm_guard_events')
-            .aggregate([
-              { $match: { persisted_at: { $gte: since } } },
-              // Event type + action only — never field_path or content hashes.
-              { $group: { _id: { type: '$type', action: '$action' }, count: { $sum: 1 } } },
-            ])
-            .toArray(),
-          db
-            .collection('ai_cascade_funnel')
-            .aggregate([
-              { $match: { day: { $gte: sinceDay } } },
-              {
-                $group: {
-                  _id: { task_id: '$task_id', stage: '$stage' },
-                  count: { $sum: '$count' },
-                },
+            },
+          ])
+          .toArray(),
+        db
+          .collection('llm_usage')
+          .aggregate([
+            { $match: { created_at: { $gte: since } } },
+            {
+              $group: {
+                _id: '$workflow_id',
+                cost_microdollars: { $sum: '$cost_microdollars' },
+                billed_calls: { $sum: 1 },
               },
-            ])
-            .toArray(),
-          // PRD-213: delivery-judge shadow evidence — outcome counts only,
-          // never insight content (rows carry ids + decisions only already).
-          db
-            .collection('judge_shadow_results')
-            .aggregate([
-              { $match: { created_at: { $gte: since } } },
-              { $group: { _id: '$outcome', count: { $sum: 1 } } },
-            ])
-            .toArray(),
-          getPlatformConfig(db),
-        ])
+            },
+          ])
+          .toArray(),
+        db
+          .collection('assistant_answer_routes')
+          .aggregate([
+            { $match: { day: { $gte: sinceDay } } },
+            { $group: { _id: '$route', count: { $sum: '$count' } } },
+          ])
+          .toArray(),
+        db
+          .collection('llm_guard_events')
+          .aggregate([
+            { $match: { persisted_at: { $gte: since } } },
+            // Event type + action only — never field_path or content hashes.
+            { $group: { _id: { type: '$type', action: '$action' }, count: { $sum: 1 } } },
+          ])
+          .toArray(),
+        // PRD-215 P8: output-guard rejections per task, deduped by call_id —
+        // a flagged call is spend that did not produce a clean result, so it
+        // is subtracted from the accepted count in cost_per_correct.
+        db
+          .collection('llm_guard_events')
+          .aggregate([
+            {
+              $match: {
+                persisted_at: { $gte: since },
+                type: 'forbidden_output',
+                task_id: { $exists: true },
+              },
+            },
+            { $group: { _id: '$task_id', flagged_call_ids: { $addToSet: '$call_id' } } },
+          ])
+          .toArray(),
+        db
+          .collection('ai_cascade_funnel')
+          .aggregate([
+            { $match: { day: { $gte: sinceDay } } },
+            {
+              $group: {
+                _id: { task_id: '$task_id', stage: '$stage' },
+                count: { $sum: '$count' },
+              },
+            },
+          ])
+          .toArray(),
+        // PRD-213: delivery-judge shadow evidence — outcome counts only,
+        // never insight content (rows carry ids + decisions only already).
+        db
+          .collection('judge_shadow_results')
+          .aggregate([
+            { $match: { created_at: { $gte: since } } },
+            { $group: { _id: '$outcome', count: { $sum: 1 } } },
+          ])
+          .toArray(),
+        getPlatformConfig(db),
+      ])
 
       const callsByTask = new Map(callRows.map((r) => [r['_id'] as string, r]))
       const costByTask = new Map(costRows.map((r) => [r['_id'] as string, r]))
+      const guardFlaggedByTask = new Map(
+        guardTaskRows.map((r) => [r['_id'] as string, (r['flagged_call_ids'] as string[]).length]),
+      )
       const breakers = getAllCircuitBreakers()
 
       // Every registered task appears, including silent ones — a task that
@@ -3570,6 +3597,13 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
           .slice()
           .sort((a, b) => a - b)
         const breakerKey = `task:${policy.task_id}`
+        const cost =
+          (costByTask.get(policy.task_id)?.['cost_microdollars'] as number | undefined) ?? 0
+        // PRD-215 P8: accepted = provider calls that returned a usable
+        // result, minus calls whose output the guard had to reject.
+        const acceptedCalls = calls - failures - disabledRefusals
+        const guardRejected = guardFlaggedByTask.get(policy.task_id) ?? 0
+        const correctCalls = Math.max(0, acceptedCalls - guardRejected)
         return {
           task_id: policy.task_id,
           data_boundary: policy.data_boundary,
@@ -3582,11 +3616,14 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
           calls,
           failures,
           disabled_refusals: disabledRefusals,
+          accepted_calls: acceptedCalls,
+          guard_rejected_calls: guardRejected,
+          correct_calls: correctCalls,
           failure_rate: calls > 0 ? Math.round((failures / calls) * 1000) / 1000 : 0,
           p50_ms: percentile(latencies, 50),
           p95_ms: percentile(latencies, 95),
-          cost_microdollars:
-            (costByTask.get(policy.task_id)?.['cost_microdollars'] as number | undefined) ?? 0,
+          cost_microdollars: cost,
+          cost_per_correct_microdollars: correctCalls > 0 ? Math.round(cost / correctCalls) : null,
         }
       })
 
