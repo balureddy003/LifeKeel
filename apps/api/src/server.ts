@@ -1,4 +1,5 @@
 import './env.js'
+import { installMailpitTransport } from './dev/mailpit.js'
 
 import { randomUUID } from 'node:crypto'
 
@@ -211,6 +212,8 @@ const ROOT = path.resolve(__dirname, '../../..')
 await initTelemetry('lifekeel-api')
 
 const log = createLogger({ service: 'api', version: process.env['npm_package_version'] ?? '0.0.0' })
+
+installMailpitTransport()
 
 // These are instantiated before MongoDB connects — they degrade gracefully
 // when DB is unavailable (calibrator/thresholds use identity/fallback values)
