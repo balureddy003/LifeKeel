@@ -93,7 +93,7 @@ describe('buildHeartbeatMessage', () => {
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
     })
     expect(m.text).toContain(url)
-    expect(m.html).toContain(url)
+    expect(m.html).toContain(`href="${url.replaceAll('&', '&amp;')}"`)
   })
 
   it('omits the headers when no unsubscribe URL is supplied', () => {

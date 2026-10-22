@@ -39,6 +39,7 @@ import { getGrowthEventsCollection } from '../db.js'
 import { utmQuery } from './utm.js'
 import { excludeMinorUsers } from '../family/family-permissions.js'
 import { recordSpend, spendCost } from '../spend-ledger.js'
+import { button, escapeHtml, renderEmail } from '../email/layout.js'
 
 const log = createLogger({ service: 'lifecycle', version: '0.0.0' })
 
@@ -246,17 +247,20 @@ async function claimedSendKeys(db: Db, filter: Record<string, unknown>): Promise
   )
 }
 
-export function wrap(body: string, unsubLink?: string): string {
-  return `<div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;color:#0e2433;">
-${body}
-<p style="color:#6b8391;font-size:11px;margin-top:32px;border-top:1px solid #cfdce0;padding-top:12px;">
-LifeKeel — your family's chart, kept current. Informational only, not financial advice.${unsubLink ? ` <a href="${unsubLink}" style="color:#6b8391;">Unsubscribe</a>` : ''}
-</p></div>`
+/** Lifecycle and campaign emails in the shared branded layout. `title` is the hero heading. */
+export function wrap(body: string, unsubLink?: string, title?: string): string {
+  return renderEmail({
+    preheader: title ?? "LifeKeel — your family's chart, kept current.",
+    title,
+    bodyHtml: body.replaceAll('<p>', '<p style="margin:0 0 16px;">'),
+    footer: {
+      reason: 'You got this because you signed up for LifeKeel or its updates.',
+      unsubscribeUrl: unsubLink,
+    },
+  })
 }
 
-// Brass call to action with the dark label, as on the website (landing.css tokens).
-export const cta = (url: string, label: string) =>
-  `<a href="${url}" style="display:inline-block;padding:12px 22px;background:#d9a441;color:#14202a;border-radius:10px;text-decoration:none;font-weight:600;margin:16px 0;">${label}</a>`
+export const cta = (url: string, label: string) => button({ url, label })
 
 // ── Email bodies (informational only — never advice/arranging) ──────────────
 // Exported so the copy test can run every body through the marketing copy guard.
@@ -264,7 +268,7 @@ export const cta = (url: string, label: string) =>
 export function leadWelcomeBody(firstName: string, appUrl: string, unsub: string): string {
   return wrap(
     `
-    <p>Hi ${firstName},</p>
+    <p>Hi ${escapeHtml(firstName)},</p>
     <p>Thanks for joining the LifeKeel newsletter.</p>
     <p>LifeKeel keeps your family's chart: what you hold on file across savings, cover and papers,
     what looks missing, and the steps if something happens. It is free to start, and nothing is
@@ -272,13 +276,14 @@ export function leadWelcomeBody(firstName: string, appUrl: string, unsub: string
     ${cta(`${appUrl}/signup?${utmQuery({ source: 'lifecycle', medium: 'email', campaign: 'lead_nurture', content: 'welcome' })}`, 'Start free')}
   `,
     unsub,
+    'Welcome to LifeKeel',
   )
 }
 
 export function leadEducationBody(firstName: string, appUrl: string, unsub: string): string {
   return wrap(
     `
-    <p>Hi ${firstName},</p>
+    <p>Hi ${escapeHtml(firstName)},</p>
     <p>Three things families often find out late: an emergency buffer that looks fine until income
     stops, cover that is on file for one person but not another, and an education fund that has
     fallen behind its target.</p>
@@ -288,66 +293,88 @@ export function leadEducationBody(firstName: string, appUrl: string, unsub: stri
     ${cta(`${appUrl}/signup?${utmQuery({ source: 'lifecycle', medium: 'email', campaign: 'lead_nurture', content: 'day3' })}`, 'Put your family on the chart')}
   `,
     unsub,
+    'Three things families often find out late',
   )
 }
 
 export function leadLastCallBody(firstName: string, appUrl: string, unsub: string): string {
   return wrap(
     `
-    <p>Hi ${firstName},</p>
+    <p>Hi ${escapeHtml(firstName)},</p>
     <p>One last note from us. If the timing is not right, no problem; if you would rather not hear
     from us again, the unsubscribe link below is one click.</p>
     ${cta(`${appUrl}/signup?${utmQuery({ source: 'lifecycle', medium: 'email', campaign: 'lead_nurture', content: 'day7' })}`, 'Start free')}
   `,
     unsub,
+    'Still here when you\u2019re ready',
   )
 }
 
 export function activationBody(firstName: string, appUrl: string): string {
-  return wrap(`
-    <p>Hi ${firstName},</p>
+  return wrap(
+    `
+    <p>Hi ${escapeHtml(firstName)},</p>
     <p>Your LifeKeel account is set up. The last step is your family profile, which takes a few
     minutes. Until it is filled in, there is nothing on your chart for LifeKeel to check.</p>
     ${cta(`${appUrl}/family-setup?${utmQuery({ source: 'lifecycle', medium: 'email', campaign: 'activation' })}`, 'Finish family setup')}
-  `)
+  `,
+    undefined,
+    'One step left — your family profile',
+  )
 }
 
-export function upgradeBody(firstName: string, appUrl: string): string {
-  return wrap(`
-    <p>Hi ${firstName},</p>
+export function upgradeBody(firstName: string, appUrl: string, unsub?: string): string {
+  return wrap(
+    `
+    <p>Hi ${escapeHtml(firstName)},</p>
     <p>You have been using LifeKeel for a while. Keel Plus (£7.99 a month, cancel any time) adds two
     things the free plan does not: reading policy details from an uploaded document for you to
     confirm, and plain-language summaries of the financial email you connect.</p>
     ${cta(`${appUrl}/upgrade?${utmQuery({ source: 'lifecycle', medium: 'email', campaign: 'upgrade' })}`, 'See Keel Plus')}
-  `)
+  `,
+    unsub,
+    'What Keel Plus adds',
+  )
 }
 
 export function trialEndingBody(firstName: string, endsAt: Date, appUrl: string): string {
   const date = endsAt.toLocaleDateString('en-GB', { month: 'long', day: 'numeric' })
-  return wrap(`
-    <p>Hi ${firstName},</p>
+  return wrap(
+    `
+    <p>Hi ${escapeHtml(firstName)},</p>
     <p>Your LifeKeel trial ends <strong>${date}</strong>. After that, document reading and email
     summaries pause. Everything already extracted stays where it is.</p>
     ${cta(`${appUrl}/upgrade?${utmQuery({ source: 'lifecycle', medium: 'email', campaign: 'trial', content: 'ending' })}`, 'See Keel Plus')}
-  `)
+  `,
+    undefined,
+    'Your LifeKeel trial ends soon',
+  )
 }
 
 export function trialExpiredBody(firstName: string, appUrl: string): string {
-  return wrap(`
-    <p>Hi ${firstName},</p>
+  return wrap(
+    `
+    <p>Hi ${escapeHtml(firstName)},</p>
     <p>Your LifeKeel trial has ended, so document reading and email summaries are paused. Your
     documents, insights and everything already found are untouched.</p>
     ${cta(`${appUrl}/upgrade?${utmQuery({ source: 'lifecycle', medium: 'email', campaign: 'trial', content: 'expired' })}`, 'See Keel Plus')}
-  `)
+  `,
+    undefined,
+    'Your trial has ended',
+  )
 }
 
-export function winbackBody(firstName: string, appUrl: string): string {
-  return wrap(`
-    <p>Hi ${firstName},</p>
+export function winbackBody(firstName: string, appUrl: string, unsub?: string): string {
+  return wrap(
+    `
+    <p>Hi ${escapeHtml(firstName)},</p>
     <p>Your Keel Plus subscription has ended and your account is back on the free plan. Nothing was
     deleted: your family's profile, documents and every insight are still there.</p>
     ${cta(`${appUrl}/upgrade?${utmQuery({ source: 'lifecycle', medium: 'email', campaign: 'winback' })}`, 'See your account')}
-  `)
+  `,
+    unsub,
+    'Your Keel data is still here',
+  )
 }
 
 // ── The sweep ─────────────────────────────────────────────────────────────
@@ -598,7 +625,7 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
         await db
           .collection('users')
           .find(
-            { tenant_id: { $in: [...stillFree] }, status: 'active' },
+            { tenant_id: { $in: [...stillFree] }, status: 'active', email_opt_out: { $ne: true } },
             { projection: { _id: 0, id: 1, email: 1, name: 1, tenant_id: 1 } },
           )
           .limit(500)
@@ -618,7 +645,11 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
           recipient: u['id'] as string,
           email: u['email'] as string,
           subject: 'Your Keel data is still here',
-          html: winbackBody(String(u['name'] ?? 'there').split(' ')[0] || 'there', appUrl),
+          html: winbackBody(
+            String(u['name'] ?? 'there').split(' ')[0] || 'there',
+            appUrl,
+            userUnsubUrl(appUrl, String(u['id'])),
+          ),
         })
       }
     }
@@ -662,7 +693,10 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
       db,
       await db
         .collection('users')
-        .find(userFilter, { projection: { _id: 0, id: 1, email: 1, name: 1, tenant_id: 1 } })
+        .find(
+          { ...userFilter, email_opt_out: { $ne: true } },
+          { projection: { _id: 0, id: 1, email: 1, name: 1, tenant_id: 1 } },
+        )
         .toArray(),
     )
     const tenantIds = [...new Set(users.map((u) => u['tenant_id'] as string))]
@@ -700,7 +734,11 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
         recipient: u['id'] as string,
         email: u['email'] as string,
         subject: 'What Keel Plus adds',
-        html: upgradeBody(String(u['name'] ?? 'there').split(' ')[0] || 'there', appUrl),
+        html: upgradeBody(
+          String(u['name'] ?? 'there').split(' ')[0] || 'there',
+          appUrl,
+          userUnsubUrl(appUrl, String(u['id'])),
+        ),
       })
     }
   }
@@ -750,7 +788,11 @@ export async function runLifecycleSweep(
         job.email,
         job.subject,
         job.html,
-        job.leadId ? unsubUrl(appUrl, job.leadId) : undefined,
+        job.leadId
+          ? unsubUrl(appUrl, job.leadId)
+          : ['upgrade', 'winback'].includes(job.sequence)
+            ? userUnsubUrl(appUrl, job.recipient)
+            : undefined,
         { lk: job.key },
       )
       await settleSend(

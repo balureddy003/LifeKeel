@@ -6,6 +6,7 @@
  * it never recommends a product or action beyond "open the app".
  */
 import { buildDigestPushPayload } from '../delivery/push-payload.js'
+import { EMAIL_COLORS, button } from '../email/layout.js'
 
 export interface HeartbeatData {
   /** 'week' | 'month' — matched to the tenant's heartbeat_cadence. */
@@ -104,8 +105,8 @@ export function renderHeartbeat(d: HeartbeatData): RenderedHeartbeat {
     <p>Hi,</p>
     <p>Here's what moved in your family's readiness this ${d.period}:</p>
     <ul style="padding-left:18px;">${items}</ul>
-    <p><a href="${d.app_url}" style="display:inline-block;padding:12px 20px;background:#7c6ef0;color:#fff;border-radius:10px;text-decoration:none;font-weight:600;">Open LifeKeel</a></p>
-    <p style="color:#888;font-size:13px;"><a href="${footerUrl}" style="color:#888;">Why you got this · Manage notifications</a></p>
+    ${button({ url: d.app_url, label: 'Open LifeKeel' })}
+    <p style="color:${EMAIL_COLORS.muted};font-size:13px;"><a href="${footerUrl}" style="color:${EMAIL_COLORS.muted};">Why you got this · Manage notifications</a></p>
   `
 
   return {
