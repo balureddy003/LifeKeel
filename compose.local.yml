@@ -1,0 +1,33 @@
+# Local backing services (MongoDB + Redis) for running apps/api and apps/web
+# natively with pnpm. Works with Podman and Docker:
+#   podman compose -f compose.local.yml up -d
+#   docker compose -f compose.local.yml up -d
+# Images are fully qualified because Podman does not default to docker.io.
+# Ports bind to 127.0.0.1 only. See STARTER.md.
+name: lifekeel-local
+
+services:
+  mongodb:
+    image: docker.io/library/mongo:7
+    ports:
+      - '127.0.0.1:27017:27017'
+    volumes:
+      - lifekeel_mongo:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', 'db.runCommand({ ping: 1 }).ok']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: docker.io/library/redis:7-alpine
+    ports:
+      - '127.0.0.1:6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  lifekeel_mongo:
