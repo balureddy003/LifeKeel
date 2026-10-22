@@ -168,7 +168,7 @@ concurrent calls:
 
 ```
 LOCAL_JUDGE_BASE_URL=https://<service> LOCAL_JUDGE_MODEL=qwen2.5:7b \
-LOCAL_JUDGE_BEARER=$(gcloud auth print-identity-token --audiences=https://<service>) \
+LOCAL_JUDGE_BEARER=$(gcloud auth print-identity-token) \   # user login; --audiences works only for service accounts
 LOAD_TEST_CONFIRM=yes node apps/api/dist/eval/judge-load-test.js
 ```
 
