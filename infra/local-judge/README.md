@@ -164,6 +164,22 @@ concurrent calls:
 - Numbers come from one 4-core sandbox and a small email sample; load-test on the
   real instance type before sizing production.
 
+### Re-measuring: `judge-load-test`
+
+```
+LOCAL_JUDGE_BASE_URL=https://<service> LOCAL_JUDGE_MODEL=qwen2.5:7b \
+LOCAL_JUDGE_BEARER=$(gcloud auth print-identity-token --audiences=https://<service>) \
+LOAD_TEST_CONFIRM=yes node apps/api/dist/eval/judge-load-test.js
+```
+
+It sends production-shaped email classifications at 1, 2 and 4 concurrent calls
+(`LOAD_TEST_LEVELS`, `LOAD_TEST_REQUESTS` per level, default 6) and prints p50/p95/max
+latency, calls per minute and errors. It then sends a long prompt with a code at its
+start: a wrong answer means the server truncated it, i.e. `num_ctx` is not taking effect.
+It refuses to run against a non-local URL without `LOAD_TEST_CONFIRM=yes` because every
+call consumes instance time and wakes a scaled-to-zero service. Exit code 1 on any
+error or a failed context check. A run on a laptop is only a smoke test of the script.
+
 ## Metrics
 
 Exposed on the Prometheus endpoint: `lifekeel_local_model_calls_total{purpose,outcome}`,

@@ -42,6 +42,7 @@ export {
 export { CostLedger, computeCost, formatMicroDollars } from './cost-ledger.js'
 export type { LlmUsageRecord, CostSummary, ModelPricing } from './cost-ledger.js'
 export { createLocalDecisionFn, LocalDecisionError } from './local-decision.js'
+export { ollamaNumCtx, DEFAULT_OLLAMA_NUM_CTX } from './ollama-options.js'
 export type {
   DecisionFn,
   LocalDecisionConfig,
