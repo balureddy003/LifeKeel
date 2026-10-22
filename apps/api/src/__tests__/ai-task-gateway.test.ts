@@ -263,13 +263,13 @@ describe('AI processor registry (PRD-142)', () => {
     }
   })
 
-  it('no hosted processor is claimed as reviewed until the owner supplies terms', () => {
+  it('only owner-approved hosted processors are marked approved', () => {
     // If this fails because you approved a processor: good, update the list here
     // and make sure the entry carries real terms (the loader already insists).
     const approved = [...processors().values()].filter((e) => e.status === 'approved')
-    expect(approved.map((e) => e.id)).toEqual([])
+    expect(approved.map((e) => e.id)).toEqual(['azure'])
     for (const e of processors().values()) {
-      if (e.hosting === 'hosted') expect(e.status).toBe('unreviewed')
+      if (e.hosting === 'hosted' && e.id !== 'azure') expect(e.status).toBe('unreviewed')
     }
   })
 
@@ -427,7 +427,9 @@ describe('AI processor registry (PRD-142)', () => {
       sub_processors: null,
       review_due: null,
     })
-    expect(d.processors.every((p) => p.status !== 'approved')).toBe(true)
+    // Azure is owner-approved (2026-10-22); the rest of hosted stays unreviewed.
+    expect(byId['azure']?.status).toBe('approved')
+    expect(d.processors.every((p) => p.id === 'azure' || p.status !== 'approved')).toBe(true)
     const where = Object.fromEntries(d.tasks.map((t) => [t.task_id, t.where]))
     expect(where['draft.crisis_on_device.v1']).toBe('device')
     expect(where['assistant.youth_answer.v1']).toBe('lifekeel')

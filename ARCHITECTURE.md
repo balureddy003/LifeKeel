@@ -1530,9 +1530,9 @@ Remaining debt:
    (`ProcessorPolicyError`, never a fallback to another provider).
    `AI_PROCESSOR_ENFORCEMENT` is `off | warn | enforce`, default `warn`: it
    logs and counts (`lifekeel_ai_processor_violations_total`) and still serves
-   the call. **Every hosted processor is `unreviewed` today** (no signed terms
-   have been supplied), so `enforce` would refuse every hosted call; flip it
-   only after the processors a deployment uses are approved. A
+   the call. **Azure OpenAI is approved** (owner decision, 2026-10-22, default
+   abuse-monitoring retention); anthropic, openai and groq remain `unreviewed`
+   and are refused under `enforce`. A
    `lifekeel_infra` task still falls back to hosted when the local model is
    off; the check flags that fallback, it does not stop it in `warn`.
    Subprocessor and terms review stays a human/legal process. A read-only
