@@ -3404,6 +3404,36 @@ export async function downloadFamilyReceiptsCsv(): Promise<boolean> {
   }
 }
 
+// ── Earned-Scope Contracts (PRD-214, M5) — autonomy as an artifact ────────
+
+export interface ScopeContract {
+  scope_id: string
+  template_version: number
+  title: string
+  /** The grant in plain language — the sentence the family said yes to. */
+  terms_text: string
+  /** What the scope can never do — stated, not implied. */
+  boundary_text: string
+  scope_class: 'notification'
+  state: 'granted' | 'suspended' | 'collapsed' | 'not_granted'
+  enabled: boolean
+  granted_at?: string
+  granted_by?: string
+  suspended_at?: string
+  suspend_reason?: string
+  collapsed_at?: string
+  collapse_reason?: string
+  adjustments: Array<{ at: string; kind: 'downward'; reason: string; detail: string }>
+  history: Array<{ at: string; event: string; actor: string; note?: string }>
+  evidence: Record<string, number>
+}
+
+export async function fetchScopeContracts(): Promise<ScopeContract[]> {
+  return apiFetch<{ contracts: ScopeContract[] }>('/family/scope-contracts', {
+    contracts: [],
+  }).then((r) => r.contracts ?? [])
+}
+
 // ── Password reset & email verification ─────────────────────────────────
 
 // Someone reaching these is very possibly locked out of an account they

@@ -35,13 +35,14 @@ import { createHash, randomUUID } from 'node:crypto'
 import { createLogger } from '@lifekeel/platform'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
+import { maybeSuspendScopeOnFailures } from '../family/scope-contracts.js'
 
 const log = createLogger({ service: 'policy-renewal-reminders', version: '0.0.0' })
 
 export const DEFAULT_LEAD_DAYS = [30, 7]
 const MAX_SEND_ATTEMPTS = 6
 const RETRY_BACKOFF_MS = 60 * 60 * 1000 // 1h × attempts — a reminder is not urgent enough to hot-loop
-const STALE_CLAIM_MS = 10 * 60 * 1000  // a 'sending' claim older than this crashed mid-dispatch
+const STALE_CLAIM_MS = 10 * 60 * 1000 // a 'sending' claim older than this crashed mid-dispatch
 const DISPATCH_LIMIT = 200
 
 export interface PolicyReminderDoc {
@@ -51,7 +52,7 @@ export interface PolicyReminderDoc {
   dedupe_key: string
   policy_fingerprint: string
   policy: { type: string; provider: string; member_id?: string; policy_number?: string }
-  renewal_date: string            // ISO 'YYYY-MM-DD' as entered on the profile
+  renewal_date: string // ISO 'YYYY-MM-DD' as entered on the profile
   lead_days: number
   due_at: Date
   next_attempt_at?: Date
@@ -95,12 +96,24 @@ interface ProfilePolicy {
  */
 function policyFingerprint(policy: ProfilePolicy): string {
   return createHash('sha256')
-    .update([policy.type ?? '', policy.provider ?? '', policy.member_id ?? '', policy.policy_number ?? ''].join('|'))
+    .update(
+      [
+        policy.type ?? '',
+        policy.provider ?? '',
+        policy.member_id ?? '',
+        policy.policy_number ?? '',
+      ].join('|'),
+    )
     .digest('hex')
     .slice(0, 24)
 }
 
-function dedupeKey(tenantId: string, fingerprint: string, renewalDate: string, leadDays: number): string {
+function dedupeKey(
+  tenantId: string,
+  fingerprint: string,
+  renewalDate: string,
+  leadDays: number,
+): string {
   return createHash('sha256')
     .update([tenantId, 'policy_renewal', fingerprint, renewalDate, String(leadDays)].join('|'))
     .digest('hex')
@@ -108,11 +121,18 @@ function dedupeKey(tenantId: string, fingerprint: string, renewalDate: string, l
 
 function validLeadDays(value: unknown): number[] {
   if (!Array.isArray(value)) return DEFAULT_LEAD_DAYS
-  const days = value.filter((d): d is number => Number.isInteger(d) && d >= 1 && d <= 365).slice(0, 5)
+  const days = value
+    .filter((d): d is number => Number.isInteger(d) && d >= 1 && d <= 365)
+    .slice(0, 5)
   return days.length > 0 ? days : DEFAULT_LEAD_DAYS
 }
 
-function audit(tenantId: string, action: 'reminder.sent' | 'reminder.cancelled', reminderId: string, metadata: Record<string, unknown>): void {
+function audit(
+  tenantId: string,
+  action: 'reminder.sent' | 'reminder.cancelled',
+  reminderId: string,
+  metadata: Record<string, unknown>,
+): void {
   getAuditLogger()?.log({
     tenant_id: tenantId,
     user_id: 'system',
@@ -133,7 +153,10 @@ function audit(tenantId: string, action: 'reminder.sent' | 'reminder.cancelled',
  */
 export async function runPolicyRenewalReminders(
   db: Db,
-  deliver: (tenantId: string, reminder: { id: string; title: string; body: string; url: string }) => Promise<'sent' | 'deferred' | 'failed' | 'no_channel'>,
+  deliver: (
+    tenantId: string,
+    reminder: { id: string; title: string; body: string; url: string },
+  ) => Promise<'sent' | 'deferred' | 'failed' | 'no_channel'>,
   opts: { now?: Date; limit?: number; webBaseUrl?: string } = {},
 ): Promise<ReminderRunSummary> {
   const now = opts.now ?? new Date()
@@ -141,13 +164,19 @@ export async function runPolicyRenewalReminders(
   const reminders = db.collection<PolicyReminderDoc>('reminders')
   const profilesCol = db.collection('family_financial_profile')
   const settingsCol = db.collection('tenant_settings')
-  const summary: ReminderRunSummary = { scheduled: 0, cancelled: 0, sent: 0, failed: 0, deferred: 0 }
+  const summary: ReminderRunSummary = {
+    scheduled: 0,
+    cancelled: 0,
+    sent: 0,
+    failed: 0,
+    deferred: 0,
+  }
 
   // ── Phase 1+2: reconcile schedule with the current Family Twin ─────────
-  const profiles = await profilesCol
+  const profiles = (await profilesCol
     .find({})
     .project({ tenant_id: 1, policies: 1 })
-    .toArray() as Array<{ tenant_id: string; policies?: ProfilePolicy[] }>
+    .toArray()) as Array<{ tenant_id: string; policies?: ProfilePolicy[] }>
 
   for (const profile of profiles) {
     const tenantId = profile.tenant_id
@@ -205,7 +234,11 @@ export async function runPolicyRenewalReminders(
               direction: null,
               member_id: policy.member_id ?? null,
               domain: 'protection',
-              title: `${policy.provider ?? 'A'} ${typeLabel} policy renews on ${policy.renewal_date}`.slice(0, 120),
+              title:
+                `${policy.provider ?? 'A'} ${typeLabel} policy renews on ${policy.renewal_date}`.slice(
+                  0,
+                  120,
+                ),
               summary: `Renewal in ${lead} days — review the renewal terms before it rolls over.`,
               evidence: [
                 { label: 'Renews', value: policy.renewal_date },
@@ -213,7 +246,10 @@ export async function runPolicyRenewalReminders(
               ],
               links: [{ kind: 'profile_field', id: 'policies' }],
               next_check_at: new Date(renewalMs),
-              dedupe_key: buildDedupeKey('renewal_approaching', `${fingerprint}:${policy.renewal_date}:${lead}`),
+              dedupe_key: buildDedupeKey(
+                'renewal_approaching',
+                `${fingerprint}:${policy.renewal_date}:${lead}`,
+              ),
             })
           }
         }
@@ -224,8 +260,19 @@ export async function runPolicyRenewalReminders(
     // whose tenant disabled the feature — revocation is effective
     // immediately, not just for reminders created after the toggle.
     const result = await reminders.updateMany(
-      { tenant_id: tenantId, kind: 'policy_renewal', status: 'scheduled', dedupe_key: { $nin: [...expected] } },
-      { $set: { status: 'cancelled', cancelled_reason: enabled ? 'policy_changed' : 'reminders_disabled', updated_at: now } },
+      {
+        tenant_id: tenantId,
+        kind: 'policy_renewal',
+        status: 'scheduled',
+        dedupe_key: { $nin: [...expected] },
+      },
+      {
+        $set: {
+          status: 'cancelled',
+          cancelled_reason: enabled ? 'policy_changed' : 'reminders_disabled',
+          updated_at: now,
+        },
+      },
     )
     summary.cancelled += result.modifiedCount
   }
@@ -241,10 +288,7 @@ export async function runPolicyRenewalReminders(
       due_at: { $lte: now },
       $and: [
         {
-          $or: [
-            { status: 'scheduled' },
-            { status: 'sending', updated_at: { $lte: staleBefore } },
-          ],
+          $or: [{ status: 'scheduled' }, { status: 'sending', updated_at: { $lte: staleBefore } }],
         },
         {
           $or: [{ next_attempt_at: { $exists: false } }, { next_attempt_at: { $lte: now } }],
@@ -262,10 +306,7 @@ export async function runPolicyRenewalReminders(
     const claim = await reminders.findOneAndUpdate(
       {
         id: reminder.id,
-        $or: [
-          { status: 'scheduled' },
-          { status: 'sending', updated_at: { $lte: staleBefore } },
-        ],
+        $or: [{ status: 'scheduled' }, { status: 'sending', updated_at: { $lte: staleBefore } }],
       },
       { $set: { status: 'sending', updated_at: now } },
       { returnDocument: 'after' },
@@ -281,20 +322,33 @@ export async function runPolicyRenewalReminders(
     const automation = (settings?.['automation'] ?? {}) as Record<string, unknown>
     const enabled = automation['renewal_reminders_enabled'] === true
     const stillOnFile = ((profile?.['policies'] ?? []) as ProfilePolicy[]).some(
-      (p) => p.renewal_date === reminder.renewal_date && policyFingerprint(p) === reminder.policy_fingerprint,
+      (p) =>
+        p.renewal_date === reminder.renewal_date &&
+        policyFingerprint(p) === reminder.policy_fingerprint,
     )
 
     if (!enabled || !stillOnFile) {
       await reminders.updateOne(
         { id: reminder.id },
-        { $set: { status: 'cancelled', cancelled_reason: enabled ? 'policy_changed' : 'reminders_disabled', updated_at: new Date() } },
+        {
+          $set: {
+            status: 'cancelled',
+            cancelled_reason: enabled ? 'policy_changed' : 'reminders_disabled',
+            updated_at: new Date(),
+          },
+        },
       )
       summary.cancelled++
-      audit(reminder.tenant_id, 'reminder.cancelled', reminder.id, { reason: enabled ? 'policy_changed' : 'reminders_disabled' })
+      audit(reminder.tenant_id, 'reminder.cancelled', reminder.id, {
+        reason: enabled ? 'policy_changed' : 'reminders_disabled',
+      })
       continue
     }
 
-    const daysLeft = Math.max(0, Math.ceil((Date.parse(reminder.renewal_date) - now.getTime()) / 86_400_000))
+    const daysLeft = Math.max(
+      0,
+      Math.ceil((Date.parse(reminder.renewal_date) - now.getTime()) / 86_400_000),
+    )
     const typeLabel = reminder.policy.type.replace(/_/g, ' ')
     const result = await deliver(reminder.tenant_id, {
       id: reminder.id,
@@ -309,7 +363,10 @@ export async function runPolicyRenewalReminders(
         { $set: { status: 'sent', sent_at: new Date(), updated_at: new Date() } },
       )
       summary.sent++
-      audit(reminder.tenant_id, 'reminder.sent', reminder.id, { renewal_date: reminder.renewal_date, lead_days: reminder.lead_days })
+      audit(reminder.tenant_id, 'reminder.sent', reminder.id, {
+        renewal_date: reminder.renewal_date,
+        lead_days: reminder.lead_days,
+      })
     } else if (result === 'failed') {
       const attempts = reminder.attempts + 1
       await reminders.updateOne(
@@ -319,14 +376,28 @@ export async function runPolicyRenewalReminders(
             status: attempts >= MAX_SEND_ATTEMPTS ? 'failed' : 'scheduled',
             attempts,
             last_error: 'push delivery failed',
-            ...(attempts < MAX_SEND_ATTEMPTS ? { next_attempt_at: new Date(now.getTime() + attempts * RETRY_BACKOFF_MS) } : {}),
+            ...(attempts < MAX_SEND_ATTEMPTS
+              ? { next_attempt_at: new Date(now.getTime() + attempts * RETRY_BACKOFF_MS) }
+              : {}),
             updated_at: new Date(),
           },
         },
       )
       if (attempts >= MAX_SEND_ATTEMPTS) {
         summary.failed++
-        log.error({ reminder_id: reminder.id, tenant_id: reminder.tenant_id, attempts }, 'Policy renewal reminder exhausted retries')
+        log.error(
+          { reminder_id: reminder.id, tenant_id: reminder.tenant_id, attempts },
+          'Policy renewal reminder exhausted retries',
+        )
+        // Earned-scope contract (PRD-214): repeated delivery failure means the
+        // granted channel is not working — the scope suspends itself downward
+        // and can only come back through a new explicit family grant.
+        await maybeSuspendScopeOnFailures(db, reminder.tenant_id).catch((err: unknown) =>
+          log.warn(
+            { err: String(err), tenant_id: reminder.tenant_id },
+            'scope suspension check failed',
+          ),
+        )
       } else {
         summary.deferred++
       }
