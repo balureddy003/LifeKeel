@@ -25,6 +25,8 @@ export interface EmailSummaryReport {
   model: string
   unsafe: string[]
   missingSummary: string[]
+  /** Policy emails the model judged not relevant. Gated by local-model-eval.ts (recall), reported here. */
+  missedRelevance: string[]
   fieldsRight: number
   fieldsLabelled: number
   failed: string[]
@@ -41,6 +43,7 @@ export async function runEmailSummaryEval(
   }
   const unsafe: string[] = []
   const missingSummary: string[] = []
+  const missedRelevance: string[] = []
   const failed: string[] = []
   let fieldsRight = 0
   let fieldsLabelled = 0
@@ -61,6 +64,12 @@ export async function runEmailSummaryEval(
     )
     if (r.failed) {
       failed.push(e.name)
+      continue
+    }
+    if (!r.isFinancial) {
+      // A relevance miss, already counted in local-model-eval's recall gate;
+      // there is no summary to judge, so it must not also fail this one.
+      missedRelevance.push(e.name)
       continue
     }
     const source = `${e.subject}\n${e.textSnippet}`
@@ -102,7 +111,7 @@ export async function runEmailSummaryEval(
       detail: unsafe.length ? unsafe.join(', ') : 'none',
     },
     {
-      name: 'every policy email gets a summary',
+      name: 'every email the model judged relevant gets a summary',
       passed: missingSummary.length === 0,
       detail: missingSummary.length ? missingSummary.join(', ') : 'all summarised',
     },
@@ -121,6 +130,7 @@ export async function runEmailSummaryEval(
     model,
     unsafe,
     missingSummary,
+    missedRelevance,
     fieldsRight,
     fieldsLabelled,
     failed,
@@ -132,6 +142,10 @@ export async function runEmailSummaryEval(
 export function formatEmailSummaryReport(r: EmailSummaryReport): string {
   const lines = [`Email summary eval: ${r.model}`, '']
   for (const g of r.gates) lines.push(`${g.passed ? 'PASS' : 'FAIL'}  ${g.name}  (${g.detail})`)
+  lines.push(
+    '',
+    `Judged not relevant, so not summarised (gated by local-model-eval recall): ${r.missedRelevance.length ? r.missedRelevance.join(', ') : 'none'}`,
+  )
   lines.push('', r.passed ? 'RESULT: model meets the gates' : 'RESULT: model FAILS the gates')
   return lines.join('\n')
 }
