@@ -39,6 +39,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { DEFAULT_LEAD_DAYS } from '../jobs/policy-renewal-reminders.js'
+import { grantScope, collapseScope } from '../family/scope-contracts.js'
 
 interface AutomationDoc {
   dry_run_mode?: boolean
@@ -61,10 +62,12 @@ function toResponse(automation: AutomationDoc) {
 }
 
 function isValidLeadDays(value: unknown): value is number[] {
-  return Array.isArray(value)
-    && value.length >= 1
-    && value.length <= 5
-    && value.every((d) => Number.isInteger(d) && d >= 1 && d <= 365)
+  return (
+    Array.isArray(value) &&
+    value.length >= 1 &&
+    value.length <= 5 &&
+    value.every((d) => Number.isInteger(d) && d >= 1 && d <= 365)
+  )
 }
 
 export function registerAutomationSettingsRoutes(app: FastifyInstance, db: Db): void {
@@ -84,47 +87,56 @@ export function registerAutomationSettingsRoutes(app: FastifyInstance, db: Db): 
       auto_execute_enabled?: boolean
       daily_marketing_drafts_enabled?: boolean
     }
-  }>(
-    '/settings/automation',
-    async (request, reply) => {
-      const { tenant_id } = request.authContext
-      const { dry_run_mode, renewal_reminders_enabled, renewal_reminder_lead_days, auto_execute_enabled, daily_marketing_drafts_enabled } = request.body ?? {}
+  }>('/settings/automation', async (request, reply) => {
+    const { tenant_id } = request.authContext
+    const {
+      dry_run_mode,
+      renewal_reminders_enabled,
+      renewal_reminder_lead_days,
+      auto_execute_enabled,
+      daily_marketing_drafts_enabled,
+    } = request.body ?? {}
 
-      const set: Record<string, unknown> = {}
-      if (dry_run_mode !== undefined) {
-        if (typeof dry_run_mode !== 'boolean') {
-          return reply.status(400).send({ error: 'dry_run_mode must be a boolean' })
-        }
-        set['automation.dry_run_mode'] = dry_run_mode
+    const set: Record<string, unknown> = {}
+    if (dry_run_mode !== undefined) {
+      if (typeof dry_run_mode !== 'boolean') {
+        return reply.status(400).send({ error: 'dry_run_mode must be a boolean' })
       }
-      if (renewal_reminders_enabled !== undefined) {
-        if (typeof renewal_reminders_enabled !== 'boolean') {
-          return reply.status(400).send({ error: 'renewal_reminders_enabled must be a boolean' })
-        }
-        set['automation.renewal_reminders_enabled'] = renewal_reminders_enabled
+      set['automation.dry_run_mode'] = dry_run_mode
+    }
+    if (renewal_reminders_enabled !== undefined && typeof renewal_reminders_enabled !== 'boolean') {
+      return reply.status(400).send({ error: 'renewal_reminders_enabled must be a boolean' })
+    }
+    if (renewal_reminder_lead_days !== undefined) {
+      if (!isValidLeadDays(renewal_reminder_lead_days)) {
+        return reply
+          .status(400)
+          .send({ error: 'renewal_reminder_lead_days must be 1–5 integers between 1 and 365' })
       }
-      if (renewal_reminder_lead_days !== undefined) {
-        if (!isValidLeadDays(renewal_reminder_lead_days)) {
-          return reply.status(400).send({ error: 'renewal_reminder_lead_days must be 1–5 integers between 1 and 365' })
-        }
-        set['automation.renewal_reminder_lead_days'] = renewal_reminder_lead_days
+      set['automation.renewal_reminder_lead_days'] = renewal_reminder_lead_days
+    }
+    if (auto_execute_enabled !== undefined) {
+      if (typeof auto_execute_enabled !== 'boolean') {
+        return reply.status(400).send({ error: 'auto_execute_enabled must be a boolean' })
       }
-      if (auto_execute_enabled !== undefined) {
-        if (typeof auto_execute_enabled !== 'boolean') {
-          return reply.status(400).send({ error: 'auto_execute_enabled must be a boolean' })
-        }
-        set['automation.auto_execute_enabled'] = auto_execute_enabled
+      set['automation.auto_execute_enabled'] = auto_execute_enabled
+    }
+    if (daily_marketing_drafts_enabled !== undefined) {
+      if (typeof daily_marketing_drafts_enabled !== 'boolean') {
+        return reply.status(400).send({ error: 'daily_marketing_drafts_enabled must be a boolean' })
       }
-      if (daily_marketing_drafts_enabled !== undefined) {
-        if (typeof daily_marketing_drafts_enabled !== 'boolean') {
-          return reply.status(400).send({ error: 'daily_marketing_drafts_enabled must be a boolean' })
-        }
-        set['automation.daily_marketing_drafts_enabled'] = daily_marketing_drafts_enabled
-      }
-      if (Object.keys(set).length === 0) {
-        return reply.status(400).send({ error: 'Provide at least one of: dry_run_mode, renewal_reminders_enabled, renewal_reminder_lead_days, auto_execute_enabled, daily_marketing_drafts_enabled' })
-      }
+      set['automation.daily_marketing_drafts_enabled'] = daily_marketing_drafts_enabled
+    }
+    if (Object.keys(set).length === 0 && renewal_reminders_enabled === undefined) {
+      return reply
+        .status(400)
+        .send({
+          error:
+            'Provide at least one of: dry_run_mode, renewal_reminders_enabled, renewal_reminder_lead_days, auto_execute_enabled, daily_marketing_drafts_enabled',
+        })
+    }
 
+    if (Object.keys(set).length > 0) {
       await col.updateOne(
         { tenant_id },
         {
@@ -133,13 +145,29 @@ export function registerAutomationSettingsRoutes(app: FastifyInstance, db: Db): 
         },
         { upsert: true },
       )
+    }
 
-      getAuditLogger()?.fromRequest(request, 'settings.update', 'settings', 'automation', {
-        ...set,
-      })
+    // PRD-214: this flag is the policy_renewal_reminders scope contract —
+    // flip it through the contract so the grant/collapse artifact and its
+    // history stay the single ledger of who gave Keel what. Runs after all
+    // validation so a bad sibling field can't half-apply the request.
+    if (renewal_reminders_enabled !== undefined) {
+      const { user_id } = request.authContext
+      if (renewal_reminders_enabled) {
+        await grantScope(db, tenant_id, 'policy_renewal_reminders', user_id, request)
+      } else {
+        await collapseScope(db, tenant_id, 'policy_renewal_reminders', user_id, undefined, request)
+      }
+    }
 
-      const doc = await col.findOne({ tenant_id })
-      return toResponse((doc?.['automation'] as AutomationDoc | undefined) ?? {})
-    },
-  )
+    getAuditLogger()?.fromRequest(request, 'settings.update', 'settings', 'automation', {
+      ...set,
+      ...(renewal_reminders_enabled !== undefined
+        ? { 'automation.renewal_reminders_enabled': renewal_reminders_enabled }
+        : {}),
+    })
+
+    const doc = await col.findOne({ tenant_id })
+    return toResponse((doc?.['automation'] as AutomationDoc | undefined) ?? {})
+  })
 }

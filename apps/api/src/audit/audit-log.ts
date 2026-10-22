@@ -85,6 +85,9 @@ export type AuditAction =
   | 'insight.auto_execute'
   | 'reminder.sent'
   | 'reminder.cancelled'
+  | 'scope_contract.grant'
+  | 'scope_contract.collapse'
+  | 'scope_contract.suspend'
   | 'marketing.post_approve'
   | 'marketing.post_reject'
   | 'marketing.post_auto_publish'
@@ -152,7 +155,10 @@ export class AuditLogger {
       // TTL index: auto-delete after 7 years (retention policy)
       this.col.createIndex({ timestamp: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 365 * 7 }),
     ]).catch((err: unknown) =>
-      auditLog.error({ err: String(err) }, 'Audit log index creation failed — retention TTL may be missing'),
+      auditLog.error(
+        { err: String(err) },
+        'Audit log index creation failed — retention TTL may be missing',
+      ),
     )
   }
 

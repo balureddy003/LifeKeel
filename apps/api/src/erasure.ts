@@ -59,6 +59,7 @@ export const DELETABLE_COLLECTIONS = [
   'readiness_events',
   'heartbeat_sends',
   'tenant_settings',
+  'scope_contracts', // PRD-214 — earned-scope grant/collapse artifacts
   'connector_credentials',
   'action_receipts',
   'agent_memory',
