@@ -143,7 +143,7 @@ function makeDb(inboxSeed: Record<string, unknown>[] = [], profileSeed: Record<s
 async function buildApp(db: any, engine?: Engine) {
   const app = Fastify()
   app.addHook('onRequest', async (request) => {
-    ;(request as any).authContext = { tenant_id: TENANT, user_id: 'user-1' }
+    ;(request as any).authContext = { tenant_id: TENANT, user_id: 'user-1', roles: ['admin'] }
   })
   const insights: Insight[] = []
   registerFamilyInboxRoutes(app, db, engine, async (generated) => {

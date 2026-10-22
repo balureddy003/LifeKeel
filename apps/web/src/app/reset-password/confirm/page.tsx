@@ -7,6 +7,7 @@ import { PasswordInput } from '@/components/PasswordInput'
 import { confirmPasswordReset } from '@/lib/api'
 import { haptic } from '@/lib/haptics'
 import { AuthShell } from '@/components/landing/AuthShell'
+import { readLinkToken } from '@/lib/link-token'
 
 export default function ConfirmPasswordResetPage() {
   const router = useRouter()
@@ -24,8 +25,7 @@ export default function ConfirmPasswordResetPage() {
   // and when there's genuinely no token in the URL, so `checked` is what
   // actually distinguishes "still loading" from "checked, none found".
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    setToken(params.get('token'))
+    setToken(readLinkToken())
     setChecked(true)
   }, [])
 

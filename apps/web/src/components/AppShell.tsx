@@ -441,6 +441,8 @@ const PUBLIC_CONTENT_PREFIXES = [
   '/guides',
   '/terms',
   '/privacy',
+  '/cookies',
+  '/legal',
   '/support',
   '/readiness',
   '/trust',
@@ -478,6 +480,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/terms') ||
     pathname.startsWith('/privacy') ||
+    pathname.startsWith('/cookies') ||
+    pathname.startsWith('/legal') ||
     pathname.startsWith('/trust') ||
     pathname.startsWith('/security') ||
     pathname.startsWith('/support') ||
@@ -723,6 +727,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/terms') ||
     pathname.startsWith('/privacy') ||
+    pathname.startsWith('/cookies') ||
+    pathname.startsWith('/legal') ||
     pathname.startsWith('/trust') ||
     pathname.startsWith('/security') ||
     pathname.startsWith('/support') ||
@@ -785,6 +791,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     '/privacy',
     '/trust',
     '/security',
+    '/cookies',
+    '/legal',
     '/support',
     '/blog',
     '/guides',

@@ -19,6 +19,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import Stripe from 'stripe'
+import { TERMINAL_TENANT_STATUSES } from '../billing/cancel-on-delete.js'
 import { redeemPromoCode } from '../billing/promo-codes.js'
 import {
   PLAN_QUOTAS,
@@ -53,20 +54,51 @@ function adminAuthorized(headers: Record<string, unknown>): boolean {
 // index on event_id to make a concurrent/replayed claim fail atomically
 // (duplicate-key error) rather than needing a separate read step at all.
 
-async function claimWebhookEvent(db: Db, eventId: string, eventType: string): Promise<boolean> {
+type WebhookClaim = 'claimed' | 'completed' | 'in_progress'
+
+/** How long one delivery may hold an event before another delivery can take it over. */
+const WEBHOOK_LEASE_MS = 5 * 60 * 1000
+
+/**
+ * R10: a claim is a lease, not a permanent mark. A completed event is a
+ * duplicate. An event that failed, or whose processing lease expired (the
+ * process crashed mid-way), is reclaimed by the next delivery, so Stripe's
+ * automatic retries and dashboard re-delivery both recover it. A delivery
+ * that overlaps a live lease gets a retryable error.
+ */
+async function claimWebhookEvent(db: Db, eventId: string, eventType: string): Promise<WebhookClaim> {
+  const col = db.collection('stripe_webhook_events')
+  const now = new Date()
   try {
-    await db.collection('stripe_webhook_events').insertOne({
+    await col.insertOne({
       event_id: eventId,
       event_type: eventType,
       status: 'processing',
-      processed_at: new Date(),
+      attempts: 1,
+      lease_until: new Date(now.getTime() + WEBHOOK_LEASE_MS),
+      processed_at: now,
     })
-    return true
+    return 'claimed'
   } catch (err) {
-    if ((err as { code?: number }).code === 11000) return false
-    throw err
+    if ((err as { code?: number }).code !== 11000) throw err
   }
+  const reclaimed = await col.findOneAndUpdate(
+    {
+      event_id: eventId,
+      $or: [{ status: 'failed' }, { status: 'processing', lease_until: { $lt: now } }],
+    },
+    {
+      $set: { status: 'processing', lease_until: new Date(now.getTime() + WEBHOOK_LEASE_MS), reclaimed_at: now },
+      $inc: { attempts: 1 },
+    },
+  )
+  if (reclaimed) return 'claimed'
+  const existing = await col.findOne({ event_id: eventId }, { projection: { status: 1 } })
+  return existing?.['status'] === 'completed' ? 'completed' : 'in_progress'
 }
+
+/** Webhook writes never touch a tenant that is being or has been deleted (R09). */
+const LIVE_TENANT = { status: { $nin: [...TERMINAL_TENANT_STATUSES] } }
 
 // ── Promo code rate limiting (M8) ────────────────────────────────────────────
 //
@@ -442,19 +474,16 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
         return reply.status(400).send({ error: 'Webhook signature verification failed' })
       }
 
-      // KEEL-007: claim before any side effect runs — see claimWebhookEvent's
-      // doc comment. A false return means either a genuine replay or a
-      // concurrent delivery of the same event; either way, this call
-      // must not re-apply the switch below. Trade-off, deliberate: if the
-      // switch below throws partway through, the event is already
-      // claimed, so Stripe's automatic retry will be treated as a no-op
-      // duplicate rather than reprocessing — a stuck event needs manual
-      // investigation instead of silently retrying. For billing, a stuck
-      // webhook that pages someone is preferable to one that might
-      // silently double-grant credits or double-record a ledger entry.
+      // KEEL-007 / R10: claim before any side effect runs — see
+      // claimWebhookEvent. A failed or abandoned claim is retaken by the
+      // next delivery, so every effect below must be safe to run twice:
+      // plan and status writes are $set, and the one $inc (credit packs)
+      // is guarded by the event id recorded on the tenant.
       try {
-        if (!(await claimWebhookEvent(db, event.id, event.type))) {
-          return { received: true, duplicate: true }
+        const claim = await claimWebhookEvent(db, event.id, event.type)
+        if (claim === 'completed') return { received: true, duplicate: true }
+        if (claim === 'in_progress') {
+          return reply.status(409).send({ error: 'Event is being processed; retry later' })
         }
       } catch (error) {
         // Non-duplicate claim failure (e.g. Mongo down) — 500 so Stripe retries.
@@ -477,13 +506,15 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
             if (tenant_id && purchaseType === 'credit_pack') {
               const creditAmount = Number(session.metadata?.credit_amount ?? 0)
               if (creditAmount > 0) {
-                await db.collection('tenants').updateOne(
-                  { tenant_id },
+                const applied = await db.collection('tenants').updateOne(
+                  { tenant_id, ...LIVE_TENANT, 'billing.applied_event_ids': { $ne: event.id } },
                   {
                     $inc: { 'billing.credits_balance': creditAmount },
                     $set: { updated_at: new Date() },
-                  },
+                    $push: { 'billing.applied_event_ids': { $each: [event.id], $slice: -200 } },
+                  } as never,
                 )
+                if (applied.modifiedCount === 0) break
 
                 // Record in the append-only credit ledger
                 await recordLedgerEntry(db, {
@@ -526,7 +557,7 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
                 : Math.max(oldBalance, planBilling.credits_balance)
 
               await db.collection('tenants').updateOne(
-                { tenant_id },
+                { tenant_id, ...LIVE_TENANT },
                 {
                   $set: {
                     stripe_customer_id: session.customer as string,
@@ -625,7 +656,7 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
               updates['billing.cancel_at_period_end'] = subscription.cancel_at_period_end === true
             }
             await db.collection('tenants').updateOne(
-              { tenant_id: tenant['tenant_id'] },
+              { tenant_id: tenant['tenant_id'], ...LIVE_TENANT },
               { $set: updates },
             )
             break
@@ -653,7 +684,7 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
               // the churn reason.
               const cancelDetail = subscription.cancellation_details
               await db.collection('tenants').updateOne(
-                { tenant_id: tenant.tenant_id },
+                { tenant_id: tenant.tenant_id, ...LIVE_TENANT },
                 {
                   $set: {
                     plan: 'free',
@@ -709,7 +740,7 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
               // H6: Record the payment failure timestamp for grace period tracking
               recordPaymentFailure(tenant.tenant_id as string)
               await db.collection('tenants').updateOne(
-                { tenant_id: tenant.tenant_id },
+                { tenant_id: tenant.tenant_id, ...LIVE_TENANT },
                 {
                   $set: {
                     status: 'past_due',
@@ -769,7 +800,7 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
                 : Math.max(oldBalance, planBilling.credits_balance)
 
               await db.collection('tenants').updateOne(
-                { tenant_id: tenant.tenant_id },
+                { tenant_id: tenant.tenant_id, ...LIVE_TENANT },
                 {
                   $set: {
                     status: 'active',
@@ -826,7 +857,7 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
         ).catch(() => {})
         await sendBillingAlert({
           title: 'Stripe webhook processing failed',
-          message: `Event ${event.id} (${event.type}) was claimed but threw during processing — Stripe retries arrive as duplicates, so the event needs manual re-delivery after investigation. Error: ${errMsg.slice(0, 300)}`,
+          message: `Event ${event.id} (${event.type}) threw during processing. It is marked failed, so Stripe's next automatic retry (or a dashboard re-delivery) reprocesses it. Error: ${errMsg.slice(0, 300)}`,
           severity: 'critical',
         }).catch(() => {})
         recordWebhookError(event.type)
@@ -835,7 +866,7 @@ export function registerBillingRoutes(app: FastifyInstance, db: Db): void {
 
       await db.collection('stripe_webhook_events').updateOne(
         { event_id: event.id },
-        { $set: { status: 'completed' } },
+        { $set: { status: 'completed', completed_at: new Date() }, $unset: { lease_until: '' } },
       ).catch(() => {})
 
       return { received: true }

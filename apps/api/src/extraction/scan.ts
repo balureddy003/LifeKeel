@@ -27,6 +27,27 @@ export function scanConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
   return Boolean(env['CLAMD_HOST'])
 }
 
+/**
+ * Whether a file must be scanned before any parser (OCR, PDF extraction)
+ * touches it (R25). MALWARE_SCAN_REQUIRED=true|false; outside local dev/test
+ * the default is true, so with no scanner configured files are stored but
+ * not parsed. Sealed vault files are ciphertext and can't be scanned here.
+ */
+export function scanRequired(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = env['MALWARE_SCAN_REQUIRED']
+  if (raw === 'true') return true
+  if (raw === 'false') return false
+  const nodeEnv = env['NODE_ENV']
+  return !(!nodeEnv || nodeEnv === 'development' || nodeEnv === 'test')
+}
+
+/** May a parser run on a file with this scan result? */
+export function mayParse(scan: ScanResult, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (scan.result === 'clean') return true
+  if (scan.result === 'not_performed') return !scanRequired(env)
+  return false
+}
+
 export function scanUpload(
   data: Buffer,
   opts: { host?: string; port?: number; timeoutMs?: number } = {},

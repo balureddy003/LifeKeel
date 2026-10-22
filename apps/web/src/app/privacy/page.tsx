@@ -1,161 +1,232 @@
 import { AlertTriangle } from 'lucide-react'
+import Link from 'next/link'
 import { PageHeader } from '@/components/Glass'
+import { CookieSettingsButton } from './CookieSettingsButton'
 
-const EFFECTIVE_DATE = '[EFFECTIVE DATE — NOT YET SET]'
-const LEGAL_ENTITY = '[LEGAL ENTITY NAME, e.g. "LifeKeel, Inc."]'
-const CONTACT_EMAIL = '[privacy@yourdomain.example]'
+// Controller identity and contact come from the deployment, not from code
+// (R11). Until all three are set the page says so instead of showing
+// placeholder text as if it were real.
+const EFFECTIVE_DATE = process.env.NEXT_PUBLIC_PRIVACY_EFFECTIVE_DATE ?? ''
+const LEGAL_ENTITY = process.env.NEXT_PUBLIC_LEGAL_ENTITY ?? ''
+const CONTACT_EMAIL = process.env.NEXT_PUBLIC_PRIVACY_CONTACT ?? ''
+const READY = Boolean(EFFECTIVE_DATE && LEGAL_ENTITY && CONTACT_EMAIL)
+const WHO = LEGAL_ENTITY || 'the company operating LifeKeel (not yet named on this deployment)'
+const CONTACT = CONTACT_EMAIL || 'the support page'
 
-function H2({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-base font-semibold text-ink-primary mt-7 mb-2.5">{children}</h2>
+function H2({ children, id }: { children: React.ReactNode; id?: string }) {
+  return (
+    <h2 id={id} className="text-base font-semibold text-ink-primary mt-7 mb-2.5 scroll-mt-20">
+      {children}
+    </h2>
+  )
 }
 
 function P({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-ink-secondary leading-relaxed mb-3">{children}</p>
 }
 
+function UL({ children }: { children: React.ReactNode }) {
+  return (
+    <ul className="list-disc list-outside pl-5 text-sm text-ink-secondary leading-relaxed mb-3 space-y-1">
+      {children}
+    </ul>
+  )
+}
+
 export default function PrivacyPage() {
   return (
     <div className="px-5 pt-2 pb-12">
-      <PageHeader title="Privacy Policy" />
+      <PageHeader title="Privacy Notice" />
 
-      <div className="rounded-2xl bg-warning/10 border border-warning/20 px-4 py-3.5 flex items-start gap-2.5 mb-6">
-        <AlertTriangle size={16} className="text-warning flex-shrink-0 mt-0.5" />
-        <p className="text-xs text-ink-secondary leading-relaxed">
-          <b className="text-warning">Draft — not yet reviewed by an attorney.</b> This reflects
-          what the app actually collects, stores, and does today (verified against the codebase, not
-          assumed) — it still needs a privacy/data-protection lawyer's review for your specific
-          jurisdictions (GDPR, CCPA, and others) before it's relied on as your real policy.
-        </p>
-      </div>
+      {!READY && (
+        <div className="rounded-2xl bg-warning/10 border border-warning/20 px-4 py-3.5 flex items-start gap-2.5 mb-6">
+          <AlertTriangle size={16} className="text-warning flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-ink-secondary leading-relaxed">
+            <b className="text-warning">Draft, not yet in force.</b> This describes what the app
+            does today. The data controller, contact address and effective date are not set on this
+            deployment, and the lawful bases below still need sign-off by a data-protection
+            professional. Don&apos;t rely on this as a final notice.
+          </p>
+        </div>
+      )}
 
-      <p className="text-xs text-ink-tertiary mb-1">Effective date: {EFFECTIVE_DATE}</p>
+      <p className="text-xs text-ink-tertiary mb-1">
+        Effective date: {EFFECTIVE_DATE || 'not yet set'}
+      </p>
       <p className="text-xs text-ink-tertiary mb-6">
-        This Privacy Policy explains what {LEGAL_ENTITY} ("we," "us") collects when you use
-        LifeKeel, why, and the choices you have.
+        This notice explains what {WHO} (&quot;we&quot;, &quot;us&quot;), the controller of your
+        data, collects when you use LifeKeel, why, who sees it, and the rights you have.
       </p>
 
       <H2>1. What we collect</H2>
       <P>
-        <b className="text-ink-primary">Account information:</b> your name, email address, and
-        password (stored as a salted hash, never in plain text).
+        <b className="text-ink-primary">Account information:</b> your name, email address and
+        password (stored only as a salted hash). If you turn on two-factor sign-in, an encrypted
+        authenticator secret and hashed recovery codes.
       </P>
       <P>
-        <b className="text-ink-primary">Financial profile data you enter directly:</b> household
-        income and expenses, insurance coverage, emergency savings, retirement details, and
-        education fund goals — used to calculate your family's health scores and generate insights.
-        This data is never sold and is scoped so only your account can read it.
+        <b className="text-ink-primary">Financial profile:</b> household income and outgoings,
+        insurance, savings, pensions and goals you enter. Used to work out your household&apos;s
+        readiness and the gaps worth looking at.
       </P>
       <P>
-        <b className="text-ink-primary">Family roster:</b> names, email addresses, and roles of
-        household members you add — used only to display your household; roster members do not
-        receive their own login from this.
+        <b className="text-ink-primary">Family members:</b> names, roles, dates of birth and email
+        addresses of people you add. An organizer can invite an adult member to their own sign-in,
+        which gives them read access to the household; members under 18 can never have a sign-in.
+        If you add someone else&apos;s details, please let them know and point them to this notice.
       </P>
       <P>
-        <b className="text-ink-primary">Documents you upload:</b> the file itself and, on paid
-        plans, fields an AI model extracts from it (provider, policy number, amounts, dates). Vault
-        documents are encrypted before storage and can be additionally sealed in your browser;
-        ordinary uploaded documents are stored scoped to your account and are not browser-sealed.
+        <b className="text-ink-primary">Documents you upload:</b> the file and, on paid plans, fields
+        a model reads from it (provider, policy number, amounts, dates). Vault documents are
+        encrypted before storage and can also be sealed in your browser.
       </P>
       <P>
-        <b className="text-ink-primary">Email connection (optional):</b> if you connect an email
-        account, we store your email address and an encrypted password to access it via IMAP, and we
-        read message headers/content and financial-looking attachments to summarize them into your
-        Inbox. We do not store the full content of non-financial emails.
+        <b className="text-ink-primary">Email connection (optional):</b> with Gmail, you grant
+        LifeKeel read-only access through Google; we can&apos;t send, change or delete your mail.
+        With other providers you give an app password, stored encrypted, for read-only IMAP access.
+        We read messages and finance-looking attachments to summarise them into your Inbox and do
+        not keep the content of mail that isn&apos;t about your finances.
       </P>
       <P>
-        <b className="text-ink-primary">Usage data:</b> basic technical logs (timestamps, error
-        rates) to keep the Service running and secure.
+        <b className="text-ink-primary">Health information:</b> LifeKeel isn&apos;t designed for it.
+        Please don&apos;t enter medical details. When free text you write is sent to a model, health
+        terms are removed first.
+      </P>
+      <P>
+        <b className="text-ink-primary">Technical and security data:</b> sign-in history (time, IP
+        address, device) kept for 30 days, and error logs with tokens and personal details removed.
       </P>
 
-      <H2>2. How we use it</H2>
-      <ul className="list-disc list-outside pl-5 text-sm text-ink-secondary leading-relaxed mb-3 space-y-1">
-        <li>To calculate your household's health scores and generate insights</li>
+      <H2>2. Why we use it, and our lawful basis</H2>
+      <UL>
         <li>
-          To extract structured fields from documents and connected email you choose to provide
-        </li>
-        <li>To operate your subscription and process payments</li>
-        <li>To secure your account and prevent abuse</li>
-        <li>
-          To personalize and rank insights for your own household using bounded account signals
+          Running the service you signed up for: your profile, insights, documents, inbox and
+          household sharing. <i>Basis: contract.</i>
         </li>
         <li>
-          To evaluate model quality with bounded feature/outcome records; these produce aggregate
-          metrics and do not update the model used for your household
+          Taking payment and keeping tax records. <i>Basis: contract; legal obligation.</i>
         </li>
         <li>
-          To improve the Service — we do not use your personal or family content to train
-          general-purpose AI models
+          Keeping accounts secure and preventing abuse. <i>Basis: legitimate interests.</i>
         </li>
-      </ul>
+        <li>
+          Information about family members who don&apos;t use LifeKeel themselves, provided by the
+          organizer to plan for the household. <i>Basis: legitimate interests</i> (the
+          organizer&apos;s and the household&apos;s), balanced against those members&apos;
+          interests.
+        </li>
+        <li>
+          Marketing emails, only if you ticked the box. <i>Basis: consent</i>, withdrawable from any
+          email.
+        </li>
+        <li>
+          Advertising and analytics cookies, only if you accept them. <i>Basis: consent.</i>
+        </li>
+      </UL>
+      <P>
+        LifeKeel gives information, not regulated financial advice, and never arranges insurance or
+        moves money. We do not use your personal or family content to train AI models.
+      </P>
 
       <H2>3. Who we share it with</H2>
-      <P>We don't sell your data. We share the minimum necessary with:</P>
-      <ul className="list-disc list-outside pl-5 text-sm text-ink-secondary leading-relaxed mb-3 space-y-1">
+      <P>We don&apos;t sell your data. We share the minimum needed with:</P>
+      <UL>
         <li>
-          <b className="text-ink-primary">Payment processing</b> — Stripe, for billing and
-          subscription management
+          <b className="text-ink-primary">Stripe</b>, for payments. Card details go to Stripe
+          directly and never reach LifeKeel.
         </li>
         <li>
-          <b className="text-ink-primary">AI processing</b> — an approved AI processor (for example
-          Azure OpenAI, OpenAI, Anthropic, Groq, or a LifeKeel-controlled/local model, depending on
-          the deployment and feature) to extract document fields, classify email, and power the
-          assistant. We use commercial API terms that prohibit provider training on your content;
-          the content is processed for the specific request, while limited provider service or
-          safety logs may still apply under the processor's terms.
+          <b className="text-ink-primary">AI processing.</b> Some features use a model to read
+          documents, classify email or answer questions. LifeKeel-controlled models are preferred.
+          A hosted AI provider is used only once its contract terms (no training on your content,
+          retention, location) have been reviewed and recorded; until then the features that need
+          one may be unavailable. The current list is published at /ai-processing.
         </li>
         <li>
-          <b className="text-ink-primary">Your own email provider</b> — only when you choose to
-          connect an account, and only to read your inbox on your behalf via IMAP
+          <b className="text-ink-primary">Email delivery</b> (for account and notification email)
+          and <b className="text-ink-primary">hosting</b> providers, acting on our instructions.
         </li>
         <li>
-          <b className="text-ink-primary">Law enforcement or legal process</b> — only when required
-          by law
+          <b className="text-ink-primary">Google and Microsoft</b>, only when you connect Gmail,
+          Google Drive or OneDrive, and only to read what you authorised.
         </li>
-      </ul>
+        <li>
+          <b className="text-ink-primary">Law enforcement or courts</b>, only when the law requires.
+        </li>
+      </UL>
+      <P>
+        Some of these providers process data outside the UK. Where they do, we rely on UK adequacy
+        regulations or the UK International Data Transfer Agreement or Addendum. Ask us for details.
+      </P>
+      <P>
+        LifeKeel&apos;s use of information received from Google APIs adheres to the Google API
+        Services User Data Policy, including the Limited Use requirements. Gmail data is used only
+        to provide your Inbox, is never used for advertising, and is never used to train models
+        shared with other households.
+      </P>
 
       <H2>4. Security</H2>
       <P>
-        Connector passwords and access tokens are encrypted at rest. Family data is scoped to your
-        account by tenant authorization controls. Traffic to the Service is encrypted in transit.
-        Sign-in is protected by rate limiting to slow down credential-guessing attempts. No system
-        is perfectly secure, and we can't guarantee absolute security.
+        Credentials, connector tokens and vault files are encrypted at rest, traffic is encrypted in
+        transit, household data is separated by account, and sign-in is rate-limited, with optional
+        two-factor authentication. No system is perfectly secure; if a breach puts you at high risk
+        we will tell you without undue delay.
       </P>
 
-      <H2>5. Data retention and deletion</H2>
+      <H2>5. How long we keep it, and deletion</H2>
       <P>
-        We keep your data for as long as your account is active. You can delete your account and its
-        associated data yourself from Settings → Delete Account — deletion is immediate and removes
-        your family's profile, documents, insights, and sign-in. One exception: the security
-        activity log is retained on its documented schedule as the record of what happened on the
-        account, and billing records are kept as required for financial reporting. You can also
-        email {CONTACT_EMAIL} to ask us to do it for you.
+        We keep household data while the account is open. An organizer can delete the household from
+        Settings → Delete Account; other members can ask the organizer to remove them, which ends
+        their access straight away. Deletion starts immediately: access closes at once and the
+        removal usually completes within seconds. If anything is left it is retried automatically
+        and the receipt you are shown says so.
+      </P>
+      <P>
+        Kept after deletion: a record that the deletion happened (counts, no content) for 7 years,
+        and invoices and payment records for the period tax law requires. Your subscription is
+        cancelled when the household is deleted. Encrypted backups roll off within the window stated
+        on your deletion receipt, and a restored backup is reconciled so deleted accounts stay
+        deleted.
       </P>
 
       <H2>6. Your rights</H2>
       <P>
-        Depending on where you live, you may have the right to access, correct, export, or delete
-        your personal data, and to object to certain processing. Export and deletion are
-        self-service in Settings; contact {CONTACT_EMAIL} for anything else.
+        You can ask for access to, correction of, a copy of, or deletion of your personal data, and
+        object to or restrict some processing. Export is in Settings (an organizer exports the
+        household; other members export their own account). For anything else contact {CONTACT}.
+        We reply within one month.
       </P>
-
-      <H2>7. Children's privacy</H2>
       <P>
-        LifeKeel accounts are for adults (18+). A parent or guardian may list children as family
-        members for household visibility, but children do not create their own accounts or provide
-        data directly to LifeKeel.
+        If you&apos;re unhappy with how we handle your data, you can complain to the Information
+        Commissioner&apos;s Office (ico.org.uk, 0303 123 1113), or to your local data-protection
+        authority if you live in the EU. We&apos;d appreciate the chance to put it right first.
       </P>
 
-      <H2>8. Local storage</H2>
+      <H2>7. Children</H2>
       <P>
-        LifeKeel uses your browser or device's local storage (not third-party tracking cookies) to
-        keep you signed in between visits.
+        LifeKeel sign-ins are for adults (18+). Parents or guardians may add children to the
+        household so plans can account for them. Children never get a sign-in, are never sent
+        marketing, and their details are used only for the household&apos;s own planning.
       </P>
 
-      <H2>9. Changes to this policy</H2>
-      <P>We'll update the effective date above when this policy changes materially.</P>
+      <H2 id="cookies">8. Cookies and local storage</H2>
+      <P>
+        Essential: a sign-in cookie and your device&apos;s local storage keep you signed in and
+        remember settings. These need no consent.
+      </P>
+      <P>
+        Optional: on public pages only, and only if you accept, advertising and analytics tags from
+        Google (Analytics and Ads), Meta and LinkedIn measure our marketing. They never run inside
+        your account, and nothing is set if you reject them.
+      </P>
+      <CookieSettingsButton />
+      <P>See our <Link href="/cookies" className="underline">cookies and device storage page</Link> for the storage we use and how to manage your choices.</P>
+
+      <H2>9. Changes to this notice</H2>
+      <P>We update the effective date when this notice changes materially.</P>
 
       <H2>10. Contact</H2>
-      <P>Questions about this policy or your data: {CONTACT_EMAIL}.</P>
+      <P>Questions about this notice or your data: {CONTACT}.</P>
     </div>
   )
 }

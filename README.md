@@ -75,9 +75,11 @@ component breakpoints attach to the browser target.
 
 ## Status
 
-Greenfield — pre-launch, no production users yet. `apps/web` currently
-points at a shared external backend (`NEXT_PUBLIC_API_URL`) rather than this
-repo's own `apps/api`, which isn't deployed yet. See `ARCHITECTURE.md`'s
+Greenfield — pre-launch, no production users yet. `apps/api` deploys to Cloud
+Run and `apps/web` to Firebase Hosting through the manual, approval-gated
+workflows in `.github/workflows/deploy-*.yml`; `apps/web` calls whichever API
+`NEXT_PUBLIC_API_URL` names. Open launch blockers are tracked in
+[docs/reviews/SECURITY_AND_COMPLIANCE.md](docs/reviews/SECURITY_AND_COMPLIANCE.md). See `ARCHITECTURE.md`'s
 "where the vision meets reality today" table for exactly what's built versus
 planned.
 

@@ -108,6 +108,7 @@ async function appFor(tenant: string, userId = 'user-1'): Promise<FastifyInstanc
     ;(req as unknown as { authContext: unknown }).authContext = {
       tenant_id: tenant,
       user_id: userId,
+      roles: ['admin'],
     }
   })
   registerDocumentRoutes(app, db)

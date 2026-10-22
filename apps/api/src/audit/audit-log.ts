@@ -69,6 +69,7 @@ export type AuditAction =
   | 'family.join_denied'
   | 'family.invite_code_reset'
   | 'family.member_invited'
+  | 'family.member_removed'
   | 'family.member_invite_accepted'
   | 'family.continuity_updated'
   | 'family.continuity_check_in_sent'
@@ -111,8 +112,30 @@ export interface AuditEntry {
 }
 
 import { createLogger } from '@lifekeel/platform'
+import { sendOpsAlert } from '../operator/ops-alerts.js'
 
 const auditLog = createLogger({ service: 'audit', version: '0.0.0' })
+
+/** Thrown by the critical path when the audit record can't be written. */
+export class AuditWriteError extends Error {}
+
+/**
+ * A lost audit record is evidence that no longer exists (R33), so it pages
+ * someone instead of only reaching stderr. Names and ids only.
+ */
+function reportLostAudit(entry: AuditEntry, err: unknown): void {
+  auditLog.error(
+    { action: entry.action, resource_id: entry.resource_id, err: String(err) },
+    'Audit log entry lost',
+  )
+  void sendOpsAlert({
+    title: 'Audit log write failed',
+    message: `Action ${entry.action} on ${entry.resource_type}/${entry.resource_id} has no audit record.`,
+    severity: 'critical',
+    fingerprint: `audit-lost:${entry.action}`,
+    tenant_id: entry.tenant_id,
+  }).catch(() => {})
+}
 
 export class AuditLogger {
   private col: any
@@ -128,18 +151,17 @@ export class AuditLogger {
       this.col.createIndex({ tenant_id: 1, resource_id: 1 }),
       // TTL index: auto-delete after 7 years (retention policy)
       this.col.createIndex({ timestamp: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 365 * 7 }),
-    ]).catch(() => {})
+    ]).catch((err: unknown) =>
+      auditLog.error({ err: String(err) }, 'Audit log index creation failed — retention TTL may be missing'),
+    )
   }
 
   /** Write a structured audit event. Fire-and-forget — never blocks the request. */
   log(entry: AuditEntry): void {
     if (!this.enabled) return
-    this.col.insertOne(entry).catch(() => {
-      // Audit log write failures must never crash the API — log to stderr only
-      auditLog.error(
-        { action: entry.action, resource_id: entry.resource_id },
-        'Failed to write audit log entry',
-      )
+    this.col.insertOne(entry).catch((err: unknown) => {
+      // Never crashes the request, but never silent either.
+      reportLostAudit(entry, err)
     })
   }
 
@@ -161,16 +183,55 @@ export class AuditLogger {
         return
       } catch (err) {
         if (attempt === maxRetries) {
-          auditLog.error(
-            { action: entry.action, resource_id: entry.resource_id, attempt, err: String(err) },
-            'Failed to write audit log entry after all retries',
-          )
+          reportLostAudit(entry, err)
           return
         }
         // Exponential backoff: 100ms * 2^(attempt-1)
         await new Promise((resolve) => setTimeout(resolve, 100 * Math.pow(2, attempt - 1)))
       }
     }
+  }
+
+  /**
+   * For operations whose record is part of the operation (R33): account
+   * deletion and export, approvals of external effects. Retries, then
+   * throws, so the caller stops before doing something it can't account for.
+   */
+  async logCritical(entry: AuditEntry, maxRetries = 3): Promise<void> {
+    if (!this.enabled) return
+    let lastErr: unknown
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await this.col.insertOne(entry)
+        return
+      } catch (err) {
+        lastErr = err
+        await new Promise((resolve) => setTimeout(resolve, 100 * Math.pow(2, attempt - 1)))
+      }
+    }
+    reportLostAudit(entry, lastErr)
+    throw new AuditWriteError(`audit write failed for ${entry.action}`)
+  }
+
+  async fromRequestCritical(
+    request: FastifyRequest,
+    action: AuditAction,
+    resourceType: string,
+    resourceId: string,
+    metadata?: Record<string, unknown>,
+  ): Promise<void> {
+    const auth = request.authContext as { tenant_id: string; user_id: string } | undefined
+    await this.logCritical({
+      tenant_id: auth?.tenant_id ?? 'unknown',
+      user_id: auth?.user_id ?? 'unknown',
+      action,
+      resource_type: resourceType,
+      resource_id: resourceId,
+      ...(metadata !== undefined && { metadata }),
+      ip: request.ip,
+      user_agent: request.headers['user-agent'] ?? '',
+      timestamp: new Date(),
+    })
   }
 
   /** Convenience: build entry from a Fastify request + fields. */

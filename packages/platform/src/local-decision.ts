@@ -84,7 +84,10 @@ export interface LocalDecisionResult<T> {
   latency_ms: number
 }
 
-export type DecisionFn = <T>(req: LocalDecisionRequest<T>) => Promise<LocalDecisionResult<T>>
+export type DecisionFn = <T>(
+  req: LocalDecisionRequest<T>,
+  opts?: { signal?: AbortSignal },
+) => Promise<LocalDecisionResult<T>>
 
 export class LocalDecisionError extends Error {
   constructor(
@@ -109,13 +112,16 @@ export function createLocalDecisionFn(cfg: LocalDecisionConfig): DecisionFn {
   const gate =
     cfg.maxConcurrent && cfg.maxConcurrent > 0 ? new Semaphore(cfg.maxConcurrent) : undefined
 
-  return async function decide<T>(req: LocalDecisionRequest<T>): Promise<LocalDecisionResult<T>> {
+  return async function decide<T>(
+    req: LocalDecisionRequest<T>,
+    opts?: { signal?: AbortSignal },
+  ): Promise<LocalDecisionResult<T>> {
     const queuedAt = Date.now()
     await gate?.acquire()
     const started = Date.now()
     let ok = false
     try {
-      const result = await callModel(req, started)
+      const result = await callModel(req, started, opts?.signal)
       ok = true
       return result
     } finally {
@@ -136,16 +142,20 @@ export function createLocalDecisionFn(cfg: LocalDecisionConfig): DecisionFn {
   async function callModel<T>(
     req: LocalDecisionRequest<T>,
     started: number,
+    callerSignal?: AbortSignal,
   ): Promise<LocalDecisionResult<T>> {
     let lastError: unknown
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      if (callerSignal?.aborted) break // request already dead — don't burn an attempt
       try {
         const extraHeaders = cfg.getHeaders ? await cfg.getHeaders() : {}
         const res = await doFetch(`${baseUrl}/api/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...extraHeaders },
-          signal: AbortSignal.timeout(timeoutMs),
+          signal: callerSignal
+            ? AbortSignal.any([callerSignal, AbortSignal.timeout(timeoutMs)])
+            : AbortSignal.timeout(timeoutMs),
           body: JSON.stringify({
             model: cfg.model,
             stream: false,

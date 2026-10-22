@@ -45,9 +45,45 @@ export async function isFamilyAdult(db: Db, tenantId: string, userId: string): P
   return (
     family?.members.some(
       (member) =>
-        memberMatchesUser(member, userId) && member.role !== 'child' && member.status === 'active',
+        memberMatchesUser(member, userId) && !isMinorMember(member) && member.status === 'active',
     ) === true
   )
+}
+
+/**
+ * The one minor test every access boundary uses (R08): role 'child' or a
+ * date of birth under 18. Marketing already used both; vault and invite
+ * checks used role alone, so an adult-labelled member with an under-18 DOB
+ * passed adult-only gates.
+ */
+export function isMinorMember(member: { role: string; date_of_birth?: string | null }): boolean {
+  if (member.role === 'child') return true
+  const age = ageFromDob(member.date_of_birth)
+  return age !== null && age < 18
+}
+
+/** JWT roles that may change household-wide facts. Join-request and invite users get 'viewer'. */
+const EDITOR_AUTH_ROLES = new Set(['owner', 'admin', 'operator', 'analyst'])
+
+/**
+ * May this user change shared household records (financial profile,
+ * policies applied from documents or email) and export the household's
+ * data (R04, R05)? Needs a non-viewer role and, when the user is on the
+ * roster, an active adult entry. Viewers can read but not write.
+ */
+export async function isHouseholdEditor(
+  db: Db,
+  tenantId: string,
+  userId: string,
+  roles: readonly string[] | undefined,
+): Promise<boolean> {
+  if (!roles?.some((role) => EDITOR_AUTH_ROLES.has(role))) return false
+  const family = await db
+    .collection<FamilyGroupDoc>('family_groups')
+    .findOne({ tenant_id: tenantId })
+  const member = family?.members?.find((m) => memberMatchesUser(m, userId))
+  if (!member) return true
+  return member.status === 'active' && !isMinorMember(member)
 }
 
 /**
@@ -73,8 +109,7 @@ export async function minorUserIds(
     const family = families.find((f) => f.tenant_id === user.tenant_id)
     const member = family?.members.find((m) => memberMatchesUser(m, user.id))
     if (!member) continue
-    const age = ageFromDob(member.date_of_birth)
-    if (member.role === 'child' || (age !== null && age < 18)) minors.add(user.id)
+    if (isMinorMember(member)) minors.add(user.id)
   }
   return minors
 }

@@ -1,6 +1,7 @@
 import { getApiBase } from './env'
 import { credFetch } from './http'
 import { invalidateCache } from './fetch-cache'
+import { getSessionToken } from '@/lib/session-token'
 
 export interface LookBackResult {
   scanned: number
@@ -14,7 +15,7 @@ export interface LookBackResult {
  * automatic incremental scan. Null when the request fails.
  */
 export async function searchMailboxForPolicies(days = 90): Promise<LookBackResult | null> {
-  const token = typeof window === 'undefined' ? null : localStorage.getItem('lifekeel_token')
+  const token = typeof window === 'undefined' ? null : getSessionToken()
   const res = await credFetch(`${getApiBase()}/connectors/email/scan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },

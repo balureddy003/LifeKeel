@@ -16,6 +16,7 @@ import { fetchOrQueue } from './offline-queue'
 import { cachedFetch, invalidateCache } from './fetch-cache'
 import { reportError } from './observability'
 import { detectEmergency, EMERGENCY_REPLY } from './emergency-detection'
+import { getSessionToken } from '@/lib/session-token'
 
 export interface FamilyInsight {
   id: string
@@ -115,7 +116,7 @@ const FAMILY_DETECTORS = [
 
 function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null
-  return localStorage.getItem('lifekeel_token')
+  return getSessionToken()
 }
 
 // `onFailure` fires only for what the fallback can't honestly explain away
@@ -971,7 +972,7 @@ export async function fetchPerceivedProtectionDue(): Promise<{
 
 /** score 1 to 5, or null to skip this quarter. Resolves false on any failure. */
 export async function answerPerceivedProtection(score: number | null): Promise<boolean> {
-  const token = typeof window === 'undefined' ? null : localStorage.getItem('lifekeel_token')
+  const token = typeof window === 'undefined' ? null : getSessionToken()
   try {
     const res = await credFetch(`${getApiBase()}/family/perceived-protection`, {
       method: 'POST',
@@ -1869,7 +1870,8 @@ export interface ExternalAccount {
   name: string
   type: string
   currency: string
-  balance_minor: number
+  /** null when the bank connection hasn't returned a balance yet. */
+  balance_minor: number | null
   synced_at: string
 }
 
@@ -1930,6 +1932,40 @@ export async function startGmailOAuth(): Promise<string> {
   const data = (await res.json()) as { auth_url?: string }
   if (!data.auth_url) throw new Error('Could not start Google sign-in — please try again.')
   return data.auth_url
+}
+
+/**
+ * Every connector OAuth round trip ends here. The API callback no longer
+ * saves the grant; it redirects back with ?complete=<id>, and the signed-in
+ * user claims it, so someone else's authorization link can't attach your
+ * account to their household. Returns the params to show the outcome with
+ * (?connected=… or ?connect=…&error=…), or the current ones when there is
+ * nothing to claim.
+ */
+export async function resolveOAuthReturnParams(): Promise<URLSearchParams> {
+  const current = new URLSearchParams(window.location.search)
+  const grant = current.get('complete')
+  const connectorId = current.get('connect')
+  if (!grant || !connectorId) return current
+
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  try {
+    const res = await credFetch(
+      `${base}/connectors/${encodeURIComponent(connectorId)}/oauth/complete`,
+      { method: 'POST', headers, body: JSON.stringify({ grant }) },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      params?: Record<string, string>
+      error?: string
+    }
+    if (res.ok && data.params) return new URLSearchParams(data.params)
+    return new URLSearchParams({ connect: connectorId, error: data.error ?? 'connect_failed' })
+  } catch {
+    return new URLSearchParams({ connect: connectorId, error: 'connect_failed' })
+  }
 }
 
 export interface EmailScanResult {
@@ -4444,6 +4480,52 @@ export function fetchOperatorAudit(
 
 export function fetchOperatorOperations(): Promise<OperatorOperations> {
   return operatorRequest('/operator/operations')
+}
+
+// ── Operator: AI gateway health (PRD-217) ────────────────────────────────
+// Metadata-only: task ids, models, outcomes, latencies, costs and registry
+// status. Prompt and completion content never reaches this surface.
+
+export interface OperatorAiTaskHealth {
+  task_id: string
+  data_boundary: string
+  budget_class?: string | undefined
+  deadline_ms: number
+  primary_model: string
+  serving_processor: string | null
+  breaker_state: 'closed' | 'open' | 'half-open'
+  calls: number
+  failures: number
+  failure_rate: number
+  p50_ms: number | null
+  p95_ms: number | null
+  cost_microdollars: number
+}
+
+export interface OperatorAiProcessor {
+  id: string
+  name: string
+  hosting: 'self_hosted' | 'hosted'
+  status: 'approved' | 'unreviewed' | 'self_hosted'
+  reviewed_at: string
+  review_due: string
+  review_lapsed: boolean
+}
+
+export interface OperatorAiHealth {
+  generated_at: string
+  window_days: number
+  tasks: OperatorAiTaskHealth[]
+  processors: OperatorAiProcessor[]
+  assistant_answer_mix: Record<string, number> & {
+    total: number
+    generation_escape_rate: number | null
+  }
+  guard_events: Array<{ type: string; action: string; count: number }>
+}
+
+export function fetchOperatorAiHealth(days = 7): Promise<OperatorAiHealth> {
+  return operatorRequest(`/operator/ai-health?days=${days}`)
 }
 
 // ── Operator: autopilot ───────────────────────────────────────────────────

@@ -18,6 +18,12 @@ import { credFetch } from './http'
 import { purgeClientData } from './session-purge'
 import { unregisterAllPush } from './push'
 import { getAttribution } from './attribution'
+import {
+  clearSessionToken,
+  dropTokenIfCookieWorks,
+  getSessionToken,
+  storeSessionToken,
+} from '@/lib/session-token'
 
 interface AuthContextValue {
   user: User | null
@@ -54,7 +60,6 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 const STORAGE_KEY = 'family-auth'
-const TOKEN_KEY = 'lifekeel_token'
 
 function slugify(s: string): string {
   return (
@@ -134,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const restore = async () => {
       try {
-        const token = localStorage.getItem(TOKEN_KEY)
+        const token = getSessionToken()
         // Verify the session against the real API rather than trusting
         // stale local state — an expired/revoked session should sign the
         // user out instead of leaving the app half-authenticated. Cookie-
@@ -144,6 +149,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const res = await credFetch(`${getApiBase()}/auth/me`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
+        // A token stored by an older build is removed when the cookie works (R21).
+        if (res.ok && token) void dropTokenIfCookieWorks(token)
         if (!res.ok) {
           // A rejected session that this device had signed in to must not
           // leave that user's data behind. Anonymous visitors (no prior
@@ -151,7 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const hadSession = Boolean(token || localStorage.getItem(STORAGE_KEY))
           if (res.status === 401 || res.status === 403) {
             if (hadSession) void purgeClientData()
-            localStorage.removeItem(TOKEN_KEY)
+            clearSessionToken()
             localStorage.removeItem(STORAGE_KEY)
             setIsLoading(false)
             return
@@ -218,7 +225,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ user: u, family: f }))
       } else {
         localStorage.removeItem(STORAGE_KEY)
-        localStorage.removeItem(TOKEN_KEY)
+        clearSessionToken()
       }
     } catch {
       // ignore
@@ -238,7 +245,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // The httpOnly cookie set on the response is the session; the token is
     // still stored as the Bearer fallback for cookie-blocked browsers —
     // see lib/http.ts for when it can go away.
-    if (token) localStorage.setItem(TOKEN_KEY, token)
+    storeSessionToken(token)
     if (!apiUser) throw new Error('Sign up failed. Please try again.')
     const u: User = {
       id: apiUser.id,
@@ -258,7 +265,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // profile row rendered as a tappable button (haptic + press animation)
   // whose onClick did literally nothing.
   const updateProfile = async (patch: { name?: string; email?: string }): Promise<User> => {
-    const token = localStorage.getItem(TOKEN_KEY)
+    const token = getSessionToken()
     const res = await credFetch(`${getApiBase()}/auth/profile`, {
       method: 'PUT',
       headers: {
@@ -329,7 +336,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mfaTokenRef.current = mfa_token ?? null
       return { mfaRequired: true }
     }
-    if (token) localStorage.setItem(TOKEN_KEY, token)
+    storeSessionToken(token)
     if (!apiUser) throw new Error('Sign in failed. Please try again.')
     await finishSignIn(apiUser)
     return {}
@@ -343,7 +350,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       code,
     })
     mfaTokenRef.current = null
-    if (token) localStorage.setItem(TOKEN_KEY, token)
+    storeSessionToken(token)
     if (!apiUser) throw new Error('Verification failed. Please try again.')
     await finishSignIn(apiUser)
   }
@@ -353,7 +360,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // signIn's persist path rather than routing the invitee back through login.
   const acceptFamilyInvite = async (token: string, password: string) => {
     const { token: sessionToken, user: apiUser } = await apiAcceptFamilyInvite(token, password)
-    if (sessionToken) localStorage.setItem(TOKEN_KEY, sessionToken)
+    storeSessionToken(sessionToken)
     const u: User = {
       id: apiUser.id,
       name: apiUser.name,
@@ -384,6 +391,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut = () => {
+    // Read before the wipe: the server revokes this exact token (R06), so a
+    // copy taken earlier stops working too.
+    const tokenToRevoke = getSessionToken()
     // PRD-140: stop this device receiving the signed-out user's alerts. Started
     // first because it reads the session token the wipe below removes, and it
     // needs the session cookie, so the server logout waits for it (at most 3s).
@@ -395,7 +405,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Clear the httpOnly session cookie server-side — fire-and-forget; the
     // local wipe above already signed the user out on this device.
     void Promise.race([pushCleanup, new Promise((r) => setTimeout(r, 3000))]).then(() =>
-      credFetch(`${getApiBase()}/auth/logout`, { method: 'POST' }).catch(() => {}),
+      credFetch(`${getApiBase()}/auth/logout`, {
+        method: 'POST',
+        headers: tokenToRevoke ? { Authorization: `Bearer ${tokenToRevoke}` } : {},
+      }).catch(() => {}),
     )
   }
 
@@ -499,7 +512,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const refresh = async () => {
-    const token = localStorage.getItem(TOKEN_KEY)
+    const token = getSessionToken()
     try {
       const res = await credFetch(`${getApiBase()}/auth/me`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},

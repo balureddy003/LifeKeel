@@ -30,7 +30,8 @@
  * `suppressed`/`consent.marketing`. Content stays informational —
  * no product recommendations, no "buy this policy" (CLAUDE.md rule).
  */
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
+import { hmacFor, verifyLinkHmac } from '../auth/signing-key.js'
 import type { Db } from 'mongodb'
 import sgMail from '@sendgrid/mail'
 import { createLogger } from '@lifekeel/platform'
@@ -97,34 +98,26 @@ export function ensureLifecycleIndexes(db: Db): Promise<void> {
 }
 
 // ── Unsubscribe tokens ─────────────────────────────────────────────────────
-// HMAC(JWT_SECRET, `unsub:${leadId}`) — an unsubscribe link proves possession
+// HMAC(per-purpose key, `unsub:${leadId}`) — an unsubscribe link proves possession
 // of the email that carried it without any login or DB lookup.
 
 export function unsubscribeToken(leadId: string): string {
-  return createHmac('sha256', process.env['JWT_SECRET'] ?? 'dev-secret')
-    .update(`unsub:${leadId}`)
-    .digest('base64url')
+  return hmacFor('lead-unsubscribe', `unsub:${leadId}`)
 }
 
 export function verifyUnsubscribeToken(leadId: string, token: string): boolean {
-  const expected = Buffer.from(unsubscribeToken(leadId))
-  const given = Buffer.from(token)
-  return expected.length === given.length && timingSafeEqual(expected, given)
+  return verifyLinkHmac('lead-unsubscribe', `unsub:${leadId}`, token)
 }
 
 /** User-side unsubscribe — campaigns mail signed-up users too, and marketing
  *  mail to users needs a working opt-out (the lifecycle account emails like
  *  trial-ending are transactional and don't include it). */
 export function userUnsubscribeToken(userId: string): string {
-  return createHmac('sha256', process.env['JWT_SECRET'] ?? 'dev-secret')
-    .update(`unsub-user:${userId}`)
-    .digest('base64url')
+  return hmacFor('user-unsubscribe', `unsub-user:${userId}`)
 }
 
 export function verifyUserUnsubscribeToken(userId: string, token: string): boolean {
-  const expected = Buffer.from(userUnsubscribeToken(userId))
-  const given = Buffer.from(token)
-  return expected.length === given.length && timingSafeEqual(expected, given)
+  return verifyLinkHmac('user-unsubscribe', `unsub-user:${userId}`, token)
 }
 
 export function userUnsubUrl(base: string, userId: string): string {

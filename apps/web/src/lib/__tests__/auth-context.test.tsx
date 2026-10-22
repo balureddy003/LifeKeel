@@ -17,6 +17,30 @@ afterEach(() => {
 })
 
 describe('AuthProvider.signUp', () => {
+  it('R21: keeps the bearer fallback when the browser blocks the session cookie', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.endsWith('/auth/me')) {
+        const headers = (init?.headers ?? {}) as Record<string, string>
+        // Only a request that carries the bearer succeeds: the cookie is blocked.
+        return headers['Authorization']
+          ? jsonResponse({ user_id: 'u1', tenant_id: 't1', email: 'jane@example.com', name: 'Jane' })
+          : Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) })
+      }
+      return jsonResponse({
+        token: 'tok_blocked',
+        user: { id: 'u1', email: 'jane@example.com', name: 'Jane Doe', tenant_id: 't1' },
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await act(async () => {
+      await result.current.signUp('Jane Doe', 'jane@example.com', 'password123')
+    })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(localStorage.getItem('lifekeel_token')).toBe('tok_blocked')
+  })
+
   it('sends a unique workspace slug derived from the given name, and persists the token', async () => {
     const fetchMock = vi.fn().mockImplementation((url: string) =>
       jsonResponse({
@@ -33,7 +57,9 @@ describe('AuthProvider.signUp', () => {
       await result.current.signUp('Jane Doe', 'jane@example.com', 'password123')
     })
 
-    expect(localStorage.getItem('lifekeel_token')).toBe('tok_123')
+    // R21: /auth/me answered with the cookie alone, so no script-readable
+    // copy of the token is kept.
+    await waitFor(() => expect(localStorage.getItem('lifekeel_token')).toBeNull())
     expect(result.current.user?.email).toBe('jane@example.com')
 
     // The mount-time rehydrate also fetches (/auth/me, cookie-session probe),

@@ -9,7 +9,13 @@ import { GoogleIcon } from '@/components/GoogleIcon'
 import { PasswordInput } from '@/components/PasswordInput'
 import { haptic } from '@/lib/haptics'
 import { useAppStore } from '@/lib/store'
-import { connectEmail, scanEmailInbox, startGmailOAuth, EMAIL_PROVIDER_OPTIONS } from '@/lib/api'
+import {
+  connectEmail,
+  resolveOAuthReturnParams,
+  scanEmailInbox,
+  startGmailOAuth,
+  EMAIL_PROVIDER_OPTIONS,
+} from '@/lib/api'
 
 export default function ConnectEmailPage() {
   const router = useRouter()
@@ -54,14 +60,23 @@ export default function ConnectEmailPage() {
   // Suspense boundary on a statically-exported page (see upgrade/page.tsx
   // for the same pattern already used elsewhere in this app).
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('connected') === 'email') {
-      const email = params.get('email')
-      if (email) setUsername(email)
-      setConnectorConnected('email', true)
-      setConnected(true)
-    } else if (params.get('connect') === 'gmail' && params.get('error')) {
-      setError(`Google sign-in didn't complete: ${params.get('error')}`)
+    let cancelled = false
+    void resolveOAuthReturnParams().then((params) => {
+      if (cancelled) return
+      if (params.get('connected') === 'email') {
+        const email = params.get('email')
+        if (email) setUsername(email)
+        setConnectorConnected('email', true)
+        setConnected(true)
+      } else if (params.get('connect') === 'gmail' && params.get('error')) {
+        setError(`Google sign-in didn't complete: ${params.get('error')}`)
+      }
+      if (window.location.search.includes('complete=')) {
+        window.history.replaceState({}, '', window.location.pathname)
+      }
+    })
+    return () => {
+      cancelled = true
     }
   }, [setConnectorConnected])
 

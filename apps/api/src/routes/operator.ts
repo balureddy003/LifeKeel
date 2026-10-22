@@ -17,6 +17,7 @@ import {
   type DualApprovalDoc,
 } from '../operator/dual-control.js'
 import { sendPasswordResetEmail } from '../auth-email.js'
+import { hashAuthToken } from './auth-users.js'
 import { recordLedgerEntry, getLedgerHistory } from '../billing/credit-ledger.js'
 import { queueManager } from '../queue/QueueManager.js'
 import { WEBHOOK_INGEST_QUEUE } from '../queue/WebhookQueue.js'
@@ -27,7 +28,13 @@ import {
   type PlatformConfig,
 } from '../operator/platform-config.js'
 import { getLoginEventsCollection } from '../db.js'
-import { taskLlm, taskLlmFor } from '../ai/task-gateway.js'
+import {
+  taskLlm,
+  taskLlmFor,
+  getTaskRegistry,
+  getProcessorRegistry,
+  resolveServingProcessor,
+} from '../ai/task-gateway.js'
 import { computeTenantHealth } from '../operator/tenant-health.js'
 import { isRollupReady, readDailyRollup } from '../jobs/metrics-rollup.js'
 import { getRunbooks } from '../operator/runbooks.js'
@@ -49,7 +56,7 @@ import {
 } from '../marketing/campaigns.js'
 import { lifecycleSendsCol } from '../marketing/lifecycle-emails.js'
 import { platformUnitEconomics } from '../spend-ledger.js'
-import { formatMicroDollars } from '@lifekeel/platform'
+import { formatMicroDollars, getAllCircuitBreakers } from '@lifekeel/platform'
 import type { SupportCaseDoc, SupportMessage } from './support.js'
 
 const QuerySchema = z.object({
@@ -773,17 +780,18 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         { id: request.params.id },
         {
           $set: {
-            password_reset_token: token,
+            password_reset_token_hash: hashAuthToken(token),
             password_reset_expires: new Date(Date.now() + 60 * 60 * 1000),
             updated_at: new Date(),
           },
+          $unset: { password_reset_token: '' },
         },
       )
       const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
       await sendPasswordResetEmail(
         user['email'] as string,
         user['name'] as string,
-        `${appUrl}/reset-password/confirm?token=${token}`,
+        `${appUrl}/reset-password/confirm#token=${token}`,
       )
       await audit.log(
         request,
@@ -3419,6 +3427,153 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
           : { available: false as const },
         growth_events_24h: events24h,
         documents_pending: pendingDocs,
+      }
+    },
+  )
+
+  // ── AI gateway health (PRD-217) ────────────────────────────────────────
+  // The October Ask Keel outage was invisible because nothing surfaced the
+  // model path: every call fell back for days and no operator view noticed.
+  // This endpoint is metadata-only by design — task ids, models, outcomes,
+  // latencies, costs, registry status. Prompt and completion content never
+  // leaves the guarded path, and this surface must never carry it.
+
+  // One metadata row per governed call, written by the gateway's onCall
+  // hook. Read pattern: task × time window.
+  db.collection('ai_task_calls')
+    .createIndex({ task_id: 1, created_at: -1 })
+    .catch(() => {})
+  db.collection('ai_task_calls')
+    .createIndex({ created_at: 1 }, { expireAfterSeconds: 30 * 24 * 3600 })
+    .catch(() => {})
+  db.collection('assistant_answer_routes')
+    .createIndex({ day: 1 })
+    .catch(() => {})
+
+  function percentile(sorted: number[], p: number): number | null {
+    if (sorted.length === 0) return null
+    const idx = Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1)
+    return sorted[Math.max(0, idx)]!
+  }
+
+  app.get<{ Querystring: { days?: string } }>(
+    '/operator/ai-health',
+    { preHandler: requireOperator(db, 'operations.read') },
+    async (request) => {
+      const days = Math.min(30, Math.max(1, Number(request.query.days) || 7))
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+      const sinceDay = since.toISOString().slice(0, 10)
+
+      const [callRows, costRows, answerRows, guardRows] = await Promise.all([
+        db
+          .collection('ai_task_calls')
+          .aggregate([
+            { $match: { created_at: { $gte: since } } },
+            {
+              $group: {
+                _id: '$task_id',
+                calls: { $sum: 1 },
+                failures: { $sum: { $cond: ['$ok', 0, 1] } },
+                latencies: { $push: '$latency_ms' },
+                processors: { $addToSet: '$processor' },
+              },
+            },
+          ])
+          .toArray(),
+        db
+          .collection('llm_usage')
+          .aggregate([
+            { $match: { created_at: { $gte: since } } },
+            {
+              $group: {
+                _id: '$workflow_id',
+                cost_microdollars: { $sum: '$cost_microdollars' },
+                billed_calls: { $sum: 1 },
+              },
+            },
+          ])
+          .toArray(),
+        db
+          .collection('assistant_answer_routes')
+          .aggregate([
+            { $match: { day: { $gte: sinceDay } } },
+            { $group: { _id: '$route', count: { $sum: '$count' } } },
+          ])
+          .toArray(),
+        db
+          .collection('llm_guard_events')
+          .aggregate([
+            { $match: { persisted_at: { $gte: since } } },
+            // Event type + action only — never field_path or content hashes.
+            { $group: { _id: { type: '$type', action: '$action' }, count: { $sum: 1 } } },
+          ])
+          .toArray(),
+      ])
+
+      const callsByTask = new Map(callRows.map((r) => [r['_id'] as string, r]))
+      const costByTask = new Map(costRows.map((r) => [r['_id'] as string, r]))
+      const breakers = getAllCircuitBreakers()
+
+      // Every registered task appears, including silent ones — a task that
+      // exists but never calls is itself signal (e.g. a dead pipeline).
+      const tasks = [...getTaskRegistry().values()].map((policy) => {
+        const stats = callsByTask.get(policy.task_id)
+        const calls = (stats?.['calls'] as number | undefined) ?? 0
+        const failures = (stats?.['failures'] as number | undefined) ?? 0
+        const latencies = ((stats?.['latencies'] as number[] | undefined) ?? [])
+          .slice()
+          .sort((a, b) => a - b)
+        const breakerKey = `task:${policy.task_id}`
+        return {
+          task_id: policy.task_id,
+          data_boundary: policy.data_boundary,
+          budget_class: policy.budget_class,
+          deadline_ms: policy.deadline_ms,
+          primary_model: policy.primary_model,
+          serving_processor: resolveServingProcessor(policy),
+          breaker_state: breakers.get(breakerKey)?.getState() ?? 'closed',
+          calls,
+          failures,
+          failure_rate: calls > 0 ? Math.round((failures / calls) * 1000) / 1000 : 0,
+          p50_ms: percentile(latencies, 50),
+          p95_ms: percentile(latencies, 95),
+          cost_microdollars:
+            (costByTask.get(policy.task_id)?.['cost_microdollars'] as number | undefined) ?? 0,
+        }
+      })
+
+      const answerMix = Object.fromEntries(answerRows.map((r) => [r['_id'], r['count']])) as Record<
+        string,
+        number
+      >
+      const answerTotal = Object.values(answerMix).reduce((s, n) => s + n, 0)
+      const generatedCount = (answerMix['generated'] as number | undefined) ?? 0
+
+      return {
+        generated_at: new Date().toISOString(),
+        window_days: days,
+        tasks,
+        processors: [...getProcessorRegistry().values()].map((e) => ({
+          id: e.id,
+          name: e.name,
+          hosting: e.hosting,
+          status: e.status,
+          reviewed_at: e.reviewed_at,
+          review_due: e.review_due,
+          review_lapsed: e.status === 'approved' && Date.parse(e.review_due) < Date.now(),
+        })),
+        assistant_answer_mix: {
+          ...answerMix,
+          total: answerTotal,
+          // PRD-212's KPI — the share of asks that needed a model call.
+          generation_escape_rate:
+            answerTotal > 0 ? Math.round((generatedCount / answerTotal) * 1000) / 1000 : null,
+        },
+        guard_events: guardRows.map((r) => ({
+          type: (r['_id'] as { type: string }).type,
+          action: (r['_id'] as { action: string }).action,
+          count: r['count'],
+        })),
       }
     },
   )

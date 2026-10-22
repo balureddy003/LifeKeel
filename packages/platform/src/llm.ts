@@ -219,8 +219,19 @@ export interface LlmConfig {
   onUsage?: LlmUsageCallback
 }
 
+/** Optional per-call controls. `signal` aborts the provider request — the
+ * task gateway's deadline uses it so an expired call frees the model. */
+export interface LlmCallOptions {
+  signal?: AbortSignal
+}
+
 /** The canonical LLM function type used everywhere in LifeKeel */
-export type LlmFn = (system: string, prompt: string, model?: string) => Promise<string>
+export type LlmFn = (
+  system: string,
+  prompt: string,
+  model?: string,
+  opts?: LlmCallOptions,
+) => Promise<string>
 
 /**
  * Model → provider routing table.
@@ -309,6 +320,10 @@ async function withRetry<T>(
       return await fn()
     } catch (err) {
       lastErr = err
+      // A caller-aborted call (task deadline, client disconnect) must not be
+      // retried — the request it served is already gone.
+      if ((err as Error).name === 'AbortError') break
+
       const isRetryable =
         // Rate limit or server error from HTTP status in message
         (err instanceof Error &&
@@ -362,19 +377,23 @@ async function callAnthropic(
   maxTokens: number,
   temperature: number,
   onUsage?: LlmUsageCallback,
+  signal?: AbortSignal,
 ): Promise<string> {
   const { default: Anthropic } = await import('@anthropic-ai/sdk')
   // Singleton client — reuse across calls to avoid connection pool exhaustion
   const client = getCachedClient(`anthropic:${apiKey}`, () => new Anthropic({ apiKey }))
   return withRetry(async () => {
     const t0 = Date.now()
-    const response = await client.messages.create({
-      model,
-      max_tokens: maxTokens,
-      temperature,
-      system,
-      messages: [{ role: 'user', content: prompt }],
-    })
+    const response = await client.messages.create(
+      {
+        model,
+        max_tokens: maxTokens,
+        temperature,
+        system,
+        messages: [{ role: 'user', content: prompt }],
+      },
+      { signal },
+    )
     onUsage?.({
       input_tokens: response.usage.input_tokens,
       output_tokens: response.usage.output_tokens,
@@ -396,6 +415,7 @@ async function callOpenAI(
   maxTokens: number,
   temperature: number,
   onUsage?: LlmUsageCallback,
+  signal?: AbortSignal,
 ): Promise<string> {
   const { default: OpenAI } = await import('openai')
   // Singleton client — reuse across calls to avoid connection pool exhaustion
@@ -404,17 +424,20 @@ async function callOpenAI(
   const isReasoningModel = model.startsWith('o1') || model.startsWith('o3')
   return withRetry(async () => {
     const t0 = Date.now()
-    const response = await client.chat.completions.create({
-      model,
-      max_tokens: isReasoningModel ? null : (maxTokens as number | null),
-      temperature: isReasoningModel ? null : (temperature as number | null),
-      messages: isReasoningModel
-        ? [{ role: 'user', content: `${system}\n\n${prompt}` }]
-        : [
-            { role: 'system', content: system },
-            { role: 'user', content: prompt },
-          ],
-    })
+    const response = await client.chat.completions.create(
+      {
+        model,
+        max_tokens: isReasoningModel ? null : (maxTokens as number | null),
+        temperature: isReasoningModel ? null : (temperature as number | null),
+        messages: isReasoningModel
+          ? [{ role: 'user', content: `${system}\n\n${prompt}` }]
+          : [
+              { role: 'system', content: system },
+              { role: 'user', content: prompt },
+            ],
+      },
+      { signal },
+    )
     if (response.usage) {
       onUsage?.({
         input_tokens: response.usage.prompt_tokens,
@@ -439,6 +462,7 @@ async function callAzure(
   temperature: number,
   foundry = false,
   onUsage?: LlmUsageCallback,
+  signal?: AbortSignal,
 ): Promise<string> {
   const { default: OpenAI } = await import('openai')
   // Singleton client — reuse across calls to avoid connection pool exhaustion.
@@ -464,15 +488,18 @@ async function callAzure(
   )
   return withRetry(async () => {
     const t0 = Date.now()
-    const response = await client.chat.completions.create({
-      model: deployment,
-      max_tokens: maxTokens as number | null,
-      temperature,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: prompt },
-      ],
-    })
+    const response = await client.chat.completions.create(
+      {
+        model: deployment,
+        max_tokens: maxTokens as number | null,
+        temperature,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: prompt },
+        ],
+      },
+      { signal },
+    )
     if (response.usage) {
       onUsage?.({
         input_tokens: response.usage.prompt_tokens,
@@ -494,6 +521,7 @@ async function callGroq(
   maxTokens: number,
   temperature: number,
   onUsage?: LlmUsageCallback,
+  signal?: AbortSignal,
 ): Promise<string> {
   // Groq uses OpenAI-compatible API — singleton client
   const { default: OpenAI } = await import('openai')
@@ -503,15 +531,18 @@ async function callGroq(
   )
   return withRetry(async () => {
     const t0 = Date.now()
-    const response = await client.chat.completions.create({
-      model,
-      max_tokens: maxTokens as number | null,
-      temperature,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: prompt },
-      ],
-    })
+    const response = await client.chat.completions.create(
+      {
+        model,
+        max_tokens: maxTokens as number | null,
+        temperature,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: prompt },
+        ],
+      },
+      { signal },
+    )
     if (response.usage) {
       onUsage?.({
         input_tokens: response.usage.prompt_tokens,
@@ -536,6 +567,7 @@ async function callOllama(
   temperature: number,
   getHeaders?: () => Promise<Record<string, string>>,
   onUsage?: LlmUsageCallback,
+  signal?: AbortSignal,
 ): Promise<string> {
   const url = `${baseUrl}/api/chat`
   const body = {
@@ -555,8 +587,11 @@ async function callOllama(
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(getHeaders ? await getHeaders() : {}) },
         body: JSON.stringify(body),
-        // CPU-served models are slow but must not hang a request forever.
-        signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
+        // CPU-served models are slow but must not hang a request forever, and a
+        // caller abort (task deadline) must stop the in-flight generation.
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(OLLAMA_TIMEOUT_MS)])
+          : AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
       })
     } catch (err) {
       // withRetry retries anything whose message contains "timeout"; a call that
@@ -618,7 +653,13 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
   const maxTokens = cfg.maxTokens ?? 2048
   const temperature = cfg.temperature ?? 0.3
 
-  return async function llmRouter(system: string, prompt: string, model?: string): Promise<string> {
+  return async function llmRouter(
+    system: string,
+    prompt: string,
+    model?: string,
+    opts?: LlmCallOptions,
+  ): Promise<string> {
+    const signal = opts?.signal
     // Support tier strings: 'tier:fast' | 'tier:balanced' | 'tier:powerful'
     let resolvedModel = model ?? defaultModel
     if (resolvedModel.startsWith('tier:')) {
@@ -641,6 +682,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
             maxTokens,
             temperature,
             cfg.onUsage,
+            signal,
           )
         }
 
@@ -655,6 +697,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
             maxTokens,
             temperature,
             cfg.onUsage,
+            signal,
           )
         }
 
@@ -703,6 +746,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
             temperature,
             foundry,
             cfg.onUsage,
+            signal,
           )
         }
 
@@ -717,6 +761,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
             maxTokens,
             temperature,
             cfg.onUsage,
+            signal,
           )
         }
 
@@ -732,6 +777,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
             temperature,
             cfg.ollamaHeaders,
             cfg.onUsage,
+            signal,
           )
         }
 

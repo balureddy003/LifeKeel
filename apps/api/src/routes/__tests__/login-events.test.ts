@@ -87,21 +87,43 @@ describe('POST /auth/login records login_events', () => {
     expect(successes[0]?.['reason']).toBeUndefined()
   })
 
-  it('records suspended and locked outcomes', async () => {
-    await db.collection('users').insertOne({
-      ...USER, id: 'user-2', email: 'locked@example.com',
-      locked_until: new Date(Date.now() + 10 * 60 * 1000),
-    })
-    const locked = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'locked@example.com', password: PASSWORD } })
-    expect(locked.statusCode).toBe(429)
-    const lockEvents = await waitForEvents({ email: 'locked@example.com' }, 1)
-    expect(lockEvents[0]).toMatchObject({ success: false, reason: 'locked', user_id: 'user-2' })
+  it('R42: throttles failures per email and IP, without locking the account for anyone else', async () => {
+    await db.collection('users').insertOne({ ...USER, id: 'user-2', email: 'target@example.com' })
+    const attacker = '198.51.100.7'
+    for (let i = 0; i < 5; i++) {
+      const bad = await app.inject({ method: 'POST', url: '/auth/login', remoteAddress: attacker, payload: { email: 'target@example.com', password: 'wrong-password' } })
+      expect(bad.statusCode).toBe(401)
+      expect(bad.json().error).toBe('Invalid email or password')
+    }
+    await waitForEvents({ email: 'target@example.com', reason: 'bad_password' }, 5)
 
-    await db.collection('users').updateOne({ id: 'user-2' }, { $set: { status: 'suspended', locked_until: undefined } })
-    const suspended = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'locked@example.com', password: PASSWORD } })
+    // The right password from the guessing IP is refused for now…
+    const throttled = await app.inject({ method: 'POST', url: '/auth/login', remoteAddress: attacker, payload: { email: 'target@example.com', password: PASSWORD } })
+    expect(throttled.statusCode).toBe(429)
+    expect(throttled.json()).not.toHaveProperty('retry_after_minutes')
+    await waitForEvents({ email: 'target@example.com', reason: 'throttled' }, 1)
+
+    // …but the owner, elsewhere, still signs in.
+    const owner = await app.inject({ method: 'POST', url: '/auth/login', remoteAddress: '198.51.100.8', payload: { email: 'target@example.com', password: PASSWORD } })
+    expect(owner.statusCode).toBe(200)
+
+    // An unknown email is throttled the same way, so the 429 reveals nothing.
+    for (let i = 0; i < 5; i++) {
+      await app.inject({ method: 'POST', url: '/auth/login', remoteAddress: attacker, payload: { email: 'nobody@example.com', password: 'wrong-password' } })
+    }
+    await waitForEvents({ email: 'nobody@example.com', reason: 'unknown_email' }, 5)
+    const unknown = await app.inject({ method: 'POST', url: '/auth/login', remoteAddress: attacker, payload: { email: 'nobody@example.com', password: 'wrong-password' } })
+    expect(unknown.statusCode).toBe(429)
+  })
+
+  it('records a suspended outcome only once the password is right', async () => {
+    await db.collection('users').insertOne({ ...USER, id: 'user-3', email: 'suspended@example.com', status: 'suspended' })
+    const wrong = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'suspended@example.com', password: 'wrong-password' } })
+    expect(wrong.statusCode).toBe(401)
+    const suspended = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'suspended@example.com', password: PASSWORD } })
     expect(suspended.statusCode).toBe(403)
-    const suspEvents = await waitForEvents({ email: 'locked@example.com', reason: 'suspended' }, 1)
-    expect(suspEvents[0]).toMatchObject({ success: false, user_id: 'user-2' })
+    const suspEvents = await waitForEvents({ email: 'suspended@example.com', reason: 'suspended' }, 1)
+    expect(suspEvents[0]).toMatchObject({ success: false, user_id: 'user-3' })
   })
 
   it('denies erased accounts with a generic invalid-credentials response', async () => {

@@ -1,8 +1,13 @@
 # syntax=docker/dockerfile:1
 # Production Dockerfile for LifeKeel API Server
 # Builds all workspace packages and starts the compiled API server.
+#
+# R31: the base image is digest-pinned (Dependabot's docker ecosystem keeps
+# it current), and compilers stay in the build stages: the runtime image
+# carries only Node, the compiled app, production node_modules and the OCR
+# and font packages it calls at runtime.
 
-FROM node:22-alpine AS builder
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS builder
 
 WORKDIR /app
 
@@ -24,37 +29,46 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm exec turbo run build --filter=@lifekeel/api
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Production stage — keeps only runtime files and production dependencies
+# Production dependencies — native modules (better-sqlite3) compile here, with
+# the build tools, so the runtime stage never needs them.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:22-alpine
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS prod-deps
+
+WORKDIR /app
+RUN apk add --no-cache python3 make g++ py3-setuptools
+RUN corepack enable && corepack prepare pnpm@8.15.5 --activate
+
+# Copy root package files, workspace package.json + built dist files, and pnpm patches.
+COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
+COPY --from=builder /app/apps/api ./apps/api
+COPY --from=builder /app/packages ./packages
+
+# Install only production dependencies (workspace packages are resolved from the
+# copied package.json files and their pre-built dist directories).
+# The root "prepare" script runs husky (a devDependency), which is absent under --prod and
+# fails the install. Git hooks are meaningless in an image, so drop the script first.
+RUN pnpm pkg delete scripts.prepare && pnpm install --frozen-lockfile --prod
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Runtime stage
+# ─────────────────────────────────────────────────────────────────────────────
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914
 
 ENV NODE_ENV=production
 ENV PORT=3001
 
 WORKDIR /app
 
-# Native build tools are required for better-sqlite3 even in the prod stage
-# because we re-install dependencies here (pnpm --prod) rather than copying
-# the builder's node_modules wholesale.
-RUN apk add --no-cache python3 make g++ py3-setuptools
-
 # Tesseract for local document OCR (apps/api/src/ocr/local-ocr.ts). Used only when
 # LOCAL_JUDGE_BASE_URL is set, so uploaded documents are read in-process instead of
-# being sent to a cloud vision model. NOT build-tested here; verify the image once.
-RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-eng
-
+# being sent to a cloud vision model.
 # fontconfig + DejaVu — the /share/readiness/og.png route rasterizes SVG text
 # via sharp/librsvg; Alpine ships zero fonts, so digits would render blank
 # without these.
-RUN apk add --no-cache fontconfig ttf-dejavu
+RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-eng fontconfig ttf-dejavu
 
-RUN corepack enable && corepack prepare pnpm@8.15.5 --activate
-
-# Copy root package files, workspace package.json + built dist files, and pnpm patches.
-COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
+COPY --from=prod-deps /app ./
 COPY --from=builder /app/category-table.yaml ./category-table.yaml
-COPY --from=builder /app/apps/api ./apps/api
-COPY --from=builder /app/packages ./packages
 
 # Copy on-disk YAML resource directories that the engine and loaders read at
 # runtime via path.join(ROOT, ...). Without these, the detector engine silently
@@ -66,12 +80,6 @@ COPY --from=builder /app/definitions ./definitions
 COPY --from=builder /app/playbooks ./playbooks
 COPY --from=builder /app/detector-evals ./detector-evals
 COPY --from=builder /app/verticals ./verticals
-
-# Install only production dependencies (workspace packages are resolved from the
-# copied package.json files and their pre-built dist directories).
-# The root "prepare" script runs husky (a devDependency), which is absent under --prod and
-# fails the install. Git hooks are meaningless in an image, so drop the script first.
-RUN pnpm pkg delete scripts.prepare && pnpm install --frozen-lockfile --prod
 
 EXPOSE 3001
 

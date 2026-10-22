@@ -166,7 +166,7 @@ async function buildApp(db: any, engine: Engine) {
   const app = Fastify()
   await app.register(multipart)
   app.addHook('onRequest', async (request) => {
-    ;(request as any).authContext = { tenant_id: TENANT, user_id: 'user-1' }
+    ;(request as any).authContext = { tenant_id: TENANT, user_id: 'user-1', roles: ['admin'] }
   })
   const insights: Insight[] = []
   registerDocumentRoutes(app, db, engine, async (generated) => {

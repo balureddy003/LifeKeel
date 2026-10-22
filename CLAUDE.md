@@ -109,12 +109,14 @@ scorer warm-start can use it.
   `localDecisionFromEnv` escapes its `taskDecide` wrapper. Unknown task_ids
   fail closed outside dev. The processor registry
   (`definitions/ai-processors.yaml`, per-task `allowed_processors`) is checked
-  before every call, but in `AI_PROCESSOR_ENFORCEMENT=warn` (the default) a
-  violation is logged and counted, not blocked: every hosted processor ships
-  `unreviewed` because no terms have been supplied, so `enforce` would refuse
-  every hosted call today. A `lifekeel_infra` task still falls back to a hosted
-  provider when `LOCAL_TEXT_ENABLED` is off; the check flags it, it does not
-  stop it. Provider no-training and retention terms, Gmail Limited Use
+  before every call. Outside `dev` the default is `enforce` (an unapproved
+  processor is refused) and hosted fallback for `lifekeel_infra` tasks is
+  denied; in `dev` the default is `warn`. A non-dev downgrade (`warn`, `off`,
+  `AI_HOSTED_FALLBACK=allow`) only takes effect with a recorded
+  `AI_POLICY_EXCEPTION` reference and is logged at boot. Every hosted
+  processor still ships `unreviewed` because no terms have been supplied, so
+  hosted features are unavailable in a non-dev deployment until one is
+  approved. Provider no-training and retention terms, Gmail Limited Use
   exclusion from cross-tenant scorers, and a consent flow for third-party AI
   remain procedural. Do not claim rule 3 is technically enforced by code
   alone; see ARCHITECTURE.md §8.15 for the full list.
@@ -142,6 +144,14 @@ Detail on what each check catches (and cannot):
   new family signal means: (1) extend the financial-profile schema in
   `apps/api/src/routes/family-financial-profile.ts`, (2) add/extend a
   detector YAML, (3) surface it in `apps/web`'s financial-profile form.
+- **Model-serving split is decided (2026-10):** general interactive
+  generation (Ask Keel, drafts) runs on a small hosted processor behind the
+  gateway — never the CPU-local model. CPU-local serving of interactive
+  generation was measured (50s p50 vs a 30s deadline) and is closed. Local
+  serving remains for quarantined tasks (`lifekeel_infra_required`) and
+  batch work. See ARCHITECTURE.md §8.4b and
+  `docs/reviews/decision-local-interactive-closed-2026-10.md` — do not
+  re-propose `LOCAL_TEXT_ENABLED` for general interactive traffic.
 
 ## Known gotchas (discovered the hard way this session — don't rediscover them)
 

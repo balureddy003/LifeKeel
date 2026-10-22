@@ -14,18 +14,16 @@
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import crypto from 'node:crypto'
 import Fastify from 'fastify'
 import { AuthService } from '@lifekeel/platform'
 import { registerSocialAuthRoutes } from '../auth-social.js'
+import { signState as signPurposeState } from '../../auth/signing-key.js'
 import { invalidatePlatformConfigCache } from '../../operator/platform-config.js'
 
 const JWT_SECRET = 'test-secret'
 
 function signState(payload: Record<string, unknown>): string {
-  const body = Buffer.from(JSON.stringify(payload)).toString('base64url')
-  const sig = crypto.createHmac('sha256', JWT_SECRET).update(body).digest('base64url')
-  return `${body}.${sig}`
+  return signPurposeState('social-oauth-state', { exp: Date.now() + 60_000, ...payload })
 }
 
 function matchesClause(doc: Record<string, unknown>, clause: Record<string, unknown>): boolean {

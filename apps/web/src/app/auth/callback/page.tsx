@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { reportError } from '@/lib/observability'
+import { storeSessionToken } from '@/lib/session-token'
 
 export default function AuthCallbackPage() {
   const router = useRouter()
@@ -37,7 +38,7 @@ export default function AuthCallbackPage() {
     if (token) {
       // The API also set the httpOnly session cookie; the token is kept as
       // the Bearer fallback for cookie-blocked browsers (see lib/http.ts).
-      localStorage.setItem('lifekeel_token', token)
+      storeSessionToken(token)
       if (tenant) localStorage.setItem('lifekeel_tenant', tenant)
       refresh().then(() => router.push('/'))
     } else {

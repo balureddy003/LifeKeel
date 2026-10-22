@@ -73,6 +73,9 @@ async function seedEverything(tenant: string) {
     .collection('referrals')
     .insertOne({ referrer_tenant_id: tenant, referred_tenant_id: 'someone' })
   await db.collection('lifecycle_sends').insertOne({ recipient: uid, email: `${tenant}@x.test` })
+  // R19: email- and user-keyed records outside the tenant key.
+  await db.collection('leads').insertOne({ email: `${tenant}@x.test`, consent_marketing: true })
+  await db.collection('login_events').insertOne({ user_id: uid, email: `${tenant}@x.test`, ip: '203.0.113.9' })
   await blob(tenant)
 }
 const countFor = async (tenant: string) => {
@@ -84,7 +87,8 @@ const countFor = async (tenant: string) => {
 }
 
 describe('erasure leaves nothing and touches no one else', () => {
-  it('removes a row from every listed collection, the blob and the custom-keyed rows, with a clean check', async () => {
+  // Seeds ~95 collections for two tenants against a real server; slow under a parallel run.
+  it('removes a row from every listed collection, the blob and the custom-keyed rows, with a clean check', { timeout: 30_000 }, async () => {
     await seedEverything(A)
     await seedEverything(B)
     const before = await countFor(B)
@@ -95,6 +99,9 @@ describe('erasure leaves nothing and touches no one else', () => {
     expect(await db.collection('growth_events').countDocuments({ 'meta.tenant_id': A })).toBe(0)
     expect(await db.collection('referrals').countDocuments({ referrer_tenant_id: A })).toBe(0)
     expect(await db.collection('lifecycle_sends').countDocuments({ recipient: `u-${A}` })).toBe(0)
+    expect(await db.collection('leads').countDocuments({ email: `${A}@x.test` })).toBe(0)
+    expect(await db.collection('login_events').countDocuments({ user_id: `u-${A}` })).toBe(0)
+    expect(await db.collection('leads').countDocuments({ email: `${B}@x.test` })).toBe(1)
 
     // Tenant B is exactly as it was, in every collection.
     expect(await countFor(B)).toBe(before)
@@ -128,6 +135,7 @@ describe('POST /account/delete', () => {
       ;(req as unknown as { authContext: unknown }).authContext = {
         tenant_id: tenant,
         user_id: userId,
+        roles: ['admin'],
       }
     })
     registerAccountRoutes(app, db)

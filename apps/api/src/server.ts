@@ -27,6 +27,10 @@ import Fastify from 'fastify'
 import cookie from '@fastify/cookie'
 import cors from '@fastify/cors'
 import rateLimit from '@fastify/rate-limit'
+import { Redis } from 'ioredis'
+import { isDevOrTest, rootSigningSecret } from './auth/signing-key.js'
+import { isSessionTokenRevoked, revokeSessionToken } from './auth/session-revocation.js'
+import { redactUrl, scrubSecrets } from './observability/redact.js'
 import multipart from '@fastify/multipart'
 import helmet from '@fastify/helmet'
 import compress from '@fastify/compress'
@@ -238,11 +242,8 @@ const engine = new Engine({
 
 const connectorLoader = new ConnectorLoader()
 const eventGenerator = new EventGenerator()
-const jwtSecret = process.env['JWT_SECRET'] ?? ''
-if (process.env['NODE_ENV'] === 'production' && jwtSecret.length < 32) {
-  throw new Error('JWT_SECRET must be set to a strong value in production')
-}
-const auth = new AuthService(jwtSecret || 'change-me-in-production')
+// Throws outside dev/test when JWT_SECRET is missing or short (R41).
+const auth = new AuthService(rootSigningSecret())
 if (process.env['LIFEKEEL_LICENSE_KEY'] && process.env['LIFEKEEL_LICENSE_PUBLIC_KEY']) {
   const license = await validateLicenseKey(
     process.env['LIFEKEEL_LICENSE_KEY'],
@@ -1408,8 +1409,25 @@ if (process.env['NODE_ENV'] === 'production' && connectorLoader.count === 0) {
   process.exit(1)
 }
 
+const trustedProxyHops = Number(
+  process.env['TRUST_PROXY_HOPS'] ?? (deploymentConfig.mode === 'dev' ? 0 : 1),
+)
 const app = Fastify({
-  logger: true,
+  // Request logs carry the path with token-like segments and every query
+  // string removed (R22): OAuth codes, invite and action tokens, reset links.
+  logger: {
+    serializers: {
+      req: (req: { method: string; url: string; id: string }) => ({
+        method: req.method,
+        url: redactUrl(req.url),
+        id: req.id,
+      }),
+    },
+  },
+  // Client IP for rate limits and login telemetry (R24): trust exactly the
+  // proxy hops in front of us (Cloud Run: 1), never arbitrary
+  // X-Forwarded-For values a client sends.
+  trustProxy: trustedProxyHops > 0 ? (_address: string, hop: number) => hop < trustedProxyHops : false,
   rewriteUrl: rewriteVersionedUrl,
   // Signed delivery action tokens (/a/:token) exceed the 100-char default.
   routerOptions: { maxParamLength: 512 },
@@ -1477,11 +1495,12 @@ app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => 
   // Log unexpected errors and return a generic 500
   request.log.error({ err: error }, 'Unhandled error')
   // Alert on 5xx errors (rate-limited per error fingerprint)
+  const route = request.routeOptions.url ?? redactUrl(request.url)
   void sendOpsAlert({
     title: 'API 5xx Error',
-    message: `${error.message}\nRoute: ${request.method} ${request.url}`,
+    message: `${scrubSecrets(error.message)}\nRoute: ${request.method} ${route}`,
     severity: 'critical',
-    fingerprint: `5xx:${request.method}:${request.url}`,
+    fingerprint: `5xx:${request.method}:${route}`,
     tenant_id: request.authContext?.tenant_id,
   })
   reply.status(500).send({
@@ -1497,23 +1516,41 @@ await app.register(swagger, {
   openapi: {
     info: {
       title: 'LifeKeel API',
-      description: 'AI decision platform for SMBs — detectors, connectors, and outcome packs.',
+      description: 'LifeKeel family API — household profile, documents, insights and connectors.',
       version: '0.1.0',
     },
   },
   transform: jsonSchemaTransform,
 })
-await app.register(swaggerUi, {
-  routePrefix: '/documentation',
-  uiConfig: { docExpansion: 'list', deepLinking: false },
-})
+// The interactive route inventory is a local tool, not a public page (API9).
+if (deploymentConfig.mode === 'dev' || process.env['ENABLE_API_DOCS'] === 'true') {
+  await app.register(swaggerUi, {
+    routePrefix: '/documentation',
+    uiConfig: { docExpansion: 'list', deepLinking: false },
+  })
+}
 
 // Rate limiting — keyed by tenant_id when authenticated, IP otherwise.
 // Limits are generous in dev (1000/min) and calibrated for production cloud mode.
+// Shared counters across instances when Redis is configured (R24); a Redis
+// outage degrades to letting requests through rather than failing them.
+const rateLimitRedis = process.env['REDIS_URL']
+  ? new Redis(process.env['REDIS_URL'], {
+      connectTimeout: 2000,
+      maxRetriesPerRequest: 1,
+      enableOfflineQueue: false,
+    })
+  : undefined
+rateLimitRedis?.on('error', () => {})
 await app.register(rateLimit, {
   global: true,
   max: deploymentConfig.maxWorkflowRunsPerMinute,
   timeWindow: '1 minute',
+  // preHandler runs after the auth hook, so authenticated requests are
+  // counted per tenant as the key generator intends (R24). Route-level
+  // limits on the public auth endpoints stay keyed by IP.
+  hook: 'preHandler',
+  ...(rateLimitRedis ? { redis: rateLimitRedis, skipOnError: true } : {}),
   keyGenerator: (req) => {
     // Use tenant_id from JWT when available — prevents IP-sharing bypass
     const auth = (req as unknown as { authContext?: { tenant_id: string } }).authContext
@@ -1558,6 +1595,10 @@ app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (request, bo
 })
 
 // ─── Auth middleware ──────────────────────────────────────────────────────────
+
+/** Users who exist as rows but must not hold a session: erased tombstones and
+ *  members an organizer removed from the household (R03). */
+const INACTIVE_USER_STATUSES = new Set(['erased', 'removed'])
 
 app.addHook('onRequest', async (request, reply) => {
   // PRD-110: '/family/join' is deliberately NOT a prefix of the organizer-only
@@ -1624,13 +1665,16 @@ app.addHook('onRequest', async (request, reply) => {
         // account's JWT verified fine and was treated as signed in).
         if (ctx.mfa_pending) throw new Error('mfa_pending token on open route')
         if (workflowDb) {
+          if (await isSessionTokenRevoked(workflowDb, opportunistic)) throw new Error('signed out')
           const user = await workflowDb
             .collection('users')
             .findOne(
               { tenant_id: ctx.tenant_id, id: ctx.user_id },
               { projection: { status: 1, sessions_revoked_at: 1 } },
             )
+          if (!user && !ctx.demo && deploymentConfig.mode !== 'dev') throw new Error('no such user')
           if (user?.['status'] === 'suspended') throw new Error('user suspended')
+          if (INACTIVE_USER_STATUSES.has(user?.['status'] as string)) throw new Error('user inactive')
           const revokedAt = user?.['sessions_revoked_at'] as Date | undefined
           if (
             revokedAt &&
@@ -1674,6 +1718,9 @@ app.addHook('onRequest', async (request, reply) => {
     if (ctx.mfa_pending) return reply.status(401).send({ error: 'MFA verification required' })
     let authedUser: Record<string, unknown> | null = null
     if (workflowDb) {
+      // Logout revokes the exact token server-side (R06).
+      if (await isSessionTokenRevoked(workflowDb, token))
+        return reply.status(401).send({ error: 'Session ended' })
       const user = await workflowDb
         .collection('users')
         .findOne(
@@ -1681,8 +1728,15 @@ app.addHook('onRequest', async (request, reply) => {
           { projection: { status: 1, sessions_revoked_at: 1, last_seen_at: 1 } },
         )
       authedUser = user
+      // A token for a user row that no longer exists (deleted, or moved out
+      // of this household) is not a session (R03). Demo and local dev
+      // tokens name synthetic users.
+      if (!user && !ctx.demo && deploymentConfig.mode !== 'dev')
+        return reply.status(401).send({ error: 'Invalid token' })
       if (user?.['status'] === 'suspended')
         return reply.status(401).send({ error: 'User suspended' })
+      if (INACTIVE_USER_STATUSES.has(user?.['status'] as string))
+        return reply.status(401).send({ error: 'Session ended' })
       // Operator session revocation: reject tokens issued before
       // sessions_revoked_at. JWT iat is seconds; <= guards a token minted
       // in the same second the revocation landed.
@@ -1819,8 +1873,10 @@ function authorizationAction(method: string, url: string): ProductAction {
 app.post<{ Body: { tenant_id: string; user_id?: string } }>(
   '/auth/token',
   async (request, reply) => {
-    if (process.env['NODE_ENV'] === 'production' && !process.env['ALLOW_DEMO_TOKENS']) {
-      return reply.status(403).send({ error: 'Demo tokens disabled in production' })
+    // Any deploy outside local dev/test, not only NODE_ENV=production (R41):
+    // this mints an admin token for any tenant named in the body.
+    if (!isDevOrTest() && !process.env['ALLOW_DEMO_TOKENS']) {
+      return reply.status(403).send({ error: 'Demo tokens disabled outside local development' })
     }
     const { tenant_id, user_id = 'studio_user' } = request.body
     if (!tenant_id) return reply.status(400).send({ error: 'tenant_id required' })
@@ -1829,11 +1885,20 @@ app.post<{ Body: { tenant_id: string; user_id?: string } }>(
   },
 )
 
-/** POST /auth/logout — clears the httpOnly session cookie. Deliberately on
- *  the open-routes list: a logout must succeed even with an expired/invalid
- *  session, and clearing a cookie is harmless to call without auth. Bearer
- *  clients are unaffected (they just drop their token client-side). */
-app.post('/auth/logout', async (_request, reply) => {
+/** POST /auth/logout — clears the httpOnly session cookie and revokes the
+ *  presented token server-side, so a copy of it stops working too (R06).
+ *  Deliberately on the open-routes list: a logout must succeed even with an
+ *  expired/invalid session. */
+app.post('/auth/logout', async (request, reply) => {
+  const token = extractBearerToken(request.headers.authorization) ?? readSessionCookie(request)
+  if (token && workflowDb) {
+    try {
+      await auth.verify(token)
+      await revokeSessionToken(workflowDb, token)
+    } catch {
+      /* an invalid or expired token needs no revocation */
+    }
+  }
   clearSessionCookie(reply)
   return reply.send({ ok: true })
 })
@@ -1845,8 +1910,8 @@ app.post('/auth/logout', async (_request, reply) => {
  *  if acme-corp has real provider connections in the database, a demo visitor
  *  cannot see or use them. */
 app.get('/auth/demo-token', async (_request, reply) => {
-  if (process.env['NODE_ENV'] === 'production' && !process.env['ALLOW_DEMO_TOKENS']) {
-    return reply.status(403).send({ error: 'Demo tokens disabled in production' })
+  if (!isDevOrTest() && !process.env['ALLOW_DEMO_TOKENS']) {
+    return reply.status(403).send({ error: 'Demo tokens disabled outside local development' })
   }
   const token = await auth.sign({
     sub: 'demo_user',

@@ -17,13 +17,13 @@
 
 import { getAuditLogger } from '../audit/audit-log.js'
 import { closeReceipt, openReceipt, publicReceipt, saveReceipt } from '../deletion/receipt.js'
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { GridFSBucket, type Db, type ObjectId } from 'mongodb'
 import { randomUUID } from 'node:crypto'
 import type { Engine, Insight } from '@lifekeel/engine'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { processDocument } from '../ocr/extract.js'
-import { scanUpload } from '../extraction/scan.js'
+import { mayParse, scanUpload } from '../extraction/scan.js'
 import { signatureMatchesMime } from '../extraction/file-signature.js'
 import { CATEGORIES } from '../extraction/schema.js'
 import {
@@ -50,6 +50,7 @@ import {
 import { effectivePlan, hasFeature } from '../entitlements.js'
 import { recordInsightAction } from '../insights/insight-attribution.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
+import { isHouseholdEditor } from '../family/family-permissions.js'
 
 // PRD-136: one feed event per document pipeline stage (uploaded /
 // extracted / applied), deduped per (document, stage) so a reprocess or
@@ -114,6 +115,39 @@ export const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB — matches multipart lim
 // document list/detail/file routes below, which have no such gating.
 // Exported so vault.ts uses the exact same literal, not a copy that could drift.
 export const ESTATE_VAULT_CATEGORY = 'estate_vault'
+
+// Aggregate intake limits (R25), on top of the 50 MB per-file cap.
+// Overridable per deployment; the defaults suit one household.
+const MAX_TENANT_STORAGE_BYTES = Number(process.env['MAX_TENANT_STORAGE_BYTES'] ?? 2 * 1024 ** 3)
+const MAX_UPLOADS_PER_DAY = Number(process.env['MAX_TENANT_UPLOADS_PER_DAY'] ?? 200)
+const MAX_CONCURRENT_UPLOADS_PER_TENANT = 3
+const uploadsInFlight = new Map<string, number>()
+
+/** Exported for vault.ts. Returns a refusal, or null when the upload fits. */
+export async function checkUploadBudget(
+  db: Db,
+  tenantId: string,
+  incomingBytes: number,
+): Promise<{ status: 413 | 429; error: string } | null> {
+  const files = db.collection('documents.files')
+  const [usage] = await files
+    .aggregate<{ bytes: number }>([
+      { $match: { 'metadata.tenant_id': tenantId } },
+      { $group: { _id: null, bytes: { $sum: '$length' } } },
+    ])
+    .toArray()
+  if ((usage?.bytes ?? 0) + incomingBytes > MAX_TENANT_STORAGE_BYTES) {
+    return { status: 413, error: 'Your household has reached its storage limit. Remove some documents first.' }
+  }
+  const today = await files.countDocuments({
+    'metadata.tenant_id': tenantId,
+    uploadDate: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+  })
+  if (today >= MAX_UPLOADS_PER_DAY) {
+    return { status: 429, error: 'Daily upload limit reached. Try again tomorrow.' }
+  }
+  return null
+}
 
 export function registerDocumentRoutes(
   fastify: FastifyInstance,
@@ -219,7 +253,28 @@ export function registerDocumentRoutes(
     return { ok: true, fields: usable, candidates }
   }
 
-  fastify.post('/documents/upload', async (req, reply) => {
+  // Per-tenant concurrency on this instance (R25); the storage and daily
+  // budgets below are shared across instances because they're read from
+  // the database.
+  fastify.post(
+    '/documents/upload',
+    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+    const { tenant_id: uploadTenant } = req.authContext
+    if ((uploadsInFlight.get(uploadTenant) ?? 0) >= MAX_CONCURRENT_UPLOADS_PER_TENANT) {
+      return reply.status(429).send({ error: 'Too many uploads at once. Wait for one to finish.' })
+    }
+    uploadsInFlight.set(uploadTenant, (uploadsInFlight.get(uploadTenant) ?? 0) + 1)
+    try {
+      return await handleUpload(req, reply)
+    } finally {
+      const left = (uploadsInFlight.get(uploadTenant) ?? 1) - 1
+      if (left <= 0) uploadsInFlight.delete(uploadTenant)
+      else uploadsInFlight.set(uploadTenant, left)
+    }
+  })
+
+  async function handleUpload(req: FastifyRequest, reply: FastifyReply) {
     const { tenant_id } = req.authContext
     const data = await req.file()
     if (!data) {
@@ -257,6 +312,9 @@ export function registerDocumentRoutes(
     if (fileBuffer.length > MAX_FILE_SIZE) {
       return reply.status(413).send({ error: 'File too large (max 50 MB)' })
     }
+
+    const budget = await checkUploadBudget(db, tenant_id, fileBuffer.length)
+    if (budget) return reply.status(budget.status).send({ error: budget.error })
 
     // The declared MIME type is client-supplied — check the bytes match
     // it before storing (UAT D3: an executable renamed .pdf sailed
@@ -350,8 +408,9 @@ export function registerDocumentRoutes(
       const plan = effectivePlan(tenant)
       // A scanner that is configured but did not answer leaves the file unscanned:
       // it is kept, but not sent for extraction.
-      const aiExtractionEnabled =
-        hasFeature('document_ai_extraction', plan) && scan.result !== 'error'
+      // and with a scanner required (production default) an unscanned file
+      // is kept but never handed to a parser (R25).
+      const aiExtractionEnabled = hasFeature('document_ai_extraction', plan) && mayParse(scan)
 
       if (aiExtractionEnabled) {
         log.info({ documentId, tenant_id }, 'Document stored, starting OCR processing')
@@ -402,7 +461,7 @@ export function registerDocumentRoutes(
       log.error({ err, documentId }, 'Failed to store document')
       return reply.status(500).send({ error: 'Failed to store document' })
     }
-  })
+  }
 
   // ── GET /documents ──────────────────────────────────────────────────────
   fastify.get<{ Querystring: { category?: string; status?: string; limit?: string } }>(
@@ -419,7 +478,10 @@ export function registerDocumentRoutes(
         filter['category'] = req.query.category
       if (req.query.status) filter['status'] = req.query.status
 
-      const limit = Math.min(parseInt(req.query.limit ?? '50', 10), 100)
+      // A finite integer in [1, 100] (R26): 0, negatives and NaN would
+      // otherwise reach MongoDB, where limit(0) means "no limit".
+      const requested = Number.parseInt(String(req.query.limit ?? '50'), 10)
+      const limit = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), 100) : 50
 
       const docs = await documents.find(filter).sort({ uploaded_at: -1 }).limit(limit).toArray()
 
@@ -640,6 +702,8 @@ export function registerDocumentRoutes(
   fastify.post<{ Params: { id: string }; Body: { paths?: string[] } }>(
     '/documents/:id/apply-to-profile',
     async (req, reply) => {
+      if (!(await isHouseholdEditor(db, req.authContext.tenant_id, req.authContext.user_id, req.authContext.roles)))
+        return reply.status(403).send({ error: 'Only household editors can change shared records' })
       const { tenant_id } = req.authContext
       const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
       const doc = await documents.findOne({ id: req.params.id })
@@ -793,6 +857,8 @@ export function registerDocumentRoutes(
   fastify.post<{ Params: { id: string }; Body: ApplyPolicyBody }>(
     '/documents/:id/apply-policy',
     async (req, reply) => {
+      if (!(await isHouseholdEditor(db, req.authContext.tenant_id, req.authContext.user_id, req.authContext.roles)))
+        return reply.status(403).send({ error: 'Only household editors can change shared records' })
       const { tenant_id } = req.authContext
       const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
       const doc = await documents.findOne({ id: req.params.id })
