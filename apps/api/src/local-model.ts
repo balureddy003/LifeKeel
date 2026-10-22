@@ -42,6 +42,15 @@ function costPerHourUsd(): number {
   return Number.isFinite(v) && v > 0 ? v : 0
 }
 
+/**
+ * Output cap for the email classifier. Its answer is a short JSON object: the
+ * longest seen on the labelled emails is 146 tokens, the median 111. Generation
+ * is the slow part on the CPU judge (about 3 tokens/s), so an uncapped or
+ * 256-token ceiling lets a runaway answer hold the single model slot for
+ * ~85s. 200 leaves about a third of headroom over the longest answer seen.
+ */
+export const CLASSIFIER_MAX_TOKENS = 200
+
 export function localDecisionFromEnv(
   purpose: 'judge' | 'classifier' | 'ocr',
 ): DecisionFn | undefined {
@@ -59,6 +68,7 @@ export function localDecisionFromEnv(
     baseUrl,
     model,
     timeoutMs: 120_000,
+    ...(purpose === 'classifier' ? { maxTokens: CLASSIFIER_MAX_TOKENS } : {}),
     // Measured on 4 CPU cores (qwen2.5:3b): 1, 2 and 4 parallel calls all gave ~3.8
     // emails/min, while per-call time rose 16s -> 28s -> 47s. Parallel calls to one
     // CPU model add latency and timeout risk, not throughput, so default to 1. Raise

@@ -96,6 +96,12 @@ const POLICY_JSON_PROPERTIES = {
   contact_phone: nullableString,
   contact_email: nullableString,
 } as const
+// The four fields the inbox card and the apply-policy step lean on stay required (with an
+// explicit null option) so a small model cannot skip them. The rest are optional: they are
+// usually absent, and forcing "null" for each costs ~9 output tokens a line, at ~3 tokens/s on
+// the CPU judge. Making all nine optional dropped field accuracy (20/22 -> 16/22); this split
+// holds it at 20/22 and cuts the median answer from 147 to 111 tokens.
+const POLICY_REQUIRED_KEYS = ['provider', 'type', 'monthly_premium', 'renewal_date']
 const LOCAL_EMAIL_JSON_SCHEMA = {
   type: 'object',
   properties: {
@@ -109,7 +115,7 @@ const LOCAL_EMAIL_JSON_SCHEMA = {
         {
           type: 'object',
           properties: POLICY_JSON_PROPERTIES,
-          required: Object.keys(POLICY_JSON_PROPERTIES),
+          required: POLICY_REQUIRED_KEYS,
         },
         { type: 'null' },
       ],
@@ -117,6 +123,9 @@ const LOCAL_EMAIL_JSON_SCHEMA = {
   },
   required: ['is_financial', 'summary', 'action_label', 'action_type', 'priority', 'policy'],
 } as const
+
+/** The decoding schema the local classifier call sends, exported so latency tests send exactly what production sends. */
+export const EMAIL_CLASSIFY_JSON_SCHEMA = LOCAL_EMAIL_JSON_SCHEMA
 
 /** Keeps only well-typed, bounded fields — the model's output is untrusted. */
 function sanitizePolicy(raw: unknown): EmailPolicyDetails | undefined {

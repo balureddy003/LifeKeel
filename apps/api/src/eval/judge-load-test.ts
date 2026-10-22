@@ -2,7 +2,8 @@ import { pathToFileURL } from 'node:url'
 import { ollamaNumCtx } from '@lifekeel/platform'
 import { evalAuthHeaders } from './local-model-eval.js'
 import { LABELLED_EMAILS } from '../email/__fixtures__/labelled-emails.js'
-import { EMAIL_CLASSIFY_SYSTEM_PROMPT } from '../email/classify.js'
+import { EMAIL_CLASSIFY_JSON_SCHEMA, EMAIL_CLASSIFY_SYSTEM_PROMPT } from '../email/classify.js'
+import { CLASSIFIER_MAX_TOKENS } from '../local-model.js'
 
 /**
  * Load and context test for the self-hosted model service:
@@ -145,6 +146,9 @@ export function contextProbe(code = 'PELICAN-7731'): {
   }
 }
 
+/** The output cap the classifier request uses in production. */
+export const CLASSIFY_NUM_PREDICT = CLASSIFIER_MAX_TOKENS
+
 interface Target {
   baseUrl: string
   model: string
@@ -157,6 +161,7 @@ async function chat(
   system: string,
   prompt: string,
   numPredict: number,
+  format?: unknown,
 ): Promise<{ sample: Sample; text: string }> {
   const started = Date.now()
   try {
@@ -171,6 +176,8 @@ async function chat(
       body: JSON.stringify({
         model: t.model,
         stream: false,
+        // Same decoding constraint production uses for the classifier, when given.
+        ...(format ? { format } : {}),
         // Same options the API sends, so the server is exercised the way production exercises it.
         options: { temperature: 0, seed: 0, num_predict: numPredict, num_ctx: ollamaNumCtx() },
         messages: [
@@ -211,7 +218,9 @@ async function runLevel(t: Target, concurrency: number, requests: number): Promi
         const i = next++
         if (i >= requests) return
         const { system, prompt } = classifyPrompt(i, `${runId}-${concurrency}-${i}`)
-        samples.push((await chat(t, system, prompt, 120)).sample)
+        samples.push(
+          (await chat(t, system, prompt, CLASSIFY_NUM_PREDICT, EMAIL_CLASSIFY_JSON_SCHEMA)).sample,
+        )
       }
     }),
   )
