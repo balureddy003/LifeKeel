@@ -14,13 +14,21 @@ const WEB_BASE = process.env['E2E_WEB_BASE'] ?? 'http://localhost:3002'
  * data" behavior deterministically.
  */
 export default async function globalSetup(_config: FullConfig): Promise<void> {
-  const unique = `e2e-pw-${Date.now()}`
+  // Letters only: the API refuses names holding 7+ digits as a possible phone number.
+  const unique = `e2e-pw-${Date.now()
+    .toString(36)
+    .replace(/\d/g, (d) => 'abcdefghij'[Number(d)]!)}`
   const email = `${unique}@example.com`
 
   const signupRes = await fetch(`${API_BASE}/auth/signup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password: 'playwright-e2e-pass-1', name: 'Playwright E2E', workspace: unique }),
+    body: JSON.stringify({
+      email,
+      password: 'playwright-e2e-pass-1',
+      name: 'Playwright E2E',
+      workspace: unique,
+    }),
   })
   if (!signupRes.ok) {
     throw new Error(`E2E signup failed: ${signupRes.status} ${await signupRes.text()}`)
@@ -66,7 +74,12 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     },
     education_funds: [],
     policies: [
-      { type: 'car', provider: 'Direct Line', coverage_amount_minor: 500000, monthly_premium_minor: 4000 },
+      {
+        type: 'car',
+        provider: 'Direct Line',
+        coverage_amount_minor: 500000,
+        monthly_premium_minor: 4000,
+      },
     ],
   }
 
@@ -88,7 +101,9 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     body: JSON.stringify({ event_type: 'job_loss' }),
   })
   if (!lifeEventRes.ok) {
-    throw new Error(`E2E life event seed failed: ${lifeEventRes.status} ${await lifeEventRes.text()}`)
+    throw new Error(
+      `E2E life event seed failed: ${lifeEventRes.status} ${await lifeEventRes.text()}`,
+    )
   }
   const lifeEvent = (await lifeEventRes.json()) as { id: string }
 
@@ -109,5 +124,8 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
   const outDir = path.resolve(__dirname, '.auth')
   fs.mkdirSync(outDir, { recursive: true })
   fs.writeFileSync(path.join(outDir, 'storage-state.json'), JSON.stringify(storageState, null, 2))
-  fs.writeFileSync(path.join(outDir, 'seed.json'), JSON.stringify({ email, lifeEventId: lifeEvent.id }, null, 2))
+  fs.writeFileSync(
+    path.join(outDir, 'seed.json'),
+    JSON.stringify({ email, lifeEventId: lifeEvent.id }, null, 2),
+  )
 }
