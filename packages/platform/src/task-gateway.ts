@@ -162,6 +162,19 @@ export class TaskDeadlineError extends Error {
 }
 
 /**
+ * A call was refused because an operator disabled the task at runtime
+ * (PRD-217: platform_config.ai_disabled_tasks). Extends TaskPolicyError so
+ * every call site's existing policy-failure path applies — the honest
+ * fallback, never a silent swap to a different processor.
+ */
+export class TaskDisabledError extends TaskPolicyError {
+  constructor(taskId: string) {
+    super(`Task '${taskId}' is disabled by operator action`)
+    this.name = 'TaskDisabledError'
+  }
+}
+
+/**
  * Validate a parsed YAML document into a registry. Structural checks only —
  * the loader decides whether an invalid doc is fatal (production) or a
  * warning (dev), because a permissive dev default keeps local runs working
@@ -297,7 +310,18 @@ export interface TaskGatewayDeps {
     model: string
     ok: boolean
     latency_ms: number
+    /** Why a refused call was refused — currently only 'disabled' (operator
+     *  switch). Absent on served/failed provider calls. */
+    outcome?: string
   }) => void
+  /**
+   * Runtime kill switch (PRD-217): when this returns true for a task, the
+   * governed fn refuses the call with TaskDisabledError before any provider
+   * is contacted — the caller's existing failure path serves its honest
+   * fallback. The app wires it to platform_config.ai_disabled_tasks (cached
+   * ~10s); absent means nothing is disabled.
+   */
+  isTaskDisabled?: (taskId: string) => boolean | Promise<boolean>
   /**
    * Fired at invocation time when a `on_device` task reaches the
    * server path — i.e. the device tier was unavailable or abstained and
@@ -350,6 +374,33 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4)
 }
 
+/**
+ * PRD-217 runtime switch — refuses the call before any provider is
+ * contacted and records the refusal so the operator surface shows demand
+ * continuing against a deliberately-off task rather than silence.
+ */
+async function refuseIfDisabled(
+  deps: TaskGatewayDeps,
+  taskId: string,
+  tenantId: string,
+  model: string,
+): Promise<void> {
+  if (!deps.isTaskDisabled || !(await deps.isTaskDisabled(taskId))) return
+  try {
+    deps.onCall?.({
+      task_id: taskId,
+      tenant_id: tenantId,
+      model,
+      ok: false,
+      latency_ms: 0,
+      outcome: 'disabled',
+    })
+  } catch {
+    /* metrics must never fail a call */
+  }
+  throw new TaskDisabledError(taskId)
+}
+
 async function withDeadline<T>(
   taskId: string,
   deadlineMs: number,
@@ -395,6 +446,7 @@ export function governedLlm(
   const outputGuard = new LlmOutputGuard({ tenantId })
 
   return async function governed(system: string, prompt: string, model?: string): Promise<string> {
+    await refuseIfDisabled(deps, taskId, tenantId, model ?? policy.primary_model)
     if (policy.preferred_execution === 'on_device') {
       try {
         deps.onDeviceEscalation?.(taskId)
@@ -491,6 +543,7 @@ export function governedVision(
   const outputGuard = new LlmOutputGuard({ tenantId })
 
   return async function vision(content: VisionContent): Promise<string> {
+    await refuseIfDisabled(deps, taskId, tenantId, policy.primary_model)
     if (policy.preferred_execution === 'on_device') {
       try {
         deps.onDeviceEscalation?.(taskId)
@@ -556,6 +609,7 @@ export function governedDecide(
   const inputGuard = new LlmInputGuard({ tenantId })
 
   return async function decide<T>(req: LocalDecisionRequest<T>): Promise<LocalDecisionResult<T>> {
+    await refuseIfDisabled(deps, taskId, tenantId, policy.primary_model)
     if (estimateTokens(req.system) + estimateTokens(req.prompt) > policy.max_input_tokens) {
       throw new TaskPolicyError(
         `Task '${taskId}' input exceeds its ${policy.max_input_tokens}-token ceiling`,

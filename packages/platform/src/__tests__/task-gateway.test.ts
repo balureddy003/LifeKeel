@@ -7,6 +7,7 @@ import {
   parseTaskRegistry,
   resolveTaskPolicy,
   TaskDeadlineError,
+  TaskDisabledError,
   TaskPolicyError,
   type AiTaskPolicy,
   type TaskGatewayDeps,
@@ -583,5 +584,61 @@ describe('processor guard (PRD-142)', () => {
     await expect(
       decide({ system: 's', prompt: 'p', schema: {} as never } as never),
     ).resolves.toBeTruthy()
+  })
+})
+
+describe('operator disable switch (PRD-217)', () => {
+  it('refuses the call before the provider and records the refusal', async () => {
+    const base = vi.fn(async () => 'ok') as unknown as LlmFn
+    const calls: unknown[] = []
+    const fn = governedLlm(
+      base,
+      {
+        ...deps(),
+        isTaskDisabled: (id) => id === 'test.task.v1',
+        onCall: (e) => calls.push(e),
+      },
+      'test.task.v1',
+      't1',
+    )
+    await expect(fn('s', 'p')).rejects.toBeInstanceOf(TaskDisabledError)
+    expect(base).not.toHaveBeenCalled()
+    expect(calls).toEqual([
+      expect.objectContaining({ task_id: 'test.task.v1', ok: false, outcome: 'disabled' }),
+    ])
+  })
+
+  it('passes through when the task is not disabled, and supports an async predicate', async () => {
+    const base = vi.fn(async () => 'ok') as unknown as LlmFn
+    const fn = governedLlm(
+      base,
+      {
+        ...deps(),
+        isTaskDisabled: async () => false,
+      },
+      'test.task.v1',
+      't1',
+    )
+    await expect(fn('s', 'p')).resolves.toBe('ok')
+    expect(base).toHaveBeenCalledOnce()
+  })
+
+  it('applies to decide calls too', async () => {
+    const base = vi.fn(async () => ({ ok: true, value: 1 })) as unknown as DecisionFn
+    const fn = governedDecide(base, { ...deps(), isTaskDisabled: () => true }, 'test.task.v1', 't1')
+    await expect(
+      fn({ system: 's', prompt: 'p', schema: {} as never } as never),
+    ).rejects.toBeInstanceOf(TaskDisabledError)
+    expect(base).not.toHaveBeenCalled()
+  })
+
+  it('applies to vision calls', async () => {
+    const fn = governedVision(
+      (async () => 'v') as never,
+      { ...deps(), isTaskDisabled: () => true },
+      'test.task.v1',
+      't1',
+    )
+    await expect(fn([{ type: 'text', text: 'x' }])).rejects.toBeInstanceOf(TaskDisabledError)
   })
 })

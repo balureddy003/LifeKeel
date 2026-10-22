@@ -49,6 +49,7 @@ import {
 } from '@lifekeel/platform'
 import { createLogger } from '@lifekeel/platform'
 import { deploymentConfig } from '../config/deployment.js'
+import { getPlatformConfig } from '../operator/platform-config.js'
 import { checkPlanSpendBudget } from '../spend-ledger.js'
 import { familyDataLlmFromEnv, localDecisionFromEnv } from '../local-model.js'
 import {
@@ -102,7 +103,10 @@ export function processorEnforcementFromEnv(
         )
         return 'enforce'
       }
-      log.warn({ value: raw, exception }, 'AI processor enforcement downgraded under a recorded exception')
+      log.warn(
+        { value: raw, exception },
+        'AI processor enforcement downgraded under a recorded exception',
+      )
     }
     return raw
   }
@@ -214,6 +218,11 @@ export function initTaskGateway(db: Db): void {
       onProcessorViolation,
     },
     guardEventSink: createGuardEventSink(db, 'task-gateway'),
+    // PRD-217 disable→fallback switch: audited operator flag in
+    // platform_config, ~10s cached — a refused call throws TaskDisabledError
+    // and the caller's existing failure path serves its honest fallback.
+    isTaskDisabled: async (taskId) =>
+      (await getPlatformConfig(db)).ai_disabled_tasks.includes(taskId),
     onCall: (e) => {
       if (!e.ok) recordLocalModelCall('task', false, e.latency_ms / 1000, 0, 0)
       // PRD-217: one metadata row per governed call — /operator/ai-health
@@ -229,6 +238,7 @@ export function initTaskGateway(db: Db): void {
             model: e.model,
             ok: e.ok,
             latency_ms: e.latency_ms,
+            outcome: e.outcome ?? null,
             processor: policy ? resolveServingProcessor(policy) : null,
             created_at: new Date(),
           })

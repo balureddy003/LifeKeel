@@ -4494,8 +4494,14 @@ export interface OperatorAiTaskHealth {
   primary_model: string
   serving_processor: string | null
   breaker_state: 'closed' | 'open' | 'half-open'
+  /** Operator disabled the task — calls are refused pre-provider and land
+   *  on the caller's honest fallback. */
+  disabled: boolean
   calls: number
   failures: number
+  /** Calls refused by the disabled switch — demand against an off task,
+   *  counted separately from real failures. */
+  disabled_refusals: number
   failure_rate: number
   p50_ms: number | null
   p95_ms: number | null
@@ -4522,10 +4528,35 @@ export interface OperatorAiHealth {
     generation_escape_rate: number | null
   }
   guard_events: Array<{ type: string; action: string; count: number }>
+  disabled_tasks: string[]
+  /** Self-hosted model queue stats — mean wait for a concurrency slot. */
+  local_model: { calls: number; queue_wait_mean_s: number | null }
 }
 
 export function fetchOperatorAiHealth(days = 7): Promise<OperatorAiHealth> {
   return operatorRequest(`/operator/ai-health?days=${days}`)
+}
+
+/** PRD-217 disable→fallback switch. A 202 (approval required) throws with
+ *  the server's message — the caller's ReasonAction surfaces it. */
+export async function setOperatorAiTaskState(
+  taskId: string,
+  enabled: boolean,
+  reason: string,
+): Promise<void> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await credFetch(`${base}/operator/ai-tasks/${encodeURIComponent(taskId)}/state`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ enabled, reason }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Could not update the task')
+  throwIfPendingApproval(data)
 }
 
 // ── Operator: autopilot ───────────────────────────────────────────────────
