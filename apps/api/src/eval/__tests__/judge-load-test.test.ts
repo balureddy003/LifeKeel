@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   classifyPrompt,
   contextProbe,
+  judgeContext,
   formatReport,
   mayRun,
   parseLevels,
@@ -33,6 +34,15 @@ describe('summarise', () => {
     expect(s.p50Ms).toBe(1000)
     // 2 successes over 4s of wall time.
     expect(s.throughputPerMin).toBeCloseTo(30)
+  })
+
+  it('groups failures by cause so a 429 is not confused with a timeout', () => {
+    const s = summarise(
+      4,
+      [ok(1000), bad(5), { ok: false, ms: 300000, status: 504, error: 'HTTP 504' }, bad(7)],
+      10_000,
+    )
+    expect(s.errorsByKind).toEqual({ 'HTTP 503': 2, 'HTTP 504': 1 })
   })
 
   it('does not divide by zero when nothing ran or everything failed', () => {
@@ -74,6 +84,25 @@ describe('prompts', () => {
     expect(classifyPrompt(0).prompt).not.toBe(classifyPrompt(1).prompt)
   })
 
+  it('sends the real classifier system prompt, identical for every call so its prefix can be cached', () => {
+    expect(classifyPrompt(0, 'a').system).toBe(classifyPrompt(3, 'b').system)
+    expect(classifyPrompt(0).system).toContain('email triage assistant')
+  })
+
+  it('a salt makes each call differ at the start of the user message, after the shared system prompt', () => {
+    const a = classifyPrompt(0, 'run1-1-0')
+    const b = classifyPrompt(0, 'run1-1-1')
+    expect(a.system).toBe(b.system)
+    expect(a.prompt).not.toBe(b.prompt)
+    expect(a.prompt.startsWith('Ref run1-1-0\n<email_from>')).toBe(true)
+    // Same email either way: only the leading salt differs.
+    expect(classifyPrompt(0, 'x').prompt.split('\n').slice(1).join('\n')).toBe(
+      classifyPrompt(0, 'y').prompt.split('\n').slice(1).join('\n'),
+    )
+    // No salt keeps the plain production shape.
+    expect(classifyPrompt(0).prompt.startsWith('<email_from>')).toBe(true)
+  })
+
   it('the context probe is longer than the old 4096-token default and holds the code only at the start', () => {
     const p = contextProbe('ABC-123')
     // ~4,600 tokens at roughly 4 characters per token.
@@ -96,12 +125,50 @@ describe('formatReport', () => {
     expect(text).toMatch(/serving calls in parallel/)
   })
 
-  it('reports a context failure with the cause', () => {
-    const text = formatReport('m', [level(1, 4)], { ok: false, answer: '123456', ms: 5000 })
+  it('reports a wrong answer as truncation', () => {
+    const text = formatReport('m', [level(1, 4)], {
+      outcome: 'wrong_answer',
+      answer: '123456',
+      ms: 5000,
+    })
     expect(text).toMatch(/Context check: FAIL/)
     expect(text).toMatch(/num_ctx is not taking effect/)
-    expect(formatReport('m', [level(1, 4)], { ok: true, answer: 'x', ms: 5000 })).toMatch(
+  })
+
+  it('reports a failed request as inconclusive, not as truncation', () => {
+    const text = formatReport('m', [level(1, 4)], {
+      outcome: 'request_failed',
+      answer: '',
+      ms: 299_998,
+      error: 'HTTP 504',
+    })
+    expect(text).toMatch(/INCONCLUSIVE/)
+    expect(text).toMatch(/HTTP 504/)
+    expect(text).not.toMatch(/num_ctx is not taking effect/)
+  })
+
+  it('reports a pass', () => {
+    expect(formatReport('m', [level(1, 4)], { outcome: 'pass', answer: 'x', ms: 5000 })).toMatch(
       /Context check: PASS/,
     )
+  })
+
+  it('lists errors by cause under the table', () => {
+    const l = summarise(4, [ok(1000), { ok: false, ms: 1, status: 429, error: 'HTTP 429' }], 5000)
+    expect(formatReport('m', [l], null)).toMatch(/concurrency 4 errors: 1x HTTP 429/)
+  })
+})
+
+describe('judgeContext', () => {
+  it('separates a correct answer, a wrong answer and a failed request', () => {
+    expect(judgeContext(ok(10), 'PELICAN-7731', 'PELICAN-7731').outcome).toBe('pass')
+    expect(judgeContext(ok(10), '123456', 'PELICAN-7731').outcome).toBe('wrong_answer')
+    const failed = judgeContext(
+      { ok: false, ms: 300000, status: 504, error: 'HTTP 504' },
+      '',
+      'PELICAN-7731',
+    )
+    expect(failed.outcome).toBe('request_failed')
+    expect(failed.error).toBe('HTTP 504')
   })
 })
