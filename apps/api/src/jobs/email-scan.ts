@@ -25,7 +25,11 @@ import { refreshGoogleAccessToken } from '../email/gmail-oauth.js'
 import { classifyEmail } from '../email/classify.js'
 import { localDecisionFromEnv, emailEncoderFromEnv } from '../local-model.js'
 import { taskLlm, taskDecide } from '../ai/task-gateway.js'
-import { recordEmailClassifyFailure, recordEmailEncoderOutcome } from '../routes/metrics.js'
+import {
+  recordEmailClassifyFailure,
+  recordEmailEncoderOutcome,
+  recordEmailFunnelStage,
+} from '../routes/metrics.js'
 import { acquireCronLock, releaseCronLock } from './cron-lock.js'
 import { processDocument } from '../ocr/extract.js'
 import { effectivePlan, hasFeature } from '../entitlements.js'
@@ -227,7 +231,12 @@ export async function scanTenantInbox(
     })
     if (existing) continue
 
-    const classification = await classifyEmail(llm, email, { decide, prefilter: true, encoder })
+    const classification = await classifyEmail(llm, email, {
+      decide,
+      prefilter: true,
+      encoder,
+      onStage: recordEmailFunnelStage,
+    })
     if (classification.failed) {
       recordEmailClassifyFailure()
       failedEmails.push({ uid: email.uid, messageId: email.messageId })
