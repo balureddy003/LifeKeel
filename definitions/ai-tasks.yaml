@@ -39,6 +39,28 @@ tasks:
     budget_class: interactive
     guard_policy: family_pii
 
+  assistant.answer_verified.v1:
+    # PRD-212: the deterministic tier — a factual ask resolved to an approved
+    # read operation and rendered from a reviewed template with provenance.
+    # Registered so the policy class exists and metrics/ops can reference it;
+    # the resolver makes NO model call, so model/processor fields describe
+    # the boundary it would be held to, not a call it makes.
+    purpose: Ask Keel — deterministic answer from an approved read operation with provenance
+    risk: user_visible
+    authority: language_only
+    data_boundary: lifekeel_infra
+    processor_terms_ref: self-hosted — no model call is made
+    provider_retention_class: none
+    allowed_models: [deterministic]
+    allowed_processors: [ollama]
+    primary_model: deterministic
+    preferred_execution: deterministic
+    deadline_ms: 2000
+    max_input_tokens: 8000
+    max_output_tokens: 1500
+    budget_class: interactive
+    guard_policy: family_pii
+
   assistant.scenario_narration.v1:
     purpose: Narrate a deterministic scenario-simulator result in plain English
     risk: user_visible
